@@ -106,6 +106,8 @@ class TestStableSort:
             pytest.param(lambda r: r.fetch_availability(2026, 1000001), id="fetch_availability"),
             pytest.param(lambda r: r.fetch_assignments(2026, 1000001), id="fetch_assignments"),
             pytest.param(lambda r: r.fetch_slot_merges(2026, 1000001, "scn_1"), id="fetch_slot_merges"),
+            pytest.param(lambda r: r.fetch_write_ins(2026, 1000001), id="fetch_write_ins"),
+            pytest.param(lambda r: r.fetch_draft_write_ins(2026, 1000001, "scn_1"), id="fetch_draft_write_ins"),
             pytest.param(lambda r: r.fetch_attendees_for_session(2026, "s1"), id="fetch_attendees"),
             pytest.param(lambda r: r.fetch_households(2026), id="fetch_households"),
             pytest.param(lambda r: r.fetch_prior_household_cm_ids(2026), id="fetch_prior_cm_ids"),
@@ -387,6 +389,26 @@ class TestLodgingReadsKeyOnTheCampMinderSessionId:
                 "lodging_slot_merges",
                 id="find_slot_merge",
             ),
+            pytest.param(
+                lambda r, s: r.fetch_write_ins(2026, s),
+                "lodging_write_ins",
+                id="fetch_write_ins",
+            ),
+            pytest.param(
+                lambda r, s: r.fetch_draft_write_ins(2026, s, "scn_1"),
+                "lodging_write_ins_draft",
+                id="fetch_draft_write_ins",
+            ),
+            pytest.param(
+                lambda r, s: r.find_write_in(2026, s, "u1"),
+                "lodging_write_ins",
+                id="find_write_in",
+            ),
+            pytest.param(
+                lambda r, s: r.find_draft_write_in(2026, s, "scn_1", "u1"),
+                "lodging_write_ins_draft",
+                id="find_draft_write_in",
+            ),
         ],
     )
     async def test_the_session_term_is_the_campminder_id(
@@ -424,6 +446,10 @@ class TestLodgingReadsKeyOnTheCampMinderSessionId:
             pytest.param(lambda r, s: r.find_draft_assignment(2026, s, "scn_1", 2000001, 0), id="find_draft"),
             pytest.param(lambda r, s: r.find_availability_override(2026, s, "u1"), id="find_availability"),
             pytest.param(lambda r, s: r.find_slot_merge(2026, s, "u1", "scn_1"), id="find_slot_merge"),
+            pytest.param(lambda r, s: r.fetch_write_ins(2026, s), id="fetch_write_ins"),
+            pytest.param(lambda r, s: r.fetch_draft_write_ins(2026, s, "scn_1"), id="fetch_draft_write_ins"),
+            pytest.param(lambda r, s: r.find_write_in(2026, s, "u1"), id="find_write_in"),
+            pytest.param(lambda r, s: r.find_draft_write_in(2026, s, "scn_1", "u1"), id="find_draft_write_in"),
         ],
     )
     async def test_the_session_term_is_never_compared_to_a_string(
@@ -583,6 +609,38 @@ class TestClientSuppliedValuesAreEscaped:
         assert '" || id != "' not in filter_str
 
     @pytest.mark.asyncio
+    async def test_fetch_draft_write_ins_escapes_the_scenario(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        await repo.fetch_draft_write_ins(2026, 1000001, self.INJECTION)
+
+        filter_str = _last_query(pb)["filter"]
+        assert f'scenario = "{self.ESCAPED}"' in filter_str
+        assert '" || id != "' not in filter_str
+
+    @pytest.mark.asyncio
+    async def test_find_write_in_escapes_the_unit_id(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        await repo.find_write_in(2026, 1000001, 'u1" || id != "')
+
+        filter_str = _last_query(pb)["filter"]
+        assert 'unit = "u1\\" || id != \\""' in filter_str
+        assert '" || id != "' not in filter_str
+
+    @pytest.mark.asyncio
+    async def test_find_draft_write_in_escapes_both_client_values(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        """TWO client-supplied strings reach this one filter, not one.
+
+        `unit_pb_id` arrives in the request body and `scenario_id` off the
+        `?scenario=` query parameter, and either one unescaped widens the
+        predicate past its own scoping -- which on this lookup means the
+        caller updates or deletes another scenario's write-in.
+        """
+        await repo.find_draft_write_in(2026, 1000001, self.INJECTION, 'u1" || id != "')
+
+        filter_str = _last_query(pb)["filter"]
+        assert f'scenario = "{self.ESCAPED}"' in filter_str
+        assert 'unit = "u1\\" || id != \\""' in filter_str
+        assert '" || id != "' not in filter_str
+
+    @pytest.mark.asyncio
     async def test_find_availability_override_escapes_the_unit_id(self, repo: LodgingRepository, pb: MagicMock) -> None:
         """One client value left, not two: 1500000135 took the scenario.
 
@@ -635,6 +693,156 @@ class TestFetchAvailability:
         return that the first one does not.
         """
         assert not hasattr(repo, "fetch_scenario_availability")
+
+
+class TestWriteInReads:
+    """`lodging_write_ins` / `lodging_write_ins_draft` — kindred#2382, PR 1 of 4.
+
+    The owner's 2026-08-15 clarification split `family_available` in two:
+    the staff<->family ROLE override stays on `lodging_availability`,
+    session-scoped and global, and write-in OCCUPANCY moves to its own
+    live+draft pair sitting beside `lodging_assignments`/`_draft`. These
+    reads are that pair's half of the repository.
+
+    NOTHING READS THEM YET. PR 1 lands the tables and the CRUD dark; the
+    switch of `write_in_covers`, `set_availability` and the frontend is PR 2
+    onward. What these tests pin is the shape the later PRs will read
+    through, not any behaviour the running application has today.
+    """
+
+    @pytest.mark.asyncio
+    async def test_fetch_write_ins_reads_the_live_table_with_no_scenario_predicate(
+        self, repo: LodgingRepository, pb: MagicMock
+    ) -> None:
+        """The live board is a scope in its own right (owner, 2026-08-15).
+
+        It is not "the absence of a scenario" and it is not `scenario = ""` on
+        a partitioned table -- that sentinel shape is the one 1500000135's
+        own reasoning, quoted in this module's header, rejected. The live
+        rows live in their own table and carry no scenario column at all, so
+        naming one here would name a column that does not exist, which
+        PocketBase rejects at query time rather than ignoring.
+        """
+        await repo.fetch_write_ins(2026, 1000001)
+
+        pb.collection.assert_called_with("lodging_write_ins")
+        params = _last_query(pb)
+        assert "session_cm_id = 1000001" in params["filter"]
+        assert "year = 2026" in params["filter"]
+        assert "scenario" not in params["filter"]
+
+    @pytest.mark.asyncio
+    async def test_fetch_draft_write_ins_returns_only_the_named_scenarios_rows(
+        self, repo: LodgingRepository, pb: MagicMock
+    ) -> None:
+        """REPLACE, not overlay -- the same rule kindred#1974 set for placements.
+
+        `lodging_slot_merges` is the tempting counter-model: it unions the
+        weekend-level tier in (`scenario = ""`) because a draw level is a
+        fact about the weekend. A write-in is not -- it is an occupancy, the
+        same kind of fact as a placement -- so a scenario's write-ins are its
+        whole set, and a scenario is seeded by an explicit copy (PR 3) rather
+        than by rendering the live board through the gaps.
+        """
+        await repo.fetch_draft_write_ins(2026, 1000001, "scn_1")
+
+        pb.collection.assert_called_with("lodging_write_ins_draft")
+        params = _last_query(pb)
+        assert "session_cm_id = 1000001" in params["filter"]
+        assert "year = 2026" in params["filter"]
+        assert 'scenario = "scn_1"' in params["filter"]
+        # No fall-through to the live board's rows.
+        assert 'scenario = ""' not in params["filter"]
+        assert "||" not in params["filter"]
+
+    @pytest.mark.asyncio
+    async def test_find_write_in_keys_the_live_unique_index(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        """Matches `idx_lodging_write_in_unique` (session_cm_id, year, unit).
+
+        Mirrors `find_availability_override` against the table the write-in
+        half moves to: without a lookup of exactly the index's shape a unit
+        could carry two contradicting rows for one weekend and "who is in
+        this cabin?" would stop being a question with an answer.
+        """
+        await repo.find_write_in(2026, 1000001, "u1")
+
+        pb.collection.assert_called_with("lodging_write_ins")
+        filter_str = _last_query(pb)["filter"]
+        assert "session_cm_id = 1000001" in filter_str
+        assert "year = 2026" in filter_str
+        assert 'unit = "u1"' in filter_str
+        assert "scenario" not in filter_str
+
+    @pytest.mark.asyncio
+    async def test_find_draft_write_in_keys_the_draft_unique_index(
+        self, repo: LodgingRepository, pb: MagicMock
+    ) -> None:
+        """The draft index carries `scenario` as a fourth term.
+
+        `lodging_assignments_draft`'s partial indexes do the same
+        (1500000132/1500000147): the draft key is the live key plus the
+        scenario, so two scenarios may hold contradicting rows for one unit
+        and neither collides with the other.
+        """
+        await repo.find_draft_write_in(2026, 1000001, "scn_1", "u1")
+
+        pb.collection.assert_called_with("lodging_write_ins_draft")
+        filter_str = _last_query(pb)["filter"]
+        assert "session_cm_id = 1000001" in filter_str
+        assert "year = 2026" in filter_str
+        assert 'unit = "u1"' in filter_str
+        assert 'scenario = "scn_1"' in filter_str
+
+    @pytest.mark.asyncio
+    async def test_find_write_in_returns_none_when_there_is_no_row(
+        self, repo: LodgingRepository, pb: MagicMock
+    ) -> None:
+        pb.collection.return_value.get_full_list.return_value = []
+
+        assert await repo.find_write_in(2026, 1000001, "u1") is None
+        assert await repo.find_draft_write_in(2026, 1000001, "scn_1", "u1") is None
+
+    @pytest.mark.asyncio
+    async def test_find_write_in_returns_the_single_row(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        row = _record(id="wi_1")
+        pb.collection.return_value.get_full_list.return_value = [row]
+
+        assert await repo.find_write_in(2026, 1000001, "u1") is row
+        assert await repo.find_draft_write_in(2026, 1000001, "scn_1", "u1") is row
+
+
+class TestWriteInWrites:
+    """The write half, live and draft, targets the right table each time.
+
+    A create that reached the wrong grain would record a scenario's modelling
+    choice on the live board -- the exact conflation kindred#2382 exists to
+    undo -- so the collection name is asserted on every one of the six.
+    """
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("call", "collection"),
+        [
+            pytest.param(lambda r: r.create_write_in({"unit": "u1"}), "lodging_write_ins", id="create_live"),
+            pytest.param(lambda r: r.update_write_in("wi_1", {"note": "x"}), "lodging_write_ins", id="update_live"),
+            pytest.param(lambda r: r.delete_write_in("wi_1"), "lodging_write_ins", id="delete_live"),
+            pytest.param(
+                lambda r: r.create_draft_write_in({"unit": "u1"}), "lodging_write_ins_draft", id="create_draft"
+            ),
+            pytest.param(
+                lambda r: r.update_draft_write_in("wi_1", {"note": "x"}),
+                "lodging_write_ins_draft",
+                id="update_draft",
+            ),
+            pytest.param(lambda r: r.delete_draft_write_in("wi_1"), "lodging_write_ins_draft", id="delete_draft"),
+        ],
+    )
+    async def test_the_write_targets_its_own_grain(
+        self, repo: LodgingRepository, pb: MagicMock, call: Any, collection: str
+    ) -> None:
+        await call(repo)
+
+        pb.collection.assert_called_with(collection)
 
 
 class TestFetchAttendees:
