@@ -163,7 +163,8 @@ async def get_household_medical(
     CampMinder, and every sibling endpoint on this router already gates on
     `bunking.manage`. There is one permission on this surface, not two
     (kindred#2398): a thing here is either behind `bunking.manage` or it is
-    not, and the medical narrative is.
+    not, and the medical narrative is. So are internal notes, which that
+    change left exactly where they were.
 
     RBAC is the control, and there is deliberately NO access log. One existed
     and was deleted: `bunking.manage` is what decides who may read this, and a
