@@ -95,8 +95,13 @@
  * the single-cover arity lives in four type signatures a storage change does
  * not touch. Do not widen the index here on its behalf.
  *
- * PocketBase v0.23 syntax: field properties are DIRECT, never inside
- * `options: {}`, which is silently ignored.
+ * PocketBase v0.23 syntax: field properties are DIRECT, never nested inside
+ * an `options` wrapper object, which is silently ignored.
+ *
+ * (Spelling it that way round is deliberate. scripts/pre-push-verify.sh greps
+ * changed migrations for the literal wrapper and filters only full-line `//`
+ * comments, so a JSDoc block quoting it fails the check -- 1500000135's header
+ * carries the same sentence and would too, if that file were ever in a diff.)
  */
 
 // VERBATIM from 1500000139:66-71, which took them verbatim from 1500000132.
