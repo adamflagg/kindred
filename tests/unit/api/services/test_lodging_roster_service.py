@@ -4380,7 +4380,11 @@ class TestRequestProvenanceBlocks:
         """All 34 `BunkingNotes` values end in an inline staff signature and
         timestamp; 0 of the parent-authored fields' 548 values do. The panel
         renders these in grey so an internal note never reads as a family's
-        own ask."""
+        own ask.
+
+        `include_staff_notes` is passed because these two blocks need
+        `bunking.manage` -- see `TestStaffAuthoredBlocksAreScreenReduced`.
+        """
         repo = _repo(
             fetch_session=FAMILY_SESSION,
             fetch_households={"hh_1": _household()},
@@ -4393,7 +4397,7 @@ class TestRequestProvenanceBlocks:
                 ]
             },
         )
-        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001, include_staff_notes=True)
 
         blocks = roster.parties[0].share.request_blocks
         assert [(block.source_field, block.authorship) for block in blocks] == [
@@ -4470,6 +4474,43 @@ class TestRequestProvenanceBlocks:
         assert entry.text == "A quiet corner"
 
     @pytest.mark.asyncio
+    async def test_a_csv_only_household_still_reads_as_needing_resolution(self) -> None:
+        """32 rostered 2026 households carry request text ONLY in the bunking-CSV
+        lane, so `family_camp_registrations.request_text` is blank for them.
+
+        `needs_resolution` is what the panel's marker reads, and its contract
+        is "there is request text and no named family has been resolved yet".
+        Deriving it from `request_text` alone was correct while that column
+        WAS the text; now that blocks carry text the column never held, those
+        32 households would render their ask with no marker beside it.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_households={"hh_1": _household()},
+            fetch_attendees_for_session=[_child()],
+            fetch_family_camp_registrations={"hh_1": _rec(request_text="")},
+            fetch_request_text_values={"hh_1": [_value("Share Bunk With", "With the Garcia family")]},
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        share = roster.parties[0].share
+        assert share.request_text == ""
+        assert [block.source_field for block in share.request_blocks] == ["Share Bunk With"]
+        assert share.needs_resolution is True
+
+    @pytest.mark.asyncio
+    async def test_a_household_with_no_text_at_all_needs_no_resolution(self) -> None:
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_households={"hh_1": _household()},
+            fetch_attendees_for_session=[_child()],
+            fetch_family_camp_registrations={"hh_1": _rec(request_text="")},
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.parties[0].share.needs_resolution is False
+
+    @pytest.mark.asyncio
     async def test_the_lander_summary_does_not_pay_for_the_raw_request_read(self) -> None:
         """`build_summary` counts parties and renders none of them, so the
         blocks would be work no response can read -- the same reason last
@@ -4482,3 +4523,66 @@ class TestRequestProvenanceBlocks:
         await LodgingRosterService(repo).build_summary(2026)
 
         repo.fetch_request_text_values.assert_not_called()
+
+
+class TestStaffAuthoredBlocksAreScreenReduced:
+    """`Internal Bunk Notes` / `BunkingNotes Notes` need `bunking.manage`.
+
+    Both live in `original_bunk_requests`, whose PocketBase listRule is
+    `bunking.manage`, and every other API route that serves that table's raw
+    `content` requires an admin (`api/routers/debug.py`). `/lodging/roster`
+    takes only `get_current_user`, so emitting the two staff-authored blocks
+    unconditionally would hand internal staff commentary to 8 of the 13
+    production users who cannot read it anywhere else -- and
+    `api/routers/lodging.py` says in as many words that internal notes are
+    behind `bunking.manage`.
+
+    The family-authored blocks are NOT gated, exactly as `request_text` is
+    not: a household's own housing ask is a placement input any authenticated
+    user legitimately reads (kindred#2398).
+    """
+
+    @staticmethod
+    def _repo_with_both_lanes() -> MagicMock:
+        return _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_households={"hh_1": _household()},
+            fetch_attendees_for_session=[_child()],
+            fetch_request_text_values={
+                "hh_1": [
+                    _value("COVID-19 Bunking Requests", "We would like a quiet cabin."),
+                    _value("BunkingNotes Notes", "Called the family Tuesday."),
+                    _value("Internal Bunk Notes", "Watch the cabin split here."),
+                ]
+            },
+        )
+
+    @pytest.mark.asyncio
+    async def test_a_caller_without_the_permission_gets_only_the_family_blocks(self) -> None:
+        roster = await LodgingRosterService(self._repo_with_both_lanes()).build_roster(2026, 1000001)
+
+        blocks = roster.parties[0].share.request_blocks
+        assert [block.source_field for block in blocks] == ["COVID-19 Bunking Requests"]
+
+    @pytest.mark.asyncio
+    async def test_the_default_is_screen_reduced_not_open(self) -> None:
+        """The keyword defaults to WITHHOLDING. A caller that forgets to pass
+        it shows less than it could, never more than it may."""
+        roster = await LodgingRosterService(self._repo_with_both_lanes()).build_roster(
+            2026, 1000001, include_staff_notes=False
+        )
+
+        assert all(block.authorship == "family" for block in roster.parties[0].share.request_blocks)
+
+    @pytest.mark.asyncio
+    async def test_a_caller_holding_bunking_manage_gets_both_lanes(self) -> None:
+        roster = await LodgingRosterService(self._repo_with_both_lanes()).build_roster(
+            2026, 1000001, include_staff_notes=True
+        )
+
+        blocks = roster.parties[0].share.request_blocks
+        assert [(block.source_field, block.authorship) for block in blocks] == [
+            ("COVID-19 Bunking Requests", "family"),
+            ("BunkingNotes Notes", "staff"),
+            ("Internal Bunk Notes", "staff"),
+        ]

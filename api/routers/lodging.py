@@ -45,6 +45,21 @@ def _service() -> LodgingRosterService:
     return LodgingRosterService(LodgingRepository(pb))
 
 
+def _may_read_staff_notes(user: AuthUser) -> bool:
+    """Whether this caller may see the two staff-authored request blocks.
+
+    `BunkingNotes Notes` and `Internal Bunk Notes` are `original_bunk_requests`
+    rows -- a table whose own PocketBase listRule is `bunking.manage`, and
+    whose raw `content` every other API route (`api/routers/debug.py`) serves
+    only to an admin. `/roster` below is open to any authenticated user, so
+    the blocks are withheld here rather than at the read, which is cached per
+    year and shared across callers. Same predicate as `require_permission`,
+    admin included; it is a boolean rather than a dependency because the rest
+    of the payload stays open.
+    """
+    return user.is_admin or Permission.BUNKING_MANAGE in user.permissions
+
+
 def _writes() -> LodgingWriteService:
     return LodgingWriteService(LodgingRepository(pb))
 
@@ -115,9 +130,17 @@ async def get_weekend_roster(
     mirror is not read at all. Availability does NOT vary this way: 1500000135
     deleted its scenario dimension, so the same rows resolve for every plan --
     a burst pipe closes a cabin in all of them. See `set_availability` below.
+
+    OPEN to any authenticated user, with ONE screen-reduction inside the
+    payload: the two staff-authored free-text blocks need `bunking.manage`.
+    See `_may_read_staff_notes`. The family-authored blocks and `request_text`
+    stay ungated, exactly as before -- a household's own housing ask is a
+    placement input (kindred#2398).
     """
     try:
-        return await _service().build_roster(year, session_cm_id, scenario)
+        return await _service().build_roster(
+            year, session_cm_id, scenario, include_staff_notes=_may_read_staff_notes(user)
+        )
     except SessionNotFoundError as exc:
         raise _weekend_404(year, session_cm_id) from exc
 

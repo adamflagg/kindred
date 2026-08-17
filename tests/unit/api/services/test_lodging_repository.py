@@ -1536,6 +1536,25 @@ class TestFetchRequestTextValues:
     non-blank 2026 values contain that separator themselves.
     """
 
+    @staticmethod
+    def _lanes(pb: MagicMock, family_camp: list[Any], bunking_csv: list[Any]) -> None:
+        """Answer each lane by its FILTER, never by call order.
+
+        The two lanes run concurrently through `asyncio.gather` over
+        `asyncio.to_thread`, and both reach the same
+        `pb.collection.return_value.get_full_list`. A positional
+        `side_effect=[family, csv]` therefore hands the rows to whichever
+        worker thread dequeues first, which nothing in asyncio guarantees --
+        the family-camp lane wins today and a loaded CI runner is exactly
+        where it would stop winning.
+        """
+
+        def _by_filter(**kwargs: Any) -> list[Any]:
+            query_filter = kwargs.get("query_params", {}).get("filter", "")
+            return family_camp if "field_definition" in query_filter else bunking_csv
+
+        pb.collection.return_value.get_full_list.side_effect = _by_filter
+
     @pytest.mark.asyncio
     async def test_the_family_camp_lane_filters_on_the_three_custom_field_ids(
         self, repo: LodgingRepository, pb: MagicMock
@@ -1595,7 +1614,8 @@ class TestFetchRequestTextValues:
         general bunking requests (owner ruling 2026-08-17: original field
         names until staff can weigh in after it is live)."""
         person = _record(id="p_1", household="hh_1", first_name="Emma", last_name="Johnson", preferred_name="")
-        pb.collection.return_value.get_full_list.side_effect = [
+        self._lanes(
+            pb,
             [
                 _record(
                     value="  Please put us near the Garcia family  ",
@@ -1603,7 +1623,7 @@ class TestFetchRequestTextValues:
                 )
             ],
             [],
-        ]
+        )
 
         values = await repo.fetch_request_text_values(2026)
 
@@ -1620,10 +1640,11 @@ class TestFetchRequestTextValues:
         the only route to one is the requester person -- which is year-scoped,
         exactly like the value rows in the other lane."""
         person = _record(id="p_2", household="hh_2", first_name="Liam", last_name="Garcia", preferred_name="")
-        pb.collection.return_value.get_full_list.side_effect = [
+        self._lanes(
+            pb,
             [],
             [_record(field="bunking_notes", content="Split the siblings.", expand={"requester": person})],
-        ]
+        )
 
         values = await repo.fetch_request_text_values(2026)
 
@@ -1637,10 +1658,11 @@ class TestFetchRequestTextValues:
         """kindred#2255's ruling for this same modal: a source field with no
         text renders nothing at all, no "nothing applicable" clutter."""
         person = _record(id="p_1", household="hh_1", first_name="Emma", last_name="Johnson", preferred_name="")
-        pb.collection.return_value.get_full_list.side_effect = [
+        self._lanes(
+            pb,
             [_record(value="   ", expand={"person": person, "field_definition": _record(cm_id=274133)})],
             [_record(field="internal_notes", content="", expand={"requester": person})],
-        ]
+        )
 
         assert await repo.fetch_request_text_values(2026) == {}
 
@@ -1650,7 +1672,8 @@ class TestFetchRequestTextValues:
     ) -> None:
         """A blank household is not an identity. Grouping several of them
         together would invent a household holding other families' text."""
-        pb.collection.return_value.get_full_list.side_effect = [
+        self._lanes(
+            pb,
             [
                 _record(
                     value="Anything",
@@ -1658,7 +1681,7 @@ class TestFetchRequestTextValues:
                 )
             ],
             [_record(field="internal_notes", content="Anything", expand={"requester": None})],
-        ]
+        )
 
         assert await repo.fetch_request_text_values(2026) == {}
 
@@ -1668,10 +1691,11 @@ class TestFetchRequestTextValues:
         stopped narrowing, and rendering it would put an unlabelled block on
         the panel."""
         person = _record(id="p_1", household="hh_1", first_name="Emma", last_name="Johnson", preferred_name="")
-        pb.collection.return_value.get_full_list.side_effect = [
+        self._lanes(
+            pb,
             [_record(value="Anything", expand={"person": person, "field_definition": _record(cm_id=240877)})],
             [],
-        ]
+        )
 
         assert await repo.fetch_request_text_values(2026) == {}
 
@@ -1681,7 +1705,8 @@ class TestFetchRequestTextValues:
         (kindred#1963). 422 family-camp value rows and 1,262 bunking-CSV rows
         on 2026, re-read per weekend without this."""
         person = _record(id="p_1", household="hh_1", first_name="Emma", last_name="Johnson", preferred_name="")
-        pb.collection.return_value.get_full_list.side_effect = [
+        self._lanes(
+            pb,
             [
                 _record(
                     value="Cabin near the bathhouse",
@@ -1689,7 +1714,7 @@ class TestFetchRequestTextValues:
                 )
             ],
             [],
-        ]
+        )
         first = await repo.fetch_request_text_values(2026)
 
         pb.collection.return_value.get_full_list.side_effect = None

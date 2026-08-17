@@ -392,7 +392,10 @@ class ShareRequestSummary(BaseModel):
     # separator. Slice 1 does not resolve names, so this is shown raw.
     request_text: str = ""
     # True when there is request text but no resolution of the named families to
-    # households. Always true in slice 1 when text is present.
+    # households. Always true in slice 1 when text is present -- and "text" is
+    # `request_text` OR `request_blocks` (kindred#2330), because 32 rostered
+    # 2026 households carry their ask only in the bunking-CSV lane and so have
+    # a blank `request_text` with a real request beside it.
     needs_resolution: bool = False
     # The SAME free text, split by source field and by answering child
     # (kindred#2330). Not a reformatting of `request_text` above -- it cannot
@@ -400,10 +403,15 @@ class ShareRequestSummary(BaseModel):
     # values the join was built from, plus the bunking-CSV lane that never
     # reached this surface at all.
     #
-    # `request_text` is deliberately NOT removed. It is still what
-    # `HouseholdRosterTable` tests for a request, and it is the fallback the
-    # panel renders if these blocks ever come back empty against a non-empty
-    # join: losing a family's ask is worse than losing its provenance.
+    # `request_text` is deliberately NOT removed. It is the fallback the panel
+    # renders if these blocks ever come back empty against a non-empty join:
+    # losing a family's ask is worse than losing its provenance.
+    #
+    # The two STAFF-authored blocks (`BunkingNotes Notes`, `Internal Bunk
+    # Notes`) are present only for a caller holding `bunking.manage` -- they
+    # are `original_bunk_requests` rows, and that table is gated. The
+    # family-authored blocks and `request_text` are not gated. See
+    # `_may_read_staff_notes` in api/routers/lodging.py.
     #
     # Ordered by `REQUEST_TEXT_SOURCES` -- family-authored blocks first, staff
     # notes last. A source field with no text produces NO block: kindred#2255's

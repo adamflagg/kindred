@@ -288,7 +288,7 @@ def placement_grain(row: Any) -> tuple[str, int] | None:
     return None
 
 
-def _request_blocks(values: Sequence[RequestValueRow]) -> list[RequestTextBlock]:
+def _request_blocks(values: Sequence[RequestValueRow], *, include_staff_notes: bool) -> list[RequestTextBlock]:
     """One block per SOURCE FIELD, one entry per distinct answer inside it.
 
     kindred#2330, owner ruling 2026-08-17. BOTH dimensions render: which form
@@ -316,10 +316,22 @@ def _request_blocks(values: Sequence[RequestValueRow]) -> list[RequestTextBlock]
       by the ruling's silence.
     * A blank contributor is dropped rather than rendered as an empty
       sub-label over a real request.
+    * The two STAFF-authored fields are withheld unless the caller holds
+      `bunking.manage`. They are `original_bunk_requests` rows, a table whose
+      own PocketBase listRule is `bunking.manage` and whose raw `content`
+      every other API route serves only to an admin; `/lodging/roster` takes
+      any authenticated user, so emitting them unconditionally would widen
+      who can read internal staff commentary about a family. The
+      family-authored blocks are NOT gated, for the same reason `request_text`
+      is not (kindred#2398): a household's own housing ask is a placement
+      input. Gating happens HERE rather than in the repository because that
+      read is cached per year and shared across callers.
     """
     by_field: dict[str, dict[str, tuple[str, list[str]]]] = {}
     for value in values:
         if request_text_source_order(value.source_field) >= len(REQUEST_TEXT_SOURCES):
+            continue
+        if not include_staff_notes and request_text_authorship(value.source_field) == "staff":
             continue
         text = value.text.strip()
         if not text:
@@ -978,7 +990,18 @@ class LodgingRosterService:
             status=cls._weekend_status(statuses.get(session_cm_id, "")),
         )
 
-    async def build_roster(self, year: int, session_cm_id: int, scenario: str = "") -> WeekendRosterResponse:
+    async def build_roster(
+        self,
+        year: int,
+        session_cm_id: int,
+        scenario: str = "",
+        *,
+        # Whether the caller may read the two staff-authored request blocks
+        # (`BunkingNotes Notes`, `Internal Bunk Notes`). DEFAULTS TO FALSE:
+        # a caller that forgets this shows staff less than it could, never
+        # more than it may. The router passes the caller's `bunking.manage`.
+        include_staff_notes: bool = False,
+    ) -> WeekendRosterResponse:
         """One weekend's roster, resolved through a scenario or not.
 
         No scenario is the CampMinder mirror -- the synced rows, exactly as
@@ -1115,6 +1138,7 @@ class LodgingRosterService:
             adults_by_household=adults_task.result(),
             registrations=registrations_task.result(),
             request_values=request_values_task.result(),
+            include_staff_notes=include_staff_notes,
             assignments=placements_task.result(),
             unit_index=unit_index,
         )
@@ -1580,6 +1604,8 @@ class LodgingRosterService:
         # `WeekendSummaryEntry` carries a party, so the lander would pay two
         # extra year-scoped reads to build provenance blocks nothing renders.
         request_values: Mapping[str, list[RequestValueRow]] | None = None,
+        # Same default and the same reason as `build_roster`'s: withhold.
+        include_staff_notes: bool = False,
     ) -> list[RosterParty]:
         placement_by_household, placement_by_person = self._index_assignments(assignments)
 
@@ -1599,6 +1625,7 @@ class LodgingRosterService:
             adults_by_household=adults_by_household,
             registrations=registrations,
             request_values=request_values or {},
+            include_staff_notes=include_staff_notes,
             placement_by_household=placement_by_household,
             bathroom_index=unit_index,
         )
@@ -1698,6 +1725,7 @@ class LodgingRosterService:
         adults_by_household: dict[str, list[Any]],
         registrations: dict[str, Any],
         request_values: Mapping[str, list[RequestValueRow]],
+        include_staff_notes: bool,
         placement_by_household: dict[int, _Placement],
         bathroom_index: _BathroomIndex,
     ) -> list[RosterParty]:
@@ -1777,14 +1805,24 @@ class LodgingRosterService:
                     # `is_returning`: the two derive from different tables and
                     # a cabin we have is a cabin we can show.
                     last_year_cabin=last_year_cabins.get(household_cm_id, ""),
-                    share=self._build_share(registration, request_values.get(household_pb_id, [])),
+                    share=self._build_share(
+                        registration,
+                        request_values.get(household_pb_id, []),
+                        include_staff_notes=include_staff_notes,
+                    ),
                     flags=self._build_flags(registration),
                 )
             )
         parties.sort(key=lambda p: (p.sort_name.casefold(), p.display_name.casefold()))
         return parties
 
-    def _build_share(self, registration: Any, request_values: Sequence[RequestValueRow] = ()) -> ShareRequestSummary:
+    def _build_share(
+        self,
+        registration: Any,
+        request_values: Sequence[RequestValueRow] = (),
+        *,
+        include_staff_notes: bool = False,
+    ) -> ShareRequestSummary:
         """Read the ingest-derived request layer. Do NOT re-parse it here.
 
         Every field below has a raw counterpart still on the row
@@ -1810,13 +1848,14 @@ class LodgingRosterService:
         column afterwards. A household with no values still gets a summary:
         112 of 382 rostered 2026 households have no free-text signal at all.
         """
-        blocks = _request_blocks(request_values)
+        blocks = _request_blocks(request_values, include_staff_notes=include_staff_notes)
         if registration is None:
             # Blocks still travel. A household can have request text in the
             # bunking-CSV lane and no `family_camp_registrations` row at all
             # -- that lane is fed by a different sync and keyed through the
-            # requester person, not through this table.
-            return ShareRequestSummary(request_blocks=blocks)
+            # requester person, not through this table. So does the marker:
+            # blank `request_text` is not evidence of nothing to resolve.
+            return ShareRequestSummary(request_blocks=blocks, needs_resolution=bool(blocks))
 
         gate = _s(registration, "share_cabin_gate")
         # An unrecognised or empty value is "unknown", never a default of open.
@@ -1858,7 +1897,11 @@ class LodgingRosterService:
             proximity=proximity,
             request_text=request_text,
             # Slice 1 resolves no names, so any free text is outstanding work.
-            needs_resolution=bool(request_text),
+            # BLOCKS COUNT AS TEXT (kindred#2330): 32 rostered 2026 households
+            # carry their ask only in the bunking-CSV lane, so `request_text`
+            # is blank for them and reading this off that column alone would
+            # render their request with no marker beside it.
+            needs_resolution=bool(request_text or blocks),
             request_blocks=blocks,
             eligibility=eligibility,
             eligibility_source=eligibility_source,

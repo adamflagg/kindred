@@ -52,11 +52,11 @@
  * A source field with no text renders NOTHING — no "nothing applicable"
  * clutter, composing with kindred#2255's chip ruling in this same modal.
  *
- * ## No permission gate on request_text
+ * ## No permission gate on a FAMILY's own request text
  *
- * `request_text` and the blocks built from the same answers have no
- * permission check at all, while `MedicalNarrative` (rendered beside them in
- * `FamilyDetailsPanel`) is gated on `bunking.manage`. The split is
+ * `request_text` and the family-authored blocks built from the same answers
+ * have no permission check at all, while `MedicalNarrative` (rendered beside
+ * them in `FamilyDetailsPanel`) is gated on `bunking.manage`. The split is
  * intentional: request text is a placement input — why a household wants a
  * particular cabin or setting is a legitimate placement concern for any
  * authenticated user to see, the same way the rest of the roster is. It is
@@ -68,9 +68,18 @@
  * screen-reduction, not a data boundary, and every sibling endpoint on the
  * lodging router already gated on `bunking.manage`). One permission decides
  * both answers; the two fields simply get different answers from it.
+ *
+ * The TWO STAFF-AUTHORED blocks get the gated answer, and this component does
+ * not implement that — the server does. `BunkingNotes Notes` and `Internal
+ * Bunk Notes` are `original_bunk_requests` rows, a table PocketBase itself
+ * lists behind `bunking.manage` and whose raw text every other API route
+ * serves only to an admin, so `/lodging/roster` omits them for a caller
+ * without it (`_may_read_staff_notes`, api/routers/lodging.py). Nothing is
+ * hidden client-side: a block that arrives is a block staff may read, which
+ * is why `authorship` still only decides amber vs grey here.
  */
 import { AlertCircle, ChevronDown, ChevronRight, MapPin, Users } from 'lucide-react'
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 
 import type { ProximityKindValue, RequestTextBlockRow, ShareRequest } from '../../types/lodging'
 import { SharePreferenceChip } from './SharePreferenceChip'
@@ -108,11 +117,24 @@ function withText(blocks: RequestTextBlockRow[]): RequestTextBlockRow[] {
     .filter((block) => block.entries.length > 0)
 }
 
-function RequestBlock({ block }: { block: RequestTextBlockRow }) {
-  // Expanded on first render, every time the panel opens. Deliberately NOT
-  // remembered across households: staff open the panel to read the request,
-  // and a fold carried over from the last family would hide it.
-  const [expanded, setExpanded] = useState(true)
+function RequestBlock({
+  block,
+  expanded,
+  onToggle,
+}: {
+  block: RequestTextBlockRow
+  expanded: boolean
+  onToggle: (sourceField: string) => void
+}) {
+  // The fold lives on the PANEL, not here, and is reset whenever the `share`
+  // object changes — see `ShareRequestPanel` below. A `useState` in this
+  // component looked like it gave every household a fresh expansion and did
+  // not: the panel is never remounted between families (all three callsites
+  // render `<FamilyDetailsPanel party={panelParty} …>` with no `key`, and
+  // `usePanelParty` only swaps `selectedKey`), so a block keyed on its source
+  // field kept its instance — and its fold — across the click. 205 of 382
+  // rostered households share `COVID-19 Bunking Requests`, so the next
+  // family's request text arrived already hidden.
   const isStaff = block.authorship === 'staff'
   const label = block.source_field ?? ''
 
@@ -126,7 +148,7 @@ function RequestBlock({ block }: { block: RequestTextBlockRow }) {
       <button
         type="button"
         onClick={() => {
-          setExpanded((open) => !open)
+          onToggle(label)
         }}
         className="text-muted-foreground hover:text-foreground flex w-full items-center gap-1 text-left transition-colors"
       >
@@ -165,6 +187,30 @@ function RequestBlock({ block }: { block: RequestTextBlockRow }) {
 }
 
 export function ShareRequestPanel({ share }: ShareRequestPanelProps) {
+  // Which source fields staff have folded away, and WHOSE. Held here rather
+  // than inside each block because the panel outlives the household it is
+  // showing: `usePanelParty` swaps `selectedKey` and the same
+  // `FamilyDetailsPanel` — and so the same `ShareRequestPanel` — renders the
+  // next family. Resetting during render on a changed `share` is React's own
+  // "adjust state when a prop changes" pattern, already used by
+  // `usePanelParty` and `WeekendRosterPage` for exactly this reason; an
+  // Effect would add a commit pass and paint the previous family's fold
+  // first. `share` is referentially stable per party (`usePanelParty`
+  // memoises it), so a parent re-render does not unfold anything.
+  const [folded, setFolded] = useState<ReadonlySet<string>>(() => new Set())
+  const [foldedFor, setFoldedFor] = useState<ShareRequest>(share)
+  if (foldedFor !== share) {
+    setFoldedFor(share)
+    if (folded.size > 0) setFolded(new Set())
+  }
+  const toggleFold = useCallback((sourceField: string) => {
+    setFolded((current) => {
+      const next = new Set(current)
+      if (!next.delete(sourceField)) next.add(sourceField)
+      return next
+    })
+  }, [])
+
   const proximity = share.proximity ?? []
   const blocks = withText(share.request_blocks ?? [])
   const requestText = share.request_text ?? ''
@@ -201,7 +247,12 @@ export function ShareRequestPanel({ share }: ShareRequestPanelProps) {
       </div>
 
       {blocks.map((block) => (
-        <RequestBlock key={block.source_field ?? ''} block={block} />
+        <RequestBlock
+          key={block.source_field ?? ''}
+          block={block}
+          expanded={!folded.has(block.source_field ?? '')}
+          onToggle={toggleFold}
+        />
       ))}
 
       {showJoinedFallback && (

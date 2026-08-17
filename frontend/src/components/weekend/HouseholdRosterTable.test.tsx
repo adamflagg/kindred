@@ -218,6 +218,38 @@ describe('HouseholdRosterTable', () => {
     expect(screen.getByText('Requests')).toBeInTheDocument()
   })
 
+  it('keeps the Requests column for a household whose only text is in a block', () => {
+    // kindred#2330: 32 rostered 2026 households carry their ask ONLY in the
+    // bunking-CSV lane, so `request_text` is blank for them while
+    // `request_blocks` is not. Testing the joined column alone would drop the
+    // column on a roster whose every request is one of those.
+    render(
+      <HouseholdRosterTable
+        year={2026}
+        parties={[
+          party({
+            share: {
+              preference: 'unknown',
+              preference_raw: '',
+              proximity: [],
+              request_text: '',
+              needs_resolution: true,
+              request_blocks: [
+                {
+                  source_field: 'Share Bunk With',
+                  authorship: 'family',
+                  entries: [{ text: 'With the Garcia family', contributors: [] }],
+                },
+              ],
+            },
+          }),
+        ]}
+      />,
+      { wrapper }
+    )
+    expect(screen.getByText('Requests')).toBeInTheDocument()
+  })
+
   it('renders adults and children counts for a household party', () => {
     render(
       <HouseholdRosterTable

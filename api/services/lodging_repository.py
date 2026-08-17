@@ -686,7 +686,13 @@ class LodgingRepository:
         `RetParent-Socializewithbest` are out.
 
         Cached (kindred#1963): year-scoped and sync-written only, exactly like
-        the registrations read above. Both lanes are one page each.
+        the registrations read above. The family-camp lane is one page (422
+        rows on 2026); the bunking-CSV lane is two, because it is not narrowed
+        to family-camp people at all -- 1,262 of the year's rows come back
+        against a PAGE_SIZE of 1,000, and 1,086 of them belong to households
+        with no weekend party to hang them on. Narrowing it would need a
+        person-id OR clause of the same shape kindred#1966 measured returning
+        HTTP 400, so the cache is the lever, exactly as it is there.
         """
         family_camp, bunking_csv = await asyncio.gather(
             self._fetch_family_camp_request_values(year),

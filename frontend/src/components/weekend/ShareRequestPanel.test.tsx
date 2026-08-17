@@ -506,3 +506,46 @@ describe('the joined column is still honoured when no blocks arrive', () => {
     expect(screen.getAllByText('Needs resolution')).toHaveLength(1)
   })
 })
+
+describe('a fold belongs to the household it was made on', () => {
+  // The panel is NOT remounted when staff click a different family: all three
+  // callsites render `<FamilyDetailsPanel party={panelParty} …>` with no
+  // `key`, and `usePanelParty` only swaps `selectedKey`, so the same
+  // `ShareRequestPanel` instance receives the next household's `share`.
+  // Keying a block on its source field alone therefore carried the fold
+  // across — and every household shares `COVID-19 Bunking Requests` with 204
+  // others, so the second family's request text arrived already hidden. That
+  // is the exact failure the "blocks start expanded" ruling exists to
+  // prevent.
+  it('reopens a folded source field when the next household is shown', () => {
+    const first = share({
+      request_blocks: [block('COVID-19 Bunking Requests', [{ text: "The first family's ask" }])],
+    })
+    const second = share({
+      request_blocks: [block('COVID-19 Bunking Requests', [{ text: "The second family's ask" }])],
+    })
+
+    const { rerender } = render(<ShareRequestPanel share={first} />)
+    fireEvent.click(screen.getByRole('button', { name: /COVID-19 Bunking Requests/ }))
+    expect(screen.queryByText("The first family's ask")).not.toBeInTheDocument()
+
+    rerender(<ShareRequestPanel share={second} />)
+
+    expect(screen.getByText("The second family's ask")).toBeInTheDocument()
+  })
+
+  it('keeps a fold while the same household is re-rendered', () => {
+    // The reset is keyed on the `share` object, which `usePanelParty` memoises
+    // per party — so a parent re-render (a pan, a hover, a drag) must not
+    // silently unfold what staff just folded.
+    const only = share({
+      request_blocks: [block('Shared-request', [{ text: 'A cabin on the flat, please' }])],
+    })
+
+    const { rerender } = render(<ShareRequestPanel share={only} />)
+    fireEvent.click(screen.getByRole('button', { name: /Shared-request/ }))
+    rerender(<ShareRequestPanel share={only} />)
+
+    expect(screen.queryByText('A cabin on the flat, please')).not.toBeInTheDocument()
+  })
+})
