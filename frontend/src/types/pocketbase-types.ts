@@ -1179,7 +1179,6 @@ export type LodgingUnitsRecord<Tbeds = unknown> = {
   has_fridge?: boolean
   has_heat?: boolean
   has_kitchen?: boolean
-  has_kitchenette?: boolean
   has_lights?: boolean
   has_living_room?: boolean
   has_pack_play_space?: boolean

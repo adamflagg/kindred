@@ -186,14 +186,17 @@ type registryUnit struct {
 	HasKitchen       bool `json:"has_kitchen"`
 	HasLights        bool `json:"has_lights"`
 
-	// These five refine an amenity above rather than restating it: HasTub
-	// narrows the Bathroom select, HasKitchenette narrows HasKitchen,
-	// HasSharedFridge narrows HasFridge. None can contradict its parent, so a
-	// consumer reading only the parent stays correct. HasCrib is distinct from
-	// HasPackPlaySpace — a camp-provided crib is not floor space for a family's
-	// own pack-and-play, and families with babies ask about both.
+	// These four refine an amenity above rather than restating it: HasTub
+	// narrows the Bathroom select, HasSharedFridge narrows HasFridge. None can
+	// contradict its parent, so a consumer reading only the parent stays
+	// correct. HasCrib is distinct from HasPackPlaySpace — a camp-provided crib
+	// is not floor space for a family's own pack-and-play, and families with
+	// babies ask about both.
+	//
+	// A fifth refinement, HasKitchenette (narrowing HasKitchen), was dropped in
+	// kindred#2390: production had zero rows where it disagreed with its
+	// parent, and staff ruled the distinction not worth tracking.
 	HasTub           bool `json:"has_tub"`
-	HasKitchenette   bool `json:"has_kitchenette"`
 	HasCrib          bool `json:"has_crib"`
 	HasChangingTable bool `json:"has_changing_table"`
 	HasSharedFridge  bool `json:"has_shared_fridge"`
@@ -684,7 +687,6 @@ func seedUnits(
 		rec.Set("has_kitchen", u.HasKitchen)
 		rec.Set("has_lights", u.HasLights)
 		rec.Set("has_tub", u.HasTub)
-		rec.Set("has_kitchenette", u.HasKitchenette)
 		rec.Set("has_crib", u.HasCrib)
 		rec.Set("has_changing_table", u.HasChangingTable)
 		rec.Set("has_shared_fridge", u.HasSharedFridge)

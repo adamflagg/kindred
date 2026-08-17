@@ -7,7 +7,17 @@ from typing import Any
 
 import pytest
 
-from scripts.dev.apply_lodging_inventory import main, plan_updates
+from scripts.dev.apply_lodging_inventory import INVENTORY_FIELDS, main, plan_updates
+
+
+def test_has_kitchenette_is_not_in_inventory_fields() -> None:
+    """has_kitchenette was collapsed into has_kitchen and the column dropped.
+
+    All 4 production units with has_kitchenette=true already carry
+    has_kitchen=true (kindred#2390), so the script no longer has anything to
+    carry for a field the schema doesn't have.
+    """
+    assert "has_kitchenette" not in INVENTORY_FIELDS
 
 
 def test_plan_updates_matches_within_one_year() -> None:
