@@ -3,6 +3,8 @@ package sync
 import (
 	"strings"
 	"testing"
+
+	"github.com/pocketbase/pocketbase/core"
 )
 
 const testAlumniTagID = "rec_alumni_001"
@@ -1839,5 +1841,140 @@ func TestTransformPersonToPB_ParentNamesClearedOnParseFail(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// kindred#2394: a staff-only person is not an orphan
+//
+// getPersonIDsFromStaff pulls staff person IDs into the run ON PURPOSE, so that
+// staff.person can be populated. transformPersonToPB then returns nil for
+// anyone whose CampMinder record carries no CamperDetails block -- someone who
+// has never been a camper -- and processPerson returns at that nil before it
+// reaches TrackProcessedKey. deleteOrphans reads every untracked (cm_id, year)
+// in `persons` as absent from CampMinder and deletes it, so the sync fetched
+// these people deliberately and then deleted them for not being campers.
+// ---------------------------------------------------------------------------
+
+// staffOnlyPersonData returns the CampMinder payload shape that produces the
+// defect: a real person with no CamperDetails block. Deliberately distinct from
+// validPersonData (rejection_wrapper_test.go), whose CamperDetails is what makes
+// it transform into a row.
+func staffOnlyPersonData(cmID int, first, last string) map[string]any {
+	return map[string]any{
+		"ID":   float64(cmID),
+		"Name": map[string]any{"First": first, "Last": last},
+	}
+}
+
+// TestProcessPersonTracksStaffOnlyPersonAsProcessed pins the tracking itself.
+// The skip accounting must be untouched: no row was written, so the record
+// really was skipped -- it simply must not also read as missing from CampMinder.
+func TestProcessPersonTracksStaffOnlyPersonAsProcessed(t *testing.T) {
+	t.Parallel()
+
+	const (
+		staffCMID = 2001
+		year      = 2026
+	)
+
+	s := &PersonsSync{
+		BaseSyncService:  BaseSyncService{ProcessedKeys: map[string]bool{}},
+		missingDataStats: map[string]int{},
+	}
+
+	if err := s.processPerson(
+		staffOnlyPersonData(staffCMID, testFirstName, "Johnson"),
+		false, map[int]*core.Record{}, map[string]string{}, map[int]string{}, year,
+	); err != nil {
+		t.Fatalf("processPerson: %v", err)
+	}
+
+	if !s.IsKeyProcessed(staffCMID, year) {
+		t.Errorf("ProcessedKeys is missing %q -- a person this run fetched from CampMinder "+
+			"on purpose reads as absent from it, and deleteOrphans deletes their row",
+			CompositeKey(staffCMID, year))
+	}
+
+	if s.skippedStaff != 1 {
+		t.Errorf("skippedStaff = %d, want 1 -- tracking must not change the skip accounting", s.skippedStaff)
+	}
+	if s.Stats.Skipped != 1 {
+		t.Errorf("Stats.Skipped = %d, want 1 -- tracking must not change the skip accounting", s.Stats.Skipped)
+	}
+}
+
+// TestStaffOnlyPersonSurvivesOrphanSweep drives the whole path the nightly run
+// takes: two campers processed, one staff-only person fetched and written off,
+// then the real deleteOrphans against a real persons collection. Three rows is
+// under OrphanSweepMinRows, so the collapse guard's ratio arm does not fire and
+// what the sweep does is decided by ProcessedKeys alone -- which is the point.
+func TestStaffOnlyPersonSurvivesOrphanSweep(t *testing.T) {
+	t.Parallel()
+
+	const (
+		camperOneCMID = 1001
+		camperTwoCMID = 1002
+		staffCMID     = 2001
+		year          = 2026
+	)
+
+	// Reuses the fixture from rejection_wrapper_test.go: same collection, same fields.
+	app := newPersonsTestApp(t)
+	seedSweepPerson(t, app, camperOneCMID, year, testFirstName, "Johnson")
+	seedSweepPerson(t, app, camperTwoCMID, year, "Liam", "Garcia")
+	seedSweepPerson(t, app, staffCMID, year, "Noah", "Martinez") // staff, never a camper
+
+	s := NewPersonsSync(app, nil)
+	s.SyncSuccessful = true
+
+	// The two campers came through the write path this run.
+	s.TrackProcessedKey(camperOneCMID, year)
+	s.TrackProcessedKey(camperTwoCMID, year)
+
+	// The staff-only person comes through the real path: fetched, transformed to
+	// nil, no row written.
+	if err := s.processPerson(
+		staffOnlyPersonData(staffCMID, "Noah", "Martinez"),
+		false, map[int]*core.Record{}, map[string]string{}, map[int]string{}, year,
+	); err != nil {
+		t.Fatalf("processPerson: %v", err)
+	}
+
+	if err := s.deleteOrphans(year); err != nil {
+		t.Fatalf("deleteOrphans: %v", err)
+	}
+
+	if _, err := app.FindFirstRecordByFilter("persons", "cm_id = 2001"); err != nil {
+		t.Errorf("the staff-only person's row was swept as an orphan (%v) -- "+
+			"the run fetched them from CampMinder, so they are not missing from it. "+
+			"In production this is 26 staff a night, and it severs staff.person", err)
+	}
+
+	// The campers are untouched, so the assertion above is about the tracking and
+	// not about a sweep that did nothing at all.
+	for _, filter := range []string{"cm_id = 1001", "cm_id = 1002"} {
+		if _, err := app.FindFirstRecordByFilter("persons", filter); err != nil {
+			t.Errorf("a tracked camper was swept (%s): %v", filter, err)
+		}
+	}
+}
+
+// seedSweepPerson writes one persons row for the sweep tests above.
+func seedSweepPerson(t *testing.T, app core.App, cmID, year int, first, last string) {
+	t.Helper()
+
+	col, err := app.FindCollectionByNameOrId("persons")
+	if err != nil {
+		t.Fatalf("find persons: %v", err)
+	}
+
+	rec := core.NewRecord(col)
+	rec.Set("cm_id", cmID)
+	rec.Set("year", year)
+	rec.Set("first_name", first)
+	rec.Set("last_name", last)
+	if saveErr := app.Save(rec); saveErr != nil {
+		t.Fatalf("seed person %d: %v", cmID, saveErr)
 	}
 }

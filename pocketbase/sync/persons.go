@@ -478,6 +478,22 @@ func (s *PersonsSync) processPerson(
 	if pbData == nil {
 		s.skippedStaff++
 		s.Stats.Skipped++
+
+		// ...but still track the key (kindred#2394). These are people the run
+		// fetched from CampMinder ON PURPOSE -- getPersonIDsFromStaff pulls staff
+		// person IDs in so staff.person can be populated -- who then get no row
+		// because they have never been a camper. Returning here without tracking
+		// left their stored row untracked, and deleteOrphans reads untracked as
+		// "CampMinder no longer returns this person" and deletes it. That is the
+		// opposite of what the run observed: it saw them. 26 staff a night, every
+		// night, each delete blanking staff.person as it went.
+		//
+		// Skipped stays as it was, deliberately: no row was written, and that is
+		// what Skipped counts. Skipped and orphaned are different facts, and this
+		// branch only ever meant the first one.
+		if personID, ok := personData["ID"].(float64); ok {
+			s.TrackProcessedKey(int(personID), year)
+		}
 		return nil
 	}
 
