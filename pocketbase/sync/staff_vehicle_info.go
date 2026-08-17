@@ -166,12 +166,21 @@ func (s *StaffVehicleInfoSync) Sync(ctx context.Context) error {
 	}
 	slog.Info("Extracted staff vehicle info records", "count", len(records))
 
+	// The extraction finished without error, so len(records) is now a fact about
+	// the SOURCE rather than about whether this run worked. Gate the sweep on it:
+	// a year in which nobody has vehicle info yet is a legitimately empty
+	// upstream, not a collapse, and refusing there wedged the table -- a refused
+	// sweep never clears the rows, so `existing` stayed high and every later run
+	// refused again. This mirrors camper_dietary.go / camper_transportation.go /
+	// quest_registrations.go / household_demographics.go (kindred#2283,
+	// kindred#2301): deleteOrphans reads this instead of running unconditionally.
+	s.SyncSuccessful = len(records) > 0
+
 	if s.DryRun {
 		slog.Info("Dry run mode - extracted but not writing",
 			"records", len(records),
 		)
 		s.Stats.Created = len(records)
-		s.SyncSuccessful = true
 		return nil
 	}
 
@@ -216,7 +225,6 @@ func (s *StaffVehicleInfoSync) Sync(ctx context.Context) error {
 		return fmt.Errorf("orphan sweep refused: %w", err)
 	}
 
-	s.SyncSuccessful = true
 	slog.Info("Staff vehicle info extraction completed",
 		"year", year,
 		"created", s.Stats.Created,
@@ -748,6 +756,17 @@ func (s *StaffVehicleInfoSync) deleteOrphans(
 	existingRecords map[string]string,
 	year int,
 ) (int, error) {
+	// An orphan sweep that runs after a PARTIAL fetch deletes rows the feed
+	// simply did not return. Sync() sets SyncSuccessful from the size of this
+	// run's extraction, so a year nobody has vehicle info for yet skips the
+	// sweep and succeeds rather than refusing forever (kindred#2301). The guard
+	// below still owns the case that matters: a source that came back SHORT.
+	if !s.SyncSuccessful {
+		slog.Info("Skipping orphan deletion: the source returned no rows for this year",
+			"entity", "staff_vehicle_info", "year", year)
+		return 0, nil
+	}
+
 	guard := OrphanSweepGuard{
 		Entity:   "staff_vehicle_info",
 		Year:     year,

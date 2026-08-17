@@ -521,8 +521,13 @@ func TestLoadPersonCustomValuesCountsUnmappedFields(t *testing.T) {
 
 // TestDeleteOrphansRefusesEmptyComputedSet pins the destructive path in
 // kindred#2273. An empty computed record set against a populated year is
-// always a broken input, never a legitimate "everything was removed" -- and
-// the current code deletes the year and reports success.
+// always a broken input, never a legitimate "everything was removed".
+//
+// NOTE since kindred#2301: this pins OrphanSweepGuard's CONTRACT, not a state
+// Sync() can now produce on its own -- Sync() sets SyncSuccessful from
+// len(records), so an empty computed set skips the sweep before the guard is
+// even consulted. SyncSuccessful is set explicitly here because this drives
+// deleteOrphans directly rather than through Sync().
 func TestDeleteOrphansRefusesEmptyComputedSet(t *testing.T) {
 	t.Parallel()
 	app := newStaffVehicleTestApp(t)
@@ -539,6 +544,7 @@ func TestDeleteOrphansRefusesEmptyComputedSet(t *testing.T) {
 
 	s := NewStaffVehicleInfoSync(app)
 	s.Year = 2026
+	s.SyncSuccessful = true
 
 	existing := map[string]string{makeStaffVehicleKey(1001, 2026): rec.Id}
 	deleted, err := s.deleteOrphans(context.Background(),
@@ -590,6 +596,10 @@ func TestDeleteOrphansStillSweepsGenuineOrphans(t *testing.T) {
 
 	s := NewStaffVehicleInfoSync(app)
 	s.Year = 2026
+	// Set explicitly because this drives deleteOrphans directly rather than
+	// through Sync(), which is what normally sets it from the size of the
+	// extraction (kindred#2301).
+	s.SyncSuccessful = true
 
 	records := map[string]*staffVehicleInfoRecord{
 		makeStaffVehicleKey(1001, 2026): {personID: 1001, year: 2026},
@@ -602,6 +612,68 @@ func TestDeleteOrphansStillSweepsGenuineOrphans(t *testing.T) {
 	}
 	if deleted != 1 {
 		t.Errorf("deleted = %d, want 1", deleted)
+	}
+}
+
+// TestDeleteOrphansSkipsWhenSyncNotSuccessful pins kindred#2301: deleteOrphans
+// must not sweep when SyncSuccessful is false. Before this fix, deleteOrphans
+// read nothing on SyncSuccessful at all -- the field existed and Sync() set
+// it, but only AFTER the sweep already ran, so a PARTIAL fetch (records came
+// back, but not enough of the run to be trusted) still deleted every row the
+// feed did not happen to return this run. Here SyncSuccessful is left at its
+// zero value (false), simulating exactly that: deleteOrphans is invoked
+// directly, the way Sync() would if it had not yet reached the point where
+// SyncSuccessful is set.
+func TestDeleteOrphansSkipsWhenSyncNotSuccessful(t *testing.T) {
+	t.Parallel()
+	app := newStaffVehicleTestApp(t)
+	col, err := app.FindCollectionByNameOrId("staff_vehicle_info")
+	if err != nil {
+		t.Fatalf("find staff_vehicle_info: %v", err)
+	}
+	keep := core.NewRecord(col)
+	keep.Set("person_id", 1001)
+	keep.Set("year", 2026)
+	if saveErr := app.Save(keep); saveErr != nil {
+		t.Fatalf("save keep row: %v", saveErr)
+	}
+	orphan := core.NewRecord(col)
+	orphan.Set("person_id", 1002)
+	orphan.Set("year", 2026)
+	if saveErr := app.Save(orphan); saveErr != nil {
+		t.Fatalf("save orphan: %v", saveErr)
+	}
+
+	s := NewStaffVehicleInfoSync(app)
+	s.Year = 2026
+	// s.SyncSuccessful left false (zero value) -- deliberately not set.
+
+	// 1001 is still computed; 1002 is not. Without the SyncSuccessful gate,
+	// 1002 would be swept -- the computed set is non-empty and well above
+	// OrphanSweepMinRows, so OrphanSweepGuard's collapse checks would not
+	// refuse this sweep on their own.
+	records := map[string]*staffVehicleInfoRecord{
+		makeStaffVehicleKey(1001, 2026): {personID: 1001, year: 2026},
+	}
+	existing := map[string]string{
+		makeStaffVehicleKey(1001, 2026): keep.Id,
+		makeStaffVehicleKey(1002, 2026): orphan.Id,
+	}
+
+	deleted, err := s.deleteOrphans(context.Background(), records, existing, 2026)
+	if err != nil {
+		t.Fatalf("unexpected error when SyncSuccessful is false: %v", err)
+	}
+	if deleted != 0 {
+		t.Errorf("deleted = %d, want 0 -- deleteOrphans must not sweep when SyncSuccessful is false", deleted)
+	}
+
+	remaining, err := app.FindRecordsByFilter("staff_vehicle_info", "year = 2026", "", 0, 0)
+	if err != nil {
+		t.Fatalf("re-query: %v", err)
+	}
+	if len(remaining) != 2 {
+		t.Errorf("%d rows survived, want 2 -- nothing may be swept when SyncSuccessful is false", len(remaining))
 	}
 }
 
