@@ -18,6 +18,20 @@ const AREAS = [
   { id: 'a2', name: 'South Zone', code: 'SOUTH', map_x: 0.6, map_y: 0.7, sort_order: 3 },
 ]
 
+// PocketBase stores an unset centroid as 0, never null (see mapModel.ts's
+// hasCoordinates). This is the shape #2397's "must stay unset" guarantee is
+// about. Kept out of the shared AREAS fixture — several tests above assert
+// on exact sort_order arithmetic derived from AREAS, and a third row would
+// shift every one of them.
+const UNSET_CENTROID_AREA = {
+  id: 'a3',
+  name: 'Unset Zone',
+  code: 'UNSET',
+  map_x: 0,
+  map_y: 0,
+  sort_order: 5,
+}
+
 // Module-scoped so `vi.mock` can close over them, so call records and resolved
 // values outlive the test that set them unless cleared here.
 beforeEach(() => {
@@ -151,22 +165,42 @@ describe('LodgingAreasDrawer', () => {
     expect(screen.queryByRole('button', { name: 'Move North Zone up' })).not.toBeInTheDocument()
   })
 
-  it('saves a map centroid, which the later map view renders from', async () => {
-    updateLodgingArea.mockResolvedValue({})
-    const user = userEvent.setup()
+  it('renders no Map centre inputs — there is no map to place them against (#2397)', async () => {
     render(<LodgingAreasDrawer open onClose={vi.fn()} />, { wrapper })
     await waitFor(() => {
       expect(screen.getByDisplayValue('North Zone')).toBeInTheDocument()
     })
 
-    const x = screen.getByLabelText('North Zone map X')
-    await user.clear(x)
-    await user.type(x, '0.45')
+    expect(screen.queryByLabelText('North Zone map X')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('North Zone map Y')).not.toBeInTheDocument()
+    expect(screen.queryByText('Map centre')).not.toBeInTheDocument()
+  })
+
+  it('leaves an unset centroid unset when a different field is edited', async () => {
+    // The centroid inputs are gone, so nothing in this drawer should ever
+    // put map_x/map_y on a write again. An area whose centroid is unset
+    // (map_x: 0, map_y: 0 — PocketBase's convention, not null) must stay
+    // that way rather than getting overwritten as a side effect of editing
+    // its name.
+    listLodgingAreas.mockResolvedValue([...AREAS, UNSET_CENTROID_AREA])
+    updateLodgingArea.mockResolvedValue({})
+    const user = userEvent.setup()
+    render(<LodgingAreasDrawer open onClose={vi.fn()} />, { wrapper })
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('Unset Zone')).toBeInTheDocument()
+    })
+
+    const name = screen.getByLabelText('Unset Zone name')
+    await user.clear(name)
+    await user.type(name, 'Renamed Zone')
     await user.tab()
 
     await waitFor(() => {
-      expect(updateLodgingArea).toHaveBeenCalledWith('a1', { map_x: 0.45 })
+      expect(updateLodgingArea).toHaveBeenCalledWith('a3', { name: 'Renamed Zone' })
     })
+    const [, payload] = updateLodgingArea.mock.calls[0] as [string, Record<string, unknown>]
+    expect(payload).not.toHaveProperty('map_x')
+    expect(payload).not.toHaveProperty('map_y')
   })
 
   it('derives a new area sort_order from the highest in use, not the list length', async () => {
@@ -254,48 +288,6 @@ describe('LodgingAreasDrawer — a rejected edit', () => {
     })
     await waitFor(() => {
       expect(screen.getByLabelText('North Zone name')).toHaveValue('North Zone')
-    })
-  })
-
-  it('restores the stored centroid when the field is cleared rather than retyped', async () => {
-    // The early return on an unparseable value skipped the write, correctly —
-    // but left the empty box on screen. Same failure as a rejected write: the
-    // field disagrees with what is stored and survives every refetch, and here
-    // it reads as "this area has no map position", which is a real state.
-    const user = userEvent.setup()
-    render(<LodgingAreasDrawer open onClose={vi.fn()} />, { wrapper })
-    await waitFor(() => {
-      expect(screen.getByDisplayValue('North Zone')).toBeInTheDocument()
-    })
-
-    const x = screen.getByLabelText('North Zone map X')
-    await user.clear(x)
-    await user.tab()
-
-    expect(updateLodgingArea).not.toHaveBeenCalled()
-    await waitFor(() => {
-      expect(screen.getByLabelText('North Zone map X')).toHaveValue(0.2)
-    })
-  })
-
-  it('restores the stored centroid when the save is rejected', async () => {
-    updateLodgingArea.mockRejectedValue(new Error('nope'))
-    const user = userEvent.setup()
-    render(<LodgingAreasDrawer open onClose={vi.fn()} />, { wrapper })
-    await waitFor(() => {
-      expect(screen.getByDisplayValue('North Zone')).toBeInTheDocument()
-    })
-
-    const x = screen.getByLabelText('North Zone map X')
-    await user.clear(x)
-    await user.type(x, '0.99')
-    await user.tab()
-
-    await waitFor(() => {
-      expect(updateLodgingArea).toHaveBeenCalled()
-    })
-    await waitFor(() => {
-      expect(screen.getByLabelText('North Zone map X')).toHaveValue(0.2)
     })
   })
 })
