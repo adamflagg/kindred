@@ -54,17 +54,47 @@ if [[ ${#migrations[@]} -eq 0 ]]; then
   exit 1
 fi
 cp "${migrations[@]}" "$SCRATCH/modified/"
-# Produce reliable structural drift by omitting the LAST migration
-# (lexicographically highest .js file). Bash globs sort alphabetically,
-# so the array's last element is the tail file. Picked dynamically so
-# this test survives consolidation rounds that absorb the previous tail.
-# Caveat: this assumes the tail migration produces some structural diff
-# when removed. If a future tail migration is purely a no-op-on-fresh-DB
-# (e.g. fully overwritten by a later mutation), this test could go green
-# spuriously — the harness's smoke check still guarantees something was
-# applied, but the drift signal would be weak.
-LAST_MIGRATION=$(basename "${migrations[-1]}")
-rm "$SCRATCH/modified/$LAST_MIGRATION"
+# Produce reliable structural drift by truncating the migration list at the
+# newest migration that actually CHANGES THE SCHEMA, dropping it and
+# everything after it.
+#
+# Two constraints force that shape, and each one broke a simpler version:
+#
+#  1. The tail is not necessarily structural. Bash globs sort alphabetically
+#     so `migrations[-1]` is the newest file, but 1500000162 is a pure DATA
+#     backfill -- it moves rows between two collections that already exist
+#     and alters no schema. Dropping it leaves byte-identical schemas, the
+#     verifier correctly exits 0, and this test fails while nothing is wrong.
+#     (The previous revision predicted exactly this in a caveat, unhandled.)
+#
+#  2. A migration cannot be removed from the MIDDLE. Dropping 1500000161 --
+#     which creates `lodging_write_ins` -- while leaving 1500000162, which
+#     backfills into it, makes the chain error out: the harness reports
+#     exit 2 rather than the exit 1 this test asserts.
+#
+# Removing a SUFFIX is always chain-safe, because a prefix of an ordered
+# migration set is exactly what a younger database has already applied. The
+# remaining set applies cleanly, and the dropped structural migration
+# guarantees the schema differs. This keeps the end-to-end "drift in a REAL
+# migration" intent -- these are unmodified repo migrations -- while
+# surviving any number of data-only migrations landing on the tail.
+structural_re='new Collection\(|deleteCollection|fields\.add|fields\.remove|addIndex|removeIndex|\.indexes'
+cut_index=-1
+for (( i=${#migrations[@]}-1; i>=0; i-- )); do
+  if grep -Eq "$structural_re" "${migrations[i]}"; then
+    cut_index=$i
+    break
+  fi
+done
+if [[ $cut_index -lt 1 ]]; then
+  echo "FAIL: no structural migration found after index 0 in $MIGRATIONS_DIR;" >&2
+  echo "      cannot truncate to produce drift while leaving a non-empty set" >&2
+  exit 1
+fi
+for (( i=cut_index; i<${#migrations[@]}; i++ )); do
+  rm "$SCRATCH/modified/$(basename "${migrations[i]}")"
+done
+echo "  (dropped $(( ${#migrations[@]} - cut_index )) migration(s) from $(basename "${migrations[cut_index]}") onward -- newest schema change and its dependents)"
 set +e
 "$VERIFY_SCRIPT" "$SCRATCH/modified" "$MIGRATIONS_DIR" >/dev/null 2>"$SCRATCH/t2.err"
 rc=$?
