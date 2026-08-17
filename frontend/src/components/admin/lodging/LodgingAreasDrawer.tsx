@@ -1,14 +1,19 @@
 /**
  * Areas, as a slide-in over the units table.
  *
- * Eight rows of name, order and map centroid do not warrant a top-level tab —
- * and areas exist to serve Units, which is where staff already are. Codes are
- * hidden for the same reason unit codes are: they are a back-end join key, not
+ * Eight rows of name and order do not warrant a top-level tab — and areas
+ * exist to serve Units, which is where staff already are. Codes are hidden
+ * for the same reason unit codes are: they are a back-end join key, not
  * something staff think in.
  *
- * The map centroid is not decorative. A later phase renders the actual camp
- * map from these coordinates, which is where "is this family next to a
- * bathhouse" gets answered (spec §7.2b).
+ * This used to also edit each area's map centroid as two bare number inputs
+ * with nothing to compare them against — typing `0.4389` was never a usable
+ * editing affordance (kindred#2397, following the same call `UnitMapPositionField`
+ * already made for units in kindred#2013/#2024). `map_x`/`map_y` are still on
+ * the collection and still read elsewhere; this removed one editing surface,
+ * not the fields. A later phase may render the actual camp map and let a
+ * centroid be dragged onto it the way `UnitMapPositionField` does for units —
+ * that is what "is this family next to a bathhouse" (spec §7.2b) still needs.
  */
 import { Dialog, DialogPanel, DialogTitle } from '@headlessui/react'
 import { useQueryClient } from '@tanstack/react-query'
@@ -24,7 +29,6 @@ import {
   reorderLodgingAreas,
   updateLodgingArea,
 } from '../../../services/lodgingCrud'
-import type { LodgingAreaRecord } from '../../../types/lodging'
 import { invalidateLodgingRegistryQueries } from '../../../utils/queryKeys'
 import { ACTION_LINK, BUTTON_PRIMARY, FIELD_INLINE as FIELD, LABEL } from './lodgingStyles'
 
@@ -108,31 +112,6 @@ export function LodgingAreasDrawer({ open, onClose }: LodgingAreasDrawerProps) {
     await run(() => reorderLodgingAreas(next.map((a) => a.id)), 'Failed to reorder the areas')
   }
 
-  const saveCentroid = async (
-    area: LodgingAreaRecord,
-    axis: 'map_x' | 'map_y',
-    field: HTMLInputElement
-  ) => {
-    const stored = String(area[axis])
-    const value = Number.parseFloat(field.value)
-    // Cleared or unparseable: skip the write, but put the stored value back.
-    // Leaving the empty box is the same failure a rejected write would be —
-    // the field disagrees with what is stored and survives every refetch —
-    // and here it reads as "this area has no map position", a real state that
-    // the later map view would render very differently.
-    if (Number.isNaN(value)) {
-      field.value = stored
-      return
-    }
-    if (value === area[axis]) return
-    await saveField(
-      field,
-      stored,
-      () => updateLodgingArea(area.id, { [axis]: value }),
-      'Failed to save the centroid'
-    )
-  }
-
   return (
     <Dialog open={open} onClose={onClose} className="relative z-50">
       <div className="fixed inset-0 bg-black/30" aria-hidden="true" />
@@ -154,92 +133,64 @@ export function LodgingAreasDrawer({ open, onClose }: LodgingAreasDrawerProps) {
             {areas.map((area, index) => (
               <li
                 key={area.id}
-                className="border-border hover:border-primary/50 flex flex-col gap-2 rounded-lg border p-3 transition-colors"
+                className="border-border hover:border-primary/50 flex items-center gap-2 rounded-lg border p-3 transition-colors"
               >
-                <div className="flex items-center gap-2">
-                  <input
-                    className={`${FIELD} flex-1`}
-                    defaultValue={area.name}
-                    aria-label={`${area.name} name`}
-                    onBlur={(e) => {
-                      if (e.target.value !== area.name) {
-                        const field = e.target
-                        void saveField(
-                          field,
-                          area.name,
-                          () => updateLodgingArea(area.id, { name: field.value }),
-                          'Failed to rename the area'
-                        )
-                      }
-                    }}
-                  />
-                  {index > 0 && (
-                    <button
-                      type="button"
-                      aria-label={`Move ${area.name} up`}
-                      onClick={() => void move(index, -1)}
-                      className="text-muted-foreground hover:text-foreground"
-                    >
-                      <ChevronUp className="h-4 w-4" />
-                    </button>
-                  )}
-                  {index < areas.length - 1 && (
-                    <button
-                      type="button"
-                      aria-label={`Move ${area.name} down`}
-                      onClick={() => void move(index, 1)}
-                      className="text-muted-foreground hover:text-foreground"
-                    >
-                      <ChevronDown className="h-4 w-4" />
-                    </button>
-                  )}
-                </div>
-
-                <div className="flex items-center gap-2 text-xs">
-                  <span className="text-muted-foreground">Map centre</span>
-                  <input
-                    className={`${FIELD} w-20`}
-                    type="number"
-                    step="0.001"
-                    min={0}
-                    max={1}
-                    defaultValue={area.map_x}
-                    aria-label={`${area.name} map X`}
-                    onBlur={(e) => void saveCentroid(area, 'map_x', e.target)}
-                  />
-                  <input
-                    className={`${FIELD} w-20`}
-                    type="number"
-                    step="0.001"
-                    min={0}
-                    max={1}
-                    defaultValue={area.map_y}
-                    aria-label={`${area.name} map Y`}
-                    onBlur={(e) => void saveCentroid(area, 'map_y', e.target)}
-                  />
+                <input
+                  className={`${FIELD} flex-1`}
+                  defaultValue={area.name}
+                  aria-label={`${area.name} name`}
+                  onBlur={(e) => {
+                    if (e.target.value !== area.name) {
+                      const field = e.target
+                      void saveField(
+                        field,
+                        area.name,
+                        () => updateLodgingArea(area.id, { name: field.value }),
+                        'Failed to rename the area'
+                      )
+                    }
+                  }}
+                />
+                {index > 0 && (
                   <button
                     type="button"
-                    onClick={() => {
-                      // The units table never offers delete at all (spec §3.8).
-                      // Areas must, since an area with no units is genuinely
-                      // removable — but it sits one click from a numeric input
-                      // and an empty area deletes silently and unrecoverably.
-                      if (
-                        !window.confirm(`Delete the area “${area.name}”? This cannot be undone.`)
-                      ) {
-                        return
-                      }
-                      void run(
-                        () => deleteLodgingArea(area.id),
-                        `Cannot delete ${area.name} while units still belong to it.`
-                      )
-                    }}
-                    aria-label={`Delete ${area.name}`}
-                    className={`text-muted-foreground hover:text-foreground ml-auto ${ACTION_LINK}`}
+                    aria-label={`Move ${area.name} up`}
+                    onClick={() => void move(index, -1)}
+                    className="text-muted-foreground hover:text-foreground"
                   >
-                    Delete
+                    <ChevronUp className="h-4 w-4" />
                   </button>
-                </div>
+                )}
+                {index < areas.length - 1 && (
+                  <button
+                    type="button"
+                    aria-label={`Move ${area.name} down`}
+                    onClick={() => void move(index, 1)}
+                    className="text-muted-foreground hover:text-foreground"
+                  >
+                    <ChevronDown className="h-4 w-4" />
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    // The units table never offers delete at all (spec §3.8).
+                    // Areas must, since an area with no units is genuinely
+                    // removable — and an empty area deletes silently and
+                    // unrecoverably without this confirmation.
+                    if (!window.confirm(`Delete the area “${area.name}”? This cannot be undone.`)) {
+                      return
+                    }
+                    void run(
+                      () => deleteLodgingArea(area.id),
+                      `Cannot delete ${area.name} while units still belong to it.`
+                    )
+                  }}
+                  aria-label={`Delete ${area.name}`}
+                  className={`text-muted-foreground hover:text-foreground ${ACTION_LINK}`}
+                >
+                  Delete
+                </button>
               </li>
             ))}
           </ul>

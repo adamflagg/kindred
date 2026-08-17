@@ -29,7 +29,6 @@ function unit(over: Partial<LodgingUnitRecord> & { id: string }): LodgingUnitRec
     has_fridge: false,
     is_accessible: false,
     has_tub: false,
-    has_kitchenette: false,
     has_crib: false,
     has_changing_table: false,
     has_shared_fridge: false,

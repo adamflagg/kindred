@@ -35,6 +35,11 @@ type PersonsSync struct {
 	missingDataStats map[string]int
 	skippedStaff     int
 
+	// staffFetchFailed records that this run could not read the CampMinder staff
+	// feed, so its computed set is known-incomplete and the orphan sweep must not
+	// run. Set from gatherPersonIDs, read by deleteOrphans. See kindred#2394.
+	staffFetchFailed bool
+
 	// Sub-entity stats for combined sync (households)
 	// Note: person_tags removed - tags are now a multi-select relation on persons
 	householdStats *Stats
@@ -121,6 +126,7 @@ func (s *PersonsSync) Sync(ctx context.Context) error {
 	s.LogSyncStart("persons (combined: persons + households)")
 	s.Stats = Stats{}
 	s.SyncSuccessful = false
+	s.staffFetchFailed = false
 	s.ClearProcessedKeys()
 
 	year := s.Client.GetSeasonID()
@@ -192,6 +198,10 @@ func (s *PersonsSync) gatherPersonIDs(year int) (*gatherPersonIDsResult, error) 
 	if err != nil {
 		slog.Warn("Error getting staff person IDs, continuing with attendees only", "error", err)
 		staffPersonIDs = nil
+		// Set on the service here rather than returned and copied across by the
+		// caller: one writer, one reader, and no assignment a later refactor can
+		// drop without the compiler noticing. Sync clears it per run.
+		s.staffFetchFailed = true
 	}
 
 	personIDs := s.mergePersonIDs(attendeePersonIDs, staffPersonIDs)
@@ -478,6 +488,22 @@ func (s *PersonsSync) processPerson(
 	if pbData == nil {
 		s.skippedStaff++
 		s.Stats.Skipped++
+
+		// ...but still track the key (kindred#2394). These are people the run
+		// fetched from CampMinder ON PURPOSE -- getPersonIDsFromStaff pulls staff
+		// person IDs in so staff.person can be populated -- who then get no row
+		// because they have never been a camper. Returning here without tracking
+		// left their stored row untracked, and deleteOrphans reads untracked as
+		// "CampMinder no longer returns this person" and deletes it. That is the
+		// opposite of what the run observed: it saw them. 26 staff a night, every
+		// night, each delete blanking staff.person as it went.
+		//
+		// Skipped stays as it was, deliberately: no row was written, and that is
+		// what Skipped counts. Skipped and orphaned are different facts, and this
+		// branch only ever meant the first one.
+		if personID, ok := personData["ID"].(float64); ok {
+			s.TrackProcessedKey(int(personID), year)
+		}
 		return nil
 	}
 
@@ -1134,7 +1160,51 @@ func (s *PersonsSync) printDataQualitySummary() {
 }
 
 // deleteOrphans deletes persons that exist in PocketBase but weren't processed from CampMinder
+// skipSweepForStaffFetchFailure reports whether a sweep must be abandoned because
+// this run could not read the CampMinder staff feed, and logs why when it must.
+//
+// The consequence differs per sweep -- persons loses the staff-only people
+// themselves, households loses whatever is reachable only through them -- so the
+// caller supplies that half of the message; everything else is shared.
+//
+// It warns rather than returning an error on purpose. updateRelationsAndCleanup
+// turns a deleteOrphans error into Stats.Errors++, and a deliberate skip is not an
+// operational failure. That is the same verdict OrphanSweepGuard.SkipReason gives a
+// rejection, and it carries the same accepted cost, stated there: a run that keeps
+// skipping lets genuine orphans accumulate, and the signal to go fix the upstream is
+// the warning repeating night after night rather than a separate alerting path.
+func (s *PersonsSync) skipSweepForStaffFetchFailure(entity, consequence string, year int) bool {
+	if !s.staffFetchFailed {
+		return false
+	}
+
+	slog.Warn("Orphan sweep skipped: the CampMinder staff feed could not be read, so "+consequence,
+		"entity", entity, "year", year)
+	return true
+}
+
 func (s *PersonsSync) deleteOrphans(year int) error {
+	// A swallowed staff-feed failure makes the computed set known-incomplete, so
+	// abandon the sweep rather than narrow it (kindred#2394). gatherPersonIDs
+	// deliberately continues with attendees only when getPersonIDsFromStaff errors
+	// -- the campers still need syncing -- but on such a run every staff-only
+	// person is missing from ProcessedKeys and reads as an orphan, which is the
+	// very defect the tracking in processPerson exists to prevent.
+	//
+	// Neither existing guard covers this. OrphanSweepGuard.Check compares a
+	// computed set still holding ~90% of the rows on disk against a 50% floor, and
+	// skipSweepForRejections reads Stats.Rejected, which a swallowed fetch error
+	// never bumps. This is the same verdict SkipReason gives a rejection -- the
+	// computed set is short for a reason that is not "CampMinder lost these
+	// people" -- so it skips without failing the run: updateRelationsAndCleanup
+	// turns a returned error into Stats.Errors++, and a deliberate skip is not an
+	// operational error.
+	if s.skipSweepForStaffFetchFailure("persons",
+		"every staff-only person is missing from the computed set and their stored rows "+
+			"would be read as orphans", year) {
+		return nil
+	}
+
 	filter := fmt.Sprintf("year = %d", year)
 
 	return s.DeleteOrphansGuarded(
@@ -1656,7 +1726,21 @@ func (s *PersonsSync) updatePersonHouseholdRelations(
 // The property is not free — it holds only while the tracking stays above the
 // transform, which is what TestPersonsTracksEveryHouseholdItWillLaterTransform
 // pins. Move it below and persons silently joins the other twelve.
+//
+// All of that is about REJECTIONS, and a MISSING UPSTREAM FEED is a different
+// fact that the tracking's position cannot help with (kindred#2394).
+// extractUniqueHouseholds reads `Households` straight off the CampMinder payload
+// with no reference to CamperDetails, and processBatchPersons calls it for every
+// person in the batch -- staff-only people included. So a household reachable only
+// through staff is tracked on a healthy run and simply absent on a run whose staff
+// feed failed, and this sweep would delete it. Hence the one guard this function
+// does take.
 func (s *PersonsSync) deleteHouseholdOrphans(year int, processedIDs map[int]bool) error {
+	if s.skipSweepForStaffFetchFailure("households",
+		"households reachable only through staff are missing from the computed set", year) {
+		return nil
+	}
+
 	slog.Info("Checking for orphaned households")
 
 	filter := fmt.Sprintf("year = %d", year)

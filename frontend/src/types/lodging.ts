@@ -269,11 +269,12 @@ export interface LodgingUnitRecord extends PocketBaseRecordBase {
   has_fridge: boolean
   is_accessible: boolean
   // From the 2026 Master Housing sheet. Each refines a field above rather than
-  // restating it: has_tub under `bathroom`, has_kitchenette under has_kitchen,
-  // has_shared_fridge under has_fridge. has_crib is distinct from
-  // has_pack_play_space — a camp crib is not floor space for a family's own.
+  // restating it: has_tub under `bathroom`, has_shared_fridge under
+  // has_fridge. has_crib is distinct from has_pack_play_space — a camp crib is
+  // not floor space for a family's own. has_kitchenette (narrowing
+  // has_kitchen) was dropped in kindred#2390: 0 production rows disagreed
+  // with their parent.
   has_tub: boolean
-  has_kitchenette: boolean
   has_crib: boolean
   has_changing_table: boolean
   has_shared_fridge: boolean
@@ -431,7 +432,6 @@ export interface LodgingUnitInput {
   has_fridge?: boolean
   is_accessible?: boolean
   has_tub?: boolean
-  has_kitchenette?: boolean
   has_crib?: boolean
   has_changing_table?: boolean
   has_shared_fridge?: boolean

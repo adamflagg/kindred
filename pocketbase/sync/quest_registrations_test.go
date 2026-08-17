@@ -576,7 +576,7 @@ func TestAggregateQuestEntriesKeepsAdmissionFilter(t *testing.T) {
 	// 100 is enrolled somewhere this year; 200 is not.
 	hasAttendee := map[int]bool{100: true}
 
-	got := aggregateQuestEntries(entries, 2026, hasAttendee)
+	got, _ := aggregateQuestEntries(entries, 2026, hasAttendee)
 
 	if len(got) != 1 {
 		t.Fatalf("expected 1 admitted record, got %d", len(got))
@@ -606,8 +606,8 @@ func TestAggregateQuestEntriesIsOrderIndependent(t *testing.T) {
 	}
 	hasAttendee := map[int]bool{100: true, 200: true}
 
-	a := aggregateQuestEntries(forward, 2026, hasAttendee)
-	b := aggregateQuestEntries(reversed, 2026, hasAttendee)
+	a, _ := aggregateQuestEntries(forward, 2026, hasAttendee)
+	b, _ := aggregateQuestEntries(reversed, 2026, hasAttendee)
 
 	if len(a) != len(b) {
 		t.Fatalf("record count differs by input order: %d vs %d", len(a), len(b))
@@ -740,5 +740,94 @@ func TestLoadQuestSessionIDsPinsTheSchemaIdentifiers(t *testing.T) {
 	}
 	if len(ids) != 1 {
 		t.Errorf("got %d session ids, want exactly 1", len(ids))
+	}
+}
+
+// --- kindred#2257: adopt SkippedValues for mechanism-C -----------------------
+
+// TestQuestLoadPersonCustomValuesCountsUnmappedFields pins the mechanism-C fix
+// for kindred#2257: a Quest-*/Q-* field admitted by isQuestRegistrationField
+// (the prefix test) but missing a case in MapQuestFieldToColumn used to be
+// discarded by mapQuestFieldToRecord's `if column == "" { return }` with no
+// counter and no log line, exactly like the sites already fixed at
+// camper_transportation.go and staff_vehicle_info.go (kindred#2356/#2277).
+// The record itself is still created -- this is a VALUE discard, not a record
+// one, so it must land on Stats.SkippedValues, not Stats.Skipped.
+func TestQuestLoadPersonCustomValuesCountsUnmappedFields(t *testing.T) {
+	t.Parallel()
+	app := newTransportValuesTestApp(t)
+
+	personsCol, err := app.FindCollectionByNameOrId("persons")
+	if err != nil {
+		t.Fatalf("find persons: %v", err)
+	}
+	person := core.NewRecord(personsCol)
+	person.Set("cm_id", 8001)
+	if saveErr := app.Save(person); saveErr != nil {
+		t.Fatalf("save person: %v", saveErr)
+	}
+
+	const year = 2026
+	// One routed field (must still work) and one field admitted by the
+	// "Quest-" prefix that has no case in MapQuestFieldToColumn (simulates a
+	// hypothetical new CampMinder Quest-* definition).
+	addPersonCustomValue(t, app, "fd_routed", person.Id, "adventure", year)
+	addPersonCustomValue(t, app, "fd_unmapped", person.Id, "unexpected value", year)
+
+	fieldNameMap := map[string]string{
+		"fd_routed":   "Q-Why come?",
+		"fd_unmapped": "Quest-Space Camp Interest",
+	}
+	personHasAttendee := map[int]bool{8001: true}
+
+	s := NewQuestRegistrationsSync(app)
+	records, err := s.loadPersonCustomValues(context.Background(), year, fieldNameMap, personHasAttendee)
+	if err != nil {
+		t.Fatalf("loadPersonCustomValues: %v", err)
+	}
+
+	key := makeQuestRegistrationKey(8001, year)
+	rec, ok := records[key]
+	if !ok {
+		t.Fatalf("no record for key %q; got %d records", key, len(records))
+	}
+	if rec.whyCome != "adventure" {
+		t.Errorf("routed field was not written: whyCome = %q, want %q", rec.whyCome, "adventure")
+	}
+
+	if s.Stats.SkippedValues != 1 {
+		t.Errorf("Stats.SkippedValues = %d, want 1 -- the unmapped Quest field is a discarded value, not a record",
+			s.Stats.SkippedValues)
+	}
+	if s.Stats.Skipped != 0 {
+		t.Errorf("Stats.Skipped = %d, want 0 -- a discarded field value is not a skipped record", s.Stats.Skipped)
+	}
+}
+
+// TestAggregateQuestEntriesReturnsUnmappedCounts pins aggregateQuestEntries'
+// second return value directly, at the pure-function level the rest of this
+// file's kindred#2261 tests already use -- see the package comment on why the
+// production aggregation, not a test-local reimplementation, must be driven.
+func TestAggregateQuestEntriesReturnsUnmappedCounts(t *testing.T) {
+	t.Parallel()
+	entries := []questValueEntry{
+		{personID: 100, fieldName: "Q-Why come?", value: "adventure"},
+		{personID: 100, fieldName: "Quest-Space Camp Interest", value: "yes please"},
+	}
+	hasAttendee := map[int]bool{100: true}
+
+	records, unmapped := aggregateQuestEntries(entries, 2026, hasAttendee)
+
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if got := records[makeQuestRegistrationKey(100, 2026)].whyCome; got != "adventure" {
+		t.Errorf("whyCome = %q, want %q", got, "adventure")
+	}
+	if unmapped["Quest-Space Camp Interest"] != 1 {
+		t.Errorf("unmapped[%q] = %d, want 1", "Quest-Space Camp Interest", unmapped["Quest-Space Camp Interest"])
+	}
+	if len(unmapped) != 1 {
+		t.Errorf("unmapped has %d entries, want 1: %v", len(unmapped), unmapped)
 	}
 }

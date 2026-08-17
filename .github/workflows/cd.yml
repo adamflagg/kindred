@@ -69,7 +69,7 @@ jobs:
       should_build: ${{ steps.decide-builds.outputs.should_build }}
     steps:
     - name: Harden runner
-      uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
+      uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
       with:
         egress-policy: block
         allowed-endpoints: >
@@ -293,7 +293,7 @@ jobs:
       checks: read
     steps:
     - name: Harden runner
-      uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
+      uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
       with:
         egress-policy: block
         allowed-endpoints: >
@@ -458,7 +458,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Harden runner
-      uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
+      uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
       with:
         egress-policy: block
         allowed-endpoints: >
@@ -573,7 +573,7 @@ jobs:
             should_build: ${{ needs.detect-changes.outputs.build_init }}
     steps:
     - name: Harden runner
-      uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
+      uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
       with:
         egress-policy: block
         allowed-endpoints: >
@@ -766,7 +766,7 @@ jobs:
     - name: Upload Trivy SARIF
       if: always() && steps.trivy-scan.outcome != 'skipped'
       continue-on-error: true
-      uses: github/codeql-action/upload-sarif@5595ccaf912efad79be6eef63a5619ff05969be3 # v4
+      uses: github/codeql-action/upload-sarif@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4
       with:
         sarif_file: 'trivy-results-${{ matrix.image }}.sarif'
         category: 'trivy-${{ matrix.image }}'
@@ -787,7 +787,7 @@ jobs:
       packages: read
     steps:
     - name: Harden runner
-      uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
+      uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
       with:
         egress-policy: block
         allowed-endpoints: >
@@ -1007,7 +1007,7 @@ jobs:
       packages: write
     steps:
     - name: Harden runner
-      uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
+      uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
       with:
         egress-policy: block
         allowed-endpoints: >
@@ -1085,7 +1085,7 @@ jobs:
     if: always()
     steps:
     - name: Harden runner
-      uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
+      uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
       with:
         egress-policy: block
         allowed-endpoints: >

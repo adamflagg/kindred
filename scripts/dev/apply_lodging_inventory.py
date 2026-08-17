@@ -55,11 +55,13 @@ INVENTORY_FIELDS = (
     "max_beds",
     "beds",
     # Each refines a field above rather than restating it: has_tub under the
-    # `bathroom` enum, has_kitchenette under has_kitchen, has_shared_fridge
-    # under has_fridge. None can contradict its parent, so a consumer that reads
-    # only the parent stays correct.
+    # `bathroom` enum, has_shared_fridge under has_fridge. None can contradict
+    # its parent, so a consumer that reads only the parent stays correct.
+    #
+    # has_kitchenette (narrowing has_kitchen) was dropped in kindred#2390: 0
+    # production rows disagreed with their parent, and staff ruled the split
+    # not worth tracking.
     "has_tub",
-    "has_kitchenette",
     "has_crib",
     "has_changing_table",
     "has_shared_fridge",
