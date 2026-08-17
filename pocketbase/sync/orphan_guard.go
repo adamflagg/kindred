@@ -61,7 +61,7 @@ const (
 // derived table.
 //
 // The REJECTION arm is narrower, and that is the part to watch. Only BaseSyncService
-// fills in Rejected, so for those ten SkipReason and RejectionsExplainShortfall can
+// fills in Rejected, so for those nine SkipReason and RejectionsExplainShortfall can
 // never fire -- they build the guard without it. That is harmless today because none
 // of them counts a rejection, and nothing pins it: a future reclassification into one
 // of those files gets the collapse guard but no rejection protection and no warning.
