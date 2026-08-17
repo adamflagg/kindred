@@ -133,71 +133,64 @@ export function LodgingAreasDrawer({ open, onClose }: LodgingAreasDrawerProps) {
             {areas.map((area, index) => (
               <li
                 key={area.id}
-                className="border-border hover:border-primary/50 flex flex-col gap-2 rounded-lg border p-3 transition-colors"
+                className="border-border hover:border-primary/50 flex items-center gap-2 rounded-lg border p-3 transition-colors"
               >
-                <div className="flex items-center gap-2">
-                  <input
-                    className={`${FIELD} flex-1`}
-                    defaultValue={area.name}
-                    aria-label={`${area.name} name`}
-                    onBlur={(e) => {
-                      if (e.target.value !== area.name) {
-                        const field = e.target
-                        void saveField(
-                          field,
-                          area.name,
-                          () => updateLodgingArea(area.id, { name: field.value }),
-                          'Failed to rename the area'
-                        )
-                      }
-                    }}
-                  />
-                  {index > 0 && (
-                    <button
-                      type="button"
-                      aria-label={`Move ${area.name} up`}
-                      onClick={() => void move(index, -1)}
-                      className="text-muted-foreground hover:text-foreground"
-                    >
-                      <ChevronUp className="h-4 w-4" />
-                    </button>
-                  )}
-                  {index < areas.length - 1 && (
-                    <button
-                      type="button"
-                      aria-label={`Move ${area.name} down`}
-                      onClick={() => void move(index, 1)}
-                      className="text-muted-foreground hover:text-foreground"
-                    >
-                      <ChevronDown className="h-4 w-4" />
-                    </button>
-                  )}
-                </div>
-
-                <div className="flex items-center gap-2 text-xs">
+                <input
+                  className={`${FIELD} flex-1`}
+                  defaultValue={area.name}
+                  aria-label={`${area.name} name`}
+                  onBlur={(e) => {
+                    if (e.target.value !== area.name) {
+                      const field = e.target
+                      void saveField(
+                        field,
+                        area.name,
+                        () => updateLodgingArea(area.id, { name: field.value }),
+                        'Failed to rename the area'
+                      )
+                    }
+                  }}
+                />
+                {index > 0 && (
                   <button
                     type="button"
-                    onClick={() => {
-                      // The units table never offers delete at all (spec §3.8).
-                      // Areas must, since an area with no units is genuinely
-                      // removable — and an empty area deletes silently and
-                      // unrecoverably without this confirmation.
-                      if (
-                        !window.confirm(`Delete the area “${area.name}”? This cannot be undone.`)
-                      ) {
-                        return
-                      }
-                      void run(
-                        () => deleteLodgingArea(area.id),
-                        `Cannot delete ${area.name} while units still belong to it.`
-                      )
-                    }}
-                    aria-label={`Delete ${area.name}`}
-                    className={`text-muted-foreground hover:text-foreground ml-auto ${ACTION_LINK}`}
+                    aria-label={`Move ${area.name} up`}
+                    onClick={() => void move(index, -1)}
+                    className="text-muted-foreground hover:text-foreground"
                   >
-                    Delete
+                    <ChevronUp className="h-4 w-4" />
                   </button>
-                </div>
+                )}
+                {index < areas.length - 1 && (
+                  <button
+                    type="button"
+                    aria-label={`Move ${area.name} down`}
+                    onClick={() => void move(index, 1)}
+                    className="text-muted-foreground hover:text-foreground"
+                  >
+                    <ChevronDown className="h-4 w-4" />
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    // The units table never offers delete at all (spec §3.8).
+                    // Areas must, since an area with no units is genuinely
+                    // removable — and an empty area deletes silently and
+                    // unrecoverably without this confirmation.
+                    if (!window.confirm(`Delete the area “${area.name}”? This cannot be undone.`)) {
+                      return
+                    }
+                    void run(
+                      () => deleteLodgingArea(area.id),
+                      `Cannot delete ${area.name} while units still belong to it.`
+                    )
+                  }}
+                  aria-label={`Delete ${area.name}`}
+                  className={`text-muted-foreground hover:text-foreground ${ACTION_LINK}`}
+                >
+                  Delete
+                </button>
               </li>
             ))}
           </ul>

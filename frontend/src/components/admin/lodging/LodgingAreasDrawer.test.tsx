@@ -165,6 +165,24 @@ describe('LodgingAreasDrawer', () => {
     expect(screen.queryByRole('button', { name: 'Move North Zone up' })).not.toBeInTheDocument()
   })
 
+  // The row used to wrap onto two lines: name + reorder arrows on one, Delete
+  // alone on the next — wasted vertical space across eight rows. Delete now
+  // sits in the SAME flex row as the name field and the arrows, so all three
+  // share one parent rather than Delete living in a block of its own below.
+  it('puts delete on the same line as the name and reorder arrows', async () => {
+    render(<LodgingAreasDrawer open onClose={vi.fn()} />, { wrapper })
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('North Zone')).toBeInTheDocument()
+    })
+
+    const name = screen.getByLabelText('North Zone name')
+    const moveDown = screen.getByRole('button', { name: 'Move North Zone down' })
+    const deleteButton = screen.getByRole('button', { name: 'Delete North Zone' })
+
+    expect(moveDown.parentElement).toBe(name.parentElement)
+    expect(deleteButton.parentElement).toBe(name.parentElement)
+  })
+
   it('renders no Map centre inputs — there is no map to place them against (#2397)', async () => {
     render(<LodgingAreasDrawer open onClose={vi.fn()} />, { wrapper })
     await waitFor(() => {
