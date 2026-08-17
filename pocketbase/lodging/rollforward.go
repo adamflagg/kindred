@@ -8,9 +8,10 @@ import (
 	"github.com/pocketbase/pocketbase/core"
 )
 
-// Columns copied verbatim onto the new season's row. `code` is here and is
-// NEVER regenerated: a building renamed next season keeps its code, and the
-// code is the only thing linking its years together.
+// Columns copied verbatim onto the new season's row, on EVERY roll regardless
+// of direction. `code` is here and is NEVER regenerated: a building renamed
+// next season keeps its code, and the code is the only thing linking its
+// years together.
 //
 // `id`, `created` and `updated` are excluded — the new row is a new record.
 // `area` and `parent_unit` are excluded because they are relations that must be
@@ -27,27 +28,43 @@ import (
 //	year                   — set explicitly to the target
 //	area / parent_unit     — relations, re-resolved into the target year by the
 //	                         two later passes
-//	is_confirmed           — asserts a human physically walked THIS season's
-//	                         cabin (docs/reference/lodging-registry.md:377), not
-//	                         a fact that outlives the season it was checked in.
-//	                         Carrying it would let a roll-forward -- including a
-//	                         BACKWARD one onto a season nobody has walked -- stamp
-//	                         is_confirmed = true on a row nobody confirmed
-//	                         (kindred#2392).
+//
+// `is_confirmed` is NOT here — see carriedFields's direction-dependent
+// exclusion below. It cannot be a blanket entry in this map: #2029 made
+// confirmation a permanent staff attestation that deliberately carries
+// forward ("Confirmation carries forward... a yearly re-confirm is
+// unnecessary", docs/reference/lodging-registry.md:368-373;
+// SeasonRollForwardPanel.tsx's doc comment says the same), and that is the
+// ONLY direction the Season panel exposes today (fromYear = currentYear-1,
+// toYear = currentYear). A blanket exclusion would silently un-confirm every
+// already-verified cabin the next time staff advance the season.
 var notCarried = map[string]bool{
 	"id": true, "created": true, "updated": true,
 	"year": true, "area": true, "parent_unit": true,
-	"is_confirmed": true,
 }
 
-// carriedFields returns every field on the collection that should travel to the
-// next season, so a column added tomorrow rides along without editing this file.
-func carriedFields(col *core.Collection) []string {
+// carriedFields returns every field on the collection that should travel to
+// the target season, so a column added tomorrow rides along without editing
+// this file.
+//
+// backward reports whether this roll copies from a LATER season onto an
+// EARLIER one (`to < from`) — the direction kindred#2392 proposes for
+// backfilling lodging_units into years that predate the confirmed registry.
+// `is_confirmed` is excluded ONLY on that direction: a backward roll would
+// otherwise stamp is_confirmed = true on a season nobody has ever walked, in
+// a field the docs describe as a permanent staff attestation (see
+// notCarried's comment for the forward case this must not break).
+func carriedFields(col *core.Collection, backward bool) []string {
 	out := make([]string, 0, len(col.Fields))
 	for _, f := range col.Fields {
-		if !notCarried[f.GetName()] {
-			out = append(out, f.GetName())
+		name := f.GetName()
+		if notCarried[name] {
+			continue
 		}
+		if backward && name == "is_confirmed" {
+			continue
+		}
+		out = append(out, name)
 	}
 	return out
 }
@@ -184,6 +201,7 @@ func copyAreas(app core.App, from, to int, write bool, plan *RollForwardPlan) (m
 	if err != nil {
 		return nil, fmt.Errorf("lodging_areas collection: %w", err)
 	}
+	backward := to < from
 
 	for _, src := range source {
 		code := src.GetString("code")
@@ -201,7 +219,7 @@ func copyAreas(app core.App, from, to int, write bool, plan *RollForwardPlan) (m
 			continue
 		}
 		rec := core.NewRecord(col)
-		for _, f := range carriedFields(col) {
+		for _, f := range carriedFields(col, backward) {
 			rec.Set(f, src.Get(f))
 		}
 		rec.Set("year", to)
@@ -227,6 +245,7 @@ func copyUnits(app core.App, from, to int, write bool, areaIDs map[string]string
 	if err != nil {
 		return fmt.Errorf("lodging_units collection: %w", err)
 	}
+	backward := to < from
 
 	for _, src := range source {
 		code := src.GetString("code")
@@ -246,7 +265,7 @@ func copyUnits(app core.App, from, to int, write bool, areaIDs map[string]string
 		}
 
 		rec := core.NewRecord(col)
-		for _, f := range carriedFields(col) {
+		for _, f := range carriedFields(col, backward) {
 			rec.Set(f, src.Get(f))
 		}
 		rec.Set("year", to)
