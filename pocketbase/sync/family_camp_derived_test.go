@@ -2405,3 +2405,329 @@ func TestProcessAdultsEmailGapFillStillWins(t *testing.T) {
 		})
 	}
 }
+
+// ============================================================================
+// kindred#2275 phase D -- NORMALISATION of date_of_birth and
+// relationship_to_camper. Format/case only; the merge policy and the record
+// grain are unchanged and remain kindred#2275's open subject.
+// ============================================================================
+
+// TestNormalizeDateOfBirthAcceptsEveryStoredFormat is the guard against the
+// trap that cost the measurement of kindred#2275 three rounds: a date parser
+// that only accepts M/D/YYYY reports the other 3,243 readable production
+// answers as junk. Every case below is a shape that actually occurs in the family camp
+// DOB fields (cm_id 34166/34167), and every one must come out as the single
+// canonical form YYYY-MM-DD.
+func TestNormalizeDateOfBirthAcceptsEveryStoredFormat(t *testing.T) {
+	t.Parallel()
+
+	const want = "1979-09-02"
+
+	cases := []struct {
+		name string
+		raw  string
+		want string
+	}{
+		{name: "M/D/YYYY (10,418 of 13,823)", raw: "9/2/1979", want: want},
+		{name: "MM/DD/YYYY zero padded", raw: "09/02/1979", want: want},
+		{name: "M/D/YY (2,042)", raw: "9/2/79", want: want},
+		{name: "M-D-YYYY (384)", raw: "9-2-1979", want: want},
+		{name: "MM-DD-YYYY zero padded", raw: "09-02-1979", want: want},
+		{name: "M-D-YY (147)", raw: "9-2-79", want: want},
+		{name: "M.D.YYYY (45)", raw: "9.2.1979", want: want},
+		{name: "M.D.YY (49)", raw: "2.13.80", want: "1980-02-13"},
+		{name: "MMDDYYYY (369)", raw: "09021979", want: want},
+		{name: "MMDDYYYY without leading zero month", raw: "10221978", want: "1978-10-22"},
+		{name: "MMDDYY six digits", raw: "090279", want: want},
+		{name: "ISO already canonical (1)", raw: "1979-09-02", want: want},
+		{name: "ISO with single digit parts", raw: "1979-9-2", want: want},
+		{name: "long month name", raw: "October 28, 1981", want: "1981-10-28"},
+		{name: "abbreviated month name", raw: "Oct 6, 1981", want: "1981-10-06"},
+		{name: "month name without comma", raw: "September 2 1979", want: want},
+		{name: "day-first with abbreviated month", raw: "9-Oct-1974", want: "1974-10-09"},
+		{name: "day-first spaced", raw: "28 Nov 1967", want: "1967-11-28"},
+		{name: "space separated numeric", raw: "03 16 1976", want: "1976-03-16"},
+		{name: "mixed separators", raw: "05-02/1972", want: "1972-05-02"},
+		{name: "surrounding whitespace is trimmed", raw: "  9/2/1979  ", want: want},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := normalizeDateOfBirth(tc.raw); got != tc.want {
+				t.Errorf("normalizeDateOfBirth(%q) = %q, want %q", tc.raw, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestNormalizeDateOfBirthNormalisesRatherThanDiscards pins the half of the
+// contract that is easy to get backwards: a value the parser cannot read is
+// returned UNCHANGED, never blanked. Only 162 of 13,823 production answers
+// (1.2%) land here, and every one of them is a real answer a staff member
+// typed -- discarding them would be a data loss dressed up as a cleanup.
+func TestNormalizeDateOfBirthNormalisesRatherThanDiscards(t *testing.T) {
+	t.Parallel()
+
+	// Every one of these is a verbatim shape from the production snapshot.
+	unparseable := []string{
+		"11/13",   // month/day only, no year
+		"6274",    // four bare digits
+		"1974",    // year only
+		"None",    // literal
+		"na",      // literal
+		"N/A",     // literal
+		"July 30", // month and day, no year
+		"2/30/1980",
+		"13/1/1980", // month out of range
+	}
+
+	for _, raw := range unparseable {
+		t.Run(raw, func(t *testing.T) {
+			t.Parallel()
+			if got := normalizeDateOfBirth(raw); got != raw {
+				t.Errorf("normalizeDateOfBirth(%q) = %q, want the input back unchanged", raw, got)
+			}
+		})
+	}
+
+	if got := normalizeDateOfBirth(""); got != "" {
+		t.Errorf("normalizeDateOfBirth(%q) = %q, want empty", "", got)
+	}
+	if got := normalizeDateOfBirth("   "); got != "" {
+		t.Errorf("normalizeDateOfBirth(%q) = %q, want empty", "   ", got)
+	}
+}
+
+// TestNormalizeDateOfBirthTwoDigitYearPivot states the century rule
+// explicitly, because a two-digit year is genuinely ambiguous and a silent
+// choice here would be a guess. Rule: YY >= 30 is 19YY, YY < 30 is 20YY.
+// The pivot sits in a gap that is empty in production -- the two-digit years
+// actually stored are 01-24 (52 answers, children's dates typed into an adult
+// field) and 43-99 (2,188 answers), with 25-42 absent -- so it cannot
+// misclassify any value present today.
+func TestNormalizeDateOfBirthTwoDigitYearPivot(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct{ raw, want string }{
+		{raw: "1/2/99", want: "1999-01-02"},
+		{raw: "1/2/58", want: "1958-01-02"},
+		{raw: "1/2/43", want: "1943-01-02"},
+		{raw: "1/2/30", want: "1930-01-02"},
+		{raw: "1/2/29", want: "2029-01-02"},
+		{raw: "1/2/24", want: "2024-01-02"},
+		{raw: "1/2/01", want: "2001-01-02"},
+		{raw: "1/2/00", want: "2000-01-02"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.raw, func(t *testing.T) {
+			t.Parallel()
+			if got := normalizeDateOfBirth(tc.raw); got != tc.want {
+				t.Errorf("normalizeDateOfBirth(%q) = %q, want %q", tc.raw, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestNormalizeDateOfBirthDoesNotValidatePlausibility pins that this is a
+// FORMAT normaliser and not a validator. Production holds mistyped years
+// (2986, 9171, 1073) that are perfectly well-formed dates and hopeless
+// birthdays. Rewriting them into canonical form is lossless and makes them
+// comparable; rejecting them would put them back in the "junk" bucket the
+// earlier measurements wrongly inflated.
+func TestNormalizeDateOfBirthDoesNotValidatePlausibility(t *testing.T) {
+	t.Parallel()
+
+	if got := normalizeDateOfBirth("2/13/2986"); got != "2986-02-13" {
+		t.Errorf("normalizeDateOfBirth(%q) = %q, want %q", "2/13/2986", got, "2986-02-13")
+	}
+}
+
+// TestNormalizeRelationshipToCamperFoldsCaseAndTheTwoSynonymPairs covers the
+// second normalisation. 315 of 5,751 (household, year, adult slot) groups
+// disagree on relationship_to_camper in production, and the largest single
+// cause is case: `Father`/`father`/`FAther`/`FATHER` are four spellings of one
+// answer. Mom<->Mother and Dad<->Father are the only synonym pairs folded.
+func TestNormalizeRelationshipToCamperFoldsCaseAndTheTwoSynonymPairs(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct{ raw, want string }{
+		{raw: "Mother", want: "Mother"},
+		{raw: "mother", want: "Mother"},
+		{raw: "MOther", want: "Mother"},
+		{raw: "MOTHER", want: "Mother"},
+		{raw: "Mom", want: "Mother"},
+		{raw: "mom", want: "Mother"},
+		{raw: "MOM", want: "Mother"},
+		{raw: "Father", want: "Father"},
+		{raw: "father", want: "Father"},
+		{raw: "FAther", want: "Father"},
+		{raw: "Dad", want: "Father"},
+		{raw: "dad", want: "Father"},
+		{raw: "DAD", want: "Father"},
+		{raw: "Parent", want: "Parent"},
+		{raw: "parent", want: "Parent"},
+		{raw: "PArent", want: "Parent"},
+		{raw: "self", want: "Self"},
+		{raw: "Self", want: "Self"},
+		{raw: "grandmother", want: "Grandmother"},
+		{raw: "spouse", want: "Spouse"},
+		{raw: "  Mother  ", want: "Mother"},
+		{raw: "", want: ""},
+		{raw: "   ", want: ""},
+	}
+
+	for _, tc := range cases {
+		t.Run("raw="+tc.raw, func(t *testing.T) {
+			t.Parallel()
+			if got := normalizeRelationshipToCamper(tc.raw); got != tc.want {
+				t.Errorf("normalizeRelationshipToCamper(%q) = %q, want %q", tc.raw, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestNormalizeRelationshipToCamperKeepsDistinctAnswersDistinct is the guard
+// on what must NOT be folded.
+//
+//   - Mother and Father must never collapse into each other. 92 of the 167
+//     groups that still disagree after normalisation are exactly this pair --
+//     two children naming two DIFFERENT PEOPLE into one adult slot. That is
+//     the signal kindred#2275 exists to measure; folding it would delete the
+//     evidence and make the residual look artificially small.
+//   - Step-parents are a real if small population (~21 production answers:
+//     `Step Father`, `step mother`, `Stepmom`, `Dad/Stepdad` ...). Synonym
+//     folding is exact-match on the whole value, never a substring, so none of
+//     them is rewritten into `Mother` or `Father`.
+//   - Free text keeps the capitalisation the parent typed. Only a single
+//     all-letters token is case-folded.
+func TestNormalizeRelationshipToCamperKeepsDistinctAnswersDistinct(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct{ raw, want string }{
+		{raw: "Stepmom", want: "Stepmom"},
+		{raw: "stepmom", want: "Stepmom"},
+		{raw: "Stepmother", want: "Stepmother"},
+		{raw: "Step Father", want: "Step Father"},
+		{raw: "step mother", want: "step mother"},
+		{raw: "Dad/Stepdad", want: "Dad/Stepdad"},
+		{raw: "Grandmother of Emma Johnson", want: "Grandmother of Emma Johnson"},
+		{raw: "mother of Emma and Liam", want: "mother of Emma and Liam"},
+		{raw: "N/A", want: "N/A"},
+		{raw: "Self?", want: "Self?"},
+	}
+
+	for _, tc := range cases {
+		t.Run("raw="+tc.raw, func(t *testing.T) {
+			t.Parallel()
+			if got := normalizeRelationshipToCamper(tc.raw); got != tc.want {
+				t.Errorf("normalizeRelationshipToCamper(%q) = %q, want %q", tc.raw, got, tc.want)
+			}
+		})
+	}
+
+	if normalizeRelationshipToCamper("Mother") == normalizeRelationshipToCamper("Father") {
+		t.Fatal("Mother and Father must never normalise to the same value")
+	}
+}
+
+// TestProcessAdultsNormalisesSiblingDateFormats is the end-to-end half: two
+// enrolled siblings type the SAME birthday in two different formats into the
+// same adult slot. Before normalisation the merge kept whichever row loaded
+// first and the two values compared as different, which is 583 of the 1,124
+// diverging production groups. After it, both orders produce the same stored
+// value and the divergence is gone.
+func TestProcessAdultsNormalisesSiblingDateFormats(t *testing.T) {
+	t.Parallel()
+
+	const wantDOB = "1979-09-02"
+
+	for _, order := range [][2]string{
+		{"9/2/1979", "09-02-79"},
+		{"09-02-79", "9/2/1979"},
+		{"09021979", "September 2, 1979"},
+	} {
+		t.Run(order[0]+"_then_"+order[1], func(t *testing.T) {
+			t.Parallel()
+			s := &FamilyCampDerivedSync{}
+			householdValues := []customValueEntry{
+				{householdPBID: "hh_1", fieldName: "Family Camp Adult 1", value: "Amy Johnson"},
+			}
+			personValues := []customValueEntry{
+				{householdPBID: "hh_1", fieldName: "Family Camp DOB 1", value: order[0]},
+				{householdPBID: "hh_1", fieldName: "Family Camp DOB 1", value: order[1]},
+			}
+
+			adults := s.processAdults(householdValues, personValues)
+
+			if len(adults) != 1 {
+				t.Fatalf("expected 1 merged adult, got %d", len(adults))
+			}
+			if adults[0].dateOfBirth != wantDOB {
+				t.Errorf("got date_of_birth %q, want canonical %q", adults[0].dateOfBirth, wantDOB)
+			}
+		})
+	}
+}
+
+// TestProcessAdultsNormalisesRelationshipCase is the relationship half of the
+// same end-to-end check, plus the negative case: a genuine Mother/Father
+// collision still resolves by load order and is still visible as a
+// disagreement, because normalisation is not a merge policy.
+func TestProcessAdultsNormalisesRelationshipCase(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name       string
+		first      string
+		second     string
+		wantStored string
+	}{
+		{name: "case variants fold", first: "mother", second: "Mother", wantStored: "Mother"},
+		{name: "synonym folds", first: "Mom", second: "mother", wantStored: "Mother"},
+		{name: "dad folds to father", first: "dad", second: "Father", wantStored: "Father"},
+		{name: "genuine collision keeps first loaded", first: "Father", second: "Mother", wantStored: "Father"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			s := &FamilyCampDerivedSync{}
+			householdValues := []customValueEntry{
+				{householdPBID: "hh_1", fieldName: "Family Camp Adult 1", value: "Amy Johnson"},
+			}
+			personValues := []customValueEntry{
+				{householdPBID: "hh_1", fieldName: "Family Camp-Relationship to 1", value: tc.first},
+				{householdPBID: "hh_1", fieldName: "Family Camp-Relationship to 1", value: tc.second},
+			}
+
+			adults := s.processAdults(householdValues, personValues)
+
+			if len(adults) != 1 {
+				t.Fatalf("expected 1 merged adult, got %d", len(adults))
+			}
+			if adults[0].relationship != tc.wantStored {
+				t.Errorf("got relationship %q, want %q", adults[0].relationship, tc.wantStored)
+			}
+		})
+	}
+}
+
+// TestNormalizeDateOfBirthIsIdempotent guards the sync's compare-before-write:
+// a normaliser that changed its own output on a second pass would rewrite
+// every family_camp_adults row on every run forever.
+func TestNormalizeDateOfBirthIsIdempotent(t *testing.T) {
+	t.Parallel()
+
+	for _, raw := range []string{"9/2/1979", "2.13.80", "October 28, 1981", "11/13", "None", ""} {
+		once := normalizeDateOfBirth(raw)
+		if twice := normalizeDateOfBirth(once); twice != once {
+			t.Errorf("normalizeDateOfBirth(%q) = %q but re-normalises to %q", raw, once, twice)
+		}
+		relOnce := normalizeRelationshipToCamper(raw)
+		if relTwice := normalizeRelationshipToCamper(relOnce); relTwice != relOnce {
+			t.Errorf("normalizeRelationshipToCamper(%q) = %q but re-normalises to %q", raw, relOnce, relTwice)
+		}
+	}
+}

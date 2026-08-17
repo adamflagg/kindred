@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/pocketbase/pocketbase/core"
 )
@@ -761,6 +762,18 @@ func (s *FamilyCampDerivedSync) loadPersonCustomValues(
 // this per-attribute merge policy, and that is kindred#2275's subject.
 // Today's behavior for those fields is pinned by test instead of changed on
 // a guess.
+//
+// NORMALISED, separately from the merge (kindred#2275 phase D, owner ruling
+// 2026-08-16): date_of_birth and relationship_to_camper are rewritten into a
+// canonical form BEFORE they are stored -- see normalizeDateOfBirth and
+// normalizeRelationshipToCamper. This is not a merge policy and does not
+// change which sibling wins; it removes the disagreements that were only ever
+// two spellings of one answer. Measured against the production snapshot, all
+// years: date_of_birth divergence falls from 1,124 (household, year, adult
+// slot) groups to 541, and relationship_to_camper from 315 to 169. The 710
+// that survive are real -- 360 different birth YEARS and 92 Mother-vs-Father
+// slot collisions -- and that residual is what the grain decision on
+// kindred#2275 now rests on.
 func (s *FamilyCampDerivedSync) processAdults(
 	householdValues []customValueEntry, personValues []customValueEntry,
 ) []*adultData {
@@ -829,9 +842,13 @@ func (s *FamilyCampDerivedSync) processAdults(
 		case strings.Contains(v.fieldName, "Gender") && adult.gender == "":
 			adult.gender = v.value
 		case strings.Contains(v.fieldName, "DOB") && adult.dateOfBirth == "":
-			adult.dateOfBirth = v.value
+			// Normalised, not merged: see normalizeDateOfBirth. Which sibling
+			// wins is still load order (kindred#2275); what changes is that
+			// the winner is stored in one canonical form, so two siblings who
+			// typed the SAME birthday two ways no longer read as a conflict.
+			adult.dateOfBirth = normalizeDateOfBirth(v.value)
 		case strings.Contains(v.fieldName, "Relationship") && adult.relationship == "":
-			adult.relationship = v.value
+			adult.relationship = normalizeRelationshipToCamper(v.value)
 		}
 	}
 
@@ -851,6 +868,215 @@ func (s *FamilyCampDerivedSync) processAdults(
 	}
 
 	return result
+}
+
+// ---------------------------------------------------------------------------
+// date_of_birth and relationship_to_camper normalisation (kindred#2275)
+//
+// These are FORMAT normalisers, not merge policy and not validators. The
+// merge below is still first-non-empty-wins and the record grain is still
+// (household, year, adult_number); both remain kindred#2275's open subject.
+// What normalisation buys is that the column becomes COMPARABLE, so the
+// residual disagreement between two siblings answering for the same adult is
+// a real disagreement rather than two spellings of one answer.
+// ---------------------------------------------------------------------------
+
+// dobTwoDigitYearPivot is the century rule for a two-digit year, stated
+// explicitly because the value is genuinely ambiguous: YY >= 30 means 19YY,
+// YY < 30 means 20YY.
+//
+// The pivot is placed at 30 because it lands in a gap that is empty in the
+// production snapshot. The two-digit years actually stored in the family camp
+// DOB fields are 01-24 (52 answers -- children's birthdays typed into an adult
+// field) and 43-99 (2,188 answers -- the adults). Nothing occupies 25-42, so
+// no value present today can be misclassified by this choice.
+const dobTwoDigitYearPivot = 30
+
+// The accepted input shapes for normalizeDateOfBirth. Every one of them
+// occurs in the production snapshot; the whole point of the list is that a
+// parser accepting only the most common shape (M/D/YYYY, 10,418 of 13,823
+// answers) reports the other 3,243 readable ones as junk, which is exactly how
+// kindred#2275
+// was mis-measured twice before.
+var (
+	// M/D/YY(YY) with any of / - . or space as the separator, and tolerant of
+	// the two separators differing (`05-02/1972` occurs).
+	dobNumericPattern = regexp.MustCompile(`^(\d{1,2})[/.\- ](\d{1,2})[/.\- ](\d{2}|\d{4})$`)
+	// YYYY-M-D, already canonical or nearly so.
+	dobISOPattern = regexp.MustCompile(`^(\d{4})-(\d{1,2})-(\d{1,2})$`)
+	// MMDDYYYY and MMDDYY, typed with the separators left out.
+	dobDigits8Pattern = regexp.MustCompile(`^(\d{2})(\d{2})(\d{4})$`)
+	dobDigits6Pattern = regexp.MustCompile(`^(\d{2})(\d{2})(\d{2})$`)
+	// `October 28, 1981`, `Oct 6, 1981`, `Nov. 1 1966`.
+	dobMonthNamePattern = regexp.MustCompile(`^([A-Za-z]{3,9})\.? (\d{1,2})(?:st|nd|rd|th)?,? (\d{4})$`)
+	// `28 Nov 1967`, `9-Oct-1974`.
+	dobDayMonthNamePattern = regexp.MustCompile(`^(\d{1,2})(?:st|nd|rd|th)?[ \-]([A-Za-z]{3,9})\.?[ \-,]+(\d{4})$`)
+)
+
+// dobMonthNames maps the long and abbreviated English month names, lowercased,
+// to their number. `sept` is included because parents type it.
+var dobMonthNames = map[string]int{
+	"january": 1, "jan": 1,
+	"february": 2, "feb": 2,
+	"march": 3, "mar": 3,
+	"april": 4, "apr": 4,
+	"may":  5,
+	"june": 6, "jun": 6,
+	"july": 7, "jul": 7,
+	"august": 8, "aug": 8,
+	"september": 9, "sept": 9, "sep": 9,
+	"october": 10, "oct": 10,
+	"november": 11, "nov": 11,
+	"december": 12, "dec": 12,
+}
+
+// normalizeDateOfBirth rewrites a free-text CampMinder date answer into the
+// single canonical form YYYY-MM-DD.
+//
+// It NORMALISES, it does not discard: a value it cannot read comes back
+// unchanged, never blanked. 162 of the 13,823 stored family camp DOB answers
+// (1.2%) land there -- `11/13`, `6274`, `1974`, `None`, `na` -- and each is a
+// real answer a staff member typed, so a "cleanup" that emptied them would be
+// data loss. Nor does it judge plausibility: a mistyped year (2986, 9171) is a
+// well-formed date and is rewritten like any other, because rejecting it would
+// put it straight back in the junk bucket the earlier measurements inflated.
+//
+// It is idempotent, which the sync's compare-before-write depends on: a
+// normaliser whose output re-normalised differently would rewrite every
+// family_camp_adults row on every run.
+func normalizeDateOfBirth(raw string) string {
+	trimmed := strings.Join(strings.Fields(raw), " ")
+	if trimmed == "" {
+		return ""
+	}
+
+	if m := dobISOPattern.FindStringSubmatch(trimmed); m != nil {
+		if out, ok := canonicalDate(atoiOrZero(m[1]), atoiOrZero(m[2]), atoiOrZero(m[3])); ok {
+			return out
+		}
+	}
+	if m := dobNumericPattern.FindStringSubmatch(trimmed); m != nil {
+		if out, ok := canonicalDate(expandTwoDigitYear(m[3]), atoiOrZero(m[1]), atoiOrZero(m[2])); ok {
+			return out
+		}
+	}
+	if m := dobDigits8Pattern.FindStringSubmatch(trimmed); m != nil {
+		if out, ok := canonicalDate(atoiOrZero(m[3]), atoiOrZero(m[1]), atoiOrZero(m[2])); ok {
+			return out
+		}
+	}
+	if m := dobDigits6Pattern.FindStringSubmatch(trimmed); m != nil {
+		if out, ok := canonicalDate(expandTwoDigitYear(m[3]), atoiOrZero(m[1]), atoiOrZero(m[2])); ok {
+			return out
+		}
+	}
+	if m := dobMonthNamePattern.FindStringSubmatch(trimmed); m != nil {
+		if month, ok := dobMonthNames[strings.ToLower(m[1])]; ok {
+			if out, ok := canonicalDate(atoiOrZero(m[3]), month, atoiOrZero(m[2])); ok {
+				return out
+			}
+		}
+	}
+	if m := dobDayMonthNamePattern.FindStringSubmatch(trimmed); m != nil {
+		if month, ok := dobMonthNames[strings.ToLower(m[2])]; ok {
+			if out, ok := canonicalDate(atoiOrZero(m[3]), month, atoiOrZero(m[1])); ok {
+				return out
+			}
+		}
+	}
+
+	return raw
+}
+
+// expandTwoDigitYear applies dobTwoDigitYearPivot. A year already written with
+// three or more digits is returned as-is.
+func expandTwoDigitYear(year string) int {
+	y := atoiOrZero(year)
+	if len(year) > 2 {
+		return y
+	}
+	if y >= dobTwoDigitYearPivot {
+		return 1900 + y
+	}
+	return 2000 + y
+}
+
+// canonicalDate renders YYYY-MM-DD, reporting false when the parts are not a
+// real calendar date (February 30, month 13). time.Date silently rolls those
+// over, so the round-trip check is what actually rejects them.
+func canonicalDate(year, month, day int) (string, bool) {
+	if year <= 0 || month <= 0 || day <= 0 {
+		return "", false
+	}
+	t := time.Date(year, time.Month(month), day, 0, 0, 0, 0, time.UTC)
+	if t.Year() != year || int(t.Month()) != month || t.Day() != day {
+		return "", false
+	}
+	return fmt.Sprintf("%04d-%02d-%02d", year, month, day), true
+}
+
+// atoiOrZero converts a regex-captured digit run. The patterns guarantee the
+// input is digits, so the error case is unreachable and is folded to 0, which
+// canonicalDate then rejects.
+func atoiOrZero(s string) int {
+	n, err := strconv.Atoi(s)
+	if err != nil {
+		return 0
+	}
+	return n
+}
+
+// relationshipSynonyms folds the only two synonym pairs the vocabulary
+// supports. Mother and Father are deliberately NOT folded into each other:
+// 92 of the groups that still disagree after normalisation are exactly that
+// pair, and they are two children naming two DIFFERENT PEOPLE into one adult
+// slot -- the signal kindred#2275 exists to measure.
+//
+// The lookup is exact-match on the whole value, never a substring, which is
+// what keeps the small step-parent population (~21 answers: `Step Father`,
+// `step mother`, `Stepmom`, `Dad/Stepdad`) out of it.
+var relationshipSynonyms = map[string]string{
+	"mom":    "Mother",
+	"mother": "Mother",
+	"dad":    "Father",
+	"father": "Father",
+}
+
+// normalizeRelationshipToCamper folds case and the two synonym pairs on a
+// relationship answer, and leaves everything else exactly as the parent typed
+// it.
+//
+// Case folding applies only to a SINGLE all-letters token, so `mother` becomes
+// `Mother` and `spouse` becomes `Spouse`, while free text (`mother of Emma and
+// Liam`) and punctuated answers (`N/A`, `Dad/Stepdad`) keep their own
+// capitalisation. Re-casing free text would buy 2 more collapsed groups out of
+// 315 and rewrite 100 more stored values, which is not a trade worth making.
+func normalizeRelationshipToCamper(raw string) string {
+	trimmed := strings.Join(strings.Fields(raw), " ")
+	if trimmed == "" {
+		return ""
+	}
+
+	if canonical, ok := relationshipSynonyms[strings.ToLower(trimmed)]; ok {
+		return canonical
+	}
+
+	if !isSingleAlphabeticToken(trimmed) {
+		return trimmed
+	}
+
+	runes := []rune(trimmed)
+	return string(unicode.ToUpper(runes[0])) + strings.ToLower(string(runes[1:]))
+}
+
+// isSingleAlphabeticToken reports whether s is one word made only of letters.
+func isSingleAlphabeticToken(s string) bool {
+	for _, r := range s {
+		if !unicode.IsLetter(r) {
+			return false
+		}
+	}
+	return s != ""
 }
 
 // emailFormatPattern is a narrow, defensible notion of "well-formed enough
