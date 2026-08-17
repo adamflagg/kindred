@@ -613,8 +613,9 @@ export type EnrollmentSnapshotsRecord = {
   year: number
 }
 
-export type FamilyCampAdultsRecord = {
+export type FamilyCampAdultsRecord<Tattribute_conflicts = unknown> = {
   adult_number: number
+  attribute_conflicts?: null | Tattribute_conflicts
   created: IsoAutoDateString
   date_of_birth?: string
   email?: string
@@ -1815,7 +1816,9 @@ export type DivisionsResponse<Texpand = unknown> = Required<DivisionsRecord> &
   BaseSystemFields<Texpand>
 export type EnrollmentSnapshotsResponse<Texpand = unknown> = Required<EnrollmentSnapshotsRecord> &
   BaseSystemFields<Texpand>
-export type FamilyCampAdultsResponse<Texpand = unknown> = Required<FamilyCampAdultsRecord> &
+export type FamilyCampAdultsResponse<Tattribute_conflicts = unknown, Texpand = unknown> = Required<
+  FamilyCampAdultsRecord<Tattribute_conflicts>
+> &
   BaseSystemFields<Texpand>
 export type FamilyCampMedicalResponse<Texpand = unknown> = Required<FamilyCampMedicalRecord> &
   BaseSystemFields<Texpand>

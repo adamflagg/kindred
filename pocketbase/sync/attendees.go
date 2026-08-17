@@ -365,7 +365,12 @@ func (s *AttendeesSync) processEnrollment(
 		lastUpdatedUTC = ParseDate(lu)
 	}
 
-	// Note: CampMinder attendee ID exists in enrollment["ID"] but we don't need it in PocketBase
+	// CampMinder returns NO per-enrollment ID: there is no enrollment["ID"] key.
+	// An enrollment is identified only by (PersonID, SessionID), which is why
+	// this sync's composite key is what it is -- it could not be refined even
+	// if someone wanted to. Measured 2026-08-17 over the whole season: 2,315
+	// attendees, 2,904 SessionProgramStatus entries, 0 carrying an "ID" key
+	// (kindred#2263). The comment this replaces asserted the key existed.
 
 	// Prepare record data
 	recordData := map[string]any{

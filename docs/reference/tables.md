@@ -652,6 +652,7 @@ Family camp adult attendees extracted from custom values.
 | `gender` | text | Gender |
 | `date_of_birth` | text | Date of birth |
 | `relationship_to_camper` | text | Relationship |
+| `attribute_conflicts` | json | Answers the merge DISCARDED, as `{column: [other values]}`. NULL when the slot's answers agreed. The winner stays in its own column; this holds only losers, and only where they differ by more than case or whitespace (kindred#2275) |
 
 **Unique**: `(household, year, adult_number)`
 
