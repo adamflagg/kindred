@@ -3,6 +3,7 @@ package sync
 import (
 	"context"
 	"fmt"
+	"os"
 	"slices"
 	"strings"
 	"testing"
@@ -2728,6 +2729,320 @@ func TestNormalizeDateOfBirthIsIdempotent(t *testing.T) {
 		relOnce := normalizeRelationshipToCamper(raw)
 		if relTwice := normalizeRelationshipToCamper(relOnce); relTwice != relOnce {
 			t.Errorf("normalizeRelationshipToCamper(%q) = %q but re-normalises to %q", raw, relOnce, relTwice)
+		}
+	}
+}
+
+// ============================================================================
+// kindred#2275 Option B -- attribute_conflicts.
+//
+// OWNER RULING 2026-08-17: the grain change is DECLINED. family_camp_adults
+// stays at (household, year, adult_number) and first-non-empty-wins is
+// UNCHANGED for every attribute. What is additive is that the answers the
+// merge discards are now RECORDED, keyed by the column they were destined
+// for, instead of vanishing.
+//
+// The divergent answers are not two children reporting on their parents.
+// They are one parent filling in the family-camp section of a per-camper form
+// once per camper, on a form where that section should have been skipped
+// after the first child -- so a divergence is one person being less careful
+// the second time. Tests below are written against that reading: a conflict
+// is a data-entry artifact worth showing staff, not evidence that the row is
+// keyed wrong.
+// ============================================================================
+
+// TestProcessAdultsRecordsResidualAttributeConflicts is the core of Option B:
+// only the RESIDUAL lights up. The 583 date_of_birth and 146
+// relationship_to_camper divergences that the kindred#2405 normalisers
+// already collapse must stay silent, or the badge fires on 1,439 slots
+// instead of the ~700 that are real.
+func TestProcessAdultsRecordsResidualAttributeConflicts(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name          string
+		fieldName     string
+		values        []string
+		wantStored    string
+		wantConflicts string
+	}{
+		{
+			name:      "identical answers record nothing",
+			fieldName: "Family Camp DOB 1",
+			values:    []string{"9/2/1979", "9/2/1979"},
+			// The merged value is still the first-non-empty winner, normalised.
+			wantStored:    "1979-09-02",
+			wantConflicts: "",
+		},
+		{
+			name:          "normalisation collapses the disagreement -- stays silent",
+			fieldName:     "Family Camp DOB 1",
+			values:        []string{"9/2/1979", "09-02-79"},
+			wantStored:    "1979-09-02",
+			wantConflicts: "",
+		},
+		{
+			name:          "a different birth YEAR is a real conflict",
+			fieldName:     "Family Camp DOB 1",
+			values:        []string{"9/2/1979", "9/2/1981"},
+			wantStored:    "1979-09-02",
+			wantConflicts: `{"date_of_birth":["1981-09-02"]}`,
+		},
+		{
+			name:          "relationship case and synonym folding stays silent",
+			fieldName:     "Family Camp-Relationship to 1",
+			values:        []string{"mother", "Mom"},
+			wantStored:    "Mother",
+			wantConflicts: "",
+		},
+		{
+			name:          "Mother vs Father is a real conflict",
+			fieldName:     "Family Camp-Relationship to 1",
+			values:        []string{"Father", "Mother"},
+			wantStored:    "Father",
+			wantConflicts: `{"relationship_to_camper":["Mother"]}`,
+		},
+		{
+			name:          "gap-fill is not a conflict",
+			fieldName:     "Family Camp DOB 1",
+			values:        []string{"", "9/2/1979"},
+			wantStored:    "1979-09-02",
+			wantConflicts: "",
+		},
+		{
+			name:          "first name disagreement is recorded",
+			fieldName:     "Family Camp-P1 First Name",
+			values:        []string{"Amy Johnson", "Amy R Johnson"},
+			wantStored:    "Amy Johnson",
+			wantConflicts: `{"first_name":["Amy R Johnson"]}`,
+		},
+		{
+			name:      "the same losing answer twice is recorded once",
+			fieldName: "Family Camp Gender 1",
+			values:    []string{"Female", "F", "F"},
+			// Three campers on the form, two of them typed the same
+			// second answer. The tooltip must not show it twice.
+			wantStored:    "Female",
+			wantConflicts: `{"gender":["F"]}`,
+		},
+		{
+			name:          "two distinct losing answers are both kept, sorted",
+			fieldName:     "Family Camp Gender 1",
+			values:        []string{"Female", "Nonbinary", "F"},
+			wantStored:    "Female",
+			wantConflicts: `{"gender":["F","Nonbinary"]}`,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			s := &FamilyCampDerivedSync{}
+			householdValues := []customValueEntry{
+				{householdPBID: "hh_1", fieldName: "Family Camp Adult 1", value: "Amy Johnson"},
+			}
+			var personValues []customValueEntry
+			for _, v := range tc.values {
+				personValues = append(personValues, customValueEntry{
+					householdPBID: "hh_1", fieldName: tc.fieldName, value: v,
+				})
+			}
+
+			adults := s.processAdults(householdValues, personValues)
+
+			if len(adults) != 1 {
+				t.Fatalf("expected 1 merged adult, got %d", len(adults))
+			}
+			if got := adults[0].conflictsJSON(); got != tc.wantConflicts {
+				t.Errorf("attribute_conflicts = %s, want %s", got, tc.wantConflicts)
+			}
+			stored := map[string]string{
+				"Family Camp DOB 1":             adults[0].dateOfBirth,
+				"Family Camp-Relationship to 1": adults[0].relationship,
+				"Family Camp-P1 First Name":     adults[0].firstName,
+				"Family Camp Gender 1":          adults[0].gender,
+			}[tc.fieldName]
+			if stored != tc.wantStored {
+				t.Errorf("merged value = %q, want %q -- the merge policy must NOT change", stored, tc.wantStored)
+			}
+		})
+	}
+}
+
+// TestProcessAdultsConflictsLeaveTheMergedValueUnchanged is the guard the
+// owner ruling turns on: recording a conflict must not change WHICH answer
+// wins. First-non-empty-wins over load order is unchanged, so reversing the
+// input order must reverse both the winner AND the recorded loser, with the
+// stored attribute matching what the pre-Option-B code produced.
+func TestProcessAdultsConflictsLeaveTheMergedValueUnchanged(t *testing.T) {
+	t.Parallel()
+
+	const early = "1979-09-02"
+	const late = "1981-09-02"
+
+	for _, order := range [][2]string{{early, late}, {late, early}} {
+		t.Run(order[0]+"_then_"+order[1], func(t *testing.T) {
+			t.Parallel()
+			s := &FamilyCampDerivedSync{}
+			householdValues := []customValueEntry{
+				{householdPBID: "hh_1", fieldName: "Family Camp Adult 1", value: "Amy Johnson"},
+			}
+			personValues := []customValueEntry{
+				{householdPBID: "hh_1", fieldName: "Family Camp DOB 1", value: order[0]},
+				{householdPBID: "hh_1", fieldName: "Family Camp DOB 1", value: order[1]},
+			}
+
+			adults := s.processAdults(householdValues, personValues)
+
+			if len(adults) != 1 {
+				t.Fatalf("expected 1 merged adult, got %d", len(adults))
+			}
+			if adults[0].dateOfBirth != order[0] {
+				t.Errorf("first-non-empty-wins must still pick %q, got %q", order[0], adults[0].dateOfBirth)
+			}
+			want := `{"date_of_birth":["` + order[1] + `"]}`
+			if got := adults[0].conflictsJSON(); got != want {
+				t.Errorf("attribute_conflicts = %s, want %s", got, want)
+			}
+		})
+	}
+}
+
+// TestProcessAdultsEmailConflictRecordsTheDisplacedValue covers the one
+// attribute that already had a tie-break (kindred#1945's preferEmail). When
+// validity displaces the first-loaded answer, the DISPLACED value is the one
+// that has to be recorded -- recording the candidate instead would report the
+// winner as the conflict.
+func TestProcessAdultsEmailConflictRecordsTheDisplacedValue(t *testing.T) {
+	t.Parallel()
+
+	const wellFormed = "amy.johnson@example.com"
+	const malformed = "amy.johnson@examplecom"
+
+	for _, order := range [][2]string{{malformed, wellFormed}, {wellFormed, malformed}} {
+		t.Run(order[0]+"_then_"+order[1], func(t *testing.T) {
+			t.Parallel()
+			s := &FamilyCampDerivedSync{}
+			householdValues := []customValueEntry{
+				{householdPBID: "hh_1", fieldName: "Family Camp Adult 1", value: "Amy Johnson"},
+			}
+			personValues := []customValueEntry{
+				{householdPBID: "hh_1", fieldName: "Family Camp Adult 1 Email", value: order[0]},
+				{householdPBID: "hh_1", fieldName: "Family Camp Adult 1 Email", value: order[1]},
+			}
+
+			adults := s.processAdults(householdValues, personValues)
+
+			if len(adults) != 1 {
+				t.Fatalf("expected 1 merged adult, got %d", len(adults))
+			}
+			if adults[0].email != wellFormed {
+				t.Errorf("validity still decides the merge: got %q, want %q", adults[0].email, wellFormed)
+			}
+			want := `{"email":["` + malformed + `"]}`
+			if got := adults[0].conflictsJSON(); got != want {
+				t.Errorf("attribute_conflicts = %s, want %s", got, want)
+			}
+		})
+	}
+}
+
+// TestAdultConflictsJSONIsCanonical pins the stored form. The sync compares
+// before it writes, so a rendering that depended on map iteration order would
+// rewrite every conflicted row on every run.
+func TestAdultConflictsJSONIsCanonical(t *testing.T) {
+	t.Parallel()
+
+	empty := &adultData{}
+	if got := empty.conflictsJSON(); got != "" {
+		t.Errorf("no conflicts must render as the empty string, got %q", got)
+	}
+
+	a := &adultData{}
+	a.noteConflict("relationship_to_camper", "Mother")
+	a.noteConflict("date_of_birth", "1981-09-02")
+	a.noteConflict("date_of_birth", "1975-01-04")
+	a.noteConflict("date_of_birth", "1981-09-02")
+
+	const want = `{"date_of_birth":["1975-01-04","1981-09-02"],"relationship_to_camper":["Mother"]}`
+	first := a.conflictsJSON()
+	if first != want {
+		t.Fatalf("conflictsJSON() = %s, want %s", first, want)
+	}
+	for i := 0; i < 20; i++ {
+		if again := a.conflictsJSON(); again != first {
+			t.Fatalf("conflictsJSON() is not stable: %s then %s", first, again)
+		}
+	}
+}
+
+// TestUpsertAdultsPersistsAttributeConflicts is the round trip through a real
+// record: the column is written, an unchanged re-run does not rewrite it, and
+// a changed conflict set does.
+func TestUpsertAdultsPersistsAttributeConflicts(t *testing.T) {
+	t.Parallel()
+
+	app := newFamilyCampReplayTestApp(t)
+	s := &FamilyCampDerivedSync{App: app, ProcessedAdultKeys: map[string]bool{}}
+
+	conflicted := &adultData{householdPBID: "hh_1", adultNumber: 1, name: "Amy Johnson", dateOfBirth: "1979-09-02"}
+	conflicted.noteConflict("date_of_birth", "1981-09-02")
+
+	created, _, _, errCount := s.upsertAdults(
+		context.Background(), []*adultData{conflicted}, 2026, map[string]*core.Record{})
+	if created != 1 || errCount != 0 {
+		t.Fatalf("create: got created=%d errors=%d, want 1/0", created, errCount)
+	}
+
+	existing, err := s.preloadExistingAdults(2026)
+	if err != nil {
+		t.Fatalf("preloadExistingAdults: %v", err)
+	}
+	stored := existing[familyCampAdultKey("hh_1", 2026, 1)]
+	if stored == nil {
+		t.Fatal("the created adult did not come back from preloadExistingAdults")
+	}
+	if got := storedAttributeConflicts(stored); got != `{"date_of_birth":["1981-09-02"]}` {
+		t.Fatalf("stored attribute_conflicts = %s", got)
+	}
+
+	// An identical second pass must not rewrite the row.
+	_, updated, skipped, errCount := s.upsertAdults(context.Background(), []*adultData{conflicted}, 2026, existing)
+	if updated != 0 || skipped != 1 || errCount != 0 {
+		t.Errorf("idempotent re-run: got updated=%d skipped=%d errors=%d, want 0/1/0", updated, skipped, errCount)
+	}
+
+	// A row whose conflict has been resolved upstream must clear the column.
+	resolved := &adultData{householdPBID: "hh_1", adultNumber: 1, name: "Amy Johnson", dateOfBirth: "1979-09-02"}
+	if !s.adultNeedsUpdate(stored, resolved) {
+		t.Fatal("clearing a conflict must count as a change, or the badge never goes away")
+	}
+	_, updated, _, errCount = s.upsertAdults(context.Background(), []*adultData{resolved}, 2026, existing)
+	if updated != 1 || errCount != 0 {
+		t.Fatalf("clearing pass: got updated=%d errors=%d, want 1/0", updated, errCount)
+	}
+	cleared, err := s.preloadExistingAdults(2026)
+	if err != nil {
+		t.Fatalf("preloadExistingAdults after clear: %v", err)
+	}
+	if got := storedAttributeConflicts(cleared[familyCampAdultKey("hh_1", 2026, 1)]); got != "" {
+		t.Errorf("resolved row still carries attribute_conflicts = %s", got)
+	}
+}
+
+// TestAdultsCollectionHasAttributeConflictsColumn is the schema half. The Go
+// writer above is inert without the migration, and a Go-only PR would ship a
+// Set() against a column PocketBase would reject.
+func TestAdultsCollectionHasAttributeConflictsColumn(t *testing.T) {
+	t.Parallel()
+
+	source, err := os.ReadFile("../pb_migrations/1500000160_family_camp_adults_attribute_conflicts.js")
+	if err != nil {
+		t.Fatalf("the attribute_conflicts migration must exist: %v", err)
+	}
+	for _, want := range []string{"family_camp_adults", "attribute_conflicts", "new Field(", "type: 'json'"} {
+		if !strings.Contains(string(source), want) {
+			t.Errorf("migration is missing %q -- a plain fields.add({...}) is silently ignored in PB v0.23", want)
 		}
 	}
 }
