@@ -268,7 +268,7 @@ export async function fetchHouseholdJourney(
 }
 
 /**
- * PHI. Requires the `bunking.manage` permission server-side (kindred#2312
+ * The medical narrative. Requires `bunking.manage` server-side (kindred#2312
  * retargeted the gate from the now-removed `lodging.phi`); a caller without
  * it gets a 403, which this surfaces verbatim so the UI can explain why.
  */

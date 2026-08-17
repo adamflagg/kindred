@@ -23,13 +23,14 @@
  * The split is intentional: `request_text` is a placement input — why a
  * household wants a particular cabin or setting is a legitimate placement
  * concern for any authenticated user to see, the same way the rest of the
- * roster is. The field is not modelled as PHI (it is free text, not a
- * structured medical disclosure), even though it sometimes contains health
- * detail. `MedicalNarrative` covers the field that IS structured PHI: the
- * formal medical accommodations questionnaire (kindred#2312: that gate used
+ * roster is. It is free text a household wrote about where it wants to
+ * sleep, not the structured medical questionnaire, even though it sometimes
+ * contains health detail. `MedicalNarrative` covers that questionnaire, and
+ * that one is screen-reduced behind `bunking.manage` (kindred#2312: it used
  * to be a separate `lodging.phi` permission, removed because RBAC here is
  * screen-reduction, not a data boundary, and every sibling endpoint on the
- * lodging router already gated on `bunking.manage`).
+ * lodging router already gated on `bunking.manage`). One permission decides
+ * both answers; the two fields simply get different answers from it.
  */
 import { AlertCircle, MapPin, Users } from 'lucide-react'
 

@@ -9,7 +9,8 @@
  * medical narrative behind a permission-checked reveal; kindred#1889 moved
  * that to `MedicalNarrative`, which only `FamilyDetailsPanel` renders. This
  * component appears once per roster row, 62 to a page, so keeping it free of
- * the PHI hook is what stops a later change from making 62 gated requests.
+ * the medical hook is what stops a later change from making 62 gated
+ * requests.
  */
 import { Accessibility, Baby, Bath, Plug, ShieldAlert } from 'lucide-react'
 

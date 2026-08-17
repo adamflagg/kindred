@@ -138,7 +138,7 @@ def _repo(**overrides: Any) -> MagicMock:
         "fetch_family_camp_adults": {},
         "fetch_family_camp_registrations": {},
         "fetch_family_camp_medical": {},
-        # The PHI path reads one household, not the whole-year maps above.
+        # The medical read takes one household, not the whole-year maps above.
         "fetch_household_by_cm_id": None,
         "fetch_medical_for_household": None,
         "count_open_unresolved_aliases": 0,

@@ -67,7 +67,7 @@ export type AccessibilityFlags = AccessibilityFlagSummary
 export type WeekendSummary = WeekendSummaryResponse
 /** One weekend on the lander: identity plus the same counts the roster reports. */
 export type WeekendSummaryRow = WeekendSummaryEntry
-/** PHI. Only ever fetched from the permission-gated endpoint. */
+/** The medical narrative. Only ever fetched from the endpoint gated on `bunking.manage`. */
 export type HouseholdMedical = HouseholdMedicalResponse
 /** A household's year-over-year family-camp record, newest year first. */
 export type HouseholdJourney = HouseholdJourneyResponse

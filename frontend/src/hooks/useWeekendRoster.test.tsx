@@ -1,5 +1,5 @@
 /**
- * Roster hooks: keys come from the central factory, and the PHI query is
+ * Roster hooks: keys come from the central factory, and the medical query is
  * opt-in so it never fires for users who cannot see the narrative.
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -228,7 +228,7 @@ describe('cache parity with summer', () => {
     expect(options.refetchOnWindowFocus).toBe(false)
   })
 
-  it('keeps PHI uncached, which is a DELIBERATE divergence and must survive', async () => {
+  it('keeps the narrative uncached, which is a DELIBERATE divergence and must survive', async () => {
     // The one weekend query that should not inherit: a medical narrative must
     // not sit in the cache after the panel closes.
     const { result } = renderHook(() => useHouseholdMedical(2026, 2000001, true), { wrapper })
@@ -300,7 +300,7 @@ describe('useWeekendRoster', () => {
 })
 
 describe('useHouseholdMedical', () => {
-  it('stays idle while disabled, so PHI is never fetched speculatively', () => {
+  it('stays idle while disabled, so the narrative is never fetched speculatively', () => {
     renderHook(() => useHouseholdMedical(2026, 2000001, false), { wrapper })
     expect(fetchHouseholdMedical).not.toHaveBeenCalled()
   })

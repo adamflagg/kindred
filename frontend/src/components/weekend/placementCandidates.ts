@@ -67,7 +67,8 @@ export interface PlacementCandidate {
    * that fits — there is nothing to say, and a row reading "fine" on every
    * card says nothing at all.
    *
-   * Never PHI, and never a tracker id: these strings are printed to staff.
+   * Never medical narrative, and never a tracker id: these strings are
+   * printed to staff.
    */
   notes: string[]
 }

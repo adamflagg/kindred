@@ -99,7 +99,7 @@ describe('usePanelParty — kindred#2137 bug 1: silent reopen (A -> B -> A)', ()
     // A: back to a roster that once again contains johnson (switching back
     // to the first weekend, already cached). Without clearing the stored
     // selection, `partyKey` would match again and the panel would reopen
-    // with no click -- re-issuing a PHI fetch for a household nobody asked
+    // with no click -- re-issuing a medical fetch for a household nobody asked
     // to see. This is the bug.
     rerender({ parties: [johnson, garcia] })
     expect(result.current.panelParty).toBeNull()

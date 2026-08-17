@@ -2003,7 +2003,8 @@ export type HouseholdJourneyYear = {
 /**
  * HouseholdMedicalResponse
  *
- * PHI. Served by ONE permission-gated endpoint. Never nested elsewhere.
+ * Narrative medical text. Served by ONE endpoint gated on
+ * `bunking.manage`. Never nested elsewhere.
  */
 export type HouseholdMedicalResponse = {
   /**

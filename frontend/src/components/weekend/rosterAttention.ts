@@ -36,7 +36,7 @@ export type AttentionLevel = (typeof ATTENTION_ORDER)[number]
 
 export interface PartyAttention {
   level: AttentionLevel
-  /** Short, specific, and safe to show beside the party name. Never PHI. */
+  /** Short, specific, and safe beside the party name. No medical narrative. */
   reason: string
 }
 
