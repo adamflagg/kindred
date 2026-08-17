@@ -26,7 +26,7 @@ import logging
 from datetime import date
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 
@@ -4449,16 +4449,62 @@ class TestWriteInsResolveFromTheirOwnTable:
         the two methods hold parallel blocks that must be edited separately --
         and it would put a cabin's write-in on the board while the weekend card
         linking to it still counted the cabin as open.
+
+        THE ARGUMENTS ARE PINNED, not only the count. `build_summary` holds the
+        one `year` for the whole sweep and each weekend's OWN CampMinder id, and
+        a read keyed on the PocketBase id instead would still be awaited twice
+        -- kindred#2042 is exactly the mistake a bare `await_count` waves
+        through. `test_the_lander_counts_a_written_into_cabin_as_reserved`
+        below is the other half: this pins that the table is ASKED, that one
+        pins that the answer is USED.
         """
         repo = _repo(fetch_weekend_sessions=[FAMILY_SESSION, ADULT_SESSION])
 
         await LodgingRosterService(repo).build_summary(2026)
 
-        assert repo.fetch_write_ins.await_count == 2
+        assert repo.fetch_write_ins.await_args_list == [call(2026, 1000001), call(2026, 1000002)]
         # And no scenario dimension here either -- the same line
         # `test_no_scenario_dimension_is_read_yet` holds for the roster. Two
         # TaskGroups, two places to get it wrong.
         assert repo.fetch_draft_write_ins.await_count == 0
+
+    @pytest.mark.asyncio
+    async def test_the_lander_counts_a_written_into_cabin_as_reserved(self) -> None:
+        """The rows the lander fetches have to REACH `_build_units`.
+
+        Awaiting `fetch_write_ins` and then dropping its result on the floor is
+        a half-fix a call-count assertion cannot see, and it is the exact
+        failure the comment at that fetch site names: a weekend card reporting
+        a written-into cabin as open beside a board that draws it closed.
+        Measured -- passing `[]` in place of `write_ins_task.result()` left every
+        other test in this file green.
+
+        Pinned against `build_roster`'s own counts rather than against
+        literals alone, which is how the lander's contract is already stated in
+        `TestBuildSummary` -- the two endpoints link to each other and must
+        never disagree about one weekend. The literals are kept beside it so a
+        failure says WHICH number moved rather than only that the two differ.
+        """
+        repo = _repo(
+            fetch_weekend_sessions=[FAMILY_SESSION],
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("u1", "ridge-a", "Ridge A", sleeps=5),
+                _unit("u2", "ridge-b", "Ridge B", sleeps=4),
+            ],
+            fetch_write_ins=[_rec(unit="u1", occupant_name="Liam Garcia", note="")],
+        )
+        service = LodgingRosterService(repo)
+
+        summary = await service.build_summary(2026)
+        roster = await service.build_roster(2026, 1000001)
+
+        counts = summary.weekends[0].counts
+        assert counts.units_reserved == 1
+        assert counts.units_family_available == 1
+        # The written-into cabin's five beds are NOT on offer; only Ridge B's.
+        assert counts.beds_family_available == 4
+        assert counts == roster.counts
 
     @pytest.mark.asyncio
     async def test_no_scenario_dimension_is_read_yet(self) -> None:

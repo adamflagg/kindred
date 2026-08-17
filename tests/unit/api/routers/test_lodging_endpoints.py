@@ -1400,20 +1400,29 @@ class TestAvailabilityWrites:
         assert response.status_code == 403
 
     def test_losing_the_availability_upsert_race_updates_instead_of_500ing(self, mock_pb: MagicMock) -> None:
-        """Two staff reserving the same unit for one weekend at the same
+        """Two staff writing into the same unit for one weekend at the same
         moment.
 
-        `idx_lodging_avail_unique` is UNIQUE on (session, year, unit), as
-        1500000135 rebuilt it -- exactly the race `place_party` guards on the
-        draft's
-        own partial unique index. Both staff find no override, both create,
-        and the index rejects the loser. Left alone that is a bare
+        `idx_lodging_write_in_unique` is UNIQUE on (session_cm_id, year, unit),
+        as 1500000161 declared it -- exactly the race `place_party` guards on
+        the draft's own partial unique index. Both staff find no row, both
+        create, and the index rejects the loser. Left alone that is a bare
         ClientResponseError into the catch-all handler in api/main.py -- a 500
-        for a reservation the board is entitled to make. The row the winner
-        just wrote is exactly what this call wanted to write, so the loser
-        adopts it and updates.
+        for a write-in the board is entitled to make. The row the winner just
+        wrote is exactly what this call wanted to write, so the loser adopts it
+        and updates.
+
+        THREE staged reads, not two, since kindred#2382 split the table:
+        `set_availability` looks up BOTH facts -- the role row and the
+        occupancy row -- before it writes either, and only the THIRD read is
+        the recovery's own re-read. Staged two-deep this test went vacuous
+        rather than red: the winner's row was consumed as `existing_write_in`,
+        the upsert took its plain update branch, and the create that has to
+        lose the race never ran. Measured -- deleting the whole recovery block
+        from `_upsert_row` left it green. `create.assert_called_once()` below
+        is what stops that happening silently a second time.
         """
-        reads: list[list[Any]] = [[], [_rec(id="avail_raced")]]
+        reads: list[list[Any]] = [[], [], [_rec(id="write_in_raced")]]
 
         def staged(**kwargs: Any) -> list[Any]:
             query_filter = kwargs.get("query_params", {}).get("filter", "")
@@ -1439,8 +1448,12 @@ class TestAvailabilityWrites:
             )
 
         assert response.status_code == 200, response.text
+        # The race really happened: the create ran, lost, and the recovery
+        # adopted the winner. Without this the test passes on the ordinary
+        # "row already there, update it" path, which guards nothing.
+        mock_pb.collection.return_value.create.assert_called_once()
         mock_pb.collection.return_value.update.assert_called_once()
-        assert mock_pb.collection.return_value.update.call_args[0][0] == "avail_raced"
+        assert mock_pb.collection.return_value.update.call_args[0][0] == "write_in_raced"
 
     def test_an_availability_create_failure_that_is_not_a_race_still_errors(self, mock_pb: MagicMock) -> None:
         """The retry is for a lost race, not a blanket swallow.
@@ -1513,8 +1526,12 @@ class TestAvailabilityWrites:
         assert response.status_code == 403
 
     def test_a_failed_update_after_a_lost_availability_race_keeps_its_status(self, mock_pb: MagicMock) -> None:
-        """The winner's override is found, then the update onto it fails."""
-        reads: list[list[Any]] = [[], [_rec(id="avail_raced")]]
+        """The winner's row is found, then the update onto it fails.
+
+        Three staged reads for the reason the test above spells out: the role
+        lookup, the occupancy lookup, then the recovery's re-read.
+        """
+        reads: list[list[Any]] = [[], [], [_rec(id="write_in_raced")]]
 
         def staged(**kwargs: Any) -> list[Any]:
             query_filter = kwargs.get("query_params", {}).get("filter", "")
@@ -1543,3 +1560,6 @@ class TestAvailabilityWrites:
             )
 
         assert response.status_code == 403
+        # Same guard as the sibling above: the recovery path must actually
+        # have been walked, not skipped by a lookup that answered too early.
+        mock_pb.collection.return_value.create.assert_called_once()
