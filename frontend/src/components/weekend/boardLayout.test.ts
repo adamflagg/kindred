@@ -1671,3 +1671,117 @@ describe('overlappingPartyKeys — a two-unit alias is ambiguous, not a confirme
     expect(aliasBoard(3).flaggedCount).toBeGreaterThan(0)
   })
 })
+
+describe('overlappingPartyKeys — a CONTAINER is ambiguous on the same terms as an alias (kindred#2371)', () => {
+  // The alias suite above is entirely MULTI-CODE, which is exactly why this
+  // route was missed. Two households each named at ONE container code claim
+  // the identical set of rooms just as surely as two households each naming
+  // that container's two rooms explicitly -- `occupiedLeafCodes` expands both
+  // to the same leaves -- so the H <= N rule must reach them on the same
+  // terms. Judging ambiguity on the codes a placement HAPPENED TO NAME rather
+  // than on the rooms it claims is what split the two routes apart.
+  const twoRoomHouse = [
+    unit({ unit_id: 'uh', code: 'house', name: 'Aspen House', is_container: true }),
+    unit({ unit_id: 'u1', code: 'r1', name: 'Aspen 1', parent_code: 'house' }),
+    unit({ unit_id: 'u2', code: 'r2', name: 'Aspen 2', parent_code: 'house' }),
+  ]
+
+  it('does not flag two households each named at the SAME two-room container (H == N)', () => {
+    const alpha = party({ household_cm_id: 500001, unit_code: 'house', unit_codes: ['house'] })
+    const beta = party({ household_cm_id: 500002, unit_code: 'house', unit_codes: ['house'] })
+    expect(overlappingPartyKeys([alpha, beta], twoRoomHouse).size).toBe(0)
+  })
+
+  it('treats a container name and its explicit room set as the SAME claim', () => {
+    // Two ways of writing one placement. `alpha` names the house; `beta` names
+    // both of its rooms. One household per room fits either way, so neither
+    // spelling is evidence of a confirmed share.
+    const alpha = party({ household_cm_id: 500001, unit_code: 'house', unit_codes: ['house'] })
+    const beta = party({ household_cm_id: 500002, unit_code: '', unit_codes: ['r1', 'r2'] })
+    expect(overlappingPartyKeys([alpha, beta], twoRoomHouse).size).toBe(0)
+  })
+
+  it('flags all three once a third household is named at the same two-room container (H > N)', () => {
+    const alpha = party({ household_cm_id: 500001, unit_code: 'house', unit_codes: ['house'] })
+    const beta = party({ household_cm_id: 500002, unit_code: 'house', unit_codes: ['house'] })
+    const gamma = party({ household_cm_id: 500003, unit_code: 'house', unit_codes: ['house'] })
+    expect(overlappingPartyKeys([alpha, beta, gamma], twoRoomHouse)).toEqual(
+      new Set([partyKey(alpha), partyKey(beta), partyKey(gamma)])
+    )
+  })
+
+  it('still flags two households on a ONE-room container (N == 1, so H > N at two)', () => {
+    // A container is not a licence to co-locate. Expanded, both households
+    // claim the single room beneath it -- a genuine same-room share.
+    const oneRoomHouse = [
+      unit({ unit_id: 'uh', code: 'house', name: 'Aspen House', is_container: true }),
+      unit({ unit_id: 'u1', code: 'r1', name: 'Aspen 1', parent_code: 'house' }),
+    ]
+    const alpha = party({ household_cm_id: 500001, unit_code: 'house', unit_codes: ['house'] })
+    const beta = party({ household_cm_id: 500002, unit_code: 'house', unit_codes: ['house'] })
+    expect(overlappingPartyKeys([alpha, beta], oneRoomHouse)).toEqual(
+      new Set([partyKey(alpha), partyKey(beta)])
+    )
+  })
+
+  it('still flags a container household against a household confirmed in one of its rooms', () => {
+    // `beta` names ONE room -- a confirmed claim on `r1`, not the same
+    // ambiguous set -- so the pair between them is never ambiguous, exactly
+    // as on the alias route.
+    const alpha = party({ household_cm_id: 500001, unit_code: 'house', unit_codes: ['house'] })
+    const beta = party({ household_cm_id: 500002, unit_code: 'r1', unit_codes: ['r1'] })
+    expect(overlappingPartyKeys([alpha, beta], twoRoomHouse)).toEqual(
+      new Set([partyKey(alpha), partyKey(beta)])
+    )
+  })
+
+  // Through `buildBoard`, the real entry point staff see -- the same reason
+  // the alias suite above ends with a board test. A combined container draws
+  // ONE card, so both households land on it and `consentFlag` runs over the
+  // pair.
+  function containerBoard(householdCount: number) {
+    const combinedHouse = [
+      unit({
+        unit_id: 'uh',
+        code: 'house',
+        name: 'Aspen House',
+        is_container: true,
+        is_combined: true,
+      }),
+      unit({ unit_id: 'u1', code: 'r1', name: 'Aspen 1', parent_code: 'house' }),
+      unit({ unit_id: 'u2', code: 'r2', name: 'Aspen 2', parent_code: 'house' }),
+    ]
+    const parties = Array.from({ length: householdCount }, (_, index) =>
+      party({
+        household_cm_id: 500201 + index,
+        display_name: `H${String(index)}`,
+        unit_code: 'house',
+        unit_name: 'Aspen House',
+        unit_codes: ['house'],
+        share: {
+          preference: 'unknown',
+          proximity: [],
+          request_text: '',
+          needs_resolution: false,
+          // `declined` is the eligibility that DOES raise the flag once an
+          // overlap is found, so a silent board is the guard working rather
+          // than the fixture having nothing to report.
+          eligibility: 'declined',
+          eligibility_source: 'form',
+          answers_conflict: false,
+        },
+      })
+    )
+    return buildBoard(parties, combinedHouse)
+  }
+
+  it('raises no amber flag on the BOARD for two households on one two-room container', () => {
+    const board = containerBoard(2)
+    expect(board.flaggedCount).toBe(0)
+    expect(board.areas.flatMap((area) => area.slots).map((slot) => slot.consent)).toEqual([null])
+  })
+
+  it('still raises the board flag once a third household is named at the same container', () => {
+    expect(containerBoard(3).flaggedCount).toBeGreaterThan(0)
+  })
+})

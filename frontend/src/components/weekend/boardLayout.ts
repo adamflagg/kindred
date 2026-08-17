@@ -550,23 +550,34 @@ function areaSortOrder(unit: LodgingUnitRow): number {
 }
 
 /**
- * The exact multi-code set a party names, as a stable grouping key — the input
- * to `overlappingPartyKeys`'s `H <= N` guard, which is described in full on
- * that function below.
+ * The exact ROOM set a party claims, as a stable grouping key — the input to
+ * `overlappingPartyKeys`'s `H <= N` guard, which is described in full on that
+ * function below.
+ *
+ * Takes the ALREADY-EXPANDED leaf set (`occupiedLeafCodes`), never the codes
+ * the placement happened to name. That is kindred#2371: keyed on named codes,
+ * one container naming two rooms scored N = 1 and fell out of the grouping
+ * entirely, so two households on one house flagged "did not request sharing"
+ * while two households naming that house's two rooms explicitly were correctly
+ * guarded — the identical claim, split into two answers by nothing but which
+ * spelling the placement used. `overlappingPartyKeys` measures the overlap in
+ * ROOMS, so the ambiguity that excuses one has to be measured in rooms too —
+ * otherwise the guard is answering a different question from the one that
+ * fired.
  */
-function mergeGroupSignature(party: RosterPartyRow): string | null {
-  const codes = occupiedCodes(party)
-  // A SINGLE named code (including a container) is one confirmed claim, not a
-  // multi-unit alias resolution, and must never enter this grouping — see
-  // `occupiedCodes`'s own doc comment for why a container name stays as itself.
-  if (codes.length < 2) return null
+function mergeGroupSignature(leaves: ReadonlySet<string>): string | null {
+  // ONE claimed room is a confirmed claim on it, whatever named it. Two
+  // households there is a genuine same-room share and must still flag: H = 2
+  // exceeds N = 1, so this is the H > N arm of the same rule, not an exception
+  // to it.
+  if (leaves.size < 2) return null
   // U+0000 joins, never a space: it cannot occur inside a unit code, so two
   // different code sets can never collide on one signature. Written as the
   // ESCAPE and never as a raw byte — a literal NUL in the file makes grep
   // classify this whole source as binary, and
   // `scripts/dev/verify-no-hardcoded-lodging.sh` passes `-I`, so the lodging
   // name guard would skip every line of this file without reporting anything.
-  return [...codes].sort().join('\u0000')
+  return [...leaves].sort().join('\u0000')
 }
 
 /**
@@ -610,18 +621,30 @@ function mergeGroupSignature(party: RosterPartyRow): string | null {
  * not judge it (`docs/architecture/lodging-occupancy.md`: that judgement
  * belongs where a human chooses, not the ingest). Two DIFFERENT households
  * independently resolving through the SAME alias then each claim the identical
- * N-code set, which reads exactly like both parties sharing every one of those
+ * N-room set, which reads exactly like both parties sharing every one of those
  * rooms unless this is guarded — the rule this function applies (also stated at
  * `lodging_unit_aliases` and in `docs/reference/lodging-registry.md`): H
  * households all claiming the same N-unit set is only evidence of a real
  * double-booking once H exceeds N. At H <= N the assignment is ambiguous — one
  * household per unit fits, staff just have not said which — and must not read
  * as a confirmed share. `mergeGroupSignature` (above) and
- * `isAmbiguousMergePair` (inside this function) apply this ONLY to a pair drawn from the identical multi-code group; a third
- * party outside the group sharing one of those same leaves still flags
- * normally, on either side of the pair — failing permissive is what the rest of
- * this function already does, and the guard narrows nothing beyond the exact
- * ambiguous case.
+ * `isAmbiguousMergePair` (inside this function) apply this ONLY to a pair drawn
+ * from the identical room-set group; a third party outside the group sharing
+ * one of those same leaves still flags normally, on either side of the pair —
+ * failing permissive is what the rest of this function already does, and the
+ * guard narrows nothing beyond the exact ambiguous case.
+ *
+ * THE ALIAS IS NOT THE ONLY ROUTE IN (kindred#2371). Two households each named
+ * at ONE CONTAINER claim that container's rooms just as much as two households
+ * naming those rooms explicitly — `occupiedLeafCodes` expands both to the same
+ * leaves. Until #2371 the group was keyed on the codes a placement NAMED, so a
+ * single container scored N = 1 and never entered the grouping at all: the
+ * alias spelling was guarded and the container spelling flagged "did not
+ * request sharing", from one identical claim. Keying the group on the EXPANDED
+ * rooms is what makes the two routes one route. The guard and the overlap must
+ * be measured on the same thing, which is why `leavesByParty` below is computed
+ * once and read by both — a second, differently-derived reading of "which rooms
+ * is this party in" is the shape every bug in this doc comment has taken.
  */
 export function overlappingPartyKeys(
   parties: RosterPartyRow[],
@@ -629,19 +652,29 @@ export function overlappingPartyKeys(
 ): Set<string> {
   const unitsByCode = new Map(units.map((unit) => [unit.code, unit]))
 
-  // Group parties by the exact multi-code set they themselves name. A group
-  // no larger than the set it names (H <= N) is the ambiguous alias case;
-  // `isAmbiguousMergePair` below reads this to skip mutual attribution WITHIN
-  // one such group only.
+  // Expanded ONCE, then used for both the grouping and the overlap. Two
+  // separate expansions is how the guard and the thing it guards drifted apart
+  // in the first place (kindred#2371).
+  const leavesByParty = new Map<RosterPartyRow, Set<string>>()
+  for (const party of parties) {
+    leavesByParty.set(party, occupiedLeafCodes(party, units, unitsByCode))
+  }
+
+  // Group parties by the exact ROOM set they claim. A group no larger than the
+  // set it claims (H <= N) is the ambiguous case — an alias that wrote the
+  // whole member set onto each household, or a container that expands to the
+  // same rooms for each. `isAmbiguousMergePair` below reads this to skip
+  // mutual attribution WITHIN one such group only.
   const partySignature = new Map<string, string>()
   const groupMembers = new Map<string, Set<string>>()
   const groupSize = new Map<string, number>()
   for (const party of parties) {
-    const signature = mergeGroupSignature(party)
+    const leaves = leavesByParty.get(party) ?? new Set<string>()
+    const signature = mergeGroupSignature(leaves)
     if (signature === null) continue
     const key = partyKey(party)
     partySignature.set(key, signature)
-    groupSize.set(signature, occupiedCodes(party).length)
+    groupSize.set(signature, leaves.size)
     const members = groupMembers.get(signature) ?? new Set<string>()
     members.add(key)
     groupMembers.set(signature, members)
@@ -654,7 +687,7 @@ export function overlappingPartyKeys(
 
   const ownersByCode = new Map<string, RosterPartyRow[]>()
   for (const party of parties) {
-    for (const code of occupiedLeafCodes(party, units, unitsByCode)) {
+    for (const code of leavesByParty.get(party) ?? []) {
       const owners = ownersByCode.get(code)
       if (owners) owners.push(party)
       else ownersByCode.set(code, [party])
