@@ -96,12 +96,14 @@
  * not touch. Do not widen the index here on its behalf.
  *
  * PocketBase v0.23 syntax: field properties are DIRECT, never nested inside
- * an `options` wrapper object, which is silently ignored.
+ * `options: {}`, which is silently ignored -- the same sentence 1500000132,
+ * 1500000135 and 1500000146 carry verbatim in their own headers.
  *
- * (Spelling it that way round is deliberate. scripts/pre-push-verify.sh greps
- * changed migrations for the literal wrapper and filters only full-line `//`
- * comments, so a JSDoc block quoting it fails the check -- 1500000135's header
- * carries the same sentence and would too, if that file were ever in a diff.)
+ * (It was worded backwards here at first, to get past scripts/pre-push-verify.sh:
+ * its anti-pattern grep filtered only full-line `//` comments, so a JSDoc block
+ * QUOTING the rule failed the check that enforces it, and the same was true of
+ * the three headers named above. The scan now filters `*` and `/*` continuation
+ * lines too, so the sentence can be written the way everyone else writes it.)
  */
 
 // VERBATIM from 1500000139:66-71, which took them verbatim from 1500000132.
@@ -113,6 +115,10 @@ const AUTHED_READ = '@request.auth.id != ""';
 const BUNKING_MANAGE =
   '@request.auth.is_admin = true || @request.auth.cached_permissions ~ "bunking.manage"';
 
+// Used for the lookups, the skip guards and the down arm. The `name:` inside
+// each `new Collection({...})` below is spelled as a LITERAL rather than as
+// one of these, and that is load-bearing rather than a style slip -- see the
+// comment at each create site.
 const LIVE = 'lodging_write_ins';
 const DRAFT = 'lodging_write_ins_draft';
 
@@ -175,7 +181,17 @@ migrate(
       app.save(
         new Collection({
           type: 'base',
-          name: LIVE,
+          // LITERAL, not `LIVE`. scripts/dev/verify-migration-history.sh's
+          // CHECK 2 -- the load-bearing half of kindred#2245's renumber
+          // detector, per that script's own header -- extracts the
+          // collections a migration CREATEs by regexing
+          // `name: "..."` / `name: '...'` out of the up arm. A constant
+          // reads as no collection at all, so the detector goes SILENTLY
+          // CLEAN on this file: measured against a scratch DB holding both
+          // tables with the _migrations row erased, it exited 0 with no
+          // output. Every other CREATE migration in the tree writes a
+          // literal here; keep it that way.
+          name: 'lodging_write_ins',
           listRule: AUTHED_READ,
           viewRule: AUTHED_READ,
           createRule: BUNKING_MANAGE,
@@ -217,7 +233,8 @@ migrate(
       app.save(
         new Collection({
           type: 'base',
-          name: DRAFT,
+          // LITERAL, for the reason the live create above spells out.
+          name: 'lodging_write_ins_draft',
           listRule: AUTHED_READ,
           viewRule: AUTHED_READ,
           createRule: BUNKING_MANAGE,
@@ -243,11 +260,25 @@ migrate(
     // discards nothing. Once that backfill exists, ITS down path is what
     // restores the rows to lodging_availability — this one must not try to,
     // because it has no idea where they came from.
+    //
+    // THE LOOKUP IS IN THE try, THE DELETE IS NOT -- the shape
+    // docs/reference/pocketbase-migrations.md § "Error Handling in Data
+    // Migrations" requires, and its reason is this exact one. With
+    // `app.delete(...)` inside the try, a genuine failure on the WRITE (a
+    // relation into these tables from a later migration, a permission
+    // fault, the DB gone away) is caught by the same `catch` that means
+    // "already absent", so `migrate down` reports a revert it never
+    // performed and leaves the collections standing. Outside it, the
+    // not-found path stays quiet and a real error propagates.
     for (const name of [DRAFT, LIVE]) {
+      let existing;
       try {
-        app.delete(app.findCollectionByNameOrId(name));
+        existing = app.findCollectionByNameOrId(name);
       } catch {
-        // Already absent.
+        // Already absent -- nothing to revert.
+      }
+      if (existing) {
+        app.delete(existing);
       }
     }
   }
