@@ -208,7 +208,7 @@ describe('unplaceParty', () => {
 })
 
 describe('setUnitAvailability', () => {
-  const WEEKEND = { year: 2026, sessionCmId: 1000001, unitId: 'u1' }
+  const WEEKEND = { year: 2026, sessionCmId: 1000001, unitId: 'u1', scenario: '' }
 
   it('PUTs the weekend, the unit and the explicit boolean', async () => {
     const mockFetch = vi.fn().mockResolvedValue(okResponse({ record_id: 'r1', deleted: false }))
@@ -223,8 +223,10 @@ describe('setUnitAvailability', () => {
     const [url, options] = mockFetch.mock.calls[0] as [string, RequestInit]
     expect(url).toBe('/api/lodging/availability')
     expect(options.method).toBe('PUT')
-    // No scenario. The endpoint takes none since 1500000135, and sending one
-    // would be a 422 against a model that no longer extends ScenarioWriteRequest.
+    // The scenario travels, and travels BLANK here — blank is the live board,
+    // a scope in its own right, not a missing value (kindred#2382 PR 4). It is
+    // sent rather than omitted for the same reason `family_available: false` is:
+    // a key dropped on the way out is indistinguishable from a key nobody set.
     //
     // `occupant_name` travels under the column's own name (kindred#2078);
     // only `reason` is renamed on the wire, and only because 1500000135 reused
@@ -232,12 +234,32 @@ describe('setUnitAvailability', () => {
     expect(JSON.parse(options.body as string)).toEqual({
       year: 2026,
       session_cm_id: 1000001,
+      scenario: '',
       unit_id: 'u1',
       family_available: false,
       occupant_name: 'Emma Johnson',
       reason: 'Kitchen lead, Fri–Sun',
     })
     expect(result).toEqual({ record_id: 'r1', deleted: false })
+  })
+
+  it('sends the scenario staff are looking at, so the write lands on that board', async () => {
+    // THE regression this closes. Reads REPLACE since kindred#2382 PR 3, so a
+    // write-in recorded inside a scenario and written to the LIVE table is
+    // replaced away by that scenario's own read — the staff member does not see
+    // the write-in on the board they just made it on.
+    const mockFetch = vi.fn().mockResolvedValue(okResponse({ record_id: 'r1', deleted: false }))
+
+    await setUnitAvailability(mockFetch, {
+      ...WEEKEND,
+      scenario: 'scn7x2k9qw3mnbv',
+      familyAvailable: false,
+      occupantName: 'Emma Johnson',
+      reason: '',
+    })
+
+    const body = JSON.parse((mockFetch.mock.calls[0] as [string, RequestInit])[1].body as string)
+    expect(body.scenario).toBe('scn7x2k9qw3mnbv')
   })
 
   it('sends a write-in as an explicit false, never as a missing field', async () => {

@@ -145,11 +145,13 @@ export function LodgingBoard({
   // send `session_cm_id: 0` against a schema declaring `gt=0`.
   const canPlace = canManage && scenario !== '' && sessionCmId > 0
 
-  // TWO conditions, not three, and the missing one is deliberate. Availability
-  // carries no scenario since 1500000135 — a burst pipe closes a cabin in every
-  // plan for that weekend — so reusing `canPlace` here would reintroduce the
-  // deleted dimension at the UI layer: staff looking at the CampMinder mirror,
-  // which is where most of them look, could not close a cabin at all.
+  // TWO conditions, not three, and the missing one is deliberate — even though
+  // this write now CARRIES a scenario (kindred#2382 PR 4). Carrying one and
+  // requiring one are different rules: blank is the LIVE board, a scope in its
+  // own right, so reusing `canPlace` here would leave staff looking at the
+  // CampMinder mirror — which is where most of them look — unable to record a
+  // write-in at all. Do not "fix" this to `canPlace` now that the scenario
+  // travels.
   const canSetAvailability = canManage && sessionCmId > 0
 
   // Same two conditions as `canSetAvailability` above, not `canPlace` — and
@@ -187,7 +189,11 @@ export function LodgingBoard({
   }
 
   const { move } = useLodgingPlacement({ year, sessionCmId, scenario })
-  const { setAvailability, pendingUnitId } = useUnitAvailability({ year, sessionCmId })
+  // The same `scenario` the placement and merge hooks get, and for the reason
+  // `canSetAvailability` above spells out: it TARGETS the write rather than
+  // gating it. An occupancy lands on this board (blank being the live one); a
+  // release ignores it server-side, being a fact about the weekend.
+  const { setAvailability, pendingUnitId } = useUnitAvailability({ year, sessionCmId, scenario })
   // `scenario` here is the same prop `useLodgingPlacement` gets — on the
   // mirror that is `''`, and the hook now sends it rather than refusing, per
   // `canMergeUnits` above.

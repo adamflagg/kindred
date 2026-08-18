@@ -17,7 +17,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
-import type { LodgingUnitRow } from '../../types/lodging'
+import type { LodgingUnitRow, WriteInCoverRow } from '../../types/lodging'
 import { UnitAvailabilityControl } from './UnitAvailabilityControl'
 
 function unit(overrides: Partial<LodgingUnitRow> = {}): LodgingUnitRow {
@@ -57,8 +57,26 @@ const STAFF_CABIN = unit({
   is_family_available: false,
 })
 
+/**
+ * The server-resolved write-in cover — the ONLY way the wire says "somebody is
+ * in this space" since kindred#2382 PR 4 retired the
+ * `family_available_override === false` shim. That field answers the
+ * staff↔family ROLE alone now, which is why the release fixtures below still
+ * use it and the write-in fixtures do not.
+ */
+function cover(overrides: Partial<WriteInCoverRow> = {}): WriteInCoverRow {
+  return {
+    unit_id: 'u1',
+    unit_code: 'cedar-1',
+    unit_name: 'Cedar 1',
+    occupant_name: 'Emma Johnson',
+    note: '',
+    ...overrides,
+  }
+}
+
 const WRITTEN_IN_CABIN = unit({
-  family_available_override: false,
+  write_in: cover(),
   occupant_name: 'Emma Johnson',
   reason: '',
   is_family_available: false,
@@ -305,7 +323,7 @@ describe('UnitAvailabilityControl', () => {
     // on one card, which is the double-print 1500000148 was written to avoid.
     renderControl({
       unit: unit({
-        family_available_override: false,
+        write_in: cover({ note: 'Back Monday' }),
         occupant_name: 'Emma Johnson',
         reason: 'Back Monday',
         is_family_available: false,

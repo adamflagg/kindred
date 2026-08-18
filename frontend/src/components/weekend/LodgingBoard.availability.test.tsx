@@ -163,10 +163,26 @@ describe('LodgingBoard — the availability gate', () => {
     expect(screen.queryByRole('button', { name: 'Write in Cedar 1' })).not.toBeInTheDocument()
   })
 
-  it('names the weekend it is writing into', () => {
+  it('names the weekend AND the board it is writing into', () => {
+    // The scenario is what kindred#2382 PR 4 added. Reads REPLACE since PR 3,
+    // so a write-in recorded here and written to the LIVE table is replaced
+    // away by this scenario's own read — staff record an occupancy and the
+    // board they made it on does not show it.
     renderBoard()
 
-    expect(availabilityOptions[0]).toEqual({ year: 2026, sessionCmId: 1000001 })
+    expect(availabilityOptions[0]).toEqual({
+      year: 2026,
+      sessionCmId: 1000001,
+      scenario: SCENARIO,
+    })
+  })
+
+  it('writes the live board when no scenario is selected', () => {
+    // Blank is a SCOPE, not a refusal: staff evaluate the real board, so the
+    // mirror keeps its write path. Same prop, same hook, different target.
+    renderBoard({ scenario: '' })
+
+    expect(availabilityOptions[0]).toEqual({ year: 2026, sessionCmId: 1000001, scenario: '' })
   })
 })
 

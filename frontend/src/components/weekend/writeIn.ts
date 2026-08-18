@@ -7,14 +7,33 @@
  * *empty and closed* when in truth it was *full*. There is ONE control and one
  * action; the occupant name is what the row was always for.
  *
+ * ## What a write-in is a fact ABOUT — and what it is not
+ *
+ * A SPACE, and a PLAN. It says somebody is in this room; it says nothing about
+ * whether the room is staff housing or family inventory, which is the separate
+ * staff↔family ROLE question. kindred#2382 split those two apart after they
+ * had shared one boolean:
+ *
+ * | fact | stored in | scoped to |
+ * |---|---|---|
+ * | staff↔family ROLE | `lodging_availability` | the WEEKEND — every plan sees it |
+ * | write-in OCCUPANCY | `lodging_write_ins` / `_draft` | the SCENARIO that made it |
+ *
+ * The occupancy is scenario-scoped because not every write-in is non-rostered
+ * staff: some are paper registrations for families arriving with no children,
+ * and that is a modelling choice belonging to the plan that made it. The role
+ * is not, because a release names no occupant — "we're moving staff to X for
+ * weekend Y" is true whichever plan you are looking at.
+ *
  * ## Why this is a module and not an inline `=== false`
  *
  * The board already had that expression, spelled `held`, in three places. One
  * of them was load-bearing in a way a rename would have silently broken:
  * #2093's forest open-tint suppresses itself on a written-into room, and it did
  * so by testing `unit.family_available_override === false` — a PROXY for "is
- * somebody in it". Reading the fact through one named function is what keeps
- * the tint keyed on the fact rather than on a spelling.
+ * somebody in it". Reading the fact through one named function is what let the
+ * proxy be retired here, once, instead of in every consumer: that field now
+ * answers the ROLE alone, and `write_in` answers this one.
  *
  * ## What is deliberately NOT here
  *
@@ -22,6 +41,10 @@
  * into `occupant_name` and cleared the column behind it, because the same
  * string rendered as both the occupant's NAME and the card's italic reason line
  * printed twice on one card. A fallback would restore that by another route.
+ *
+ * No fallback from `write_in` to `family_available_override === false` either,
+ * and that one was deliberately removed rather than never written — see
+ * `coveringWriteIn`.
  */
 import type { LodgingUnitRow, WriteInCoverRow } from '../../types/lodging'
 
@@ -46,12 +69,12 @@ export interface WriteInOccupant {
 }
 
 /**
- * The occupant written into this unit for this weekend, or `null` if none.
+ * The occupant written into this space for this weekend, or `null` if none.
  *
- * `=== false`, never truthiness: `null` means "no availability row for this
- * weekend, so the unit's role decides" and `true` means "a staff cabin opened
- * to families" — a release names no occupant. Collapsing any of the three into
- * the others is the failure `reservationBadge` documents at length.
+ * "This space", not "this unit": a building's write-in closes its rooms and a
+ * room's closes its building as a whole-house let, and the board draws whichever
+ * level the unit tree resolves to. The server does that walk (`write_in_covers`)
+ * and this reads its answer.
  */
 export function writeInOccupant(unit: LodgingUnitRow): WriteInOccupant | null {
   const cover = coveringWriteIn(unit)
@@ -92,30 +115,27 @@ export function writeInSource(unit: LodgingUnitRow): WriteInSource | null {
 }
 
 /**
- * The server-resolved cover, else this unit's OWN row synthesised as one.
+ * The server-resolved cover, and NOTHING else.
  *
- * ## Why the fallback is not a code smell
+ * ## Why the old fallback is gone rather than merely unused
  *
- * `write_in` is resolved server-side (`write_in_covers`) and is present on
- * every unit the current API builds, so in practice the second branch only
- * fires for a payload from an older server — Pydantic fields with a default
- * render OPTIONAL in TypeScript, so the key simply arrives missing.
+ * This used to synthesise a cover from `unit.family_available_override ===
+ * false` plus the unit's own `occupant_name`, for a payload from a server older
+ * than `write_in_covers`. That fallback was safe only while `false` MEANT an
+ * occupancy — which it did, because the wire spelled one that way as a compat
+ * shim while kindred#2382 was landing in four parts.
  *
- * The direction of the fallback is the point. Reading a missing cover as
- * "nobody is in it" would OPEN a cabin the row says is closed and invite a
- * drop into an occupied room, which is the precise failure the cover exists to
- * prevent. `shareabilityBadge` makes the same argument at its own default: on
- * missing evidence the only wrong answer is a permissive one.
+ * PR 4 retired the shim. `family_available_override` now answers the
+ * staff↔family ROLE alone, so a `false` is "closed by role" and names nobody:
+ * reading it here would report an occupant the cabin does not have, on a card
+ * whose whole job is to say who is in the room. A permissive default is the
+ * usual danger (`shareabilityBadge` makes that argument at its own), but a
+ * fabricated occupant is not the conservative answer — it is a different wrong
+ * one, and it would also block placement into a cabin that is merely closed.
+ *
+ * There is no gap left to guard. `write_in` is built for every unit the API
+ * returns, and a unit with neither a cover nor a role row is simply open.
  */
 function coveringWriteIn(unit: LodgingUnitRow): WriteInCoverRow | null {
-  const cover = unit.write_in
-  if (cover !== null && cover !== undefined) return cover
-  if (unit.family_available_override !== false) return null
-  return {
-    unit_id: unit.unit_id,
-    unit_code: unit.code,
-    unit_name: unit.name,
-    occupant_name: unit.occupant_name ?? '',
-    note: unit.reason ?? '',
-  }
+  return unit.write_in ?? null
 }

@@ -777,29 +777,52 @@ class LodgingWriteService:
         families arriving with no children, and a modelling choice belongs to
         the scenario that made it.
 
-        NO SCENARIO ON THE REQUEST, still. The live board is a scope in its own
-        right (owner, 2026-08-15: staff must be able to record a write-in on
-        the real board, not only inside a modelling sandbox), so this writes
-        the LIVE occupancy table with no scenario predicate, exactly as
-        `lodging_assignments` has none.
+        `scenario` STEERS THE OCCUPANCY HALF AND NOTHING ELSE (PR 4 of
+        kindred#2382). Blank writes `lodging_write_ins`, the LIVE board -- a
+        scope in its own right rather than the absence of one (owner,
+        2026-08-15: staff must be able to record a write-in on the real board,
+        not only inside a modelling sandbox). A scenario id writes that
+        scenario's own `lodging_write_ins_draft` row instead.
 
-        ⚠️ AND THAT IS NOW A GAP RATHER THAN A RESTING STATE. PR 3 of
-        kindred#2382 made a scenario's write-ins REPLACE the live ones on read,
-        so a staff member working inside a scenario who writes one here lands
-        it on the LIVE board and then does not see it on the board they made it
-        on. It cannot be closed from this side alone -- the frontend has to
-        send the `scenario` it already holds -- so PR 4 owns it:
-        `AvailabilityWriteRequest` gains an optional `scenario` (blank meaning
-        the live board, exactly as `SlotMergeRequest` spells it), the OCCUPANCY
-        half below routes to `find/create/update/delete_draft_write_in` when it
-        is set, and the ROLE half stays on `lodging_availability` whatever the
-        request says, because that half is not scenario-scoped.
+        WHY THE REQUEST GREW ONE AT ALL. PR 3 made a scenario's write-ins
+        REPLACE the live ones on read, and this method still wrote the live
+        table for everybody -- so a staff member working inside a scenario
+        recorded a write-in, that scenario's own read replaced it away, and the
+        board they had just made it on did not show it. Before PR 3 the read
+        fell through and the same write was visible; the fix is here rather
+        than in the read, because a fall-through is exactly what kindred#1974
+        removed for placements.
+
+        THE ROLE HALF IGNORES IT, deliberately, rather than refusing a release
+        made from inside a scenario. staff<->family role is not scenario-scoped
+        (owner: "that's more of a known 'were moving staff to X for weekend
+        Y'"), so a release written while looking at a plan is still a fact
+        about the weekend, and `lodging_availability` has no scenario column to
+        put one in.
 
         ONE FACT AT A TIME, and this is the promise the split has to keep
         deliberately. A single row could only ever hold one of the two, so
         writing an occupancy over a release replaced it; with two tables
         nothing removes the loser unless this does. Hence the drop after each
         write.
+
+        THE DROP IS SCOPED TO THE CALLER'S OWN GRAIN. The role row is shared by
+        every scope; an occupancy row is not. So a release made inside a
+        scenario drops that scenario's write-in and leaves the live one alone,
+        and a live release leaves every scenario's alone -- reaching across
+        would clear a fact nobody on this board can see, on the strength of a
+        click made somewhere else.
+
+        WHICH MAKES "ONE FACT AT A TIME" A PER-SCOPE PROMISE, not a global one,
+        and that is the cost of the asymmetry rather than an oversight. Write
+        somebody into a cabin on the live board, then release it from inside a
+        scenario, and both rows exist: the live occupancy the scenario's drop
+        could not see, and the weekend-level role row it just wrote. Nothing
+        downstream is confused by it -- `is_family_available` folds both in and
+        occupancy wins, so the cabin reads closed on the live board -- and a
+        clear on either grain still removes the role row along with its own
+        occupancy. Narrowing the role drop instead would leave a release
+        standing under a write-in on the SAME board, which is worse.
 
         ORDER: the new fact is written BEFORE the old one is dropped. There is
         no transaction across two PocketBase tables, and a failure between the
@@ -827,16 +850,36 @@ class LodgingWriteService:
         """
         session_pb_id = await self._resolve_session_pb_id(request.year, request.session_cm_id)
 
+        # WHICH OCCUPANCY TABLE this call is about, resolved ONCE and threaded
+        # through every branch below. Bound as a group rather than branched on
+        # at each of the five use sites, because the failure mode of getting it
+        # wrong at one of them is silent: a find on the draft grain paired with
+        # a create on the live one writes the right row in the wrong scope, and
+        # the board it was made on still does not show it.
+        in_scenario = request.scenario != ""
+        find_occupancy: Callable[[], Awaitable[Any | None]] = (
+            (
+                lambda: self.repository.find_draft_write_in(
+                    request.year, request.session_cm_id, request.scenario, request.unit_id
+                )
+            )
+            if in_scenario
+            else (lambda: self.repository.find_write_in(request.year, request.session_cm_id, request.unit_id))
+        )
+        create_occupancy = self.repository.create_draft_write_in if in_scenario else self.repository.create_write_in
+        update_occupancy = self.repository.update_draft_write_in if in_scenario else self.repository.update_write_in
+        delete_occupancy = self.repository.delete_draft_write_in if in_scenario else self.repository.delete_write_in
+
         # BOTH lookups on every call, because every branch has to know about
         # the fact it is NOT writing: an occupancy has a release to drop, a
         # release has an occupancy to drop, and a clear has both.
         existing_role = await self.repository.find_availability_override(
             request.year, request.session_cm_id, request.unit_id
         )
-        existing_write_in = await self.repository.find_write_in(request.year, request.session_cm_id, request.unit_id)
+        existing_write_in = await find_occupancy()
 
         if request.family_available is None:
-            write_in_id, write_in_deleted = await self._clear_row(existing_write_in, self.repository.delete_write_in)
+            write_in_id, write_in_deleted = await self._clear_row(existing_write_in, delete_occupancy)
             role_id, role_deleted = await self._clear_row(existing_role, self.repository.delete_availability)
             # The occupancy id is reported in preference to the role id when
             # both were there. It is the one the board was almost certainly
@@ -882,18 +925,22 @@ class LodgingWriteService:
                 session_cm_id=request.session_cm_id,
                 unit_id=request.unit_id,
             )
-            await self._clear_row(existing_write_in, self.repository.delete_write_in)
+            await self._clear_row(existing_write_in, delete_occupancy)
         else:
             record = await self._upsert_row(
                 what="write-in",
                 existing=existing_write_in,
-                data=data,
-                find=lambda: self.repository.find_write_in(request.year, request.session_cm_id, request.unit_id),
-                create=self.repository.create_write_in,
-                update=self.repository.update_write_in,
+                # `scenario` rides on the OCCUPANCY payload only. The draft
+                # collection's relation is required; the live one has no such
+                # column, and the role payload above must never carry one.
+                data={**data, "scenario": request.scenario} if in_scenario else data,
+                find=find_occupancy,
+                create=create_occupancy,
+                update=update_occupancy,
                 year=request.year,
                 session_cm_id=request.session_cm_id,
                 unit_id=request.unit_id,
+                scenario=request.scenario,
             )
             await self._clear_row(existing_role, self.repository.delete_availability)
 

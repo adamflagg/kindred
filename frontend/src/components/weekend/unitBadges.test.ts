@@ -19,7 +19,7 @@
  */
 import { describe, expect, it } from 'vitest'
 
-import type { LodgingUnitRow } from '../../types/lodging'
+import type { LodgingUnitRow, WriteInCoverRow } from '../../types/lodging'
 import {
   availabilityAction,
   reservationBadge,
@@ -56,6 +56,26 @@ function unit(overrides: Partial<LodgingUnitRow> = {}): LodgingUnitRow {
   }
 }
 
+/**
+ * The server-resolved write-in cover, which is the ONLY way the wire says
+ * "somebody is in this space" since kindred#2382 PR 4.
+ *
+ * `family_available_override === false` used to mean it too, as a compat shim
+ * while the split landed in four parts. It answers the staff↔family ROLE alone
+ * now, so every fixture below meaning "written into" carries one of these and a
+ * bare `false` means "closed by role", which names nobody.
+ */
+function cover(overrides: Partial<WriteInCoverRow> = {}): WriteInCoverRow {
+  return {
+    unit_id: 'u1',
+    unit_code: 'cedar-1',
+    unit_name: 'Cedar 1',
+    occupant_name: 'Emma Johnson',
+    note: '',
+    ...overrides,
+  }
+}
+
 describe('reservationBadge', () => {
   it('badges a building row so nobody reads an aggregate as a bookable room', () => {
     expect(reservationBadge(unit({ is_container: true }))).toEqual({
@@ -78,18 +98,16 @@ describe('reservationBadge', () => {
     // drawn unit. Badging it "Building" while `availabilityAction` offers to
     // CLEAR the write-in is the exact drift this module exists to prevent.
     expect(
-      reservationBadge(
-        unit({ is_container: true, is_combined: true, family_available_override: false })
-      )?.label
+      reservationBadge(unit({ is_container: true, is_combined: true, write_in: cover() }))?.label
     ).toBe('Write-in')
   })
 
   it('keeps saying Building on a SPLIT container carrying an override', () => {
     // A split container gets no card at all, so there is nothing to badge and
     // no action to agree with. Unchanged, deliberately.
-    expect(
-      reservationBadge(unit({ is_container: true, family_available_override: false }))?.label
-    ).toBe('Building')
+    expect(reservationBadge(unit({ is_container: true, write_in: cover() }))?.label).toBe(
+      'Building'
+    )
   })
 
   it('leaves an ordinary available family cabin unbadged', () => {
@@ -103,7 +121,7 @@ describe('reservationBadge', () => {
     // why this is "Write-in" and not "Staff".
     const badge = reservationBadge(
       unit({
-        family_available_override: false,
+        write_in: cover({ occupant_name: 'Emma Johnson' }),
         occupant_name: 'Emma Johnson',
         is_family_available: false,
       })
@@ -143,13 +161,34 @@ describe('reservationBadge', () => {
 
   it('reads null and false as different answers on the override', () => {
     // The trap this pins: `!unit.family_available_override` is true for BOTH,
-    // so a falsy test would badge every unbadged family cabin as "Held". None
-    // means "no row, ask the role"; false means "closed this weekend".
+    // so a falsy test would badge every unbadged family cabin as "Released".
+    // None means "no row, ask the role"; false means "closed by role".
     expect(reservationBadge(unit({ family_available_override: null }))).toBeNull()
     expect(
       reservationBadge(unit({ family_available_override: false, is_family_available: false }))
         ?.label
-    ).toBe('Write-in')
+    ).toBeUndefined()
+  })
+
+  it('does not badge a role-closed cabin as a write-in, because it names nobody', () => {
+    // kindred#2382 PR 4. `false` used to BE the write-in — occupancy and the
+    // staff↔family role shared one boolean — so a bare `false` badged
+    // "Write-in" and the card claimed an occupant that exists in no row.
+    //
+    // NO BADGE REPLACES IT, deliberately. 1500000162 moved every occupancy row
+    // out of `lodging_availability` and no writer creates another
+    // (`set_availability` only ever writes `true` there), so this state is
+    // unreachable rather than merely rare — and naming it would mean inventing
+    // a staff-facing word for it, which is a product decision and not a side
+    // effect of a storage split.
+    expect(
+      reservationBadge(unit({ family_available_override: false, is_family_available: false }))
+    ).toBeNull()
+    // A write-in on the same cabin still badges, which is the half that must
+    // not be lost with it.
+    expect(reservationBadge(unit({ write_in: cover(), is_family_available: false }))?.label).toBe(
+      'Write-in'
+    )
   })
 
   it('does not badge a staff cabin as Released merely for lacking an override', () => {
@@ -178,11 +217,17 @@ describe('reservationBadge', () => {
 
   it('ignores the reason text entirely, because the rule never branches on it', () => {
     const held = reservationBadge(
-      unit({ family_available_override: false, reason: 'Burst pipe', is_family_available: false })
+      unit({
+        write_in: cover({ note: 'Burst pipe' }),
+        reason: 'Burst pipe',
+        is_family_available: false,
+      })
     )
     const alsoHeld = reservationBadge(
-      unit({ family_available_override: false, reason: '', is_family_available: false })
+      unit({ write_in: cover(), reason: '', is_family_available: false })
     )
+
+    expect(held?.label).toBe('Write-in')
 
     expect(held).toEqual(alsoHeld)
   })
@@ -233,7 +278,11 @@ describe('availabilityAction', () => {
     // what a click does — and "Clear" alone does not say what it clears.
     expect(
       availabilityAction(
-        unit({ family_available_override: false, reason: 'Burst pipe', is_family_available: false })
+        unit({
+          write_in: cover({ note: 'Burst pipe' }),
+          reason: 'Burst pipe',
+          is_family_available: false,
+        })
       )
     ).toEqual({
       kind: 'clear',
@@ -290,6 +339,14 @@ describe('availabilityAction', () => {
       availabilityAction(unit({ family_available_override: false, is_family_available: false }))
         ?.kind
     ).toBe('clear')
+    // And a write-in, which is a different row in a different table, offers
+    // the relabelled clear rather than this one.
+    expect(
+      availabilityAction(unit({ write_in: cover(), is_family_available: false }))
+    ).toMatchObject({
+      kind: 'clear',
+      label: 'Clear Write-in',
+    })
   })
 
   it('offers nothing to hold an OCCUPIED family cabin — held and occupied are mutually exclusive (#2090)', () => {
@@ -321,9 +378,7 @@ describe('availabilityAction', () => {
 
   it('offers to clear a MERGED building that has been written into', () => {
     expect(
-      availabilityAction(
-        unit({ is_container: true, is_combined: true, family_available_override: false })
-      )?.kind
+      availabilityAction(unit({ is_container: true, is_combined: true, write_in: cover() }))?.kind
     ).toBe('clear')
   })
 

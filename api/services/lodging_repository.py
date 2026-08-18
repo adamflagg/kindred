@@ -14,13 +14,31 @@ REPLACE them: kindred#1974 removed the fall-through, so a scenario is a plan
 of its own, seeded by an explicit copy rather than by rendering the mirror
 through the gaps.
 
-AVAILABILITY used to be the exception, and is not any more. 1500000132 left
-lodging_availability scenario-aware in place, reasoning that nothing syncs into
-it so there was no record of truth to protect. That argued against a draft
-TWIN; it never established that availability varies by scenario, and it does
-not -- a burst pipe closes a cabin in every plan for that weekend. 1500000135
-deleted the column, so there is ONE availability read, issued identically with
-or without a scenario, and no lodging read is an overlay any more.
+AVAILABILITY WAS ONE TABLE ANSWERING TWO QUESTIONS, and kindred#2382 split it.
+1500000132 left lodging_availability scenario-aware, reasoning that nothing
+syncs into it so there was no record of truth to protect; 1500000135 then
+deleted the column outright, because "a burst pipe closes a cabin in every plan
+for that weekend". That reasoning was right about half of what the table held
+and wrong about the other half, and the halves are now separate tables:
+
+  ROLE -- "this staff cabin is released to families this weekend" -- stays in
+  lodging_availability and keeps its no-scenario shape. It names no occupant
+  and is an operational fact about the WEEKEND ("we're moving staff to X for
+  weekend Y", owner ruling), so 1500000135's argument is exactly right for it
+  and there is still ONE availability read, issued identically with or without
+  a scenario.
+
+  OCCUPANCY -- "somebody is in this room" -- moved to lodging_write_ins with a
+  scenario-scoped draft twin, lodging_write_ins_draft (1500000161, backfilled
+  by 1500000162).
+  Not every write-in is non-rostered staff: some are paper registrations for
+  families arriving with no children, and that is a modelling choice belonging
+  to the plan that made it. So this half reads like a placement -- a scenario's
+  rows REPLACE the live ones, with no fall-through -- and `fetch_write_ins` /
+  `fetch_draft_write_ins` are the two reads a request chooses between.
+
+No lodging read is an OVERLAY, then, on either half: one layer with no tiers
+for the role, and replace-not-merge for the occupancy.
 
 Request answers are NOT re-parsed here. The Go ingest derives the share gate,
 the NEAR/WITH/similar-ages modes, the household-grain request text and the four
