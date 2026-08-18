@@ -112,3 +112,25 @@ class TestFindPriorYearBunkmatesSessionScope:
 
         assert result == {}
         assert len(captured) == 1, "must not fall back to an unscoped bunkmate query"
+
+    def test_bunkmate_query_is_sorted_so_the_returned_order_is_stable(self, captured):
+        """`cm_ids` order decides a resolution, so it must not vary between runs.
+
+        `_try_prior_bunkmate_resolution` walks `cm_ids` and returns the FIRST
+        camper whose name matches, so two cabinmates sharing a first name are
+        separated by nothing but the order this query happened to return. The
+        sibling query above already carries `sort: "id"` for exactly this
+        reason; the bunkmate query needs the same STABLE_SORT convention.
+        """
+        requester_row = _assignment(1001, "bunk_A", "Cabin 7", "sess_1")
+        peer_row = _assignment(2002, "bunk_A", "Cabin 7", "sess_1")
+
+        def responder(query_params):
+            return [requester_row] if "person.cm_id" in query_params["filter"] else [peer_row]
+
+        repo = self._repo(captured, responder)
+
+        repo.find_prior_year_bunkmates(requester_cm_id=1001, session_cm_id=123, year=2026)
+
+        assert len(captured) == 2
+        assert captured[1].get("sort") == "id"

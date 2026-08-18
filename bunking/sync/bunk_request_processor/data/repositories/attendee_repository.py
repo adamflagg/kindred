@@ -529,10 +529,17 @@ class AttendeeRepository:
             # served more than one session, so filtering on bunk + year alone
             # returned children the requester never met (median peer set 29
             # against a session-scoped 8).
+            #
+            # Same `sort: "id"` STABLE_SORT convention as the query above, and
+            # for the same reason: `_try_prior_bunkmate_resolution` returns the
+            # FIRST camper in `cm_ids` whose name matches the target, so two
+            # cabinmates sharing a first name are separated by nothing but the
+            # order this query happened to return.
             bunkmates = self.pb.collection("bunk_assignments").get_full_list(
                 query_params={
                     "filter": f'bunk = "{bunk_id}" && year = {previous_year} && session = "{session_id}"',
                     "expand": "person",
+                    "sort": "id",
                 }
             )
 

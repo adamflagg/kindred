@@ -1543,3 +1543,28 @@ class TestHistoricalBunkingSessionScope:
         await sg._add_historical_bunking_relationships(graph, 1234)
 
         assert not graph.has_edge(901, 902)
+
+    @pytest.mark.asyncio
+    async def test_a_pair_that_bunked_in_two_years_is_weighted_by_the_recent_one(self):
+        """`processed_pairs` keeps ONE edge per pair, so which year wins must not be luck.
+
+        The weight is documented as "more recent = stronger", but the pair is
+        deduped against whichever grouping key the unsorted query happened to
+        insert first. Feed the older year first: the surviving edge must still
+        carry the RECENT year's recency weight.
+        """
+        mock_pb = Mock()
+        sg = SocialGraph(pb=mock_pb, year=2026, session_cm_ids=[1234])
+
+        mock_pb.collection.return_value.get_full_list.return_value = [
+            self._assignment(1101, "bunk_OLD", 2023, "sess_old"),
+            self._assignment(1102, "bunk_OLD", 2023, "sess_old"),
+            self._assignment(1101, "bunk_NEW", 2025, "sess_new"),
+            self._assignment(1102, "bunk_NEW", 2025, "sess_new"),
+        ]
+
+        graph = self._graph(1101, 1102)
+        await sg._add_historical_bunking_relationships(graph, 1234)
+
+        expected = RELATIONSHIP_WEIGHTS[RelationshipType.BUNKMATE] * (1.0 / (1 + 1 * 0.2))
+        assert graph[1101][1102]["weight"] == pytest.approx(expected)

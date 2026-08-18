@@ -330,7 +330,16 @@ class SocialGraph:
             historical_edges = 0
             processed_pairs: set[tuple[int, int]] = set()
 
-            for (year, _bunk_id, _session_id), members in year_bunk_members.items():
+            # Most recent year first. `processed_pairs` below keeps exactly ONE
+            # edge per pair, so for a pair that bunked together in more than one
+            # year the FIRST key visited is the one whose `recency_weight`
+            # survives. Iterating in dict order made that whichever key the
+            # unsorted query happened to insert first -- so a pair's weight
+            # could differ between runs, and the older year could beat the newer
+            # one, contradicting the "more recent = stronger" rule below.
+            for (year, _bunk_id, _session_id), members in sorted(
+                year_bunk_members.items(), key=lambda item: item[0][0], reverse=True
+            ):
                 # Only consider members who are in the current session's graph
                 graph_members = [m for m in members if m in graph]
 
