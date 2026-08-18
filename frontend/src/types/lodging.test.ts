@@ -267,7 +267,7 @@ const _exhaustiveLodgingUnit: Required<LodgingUnitRow> = {
   // nearest descendant's. Distinct from the three fields above, which stay
   // strictly this unit's own row: a room can be closed by a write-in it does
   // not hold, which is what a merge or a split does to one.
-  write_in: null,
+  write_ins: [],
   map_x: 0.5,
   map_y: 0.5,
 }

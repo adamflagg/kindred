@@ -13,7 +13,8 @@
  * two apart:
  *
  *   dim  (`opacity-40` + `pointer-events-none`) = REFUSAL. Owned by the
- *        invalid merge target and by a held space (#2087). Not this.
+ *        invalid merge target, and by that alone since kindred#2432 struck
+ *        the written-into space's refusal (#2087/#2090). Not this.
  *   hatch (`background-image`, at FULL strength)= ADVISORY MISFIT. This.
  *   forest tint                                  = open and available, at rest
  *        only (#2093).

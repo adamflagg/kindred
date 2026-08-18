@@ -64,6 +64,29 @@ export interface PlaceFamilyPickerProps {
    */
   units?: LodgingUnitRow[]
   onSelect: (party: RosterPartyRow) => void
+  /**
+   * Record a name that is not a registered family — the write-in
+   * (owner ruling, 2026-08-18).
+   *
+   * The card used to carry a SECOND typeable box for this, on the availability
+   * strip, so every tile asked "who is sleeping here" twice and staff had to
+   * choose a control before they knew which kind of answer they had. One box
+   * answers both: a family if one matches, a written-in name if none does.
+   *
+   * Optional, and the offer is absent when it is: a caller with no write path
+   * (read-only staff) must not be shown an affordance it cannot honour.
+   */
+  onWriteIn?: (occupantName: string) => void
+  /**
+   * True while a write THIS card started is in flight.
+   *
+   * Inherited from the strip button this box replaced: 81 cards share one
+   * mutation, so the gate has to be per-card or one cabin's write freezes the
+   * board. It matters more here than it did on a button — a combobox invites
+   * a staff member to keep typing, and a second write-in submitted against an
+   * unsettled first is a duplicate nobody asked for.
+   */
+  isSaving?: boolean
 }
 
 /**
@@ -77,7 +100,14 @@ const NOTE_TONE: Record<'partial' | 'unmet', string> = {
   partial: 'text-muted-foreground',
 }
 
-export function PlaceFamilyPicker({ unit, parties, units = [], onSelect }: PlaceFamilyPickerProps) {
+export function PlaceFamilyPicker({
+  unit,
+  parties,
+  units = [],
+  onSelect,
+  onWriteIn,
+  isSaving = false,
+}: PlaceFamilyPickerProps) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   /** -1 is "no row active", which is the state Enter must do nothing in. */
@@ -150,8 +180,50 @@ export function PlaceFamilyPicker({ unit, parties, units = [], onSelect }: Place
     [parties, unit, units, needle]
   )
 
+  /**
+   * THE WRITE-IN OFFER, and the three conditions are each load-bearing.
+   *
+   * `onWriteIn` — the caller can actually write one.
+   * `trimmed !== ''` — whitespace asserts nothing, and an occupant name is
+   *                    required; an empty write-in would name nobody.
+   * `candidates.length === 0` — a family still matching means the staff member
+   *                    is most likely still typing toward it, and stealing
+   *                    Enter from a visible row would place the wrong thing.
+   *                    The ruling says it in those words: "if they type
+   *                    something, and it has no matches and they hit enter".
+   *
+   * Consequence worth stating: a name that happens to match a family's search
+   * text can never become a write-in from this box. That is the right trade —
+   * the far more common mistake is writing in somebody who IS registered — and
+   * an extra distinguishing word reaches the offer.
+   */
+  const offersWriteIn = onWriteIn !== undefined && trimmed !== '' && candidates.length === 0
+
+  /**
+   * Whether this card can place a family at all.
+   *
+   * FALSE on the CampMinder mirror, where there is no scenario: recording who
+   * is sleeping in a cabin is a fact about the weekend, not about a plan, so
+   * the write-in half stays live where the placement half cannot be. The
+   * caller passes an empty queue in that case rather than a second flag.
+   */
+  const placementLive = parties.length > 0 || onWriteIn === undefined
+  const placeLabel =
+    onWriteIn === undefined
+      ? `Place a family in ${unit.name}`
+      : `Place a family in ${unit.name}, or write in a name`
+
   const choose = (party: RosterPartyRow) => {
     onSelect(party)
+    setQuery('')
+    close()
+  }
+
+  const writeIn = () => {
+    if (!offersWriteIn || onWriteIn === undefined) return
+    // The TRIMMED text, which is what the offer row shows. Staff type into a
+    // search box and a trailing space is a typing artefact, not a name.
+    onWriteIn(trimmed)
     setQuery('')
     close()
   }
@@ -188,8 +260,12 @@ export function PlaceFamilyPicker({ unit, parties, units = [], onSelect }: Place
       return
     }
     if (event.key === 'Enter') {
-      // Never a submit: this control can be mounted inside Hold's own form.
+      // Never a submit: this control can be mounted inside a release form.
       event.preventDefault()
+      if (offersWriteIn) {
+        writeIn()
+        return
+      }
       const chosen = candidates[activeIndex]
       if (chosen !== undefined) choose(chosen.party)
     }
@@ -226,9 +302,20 @@ export function PlaceFamilyPicker({ unit, parties, units = [], onSelect }: Place
         role="combobox"
         // Named for the cabin, exactly as Hold's own button is: ~82 controls
         // all called "Place a family" is unusable with a screen reader.
-        aria-label={`Place a family in ${unit.name}`}
-        placeholder="Place a family…"
+        // NAMED FOR WHAT THIS CARD CAN ACTUALLY DO, which is not always both.
+        // On the CampMinder mirror there is no scenario, so nothing can be
+        // placed and the box is a write-in box only — calling it "Place a
+        // family" there would name an action the staff member cannot take.
+        aria-label={placementLive ? placeLabel : `Write in an occupant for ${unit.name}`}
+        placeholder={
+          placementLive
+            ? onWriteIn === undefined
+              ? 'Place a family…'
+              : 'Place a family, or write in…'
+            : 'Write in a name…'
+        }
         value={query}
+        disabled={isSaving}
         aria-expanded={open}
         aria-autocomplete="list"
         // Unconditional, though the listbox only exists while open: the
@@ -264,16 +351,52 @@ export function PlaceFamilyPicker({ unit, parties, units = [], onSelect }: Place
           aria-label={`Families to place in ${unit.name}`}
           className="border-border bg-background max-h-48 overflow-y-auto rounded-md border"
         >
-          {parties.length === 0 ? (
-            /* The ONLY way this list is empty, because nothing is ever
-               hidden. `FloatingUnplacedBadge` already says this over the same
-               parties — one state, one sentence. */
+          {offersWriteIn ? (
+            /* The one row an empty result offers, rather than a dead end.
+               `role="option"` and `aria-selected` because it IS the listbox's
+               only option here — Enter acts on it without an arrow press, so
+               saying it is selected is the truth rather than a decoration. */
+            <button
+              type="button"
+              role="option"
+              aria-selected={true}
+              tabIndex={-1}
+              data-testid="write-in-offer"
+              onMouseDown={(event) => {
+                event.preventDefault()
+              }}
+              onClick={writeIn}
+              className="bg-muted flex w-full flex-col gap-0.5 px-2 py-1.5 text-left text-sm"
+            >
+              <span className="truncate">{`Write in "${trimmed}"`}</span>
+              {/* THE ACTION, not a description of it (owner, 2026-08-18).
+                  This read "records who is in this space", which explained
+                  what a write-in is to a staff member who already knew and
+                  left the keystroke unsaid. The muted key is the list's own
+                  advisory ink, not a warning — writing somebody in is an
+                  ordinary act, not a fallback from a failure. */}
+              <span className="text-muted-foreground text-xs">
+                No family matches — press Enter to save this write-in
+              </span>
+            </button>
+          ) : parties.length === 0 ? (
+            /* Nothing left to place. `FloatingUnplacedBadge` already says this
+               over the same parties — one state, one sentence.
+
+               BELOW the write-in offer, deliberately: on the CampMinder mirror
+               there is no scenario and therefore no placement queue at all, so
+               this branch is the one an unfiltered box lands on. Above the
+               offer it would tell a staff member "everyone has a cabin" while
+               swallowing the name they had just typed. */
             <p className="text-muted-foreground px-2 py-3 text-center text-sm italic">
               Everyone has a cabin.
             </p>
           ) : candidates.length === 0 ? (
             /* A typo, not a fit verdict. `FloatingQueueBadge`'s own wording,
-               in the same "parties" vocabulary an adult weekend needs. */
+               in the same "parties" vocabulary an adult weekend needs. Only
+               reachable where the caller offers no write-in path; otherwise
+               the offer row above says the same thing and gives it somewhere
+               to go. */
             <p className="text-muted-foreground px-2 py-3 text-center text-sm">
               {`No parties match "${trimmed}"`}
             </p>

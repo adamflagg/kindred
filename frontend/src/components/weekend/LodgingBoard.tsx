@@ -64,7 +64,7 @@ import { LodgingUnitCard } from './LodgingUnitCard'
 import { partyKey } from './partyKey'
 import { resolvePartyUnit } from './rosterAttention'
 import type { UnitAvailabilityWrite } from './UnitAvailabilityControl'
-import { writeInSource } from './writeIn'
+import { writeInEntries } from './writeIn'
 
 export interface LodgingBoardProps {
   parties: RosterPartyRow[]
@@ -322,10 +322,17 @@ export function LodgingBoard({
    * kindred#2080 — the unit card's picker, resolved through the DROP path.
    *
    * `resolvePickerPlacement` IS `resolveDrop`, so this branch inherits every
-   * refusal the drag has (a held space, a non-combined container, a party
-   * carrying neither CampMinder id, a party already alone in the room) rather
-   * than restating any of them, and produces the same `PlacementIntent` for
-   * the same `move`. One placement path with two affordances, not two paths.
+   * refusal the drag has (a non-combined container, a party carrying neither
+   * CampMinder id, a party already alone in the room) rather than restating
+   * any of them, and produces the same `PlacementIntent` for the same `move`.
+   * One placement path with two affordances, not two paths.
+   *
+   * That inheritance cuts both ways, which is what kindred#2432 proved: this
+   * list said "a held space" first until the written-into refusal was struck
+   * in `resolveDrop`, and this branch gave it up in the same change with
+   * nothing here to edit. A copy of the list is not a second gate — but a
+   * STALE copy of it is the next reader's evidence for restoring one, so keep
+   * the two in step.
    *
    * `canPlace` is re-checked here for the same reason `handleDragEnd`
    * re-checks it: the card's own gate is the affordance half, and a write
@@ -519,18 +526,25 @@ export function LodgingBoard({
                             hue={area.hue}
                             canPlace={canPlace}
                             canSetAvailability={canSetAvailability}
-                            // THIS card's unit, or the one holding the
-                            // write-in it inherited. `pendingUnitId` names the
-                            // unit the WRITE targets, and for an inherited
-                            // clear that is never this card's own id — so
+                            // THIS card's unit, or ANY of the ones holding a
+                            // write-in it covers. `pendingUnitId` names the
+                            // unit the WRITE targets, and a write-in removal
+                            // targets the row's own unit, which for an
+                            // inherited row is never this card's id — so
                             // keying the disable on the card alone leaves the
-                            // button live for the whole write. Same shape as
-                            // `savingMerge` below, and for the same reason:
-                            // the unit written is not always the unit drawn.
+                            // corner X live for the whole write. `some`, not
+                            // one id, since kindred#2381: a merged container
+                            // covers every write-in beneath it and the pending
+                            // write belongs to whichever one was clicked. Same
+                            // shape as `savingMerge` below, and for the same
+                            // reason: the unit written is not always the unit
+                            // drawn.
                             savingAvailability={
                               pendingUnitId === slot.unit.unit_id ||
                               (pendingUnitId !== '' &&
-                                pendingUnitId === writeInSource(slot.unit)?.unitId)
+                                writeInEntries(slot.unit).some(
+                                  (entry) => entry.source.unitId === pendingUnitId
+                                ))
                             }
                             onSetAvailability={writeAvailability}
                             canMerge={canMergeUnits}

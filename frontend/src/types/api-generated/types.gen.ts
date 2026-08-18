@@ -2230,7 +2230,10 @@ export type LodgingUnitSummary = {
    * Is Family Available
    */
   is_family_available?: boolean
-  write_in?: WriteInCover | null
+  /**
+   * Write Ins
+   */
+  write_ins?: Array<WriteInCover>
   /**
    * Map X
    */

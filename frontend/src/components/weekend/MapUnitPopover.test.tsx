@@ -185,7 +185,7 @@ describe('MapUnitPopover — one room', () => {
         units={[
           mapUnit(
             row({
-              write_in: cover(),
+              write_ins: [cover()],
               occupant_name: 'Emma Johnson',
               is_family_available: false,
             })
@@ -526,7 +526,7 @@ describe('MapUnitPopover — a cluster of rooms', () => {
           unit_id: 'u2',
           code: 'cedar-2',
           name: 'Cedar 2',
-          write_in: cover({ unit_id: 'u2', unit_code: 'cedar-2', unit_name: 'Cedar 2' }),
+          write_ins: [cover({ unit_id: 'u2', unit_code: 'cedar-2', unit_name: 'Cedar 2' })],
           is_family_available: false,
           is_active: false,
         })
@@ -954,7 +954,7 @@ describe('MapUnitPopover — the whole-building marker, extended from the board 
         units={[
           mapUnit(
             row({
-              write_in: cover(),
+              write_ins: [cover()],
               occupant_name: 'Emma Johnson',
               is_family_available: false,
             }),

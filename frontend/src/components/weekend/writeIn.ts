@@ -33,7 +33,7 @@
  * so by testing `unit.family_available_override === false` — a PROXY for "is
  * somebody in it". Reading the fact through one named function is what let the
  * proxy be retired here, once, instead of in every consumer: that field now
- * answers the ROLE alone, and `write_in` answers this one.
+ * answers the ROLE alone, and `write_ins` answers this one.
  *
  * ## What is deliberately NOT here
  *
@@ -42,9 +42,9 @@
  * string rendered as both the occupant's NAME and the card's italic reason line
  * printed twice on one card. A fallback would restore that by another route.
  *
- * No fallback from `write_in` to `family_available_override === false` either,
+ * No fallback from `write_ins` to `family_available_override === false` either,
  * and that one was deliberately removed rather than never written — see
- * `coveringWriteIn`.
+ * `coveringWriteIns`.
  */
 import type { LodgingUnitRow, WriteInCoverRow } from '../../types/lodging'
 
@@ -69,22 +69,31 @@ export interface WriteInOccupant {
 }
 
 /**
- * The occupant written into this space for this weekend, or `null` if none.
+ * WHO is in this space and WHOSE row says so, kept together — one entry per
+ * write-in covering the unit.
  *
- * "This space", not "this unit": a building's write-in closes its rooms and a
- * room's closes its building as a whole-house let, and the board draws whichever
- * level the unit tree resolves to. The server does that walk (`write_in_covers`)
- * and this reads its answer.
+ * A PAIR rather than two functions returning two arrays, which is what this
+ * was until kindred#2381 (`writeInOccupant` / `writeInSource`). Splitting them
+ * was right while there was exactly one cover: "who is in this space" is what
+ * the card prints and "whose row is this" is what a CLEAR has to name, and
+ * sending the card's own id for an inherited write-in would delete nothing at
+ * all. With N covers on one card the two answers have to stay lined up — the X
+ * drawn on the third card must delete the THIRD row — and index alignment held
+ * by hand across two arrays is the invariant that rots first.
  */
-export function writeInOccupant(unit: LodgingUnitRow): WriteInOccupant | null {
-  const cover = coveringWriteIn(unit)
-  if (cover === null) return null
-  return { name: (cover.occupant_name ?? '').trim(), note: (cover.note ?? '').trim() }
+export interface WriteInEntry {
+  occupant: WriteInOccupant
+  source: WriteInSource
 }
 
-/** Where a unit's write-in is recorded, or `null` if none covers it. */
+/**
+ * Where a unit's write-in is recorded.
+ *
+ * A room can inherit its building's row and a merged building one of its
+ * rooms', so this is not always the unit the card draws.
+ */
 export interface WriteInSource {
-  /** The unit the `lodging_write_ins` row belongs to — a clear's target. */
+  /** The unit the `lodging_write_ins` row belongs to — a removal's target. */
   unitId: string
   unitCode: string
   unitName: string
@@ -93,29 +102,57 @@ export interface WriteInSource {
 }
 
 /**
- * WHICH unit holds the write-in covering this one.
+ * Every write-in closing this space for this weekend, in the server's order.
  *
- * A SECOND function rather than more fields on `WriteInOccupant`, because the
- * two answer different questions and only one of them is display. "Who is in
- * this space" is what the card prints; "whose row is this" is what a CLEAR has
- * to name, and sending the card's own id for an inherited write-in would
- * delete nothing at all — the room has no row. Keeping them apart is also what
- * left every existing reader of the occupant untouched.
+ * "This space", not "this unit": a building's write-in closes its rooms and a
+ * room's closes its building as a whole-house let, and the board draws
+ * whichever level the unit tree resolves to. The server does that walk
+ * (`write_in_covers`) and this reads its answer.
+ *
+ * PLURAL since kindred#2381, and the arity is the fix rather than a
+ * generalisation. A merged container stands in for its rooms, so the four
+ * write-ins one 2026 building carries in a single weekend all land on one
+ * card — and returning the first hid three occupants while making each clear
+ * read as a failed click, because the card immediately re-populated with the
+ * next name. An assignment survives a merge and a split by having the drawn
+ * card carry however many leaves it covers; this is a write-in doing the same.
+ *
+ * ORDERED BY THE SERVER (`code` at every level), never re-sorted here: two
+ * places deciding the sequence is two places that can disagree about it.
  */
-export function writeInSource(unit: LodgingUnitRow): WriteInSource | null {
-  const cover = coveringWriteIn(unit)
-  if (cover === null) return null
-  const unitCode = cover.unit_code ?? ''
-  return {
-    unitId: cover.unit_id ?? '',
-    unitCode,
-    unitName: cover.unit_name ?? '',
-    isOwn: unitCode === unit.code,
-  }
+export function writeInEntries(unit: LodgingUnitRow): WriteInEntry[] {
+  return coveringWriteIns(unit).map((cover) => {
+    const unitCode = cover.unit_code ?? ''
+    return {
+      occupant: {
+        name: (cover.occupant_name ?? '').trim(),
+        note: (cover.note ?? '').trim(),
+      },
+      source: {
+        unitId: cover.unit_id ?? '',
+        unitCode,
+        unitName: cover.unit_name ?? '',
+        isOwn: unitCode === unit.code,
+      },
+    }
+  })
 }
 
 /**
- * The server-resolved cover, and NOTHING else.
+ * Whether ANY write-in closes this space.
+ *
+ * The gate every consumer that only needs the yes/no reads — the drop refusal
+ * (`dragPlacement`), its affordance half on the card, and the "Write-in" chip.
+ * Spelled once so a merged card covering four occupants and a room covering
+ * one are the same answer to those three, which `!== null` on a single cover
+ * silently stopped being.
+ */
+export function hasWriteIn(unit: LodgingUnitRow): boolean {
+  return coveringWriteIns(unit).length > 0
+}
+
+/**
+ * The server-resolved covers, and NOTHING else.
  *
  * ## Why the old fallback is gone rather than merely unused
  *
@@ -133,9 +170,11 @@ export function writeInSource(unit: LodgingUnitRow): WriteInSource | null {
  * fabricated occupant is not the conservative answer — it is a different wrong
  * one, and it would also block placement into a cabin that is merely closed.
  *
- * There is no gap left to guard. `write_in` is built for every unit the API
- * returns, and a unit with neither a cover nor a role row is simply open.
+ * There is no gap left to guard. `write_ins` is built for every unit the API
+ * returns, and a unit with neither a cover nor a role row is simply open. The
+ * `?? []` is for the FIELD being absent from an older payload, not for a unit
+ * the walk declined to answer for.
  */
-function coveringWriteIn(unit: LodgingUnitRow): WriteInCoverRow | null {
-  return unit.write_in ?? null
+function coveringWriteIns(unit: LodgingUnitRow): WriteInCoverRow[] {
+  return unit.write_ins ?? []
 }

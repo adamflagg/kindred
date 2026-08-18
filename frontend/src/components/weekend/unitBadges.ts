@@ -29,7 +29,7 @@
  * | branch | fact | field | stored in | scope |
  * |---|---|---|---|---|
  * | "Released" | staff<->family ROLE | `family_available_override` | `lodging_availability` | the WEEKEND |
- * | "Write-in" | OCCUPANCY | `write_in` (via `writeInOccupant`) | `lodging_write_ins`/`_draft` | the SCENARIO |
+ * | "Write-in" | OCCUPANCY | `write_ins` (via `hasWriteIn`) | `lodging_write_ins`/`_draft` | the SCENARIO |
  *
  * So a `family_available_override === false` is a role decision that names
  * NOBODY, and does not badge here. It used to badge "Write-in", because the
@@ -38,7 +38,7 @@
  * wrong about.
  */
 import type { LodgingUnitRow } from '../../types/lodging'
-import { writeInOccupant, writeInSource } from './writeIn'
+import { hasWriteIn } from './writeIn'
 
 export interface UnitBadge {
   label: string
@@ -66,7 +66,7 @@ export interface UnitBadge {
  * `reservationBadge` directly, unaffected by this function existing.
  */
 export function writeInBadgeApplies(unit: LodgingUnitRow): boolean {
-  return unit.inventory_class !== 'staff_default' && writeInOccupant(unit) !== null
+  return unit.inventory_class !== 'staff_default' && hasWriteIn(unit)
 }
 
 export function reservationBadge(unit: LodgingUnitRow): UnitBadge | null {
@@ -115,7 +115,7 @@ export function reservationBadge(unit: LodgingUnitRow): UnitBadge | null {
   // It still does not read `occupant_name`: "written in for a caretaker" and
   // "written in for a burst pipe" are the same fact about availability, which
   // is the same reason the reason text never reached this badge.
-  // Read through `writeInBadgeApplies` (`writeInOccupant`, never the raw
+  // Read through `writeInBadgeApplies` (`hasWriteIn`, never the raw
   // `family_available_override`). The board draws whichever level the tree
   // resolves to, so the card carrying a write-in is often not the unit whose
   // row it is: split a written-into building and its ROOMS carry it; merge
@@ -252,7 +252,7 @@ export function sharingConflictBadge(
 
 /** Which of the three reachable availability outcomes this unit can move to. */
 export interface AvailabilityAction {
-  kind: 'hold' | 'release' | 'clear'
+  kind: 'release' | 'clear'
   /** The button's label, drawn from the same vocabulary as the badge above. */
   label: string
   /** What the write sends. `null` DELETES the row. */
@@ -260,17 +260,19 @@ export interface AvailabilityAction {
   /** What the control collects before it may write — see `AvailabilityPrompt`. */
   prompt: AvailabilityPrompt
   /**
-   * The unit the write NAMES, which is not always the card it is offered on.
+   * The unit the write NAMES — always the card's own, since kindred#2381.
    *
-   * A write-in covers a space, and the board draws whichever level the tree
-   * resolves to — so a room can inherit its building's write-in, and a merged
-   * building one of its rooms'. There is exactly one `lodging_write_ins` row
-   * either way (kindred#2382 split occupancy off `lodging_availability`, which
-   * now answers only the staff↔family role), and clearing it has to target the
-   * unit that HOLDS it:
-   * sending the card's own id would delete nothing, and the unit holding the
-   * row has no card to offer the clear from. Every other action names the
-   * card's own unit.
+   * It was not always, and the exception was the write-in clear: a write-in
+   * covers a space and the board draws whichever level the tree resolves to,
+   * so a room can inherit its building's row and a merged building one of its
+   * rooms', and the clear had to target the unit that HOLDS the row. That
+   * action is gone — a card may now cover several write-ins and each is
+   * removed by the X on its own `WriteInCard` — so every action this returns
+   * is about the card's own availability row again.
+   *
+   * KEPT rather than collapsed into the caller reading `unit.unit_id`: the
+   * write model carries a target either way, and one field that is always the
+   * card's own is cheaper to read than a rule spread across two modules.
    */
   unitId: string
   /** That unit's name, for the confirmation toast. */
@@ -285,18 +287,21 @@ export interface AvailabilityAction {
  * whether the action has anything to ask. What it asks FOR now differs by
  * action, and a boolean cannot say which:
  *
- *   'occupant' — a write-in. A REQUIRED occupant name plus an OPTIONAL note.
- *                ONE control and one action: hold IS the write-in (owner
- *                ruling, 2026-08-09), so there is no second "mark unavailable"
- *                path and no burst-pipe / staff-write-in split.
  *   'reason'   — a release. A required reason and nothing else: opening a
  *                staff cabin to families names no occupant, so prompting for
  *                one would ask for a fact that does not exist.
  *   'none'     — a clear. It restores the unit's standing role rather than
  *                asserting anything about this weekend, so there is nothing
  *                to say.
+ *
+ * There WAS a third, `'occupant'` — a write-in's required name plus an
+ * optional note. It went with the `hold` action on 2026-08-18: a write-in is
+ * created by typing into the card's own family box, so this strip no longer
+ * asks for an occupant, and the note is edited by the pencil on the write-in's
+ * own card. Removed rather than kept unused, because a prompt nothing returns
+ * is a form branch nothing can reach.
  */
-export type AvailabilityPrompt = 'occupant' | 'reason' | 'none'
+export type AvailabilityPrompt = 'reason' | 'none'
 
 /**
  * The one action a unit's card offers, or null if it offers none.
@@ -311,26 +316,23 @@ export type AvailabilityPrompt = 'occupant' | 'reason' | 'none'
  * Lives beside `reservationBadge` so the two cannot drift. A card badged
  * "Write-in" that offers to "Write in" says two things about one cabin.
  *
- * `occupied` names a fact from the SLOT (whether any party is placed on this
- * card this scenario), never folded into `canManage`'s permission gate.
- * Owner ruling on #2090: written-in and occupied are mutually exclusive
- * states, so a space that already holds a family may not also be written into
- * — but this must not become a THIRD dimension threaded onto availability
- * itself.
+ * ★ TAKES NO `occupied` ARGUMENT since the 2026-08-18 ruling, and the absence
+ * is the point. It used to, purely to enforce #2090's "written-in and occupied
+ * are mutually exclusive" gate on the one branch that offered a write-in. That
+ * branch is gone (see the bottom of the function), so occupancy no longer
+ * decides anything here: every action this returns is about the unit's ROLE
+ * row, which a placed family has never had any bearing on.
  *
  * `family_available_override` IS still weekend-level and scenario-less, and
  * that is now a statement about the staff↔family ROLE alone: "we're moving
  * staff to X for weekend Y" is true in every plan, which is why 1500000135's
  * reasoning survived kindred#2382 intact for this half. The OCCUPANCY that
- * used to share the field is scenario-scoped and lives in `write_in` — so the
- * `clear` this offers for a write-in unmakes a fact that belongs to the board
- * you are looking at, while the `clear` it offers for a release unmakes one
- * that belongs to the weekend.
+ * used to share the field is scenario-scoped and lives in `write_ins` — and
+ * since kindred#2381 this resolves the ROLE rows only. A written-into space
+ * returns null here and is removed from its own card, because one action
+ * cannot name one row out of the several a merged card may cover.
  */
-export function availabilityAction(
-  unit: LodgingUnitRow,
-  occupied = false
-): AvailabilityAction | null {
+export function availabilityAction(unit: LodgingUnitRow): AvailabilityAction | null {
   // A SPLIT container is a whole-building aggregate, never a bookable room:
   // `drawnUnits` descends past it and `resolveDrop` rejects it as a target, so
   // an availability row written against one is a row no surface could show or
@@ -349,55 +351,55 @@ export function availabilityAction(
   // (closed this weekend) are different answers, and collapsing them makes
   // either "Write in" or "Clear" unreachable across most of the board.
   const own = { unitId: unit.unit_id, unitName: unit.name }
-  // `label` defaults to the bare 'Clear' the RELEASE and the "agrees with the
-  // role" branches keep — neither of those undoes a write-in, so borrowing
-  // its wording would name a fact that is not there. The write-in branch below
-  // passes 'Clear Write-in' explicitly (kindred#2252): the chip that used to
-  // sit beside this button on `LodgingUnitCard` said "Write-in" out loud, and
-  // #2252 dropped it from that card as redundant with the well's `WriteInCard`
-  // — so the button is now the only thing left on that card naming what a
-  // click removes, and a bare 'Clear' stopped saying that.
-  const clear = (
-    target: { unitId: string; unitName: string },
-    label = 'Clear'
-  ): AvailabilityAction => ({
+  // 'Clear' for both surviving branches — the RELEASE and the "agrees with the
+  // role" one — because neither undoes a write-in and borrowing #2252's 'Clear
+  // Write-in' wording would name a fact that is not there. That label went with
+  // the write-in branch (kindred#2381); what it distinguished this button from
+  // no longer sits beside it.
+  const clear = (target: { unitId: string; unitName: string }): AvailabilityAction => ({
     kind: 'clear',
-    label,
+    label: 'Clear',
     familyAvailable: null,
     prompt: 'none',
     ...target,
   })
   /*
-   * THE THREE CLEAR BRANCHES ARE ORDERED TO MIRROR `reservationBadge` ABOVE,
-   * and that ordering is the rule rather than an accident of writing.
+   * THE BRANCHES ARE ORDERED TO MIRROR `reservationBadge` ABOVE, and that
+   * ordering is the rule rather than an accident of writing.
    *
-   * Once a write-in can be INHERITED, a card can carry its own availability
-   * row AND a relative's write-in at once — two rows, one control. This module
-   * already promises the badge and the action cannot drift ("a card badged
-   * 'Write-in' that offers to 'Write in' says two things about one cabin"), so
-   * the clear names whichever row the badge names. Anything else reports
-   * success for a row the staff member was not looking at, and leaves the fact
-   * they meant to remove sitting on the card.
+   * A card can carry its own availability row AND a relative's write-in at
+   * once — two rows, one control. This module already promises the badge and
+   * the action cannot drift ("a card badged 'Write-in' that offers to 'Write
+   * in' says two things about one cabin"), so a card the badge calls
+   * "Write-in" offers no strip action at all rather than one that quietly
+   * unmakes the other row. Anything else reports success for a row the staff
+   * member was not looking at.
    */
   // A released staff cabin badges "Released" off its OWN row, so that is the
   // row its clear names — even when a relative's write-in also covers it.
   if (unit.inventory_class === 'staff_default' && unit.family_available_override === true) {
     return clear(own)
   }
-  // The write-in COVERING this space, which badges "Write-in". Its own row
-  // when it has one — the server resolves own first — else its building's or
-  // one of its rooms'.
+  // A SPACE SOMEBODY IS WRITTEN INTO OFFERS NOTHING HERE — kindred#2381.
   //
-  // Offered before the `occupied` gate below for the reason that gate's own
-  // comment gives: a clear only ever REDUCES the conflict, so occupancy is
-  // never the state that needs it blocked. Without this branch an inheriting
-  // card is a dead end: it badges a write-in it cannot undo, and the unit
-  // holding the row has no card at all — which is exactly what a merge or a
-  // split does to it.
-  const source = writeInSource(unit)
-  if (source !== null) {
-    return clear({ unitId: source.unitId, unitName: source.unitName }, 'Clear Write-in')
-  }
+  // This used to return a 'Clear Write-in' naming whichever row the server
+  // resolved first, which was sound only while a card could carry exactly one.
+  // A merged container covers every write-in beneath it — four of them on the
+  // one 2026 building that has four — and one button cannot name four rows:
+  // each click destroyed the row it named, the card re-populated with the next
+  // occupant, and the action read as a no-op while it worked through them.
+  //
+  // Removal moved onto the cards, one X per `WriteInCard`, which can only ever
+  // delete the row it sits on. The dead end that branch existed to prevent —
+  // an inheriting card badging a write-in it cannot undo, while the unit
+  // holding the row has no card at all — is closed by the X rather than by
+  // this action, so returning null here strands nothing.
+  //
+  // ABOVE the `occupied` gate, exactly where the clear was: a written-into
+  // card must not fall through to the 'Write in' branch at the bottom and
+  // offer to write a SECOND occupant into a space that already resolves an own
+  // row ahead of its descendants — which would hide the ones already there.
+  if (hasWriteIn(unit)) return null
   // Any other ROLE override of its own — this branch has never been about
   // occupancy and is less so since kindred#2382. Two states reach it, both
   // storable and neither written by any surface: a `true` on a family-pool row
@@ -419,10 +421,31 @@ export function availabilityAction(
   if (unit.inventory_class === 'staff_default') {
     return { kind: 'release', label: 'Release', familyAvailable: true, prompt: 'reason', ...own }
   }
-  // An already-occupied space offers no write-in: the fix for #2090. Only
-  // reachable here, past both branches above, so an already-held unit keeps
-  // its `clear` action regardless of occupancy — clearing only ever REDUCES
-  // the conflict, so it is never the state that needs blocking.
-  if (occupied) return null
-  return { kind: 'hold', label: 'Write in', familyAvailable: false, prompt: 'occupant', ...own }
+  // ★ THE STRIP NO LONGER OFFERS "Write in" AT ALL (owner ruling, 2026-08-18).
+  //
+  // It used to end here with a `hold` action, gated on `!occupied` — the fix
+  // for #2090. Both the action and its gate are gone, and the gate is the
+  // reason the action had to go rather than the other way round.
+  //
+  // Creating a write-in moved into the card's own family box: type a name, and
+  // if no registered family matches, that text becomes the write-in
+  // (`PlaceFamilyPicker`'s `onWriteIn`). The ruling's own framing:
+  //
+  //   > "one fewer chip on the board on every tile, big win ... it removes two
+  //   >  rectangular boxes coexisting and typeable when the write in is also
+  //   >  happening"
+  //
+  // — two controls asking "who is sleeping here", side by side, and a staff
+  // member forced to pick one before knowing which kind of answer they had.
+  //
+  // What the move FIXED, and what a re-introduction would break: #2090's gate
+  // made a partly-filled space refuse a write-in, and on a merged container
+  // that left no path at all, since the rooms lose their own cards to the
+  // merge. `LodgingUnitCard`'s `canPickFamily` carries the reasoning in full.
+  //
+  // Returning null here is therefore the whole of the write-in's absence from
+  // this strip: removal is the X on each `WriteInCard`, editing is the pencil
+  // beside it, and creation is the box. None of the three is an availability
+  // action any more.
+  return null
 }

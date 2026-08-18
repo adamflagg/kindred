@@ -428,3 +428,97 @@ describe('PlaceFamilyPicker — nothing left to place', () => {
     expect(screen.getByText('Everyone has a cabin.')).toBeInTheDocument()
   })
 })
+
+/**
+ * ONE BOX, TWO OUTCOMES (owner ruling, 2026-08-18).
+ *
+ * The board used to carry a separate "Write in" button on every card's
+ * availability strip, so a cabin offered two typeable rectangles for the same
+ * question — *who is sleeping here* — and staff had to decide which control to
+ * reach for before they knew whether the answer was a registered family. The
+ * ruling collapses them: type into the one box, and if nothing matches, what
+ * you typed becomes the write-in.
+ *
+ *   > "simply letting staff type into the 'place a family' text box. if they
+ *   >  type something, and it has no matches and they hit enter, that becomes
+ *   >  the write in. one fewer chip on the board on every tile, big win."
+ *
+ * The offer is a real ROW rather than an invisible Enter binding: a bare
+ * keystroke with no on-screen affordance is undiscoverable, and the board is
+ * close to pointer-only, so the same path has to be clickable.
+ */
+describe('writing in a name from the same box', () => {
+  it('offers to write in what was typed once no family matches', async () => {
+    const onWriteIn = vi.fn()
+    renderPicker({ onWriteIn })
+
+    await userEvent.type(searchBox(), 'Grandparents of Chen')
+
+    expect(screen.getByRole('option', { name: /write in/i })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: /Grandparents of Chen/ })).toBeInTheDocument()
+  })
+
+  it('writes in on Enter, and hands back exactly what was typed', async () => {
+    const onWriteIn = vi.fn()
+    const { onSelect } = renderPicker({ onWriteIn })
+
+    await userEvent.type(searchBox(), '  Grandparents of Chen  {Enter}')
+
+    expect(onWriteIn).toHaveBeenCalledWith('Grandparents of Chen')
+    // The two outcomes are exclusive: a write-in is not also a placement.
+    expect(onSelect).not.toHaveBeenCalled()
+  })
+
+  it('writes in on a click, for a board that is close to pointer-only', async () => {
+    const onWriteIn = vi.fn()
+    renderPicker({ onWriteIn })
+
+    await userEvent.type(searchBox(), 'Paper registration')
+    await userEvent.click(screen.getByRole('option', { name: /write in/i }))
+
+    expect(onWriteIn).toHaveBeenCalledWith('Paper registration')
+  })
+
+  it('clears the box afterwards, so the card does not sit holding a used query', async () => {
+    const onWriteIn = vi.fn()
+    renderPicker({ onWriteIn })
+
+    await userEvent.type(searchBox(), 'Paper registration{Enter}')
+
+    expect(searchBox()).toHaveValue('')
+  })
+
+  it('never offers a write-in while a family still matches', async () => {
+    const onWriteIn = vi.fn()
+    renderPicker({ onWriteIn })
+
+    await userEvent.type(searchBox(), 'Johnson')
+
+    expect(screen.queryByRole('option', { name: /write in/i })).not.toBeInTheDocument()
+    // Enter still places the family the arrows selected, unchanged.
+    await userEvent.keyboard('{ArrowDown}{Enter}')
+    expect(onWriteIn).not.toHaveBeenCalled()
+  })
+
+  it('offers nothing for whitespace alone', async () => {
+    const onWriteIn = vi.fn()
+    renderPicker({ onWriteIn })
+
+    await userEvent.type(searchBox(), '   ')
+
+    expect(screen.queryByRole('option', { name: /write in/i })).not.toBeInTheDocument()
+    await userEvent.keyboard('{Enter}')
+    expect(onWriteIn).not.toHaveBeenCalled()
+  })
+
+  it('stays a pure family picker where the caller offers no write-in path', async () => {
+    // Read-only staff, or a card whose write-in path is refused: the control
+    // must not grow an affordance the caller cannot honour.
+    renderPicker()
+
+    await userEvent.type(searchBox(), 'Nobody At All')
+
+    expect(screen.queryByRole('option', { name: /write in/i })).not.toBeInTheDocument()
+    expect(screen.getByText(/No parties match/)).toBeInTheDocument()
+  })
+})

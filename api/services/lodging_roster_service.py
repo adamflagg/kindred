@@ -628,8 +628,10 @@ def written_in_unit_ids(write_ins: list[Any]) -> frozenset[str]:
     return frozenset(_s(row, "unit") for row in write_ins)
 
 
-def write_in_covers(units: list[LodgingUnitSummary], write_in_unit_ids: frozenset[str]) -> dict[str, WriteInCover]:
-    """Which units each write-in closes, keyed by unit code.
+def write_in_covers(
+    units: list[LodgingUnitSummary], write_in_unit_ids: frozenset[str]
+) -> dict[str, list[WriteInCover]]:
+    """Which write-ins close each unit's space, keyed by unit code.
 
     THE UNIT A ROW NAMES IS NOT THE ONLY SPACE IT CLOSES. A write-in is a fact
     about a physical space and a building's space contains its rooms', but the
@@ -640,10 +642,27 @@ def write_in_covers(units: list[LodgingUnitSummary], write_in_unit_ids: frozense
     family could be dropped into a space somebody is already sleeping in.
 
     Order, highest first: the unit's OWN row, else the nearest ANCESTOR's, else
-    the nearest DESCENDANT's. Own beats inherited because it is the more
-    specific statement about the same space; an ancestor beats a descendant
-    because a building closed whole says something about every room in it,
-    where one room says only that the building is no longer free to let whole.
+    EVERY written-into descendant beneath it. Own beats inherited because it is
+    the more specific statement about the same space; an ancestor beats a
+    descendant because a building closed whole says something about every room
+    in it, where one room says only that the building is no longer free to let
+    whole.
+
+    THE DESCENDANT STEP RETURNS ALL OF THEM (kindred#2381), and that is the
+    arity fix. A merged container draws in place of its rooms, so returning the
+    first match dropped every other occupant off the board -- four of them on
+    the one 2026 container that carries four -- and made each clear look like a
+    failed click as the card re-resolved to the next room. The first two steps
+    stay single-answer: an own row is one row, and an ancestor chain has exactly
+    one nearest member.
+
+    Per-branch NEAREST, not every descendant. A written-into bed inside a
+    written-into wing is already inside that wing's space, so the wing's row
+    speaks for it and returning both would print one space twice. The walk
+    therefore stops descending a branch the moment it finds a row on it.
+
+    Ordered by `code` at every level, so two identical payloads never disagree
+    about the sequence a card draws its occupants in.
 
     RESOLVED FROM OWN ROWS ONLY, never transitively through a cover computed
     for somebody else -- which is what keeps a caretaker in room A off room B.
@@ -676,8 +695,11 @@ def write_in_covers(units: list[LodgingUnitSummary], write_in_unit_ids: frozense
     for unit in units:
         if unit.parent_code:
             children.setdefault(unit.parent_code, []).append(unit)
-    # Sorted so two identical payloads never disagree about WHICH row a card
-    # names when a building has several written-into rooms beneath it.
+    # Sorted so two identical payloads never disagree about the ORDER a card
+    # draws its occupants in when a building has several written-into rooms
+    # beneath it. It used to settle WHICH single row was named, because only
+    # one survived; kindred#2381 returns them all and this now fixes their
+    # sequence instead.
     for bucket in children.values():
         bucket.sort(key=lambda child: child.code)
 
@@ -694,7 +716,15 @@ def write_in_covers(units: list[LodgingUnitSummary], write_in_unit_ids: frozense
             cursor = by_code.get(cursor.parent_code) if cursor.parent_code else None
         return None
 
-    def _nearest_descendant(unit: LodgingUnitSummary) -> LodgingUnitSummary | None:
+    def _written_in_descendants(unit: LodgingUnitSummary) -> list[LodgingUnitSummary]:
+        """Every written-into descendant, nearest-first on each branch.
+
+        Breadth-first over `code`-sorted buckets, so the result is ordered and
+        two identical payloads agree. A branch is not descended past a match:
+        the matched unit's space contains whatever is below it, and its row
+        already speaks for that space.
+        """
+        found: list[LodgingUnitSummary] = []
         seen = {unit.code}
         queue = list(children.get(unit.code, []))
         while queue:
@@ -703,11 +733,12 @@ def write_in_covers(units: list[LodgingUnitSummary], write_in_unit_ids: frozense
                 continue
             seen.add(node.code)
             if _is_written_in(node):
-                return node
+                found.append(node)
+                continue
             queue.extend(children.get(node.code, []))
-        return None
+        return found
 
-    covers: dict[str, WriteInCover] = {}
+    covers: dict[str, list[WriteInCover]] = {}
     for unit in units:
         # Blank codes are excluded from BOTH sides, not just the lookup above.
         # `_build_units` reads this map back by code, so one blank-coded row
@@ -716,16 +747,23 @@ def write_in_covers(units: list[LodgingUnitSummary], write_in_unit_ids: frozense
         # a space on the strength of a row it does not hold.
         if not unit.code:
             continue
-        source = unit if _is_written_in(unit) else (_nearest_ancestor(unit) or _nearest_descendant(unit))
-        if source is None:
+        if _is_written_in(unit):
+            sources = [unit]
+        else:
+            ancestor = _nearest_ancestor(unit)
+            sources = [ancestor] if ancestor is not None else _written_in_descendants(unit)
+        if not sources:
             continue
-        covers[unit.code] = WriteInCover(
-            unit_id=source.unit_id,
-            unit_code=source.code,
-            unit_name=source.name,
-            occupant_name=source.occupant_name,
-            note=source.reason,
-        )
+        covers[unit.code] = [
+            WriteInCover(
+                unit_id=source.unit_id,
+                unit_code=source.code,
+                unit_name=source.name,
+                occupant_name=source.occupant_name,
+                note=source.reason,
+            )
+            for source in sources
+        ]
     return covers
 
 
@@ -738,7 +776,7 @@ def _resolve_write_in_covers(units: list[LodgingUnitSummary], write_in_unit_ids:
     """
     covers = write_in_covers(units, write_in_unit_ids)
     for unit in units:
-        unit.write_in = covers.get(unit.code)
+        unit.write_ins = covers.get(unit.code, [])
 
 
 def drawn_units(units: list[LodgingUnitSummary]) -> list[LodgingUnitSummary]:
@@ -1731,7 +1769,7 @@ class LodgingRosterService:
             # compat shim out. `family_available_override` is now the ROLE row
             # and nothing else -- a staff cabin opened to families for the
             # weekend, or a bare `false` closing one -- while "is somebody in
-            # this space" is answered by `write_in` alone. Until PR 4 this field
+            # this space" is answered by `write_ins` alone. Until PR 4 this field
             # reported `False` for an occupancy too, because
             # `is_family_available` and the board's open-tint were both derived
             # from it; both read the occupancy source directly now.

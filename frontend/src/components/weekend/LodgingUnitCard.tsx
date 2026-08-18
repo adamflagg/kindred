@@ -38,7 +38,7 @@ import {
 } from './unitBadges'
 import { UnitAvailabilityControl } from './UnitAvailabilityControl'
 import type { UnitAvailabilityWrite } from './UnitAvailabilityControl'
-import { writeInOccupant, writeInSource } from './writeIn'
+import { writeInEntries } from './writeIn'
 import { WriteInCard } from './WriteInCard'
 
 /**
@@ -103,8 +103,9 @@ const RING_CLASSES: Record<'dropTarget' | 'consentFlagged' | 'plain', string> = 
  * consent, red to over-capacity), so a fifth meaning cannot have a fifth
  * colour without collapsing the ones that exist. It cannot have an OPACITY
  * either: the 2026-08-09 signal-vocabulary ruling assigns one channel per
- * question, and `opacity-40` is REFUSAL ("you may not") — the invalid merge
- * target below and #2087's held space. This mark says "it will work; nothing
+ * question, and `opacity-40` is REFUSAL ("you may not") — spoken for by the
+ * invalid merge target below, and by that alone since kindred#2432 struck the
+ * written-into space's refusal. This mark says "it will work; nothing
  * here meets the need", which is a different KIND of statement rather than a
  * weaker refusal, so it stays at full contrast: legible, droppable, flagged.
  *
@@ -416,14 +417,15 @@ export function LodgingUnitCard({
   // above — and which one dnd-kit resolves `over` to would be a tie decided
   // by hook registration order, not by which gesture is actually in flight.
   //
-  // Disabled on a WRITTEN-INTO unit (#2078/#2087): a write-in blocks placement
-  // outright, per the owner ruling on #2090. This is the AFFORDANCE half — it
-  // keeps dnd-kit from ever reporting `isOver` here, so the card cannot even
-  // highlight as a target — while `resolveDrop` (`dragPlacement.ts`) is the
-  // half that actually enforces it, because #2080 adds a placement path that
-  // reaches `resolveDrop` without ever touching this hook.
+  // NOT disabled on a WRITTEN-INTO unit any more — kindred#2432, owner ruling
+  // 2026-08-18: *"we should be able to add families to any write in space, or
+  // add a write in to a family space — regardless of which came first."* This
+  // read `|| held` until then, the AFFORDANCE half of #2090's refusal, whose
+  // enforcing half lived in `resolveDrop`. Both went in the same change, and
+  // they have to: leaving this one would keep the card from ever reporting
+  // `isOver`, so a drop the resolver now accepts could never be aimed at it.
   //
-  // Read through `writeInOccupant` rather than as an inline
+  // Read through `writeInEntries` rather than as an inline
   // `family_available_override === false`, which is what this was until
   // kindred#2078. Three consumers on this card shared that expression under
   // the name `held`, and one of them — #2093's open-tint gate below — was
@@ -432,15 +434,21 @@ export function LodgingUnitCard({
   // occupancy into its own scenario-scoped table, and that field now answers
   // the staff↔family role alone. Had the three consumers kept the inline
   // spelling, the split would have had to find all three.
-  const writeIn = writeInOccupant(unit)
-  // WHOSE row it is. Undefined whenever it is this card's own, so the common
-  // case says nothing extra — see `WriteInCard`'s own prop doc.
-  const writeInAt = writeInSource(unit)
-  const writeInAtName = writeInAt !== null && !writeInAt.isOwn ? writeInAt.unitName : undefined
-  const held = writeIn !== null
+  //
+  // A LIST since kindred#2381. A merged container draws in place of its rooms,
+  // so every write-in beneath it lands on this card — four of them on the one
+  // 2026 building that carries four — and each entry pairs the occupant with
+  // the row that holds it, so the card's own X can name that row and no other.
+  const writeIns = writeInEntries(unit)
+  // Renamed from `held` with kindred#2432, and the rename is the point: this
+  // says WHO IS IN IT and no longer says the space is shut. Every surviving
+  // reader below is one that genuinely wants "somebody is already in this
+  // room" — the em-dash occupancy figure and the open-space to-do tint — and
+  // none of them is a refusal.
+  const writtenInto = writeIns.length > 0
   const { setNodeRef: setUnitDropRef, isOver: isUnitOver } = useDroppable({
     id: unitDroppableId(unit.code),
-    disabled: !canPlace || mergeDragActive || held,
+    disabled: !canPlace || mergeDragActive,
   })
 
   const setCardRef = (node: HTMLDivElement | null) => {
@@ -510,31 +518,46 @@ export function LodgingUnitCard({
   // suppressed the instant this card becomes an active drop target, same as
   // the old wash was.
   //
-  // `writeIn === null` is the second gate, and it is not cosmetic: EMPTY and
-  // OPEN are different predicates and this is where they part. A write-in
-  // blocks placement outright (`held` above; `dragPlacement.ts` refuses the
-  // drop), so a written-into cabin has no family in it and can take none.
-  // That was harmless while the empty treatment was a neutral grey wash, but
-  // the forest tint says "the remaining work is here" — and the marker is the
-  // to-do list. Painting such a cabin forest sends staff at the one room they
-  // may not fill. The dashed EDGE still applies to it, being structural
-  // rather than an invitation.
+  // `!writtenInto` is the second gate, and it SURVIVES kindred#2432 on a
+  // reason that changed underneath it — which is exactly the kind of gate that
+  // gets deleted by accident, so read this before touching it.
+  //
+  // It used to mean *this cabin may not be filled*: a write-in refused
+  // placement outright, so painting it forest sent staff at the one room they
+  // could not use. That reason is gone — a written-into cabin now takes a
+  // family like any other. What remains is the predicate this gate was always
+  // really about: EMPTY and OPEN are different questions, and a room somebody
+  // is already sleeping in is not empty. The tint says "the remaining work is
+  // HERE", and a cabin with an occupant in its well is not where the remaining
+  // work is, even though a second party may now join them.
+  //
+  // The dashed EDGE still applies to it, being structural rather than an
+  // invitation, and that split is unchanged.
   //
   // Keyed on the OCCUPANT SIGNAL, never on the occupant's NAME being filled
-  // in: a write-in nobody named still closes the room, and gating on the name
-  // would hand exactly that room back to the to-do marker.
-  const openMarkerActive = dashed && writeIn === null && ringState !== 'dropTarget'
+  // in: a write-in nobody named still puts somebody in the room, and gating on
+  // the name would hand exactly that room back to the to-do marker.
+  const openMarkerActive = dashed && !writtenInto && ringState !== 'dropTarget'
 
   /*
    * The corner figure, and the sentence behind it (kindred#2078).
    *
    * A write-in with nobody else in the room reports the em dash rather than a
    * count: it occupies wholesale and has no party size, so any digit here
-   * would assert something nobody recorded. A card that somehow carries BOTH a
-   * write-in and a placement keeps the placement count — that is a real number
-   * about real people, and the card should not go quiet about them.
+   * would assert something nobody recorded. A card carrying BOTH a write-in and
+   * a placement keeps the placement count — that is a real number about real
+   * people, and the card should not go quiet about them.
+   *
+   * ⚠️ THAT SECOND CASE IS ROUTINE SINCE kindred#2432 and was a legacy-row
+   * curiosity before it, and the number it prints UNDERSTATES a shared space:
+   * `lodging_write_ins` carries `occupant_name` and `note` and no count, so the
+   * write-in's own party contributes nothing here and the free-bed figure reads
+   * high. Filed as kindred#2439 (optional write-in headcount) and ruled an
+   * optional investigation rather than a blocker — an understated count on a
+   * space staff can share beats a space they could not share at all. Do not
+   * "fix" it by guessing a headcount here.
    */
-  const wholesaleWriteIn = writeIn !== null && occupants === 0
+  const wholesaleWriteIn = writtenInto && occupants === 0
   const occupancyFigure = wholesaleWriteIn ? '—' : String(occupants)
 
   /*
@@ -616,32 +639,88 @@ export function LodgingUnitCard({
   /*
    * Whether this card offers to place a family from itself (kindred#2080).
    *
-   * ABSENT, NOT DIMMED, in every negative case — mirroring how Hold itself
-   * vanishes on an occupied card rather than greying out. That is a signal
-   * decision, not a style one: under the board's ruled vocabulary
-   * (2026-08-09) `opacity-40` MEANS refusal and is spoken for by the invalid
-   * merge target and by a held space. An absent control adds no fifth
-   * meaning to any channel.
+   * ABSENT, NOT DIMMED, in every negative case. That is a signal decision, not
+   * a style one: under the board's ruled vocabulary (2026-08-09) `opacity-40`
+   * MEANS refusal and is spoken for by the invalid merge target. An absent
+   * control adds no fifth meaning to any channel.
    *
-   * The four gates, and why each is a gate rather than a fit judgement:
+   * THREE gates since kindred#2432, and why each is a gate rather than a fit
+   * judgement:
    *
-   *   - `held` — a hold blocks placement outright (#2087/#2090), and
-   *     `resolveDrop` refuses the write. Offering the control would name an
-   *     action that writes nothing.
-   *   - occupied — Hold's own rule, and the same reasoning: the card that
-   *     already holds a family is not the card staff are looking to fill.
-   *     A SECOND family still reaches a shareable space by drag, which
-   *     remains the path for a share that has to be looked at deliberately.
    *   - `isSplitContainer` — `resolveDrop` rejects one as a target, and it
    *     gets no card anyway; belt-and-braces, exactly as `sharing` above.
    *   - no writer / no `canPlace` — no scenario, or no `bunking.manage`.
    *
+   * ⚠️ A FOURTH GATE, `!held`, was struck by kindred#2432 and must not come
+   * back. It said "a hold blocks placement outright (#2087/#2090), so offering
+   * the control would name an action that writes nothing" — true only while
+   * `resolveDrop` refused a written-into space, which it no longer does.
+   * `resolvePickerPlacement` is a thin adapter over `resolveDrop`, so a gate
+   * here that RESTATES a refusal the resolver makes is the drift that design
+   * exists to prevent, and a gate that CONTRADICTS one is worse still.
+   *
+   * `parties.length === 0` is neither, and the distinction is the one to hold
+   * on to before reading the rule above as licence to delete it: the resolver
+   * ACCEPTS a second family onto an occupied card, and so does the drag. This
+   * gate does not refuse that placement — it declines to OFFER it from a
+   * surface whose question is "which family goes in this empty space", leaving
+   * the deliberate path (drag) intact. A gate that removes an affordance
+   * without removing an outcome is a scoping choice; only a gate that changes
+   * what the board will accept would be the drift.
+   *
    * NOT gated on the list being empty. "Everyone has a cabin" is a real
    * answer to the question the control asks, and the picker says it; hiding
    * the control instead would leave staff wondering where it went.
+   *
+   * ★ NO LONGER GATED ON `parties.length === 0` (owner ruling, 2026-08-18).
+   *
+   * It was, and the reason was sound while this box only placed families: the
+   * card already holding one is not the card staff are looking to fill, and a
+   * second family reaches a shareable space by drag. That reasoning does not
+   * survive the box becoming the ONLY way to write somebody in. The owner hit
+   * it on a merged building:
+   *
+   *   > "if i populate 3/4 of clouds rest, i cannot add a write in directly
+   *   >  to it"
+   *
+   * — because the strip's "Write in" action refused an occupied card (#2090)
+   * and this box was hidden by the same condition, so a partly-filled merged
+   * container offered NO input at all. A container is the case that bites,
+   * since its rooms lose their own cards to the merge and there is nowhere
+   * else to go.
+   *
+   * Family rows on an occupied card are not a new claim: this control has
+   * always annotated rather than refused, and every refusal on the path is
+   * still `resolvePickerPlacement` → `resolveDrop`'s, inherited whole.
    */
-  const canPickFamily =
-    canPlace && onPlaceParty !== undefined && !held && !isSplitContainer && parties.length === 0
+  const canOfferPlacement = canPlace && onPlaceParty !== undefined
+  /**
+   * THE DIVERGENCE FROM `canPlace`, preserved from the strip's write-in.
+   *
+   * Who is sleeping in a cabin is a fact about the WEEKEND, not about a plan,
+   * so staff must be able to record one without first creating a scenario.
+   * The strip's "Write in" was gated on `canSetAvailability`, never on
+   * `canPlace`, and the box that replaced it has to keep that — otherwise the
+   * CampMinder mirror loses its write-in path entirely.
+   */
+  const canOfferWriteIn = canSetAvailability && onSetAvailability !== undefined
+  /**
+   * ⚠️ TWO GATES WERE STRUCK HERE AND NEITHER MAY COME BACK.
+   *
+   *   `parties.length === 0` — struck 2026-08-18. Coherent while this box only
+   *   placed families; incoherent once it became the only way to write somebody
+   *   in, because a partly-filled merged building then had no input at all.
+   *
+   *   `!writtenInto` — struck with kindred#2432. It refused the box on a card
+   *   that already holds a write-in, which is the mirror of the same mistake:
+   *   the reported case is one paper registration sharing a cabin with one
+   *   placed family, and this gate blocked the second half of it.
+   *
+   * Together they are the "mix and match" rule: a family and a write-in may
+   * share a space in either order, on a leaf or on a container, and each is
+   * removed independently.
+   */
+  const canPickFamily = (canOfferPlacement || canOfferWriteIn) && !isSplitContainer
 
   const cardStateClassName = [
     RING_CLASSES[ringState],
@@ -664,8 +743,8 @@ export function LodgingUnitCard({
   // Deliberately reuses `openMarkerActive` rather than bare `dashed`: the
   // owner ruling frames the tint as ONE resting-state signal, and a title
   // that stayed bold forest while the background wash had already stood down
-  // — for an active drop target, or for a held room — would be the two halves
-  // of the same mark silently drifting apart.
+  // — for an active drop target, or for a room somebody is written into —
+  // would be the two halves of the same mark silently drifting apart.
   const openTitleClassName = openMarkerActive
     ? 'text-primary font-bold'
     : 'text-foreground font-semibold'
@@ -838,7 +917,6 @@ export function LodgingUnitCard({
         <UnitAvailabilityControl
           unit={unit}
           canManage={canSetAvailability && onSetAvailability !== undefined}
-          occupied={parties.length > 0}
           isSaving={savingAvailability}
           onSubmit={(write) => {
             onSetAvailability?.(write)
@@ -856,13 +934,39 @@ export function LodgingUnitCard({
         {canPickFamily && (
           <PlaceFamilyPicker
             unit={unit}
-            parties={unplacedParties}
+            // EMPTY where placement is refused, which is how the control knows
+            // it is a write-in box rather than both. Passing the queue anyway
+            // would offer rows that `resolvePickerPlacement` refuses.
+            parties={canOfferPlacement ? unplacedParties : []}
+            isSaving={savingAvailability}
             // The registry, only so a combined house is judged by its
             // whole-house capacity rather than by its container row's delta.
             units={units}
             onSelect={(party) => {
-              onPlaceParty(unit, party)
+              onPlaceParty?.(unit, party)
             }}
+            {...(canOfferWriteIn
+              ? {
+                  // The write the strip's "Write in" action used to send,
+                  // from the box that replaced it. `familyAvailable: false`
+                  // IS the write-in (kindred#2382 moved the row out of
+                  // `lodging_availability`, and the write shape stayed).
+                  //
+                  // `reason: ''` — the note is optional and this path does not
+                  // collect one. A write-in that wants a note gets it from the
+                  // pencil on its own card, which is where every other edit to
+                  // a write-in now lives.
+                  onWriteIn: (occupantName: string) => {
+                    onSetAvailability({
+                      unitId: unit.unit_id,
+                      unitName: unit.name,
+                      familyAvailable: false,
+                      occupantName,
+                      reason: '',
+                    })
+                  },
+                }
+              : {})}
           />
         )}
         {/* Merging is promotion to the parent: dragging this handle onto a
@@ -960,11 +1064,78 @@ export function LodgingUnitCard({
       <div className="flex min-h-[100px] flex-1 flex-col gap-2">
         {/* A write-in, drawn where the board draws occupancy (kindred#2078).
             FIRST and unconditionally, never in an either/or with the parties
-            below: a card carrying both is not a state any writer produces
-            (#2090 rules the two mutually exclusive), but if a legacy row ever
-            does, hiding one of them would drop somebody from the board. */}
-        {writeIn !== null && <WriteInCard occupant={writeIn} atUnitName={writeInAtName} />}
-        {parties.length === 0 && writeIn === null ? (
+            below. That was defensive when it was written — #2090 ruled the two
+            mutually exclusive, so a card carrying both was only reachable
+            through a legacy row — and kindred#2432 makes it the ROUTINE state:
+            a paper registration recorded as a write-in, sharing the cabin with
+            a placed CampMinder family.
+
+            ⚠️ THIS IS #2091'S VISUAL PRECEDENT, deliberately and by default.
+            "Mark a space that holds two families the way the master housing
+            sheet does" is unbuilt, so whatever a shared well looks like here is
+            what it will look like there. The chosen form is the most
+            conservative one available: ONE well, the occupants stacked in the
+            order they already stack, NO divider, NO new chip, NO new colour —
+            the existing `WriteInCard` and `FamilyCard` frames unchanged. A
+            shared space is not a new KIND of card; it is a card with two
+            occupants in it. If #2091 later wants a shared-space treatment it
+            should EXTEND this rather than contradict it. */}
+        {writeIns.map((entry) => (
+          <WriteInCard
+            key={entry.source.unitId}
+            occupant={entry.occupant}
+            // WHOSE row it is, and undefined whenever it is this card's own —
+            // so the common case says nothing extra. Restored during review of
+            // kindred#2381: a merged container's well can hold four occupants
+            // sleeping in four DIFFERENT rooms, and a split building's rooms
+            // each draw a card for the one row the building holds, so without
+            // this a name in the well names no space at all.
+            // BOUND TO THIS ROW, which is the whole point of the per-card X:
+            // the strip's single "Clear Write-in" named whichever row the
+            // server resolved first, so on a merged building a click removed
+            // one, the card re-populated with the next occupant, and the
+            // action read as a no-op while it destroyed them one by one.
+            //
+            // `familyAvailable: null` DELETES, and the occupant and reason are
+            // empty because a removal asserts nothing — the same write the
+            // strip's clear sent, now pointed at a row the reader can see.
+            {...(canSetAvailability && onSetAvailability !== undefined
+              ? {
+                  onRemove: () => {
+                    onSetAvailability({
+                      unitId: entry.source.unitId,
+                      unitName: entry.source.unitName,
+                      familyAvailable: null,
+                      occupantName: '',
+                      reason: '',
+                    })
+                  },
+                  // BOUND TO THIS ROW for the same reason `onRemove` is — kindred#2430.
+                  // `familyAvailable: false` is the write-in "hold" value, never
+                  // `null`: `set_availability` upserts a write-in
+                  // (`_upsert_row(what='write-in', ...)`), so this write updates
+                  // the existing row rather than creating a second one.
+                  onEdit: (write: { occupantName: string; reason: string }) => {
+                    onSetAvailability({
+                      unitId: entry.source.unitId,
+                      unitName: entry.source.unitName,
+                      familyAvailable: false,
+                      occupantName: write.occupantName,
+                      reason: write.reason,
+                    })
+                  },
+                }
+              : {})}
+            isSaving={savingAvailability}
+          />
+        ))}
+        {/* The invitation, and it stands down for a write-in even though the
+            card now accepts a drop: the well is not EMPTY — a `WriteInCard` is
+            sitting in it — and "Drop families here" under a named occupant
+            describes the wrong space. The card is still a live drop target;
+            the placeholder is about what the well contains, not about what the
+            card will accept. */}
+        {parties.length === 0 && !writtenInto ? (
           /* Summer's wording in family vocabulary — `BunkCard` says "Drop
              campers here". An empty slot's job is to be a target, and "Empty"
              described the state without offering the action.
