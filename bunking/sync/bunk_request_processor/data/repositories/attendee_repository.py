@@ -466,15 +466,36 @@ class AttendeeRepository:
             Dict with cm_ids, prior_bunk, prior_year, total_in_bunk, returning_count
             Empty dict if no prior year assignment found or on error
         """
+        # Imported at call time, not module scope: `bunking.graph` imports
+        # `bunking.satisfaction`, which imports this package's `core.models`, so
+        # a top-level import here is a genuine cycle. Importing at call time
+        # keeps ONE definition of the eligible-session-type set rather than
+        # adding another copy of it.
+        from bunking.graph.social_graph_builder import LAST_YEAR_HISTORY_SESSION_TYPES  # noqa: PLC0415
+
         try:
             previous_year = year - 1
 
-            # Find requester's bunk assignment from prior year
+            # Find requester's bunk assignment from prior year.
+            #
+            # The session-type predicate is pushed INTO the query so the
+            # database returns only rows from a session that actually puts
+            # children in a cabin. Without it a Family Camp DAY GROUP was
+            # eligible to be returned as a summer `prior_bunk`, and the whole
+            # day group then came back as "bunkmates" (#2426). `sort: "id"`
+            # breaks ties deterministically for the rarer case of two eligible
+            # rows -- PocketBase's get_full_list has no inherent order, so the
+            # winner could otherwise change between runs with no code change.
+            # Same predicate and same STABLE_SORT convention as
+            # `bunking/graph/social_graph_builder.py`, which already carries
+            # this fix for its own query.
+            type_clause = " || ".join(f'session.session_type = "{t}"' for t in LAST_YEAR_HISTORY_SESSION_TYPES)
             try:
                 assignments = self.pb.collection("bunk_assignments").get_full_list(
                     query_params={
-                        "filter": f"person.cm_id = {requester_cm_id} && year = {previous_year}",
-                        "expand": "person,bunk",
+                        "filter": f"person.cm_id = {requester_cm_id} && year = {previous_year} && ({type_clause})",
+                        "expand": "person,bunk,session",
+                        "sort": "id",
                     }
                 )
             except Exception:
@@ -488,19 +509,31 @@ class AttendeeRepository:
             requester_assignment = assignments[0]
             expand = getattr(requester_assignment, "expand", {}) or {}
             bunk_data = expand.get("bunk")
+            session_data = get_session_from_expand(requester_assignment)
 
             if not bunk_data:
                 return {}
 
             bunk_id = getattr(bunk_data, "id", None)
             bunk_name = getattr(bunk_data, "name", None)
+            session_id = getattr(session_data, "id", None) if session_data else None
 
-            if not bunk_id:
+            # Without the session we cannot scope the bunk to a week, and an
+            # unscoped query would return the whole building -- which is the
+            # defect this method is being fixed for. Return nothing instead.
+            if not bunk_id or not session_id:
                 return {}
 
-            # Find all campers in that bunk for prior year
+            # Find all campers in that bunk for prior year, IN THAT SESSION. A
+            # bunk is a building: 42 of the 57 bunks carrying a 2025 assignment
+            # served more than one session, so filtering on bunk + year alone
+            # returned children the requester never met (median peer set 29
+            # against a session-scoped 8).
             bunkmates = self.pb.collection("bunk_assignments").get_full_list(
-                query_params={"filter": f'bunk = "{bunk_id}" && year = {previous_year}', "expand": "person"}
+                query_params={
+                    "filter": f'bunk = "{bunk_id}" && year = {previous_year} && session = "{session_id}"',
+                    "expand": "person",
+                }
             )
 
             if not bunkmates:

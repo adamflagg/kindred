@@ -5,6 +5,7 @@ matching monolith's build_temporal_name_cache() behavior."""
 
 import logging
 from datetime import datetime
+from typing import Any
 from unittest.mock import Mock
 
 
@@ -265,7 +266,8 @@ class TestTemporalNameCache:
                 "session_name": "Session 3",
                 "parent_session_id": 1002,
                 "parent_session_name": "Session 3",
-                "bunk": "B-5",
+                "bunk_name": "B-5",
+                "session_type": "main",
             }
         }
 
@@ -672,3 +674,123 @@ class TestTemporalNameCache:
         assert any(
             record.levelno == logging.WARNING and "Loaded 0 persons" in record.message for record in caplog.records
         )
+
+
+def _bunk_assignment(
+    person_cm_id: int,
+    year: int,
+    bunk_name: str,
+    session_cm_id: int,
+    session_type: str,
+    record_id: str,
+) -> Mock:
+    """Build a bunk_assignments record whose expand looks like PocketBase's."""
+    assignment = Mock(spec=["expand", "year", "id"])
+    assignment.id = record_id
+    assignment.year = year
+    person = Mock(spec=["cm_id"])
+    person.cm_id = person_cm_id
+    bunk = Mock(spec=["name"])
+    bunk.name = bunk_name
+    session = Mock(spec=["cm_id", "session_type", "name"])
+    session.cm_id = session_cm_id
+    session.session_type = session_type
+    session.name = f"Session {session_cm_id}"
+    assignment.expand = {"person": person, "bunk": bunk, "session": session}
+    return assignment
+
+
+def _load_cache(assignments):
+    """Run _load_historical_bunking against mocked PocketBase collections."""
+    from bunking.sync.bunk_request_processor.data.cache.temporal_name_cache import (
+        TemporalNameCache,
+    )
+
+    captured: dict[str, Any] = {}
+
+    sessions_collection = Mock()
+    sessions_collection.get_full_list = Mock(return_value=[])
+
+    assignments_collection = Mock()
+
+    def _get_full_list(**kwargs):
+        captured.update(kwargs.get("query_params", {}))
+        return list(assignments)
+
+    assignments_collection.get_full_list = Mock(side_effect=_get_full_list)
+
+    pb = Mock()
+    pb.collection = Mock(
+        side_effect=lambda name: sessions_collection if name == "camp_sessions" else assignments_collection
+    )
+
+    cache = TemporalNameCache(pb, year=2026)
+    cache._load_historical_bunking()
+    return cache, captured
+
+
+class TestHistoricalBunkingSessionType:
+    """The temporal cache must not treat Family Camp day groups as cabins (#2427)."""
+
+    def test_record_carries_session_type_and_bunk_name(self):
+        cache, _ = _load_cache([_bunk_assignment(1001, 2025, "Cabin 7", 500, "main", "rec_a")])
+
+        record = cache.get_historical_info(1001, 2025)
+        assert record is not None
+        assert record["session_type"] == "main"
+        # The producer must write the key `verify_bunk_together` reads.
+        assert record["bunk_name"] == "Cabin 7"
+
+    def test_load_is_deterministic_and_keeps_day_group_people_in_the_index(self):
+        """The load stays unfiltered on purpose — the name index needs those people."""
+        cache, captured = _load_cache([_bunk_assignment(1002, 2025, "Day Group 3", 900, "family", "rec_b")])
+
+        assert captured.get("sort") == "id"
+        # A Family Camp attendee is still a real prior-year person for name resolution.
+        assert 2025 in cache._historical_bunking[1002]
+        assert cache._historical_bunking[1002][2025]["session_type"] == "family"
+
+    def test_eligible_row_beats_a_day_group_row_whatever_the_order(self):
+        eligible = _bunk_assignment(1003, 2025, "Cabin 7", 500, "main", "rec_c")
+        day_group = _bunk_assignment(1003, 2025, "Day Group 3", 900, "family", "rec_d")
+
+        for rows in ([day_group, eligible], [eligible, day_group]):
+            cache, _ = _load_cache(rows)
+            record = cache.get_historical_info(1003, 2025)
+            assert record["bunk_name"] == "Cabin 7"
+            assert record["session_type"] == "main"
+
+    def test_verify_bunk_together_reads_what_the_loader_writes(self):
+        """The producer wrote "bunk" and the consumer read "bunk_name" — it was inert."""
+        cache, _ = _load_cache(
+            [
+                _bunk_assignment(1004, 2025, "Cabin 7", 500, "main", "rec_e"),
+                _bunk_assignment(1005, 2025, "Cabin 7", 500, "main", "rec_f"),
+            ]
+        )
+
+        were_together, bunk_name = cache.verify_bunk_together(1004, [1005], 2025)
+
+        assert were_together is True
+        assert bunk_name == "Cabin 7"
+
+    def test_verify_bunk_together_rejects_a_shared_day_group(self):
+        cache, _ = _load_cache(
+            [
+                _bunk_assignment(1006, 2025, "Day Group 3", 900, "family", "rec_g"),
+                _bunk_assignment(1007, 2025, "Day Group 3", 900, "family", "rec_h"),
+            ]
+        )
+
+        assert cache.verify_bunk_together(1006, [1007], 2025) == (False, "")
+
+    def test_verify_bunk_together_rejects_a_target_from_another_session(self):
+        """Same cabin name, different week — not bunkmates."""
+        cache, _ = _load_cache(
+            [
+                _bunk_assignment(1008, 2025, "Cabin 7", 500, "main", "rec_i"),
+                _bunk_assignment(1009, 2025, "Cabin 7", 501, "main", "rec_j"),
+            ]
+        )
+
+        assert cache.verify_bunk_together(1008, [1009], 2025) == (False, "")

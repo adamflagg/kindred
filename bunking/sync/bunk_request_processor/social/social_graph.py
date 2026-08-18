@@ -254,6 +254,14 @@ class SocialGraph:
 
     async def _add_historical_bunking_relationships(self, graph: nx.Graph, session_cm_id: int) -> None:
         """Add historical bunking relationships from previous years using bunk_assignments table"""
+        # Imported at call time, not module scope: `bunking.graph` imports
+        # `bunking.satisfaction`, which imports this package's `core.models`,
+        # so a top-level import here is a genuine cycle (it fails with
+        # "cannot import name 'BucketCount' from partially initialized module
+        # bunking.satisfaction"). A call-time import keeps ONE definition of
+        # the eligible-session-type set instead of adding a fourth copy of it.
+        from bunking.graph.social_graph_builder import LAST_YEAR_HISTORY_SESSION_TYPES  # noqa: PLC0415
+
         try:
             # Get all people in this session's graph
             if graph.number_of_nodes() == 0:
@@ -266,31 +274,54 @@ class SocialGraph:
             chunk_size = 25
             all_assignments = []
 
+            # Only sessions that actually put children in a cabin can produce a
+            # prior-year bunkmate. Without this predicate a Family Camp DAY
+            # GROUP -- which holds a median of 53 people and is not a cabin at
+            # all -- was scored as summer bunkmate history (#2425). The same
+            # predicate, from the same constant, already guards the equivalent
+            # query in `bunking/graph/social_graph_builder.py`; it was never
+            # swept sideways into this file, which is what produced #2425,
+            # #2426 and #2427 at once.
+            #
+            # `session` is a single-select relation (maxSelect=1), so
+            # dot-notation reaches the related row's `session_type` directly --
+            # the same pattern social_graph_builder uses.
+            type_clause = " || ".join(f'session.session_type = "{t}"' for t in LAST_YEAR_HISTORY_SESSION_TYPES)
+
             for chunk in batched(person_cm_ids, chunk_size, strict=False):
                 person_filter = " || ".join([f"person.cm_id = {pid}" for pid in chunk])
-                filter_str = f"year < {self.year} && ({person_filter})"
+                filter_str = f"year < {self.year} && ({type_clause}) && ({person_filter})"
 
                 assignments = self.pb.collection("bunk_assignments").get_full_list(
-                    query_params={"filter": filter_str, "expand": "person,bunk"}
+                    query_params={"filter": filter_str, "expand": "person,bunk,session"}
                 )
                 all_assignments.extend(assignments)
 
-            # Group assignments by (year, bunk) to find who bunked together
-            year_bunk_members: dict[tuple[int, str], set[int]] = {}
+            # Group assignments by (year, bunk, session) to find who bunked
+            # together. The session belongs in the key: a bunk is a BUILDING,
+            # reused by successive sessions -- 42 of the 57 bunks carrying a
+            # 2025 assignment served more than one session -- so keying on
+            # (year, bunk) alone paired children who occupied the same cabin in
+            # different weeks and never met (#2425).
+            year_bunk_members: dict[tuple[int, str, str], set[int]] = {}
             for assignment in all_assignments:
                 expand = getattr(assignment, "expand", {}) or {}
                 person_data = get_person_from_expand(assignment)
                 bunk_data = expand.get("bunk")
+                session_data = get_session_from_expand(assignment)
 
-                if not person_data or not bunk_data:
+                if not person_data or not bunk_data or not session_data:
                     continue
 
                 person_cm_id = getattr(person_data, "cm_id", None)
                 bunk_id = getattr(bunk_data, "id", None)
+                session_id = getattr(session_data, "id", None)
                 year = getattr(assignment, "year", None)
 
-                if person_cm_id and bunk_id and year:
-                    key = (year, bunk_id)
+                # A row whose session cannot be resolved cannot be scoped to a
+                # week, so it is dropped rather than merged into the building.
+                if person_cm_id and bunk_id and session_id and year:
+                    key = (year, bunk_id, session_id)
                     if key not in year_bunk_members:
                         year_bunk_members[key] = set()
                     year_bunk_members[key].add(person_cm_id)
@@ -299,7 +330,7 @@ class SocialGraph:
             historical_edges = 0
             processed_pairs: set[tuple[int, int]] = set()
 
-            for (year, _bunk_id), members in year_bunk_members.items():
+            for (year, _bunk_id, _session_id), members in year_bunk_members.items():
                 # Only consider members who are in the current session's graph
                 graph_members = [m for m in members if m in graph]
 
