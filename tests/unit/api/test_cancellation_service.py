@@ -543,15 +543,23 @@ class TestTeenCrossSessionEnrollment:
         assert result.no_other_sessions == 0
 
 
-class TestFamilyCampCrossSessionEnrollment:
-    """A cancelled summer camper whose household still attends a Family Camp
-    weekend must count as 'has other sessions', not a true departure. The
-    cross-session enrollment lookup has to span Family Camp too, mirroring the
-    existing SCIT/TLI teen-program handling above.
+class TestFamilyCampIsNotStillAttending:
+    """Family Camp must NOT count as "still attending camp" for cancellations.
+
+    The cancellation metrics track the CAMPER journey through summer. A camper
+    who cancels a summer session and comes only to a Family Camp weekend is a
+    real departure from summer and is exactly what staff want surfaced — Family
+    Camp is a separate program, not a summer session the camper moved to.
+
+    This pins an owner ruling made on 2026-08-18 after #2435 shipped the
+    opposite behaviour and was reverted. #2435's premise ("the reasoning
+    transfers verbatim" from the SCIT/TLI teen fold-in) does not hold: teen
+    programs ARE summer, Family Camp is not. Do not re-add `family` to
+    `enrollment_session_ids` without a new ruling.
     """
 
     @pytest.mark.asyncio
-    async def test_summer_camper_kept_in_family_camp_counts_as_has_other(
+    async def test_summer_cancellation_with_family_camp_is_not_has_other(
         self, cancellation_service, mock_repository, sample_persons
     ):
         session1 = create_mock_session(1001, "Session 1", 2026, "main", "2026-06-15", "2026-07-05")
@@ -559,8 +567,8 @@ class TestFamilyCampCrossSessionEnrollment:
         summer_sessions = {1001: session1}
         family_sessions = {3001: family_weekend}
 
-        # Noah (104) cancelled his summer session but the household is still
-        # enrolled in a Family Camp weekend.
+        # Noah cancelled his summer session; the household still attends a
+        # Family Camp weekend. That is still a summer departure.
         cancelled = [
             create_mock_attendee(
                 104,
@@ -597,9 +605,5 @@ class TestFamilyCampCrossSessionEnrollment:
 
         result = await cancellation_service.calculate_cancellations(year=2026)
 
-        # has_other_sessions / no_other_sessions is the "still-attending" lookup
-        # this fix corrects. true_departure_count is a separate metric (driven by
-        # detect_session_swaps' same-day cancel+enroll heuristic) that this fix
-        # deliberately does not touch -- out of scope per the issue.
-        assert result.has_other_sessions == 1
-        assert result.no_other_sessions == 0
+        assert result.no_other_sessions == 1
+        assert result.has_other_sessions == 0
