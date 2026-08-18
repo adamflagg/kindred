@@ -353,7 +353,7 @@ describe('setSlotMerge', () => {
 })
 
 describe('fetchHouseholdMedical', () => {
-  it('hits the permission-gated PHI endpoint through fetchWithAuth', async () => {
+  it('hits the `bunking.manage`-gated medical endpoint through fetchWithAuth', async () => {
     const mockFetch = vi
       .fn()
       .mockResolvedValue(okResponse({ household_cm_id: 2000001, year: 2026 }))

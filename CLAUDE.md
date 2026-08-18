@@ -187,7 +187,7 @@ Be careful with the comparison, because summer is not uniform: the bunking board
 
 **Long staleTime plus explicit invalidation on mutation — never short staleTime plus hope.** The second half is not optional and is the part that got missed: when the weekend queries moved to a 30-minute staleTime, the lodging admin panels still invalidated only their own registry keys, leaving the roster stale for half an hour after a cabin confirmation. That is what `invalidateLodgingRegistryQueries` exists for. **If you lengthen a staleTime, find every writer first.**
 
-When weekend genuinely must differ, say why at the divergence. `useHouseholdMedical`'s `staleTime: 0, gcTime: 0` is the model: PHI must not sit in the cache after the panel closes, and the comment says so.
+When weekend genuinely must differ, say why at the divergence. `useHouseholdMedical`'s `staleTime: 0, gcTime: 0` is the model: the medical narrative must not sit in the cache after the panel closes, and the comment says so.
 
 ### Accessibility Is Opt-Out Here
 

@@ -54,6 +54,30 @@ def _repo(**overrides: Any) -> MagicMock:
         "create_availability": SimpleNamespace(id="avail_new"),
         "update_availability": SimpleNamespace(id="avail_existing"),
         "delete_availability": None,
+        # Write-in OCCUPANCY, split out of `lodging_availability` by
+        # kindred#2382. `lodging_availability` keeps only the staff<->family
+        # ROLE override; somebody being IN a room is written here.
+        "find_write_in": None,
+        "create_write_in": SimpleNamespace(id="write_in_new"),
+        "update_write_in": SimpleNamespace(id="write_in_existing"),
+        "delete_write_in": None,
+        "fetch_write_ins": [],
+        # The scenario grain of the same occupancy fact (kindred#2382, PR 3).
+        # Two of these have callers: `fetch_draft_write_ins` (the scenario seed
+        # reads its source through it) and `create_draft_write_in` (both seed
+        # paths write through it). An empty default for the read is the shape a
+        # weekend with no write-ins really has.
+        #
+        # `find_`, `update_` and `delete_draft_write_in` are still DARK, and
+        # deliberately so: `set_availability` takes no scenario and writes the
+        # LIVE table, which is the gap PR 4 closes. They are stubbed anyway so
+        # that a test which starts reaching one fails on its own assertion
+        # rather than on an un-awaitable bare MagicMock.
+        "fetch_draft_write_ins": [],
+        "find_draft_write_in": None,
+        "create_draft_write_in": SimpleNamespace(id="draft_write_in_new"),
+        "update_draft_write_in": SimpleNamespace(id="draft_write_in_existing"),
+        "delete_draft_write_in": None,
         "find_slot_merge": None,
         "create_slot_merge": SimpleNamespace(id="merge_new"),
         "update_slot_merge": SimpleNamespace(id="merge_existing"),
@@ -536,16 +560,25 @@ class TestCopyFromMirror:
         repo.count_draft_assignments.assert_awaited_once_with(2026, 1000001, "scn_1")
 
     @pytest.mark.asyncio
-    async def test_availability_is_not_copied(self, write_service: LodgingWriteService, repo: MagicMock) -> None:
-        """Availability stayed an OVERLAY (kindred#1974 changed placements
-        only), so a scenario already sees the live reservations as its base.
-        Copying them would pin the scenario against a later change to the live
-        plan -- the same argument that makes `state: null` a delete."""
+    async def test_the_staff_to_family_role_override_is_not_copied(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        """`lodging_availability` holds only the ROLE half now, and it is NOT
+        scenario-scoped (owner ruling, kindred#2382: "that's more of a known
+        'were moving staff to X for weekend Y'"). It has carried no scenario
+        column since 1500000135, so every scenario already reads the same rows
+        and a copy would be a row duplicating itself.
+
+        The OCCUPANCY half of that old boolean goes the other way and IS
+        copied -- see TestCopyFromMirrorAlsoCopiesWriteIns. This test is what
+        keeps the two halves from being conflated back together by a seed."""
         repo.fetch_assignments = AsyncMock(return_value=[_mirror_row()])
+        repo.fetch_write_ins = AsyncMock(return_value=[_write_in_row()])
 
         await write_service.copy_from_mirror(PlacementCopyRequest(year=2026, session_cm_id=1000001, scenario="scn_1"))
 
         repo.create_availability.assert_not_called()
+        repo.update_availability.assert_not_called()
 
 
 def _draft_row(**overrides: Any) -> SimpleNamespace:
@@ -765,6 +798,221 @@ class TestCopyScenarioToScenarioAlsoCopiesSlotMerges:
         repo.create_slot_merge.assert_not_called()
 
 
+def _write_in_row(**overrides: Any) -> SimpleNamespace:
+    """One occupancy row, as `fetch_write_ins` / `fetch_draft_write_ins` return it.
+
+    Fictional occupant throughout -- a production write-in names a real family
+    or a real staff member (CLAUDE.md section 4).
+    """
+    fields: dict[str, Any] = {
+        "id": "write_in_1",
+        "unit": "u1",
+        "occupant_name": "Olivia Chen",
+        "note": "Paper registration",
+    }
+    fields.update(overrides)
+    return SimpleNamespace(**fields)
+
+
+class TestCopyFromMirrorAlsoCopiesWriteIns:
+    """A fresh scenario inherits the LIVE board's write-ins. Owner ruling, 2026-08-16.
+
+    THE REASON IS SAFETY, not convenience. Once a scenario's write-ins REPLACE
+    the live ones rather than falling through (kindred#2382 PR 3), a scenario
+    seeded without them starts with every written-into cabin looking OPEN --
+    and kindred#2247's placement gate reads exactly that, so it would let a
+    family be dropped into a room the live board records as occupied. The split
+    creates that failure mode; the copy is what closes it.
+
+    Shaped after the `lodging_slot_merges` copy in `copy_scenario_to_scenario`:
+    read the source tier, create the destination's own rows, no emptiness check
+    of its own and no separate count in the response.
+    """
+
+    @pytest.mark.asyncio
+    async def test_each_live_write_in_becomes_a_draft_row_in_the_scenario(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        repo.fetch_write_ins = AsyncMock(return_value=[_write_in_row()])
+
+        await write_service.copy_from_mirror(PlacementCopyRequest(year=2026, session_cm_id=1000001, scenario="scn_1"))
+
+        repo.fetch_write_ins.assert_awaited_once_with(2026, 1000001)
+        repo.create_draft_write_in.assert_awaited_once()
+        data = repo.create_draft_write_in.call_args[0][0]
+        assert data["unit"] == "u1"
+        assert data["scenario"] == "scn_1"
+        assert data["occupant_name"] == "Olivia Chen"
+        assert data["note"] == "Paper registration"
+        assert data["session"] == "sess_1"
+        assert data["session_cm_id"] == 1000001
+        assert data["year"] == 2026
+
+    @pytest.mark.asyncio
+    async def test_every_live_write_in_is_copied_not_only_the_first(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        repo.fetch_write_ins = AsyncMock(
+            return_value=[
+                _write_in_row(),
+                _write_in_row(id="write_in_2", unit="u2", occupant_name="Ava Martinez", note=""),
+            ]
+        )
+
+        await write_service.copy_from_mirror(PlacementCopyRequest(year=2026, session_cm_id=1000001, scenario="scn_1"))
+
+        assert [c[0][0]["unit"] for c in repo.create_draft_write_in.call_args_list] == ["u1", "u2"]
+
+    @pytest.mark.asyncio
+    async def test_no_live_write_ins_means_no_create_calls(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        await write_service.copy_from_mirror(PlacementCopyRequest(year=2026, session_cm_id=1000001, scenario="scn_1"))
+
+        repo.create_draft_write_in.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_the_live_write_in_table_is_not_written(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        """A seed writes the SCENARIO, never the board it copied from.
+
+        `create_write_in` is the live table's create. Reaching it here would
+        mean a scenario seed had edited the live board -- the direction
+        `copy_from_mirror`'s own docstring says the line permits only one way
+        round.
+        """
+        repo.fetch_write_ins = AsyncMock(return_value=[_write_in_row()])
+
+        await write_service.copy_from_mirror(PlacementCopyRequest(year=2026, session_cm_id=1000001, scenario="scn_1"))
+
+        repo.create_write_in.assert_not_called()
+        repo.update_write_in.assert_not_called()
+        repo.delete_write_in.assert_not_called()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("status", [400, 403])
+    async def test_a_failed_seed_create_keeps_its_upstream_status(
+        self, write_service: LodgingWriteService, repo: MagicMock, status: int
+    ) -> None:
+        """A collision on the draft's unique index is a 400, never a 500.
+
+        REACHABLE, not hypothetical. The up-front guard counts PLACEMENTS
+        only, so a weekend whose mirror carries nothing copyable -- early
+        season, before CampMinder has assigned any lodging -- passes that
+        check on every attempt while the write-ins it seeded are already
+        sitting in the scenario. A second `POST /api/lodging/placements/copy`
+        then collides on `idx_lodging_write_in_draft_unique`.
+
+        Nothing on this router catches `ClientResponseError`, so one that
+        escapes `_seed_write_ins` unconverted reaches api/main.py's catch-all
+        handler and the caller is told "Internal server error" for a state the
+        server understands perfectly well -- the same shape
+        `test_copying_into_an_unknown_weekend_is_404_not_500` refuses for the
+        weekend lookup. 403 is parametrised beside it because a refusal must
+        not be reported as a collision either; `pb_error_to_http` maps both
+        auth flavours to 403 for the reason
+        `TestARefusedWriteIsNeverReportedAsSuccess` spells out.
+        """
+        repo.fetch_write_ins = AsyncMock(return_value=[_write_in_row()])
+        repo.create_draft_write_in = AsyncMock(
+            side_effect=ClientResponseError(
+                "duplicate", status=status, data={}, url="", is_abort=False, original_error=None
+            )
+        )
+
+        with pytest.raises(HTTPException) as excinfo:
+            await write_service.copy_from_mirror(
+                PlacementCopyRequest(year=2026, session_cm_id=1000001, scenario="scn_1")
+            )
+
+        assert excinfo.value.status_code == status
+
+
+class TestCopyScenarioToScenarioAlsoCopiesWriteIns:
+    """The source SCENARIO's own write-ins, for the reason the mirror seed copies the live ones.
+
+    `copy_from_mirror` seeds from the live board, so it reads
+    `fetch_write_ins`; this seeds from another scenario, so it reads that
+    scenario's own draft rows -- exactly the split the placement copy already
+    makes between `fetch_assignments` and `fetch_draft_assignments`.
+    "Copy from Option A" that dropped Option A's write-ins would not copy what
+    Option A's board shows.
+    """
+
+    @pytest.mark.asyncio
+    async def test_the_source_scenarios_write_ins_are_copied_into_the_destination(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        repo.fetch_draft_write_ins = AsyncMock(return_value=[_write_in_row()])
+
+        await write_service.copy_scenario_to_scenario(
+            year=2026, session_cm_id=1000001, from_scenario="scn_source", to_scenario="scn_dest"
+        )
+
+        repo.fetch_draft_write_ins.assert_awaited_once_with(2026, 1000001, "scn_source")
+        repo.create_draft_write_in.assert_awaited_once()
+        data = repo.create_draft_write_in.call_args[0][0]
+        assert data["unit"] == "u1"
+        assert data["scenario"] == "scn_dest"
+        assert data["occupant_name"] == "Olivia Chen"
+        assert data["note"] == "Paper registration"
+        assert data["session"] == "sess_1"
+        assert data["session_cm_id"] == 1000001
+        assert data["year"] == 2026
+
+    @pytest.mark.asyncio
+    async def test_the_live_board_is_not_the_source_here(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        """Reading `fetch_write_ins` would seed the destination from the LIVE
+        board rather than from the scenario the caller named -- a copy that
+        silently ignores the source, and the one mistake sharing a helper
+        between the two seed paths would make."""
+        repo.fetch_write_ins = AsyncMock(return_value=[_write_in_row(unit="u9", occupant_name="Ava Martinez")])
+        repo.fetch_draft_write_ins = AsyncMock(return_value=[_write_in_row()])
+
+        await write_service.copy_scenario_to_scenario(
+            year=2026, session_cm_id=1000001, from_scenario="scn_source", to_scenario="scn_dest"
+        )
+
+        assert repo.fetch_write_ins.await_count == 0
+        assert [c[0][0]["unit"] for c in repo.create_draft_write_in.call_args_list] == ["u1"]
+
+    @pytest.mark.asyncio
+    async def test_no_source_write_ins_means_no_create_calls(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        await write_service.copy_scenario_to_scenario(
+            year=2026, session_cm_id=1000001, from_scenario="scn_source", to_scenario="scn_dest"
+        )
+
+        repo.create_draft_write_in.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_a_failed_seed_create_keeps_its_upstream_status(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        """The mirror seed's guard, asserted on this path too.
+
+        One helper serves both seeds, so this is the assertion that catches a
+        later change converting only the path it was looking at.
+        """
+        repo.fetch_draft_write_ins = AsyncMock(return_value=[_write_in_row()])
+        repo.create_draft_write_in = AsyncMock(
+            side_effect=ClientResponseError(
+                "duplicate", status=400, data={}, url="", is_abort=False, original_error=None
+            )
+        )
+
+        with pytest.raises(HTTPException) as excinfo:
+            await write_service.copy_scenario_to_scenario(
+                year=2026, session_cm_id=1000001, from_scenario="scn_source", to_scenario="scn_dest"
+            )
+
+        assert excinfo.value.status_code == 400
+
+
 class TestARefusedWriteIsNeverReportedAsSuccess:
     """kindred#1936: the race recovery must not absorb a refusal.
 
@@ -845,8 +1093,12 @@ class TestARefusedWriteIsNeverReportedAsSuccess:
         )
         repo.find_availability_override = AsyncMock(side_effect=[None, SimpleNamespace(id="avail_other")])
 
+        # A RELEASE, because that is the half still stored in
+        # `lodging_availability` after kindred#2382 split occupancy out of it.
+        # The write-in half is guarded identically over its own table in
+        # `TestAWriteInIsStoredAsAnOccupancyNotAnAvailability`.
         with pytest.raises(HTTPException) as exc_info:
-            await write_service.set_availability(_availability_request())
+            await write_service.set_availability(_availability_request(family_available=True))
 
         assert exc_info.value.status_code == 403
         repo.update_availability.assert_not_called()
@@ -862,11 +1114,11 @@ class TestARefusedWriteIsNeverReportedAsSuccess:
         )
         repo.find_availability_override = AsyncMock(side_effect=[None, SimpleNamespace(id="avail_winner")])
 
-        response = await write_service.set_availability(_availability_request())
+        response = await write_service.set_availability(_availability_request(family_available=True))
 
         record_id, data = repo.update_availability.call_args[0]
         assert record_id == "avail_winner"
-        assert data["family_available"] is False
+        assert data["family_available"] is True
         assert response.record_id == "avail_existing"
 
 
@@ -939,7 +1191,7 @@ class TestARecoveredRaceLogsTheErrorItSwallowed:
         repo.find_availability_override = AsyncMock(side_effect=[None, SimpleNamespace(id="avail_winner")])
 
         with caplog.at_level(logging.WARNING, logger="api.services.lodging_write_service"):
-            await write_service.set_availability(_availability_request())
+            await write_service.set_availability(_availability_request(family_available=True))
 
         output = self._formatted(caplog.records)
         assert "status=500" in output
@@ -1055,9 +1307,12 @@ class TestTheAvailabilityWriteShape:
         """
         await write_service.set_availability(_availability_request())
 
-        data = repo.create_availability.call_args[0][0]
+        # The OCCUPANCY table since kindred#2382 -- `family_available = false`
+        # was never a value, it was a write-in wearing the role column's
+        # clothes. The translation moved with the fact and did not gain a
+        # third site.
+        data = repo.create_write_in.call_args[0][0]
         assert data["note"] == "Burst pipe"
-        assert data["family_available"] is False
         assert "scenario" not in data
         assert "state" not in data
 
@@ -1087,7 +1342,7 @@ class TestTheAvailabilityWriteShape:
         """
         await write_service.set_availability(_availability_request(occupant_name="Emma Johnson"))
 
-        data = repo.create_availability.call_args[0][0]
+        data = repo.create_write_in.call_args[0][0]
         assert data["occupant_name"] == "Emma Johnson"
         assert data["note"] == "Burst pipe"
 
@@ -1154,8 +1409,11 @@ class TestARefusedUpdateAnswersTheSameWayARefusedCreateDoes:
             )
         )
 
+        # A RELEASE -- the half `lodging_availability` still stores. Its
+        # write-in twin is guarded over `lodging_write_ins` in
+        # `TestAWriteInIsStoredAsAnOccupancyNotAnAvailability`.
         with pytest.raises(HTTPException) as exc_info:
-            await write_service.set_availability(_availability_request())
+            await write_service.set_availability(_availability_request(family_available=True))
 
         assert exc_info.value.status_code == 403
 
@@ -1325,6 +1583,14 @@ class TestEveryLookupIsKeyedOnTheCampMinderSessionId:
         assert placement["session_cm_id"] == self.SESSION_CM_ID
 
         await write_service.set_availability(_availability_request())
+        write_in = repo.create_write_in.call_args[0][0]
+        assert write_in["session"] == "sess_1"
+        assert write_in["session_cm_id"] == self.SESSION_CM_ID
+
+        # BOTH halves of kindred#2382's split, because they are different
+        # tables now and a write that set the keys on only one of them would
+        # pass with either line alone.
+        await write_service.set_availability(_availability_request(family_available=True))
         availability = repo.create_availability.call_args[0][0]
         assert availability["session"] == "sess_1"
         assert availability["session_cm_id"] == self.SESSION_CM_ID
@@ -1485,3 +1751,283 @@ class TestSetSlotMerge:
 
         assert exc_info.value.status_code == 400
         repo.update_slot_merge.assert_not_called()
+
+
+class TestAWriteInIsStoredAsAnOccupancyNotAnAvailability:
+    """kindred#2382, PR 2 of 4 -- the WRITE half of the split.
+
+    `lodging_availability.family_available` answered two unrelated questions
+    through one boolean. `true` on a staff cabin is a staff<->family ROLE
+    override for the weekend -- "we're moving staff to X for weekend Y" -- and
+    the owner ruled it is NOT scenario-scoped, so it stays where it is.
+    `false` was an OCCUPANCY, somebody is in the room, and that IS
+    scenario-scoped, because not every write-in is non-rostered staff: some are
+    paper registrations for families arriving with no children, which is a
+    modelling choice belonging to the scenario that made it.
+
+    So `PUT /api/lodging/availability` now writes to one of TWO tables
+    depending on which question the body is answering. The endpoint, its
+    request model and everything a staff member sees are unchanged -- the split
+    is behind them, and behavioural parity is the acceptance criterion for this
+    PR.
+
+    ONE FACT AT A TIME, exactly as before. A single row per (unit, weekend)
+    could only ever hold one of the two, and writing the other replaced it; two
+    tables have to keep that promise deliberately, so every write drops the
+    other fact.
+
+    Fictional data throughout.
+    """
+
+    @pytest.mark.asyncio
+    async def test_a_write_in_creates_a_row_in_the_write_in_table(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        await write_service.set_availability(_availability_request(occupant_name="Emma Johnson", reason="Back Monday"))
+
+        repo.create_availability.assert_not_called()
+        data = repo.create_write_in.call_args[0][0]
+        assert data["unit"] == "u1"
+        assert data["session"] == "sess_1"
+        # The durable weekend key travels beside the relation (kindred#1879),
+        # exactly as it does on every other lodging write.
+        assert data["session_cm_id"] == 1000001
+        assert data["year"] == 2026
+        assert data["occupant_name"] == "Emma Johnson"
+        # The API says `reason`; the COLUMN is `note`. The translation moved
+        # tables with the fact and did not gain a third site.
+        assert data["note"] == "Back Monday"
+        # The boolean is what the split REMOVED. A write-in table row IS the
+        # occupancy; a column restating it would be the conflation coming back.
+        assert "family_available" not in data
+        # NO SCENARIO ON THIS WRITE, still: `set_availability` takes none and
+        # writes the LIVE table, which is a scope in its own right. Since PR 3
+        # of kindred#2382 that is also a known GAP rather than a resting state
+        # -- a write-in made from inside a scenario lands here and that
+        # scenario's own read replaces it away -- and routing the occupancy
+        # half to the draft twin is PR 4's. See `set_availability`.
+        assert "scenario" not in data
+
+    @pytest.mark.asyncio
+    async def test_an_existing_write_in_is_updated_not_duplicated(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        """One row per (unit, weekend), as `idx_lodging_write_in_unique` says."""
+        repo.find_write_in = AsyncMock(return_value=SimpleNamespace(id="write_in_1"))
+
+        response = await write_service.set_availability(_availability_request(occupant_name="Emma Johnson"))
+
+        repo.create_write_in.assert_not_called()
+        record_id, data = repo.update_write_in.call_args[0]
+        assert record_id == "write_in_1"
+        assert data["occupant_name"] == "Emma Johnson"
+        assert response.record_id == "write_in_existing"
+
+    @pytest.mark.asyncio
+    async def test_a_write_in_drops_any_release_on_the_same_unit(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        """One fact at a time, unchanged from the single-row world.
+
+        The release row and the write-in row now live in different tables, so
+        nothing removes the loser for us. Left in place, a released staff cabin
+        somebody was then written into would carry both facts at once.
+        """
+        repo.find_availability_override = AsyncMock(return_value=SimpleNamespace(id="avail_1"))
+
+        await write_service.set_availability(_availability_request(occupant_name="Emma Johnson"))
+
+        repo.create_write_in.assert_called_once()
+        repo.delete_availability.assert_awaited_once_with("avail_1")
+
+    @pytest.mark.asyncio
+    async def test_the_new_fact_is_written_before_the_old_one_is_dropped(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        """ORDER, because there is no transaction across two PocketBase tables.
+
+        A failure between the two steps must leave the board saying something
+        true. Writing first and dropping second leaves BOTH facts present, and
+        the read path resolves occupancy over role -- so a half-applied
+        write-in still reads as "somebody is in it", which is the safe half.
+        Dropping first would leave a window with neither fact, opening a cabin
+        nobody meant to open.
+        """
+        calls: list[str] = []
+
+        def record_create(_data: dict[str, Any]) -> SimpleNamespace:
+            calls.append("create_write_in")
+            return SimpleNamespace(id="write_in_new")
+
+        def record_delete(_record_id: str) -> None:
+            calls.append("delete_availability")
+
+        repo.find_availability_override = AsyncMock(return_value=SimpleNamespace(id="avail_1"))
+        repo.create_write_in = AsyncMock(side_effect=record_create)
+        repo.delete_availability = AsyncMock(side_effect=record_delete)
+
+        await write_service.set_availability(_availability_request())
+
+        assert calls == ["create_write_in", "delete_availability"]
+
+    @pytest.mark.asyncio
+    async def test_a_release_still_writes_the_availability_row(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        """The ROLE half does not move. 1500000135's reasoning is right for it.
+
+        "Availability is a fact about the WEEKEND, not about the plan" was
+        correct all along for the staff<->family role; what changed is what
+        else the column had been asked to carry.
+        """
+        await write_service.set_availability(_availability_request(family_available=True, reason="Director away"))
+
+        repo.create_write_in.assert_not_called()
+        data = repo.create_availability.call_args[0][0]
+        assert data["family_available"] is True
+        assert data["note"] == "Director away"
+
+    @pytest.mark.asyncio
+    async def test_a_release_drops_any_write_in_on_the_same_unit(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        """The mirror of the write-in case, and the half a sweep would miss."""
+        repo.find_write_in = AsyncMock(return_value=SimpleNamespace(id="write_in_1"))
+
+        await write_service.set_availability(_availability_request(family_available=True, reason="Director away"))
+
+        repo.create_availability.assert_called_once()
+        repo.delete_write_in.assert_awaited_once_with("write_in_1")
+
+    @pytest.mark.asyncio
+    async def test_clearing_removes_both_facts(self, write_service: LodgingWriteService, repo: MagicMock) -> None:
+        """`family_available: null` restores the unit's standing role.
+
+        It always meant "delete the row", and there is no value meaning
+        "normal". With two tables it means delete BOTH rows: leaving either one
+        would have a clear silently do nothing on whichever fact it missed.
+        """
+        repo.find_write_in = AsyncMock(return_value=SimpleNamespace(id="write_in_1"))
+        repo.find_availability_override = AsyncMock(return_value=SimpleNamespace(id="avail_1"))
+
+        response = await write_service.set_availability(_availability_request(family_available=None))
+
+        repo.delete_write_in.assert_awaited_once_with("write_in_1")
+        repo.delete_availability.assert_awaited_once_with("avail_1")
+        assert response.deleted is True
+
+    @pytest.mark.asyncio
+    async def test_clearing_a_unit_that_holds_neither_fact_is_not_an_error(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        response = await write_service.set_availability(_availability_request(family_available=None))
+
+        repo.delete_write_in.assert_not_called()
+        repo.delete_availability.assert_not_called()
+        assert response.deleted is False
+        assert response.record_id == ""
+
+    @pytest.mark.asyncio
+    async def test_a_write_in_delete_race_is_not_an_error(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        """The row can vanish between the find and the delete.
+
+        Two staff clearing the same cabin, or one double-click. ONLY 404 is
+        swallowed, exactly as it is on every other delete in this module: "the
+        delete was refused" must not read as "there was nothing to delete".
+        """
+        repo.find_write_in = AsyncMock(return_value=SimpleNamespace(id="write_in_1"))
+        repo.delete_write_in = AsyncMock(
+            side_effect=ClientResponseError("gone", status=404, data={}, url="", is_abort=False, original_error=None)
+        )
+
+        response = await write_service.set_availability(_availability_request(family_available=None))
+
+        assert response.record_id == "write_in_1"
+        assert response.deleted is False
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("status", [401, 403])
+    async def test_a_refused_write_in_delete_keeps_its_status(
+        self, write_service: LodgingWriteService, repo: MagicMock, status: int
+    ) -> None:
+        repo.find_write_in = AsyncMock(return_value=SimpleNamespace(id="write_in_1"))
+        repo.delete_write_in = AsyncMock(
+            side_effect=ClientResponseError(
+                "refused", status=status, data={}, url="", is_abort=False, original_error=None
+            )
+        )
+
+        with pytest.raises(HTTPException) as exc_info:
+            await write_service.set_availability(_availability_request(family_available=None))
+
+        assert exc_info.value.status_code == 403
+
+    @pytest.mark.asyncio
+    async def test_a_lost_write_in_race_is_still_recovered(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        """`idx_lodging_write_in_unique` rejects the loser, exactly as the
+        availability index used to -- so the loser re-reads and updates the
+        winner's row, which by construction is the row this call wanted."""
+        repo.create_write_in = AsyncMock(
+            side_effect=ClientResponseError(
+                "unique constraint", status=400, data={}, url="", is_abort=False, original_error=None
+            )
+        )
+        repo.find_write_in = AsyncMock(side_effect=[None, SimpleNamespace(id="write_in_winner")])
+
+        response = await write_service.set_availability(_availability_request(occupant_name="Emma Johnson"))
+
+        record_id, data = repo.update_write_in.call_args[0]
+        assert record_id == "write_in_winner"
+        assert data["occupant_name"] == "Emma Johnson"
+        assert response.record_id == "write_in_existing"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("status", [401, 403])
+    async def test_a_refused_write_in_create_keeps_its_status(
+        self, write_service: LodgingWriteService, repo: MagicMock, status: int
+    ) -> None:
+        repo.create_write_in = AsyncMock(
+            side_effect=ClientResponseError(
+                "refused", status=status, data={}, url="", is_abort=False, original_error=None
+            )
+        )
+        repo.find_write_in = AsyncMock(side_effect=[None, SimpleNamespace(id="write_in_other")])
+
+        with pytest.raises(HTTPException) as exc_info:
+            await write_service.set_availability(_availability_request())
+
+        assert exc_info.value.status_code == 403
+        repo.update_write_in.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_a_refused_write_in_update_keeps_its_status(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        repo.find_write_in = AsyncMock(return_value=SimpleNamespace(id="write_in_1"))
+        repo.update_write_in = AsyncMock(
+            side_effect=ClientResponseError("refused", status=403, data={}, url="", is_abort=False, original_error=None)
+        )
+
+        with pytest.raises(HTTPException) as exc_info:
+            await write_service.set_availability(_availability_request())
+
+        assert exc_info.value.status_code == 403
+
+    @pytest.mark.asyncio
+    async def test_the_write_in_lookup_is_keyed_by_campminder_session_id(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        """kindred#2042's durable key, on the new table too.
+
+        A camp_sessions row recreated rather than updated gets a new PocketBase
+        id; rows keyed on the old one become unreachable. Every lodging lookup
+        goes through the CampMinder id for that reason, and the split must not
+        quietly introduce one that does not.
+        """
+        await write_service.set_availability(_availability_request())
+
+        repo.find_write_in.assert_awaited_once_with(2026, 1000001, "u1")

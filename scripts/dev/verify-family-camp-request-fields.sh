@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Asserts the Phase C columns exist with their declared limits, and that the PHI
+# Asserts the Phase C columns exist with their declared limits, and that the
 # narrative columns live ONLY on the admin-gated family_camp_medical collection.
 set -euo pipefail
 
@@ -28,7 +28,7 @@ for f in bathroom_explain accommodation_explain; do
   [[ "$(has_field family_camp_medical "$f")" -eq 1 ]] || note "family_camp_medical.$f missing"
   # Spec 5: narrative stays in the admin-gated collection, never beside the roster data.
   [[ "$(has_field family_camp_registrations "$f")" -eq 0 ]] \
-    || note "PHI column $f leaked onto family_camp_registrations"
+    || note "narrative column $f leaked onto family_camp_registrations"
 done
 
 gate=$(sqlite3 "$DB" "SELECT json_extract(value, '\$.values') FROM _collections, json_each(_collections.fields)

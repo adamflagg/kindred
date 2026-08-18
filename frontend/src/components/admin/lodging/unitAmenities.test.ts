@@ -8,13 +8,10 @@ import { describe, expect, it } from 'vitest'
 
 import { AMENITY_FLAGS, amenitiesOf, type UnitAmenities } from './unitAmenities'
 
-const NEW_2026_FLAGS = [
-  'has_tub',
-  'has_kitchenette',
-  'has_crib',
-  'has_changing_table',
-  'has_shared_fridge',
-] as const
+// has_kitchenette was one of the original five (narrowing has_kitchen) but was
+// dropped in kindred#2390: 0 production rows disagreed with their parent, so
+// staff ruled the split not worth tracking. See the dedicated test below.
+const NEW_2026_FLAGS = ['has_tub', 'has_crib', 'has_changing_table', 'has_shared_fridge'] as const
 
 describe('AMENITY_FLAGS', () => {
   it('has a unique key, a label and an icon for every entry', () => {
@@ -26,7 +23,7 @@ describe('AMENITY_FLAGS', () => {
     }
   })
 
-  it('carries the five facts the 2026 Master Housing sheet added', () => {
+  it('carries the surviving four of the five facts the 2026 Master Housing sheet added', () => {
     const keys = new Set<string>(AMENITY_FLAGS.map((f) => f.key))
     for (const key of NEW_2026_FLAGS) {
       expect(keys.has(key), `${key} is not in AMENITY_FLAGS`).toBe(true)
@@ -40,6 +37,16 @@ describe('AMENITY_FLAGS', () => {
     for (const flag of AMENITY_FLAGS) {
       expect(flag.key in amenities, `${flag.key} is missing from amenitiesOf()`).toBe(true)
     }
+  })
+
+  it('drops has_kitchenette — collapsed into has_kitchen, kindred#2390', () => {
+    // Every production unit with has_kitchenette=true already had
+    // has_kitchen=true (0 counterexamples), so the split carried no
+    // information staff act on. The column is gone; nothing here should
+    // still offer it.
+    expect(AMENITY_FLAGS.some((f) => (f.key as string) === 'has_kitchenette')).toBe(false)
+    const amenities = amenitiesOf() as unknown as Record<string, unknown>
+    expect('has_kitchenette' in amenities).toBe(false)
   })
 })
 
@@ -55,7 +62,6 @@ describe('amenitiesOf', () => {
   it('carries the new flags off an existing unit', () => {
     const unit = {
       has_tub: true,
-      has_kitchenette: true,
       has_crib: true,
       has_changing_table: true,
       has_shared_fridge: true,

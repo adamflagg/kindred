@@ -1794,6 +1794,277 @@ func TestGuardYearImmutableAllowsAYearChangeWithNoDependents(t *testing.T) {
 	}
 }
 
+// newWriteInsTestApp is the lodging_write_ins / lodging_write_ins_draft twin
+// of newSlotMergesTestApp (kindred#2382).
+//
+// Both write-in collections are added as a SEPARATE, later step for the same
+// reason lodging_slot_merges is: TestGuardUnitYearSkipsAnAbsentCollection
+// needs at least one watched collection ABSENT from setupCollections to pin
+// wireHooks's collection-not-found skip path, and a fixture that carried
+// every table would silently retire that test.
+//
+// The shape mirrors the production tables (1500000161) down to the fields any
+// guard actually reads -- unit/session/year, plus `scenario` on the draft --
+// and leaves out session_cm_id, occupant_name and note the same way
+// setupCollections leaves out fields nothing under test reads. `scenario`
+// points at a stand-in saved_scenarios collection rather than being omitted,
+// because it is the one structural difference between the pair and dropping
+// it here would let a draft-only mistake pass unnoticed.
+//
+// Both collections have to exist BEFORE wireHooks runs: its dependent-
+// collection loop pre-filters yearImmutableRefs to collections that exist AT
+// BIND TIME, so creating either afterward would leave it permanently excluded
+// from refs for this app's lifetime.
+func newWriteInsTestApp(t *testing.T) core.App {
+	t.Helper()
+	app, err := tests.NewTestApp()
+	if err != nil {
+		t.Fatalf("NewTestApp: %v", err)
+	}
+	t.Cleanup(app.Cleanup)
+	setupCollections(t, app)
+
+	unitsCol := mustCollection(t, app, "lodging_units")
+	sessionsCol := mustCollection(t, app, "camp_sessions")
+
+	scenarios := core.NewBaseCollection("saved_scenarios")
+	if err := app.Save(scenarios); err != nil {
+		t.Fatalf("save saved_scenarios: %v", err)
+	}
+	scenariosCol := mustCollection(t, app, "saved_scenarios")
+
+	for _, name := range []string{"lodging_write_ins", "lodging_write_ins_draft"} {
+		writeIns := core.NewBaseCollection(name)
+		writeIns.Fields.Add(&core.RelationField{
+			Name: "unit", CollectionId: unitsCol.Id, MaxSelect: 1,
+		})
+		writeIns.Fields.Add(&core.RelationField{
+			Name: "session", CollectionId: sessionsCol.Id, MaxSelect: 1,
+		})
+		writeIns.Fields.Add(&core.NumberField{Name: "year"})
+		if name == "lodging_write_ins_draft" {
+			// CascadeDelete MIRRORS 1500000161, and it is the whole of
+			// kindred#2382's scenario-delete answer: deleting a saved scenario
+			// takes its write-ins with it, exactly as it does for
+			// lodging_assignments_draft (1500000132) and lodging_slot_merges
+			// (1500000139). No hook and no Python pre-delete loop implements
+			// it, so a fixture that left it off would let
+			// TestDeletingAScenarioSweepsItsDraftWriteIns pass or fail on the
+			// fixture rather than on the schema under test.
+			writeIns.Fields.Add(&core.RelationField{
+				Name: "scenario", CollectionId: scenariosCol.Id, MaxSelect: 1, CascadeDelete: true,
+			})
+		}
+		if err := app.Save(writeIns); err != nil {
+			t.Fatalf("save %s: %v", name, err)
+		}
+	}
+
+	wireHooks(app)
+	return app
+}
+
+// seedWriteIn creates a row in the named write-in collection pointing at unit
+// for the given year, and returns the save error rather than failing the test
+// -- the guard tests below want to assert on both outcomes.
+//
+// The error is wrapped for wrapcheck's benefit, but the wrap is not only
+// linter appeasement: a caller here asserts on PRESENCE, not on message, so
+// context about which collection was written is the only thing that makes a
+// surprise failure readable.
+func seedWriteIn(t *testing.T, app core.App, collection, unit string, year int) error {
+	t.Helper()
+	r := core.NewRecord(mustCollection(t, app, collection))
+	r.Set("unit", unit)
+	r.Set("session", seedSession(t, app))
+	r.Set("year", year)
+	if err := app.Save(r); err != nil {
+		return fmt.Errorf("save %s row for year %d: %w", collection, year, err)
+	}
+	return nil
+}
+
+// TestDeletingAScenarioSweepsItsDraftWriteIns is kindred#2382's
+// scenario-delete knock-on, asserted against the running engine.
+//
+// WHERE THE CASCADE LIVES, because both plausible homes are wrong and the
+// question gets re-asked: NOT in pocketbase/lodging/hooks.go, which registers
+// these collections only for the year guards, and NOT in Python --
+// `delete_scenario` (api/routers/scenarios.py) sweeps `bunk_assignments_draft`
+// by hand for summer and touches no lodging table at all. It is a SCHEMA
+// property: `scenario` is declared `cascadeDelete: true` in 1500000161,
+// exactly as lodging_assignments_draft declares it (1500000132) and
+// lodging_slot_merges does (1500000139). Adding a pre-delete loop for lodging
+// would re-create the N+1 that bunk_assignments_draft's own flip to
+// cascadeDelete existed to remove.
+//
+// Once a scenario's write-ins REPLACE the live ones rather than falling
+// through (PR 3 of kindred#2382), a row surviving its scenario is not merely
+// litter: `idx_lodging_write_in_draft_unique` keys on the scenario id, so an
+// orphan holds a slot no live board and no other scenario can see or clear.
+//
+// The migration TEXT is pinned separately by
+// TestLodgingWriteInDraftScenarioIsRequiredAndCascades in package main; this
+// half proves the effect a declaration of that shape actually has.
+func TestDeletingAScenarioSweepsItsDraftWriteIns(t *testing.T) {
+	t.Parallel()
+	app := newWriteInsTestApp(t)
+	unit := seedUnit(t, app, "test-unit-a", 2026)
+
+	scenario := core.NewRecord(mustCollection(t, app, "saved_scenarios"))
+	if err := app.Save(scenario); err != nil {
+		t.Fatalf("seed scenario: %v", err)
+	}
+
+	row := core.NewRecord(mustCollection(t, app, "lodging_write_ins_draft"))
+	row.Set("unit", unit)
+	row.Set("session", seedSession(t, app))
+	row.Set("year", 2026)
+	row.Set("scenario", scenario.Id)
+	if err := app.Save(row); err != nil {
+		t.Fatalf("seed draft write-in: %v", err)
+	}
+
+	if err := app.Delete(scenario); err != nil {
+		t.Fatalf("delete scenario: %v", err)
+	}
+
+	if _, err := app.FindRecordById("lodging_write_ins_draft", row.Id); err == nil {
+		t.Fatal("the draft write-in outlived its scenario; want it cascaded away")
+	}
+}
+
+// TestDeletingAScenarioLeavesTheLiveWriteInsAlone is the other half, and the
+// one a cascade written too wide would fail.
+//
+// The live table carries no scenario relation at all, which is what makes the
+// live board a scope in its own right rather than the absence of one. A
+// scenario being deleted must not disturb it -- staff evaluate the real board
+// from these rows (owner, 2026-08-15), and losing them to somebody else's
+// housekeeping would open a cabin with an occupant in it.
+func TestDeletingAScenarioLeavesTheLiveWriteInsAlone(t *testing.T) {
+	t.Parallel()
+	app := newWriteInsTestApp(t)
+	unit := seedUnit(t, app, "test-unit-a", 2026)
+
+	scenario := core.NewRecord(mustCollection(t, app, "saved_scenarios"))
+	if err := app.Save(scenario); err != nil {
+		t.Fatalf("seed scenario: %v", err)
+	}
+
+	live := core.NewRecord(mustCollection(t, app, "lodging_write_ins"))
+	live.Set("unit", unit)
+	live.Set("session", seedSession(t, app))
+	live.Set("year", 2026)
+	if err := app.Save(live); err != nil {
+		t.Fatalf("seed live write-in: %v", err)
+	}
+
+	if err := app.Delete(scenario); err != nil {
+		t.Fatalf("delete scenario: %v", err)
+	}
+
+	if _, err := app.FindRecordById("lodging_write_ins", live.Id); err != nil {
+		t.Fatalf("deleting a scenario took a LIVE write-in with it: %v", err)
+	}
+}
+
+// TestGuardUnitYearRejectsACrossYearWriteIn is lodging_write_ins's own entry
+// in yearScopedRefs (kindred#2382). It is the third single-relation case
+// (`unit`, MaxSelect 1) alongside lodging_availability and
+// lodging_slot_merges, and nothing about either of those exercises this
+// entry: a write-in table added to the schema but never registered in the map
+// leaves the suite green while a 2027 write-in silently holds a 2026 room.
+func TestGuardUnitYearRejectsACrossYearWriteIn(t *testing.T) {
+	t.Parallel()
+	app := newWriteInsTestApp(t)
+	unit := seedUnit(t, app, "test-unit-a", 2026)
+
+	if err := seedWriteIn(t, app, "lodging_write_ins", unit, 2027); err == nil {
+		t.Fatal("saved a 2027 write-in naming a 2026 unit; want a refusal")
+	}
+}
+
+// TestGuardUnitYearRejectsACrossYearDraftWriteIn is the draft grain's own
+// entry. Separate from the live one above for the same reason
+// TestGuardYearImmutableRejectsAUnitYearChangeWithADraftAssignmentDependent is
+// separate from its confirmed-board sibling: it is a different collection with
+// its own map entry, so a change that registered only the live table would
+// leave this uncovered.
+func TestGuardUnitYearRejectsACrossYearDraftWriteIn(t *testing.T) {
+	t.Parallel()
+	app := newWriteInsTestApp(t)
+	unit := seedUnit(t, app, "test-unit-a", 2026)
+
+	if err := seedWriteIn(t, app, "lodging_write_ins_draft", unit, 2027); err == nil {
+		t.Fatal("saved a 2027 draft write-in naming a 2026 unit; want a refusal")
+	}
+}
+
+// TestGuardUnitYearAllowsAWriteInSharingItsUnitsYear is the positive control
+// for the two refusals above, same shape as
+// TestGuardUnitYearAllowsAMatchingRow: without it, a guard that refused every
+// write to these tables would pass both refusal tests.
+func TestGuardUnitYearAllowsAWriteInSharingItsUnitsYear(t *testing.T) {
+	t.Parallel()
+	app := newWriteInsTestApp(t)
+	unit := seedUnit(t, app, "test-unit-a", 2026)
+
+	for _, collection := range []string{"lodging_write_ins", "lodging_write_ins_draft"} {
+		if err := seedWriteIn(t, app, collection, unit, 2026); err != nil {
+			t.Fatalf("refused a %s row sharing its unit's year: %v", collection, err)
+		}
+	}
+}
+
+// TestGuardYearImmutableRejectsAUnitYearChangeWithAWriteInDependent is
+// lodging_write_ins's REVERSE entry -- yearImmutableRefs[lodging_units].
+// Registering a table in yearScopedRefs alone still gets its own writes
+// checked, so its tests pass while guardYearImmutable quietly stops covering
+// a unit's year edit against it: exactly the omission kindred#2146's
+// TestYearRefMapsAgreeOnEveryRelation exists to make loud, asserted here
+// against the running engine rather than against the maps.
+func TestGuardYearImmutableRejectsAUnitYearChangeWithAWriteInDependent(t *testing.T) {
+	t.Parallel()
+	app := newWriteInsTestApp(t)
+	unit := seedUnit(t, app, "test-unit-a", 2027)
+	if err := seedWriteIn(t, app, "lodging_write_ins", unit, 2027); err != nil {
+		t.Fatalf("seeding a dependent write-in row: %v", err)
+	}
+
+	rec, err := app.FindRecordById(collectionUnits, unit)
+	if err != nil {
+		t.Fatalf("reloading the unit: %v", err)
+	}
+	rec.Set("year", 2028)
+
+	if err := app.Save(rec); err == nil {
+		t.Fatal("re-seasoned a unit with a dependent write-in row; want a refusal")
+	}
+}
+
+// TestGuardYearImmutableRejectsAUnitYearChangeWithADraftWriteInDependent is
+// the draft grain's reverse entry, separate from the live one for the reason
+// its yearScopedRefs sibling above gives.
+func TestGuardYearImmutableRejectsAUnitYearChangeWithADraftWriteInDependent(t *testing.T) {
+	t.Parallel()
+	app := newWriteInsTestApp(t)
+	unit := seedUnit(t, app, "test-unit-a", 2027)
+	if err := seedWriteIn(t, app, "lodging_write_ins_draft", unit, 2027); err != nil {
+		t.Fatalf("seeding a dependent draft write-in row: %v", err)
+	}
+
+	rec, err := app.FindRecordById(collectionUnits, unit)
+	if err != nil {
+		t.Fatalf("reloading the unit: %v", err)
+	}
+	rec.Set("year", 2028)
+
+	if err := app.Save(rec); err == nil {
+		t.Fatal("re-seasoned a unit with a dependent draft write-in row; want a refusal")
+	}
+}
+
 // relationPair is one (dependent -> target) edge, the unit of correspondence
 // between the two maps. yearScopedRefs states the edge from the dependent's
 // side (a key plus a ref.target); yearImmutableRefs states the same edge from

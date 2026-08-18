@@ -67,11 +67,11 @@ export type AccessibilityFlags = AccessibilityFlagSummary
 export type WeekendSummary = WeekendSummaryResponse
 /** One weekend on the lander: identity plus the same counts the roster reports. */
 export type WeekendSummaryRow = WeekendSummaryEntry
-/** PHI. Only ever fetched from the permission-gated endpoint. */
+/** The medical narrative. Only ever fetched from the endpoint gated on `bunking.manage`. */
 export type HouseholdMedical = HouseholdMedicalResponse
 /** A household's year-over-year family-camp record, newest year first. */
 export type HouseholdJourney = HouseholdJourneyResponse
-/** One year of it — housing, enrolment, and that year's own party. */
+/** One year of it — housing, enrollment, and that year's own party. */
 export type HouseholdJourneyRow = HouseholdJourneyYear
 /** A registered adult on a household party. */
 export type PartyAdultRow = PartyAdult
@@ -166,7 +166,7 @@ export type HousingStateValue = NonNullable<HouseholdJourneyYear['housing']>
  * cancelled (1,264 family attendee rows, none enrolled) and 2021 has no
  * family attendee rows at all despite 247 registrations — while
  * `family_camp_adults` carries adults for both. Both are real attendance the
- * enrolment tables cannot describe, and neither is an error.
+ * enrollment tables cannot describe, and neither is an error.
  */
 export type EnrollmentStateValue = NonNullable<HouseholdJourneyYear['enrollment']>
 
@@ -269,11 +269,12 @@ export interface LodgingUnitRecord extends PocketBaseRecordBase {
   has_fridge: boolean
   is_accessible: boolean
   // From the 2026 Master Housing sheet. Each refines a field above rather than
-  // restating it: has_tub under `bathroom`, has_kitchenette under has_kitchen,
-  // has_shared_fridge under has_fridge. has_crib is distinct from
-  // has_pack_play_space — a camp crib is not floor space for a family's own.
+  // restating it: has_tub under `bathroom`, has_shared_fridge under
+  // has_fridge. has_crib is distinct from has_pack_play_space — a camp crib is
+  // not floor space for a family's own. has_kitchenette (narrowing
+  // has_kitchen) was dropped in kindred#2390: 0 production rows disagreed
+  // with their parent.
   has_tub: boolean
-  has_kitchenette: boolean
   has_crib: boolean
   has_changing_table: boolean
   has_shared_fridge: boolean
@@ -431,7 +432,6 @@ export interface LodgingUnitInput {
   has_fridge?: boolean
   is_accessible?: boolean
   has_tub?: boolean
-  has_kitchenette?: boolean
   has_crib?: boolean
   has_changing_table?: boolean
   has_shared_fridge?: boolean

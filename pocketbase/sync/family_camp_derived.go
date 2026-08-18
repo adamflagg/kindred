@@ -2,6 +2,7 @@ package sync
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -10,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/pocketbase/pocketbase/core"
 )
@@ -147,7 +149,145 @@ type adultData struct {
 	gender        string
 	dateOfBirth   string
 	relationship  string
+
+	// conflicts holds the answers this merge DISCARDED, keyed by the
+	// family_camp_adults column they were destined for. It is written to the
+	// additive `attribute_conflicts` JSON column and nothing else: the merge
+	// policy is unchanged (kindred#2275, owner ruling 2026-08-17 -- Option B,
+	// a conflict flag, NOT the camper re-grain).
+	//
+	// WHY A SLOT CAN HOLD TWO ANSWERS AT ALL, because getting this wrong sends
+	// the next reader back toward the declined re-grain: it is NOT two children
+	// reporting on their parents. CampMinder asks the family-camp questions on
+	// a per-CAMPER form covering all of a household's summer and family
+	// sessions, so one parent fills the same family-camp section once per
+	// child, on a form where that section should have been skipped after the
+	// first. A divergence is therefore one person being less careful the second
+	// time -- a data-entry artifact of form design, not evidence that the row
+	// is keyed at the wrong grain.
+	conflicts map[string][]string
 }
+
+// noteConflict records other as an answer this adult slot received and the
+// merge discarded, for the given family_camp_adults column. Duplicates are
+// dropped: three campers on one form who typed the same losing answer twice
+// are one conflicting answer, not two.
+func (a *adultData) noteConflict(column, other string) {
+	if other == "" {
+		return
+	}
+	if a.conflicts == nil {
+		a.conflicts = make(map[string][]string, 1)
+	}
+	if slices.Contains(a.conflicts[column], other) {
+		return
+	}
+	a.conflicts[column] = append(a.conflicts[column], other)
+}
+
+// mergeFirstNonEmpty applies the UNCHANGED first-non-empty-wins rule for one
+// attribute and records the residual conflict when a later answer disagrees
+// with the one already held. It returns the value to store, which is always
+// what the pre-kindred#2275 code would have stored.
+//
+// candidate must already be normalised (kindred#2405) where the column has a
+// normaliser, so that two spellings of one answer never reach this comparison.
+func (a *adultData) mergeFirstNonEmpty(column, current, candidate string) string {
+	if candidate == "" || candidate == current {
+		return current
+	}
+	if current == "" {
+		return candidate
+	}
+	if !sameAnswer(current, candidate) {
+		a.noteConflict(column, candidate)
+	}
+	return current
+}
+
+// sameAnswer reports whether two answers to one question differ only in
+// SPELLING -- letter case, or how much whitespace the typist left.
+//
+// It gates what is RECORDED, never what is stored: every return value in
+// mergeFirstNonEmpty and every assignment in the email arm is byte-identical
+// with or without this check, so the first-non-empty and preferEmail merges
+// are untouched. It exists because the free-text columns have no
+// kindred#2405 normaliser and a badge that fires on `Amy Johnson` vs
+// `amy johnson` is a badge staff learn to ignore. Measured by replaying
+// processAdults over data-prod.db, all years: 232 recorded losers and 189 of
+// 1,429 lit slots -- 32 of 2026's 124 -- differed from the winner in nothing
+// but case.
+//
+// Deliberately narrow. It folds case and collapses whitespace runs; it does
+// NOT strip punctuation, reorder tokens, or fold nicknames. `Amy Johnson` vs
+// `Amy R Johnson` is still two answers, because it is.
+func sameAnswer(a, b string) bool {
+	return strings.EqualFold(
+		strings.Join(strings.Fields(a), " "),
+		strings.Join(strings.Fields(b), " "),
+	)
+}
+
+// conflictsJSON renders the discarded answers in the canonical form stored in
+// the attribute_conflicts column -- `{"column":["other value",...]}` -- or ""
+// when the slot's answers all agreed.
+//
+// Both the keys (encoding/json sorts map keys) and the values are sorted, so
+// the rendering does not depend on map iteration order or on the record id
+// order the values happened to load in. The sync compares before it writes;
+// an unstable rendering would rewrite every conflicted row on every run.
+func (a *adultData) conflictsJSON() string {
+	if len(a.conflicts) == 0 {
+		return ""
+	}
+	sorted := make(map[string][]string, len(a.conflicts))
+	for column, others := range a.conflicts {
+		values := slices.Clone(others)
+		slices.Sort(values)
+		sorted[column] = values
+	}
+	encoded, err := json.Marshal(sorted)
+	if err != nil {
+		// Unreachable: the map holds only strings and string slices.
+		slog.Error("Error encoding adult attribute conflicts", "household", a.householdPBID, "error", err)
+		return ""
+	}
+	return string(encoded)
+}
+
+// storedAttributeConflicts reads a family_camp_adults row's attribute_conflicts
+// column back in the same canonical form conflictsJSON produces, so the two
+// are directly comparable.
+//
+// A PocketBase json column is a types.JSONRaw ([]byte), not a map, and an
+// unset one renders as the literal string "null" rather than "". Every empty
+// shape PocketBase can hand back collapses to "" here; anything else is
+// returned verbatim, because conflictsJSON wrote it verbatim.
+func storedAttributeConflicts(record *core.Record) string {
+	if record == nil {
+		return ""
+	}
+	raw := strings.TrimSpace(record.GetString(attributeConflictsColumn))
+	switch raw {
+	case "", "null", "{}", `""`:
+		return ""
+	}
+	return raw
+}
+
+// setAttributeConflicts writes the canonical rendering onto a record, storing
+// SQL NULL rather than an empty object when there is nothing to report.
+func setAttributeConflicts(record *core.Record, adult *adultData) {
+	if encoded := adult.conflictsJSON(); encoded != "" {
+		record.Set(attributeConflictsColumn, encoded)
+		return
+	}
+	record.Set(attributeConflictsColumn, nil)
+}
+
+// attributeConflictsColumn is the additive JSON column kindred#2275 Option B
+// adds to family_camp_adults (migration 1500000160).
+const attributeConflictsColumn = "attribute_conflicts"
 
 // registrationData holds extracted registration information
 type registrationData struct {
@@ -761,6 +901,35 @@ func (s *FamilyCampDerivedSync) loadPersonCustomValues(
 // this per-attribute merge policy, and that is kindred#2275's subject.
 // Today's behavior for those fields is pinned by test instead of changed on
 // a guess.
+//
+// NORMALISED, separately from the merge (kindred#2275 phase D, owner ruling
+// 2026-08-16): date_of_birth and relationship_to_camper are rewritten into a
+// canonical form BEFORE they are stored -- see normalizeDateOfBirth and
+// normalizeRelationshipToCamper. This is not a merge policy and does not
+// change which sibling wins; it removes the disagreements that were only ever
+// two spellings of one answer. Measured against the production snapshot, all
+// years: date_of_birth divergence falls from 1,124 (household, year, adult
+// slot) groups to 541, and relationship_to_camper from 315 to 169. The 710
+// that survive are real -- 360 different birth YEARS and 92 Mother-vs-Father
+// slot collisions.
+//
+// RECORDED, also separately from the merge (kindred#2275 Option B, owner
+// ruling 2026-08-17): what survives normalisation is written to the additive
+// attribute_conflicts column instead of vanishing -- see adultData.conflicts
+// and mergeFirstNonEmpty. Which answer wins is still first-non-empty over
+// load order for every attribute, and still preferEmail for email; the only
+// change is that the discarded answers are kept, keyed by column, so staff
+// can see that a slot was answered twice. What is NOT kept is a discarded
+// answer that differs from the winner only in case or whitespace -- see
+// sameAnswer, which gates the recording and nothing else.
+//
+// THE GRAIN QUESTION IS CLOSED. A 2026-08-15 ruling to re-key this table to
+// camper grain was REVERSED on 2026-08-17; the column above is what replaced
+// it, on the reading recorded on adultData.conflicts -- two answers in one
+// slot are one parent filling a per-camper form once per child, not two
+// children disagreeing. Nothing here should be re-keyed on the strength of the
+// residual; the grain triple (this write key, TrackProcessedCompositeKey,
+// idx_fc_adults_unique) stays as it is.
 func (s *FamilyCampDerivedSync) processAdults(
 	householdValues []customValueEntry, personValues []customValueEntry,
 ) []*adultData {
@@ -813,25 +982,47 @@ func (s *FamilyCampDerivedSync) processAdults(
 
 		adult := adultMap[v.householdPBID][adultNum]
 
-		// Only set if empty (first non-empty wins for deduplication), EXCEPT
-		// email: see preferEmail for the kindred#1945 validity-preferring rule.
+		// First non-empty wins, unchanged, EXCEPT email: see preferEmail for
+		// the kindred#1945 validity-preferring rule. What mergeFirstNonEmpty
+		// adds (kindred#2275 Option B) is that the answers it discards are
+		// RECORDED on adult.conflicts instead of vanishing -- see that field's
+		// comment for why one adult slot receives two answers at all.
 		switch {
-		case strings.Contains(v.fieldName, "First Name") && adult.firstName == "":
-			adult.firstName = v.value
-		case strings.Contains(v.fieldName, "Last Name") && adult.lastName == "":
-			adult.lastName = v.value
+		case strings.Contains(v.fieldName, "First Name"):
+			adult.firstName = adult.mergeFirstNonEmpty("first_name", adult.firstName, v.value)
+		case strings.Contains(v.fieldName, "Last Name"):
+			adult.lastName = adult.mergeFirstNonEmpty("last_name", adult.lastName, v.value)
 		case strings.Contains(v.fieldName, "Email"):
 			if preferEmail(adult.email, v.value) {
+				// The DISPLACED value is the conflict, not the candidate:
+				// preferEmail has just ruled the candidate the better answer.
+				// This branch needs the sameAnswer guard as much as the other
+				// one does: a leading space fails emailFormatPattern, so
+				// " amy@example.com" is displaced by "amy@example.com" and
+				// would otherwise be recorded as conflicting with itself.
+				if !sameAnswer(adult.email, v.value) {
+					adult.noteConflict("email", adult.email)
+				}
 				adult.email = v.value
+			} else if !sameAnswer(adult.email, v.value) {
+				adult.noteConflict("email", v.value)
 			}
-		case strings.Contains(v.fieldName, "Pronouns") && adult.pronouns == "":
-			adult.pronouns = v.value
-		case strings.Contains(v.fieldName, "Gender") && adult.gender == "":
-			adult.gender = v.value
-		case strings.Contains(v.fieldName, "DOB") && adult.dateOfBirth == "":
-			adult.dateOfBirth = v.value
-		case strings.Contains(v.fieldName, "Relationship") && adult.relationship == "":
-			adult.relationship = v.value
+		case strings.Contains(v.fieldName, "Pronouns"):
+			adult.pronouns = adult.mergeFirstNonEmpty("pronouns", adult.pronouns, v.value)
+		case strings.Contains(v.fieldName, "Gender"):
+			adult.gender = adult.mergeFirstNonEmpty("gender", adult.gender, v.value)
+		case strings.Contains(v.fieldName, "DOB"):
+			// Normalised BEFORE the merge and before the comparison: see
+			// normalizeDateOfBirth. Which answer wins is still load order
+			// (unchanged); what normalisation buys is that two spellings of
+			// one birthday neither swap the stored value nor raise a
+			// conflict. 583 of the 1,124 diverging production groups are
+			// exactly that, and they must stay silent.
+			adult.dateOfBirth = adult.mergeFirstNonEmpty(
+				"date_of_birth", adult.dateOfBirth, normalizeDateOfBirth(v.value))
+		case strings.Contains(v.fieldName, "Relationship"):
+			adult.relationship = adult.mergeFirstNonEmpty(
+				"relationship_to_camper", adult.relationship, normalizeRelationshipToCamper(v.value))
 		}
 	}
 
@@ -851,6 +1042,215 @@ func (s *FamilyCampDerivedSync) processAdults(
 	}
 
 	return result
+}
+
+// ---------------------------------------------------------------------------
+// date_of_birth and relationship_to_camper normalisation (kindred#2275)
+//
+// These are FORMAT normalisers, not merge policy and not validators. The
+// merge below is still first-non-empty-wins and the record grain is still
+// (household, year, adult_number); both remain kindred#2275's open subject.
+// What normalisation buys is that the column becomes COMPARABLE, so the
+// residual disagreement between two siblings answering for the same adult is
+// a real disagreement rather than two spellings of one answer.
+// ---------------------------------------------------------------------------
+
+// dobTwoDigitYearPivot is the century rule for a two-digit year, stated
+// explicitly because the value is genuinely ambiguous: YY >= 30 means 19YY,
+// YY < 30 means 20YY.
+//
+// The pivot is placed at 30 because it lands in a gap that is empty in the
+// production snapshot. The two-digit years actually stored in the family camp
+// DOB fields are 01-24 (52 answers -- children's birthdays typed into an adult
+// field) and 43-99 (2,188 answers -- the adults). Nothing occupies 25-42, so
+// no value present today can be misclassified by this choice.
+const dobTwoDigitYearPivot = 30
+
+// The accepted input shapes for normalizeDateOfBirth. Every one of them
+// occurs in the production snapshot; the whole point of the list is that a
+// parser accepting only the most common shape (M/D/YYYY, 10,418 of 13,823
+// answers) reports the other 3,243 readable ones as junk, which is exactly how
+// kindred#2275
+// was mis-measured twice before.
+var (
+	// M/D/YY(YY) with any of / - . or space as the separator, and tolerant of
+	// the two separators differing (`05-02/1972` occurs).
+	dobNumericPattern = regexp.MustCompile(`^(\d{1,2})[/.\- ](\d{1,2})[/.\- ](\d{2}|\d{4})$`)
+	// YYYY-M-D, already canonical or nearly so.
+	dobISOPattern = regexp.MustCompile(`^(\d{4})-(\d{1,2})-(\d{1,2})$`)
+	// MMDDYYYY and MMDDYY, typed with the separators left out.
+	dobDigits8Pattern = regexp.MustCompile(`^(\d{2})(\d{2})(\d{4})$`)
+	dobDigits6Pattern = regexp.MustCompile(`^(\d{2})(\d{2})(\d{2})$`)
+	// `October 28, 1981`, `Oct 6, 1981`, `Nov. 1 1966`.
+	dobMonthNamePattern = regexp.MustCompile(`^([A-Za-z]{3,9})\.? (\d{1,2})(?:st|nd|rd|th)?,? (\d{4})$`)
+	// `28 Nov 1967`, `9-Oct-1974`.
+	dobDayMonthNamePattern = regexp.MustCompile(`^(\d{1,2})(?:st|nd|rd|th)?[ \-]([A-Za-z]{3,9})\.?[ \-,]+(\d{4})$`)
+)
+
+// dobMonthNames maps the long and abbreviated English month names, lowercased,
+// to their number. `sept` is included because parents type it.
+var dobMonthNames = map[string]int{
+	"january": 1, "jan": 1,
+	"february": 2, "feb": 2,
+	"march": 3, "mar": 3,
+	"april": 4, "apr": 4,
+	"may":  5,
+	"june": 6, "jun": 6,
+	"july": 7, "jul": 7,
+	"august": 8, "aug": 8,
+	"september": 9, "sept": 9, "sep": 9,
+	"october": 10, "oct": 10,
+	"november": 11, "nov": 11,
+	"december": 12, "dec": 12,
+}
+
+// normalizeDateOfBirth rewrites a free-text CampMinder date answer into the
+// single canonical form YYYY-MM-DD.
+//
+// It NORMALISES, it does not discard: a value it cannot read comes back
+// unchanged, never blanked. 162 of the 13,823 stored family camp DOB answers
+// (1.2%) land there -- `11/13`, `6274`, `1974`, `None`, `na` -- and each is a
+// real answer a staff member typed, so a "cleanup" that emptied them would be
+// data loss. Nor does it judge plausibility: a mistyped year (2986, 9171) is a
+// well-formed date and is rewritten like any other, because rejecting it would
+// put it straight back in the junk bucket the earlier measurements inflated.
+//
+// It is idempotent, which the sync's compare-before-write depends on: a
+// normaliser whose output re-normalised differently would rewrite every
+// family_camp_adults row on every run.
+func normalizeDateOfBirth(raw string) string {
+	trimmed := strings.Join(strings.Fields(raw), " ")
+	if trimmed == "" {
+		return ""
+	}
+
+	if m := dobISOPattern.FindStringSubmatch(trimmed); m != nil {
+		if out, ok := canonicalDate(atoiOrZero(m[1]), atoiOrZero(m[2]), atoiOrZero(m[3])); ok {
+			return out
+		}
+	}
+	if m := dobNumericPattern.FindStringSubmatch(trimmed); m != nil {
+		if out, ok := canonicalDate(expandTwoDigitYear(m[3]), atoiOrZero(m[1]), atoiOrZero(m[2])); ok {
+			return out
+		}
+	}
+	if m := dobDigits8Pattern.FindStringSubmatch(trimmed); m != nil {
+		if out, ok := canonicalDate(atoiOrZero(m[3]), atoiOrZero(m[1]), atoiOrZero(m[2])); ok {
+			return out
+		}
+	}
+	if m := dobDigits6Pattern.FindStringSubmatch(trimmed); m != nil {
+		if out, ok := canonicalDate(expandTwoDigitYear(m[3]), atoiOrZero(m[1]), atoiOrZero(m[2])); ok {
+			return out
+		}
+	}
+	if m := dobMonthNamePattern.FindStringSubmatch(trimmed); m != nil {
+		if month, ok := dobMonthNames[strings.ToLower(m[1])]; ok {
+			if out, ok := canonicalDate(atoiOrZero(m[3]), month, atoiOrZero(m[2])); ok {
+				return out
+			}
+		}
+	}
+	if m := dobDayMonthNamePattern.FindStringSubmatch(trimmed); m != nil {
+		if month, ok := dobMonthNames[strings.ToLower(m[2])]; ok {
+			if out, ok := canonicalDate(atoiOrZero(m[3]), month, atoiOrZero(m[1])); ok {
+				return out
+			}
+		}
+	}
+
+	return raw
+}
+
+// expandTwoDigitYear applies dobTwoDigitYearPivot. A year already written with
+// three or more digits is returned as-is.
+func expandTwoDigitYear(year string) int {
+	y := atoiOrZero(year)
+	if len(year) > 2 {
+		return y
+	}
+	if y >= dobTwoDigitYearPivot {
+		return 1900 + y
+	}
+	return 2000 + y
+}
+
+// canonicalDate renders YYYY-MM-DD, reporting false when the parts are not a
+// real calendar date (February 30, month 13). time.Date silently rolls those
+// over, so the round-trip check is what actually rejects them.
+func canonicalDate(year, month, day int) (string, bool) {
+	if year <= 0 || month <= 0 || day <= 0 {
+		return "", false
+	}
+	t := time.Date(year, time.Month(month), day, 0, 0, 0, 0, time.UTC)
+	if t.Year() != year || int(t.Month()) != month || t.Day() != day {
+		return "", false
+	}
+	return fmt.Sprintf("%04d-%02d-%02d", year, month, day), true
+}
+
+// atoiOrZero converts a regex-captured digit run. The patterns guarantee the
+// input is digits, so the error case is unreachable and is folded to 0, which
+// canonicalDate then rejects.
+func atoiOrZero(s string) int {
+	n, err := strconv.Atoi(s)
+	if err != nil {
+		return 0
+	}
+	return n
+}
+
+// relationshipSynonyms folds the only two synonym pairs the vocabulary
+// supports. Mother and Father are deliberately NOT folded into each other:
+// 92 of the groups that still disagree after normalisation are exactly that
+// pair, and they are two children naming two DIFFERENT PEOPLE into one adult
+// slot -- the signal kindred#2275 exists to measure.
+//
+// The lookup is exact-match on the whole value, never a substring, which is
+// what keeps the small step-parent population (~21 answers: `Step Father`,
+// `step mother`, `Stepmom`, `Dad/Stepdad`) out of it.
+var relationshipSynonyms = map[string]string{
+	"mom":    "Mother",
+	"mother": "Mother",
+	"dad":    "Father",
+	"father": "Father",
+}
+
+// normalizeRelationshipToCamper folds case and the two synonym pairs on a
+// relationship answer, and leaves everything else exactly as the parent typed
+// it.
+//
+// Case folding applies only to a SINGLE all-letters token, so `mother` becomes
+// `Mother` and `spouse` becomes `Spouse`, while free text (`mother of Emma and
+// Liam`) and punctuated answers (`N/A`, `Dad/Stepdad`) keep their own
+// capitalisation. Re-casing free text would buy 2 more collapsed groups out of
+// 315 and rewrite 100 more stored values, which is not a trade worth making.
+func normalizeRelationshipToCamper(raw string) string {
+	trimmed := strings.Join(strings.Fields(raw), " ")
+	if trimmed == "" {
+		return ""
+	}
+
+	if canonical, ok := relationshipSynonyms[strings.ToLower(trimmed)]; ok {
+		return canonical
+	}
+
+	if !isSingleAlphabeticToken(trimmed) {
+		return trimmed
+	}
+
+	runes := []rune(trimmed)
+	return string(unicode.ToUpper(runes[0])) + strings.ToLower(string(runes[1:]))
+}
+
+// isSingleAlphabeticToken reports whether s is one word made only of letters.
+func isSingleAlphabeticToken(s string) bool {
+	for _, r := range s {
+		if !unicode.IsLetter(r) {
+			return false
+		}
+	}
+	return s != ""
 }
 
 // emailFormatPattern is a narrow, defensible notion of "well-formed enough
@@ -1671,7 +2071,8 @@ func (s *FamilyCampDerivedSync) adultNeedsUpdate(existing *core.Record, adult *a
 		existing.GetString("pronouns") != adult.pronouns ||
 		existing.GetString("gender") != adult.gender ||
 		existing.GetString("date_of_birth") != adult.dateOfBirth ||
-		existing.GetString("relationship_to_camper") != adult.relationship
+		existing.GetString("relationship_to_camper") != adult.relationship ||
+		storedAttributeConflicts(existing) != adult.conflictsJSON()
 }
 
 // registrationNeedsUpdate checks if a registration record needs updating
@@ -1793,6 +2194,7 @@ func (s *FamilyCampDerivedSync) upsertAdults(
 				existingRecord.Set("gender", adult.gender)
 				existingRecord.Set("date_of_birth", adult.dateOfBirth)
 				existingRecord.Set("relationship_to_camper", adult.relationship)
+				setAttributeConflicts(existingRecord, adult)
 
 				if err := s.App.Save(existingRecord); err != nil {
 					slog.Error("Error updating adult record", "household", adult.householdPBID, "error", err)
@@ -1817,6 +2219,7 @@ func (s *FamilyCampDerivedSync) upsertAdults(
 			record.Set("gender", adult.gender)
 			record.Set("date_of_birth", adult.dateOfBirth)
 			record.Set("relationship_to_camper", adult.relationship)
+			setAttributeConflicts(record, adult)
 
 			if err := s.App.Save(record); err != nil {
 				slog.Error("Error creating adult record", "household", adult.householdPBID, "error", err)

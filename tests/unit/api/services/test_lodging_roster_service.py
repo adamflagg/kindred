@@ -26,7 +26,7 @@ import logging
 from datetime import date
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 
@@ -106,6 +106,15 @@ def _repo(**overrides: Any) -> MagicMock:
         "fetch_session": None,
         "fetch_units": [],
         "fetch_availability": [],
+        # Write-in OCCUPANCY, split out of `lodging_availability` by
+        # kindred#2382. Empty by default -- most weekends have no write-in at
+        # all, and that must be the shape the board sees.
+        "fetch_write_ins": [],
+        # The scenario half of the same split (kindred#2382, PR 3). A request
+        # naming a scenario reads THIS instead of `fetch_write_ins` and
+        # REPLACES it -- see TestAScenariosWriteInsReplaceTheLiveOnes. Empty by
+        # default for the same reason its live sibling is.
+        "fetch_draft_write_ins": [],
         "fetch_assignments": [],
         # The scenario layer. Only read when a scenario is asked for, which is
         # itself asserted below -- no scenario must cost no extra fetches.
@@ -138,7 +147,7 @@ def _repo(**overrides: Any) -> MagicMock:
         "fetch_family_camp_adults": {},
         "fetch_family_camp_registrations": {},
         "fetch_family_camp_medical": {},
-        # The PHI path reads one household, not the whole-year maps above.
+        # The medical read takes one household, not the whole-year maps above.
         "fetch_household_by_cm_id": None,
         "fetch_medical_for_household": None,
         "count_open_unresolved_aliases": 0,
@@ -1039,9 +1048,10 @@ class TestUnitsAndCounts:
                 _unit("u1", "house", "House", is_container=True, default_combined=True),
                 _unit("u2", "house-a", "House A", sleeps=4, parent_unit="u1"),
             ],
-            fetch_availability=[
-                _rec(unit="u1", family_available=False, occupant_name="Liam Garcia", note="Back Monday")
-            ],
+            # kindred#2382: occupancy lives in `lodging_write_ins` now. The row
+            # is the same row -- unit, occupant, note -- moved out of the
+            # boolean it used to share with the staff<->family role.
+            fetch_write_ins=[_rec(unit="u1", occupant_name="Liam Garcia", note="Back Monday")],
         )
         roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
 
@@ -1068,7 +1078,7 @@ class TestUnitsAndCounts:
                 _unit("u1", "house", "House", is_container=True, default_combined=True),
                 _unit("u2", "house-a", "House A", sleeps=4, parent_unit="u1"),
             ],
-            fetch_availability=[_rec(unit="u2", family_available=False, occupant_name="Ava Martinez")],
+            fetch_write_ins=[_rec(unit="u2", occupant_name="Ava Martinez", note="")],
         )
         roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
 
@@ -3935,7 +3945,7 @@ class TestHouseholdJourney:
         assert journey.years[0].cabin_name == ""
 
     @pytest.mark.asyncio
-    async def test_a_cancelled_season_leaves_the_year_registered_with_no_enrolment(self) -> None:
+    async def test_a_cancelled_season_leaves_the_year_registered_with_no_enrollment(self) -> None:
         """State 4. Every 2020 attendee row is cancelled, so `status_id = 2`
         removes them all -- the year still happened on the registration and
         must not vanish, and it is not a childless family.
@@ -3999,7 +4009,7 @@ class TestHouseholdJourney:
         A family can book two of a season's weekends, which gives one child
         TWO enrolled family attendee rows in the same year -- both expanding
         to the same `persons` record, because `persons` is per-year rather
-        than per-enrolment. Measured on the production snapshot 2026-08-09:
+        than per-enrollment. Measured on the production snapshot 2026-08-09:
         every year from 2017 on has some, 9 to 20 children a year, across 64
         distinct (household, year) pairs. One household alone lists three
         children in 2026 and five attendee rows for them.
@@ -4142,6 +4152,18 @@ class TestWriteInCovers:
     def _unit(code: str, **kwargs: Any) -> LodgingUnitSummary:
         return LodgingUnitSummary(unit_id=f"id-{code}", code=code, name=code.title(), **kwargs)
 
+    @staticmethod
+    def _written(*codes: str) -> frozenset[str]:
+        """The `lodging_write_ins` rows, as the ids the walk is handed.
+
+        WHICH UNITS HOLD A WRITE-IN IS AN INPUT since kindred#2382, not a value
+        read off the summary. It used to be `family_available_override is
+        False`, which was the only spelling occupancy had while it shared one
+        boolean with the staff<->family role; the two are separate tables now,
+        so the walk is given the occupancy source directly.
+        """
+        return frozenset(f"id-{code}" for code in codes)
+
     def test_a_room_inherits_the_write_in_of_the_building_above_it(self) -> None:
         # The SPLIT case. Staff wrote into the whole house while it was merged,
         # then split it back to rooms: the row still names the house, which now
@@ -4149,13 +4171,12 @@ class TestWriteInCovers:
         house = self._unit(
             "house",
             is_container=True,
-            family_available_override=False,
             occupant_name="Liam Garcia",
             reason="Back Monday",
         )
         room = self._unit("house-a", parent_code="house")
 
-        covers = write_in_covers([house, room])
+        covers = write_in_covers([house, room], self._written("house"))
 
         assert covers["house-a"].unit_code == "house"
         assert covers["house-a"].occupant_name == "Liam Garcia"
@@ -4165,12 +4186,10 @@ class TestWriteInCovers:
         # The MERGE case, and the mirror of the one above: the row names a room
         # that stopped being drawn when staff merged the building over it.
         house = self._unit("house", is_container=True, is_combined=True)
-        written_room = self._unit(
-            "house-a", parent_code="house", family_available_override=False, occupant_name="Liam Garcia"
-        )
+        written_room = self._unit("house-a", parent_code="house", occupant_name="Liam Garcia")
         other_room = self._unit("house-b", parent_code="house")
 
-        covers = write_in_covers([house, written_room, other_room])
+        covers = write_in_covers([house, written_room, other_room], self._written("house-a"))
 
         assert covers["house"].unit_code == "house-a"
         assert covers["house"].occupant_name == "Liam Garcia"
@@ -4182,53 +4201,68 @@ class TestWriteInCovers:
         # reaching B, because each unit resolves from OWN rows only -- never
         # transitively through a cover it just computed for somebody else.
         house = self._unit("house", is_container=True)
-        written_room = self._unit(
-            "house-a", parent_code="house", family_available_override=False, occupant_name="Liam Garcia"
-        )
+        written_room = self._unit("house-a", parent_code="house", occupant_name="Liam Garcia")
         other_room = self._unit("house-b", parent_code="house")
 
-        covers = write_in_covers([house, written_room, other_room])
+        covers = write_in_covers([house, written_room, other_room], self._written("house-a"))
 
         assert "house-b" not in covers
         assert covers["house"].unit_code == "house-a"
 
     def test_a_units_own_write_in_beats_an_inherited_one(self) -> None:
-        house = self._unit("house", is_container=True, family_available_override=False, occupant_name="Liam Garcia")
-        room = self._unit("house-a", parent_code="house", family_available_override=False, occupant_name="Ava Martinez")
+        house = self._unit("house", is_container=True, occupant_name="Liam Garcia")
+        room = self._unit("house-a", parent_code="house", occupant_name="Ava Martinez")
 
-        covers = write_in_covers([house, room])
+        covers = write_in_covers([house, room], self._written("house", "house-a"))
 
         assert covers["house-a"].unit_code == "house-a"
         assert covers["house-a"].occupant_name == "Ava Martinez"
 
     def test_the_nearest_ancestor_wins(self) -> None:
-        block = self._unit("block", is_container=True, family_available_override=False, occupant_name="Ava Martinez")
+        block = self._unit("block", is_container=True, occupant_name="Ava Martinez")
         house = self._unit(
             "house",
             parent_code="block",
             is_container=True,
-            family_available_override=False,
             occupant_name="Liam Garcia",
         )
         room = self._unit("house-a", parent_code="house")
 
-        covers = write_in_covers([block, house, room])
+        covers = write_in_covers([block, house, room], self._written("block", "house"))
 
         assert covers["house-a"].unit_code == "house"
 
     def test_a_release_is_not_a_write_in(self) -> None:
-        # `True` is a staff cabin OPENED to families for the weekend. It names
-        # no occupant and closes nothing, so it must not travel: inheriting it
-        # would silently open every room beneath a released building.
+        # A ROLE release is a staff cabin OPENED to families for the weekend. It
+        # names no occupant and closes nothing, so it must not travel:
+        # inheriting it would silently open every room beneath a released
+        # building. It lives in `lodging_availability` and never appears in the
+        # occupancy set at all, which is what makes that structural rather than
+        # a branch somebody can forget.
         house = self._unit("house", is_container=True, inventory_class="staff_default", family_available_override=True)
         room = self._unit("house-a", parent_code="house")
 
-        covers = write_in_covers([house, room])
+        covers = write_in_covers([house, room], self._written())
 
         assert covers == {}
 
+    def test_a_bare_false_override_with_no_write_in_row_covers_nothing(self) -> None:
+        """The classification guard, and the reason the walk stopped reading it.
+
+        `family_available_override is False` was the old predicate. After
+        kindred#2382's split it means only "this unit is closed this weekend",
+        which a ROLE row can say without naming anybody -- and a cover built
+        from one would have the board print an occupant that exists in no row.
+        1500000162 leaves no such row behind and no writer creates another, so
+        this is bad data meeting the rule, not a state the product can reach.
+        """
+        house = self._unit("house", is_container=True, family_available_override=False)
+        room = self._unit("house-a", parent_code="house")
+
+        assert write_in_covers([house, room], self._written()) == {}
+
     def test_a_unit_with_nothing_on_its_path_is_absent(self) -> None:
-        assert write_in_covers([self._unit("cedar-1")]) == {}
+        assert write_in_covers([self._unit("cedar-1")], self._written()) == {}
 
     def test_a_parent_cycle_does_not_hang(self) -> None:
         # The server guards against writing one (#1899), but a cycle already in
@@ -4236,7 +4270,11 @@ class TestWriteInCovers:
         a = self._unit("a", parent_code="b", is_container=True)
         b = self._unit("b", parent_code="a", is_container=True)
 
-        assert write_in_covers([a, b]) == {}
+        # Nobody is written in, so every cover the walks could return is the
+        # product of the cycle rather than of a row -- an empty map is the only
+        # right answer, and reaching it at all means both guards fired. Without
+        # them this hangs rather than failing.
+        assert write_in_covers([a, b], self._written()) == {}
 
     def test_a_blank_coded_unit_never_lends_its_cover_to_another(self) -> None:
         # "" is the same key `parent_code == ""` uses for "no parent", which is
@@ -4246,22 +4284,519 @@ class TestWriteInCovers:
         #
         # A blank code is a valid if unfortunate registry value, so this is bad
         # data meeting a collision, not a state the schema forbids.
-        written = self._unit("", family_available_override=False, occupant_name="Liam Garcia")
+        written = self._unit("", occupant_name="Liam Garcia")
         other = LodgingUnitSummary(unit_id="id-other", code="", name="Other")
 
-        assert write_in_covers([written, other]) == {}
+        assert write_in_covers([written, other], self._written("")) == {}
 
     def test_several_written_rooms_pick_one_deterministically(self) -> None:
         # A building over two written-into rooms is closed either way; the
         # point is that two identical payloads never disagree about WHICH row
         # the card names, which a set-ordered walk would not guarantee.
         house = self._unit("house", is_container=True, is_combined=True)
-        room_b = self._unit(
-            "house-b", parent_code="house", family_available_override=False, occupant_name="Ava Martinez"
-        )
-        room_a = self._unit(
-            "house-a", parent_code="house", family_available_override=False, occupant_name="Liam Garcia"
+        room_b = self._unit("house-b", parent_code="house", occupant_name="Ava Martinez")
+        room_a = self._unit("house-a", parent_code="house", occupant_name="Liam Garcia")
+        written = self._written("house-a", "house-b")
+
+        assert write_in_covers([house, room_b, room_a], written)["house"].unit_code == "house-a"
+        assert write_in_covers([house, room_a, room_b], written)["house"].unit_code == "house-a"
+
+
+class TestWriteInsResolveFromTheirOwnTable:
+    """Write-in OCCUPANCY is read from `lodging_write_ins`, not from availability.
+
+    kindred#2382, PR 2 of 4. `lodging_availability.family_available` answered
+    two unrelated questions through one boolean: `true` on a staff cabin is a
+    staff<->family ROLE override for the weekend, `false` was an occupancy --
+    somebody is in the room. The owner ruled the ROLE is NOT scenario-scoped
+    while an occupancy IS, so the two facts are split apart and each scoped on
+    its own terms.
+
+    This class pins the READ half of the split at BEHAVIOURAL PARITY: after it,
+    the board looks and behaves exactly as it did, and the only thing that moved
+    is which table the occupancy came out of. `family_available_override` is
+    still `False` on a written-into unit, and deliberately so -- it is what
+    `is_family_available`, and through it every count on the stats bar, is
+    derived from. Disentangling that boolean is PR 4.
+
+    Fictional data throughout.
+    """
+
+    @pytest.mark.asyncio
+    async def test_a_write_in_row_closes_the_unit_and_names_its_occupant(self) -> None:
+        """The whole read, on one unit, with availability holding nothing.
+
+        The row that used to live in `lodging_availability` with
+        `family_available = false` now lives here, and every field the card
+        reads still arrives: the unit is closed, the occupant is named, and the
+        note travels beside it under the API's `reason` name.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[_unit("u1", "ridge-a", "Ridge A", sleeps=5)],
+            fetch_availability=[],
+            fetch_write_ins=[_rec(unit="u1", occupant_name="Liam Garcia", note="Back Monday")],
         )
 
-        assert write_in_covers([house, room_b, room_a])["house"].unit_code == "house-a"
-        assert write_in_covers([house, room_a, room_b])["house"].unit_code == "house-a"
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        unit = roster.units[0]
+        assert unit.occupant_name == "Liam Garcia"
+        assert unit.reason == "Back Monday"
+        # The compat half, and it is load-bearing rather than leftover: every
+        # count on the stats bar goes through `is_family_available`, which is
+        # derived from this. PR 4 re-points it; until then a write-in still
+        # spells itself here.
+        assert unit.family_available_override is False
+        assert unit.is_family_available is False
+        assert unit.write_in is not None
+        assert unit.write_in.unit_id == "u1"
+        assert unit.write_in.occupant_name == "Liam Garcia"
+
+    @pytest.mark.asyncio
+    async def test_a_stale_availability_occupancy_row_no_longer_writes_anybody_in(self) -> None:
+        """The other side of the split, and the one a half-fix would miss.
+
+        1500000162 moves every `family_available = false` row out, and no
+        writer creates another -- `set_availability` sends an occupancy to the
+        write-in table now. So a `false` row surviving in `lodging_availability`
+        names nobody: it is a bare ROLE value with no occupant behind it, and
+        reading it as a write-in would have the board report an occupant who
+        exists in no row anywhere.
+
+        It still CLOSES the unit, because that is what a `false` role says and
+        flattening it would silently open a cabin. What it must not do is
+        produce a cover.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[_unit("u1", "ridge-a", "Ridge A", sleeps=5)],
+            fetch_availability=[_rec(unit="u1", family_available=False, occupant_name="", note="")],
+            fetch_write_ins=[],
+        )
+
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.units[0].is_family_available is False
+        assert roster.units[0].write_in is None
+
+    @pytest.mark.asyncio
+    async def test_a_role_release_still_comes_from_availability(self) -> None:
+        """The half that does NOT move, stated so a sweep cannot take it too.
+
+        "we're moving staff to X for weekend Y" is an operational fact about
+        the weekend, not a modelling choice, so `lodging_availability` keeps it
+        and keeps its no-scenario shape -- 1500000135's original reasoning,
+        which turns out to be exactly right for this half.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[_unit("u1", "le-shack", "Le Shack", sleeps=4, inventory_class="staff_default")],
+            fetch_availability=[_rec(unit="u1", family_available=True, occupant_name="", note="Director away")],
+            fetch_write_ins=[],
+        )
+
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        unit = roster.units[0]
+        assert unit.family_available_override is True
+        assert unit.is_family_available is True
+        assert unit.reason == "Director away"
+        # A release names no occupant and closes nothing, so it must never
+        # resolve to a cover -- inheriting one would silently open every room
+        # beneath a released building.
+        assert unit.write_in is None
+
+    @pytest.mark.asyncio
+    async def test_a_write_in_outranks_a_release_on_the_same_unit(self) -> None:
+        """Two rows, two tables, one unit -- and occupancy wins.
+
+        No writer produces this pair (`set_availability` clears the other fact
+        on every write), but two staff racing on one cabin can, and the answer
+        has to be the safe one: somebody is in the room, so the room is closed.
+        Reading the release instead would open a cabin with an occupant in it.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[_unit("u1", "le-shack", "Le Shack", sleeps=4, inventory_class="staff_default")],
+            fetch_availability=[_rec(unit="u1", family_available=True, occupant_name="", note="Director away")],
+            fetch_write_ins=[_rec(unit="u1", occupant_name="Ava Martinez", note="")],
+        )
+
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        unit = roster.units[0]
+        assert unit.family_available_override is False
+        assert unit.is_family_available is False
+        assert unit.occupant_name == "Ava Martinez"
+        assert unit.write_in is not None
+
+    @pytest.mark.asyncio
+    async def test_the_roster_reads_the_write_in_table_for_this_weekend(self) -> None:
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[_unit("u1", "ridge-a", "Ridge A", sleeps=5)],
+        )
+
+        await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        repo.fetch_write_ins.assert_awaited_once_with(2026, 1000001)
+
+    @pytest.mark.asyncio
+    async def test_the_lander_reads_the_write_in_table_once_per_weekend(self) -> None:
+        """`build_summary` carries its OWN TaskGroup, which is the whole point.
+
+        Wiring `build_roster` and leaving the lander is the obvious half-fix --
+        the two methods hold parallel blocks that must be edited separately --
+        and it would put a cabin's write-in on the board while the weekend card
+        linking to it still counted the cabin as open.
+
+        THE ARGUMENTS ARE PINNED, not only the count. `build_summary` holds the
+        one `year` for the whole sweep and each weekend's OWN CampMinder id, and
+        a read keyed on the PocketBase id instead would still be awaited twice
+        -- kindred#2042 is exactly the mistake a bare `await_count` waves
+        through. `test_the_lander_counts_a_written_into_cabin_as_reserved`
+        below is the other half: this pins that the table is ASKED, that one
+        pins that the answer is USED.
+        """
+        repo = _repo(fetch_weekend_sessions=[FAMILY_SESSION, ADULT_SESSION])
+
+        await LodgingRosterService(repo).build_summary(2026)
+
+        assert repo.fetch_write_ins.await_args_list == [call(2026, 1000001), call(2026, 1000002)]
+        # The LIVE table, and only it, because this sweep names no scenario --
+        # the same line `test_the_mirror_reads_the_live_table_and_never_the_draft`
+        # holds for the roster. Two TaskGroups, two places to get it wrong;
+        # `test_the_lander_reads_each_weekends_draft_write_ins_in_a_scenario`
+        # is this assertion's mirror image.
+        assert repo.fetch_draft_write_ins.await_count == 0
+
+    @pytest.mark.asyncio
+    async def test_the_lander_counts_a_written_into_cabin_as_reserved(self) -> None:
+        """The rows the lander fetches have to REACH `_build_units`.
+
+        Awaiting `fetch_write_ins` and then dropping its result on the floor is
+        a half-fix a call-count assertion cannot see, and it is the exact
+        failure the comment at that fetch site names: a weekend card reporting
+        a written-into cabin as open beside a board that draws it closed.
+        Measured -- passing `[]` in place of `write_ins_task.result()` left every
+        other test in this file green.
+
+        Pinned against `build_roster`'s own counts rather than against
+        literals alone, which is how the lander's contract is already stated in
+        `TestBuildSummary` -- the two endpoints link to each other and must
+        never disagree about one weekend. The literals are kept beside it so a
+        failure says WHICH number moved rather than only that the two differ.
+        """
+        repo = _repo(
+            fetch_weekend_sessions=[FAMILY_SESSION],
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("u1", "ridge-a", "Ridge A", sleeps=5),
+                _unit("u2", "ridge-b", "Ridge B", sleeps=4),
+            ],
+            fetch_write_ins=[_rec(unit="u1", occupant_name="Liam Garcia", note="")],
+        )
+        service = LodgingRosterService(repo)
+
+        summary = await service.build_summary(2026)
+        roster = await service.build_roster(2026, 1000001)
+
+        counts = summary.weekends[0].counts
+        assert counts.units_reserved == 1
+        assert counts.units_family_available == 1
+        # The written-into cabin's five beds are NOT on offer; only Ridge B's.
+        assert counts.beds_family_available == 4
+        assert counts == roster.counts
+
+    @pytest.mark.asyncio
+    async def test_the_mirror_reads_the_live_table_and_never_the_draft(self) -> None:
+        """No scenario means the LIVE board, which is a scope in its own right.
+
+        The other side of `TestAScenariosWriteInsReplaceTheLiveOnes` below: a
+        request naming no scenario must not touch the draft table at all, the
+        same way it reads `fetch_assignments` rather than
+        `fetch_draft_assignments`. Reading both and merging is the overlay
+        kindred#1974 deleted for placements and this table never had.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[_unit("u1", "ridge-a", "Ridge A", sleeps=5)],
+            fetch_write_ins=[_rec(unit="u1", occupant_name="Liam Garcia", note="")],
+        )
+
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        repo.fetch_write_ins.assert_awaited_once_with(2026, 1000001)
+        assert repo.fetch_draft_write_ins.await_count == 0
+        assert roster.units[0].write_in is not None
+
+    @pytest.mark.asyncio
+    async def test_a_written_into_cabin_is_still_counted_as_reserved(self) -> None:
+        """The stats bar must not move. `units_reserved` is the number staff read.
+
+        It is derived from `is_family_available`, which is derived from
+        `family_available_override` -- so a write-in that stopped spelling
+        itself there would silently return a closed cabin to the open count and
+        to `beds_family_available`.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("u1", "ridge-a", "Ridge A", sleeps=5),
+                _unit("u2", "ridge-b", "Ridge B", sleeps=4),
+            ],
+            fetch_write_ins=[_rec(unit="u1", occupant_name="Liam Garcia", note="")],
+        )
+
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.counts.units_total == 2
+        assert roster.counts.units_family_available == 1
+        assert roster.counts.units_reserved == 1
+        assert roster.counts.beds_family_available == 4
+
+    @pytest.mark.asyncio
+    async def test_a_write_in_on_a_building_still_reaches_the_rooms_beneath_it(self) -> None:
+        """The tree walk is unchanged; only its input moved tables."""
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("u1", "house", "House", is_container=True, default_combined=True),
+                _unit("u2", "house-a", "House A", sleeps=4, parent_unit="u1"),
+            ],
+            fetch_write_ins=[_rec(unit="u1", occupant_name="Liam Garcia", note="Back Monday")],
+        )
+
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        by_code = {u.code: u for u in roster.units}
+        assert by_code["house-a"].family_available_override is None
+        assert by_code["house-a"].write_in is not None
+        assert by_code["house-a"].write_in.unit_id == "u1"
+        assert by_code["house-a"].write_in.occupant_name == "Liam Garcia"
+        assert by_code["house-a"].write_in.note == "Back Monday"
+
+
+class TestAScenariosWriteInsReplaceTheLiveOnes:
+    """kindred#2382, PR 3 of 4 -- the occupancy half gains its scenario dimension.
+
+    REPLACE, NOT OVERLAY, and that is the whole rule. A request naming a
+    scenario reads `lodging_write_ins_draft` and does not read the live table
+    at all, exactly as kindred#1974 made a scenario read
+    `lodging_assignments_draft` instead of `lodging_assignments`. A unit with
+    no draft row holds NO write-in in that scenario, whatever the live board
+    says -- the live rows are not consulted, and are not even fetched.
+
+    Two staff members can therefore model the same paper-registered family into
+    two different cabins, which is the requirement the owner stated on
+    2026-08-15 and the thing a single shared table could not express.
+
+    The seed is what stops a fresh scenario losing the live board's write-ins:
+    `copy_from_mirror` and `copy_scenario_to_scenario` both copy them (owner
+    ruling, 2026-08-16). That is asserted in test_lodging_write_service.py; the
+    reason it is not asserted by rendering the live rows through the gaps HERE
+    is that doing so is precisely the fall-through this class forbids.
+
+    Fictional data throughout.
+    """
+
+    @pytest.mark.asyncio
+    async def test_a_scenario_reads_the_draft_table_and_not_the_live_one(self) -> None:
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[_unit("u1", "ridge-a", "Ridge A", sleeps=5)],
+            fetch_write_ins=[_rec(unit="u1", occupant_name="Liam Garcia", note="")],
+        )
+
+        await LodgingRosterService(repo).build_roster(2026, 1000001, scenario="scn_1")
+
+        repo.fetch_draft_write_ins.assert_awaited_once_with(2026, 1000001, "scn_1")
+        assert repo.fetch_write_ins.await_count == 0
+
+    @pytest.mark.asyncio
+    async def test_a_live_write_in_does_not_fall_through_into_a_scenario(self) -> None:
+        """The live board holds a write-in; the scenario holds none. The scenario is EMPTY.
+
+        This is the assertion a merge implementation would fail, and the one an
+        overlay was always going to get wrong in the safe-looking direction:
+        showing the live occupancy in a scenario that never asked for it is
+        exactly the shared-table behaviour kindred#2382 exists to end.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[_unit("u1", "ridge-a", "Ridge A", sleeps=5)],
+            fetch_write_ins=[_rec(unit="u1", occupant_name="Liam Garcia", note="Back Monday")],
+            fetch_draft_write_ins=[],
+        )
+
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001, scenario="scn_1")
+
+        unit = roster.units[0]
+        assert unit.write_in is None
+        assert unit.family_available_override is None
+        assert unit.is_family_available is True
+        assert unit.occupant_name == ""
+
+    @pytest.mark.asyncio
+    async def test_a_scenarios_own_write_in_closes_the_unit_and_names_its_occupant(self) -> None:
+        """Every field the card reads arrives from the draft row, unchanged.
+
+        The positive control for the two assertions above: without it, a
+        service that read the draft table and then dropped the rows on the
+        floor would pass both.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[_unit("u1", "ridge-a", "Ridge A", sleeps=5)],
+            fetch_write_ins=[],
+            fetch_draft_write_ins=[_rec(unit="u1", occupant_name="Olivia Chen", note="Paper registration")],
+        )
+
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001, scenario="scn_1")
+
+        unit = roster.units[0]
+        assert unit.family_available_override is False
+        assert unit.is_family_available is False
+        assert unit.occupant_name == "Olivia Chen"
+        assert unit.reason == "Paper registration"
+        assert unit.write_in is not None
+        assert unit.write_in.unit_id == "u1"
+
+    @pytest.mark.asyncio
+    async def test_two_scenarios_can_write_the_same_family_into_different_cabins(self) -> None:
+        """The requirement in one test.
+
+        Owner, 2026-08-15: "we do unfortunately need write in to be scenario
+        scoped, not only session scoped, because not all write ins would be for
+        staff, some are paper registrations for families coming with no kids."
+        A shared table could not express this at all -- the second write would
+        collide with the first on `idx_lodging_write_in_unique`.
+        """
+        units = [
+            _unit("u1", "ridge-a", "Ridge A", sleeps=5),
+            _unit("u2", "ridge-b", "Ridge B", sleeps=4),
+        ]
+        service_a = LodgingRosterService(
+            _repo(
+                fetch_session=FAMILY_SESSION,
+                fetch_units=units,
+                fetch_draft_write_ins=[_rec(unit="u1", occupant_name="Olivia Chen", note="")],
+            )
+        )
+        service_b = LodgingRosterService(
+            _repo(
+                fetch_session=FAMILY_SESSION,
+                fetch_units=units,
+                fetch_draft_write_ins=[_rec(unit="u2", occupant_name="Olivia Chen", note="")],
+            )
+        )
+
+        roster_a = await service_a.build_roster(2026, 1000001, scenario="scn_a")
+        roster_b = await service_b.build_roster(2026, 1000001, scenario="scn_b")
+
+        assert {u.code: u.occupant_name for u in roster_a.units} == {"ridge-a": "Olivia Chen", "ridge-b": ""}
+        assert {u.code: u.occupant_name for u in roster_b.units} == {"ridge-a": "", "ridge-b": "Olivia Chen"}
+
+    @pytest.mark.asyncio
+    async def test_a_scenarios_write_in_still_covers_the_rooms_beneath_a_building(self) -> None:
+        """The cover walk takes the scenario's rows, not the live ones.
+
+        `_resolve_write_in_covers` is fed from whichever source the request
+        chose, so a scenario that writes into a building closes the rooms under
+        it in THAT scenario. Wiring the fetch and leaving the cover walk on the
+        live list is the half-fix this catches.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("u1", "house", "House", is_container=True, default_combined=True),
+                _unit("u2", "house-a", "House A", sleeps=4, parent_unit="u1"),
+            ],
+            fetch_write_ins=[],
+            fetch_draft_write_ins=[_rec(unit="u1", occupant_name="Olivia Chen", note="Paper registration")],
+        )
+
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001, scenario="scn_1")
+
+        by_code = {u.code: u for u in roster.units}
+        assert by_code["house-a"].write_in is not None
+        assert by_code["house-a"].write_in.unit_id == "u1"
+        assert by_code["house-a"].write_in.occupant_name == "Olivia Chen"
+
+    @pytest.mark.asyncio
+    async def test_the_role_override_is_still_read_from_the_live_table_in_a_scenario(self) -> None:
+        """The ROLE half does NOT gain a scenario dimension, by owner ruling.
+
+        "staff vs family_available is not scenario scoped, no, that's more of a
+        known 'were moving staff to X for weekend Y'" -- so a release is read
+        from `lodging_availability` with no scenario predicate whether or not
+        the request names one. Scoping this half too is the mistake
+        1500000135's reasoning already argued against.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[_unit("u1", "le-shack", "Le Shack", sleeps=4, inventory_class="staff_default")],
+            fetch_availability=[_rec(unit="u1", family_available=True, occupant_name="", note="Director away")],
+        )
+
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001, scenario="scn_1")
+
+        repo.fetch_availability.assert_awaited_once_with(2026, 1000001)
+        assert roster.units[0].family_available_override is True
+        assert roster.units[0].reason == "Director away"
+
+    @pytest.mark.asyncio
+    async def test_the_lander_reads_each_weekends_draft_write_ins_in_a_scenario(self) -> None:
+        """`build_summary` carries its OWN TaskGroup -- two places to get this wrong.
+
+        The mirror image of the assertion in
+        `test_the_lander_reads_the_write_in_table_once_per_weekend`: wiring
+        `build_roster` and leaving the lander would put a scenario's write-in
+        on the board while the weekend card linking to it still counted from
+        the live table.
+
+        THE ARGUMENTS ARE PINNED, not only the count: the one `year`, each
+        weekend's OWN CampMinder id, and the one scenario for the sweep.
+        """
+        repo = _repo(fetch_weekend_sessions=[FAMILY_SESSION, ADULT_SESSION])
+
+        await LodgingRosterService(repo).build_summary(2026, scenario="scn_1")
+
+        assert repo.fetch_draft_write_ins.await_args_list == [
+            call(2026, 1000001, "scn_1"),
+            call(2026, 1000002, "scn_1"),
+        ]
+        assert repo.fetch_write_ins.await_count == 0
+
+    @pytest.mark.asyncio
+    async def test_the_lander_counts_a_scenarios_write_in_as_reserved(self) -> None:
+        """The rows the lander fetches have to REACH `_build_units`.
+
+        Awaiting `fetch_draft_write_ins` and then dropping its result on the
+        floor is a half-fix a call-count assertion cannot see -- the same trap
+        `test_the_lander_counts_a_written_into_cabin_as_reserved` names for the
+        live table. Pinned against `build_roster`'s own counts, because the two
+        endpoints link to each other and must never disagree about one weekend.
+        """
+        repo = _repo(
+            fetch_weekend_sessions=[FAMILY_SESSION],
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("u1", "ridge-a", "Ridge A", sleeps=5),
+                _unit("u2", "ridge-b", "Ridge B", sleeps=4),
+            ],
+            fetch_write_ins=[],
+            fetch_draft_write_ins=[_rec(unit="u1", occupant_name="Olivia Chen", note="")],
+        )
+        service = LodgingRosterService(repo)
+
+        summary = await service.build_summary(2026, scenario="scn_1")
+        roster = await service.build_roster(2026, 1000001, scenario="scn_1")
+
+        counts = summary.weekends[0].counts
+        assert counts.units_reserved == 1
+        assert counts.units_family_available == 1
+        # The written-into cabin's five beds are NOT on offer; only Ridge B's.
+        assert counts.beds_family_available == 4
+        assert counts == roster.counts

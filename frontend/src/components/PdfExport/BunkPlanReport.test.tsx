@@ -1,7 +1,18 @@
 import { describe, it, expect } from 'vitest'
-import { renderToBuffer } from '@react-pdf/renderer'
+import { pdf } from '@react-pdf/renderer'
+import type { DocumentProps } from '@react-pdf/renderer'
 import { PDFParse } from 'pdf-parse'
 import { BunkPlanReport } from './BunkPlanReport'
+import type { ReactElement } from 'react'
+
+// Render through the SAME build the app ships. `vitest.config.ts` gives this
+// file its own project with resolve.conditions: ['browser'], so @react-pdf
+// resolves exactly as Vite bundles it. The node build's renderToBuffer() is
+// not a code path any user exercises.
+async function renderToBuffer(el: ReactElement<DocumentProps>): Promise<Buffer> {
+  const blob = await pdf(el).toBlob()
+  return Buffer.from(await blob.arrayBuffer())
+}
 
 function makeStats(overrides: Record<string, unknown> = {}) {
   return {

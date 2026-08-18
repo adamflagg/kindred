@@ -407,6 +407,62 @@ func TestAggregateKeepsEveryPersonAnswer(t *testing.T) {
 	}
 }
 
+// TestAggregateToRowsCountsUnmappedPersonFields pins the kindred#2257
+// mechanism-C fix in this file: an HH- field admitted by IsHHField (the
+// prefix test) but missing a case in MapHHFieldToColumn used to be discarded
+// by mapPersonFieldToRecord's `if column == "" { return }` with no counter
+// and no log line -- the same silent drop already fixed at
+// camper_transportation.go and staff_vehicle_info.go (kindred#2356/#2277).
+// The record itself is still created from the routed field on the same row --
+// this is a VALUE discard, not a record one, so it must land on
+// Stats.SkippedValues, not Stats.Skipped.
+func TestAggregateToRowsCountsUnmappedPersonFields(t *testing.T) {
+	t.Parallel()
+	s := NewHouseholdDemographicsSync(nil)
+
+	values := []hhCustomValueEntry{
+		hhPersonEntry("hh1", "p1", 101, "HH-Jewish Affiliation", testAffiliation),
+		hhPersonEntry("hh1", "p1", 101, "HH-Not A Real Field", "some answer"),
+	}
+
+	rows := s.aggregateToRows(values, nil, 2026)
+
+	rec := rows[MakeCompositeKey("hh1", 101, 2026)]
+	if rec == nil {
+		t.Fatalf("expected a row for person 101, got none: %v", rowKeys(rows))
+	}
+	if rec.jewishAffiliation != testAffiliation {
+		t.Errorf("routed field was not written: jewishAffiliation = %q, want %q", rec.jewishAffiliation, testAffiliation)
+	}
+
+	if s.Stats.SkippedValues != 1 {
+		t.Errorf("Stats.SkippedValues = %d, want 1 -- the unmapped HH- field is a discarded value, not a record",
+			s.Stats.SkippedValues)
+	}
+	if s.Stats.Skipped != 0 {
+		t.Errorf("Stats.Skipped = %d, want 0 -- a discarded field value is not a skipped record", s.Stats.Skipped)
+	}
+}
+
+// TestMapPersonFieldToRecordReturnsTheResolvedColumn pins
+// mapPersonFieldToRecord's return value directly, at the single-field level --
+// the same shape mapTransportFieldToRecord already has in
+// camper_transportation.go, which aggregateToRows' unmapped-count loop above
+// depends on.
+func TestMapPersonFieldToRecordReturnsTheResolvedColumn(t *testing.T) {
+	t.Parallel()
+	s := NewHouseholdDemographicsSync(nil)
+	rec := &householdDemographicsRecord{}
+
+	const wantJewishAffiliationCol = "jewish_affiliation"
+	if got := s.mapPersonFieldToRecord(rec, "HH-Jewish Affiliation", testAffiliation); got != wantJewishAffiliationCol {
+		t.Errorf("mapPersonFieldToRecord routed field returned %q, want %q", got, wantJewishAffiliationCol)
+	}
+	if got := s.mapPersonFieldToRecord(rec, "HH-Not A Real Field", "some answer"); got != "" {
+		t.Errorf("mapPersonFieldToRecord unmapped field returned %q, want \"\"", got)
+	}
+}
+
 // TestAggregateIsOrderIndependent pins the property the old code could not
 // hold. loadPersonCustomValues pages with no ORDER BY, so the input order is an
 // artifact of whichever index the planner picked; the same input supplied in a

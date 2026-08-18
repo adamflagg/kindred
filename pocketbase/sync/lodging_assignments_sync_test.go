@@ -484,10 +484,10 @@ func TestLodgingAssignmentsSyncPersonGrainManyPerSession(t *testing.T) {
 	}
 }
 
-// TestLodgingAssignmentsSyncPersonGrainNoEnrolment: 5 (2024) and 4 (2025)
+// TestLodgingAssignmentsSyncPersonGrainNoEnrollment: 5 (2024) and 4 (2025)
 // Reportable Family Camp Cabin values belong to persons with no active
 // enrollment. Queue them; never drop them.
-func TestLodgingAssignmentsSyncPersonGrainNoEnrolment(t *testing.T) {
+func TestLodgingAssignmentsSyncPersonGrainNoEnrollment(t *testing.T) {
 	t.Parallel()
 	app := newSyncTestApp(t)
 	addSession(t, app, cmIDWomensWeekend, "Women's Weekend", "adult",
@@ -509,7 +509,7 @@ func TestLodgingAssignmentsSyncPersonGrainNoEnrolment(t *testing.T) {
 
 	rows, _ := app.FindRecordsByFilter("lodging_assignments", "", "", 0, 0)
 	if len(rows) != 0 {
-		t.Errorf("assignments = %d, want 0 without an enrolment", len(rows))
+		t.Errorf("assignments = %d, want 0 without an enrollment", len(rows))
 	}
 	issues, _ := app.FindRecordsByFilter("lodging_ingest_issues", "", "", 0, 0)
 	if len(issues) != 1 || issues[0].GetString("kind") != issueNoSession {
@@ -966,7 +966,7 @@ func TestLodgingAssignmentsSyncDeletesOrphanedHouseholdMirrorRow(t *testing.T) {
 	addAlias(t, app, "Ridge A", []string{unit}, 0, 0)
 	cabinDef := addFieldDef(t, app, cmIDFamilyCampCabin, fieldNameFamilyCampCabin)
 
-	// The cancelled household: still has a cabin value, no active enrolment.
+	// The cancelled household: still has a cabin value, no active enrollment.
 	hh := addHousehold(t, app, 9001, 2025)
 	emma := addPerson(t, app, 5001, 9001, 2025, hh)
 	addAttendee(t, app, emma, sess, 5001, 32, 2025) // cancelled

@@ -49,6 +49,8 @@ from api.constants.collections import (
     LODGING_SESSION_STATUS,
     LODGING_SLOT_MERGES,
     LODGING_UNITS,
+    LODGING_WRITE_INS,
+    LODGING_WRITE_INS_DRAFT,
 )
 from api.constants.filters import ACTIVE_ENROLLED_FILTER
 from api.dependencies import lodging_cache
@@ -238,15 +240,27 @@ class LodgingRepository:
         )
 
     async def fetch_availability(self, year: int, session_cm_id: int) -> list[Any]:
-        """Staff reservations and releases for one session.
+        """Staff RELEASES for one session -- the staff<->family role override.
+
+        HALF WHAT IT USED TO BE. `family_available` answered two unrelated
+        questions through one boolean, and kindred#2382 split them: `true` is a
+        staff cabin OPENED to families for this weekend, an operational fact
+        that stays here, and `false` was an OCCUPANCY -- somebody is in the
+        room -- which 1500000162 moved to `lodging_write_ins`. A reservation is
+        therefore NOT in this table any more; `fetch_write_ins` is the read for
+        it, and every `family_available = 0` row was moved out. Reading a
+        surviving one as a write-in is the mistake `write_in_covers` documents
+        at length.
 
         ONE layer, read identically with or without a scenario. 1500000135
-        dropped this table's `scenario` column: availability is a fact about
-        the WEEKEND rather than about the plan, so a burst pipe closes a cabin
-        in every scenario for that weekend and there is nothing for a scenario
+        dropped this table's `scenario` column, and that reasoning is exactly
+        right for the half that is left: a role move is a fact about the
+        WEEKEND rather than about the plan, so there is nothing for a scenario
         to disagree about. There is no companion `fetch_scenario_availability`
         to overlay on top of this, and adding one back would reintroduce the
-        last overlay in the lodging model.
+        last overlay in the lodging model. The occupancy half scopes
+        differently -- see `fetch_draft_write_ins` -- which is why it needed a
+        table rather than this one growing a column back.
         """
         return await self._page(
             LODGING_AVAILABILITY,
@@ -362,10 +376,83 @@ class LodgingRepository:
             },
         )
 
+    async def fetch_write_ins(self, year: int, session_cm_id: int) -> list[Any]:
+        """The LIVE board's write-ins for one weekend (kindred#2382).
+
+        A write-in is an occupancy the roster does not otherwise know about:
+        non-rostered weekend staff, or a paper registration for a family
+        arriving with no children. It used to be stored as
+        `lodging_availability.family_available = false`, where it shared a
+        column with the staff<->family ROLE override and inherited that
+        column's session-only scope.
+
+        NO SCENARIO PREDICATE, and that is not the old shape coming back. The
+        live board is a scope in its OWN RIGHT -- the owner's second
+        requirement on 2026-08-15, "we need to allow write ins to happen in
+        campminder prod, not just scenarios, for staff to properly evaluate
+        the board" -- so these rows live in their own table with no scenario
+        column at all, exactly as `lodging_assignments` does. A scenario's
+        write-ins come from `fetch_draft_write_ins` and REPLACE these; there
+        is no overlay.
+
+        `build_roster` and `build_summary` both read this, and `_build_units`
+        is where a row becomes the occupancy half of a unit's answer. Both pick
+        THIS read or `fetch_draft_write_ins` below on whether the request named
+        a scenario, exactly as they pick between `fetch_assignments` and
+        `fetch_draft_assignments` -- never both.
+        """
+        return await self._page(
+            LODGING_WRITE_INS,
+            query_params={
+                "filter": f"session_cm_id = {session_cm_id} && year = {year}",
+                "sort": STABLE_SORT,
+            },
+        )
+
+    async def fetch_draft_write_ins(self, year: int, session_cm_id: int, scenario_id: str) -> list[Any]:
+        """One scenario's write-ins for one session -- ALL of them.
+
+        REPLACE, not overlay, matching `fetch_draft_assignments` under
+        kindred#1974: these rows are the scenario's whole set of write-ins, so
+        a unit with no row here holds no write-in in this scenario, whatever
+        the live board says. A scenario is seeded by an explicit copy (both
+        seed paths, by owner ruling 2026-08-16) rather than by rendering the
+        live board through the gaps.
+
+        `fetch_slot_merges` is the near neighbour that does the opposite --
+        it unions the weekend-level tier in -- and the difference is what the
+        row records. A draw level is a fact about the WEEKEND that no sync
+        writes, so a shared tier costs nothing. A write-in is an occupancy,
+        the same kind of fact as a placement, so it follows the placement
+        rule.
+
+        `build_roster` and `build_summary` read THIS instead of
+        `fetch_write_ins` whenever the request names a scenario, and the live
+        table is then not read at all. `copy_from_mirror` and
+        `copy_scenario_to_scenario` both seed it, so a fresh scenario starts
+        with the write-ins its source had rather than blank -- without that,
+        kindred#2247's placement gate would let a family be dropped into a room
+        the live board records as occupied.
+
+        `scenario_id` is client-supplied and escaped, for the reason
+        `fetch_draft_assignments` spells out. The weekend is named by
+        `session_cm_id`, a number, so there is no literal for an injected `||`
+        to close.
+        """
+        return await self._page(
+            LODGING_WRITE_INS_DRAFT,
+            query_params={
+                "filter": (
+                    f'session_cm_id = {session_cm_id} && year = {year} && scenario = "{pb_escape(scenario_id)}"'
+                ),
+                "sort": STABLE_SORT,
+            },
+        )
+
     async def fetch_attendees_for_session(self, year: int, session_pb_id: str) -> list[Any]:
         """Active-enrolled attendees for one session, with person expanded.
 
-        status_id = 2 is the single source of truth for enrolment; filtering
+        status_id = 2 is the single source of truth for enrollment; filtering
         any other way is silently wrong.
         """
         return await self._page(
@@ -528,8 +615,8 @@ class LodgingRepository:
     async def fetch_household_by_cm_id(self, year: int, household_cm_id: int) -> Any | None:
         """One household by CampMinder id, or None.
 
-        The PHI path uses this instead of fetch_households: answering one
-        household must not materialise every family in the year.
+        The medical-narrative path uses this instead of fetch_households:
+        answering one household must not materialise every family in the year.
         """
         rows = await self._page(
             HOUSEHOLDS,
@@ -590,7 +677,7 @@ class LodgingRepository:
 
         Carries the ingest-derived request layer -- share_cabin_gate,
         wants_near / wants_with / wants_similar_ages, request_text -- and the
-        four PHI-free housing flags. Read those columns; do not re-derive them
+        four narrative-free housing flags. Read those columns; do not re-derive them
         from share_cabin_preference / shared_cabin_modes_raw, which are the raw
         profile values kept for provenance.
 
@@ -706,7 +793,7 @@ class LodgingRepository:
         """One household's version of `_fetch_weekend_touched_household_ids`.
 
         A targeted existence check rather than the bulk helper, so the single-
-        household PHI read below never has to pull the whole year's attendee
+        household narrative read below never has to pull the whole year's attendee
         roster into memory to answer one household's question. Same predicate
         (ANY status, family/adult session, this year) -- see that method's
         docstring for why.
@@ -726,13 +813,13 @@ class LodgingRepository:
         return bool(rows)
 
     async def fetch_family_camp_medical(self, year: int) -> dict[str, Any]:
-        """PHI, keyed by household PB id. NO PRODUCTION CALLER.
+        """The medical narrative, keyed by household PB id. NO PRODUCTION CALLER.
 
         kindred#1889 deleted the last one. The roster used to read this whole
         map to derive `has_medical_narrative` from PRESENCE -- a boolean true
         for every household, because these questions store "No" as text -- and
         deleting the flag took the read with it. The narrative is now served
-        solely by the permission-gated medical endpoint, which reads ONE
+        solely by the medical endpoint gated on `bunking.manage`, which reads ONE
         household through fetch_medical_for_household.
 
         So there is nothing a caller here should be doing: pulling every
@@ -754,14 +841,14 @@ class LodgingRepository:
         }
 
     async def fetch_medical_for_household(self, year: int, household_pb_id: str) -> Any | None:
-        """PHI for ONE household, or None.
+        """The medical narrative for ONE household, or None.
 
         A blank id means the household did not resolve, and is never turned
         into a query: an unanchored filter is how one family's narrative
         reaches another family's request.
 
-        Family-camp scoped (kindred#2306), and checked BEFORE the PHI read
-        below: a household that never touched a family or adult session this
+        Family-camp scoped (kindred#2306), and checked BEFORE the narrative
+        read below: a household that never touched a family or adult session this
         year gets None without `family_camp_medical` ever being queried, not
         merely filtered out of a result that already carried its narrative.
         See `_household_touched_weekend_session` for the predicate.
@@ -771,8 +858,8 @@ class LodgingRepository:
         `||`, so an injected `||` widens the predicate past BOTH the year and
         the household and this returns the first row of whatever is left. The
         id is server-resolved today, so this is defence in depth -- but every
-        other id-carrying filter in this file escapes, and a PHI read is the
-        last place to leave the odd one out.
+        other id-carrying filter in this file escapes, and the narrative read
+        is the last place to leave the odd one out.
         """
         if not household_pb_id:
             return None
@@ -925,6 +1012,71 @@ class LodgingRepository:
 
     async def delete_availability(self, record_id: str) -> None:
         await asyncio.to_thread(self.pb.collection(LODGING_AVAILABILITY).delete, record_id)
+
+    async def find_write_in(self, year: int, session_cm_id: int, unit_pb_id: str) -> Any | None:
+        """The one LIVE write-in for a unit this weekend, or None.
+
+        Keyed exactly as `idx_lodging_write_in_unique` is
+        (session_cm_id, year, unit), so the lookup either finds the row the
+        next write would collide with or there is none -- the same argument
+        `find_availability_override` makes for the table this half moves off.
+
+        `unit_pb_id` arrives in the request body and is escaped. Unescaped, an
+        injected `||` would return some OTHER weekend's row, which the caller
+        then updates or deletes.
+        """
+        rows = await self._page(
+            LODGING_WRITE_INS,
+            query_params={
+                "filter": (f'session_cm_id = {session_cm_id} && year = {year} && unit = "{pb_escape(unit_pb_id)}"'),
+                "sort": STABLE_SORT,
+            },
+        )
+        return rows[0] if rows else None
+
+    async def find_draft_write_in(self, year: int, session_cm_id: int, scenario_id: str, unit_pb_id: str) -> Any | None:
+        """The one write-in for a unit in a scenario, or None.
+
+        The live key plus `scenario`, matching
+        `idx_lodging_write_in_draft_unique` -- two scenarios may hold
+        contradicting write-ins for one unit without colliding, which is the
+        whole point of the draft grain.
+
+        TWO client-supplied strings reach this filter, `scenario_id` off the
+        `?scenario=` query parameter and `unit_pb_id` from the request body,
+        and both are escaped: either one unescaped widens the predicate past
+        its own scoping, and on a lookup the caller updates or deletes what
+        comes back.
+        """
+        rows = await self._page(
+            LODGING_WRITE_INS_DRAFT,
+            query_params={
+                "filter": (
+                    f"session_cm_id = {session_cm_id} && year = {year} "
+                    f'&& scenario = "{pb_escape(scenario_id)}" && unit = "{pb_escape(unit_pb_id)}"'
+                ),
+                "sort": STABLE_SORT,
+            },
+        )
+        return rows[0] if rows else None
+
+    async def create_write_in(self, data: dict[str, Any]) -> Any:
+        return await asyncio.to_thread(self.pb.collection(LODGING_WRITE_INS).create, data)
+
+    async def update_write_in(self, record_id: str, data: dict[str, Any]) -> Any:
+        return await asyncio.to_thread(self.pb.collection(LODGING_WRITE_INS).update, record_id, data)
+
+    async def delete_write_in(self, record_id: str) -> None:
+        await asyncio.to_thread(self.pb.collection(LODGING_WRITE_INS).delete, record_id)
+
+    async def create_draft_write_in(self, data: dict[str, Any]) -> Any:
+        return await asyncio.to_thread(self.pb.collection(LODGING_WRITE_INS_DRAFT).create, data)
+
+    async def update_draft_write_in(self, record_id: str, data: dict[str, Any]) -> Any:
+        return await asyncio.to_thread(self.pb.collection(LODGING_WRITE_INS_DRAFT).update, record_id, data)
+
+    async def delete_draft_write_in(self, record_id: str) -> None:
+        await asyncio.to_thread(self.pb.collection(LODGING_WRITE_INS_DRAFT).delete, record_id)
 
     async def find_slot_merge(self, year: int, session_cm_id: int, unit_pb_id: str, scenario: str) -> Any | None:
         """The one merge row for a container at this tier, or None.

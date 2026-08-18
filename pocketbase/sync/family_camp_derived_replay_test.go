@@ -78,6 +78,11 @@ func newFamilyCampReplayTestApp(t *testing.T) core.App {
 	adults.Fields.Add(&core.NumberField{Name: "adult_number"})
 	text(adults, "household", "name", "first_name", "last_name", "email",
 		"pronouns", "gender", "date_of_birth", "relationship_to_camper")
+	// JSON, not text: attribute_conflicts is a json column in production
+	// (migration 1500000160), and PocketBase hands a json column back as a
+	// types.JSONRaw whose empty form renders "null" -- a text stand-in would
+	// hide exactly the round-trip this scaffolding is here to exercise.
+	adults.Fields.Add(&core.JSONField{Name: "attribute_conflicts"})
 	save(adults)
 
 	regs := core.NewBaseCollection("family_camp_registrations")

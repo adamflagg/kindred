@@ -69,7 +69,7 @@ A finished summer plan reaches CampMinder the same way a weekend plan does: a hu
 
 ## What is already at or above summer's standard
 
-Do not fund a broad polish sweep. Weekend's query-key discipline, `QueryGuard` coverage, route hardening (`ErrorBoundary` + `Suspense` on both routes), tab accessibility, and especially its PHI cache handling (opt-in, `staleTime: 0, gcTime: 0, retry: false` — a control summer has no analogue for) are all sound.
+Do not fund a broad polish sweep. Weekend's query-key discipline, `QueryGuard` coverage, route hardening (`ErrorBoundary` + `Suspense` on both routes), tab accessibility, and especially its handling of the medical narrative's cache (opt-in, `staleTime: 0, gcTime: 0, retry: false` — a control summer has no analogue for) are all sound.
 
 The genuine parity gaps are narrow, and one of the three originally listed here has since been closed:
 

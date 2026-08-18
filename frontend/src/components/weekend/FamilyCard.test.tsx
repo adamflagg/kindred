@@ -644,6 +644,97 @@ describe('FamilyCard — what it shows', () => {
     render(<FamilyCard party={party()} onOpen={vi.fn()} />)
     expect(screen.queryByText('Whole building')).not.toBeInTheDocument()
   })
+
+  describe('single-parent flag (kindred#2254 half 2)', () => {
+    // #2072's own scoping ruling replaces only the two need chips
+    // (`Private bathroom`/`Power`) with the glyph gutter — `Whole building`,
+    // the warn chips and the share chips, including this one, stay as
+    // words. So this reuses the muted `Near another family` chip's exact
+    // grammar rather than inventing a new visual channel, and does not wait
+    // on #2072.
+    it('flags a household with exactly one attending adult', () => {
+      // The default fixture already has one adult (`Emma Johnson`).
+      render(<FamilyCard party={party()} onOpen={vi.fn()} />)
+      expect(screen.getByText('Single parent')).toBeInTheDocument()
+    })
+
+    it('matches the muted "Near another family" chip\'s classes exactly — no new tone invented', () => {
+      render(
+        <FamilyCard
+          party={party({
+            share: {
+              preference: 'yes_share',
+              proximity: ['near'],
+              request_text: '',
+              needs_resolution: false,
+            },
+          })}
+          onOpen={vi.fn()}
+        />
+      )
+      const singleParentChip = screen.getByText('Single parent')
+      const nearChip = screen.getByText('Near another family')
+      expect(singleParentChip.className).toBe(nearChip.className)
+    })
+
+    it('says nothing when two adults are attending', () => {
+      render(
+        <FamilyCard
+          party={party({
+            adults: [
+              { adult_number: 1, display_name: 'Emma Johnson', relationship: 'Mother' },
+              { adult_number: 2, display_name: 'Liam Johnson', relationship: 'Father' },
+            ],
+          })}
+          onOpen={vi.fn()}
+        />
+      )
+      expect(screen.queryByText('Single parent')).not.toBeInTheDocument()
+    })
+
+    // A placeholder slot ("NA", "-", ...) is not an attending adult
+    // (`isAttendingAdultName`, kindred#1925) — a household with ONE real
+    // adult and four placeholder slots is still one attending adult, and a
+    // household with ZERO real adults is a data gap, not a single parent.
+    it('does not count a placeholder slot as a second parent', () => {
+      render(
+        <FamilyCard
+          party={party({
+            adults: [
+              { adult_number: 1, display_name: 'Emma Johnson', relationship: 'Mother' },
+              { adult_number: 2, display_name: 'NA', relationship: '' },
+            ],
+          })}
+          onOpen={vi.fn()}
+        />
+      )
+      expect(screen.getByText('Single parent')).toBeInTheDocument()
+    })
+
+    it('says nothing when no adult is named at all — a data gap, not a single parent', () => {
+      render(<FamilyCard party={party({ adults: [] })} onOpen={vi.fn()} />)
+      expect(screen.queryByText('Single parent')).not.toBeInTheDocument()
+    })
+
+    // Person-grain parties (adult weekend guests) ARE their own identity —
+    // there is no separate "attending adults" list to be short one of.
+    // `attendingAdults` already returns `[]` for this grain, so the
+    // household-composition question does not apply.
+    it('never flags an adult weekend guest (person grain) as a single parent', () => {
+      render(
+        <FamilyCard
+          party={party({
+            grain: 'person',
+            display_name: 'Priya Patel',
+            adults: [{ adult_number: 1, display_name: 'Priya Patel' }],
+            children: [],
+          })}
+          onOpen={vi.fn()}
+        />
+      )
+      expect(screen.queryByText('Single parent')).not.toBeInTheDocument()
+    })
+  })
 })
 
 describe('FamilyCard — spec §3.8, what must stay off it', () => {

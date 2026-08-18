@@ -562,9 +562,31 @@ func (s *HouseholdDemographicsSync) aggregateToRows(
 	}
 
 	// Process person custom values (HH- fields) -> _summer columns
+	//
+	// unmappedCounts tracks discard events: an HH- field accepted by IsHHField
+	// (the prefix test) that has no case in MapHHFieldToColumn (kindred#2257,
+	// adopting the mechanism shipped for camper_transportation.go and
+	// staff_vehicle_info.go at kindred#2356/#2277).
+	unmappedCounts := make(map[string]int)
 	for _, v := range personValues {
 		rec := getRecord(v)
-		s.mapPersonFieldToRecord(rec, v.fieldName, v.value)
+		if column := s.mapPersonFieldToRecord(rec, v.fieldName, v.value); column == "" {
+			unmappedCounts[v.fieldName]++
+		}
+	}
+	if len(unmappedCounts) > 0 {
+		total := 0
+		for _, n := range unmappedCounts {
+			total += n
+		}
+		s.Stats.SkippedValues += total
+
+		// One aggregated warning per run, not one per discarded value.
+		slog.Warn("Household demographics: discarding values for unmapped HH-* fields",
+			"year", year,
+			"discard_events", total,
+			"unmapped_fields", unmappedCounts,
+		)
 	}
 
 	// Process household custom values -> _family columns
@@ -623,11 +645,16 @@ func (s *HouseholdDemographicsSync) setColumn(rec *householdDemographicsRecord, 
 // The four boolean arms are unchanged. They are logical ORs over the
 // contributing values, never first-wins, so they were never part of the defect;
 // at this grain they OR over one camper's answers instead of the household's.
-func (s *HouseholdDemographicsSync) mapPersonFieldToRecord(rec *householdDemographicsRecord, fieldName, value string) {
+// It returns the resolved column name, or "" if fieldName has no case in
+// MapHHFieldToColumn -- the caller (aggregateToRows) uses this to count
+// discarded values (kindred#2257).
+func (s *HouseholdDemographicsSync) mapPersonFieldToRecord(
+	rec *householdDemographicsRecord, fieldName, value string,
+) string {
 	// Use MapHHFieldToColumn for the field mapping
 	column := MapHHFieldToColumn(fieldName)
 	if column == "" {
-		return // Unknown field
+		return "" // Unknown field
 	}
 
 	switch column {
@@ -677,6 +704,8 @@ func (s *HouseholdDemographicsSync) mapPersonFieldToRecord(rec *householdDemogra
 	case "form_filler":
 		s.setColumn(rec, &rec.formFiller, column, value)
 	}
+
+	return column
 }
 
 // mapHouseholdFieldToRecord maps a household custom field onto the

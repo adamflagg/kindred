@@ -56,6 +56,8 @@ export const Collections = {
   LodgingSlotMerges: 'lodging_slot_merges',
   LodgingUnitAliases: 'lodging_unit_aliases',
   LodgingUnits: 'lodging_units',
+  LodgingWriteIns: 'lodging_write_ins',
+  LodgingWriteInsDraft: 'lodging_write_ins_draft',
   NormalizedMappings: 'normalized_mappings',
   OriginalBunkRequests: 'original_bunk_requests',
   PaymentMethods: 'payment_methods',
@@ -611,8 +613,9 @@ export type EnrollmentSnapshotsRecord = {
   year: number
 }
 
-export type FamilyCampAdultsRecord = {
+export type FamilyCampAdultsRecord<Tattribute_conflicts = unknown> = {
   adult_number: number
+  attribute_conflicts?: null | Tattribute_conflicts
   created: IsoAutoDateString
   date_of_birth?: string
   email?: string
@@ -1179,7 +1182,6 @@ export type LodgingUnitsRecord<Tbeds = unknown> = {
   has_fridge?: boolean
   has_heat?: boolean
   has_kitchen?: boolean
-  has_kitchenette?: boolean
   has_lights?: boolean
   has_living_room?: boolean
   has_pack_play_space?: boolean
@@ -1205,6 +1207,31 @@ export type LodgingUnitsRecord<Tbeds = unknown> = {
   parent_unit?: RecordIdString
   shareability?: LodgingUnitsShareabilityOptions
   sleeps?: number
+  updated: IsoAutoDateString
+  year: number
+}
+
+export type LodgingWriteInsRecord = {
+  created: IsoAutoDateString
+  id: string
+  note?: string
+  occupant_name?: string
+  session: RecordIdString
+  session_cm_id: number
+  unit: RecordIdString
+  updated: IsoAutoDateString
+  year: number
+}
+
+export type LodgingWriteInsDraftRecord = {
+  created: IsoAutoDateString
+  id: string
+  note?: string
+  occupant_name?: string
+  scenario: RecordIdString
+  session: RecordIdString
+  session_cm_id: number
+  unit: RecordIdString
   updated: IsoAutoDateString
   year: number
 }
@@ -1789,7 +1816,9 @@ export type DivisionsResponse<Texpand = unknown> = Required<DivisionsRecord> &
   BaseSystemFields<Texpand>
 export type EnrollmentSnapshotsResponse<Texpand = unknown> = Required<EnrollmentSnapshotsRecord> &
   BaseSystemFields<Texpand>
-export type FamilyCampAdultsResponse<Texpand = unknown> = Required<FamilyCampAdultsRecord> &
+export type FamilyCampAdultsResponse<Tattribute_conflicts = unknown, Texpand = unknown> = Required<
+  FamilyCampAdultsRecord<Tattribute_conflicts>
+> &
   BaseSystemFields<Texpand>
 export type FamilyCampMedicalResponse<Texpand = unknown> = Required<FamilyCampMedicalRecord> &
   BaseSystemFields<Texpand>
@@ -1842,6 +1871,10 @@ export type LodgingUnitAliasesResponse<Texpand = unknown> = Required<LodgingUnit
 export type LodgingUnitsResponse<Tbeds = unknown, Texpand = unknown> = Required<
   LodgingUnitsRecord<Tbeds>
 > &
+  BaseSystemFields<Texpand>
+export type LodgingWriteInsResponse<Texpand = unknown> = Required<LodgingWriteInsRecord> &
+  BaseSystemFields<Texpand>
+export type LodgingWriteInsDraftResponse<Texpand = unknown> = Required<LodgingWriteInsDraftRecord> &
   BaseSystemFields<Texpand>
 export type NormalizedMappingsResponse<Texpand = unknown> = Required<NormalizedMappingsRecord> &
   BaseSystemFields<Texpand>
@@ -1959,6 +1992,8 @@ export type CollectionRecords = {
   lodging_slot_merges: LodgingSlotMergesRecord
   lodging_unit_aliases: LodgingUnitAliasesRecord
   lodging_units: LodgingUnitsRecord
+  lodging_write_ins: LodgingWriteInsRecord
+  lodging_write_ins_draft: LodgingWriteInsDraftRecord
   normalized_mappings: NormalizedMappingsRecord
   original_bunk_requests: OriginalBunkRequestsRecord
   payment_methods: PaymentMethodsRecord
@@ -2034,6 +2069,8 @@ export type CollectionResponses = {
   lodging_slot_merges: LodgingSlotMergesResponse
   lodging_unit_aliases: LodgingUnitAliasesResponse
   lodging_units: LodgingUnitsResponse
+  lodging_write_ins: LodgingWriteInsResponse
+  lodging_write_ins_draft: LodgingWriteInsDraftResponse
   normalized_mappings: NormalizedMappingsResponse
   original_bunk_requests: OriginalBunkRequestsResponse
   payment_methods: PaymentMethodsResponse

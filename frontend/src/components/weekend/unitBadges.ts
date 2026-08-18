@@ -249,8 +249,10 @@ export interface AvailabilityAction {
    *
    * A write-in covers a space, and the board draws whichever level the tree
    * resolves to — so a room can inherit its building's write-in, and a merged
-   * building one of its rooms'. There is exactly one `lodging_availability`
-   * row either way, and clearing it has to target the unit that HOLDS it:
+   * building one of its rooms'. There is exactly one `lodging_write_ins` row
+   * either way (kindred#2382 split occupancy off `lodging_availability`, which
+   * now answers only the staff↔family role), and clearing it has to target the
+   * unit that HOLDS it:
    * sending the card's own id would delete nothing, and the unit holding the
    * row has no card to offer the clear from. Every other action names the
    * card's own unit.

@@ -19,7 +19,7 @@ const serviceNameLodgingAssignments = "lodging_assignments"
 const sourceCampMinderSync = "campminder_sync"
 
 // sourceFieldOrphanSweep labels a lodging_assignment_history row written by
-// deleteLodgingOrphans, so a hard delete driven by cancelled enrolment reads
+// deleteLodgingOrphans, so a hard delete driven by cancelled enrollment reads
 // distinctly in the audit trail from a row driven by one of the CampMinder
 // field names (fieldNameFamilyCampCabin / fieldNameReportableFamilyCampCabin).
 const sourceFieldOrphanSweep = "orphan_sweep"
@@ -323,8 +323,8 @@ func (s *LodgingAssignmentsSync) syncHouseholdGrain(
 // ["Camper","Adult"], person_custom_values, adult weekends.
 //
 // Measured against 2024/2025: every one of these values whose person has an
-// active enrolment is enrolled in an `adult` session and none in a `family` one,
-// so the candidate set is adult sessions. The handful with no enrolment at all
+// active enrollment is enrolled in an `adult` session and none in a `family` one,
+// so the candidate set is adult sessions. The handful with no enrollment at all
 // (5 in 2024, 4 in 2025) fall through to a no_session queue item.
 func (s *LodgingAssignmentsSync) syncPersonGrain(
 	ctx context.Context, year int, fieldTargets map[string]string, counts map[int]int, now time.Time,
@@ -603,7 +603,7 @@ func (s *LodgingAssignmentsSync) upsertAssignment(in *assignmentInput, now time.
 	rec.Set("source", sourceCampMinderSync)
 
 	// The label answers "did this party MOVE"; it does not answer "did anything
-	// change". party_size is recomputed every run from enrolment and the adults
+	// change". party_size is recomputed every run from enrollment and the adults
 	// table, both of which move independently of the cabin string, so skipping
 	// on the label alone discards a corrected occupancy count for as long as the
 	// household stays put -- and buildPartySizeIndexes exists precisely because
@@ -856,7 +856,7 @@ func (s *LodgingAssignmentsSync) partySize(in *ingestContext, sessionID string) 
 	for _, p := range s.personsByHouseholdCMID[in.HouseholdCMID] {
 		// One bed per person: a duplicate attendee row for the same person and
 		// weekend is a data anomaly, not a second occupant, so this counts people
-		// with an enrolment rather than enrolment rows.
+		// with an enrollment rather than enrollment rows.
 		if s.enrolledByPersonSession[p.Id+"|"+sessionID] > 0 {
 			enrolled++
 		}

@@ -31,7 +31,7 @@ vi.mock('../../hooks/usePermissions', () => ({
 // `medicalFetchMode.real` toggles this file's ONE `useHouseholdMedical` mock
 // between the fast canned value every other suite in this file wants and the
 // REAL hook, wired through the mocked `fetchHouseholdMedical` service call
-// below -- so "the actual PHI fetch" describe block near the bottom of this
+// below -- so "the actual medical fetch" describe block near the bottom of this
 // file can drive the genuine fetch path without touching the rest of this
 // file's tests, which never flip it. `vi.hoisted` is required: `vi.mock`
 // factories run before any other module-level code, so a plain `const`
@@ -928,7 +928,7 @@ describe('LodgingMap — closes the panel all the way to the ORIGINAL parties (k
   // THIRD rerender that returns to the roster the panel was originally
   // opened against: without clearing the stored selection, `partyKey`
   // matches again and the panel silently reopens with no click, re-issuing
-  // a real PHI fetch for a household nobody asked to see.
+  // a real medical fetch for a household nobody asked to see.
   it('does not resurrect the panel when the party reappears (A -> B -> A)', async () => {
     const { rerender } = render(<LodgingMap parties={[PLACED]} units={UNITS} year={2026} />, {
       wrapper,
@@ -1076,7 +1076,7 @@ describe('LodgingMap — clears the selection on a SESSION change (kindred#2138)
   })
 })
 
-describe('LodgingMap — the actual PHI fetch (kindred#2139)', () => {
+describe('LodgingMap — the actual medical fetch (kindred#2139)', () => {
   // Every other test in this file mocks `useHouseholdMedical` to a constant,
   // so `MedicalNarrative`'s fetch -- the exact harm #2062 named -- is never
   // exercised by any assertion in the whole suite. This block flips

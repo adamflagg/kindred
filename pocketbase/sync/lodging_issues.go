@@ -21,7 +21,7 @@ const (
 	// a single cabin value for the year. Spec 3.6 calls this out as the honest
 	// limit of backfill: flag it, do not guess.
 	issueAmbiguousSession = "ambiguous_session"
-	// A cabin value whose household or person has no active enrolment in a
+	// A cabin value whose household or person has no active enrollment in a
 	// family/adult session that year -- cancelled, waitlisted, or in progress.
 	issueNoSession = "no_session"
 	// Spec 4.4's passive warning: a mapped field saw zero values this year.

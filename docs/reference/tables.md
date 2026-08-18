@@ -652,6 +652,7 @@ Family camp adult attendees extracted from custom values.
 | `gender` | text | Gender |
 | `date_of_birth` | text | Date of birth |
 | `relationship_to_camper` | text | Relationship |
+| `attribute_conflicts` | json | Answers the merge DISCARDED, as `{column: [other values]}`. NULL when the slot's answers agreed. The winner stays in its own column; this holds only losers, and only where they differ by more than case or whitespace (kindred#2275) |
 
 **Unique**: `(household, year, adult_number)`
 
@@ -698,10 +699,14 @@ Request layer (household grain, spec 4) — normalised and deduplicated from the
 
 Family camp medical and dietary information per household.
 
-**PHI.** Every text column below is narrative medical disclosure about named
-individuals. Admin-gated on all five rules, absent from every export config, and
-never logged — `pocketbase/sync/lodging_phi_test.go` asserts all three. The
-board shows the derived booleans on `family_camp_registrations`, never these.
+**Narrative medical text.** Every text column below is a medical disclosure
+about named individuals. Admin-gated on all five rules, absent from every export
+config, and never logged — `pocketbase/sync/lodging_phi_test.go` asserts all
+three. The board shows the derived booleans on `family_camp_registrations`,
+never these. The API serves them from one endpoint gated on `bunking.manage`,
+the same permission every other gated endpoint on that router uses — the
+router's remaining reads (`/sessions`, `/summary`, `/roster`, the household
+journey) are open to any authenticated user.
 
 | Field | Type | Description |
 |-------|------|-------------|

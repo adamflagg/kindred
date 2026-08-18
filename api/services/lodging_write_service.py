@@ -1,7 +1,10 @@
 """Writes for the weekend lodging board.
 
-EVERY write here targets the DRAFT grain, or `lodging_availability`. No write
-in this module can reach `lodging_assignments`, `lodging_assignment_history` or
+EVERY write here targets the DRAFT grain, `lodging_availability`, or
+`lodging_write_ins` -- the occupancy table kindred#2382 split out of
+availability, whose LIVE rows the board writes directly, because the live board
+is a scope in its own right rather than the absence of one. No write in this
+module can reach `lodging_assignments`, `lodging_assignment_history` or
 `lodging_field_mappings`: those belong to the CampMinder ingest, stay
 `is_admin` in PocketBase (1500000132), and are the reason the draft tables
 exist at all. Summer draws the identical line and has never crossed it.
@@ -36,6 +39,7 @@ is choosing, which is the board. Not here, and not in the ingest.
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any
 
 from pocketbase.client import ClientResponseError  # type: ignore[attr-defined]
@@ -306,13 +310,23 @@ class LodgingWriteService:
         scenario spans weekends, and placements in one must not refuse a seed
         of another.
 
-        Availability is NOT copied, and since 1500000135 there is nothing it
-        could mean to copy it: the table has no scenario column, so every
-        scenario reads the same rows and a copy would be a row duplicating
-        itself. The earlier reason -- that availability overlaid the live rows,
-        so copying them would pin the scenario against a later change -- has
-        become the stronger one that a scenario cannot disagree about
-        availability at all.
+        THE STAFF<->FAMILY ROLE OVERRIDE IS NOT COPIED, and since 1500000135
+        there is nothing it could mean to copy it: `lodging_availability` has
+        no scenario column, so every scenario reads the same rows and a copy
+        would be a row duplicating itself. The owner ruled that half is not
+        scenario-scoped -- "that's more of a known 'were moving staff to X for
+        weekend Y'" -- so there is nothing there for a scenario to disagree
+        about.
+
+        WRITE-INS ARE COPIED, and that is the opposite call on the other half
+        of the boolean 1500000161 split apart (owner ruling, kindred#2382,
+        2026-08-16). Once a scenario's write-ins REPLACE the live ones rather
+        than falling through, a scenario seeded without them starts with every
+        written-into cabin looking OPEN -- and kindred#2247's placement gate
+        reads exactly that, so it would let a family be dropped into a room the
+        live board records as occupied. That failure mode is one this split
+        CREATES rather than inherits, and this copy is what closes it. See
+        `_seed_write_ins`.
 
         A mirror row is SKIPPED, not failed on, when it names no party grain
         (it would key on nothing, dedupe against nothing, and be exactly the
@@ -391,12 +405,24 @@ class LodgingWriteService:
                 raise await self._seed_failure(exc, request, copied) from exc
             copied += 1
 
+        # The LIVE board's write-ins, because the live board is what this seed
+        # copies FROM. `copy_scenario_to_scenario` reads the source scenario's
+        # own draft rows instead, the same split the placement read above makes
+        # between `fetch_assignments` and `fetch_draft_assignments`.
+        write_ins = await self._seed_write_ins(
+            rows=await self.repository.fetch_write_ins(request.year, request.session_cm_id),
+            session_pb_id=session_pb_id,
+            session_cm_id=request.session_cm_id,
+            year=request.year,
+            scenario=request.scenario,
+        )
+
         # Inlined into the message, not `extra={}` -- see the identical note
         # on `copy_scenario_to_scenario`'s own logger.info call below.
         logger.info(
             f"Seeded lodging scenario from the CampMinder mirror: year={request.year} "
             f"session_cm_id={request.session_cm_id} scenario={request.scenario} "
-            f"copied={copied} skipped={skipped}"
+            f"copied={copied} skipped={skipped} write_ins={write_ins}"
         )
         return LodgingCopyResponse(copied=copied, skipped=skipped)
 
@@ -547,6 +573,22 @@ class LodgingWriteService:
                 }
             )
 
+        # Write-ins: the SOURCE SCENARIO's own, not the live board's. Unlike
+        # `fetch_slot_merges` above there is no weekend-level tier to filter
+        # out -- `fetch_draft_write_ins` returns exactly one scenario's rows --
+        # and unlike the role override there IS something for two scenarios to
+        # disagree about, which is the whole of kindred#2382. Dropping this
+        # would make "copy from Option A" produce a board showing fewer
+        # occupied rooms than Option A does, and kindred#2247's placement gate
+        # would then offer those rooms.
+        write_ins = await self._seed_write_ins(
+            rows=await self.repository.fetch_draft_write_ins(year, session_cm_id, from_scenario),
+            session_pb_id=session_pb_id,
+            session_cm_id=session_cm_id,
+            year=year,
+            scenario=to_scenario,
+        )
+
         # Inlined into the message, not `extra={}` -- `extra` is silently
         # dropped at format time (bunking/logging_config.py's
         # ISO8601Formatter.format only ever renders record.getMessage()),
@@ -554,74 +596,265 @@ class LodgingWriteService:
         # few hundred lines above.
         logger.info(
             f"Copied a lodging scenario into a fresh one: year={year} session_cm_id={session_cm_id} "
-            f"from_scenario={from_scenario} to_scenario={to_scenario} copied={copied} skipped={skipped}"
+            f"from_scenario={from_scenario} to_scenario={to_scenario} copied={copied} skipped={skipped} "
+            f"write_ins={write_ins}"
         )
         return LodgingCopyResponse(copied=copied, skipped=skipped)
 
+    async def _seed_write_ins(
+        self, *, rows: list[Any], session_pb_id: str, session_cm_id: int, year: int, scenario: str
+    ) -> int:
+        """Copy one weekend's write-ins into a scenario, and say how many.
+
+        ONE HELPER, TWO SEED PATHS, and the only thing that differs between
+        them is which read produced `rows`: `copy_from_mirror` hands over the
+        LIVE board's (`fetch_write_ins`), `copy_scenario_to_scenario` the
+        SOURCE scenario's own (`fetch_draft_write_ins`). Everything after that
+        is identical, and two copies of it is two chances for one seed path to
+        start writing a different row shape than the other.
+
+        WHY A SEED COPIES THESE AT ALL is the owner's ruling of 2026-08-16, and
+        it is a safety argument rather than a convenience one. A scenario's
+        write-ins REPLACE the live ones on read (kindred#2382, matching
+        kindred#1974's no-fall-through rule for placements), so a scenario
+        seeded without them shows every written-into cabin as OPEN --
+        kindred#2247's placement gate reads exactly that field, so it would
+        offer a room the live board records as occupied. The split creates that
+        failure mode; this copy is what closes it.
+
+        NO EMPTINESS CHECK AND NO RACE RECOVERY OF ITS OWN, following the
+        `lodging_slot_merges` copy in `copy_scenario_to_scenario` rather than
+        the placement loop above it. Both seed paths have already refused a
+        destination that holds placements, and adding a second,
+        differently-shaped guard here would give one seed two answers to "this
+        scenario is already populated".
+
+        THE CREATE IS STILL CONVERTED, because "no recovery" is not "no
+        handler", and the difference is reachable rather than theoretical. That
+        up-front guard counts PLACEMENTS, so a weekend whose mirror holds
+        nothing copyable -- early season, before CampMinder has assigned any
+        lodging -- passes it on every attempt while the write-ins the first
+        seed wrote are already in the scenario, and the second seed collides on
+        `idx_lodging_write_in_draft_unique`. Nothing on this router catches
+        `ClientResponseError`, so one escaping here unconverted would reach
+        api/main.py's catch-all as a 500: a state the server understands
+        perfectly well, reported as one it does not. `pb_error_to_http` is what
+        every other write on this service raises through, and it keeps a
+        refusal a refusal (401/403 -> 403) rather than folding it into the
+        collision.
+
+        NOT counted into `LodgingCopyResponse.copied`, again as merges are not:
+        that number is the one a staff member reads as "the board is
+        populated", and it means placements. The count comes back for the log
+        line, where it is the difference between a silent no-op and a visible
+        one.
+
+        `family_available` is deliberately absent from the payload. On the
+        occupancy tables the ROW is the fact; a column restating it would be
+        the conflation kindred#2382 split apart growing back -- the same
+        sentence `set_availability` carries over its own shared payload.
+        """
+        for row in rows:
+            try:
+                await self.repository.create_draft_write_in(
+                    {
+                        "unit": getattr(row, "unit", None),
+                        "session": session_pb_id,
+                        "session_cm_id": session_cm_id,
+                        "year": year,
+                        "scenario": scenario,
+                        "occupant_name": str(getattr(row, "occupant_name", "") or ""),
+                        # The column keeps its own name here, not the API's
+                        # `reason`: this is a table-to-table copy and never
+                        # passes through the schema. `set_availability` and
+                        # `_build_units` remain the only two places the two
+                        # names meet.
+                        "note": str(getattr(row, "note", "") or ""),
+                    }
+                )
+            except ClientResponseError as exc:
+                raise pb_error_to_http(exc) from exc
+        return len(rows)
+
+    async def _clear_row(self, existing: Any | None, delete: Callable[[str], Awaitable[None]]) -> tuple[str, bool]:
+        """Drop one row if it is there, and say what happened.
+
+        The find above sees the row, but it can vanish before the delete
+        reaches PocketBase -- two staff clearing the same unit, or a
+        double-click. ONLY 404 is swallowed, exactly as `unplace_party`'s
+        delete swallows it; any other failure keeps its status through
+        `pb_error_to_http`, because "the delete was refused" must not read as
+        "there was nothing to delete".
+
+        Shared by both halves of `set_availability` since kindred#2382 split
+        the table in two. Two copies of a swallow-only-404 rule is two chances
+        to widen one of them.
+        """
+        if existing is None:
+            return "", False
+        record_id = str(existing.id)
+        try:
+            await delete(record_id)
+        except ClientResponseError as exc:
+            if exc.status == 404:
+                return record_id, False
+            raise pb_error_to_http(exc) from exc
+        return record_id, True
+
+    async def _upsert_row(
+        self,
+        *,
+        what: str,
+        existing: Any | None,
+        data: dict[str, Any],
+        find: Callable[[], Awaitable[Any | None]],
+        create: Callable[[dict[str, Any]], Awaitable[Any]],
+        update: Callable[[str, dict[str, Any]], Awaitable[Any]],
+        **context: Any,
+    ) -> Any:
+        """Create or update one row, recovering a lost unique-index race.
+
+        The find and the create are two round trips, so they RACE: two staff
+        writing the same unit for the same weekend both find no row, both
+        create, and the unique index rejects the loser. Unguarded that is a
+        400 out of `pb_error_to_http` for a write the board is entitled to
+        make, so the loser re-reads and updates the winner's row -- which by
+        construction is the row this call wanted, same weekend and same unit.
+
+        `REFUSAL_STATUSES` are re-raised rather than retried: a 401/403 is an
+        answer, not a race, and re-reading would turn "you may not" into a
+        second failure with a worse message.
+
+        The recovery's own two calls are guarded the same way `place_party`'s
+        are, and for the same reason: a failure inside the except block is the
+        very 500 the block exists to prevent.
+
+        ONE implementation for both halves of the split (kindred#2382). The
+        occupancy row and the role row live in different tables with the same
+        race, and duplicating twenty lines of recovery is how the two come to
+        answer a lost race differently.
+        """
+        if existing is not None:
+            try:
+                return await update(str(existing.id), data)
+            except ClientResponseError as exc:
+                raise pb_error_to_http(exc) from exc
+        try:
+            return await create(data)
+        except ClientResponseError as exc:
+            if exc.status in REFUSAL_STATUSES:
+                raise pb_error_to_http(exc) from exc
+            try:
+                raced = await find()
+                if raced is None:
+                    raise pb_error_to_http(exc) from exc
+                record = await update(str(raced.id), data)
+                self._log_recovered_race(what, exc, **context)
+                return record
+            except ClientResponseError as retry_exc:
+                raise pb_error_to_http(retry_exc) from retry_exc
+
     async def set_availability(self, request: AvailabilityWriteRequest) -> LodgingWriteResponse:
-        """Reserve or release one unit for this weekend.
+        """Write somebody into one unit for this weekend, or release one to families.
 
-        NO SCENARIO. 1500000135 deleted this table's scenario dimension --
-        availability is a fact about the weekend, not about the plan, since a
-        burst pipe closes a cabin in every scenario for that weekend.
+        ONE ENDPOINT, TWO TABLES since kindred#2382, and which one it writes
+        depends on which question the body is answering:
 
-        `family_available: null` DELETES the row rather than writing a value
-        meaning "normal". There is no such value: the absence of a row is what
-        "whatever this unit's role says" is spelled as, and writing a value
-        that happens to agree with the role would pin the unit against a later
-        change to it.
+        | `family_available` | fact      | table                          |
+        |--------------------|-----------|--------------------------------|
+        | `false`            | OCCUPANCY | `lodging_write_ins`            |
+        | `true`             | ROLE      | `lodging_availability`         |
+        | `null`             | clear     | both -- delete whichever exist |
+
+        The column used to answer both through one boolean. `true` on a staff
+        cabin is a staff<->family ROLE override for the weekend, which the
+        owner ruled is NOT scenario-scoped -- "that's more of a known 'were
+        moving staff to X for weekend Y'" -- and 1500000135's "availability is
+        a fact about the WEEKEND, not about the plan" is exactly right for it,
+        which is why that half stays put and keeps its no-scenario shape.
+        `false` was an OCCUPANCY, and that IS scenario-scoped: not every
+        write-in is non-rostered staff, some are paper registrations for
+        families arriving with no children, and a modelling choice belongs to
+        the scenario that made it.
+
+        NO SCENARIO ON THE REQUEST, still. The live board is a scope in its own
+        right (owner, 2026-08-15: staff must be able to record a write-in on
+        the real board, not only inside a modelling sandbox), so this writes
+        the LIVE occupancy table with no scenario predicate, exactly as
+        `lodging_assignments` has none.
+
+        ⚠️ AND THAT IS NOW A GAP RATHER THAN A RESTING STATE. PR 3 of
+        kindred#2382 made a scenario's write-ins REPLACE the live ones on read,
+        so a staff member working inside a scenario who writes one here lands
+        it on the LIVE board and then does not see it on the board they made it
+        on. It cannot be closed from this side alone -- the frontend has to
+        send the `scenario` it already holds -- so PR 4 owns it:
+        `AvailabilityWriteRequest` gains an optional `scenario` (blank meaning
+        the live board, exactly as `SlotMergeRequest` spells it), the OCCUPANCY
+        half below routes to `find/create/update/delete_draft_write_in` when it
+        is set, and the ROLE half stays on `lodging_availability` whatever the
+        request says, because that half is not scenario-scoped.
+
+        ONE FACT AT A TIME, and this is the promise the split has to keep
+        deliberately. A single row could only ever hold one of the two, so
+        writing an occupancy over a release replaced it; with two tables
+        nothing removes the loser unless this does. Hence the drop after each
+        write.
+
+        ORDER: the new fact is written BEFORE the old one is dropped. There is
+        no transaction across two PocketBase tables, and a failure between the
+        steps has to leave the board saying something true. Write-then-drop
+        leaves both rows present for that window, and `_build_units` resolves
+        occupancy over role -- so a half-applied write-in still reads "somebody
+        is in it", the safe half. Drop-then-write would leave a window with
+        NEITHER fact, opening a cabin nobody meant to open.
+
+        `family_available: null` DELETES rather than writing a value meaning
+        "normal". There is no such value: the absence of a row is how "whatever
+        this unit's role says" is spelled, and writing a value that happens to
+        agree with the role would pin the unit against a later change to it.
+        With two tables it deletes BOTH, or a clear would silently do nothing
+        to whichever fact it missed.
 
         `reason` is written to the `note` COLUMN. This and `_build_units` are
-        the only two places that translate between the two names -- see
-        AvailabilityWriteRequest.
+        still the only two places that translate -- the fact moved tables and
+        did not gain a third translation site.
 
         `occupant_name` is written UNTRANSLATED, because a hold IS a write-in
         (owner ruling, kindred#2078) and the column was added for it under the
         name the API already wanted. It is required through the control and
         optional here; see the schema for why the requirement lives there.
-
-        Both the delete and the create below race the same way the placement
-        writes do, and are guarded the same two ways.
-
-        The delete: the find above sees the row, but it can vanish before the
-        delete reaches PocketBase -- two staff releasing the same unit, or a
-        double-click. ONLY 404 is swallowed, exactly as unplace_party's
-        delete is; any other failure keeps its status through pb_error_to_http.
-
-        The create: `idx_lodging_avail_unique` is UNIQUE on (session_cm_id,
-        year, unit) since 1500000147, so two staff reserving the same unit for
-        the same weekend both
-        find no override, both create, and the index rejects the loser. That is
-        exactly the race place_party guards on the draft's own partial unique
-        index, guarded the identical way -- the loser re-reads and updates the
-        winner's row, which is by construction the row this call wanted: same
-        session, same year, same unit. The recovery's own two calls are guarded
-        the same way place_party's are, for the same reason: a failure inside
-        the except block is the very 500 the block exists to prevent.
         """
         session_pb_id = await self._resolve_session_pb_id(request.year, request.session_cm_id)
 
-        existing = await self.repository.find_availability_override(
+        # BOTH lookups on every call, because every branch has to know about
+        # the fact it is NOT writing: an occupancy has a release to drop, a
+        # release has an occupancy to drop, and a clear has both.
+        existing_role = await self.repository.find_availability_override(
             request.year, request.session_cm_id, request.unit_id
         )
+        existing_write_in = await self.repository.find_write_in(request.year, request.session_cm_id, request.unit_id)
 
         if request.family_available is None:
-            if existing is None:
-                return LodgingWriteResponse(deleted=False)
-            try:
-                await self.repository.delete_availability(str(existing.id))
-            except ClientResponseError as exc:
-                if exc.status == 404:
-                    return LodgingWriteResponse(record_id=str(existing.id), deleted=False)
-                raise pb_error_to_http(exc) from exc
-            return LodgingWriteResponse(record_id=str(existing.id), deleted=True)
+            write_in_id, write_in_deleted = await self._clear_row(existing_write_in, self.repository.delete_write_in)
+            role_id, role_deleted = await self._clear_row(existing_role, self.repository.delete_availability)
+            # The occupancy id is reported in preference to the role id when
+            # both were there. It is the one the board was almost certainly
+            # looking at -- every row this split moved was an occupancy -- and
+            # a response can only name one.
+            return LodgingWriteResponse(
+                record_id=write_in_id or role_id,
+                deleted=write_in_deleted or role_deleted,
+            )
 
+        # The fields both tables share. `family_available` is deliberately NOT
+        # among them: on the occupancy table the ROW is the fact, and a column
+        # restating it would be the conflation growing back.
         data: dict[str, Any] = {
             "session": session_pb_id,
             "session_cm_id": request.session_cm_id,
             "year": request.year,
             "unit": request.unit_id,
-            "family_available": request.family_available,
             # WHO is in the room (kindred#2078). No translation: the API field
             # and the column share one name, so this is the whole of it.
             "occupant_name": request.occupant_name,
@@ -630,35 +863,40 @@ class LodgingWriteService:
             "note": request.reason,
         }
 
-        if existing is not None:
-            # Same shape as `place_party`'s update branch above, and refused
-            # the same way -- see the note there.
-            try:
-                record = await self.repository.update_availability(str(existing.id), data)
-            except ClientResponseError as exc:
-                raise pb_error_to_http(exc) from exc
+        # `is True`, never truthiness. `None` is already handled above, so a
+        # bare test would in fact be correct here -- and this file's own rule
+        # is that the three values of this field are never read for
+        # truthiness, because the one place that starts is the place a later
+        # edit folds a write-in into a clear.
+        if request.family_available is True:
+            record = await self._upsert_row(
+                what="availability",
+                existing=existing_role,
+                data={**data, "family_available": True},
+                find=lambda: self.repository.find_availability_override(
+                    request.year, request.session_cm_id, request.unit_id
+                ),
+                create=self.repository.create_availability,
+                update=self.repository.update_availability,
+                year=request.year,
+                session_cm_id=request.session_cm_id,
+                unit_id=request.unit_id,
+            )
+            await self._clear_row(existing_write_in, self.repository.delete_write_in)
         else:
-            try:
-                record = await self.repository.create_availability(data)
-            except ClientResponseError as exc:
-                if exc.status in REFUSAL_STATUSES:
-                    raise pb_error_to_http(exc) from exc
-                try:
-                    raced = await self.repository.find_availability_override(
-                        request.year, request.session_cm_id, request.unit_id
-                    )
-                    if raced is None:
-                        raise pb_error_to_http(exc) from exc
-                    record = await self.repository.update_availability(str(raced.id), data)
-                    self._log_recovered_race(
-                        "availability",
-                        exc,
-                        year=request.year,
-                        session_cm_id=request.session_cm_id,
-                        unit_id=request.unit_id,
-                    )
-                except ClientResponseError as retry_exc:
-                    raise pb_error_to_http(retry_exc) from retry_exc
+            record = await self._upsert_row(
+                what="write-in",
+                existing=existing_write_in,
+                data=data,
+                find=lambda: self.repository.find_write_in(request.year, request.session_cm_id, request.unit_id),
+                create=self.repository.create_write_in,
+                update=self.repository.update_write_in,
+                year=request.year,
+                session_cm_id=request.session_cm_id,
+                unit_id=request.unit_id,
+            )
+            await self._clear_row(existing_role, self.repository.delete_availability)
+
         return LodgingWriteResponse(record_id=str(getattr(record, "id", "")))
 
     async def set_slot_merge(self, request: SlotMergeRequest) -> LodgingWriteResponse:

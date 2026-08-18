@@ -164,7 +164,11 @@ export async function unplaceParty(
 export interface AvailabilityWrite {
   year: number
   sessionCmId: number
-  /** The unit's PocketBase id, which is what `lodging_availability.unit` relates to. */
+  /**
+   * The unit's PocketBase id, which is what the `unit` relation on whichever
+   * table receives this write points at — `lodging_write_ins` for a write-in,
+   * `lodging_availability` for a release (kindred#2382).
+   */
   unitId: string
   /**
    * THREE values, not two. `false` closes the unit for this weekend, `true`
@@ -187,9 +191,15 @@ export interface AvailabilityWrite {
 }
 
 /**
- * Reserve or release one unit for one weekend.
+ * Write somebody into one unit for one weekend, or release one to families.
  *
- * Takes NO scenario, unlike every other write on this client. Availability is
+ * ONE ENDPOINT, TWO TABLES behind it since kindred#2382, and the request shape
+ * is unchanged by that: `false` is an OCCUPANCY and is stored in
+ * `lodging_write_ins`, `true` is a staff↔family ROLE override for the weekend
+ * and stays in `lodging_availability`, and `null` clears both. The server
+ * decides; nothing here has to.
+ *
+ * Takes NO scenario, unlike every other write on this client. The role half is
  * a fact about the WEEKEND rather than about the plan — a burst pipe closes a
  * cabin in every scenario for that weekend — so 1500000135 deleted the
  * dimension and `AvailabilityWriteRequest` stopped extending
@@ -268,7 +278,7 @@ export async function fetchHouseholdJourney(
 }
 
 /**
- * PHI. Requires the `bunking.manage` permission server-side (kindred#2312
+ * The medical narrative. Requires `bunking.manage` server-side (kindred#2312
  * retargeted the gate from the now-removed `lodging.phi`); a caller without
  * it gets a 403, which this surfaces verbatim so the UI can explain why.
  */

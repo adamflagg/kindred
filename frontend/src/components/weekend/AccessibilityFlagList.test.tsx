@@ -12,7 +12,7 @@
  * and `CamperDetailsPanel`.
  *
  * What this file pins is the ABSENCE: no permission check, no fetch, no
- * state. A chips list that reaches for PHI is the thing that was wrong.
+ * state. A chips list that reaches for the narrative is what was wrong.
  */
 import { render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
@@ -87,9 +87,9 @@ describe('derived flags', () => {
 })
 
 describe('the medical narrative is not this component', () => {
-  it('never fetches PHI', () => {
+  it('never fetches the narrative', () => {
     // The strongest form of the split. This component is rendered 62 times on
-    // a roster page; if it can reach the PHI hook at all, a later change can
+    // a roster page; if it can reach the medical hook at all, a later change can
     // make 62 gated requests by accident.
     useHouseholdMedical.mockClear()
     render(<AccessibilityFlagList flags={flags({ needs_power: true })} />)

@@ -26,7 +26,7 @@ const (
 	// any plausible collapse. A run that computes fewer than half the rows
 	// already stored is asserting that more than half of a season disappeared
 	// from CampMinder between two syncs. No product workflow does that:
-	// enrolment attrition is single-digit percentages, and a season rollover
+	// enrollment attrition is single-digit percentages, and a season rollover
 	// lands in a new `year` partition rather than shrinking an existing one.
 	// Meanwhile the failure this guards against -- a staff or person lookup that
 	// returns a fraction of its rows after a timeout or a mid-page API error --
@@ -51,16 +51,17 @@ const (
 // fifteenth, every guarded service now fills in this struct.
 //
 // The COLLAPSE arm reaches every sweep in the package. BaseSyncService fills this
-// struct in for the sweeps it owns, and the ten services that do not embed it --
-// camper_dietary, camper_history, camper_transportation, family_camp_derived,
-// household_demographics, normalize_geographic, quest_registrations, staff_skills,
-// staff_applications and staff_vehicle_info -- each construct one inside their own
-// deleteOrphans (kindred#2280, kindred#2296). family_camp_derived is the tenth and
-// the last to arrive: it performs THREE sweeps rather than one, so it builds three
-// guards, one per derived table.
+// struct in for the sweeps it owns, and the nine services that do not embed it --
+// camper_dietary, camper_transportation, family_camp_derived, household_demographics,
+// normalize_geographic, quest_registrations, staff_skills, staff_applications and
+// staff_vehicle_info -- each construct one inside their own deleteOrphans
+// (kindred#2280, kindred#2296). camper_history was the tenth until it was removed
+// entirely in kindred#2366. family_camp_derived is the ninth and the last to arrive:
+// it performs THREE sweeps rather than one, so it builds three guards, one per
+// derived table.
 //
 // The REJECTION arm is narrower, and that is the part to watch. Only BaseSyncService
-// fills in Rejected, so for those ten SkipReason and RejectionsExplainShortfall can
+// fills in Rejected, so for those nine SkipReason and RejectionsExplainShortfall can
 // never fire -- they build the guard without it. That is harmless today because none
 // of them counts a rejection, and nothing pins it: a future reclassification into one
 // of those files gets the collapse guard but no rejection protection and no warning.

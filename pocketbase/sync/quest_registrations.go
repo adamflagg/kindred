@@ -551,7 +551,26 @@ func (s *QuestRegistrationsSync) loadPersonCustomValues(
 		page++
 	}
 
-	return aggregateQuestEntries(entries, year, personHasAttendee), nil
+	records, unmappedCounts := aggregateQuestEntries(entries, year, personHasAttendee)
+
+	if len(unmappedCounts) > 0 {
+		total := 0
+		for _, n := range unmappedCounts {
+			total += n
+		}
+		s.Stats.SkippedValues += total
+
+		// One aggregated warning per run, not one per discarded value
+		// (kindred#2257, adopting the mechanism shipped for
+		// camper_transportation.go/staff_applications.go at kindred#2272/#2271).
+		slog.Warn("Quest registrations: discarding values for unmapped Quest-*/Q-* fields",
+			"year", year,
+			"discard_events", total,
+			"unmapped_fields", unmappedCounts,
+		)
+	}
+
+	return records, nil
 }
 
 // aggregateQuestEntries folds Quest custom values into one record per person-year.
@@ -564,10 +583,19 @@ func (s *QuestRegistrationsSync) loadPersonCustomValues(
 // `personHasAttendee` is an ADMISSION filter and nothing more -- see
 // loadPersonsWithAttendee. Because it is a set rather than a chosen row, the
 // result cannot depend on the order entries arrive in.
+//
+// The second return value counts discarded field VALUES, keyed by field name,
+// for a Quest-*/Q-* field admitted by isQuestRegistrationField but missing a
+// case in MapQuestFieldToColumn (kindred#2257). It stays a plain return here
+// rather than folding into Stats directly, so this function keeps the purity
+// the comment above already commits to; the caller (loadPersonCustomValues)
+// owns Stats and does the folding.
 func aggregateQuestEntries(
 	entries []questValueEntry, year int, personHasAttendee map[int]bool,
-) map[string]*questRegistrationRecord {
-	result := make(map[string]*questRegistrationRecord)
+) (records map[string]*questRegistrationRecord, unmappedCounts map[string]int) {
+	records = make(map[string]*questRegistrationRecord)
+	unmappedCounts = make(map[string]int)
+	result := records
 
 	for _, entry := range entries {
 		if !personHasAttendee[entry.personID] {
@@ -584,17 +612,20 @@ func aggregateQuestEntries(
 			result[key] = rec
 		}
 
-		mapQuestFieldToRecord(rec, entry.fieldName, entry.value)
+		if column := mapQuestFieldToRecord(rec, entry.fieldName, entry.value); column == "" {
+			unmappedCounts[entry.fieldName]++
+		}
 	}
 
-	return result
+	return result, unmappedCounts
 }
 
-// mapQuestFieldToRecord maps a Quest-*/Q-* field to the record
-func mapQuestFieldToRecord(rec *questRegistrationRecord, fieldName, value string) {
+// mapQuestFieldToRecord maps a Quest-*/Q-* field to the record and returns the
+// resolved column name, or "" if fieldName has no case in MapQuestFieldToColumn.
+func mapQuestFieldToRecord(rec *questRegistrationRecord, fieldName, value string) string {
 	column := MapQuestFieldToColumn(fieldName)
 	if column == "" {
-		return
+		return ""
 	}
 
 	switch column {
@@ -808,6 +839,8 @@ func mapQuestFieldToRecord(rec *questRegistrationRecord, fieldName, value string
 			rec.busAltPhone = value
 		}
 	}
+
+	return column
 }
 
 // MapQuestFieldToColumn maps CampMinder field names to database column names

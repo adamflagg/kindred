@@ -161,17 +161,17 @@ describe('the housing states', () => {
   })
 })
 
-describe('the enrolment states', () => {
+describe('the enrollment states', () => {
   it('flags a year with no enrolled child rather than showing nothing', () => {
     show([_row({ year: 2021, enrollment: 'none_on_file', children: [] })])
 
-    expect(within(rowFor(2021)).getByText('No enrolment')).toBeInTheDocument()
+    expect(within(rowFor(2021)).getByText('No enrollment')).toBeInTheDocument()
   })
 
   it('does not flag a year that has one', () => {
     show([_row({ year: 2025, enrollment: 'enrolled' })])
 
-    expect(within(rowFor(2025)).queryByText('No enrolment')).not.toBeInTheDocument()
+    expect(within(rowFor(2025)).queryByText('No enrollment')).not.toBeInTheDocument()
   })
 
   it('explains the flag on a tooltip a keyboard and a tablet can reach', () => {
@@ -182,7 +182,7 @@ describe('the enrolment states', () => {
     // `HouseholdRosterRow`'s in-button badges this one CAN be a real trigger.
     show([_row({ year: 2021, enrollment: 'none_on_file', children: [] })])
 
-    const chip = within(rowFor(2021)).getByRole('button', { name: 'No enrolment' })
+    const chip = within(rowFor(2021)).getByRole('button', { name: 'No enrollment' })
     expect(chip).not.toHaveAttribute('title')
 
     fireEvent.focus(chip)

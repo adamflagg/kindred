@@ -71,6 +71,26 @@ LODGING_ASSIGNMENTS_DRAFT = "lodging_assignments_draft"
 # plan.
 LODGING_SLOT_MERGES = "lodging_slot_merges"
 
+# Write-in OCCUPANCY -- who is in a room that the roster does not otherwise
+# know about (1500000161, kindred#2382). Split out of `lodging_availability`,
+# which conflated two unrelated questions in one boolean: `family_available`
+# true on a staff cabin is a staff<->family ROLE override for the weekend, and
+# false is an occupancy. The owner ruled (2026-08-15) that the ROLE is NOT
+# scenario-scoped -- it is an operational fact, "we're moving staff to X for
+# weekend Y" -- while an occupancy IS, because not every write-in is
+# non-rostered staff: some are paper registrations for families arriving with
+# no children, and that is a modelling choice belonging to the scenario that
+# made it.
+#
+# So availability keeps only the role half, and occupancy gets a live+draft
+# pair beside LODGING_ASSIGNMENTS / LODGING_ASSIGNMENTS_DRAFT -- the same split
+# between record and plan, and for the same reason. A nullable `scenario`
+# sentinel was explicitly rejected: it is the shape lodging_assignments dropped
+# because it "was dead weight that invited a `scenario != \"\"` write rule
+# instead of a draft table."
+LODGING_WRITE_INS = "lodging_write_ins"
+LODGING_WRITE_INS_DRAFT = "lodging_write_ins_draft"
+
 # The single work queue for cabin strings ingest could not resolve. Owned and
 # solely written by the ingest layer; the admin UI reads it filtered to
 # kind = "unresolved_alias". Deliberately NOT a second surfaces-only collection.

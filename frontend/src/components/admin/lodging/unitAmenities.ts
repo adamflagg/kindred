@@ -16,7 +16,6 @@ import {
   Baby,
   Bath,
   Footprints,
-  Microwave,
   Plug,
   Refrigerator,
   Snowflake,
@@ -34,7 +33,6 @@ export type AmenityFlag =
   | 'near_bathhouse'
   | 'is_accessible'
   | 'has_tub'
-  | 'has_kitchenette'
   | 'has_crib'
   | 'has_changing_table'
   | 'has_shared_fridge'
@@ -48,11 +46,11 @@ export interface UnitAmenities {
   near_bathhouse: boolean
   is_accessible: boolean
   // Added with the 2026 Master Housing import. Each REFINES a field above
-  // rather than restating it — has_tub under `bathroom`, has_kitchenette under
-  // has_kitchen, has_shared_fridge under has_fridge — so none can contradict
-  // its parent and a surface reading only the parent stays correct.
+  // rather than restating it — has_tub under `bathroom`, has_shared_fridge
+  // under has_fridge — so none can contradict its parent and a surface reading
+  // only the parent stays correct. has_kitchenette (narrowing has_kitchen) was
+  // dropped in kindred#2390: 0 production rows disagreed with their parent.
   has_tub: boolean
-  has_kitchenette: boolean
   has_crib: boolean
   has_changing_table: boolean
   has_shared_fridge: boolean
@@ -60,8 +58,8 @@ export interface UnitAmenities {
 }
 
 // The row glyphs render only the flags that are TRUE
-// (LodgingUnitRow filters on `unit[flag.key]`), so the five below cost a
-// typical row nothing: they are true on 5, 4, 3, 1 and 4 units respectively.
+// (LodgingUnitRow filters on `unit[flag.key]`), so the four below cost a
+// typical row nothing: they are true on 5, 3, 1 and 4 units respectively.
 export const AMENITY_FLAGS: readonly { key: AmenityFlag; label: string; icon: LucideIcon }[] = [
   { key: 'has_power', label: 'Has power', icon: Plug },
   { key: 'has_ac', label: 'Has A/C', icon: Snowflake },
@@ -70,7 +68,6 @@ export const AMENITY_FLAGS: readonly { key: AmenityFlag; label: string; icon: Lu
   { key: 'near_bathhouse', label: 'Near bathhouse', icon: Footprints },
   { key: 'is_accessible', label: 'Accessible', icon: Accessibility },
   { key: 'has_tub', label: 'Has tub', icon: Bath },
-  { key: 'has_kitchenette', label: 'Kitchen is a kitchenette', icon: Microwave },
   // Distinct from has_pack_play_space: a camp-provided crib is not floor space
   // for a family's own pack-and-play, and families with babies ask about both.
   { key: 'has_crib', label: 'Has crib', icon: Baby },
@@ -108,7 +105,6 @@ export function amenitiesOf(unit?: LodgingUnitRecord): UnitAmenities {
     near_bathhouse: unit?.near_bathhouse ?? false,
     is_accessible: unit?.is_accessible ?? false,
     has_tub: unit?.has_tub ?? false,
-    has_kitchenette: unit?.has_kitchenette ?? false,
     has_crib: unit?.has_crib ?? false,
     has_changing_table: unit?.has_changing_table ?? false,
     has_shared_fridge: unit?.has_shared_fridge ?? false,

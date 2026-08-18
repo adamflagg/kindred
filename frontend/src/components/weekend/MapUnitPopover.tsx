@@ -273,7 +273,7 @@ function DetailCard({ entry, hue, onOpenParty, wholeBuildingKeys }: DetailCardPr
       )}
 
       {/* The cabin does not answer what this family asked for. Reason strings
-          come from `partyAttention` and are documented as never PHI. */}
+          come from `partyAttention` and never carry medical narrative. */}
       {unmet.length > 0 && (
         <ul className="flex flex-col gap-0.5">
           {unmet.map(({ party, attention }) => (
@@ -320,7 +320,8 @@ function DetailCard({ entry, hue, onOpenParty, wholeBuildingKeys }: DetailCardPr
           says the same thing, because the flag is the same flag off the same
           `buildBoard` slot. Rendering it is the whole reason `MapUnit` carries
           `consent` — a room #1926 flagged must not peek as an ordinary shared
-          room. The string is built by `consentReason` and is never PHI. */}
+          room. The string is built by `consentReason` and carries no
+          medical narrative. */}
       {consent && (
         <p className="text-[11px] font-medium text-amber-700 dark:text-amber-400">
           {consent.reason}

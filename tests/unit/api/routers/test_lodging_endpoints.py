@@ -7,7 +7,7 @@ produces spurious 401s elsewhere in the suite.
 
 from collections.abc import Generator
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 import pytest
 from fastapi import FastAPI
@@ -276,8 +276,8 @@ class TestHouseholdJourneyEndpoint:
 
     A READ, so it is open to any authenticated user exactly as `/roster` is.
     It carries names, ages and grades -- the same fields the roster payload
-    already publishes for the current weekend -- and no narrative, so it sits
-    on the ordinary side of the PHI boundary.
+    already publishes for the current weekend -- and no narrative, so it is
+    not one of the reads behind `bunking.manage`.
     """
 
     def test_a_plain_authenticated_user_can_read_it(self, mock_pb: MagicMock) -> None:
@@ -316,7 +316,7 @@ class TestHouseholdJourneyEndpoint:
         assert all("year =" not in f for f in seen), f"a year predicate reached the journey reads: {seen}"
 
     def test_it_never_carries_medical_narrative(self, mock_pb: MagicMock) -> None:
-        """The PHI boundary, restated at the newest endpoint on this prefix.
+        """Narrative containment, restated at the newest endpoint on this prefix.
 
         `family_camp_medical` must not be read here at all -- not filtered
         out downstream, not read and discarded.
@@ -373,7 +373,7 @@ class TestMedicalEndpointIsPermissionGated:
 
         kindred#1889 is what made it actively wrong rather than merely
         unused. With the reveal button gone the panel fetches on mount, so
-        "PHI reveal" fired on every panel open -- including households with
+        "medical reveal" fired on every panel open -- including households with
         nothing on file -- and could no longer tell a deliberate read from a
         click.
 
@@ -394,9 +394,9 @@ class TestMedicalEndpointIsPermissionGated:
         assert not hasattr(lodging_module, "logger")
 
     def test_medical_read_does_not_load_the_whole_year(self, mock_pb: MagicMock) -> None:
-        """One household in, one household's PHI out.
+        """One household in, one household's narrative out.
 
-        Loading every family's medical row to answer one is a PHI-surface
+        Loading every family's medical row to answer one is a disclosure
         problem before it is a performance one.
         """
         seen: list[str] = []
@@ -412,7 +412,7 @@ class TestMedicalEndpointIsPermissionGated:
             TestClient(app).get("/api/lodging/households/2000001/medical", params={"year": 2026})
 
         assert seen, "the endpoint issued no reads"
-        assert all(f != "year = 2026" for f in seen), f"an unanchored whole-year read reached the PHI path: {seen}"
+        assert all(f != "year = 2026" for f in seen), f"an unanchored whole-year read reached the medical path: {seen}"
 
     def test_roster_payload_never_carries_medical_narrative(self, mock_pb: MagicMock) -> None:
         """Belt and braces over the schema-level boundary test.
@@ -1129,8 +1129,22 @@ class TestCopyFromMirror:
 
     @staticmethod
     def _mirror_reads(**kwargs: Any) -> list[Any]:
-        query_filter = kwargs.get("query_params", {}).get("filter", "")
-        if "session_cm_id = 1000001" in query_filter:
+        """The synced placements, and nothing else.
+
+        KEYED ON `expand`, not on the filter alone, and it has to be: the seed
+        also reads `lodging_write_ins` (kindred#2382 PR 3) and that read's
+        filter is byte-identical to `fetch_assignments`' -- same weekend, same
+        year. One `mock_pb.collection.return_value` serves every collection
+        here, so a filter-only match would hand a placement row back as a
+        write-in and the seed would copy it into the draft occupancy table.
+        `expand: "units"` is what only the placement read asks for.
+
+        `_mirror_write_in_reads` below is the same trick from the other side,
+        for the test that exercises the write-in half.
+        """
+        params = kwargs.get("query_params", {})
+        query_filter = params.get("filter", "")
+        if "session_cm_id = 1000001" in query_filter and params.get("expand") == "units":
             return [
                 _rec(
                     id="assign_1",
@@ -1141,6 +1155,19 @@ class TestCopyFromMirror:
                     expand={"units": [_rec(id="u1", code="ridge-a", name="Ridge A")]},
                 )
             ]
+        return _session_lookup(**kwargs)
+
+    @staticmethod
+    def _mirror_write_in_reads(**kwargs: Any) -> list[Any]:
+        """One LIVE write-in and no placements -- the mirror image of the above.
+
+        Fictional occupant: a production write-in names a real family or a real
+        staff member.
+        """
+        params = kwargs.get("query_params", {})
+        query_filter = params.get("filter", "")
+        if "session_cm_id = 1000001" in query_filter and params.get("expand") != "units":
+            return [_rec(id="wi_1", unit="u1", occupant_name="Olivia Chen", note="Paper registration")]
         return _session_lookup(**kwargs)
 
     def test_copying_seeds_the_scenario_from_the_synced_placements(self, mock_pb: MagicMock) -> None:
@@ -1159,6 +1186,33 @@ class TestCopyFromMirror:
         assert payload["scenario"] == "scn_1"
         assert payload["units"] == ["u1"]
         assert payload["household_cm_id"] == 2000001
+
+    def test_the_seed_also_carries_the_live_boards_write_ins_into_the_scenario(self, mock_pb: MagicMock) -> None:
+        """Owner ruling, 2026-08-16, asserted at the endpoint rather than only in the service.
+
+        A scenario's write-ins REPLACE the live ones on read (kindred#2382),
+        so a scenario seeded without them shows every written-into cabin as
+        OPEN -- and kindred#2247's placement gate reads exactly that, so it
+        would offer a room the live board records as occupied. The split
+        creates that failure mode; this copy closes it.
+        """
+        with patch("api.routers.lodging.pb", mock_pb):
+            client = _write_client(_manage_user(), mock_pb)
+            mock_pb.collection.return_value.get_full_list.side_effect = self._mirror_write_in_reads
+            response = client.post(
+                "/api/lodging/placements/copy",
+                json={"year": 2026, "session_cm_id": 1000001, "scenario": "scn_1"},
+            )
+
+        assert response.status_code == 200, response.text
+        mock_pb.collection.assert_any_call("lodging_write_ins_draft")
+        payload = mock_pb.collection.return_value.create.call_args[0][0]
+        assert payload["scenario"] == "scn_1"
+        assert payload["unit"] == "u1"
+        assert payload["occupant_name"] == "Olivia Chen"
+        assert payload["note"] == "Paper registration"
+        assert payload["session_cm_id"] == 1000001
+        assert payload["year"] == 2026
 
     def test_copying_into_a_worked_scenario_is_a_409(self, mock_pb: MagicMock) -> None:
         """Refused, not merged: a second copy would overwrite the placements
@@ -1224,7 +1278,7 @@ class TestCopyFromMirror:
 
 
 class TestAvailabilityWrites:
-    def test_holding_a_cabin_creates_a_weekend_scoped_row(self, mock_pb: MagicMock) -> None:
+    def test_writing_somebody_in_creates_a_weekend_scoped_occupancy_row(self, mock_pb: MagicMock) -> None:
         with patch("api.routers.lodging.pb", mock_pb):
             client = _write_client(_manage_user(), mock_pb)
             response = client.put(
@@ -1239,16 +1293,21 @@ class TestAvailabilityWrites:
             )
 
         assert response.status_code == 200
-        mock_pb.collection.assert_any_call("lodging_availability")
+        # THE OCCUPANCY TABLE since kindred#2382. `family_available = false`
+        # was never a role value -- it was a write-in sharing the role
+        # column's boolean -- so it moved to a table of its own, where the ROW
+        # is the fact and no column restates it.
+        mock_pb.collection.assert_any_call("lodging_write_ins")
         payload = mock_pb.collection.return_value.create.call_args[0][0]
         assert payload["unit"] == "u1"
-        assert payload["family_available"] is False
+        assert "family_available" not in payload
         # The reason is display text and lives in the `note` COLUMN; the API
         # field is `reason`. See AvailabilityWriteRequest.
         assert payload["note"] == "Burst pipe"
-        # WEEKEND-scoped, not scenario-scoped. 1500000135 deleted the dimension
-        # -- a burst pipe closes a cabin in every plan for that weekend -- and
-        # writing one anyway would recreate the overlay from the write side.
+        # WEEKEND-scoped, and still no scenario: the live board is a scope in
+        # its own right, so this table has no scenario column at all. Routing
+        # this write to the draft twin when the caller names a scenario is
+        # PR 4's -- see `set_availability`, which carries the gap.
         assert "scenario" not in payload
         assert "state" not in payload
 
@@ -1291,9 +1350,16 @@ class TestAvailabilityWrites:
 
         assert response.status_code == 200, response.text
 
-    def test_clearing_the_override_deletes_the_row(self, mock_pb: MagicMock) -> None:
+    def test_clearing_the_override_deletes_the_row_in_both_tables(self, mock_pb: MagicMock) -> None:
         """Back to whatever the unit's ROLE says, which is not the same as
-        writing an override that happens to agree with it."""
+        writing an override that happens to agree with it.
+
+        TWO tables since kindred#2382 -- the staff<->family role in
+        `lodging_availability`, the occupancy in `lodging_write_ins` -- so a
+        clear has to reach both or it silently does nothing to whichever fact
+        it missed. This fixture hands every collection the same row, so the two
+        deletes name the same id; what is pinned here is that BOTH tables are
+        addressed and BOTH are cleared."""
 
         def reads(**kwargs: Any) -> list[Any]:
             query_filter = kwargs.get("query_params", {}).get("filter", "")
@@ -1315,7 +1381,9 @@ class TestAvailabilityWrites:
             )
 
         assert response.status_code == 200
-        mock_pb.collection.return_value.delete.assert_called_once_with("avail_1")
+        mock_pb.collection.assert_any_call("lodging_write_ins")
+        mock_pb.collection.assert_any_call("lodging_availability")
+        assert mock_pb.collection.return_value.delete.call_args_list == [call("avail_1"), call("avail_1")]
 
     def test_an_availability_delete_race_is_not_an_error(self, mock_pb: MagicMock) -> None:
         """The override is found, then vanishes before the delete lands.
@@ -1387,20 +1455,29 @@ class TestAvailabilityWrites:
         assert response.status_code == 403
 
     def test_losing_the_availability_upsert_race_updates_instead_of_500ing(self, mock_pb: MagicMock) -> None:
-        """Two staff reserving the same unit for one weekend at the same
+        """Two staff writing into the same unit for one weekend at the same
         moment.
 
-        `idx_lodging_avail_unique` is UNIQUE on (session, year, unit), as
-        1500000135 rebuilt it -- exactly the race `place_party` guards on the
-        draft's
-        own partial unique index. Both staff find no override, both create,
-        and the index rejects the loser. Left alone that is a bare
+        `idx_lodging_write_in_unique` is UNIQUE on (session_cm_id, year, unit),
+        as 1500000161 declared it -- exactly the race `place_party` guards on
+        the draft's own partial unique index. Both staff find no row, both
+        create, and the index rejects the loser. Left alone that is a bare
         ClientResponseError into the catch-all handler in api/main.py -- a 500
-        for a reservation the board is entitled to make. The row the winner
-        just wrote is exactly what this call wanted to write, so the loser
-        adopts it and updates.
+        for a write-in the board is entitled to make. The row the winner just
+        wrote is exactly what this call wanted to write, so the loser adopts it
+        and updates.
+
+        THREE staged reads, not two, since kindred#2382 split the table:
+        `set_availability` looks up BOTH facts -- the role row and the
+        occupancy row -- before it writes either, and only the THIRD read is
+        the recovery's own re-read. Staged two-deep this test went vacuous
+        rather than red: the winner's row was consumed as `existing_write_in`,
+        the upsert took its plain update branch, and the create that has to
+        lose the race never ran. Measured -- deleting the whole recovery block
+        from `_upsert_row` left it green. `create.assert_called_once()` below
+        is what stops that happening silently a second time.
         """
-        reads: list[list[Any]] = [[], [_rec(id="avail_raced")]]
+        reads: list[list[Any]] = [[], [], [_rec(id="write_in_raced")]]
 
         def staged(**kwargs: Any) -> list[Any]:
             query_filter = kwargs.get("query_params", {}).get("filter", "")
@@ -1426,8 +1503,12 @@ class TestAvailabilityWrites:
             )
 
         assert response.status_code == 200, response.text
+        # The race really happened: the create ran, lost, and the recovery
+        # adopted the winner. Without this the test passes on the ordinary
+        # "row already there, update it" path, which guards nothing.
+        mock_pb.collection.return_value.create.assert_called_once()
         mock_pb.collection.return_value.update.assert_called_once()
-        assert mock_pb.collection.return_value.update.call_args[0][0] == "avail_raced"
+        assert mock_pb.collection.return_value.update.call_args[0][0] == "write_in_raced"
 
     def test_an_availability_create_failure_that_is_not_a_race_still_errors(self, mock_pb: MagicMock) -> None:
         """The retry is for a lost race, not a blanket swallow.
@@ -1464,7 +1545,11 @@ class TestAvailabilityWrites:
         catch-all handler in api/main.py -- a 500, the outcome this guard is
         for.
         """
-        reads: list[list[Any]] = [[]]
+        # TWO empty reads, not one: `set_availability` looks up BOTH facts --
+        # the role row and the occupancy row -- before it writes either
+        # (kindred#2382). The next read is the recovery's own re-read, and that
+        # is the one this test makes fail.
+        reads: list[list[Any]] = [[], []]
 
         def staged(**kwargs: Any) -> list[Any]:
             query_filter = kwargs.get("query_params", {}).get("filter", "")
@@ -1496,8 +1581,12 @@ class TestAvailabilityWrites:
         assert response.status_code == 403
 
     def test_a_failed_update_after_a_lost_availability_race_keeps_its_status(self, mock_pb: MagicMock) -> None:
-        """The winner's override is found, then the update onto it fails."""
-        reads: list[list[Any]] = [[], [_rec(id="avail_raced")]]
+        """The winner's row is found, then the update onto it fails.
+
+        Three staged reads for the reason the test above spells out: the role
+        lookup, the occupancy lookup, then the recovery's re-read.
+        """
+        reads: list[list[Any]] = [[], [], [_rec(id="write_in_raced")]]
 
         def staged(**kwargs: Any) -> list[Any]:
             query_filter = kwargs.get("query_params", {}).get("filter", "")
@@ -1526,3 +1615,6 @@ class TestAvailabilityWrites:
             )
 
         assert response.status_code == 403
+        # Same guard as the sibling above: the recovery path must actually
+        # have been walked, not skipped by a lookup that answered too early.
+        mock_pb.collection.return_value.create.assert_called_once()

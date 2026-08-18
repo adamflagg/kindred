@@ -7,10 +7,15 @@ draft twin no longer exist: 1500000134 collapsed the `unit` / `merge` /
 `merge_draft` placement targets into one multi-valued `units` relation and
 deleted both collections outright.
 
-PHI boundary: HouseholdMedicalResponse is the ONLY model here that carries
-medical narrative text, and it is reachable from exactly one endpoint, which
-is gated on Permission.BUNKING_MANAGE (kindred#2312 retargeted the gate from
-the now-removed Permission.LODGING_PHI). Every other model exposes booleans
+Medical narrative: HouseholdMedicalResponse is the ONLY model here that
+carries narrative medical text, and it is reachable from exactly one endpoint,
+which is gated on `bunking.manage` -- the same permission every OTHER gated
+endpoint on its router uses (kindred#2312 retargeted it from the now-removed
+Permission.LODGING_PHI, and kindred#2398 stopped calling that a PHI boundary
+-- there is one permission here, not two). Not every endpoint on that router
+is gated: `/sessions`, `/summary`, `/roster` and the household journey are
+open to any authenticated user, which is the point -- a thing here is either
+behind `bunking.manage` or it is not. Every other model exposes booleans
 derived from PRESENCE of a value, never its content (spec §5).
 
 Vocabularies below mirror the Go ingest's, not a second set invented here. The
@@ -29,10 +34,10 @@ from pydantic import BaseModel, Field, model_validator
 #
 # This list is kept identical to `phiColumns` in
 # pocketbase/sync/lodging_phi_test.go, and a test asserts that. Go's list keeps
-# PHI out of exports and logs; this one keeps it out of API payloads. A column
-# registered in only one is protected on one side and silently exposed on the
+# the narrative out of exports and logs; this one keeps it out of API payloads.
+# A column registered in only one is screened on one side and served on the
 # other.
-PHI_FIELD_NAMES: frozenset[str] = frozenset(
+MEDICAL_NARRATIVE_FIELD_NAMES: frozenset[str] = frozenset(
     {
         "cpap_info",
         "physician_info",
@@ -153,9 +158,11 @@ class WriteInCover(BaseModel):
     Resolved on READ, never cascaded on write. A row per leaf would duplicate
     one fact across rows that then drift -- clear one room and the others still
     close the space -- and would strand orphans behind a re-merge. There is
-    still exactly one `lodging_availability` row; this says which units it
-    covers, and `unit_id` is the row it belongs to, so a card that inherited
-    the write-in can still clear it at the source rather than dead-ending.
+    still exactly one `lodging_write_ins` row (kindred#2382 moved occupancy off
+    `lodging_availability`, which now answers only the staff<->family role);
+    this says which units it covers, and `unit_id` is the row it belongs to, so
+    a card that inherited the write-in can still clear it at the source rather
+    than dead-ending.
     """
 
     # The unit the row actually names -- NOT necessarily the unit carrying this
@@ -244,9 +251,20 @@ class LodgingUnitSummary(BaseModel):
     # CampMinder has no sub-room concept for every building. Measured over
     # 2022-2025, resolving down instead would raise 36 false alarms.
     shareability: Shareability = "unknown"
-    # None when no lodging_availability row exists for this unit this weekend,
-    # i.e. the unit's ROLE decides. None and False are different answers and
-    # must not be flattened into one: False is "closed this weekend".
+    # None when NEITHER a `lodging_availability` row nor a `lodging_write_ins`
+    # row exists for this unit this weekend, i.e. the unit's ROLE decides. None
+    # and False are different answers and must not be flattened into one: False
+    # is "closed this weekend".
+    #
+    # TWO SOURCES since kindred#2382 split the boolean's two questions apart:
+    # True comes from the availability row (a staff cabin opened to families
+    # for the weekend), and False from a write-in row (somebody is in it),
+    # which outranks the role when a unit somehow carries both. It still spells
+    # an occupancy as False deliberately -- `is_family_available`, and through
+    # it every count on the stats bar, is derived from this one field, and the
+    # board's open-tint reads False as a proxy for "is somebody in it".
+    # Disentangling the two axes on the wire is PR 4 of kindred#2382; ask
+    # `write_in` "is somebody in this space" in the meantime.
     #
     # Stated explicitly rather than implied. The rejected encoding was a row
     # meaning "the opposite of this unit's current default", which an ordinary
@@ -255,17 +273,19 @@ class LodgingUnitSummary(BaseModel):
     # WHO is in the room. A hold IS a write-in (owner ruling, kindred#2078):
     # staff do not reserve an empty cabin, they record an occupant the system
     # does not know about -- most often non-rostered weekend staff. Read
-    # straight off the availability row's `occupant_name` column, which unlike
-    # `note`/`reason` below carries the SAME name on both sides, so there is
-    # no second translation to keep in step.
+    # straight off the write-in row's `occupant_name` column (kindred#2382;
+    # the availability row's is what a RELEASE carries, which is always
+    # blank), a column that unlike `note`/`reason` below carries the SAME name
+    # on both sides, so there is no second translation to keep in step.
     #
     # Display only, like `reason`. The rule never branches on it: what closes
     # a cabin is `family_available_override`, and an occupant with no override
     # is not a state any writer can produce.
     occupant_name: str = ""
-    # Display only. The rule never branches on it. Read from the availability
-    # row's `note` column -- see the migration header on why `note` was kept
-    # rather than renamed.
+    # Display only. The rule never branches on it. Read from the `note` column
+    # of whichever row supplied the decision -- the write-in row for an
+    # occupancy, the availability row for a release -- see 1500000118's header
+    # on why `note` was kept rather than renamed.
     #
     # OPTIONAL since kindred#2078, and empty on every historical row by
     # construction: 1500000148 moved each existing note into `occupant_name`
@@ -536,7 +556,8 @@ class WeekendRosterResponse(BaseModel):
 
 
 class HouseholdMedicalResponse(BaseModel):
-    """PHI. Served by ONE permission-gated endpoint. Never nested elsewhere."""
+    """Narrative medical text. Served by ONE endpoint gated on
+    `bunking.manage`. Never nested elsewhere."""
 
     household_cm_id: int
     year: int
@@ -577,7 +598,7 @@ HousingState = Literal["placed", "not_placed", "unknown"]
 # reason it is a named state. 2020 has 1,264 family attendee rows and not one
 # with status_id = 2 -- the season was cancelled. 2021 has no family attendee
 # rows at all despite 247 registrations, while `family_camp_adults` carries
-# 647 rows across 351 households. Both years are real attendance the enrolment
+# 647 rows across 351 households. Both years are real attendance the enrollment
 # tables cannot describe, and neither is an error.
 EnrollmentState = Literal["enrolled", "none_on_file"]
 

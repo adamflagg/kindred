@@ -140,7 +140,7 @@ async def get_household_journey(
     Open to any authenticated user, like `/roster` and `/summary` above and
     UNLIKE the medical endpoint directly below. It carries names, ages and
     grades -- the same fields the roster already publishes for the current
-    weekend -- and no narrative, so the PHI boundary is untouched.
+    weekend -- and no narrative, so nothing gated moves.
     """
     return await _service().build_household_journey(household_cm_id)
 
@@ -151,7 +151,7 @@ async def get_household_medical(
     year: int = Query(..., description="Year of the registration", ge=2000, le=2100),
     user: AuthUser = Depends(require_permission(Permission.BUNKING_MANAGE)),
 ) -> HouseholdMedicalResponse:
-    """PHI. The narrative behind the roster's accessibility flags.
+    """The medical narrative behind the roster's accessibility flags.
 
     Spec §5: this text is a detailed medical disclosure about named
     individuals. It is served only here, only to a caller holding
@@ -161,8 +161,10 @@ async def get_household_medical(
     removed because RBAC in this product is screen-reduction, not a data
     boundary -- every user of the tool can already see this data in
     CampMinder, and every sibling endpoint on this router already gates on
-    `bunking.manage`. The one thing that stays a real boundary is internal
-    notes, gated on `bunking.manage` already and untouched by that change.
+    `bunking.manage`. There is one permission on this surface, not two
+    (kindred#2398): a thing here is either behind `bunking.manage` or it is
+    not, and the medical narrative is. So are internal notes, which that
+    change left exactly where they were.
 
     RBAC is the control, and there is deliberately NO access log. One existed
     and was deleted: `bunking.manage` is what decides who may read this, and a
@@ -171,8 +173,9 @@ async def get_household_medical(
     the event fired on every panel open, including households with nothing on
     file, and could no longer distinguish a deliberate read from a click.
 
-    The other half of that ruling stands and is not about auditing: PHI must
-    not enter the roster payload, pinned by tests/unit/api/test_lodging_phi_boundary.py.
+    The other half of that ruling stands and is not about auditing: the
+    narrative must not enter the roster payload, pinned by
+    tests/unit/api/test_lodging_medical_narrative_containment.py.
     """
     return await _service().get_household_medical(year, household_cm_id)
 
@@ -262,16 +265,24 @@ async def set_availability(
     request: AvailabilityWriteRequest,
     user: AuthUser = Depends(require_permission(Permission.BUNKING_MANAGE)),
 ) -> LodgingWriteResponse:
-    """Reserve or release one unit for this weekend.
+    """Write somebody into one unit for this weekend, or release one to families.
 
-    Takes NO scenario, unlike every other write on this router. Availability is
-    a fact about the weekend rather than about the plan -- a burst pipe closes
-    a cabin in every scenario for that weekend -- so 1500000135 deleted the
-    dimension. Requiring one is what made this endpoint uncallable.
+    ONE ENDPOINT, TWO TABLES since kindred#2382. `family_available` answers two
+    unrelated questions and each is stored where it belongs: `false` is an
+    OCCUPANCY and goes to `lodging_write_ins`, `true` is a staff<->family ROLE
+    override for the weekend and stays in `lodging_availability`. The request
+    model, the URL and everything a staff member sees are unchanged -- the
+    split is behind them. `set_availability` carries the reasoning.
+
+    Takes NO scenario, unlike every other write on this router. The role half
+    is a fact about the weekend rather than about the plan, so 1500000135
+    deleted its dimension; the occupancy half writes the LIVE board, which is a
+    scope in its own right rather than the absence of one. Requiring a scenario
+    is what made this endpoint uncallable.
 
     `family_available: null` clears the override, which is spelled as the
-    ABSENCE of a row: there is no value meaning "normal", and writing one would
-    pin the unit against a later change to its role.
+    ABSENCE of a row -- in BOTH tables. There is no value meaning "normal", and
+    writing one would pin the unit against a later change to its role.
     """
     try:
         return await _writes().set_availability(request)

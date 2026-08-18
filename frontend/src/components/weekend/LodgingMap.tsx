@@ -372,7 +372,7 @@ export function LodgingMap({ parties, units, year, sessionCmId = 0 }: LodgingMap
   // weekend switch) can dissolve a cluster and a LATER prop change can
   // re-mint the identical `clusterKey` (sorted unit ids), reopening a
   // popover with no click. `MapUnitPopover` renders no `MedicalNarrative`,
-  // so this is a correctness/UX defect, not a PHI exposure — but the fix
+  // so this is a correctness/UX defect, not a medical disclosure — but the fix
   // shape is identical: clear the stored key(s) right here, during render,
   // rather than in an Effect.
   if (openKey !== null && openCluster === undefined) {
