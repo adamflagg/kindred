@@ -24,6 +24,9 @@ function unit(overrides: Partial<LodgingUnitRow> = {}): LodgingUnitRow {
     name: 'Ridge 1',
     has_power: false,
     power_coverage: 'none',
+    has_fridge: false,
+    has_shared_fridge: false,
+    fridge_coverage: 'none',
     ...overrides,
   }
 }
@@ -99,6 +102,100 @@ describe('resolveNeedsFit', () => {
         unit({ power_coverage: 'none' })
       )
     ).toBe('unmet')
+  })
+})
+
+describe('resolveNeedsFit — the fridge dimension (kindred#2224)', () => {
+  /*
+   * Dimension two, and the issue's own claim about dimension one: a second
+   * criterion is a further entry in `NEEDS_DIMENSIONS` and nothing else. It
+   * arrives with no new glyph, no new colour and no new chip — the card's
+   * visual treatment of needs belongs to kindred#2072.
+   *
+   * The demand it answers was invisible: `needs_accommodation` is a GATE
+   * question and the substance landed in free text nothing read. Six of the 42
+   * accommodation-gated 2026 households name a refrigerator, against 12 of 118
+   * units carrying one. 2026 is only 16% placed, so 6 is the SHAPE of the
+   * demand, not a rate.
+   */
+  it('marks a space where no room has a fridge as unmet', () => {
+    expect(
+      resolveNeedsFit(party({ flags: { needs_fridge: true } }), unit({ fridge_coverage: 'none' }))
+    ).toBe('unmet')
+  })
+
+  it('marks a space where only some rooms have one as partial', () => {
+    // Advisory-softer, the same reading power takes: a building where some
+    // rooms have a fridge is a real improvement on one where none do. This is
+    // NOT the `is_accessible` shape, where SOME is worse than NONE because it
+    // invites the placement that lands in one of the other rooms — the owner's
+    // 2026-08-15 ruling that a SHARED fridge satisfies the need is what
+    // settles that, since a fridge one room over is still a fridge.
+    expect(
+      resolveNeedsFit(party({ flags: { needs_fridge: true } }), unit({ fridge_coverage: 'some' }))
+    ).toBe('partial')
+  })
+
+  it('marks nothing when every room has one', () => {
+    expect(
+      resolveNeedsFit(party({ flags: { needs_fridge: true } }), unit({ fridge_coverage: 'all' }))
+    ).toBe('fits')
+  })
+
+  it('marks nothing when nobody has recorded the amenity', () => {
+    expect(
+      resolveNeedsFit(
+        party({ flags: { needs_fridge: true } }),
+        unit({ fridge_coverage: 'unknown' })
+      )
+    ).toBe('fits')
+  })
+
+  it('never reads the raw row — the shared-fridge ruling lives server-side', () => {
+    // A SHARED FRIDGE IS A FRIDGE (owner, 2026-08-15), and the OR that says so
+    // is in `_resolve_fridge_coverage`. Re-deriving it here off `has_fridge`
+    // would put a second implementation of one ruling on the client, where it
+    // could disagree.
+    expect(
+      resolveNeedsFit(
+        party({ flags: { needs_fridge: true } }),
+        unit({ has_fridge: false, has_shared_fridge: true, fridge_coverage: 'all' })
+      )
+    ).toBe('fits')
+  })
+
+  it('leaves a family that did not ask for one unmarked', () => {
+    expect(resolveNeedsFit(party(), unit({ fridge_coverage: 'none' }))).toBe('fits')
+  })
+
+  it('takes the WORSE of two dimensions, in either order', () => {
+    // With two real entries the loop can finally run twice, so this is the
+    // first assertion through `resolveNeedsFit` that can distinguish
+    // "worst wins" from "the last dimension wins".
+    const powerUnmet = unit({ power_coverage: 'none', fridge_coverage: 'all' })
+    const fridgeUnmet = unit({ power_coverage: 'all', fridge_coverage: 'none' })
+    const both = party({ flags: { needs_power: true, needs_fridge: true } })
+
+    expect(resolveNeedsFit(both, powerUnmet)).toBe('unmet')
+    expect(resolveNeedsFit(both, fridgeUnmet)).toBe('unmet')
+    expect(resolveNeedsFit(both, unit({ power_coverage: 'some', fridge_coverage: 'all' }))).toBe(
+      'partial'
+    )
+  })
+
+  it('keeps the two dimensions independent — one need never reads the other coverage', () => {
+    expect(
+      resolveNeedsFit(
+        party({ flags: { needs_power: true } }),
+        unit({ power_coverage: 'all', fridge_coverage: 'none' })
+      )
+    ).toBe('fits')
+    expect(
+      resolveNeedsFit(
+        party({ flags: { needs_fridge: true } }),
+        unit({ power_coverage: 'none', fridge_coverage: 'all' })
+      )
+    ).toBe('fits')
   })
 })
 

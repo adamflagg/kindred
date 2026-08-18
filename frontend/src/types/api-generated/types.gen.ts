@@ -77,6 +77,10 @@ export type AccessibilityFlagSummary = {
    */
   needs_accommodation?: boolean
   /**
+   * Needs Fridge
+   */
+  needs_fridge?: boolean
+  /**
    * Accommodation Is Mandatory
    */
   accommodation_is_mandatory?: boolean
@@ -2182,6 +2186,14 @@ export type LodgingUnitSummary = {
    * Has Fridge
    */
   has_fridge?: boolean
+  /**
+   * Has Shared Fridge
+   */
+  has_shared_fridge?: boolean
+  /**
+   * Fridge Coverage
+   */
+  fridge_coverage?: 'all' | 'some' | 'none' | 'unknown'
   /**
    * Is Accessible
    */

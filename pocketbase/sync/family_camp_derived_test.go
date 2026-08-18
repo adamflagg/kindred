@@ -3568,3 +3568,176 @@ func TestProcessMedicalKeepsAnUnanimousCPAPDenial(t *testing.T) {
 		t.Errorf("cpapInfo = %q, want %q", got, want)
 	}
 }
+
+// ---------------------------------------------------------------- needs_fridge
+//
+// kindred#2224. The accommodation gate is a bare Yes/No; the substance lands in
+// a separate narrative field the product never read. Nine of the free-text asks
+// name a refrigerator and twelve cabins have one, and nothing connected them.
+//
+// Measured on the production snapshot, 2026: 6 of the 42 accommodation-gated
+// households name a fridge across the two narrative fields (274058 Camper,
+// 224987 Adult), against 12 of 118 units carrying `has_fridge`. 2026 is only
+// 16% placed, so 6 is the SHAPE of the demand, not a rate.
+//
+// The narrative itself is PHI-adjacent -- it names diagnoses, medications and
+// feeding disorders -- so only the BOOLEAN is derived here. The sentence stays
+// in family_camp_medical, which is admin-gated and absent from every export.
+
+func TestProcessRegistrationsDerivesNeedsFridgeFromTheCamperNarrative(t *testing.T) {
+	t.Parallel()
+	s := NewFamilyCampDerivedSync(nil)
+
+	regs := s.processRegistrations(nil, []customValueEntry{
+		{householdPBID: "hh_johnson", fieldName: "Housing Accommodation", value: "Yes"},
+		{householdPBID: "hh_johnson", fieldName: "Housing Accommodation-Yes",
+			value: "We need a refrigerator for medication"},
+	})
+	if len(regs) != 1 {
+		t.Fatalf("registrations = %d, want 1", len(regs))
+	}
+	if !regs[0].needsFridge {
+		t.Error("a camper narrative naming a refrigerator did not set needsFridge")
+	}
+}
+
+// The Adult twin. Its gate (Housing Accomodation, one m) and its narrative
+// (Accommodation-Explain, cm_id 224987) are a different partition, and reading
+// the Camper key alone left every adult-weekend household structurally blind.
+func TestProcessRegistrationsDerivesNeedsFridgeFromTheAdultNarrative(t *testing.T) {
+	t.Parallel()
+	s := NewFamilyCampDerivedSync(nil)
+
+	regs := s.processRegistrations(nil, []customValueEntry{
+		{householdPBID: "hh_garcia", fieldName: "Housing Accomodation", value: "Yes"},
+		{householdPBID: "hh_garcia", fieldName: "Accommodation-Explain",
+			value: "Please give us a cabin with a mini fridge"},
+	})
+	if len(regs) != 1 {
+		t.Fatalf("registrations = %d, want 1", len(regs))
+	}
+	if !regs[0].needsFridge {
+		t.Error("an adult narrative naming a fridge did not set needsFridge")
+	}
+}
+
+// RECALL OVER PRECISION, deliberately. The derived flag is ADVISORY -- it
+// hatches a card, it never refuses a drop -- so a false positive costs a mark
+// staff can overrule while a false negative costs the ask entirely.
+func TestMentionsFridgeVocabulary(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		text string
+		want bool
+	}{
+		{"We need a refrigerator for insulin", true},
+		{"a mini fridge would help", true},
+		{"MINI-FRIDGE, please", true},
+		// CampMinder free text is unspellchecked; this misspelling is common
+		// enough that a substring match on "fridge" has to cover it.
+		{"somewhere to keep a refridgerator", true}, //nolint:misspell // the misspelling is the fixture
+		// Adds 0 households on the 2026 snapshot, kept for recall: a family
+		// asking for a cooler is asking the same question of the registry.
+		{"space for a cooler with ice", true},
+		{"", false},
+		{"We need a private bathroom", false},
+		{"Please place us close to the dining hall", false},
+	} {
+		if got := mentionsFridge(tc.text); got != tc.want {
+			t.Errorf("mentionsFridge(%q) = %v, want %v", tc.text, got, tc.want)
+		}
+	}
+}
+
+// The gate field is routed by LITERAL DISPLAY NAME and is not covered by the
+// LodgingRequestFieldNames rename overlay, so a CampMinder rename silently
+// stops population -- admission is by cm_id and survives, routing is by name
+// and does not. Successor spellings are registered defensively, exactly as the
+// gate's own arm carries three generations.
+func TestAccommodationExplainRoutingCarriesSuccessorSpellings(t *testing.T) {
+	t.Parallel()
+
+	for _, name := range []string{
+		"Housing Accommodation-Yes", // Camper, cm_id 274058 -- live
+		"Accommodation-Explain",     // Adult,  cm_id 224987 -- live
+		"Housing Accomodation-Yes",  // (sic) -- the gate is already misspelled this way
+		"Accomodation-Explain",      // (sic)
+	} {
+		s := NewFamilyCampDerivedSync(nil)
+		regs := s.processRegistrations(nil, []customValueEntry{
+			{householdPBID: "hh_lee", fieldName: name, value: "we need a fridge for breast milk"},
+		})
+		if len(regs) != 1 || !regs[0].needsFridge {
+			t.Errorf("field %q did not route into needsFridge", name)
+		}
+	}
+}
+
+// A household whose ONLY answer is the fridge narrative must not be the row
+// that gets dropped before it is written -- the same trap accommodationIsMandatory
+// fell into.
+func TestProcessRegistrationsFridgeOnlyHouseholdSurvives(t *testing.T) {
+	t.Parallel()
+	s := NewFamilyCampDerivedSync(nil)
+
+	regs := s.processRegistrations(nil, []customValueEntry{
+		{householdPBID: "hh_lee", fieldName: "Housing Accommodation-Yes",
+			value: "we would like a fridge"},
+	})
+	if len(regs) != 1 {
+		t.Fatalf("registrations = %d, want 1 -- the fridge-only household was dropped", len(regs))
+	}
+	if !regs[0].needsFridge {
+		t.Error("needsFridge not set")
+	}
+}
+
+// PHI CONTAINMENT. The narrative names diagnoses and medications. Only the
+// boolean may reach family_camp_registrations, which is not admin-gated; the
+// sentence belongs to family_camp_medical alone.
+func TestProcessRegistrationsNeverStoresTheAccommodationNarrative(t *testing.T) {
+	t.Parallel()
+	s := NewFamilyCampDerivedSync(nil)
+
+	const narrative = "Our daughter has a feeding disorder and her formula needs a fridge"
+	regs := s.processRegistrations(nil, []customValueEntry{
+		{householdPBID: "hh_lee", fieldName: "Housing Accommodation-Yes", value: narrative},
+	})
+	if len(regs) != 1 {
+		t.Fatalf("registrations = %d, want 1", len(regs))
+	}
+	for column, stored := range map[string]string{
+		"notes":                  regs[0].notes,
+		"goals":                  regs[0].goals,
+		"special_occasions":      regs[0].specialOccasions,
+		"request_text":           regs[0].requestText,
+		"cabin_assignment":       regs[0].cabinAssignment,
+		"share_cabin_preference": regs[0].shareCabinPreference,
+		"shared_cabin_modes_raw": regs[0].sharedCabinModesRaw,
+		"arrival_eta":            regs[0].arrivalETA,
+	} {
+		if strings.Contains(stored, "feeding disorder") {
+			t.Errorf("registration column %s carries the medical narrative: %q", column, stored)
+		}
+	}
+}
+
+// The medical column keeps both partitions AND the defensive successors, so a
+// rename cannot silently empty the one place staff can read the sentence.
+func TestProcessMedicalAccommodationExplainCarriesSuccessorSpellings(t *testing.T) {
+	t.Parallel()
+	s := NewFamilyCampDerivedSync(nil)
+	ts := time.Date(2026, 4, 21, 0, 0, 0, 0, time.UTC)
+
+	meds := s.processMedical([]customValueEntry{
+		{householdPBID: "hh_lee", fieldName: "Accomodation-Explain",
+			value: "renamed field narrative", lastUpdated: ts},
+	})
+	if len(meds) != 1 {
+		t.Fatalf("medical rows = %d, want 1", len(meds))
+	}
+	if !strings.Contains(meds[0].accommodationExplain, "renamed field narrative") {
+		t.Errorf("accommodationExplain = %q", meds[0].accommodationExplain)
+	}
+}
