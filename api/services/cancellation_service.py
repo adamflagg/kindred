@@ -36,6 +36,11 @@ from bunking.logging_config import get_logger
 # Back-compat alias as an explicit module export (shared default lives in session_metrics).
 SUMMER_SESSION_TYPES = DEFAULT_SUMMER_SESSION_TYPES
 
+# Family Camp session type -- not part of DISPLAY_SESSION_TYPES / DEFAULT_SUMMER_SESSION_TYPES
+# (adult-focused, separate program), but a household that cancels a summer session while
+# keeping a Family Camp weekend is still attending camp. See enrollment_session_ids below.
+FAMILY_SESSION_TYPE = "family"
+
 if TYPE_CHECKING:
     from .metrics_repository import MetricsRepository
 
@@ -82,7 +87,14 @@ class CancellationService:
         # not a true departure. Fold teen session ids into the enrollment lookup
         # only -- the display scope below stays summer-only / the requested filter.
         teen_sessions = await self.repository.fetch_sessions(year, list(SUMMER_TEEN_TYPES))
-        enrollment_session_ids = set(all_sessions.keys()) | set(teen_sessions.keys())
+
+        # Family Camp also counts as "still attending camp": a household that
+        # cancels a summer session but keeps a Family Camp weekend reads as
+        # has_other_sessions, not a true departure. Fold family session ids
+        # into the enrollment lookup only -- same rule as teens above, the
+        # display scope below stays summer-only / the requested filter.
+        family_sessions = await self.repository.fetch_sessions(year, [FAMILY_SESSION_TYPE])
+        enrollment_session_ids = set(all_sessions.keys()) | set(teen_sessions.keys()) | set(family_sessions.keys())
 
         # Fetch filtered sessions for display
         effective_types = session_types or list(SUMMER_SESSION_TYPES)
