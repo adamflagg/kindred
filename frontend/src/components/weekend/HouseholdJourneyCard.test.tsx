@@ -461,9 +461,30 @@ describe('the raw staff-written string, as provenance', () => {
     const trigger = within(rowFor(2022)).getByTestId('household-journey-housing-provenance')
     expect(trigger.textContent).toContain('Meadow House 1')
 
-    fireEvent.click(trigger)
+    fireEvent.pointerEnter(trigger)
 
     expect(screen.getByRole('tooltip').textContent).toContain('Old Meadow 1')
+  })
+
+  it('leaves nothing pinned open after a click', () => {
+    // The affordance is informational: it restates the season's raw string and
+    // offers nothing to act on. Pinning it left a bubble covering the rows
+    // below after a click that meant nothing, which read as a stuck popover.
+    show([
+      _row({
+        year: 2022,
+        housing: 'placed',
+        cabin_name: 'Meadow House 1',
+        cabin_name_raw: 'Old Meadow 1',
+      }),
+    ])
+
+    const trigger = within(rowFor(2022)).getByTestId('household-journey-housing-provenance')
+    fireEvent.pointerEnter(trigger)
+    fireEvent.click(trigger)
+    fireEvent.pointerOut(trigger, { relatedTarget: document.body })
+
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
   })
 
   it('says nothing extra when the raw string IS the registry name', () => {

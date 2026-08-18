@@ -193,6 +193,11 @@ function JourneyRows({
                   <Tooltip
                     content={`Recorded as "${rawHousing}" that season`}
                     data-testid="household-journey-housing-provenance"
+                    // Hover and focus only. The sentence restates what staff
+                    // typed that season and there is nothing to act on, so
+                    // the tap-pins default left a bubble stuck open over the
+                    // rows below it after a click that meant nothing.
+                    pinOnClick={false}
                     className="decoration-muted-foreground/60 min-w-0 text-left underline decoration-dotted underline-offset-2"
                   >
                     {housing}
