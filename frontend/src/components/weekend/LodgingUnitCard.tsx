@@ -968,6 +968,13 @@ export function LodgingUnitCard({
           <WriteInCard
             key={entry.source.unitId}
             occupant={entry.occupant}
+            // WHOSE row it is, and undefined whenever it is this card's own —
+            // so the common case says nothing extra. Restored during review of
+            // kindred#2381: a merged container's well can hold four occupants
+            // sleeping in four DIFFERENT rooms, and a split building's rooms
+            // each draw a card for the one row the building holds, so without
+            // this a name in the well names no space at all.
+            atUnitName={entry.source.isOwn ? undefined : entry.source.unitName}
             // BOUND TO THIS ROW, which is the whole point of the per-card X:
             // the strip's single "Clear Write-in" named whichever row the
             // server resolved first, so on a merged building a click removed

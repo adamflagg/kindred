@@ -2430,6 +2430,12 @@ describe('LodgingUnitCard — the write-in chip, dropped in favour of the well (
 
     expect(screen.getByText('Emma Johnson')).toBeInTheDocument()
     expect(screen.getByText('Liam Garcia')).toBeInTheDocument()
+    // AND WHICH ROOM EACH IS IN. Four occupants in one merged well sleep in
+    // four different rooms; a name with no space beside it tells a staff
+    // member nothing they can act on. (The 2026 container this issue is about
+    // holds four — a loft, a side room, a back room and a laundry.)
+    expect(screen.getByText('Written in at House Back')).toBeInTheDocument()
+    expect(screen.getByText('Written in at House Loft')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Remove write-in Liam Garcia' }))
 
@@ -2440,6 +2446,22 @@ describe('LodgingUnitCard — the write-in chip, dropped in favour of the well (
       occupantName: '',
       reason: '',
     })
+  })
+
+  it('says nothing extra when the row is the drawing card\u2019s own', () => {
+    // The overwhelmingly common case. `WRITTEN_IN`'s cover names `cedar-1`,
+    // which is the card's own code, so the source line stays off.
+    render(
+      <LodgingUnitCard
+        slot={slot({ unit: WRITTEN_IN })}
+        hue={HUE}
+        canSetAvailability
+        onSetAvailability={vi.fn()}
+        onOpenParty={vi.fn()}
+      />
+    )
+
+    expect(screen.queryByText(/^Written in at/)).not.toBeInTheDocument()
   })
 
   it('offers no removal to a reader without bunking.manage', () => {

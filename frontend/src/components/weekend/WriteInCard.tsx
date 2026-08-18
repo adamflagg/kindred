@@ -62,6 +62,32 @@
  * display-name convention to fall back on — the same argument #2253 made
  * for a housing name, stronger here because there is no shorter form at all.
  *
+ * ## WHOSE row it is, printed when it is not this card's own
+ *
+ * Restored during review of kindred#2381 after being deleted with it. The
+ * line had TWO reasons in the code that carried it and only one of them —
+ * "go and find the Clear on the card the merge took away" — died with the
+ * per-card X. The other is identity, and the plural well makes it sharper
+ * rather than redundant:
+ *
+ *   - MERGE. The one 2026 container carrying four write-ins holds them on
+ *     four different rooms — a loft, a side room, a back room and a laundry.
+ *     Four names in one well with no room beside them does not tell a staff
+ *     member where anybody is sleeping.
+ *   - SPLIT. Split a written-into building and every room draws a card for
+ *     the SAME row. Without this line each room asserts its own row names
+ *     that person, and each card's X — all of them pointed at the one
+ *     building row — empties all the others too, with nothing on screen
+ *     saying why.
+ *   - Two rows whose occupants are named alike, or both unnamed (`UNNAMED`
+ *     below is a state a legacy row can be in), otherwise render as two
+ *     identical cards. That is the same objection kindred#2431 above makes
+ *     to truncating a name, one card over.
+ *
+ * Undefined on the card whose own row it is, which is the overwhelmingly
+ * common case — a line restating the card's own name on every written-into
+ * card is chrome staff learn to read past.
+ *
  * ## The edit control, kindred#2430
  *
  * Owner ruling, 2026-08-18 (supersedes an earlier same-day HOLD): a small
@@ -109,11 +135,31 @@ export interface WriteInCardProps {
    * second permission flag here.
    */
   onEdit?: (write: { occupantName: string; reason: string }) => void
-  /** True while a write to THIS row — a removal or an edit — is in flight. */
+  /**
+   * The unit the row is recorded at, when that is NOT the card drawing this.
+   *
+   * See "WHOSE row it is" above. Undefined on the card whose own row it is.
+   */
+  atUnitName?: string | undefined
+  /**
+   * True while a write this card's controls are waiting on is in flight.
+   *
+   * Card-level rather than row-level at the only caller: `LodgingBoard` knows
+   * one `pendingUnitId` and `LodgingUnitCard` passes the same answer to every
+   * `WriteInCard` in its well, so a write to one row disables the corner
+   * controls on all of them. Deliberately the conservative direction — the
+   * alternative leaves an X live beside a row that is already going away.
+   */
   isSaving?: boolean
 }
 
-export function WriteInCard({ occupant, onRemove, onEdit, isSaving = false }: WriteInCardProps) {
+export function WriteInCard({
+  occupant,
+  onRemove,
+  onEdit,
+  atUnitName,
+  isSaving = false,
+}: WriteInCardProps) {
   const named = occupant.name !== ''
   const label = named ? occupant.name : UNNAMED
 
@@ -161,6 +207,12 @@ export function WriteInCard({ occupant, onRemove, onEdit, isSaving = false }: Wr
           <input
             type="text"
             aria-label="Occupant"
+            // THE SAME PLACEHOLDERS `UnitAvailabilityControl`'s occupant
+            // prompt uses. Not decoration on the second box: 1500000148
+            // cleared the note of every row it moved, so an edit opened on
+            // any pre-existing write-in shows an empty, otherwise unlabelled
+            // input under the name.
+            placeholder="Emma Johnson, burst pipe…"
             value={draftName}
             maxLength={500}
             autoFocus
@@ -174,6 +226,7 @@ export function WriteInCard({ occupant, onRemove, onEdit, isSaving = false }: Wr
           <input
             type="text"
             aria-label="Note (optional)"
+            placeholder="Note (optional) — back Monday…"
             value={draftNote}
             maxLength={500}
             onChange={(event) => {
@@ -268,13 +321,16 @@ export function WriteInCard({ occupant, onRemove, onEdit, isSaving = false }: Wr
         // migration onward. That emptiness is correct, not a bug.
         <span className="text-muted-foreground text-xs leading-tight">{occupant.note}</span>
       )}
-      {/* NO "Written in at …" FOOTER. It told a reader the row lives on a unit
-          other than the card drawing it, which was worth saying only while a
-          merged card showed ONE write-in and hid the rest — the note existed to
-          send staff to the Clear on a card the merge had taken away. Every
-          write-in is drawn now and each carries its own removal, so the line
-          would restate what the reader can see. Deleted with its prop
-          (kindred#2381), so nothing can pass one in by habit. */}
+      {atUnitName !== undefined && atUnitName !== '' && (
+        // WHERE the row lives, not a second occupant fact — which is why it
+        // sits under the note in the same muted key rather than beside the
+        // name. Four occupants in one merged well are four rooms, and the X
+        // on each of a split building's room cards points at the one row they
+        // all draw; neither is legible without this line.
+        <span className="text-muted-foreground text-xs leading-tight italic">
+          {`Written in at ${atUnitName}`}
+        </span>
+      )}
     </div>
   )
 }

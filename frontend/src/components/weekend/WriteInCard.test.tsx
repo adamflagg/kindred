@@ -90,6 +90,52 @@ describe('WriteInCard', () => {
   })
 })
 
+describe('a write-in the card INHERITED from elsewhere in the tree', () => {
+  /*
+   * The row names one unit; it closes a SPACE. Split a written-into building
+   * and its rooms carry the occupant; merge over a written-into room and the
+   * building does.
+   *
+   * RESTORED during review of kindred#2381, which deleted this line along with
+   * the strip's single "Clear Write-in". Only one of the two reasons it carried
+   * died with that button — "go and find the Clear on a card the merge took
+   * away". The other is identity, and the plural well sharpens it: four
+   * occupants in one merged well sleep in four different rooms, and every room
+   * of a SPLIT building draws a card for the one row the building holds, so
+   * each card's X empties all the others.
+   */
+  it('says which unit the write-in is recorded at', () => {
+    render(<WriteInCard occupant={{ name: 'Liam Garcia', note: '' }} atUnitName="House" />)
+
+    expect(screen.getByText('Written in at House')).toBeInTheDocument()
+  })
+
+  it('says nothing extra when the row is the card\u2019s own', () => {
+    // The overwhelmingly common case, and the one that must stay quiet: a line
+    // on every written-into card restating the card's own name is chrome.
+    render(<WriteInCard occupant={{ name: 'Liam Garcia', note: '' }} />)
+
+    expect(screen.queryByText(/^Written in at/)).not.toBeInTheDocument()
+  })
+
+  it('keeps saying it beside the corner controls, not instead of them', () => {
+    // The line and the per-row X answer different questions — WHERE the row
+    // is, and REMOVE this row — so neither replaces the other.
+    render(
+      <WriteInCard
+        occupant={{ name: 'Liam Garcia', note: '' }}
+        atUnitName="House Loft"
+        onRemove={() => undefined}
+        onEdit={() => undefined}
+      />
+    )
+
+    expect(screen.getByText('Written in at House Loft')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Remove write-in Liam Garcia' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Edit write-in Liam Garcia' })).toBeInTheDocument()
+  })
+})
+
 describe('the corner control that removes THIS write-in', () => {
   /*
    * Owner ruling, 2026-08-18 (kindred#2381 part 4): a small X in each card's
@@ -198,6 +244,26 @@ describe('the corner control that edits THIS write-in (kindred#2430)', () => {
     expect(
       screen.getByRole('button', { name: 'Edit write-in Occupant not named' })
     ).toBeInTheDocument()
+  })
+
+  it('labels both boxes with the prompt\u2019s own placeholders', () => {
+    // The note is EMPTY on every row predating kindred#2078 (1500000148
+    // cleared each one it copied), so without a placeholder the second box is
+    // a blank unlabelled input under the name. Same strings
+    // `UnitAvailabilityControl`'s occupant prompt uses, so one control does
+    // not teach a different vocabulary from the other.
+    render(<WriteInCard occupant={{ name: 'Liam Garcia', note: '' }} onEdit={() => undefined} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit write-in Liam Garcia' }))
+
+    expect(screen.getByRole('textbox', { name: 'Occupant' })).toHaveAttribute(
+      'placeholder',
+      'Emma Johnson, burst pipe…'
+    )
+    expect(screen.getByRole('textbox', { name: 'Note (optional)' })).toHaveAttribute(
+      'placeholder',
+      'Note (optional) — back Monday…'
+    )
   })
 
   it('opens an inline form pre-filled with the occupant and note already on the row', () => {
