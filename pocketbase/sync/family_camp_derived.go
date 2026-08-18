@@ -1560,25 +1560,155 @@ func (s *FamilyCampDerivedSync) applyHouseholdRequests(
 	}
 }
 
+// medicalColumnLimits are the declared max lengths of the family_camp_medical
+// text columns, which are NOT uniform: allergy_info, dietary_info,
+// special_needs_info and additional_info are 10,000, cpap_info and
+// physician_info 5,000 (migration 1500000035), and bathroom_explain and
+// accommodation_explain 4,000 (migration 1500000126).
+//
+// They matter for the first time now that a column concatenates every
+// answerer's disclosure instead of one: record.Set() past a PocketBase field's
+// max fails the whole row's save, which would lose a household rather than a
+// sentence. Worst case in the production snapshot is 2,128 of 10,000, so this
+// is a guard, not a working limit -- joinAnswers drops whole answers and the
+// caller logs the count.
+var medicalColumnLimits = map[string]int{
+	"allergy_info":          10000,
+	"dietary_info":          10000,
+	"special_needs_info":    10000,
+	"additional_info":       10000,
+	"cpap_info":             5000,
+	"physician_info":        5000,
+	"bathroom_explain":      4000,
+	"accommodation_explain": 4000,
+}
+
+// medicalGateFields are the family-camp medical questions processMedical reads
+// whose entire answer vocabulary is "Yes" / "No" -- 2 distinct values each, 3
+// characters at the longest, across 30,124 stored answers.
+//
+// They are named because a gate cannot be concatenated the way a narrative can.
+// CampMinder asks each of these questions in two parts, a gate and a free-text
+// explanation, and processMedical stores the pair in one column. Joining two
+// people's gate answers verbatim renders "No; Yes; <A>; <B>" -- two
+// contradictory gates in front of the text -- which is why an earlier uniform
+// dedup-and-join over every field was reverted. A household's gate is the OR of
+// its answers instead: see medicalAnswers.parts.
+//
+// "Family Camp-CPAP" is a true binary gate too and is deliberately absent. The
+// CPAP column is fed by three fields of two different shapes -- the other two
+// are multi-option selects whose text says WHICH accommodation is needed -- and
+// kindred#2255 carves it out for its own pass.
+var medicalGateFields = map[string]struct{}{
+	"Family Medical-Allergies":     {},
+	"Family Medical-Dietary Needs": {},
+	"Family Camp-Special Needs":    {},
+	"Family Camp-Physician":        {},
+}
+
+// gateAnswerYes is the affirmative token those gates store.
+const gateAnswerYes = "Yes"
+
+// medicalAnswers holds one household's family-camp medical answers: every
+// distinct answer given to each field, in canonical order, across everyone who
+// answered it.
+//
+// It replaces a first-non-empty-wins map. That map discarded every answer after
+// the first because `personValues` carries one entry per person per field and
+// CampMinder asks these questions on a per-CAMPER form, so a household with two
+// enrolled children answers each question twice. 105 of 464 family-camp
+// households in 2026 (22.6%) lost a real second disclosure to it, and because
+// the gate and its explanation were chosen independently, 836 of 8,864 stored
+// rows read "No; <description of the condition it denies>" -- one person's
+// denial glued to another person's disclosure.
+type medicalAnswers map[string][]string
+
+// parts returns the answers to one field, ready to be concatenated into a
+// column.
+//
+// A binary gate collapses to a single token by OR: if anyone in the household
+// said Yes, the household's answer is Yes. That is the same total aggregation
+// processRegistrations already applies to the housing flags, and it is what
+// makes the narrative join safe. Anything else keeps every distinct answer,
+// because a second person's sentence is a second disclosure.
+//
+// A gate whose answers are all negative falls through to the join rather than
+// picking one, so a vocabulary that ever widens past Yes/No is not silently
+// narrowed to whichever value sorted first.
+func (m medicalAnswers) parts(fieldName string) []string {
+	values := m[fieldName]
+	if len(values) == 0 {
+		return nil
+	}
+	if _, isGate := medicalGateFields[fieldName]; !isGate {
+		// Cloned because callers append the next field's parts onto this
+		// slice: handing back the map's own backing array would let one
+		// column's join overwrite another's answers.
+		return slices.Clone(values)
+	}
+	for _, v := range values {
+		if strings.EqualFold(v, gateAnswerYes) {
+			return []string{v}
+		}
+	}
+	return slices.Clone(values)
+}
+
+// joinMedicalColumn concatenates one column's parts within its declared cap,
+// dropping whole answers rather than cutting one in half and counting what it
+// dropped.
+//
+// The log carries counts only. Every column on this struct is a medical
+// disclosure about a named individual and none of them may be logged; see the
+// contract on medicalData.
+func (s *FamilyCampDerivedSync) joinMedicalColumn(householdPBID, column string, parts []string) string {
+	limit, ok := medicalColumnLimits[column]
+	if !ok {
+		// Fail SAFE, not quiet. joinAnswers with a zero limit would return an
+		// empty string, so a column added here and forgotten in the limits map
+		// would silently blank itself -- the exact class of loss this function
+		// exists to end. Keep every answer and shout instead.
+		slog.Error("Family camp medical column has no declared length limit",
+			"column", column, "hint", "add it to medicalColumnLimits")
+		return strings.Join(parts, answerJoinSeparator)
+	}
+
+	joined, dropped, truncated := joinAnswers(parts, limit)
+	if dropped > 0 || truncated {
+		slog.Warn("Family camp medical column exceeded its cap",
+			"household", householdPBID, "column", column,
+			"dropped_answers", dropped, "truncated", truncated)
+	}
+	return joined
+}
+
 // processMedical extracts medical data from person custom values
 func (s *FamilyCampDerivedSync) processMedical(personValues []customValueEntry) []*medicalData {
-	// Map: household -> field_name -> value (for concatenation)
-	fieldsByHousehold := make(map[string]map[string]string)
+	// Map: household -> field_name -> the distinct answers given to it
+	setsByHousehold := make(map[string]map[string]*answerSet)
 
 	for _, v := range personValues {
-		if fieldsByHousehold[v.householdPBID] == nil {
-			fieldsByHousehold[v.householdPBID] = make(map[string]string)
+		if setsByHousehold[v.householdPBID] == nil {
+			setsByHousehold[v.householdPBID] = make(map[string]*answerSet)
 		}
-
-		// First non-empty wins
-		if _, exists := fieldsByHousehold[v.householdPBID][v.fieldName]; !exists {
-			fieldsByHousehold[v.householdPBID][v.fieldName] = v.value
+		set := setsByHousehold[v.householdPBID][v.fieldName]
+		if set == nil {
+			set = &answerSet{}
+			setsByHousehold[v.householdPBID][v.fieldName] = set
 		}
+		set.add(v.value)
 	}
 
 	// Process each household
 	var result []*medicalData
-	for householdID, fields := range fieldsByHousehold {
+	for householdID, sets := range setsByHousehold {
+		fields := make(medicalAnswers, len(sets))
+		for name, set := range sets {
+			if values := set.values(); len(values) > 0 {
+				fields[name] = values
+			}
+		}
+
 		med := &medicalData{
 			householdPBID: householdID,
 		}
@@ -1596,79 +1726,56 @@ func (s *FamilyCampDerivedSync) processMedical(personValues []customValueEntry) 
 		// can look for the reason.
 		cpapParts := []string{}
 		for _, key := range []string{fieldFamilyCampCPAP, fieldFamCampCPAP} {
-			if v, ok := fields[key]; ok && v != "" {
-				cpapParts = append(cpapParts, v)
+			if p := fields.parts(key); len(p) > 0 {
+				cpapParts = append(cpapParts, p...)
 				break
 			}
 		}
-		if v, ok := fields[fieldAdultCPAP]; ok && v != "" && !slices.Contains(cpapParts, v) {
-			cpapParts = append(cpapParts, v)
+		for _, v := range fields.parts(fieldAdultCPAP) {
+			if !slices.Contains(cpapParts, v) {
+				cpapParts = append(cpapParts, v)
+			}
 		}
-		if v, ok := fields["Family Medical-CPAP Explain"]; ok && v != "" {
-			cpapParts = append(cpapParts, v)
-		}
-		med.cpapInfo = strings.Join(cpapParts, "; ")
+		cpapParts = append(cpapParts, fields.parts("Family Medical-CPAP Explain")...)
+		med.cpapInfo = s.joinMedicalColumn(householdID, "cpap_info", cpapParts)
 
 		// Physician info
-		physicianParts := []string{}
-		if v, ok := fields["Family Camp-Physician"]; ok && v != "" {
-			physicianParts = append(physicianParts, v)
-		}
-		if v, ok := fields["Family Camp-Physician If Yes"]; ok && v != "" {
-			physicianParts = append(physicianParts, v)
-		}
-		med.physicianInfo = strings.Join(physicianParts, "; ")
+		physicianParts := fields.parts("Family Camp-Physician")
+		physicianParts = append(physicianParts, fields.parts("Family Camp-Physician If Yes")...)
+		med.physicianInfo = s.joinMedicalColumn(householdID, "physician_info", physicianParts)
 
 		// Special needs info
-		specialParts := []string{}
-		if v, ok := fields["Family Camp-Special Needs"]; ok && v != "" {
-			specialParts = append(specialParts, v)
-		}
-		if v, ok := fields["Family Camp-Special Needs Yes"]; ok && v != "" {
-			specialParts = append(specialParts, v)
-		}
-		med.specialNeedsInfo = strings.Join(specialParts, "; ")
+		specialParts := fields.parts("Family Camp-Special Needs")
+		specialParts = append(specialParts, fields.parts("Family Camp-Special Needs Yes")...)
+		med.specialNeedsInfo = s.joinMedicalColumn(householdID, "special_needs_info", specialParts)
 
 		// Allergy info
-		allergyParts := []string{}
-		if v, ok := fields["Family Medical-Allergies"]; ok && v != "" {
-			allergyParts = append(allergyParts, v)
-		}
-		if v, ok := fields["Family Medical-Allergy Info"]; ok && v != "" {
-			allergyParts = append(allergyParts, v)
-		}
-		med.allergyInfo = strings.Join(allergyParts, "; ")
+		allergyParts := fields.parts("Family Medical-Allergies")
+		allergyParts = append(allergyParts, fields.parts("Family Medical-Allergy Info")...)
+		med.allergyInfo = s.joinMedicalColumn(householdID, "allergy_info", allergyParts)
 
 		// Dietary info
-		dietaryParts := []string{}
-		if v, ok := fields["Family Medical-Dietary Needs"]; ok && v != "" {
-			dietaryParts = append(dietaryParts, v)
-		}
-		if v, ok := fields["Family Medical-Dietary Explain"]; ok && v != "" {
-			dietaryParts = append(dietaryParts, v)
-		}
-		med.dietaryInfo = strings.Join(dietaryParts, "; ")
+		dietaryParts := fields.parts("Family Medical-Dietary Needs")
+		dietaryParts = append(dietaryParts, fields.parts("Family Medical-Dietary Explain")...)
+		med.dietaryInfo = s.joinMedicalColumn(householdID, "dietary_info", dietaryParts)
 
 		// Additional info
-		if v, ok := fields["Family Medical-Additional"]; ok && v != "" {
-			med.additionalInfo = v
-		}
+		med.additionalInfo = s.joinMedicalColumn(
+			householdID, "additional_info", fields.parts("Family Medical-Additional"))
 
 		// PHI narrative for the two accessibility questions. These sentences
 		// describe named individuals' medical circumstances, so they live only
 		// here -- family_camp_medical is admin-gated on all five rules and is
 		// absent from every export config (lodging_phi_test.go asserts that).
-		bathroomParts := []string{}
-		for _, key := range []string{"Housing-Bathroom", "Bathroom-Yes"} {
-			if v, ok := fields[key]; ok && v != "" {
-				bathroomParts = append(bathroomParts, v)
-			}
+		bathroomKeys := []string{"Housing-Bathroom", "Bathroom-Yes"}
+		bathroomParts := make([]string, 0, len(bathroomKeys))
+		for _, key := range bathroomKeys {
+			bathroomParts = append(bathroomParts, fields.parts(key)...)
 		}
-		med.bathroomExplain = strings.Join(bathroomParts, "; ")
+		med.bathroomExplain = s.joinMedicalColumn(householdID, "bathroom_explain", bathroomParts)
 
-		if v, ok := fields["Housing Accommodation-Yes"]; ok && v != "" {
-			med.accommodationExplain = v
-		}
+		med.accommodationExplain = s.joinMedicalColumn(
+			householdID, "accommodation_explain", fields.parts("Housing Accommodation-Yes"))
 
 		// Only include if has some data
 		if med.cpapInfo != "" || med.physicianInfo != "" ||

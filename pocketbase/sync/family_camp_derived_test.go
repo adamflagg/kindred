@@ -301,7 +301,13 @@ func TestMedicalInfoBlobConcatenation(t *testing.T) {
 	}
 }
 
-// TestMedicalDeduplicationByHousehold tests that medical info is deduplicated per household
+// TestMedicalDeduplicationByHousehold tests that medical info is deduplicated per household.
+//
+// NOTE: it drives aggregateMedicalByHousehold, a test-local reimplementation,
+// and asserts only non-emptiness -- so it is blind to how production collapses a
+// household's answers and cannot fail when processMedical changes. The real
+// coverage of that is TestProcessMedicalKeepsEveryAnswerersNarrative and the
+// kindred#2255 tests beside it.
 func TestMedicalDeduplicationByHousehold(t *testing.T) {
 	t.Parallel()
 	personValues := []testPersonCustomValue{
@@ -3146,6 +3152,211 @@ func TestAdultsCollectionHasAttributeConflictsColumn(t *testing.T) {
 	} {
 		if !strings.Contains(string(source), want) {
 			t.Errorf("migration is missing %q -- a plain fields.add({...}) is silently ignored in PB v0.23", want)
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// kindred#2255 -- processMedical must collapse a household's answers by TOTAL
+// aggregation, never by picking a winner.
+//
+// The tests below are deliberately written against the PRODUCTION
+// processMedical. The two tests that look like they already cover this
+// (TestMedicalDeduplicationByHousehold, which drives a test-local
+// reimplementation and asserts only non-emptiness, and
+// TestProcessMedicalCollapsesCamperCPAPGenerations, which exercises one person)
+// are blind to the defect by construction.
+// ---------------------------------------------------------------------------
+
+// medicalNarrativeA/B are placeholder disclosures. Never put a real medical
+// sentence, or a real name, in a fixture.
+const (
+	medicalNarrativeA = "carries an epinephrine auto-injector"
+	medicalNarrativeB = "reacts to shellfish"
+)
+
+// TestProcessMedicalKeepsEveryAnswerersNarrative is the regression test the
+// issue says no fixture covered: two people in one household answer the SAME
+// narrative field and both answers must survive. Before the fix the flatten
+// kept whichever record id sorted first and discarded the rest, which is why
+// staff saw part of a household's medical picture and not all of it.
+func TestProcessMedicalKeepsEveryAnswerersNarrative(t *testing.T) {
+	t.Parallel()
+	s := NewFamilyCampDerivedSync(nil)
+	ts := time.Date(2026, 4, 21, 0, 0, 0, 0, time.UTC)
+
+	meds := s.processMedical([]customValueEntry{
+		{householdPBID: "hh_johnson", fieldName: "Family Medical-Allergy Info",
+			value: medicalNarrativeA, lastUpdated: ts},
+		{householdPBID: "hh_johnson", fieldName: "Family Medical-Allergy Info",
+			value: medicalNarrativeB, lastUpdated: ts},
+	})
+	if len(meds) != 1 {
+		t.Fatalf("medical rows = %d, want 1", len(meds))
+	}
+	for _, want := range []string{medicalNarrativeA, medicalNarrativeB} {
+		if !strings.Contains(meds[0].allergyInfo, want) {
+			t.Errorf("allergyInfo dropped an answerer's disclosure: %q missing from %q",
+				want, meds[0].allergyInfo)
+		}
+	}
+}
+
+// TestProcessMedicalOrsTheGateAcrossAnswerers pins the half of the fix that
+// makes the join safe. A gate is a two-value Yes/No question; joining two
+// people's gate answers verbatim would render "No; Yes; <narrative>", which is
+// why an earlier uniform dedup-and-join was reverted. The household's gate is
+// the OR of its answers, so the one person who said Yes is not overruled by the
+// one who said No.
+//
+// The "No" is listed FIRST so the test fails against first-non-empty-wins
+// rather than passing by luck of load order.
+func TestProcessMedicalOrsTheGateAcrossAnswerers(t *testing.T) {
+	t.Parallel()
+	s := NewFamilyCampDerivedSync(nil)
+	ts := time.Date(2026, 4, 21, 0, 0, 0, 0, time.UTC)
+
+	meds := s.processMedical([]customValueEntry{
+		{householdPBID: "hh_johnson", fieldName: "Family Medical-Allergies",
+			value: "No", lastUpdated: ts},
+		{householdPBID: "hh_johnson", fieldName: "Family Medical-Allergies",
+			value: "Yes", lastUpdated: ts},
+		{householdPBID: "hh_johnson", fieldName: "Family Medical-Allergy Info",
+			value: medicalNarrativeA, lastUpdated: ts},
+	})
+	if len(meds) != 1 {
+		t.Fatalf("medical rows = %d, want 1", len(meds))
+	}
+	if got, want := meds[0].allergyInfo, "Yes; "+medicalNarrativeA; got != want {
+		t.Errorf("allergyInfo = %q, want %q -- a denial in front of the condition "+
+			"it denies is the rendered contradiction this fixes", got, want)
+	}
+}
+
+// TestProcessMedicalIsOrderIndependent is the probe the issue prescribes
+// instead of a flakiness test: the winner used to be a function of load order,
+// so feeding the same answers in the opposite order must produce byte-identical
+// output. It must not pin which answerer wins, because after the fix none does.
+func TestProcessMedicalIsOrderIndependent(t *testing.T) {
+	t.Parallel()
+	s := NewFamilyCampDerivedSync(nil)
+	ts := time.Date(2026, 4, 21, 0, 0, 0, 0, time.UTC)
+
+	forward := []customValueEntry{
+		{householdPBID: "hh_johnson", fieldName: "Family Medical-Allergies", value: "No", lastUpdated: ts},
+		{householdPBID: "hh_johnson", fieldName: "Family Medical-Allergy Info", value: medicalNarrativeA, lastUpdated: ts},
+		{householdPBID: "hh_johnson", fieldName: "Family Medical-Dietary Needs", value: "Yes", lastUpdated: ts},
+		{householdPBID: "hh_johnson", fieldName: "Family Medical-Dietary Explain", value: "no dairy", lastUpdated: ts},
+		{householdPBID: "hh_johnson", fieldName: "Family Camp-Special Needs", value: "Yes", lastUpdated: ts},
+		{householdPBID: "hh_johnson", fieldName: "Family Camp-Special Needs Yes",
+			value: "needs a quiet unit", lastUpdated: ts},
+		{householdPBID: "hh_johnson", fieldName: "Family Medical-Allergies", value: "Yes", lastUpdated: ts},
+		{householdPBID: "hh_johnson", fieldName: "Family Medical-Allergy Info", value: medicalNarrativeB, lastUpdated: ts},
+		{householdPBID: "hh_johnson", fieldName: "Family Medical-Dietary Needs", value: "No", lastUpdated: ts},
+		{householdPBID: "hh_johnson", fieldName: "Family Camp-Special Needs", value: "No", lastUpdated: ts},
+		{householdPBID: "hh_johnson", fieldName: "Family Medical-Additional", value: "second note", lastUpdated: ts},
+		{householdPBID: "hh_johnson", fieldName: "Family Medical-Additional", value: "first note", lastUpdated: ts},
+	}
+	reversed := make([]customValueEntry, len(forward))
+	for i, v := range forward {
+		reversed[len(forward)-1-i] = v
+	}
+
+	a := s.processMedical(forward)
+	b := s.processMedical(reversed)
+	if len(a) != 1 || len(b) != 1 {
+		t.Fatalf("medical rows = %d and %d, want 1 each", len(a), len(b))
+	}
+	if *a[0] != *b[0] {
+		t.Errorf("processMedical output depends on load order:\n forward  = %+v\n reversed = %+v", *a[0], *b[0])
+	}
+}
+
+// TestProcessMedicalCollapsesOneAnswerFannedOntoSiblings covers the case that
+// is far more common than genuine disagreement: CampMinder asks the family-camp
+// questions on a per-CAMPER form, so one parent's single answer arrives once
+// per enrolled child. Three identical copies are one answer, not three.
+func TestProcessMedicalCollapsesOneAnswerFannedOntoSiblings(t *testing.T) {
+	t.Parallel()
+	s := NewFamilyCampDerivedSync(nil)
+	ts := time.Date(2026, 4, 21, 0, 0, 0, 0, time.UTC)
+
+	meds := s.processMedical([]customValueEntry{
+		{householdPBID: "hh_johnson", fieldName: "Family Medical-Allergy Info", value: medicalNarrativeA, lastUpdated: ts},
+		{householdPBID: "hh_johnson", fieldName: "Family Medical-Allergy Info", value: medicalNarrativeA, lastUpdated: ts},
+		{householdPBID: "hh_johnson", fieldName: "Family Medical-Allergy Info", value: medicalNarrativeA, lastUpdated: ts},
+	})
+	if len(meds) != 1 {
+		t.Fatalf("medical rows = %d, want 1", len(meds))
+	}
+	if got, want := meds[0].allergyInfo, medicalNarrativeA; got != want {
+		t.Errorf("allergyInfo = %q, want %q", got, want)
+	}
+}
+
+// TestProcessMedicalCapsAJoinedColumn: joining several answers is what makes a
+// column able to overflow for the first time. family_camp_medical's columns are
+// NOT uniformly 10,000 -- bathroom_explain and accommodation_explain are 4,000
+// -- and record.Set() past a PocketBase field's max fails the row's save, which
+// would lose the whole household rather than one sentence.
+func TestProcessMedicalCapsAJoinedColumn(t *testing.T) {
+	t.Parallel()
+	s := NewFamilyCampDerivedSync(nil)
+	ts := time.Date(2026, 4, 21, 0, 0, 0, 0, time.UTC)
+
+	limit := medicalColumnLimits["bathroom_explain"]
+	if limit == 0 {
+		t.Fatal("bathroom_explain has no declared column limit")
+	}
+	long := strings.Repeat("a", limit-10)
+	meds := s.processMedical([]customValueEntry{
+		{householdPBID: "hh_johnson", fieldName: "Housing-Bathroom", value: long, lastUpdated: ts},
+		{householdPBID: "hh_johnson", fieldName: "Bathroom-Yes", value: strings.Repeat("b", 100), lastUpdated: ts},
+	})
+	if len(meds) != 1 {
+		t.Fatalf("medical rows = %d, want 1", len(meds))
+	}
+	if n := len([]rune(meds[0].bathroomExplain)); n > limit {
+		t.Errorf("bathroomExplain = %d runes, over the %d column cap", n, limit)
+	}
+	if !strings.Contains(meds[0].bathroomExplain, long) {
+		t.Error("bathroomExplain cut an answer in half instead of dropping a whole one")
+	}
+}
+
+// TestJoinMedicalColumnKeepsEverythingForAnUndeclaredColumn: joinAnswers with a
+// zero limit returns "", so a column added to processMedical and forgotten in
+// medicalColumnLimits would blank itself on every sync -- silently, and for
+// every household. The fallback keeps the answers.
+func TestJoinMedicalColumnKeepsEverythingForAnUndeclaredColumn(t *testing.T) {
+	t.Parallel()
+	s := NewFamilyCampDerivedSync(nil)
+
+	got := s.joinMedicalColumn("hh_johnson", "a_column_nobody_declared",
+		[]string{medicalNarrativeA, medicalNarrativeB})
+	if want := medicalNarrativeA + "; " + medicalNarrativeB; got != want {
+		t.Errorf("joinMedicalColumn = %q, want %q", got, want)
+	}
+}
+
+// TestMedicalColumnLimitsMatchTheSchema pins the map against the migrations
+// that declare the columns (1500000035 and 1500000126). A limit larger than the
+// real one does not cap anything -- record.Set() past a PocketBase field's max
+// fails the whole row's save, losing a household rather than a sentence.
+func TestMedicalColumnLimitsMatchTheSchema(t *testing.T) {
+	t.Parallel()
+	want := map[string]int{
+		"allergy_info": 10000, "dietary_info": 10000,
+		"special_needs_info": 10000, "additional_info": 10000,
+		"cpap_info": 5000, "physician_info": 5000,
+		"bathroom_explain": 4000, "accommodation_explain": 4000,
+	}
+	if len(medicalColumnLimits) != len(want) {
+		t.Fatalf("medicalColumnLimits has %d columns, want %d", len(medicalColumnLimits), len(want))
+	}
+	for column, limit := range want {
+		if got := medicalColumnLimits[column]; got != limit {
+			t.Errorf("medicalColumnLimits[%q] = %d, want %d", column, got, limit)
 		}
 	}
 }
