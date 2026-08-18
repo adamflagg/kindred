@@ -145,6 +145,19 @@ export function Tooltip({
 }: TooltipProps) {
   const triggerRef = useRef<HTMLButtonElement>(null)
   const bubbleRef = useRef<HTMLDivElement>(null)
+  /**
+   * Did the focus about to arrive come from a POINTER press?
+   *
+   * A browser focuses a <button> on pointer-down, so on a `pinOnClick={false}`
+   * trigger a click would otherwise hold the bubble open through `focused`
+   * long after the pointer left — the very thing that opt-out exists to
+   * prevent. A ref rather than state: it is read inside the focus handler that
+   * fires in the same tick, and re-rendering on it would buy nothing.
+   *
+   * Cleared on blur, so a later Tab return is keyboard focus again and opens
+   * the bubble normally.
+   */
+  const focusCameFromPointer = useRef(false)
 
   const [hovering, setHovering] = useState(false)
   const [focused, setFocused] = useState(false)
@@ -252,6 +265,9 @@ export function Tooltip({
           setDismissed(false)
           setHovering(true)
         }}
+        onPointerDown={() => {
+          focusCameFromPointer.current = true
+        }}
         // No "did the pointer land on the bubble" guard here, deliberately.
         // React synthesises leave AND enter from the SAME native `pointerout`,
         // so a pointer moving straight from the trigger onto the bubble runs
@@ -262,9 +278,16 @@ export function Tooltip({
           setHovering(false)
         }}
         onFocus={() => {
+          // A pointer press focuses this button as a side effect. On a trigger
+          // that has opted out of pinning, honouring that focus would keep the
+          // bubble open after the pointer left and look identical to the pin
+          // the opt-out removed. Keyboard focus arrives with no preceding
+          // pointer press and still opens it.
+          if (!pinOnClick && focusCameFromPointer.current) return
           setFocused(true)
         }}
         onBlur={() => {
+          focusCameFromPointer.current = false
           setFocused(false)
           setPinned(false)
           setDismissed(false)
