@@ -2447,4 +2447,41 @@ describe('LodgingUnitCard — the write-in chip, dropped in favour of the well (
 
     expect(screen.queryByRole('button', { name: /remove write-in/i })).not.toBeInTheDocument()
   })
+
+  it('edits a write-in from the card that draws it, upserting the same row (kindred#2430)', () => {
+    // No delete-and-recreate: the edit write names the SAME row the removal
+    // above does (`unitId`/`unitName` from the row's own source), with
+    // `familyAvailable: false` — the write-in "hold" value, not `null` — so
+    // `set_availability`'s upsert updates the row in place.
+    const onSetAvailability = vi.fn()
+    render(
+      <LodgingUnitCard
+        slot={slot({ unit: WRITTEN_IN })}
+        hue={HUE}
+        canSetAvailability
+        onSetAvailability={onSetAvailability}
+        onOpenParty={vi.fn()}
+      />
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit write-in Emma Johnson' }))
+    fireEvent.change(screen.getByRole('textbox', { name: 'Occupant' }), {
+      target: { value: 'Emma Johnson-Reyes' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    expect(onSetAvailability).toHaveBeenCalledWith({
+      unitId: 'u1',
+      unitName: 'Cedar 1',
+      familyAvailable: false,
+      occupantName: 'Emma Johnson-Reyes',
+      reason: '',
+    })
+  })
+
+  it('offers no edit to a reader without bunking.manage', () => {
+    render(<LodgingUnitCard slot={slot({ unit: WRITTEN_IN })} hue={HUE} onOpenParty={vi.fn()} />)
+
+    expect(screen.queryByRole('button', { name: /edit write-in/i })).not.toBeInTheDocument()
+  })
 })

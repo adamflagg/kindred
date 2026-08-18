@@ -988,9 +988,23 @@ export function LodgingUnitCard({
                       reason: '',
                     })
                   },
+                  // BOUND TO THIS ROW for the same reason `onRemove` is — kindred#2430.
+                  // `familyAvailable: false` is the write-in "hold" value, never
+                  // `null`: `set_availability` upserts a write-in
+                  // (`_upsert_row(what='write-in', ...)`), so this write updates
+                  // the existing row rather than creating a second one.
+                  onEdit: (write: { occupantName: string; reason: string }) => {
+                    onSetAvailability({
+                      unitId: entry.source.unitId,
+                      unitName: entry.source.unitName,
+                      familyAvailable: false,
+                      occupantName: write.occupantName,
+                      reason: write.reason,
+                    })
+                  },
                 }
               : {})}
-            isRemoving={savingAvailability}
+            isSaving={savingAvailability}
           />
         ))}
         {parties.length === 0 && !held ? (

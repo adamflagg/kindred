@@ -43,7 +43,42 @@
  * else's file. `WriteInCard.test.tsx` reads the literal out of `FamilyCard.tsx`
  * and asserts the two are identical, which makes the copy loud instead of a
  * silent drift waiting to happen.
+ *
+ * ## The name wraps, kindred#2431
+ *
+ * Owner ruling, 2026-08-18, following the #2253 precedent
+ * (`HouseholdJourneyCard.tsx`'s housing span): a truncated name is not a
+ * shorter name, it is a different one — two write-ins that share a prefix
+ * would render identically. `min-w-0` stays on the span even though
+ * `truncate` is gone: it is what lets the flex child shrink below its
+ * content width, which is what makes it wrap rather than push the card
+ * wider than its well.
+ *
+ * A DELIBERATE divergence from summer, per the root CLAUDE.md §4 rule:
+ * summer's direct analog still truncates (`camper/CampJourneyTimeline.tsx`,
+ * the `record.bunkName` span), because a cabin callsign is a short,
+ * fixed-format string with nothing meaningful to lose to an ellipsis. A
+ * write-in's occupant name is staff-typed free text with no alias or
+ * display-name convention to fall back on — the same argument #2253 made
+ * for a housing name, stronger here because there is no shorter form at all.
+ *
+ * ## The edit control, kindred#2430
+ *
+ * Owner ruling, 2026-08-18 (supersedes an earlier same-day HOLD): a small
+ * pencil, ALWAYS VISIBLE, beside the X — not hover-only (the reported
+ * problem was that staff could not FIND an edit path, so a control that
+ * only appears on hover does not fix it) and not click-the-card (which
+ * would reverse the "deliberately NOT a `FamilyCard`" decision above). It
+ * opens an inline form, pre-filled from this row, and writes back through
+ * the same `onSetAvailability` channel `onRemove` already uses — no API
+ * change: `set_availability` upserts a write-in
+ * (`_upsert_row(what='write-in', ...)` in
+ * `api/services/lodging_write_service.py`), so a second write to the same
+ * row updates it rather than duplicating it.
  */
+import { Pencil } from 'lucide-react'
+import { useState } from 'react'
+
 import type { WriteInOccupant } from './writeIn'
 
 /** `FamilyCard`'s `CARD_FRAME`, verbatim. Pinned by this module's test. */
@@ -64,13 +99,113 @@ export interface WriteInCardProps {
    * about which row a corner X belongs to. Passing an id up would make two.
    */
   onRemove?: () => void
-  /** True while THIS card's removal is in flight. */
-  isRemoving?: boolean
+  /**
+   * Save an edit to THIS write-in's occupant name and note — kindred#2430.
+   *
+   * NO ID, for the same reason `onRemove` takes none: the card knows which
+   * row it draws and the caller binds the target, so there is exactly one
+   * place that has to agree about which of the well's rows this is. Omitted
+   * for a reader who cannot edit, which hides the pencil rather than a
+   * second permission flag here.
+   */
+  onEdit?: (write: { occupantName: string; reason: string }) => void
+  /** True while a write to THIS row — a removal or an edit — is in flight. */
+  isSaving?: boolean
 }
 
-export function WriteInCard({ occupant, onRemove, isRemoving = false }: WriteInCardProps) {
+export function WriteInCard({ occupant, onRemove, onEdit, isSaving = false }: WriteInCardProps) {
   const named = occupant.name !== ''
   const label = named ? occupant.name : UNNAMED
+
+  // Local to this card, never lifted: the well can hold several of these and
+  // each edits independently. Re-seeded from `occupant` every time the form
+  // OPENS (not on every render) so a cancelled edit's draft never survives to
+  // the next open — see `openEdit`.
+  const [isEditing, setIsEditing] = useState(false)
+  const [draftName, setDraftName] = useState(occupant.name)
+  const [draftNote, setDraftNote] = useState(occupant.note)
+  const [wantsName, setWantsName] = useState(false)
+
+  const openEdit = () => {
+    setDraftName(occupant.name)
+    setDraftNote(occupant.note)
+    setWantsName(false)
+    setIsEditing(true)
+  }
+  const closeEdit = () => {
+    setIsEditing(false)
+    setWantsName(false)
+  }
+
+  if (isEditing) {
+    return (
+      <div data-write-in-card className={`${WRITE_IN_FRAME} bg-background`}>
+        <form
+          className="flex w-full flex-col gap-1"
+          onSubmit={(event) => {
+            event.preventDefault()
+            const trimmedName = draftName.trim()
+            // THE SAME GUARD `UnitAvailabilityControl`'s occupant prompt
+            // uses: a write-in that names nobody is a valid state a legacy
+            // row can already be in, but an edit that CLEARS a name is a
+            // staff member erasing who is in the room, which is worth a
+            // refusal rather than a silent write.
+            if (trimmedName === '') {
+              setWantsName(true)
+              return
+            }
+            onEdit?.({ occupantName: trimmedName, reason: draftNote.trim() })
+            closeEdit()
+          }}
+        >
+          <input
+            type="text"
+            aria-label="Occupant"
+            value={draftName}
+            maxLength={500}
+            autoFocus
+            aria-invalid={wantsName && draftName.trim() === ''}
+            onChange={(event) => {
+              setDraftName(event.target.value)
+              setWantsName(false)
+            }}
+            className="border-border bg-background text-foreground placeholder:text-muted-foreground/60 focus:border-primary/50 focus:ring-primary/10 w-full rounded-md border px-1.5 py-1 text-sm focus:ring-2 focus:outline-none aria-[invalid=true]:border-amber-500"
+          />
+          <input
+            type="text"
+            aria-label="Note (optional)"
+            value={draftNote}
+            maxLength={500}
+            onChange={(event) => {
+              setDraftNote(event.target.value)
+            }}
+            className="border-border bg-background text-foreground placeholder:text-muted-foreground/60 focus:border-primary/50 focus:ring-primary/10 w-full rounded-md border px-1.5 py-1 text-sm focus:ring-2 focus:outline-none"
+          />
+          {wantsName && draftName.trim() === '' && (
+            <span className="text-xs font-medium text-amber-700 dark:text-amber-400">
+              Say who is in it, so next week’s staff know who to ask.
+            </span>
+          )}
+          <div className="flex items-center gap-1.5">
+            <button
+              type="submit"
+              disabled={isSaving}
+              className="bg-primary text-primary-foreground rounded-md px-2 py-0.5 text-xs font-medium disabled:opacity-40"
+            >
+              Save
+            </button>
+            <button
+              type="button"
+              onClick={closeEdit}
+              className="text-muted-foreground hover:text-foreground rounded-md px-1.5 py-0.5 text-xs"
+            >
+              Cancel
+            </button>
+          </div>
+        </form>
+      </div>
+    )
+  }
 
   return (
     <div data-write-in-card className={`${WRITE_IN_FRAME} bg-background`}>
@@ -81,8 +216,8 @@ export function WriteInCard({ occupant, onRemove, isRemoving = false }: WriteInC
         <span
           className={
             named
-              ? 'text-foreground min-w-0 flex-1 truncate text-sm leading-tight font-semibold'
-              : 'text-muted-foreground min-w-0 flex-1 truncate text-sm leading-tight italic'
+              ? 'text-foreground min-w-0 flex-1 text-sm leading-tight font-semibold'
+              : 'text-muted-foreground min-w-0 flex-1 text-sm leading-tight italic'
           }
         >
           {/* STATED, not left blank. A row can reach here unnamed — the write
@@ -92,10 +227,24 @@ export function WriteInCard({ occupant, onRemove, isRemoving = false }: WriteInC
               drops on. */}
           {label}
         </span>
+        {onEdit !== undefined && (
+          <button
+            type="button"
+            disabled={isSaving}
+            // NAMED FOR THE OCCUPANT, same reason as the X below: four edit
+            // controls called "Edit" on one merged card are one question
+            // asked four times.
+            aria-label={`Edit write-in ${label}`}
+            onClick={openEdit}
+            className="text-muted-foreground hover:text-foreground hover:border-foreground/30 border-border flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full border text-[11px] leading-none disabled:opacity-40"
+          >
+            <Pencil className="h-2.5 w-2.5" />
+          </button>
+        )}
         {onRemove !== undefined && (
           <button
             type="button"
-            disabled={isRemoving}
+            disabled={isSaving}
             // NAMED FOR THE OCCUPANT, not a bare "Remove". A merged building's
             // well can hold four of these, and four controls called the same
             // thing are one question asked four times. (`aria-label` here is a

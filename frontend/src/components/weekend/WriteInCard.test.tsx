@@ -62,6 +62,20 @@ describe('WriteInCard', () => {
     expect(container.querySelector('[draggable="true"]')).toBeNull()
   })
 
+  it('wraps a long occupant name instead of truncating it (kindred#2431)', () => {
+    // Owner ruling, 2026-08-18: WRAP, following the #2253 precedent — a
+    // truncated name is not a shorter name, it is a different one, and two
+    // write-ins sharing a prefix would render identically.
+    render(<WriteInCard occupant={{ name: 'Alexandra Vandenberg-Okonkwo', note: '' }} />)
+
+    const nameSpan = screen.getByText('Alexandra Vandenberg-Okonkwo')
+    expect(nameSpan.className).not.toMatch(/\btruncate\b/)
+    // `min-w-0` STAYS: it is what lets the flex child shrink below its
+    // content width, which is what makes it wrap rather than overflow the
+    // card (same reasoning `HouseholdJourneyCard` records for its own span).
+    expect(nameSpan.className).toMatch(/\bmin-w-0\b/)
+  })
+
   it("wears FamilyCard's frame verbatim, so the two cannot drift apart", () => {
     // A SOURCE assertion, not a rendered one, and deliberately so. `CARD_FRAME`
     // is module-private to `FamilyCard.tsx` and that file is owned by another
@@ -122,16 +136,148 @@ describe('the corner control that removes THIS write-in', () => {
     expect(onRemove).toHaveBeenCalledTimes(1)
   })
 
-  it('is disabled while the removal is in flight', () => {
+  it('is disabled while a write to this row is in flight', () => {
+    // RENAMED from `isRemoving` (kindred#2430): the flag now gates the edit
+    // pencil too, since both controls write the same row.
     render(
       <WriteInCard
         occupant={{ name: 'Liam Garcia', note: '' }}
         onRemove={() => undefined}
-        isRemoving
+        onEdit={() => undefined}
+        isSaving
       />
     )
 
     expect(screen.getByRole('button', { name: 'Remove write-in Liam Garcia' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Edit write-in Liam Garcia' })).toBeDisabled()
+  })
+})
+
+describe('the corner control that edits THIS write-in (kindred#2430)', () => {
+  /*
+   * Owner ruling, 2026-08-18 (supersedes an earlier same-day HOLD): a small
+   * pencil, ALWAYS VISIBLE, beside #2381's X — not shown only on hover
+   * (staff could not find the edit path in the first place, so a hidden
+   * control does not fix that) and not click-the-card (`WriteInCard.tsx:18`
+   * documents the card as deliberately not a button; a discrete control
+   * preserves that rather than reversing it).
+   *
+   * No API change: `set_availability` already upserts a write-in's row
+   * (`_upsert_row(what='write-in', ...)` in
+   * `api/services/lodging_write_service.py`), so a second write to the same
+   * row updates it in place. This control only has to collect the edit and
+   * send the same shape `UnitAvailabilityControl`'s occupant prompt does.
+   */
+  it('is absent when the reader cannot edit', () => {
+    render(<WriteInCard occupant={{ name: 'Liam Garcia', note: '' }} />)
+
+    expect(screen.queryByRole('button', { name: /edit write-in/i })).not.toBeInTheDocument()
+  })
+
+  it('renders beside the X with no hover-only class — ALWAYS visible', () => {
+    render(
+      <WriteInCard
+        occupant={{ name: 'Liam Garcia', note: '' }}
+        onRemove={() => undefined}
+        onEdit={() => undefined}
+      />
+    )
+
+    const pencil = screen.getByRole('button', { name: 'Edit write-in Liam Garcia' })
+    // A hover-reveal control would still be IN the DOM (CSS hides it), so
+    // presence alone cannot tell the two apart — the className has to be
+    // checked for the classes that would make it hover-only.
+    expect(pencil.className).not.toMatch(/opacity-0/)
+    expect(pencil.className).not.toMatch(/group-hover/)
+    expect(screen.getByRole('button', { name: 'Remove write-in Liam Garcia' })).toBeInTheDocument()
+  })
+
+  it('still offers an edit for a write-in nobody named', () => {
+    render(<WriteInCard occupant={{ name: '', note: '' }} onEdit={() => undefined} />)
+
+    expect(
+      screen.getByRole('button', { name: 'Edit write-in Occupant not named' })
+    ).toBeInTheDocument()
+  })
+
+  it('opens an inline form pre-filled with the occupant and note already on the row', () => {
+    render(
+      <WriteInCard
+        occupant={{ name: 'Liam Garcia', note: 'Kitchen lead, Fri–Sun' }}
+        onEdit={() => undefined}
+      />
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit write-in Liam Garcia' }))
+
+    expect(screen.getByRole('textbox', { name: 'Occupant' })).toHaveValue('Liam Garcia')
+    expect(screen.getByRole('textbox', { name: 'Note (optional)' })).toHaveValue(
+      'Kitchen lead, Fri–Sun'
+    )
+  })
+
+  it('calls back once with the trimmed occupant and note, and closes the form', () => {
+    const onEdit = vi.fn()
+    render(<WriteInCard occupant={{ name: 'Liam Garcia', note: '' }} onEdit={onEdit} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit write-in Liam Garcia' }))
+    fireEvent.change(screen.getByRole('textbox', { name: 'Occupant' }), {
+      target: { value: '  Liam Garcia-Reyes  ' },
+    })
+    fireEvent.change(screen.getByRole('textbox', { name: 'Note (optional)' }), {
+      target: { value: 'Back Monday' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    expect(onEdit).toHaveBeenCalledTimes(1)
+    expect(onEdit).toHaveBeenCalledWith({
+      occupantName: 'Liam Garcia-Reyes',
+      reason: 'Back Monday',
+    })
+    expect(screen.queryByRole('textbox', { name: 'Occupant' })).not.toBeInTheDocument()
+  })
+
+  it('refuses an empty occupant name, the same guard the write-in prompt uses', () => {
+    const onEdit = vi.fn()
+    render(<WriteInCard occupant={{ name: 'Liam Garcia', note: '' }} onEdit={onEdit} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit write-in Liam Garcia' }))
+    fireEvent.change(screen.getByRole('textbox', { name: 'Occupant' }), { target: { value: '  ' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    expect(onEdit).not.toHaveBeenCalled()
+    expect(screen.getByRole('textbox', { name: 'Occupant' })).toBeInTheDocument()
+  })
+
+  it('lets Cancel close the form without writing anything', () => {
+    const onEdit = vi.fn()
+    render(<WriteInCard occupant={{ name: 'Liam Garcia', note: '' }} onEdit={onEdit} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit write-in Liam Garcia' }))
+    fireEvent.change(screen.getByRole('textbox', { name: 'Occupant' }), {
+      target: { value: 'Somebody Else' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+
+    expect(onEdit).not.toHaveBeenCalled()
+    expect(screen.queryByRole('textbox', { name: 'Occupant' })).not.toBeInTheDocument()
+    // The original label is still what the card prints — nothing was
+    // written, so nothing changed.
+    expect(screen.getByText('Liam Garcia')).toBeInTheDocument()
+  })
+
+  it('re-opens pre-filled from the CURRENT row, not a stale draft left over from a cancelled edit', () => {
+    render(<WriteInCard occupant={{ name: 'Liam Garcia', note: '' }} onEdit={() => undefined} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit write-in Liam Garcia' }))
+    fireEvent.change(screen.getByRole('textbox', { name: 'Occupant' }), {
+      target: { value: 'Abandoned Draft' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit write-in Liam Garcia' }))
+
+    expect(screen.getByRole('textbox', { name: 'Occupant' })).toHaveValue('Liam Garcia')
   })
 })
 
