@@ -1262,10 +1262,11 @@ class TestTheAvailabilityWriteShape:
     """`PUT /api/lodging/availability` was UNCALLABLE, and this is why.
 
     `AvailabilityWriteRequest` extended `ScenarioWriteRequest`, where `scenario`
-    is `min_length=1`. Availability carries no scenario since 1500000135 -- a
-    burst pipe closes a cabin in every plan for that weekend -- so the endpoint
-    demanded a dimension the data does not have, and no caller could satisfy it
-    with anything meaningful. The table has zero rows partly because of this.
+    is `min_length=1`, so the endpoint demanded a dimension nothing could
+    supply and the table stayed empty. It has one again since kindred#2382's PR
+    4 -- but OPTIONAL, mirroring `SlotMergeRequest`: blank is the live board,
+    which is a scope in its own right and not a missing value. Required is the
+    shape that broke it.
     """
 
     def test_a_write_needs_no_scenario(self) -> None:
@@ -1275,7 +1276,18 @@ class TestTheAvailabilityWriteShape:
 
         assert request.family_available is False
         assert request.reason == "Burst pipe"
-        assert not hasattr(request, "scenario")
+        # DECLARED, and blank by default. A model that merely ignored an
+        # unknown `scenario` key would pass every routing test in this file by
+        # writing the live table -- the exact gap PR 4 exists to close -- so
+        # the field's existence is pinned here rather than inferred.
+        assert "scenario" in AvailabilityWriteRequest.model_fields
+        assert request.scenario == ""
+
+    def test_a_scenario_is_accepted_and_never_required(self) -> None:
+        """Blank is the LIVE board; a value is that scenario's own draft."""
+        assert AvailabilityWriteRequest(year=2026, session_cm_id=1000001, unit_id="u1", scenario="scn_1").scenario == (
+            "scn_1"
+        )
 
     def test_null_clears_the_override_rather_than_writing_a_normal_value(self) -> None:
         """`None` DELETES the row.
@@ -2031,3 +2043,170 @@ class TestAWriteInIsStoredAsAnOccupancyNotAnAvailability:
         await write_service.set_availability(_availability_request())
 
         repo.find_write_in.assert_awaited_once_with(2026, 1000001, "u1")
+
+
+class TestAWriteInInsideAScenarioIsWrittenToTheDraftTable:
+    """kindred#2382, PR 4 of 4 -- the WRITE half of the scenario dimension.
+
+    PR 3 made a scenario's write-ins REPLACE the live ones on read. PR 2's
+    write path had no scenario at all and always wrote the LIVE occupancy
+    table, so between the two a staff member working inside a scenario could
+    record a write-in and then not see it on the board they had just made it
+    on: the write landed live, and that scenario's own read replaced it away.
+    This is the class that closes it.
+
+    THE SPLIT IS THE POINT, and it runs down the middle of one request.
+    `scenario` routes the OCCUPANCY half and nothing else. The staff<->family
+    ROLE stays on `lodging_availability` whatever the request says, because the
+    owner ruled it is not scenario-scoped -- "that's more of a known 'were
+    moving staff to X for weekend Y'" -- so a release written from inside a
+    scenario is still a fact about the weekend.
+
+    A BLANK `scenario` IS THE LIVE BOARD, not a refusal and not a missing
+    value: staff evaluate the real board and must be able to write onto it
+    (owner, 2026-08-15). Spelled exactly as `SlotMergeRequest` spells its own
+    optional scenario.
+
+    Fictional data throughout.
+    """
+
+    @pytest.mark.asyncio
+    async def test_a_write_in_naming_a_scenario_creates_a_draft_row(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        await write_service.set_availability(
+            _availability_request(scenario="scn_1", occupant_name="Emma Johnson", reason="Back Monday")
+        )
+
+        repo.create_write_in.assert_not_called()
+        data = repo.create_draft_write_in.call_args[0][0]
+        assert data["scenario"] == "scn_1"
+        assert data["unit"] == "u1"
+        assert data["session"] == "sess_1"
+        assert data["session_cm_id"] == 1000001
+        assert data["year"] == 2026
+        assert data["occupant_name"] == "Emma Johnson"
+        assert data["note"] == "Back Monday"
+        # The row IS the occupancy on both grains; a column restating it would
+        # be the conflation kindred#2382 split apart growing back.
+        assert "family_available" not in data
+
+    @pytest.mark.asyncio
+    async def test_a_blank_scenario_still_writes_the_live_table(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        """The live board is a scope in its own right, not the absence of one."""
+        await write_service.set_availability(_availability_request(occupant_name="Emma Johnson"))
+
+        repo.create_draft_write_in.assert_not_called()
+        data = repo.create_write_in.call_args[0][0]
+        assert "scenario" not in data
+
+    @pytest.mark.asyncio
+    async def test_the_draft_lookup_is_keyed_on_the_scenario(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        """`idx_lodging_write_in_draft_unique` is (unit, session, year, scenario).
+
+        Looking the row up without the scenario would find another plan's
+        write-in and update it, which is the whole failure the draft grain
+        exists to prevent.
+        """
+        await write_service.set_availability(_availability_request(scenario="scn_1"))
+
+        repo.find_draft_write_in.assert_awaited_once_with(2026, 1000001, "scn_1", "u1")
+        repo.find_write_in.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_an_existing_draft_write_in_is_updated_not_duplicated(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        repo.find_draft_write_in = AsyncMock(return_value=SimpleNamespace(id="draft_write_in_1"))
+
+        response = await write_service.set_availability(
+            _availability_request(scenario="scn_1", occupant_name="Emma Johnson")
+        )
+
+        repo.create_draft_write_in.assert_not_called()
+        record_id, data = repo.update_draft_write_in.call_args[0]
+        assert record_id == "draft_write_in_1"
+        assert data["occupant_name"] == "Emma Johnson"
+        assert data["scenario"] == "scn_1"
+        assert response.record_id == "draft_write_in_existing"
+
+    @pytest.mark.asyncio
+    async def test_the_role_half_stays_on_lodging_availability_inside_a_scenario(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        """A release written from inside a scenario is still a WEEKEND fact.
+
+        Owner ruling: staff<->family role is not scenario-scoped. Routing it to
+        a draft twin because the caller happened to be looking at a plan is the
+        exact mistake the split was designed to avoid.
+        """
+        await write_service.set_availability(
+            _availability_request(scenario="scn_1", family_available=True, reason="Director away")
+        )
+
+        repo.create_draft_write_in.assert_not_called()
+        data = repo.create_availability.call_args[0][0]
+        assert data["family_available"] is True
+        assert "scenario" not in data
+
+    @pytest.mark.asyncio
+    async def test_a_release_inside_a_scenario_drops_that_scenarios_write_in(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        """One fact at a time, resolved IN THE SCOPE the caller is looking at.
+
+        The role row is shared by every scope; the occupancy row is not. So the
+        occupancy this drops is the one the caller can see -- reaching into the
+        live table from inside a scenario would clear a fact nobody on this
+        board is looking at.
+        """
+        repo.find_draft_write_in = AsyncMock(return_value=SimpleNamespace(id="draft_write_in_1"))
+
+        await write_service.set_availability(
+            _availability_request(scenario="scn_1", family_available=True, reason="Director away")
+        )
+
+        repo.create_availability.assert_called_once()
+        repo.delete_draft_write_in.assert_awaited_once_with("draft_write_in_1")
+        repo.delete_write_in.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_clearing_inside_a_scenario_deletes_the_draft_row_and_the_role_row(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        repo.find_draft_write_in = AsyncMock(return_value=SimpleNamespace(id="draft_write_in_1"))
+        repo.find_availability_override = AsyncMock(return_value=SimpleNamespace(id="avail_1"))
+
+        response = await write_service.set_availability(_availability_request(scenario="scn_1", family_available=None))
+
+        repo.delete_draft_write_in.assert_awaited_once_with("draft_write_in_1")
+        repo.delete_availability.assert_awaited_once_with("avail_1")
+        repo.delete_write_in.assert_not_called()
+        assert response.deleted is True
+
+    @pytest.mark.asyncio
+    async def test_a_lost_draft_write_in_race_is_recovered_against_the_draft_table(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        """The recovery re-reads the DRAFT row, not the live one.
+
+        `_upsert_row`'s recovery re-runs the same find it was given; handing it
+        the live finder would update a row on the live board after a collision
+        in a scenario.
+        """
+        repo.create_draft_write_in = AsyncMock(
+            side_effect=ClientResponseError("dup", status=400, data={}, url="", is_abort=False, original_error=None)
+        )
+        repo.find_draft_write_in = AsyncMock(side_effect=[None, SimpleNamespace(id="draft_write_in_1")])
+
+        response = await write_service.set_availability(_availability_request(scenario="scn_1"))
+
+        record_id, data = repo.update_draft_write_in.call_args[0]
+        assert record_id == "draft_write_in_1"
+        assert data["scenario"] == "scn_1"
+        assert response.record_id == "draft_write_in_existing"
+        repo.update_write_in.assert_not_called()

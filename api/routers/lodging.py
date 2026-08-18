@@ -274,11 +274,16 @@ async def set_availability(
     model, the URL and everything a staff member sees are unchanged -- the
     split is behind them. `set_availability` carries the reasoning.
 
-    Takes NO scenario, unlike every other write on this router. The role half
-    is a fact about the weekend rather than about the plan, so 1500000135
-    deleted its dimension; the occupancy half writes the LIVE board, which is a
-    scope in its own right rather than the absence of one. Requiring a scenario
-    is what made this endpoint uncallable.
+    `scenario` is OPTIONAL on the body, as it is on `/merge` and unlike every
+    other write here, and it steers the OCCUPANCY half alone. Blank is the LIVE
+    board -- a scope in its own right rather than the absence of one, because
+    staff evaluate the real board and must be able to write onto it -- and a
+    scenario id writes that scenario's own draft occupancy. REQUIRING one is
+    what made this endpoint uncallable before kindred#2382, and would leave the
+    live board with no write path now.
+
+    The role half ignores it: `lodging_availability` has no scenario column,
+    and a release made from inside a plan is still a fact about the weekend.
 
     `family_available: null` clears the override, which is spelled as the
     ABSENCE of a row -- in BOTH tables. There is no value meaning "normal", and

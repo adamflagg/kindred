@@ -138,10 +138,18 @@ void _exhaustivePlacementWriteRequest
  * `PUT /api/lodging/availability` was uncallable and the table still holds
  * zero rows. A fixture here would have made that a compile error the moment
  * the base class was picked.
+ *
+ * It carries one again since kindred#2382 PR 4 — OPTIONAL this time, blank
+ * meaning the live board. The distinction is the whole lesson of #1998:
+ * required is what broke it, and `Required<>` here is what makes a field
+ * appearing or vanishing a compile error rather than a silent shape change.
  */
 const _exhaustiveAvailabilityWriteRequest: Required<AvailabilityWriteRequest> = {
   year: 2026,
   session_cm_id: 3000001,
+  // Blank is the LIVE board — a scope in its own right, not a missing value.
+  // A scenario id targets that scenario's own draft occupancy instead.
+  scenario: '',
   unit_id: 'unit123456789012345',
   family_available: false,
   // kindred#2078: a hold IS a write-in, so the write that closes a cabin also
@@ -235,18 +243,29 @@ describe('RosterParty (generated)', () => {
 })
 
 describe('AvailabilityWriteRequest (generated)', () => {
-  it('carries no scenario, because availability does not vary by plan', () => {
-    // 1500000135. A burst pipe closes a cabin in every scenario for that
-    // weekend, so there was never anything for a scenario to disagree about.
-    // The excess-property check is the assertion: this fails to compile if the
-    // field comes back.
+  it('carries an OPTIONAL scenario, which targets the write without gating it', () => {
+    // kindred#2382 PR 4. `false` is an OCCUPANCY and is scenario-scoped —
+    // paper registrations for families arriving with no children are a
+    // modelling choice belonging to the plan that made them — so the write has
+    // to say which board it lands on. `true` is the staff↔family ROLE, which
+    // is not scenario-scoped and ignores this field server-side.
+    //
+    // OPTIONAL is the half worth pinning. Required is the shape that made this
+    // endpoint uncallable under #1998, and would now leave the live board — the
+    // one staff actually evaluate — with no write path at all.
     const withScenario: AvailabilityWriteRequest = {
       ..._exhaustiveAvailabilityWriteRequest,
-      // @ts-expect-error availability is weekend-scoped; a scenario is not part of it.
       scenario: 'scenario123456789012',
     }
-    void withScenario
-    expect('scenario' in _exhaustiveAvailabilityWriteRequest).toBe(false)
+    expect(withScenario.scenario).toBe('scenario123456789012')
+
+    const live: AvailabilityWriteRequest = {
+      year: 2026,
+      session_cm_id: 3000001,
+      unit_id: 'unit123456789012345',
+      family_available: false,
+    }
+    expect(live.scenario).toBeUndefined()
   })
 
   it('spells "clear the override" as null rather than a third value', () => {

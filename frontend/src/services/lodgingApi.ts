@@ -171,6 +171,16 @@ export interface AvailabilityWrite {
    */
   unitId: string
   /**
+   * WHICH BOARD the occupancy lands on — `''` is the live board, a scenario id
+   * is that scenario's own draft (kindred#2382 PR 4).
+   *
+   * Blank is a real scope and not a missing value, which is why it is sent
+   * rather than omitted. The ROLE half ignores it: staff↔family role is a fact
+   * about the weekend, so a release written from inside a scenario still
+   * writes `lodging_availability`.
+   */
+  scenario: string
+  /**
    * THREE values, not two. `false` closes the unit for this weekend, `true`
    * opens it, and `null` DELETES the row so the unit's own role decides again.
    * Nothing here may be read for truthiness: `!familyAvailable` folds a
@@ -194,21 +204,21 @@ export interface AvailabilityWrite {
  * Write somebody into one unit for one weekend, or release one to families.
  *
  * ONE ENDPOINT, TWO TABLES behind it since kindred#2382, and the request shape
- * is unchanged by that: `false` is an OCCUPANCY and is stored in
- * `lodging_write_ins`, `true` is a staff↔family ROLE override for the weekend
- * and stays in `lodging_availability`, and `null` clears both. The server
- * decides; nothing here has to.
+ * says which: `false` is an OCCUPANCY and is stored in `lodging_write_ins` or
+ * its scenario-scoped draft twin, `true` is a staff↔family ROLE override for
+ * the weekend and stays in `lodging_availability`, and `null` clears both. The
+ * server decides which table; this decides which BOARD.
  *
- * Takes NO scenario, unlike every other write on this client. The role half is
- * a fact about the WEEKEND rather than about the plan — a burst pipe closes a
- * cabin in every scenario for that weekend — so 1500000135 deleted the
- * dimension and `AvailabilityWriteRequest` stopped extending
- * `ScenarioWriteRequest`. Requiring one is what left this endpoint with no
- * caller and the table with no rows.
+ * `scenario` is OPTIONAL at the endpoint and blank-defaulted, the shape
+ * `setSlotMerge` already uses — required is what left this endpoint with no
+ * caller and the table with no rows, and would now leave the live board with
+ * no write path. It steers the occupancy half alone: the role half is a fact
+ * about the WEEKEND rather than about a plan, so 1500000135's deleted
+ * dimension stays deleted for it.
  */
 export async function setUnitAvailability(
   fetchWithAuth: FetchWithAuth,
-  { year, sessionCmId, unitId, familyAvailable, occupantName, reason }: AvailabilityWrite
+  { year, sessionCmId, scenario, unitId, familyAvailable, occupantName, reason }: AvailabilityWrite
 ): Promise<LodgingWriteResult> {
   const response = await fetchWithAuth(`${API_BASE}/availability`, {
     method: 'PUT',
@@ -216,6 +226,7 @@ export async function setUnitAvailability(
     body: JSON.stringify({
       year,
       session_cm_id: sessionCmId,
+      scenario,
       unit_id: unitId,
       family_available: familyAvailable,
       occupant_name: occupantName,

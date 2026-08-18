@@ -3,20 +3,25 @@
  *
  * ## Why this is not `useLodgingPlacement` with a different body
  *
- * A placement belongs to a scenario. Availability does not — that is the whole
- * of 1500000135: a burst pipe closes a cabin in every plan for that weekend, so
- * the table lost its scenario column and the endpoint takes none. Two things
- * follow, and both are easy to get wrong by copying the placement hook:
+ * A placement REQUIRES a scenario, and refuses to write without one. This
+ * write carries one and never requires it, which is a different rule dressed
+ * in the same word — the endpoint's `scenario` is optional and blank means the
+ * LIVE board, a scope in its own right. Two things follow, and both are easy to
+ * get wrong by copying the placement hook:
  *
  * 1. **The write is not gated on having a scenario selected.** Requiring one
- *    would put the deleted dimension straight back at the UI layer: staff
- *    looking at the CampMinder mirror could not record a burst pipe.
+ *    would put back at the UI layer the dimension 1500000135 deleted: staff
+ *    looking at the CampMinder mirror — which is where most of them look —
+ *    could not record a write-in at all.
  * 2. **The invalidation is by PREFIX, across every scenario.** The roster key
- *    carries a scenario (#1967), so invalidating only the visible key leaves
- *    the mirror and every other draft of the same weekend showing the cabin as
- *    open. `invalidateLodgingRegistryQueries` is the helper that already
- *    invalidates `['weekend-roster']`, `['weekend-summary']` and
- *    `['weekend-sessions']` as prefixes.
+ *    carries a scenario (#1967), and one write can move two boards at once: an
+ *    occupancy lands on the scenario named below, while a RELEASE is a
+ *    weekend-level fact that every scenario of that weekend inherits. So
+ *    invalidating only the visible key leaves the mirror and every other draft
+ *    of the same weekend showing the cabin as open.
+ *    `invalidateLodgingRegistryQueries` is the helper that already invalidates
+ *    `['weekend-roster']`, `['weekend-summary']` and `['weekend-sessions']` as
+ *    prefixes.
  *
  * ## Why there is no optimistic layer
  *
@@ -41,6 +46,19 @@ export interface UseUnitAvailabilityOptions {
   year: number
   /** The weekend. `0` is "no weekend selected" and refuses to write. */
   sessionCmId: number
+  /**
+   * WHICH BOARD an occupancy lands on — `''` is the live board (kindred#2382).
+   *
+   * NOT a gate, unlike `useLodgingPlacement`'s. Blank writes the live
+   * occupancy table, which is what staff evaluating the real board need; a
+   * scenario id writes that scenario's own draft, which is what closes the gap
+   * PR 3 opened by making a scenario's read REPLACE the live rows.
+   *
+   * Optional and blank-defaulted so the board tests that exercise no writes
+   * keep their existing shape, matching the `scenario` prop on `LodgingBoard`
+   * that feeds it.
+   */
+  scenario?: string
 }
 
 /** One unit's availability for this weekend, as the card states it. */
@@ -94,6 +112,7 @@ function confirmation({ unitName, familyAvailable, occupantName }: AvailabilityI
 export function useUnitAvailability({
   year,
   sessionCmId,
+  scenario = '',
 }: UseUnitAvailabilityOptions): UseUnitAvailabilityReturn {
   const { fetchWithAuth } = useApiWithAuth()
   const queryClient = useQueryClient()
@@ -103,6 +122,7 @@ export function useUnitAvailability({
       await setUnitAvailability(fetchWithAuth, {
         year,
         sessionCmId,
+        scenario,
         unitId: intent.unitId,
         familyAvailable: intent.familyAvailable,
         occupantName: intent.occupantName,

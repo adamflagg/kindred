@@ -791,13 +791,27 @@ class PlacementCopyRequest(ScenarioWriteRequest):
 
 
 class AvailabilityWriteRequest(BaseModel):
-    """Reserve or release one unit for one weekend.
+    """Write somebody into one unit for one weekend, or release one to families.
 
     Deliberately NOT a `ScenarioWriteRequest`, and that is the change that
     makes this endpoint callable at all: `scenario` there is required with
-    `min_length=1`, so the request asked for a dimension the data does not
-    have. Availability carries no scenario since 1500000135 -- a burst pipe
-    closes a cabin in every plan for that weekend.
+    `min_length=1`, so the request asked for a dimension nothing could supply.
+    `scenario` below is OPTIONAL instead -- the shape `SlotMergeRequest`
+    already uses, and for a related reason: blank is a real scope, not a
+    missing value.
+
+    ONE REQUEST, TWO GRAINS, split down the middle of `family_available` since
+    kindred#2382. `true` is the staff<->family ROLE for the weekend and is
+    stored in `lodging_availability`, which carries no scenario at all
+    (1500000135, and the owner's ruling that a role change is "a known 'were
+    moving staff to X for weekend Y'"). `false` is an OCCUPANCY and IS
+    scenario-scoped, because not every write-in is non-rostered staff: some are
+    paper registrations for families arriving with no children, which is a
+    modelling choice belonging to the plan that made it.
+
+    So `scenario` steers the OCCUPANCY half and nothing else. `set_availability`
+    ignores it for a release, deliberately, rather than refusing one from inside
+    a scenario -- a release is still a weekend fact whoever is looking at it.
 
     `family_available: null` CLEARS the override by deleting the row, which is
     how "whatever this unit's role says" is spelled. Writing a value that
@@ -807,6 +821,19 @@ class AvailabilityWriteRequest(BaseModel):
 
     year: int = Field(..., ge=2000, le=2100)
     session_cm_id: int = Field(..., gt=0)
+    # WHICH OCCUPANCY GRAIN this write lands on (kindred#2382, PR 4). Blank is
+    # the LIVE board -- a scope in its own right rather than the absence of one
+    # (owner, 2026-08-15: staff evaluate the real board, so a write-in has to
+    # be recordable there and not only inside a modelling sandbox) -- and a
+    # scenario id is that scenario's own draft write-in.
+    #
+    # OPTIONAL and blank-defaulted, mirroring `SlotMergeRequest`. Required
+    # would re-break the endpoint the way `ScenarioWriteRequest` did, and would
+    # leave the live board with no write path.
+    #
+    # THE ROLE HALF IGNORES IT. `lodging_availability` has no scenario column
+    # and is not getting one; see the class docstring.
+    scenario: str = Field(default="", description="saved_scenarios record id; blank is the live board")
     unit_id: str = Field(..., min_length=1)
     family_available: bool | None = None
     # WHO is being written in (kindred#2078). REQUIRED through the control and
