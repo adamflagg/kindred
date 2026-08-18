@@ -470,3 +470,29 @@ class TestHousingNameResolver:
 
         assert resolver.registry_year == 0
         assert resolver.display_name("Cedar Lodge - Room 2", 2025) == "Cedar Lodge - Room 2"
+
+    def test_two_units_answering_to_one_name_defer_to_the_alias_table(self) -> None:
+        """A direct name collision is an ACCIDENT; an alias row is a staff
+        mapping. `build` refuses to pick between the two colliding units, and
+        `display_name` then treats that refusal exactly as it treats a key no
+        unit answers to -- so the alias still gets its say, and the raw string
+        renders only when it fails too.
+        """
+        collide = [_unit("u1", "cedar-1", "Cedar Lodge 1"), _unit("u2", "c2", "cedar lodge 1")]
+        resolver = HousingNameResolver.build(
+            [*collide, _unit("u3", "pine-1", "Pine Cabin 1")],
+            [_alias("Cedar Lodge 1", "u3")],
+        )
+
+        assert resolver.display_name("Cedar Lodge 1", 2023) == "Pine Cabin 1"
+
+    def test_a_name_two_units_answer_to_renders_unchanged_with_no_alias(self) -> None:
+        """The other half of the same rule: with nothing to defer TO, naming
+        either colliding unit would name a cabin nobody chose.
+        """
+        resolver = HousingNameResolver.build(
+            [_unit("u1", "cedar-1", "Cedar Lodge 1"), _unit("u2", "c2", "cedar lodge 1")],
+            [],
+        )
+
+        assert resolver.display_name("Cedar Lodge 1", 2023) == "Cedar Lodge 1"

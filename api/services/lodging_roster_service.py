@@ -1293,20 +1293,27 @@ class LodgingRosterService:
     async def build_summary(self, year: int, scenario: str = "") -> WeekendSummaryResponse:
         """Every weekend in the year with its counts, in one pass.
 
-        `build_roster` makes THIRTEEN fetches (12 concurrent + `fetch_session`
-        alone before them), of which SEVEN are year-scoped -- the unit
+        `build_roster` makes SIXTEEN reads (fourteen concurrent tasks issuing
+        fifteen reads -- `_housing_names` is one task making two -- plus
+        `fetch_session` alone before them), of which TEN are constant across
+        every weekend of the year. EIGHT of the ten are year-scoped: the unit
         registry, households, the prior-household set, family-camp adults,
-        registrations, the unresolved-alias count and last year's cabins
-        (kindred#2075) are identical for every weekend in the year. Calling it
-        once per weekend to fill the lander would repeat all seven N times,
-        which is why a weekend with zero parties still costs about three
-        seconds.
+        registrations, the unresolved-alias count, last year's cabins
+        (kindred#2075) and the raw per-field request answers (kindred#2330).
+        The other two are kindred#2332's registry-naming pair, which carry no
+        year at all and are therefore constant for the same reason. Calling
+        `build_roster` once per weekend to fill the lander would repeat all
+        ten N times, which is why a weekend with zero parties still costs
+        about three seconds.
 
-        The lander fetches only SIX of those seven. Last year's cabins feed
-        `RosterParty.last_year_cabin`, and no `WeekendSummaryEntry` carries a
-        party -- `_build_parties` runs here purely to be counted, so the
-        seventh read would buy a field nothing renders. `_build_parties` takes
-        it as a defaulted keyword for exactly that reason.
+        The lander fetches only SIX of those ten, and declines four. No
+        `WeekendSummaryEntry` carries a party -- `_build_parties` runs here
+        purely to be counted -- so last year's cabins
+        (`RosterParty.last_year_cabin`), kindred#2330's request answers, and
+        kindred#2332's two registry reads that would name the cabin all buy
+        fields nothing renders. `_build_parties` takes the first two as
+        defaulted keywords for exactly that reason, and the naming pair is
+        simply absent from the TaskGroup below.
 
         kindred#1963 measures this from eleven and eight, so that issue is
         partly pre-paid: kindred#1889 deleted `has_medical_narrative`, the only

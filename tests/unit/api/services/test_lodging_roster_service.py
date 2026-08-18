@@ -2767,15 +2767,20 @@ class TestMedicalFlagsAndNarrative:
 class TestBuildSummary:
     """The lander's batched read.
 
-    It exists for one reason: `build_roster` makes twelve fetches of which
-    seven are year-scoped, so filling a lander weekend-by-weekend repeats that
-    year-wide work once per weekend. The point of these tests is that the
-    batch does it ONCE and still agrees with the roster.
+    It exists for one reason: `build_roster` makes sixteen reads of which TEN
+    are constant across every weekend of the year -- eight year-scoped, plus
+    kindred#2332's two year-agnostic registry-naming reads -- so filling a
+    lander weekend-by-weekend repeats that year-wide work once per weekend.
+    The point of these tests is that the batch does it ONCE and still agrees
+    with the roster.
 
-    Both counts were one lower until kindred#2075 added last year's cabins,
-    and one higher again before that until kindred#1889 removed the whole-year
-    medical read from both paths. The lander batches SIX of the seven -- see
-    `test_the_lander_never_reads_last_years_cabins` for the one it declines.
+    The constant count has only ever grown: kindred#2075 added last year's
+    cabins, kindred#2330 the raw request answers, kindred#2332 the naming
+    pair; kindred#1889 removed the whole-year medical read from both paths.
+    The lander batches SIX of the ten and declines four -- see
+    `test_the_lander_never_reads_last_years_cabins`,
+    `test_the_lander_summary_does_not_pay_for_the_raw_request_read` and
+    `test_the_lander_pays_for_neither_registry_read`.
     """
 
     @pytest.mark.asyncio

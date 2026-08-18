@@ -503,8 +503,13 @@ class HousingNameResolver:
 
         # A string that already names a unit today needs no alias, and the
         # answer cannot be wrong. `None` marks a key two different units both
-        # answer to -- refuse rather than pick, the same call `Resolve` makes
-        # on two overlapping alias rows.
+        # answer to -- never pick one of them, the same call `Resolve` makes
+        # on two overlapping alias rows. It is a DEFERRAL rather than a
+        # refusal: `display_name` treats a `None` exactly as it treats a key
+        # that is absent, so an alias row covering the year still gets its
+        # say, and only when that fails too does the raw string render. An
+        # alias is a deliberate staff mapping and a name collision is an
+        # accident, so the mapping is the better answer of the two.
         direct_by_key: dict[str, str | None] = {}
         for unit in current_by_code.values():
             for candidate in (unit.name, unit.code):
