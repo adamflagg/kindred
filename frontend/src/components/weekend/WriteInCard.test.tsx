@@ -6,8 +6,8 @@
 import { readFileSync } from 'fs'
 import { resolve } from 'path'
 
-import { render, screen } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { fireEvent, render, screen } from '@testing-library/react'
+import { describe, expect, it, vi } from 'vitest'
 
 import { WriteInCard, WRITE_IN_FRAME } from './WriteInCard'
 
@@ -51,10 +51,11 @@ describe('WriteInCard', () => {
     expect(container.querySelector('[data-family-card]')).toBeNull()
   })
 
-  it('is not draggable and is not a button', () => {
+  it('is not draggable, and the CARD itself is never a button', () => {
     // `FamilyCard` is a `<button>` that opens the family panel and a dnd-kit
     // draggable. There is no panel behind a write-in and nowhere to drag it —
-    // a control that looks interactive and is not is worse than plain text.
+    // a card that looks interactive and is not is worse than plain text. The
+    // corner control below is a real button; the card body stays inert.
     const { container } = render(<WriteInCard occupant={{ name: 'Emma Johnson', note: '' }} />)
 
     expect(screen.queryByRole('button')).not.toBeInTheDocument()
@@ -75,24 +76,76 @@ describe('WriteInCard', () => {
   })
 })
 
-describe('a write-in the card INHERITED from elsewhere in the tree', () => {
+describe('the corner control that removes THIS write-in', () => {
   /*
-   * The row names one unit; it closes a SPACE. Split a written-into building
-   * and its rooms carry the occupant; merge over a written-into room and the
-   * building does. Printing the name alone on the inheriting card would say
-   * this room's own row names them — and staff would go looking on a card that
-   * no longer exists for the Clear that is right in front of them.
+   * Owner ruling, 2026-08-18 (kindred#2381 part 4): a small X in each card's
+   * top-right, one per write-in — not a row of full "Clear Write-in" buttons,
+   * which was refused, and not one control for a well that may hold four.
+   *
+   * It is what makes the plural card safe. The single control it replaces
+   * named whichever row the server resolved first, so on a merged building
+   * carrying four write-ins a click removed one, the card re-populated with
+   * the next occupant, and the action read as a no-op — four clicks destroyed
+   * four rows with nothing ever disclosing that more than one existed.
    */
-  it('says which unit the write-in is recorded at', () => {
-    render(<WriteInCard occupant={{ name: 'Liam Garcia', note: '' }} atUnitName="House" />)
+  it('is absent when the reader cannot remove anything', () => {
+    // No `bunking.manage`, and therefore no handler. A control that does
+    // nothing is worse than no control.
+    render(<WriteInCard occupant={{ name: 'Liam Garcia', note: '' }} />)
 
-    expect(screen.getByText('Written in at House')).toBeInTheDocument()
+    expect(screen.queryByRole('button')).not.toBeInTheDocument()
   })
 
-  it('says nothing extra when the row is the card’s own', () => {
-    // The overwhelmingly common case, and the one that must stay quiet: a line
-    // on every written-into card restating the card's own name is chrome.
-    render(<WriteInCard occupant={{ name: 'Liam Garcia', note: '' }} />)
+  it('names the occupant it would remove, so four of them are four questions', () => {
+    render(<WriteInCard occupant={{ name: 'Liam Garcia', note: '' }} onRemove={() => undefined} />)
+
+    expect(screen.getByRole('button', { name: 'Remove write-in Liam Garcia' })).toBeInTheDocument()
+  })
+
+  it('still offers a removal for a write-in nobody named', () => {
+    render(<WriteInCard occupant={{ name: '', note: '' }} onRemove={() => undefined} />)
+
+    expect(
+      screen.getByRole('button', { name: 'Remove write-in Occupant not named' })
+    ).toBeInTheDocument()
+  })
+
+  it('calls back exactly once, with no argument to get wrong', () => {
+    // The CARD knows which row it draws; the caller binds the target. Passing
+    // an id up from here would be a second place that has to agree about
+    // which of the four rows this card is.
+    const onRemove = vi.fn()
+    render(<WriteInCard occupant={{ name: 'Liam Garcia', note: '' }} onRemove={onRemove} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Remove write-in Liam Garcia' }))
+
+    expect(onRemove).toHaveBeenCalledTimes(1)
+  })
+
+  it('is disabled while the removal is in flight', () => {
+    render(
+      <WriteInCard
+        occupant={{ name: 'Liam Garcia', note: '' }}
+        onRemove={() => undefined}
+        isRemoving
+      />
+    )
+
+    expect(screen.getByRole('button', { name: 'Remove write-in Liam Garcia' })).toBeDisabled()
+  })
+})
+
+describe('the "Written in at …" footer', () => {
+  /*
+   * DELETED — kindred#2381. It existed to tell a reader that the row lives on
+   * a different unit than the card drawing it, which mattered only because a
+   * merged card showed ONE write-in and hid the rest: staff would go looking
+   * for the Clear on a card the merge had taken away. Every write-in is drawn
+   * now, and each carries its own removal, so the note says nothing the screen
+   * does not.
+   */
+  it('is not printed, on an inherited row or any other', () => {
+    render(<WriteInCard occupant={{ name: 'Liam Garcia', note: '' }} onRemove={() => undefined} />)
 
     expect(screen.queryByText(/written in at/i)).not.toBeInTheDocument()
   })

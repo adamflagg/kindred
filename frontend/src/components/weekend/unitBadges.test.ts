@@ -98,14 +98,14 @@ describe('reservationBadge', () => {
     // drawn unit. Badging it "Building" while `availabilityAction` offers to
     // CLEAR the write-in is the exact drift this module exists to prevent.
     expect(
-      reservationBadge(unit({ is_container: true, is_combined: true, write_in: cover() }))?.label
+      reservationBadge(unit({ is_container: true, is_combined: true, write_ins: [cover()] }))?.label
     ).toBe('Write-in')
   })
 
   it('keeps saying Building on a SPLIT container carrying an override', () => {
     // A split container gets no card at all, so there is nothing to badge and
     // no action to agree with. Unchanged, deliberately.
-    expect(reservationBadge(unit({ is_container: true, write_in: cover() }))?.label).toBe(
+    expect(reservationBadge(unit({ is_container: true, write_ins: [cover()] }))?.label).toBe(
       'Building'
     )
   })
@@ -121,7 +121,7 @@ describe('reservationBadge', () => {
     // why this is "Write-in" and not "Staff".
     const badge = reservationBadge(
       unit({
-        write_in: cover({ occupant_name: 'Emma Johnson' }),
+        write_ins: [cover({ occupant_name: 'Emma Johnson' })],
         occupant_name: 'Emma Johnson',
         is_family_available: false,
       })
@@ -186,9 +186,9 @@ describe('reservationBadge', () => {
     ).toBeNull()
     // A write-in on the same cabin still badges, which is the half that must
     // not be lost with it.
-    expect(reservationBadge(unit({ write_in: cover(), is_family_available: false }))?.label).toBe(
-      'Write-in'
-    )
+    expect(
+      reservationBadge(unit({ write_ins: [cover()], is_family_available: false }))?.label
+    ).toBe('Write-in')
   })
 
   it('does not badge a staff cabin as Released merely for lacking an override', () => {
@@ -218,13 +218,13 @@ describe('reservationBadge', () => {
   it('ignores the reason text entirely, because the rule never branches on it', () => {
     const held = reservationBadge(
       unit({
-        write_in: cover({ note: 'Burst pipe' }),
+        write_ins: [cover({ note: 'Burst pipe' })],
         reason: 'Burst pipe',
         is_family_available: false,
       })
     )
     const alsoHeld = reservationBadge(
-      unit({ write_in: cover(), reason: '', is_family_available: false })
+      unit({ write_ins: [cover()], reason: '', is_family_available: false })
     )
 
     expect(held?.label).toBe('Write-in')
@@ -267,26 +267,30 @@ describe('availabilityAction', () => {
     })
   })
 
-  it('offers to clear a held family cabin, labelled for what it actually removes (#2252)', () => {
-    // `null` DELETES the row. There is no value meaning "normal": writing one
-    // would pin the unit against a later change to its role.
-    //
-    // The label is 'Clear Write-in', not the bare 'Clear' this used to read.
-    // kindred#2252: the badge chip that used to sit beside this button on
-    // `LodgingUnitCard` is gone there (the well's `WriteInCard` already names
-    // the occupant), so the button is now the only thing on that card saying
-    // what a click does — and "Clear" alone does not say what it clears.
+  it('offers NOTHING on a written-into family cabin — the removal is on its card', () => {
+    // kindred#2381, superseding #2252's 'Clear Write-in' label. That label was
+    // right while the strip was the only thing on the card naming what a click
+    // removes; it stopped being true once a card could cover four write-ins
+    // and each got its own X. The strip is back to ROLE rows only.
     expect(
       availabilityAction(
         unit({
-          write_in: cover({ note: 'Burst pipe' }),
+          write_ins: [cover({ note: 'Burst pipe' })],
           reason: 'Burst pipe',
           is_family_available: false,
         })
       )
+    ).toBeNull()
+  })
+
+  it('offers to clear a role row with `null`, which DELETES it', () => {
+    // There is no value meaning "normal": writing one would pin the unit
+    // against a later change to its role.
+    expect(
+      availabilityAction(unit({ family_available_override: true, is_family_available: true }))
     ).toEqual({
       kind: 'clear',
-      label: 'Clear Write-in',
+      label: 'Clear',
       familyAvailable: null,
       prompt: 'none',
       unitId: 'u1',
@@ -294,12 +298,10 @@ describe('availabilityAction', () => {
     })
   })
 
-  it('offers to clear a released staff cabin, and does NOT borrow the write-in wording (#2252)', () => {
-    // This branch clears a RELEASE, not a write-in — `writeInSource` never
-    // matches a staff cabin's own release row, so it never reaches the
-    // relabelled branch. Asserted by name, not just by kind: a copy/paste that
-    // pointed this branch at the write-in label too would say "Clear
-    // Write-in" on a card that was never written into.
+  it('offers to clear a released staff cabin, naming its own row', () => {
+    // This branch clears a RELEASE, not a write-in, and it fires ahead of the
+    // write-in gate so a staff cabin that a relative's write-in also covers
+    // keeps the clear its badge names.
     expect(
       availabilityAction(
         unit({
@@ -340,13 +342,10 @@ describe('availabilityAction', () => {
         ?.kind
     ).toBe('clear')
     // And a write-in, which is a different row in a different table, offers
-    // the relabelled clear rather than this one.
+    // NOTHING here: its removal is the X on its own card (kindred#2381).
     expect(
-      availabilityAction(unit({ write_in: cover(), is_family_available: false }))
-    ).toMatchObject({
-      kind: 'clear',
-      label: 'Clear Write-in',
-    })
+      availabilityAction(unit({ write_ins: [cover()], is_family_available: false }))
+    ).toBeNull()
   })
 
   it('offers nothing to hold an OCCUPIED family cabin — held and occupied are mutually exclusive (#2090)', () => {
@@ -376,10 +375,13 @@ describe('availabilityAction', () => {
     expect(availabilityAction(unit({ is_container: true, is_combined: true }))?.kind).toBe('hold')
   })
 
-  it('offers to clear a MERGED building that has been written into', () => {
+  it('offers nothing on a MERGED building that has been written into', () => {
+    // It may cover four rows at once and the strip carries ONE action, so no
+    // button here could name which of the four a click would destroy. Each
+    // write-in is removed by the X on its own card (kindred#2381).
     expect(
-      availabilityAction(unit({ is_container: true, is_combined: true, write_in: cover() }))?.kind
-    ).toBe('clear')
+      availabilityAction(unit({ is_container: true, is_combined: true, write_ins: [cover()] }))
+    ).toBeNull()
   })
 
   it('offers nothing on a MERGED building that already holds a family (#2090)', () => {
@@ -497,9 +499,10 @@ describe('a write-in inherited from elsewhere in the tree', () => {
    * The board draws whichever level the tree resolves to, so the card carrying
    * a write-in is often not the unit the row names: split a written-into
    * building and its rooms carry it; merge over a written-into room and the
-   * building does. Both must BADGE the fact and both must be able to CLEAR it
-   * — a card that inherits a write-in and cannot undo it is a dead end, since
-   * the unit holding the row has no card at all.
+   * building does. Both must BADGE the fact, and neither offers a strip action
+   * for it: since kindred#2381 a card may cover several write-ins at once, and
+   * each is removed by the X on its own `WriteInCard` — the only control that
+   * can name one row out of four.
    */
   const coverFromBuilding = {
     unit_id: 'id-house',
@@ -510,28 +513,25 @@ describe('a write-in inherited from elsewhere in the tree', () => {
   }
 
   it('badges a room whose BUILDING was written into', () => {
-    expect(reservationBadge(unit({ code: 'house-a', write_in: coverFromBuilding }))?.label).toBe(
+    expect(reservationBadge(unit({ code: 'house-a', write_ins: [coverFromBuilding] }))?.label).toBe(
       'Write-in'
     )
   })
 
-  it('offers to clear it, naming the unit that actually holds the row', () => {
-    const action = availabilityAction(unit({ code: 'house-a', write_in: coverFromBuilding }))
-
-    expect(action?.kind).toBe('clear')
-    // The WRITE TARGET, not the card. Sending this card's own id would delete
-    // nothing: the row belongs to the building, and the room has none.
-    expect(action?.unitId).toBe('id-house')
-    expect(action?.unitName).toBe('House')
+  it('offers no strip action, because the removal lives on the card', () => {
+    // kindred#2381. The strip carries ONE action, so on a merged building over
+    // four write-ins it could name only one of the four rows — and it did:
+    // clearing re-resolved the card to the next occupant, so the click read as
+    // a no-op and four of them destroyed four rows without ever disclosing
+    // that more than one existed. Removal is now the X on each `WriteInCard`,
+    // which can only delete the row it sits on.
+    expect(availabilityAction(unit({ code: 'house-a', write_ins: [coverFromBuilding] }))).toBeNull()
   })
 
-  it('clears an inherited write-in even on an occupied card', () => {
-    // Same reasoning the own-row branch already carries: a clear only ever
-    // REDUCES the conflict, so occupancy is never the state that needs it
-    // blocked.
+  it('offers nothing on an occupied card either, rather than a stale write-in path', () => {
     expect(
-      availabilityAction(unit({ code: 'house-a', write_in: coverFromBuilding }), true)?.kind
-    ).toBe('clear')
+      availabilityAction(unit({ code: 'house-a', write_ins: [coverFromBuilding] }), true)
+    ).toBeNull()
   })
 
   it('names the card’s OWN unit when the write-in starts here', () => {
@@ -553,14 +553,14 @@ describe('a write-in inherited from elsewhere in the tree', () => {
 
     expect(
       reservationBadge(
-        unit({ code: 'house', is_container: true, is_combined: true, write_in: fromRoom })
+        unit({ code: 'house', is_container: true, is_combined: true, write_ins: [fromRoom] })
       )?.label
     ).toBe('Write-in')
     expect(
       availabilityAction(
-        unit({ code: 'house', is_container: true, is_combined: true, write_in: fromRoom })
-      )?.unitId
-    ).toBe('id-house-a')
+        unit({ code: 'house', is_container: true, is_combined: true, write_ins: [fromRoom] })
+      )
+    ).toBeNull()
   })
 })
 
@@ -570,9 +570,10 @@ describe('the badge and the clear must name the SAME row', () => {
    * drift — a card badged "Write-in" that offers to "Write in" says two things
    * about one cabin. Once a write-in can be INHERITED, that invariant grows
    * teeth: a card can carry its own availability row AND a relative's
-   * write-in at the same time, and one control has two rows to choose from.
-   * It must clear the one the badge is naming, or the toast reports success
-   * for a row the staff member was not looking at.
+   * write-in at the same time. The strip resolves the ROLE rows only — a
+   * write-in is removed from its own card since kindred#2381 — so a card the
+   * badge calls "Write-in" must offer no strip action at all rather than one
+   * that quietly unmakes something the reader was not looking at.
    */
   const coverFromBuilding = {
     unit_id: 'id-house',
@@ -592,11 +593,14 @@ describe('the badge and the clear must name the SAME row', () => {
       code: 'house-a',
       name: 'House A',
       family_available_override: true,
-      write_in: coverFromBuilding,
+      write_ins: [coverFromBuilding],
     })
 
     expect(reservationBadge(stale)?.label).toBe('Write-in')
-    expect(availabilityAction(stale)?.unitId).toBe('id-house')
+    // No strip action at all: the badge names the write-in, and a write-in is
+    // removed from its own card. The stale role row becomes clearable again
+    // once nothing is written into the space.
+    expect(availabilityAction(stale)).toBeNull()
   })
 
   it('still clears its OWN row on a released staff cabin, which is what its badge names', () => {
@@ -610,7 +614,7 @@ describe('the badge and the clear must name the SAME row', () => {
       name: 'House A',
       inventory_class: 'staff_default',
       family_available_override: true,
-      write_in: coverFromBuilding,
+      write_ins: [coverFromBuilding],
     })
 
     expect(reservationBadge(released)?.label).toBe('Released')

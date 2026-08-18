@@ -264,7 +264,7 @@ class LodgingUnitSummary(BaseModel):
     # standing `inventory_class` decides. None and False are different answers
     # and must not be flattened into one.
     #
-    # IT DOES NOT ANSWER "IS SOMEBODY IN IT". That is `write_in` below, read
+    # IT DOES NOT ANSWER "IS SOMEBODY IN IT". That is `write_ins` below, read
     # from `lodging_write_ins` / `_draft`. Until PR 4 of kindred#2382 an
     # occupancy also reported itself here as False, because
     # `is_family_available` and the board's forest open-tint were both derived
@@ -272,7 +272,7 @@ class LodgingUnitSummary(BaseModel):
     # False here means a role decision and never an occupant. A reader that
     # wants "can a family go in this space" wants `is_family_available`, which
     # folds both facts in; a reader that wants "is somebody in it" wants
-    # `write_in`.
+    # `write_ins`.
     #
     # Stated explicitly rather than implied. The rejected encoding was a row
     # meaning "the opposite of this unit's current default", which an ordinary
@@ -319,9 +319,19 @@ class LodgingUnitSummary(BaseModel):
     # Its rule is `is_family_available` in api/services/lodging_rules.py, and
     # that is the only place the two are combined.
     is_family_available: bool = False
-    # The write-in that closes this space, resolved through the unit tree --
+    # EVERY write-in that closes this space, resolved through the unit tree --
     # this unit's own row, else the nearest ancestor's, else the nearest
-    # descendant's. None means no write-in covers it.
+    # written-into descendant on each branch beneath it. Empty means no
+    # write-in covers it.
+    #
+    # A LIST since kindred#2381, and that arity is the whole point rather than
+    # future-proofing. A merged container draws in place of its rooms, so the
+    # four write-ins Clouds Rest carries in one 2026 weekend collapsed to
+    # whichever room sorted first and the other three were invisible -- while
+    # each clear silently re-populated the card with the next occupant, so
+    # destroying all four read as four failed clicks. A write-in must survive a
+    # merge and a split the way an assignment does, and an assignment does it
+    # by the drawn card carrying however many leaves it covers.
     #
     # The fields above stay STRICTLY this unit's own row: they are what the
     # write path reads back. Folding an inherited fact into any of them would
@@ -338,7 +348,7 @@ class LodgingUnitSummary(BaseModel):
     # blocks placement without moving the bed counts. That is the behaviour the
     # counts have always had, and changing it is a counts decision rather than
     # a side effect of the split.
-    write_in: WriteInCover | None = None
+    write_ins: list[WriteInCover] = Field(default_factory=list)
     map_x: float | None = None
     map_y: float | None = None
 

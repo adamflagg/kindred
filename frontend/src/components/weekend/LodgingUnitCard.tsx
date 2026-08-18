@@ -38,7 +38,7 @@ import {
 } from './unitBadges'
 import { UnitAvailabilityControl } from './UnitAvailabilityControl'
 import type { UnitAvailabilityWrite } from './UnitAvailabilityControl'
-import { writeInOccupant, writeInSource } from './writeIn'
+import { writeInEntries } from './writeIn'
 import { WriteInCard } from './WriteInCard'
 
 /**
@@ -423,7 +423,7 @@ export function LodgingUnitCard({
   // half that actually enforces it, because #2080 adds a placement path that
   // reaches `resolveDrop` without ever touching this hook.
   //
-  // Read through `writeInOccupant` rather than as an inline
+  // Read through `writeInEntries` rather than as an inline
   // `family_available_override === false`, which is what this was until
   // kindred#2078. Three consumers on this card shared that expression under
   // the name `held`, and one of them — #2093's open-tint gate below — was
@@ -432,12 +432,13 @@ export function LodgingUnitCard({
   // occupancy into its own scenario-scoped table, and that field now answers
   // the staff↔family role alone. Had the three consumers kept the inline
   // spelling, the split would have had to find all three.
-  const writeIn = writeInOccupant(unit)
-  // WHOSE row it is. Undefined whenever it is this card's own, so the common
-  // case says nothing extra — see `WriteInCard`'s own prop doc.
-  const writeInAt = writeInSource(unit)
-  const writeInAtName = writeInAt !== null && !writeInAt.isOwn ? writeInAt.unitName : undefined
-  const held = writeIn !== null
+  //
+  // A LIST since kindred#2381. A merged container draws in place of its rooms,
+  // so every write-in beneath it lands on this card — four of them on the one
+  // 2026 building that carries four — and each entry pairs the occupant with
+  // the row that holds it, so the card's own X can name that row and no other.
+  const writeIns = writeInEntries(unit)
+  const held = writeIns.length > 0
   const { setNodeRef: setUnitDropRef, isOver: isUnitOver } = useDroppable({
     id: unitDroppableId(unit.code),
     disabled: !canPlace || mergeDragActive || held,
@@ -510,7 +511,7 @@ export function LodgingUnitCard({
   // suppressed the instant this card becomes an active drop target, same as
   // the old wash was.
   //
-  // `writeIn === null` is the second gate, and it is not cosmetic: EMPTY and
+  // `!held` is the second gate, and it is not cosmetic: EMPTY and
   // OPEN are different predicates and this is where they part. A write-in
   // blocks placement outright (`held` above; `dragPlacement.ts` refuses the
   // drop), so a written-into cabin has no family in it and can take none.
@@ -523,7 +524,7 @@ export function LodgingUnitCard({
   // Keyed on the OCCUPANT SIGNAL, never on the occupant's NAME being filled
   // in: a write-in nobody named still closes the room, and gating on the name
   // would hand exactly that room back to the to-do marker.
-  const openMarkerActive = dashed && writeIn === null && ringState !== 'dropTarget'
+  const openMarkerActive = dashed && !held && ringState !== 'dropTarget'
 
   /*
    * The corner figure, and the sentence behind it (kindred#2078).
@@ -534,7 +535,7 @@ export function LodgingUnitCard({
    * write-in and a placement keeps the placement count — that is a real number
    * about real people, and the card should not go quiet about them.
    */
-  const wholesaleWriteIn = writeIn !== null && occupants === 0
+  const wholesaleWriteIn = held && occupants === 0
   const occupancyFigure = wholesaleWriteIn ? '—' : String(occupants)
 
   /*
@@ -963,8 +964,36 @@ export function LodgingUnitCard({
             below: a card carrying both is not a state any writer produces
             (#2090 rules the two mutually exclusive), but if a legacy row ever
             does, hiding one of them would drop somebody from the board. */}
-        {writeIn !== null && <WriteInCard occupant={writeIn} atUnitName={writeInAtName} />}
-        {parties.length === 0 && writeIn === null ? (
+        {writeIns.map((entry) => (
+          <WriteInCard
+            key={entry.source.unitId}
+            occupant={entry.occupant}
+            // BOUND TO THIS ROW, which is the whole point of the per-card X:
+            // the strip's single "Clear Write-in" named whichever row the
+            // server resolved first, so on a merged building a click removed
+            // one, the card re-populated with the next occupant, and the
+            // action read as a no-op while it destroyed them one by one.
+            //
+            // `familyAvailable: null` DELETES, and the occupant and reason are
+            // empty because a removal asserts nothing — the same write the
+            // strip's clear sent, now pointed at a row the reader can see.
+            {...(canSetAvailability && onSetAvailability !== undefined
+              ? {
+                  onRemove: () => {
+                    onSetAvailability({
+                      unitId: entry.source.unitId,
+                      unitName: entry.source.unitName,
+                      familyAvailable: null,
+                      occupantName: '',
+                      reason: '',
+                    })
+                  },
+                }
+              : {})}
+            isRemoving={savingAvailability}
+          />
+        ))}
+        {parties.length === 0 && !held ? (
           /* Summer's wording in family vocabulary — `BunkCard` says "Drop
              campers here". An empty slot's job is to be a target, and "Empty"
              described the state without offering the action.

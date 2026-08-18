@@ -76,7 +76,7 @@ function cover(overrides: Partial<WriteInCoverRow> = {}): WriteInCoverRow {
 }
 
 const WRITTEN_IN_CABIN = unit({
-  write_in: cover(),
+  write_ins: [cover()],
   occupant_name: 'Emma Johnson',
   reason: '',
   is_family_available: false,
@@ -291,28 +291,17 @@ describe('UnitAvailabilityControl', () => {
     expect(screen.queryByText(/say who is in it/i)).not.toBeInTheDocument()
   })
 
-  it('clears a write-in in one click, writing null rather than a value that agrees, and names what it clears (#2252)', async () => {
-    // `null` DELETES the row. Writing "available" onto a family cabin instead
-    // would pin it against a later change to its role -- the reversal-encoding
-    // failure spec §5.4 rejected, arriving through the UI.
-    //
-    // The exact button name is the assertion: kindred#2252 dropped the
-    // redundant "Write-in" chip from `LodgingUnitCard`'s badge row, which
-    // made this the only thing on the card saying what a click removes. A
-    // bare "Clear" would pass the loose `/clear/i` query this used to use.
-    const user = userEvent.setup()
-    const { onSubmit } = renderControl({ unit: WRITTEN_IN_CABIN })
+  it('offers NOTHING on a written-into cabin — the removal is the X on its card', () => {
+    // kindred#2381, superseding #2252's "Clear Write-in" label here. That
+    // button named whichever row the server resolved first, which was sound
+    // only while a card could carry one write-in. A merged container covers
+    // every write-in beneath it, so one button had four rows to choose from:
+    // each click destroyed the row it named, the card re-populated with the
+    // next occupant, and the action read as a no-op. Each `WriteInCard` owns
+    // its own removal now.
+    renderControl({ unit: WRITTEN_IN_CABIN })
 
-    await user.click(screen.getByRole('button', { name: 'Clear Write-in Cedar 1' }))
-
-    expect(onSubmit).toHaveBeenCalledWith({
-      unitId: 'u1',
-      unitName: 'Cedar 1',
-      familyAvailable: null,
-      occupantName: '',
-      reason: '',
-    })
-    expect(screen.queryByRole('textbox', { name: /^occupant$/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button')).not.toBeInTheDocument()
   })
 
   it('leaves a write-in\u2019s note to the occupant card and prints no italic line of its own', () => {
@@ -323,7 +312,7 @@ describe('UnitAvailabilityControl', () => {
     // on one card, which is the double-print 1500000148 was written to avoid.
     renderControl({
       unit: unit({
-        write_in: cover({ note: 'Back Monday' }),
+        write_ins: [cover({ note: 'Back Monday' })],
         occupant_name: 'Emma Johnson',
         reason: 'Back Monday',
         is_family_available: false,
@@ -357,9 +346,12 @@ describe('UnitAvailabilityControl', () => {
 
   it('does not offer a second write while this unit is being written', async () => {
     const user = userEvent.setup()
-    const { onSubmit } = renderControl({ unit: WRITTEN_IN_CABIN, isSaving: true })
+    const { onSubmit } = renderControl({
+      unit: unit({ family_available_override: true }),
+      isSaving: true,
+    })
 
-    await user.click(screen.getByRole('button', { name: 'Clear Write-in Cedar 1' }))
+    await user.click(screen.getByRole('button', { name: 'Clear Cedar 1' }))
 
     expect(onSubmit).not.toHaveBeenCalled()
   })
@@ -431,38 +423,28 @@ describe('a write-in this unit inherited from elsewhere in the tree', () => {
   /*
    * The row names one unit; it closes a SPACE. Split a written-into building
    * and its rooms inherit the write-in — and the building, having no card any
-   * more, has nowhere to offer the clear from. So the inheriting card offers
-   * it, and the write has to name the unit that HOLDS the row: sending this
-   * card's own id would delete nothing.
+   * more, has nowhere to offer a removal from. The inheriting CARD carries it,
+   * as the X on the `WriteInCard` it draws in its well (kindred#2381); this
+   * strip resolves ROLE rows only and stays out of it.
    */
   const ROOM_UNDER_A_WRITTEN_IN_HOUSE = unit({
     unit_id: 'u-room',
     code: 'house-a',
     name: 'House A',
-    write_in: {
-      unit_id: 'u-house',
-      unit_code: 'house',
-      unit_name: 'House',
-      occupant_name: 'Liam Garcia',
-      note: '',
-    },
+    write_ins: [
+      {
+        unit_id: 'u-house',
+        unit_code: 'house',
+        unit_name: 'House',
+        occupant_name: 'Liam Garcia',
+        note: '',
+      },
+    ],
   })
 
-  it('offers to clear it, labelled "Clear Write-in" and naming the unit that actually holds the row (#2252)', async () => {
-    // The button reads on the INHERITING card ("House A"), and the label is
-    // still "Clear Write-in" there — the relabel is keyed on what the action
-    // clears, not on whose own row it happens to be.
-    const user = userEvent.setup()
-    const { onSubmit } = renderControl({ unit: ROOM_UNDER_A_WRITTEN_IN_HOUSE })
+  it('offers no strip action at all, rather than one that names a row out of several', () => {
+    renderControl({ unit: ROOM_UNDER_A_WRITTEN_IN_HOUSE })
 
-    await user.click(screen.getByRole('button', { name: 'Clear Write-in House A' }))
-
-    expect(onSubmit).toHaveBeenCalledWith({
-      unitId: 'u-house',
-      unitName: 'House',
-      familyAvailable: null,
-      occupantName: '',
-      reason: '',
-    })
+    expect(screen.queryByRole('button')).not.toBeInTheDocument()
   })
 })

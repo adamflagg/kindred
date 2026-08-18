@@ -41,6 +41,17 @@
  * and have no way to learn who is in it. Clearing asks for neither: it restores
  * the unit's standing role rather than asserting anything.
  *
+ * ## What this control no longer does
+ *
+ * REMOVE A WRITE-IN. Until kindred#2381 it offered a "Clear Write-in" naming
+ * whichever row the server resolved first, which held only while a card could
+ * carry one. A merged container covers every write-in beneath it, so one
+ * button had four rows to choose from and picked silently: each click removed
+ * the row it named, the card re-populated with the next occupant, and the
+ * action read as a no-op while it worked through them. Removal is the X on
+ * each `WriteInCard` now, and `availabilityAction` returns null for a
+ * written-into space rather than a clear this control could offer.
+ *
  * ## Why no italic line under the badge row any more
  *
  * It used to print `unit.reason` there for every override. Since kindred#2078 a
@@ -61,12 +72,14 @@ export interface UnitAvailabilityWrite {
    *
    * A write-in covers a space and the board draws whichever level the unit
    * tree resolves to, so a room can inherit its building's write-in and a
-   * merged building one of its rooms'. There is one `lodging_write_ins` row
-   * either way (kindred#2382 moved occupancy off `lodging_availability`, which
-   * now answers only the staff↔family role), and clearing it has to target the
-   * unit that HOLDS it — the card's own id would delete nothing, and the unit
-   * holding the row has no card to offer the clear from. `availabilityAction`
-   * resolves which; this only carries it.
+   * merged building one of its rooms'. Removing one has to target the unit
+   * that HOLDS the row — the card's own id would delete nothing, and the unit
+   * holding the row has no card of its own.
+   *
+   * TWO CALLERS SINCE kindred#2381, and only one of them is this control.
+   * `availabilityAction` resolves a ROLE row and always names the card's own
+   * unit; each `WriteInCard`'s corner X sends this same write bound to the row
+   * that card draws. The field carries the target either way.
    */
   unitId: string
   /** That unit's name, for the confirmation toast. */

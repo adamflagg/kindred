@@ -478,7 +478,7 @@ describe('LodgingUnitCard — a held unit refuses the drop outright (#2087)', ()
     return el as HTMLElement
   }
 
-  const held = unit({ write_in: cover(), is_family_available: false })
+  const held = unit({ write_ins: [cover()], is_family_available: false })
 
   it('keeps the droppable disabled on a held unit even while placement is live', () => {
     overDroppableId = unitDroppableId('cedar-1')
@@ -1402,7 +1402,7 @@ describe('LodgingUnitCard — the open-space title marker (#2093)', () => {
     const { container } = render(
       <LodgingUnitCard
         slot={slot({
-          unit: unit({ write_in: cover(), occupant_name: 'Emma Johnson' }),
+          unit: unit({ write_ins: [cover()], occupant_name: 'Emma Johnson' }),
         })}
         hue={hue}
         canPlace
@@ -1430,7 +1430,7 @@ describe('LodgingUnitCard — the open-space title marker (#2093)', () => {
     // write schema.
     const { container } = render(
       <LodgingUnitCard
-        slot={slot({ unit: unit({ write_in: cover({ occupant_name: '' }) }) })}
+        slot={slot({ unit: unit({ write_ins: [cover({ occupant_name: '' })] }) })}
         hue={hue}
         canPlace
         onOpenParty={vi.fn()}
@@ -1475,7 +1475,7 @@ describe('the write-in occupant card (kindred#2078)', () => {
       <LodgingUnitCard
         slot={slot({
           unit: unit({
-            write_in: cover(),
+            write_ins: [cover()],
             occupant_name: 'Emma Johnson',
             is_family_available: false,
           }),
@@ -1498,7 +1498,7 @@ describe('the write-in occupant card (kindred#2078)', () => {
       <LodgingUnitCard
         slot={slot({
           unit: unit({
-            write_in: cover({ occupant_name: 'Liam Garcia' }),
+            write_ins: [cover({ occupant_name: 'Liam Garcia' })],
             occupant_name: 'Liam Garcia',
             is_family_available: false,
           }),
@@ -1529,7 +1529,7 @@ describe('the write-in occupant card (kindred#2078)', () => {
       <LodgingUnitCard
         slot={slot({
           unit: unit({
-            write_in: cover(),
+            write_ins: [cover()],
             occupant_name: 'Emma Johnson',
             is_family_available: false,
           }),
@@ -2227,7 +2227,7 @@ describe('LodgingUnitCard — placing a family from the space itself (kindred#20
      * REFUSAL and is spoken for by the invalid merge target.
      */
     const { container } = renderCard({
-      slot: slot({ unit: unit({ write_in: cover() }) }),
+      slot: slot({ unit: unit({ write_ins: [cover()] }) }),
     })
     expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
     expect(container.querySelector('.opacity-40')).toBeNull()
@@ -2309,7 +2309,7 @@ describe('LodgingUnitCard — no sr-only text of any kind (kindred#2348)', () =>
 describe('LodgingUnitCard — the write-in chip, dropped in favour of the well (kindred#2252)', () => {
   const HUE = 'hsl(160 45% 42%)'
   const WRITTEN_IN = unit({
-    write_in: cover(),
+    write_ins: [cover()],
     occupant_name: 'Emma Johnson',
     is_family_available: false,
   })
@@ -2352,7 +2352,7 @@ describe('LodgingUnitCard — the write-in chip, dropped in favour of the well (
         slot={slot({
           unit: unit({
             inventory_class: 'staff_default',
-            write_in: cover(),
+            write_ins: [cover()],
             occupant_name: 'Emma Johnson',
             is_family_available: false,
           }),
@@ -2364,18 +2364,89 @@ describe('LodgingUnitCard — the write-in chip, dropped in favour of the well (
     expect(screen.getByText('Staff')).toBeInTheDocument()
   })
 
-  it('labels the availability control "Clear Write-in" rather than a bare "Clear"', () => {
-    // The chip is gone, so the button is now the ONLY thing on this card
-    // saying what a click removes. "Clear" alone stopped saying that.
+  it('removes a write-in from the card that draws it, not from the availability strip', () => {
+    // kindred#2381. The strip's single "Clear Write-in" could name only one
+    // row, so a merged card covering four destroyed them one silent click at
+    // a time. The X lives on the `WriteInCard`, and the write it sends names
+    // that card's own row.
+    const onSetAvailability = vi.fn()
     render(
       <LodgingUnitCard
         slot={slot({ unit: WRITTEN_IN })}
         hue={HUE}
         canSetAvailability
-        onSetAvailability={vi.fn()}
+        onSetAvailability={onSetAvailability}
         onOpenParty={vi.fn()}
       />
     )
-    expect(screen.getByRole('button', { name: 'Clear Write-in Cedar 1' })).toBeInTheDocument()
+
+    expect(screen.queryByRole('button', { name: /clear/i })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Remove write-in Emma Johnson' }))
+
+    expect(onSetAvailability).toHaveBeenCalledWith({
+      unitId: 'u1',
+      unitName: 'Cedar 1',
+      familyAvailable: null,
+      occupantName: '',
+      reason: '',
+    })
+  })
+
+  it('draws one card per write-in, each removing its own row', () => {
+    // THE REPORTED CASE. A merged building stands in for its rooms, so every
+    // write-in beneath it lands in this one well. Before kindred#2381 the card
+    // showed whichever room sorted first and hid the rest.
+    const onSetAvailability = vi.fn()
+    render(
+      <LodgingUnitCard
+        slot={slot({
+          unit: unit({
+            unit_id: 'u-house',
+            code: 'house',
+            name: 'House',
+            is_container: true,
+            is_combined: true,
+            is_family_available: false,
+            write_ins: [
+              cover({
+                unit_id: 'u-back',
+                unit_code: 'house-back',
+                unit_name: 'House Back',
+                occupant_name: 'Emma Johnson',
+              }),
+              cover({
+                unit_id: 'u-loft',
+                unit_code: 'house-loft',
+                unit_name: 'House Loft',
+                occupant_name: 'Liam Garcia',
+              }),
+            ],
+          }),
+        })}
+        hue={HUE}
+        canSetAvailability
+        onSetAvailability={onSetAvailability}
+        onOpenParty={vi.fn()}
+      />
+    )
+
+    expect(screen.getByText('Emma Johnson')).toBeInTheDocument()
+    expect(screen.getByText('Liam Garcia')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Remove write-in Liam Garcia' }))
+
+    expect(onSetAvailability).toHaveBeenCalledWith({
+      unitId: 'u-loft',
+      unitName: 'House Loft',
+      familyAvailable: null,
+      occupantName: '',
+      reason: '',
+    })
+  })
+
+  it('offers no removal to a reader without bunking.manage', () => {
+    render(<LodgingUnitCard slot={slot({ unit: WRITTEN_IN })} hue={HUE} onOpenParty={vi.fn()} />)
+
+    expect(screen.queryByRole('button', { name: /remove write-in/i })).not.toBeInTheDocument()
   })
 })

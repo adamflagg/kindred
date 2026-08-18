@@ -56,7 +56,7 @@ export type RosterCountSummary = RosterCounts
 export type LodgingUnitRow = LodgingUnitSummary
 /**
  * The write-in covering a unit's space, resolved through the tree by the
- * server. Read it through `writeInOccupant`/`writeInSource`, never inline: the
+ * server. Read it through `writeInEntries`/`hasWriteIn`, never inline: the
  * point of naming the fact once is that the board's five consumers cannot
  * drift onto different spellings of it.
  */

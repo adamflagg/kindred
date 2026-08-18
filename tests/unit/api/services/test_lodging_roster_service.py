@@ -1064,14 +1064,14 @@ class TestUnitsAndCounts:
         by_code = {u.code: u for u in roster.units}
         # The room holds no row of its own -- and is closed all the same.
         assert by_code["house-a"].family_available_override is None
-        assert by_code["house-a"].write_in is not None
-        assert by_code["house-a"].write_in.unit_id == "u1"
-        assert by_code["house-a"].write_in.occupant_name == "Liam Garcia"
-        assert by_code["house-a"].write_in.note == "Back Monday"
+        assert by_code["house-a"].write_ins != []
+        assert by_code["house-a"].write_ins[0].unit_id == "u1"
+        assert by_code["house-a"].write_ins[0].occupant_name == "Liam Garcia"
+        assert by_code["house-a"].write_ins[0].note == "Back Monday"
         # And the building still reads as its own, so the card that holds the
         # row does not start attributing it elsewhere.
-        assert by_code["house"].write_in is not None
-        assert by_code["house"].write_in.unit_code == "house"
+        assert by_code["house"].write_ins != []
+        assert by_code["house"].write_ins[0].unit_code == "house"
 
     @pytest.mark.asyncio
     async def test_a_write_in_on_a_room_reaches_the_building_over_it(self) -> None:
@@ -1089,9 +1089,9 @@ class TestUnitsAndCounts:
         roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
 
         by_code = {u.code: u for u in roster.units}
-        assert by_code["house"].write_in is not None
-        assert by_code["house"].write_in.unit_id == "u2"
-        assert by_code["house"].write_in.occupant_name == "Ava Martinez"
+        assert by_code["house"].write_ins != []
+        assert by_code["house"].write_ins[0].unit_id == "u2"
+        assert by_code["house"].write_ins[0].occupant_name == "Ava Martinez"
 
     @pytest.mark.asyncio
     async def test_an_ordinary_open_cabin_carries_no_cover_at_all(self) -> None:
@@ -1104,7 +1104,7 @@ class TestUnitsAndCounts:
         )
         roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
 
-        assert roster.units[0].write_in is None
+        assert roster.units[0].write_ins == []
 
     @pytest.mark.asyncio
     async def test_a_true_override_beats_a_false_default(self) -> None:
@@ -4184,9 +4184,9 @@ class TestWriteInCovers:
 
         covers = write_in_covers([house, room], self._written("house"))
 
-        assert covers["house-a"].unit_code == "house"
-        assert covers["house-a"].occupant_name == "Liam Garcia"
-        assert covers["house-a"].note == "Back Monday"
+        assert covers["house-a"][0].unit_code == "house"
+        assert covers["house-a"][0].occupant_name == "Liam Garcia"
+        assert covers["house-a"][0].note == "Back Monday"
 
     def test_a_building_surfaces_the_write_in_of_a_room_beneath_it(self) -> None:
         # The MERGE case, and the mirror of the one above: the row names a room
@@ -4197,8 +4197,8 @@ class TestWriteInCovers:
 
         covers = write_in_covers([house, written_room, other_room], self._written("house-a"))
 
-        assert covers["house"].unit_code == "house-a"
-        assert covers["house"].occupant_name == "Liam Garcia"
+        assert covers["house"][0].unit_code == "house-a"
+        assert covers["house"][0].occupant_name == "Liam Garcia"
 
     def test_a_sibling_room_is_not_covered(self) -> None:
         # The one direction that must NOT propagate. A caretaker in room A says
@@ -4213,7 +4213,7 @@ class TestWriteInCovers:
         covers = write_in_covers([house, written_room, other_room], self._written("house-a"))
 
         assert "house-b" not in covers
-        assert covers["house"].unit_code == "house-a"
+        assert covers["house"][0].unit_code == "house-a"
 
     def test_a_units_own_write_in_beats_an_inherited_one(self) -> None:
         house = self._unit("house", is_container=True, occupant_name="Liam Garcia")
@@ -4221,8 +4221,8 @@ class TestWriteInCovers:
 
         covers = write_in_covers([house, room], self._written("house", "house-a"))
 
-        assert covers["house-a"].unit_code == "house-a"
-        assert covers["house-a"].occupant_name == "Ava Martinez"
+        assert covers["house-a"][0].unit_code == "house-a"
+        assert covers["house-a"][0].occupant_name == "Ava Martinez"
 
     def test_the_nearest_ancestor_wins(self) -> None:
         block = self._unit("block", is_container=True, occupant_name="Ava Martinez")
@@ -4236,7 +4236,7 @@ class TestWriteInCovers:
 
         covers = write_in_covers([block, house, room], self._written("block", "house"))
 
-        assert covers["house-a"].unit_code == "house"
+        assert covers["house-a"][0].unit_code == "house"
 
     def test_a_release_is_not_a_write_in(self) -> None:
         # A ROLE release is a staff cabin OPENED to families for the weekend. It
@@ -4295,17 +4295,64 @@ class TestWriteInCovers:
 
         assert write_in_covers([written, other], self._written("")) == {}
 
-    def test_several_written_rooms_pick_one_deterministically(self) -> None:
-        # A building over two written-into rooms is closed either way; the
-        # point is that two identical payloads never disagree about WHICH row
-        # the card names, which a set-ordered walk would not guarantee.
+    def test_several_written_rooms_are_all_returned_in_code_order(self) -> None:
+        # A building over two written-into rooms carries BOTH, in `code` order
+        # so two identical payloads never disagree about the sequence a card
+        # draws them in. This used to return exactly one and drop the rest --
+        # kindred#2381, the merge half of the parity bug.
         house = self._unit("house", is_container=True, is_combined=True)
         room_b = self._unit("house-b", parent_code="house", occupant_name="Ava Martinez")
         room_a = self._unit("house-a", parent_code="house", occupant_name="Liam Garcia")
         written = self._written("house-a", "house-b")
 
-        assert write_in_covers([house, room_b, room_a], written)["house"].unit_code == "house-a"
-        assert write_in_covers([house, room_a, room_b], written)["house"].unit_code == "house-a"
+        for units in ([house, room_b, room_a], [house, room_a, room_b]):
+            assert [cover.unit_code for cover in write_in_covers(units, written)["house"]] == [
+                "house-a",
+                "house-b",
+            ]
+
+    def test_a_merged_building_surfaces_every_written_room_beneath_it(self) -> None:
+        """The reported case: four written-into rooms under one merged card.
+
+        A merged container draws in place of its rooms, so before kindred#2381
+        the four occupants collapsed to whichever room sorted first and the
+        other three were invisible -- and each clear silently re-populated the
+        card with the next one, which read as a failed click.
+        """
+        house = self._unit("house", is_container=True, is_combined=True)
+        rooms = [
+            self._unit("house-back", parent_code="house", occupant_name="Emma Johnson"),
+            self._unit("house-laundry", parent_code="house", occupant_name="Liam Garcia"),
+            self._unit("house-loft", parent_code="house", occupant_name="Olivia Martinez"),
+            self._unit("house-side", parent_code="house", occupant_name="Noah Chen"),
+        ]
+
+        covers = write_in_covers([house, *rooms], self._written(*(room.code for room in rooms)))
+
+        assert [cover.occupant_name for cover in covers["house"]] == [
+            "Emma Johnson",
+            "Liam Garcia",
+            "Olivia Martinez",
+            "Noah Chen",
+        ]
+        # Each room still answers for itself alone -- the collect-all runs
+        # DOWNWARD from the drawn card and never sideways.
+        for room in rooms:
+            assert [cover.unit_code for cover in covers[room.code]] == [room.code]
+
+    def test_the_descendant_walk_stops_at_the_nearest_written_room_on_each_branch(self) -> None:
+        # A written-into room inside a written-into wing is already inside that
+        # wing's space -- the wing's row speaks for it, and returning both to
+        # the building would print the same space twice. "Collect all" is
+        # per-branch nearest, not every descendant.
+        house = self._unit("house", is_container=True, is_combined=True)
+        wing = self._unit("house-a", parent_code="house", is_container=True, occupant_name="Emma Johnson")
+        bed = self._unit("house-a-1", parent_code="house-a", occupant_name="Liam Garcia")
+        other_wing = self._unit("house-b", parent_code="house", occupant_name="Olivia Martinez")
+
+        covers = write_in_covers([house, wing, bed, other_wing], self._written("house-a", "house-a-1", "house-b"))
+
+        assert [cover.unit_code for cover in covers["house"]] == ["house-a", "house-b"]
 
 
 class TestWriteInsResolveFromTheirOwnTable:
@@ -4356,9 +4403,9 @@ class TestWriteInsResolveFromTheirOwnTable:
         # answering both. See TestTheWireStopsSpellingAnOccupancyAsFamilyAvailableFalse.
         assert unit.family_available_override is None
         assert unit.is_family_available is False
-        assert unit.write_in is not None
-        assert unit.write_in.unit_id == "u1"
-        assert unit.write_in.occupant_name == "Liam Garcia"
+        assert unit.write_ins != []
+        assert unit.write_ins[0].unit_id == "u1"
+        assert unit.write_ins[0].occupant_name == "Liam Garcia"
 
     @pytest.mark.asyncio
     async def test_a_stale_availability_occupancy_row_no_longer_writes_anybody_in(self) -> None:
@@ -4385,7 +4432,7 @@ class TestWriteInsResolveFromTheirOwnTable:
         roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
 
         assert roster.units[0].is_family_available is False
-        assert roster.units[0].write_in is None
+        assert roster.units[0].write_ins == []
 
     @pytest.mark.asyncio
     async def test_a_role_release_still_comes_from_availability(self) -> None:
@@ -4412,7 +4459,7 @@ class TestWriteInsResolveFromTheirOwnTable:
         # A release names no occupant and closes nothing, so it must never
         # resolve to a cover -- inheriting one would silently open every room
         # beneath a released building.
-        assert unit.write_in is None
+        assert unit.write_ins == []
 
     @pytest.mark.asyncio
     async def test_a_write_in_outranks_a_release_on_the_same_unit(self) -> None:
@@ -4439,7 +4486,7 @@ class TestWriteInsResolveFromTheirOwnTable:
         assert unit.family_available_override is True
         assert unit.is_family_available is False
         assert unit.occupant_name == "Ava Martinez"
-        assert unit.write_in is not None
+        assert unit.write_ins != []
 
     @pytest.mark.asyncio
     async def test_the_roster_reads_the_write_in_table_for_this_weekend(self) -> None:
@@ -4539,7 +4586,7 @@ class TestWriteInsResolveFromTheirOwnTable:
 
         repo.fetch_write_ins.assert_awaited_once_with(2026, 1000001)
         assert repo.fetch_draft_write_ins.await_count == 0
-        assert roster.units[0].write_in is not None
+        assert roster.units[0].write_ins != []
 
     @pytest.mark.asyncio
     async def test_a_written_into_cabin_is_still_counted_as_reserved(self) -> None:
@@ -4582,10 +4629,10 @@ class TestWriteInsResolveFromTheirOwnTable:
 
         by_code = {u.code: u for u in roster.units}
         assert by_code["house-a"].family_available_override is None
-        assert by_code["house-a"].write_in is not None
-        assert by_code["house-a"].write_in.unit_id == "u1"
-        assert by_code["house-a"].write_in.occupant_name == "Liam Garcia"
-        assert by_code["house-a"].write_in.note == "Back Monday"
+        assert by_code["house-a"].write_ins != []
+        assert by_code["house-a"].write_ins[0].unit_id == "u1"
+        assert by_code["house-a"].write_ins[0].occupant_name == "Liam Garcia"
+        assert by_code["house-a"].write_ins[0].note == "Back Monday"
 
 
 class TestTheWireStopsSpellingAnOccupancyAsFamilyAvailableFalse:
@@ -4635,7 +4682,7 @@ class TestTheWireStopsSpellingAnOccupancyAsFamilyAvailableFalse:
         # THE HALF THAT MUST NOT MOVE. The derived answer still folds the
         # occupancy in, so nothing staff read changes.
         assert unit.is_family_available is False
-        assert unit.write_in is not None
+        assert unit.write_ins != []
         assert unit.occupant_name == "Liam Garcia"
 
     @pytest.mark.asyncio
@@ -4668,7 +4715,7 @@ class TestTheWireStopsSpellingAnOccupancyAsFamilyAvailableFalse:
         # safe direction: reading the release instead would open a cabin with
         # somebody sleeping in it.
         assert unit.is_family_available is False
-        assert unit.write_in is not None
+        assert unit.write_ins != []
 
     @pytest.mark.asyncio
     async def test_the_counts_do_not_move_when_the_shim_comes_out(self) -> None:
@@ -4716,7 +4763,7 @@ class TestTheWireStopsSpellingAnOccupancyAsFamilyAvailableFalse:
         unit = roster.units[0]
         assert unit.family_available_override is False
         assert unit.is_family_available is False
-        assert unit.write_in is None
+        assert unit.write_ins == []
 
 
 class TestAScenariosWriteInsReplaceTheLiveOnes:
@@ -4774,7 +4821,7 @@ class TestAScenariosWriteInsReplaceTheLiveOnes:
         roster = await LodgingRosterService(repo).build_roster(2026, 1000001, scenario="scn_1")
 
         unit = roster.units[0]
-        assert unit.write_in is None
+        assert unit.write_ins == []
         assert unit.family_available_override is None
         assert unit.is_family_available is True
         assert unit.occupant_name == ""
@@ -4803,8 +4850,8 @@ class TestAScenariosWriteInsReplaceTheLiveOnes:
         assert unit.is_family_available is False
         assert unit.occupant_name == "Olivia Chen"
         assert unit.reason == "Paper registration"
-        assert unit.write_in is not None
-        assert unit.write_in.unit_id == "u1"
+        assert unit.write_ins != []
+        assert unit.write_ins[0].unit_id == "u1"
 
     @pytest.mark.asyncio
     async def test_two_scenarios_can_write_the_same_family_into_different_cabins(self) -> None:
@@ -4863,9 +4910,9 @@ class TestAScenariosWriteInsReplaceTheLiveOnes:
         roster = await LodgingRosterService(repo).build_roster(2026, 1000001, scenario="scn_1")
 
         by_code = {u.code: u for u in roster.units}
-        assert by_code["house-a"].write_in is not None
-        assert by_code["house-a"].write_in.unit_id == "u1"
-        assert by_code["house-a"].write_in.occupant_name == "Olivia Chen"
+        assert by_code["house-a"].write_ins != []
+        assert by_code["house-a"].write_ins[0].unit_id == "u1"
+        assert by_code["house-a"].write_ins[0].occupant_name == "Olivia Chen"
 
     @pytest.mark.asyncio
     async def test_the_role_override_is_still_read_from_the_live_table_in_a_scenario(self) -> None:

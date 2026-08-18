@@ -64,7 +64,7 @@ import { LodgingUnitCard } from './LodgingUnitCard'
 import { partyKey } from './partyKey'
 import { resolvePartyUnit } from './rosterAttention'
 import type { UnitAvailabilityWrite } from './UnitAvailabilityControl'
-import { writeInSource } from './writeIn'
+import { writeInEntries } from './writeIn'
 
 export interface LodgingBoardProps {
   parties: RosterPartyRow[]
@@ -519,18 +519,25 @@ export function LodgingBoard({
                             hue={area.hue}
                             canPlace={canPlace}
                             canSetAvailability={canSetAvailability}
-                            // THIS card's unit, or the one holding the
-                            // write-in it inherited. `pendingUnitId` names the
-                            // unit the WRITE targets, and for an inherited
-                            // clear that is never this card's own id — so
+                            // THIS card's unit, or ANY of the ones holding a
+                            // write-in it covers. `pendingUnitId` names the
+                            // unit the WRITE targets, and a write-in removal
+                            // targets the row's own unit, which for an
+                            // inherited row is never this card's id — so
                             // keying the disable on the card alone leaves the
-                            // button live for the whole write. Same shape as
-                            // `savingMerge` below, and for the same reason:
-                            // the unit written is not always the unit drawn.
+                            // corner X live for the whole write. `some`, not
+                            // one id, since kindred#2381: a merged container
+                            // covers every write-in beneath it and the pending
+                            // write belongs to whichever one was clicked. Same
+                            // shape as `savingMerge` below, and for the same
+                            // reason: the unit written is not always the unit
+                            // drawn.
                             savingAvailability={
                               pendingUnitId === slot.unit.unit_id ||
                               (pendingUnitId !== '' &&
-                                pendingUnitId === writeInSource(slot.unit)?.unitId)
+                                writeInEntries(slot.unit).some(
+                                  (entry) => entry.source.unitId === pendingUnitId
+                                ))
                             }
                             onSetAvailability={writeAvailability}
                             canMerge={canMergeUnits}

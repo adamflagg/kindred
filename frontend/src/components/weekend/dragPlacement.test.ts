@@ -334,7 +334,7 @@ describe('resolveDrop', () => {
     // Owner ruling on #2090: a hold is global and blocks placement, not merely
     // dimmed. This is the load-bearing check, since `resolveDrop` is the only
     // path #2080's picker reaches — a `disabled`-only fix would not cover it.
-    const held = unit({ write_in: cover(), is_family_available: false })
+    const held = unit({ write_ins: [cover()], is_family_available: false })
     const p = party()
     expect(
       resolveDrop({
@@ -355,13 +355,15 @@ describe('resolveDrop', () => {
     // arrive here as the same fact.
     const room = unit({
       code: 'house-a',
-      write_in: {
-        unit_id: 'id-house',
-        unit_code: 'house',
-        unit_name: 'House',
-        occupant_name: 'Liam Garcia',
-        note: '',
-      },
+      write_ins: [
+        {
+          unit_id: 'id-house',
+          unit_code: 'house',
+          unit_name: 'House',
+          occupant_name: 'Liam Garcia',
+          note: '',
+        },
+      ],
     })
     const p = party()
     expect(
@@ -382,13 +384,15 @@ describe('resolveDrop', () => {
       code: 'house',
       is_container: true,
       is_combined: true,
-      write_in: {
-        unit_id: 'id-house-a',
-        unit_code: 'house-a',
-        unit_name: 'House A',
-        occupant_name: 'Ava Martinez',
-        note: '',
-      },
+      write_ins: [
+        {
+          unit_id: 'id-house-a',
+          unit_code: 'house-a',
+          unit_name: 'House A',
+          occupant_name: 'Ava Martinez',
+          note: '',
+        },
+      ],
     })
     const p = party()
     expect(
@@ -757,7 +761,7 @@ describe('resolvePickerPlacement', () => {
     // check of its own would be the second copy that comment exists to
     // prevent.
     const p = party()
-    const held = unit({ write_in: cover(), is_family_available: false })
+    const held = unit({ write_ins: [cover()], is_family_available: false })
     expect(
       resolvePickerPlacement({ party: p, unitCode: 'cedar-1', parties: [p], units: [held] })
     ).toBeNull()
