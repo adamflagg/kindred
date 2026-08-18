@@ -708,3 +708,166 @@ func TestCloneWithYear_OwnHTTPClient(t *testing.T) {
 			cloned.httpClient.Timeout, original.httpClient.Timeout)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// #2437 — GetSessions/GetSessionGroups must paginate past TotalCount instead
+// of silently discarding it after one page of 100.
+// ---------------------------------------------------------------------------
+
+// TestGetSessions_PaginatesPastFirstPage verifies that when TotalCount
+// exceeds the size of a single page, GetSessions fetches subsequent pages
+// and returns the full accumulated result set rather than silently
+// truncating at the first page (the pre-fix behavior: session 101+ would
+// vanish with no error and no log line).
+func TestGetSessions_PaginatesPastFirstPage(t *testing.T) {
+	t.Setenv("CAMPMINDER_PRIMARY_KEY", "test-subscription-key")
+
+	const totalCount = 101 // one more than the old hardcoded pagesize of 100
+
+	var pagesRequested []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		page := r.URL.Query().Get("pagenumber")
+		pagesRequested = append(pagesRequested, page)
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+
+		switch page {
+		case "1":
+			results := make([]string, 0, 100)
+			for i := range 100 {
+				results = append(results, fmt.Sprintf(`{"ID":%d}`, i+1))
+			}
+			_, _ = fmt.Fprintf(w, `{"TotalCount":%d,"Results":[%s]}`,
+				totalCount, strings.Join(results, ","))
+		case "2":
+			_, _ = fmt.Fprintf(w, `{"TotalCount":%d,"Results":[{"ID":101}]}`, totalCount)
+		default:
+			t.Errorf("unexpected pagenumber requested: %q", page)
+		}
+	}))
+	defer srv.Close()
+
+	client := &Client{
+		apiKey:          "test-key",
+		subscriptionKey: "test-subscription-key",
+		clientID:        "test-client",
+		seasonID:        2025,
+		httpClient:      &http.Client{Timeout: 5 * time.Second},
+		accessToken:     "pre-seeded-token",
+		tokenExpiry:     time.Now().Add(time.Hour),
+		apiBaseURL:      srv.URL,
+	}
+
+	sessions, err := client.GetSessions()
+	if err != nil {
+		t.Fatalf("GetSessions() failed: %v", err)
+	}
+
+	if len(sessions) != totalCount {
+		t.Errorf("GetSessions() returned %d sessions, want %d (TotalCount) — session 101 was silently dropped",
+			len(sessions), totalCount)
+	}
+
+	if len(pagesRequested) < 2 {
+		t.Errorf("GetSessions() requested %d page(s) (%v), want at least 2 to cover TotalCount=%d",
+			len(pagesRequested), pagesRequested, totalCount)
+	}
+}
+
+// TestGetSessionGroups_PaginatesPastFirstPage is the GetSessionGroups analog
+// of TestGetSessions_PaginatesPastFirstPage — same silent-truncation bug,
+// same fix, same shape.
+func TestGetSessionGroups_PaginatesPastFirstPage(t *testing.T) {
+	t.Setenv("CAMPMINDER_PRIMARY_KEY", "test-subscription-key")
+
+	const totalCount = 101
+
+	var pagesRequested []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		page := r.URL.Query().Get("pagenumber")
+		pagesRequested = append(pagesRequested, page)
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+
+		switch page {
+		case "1":
+			results := make([]string, 0, 100)
+			for i := range 100 {
+				results = append(results, fmt.Sprintf(`{"ID":%d}`, i+1))
+			}
+			_, _ = fmt.Fprintf(w, `{"TotalCount":%d,"Results":[%s]}`,
+				totalCount, strings.Join(results, ","))
+		case "2":
+			_, _ = fmt.Fprintf(w, `{"TotalCount":%d,"Results":[{"ID":101}]}`, totalCount)
+		default:
+			t.Errorf("unexpected pagenumber requested: %q", page)
+		}
+	}))
+	defer srv.Close()
+
+	client := &Client{
+		apiKey:          "test-key",
+		subscriptionKey: "test-subscription-key",
+		clientID:        "test-client",
+		seasonID:        2025,
+		httpClient:      &http.Client{Timeout: 5 * time.Second},
+		accessToken:     "pre-seeded-token",
+		tokenExpiry:     time.Now().Add(time.Hour),
+		apiBaseURL:      srv.URL,
+	}
+
+	groups, err := client.GetSessionGroups()
+	if err != nil {
+		t.Fatalf("GetSessionGroups() failed: %v", err)
+	}
+
+	if len(groups) != totalCount {
+		t.Errorf("GetSessionGroups() returned %d groups, want %d (TotalCount) — group 101 was silently dropped",
+			len(groups), totalCount)
+	}
+
+	if len(pagesRequested) < 2 {
+		t.Errorf("GetSessionGroups() requested %d page(s) (%v), want at least 2 to cover TotalCount=%d",
+			len(pagesRequested), pagesRequested, totalCount)
+	}
+}
+
+// TestGetSessions_SinglePageUnderLimit verifies that when TotalCount fits in
+// one page, GetSessions makes exactly one request (no unnecessary second
+// page fetch).
+func TestGetSessions_SinglePageUnderLimit(t *testing.T) {
+	t.Setenv("CAMPMINDER_PRIMARY_KEY", "test-subscription-key")
+
+	requestCount := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestCount++
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprint(w, `{"TotalCount":3,"Results":[{"ID":1},{"ID":2},{"ID":3}]}`)
+	}))
+	defer srv.Close()
+
+	client := &Client{
+		apiKey:          "test-key",
+		subscriptionKey: "test-subscription-key",
+		clientID:        "test-client",
+		seasonID:        2025,
+		httpClient:      &http.Client{Timeout: 5 * time.Second},
+		accessToken:     "pre-seeded-token",
+		tokenExpiry:     time.Now().Add(time.Hour),
+		apiBaseURL:      srv.URL,
+	}
+
+	sessions, err := client.GetSessions()
+	if err != nil {
+		t.Fatalf("GetSessions() failed: %v", err)
+	}
+	if len(sessions) != 3 {
+		t.Errorf("GetSessions() returned %d sessions, want 3", len(sessions))
+	}
+	if requestCount != 1 {
+		t.Errorf("GetSessions() made %d requests, want 1 (all results fit in one page)", requestCount)
+	}
+}
