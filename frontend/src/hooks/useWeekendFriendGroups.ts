@@ -102,9 +102,22 @@ export interface FriendGroupMutations {
  *
  * There is no optimistic layer, for the reason `useUnitAvailability` gives for
  * not having one: nothing here moves under the pointer. The action bar
- * disables itself, a toast confirms, and the list redraws when the invalidated
- * query returns. An optimistic patch would have to synthesise a `group_id`
- * the server has not issued yet.
+ * disables itself and the list redraws when the invalidated query returns. An
+ * optimistic patch would have to synthesise a `group_id` the server has not
+ * issued yet.
+ *
+ * ## No success toast (owner ruling, 2026-08-18)
+ *
+ *   > "lets lose the toasts on success for weekend"
+ *
+ * These three writes announced "Created <name>", "Group updated" and "Group
+ * dissolved". Every other direct-manipulation write on the weekend board —
+ * `useLodgingPlacement`, `useUnitMerge`, `useUnitAvailability` — raises errors
+ * only and lets the redraw be the confirmation, and a group appearing or its
+ * chips vanishing already says the same thing.
+ *
+ * Errors are untouched on all three paths, including `create`'s deliberate
+ * invalidate-on-failure: a partially-written group must still become visible.
  */
 export function useFriendGroupMutations(year: number, sessionCmId: number): FriendGroupMutations {
   const { fetchWithAuth } = useApiWithAuth()
@@ -119,8 +132,7 @@ export function useFriendGroupMutations(year: number, sessionCmId: number): Frie
    * ABSOLUTE `household_cm_ids` list computed from the CACHED group. Re-enable
    * the card's controls the moment the PATCH answers and the next add is
    * computed from the pre-write membership, so the server's `_replace_members`
-   * deletes whatever the first write added — with a success toast and no error
-   * anywhere. Summer cannot hit this: `LockGroupPanel` adds one
+   * deletes whatever the first write added — silently, with no error anywhere. Summer cannot hit this: `LockGroupPanel` adds one
    * `locked_group_members` row and removes one row, so two overlapping edits
    * compose instead of overwriting.
    *
@@ -140,12 +152,9 @@ export function useFriendGroupMutations(year: number, sessionCmId: number): Frie
 
   const create = useMutation({
     mutationFn: (body: FriendGroupCreate) => createFriendGroup(fetchWithAuth, body),
-    onSuccess: async (group) => {
-      // `||`, not `??`: '' is the real stored value for an unnamed group, so
-      // `??` would toast "Created " with a trailing space. Same trap
-      // `partyKey.ts` documents at length.
-      // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- '' is a real stored value meaning "unnamed"
-      toast.success(`Created ${group.name || 'the group'}`)
+    onSuccess: async () => {
+      // NO SUCCESS TOAST — see the note at the top of this file. The group
+      // appearing in the list is the confirmation.
       await invalidate()
     },
     onError: (error: Error) => {
@@ -165,7 +174,6 @@ export function useFriendGroupMutations(year: number, sessionCmId: number): Frie
     mutationFn: ({ groupId, body }: { groupId: string; body: FriendGroupUpdate }) =>
       updateFriendGroup(fetchWithAuth, groupId, body),
     onSuccess: async () => {
-      toast.success('Group updated')
       await invalidate()
     },
     onError: (error: Error) => toast.error(error.message),
@@ -174,7 +182,6 @@ export function useFriendGroupMutations(year: number, sessionCmId: number): Frie
   const remove = useMutation({
     mutationFn: (groupId: string) => deleteFriendGroup(fetchWithAuth, groupId),
     onSuccess: async () => {
-      toast.success('Group dissolved')
       await invalidate()
     },
     onError: (error: Error) => toast.error(error.message),
