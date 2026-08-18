@@ -39,6 +39,25 @@ def test_lodging_collection_constants_exist() -> None:
     assert collections.LODGING_ASSIGNMENT_HISTORY == "lodging_assignment_history"
 
 
+def test_lodging_write_in_collection_constants_exist() -> None:
+    """kindred#2382, PR 1 of 4 — the write-in occupancy pair.
+
+    `lodging_availability` conflated two unrelated questions through one
+    boolean: `family_available = true` on a staff cabin is a staff<->family
+    ROLE override for the weekend, and `false` is an OCCUPANCY — somebody is
+    in the room. The owner ruled (2026-08-15) that the ROLE is NOT
+    scenario-scoped and the occupancy IS, so occupancy moves to its own
+    live+draft pair beside `lodging_assignments`/`_draft` and availability
+    keeps only the role half.
+
+    A nullable `scenario` sentinel column was explicitly rejected — see this
+    module's sibling note in `api/services/lodging_repository.py`, which
+    records why `lodging_assignments` dropped its own.
+    """
+    assert collections.LODGING_WRITE_INS == "lodging_write_ins"
+    assert collections.LODGING_WRITE_INS_DRAFT == "lodging_write_ins_draft"
+
+
 def test_weekend_status_constant_exists() -> None:
     """kindred#2092. Its own collection, NOT a column on camp_sessions.
 

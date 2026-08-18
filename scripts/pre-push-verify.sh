@@ -305,12 +305,24 @@ if $HAS_MIGRATIONS; then
         # `options: [ ... ]` arrays (e.g. select-option values in config.js) are
         # legitimate and must NOT be flagged — same object-vs-array distinction
         # the eslint no-restricted-syntax rule makes.
-        # Filter only full-line `//` comments. grep -n prefixes each hit with
-        # `LINENUM:`, so anchor on that prefix; a bare `^[[:space:]]*//` would
-        # never match. Keeps real `options: {` hits that carry an inline comment.
-        if grep -n 'options\s*:\s*{' "$file" | grep -vE '^[0-9]+:[[:space:]]*//' | grep -q .; then
+        # Filter COMMENT lines, in every form a migration header uses:
+        # `//`, a JSDoc continuation `*`, and a block opener `/*`. grep -n
+        # prefixes each hit with `LINENUM:`, so anchor on that prefix; a bare
+        # `^[[:space:]]*//` would never match. Keeps real `options: {` hits
+        # that carry an inline comment.
+        #
+        # The `*` arm is not decoration. Four migrations already state the
+        # anti-pattern inside a JSDoc header -- 1500000132, 1500000135,
+        # 1500000146 and 1500000161 all carry the sentence "properties are
+        # DIRECT, never nested inside `options: {}`, which is silently
+        # ignored" -- so a `//`-only filter fails this check on any diff that
+        # touches one of them, purely for quoting the rule it is enforcing.
+        # 1500000161 had to word the sentence backwards to get past it. A
+        # line whose first non-space character is `*` or `/` cannot be
+        # executable JS carrying a field wrapper, so nothing real is hidden.
+        if grep -n 'options\s*:\s*{' "$file" | grep -vE '^[0-9]+:[[:space:]]*(//|/?\*)' | grep -q .; then
             echo "    Found 'options: {}' field wrapper (v0.23+ anti-pattern): $file"
-            grep -n 'options\s*:\s*{' "$file" | grep -vE '^[0-9]+:[[:space:]]*//' | head -5 | while read -r line; do
+            grep -n 'options\s*:\s*{' "$file" | grep -vE '^[0-9]+:[[:space:]]*(//|/?\*)' | head -5 | while read -r line; do
                 echo "      $line"
             done
             OPTIONS_OK=false

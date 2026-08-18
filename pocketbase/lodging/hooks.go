@@ -45,6 +45,13 @@ const (
 	collectionIngestIssues     = "lodging_ingest_issues"
 	collectionAvailability     = "lodging_availability"
 	collectionSlotMerges       = "lodging_slot_merges"
+	// The write-in occupancy pair (1500000161, kindred#2382). Separate from
+	// collectionAvailability because the two hold different facts: after the
+	// split, availability carries only the staff<->family ROLE override for
+	// the weekend, and these carry who is actually in the room -- live and
+	// per-scenario respectively.
+	collectionWriteIns      = "lodging_write_ins"
+	collectionWriteInsDraft = "lodging_write_ins_draft"
 )
 
 // yearScopedRef is one relation the year guard follows: the field to read on
@@ -113,6 +120,8 @@ var yearScopedRefs = map[string][]yearScopedRef{
 	collectionAssignments:      {{field: "units", target: collectionUnits}},
 	collectionAssignmentsDraft: {{field: "units", target: collectionUnits}},
 	collectionSlotMerges:       {{field: "unit", target: collectionUnits}},
+	collectionWriteIns:         {{field: "unit", target: collectionUnits}},
+	collectionWriteInsDraft:    {{field: "unit", target: collectionUnits}},
 	collectionUnits: {
 		{field: "area", target: collectionAreas},
 		{field: "parent_unit", target: collectionUnits},
@@ -168,6 +177,13 @@ var yearImmutableRefs = map[string][]dependentRef{
 		{collection: collectionAssignments, filter: "units.id ?= {:id}"},
 		{collection: collectionAssignmentsDraft, filter: "units.id ?= {:id}"},
 		{collection: collectionSlotMerges, filter: "unit = {:id}"},
+		// SINGLE relations (1500000161 declares `unit` MaxSelect 1 on both),
+		// so a plain `=` and no `.id` join -- the same arity as
+		// collectionAvailability and collectionSlotMerges above, NOT the
+		// `units.id ?= {:id}` shape the two placement tables need. See
+		// dependentRef's doc comment for which way that mistake is silent.
+		{collection: collectionWriteIns, filter: "unit = {:id}"},
+		{collection: collectionWriteInsDraft, filter: "unit = {:id}"},
 	},
 }
 

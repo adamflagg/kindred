@@ -1794,6 +1794,184 @@ func TestGuardYearImmutableAllowsAYearChangeWithNoDependents(t *testing.T) {
 	}
 }
 
+// newWriteInsTestApp is the lodging_write_ins / lodging_write_ins_draft twin
+// of newSlotMergesTestApp (kindred#2382).
+//
+// Both write-in collections are added as a SEPARATE, later step for the same
+// reason lodging_slot_merges is: TestGuardUnitYearSkipsAnAbsentCollection
+// needs at least one watched collection ABSENT from setupCollections to pin
+// wireHooks's collection-not-found skip path, and a fixture that carried
+// every table would silently retire that test.
+//
+// The shape mirrors the production tables (1500000161) down to the fields any
+// guard actually reads -- unit/session/year, plus `scenario` on the draft --
+// and leaves out session_cm_id, occupant_name and note the same way
+// setupCollections leaves out fields nothing under test reads. `scenario`
+// points at a stand-in saved_scenarios collection rather than being omitted,
+// because it is the one structural difference between the pair and dropping
+// it here would let a draft-only mistake pass unnoticed.
+//
+// Both collections have to exist BEFORE wireHooks runs: its dependent-
+// collection loop pre-filters yearImmutableRefs to collections that exist AT
+// BIND TIME, so creating either afterward would leave it permanently excluded
+// from refs for this app's lifetime.
+func newWriteInsTestApp(t *testing.T) core.App {
+	t.Helper()
+	app, err := tests.NewTestApp()
+	if err != nil {
+		t.Fatalf("NewTestApp: %v", err)
+	}
+	t.Cleanup(app.Cleanup)
+	setupCollections(t, app)
+
+	unitsCol := mustCollection(t, app, "lodging_units")
+	sessionsCol := mustCollection(t, app, "camp_sessions")
+
+	scenarios := core.NewBaseCollection("saved_scenarios")
+	if err := app.Save(scenarios); err != nil {
+		t.Fatalf("save saved_scenarios: %v", err)
+	}
+	scenariosCol := mustCollection(t, app, "saved_scenarios")
+
+	for _, name := range []string{"lodging_write_ins", "lodging_write_ins_draft"} {
+		writeIns := core.NewBaseCollection(name)
+		writeIns.Fields.Add(&core.RelationField{
+			Name: "unit", CollectionId: unitsCol.Id, MaxSelect: 1,
+		})
+		writeIns.Fields.Add(&core.RelationField{
+			Name: "session", CollectionId: sessionsCol.Id, MaxSelect: 1,
+		})
+		writeIns.Fields.Add(&core.NumberField{Name: "year"})
+		if name == "lodging_write_ins_draft" {
+			writeIns.Fields.Add(&core.RelationField{
+				Name: "scenario", CollectionId: scenariosCol.Id, MaxSelect: 1,
+			})
+		}
+		if err := app.Save(writeIns); err != nil {
+			t.Fatalf("save %s: %v", name, err)
+		}
+	}
+
+	wireHooks(app)
+	return app
+}
+
+// seedWriteIn creates a row in the named write-in collection pointing at unit
+// for the given year, and returns the save error rather than failing the test
+// -- the guard tests below want to assert on both outcomes.
+//
+// The error is wrapped for wrapcheck's benefit, but the wrap is not only
+// linter appeasement: a caller here asserts on PRESENCE, not on message, so
+// context about which collection was written is the only thing that makes a
+// surprise failure readable.
+func seedWriteIn(t *testing.T, app core.App, collection, unit string, year int) error {
+	t.Helper()
+	r := core.NewRecord(mustCollection(t, app, collection))
+	r.Set("unit", unit)
+	r.Set("session", seedSession(t, app))
+	r.Set("year", year)
+	if err := app.Save(r); err != nil {
+		return fmt.Errorf("save %s row for year %d: %w", collection, year, err)
+	}
+	return nil
+}
+
+// TestGuardUnitYearRejectsACrossYearWriteIn is lodging_write_ins's own entry
+// in yearScopedRefs (kindred#2382). It is the third single-relation case
+// (`unit`, MaxSelect 1) alongside lodging_availability and
+// lodging_slot_merges, and nothing about either of those exercises this
+// entry: a write-in table added to the schema but never registered in the map
+// leaves the suite green while a 2027 write-in silently holds a 2026 room.
+func TestGuardUnitYearRejectsACrossYearWriteIn(t *testing.T) {
+	t.Parallel()
+	app := newWriteInsTestApp(t)
+	unit := seedUnit(t, app, "test-unit-a", 2026)
+
+	if err := seedWriteIn(t, app, "lodging_write_ins", unit, 2027); err == nil {
+		t.Fatal("saved a 2027 write-in naming a 2026 unit; want a refusal")
+	}
+}
+
+// TestGuardUnitYearRejectsACrossYearDraftWriteIn is the draft grain's own
+// entry. Separate from the live one above for the same reason
+// TestGuardYearImmutableRejectsAUnitYearChangeWithADraftAssignmentDependent is
+// separate from its confirmed-board sibling: it is a different collection with
+// its own map entry, so a change that registered only the live table would
+// leave this uncovered.
+func TestGuardUnitYearRejectsACrossYearDraftWriteIn(t *testing.T) {
+	t.Parallel()
+	app := newWriteInsTestApp(t)
+	unit := seedUnit(t, app, "test-unit-a", 2026)
+
+	if err := seedWriteIn(t, app, "lodging_write_ins_draft", unit, 2027); err == nil {
+		t.Fatal("saved a 2027 draft write-in naming a 2026 unit; want a refusal")
+	}
+}
+
+// TestGuardUnitYearAllowsAWriteInSharingItsUnitsYear is the positive control
+// for the two refusals above, same shape as
+// TestGuardUnitYearAllowsAMatchingRow: without it, a guard that refused every
+// write to these tables would pass both refusal tests.
+func TestGuardUnitYearAllowsAWriteInSharingItsUnitsYear(t *testing.T) {
+	t.Parallel()
+	app := newWriteInsTestApp(t)
+	unit := seedUnit(t, app, "test-unit-a", 2026)
+
+	for _, collection := range []string{"lodging_write_ins", "lodging_write_ins_draft"} {
+		if err := seedWriteIn(t, app, collection, unit, 2026); err != nil {
+			t.Fatalf("refused a %s row sharing its unit's year: %v", collection, err)
+		}
+	}
+}
+
+// TestGuardYearImmutableRejectsAUnitYearChangeWithAWriteInDependent is
+// lodging_write_ins's REVERSE entry -- yearImmutableRefs[lodging_units].
+// Registering a table in yearScopedRefs alone still gets its own writes
+// checked, so its tests pass while guardYearImmutable quietly stops covering
+// a unit's year edit against it: exactly the omission kindred#2146's
+// TestYearRefMapsAgreeOnEveryRelation exists to make loud, asserted here
+// against the running engine rather than against the maps.
+func TestGuardYearImmutableRejectsAUnitYearChangeWithAWriteInDependent(t *testing.T) {
+	t.Parallel()
+	app := newWriteInsTestApp(t)
+	unit := seedUnit(t, app, "test-unit-a", 2027)
+	if err := seedWriteIn(t, app, "lodging_write_ins", unit, 2027); err != nil {
+		t.Fatalf("seeding a dependent write-in row: %v", err)
+	}
+
+	rec, err := app.FindRecordById(collectionUnits, unit)
+	if err != nil {
+		t.Fatalf("reloading the unit: %v", err)
+	}
+	rec.Set("year", 2028)
+
+	if err := app.Save(rec); err == nil {
+		t.Fatal("re-seasoned a unit with a dependent write-in row; want a refusal")
+	}
+}
+
+// TestGuardYearImmutableRejectsAUnitYearChangeWithADraftWriteInDependent is
+// the draft grain's reverse entry, separate from the live one for the reason
+// its yearScopedRefs sibling above gives.
+func TestGuardYearImmutableRejectsAUnitYearChangeWithADraftWriteInDependent(t *testing.T) {
+	t.Parallel()
+	app := newWriteInsTestApp(t)
+	unit := seedUnit(t, app, "test-unit-a", 2027)
+	if err := seedWriteIn(t, app, "lodging_write_ins_draft", unit, 2027); err != nil {
+		t.Fatalf("seeding a dependent draft write-in row: %v", err)
+	}
+
+	rec, err := app.FindRecordById(collectionUnits, unit)
+	if err != nil {
+		t.Fatalf("reloading the unit: %v", err)
+	}
+	rec.Set("year", 2028)
+
+	if err := app.Save(rec); err == nil {
+		t.Fatal("re-seasoned a unit with a dependent draft write-in row; want a refusal")
+	}
+}
+
 // relationPair is one (dependent -> target) edge, the unit of correspondence
 // between the two maps. yearScopedRefs states the edge from the dependent's
 // side (a key plus a ref.target); yearImmutableRefs states the same edge from

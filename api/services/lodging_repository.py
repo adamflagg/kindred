@@ -57,6 +57,8 @@ from api.constants.collections import (
     LODGING_SESSION_STATUS,
     LODGING_SLOT_MERGES,
     LODGING_UNITS,
+    LODGING_WRITE_INS,
+    LODGING_WRITE_INS_DRAFT,
     ORIGINAL_BUNK_REQUESTS,
     PERSON_CUSTOM_VALUES,
 )
@@ -412,6 +414,69 @@ class LodgingRepository:
             LODGING_SLOT_MERGES,
             query_params={
                 "filter": (f"session_cm_id = {session_cm_id} && year = {year} && {scenario_clause}"),
+                "sort": STABLE_SORT,
+            },
+        )
+
+    async def fetch_write_ins(self, year: int, session_cm_id: int) -> list[Any]:
+        """The LIVE board's write-ins for one weekend (kindred#2382).
+
+        A write-in is an occupancy the roster does not otherwise know about:
+        non-rostered weekend staff, or a paper registration for a family
+        arriving with no children. It used to be stored as
+        `lodging_availability.family_available = false`, where it shared a
+        column with the staff<->family ROLE override and inherited that
+        column's session-only scope.
+
+        NO SCENARIO PREDICATE, and that is not the old shape coming back. The
+        live board is a scope in its OWN RIGHT -- the owner's second
+        requirement on 2026-08-15, "we need to allow write ins to happen in
+        campminder prod, not just scenarios, for staff to properly evaluate
+        the board" -- so these rows live in their own table with no scenario
+        column at all, exactly as `lodging_assignments` does. A scenario's
+        write-ins come from `fetch_draft_write_ins` and REPLACE these; there
+        is no overlay.
+
+        NOTHING READS THIS YET. PR 1 of kindred#2382 lands the tables and this
+        CRUD dark; `write_in_covers` still resolves write-ins out of
+        `lodging_availability` until PR 2 switches it.
+        """
+        return await self._page(
+            LODGING_WRITE_INS,
+            query_params={
+                "filter": f"session_cm_id = {session_cm_id} && year = {year}",
+                "sort": STABLE_SORT,
+            },
+        )
+
+    async def fetch_draft_write_ins(self, year: int, session_cm_id: int, scenario_id: str) -> list[Any]:
+        """One scenario's write-ins for one session -- ALL of them.
+
+        REPLACE, not overlay, matching `fetch_draft_assignments` under
+        kindred#1974: these rows are the scenario's whole set of write-ins, so
+        a unit with no row here holds no write-in in this scenario, whatever
+        the live board says. A scenario is seeded by an explicit copy (both
+        seed paths, by owner ruling 2026-08-16) rather than by rendering the
+        live board through the gaps.
+
+        `fetch_slot_merges` is the near neighbour that does the opposite --
+        it unions the weekend-level tier in -- and the difference is what the
+        row records. A draw level is a fact about the WEEKEND that no sync
+        writes, so a shared tier costs nothing. A write-in is an occupancy,
+        the same kind of fact as a placement, so it follows the placement
+        rule.
+
+        `scenario_id` is client-supplied and escaped, for the reason
+        `fetch_draft_assignments` spells out. The weekend is named by
+        `session_cm_id`, a number, so there is no literal for an injected `||`
+        to close.
+        """
+        return await self._page(
+            LODGING_WRITE_INS_DRAFT,
+            query_params={
+                "filter": (
+                    f'session_cm_id = {session_cm_id} && year = {year} && scenario = "{pb_escape(scenario_id)}"'
+                ),
                 "sort": STABLE_SORT,
             },
         )
@@ -1083,6 +1148,71 @@ class LodgingRepository:
 
     async def delete_availability(self, record_id: str) -> None:
         await asyncio.to_thread(self.pb.collection(LODGING_AVAILABILITY).delete, record_id)
+
+    async def find_write_in(self, year: int, session_cm_id: int, unit_pb_id: str) -> Any | None:
+        """The one LIVE write-in for a unit this weekend, or None.
+
+        Keyed exactly as `idx_lodging_write_in_unique` is
+        (session_cm_id, year, unit), so the lookup either finds the row the
+        next write would collide with or there is none -- the same argument
+        `find_availability_override` makes for the table this half moves off.
+
+        `unit_pb_id` arrives in the request body and is escaped. Unescaped, an
+        injected `||` would return some OTHER weekend's row, which the caller
+        then updates or deletes.
+        """
+        rows = await self._page(
+            LODGING_WRITE_INS,
+            query_params={
+                "filter": (f'session_cm_id = {session_cm_id} && year = {year} && unit = "{pb_escape(unit_pb_id)}"'),
+                "sort": STABLE_SORT,
+            },
+        )
+        return rows[0] if rows else None
+
+    async def find_draft_write_in(self, year: int, session_cm_id: int, scenario_id: str, unit_pb_id: str) -> Any | None:
+        """The one write-in for a unit in a scenario, or None.
+
+        The live key plus `scenario`, matching
+        `idx_lodging_write_in_draft_unique` -- two scenarios may hold
+        contradicting write-ins for one unit without colliding, which is the
+        whole point of the draft grain.
+
+        TWO client-supplied strings reach this filter, `scenario_id` off the
+        `?scenario=` query parameter and `unit_pb_id` from the request body,
+        and both are escaped: either one unescaped widens the predicate past
+        its own scoping, and on a lookup the caller updates or deletes what
+        comes back.
+        """
+        rows = await self._page(
+            LODGING_WRITE_INS_DRAFT,
+            query_params={
+                "filter": (
+                    f"session_cm_id = {session_cm_id} && year = {year} "
+                    f'&& scenario = "{pb_escape(scenario_id)}" && unit = "{pb_escape(unit_pb_id)}"'
+                ),
+                "sort": STABLE_SORT,
+            },
+        )
+        return rows[0] if rows else None
+
+    async def create_write_in(self, data: dict[str, Any]) -> Any:
+        return await asyncio.to_thread(self.pb.collection(LODGING_WRITE_INS).create, data)
+
+    async def update_write_in(self, record_id: str, data: dict[str, Any]) -> Any:
+        return await asyncio.to_thread(self.pb.collection(LODGING_WRITE_INS).update, record_id, data)
+
+    async def delete_write_in(self, record_id: str) -> None:
+        await asyncio.to_thread(self.pb.collection(LODGING_WRITE_INS).delete, record_id)
+
+    async def create_draft_write_in(self, data: dict[str, Any]) -> Any:
+        return await asyncio.to_thread(self.pb.collection(LODGING_WRITE_INS_DRAFT).create, data)
+
+    async def update_draft_write_in(self, record_id: str, data: dict[str, Any]) -> Any:
+        return await asyncio.to_thread(self.pb.collection(LODGING_WRITE_INS_DRAFT).update, record_id, data)
+
+    async def delete_draft_write_in(self, record_id: str) -> None:
+        await asyncio.to_thread(self.pb.collection(LODGING_WRITE_INS_DRAFT).delete, record_id)
 
     async def find_slot_merge(self, year: int, session_cm_id: int, unit_pb_id: str, scenario: str) -> Any | None:
         """The one merge row for a container at this tier, or None.
