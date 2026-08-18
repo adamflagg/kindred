@@ -177,6 +177,71 @@ describe('resolveWeekendRef', () => {
   })
 })
 
+describe('weekendLabel — the named weekends CampMinder never numbered', () => {
+  /*
+   * Owner ruling, 2026-08-18, after being shown the whole catalogue.
+   *
+   * 2017-2019 ran SIX family weekends, not four: Spring, Keshet, Summer, and
+   * Fall I/II/III. The numbering that arrived in 2020 maps onto them by slot,
+   * and the owner assigned it directly:
+   *
+   *   > "Spring family camp = FC1. fall 1, 2, 3, are the new 2, 3, 4 —
+   *   >  basically a year that had a spring, the fall numbers get bumped one."
+   *   > "Keshet LGBTQ etc as just Keshet"
+   *   > "actually WFC is better than my suggestion, and RSC as well, yes"
+   *
+   * An EXPLICIT MAP rather than a rule, because the set is closed — these are
+   * historical names that cannot gain a member — and every previous attempt at
+   * a rule got one of them wrong. Initials collapsed Spring and Summer onto
+   * `SFC` and Fall I/II/III onto `FFCI`; printing prose names in full was
+   * correct but long. A map is the only form that is both short and right.
+   */
+  const CATALOGUE: ReadonlyArray<readonly [string, string]> = [
+    ['Spring Family Camp', 'FC1'],
+    ['Fall Family Camp I', 'FC2'],
+    ['Fall Family Camp II', 'FC3'],
+    ['Fall Family Camp III', 'FC4'],
+    ['Keshet LGBTQ Family Camp', 'Keshet'],
+    ['Summer Family Camp', 'Summer FC'],
+    ['Winter Family Camp', 'WFC'],
+    ['JFAM Winter Family Camp', 'WFC'],
+    ['Ready, Set, Camp', 'RSC'],
+    ['Spring Family Retreat', 'Spring FR'],
+  ]
+
+  it.each(CATALOGUE)('labels %s as %s', (name, expected) => {
+    expect(weekendLabel(name)).toBe(expected)
+  })
+
+  it('still reads a CampMinder number straight off a numbered weekend', () => {
+    expect(weekendLabel('Family Camp 1: Memorial Day Weekend')).toBe('FC1')
+    expect(weekendLabel('Family Camp 8: JFAM Weekend (w/ kids 10 and under)')).toBe('FC8')
+  })
+
+  it('never labels two weekends of one season alike', () => {
+    // The guarantee the initials rule broke. 2017-2019 is the season that
+    // exercises it: six weekends, four of them sharing the word "Family".
+    const season2017 = [
+      'Spring Family Camp',
+      'Keshet LGBTQ Family Camp',
+      'Summer Family Camp',
+      'Fall Family Camp I',
+      'Fall Family Camp II',
+      'Fall Family Camp III',
+    ]
+    const labels = season2017.map(weekendLabel)
+    expect(new Set(labels).size).toBe(season2017.length)
+  })
+
+  it('falls back to the short name for a weekend nobody has mapped', () => {
+    // A name the catalogue has never seen must still read as itself, never as
+    // an id and never as invented initials.
+    expect(weekendLabel('Harvest Family Gathering')).toBe(
+      shortWeekendName('Harvest Family Gathering')
+    )
+  })
+})
+
 describe('weekendLabel', () => {
   /**
    * The owner's 2026-08-18 ruling on kindred#2393: a weekend prints as `FC1`,
@@ -195,21 +260,18 @@ describe('weekendLabel', () => {
     expect(weekendLabel('Family Camp 1')).toBe('FC1')
   })
 
-  it('prints a weekend CampMinder never numbered by its own name', () => {
-    // ⚠️ THE LICENCE IS FOR `FCx`, AND ONLY FOR `FCx`. The owner's ruling
-    // named the form staff already say out loud — "FC1" — and CampMinder is
-    // what makes that form safe: the number IS the weekend's identity, so the
-    // abbreviation cannot name the wrong one. Nothing supplies that guarantee
-    // for a prose name, and an abbreviation invented for one is the exact
-    // thing the top-of-file note has always argued against.
+  it('prints an UNMAPPED weekend by its own name, never by invented initials', () => {
+    // ⚠️ THE LICENCE IS FOR `FCx` AND FOR THE EXPLICIT MAP. Nothing else may
+    // be abbreviated. CampMinder's number is safe because the number IS the
+    // weekend's identity; the map is safe because the owner assigned each
+    // entry by hand against the full catalogue. A name that is neither is a
+    // weekend nobody has ruled on, and inventing initials for it is what gave
+    // "Spring Family Camp" and "Summer Family Camp" the same label.
     //
-    // Measured on the production snapshot rather than argued: initials alone
-    // give "Spring Family Camp" and "Summer Family Camp" (both 2017-2019) the
-    // SAME label, and collapse "Fall Family Camp I", "II" and "III" onto one —
-    // so a 2018 row for the family that went to Fall II would have read
-    // "FFCI", naming a different weekend. See the season sweep below.
-    expect(weekendLabel('Ready, Set, Camp')).toBe('Ready, Set, Camp')
-    expect(weekendLabel('JFAM Winter Family Camp')).toBe('JFAM Winter Family Camp')
+    // This assertion previously named "Ready, Set, Camp" and "JFAM Winter
+    // Family Camp"; both are in the map now (RSC, WFC), so it uses a name the
+    // catalogue has never carried.
+    expect(weekendLabel('Harvest Family Gathering')).toBe('Harvest Family Gathering')
   })
 
   it('gives every weekend of a legacy season a distinct label', () => {

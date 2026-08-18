@@ -165,28 +165,70 @@ export function weekendSlug(name: string): string {
  * Uppercased, because the slug is lowercase for a URL and `fc1` on a screen
  * reads as a typo.
  *
- * ⚠️ ONLY A WEEKEND CAMPMINDER NUMBERED IS ABBREVIATED. `FC1` is safe because
- * the number IS the weekend's identity — the abbreviation cannot name a
- * different weekend, and it is the form staff already say out loud. Nothing
- * supplies that guarantee for a prose name, so those print in full and the
- * top-of-file note's argument stands unamended for them.
+ * ⚠️ A CAMPMINDER NUMBER IS READ OFF; EVERYTHING ELSE COMES FROM AN EXPLICIT
+ * MAP. `FC1` is safe because the number IS the weekend's identity — the
+ * abbreviation cannot name a different weekend, and it is the form staff say
+ * out loud. Nothing supplies that guarantee for a prose name.
  *
- * That is not a stylistic hedge, it is measured. Initials alone give both
- * "Spring Family Camp" and "Summer Family Camp" the label `SFC`, and collapse
- * "Fall Family Camp I", "II" and "III" onto `FFCI` — so a 2018 journey row for
- * a family that went to Fall II would have read as Fall I. All three names are
- * live in the 2017-2019 seasons the journey renders: 891 of 3,040
- * single-weekend household-years sit in one, and 5 of the 64 multi-weekend
- * ones would have printed one label twice on a single line and offered two
- * members-modal tabs nobody could tell apart. Under this rule every season in
- * the catalogue, 2017 through 2026, labels its weekends distinctly.
+ * Initials were tried and are measurably wrong: they give both "Spring Family
+ * Camp" and "Summer Family Camp" the label `SFC`, and collapse "Fall Family
+ * Camp I", "II" and "III" onto `FFCI` — so a 2018 journey row for a family
+ * that went to Fall II read as Fall I. 891 of 3,040 single-weekend
+ * household-years sit in one of those names, and 5 of the 64 multi-weekend
+ * ones printed one label twice on a line and offered two members-modal tabs
+ * nobody could tell apart.
+ *
+ * Printing them in full was correct but long. `NAMED_WEEKEND_LABELS` is the
+ * third answer and the only one that is both: the set of un-numbered weekend
+ * names is CLOSED — they are history and cannot gain a member — so a map is
+ * exhaustive in a way a rule can never be.
+ *
+ * The legacy assignments are the owner's, 2026-08-18, made against the full
+ * catalogue: 2017-2019 ran SIX weekends (Spring, Keshet, Summer, Fall I/II/III)
+ * and the 2020 numbering maps onto them by slot —
+ *
+ *   > "Spring family camp = FC1. fall 1, 2, 3, are the new 2, 3, 4 — basically
+ *   >  a year that had a spring, the fall numbers get bumped one."
+ *
+ * Keshet and Summer keep names rather than numbers, which is what makes that
+ * bumping consistent: they sit chronologically between Spring and Fall I, so
+ * numbering them would push Fall to 3/4/5.
  *
  * ⚠️ Falls back to `shortWeekendName`, NEVER to the CampMinder id. `weekendRef`
  * falls back to the id because a URL must resolve; a label must be readable,
  * and `1000005` names nothing a staff member recognises. That is also why this
  * takes a name and not a session: it structurally cannot emit an id.
  */
+/**
+ * Every weekend CampMinder never numbered, and what it reads as.
+ *
+ * Keyed on the FULL name as CampMinder stores it, so a lookup cannot half-match
+ * — "Winter Family Camp" and "JFAM Winter Family Camp" are the same weekend
+ * under two spellings and both must land on `WFC`.
+ *
+ * A miss falls through to `shortWeekendName`, so a weekend nobody has mapped
+ * reads as itself rather than as invented initials.
+ */
+const NAMED_WEEKEND_LABELS: Readonly<Record<string, string>> = {
+  // 2017-2019, mapped onto the 2020 numbering by slot (owner, 2026-08-18).
+  'Spring Family Camp': 'FC1',
+  'Fall Family Camp I': 'FC2',
+  'Fall Family Camp II': 'FC3',
+  'Fall Family Camp III': 'FC4',
+  // Named, not numbered: both sit between Spring and Fall I, so numbering them
+  // would push Fall to 3/4/5 and break the owner's bumping rule.
+  'Keshet LGBTQ Family Camp': 'Keshet',
+  'Summer Family Camp': 'Summer FC',
+  // 2023-2026 additions that never took a number.
+  'Winter Family Camp': 'WFC',
+  'JFAM Winter Family Camp': 'WFC',
+  'Ready, Set, Camp': 'RSC',
+  'Spring Family Retreat': 'Spring FR',
+}
+
 export function weekendLabel(name: string): string {
+  const mapped = NAMED_WEEKEND_LABELS[name.trim()]
+  if (mapped !== undefined) return mapped
   const words = identityWords(name)
   // The SAME final word `weekendSlug`'s trailing-number rule keeps whole. A
   // lone number is not a numbered weekend, it is a year ("2026"), and there is

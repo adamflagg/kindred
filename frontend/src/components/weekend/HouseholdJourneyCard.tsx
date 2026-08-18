@@ -184,16 +184,32 @@ function JourneyRows({
                   carry a wing or sub-unit suffix — exactly the substring
                   `truncate` chops — so summer's treatment does not transfer
                   here and this row earns its own. */}
-              {/* Housing on one line, the weekends on the next (kindred#2393,
-                  owner ruling 2026-08-18). A column rather than a fourth item
-                  in the row: the panel is `w-[26rem]` = 416px and already
-                  carries a year, a housing name that wraps, a chip and an
-                  action, so a four-weekend list on the same line is not a
-                  line. `min-w-0` moves out here with it — it is what lets the
-                  flex child shrink below its content width, which is what
-                  makes the kindred#2253 wrap happen instead of the row
-                  overflowing. */}
-              <div className="flex min-w-0 flex-col">
+              {/* Housing and the weekends on ONE wrapping line, separated by a
+                  dash (kindred#2393, owner ruling 2026-08-18 — revised).
+
+                  It was a two-row column first, on the reasoning that a
+                  416px panel already carries a year, a housing name, a chip
+                  and an action. Measured against the production snapshot, the
+                  weekend string is far shorter than that assumed: median 3
+                  characters ("FC1"), p95 9, and only 65 of 3,113 journey rows
+                  name more than one weekend at all. Spending a whole row on a
+                  three-character string, on every row of every year, to serve
+                  2% of them is the wrong trade.
+
+                  `flex-wrap` is what makes it safe: the worst real row is
+                  "FC1 · FC2 · FC3 · Summer FC" (27 chars) beside a 24-char
+                  cabin, which wraps to the second line it would have occupied
+                  anyway. So the bad case is no worse than the old default and
+                  the common case is a row shorter.
+
+                  A DASH here and `·` between weekends, deliberately: one
+                  separator for both would read as a flat list of four things
+                  rather than a cabin and the weekends it was used for.
+
+                  `min-w-0` stays — it is what lets the flex child shrink below
+                  its content width, which is what makes the kindred#2253 wrap
+                  happen instead of the row overflowing. */}
+              <div className="flex min-w-0 flex-wrap items-baseline gap-x-1.5">
                 <span
                   data-testid="household-journey-housing"
                   className={`flex min-w-0 items-center gap-1 text-sm ${
@@ -244,12 +260,18 @@ function JourneyRows({
                   enrolled child (2020's cancelled season, 2021's adults-only
                   rows), not a household that attended none. */}
                 {weekends.length > 0 && (
-                  <span
-                    data-testid="household-journey-weekends"
-                    className="text-muted-foreground text-xs"
-                  >
-                    {weekends.join(' · ')}
-                  </span>
+                  <>
+                    {/* Its own element, not a prefix inside the label span, so
+                        the span's text stays exactly the weekend list — what
+                        every assertion about this line reads. */}
+                    <span className="text-muted-foreground/50 text-xs">—</span>
+                    <span
+                      data-testid="household-journey-weekends"
+                      className="text-muted-foreground text-xs"
+                    >
+                      {weekends.join(' · ')}
+                    </span>
+                  </>
                 )}
               </div>
 
