@@ -41,6 +41,21 @@
  * and have no way to learn who is in it. Clearing asks for neither: it restores
  * the unit's standing role rather than asserting anything.
  *
+ * ## What this control no longer REFUSES
+ *
+ * A SPACE THAT ALREADY HOLDS A FAMILY — kindred#2432, owner ruling 2026-08-18:
+ * *"we should be able to add families to any write in space, or add a write in
+ * to a family space — regardless of which came first."* This carried an
+ * `occupied` prop until then, forwarded straight into `availabilityAction`
+ * under #2090's rule that a write-in and a placement were mutually exclusive
+ * states. The prop is GONE rather than ignored: the one case staff asked for is
+ * a paper registration — recordable ONLY as a write-in, since it has no
+ * CampMinder record — sharing a cabin with one placed CampMinder family, and a
+ * control that vanished on an occupied card refused exactly that.
+ *
+ * A write-in NAMES AN OCCUPANT. It does not CLOSE THE SPACE, which is why
+ * `dragPlacement` gives up the mirror-image refusal in the same change.
+ *
  * ## What this control no longer does
  *
  * REMOVE A WRITE-IN. Until kindred#2381 it offered a "Clear Write-in" naming
@@ -109,15 +124,6 @@ export interface UnitAvailabilityControlProps {
    * the board it was made on — see `useUnitAvailability`.
    */
   canManage: boolean
-  /**
-   * Whether the slot this unit sits in already holds a party this scenario —
-   * a fact read off the CARD, never off availability itself. Owner ruling on
-   * #2090: a write-in and a placement are mutually exclusive states, so an
-   * occupied unit offers no write-in action. Kept separate from `canManage`:
-   * folding occupancy into the permission gate would resurrect the scenario
-   * dimension 1500000135 deleted.
-   */
-  occupied: boolean
   /** True while THIS unit's write is in flight. */
   isSaving: boolean
   onSubmit: (write: UnitAvailabilityWrite) => void
@@ -126,7 +132,6 @@ export interface UnitAvailabilityControlProps {
 export function UnitAvailabilityControl({
   unit,
   canManage,
-  occupied,
   isSaving,
   onSubmit,
 }: UnitAvailabilityControlProps) {
@@ -138,7 +143,7 @@ export function UnitAvailabilityControl({
   const [note, setNote] = useState('')
   const [isOpen, setIsOpen] = useState(false)
   const [wantsRequired, setWantsRequired] = useState(false)
-  const action = availabilityAction(unit, occupied)
+  const action = availabilityAction(unit)
 
   const close = () => {
     setIsOpen(false)

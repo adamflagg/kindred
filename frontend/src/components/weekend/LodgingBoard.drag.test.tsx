@@ -356,8 +356,10 @@ describe('LodgingBoard — placing a family from the space itself (kindred#2080)
   it('mounts the control on an empty space while placement is live', () => {
     boardWithUnplaced()
     expect(pickerFor('Cedar 2')).toBeInTheDocument()
-    // Cedar 1 already holds a family, so it offers nothing — the same rule
-    // that hides Hold on an occupied card.
+    // Cedar 1 already holds a family, so it offers nothing. NOT the write-in
+    // rule and no longer a mirror of Hold: kindred#2432 struck Hold's own
+    // occupancy gate, and a second family still reaches a shareable space by
+    // drag, which stays the deliberate path for a share.
     expect(
       screen.queryByRole('combobox', { name: /place a family in cedar 1/i })
     ).not.toBeInTheDocument()

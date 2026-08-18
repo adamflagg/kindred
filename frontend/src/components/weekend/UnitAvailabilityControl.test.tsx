@@ -88,7 +88,6 @@ function renderControl(props: Partial<React.ComponentProps<typeof UnitAvailabili
     <UnitAvailabilityControl
       unit={unit()}
       canManage
-      occupied={false}
       isSaving={false}
       onSubmit={onSubmit}
       {...props}
@@ -106,18 +105,19 @@ describe('UnitAvailabilityControl', () => {
     expect(screen.queryByRole('button')).not.toBeInTheDocument()
   })
 
-  it('offers nothing to write into an OCCUPIED unit — a write-in and a placement are mutually exclusive (#2090)', () => {
-    // A space that already has a family assigned may not also be marked
-    // held. `occupied` is a fact from the slot's own parties, kept separate
-    // from `canManage`'s permission gate — folding it in there would
-    // resurrect the scenario dimension 1500000135 deleted.
-    renderControl({ occupied: true })
-
-    expect(screen.queryByRole('button')).not.toBeInTheDocument()
-  })
-
-  it('still offers to write into an unoccupied unit (regression guard)', () => {
-    renderControl({ occupied: false })
+  it('takes no occupancy fact at all, so it cannot refuse on one (#2432)', () => {
+    /*
+     * This carried an `occupied` prop until kindred#2432, forwarded straight
+     * into `availabilityAction`, and returned nothing when it was true —
+     * #2090's rule that a write-in and a placement were mutually exclusive.
+     *
+     * Owner ruling 2026-08-18 reversed it in both directions, so the prop is
+     * GONE rather than ignored: a caller with an occupancy fact to hand cannot
+     * spell it here. The occupied-card behaviour is pinned where the fact
+     * actually lives — `LodgingUnitCard.test.tsx`, "the shared occupant well
+     * (#2432)" — because this component no longer has an input for it.
+     */
+    renderControl()
 
     expect(screen.getByRole('button', { name: /write in/i })).toBeInTheDocument()
   })
@@ -392,13 +392,13 @@ describe('UnitAvailabilityControl', () => {
     })
   })
 
-  it('still offers nothing on a MERGED building that holds a family (#2090)', () => {
-    renderControl({
-      unit: unit({ is_container: true, is_combined: true }),
-      occupied: true,
-    })
+  it('offers a write-in on a MERGED building (#2432)', () => {
+    // Occupancy no longer reaches this control, so a combined building offers
+    // the action whether or not a family is placed in it. The card-level pin
+    // for the occupied half is in `LodgingUnitCard.test.tsx`.
+    renderControl({ unit: unit({ is_container: true, is_combined: true }) })
 
-    expect(screen.queryByRole('button')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /write in/i })).toBeInTheDocument()
   })
 
   it('abandons BOTH fields when the form is cancelled', async () => {

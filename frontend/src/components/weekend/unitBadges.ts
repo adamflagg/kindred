@@ -313,12 +313,31 @@ export type AvailabilityPrompt = 'occupant' | 'reason' | 'none'
  * Lives beside `reservationBadge` so the two cannot drift. A card badged
  * "Write-in" that offers to "Write in" says two things about one cabin.
  *
- * `occupied` names a fact from the SLOT (whether any party is placed on this
- * card this scenario), never folded into `canManage`'s permission gate.
- * Owner ruling on #2090: written-in and occupied are mutually exclusive
- * states, so a space that already holds a family may not also be written into
- * — but this must not become a THIRD dimension threaded onto availability
- * itself.
+ * OCCUPANCY IS NOT AN INPUT HERE, and its absence is the ruling rather than an
+ * oversight. This took an `occupied` argument from the slot until kindred#2432,
+ * under the #2090 rule that "written-in and occupied are mutually exclusive
+ * states, so a space that already holds a family may not also be written into".
+ *
+ * ⚠️ THE RULE THAT REPLACED IT — owner ruling 2026-08-18, and the next reader
+ * must not restore the gate from the shape of the code:
+ *
+ * > *"we should be able to add families to any write in space, or add a write
+ * > in to a family space — regardless of which came first."*
+ *
+ * NAMING AN OCCUPANT AND CLOSING A SPACE ARE NOW SEPARATE FACTS. #2090 was
+ * ruled when hold and write-in were the same act (#2078, *"hold IS the
+ * write-in"*), and under that collapse "occupied and held" really was
+ * contradictory. The collapse has one real exception: a paper registration has
+ * no CampMinder record, so it cannot be placed on the board at all and a
+ * write-in is the ONLY way to record it — and such a party can legitimately
+ * share a cabin with a placed family. Refusing here made the one case the
+ * control exists for the one case it would not do.
+ *
+ * So the argument is GONE rather than defaulted or ignored: a caller that still
+ * has an occupancy fact to hand cannot spell it, which is how the reversal
+ * stays reversed. Symmetry is the point — `dragPlacement.resolveDrop` gives up
+ * the mirror-image refusal (a family onto a written-into space) in the same
+ * change, and neither direction may re-grow one alone.
  *
  * `family_available_override` IS still weekend-level and scenario-less, and
  * that is now a statement about the staff↔family ROLE alone: "we're moving
@@ -329,10 +348,7 @@ export type AvailabilityPrompt = 'occupant' | 'reason' | 'none'
  * returns null here and is removed from its own card, because one action
  * cannot name one row out of the several a merged card may cover.
  */
-export function availabilityAction(
-  unit: LodgingUnitRow,
-  occupied = false
-): AvailabilityAction | null {
+export function availabilityAction(unit: LodgingUnitRow): AvailabilityAction | null {
   // A SPLIT container is a whole-building aggregate, never a bookable room:
   // `drawnUnits` descends past it and `resolveDrop` rejects it as a target, so
   // an availability row written against one is a row no surface could show or
@@ -395,10 +411,13 @@ export function availabilityAction(
   // holding the row has no card at all — is closed by the X rather than by
   // this action, so returning null here strands nothing.
   //
-  // ABOVE the `occupied` gate, exactly where the clear was: a written-into
-  // card must not fall through to the 'Write in' branch at the bottom and
-  // offer to write a SECOND occupant into a space that already resolves an own
-  // row ahead of its descendants — which would hide the ones already there.
+  // THIS gate survives kindred#2432 and the one below it does not, which is
+  // the distinction worth holding on to: this one is about WRITE-IN ARITY, not
+  // about occupancy. A written-into card must not fall through to the 'Write
+  // in' branch at the bottom and offer to write a SECOND occupant into a space
+  // that already resolves an own row ahead of its descendants — which would
+  // hide the ones already there. A card that holds a FAMILY has no such
+  // problem, and since #2432 it keeps the action.
   if (hasWriteIn(unit)) return null
   // Any other ROLE override of its own — this branch has never been about
   // occupancy and is less so since kindred#2382. Two states reach it, both
@@ -421,10 +440,15 @@ export function availabilityAction(
   if (unit.inventory_class === 'staff_default') {
     return { kind: 'release', label: 'Release', familyAvailable: true, prompt: 'reason', ...own }
   }
-  // An already-occupied space offers no write-in: the fix for #2090. Only
-  // reachable here, past both branches above, so an already-held unit keeps
-  // its `clear` action regardless of occupancy — clearing only ever REDUCES
-  // the conflict, so it is never the state that needs blocking.
-  if (occupied) return null
+  // THE WRITE-IN, offered whether or not a family is already placed here —
+  // kindred#2432 struck the `if (occupied) return null` that used to sit on
+  // this line under #2090. See the docstring above for the ruling that
+  // replaced it; the short form is that this action NAMES AN OCCUPANT and no
+  // longer CLOSES THE SPACE, so there is nothing for occupancy to contradict.
+  //
+  // `familyAvailable: false` is unchanged and is not a contradiction of that:
+  // it is the value `set_availability` routes on to upsert a `lodging_write_ins`
+  // row (`_upsert_row(what='write-in', ...)`), not a claim that the space is
+  // shut. The two facts share one wire field and separate at the table.
   return { kind: 'hold', label: 'Write in', familyAvailable: false, prompt: 'occupant', ...own }
 }

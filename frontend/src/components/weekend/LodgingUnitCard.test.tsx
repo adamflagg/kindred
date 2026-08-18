@@ -466,39 +466,124 @@ describe('LodgingUnitCard', () => {
   })
 })
 
-describe('LodgingUnitCard — a held unit refuses the drop outright (#2087)', () => {
-  // The `disabled` half of the fix. `resolveDrop` (dragPlacement.test.ts) is
-  // the load-bearing check — #2080's picker never touches a droppable at
-  // all — but `useDroppable`'s own `disabled` flag is what keeps dnd-kit
-  // from ever reporting `isOver` for a held card in the first place, which
-  // is what this asserts.
+describe('LodgingUnitCard — a written-into unit still takes a family (#2432)', () => {
+  // The AFFORDANCE half of the reversal. `resolveDrop` (dragPlacement.test.ts)
+  // is the load-bearing check — #2080's picker never touches a droppable at
+  // all — but `useDroppable`'s own `disabled` flag is what decides whether
+  // dnd-kit ever reports `isOver` here, so a reversal that moved only the
+  // resolver would leave the card refusing to light up for a drop it accepts.
   function card(container: HTMLElement): HTMLElement {
     const el = container.querySelector('[data-unit-card]')
     if (!el) throw new Error('no card rendered')
     return el as HTMLElement
   }
 
-  const held = unit({ write_ins: [cover()], is_family_available: false })
+  const writtenInto = unit({ write_ins: [cover()], is_family_available: false })
 
-  it('keeps the droppable disabled on a held unit even while placement is live', () => {
+  it('keeps the droppable ENABLED on a written-into unit while placement is live', () => {
     overDroppableId = unitDroppableId('cedar-1')
     const { container } = render(
       <LodgingUnitCard
-        slot={slot({ unit: held })}
+        slot={slot({ unit: writtenInto })}
         hue="hsl(160 45% 42%)"
         canPlace
         onOpenParty={vi.fn()}
       />
     )
-    expect(card(container)).not.toHaveClass('border-primary')
+    expect(card(container)).toHaveClass('border-primary')
   })
 
-  it('keeps an ordinary unheld unit droppable enabled (regression guard)', () => {
+  it('keeps an ordinary unwritten unit droppable enabled (regression guard)', () => {
     overDroppableId = unitDroppableId('cedar-1')
     const { container } = render(
       <LodgingUnitCard slot={slot()} hue="hsl(160 45% 42%)" canPlace onOpenParty={vi.fn()} />
     )
     expect(card(container)).toHaveClass('border-primary')
+  })
+
+  it('still refuses every card while a MERGE drag is in flight', () => {
+    // The one `disabled` reason that survives, and it is not about occupancy:
+    // a card mid-merge-drag sits over two overlapping droppables and which one
+    // dnd-kit resolves `over` to would be decided by hook registration order.
+    overDroppableId = unitDroppableId('cedar-1')
+    const { container } = render(
+      <LodgingUnitCard
+        slot={slot()}
+        hue="hsl(160 45% 42%)"
+        canPlace
+        mergeSourceUnit={unit({ code: 'cedar-2', unit_id: 'u2', parent_code: 'house' })}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(card(container)).not.toHaveClass('border-primary')
+  })
+})
+
+describe('LodgingUnitCard — the shared occupant well (#2432)', () => {
+  // The first card the board ever draws with a `WriteInCard` and a
+  // `FamilyCard` in it at once, which makes it #2091's visual precedent by
+  // default (#2091 — marking a space that holds two families — is unbuilt).
+  // ONE well, stacked in the order the well already uses, no divider and no
+  // new mark: a shared space is not a new KIND of card, it is a card with two
+  // occupants in it.
+  const HUE = 'hsl(160 45% 42%)'
+
+  function renderShared(props: Record<string, unknown> = {}) {
+    return render(
+      <LodgingUnitCard
+        slot={slot({
+          unit: unit({ write_ins: [cover({ occupant_name: 'Ava Martinez' })] }),
+          parties: [party()],
+        })}
+        hue={HUE}
+        canPlace
+        canSetAvailability
+        onSetAvailability={vi.fn()}
+        onOpenParty={vi.fn()}
+        {...props}
+      />
+    )
+  }
+
+  it('draws the write-in and the placed family together, neither hiding the other', () => {
+    renderShared()
+    // The write-in's occupant, from `WriteInCard`.
+    expect(screen.getByText('Ava Martinez')).toBeInTheDocument()
+    // The placed family, from `FamilyCard`, which titles itself with the
+    // party's first adult rather than the household surname.
+    expect(screen.getByText('Emma Johnson')).toBeInTheDocument()
+  })
+
+  it('offers to write somebody into a space that already holds a family', () => {
+    // The OTHER direction of the symmetric ruling, and the one the reporter
+    // asked for: a paper registration has no CampMinder record, so a write-in
+    // is the only way to record it — and the control used to vanish the moment
+    // a CampMinder family was placed in the space.
+    renderShared({ slot: slot({ parties: [party()] }) })
+    expect(screen.getByRole('button', { name: 'Write in Cedar 1' })).toBeInTheDocument()
+  })
+
+  it('offers to write into a MERGED building that already holds a family', () => {
+    renderShared({
+      slot: slot({
+        unit: unit({ code: 'house', name: 'House', is_container: true, is_combined: true }),
+        parties: [party({ unit_code: 'house', unit_name: 'House', unit_codes: ['house'] })],
+      }),
+    })
+    expect(screen.getByRole('button', { name: 'Write in House' })).toBeInTheDocument()
+  })
+
+  it('keeps the placement’s real bed count rather than the wholesale em dash', () => {
+    // A write-in alone occupies WHOLESALE and reports `—`, because it carries
+    // no party size. Once a family is placed alongside it the card has a real
+    // number about real people and must not go quiet about them.
+    //
+    // ⚠️ That number UNDERSTATES a shared space, because the write-in's own
+    // head is not in it — filed as kindred#2439 and explicitly not a blocker:
+    // an understated count on a space staff can now share beats a space they
+    // could not share at all.
+    renderShared()
+    expect(screen.getByTestId('unit-occupancy')).toHaveTextContent('3/5')
   })
 })
 
@@ -2219,21 +2304,26 @@ describe('LodgingUnitCard — placing a family from the space itself (kindred#20
     expect(onPlaceParty.mock.calls[0]?.[1]).toEqual(unplaced)
   })
 
-  it('is ABSENT on a held space, not dimmed', () => {
+  it('is OFFERED on a written-into space, which is now a placeable one (#2432)', () => {
     /*
-     * A hold refuses placement outright (#2087/#2090), and Hold's own control
-     * vanishes rather than dimming in the same situation. Absent adds no
-     * fifth meaning to the board's ruled signal vocabulary — `opacity-40` is
-     * REFUSAL and is spoken for by the invalid merge target.
+     * #2080's picker is the second placement path and deliberately has no
+     * rules of its own — `resolvePickerPlacement` is a thin adapter over
+     * `resolveDrop`. So a picker still hidden here would name a refusal the
+     * resolver no longer makes: the control would be absent for a placement
+     * that drag performs happily.
      */
     const { container } = renderCard({
       slot: slot({ unit: unit({ write_ins: [cover()] }) }),
     })
-    expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: /place a family in cedar 1/i })).toBeInTheDocument()
     expect(container.querySelector('.opacity-40')).toBeNull()
   })
 
-  it('is absent on an occupied space, mirroring Hold', () => {
+  it('is absent on a space that already holds a family', () => {
+    // NOT the write-in rule, and no longer a mirror of it. A SECOND family
+    // reaches a shareable space by drag, which stays the path for a share that
+    // has to be looked at deliberately — and #2091 (marking a space that holds
+    // two families) is unbuilt, so nothing here should invent that case.
     renderCard({ slot: slot({ parties: [party()] }) })
     expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
   })

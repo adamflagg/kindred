@@ -348,12 +348,27 @@ describe('availabilityAction', () => {
     ).toBeNull()
   })
 
-  it('offers nothing to hold an OCCUPIED family cabin — held and occupied are mutually exclusive (#2090)', () => {
-    expect(availabilityAction(unit(), true)).toBeNull()
-  })
-
-  it('still offers to hold an unoccupied family cabin (regression guard)', () => {
-    expect(availabilityAction(unit(), false)?.kind).toBe('hold')
+  it('takes ONE argument, because occupancy is no longer part of the answer (#2432)', () => {
+    /*
+     * This took a second `occupied` argument until kindred#2432 and returned
+     * null when it was true — #2090's rule that "written-in and occupied are
+     * mutually exclusive states".
+     *
+     * Owner ruling 2026-08-18 reversed that in both directions: a write-in
+     * NAMES AN OCCUPANT and does not CLOSE THE SPACE. The argument is gone
+     * rather than defaulted, so a caller holding an occupancy fact has nowhere
+     * to put it — which is what stops the gate growing back by inches. The
+     * behaviour is pinned where the occupancy fact lives, on the card
+     * (`LodgingUnitCard.test.tsx`, "the shared occupant well (#2432)").
+     *
+     * THE ARITY ITSELF IS PINNED BY `tsc`, not here, and deliberately so: a
+     * `Function.length` assertion would not have caught the old signature
+     * either, because a parameter with a default (`occupied = false`) does not
+     * count toward it — 1 before this change and 1 after. A second argument is
+     * a compile error, which pre-push runs; a runtime check would be a test
+     * that cannot fail.
+     */
+    expect(availabilityAction(unit())?.kind).toBe('hold')
   })
 
   it('offers nothing on a SPLIT container', () => {
@@ -382,13 +397,6 @@ describe('availabilityAction', () => {
     expect(
       availabilityAction(unit({ is_container: true, is_combined: true, write_ins: [cover()] }))
     ).toBeNull()
-  })
-
-  it('offers nothing on a MERGED building that already holds a family (#2090)', () => {
-    // The occupancy rule is untouched: a write-in and a placement stay mutually
-    // exclusive. A combined container simply now REACHES that rule instead of
-    // being refused a step earlier for being a container.
-    expect(availabilityAction(unit({ is_container: true, is_combined: true }), true)).toBeNull()
   })
 })
 
@@ -525,13 +533,15 @@ describe('a write-in inherited from elsewhere in the tree', () => {
     // a no-op and four of them destroyed four rows without ever disclosing
     // that more than one existed. Removal is now the X on each `WriteInCard`,
     // which can only delete the row it sits on.
+    //
+    // THIS IS THE ARITY GATE, not the occupancy one kindred#2432 struck, and
+    // the two are worth keeping apart because they refuse the same card for
+    // unrelated reasons. This one is about not knowing WHICH row a click would
+    // destroy; the struck one was about who else is in the room. There is no
+    // longer a separate occupied-card case beside this test, because occupancy
+    // is not an input to `availabilityAction` at all — the assertion would have
+    // been character-for-character this one.
     expect(availabilityAction(unit({ code: 'house-a', write_ins: [coverFromBuilding] }))).toBeNull()
-  })
-
-  it('offers nothing on an occupied card either, rather than a stale write-in path', () => {
-    expect(
-      availabilityAction(unit({ code: 'house-a', write_ins: [coverFromBuilding] }), true)
-    ).toBeNull()
   })
 
   it('names the card’s OWN unit when the write-in starts here', () => {
