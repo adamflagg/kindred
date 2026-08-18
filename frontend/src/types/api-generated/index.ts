@@ -338,6 +338,7 @@ export type {
   HealthCheckHealthGetResponses,
   HistoricalTrendsResponse,
   HouseholdJourneyResponse,
+  HouseholdJourneySession,
   HouseholdJourneyYear,
   HouseholdMedicalResponse,
   HttpValidationError,

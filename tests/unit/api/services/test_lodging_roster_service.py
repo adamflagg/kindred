@@ -4259,6 +4259,244 @@ class TestHouseholdJourney:
         assert journey.years[0].children[0].age == 9.01
 
 
+class TestHouseholdJourneySessionGrain:
+    """WHICH WEEKENDS a household attended in a year (kindred#2393).
+
+    A journey row is a YEAR, not a session, and that is not going to change --
+    `family_camp_registrations` holds ONE cabin string per household-year, so
+    there is no second cabin to hang off a second weekend. What was missing is
+    the weekend list itself: a household that booked two of a season's
+    weekends collapsed into one row that said neither which weekends those
+    were nor who went to which.
+
+    Measured on the production snapshot: 64 of 5,438 journey household-years
+    (1.2%) are multi-weekend -- the denominator being every traced
+    household-year, the union of the three reads `build_household_journey`
+    issues, over all years with `year > 0`. In 7 of those 64 the merged member
+    list overstates at least one weekend's party, because a child who did not
+    attend every weekend appears as though they did. That is the half these
+    per-child session ids exist to fix.
+
+    ⚠️ THE CABIN IS PINNED TO A WEEKEND ONLY WHEN THERE IS EXACTLY ONE, which
+    is deliberately the same refusal `AttributeSession` makes in the Go sync
+    (`pocketbase/sync/lodging_session_attribution.go:327`). The read surface
+    and the ingest must never disagree about which weekend a cabin belongs to,
+    and repeating one cabin string against several weekends is the fan-out
+    that manufactured 12 of 17 false multi-family occupancies in the phase-C
+    shareability analysis.
+
+    Fictional data throughout.
+    """
+
+    @staticmethod
+    def _session(cm_id: int, name: str, start_date: str, pb_id: str = "") -> SimpleNamespace:
+        return _rec(
+            id=pb_id or f"sess_{cm_id}",
+            cm_id=cm_id,
+            name=name,
+            session_type="family",
+            year=int(start_date[:4]),
+            start_date=start_date,
+            end_date="",
+            sort_order=0,
+        )
+
+    @pytest.mark.asyncio
+    async def test_a_year_publishes_every_family_weekend_the_household_attended(self) -> None:
+        fc1 = self._session(3000001, "Family Camp 1: Memorial Day Weekend", "2025-05-23")
+        fc4 = self._session(3000004, "Family Camp 4", "2025-09-19")
+        repo = _journey_repo(
+            fetch_household_family_attendees=[
+                _rec(year=2025, **vars(_child(cm_id=1000001, first="Emma", session=fc1))),
+                _rec(year=2025, **vars(_child(cm_id=1000001, first="Emma", session=fc4))),
+            ],
+        )
+
+        journey = await LodgingRosterService(repo).build_household_journey(2000001)
+
+        assert [(s.session_cm_id, s.name) for s in journey.years[0].sessions] == [
+            (3000001, "Family Camp 1: Memorial Day Weekend"),
+            (3000004, "Family Camp 4"),
+        ]
+        assert journey.years[0].sessions[0].start_date == "2025-05-23"
+
+    @pytest.mark.asyncio
+    async def test_a_weekend_is_published_once_however_many_children_attended_it(self) -> None:
+        """Two siblings on one weekend is one weekend, not two. The attendee
+        table is child-grain, so the naive read duplicates every weekend by
+        the size of the family."""
+        fc1 = self._session(3000001, "Family Camp 1", "2025-05-23")
+        repo = _journey_repo(
+            fetch_household_family_attendees=[
+                _rec(year=2025, **vars(_child(cm_id=1000001, first="Emma", session=fc1))),
+                _rec(year=2025, **vars(_child(cm_id=1000002, first="Liam", session=fc1))),
+            ],
+        )
+
+        journey = await LodgingRosterService(repo).build_household_journey(2000001)
+
+        assert [s.session_cm_id for s in journey.years[0].sessions] == [3000001]
+
+    @pytest.mark.asyncio
+    async def test_weekends_are_ordered_by_start_date_not_by_arrival(self) -> None:
+        """The list is read left to right as a season, so a later weekend
+        arriving first must not print first."""
+        fc1 = self._session(3000001, "Family Camp 1", "2025-05-23")
+        fc4 = self._session(3000004, "Family Camp 4", "2025-09-19")
+        repo = _journey_repo(
+            fetch_household_family_attendees=[
+                _rec(year=2025, **vars(_child(cm_id=1000001, first="Emma", session=fc4))),
+                _rec(year=2025, **vars(_child(cm_id=1000002, first="Liam", session=fc1))),
+            ],
+        )
+
+        journey = await LodgingRosterService(repo).build_household_journey(2000001)
+
+        assert [s.session_cm_id for s in journey.years[0].sessions] == [3000001, 3000004]
+
+    @pytest.mark.asyncio
+    async def test_a_child_carries_only_the_weekends_that_child_attended(self) -> None:
+        """The 7-of-64 case. Emma goes to both weekends, Liam only to the
+        first -- and today's merged member list shows both children against
+        both, which is the overstatement this field exists to let the client
+        undo."""
+        fc1 = self._session(3000001, "Family Camp 1", "2025-05-23")
+        fc4 = self._session(3000004, "Family Camp 4", "2025-09-19")
+        repo = _journey_repo(
+            fetch_household_family_attendees=[
+                _rec(year=2025, **vars(_child(cm_id=1000001, first="Emma", session=fc1))),
+                _rec(year=2025, **vars(_child(cm_id=1000001, first="Emma", session=fc4))),
+                _rec(year=2025, **vars(_child(cm_id=1000002, first="Liam", session=fc1))),
+            ],
+        )
+
+        journey = await LodgingRosterService(repo).build_household_journey(2000001)
+
+        by_child = {c.person_cm_id: c.session_cm_ids for c in journey.years[0].children}
+        assert by_child == {1000001: [3000001, 3000004], 1000002: [3000001]}
+
+    @pytest.mark.asyncio
+    async def test_a_childs_weekends_are_ordered_by_start_date_too(self) -> None:
+        fc1 = self._session(3000001, "Family Camp 1", "2025-05-23")
+        fc4 = self._session(3000004, "Family Camp 4", "2025-09-19")
+        repo = _journey_repo(
+            fetch_household_family_attendees=[
+                _rec(year=2025, **vars(_child(cm_id=1000001, first="Emma", session=fc4))),
+                _rec(year=2025, **vars(_child(cm_id=1000001, first="Emma", session=fc1))),
+            ],
+        )
+
+        journey = await LodgingRosterService(repo).build_household_journey(2000001)
+
+        assert journey.years[0].children[0].session_cm_ids == [3000001, 3000004]
+
+    @pytest.mark.asyncio
+    async def test_one_weekend_and_a_cabin_pins_the_cabin_to_that_weekend(self) -> None:
+        fc1 = self._session(3000001, "Family Camp 1", "2025-05-23")
+        repo = _journey_repo(
+            fetch_household_family_attendees=[_rec(year=2025, **vars(_child(session=fc1)))],
+            cabins_by_year={2025: {2000001: "Cedar Lodge - Room 2"}},
+        )
+
+        journey = await LodgingRosterService(repo).build_household_journey(2000001)
+
+        assert journey.years[0].housing_session_cm_id == 3000001
+
+    @pytest.mark.asyncio
+    async def test_two_weekends_refuse_to_pin_the_cabin_to_either(self) -> None:
+        """`AttributeSession`'s refusal, mirrored. CampMinder's single
+        per-year value cannot say which weekend it describes, and a cabin
+        repeated against both weekends is a manufactured second occupancy."""
+        fc1 = self._session(3000001, "Family Camp 1", "2025-05-23")
+        fc4 = self._session(3000004, "Family Camp 4", "2025-09-19")
+        repo = _journey_repo(
+            fetch_household_family_attendees=[
+                _rec(year=2025, **vars(_child(cm_id=1000001, first="Emma", session=fc1))),
+                _rec(year=2025, **vars(_child(cm_id=1000001, first="Emma", session=fc4))),
+            ],
+            cabins_by_year={2025: {2000001: "Cedar Lodge - Room 2"}},
+        )
+
+        journey = await LodgingRosterService(repo).build_household_journey(2000001)
+
+        assert journey.years[0].sessions != []
+        assert journey.years[0].housing_session_cm_id is None
+
+    @pytest.mark.asyncio
+    async def test_a_year_with_no_cabin_pins_nothing_even_with_one_weekend(self) -> None:
+        """There is no cabin to attribute. Publishing the weekend id anyway
+        would read as "housed in FC1" on a household nobody placed."""
+        fc1 = self._session(3000001, "Family Camp 1", "2025-05-23")
+        repo = _journey_repo(
+            fetch_household_family_attendees=[_rec(year=2025, **vars(_child(session=fc1)))],
+            cabins_by_year={2025: {2000009: "Cedar Lodge - Room 2"}},
+        )
+
+        journey = await LodgingRosterService(repo).build_household_journey(2000001)
+
+        assert journey.years[0].housing == "not_placed"
+        assert journey.years[0].housing_session_cm_id is None
+
+    @pytest.mark.asyncio
+    async def test_an_attendee_row_with_no_expanded_session_publishes_no_weekend(self) -> None:
+        """The pre-kindred#2420 shape, and the one every older fixture here
+        still uses. No weekend is knowable, so none is claimed -- and the
+        client renders the row exactly as it does today."""
+        repo = _journey_repo(fetch_household_family_attendees=[_rec(year=2025, **vars(_child()))])
+
+        journey = await LodgingRosterService(repo).build_household_journey(2000001)
+
+        assert journey.years[0].sessions == []
+        assert journey.years[0].children[0].session_cm_ids == []
+        assert journey.years[0].housing_session_cm_id is None
+
+    @pytest.mark.asyncio
+    async def test_a_session_with_no_campminder_id_is_not_published_as_weekend_zero(self) -> None:
+        """`cm_id` is the identity the client tabs on. A zero would collapse
+        every unidentified weekend onto one tab."""
+        broken = self._session(0, "Family Camp 1", "2025-05-23", pb_id="sess_broken")
+        repo = _journey_repo(fetch_household_family_attendees=[_rec(year=2025, **vars(_child(session=broken)))])
+
+        journey = await LodgingRosterService(repo).build_household_journey(2000001)
+
+        assert journey.years[0].sessions == []
+        assert journey.years[0].children[0].session_cm_ids == []
+
+    @pytest.mark.asyncio
+    async def test_each_year_keeps_its_own_weekends(self) -> None:
+        """HOUSEHOLD-YEAR GRAIN. A weekend attended in 2024 must not appear
+        against 2025, the same way that year's members never do."""
+        fc1_2024 = self._session(3000101, "Family Camp 1", "2024-05-24")
+        fc4_2025 = self._session(3000004, "Family Camp 4", "2025-09-19")
+        repo = _journey_repo(
+            fetch_household_family_attendees=[
+                _rec(year=2024, **vars(_child(session=fc1_2024))),
+                _rec(year=2025, **vars(_child(session=fc4_2025))),
+            ],
+        )
+
+        journey = await LodgingRosterService(repo).build_household_journey(2000001)
+
+        by_year = {y.year: [s.session_cm_id for s in y.sessions] for y in journey.years}
+        assert by_year == {2025: [3000004], 2024: [3000101]}
+
+    @pytest.mark.asyncio
+    async def test_the_current_season_roster_publishes_no_session_ids_on_a_child(self) -> None:
+        """The roster is ALREADY one weekend -- every child on it attends the
+        weekend being drawn, so a per-child weekend list there would restate
+        the page's own title once per camper. Only the journey, which spans
+        years and weekends, has a question to answer."""
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_households={"hh_1": _household()},
+            fetch_attendees_for_session=[_child()],
+        )
+
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.parties[0].children[0].session_cm_ids == []
+
+
 class TestWriteInCovers:
     """Which space a write-in closes, once the tree is taken into account.
 

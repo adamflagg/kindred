@@ -9,12 +9,25 @@
  *
  * Rendering the whole string everywhere makes a picker unreadable and a title
  * wrap. Splitting on the colon gives a short identity for compact places and a
- * qualifier for the row that has space, and is lossless — unlike inventing
- * abbreviations, which is how a UI starts disagreeing with CampMinder about
- * what a session is called.
+ * qualifier for the row that has space, and is lossless.
  *
  * Names without a colon ("Women's Weekend", "Ready, Set, Camp", "JFAM Winter
  * Family Camp") are already short and pass through untouched.
+ *
+ * ★ THREE FORMS, AND WHICH ONE A SURFACE MAY USE IS NOT A STYLE CHOICE:
+ *
+ * * `splitWeekendName` / `shortWeekendName` — the default. Lossless, and what
+ *   every title, picker and tab with room prints.
+ * * `weekendSlug` — an ADDRESS for a URL. Never rendered.
+ * * `weekendLabel` — an abbreviation, `FC1`, for a surface with no room for a
+ *   name. Owner-ruled on 2026-08-18 (kindred#2393) for the family journey
+ *   panel, which is 416px wide and must fit up to four weekends on one line.
+ *   It is a narrow licence and not a general one, in two senses: reach for
+ *   `shortWeekendName` unless the space genuinely will not take it, and note
+ *   that `weekendLabel` ITSELF only abbreviates a weekend CampMinder numbered.
+ *   A prose name comes back whole, because an invented abbreviation is how a
+ *   UI starts disagreeing with CampMinder about what a session is called —
+ *   `FFCI` for "Fall Family Camp II" is that, on the screen.
  */
 
 export interface WeekendName {
@@ -77,13 +90,17 @@ function initials(words: string[]): string {
 /**
  * A weekend's ADDRESS: `fc1`, `ww`, `mw`, `rsc`.
  *
- * THIS IS NOT A DISPLAY NAME, and the distinction is the whole reason it is
- * allowed to exist. The note at the top of this file argues against inventing
- * abbreviations because a UI that does starts disagreeing with CampMinder
- * about what a session is CALLED — every title, picker and tab still renders
- * `splitWeekendName`'s output verbatim. A URL is not a label; it is how staff
- * type and share a weekend, and `/weekend/fc1/map` is one they can say out
- * loud where `/weekend/1000001/map` is not.
+ * A URL, first and foremost: `/weekend/fc1/map` is one staff can say out loud
+ * where `/weekend/1000001/map` is not.
+ *
+ * ⚠️ NOT A LABEL BY ITSELF — render `weekendLabel`, never this. This function
+ * returns '' for a weekend it cannot address, which is the right answer for a
+ * URL and a blank on a screen; `weekendLabel` is the display wrapper that
+ * uppercases the slug and falls back to the weekend's own short name when
+ * there is none. (Until 2026-08-18 this comment forbade display use outright.
+ * The owner's kindred#2393 ruling granted the narrow licence the top-of-file
+ * note now describes, and the wrapper is where it lives — a doc block that
+ * forbids what the code beside it does is worse than either rule alone.)
  *
  * Initials of the identity, with a trailing number kept whole — "Family Camp
  * 10" must not collide with "Family Camp 1". Read from the identity only, so
@@ -93,18 +110,31 @@ function initials(words: string[]): string {
  * must treat that as "not addressable" rather than as a slug; `weekendRef`
  * does.
  */
+/**
+ * The identity, as the words an abbreviation is built from.
+ *
+ * Shared by `weekendSlug` and `weekendLabel` so the two cannot drift about
+ * what a "word" is — the label's decision to abbreviate at all reads the same
+ * final word the slug's trailing-number rule does.
+ */
+function identityWords(name: string): string[] {
+  return (
+    shortWeekendName(name)
+      // An apostrophe sits INSIDE a word, so it is deleted rather than treated as
+      // a separator. Splitting on it turns "Women's Weekend" into three words and
+      // slugs it `wsw`.
+      .replace(/['’]/g, '')
+      // Every other mark IS a separator: "Ready, Set, Camp" is three words.
+      // Digits survive because they are the identity.
+      .replace(/[^\p{L}\p{N}]+/gu, ' ')
+      .trim()
+      .split(/\s+/)
+      .filter((word) => word.length > 0)
+  )
+}
+
 export function weekendSlug(name: string): string {
-  const words = shortWeekendName(name)
-    // An apostrophe sits INSIDE a word, so it is deleted rather than treated as
-    // a separator. Splitting on it turns "Women's Weekend" into three words and
-    // slugs it `wsw`.
-    .replace(/['’]/g, '')
-    // Every other mark IS a separator: "Ready, Set, Camp" is three words.
-    // Digits survive because they are the identity.
-    .replace(/[^\p{L}\p{N}]+/gu, ' ')
-    .trim()
-    .split(/\s+/)
-    .filter((word) => word.length > 0)
+  const words = identityWords(name)
 
   const meaningful = words.filter((word) => !SHARED_PROGRAM_TOKENS.has(word.toLowerCase()))
   const dropped = initials(meaningful)
@@ -119,6 +149,109 @@ export function weekendSlug(name: string): string {
   // Nothing but digits to work with even then: the numeric space belongs to
   // CampMinder ids, so this weekend has no address of its own to offer.
   return DIGITS_ONLY.test(slug) ? '' : slug
+}
+
+/**
+ * A weekend as `FC1`, for a surface with no room for its name (kindred#2393).
+ *
+ * The owner's 2026-08-18 ruling, settled against full-width mockups: the
+ * family journey panel is `w-[26rem]` = 416px, a household-year can carry up
+ * to four weekends, and "Family Camp 1: Memorial Day Weekend" four times over
+ * is not a line — `FC1 · FC4 · FC5` is. PLAIN TEXT, not a chip and not a
+ * badge: the row already carries a housing name, a "No enrollment" chip and a
+ * "See members" action, and a fourth decorated element makes none of them
+ * readable.
+ *
+ * Uppercased, because the slug is lowercase for a URL and `fc1` on a screen
+ * reads as a typo.
+ *
+ * ⚠️ A CAMPMINDER NUMBER IS READ OFF; EVERYTHING ELSE COMES FROM AN EXPLICIT
+ * MAP. `FC1` is safe because the number IS the weekend's identity — the
+ * abbreviation cannot name a different weekend, and it is the form staff say
+ * out loud. Nothing supplies that guarantee for a prose name.
+ *
+ * Initials were tried and are measurably wrong: they give both "Spring Family
+ * Camp" and "Summer Family Camp" the label `SFC`, and collapse "Fall Family
+ * Camp I", "II" and "III" onto `FFCI` — so a 2018 journey row for a family
+ * that went to Fall II read as Fall I. 891 of 3,040 single-weekend
+ * household-years sit in one of those names, and 5 of the 64 multi-weekend
+ * ones printed one label twice on a line and offered two members-modal tabs
+ * nobody could tell apart.
+ *
+ * Printing them in full was correct but long. `NAMED_WEEKEND_LABELS` is the
+ * third answer and the only one that is both: the set of un-numbered weekend
+ * names is CLOSED — they are history and cannot gain a member — so a map is
+ * exhaustive in a way a rule can never be.
+ *
+ * The legacy assignments are the owner's, 2026-08-18: 2017-2019 ran SIX
+ * weekends and are numbered CHRONOLOGICALLY, 1 through 6 —
+ *
+ *   > "spring is 1, if keshet and summer happened before 'fall family camp'
+ *   >  or 'family camp', they are 2 and 3 (whatever chronological order they
+ *   >  happened that year), and then alias the subsequent ones to 4+"
+ *
+ * ⚠️ THAT RULE APPLIES ONLY WHERE CAMPMINDER NUMBERED NOTHING, which is
+ * 2017-2019 and nothing else. Checked against the whole catalogue: those three
+ * seasons carry SIX un-numbered weekends and zero numbered ones, 2020-2022
+ * carry only numbered ones, and 2023-2026 carry eight numbered plus one or two
+ * un-numbered that BOOKEND them (April before FC1, December after FC8).
+ * Numbering a modern season by date would rename `Ready, Set, Camp` to "FC1"
+ * and shift every CampMinder number behind it.
+ *
+ * ⚠️ Falls back to `shortWeekendName`, NEVER to the CampMinder id. `weekendRef`
+ * falls back to the id because a URL must resolve; a label must be readable,
+ * and `1000005` names nothing a staff member recognises. That is also why this
+ * takes a name and not a session: it structurally cannot emit an id.
+ */
+/**
+ * Every weekend CampMinder never numbered, and what it reads as.
+ *
+ * Keyed on the FULL name as CampMinder stores it, so a lookup cannot half-match
+ * — "Winter Family Camp" and "JFAM Winter Family Camp" are the same weekend
+ * under two spellings and both must land on `WFC`.
+ *
+ * A miss falls through to `shortWeekendName`, so a weekend nobody has mapped
+ * reads as itself rather than as invented initials.
+ */
+const NAMED_WEEKEND_LABELS: Readonly<Record<string, string>> = {
+  // 2017-2019, numbered CHRONOLOGICALLY within the season (owner, revised
+  // 2026-08-18): "spring is 1, if keshet and summer happened before 'fall
+  // family camp' [...] they are 2 and 3 (whatever chronological order they
+  // happened that year), and then alias the subsequent ones to 4+".
+  //
+  // The order is identical in all three legacy seasons — Spring (late May),
+  // Keshet (late Aug), Summer (end Aug), then Fall I/II/III through September
+  // — so a static map expresses it exactly and no season context is needed.
+  // 1-6 with no gaps.
+  'Spring Family Camp': 'FC1',
+  'Keshet LGBTQ Family Camp': 'FC2',
+  'Summer Family Camp': 'FC3',
+  'Fall Family Camp I': 'FC4',
+  'Fall Family Camp II': 'FC5',
+  'Fall Family Camp III': 'FC6',
+  // 2023-2026 additions that never took a number. These are NOT numbered
+  // chronologically, and that is the whole reason the legacy rule cannot be
+  // generalised: they BOOKEND the numbered run rather than joining it. `Ready,
+  // Set, Camp` and `Spring Family Retreat` fall in April/early May, BEFORE
+  // `Family Camp 1`; `Winter Family Camp` falls in late December, AFTER
+  // `Family Camp 8`. Numbering them by date would make RSC "FC1" and shift
+  // every CampMinder number in the season by one.
+  'Winter Family Camp': 'WFC',
+  'JFAM Winter Family Camp': 'WFC',
+  'Ready, Set, Camp': 'RSC',
+  'Spring Family Retreat': 'Spring FR',
+}
+
+export function weekendLabel(name: string): string {
+  const mapped = NAMED_WEEKEND_LABELS[name.trim()]
+  if (mapped !== undefined) return mapped
+  const words = identityWords(name)
+  // The SAME final word `weekendSlug`'s trailing-number rule keeps whole. A
+  // lone number is not a numbered weekend, it is a year ("2026"), and there is
+  // no identity in front of it to abbreviate.
+  const isNumbered = words.length > 1 && DIGITS_ONLY.test(words[words.length - 1] ?? '')
+  const slug = isNumbered ? weekendSlug(name) : ''
+  return slug.length > 0 ? slug.toUpperCase() : shortWeekendName(name)
 }
 
 /** The minimum a weekend must carry to be addressed. */
@@ -167,3 +300,97 @@ export function resolveWeekendRef(
   const matches = sessions.filter((session) => weekendSlug(session.name) === ref.toLowerCase())
   return matches.length === 1 ? matches[0] : undefined
 }
+
+/**
+ * The camper journey's form: `Family Camp 3` plus a short subtitle.
+ *
+ * A DIFFERENT shorthand from `weekendLabel`'s `FC3`, deliberately, because the
+ * two surfaces read differently. The weekend board's journey panel is 416px
+ * with one row per YEAR and often several weekends on a line, so it needs the
+ * shortest thing that identifies a weekend. The camper journey gives each
+ * session its own row beside a year and a status, and `FC3` there is terser
+ * than the row can afford to be — while CampMinder's raw name
+ * ("Family Camp 8: JFAM Weekend w/ SFJCC (w/ kids 10 and under)", 54
+ * characters) is far longer. Owner ruling, 2026-08-18:
+ *
+ *   > "instead use a mid shorthand, like 'Family Camp X' for the number, and
+ *   >  then a subtitle (if any) of Keshet, JFAM, JFoC, etc., and if they
+ *   >  attend winter or ready set it would be just Ready, Set, Camp or Winter
+ *   >  Family Camp"
+ *
+ * Both halves come off the SAME name, so a weekend cannot read as one thing
+ * here and another on the board.
+ */
+export function weekendTitle(name: string): string {
+  const trimmed = name.trim()
+  const legacy = LEGACY_MID[trimmed]
+  if (legacy !== undefined) return legacy.title
+  const unnumbered = UNNUMBERED_TITLES[trimmed]
+  if (unnumbered !== undefined) return unnumbered
+  const head = trimmed.split(':')[0]?.trim() ?? ''
+  return head.length > 0 ? head : trimmed
+}
+
+/** The parenthetical under the title, or `''` where the weekend has none. */
+export function weekendSubtitle(name: string): string {
+  const trimmed = name.trim()
+  const legacy = LEGACY_MID[trimmed]
+  if (legacy !== undefined) return legacy.subtitle
+  if (UNNUMBERED_TITLES[trimmed] !== undefined) return ''
+  const tail = trimmed.split(':').slice(1).join(':').trim()
+  if (tail.length === 0) return ''
+  for (const [prefix, short] of SUBTITLE_RULES) {
+    if (tail.startsWith(prefix)) return short
+  }
+  return tail
+}
+
+/**
+ * 2017-2019, which carried the identity in the NAME rather than a number.
+ * The title restates the chronological number `weekendLabel` assigns, and the
+ * subtitle keeps the original name — which is the part a reader of a
+ * historical row actually recognises.
+ */
+const LEGACY_MID: Readonly<Record<string, { title: string; subtitle: string }>> = {
+  'Spring Family Camp': { title: 'Family Camp 1', subtitle: 'Spring' },
+  'Keshet LGBTQ Family Camp': { title: 'Family Camp 2', subtitle: 'Keshet' },
+  'Summer Family Camp': { title: 'Family Camp 3', subtitle: 'Summer' },
+  'Fall Family Camp I': { title: 'Family Camp 4', subtitle: 'Fall I' },
+  'Fall Family Camp II': { title: 'Family Camp 5', subtitle: 'Fall II' },
+  'Fall Family Camp III': { title: 'Family Camp 6', subtitle: 'Fall III' },
+}
+
+/**
+ * The weekends that never took a number read as themselves and carry no
+ * subtitle — the owner named both by hand. `JFAM Winter Family Camp` is the
+ * same weekend as `Winter Family Camp` under a later spelling, so it reads as
+ * the one staff say.
+ */
+const UNNUMBERED_TITLES: Readonly<Record<string, string>> = {
+  'Ready, Set, Camp': 'Ready, Set, Camp',
+  'Winter Family Camp': 'Winter Family Camp',
+  'JFAM Winter Family Camp': 'Winter Family Camp',
+  'Spring Family Retreat': 'Spring Family Retreat',
+}
+
+/**
+ * Suffix -> subtitle, longest-prefix-first.
+ *
+ * ORDER MATTERS: `JFAM Sukkot` and `JFAM Chanukah` must be tested before the
+ * bare `JFAM`, or they collapse onto it and lose the holiday that is the whole
+ * reason a reader would tell those weekends apart.
+ *
+ * A suffix no rule matches falls through as itself rather than being dropped —
+ * this list covers every suffix in the 2017-2026 catalogue, and the fallthrough
+ * is for the one CampMinder invents next season.
+ */
+const SUBTITLE_RULES: ReadonlyArray<readonly [string, string]> = [
+  ['Memorial Day', 'Memorial Day'],
+  ['Labor Day', 'Labor Day'],
+  ['Keshet', 'Keshet'],
+  ['Jewish Families of Color', 'JFoC'],
+  ['JFAM Sukkot', 'JFAM Sukkot'],
+  ['JFAM Chanukah', 'JFAM Chanukah'],
+  ['JFAM', 'JFAM'],
+  ['Sukkot', 'Sukkot'],
+]

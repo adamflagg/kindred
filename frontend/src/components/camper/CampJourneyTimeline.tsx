@@ -4,6 +4,7 @@
  */
 import { TreePine, Home } from 'lucide-react'
 import { getSessionDisplayNameFromString } from '../../utils/sessionDisplay'
+import { weekendSubtitle } from '../weekend/weekendNames'
 import { getStatusIndicator } from '../../utils/enrollmentFilter'
 import { isFamilySessionType } from '../../utils/sessionTypePredicates'
 import type { HistoricalRecord } from '../../hooks/camper/types'
@@ -85,17 +86,26 @@ export function CampJourneyTimeline({
                       {getSessionDisplayNameFromString(record.sessionName, record.sessionType)}
                     </span>
 
-                    {/* Family-camp de-emphasis tag (#2113): family rows were
-                        excluded from the journey because they made it noisy
-                        for multi-session staff kids. Now included, they get a
-                        muted tag instead of being hidden, so a reader can
-                        visually skip a run of family rows without losing the
-                        underlying data. */}
-                    {isFamilySessionType(record.sessionType) && (
-                      <span className="bg-muted text-muted-foreground flex-shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium">
-                        Family
-                      </span>
-                    )}
+                    {/* Which family weekend it was — Keshet, JFAM, JFoC, the
+                        holiday. The title beside it is "Family Camp 3", so
+                        this is the half that tells two numbered weekends
+                        apart, and it is the half CampMinder buries in a
+                        54-character name. Muted and one size down: it
+                        qualifies the session, it is not a second session. */}
+                    {isFamilySessionType(record.sessionType) &&
+                      weekendSubtitle(record.sessionName).length > 0 && (
+                        <span className="text-muted-foreground/70 flex-shrink-0 text-xs">
+                          {weekendSubtitle(record.sessionName)}
+                        </span>
+                      )}
+
+                    {/* NO "Family" TAG. #2113 added one when family rows first
+                        entered this timeline, so a reader could visually skip a
+                        run of them. The mid-form session name now begins
+                        "Family Camp", which says the same thing in the place a
+                        reader is already looking — owner, 2026-08-18: "we also
+                        dont need the 'family' tag in the journey, staff
+                        knows." */}
 
                     {/* Status indicator for non-enrolled */}
                     {statusIndicator && (

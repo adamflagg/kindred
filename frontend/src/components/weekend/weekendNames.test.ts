@@ -1,14 +1,26 @@
 /**
  * CampMinder joins a weekend's identity and its description with a colon.
- * Splitting is lossless; abbreviating would not be — which is why the slug
- * below is an ADDRESS and never a label. See the note in weekendNames.ts.
+ * Splitting is lossless; abbreviating is not — which is why there are three
+ * forms and not one, and why which form a surface may use is a rule rather
+ * than a preference. See the note in weekendNames.ts.
+ *
+ * `weekendSlug` is an ADDRESS for a URL and is never rendered on its own.
+ * `weekendLabel` is the narrow display licence the owner granted on
+ * 2026-08-18 (kindred#2393) for the 416px family journey panel: it uppercases
+ * the slug of a weekend CampMinder NUMBERED, and otherwise returns the
+ * weekend's short name whole — never a CampMinder id, and never an
+ * abbreviation invented for a prose name. Everywhere with room still prints
+ * `splitWeekendName`'s output verbatim.
  */
 import { describe, expect, it } from 'vitest'
 
 import {
+  weekendSubtitle,
+  weekendTitle,
   resolveWeekendRef,
   shortWeekendName,
   splitWeekendName,
+  weekendLabel,
   weekendRef,
   weekendSlug,
 } from './weekendNames'
@@ -164,5 +176,228 @@ describe('resolveWeekendRef', () => {
   it('finds nothing for a reference that names no weekend', () => {
     expect(resolveWeekendRef([FC1, WOMENS], 'zz')).toBeUndefined()
     expect(resolveWeekendRef([FC1, WOMENS], undefined)).toBeUndefined()
+  })
+})
+
+describe('weekendLabel — the named weekends CampMinder never numbered', () => {
+  /*
+   * Owner ruling, 2026-08-18, after being shown the whole catalogue.
+   *
+   * 2017-2019 ran SIX family weekends, not four: Spring, Keshet, Summer, and
+   * Fall I/II/III. The numbering that arrived in 2020 maps onto them by slot,
+   * and the owner assigned it directly:
+   *
+   *   > "Spring family camp = FC1. fall 1, 2, 3, are the new 2, 3, 4 —
+   *   >  basically a year that had a spring, the fall numbers get bumped one."
+   *   > "Keshet LGBTQ etc as just Keshet"
+   *   > "actually WFC is better than my suggestion, and RSC as well, yes"
+   *
+   * An EXPLICIT MAP rather than a rule, because the set is closed — these are
+   * historical names that cannot gain a member — and every previous attempt at
+   * a rule got one of them wrong. Initials collapsed Spring and Summer onto
+   * `SFC` and Fall I/II/III onto `FFCI`; printing prose names in full was
+   * correct but long. A map is the only form that is both short and right.
+   */
+  const CATALOGUE: ReadonlyArray<readonly [string, string]> = [
+    ['Spring Family Camp', 'FC1'],
+    ['Keshet LGBTQ Family Camp', 'FC2'],
+    ['Summer Family Camp', 'FC3'],
+    ['Fall Family Camp I', 'FC4'],
+    ['Fall Family Camp II', 'FC5'],
+    ['Fall Family Camp III', 'FC6'],
+    ['Winter Family Camp', 'WFC'],
+    ['JFAM Winter Family Camp', 'WFC'],
+    ['Ready, Set, Camp', 'RSC'],
+    ['Spring Family Retreat', 'Spring FR'],
+  ]
+
+  it.each(CATALOGUE)('labels %s as %s', (name, expected) => {
+    expect(weekendLabel(name)).toBe(expected)
+  })
+
+  it('still reads a CampMinder number straight off a numbered weekend', () => {
+    expect(weekendLabel('Family Camp 1: Memorial Day Weekend')).toBe('FC1')
+    expect(weekendLabel('Family Camp 8: JFAM Weekend (w/ kids 10 and under)')).toBe('FC8')
+  })
+
+  it('never labels two weekends of one season alike', () => {
+    // The guarantee the initials rule broke. 2017-2019 is the season that
+    // exercises it: six weekends, four of them sharing the word "Family".
+    const season2017 = [
+      'Spring Family Camp',
+      'Keshet LGBTQ Family Camp',
+      'Summer Family Camp',
+      'Fall Family Camp I',
+      'Fall Family Camp II',
+      'Fall Family Camp III',
+    ]
+    const labels = season2017.map(weekendLabel)
+    expect(new Set(labels).size).toBe(season2017.length)
+  })
+
+  it('falls back to the short name for a weekend nobody has mapped', () => {
+    // A name the catalogue has never seen must still read as itself, never as
+    // an id and never as invented initials.
+    expect(weekendLabel('Harvest Family Gathering')).toBe(
+      shortWeekendName('Harvest Family Gathering')
+    )
+  })
+})
+
+describe('weekendLabel', () => {
+  /**
+   * The owner's 2026-08-18 ruling on kindred#2393: a weekend prints as `FC1`,
+   * as PLAIN TEXT, on the journey panel's weekend line and on the members
+   * modal's tabs. `w-[26rem]` has no room for "Family Camp 1: Memorial Day
+   * Weekend" three times over, and the abbreviation is the one staff already
+   * say out loud.
+   */
+  it('abbreviates a numbered family weekend to FCx', () => {
+    expect(weekendLabel('Family Camp 1: Memorial Day Weekend')).toBe('FC1')
+  })
+
+  it('keeps a two-digit weekend distinct from a one-digit one', () => {
+    // The same collision `weekendSlug` guards: FC10 must not read as FC1.
+    expect(weekendLabel('Family Camp 10')).toBe('FC10')
+    expect(weekendLabel('Family Camp 1')).toBe('FC1')
+  })
+
+  it('prints an UNMAPPED weekend by its own name, never by invented initials', () => {
+    // ⚠️ THE LICENCE IS FOR `FCx` AND FOR THE EXPLICIT MAP. Nothing else may
+    // be abbreviated. CampMinder's number is safe because the number IS the
+    // weekend's identity; the map is safe because the owner assigned each
+    // entry by hand against the full catalogue. A name that is neither is a
+    // weekend nobody has ruled on, and inventing initials for it is what gave
+    // "Spring Family Camp" and "Summer Family Camp" the same label.
+    //
+    // This assertion previously named "Ready, Set, Camp" and "JFAM Winter
+    // Family Camp"; both are in the map now (RSC, WFC), so it uses a name the
+    // catalogue has never carried.
+    expect(weekendLabel('Harvest Family Gathering')).toBe('Harvest Family Gathering')
+  })
+
+  it('gives every weekend of a legacy season a distinct label', () => {
+    // The 2017-2019 catalogue, verbatim from the production snapshot. The
+    // journey spans EVERY year a household has a trace, so these rows render
+    // on the same panel the 2026 ones do — 891 of 3,040 single-weekend
+    // household-years fall in a season named this way, and 5 of the 64
+    // multi-weekend ones would have printed the same label twice on one line
+    // and offered two members-modal tabs a staff member could not tell apart.
+    const labels = [
+      'Spring Family Camp',
+      'Keshet LGBTQ Family Camp',
+      'Summer Family Camp',
+      'Fall Family Camp I',
+      'Fall Family Camp II',
+      'Fall Family Camp III',
+    ].map(weekendLabel)
+
+    expect(new Set(labels).size).toBe(labels.length)
+  })
+
+  it("never labels one weekend with another weekend's name", () => {
+    // The sharpest form of the same failure: "Fall Family Camp II" abbreviated
+    // by initials is `FFCI`, which is not merely terse — it reads as Fall
+    // Family Camp I.
+    expect(weekendLabel('Fall Family Camp II')).not.toBe(weekendLabel('Fall Family Camp I'))
+    expect(weekendLabel('Fall Family Camp III')).not.toBe(weekendLabel('Fall Family Camp I'))
+    expect(weekendLabel('Summer Family Camp')).not.toBe(weekendLabel('Spring Family Camp'))
+  })
+
+  it('gives the ten 2026 family weekends ten distinct labels', () => {
+    // A label that collided would put two weekends on one tab in the members
+    // modal and read as one entry on the journey's weekend line.
+    const labels = [
+      'Ready, Set, Camp',
+      'Family Camp 1: Memorial Day Weekend',
+      'Family Camp 2: Keshet LGBTQ Weekend',
+      'Family Camp 3: JFAM Weekend (w/ kids 10 and under)',
+      'Family Camp 4: Labor Day Weekend',
+      'Family Camp 5: JFAM Weekend (w/ kids 10 and under)',
+      'Family Camp 6',
+      'Family Camp 7: Jewish Families of Color Weekend',
+      'Family Camp 8: JFAM Weekend (w/ kids 10 and under)',
+      'JFAM Winter Family Camp',
+    ].map(weekendLabel)
+
+    expect(new Set(labels).size).toBe(labels.length)
+  })
+
+  it('reads the identity only, so a description cannot drag the label', () => {
+    expect(weekendLabel('Family Camp 5: JFAM Weekend (w/ kids 10 and under)')).toBe('FC5')
+  })
+
+  it('falls back to the short name when there is nothing to abbreviate', () => {
+    // `weekendSlug` returns '' here on purpose: the numeric space belongs to
+    // CampMinder ids, so this weekend has no ADDRESS. It still has a name,
+    // and the label is that name — never the id `weekendRef` falls back to,
+    // which names nothing a staff member can read.
+    expect(weekendSlug('2026')).toBe('')
+    expect(weekendLabel('2026')).toBe('2026')
+    expect(weekendLabel('2026')).not.toBe(String(YEAR_ONLY.session_cm_id))
+  })
+
+  it('never returns an empty string for a weekend that has a name', () => {
+    for (const session of [FC1, WOMENS, WINTER, JFAM_10, YEAR_ONLY]) {
+      expect(weekendLabel(session.name).length).toBeGreaterThan(0)
+    }
+  })
+})
+
+describe('the camper journey mid-shorthand', () => {
+  /*
+   * Owner ruling, 2026-08-18. A LONGER form than the board's `FC3`, on purpose:
+   * the camper journey gives each session its own row beside a year and a
+   * status, where `FC3` is terser than the row can afford, while CampMinder's
+   * raw name runs to 54 characters.
+   *
+   *   > "instead use a mid shorthand, like 'Family Camp X' for the number, and
+   *   >  then a subtitle (if any) of Keshet, JFAM, JFoC, etc."
+   */
+  const CASES: ReadonlyArray<readonly [string, string, string]> = [
+    ['Family Camp 1: Memorial Day Weekend', 'Family Camp 1', 'Memorial Day'],
+    ['Family Camp 2: Keshet LGBTQ Weekend', 'Family Camp 2', 'Keshet'],
+    ['Family Camp 7: Jewish Families of Color Weekend', 'Family Camp 7', 'JFoC'],
+    ['Family Camp 5: JFAM Weekend (w/ kids 10 and under)', 'Family Camp 5', 'JFAM'],
+    ['Family Camp 8: JFAM Weekend w/ SFJCC (w/ kids 10 and under)', 'Family Camp 8', 'JFAM'],
+    [
+      'Family Camp 7: JFAM Sukkot Weekend with the JCCSF (w/ kids 8 and under)',
+      'Family Camp 7',
+      'JFAM Sukkot',
+    ],
+    [
+      'Family Camp 8: JFAM Chanukah Program (w/ kids 8 and under)',
+      'Family Camp 8',
+      'JFAM Chanukah',
+    ],
+    ['Family Camp 7: Sukkot', 'Family Camp 7', 'Sukkot'],
+    ['Family Camp 6', 'Family Camp 6', ''],
+    // Un-numbered weekends read as themselves and carry no subtitle.
+    ['Ready, Set, Camp', 'Ready, Set, Camp', ''],
+    ['Winter Family Camp', 'Winter Family Camp', ''],
+    ['JFAM Winter Family Camp', 'Winter Family Camp', ''],
+    // Legacy: the number the board assigns, with the original name beneath —
+    // which is the part a reader of a 2018 row actually recognises.
+    ['Spring Family Camp', 'Family Camp 1', 'Spring'],
+    ['Keshet LGBTQ Family Camp', 'Family Camp 2', 'Keshet'],
+    ['Summer Family Camp', 'Family Camp 3', 'Summer'],
+    ['Fall Family Camp II', 'Family Camp 5', 'Fall II'],
+  ]
+
+  it.each(CASES)('reads %s as "%s" / "%s"', (name, title, subtitle) => {
+    expect(weekendTitle(name)).toBe(title)
+    expect(weekendSubtitle(name)).toBe(subtitle)
+  })
+
+  it('tests JFAM Sukkot and JFAM Chanukah BEFORE the bare JFAM', () => {
+    // Order in `SUBTITLE_RULES` is load-bearing: a bare-JFAM-first list
+    // collapses both onto "JFAM" and loses the holiday, which is the only
+    // thing telling those weekends apart.
+    expect(weekendSubtitle('Family Camp 7: JFAM Sukkot Weekend with the JCCSF')).not.toBe('JFAM')
+    expect(weekendSubtitle('Family Camp 8: JFAM Chanukah Program')).not.toBe('JFAM')
+  })
+
+  it('keeps an unrecognised suffix rather than dropping it', () => {
+    expect(weekendSubtitle('Family Camp 9: Harvest Weekend')).toBe('Harvest Weekend')
   })
 })
