@@ -169,9 +169,9 @@ describe('useUnitAvailability', () => {
     /*
      * Owner ruling, 2026-08-18: no toast for adding or removing a write-in.
      *
-     *   > "idk what 'Clouds Rest Laundry Room follows its usual role again' is
-     *   >  needed for, if anything. dont think we need toasts for adding or
-     *   >  removing write ins."
+     *   > "idk what '<cabin> follows its usual role again' is needed for, if
+     *   >  anything. dont think we need toasts for adding or removing write
+     *   >  ins."
      *
      * This hook was the only mutation on the weekend board that confirmed
      * success in a toast. `useLodgingPlacement` (place/move/unplace a family)
