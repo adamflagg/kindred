@@ -1843,8 +1843,16 @@ func newWriteInsTestApp(t *testing.T) core.App {
 		})
 		writeIns.Fields.Add(&core.NumberField{Name: "year"})
 		if name == "lodging_write_ins_draft" {
+			// CascadeDelete MIRRORS 1500000161, and it is the whole of
+			// kindred#2382's scenario-delete answer: deleting a saved scenario
+			// takes its write-ins with it, exactly as it does for
+			// lodging_assignments_draft (1500000132) and lodging_slot_merges
+			// (1500000139). No hook and no Python pre-delete loop implements
+			// it, so a fixture that left it off would let
+			// TestDeletingAScenarioSweepsItsDraftWriteIns pass or fail on the
+			// fixture rather than on the schema under test.
 			writeIns.Fields.Add(&core.RelationField{
-				Name: "scenario", CollectionId: scenariosCol.Id, MaxSelect: 1,
+				Name: "scenario", CollectionId: scenariosCol.Id, MaxSelect: 1, CascadeDelete: true,
 			})
 		}
 		if err := app.Save(writeIns); err != nil {
@@ -1874,6 +1882,91 @@ func seedWriteIn(t *testing.T, app core.App, collection, unit string, year int) 
 		return fmt.Errorf("save %s row for year %d: %w", collection, year, err)
 	}
 	return nil
+}
+
+// TestDeletingAScenarioSweepsItsDraftWriteIns is kindred#2382's
+// scenario-delete knock-on, asserted against the running engine.
+//
+// WHERE THE CASCADE LIVES, because both plausible homes are wrong and the
+// question gets re-asked: NOT in pocketbase/lodging/hooks.go, which registers
+// these collections only for the year guards, and NOT in Python --
+// `delete_scenario` (api/routers/scenarios.py) sweeps `bunk_assignments_draft`
+// by hand for summer and touches no lodging table at all. It is a SCHEMA
+// property: `scenario` is declared `cascadeDelete: true` in 1500000161,
+// exactly as lodging_assignments_draft declares it (1500000132) and
+// lodging_slot_merges does (1500000139). Adding a pre-delete loop for lodging
+// would re-create the N+1 that bunk_assignments_draft's own flip to
+// cascadeDelete existed to remove.
+//
+// Once a scenario's write-ins REPLACE the live ones rather than falling
+// through (PR 3 of kindred#2382), a row surviving its scenario is not merely
+// litter: `idx_lodging_write_in_draft_unique` keys on the scenario id, so an
+// orphan holds a slot no live board and no other scenario can see or clear.
+//
+// The migration TEXT is pinned separately by
+// TestLodgingWriteInDraftScenarioIsRequiredAndCascades in package main; this
+// half proves the effect a declaration of that shape actually has.
+func TestDeletingAScenarioSweepsItsDraftWriteIns(t *testing.T) {
+	t.Parallel()
+	app := newWriteInsTestApp(t)
+	unit := seedUnit(t, app, "test-unit-a", 2026)
+
+	scenario := core.NewRecord(mustCollection(t, app, "saved_scenarios"))
+	if err := app.Save(scenario); err != nil {
+		t.Fatalf("seed scenario: %v", err)
+	}
+
+	row := core.NewRecord(mustCollection(t, app, "lodging_write_ins_draft"))
+	row.Set("unit", unit)
+	row.Set("session", seedSession(t, app))
+	row.Set("year", 2026)
+	row.Set("scenario", scenario.Id)
+	if err := app.Save(row); err != nil {
+		t.Fatalf("seed draft write-in: %v", err)
+	}
+
+	if err := app.Delete(scenario); err != nil {
+		t.Fatalf("delete scenario: %v", err)
+	}
+
+	if _, err := app.FindRecordById("lodging_write_ins_draft", row.Id); err == nil {
+		t.Fatal("the draft write-in outlived its scenario; want it cascaded away")
+	}
+}
+
+// TestDeletingAScenarioLeavesTheLiveWriteInsAlone is the other half, and the
+// one a cascade written too wide would fail.
+//
+// The live table carries no scenario relation at all, which is what makes the
+// live board a scope in its own right rather than the absence of one. A
+// scenario being deleted must not disturb it -- staff evaluate the real board
+// from these rows (owner, 2026-08-15), and losing them to somebody else's
+// housekeeping would open a cabin with an occupant in it.
+func TestDeletingAScenarioLeavesTheLiveWriteInsAlone(t *testing.T) {
+	t.Parallel()
+	app := newWriteInsTestApp(t)
+	unit := seedUnit(t, app, "test-unit-a", 2026)
+
+	scenario := core.NewRecord(mustCollection(t, app, "saved_scenarios"))
+	if err := app.Save(scenario); err != nil {
+		t.Fatalf("seed scenario: %v", err)
+	}
+
+	live := core.NewRecord(mustCollection(t, app, "lodging_write_ins"))
+	live.Set("unit", unit)
+	live.Set("session", seedSession(t, app))
+	live.Set("year", 2026)
+	if err := app.Save(live); err != nil {
+		t.Fatalf("seed live write-in: %v", err)
+	}
+
+	if err := app.Delete(scenario); err != nil {
+		t.Fatalf("delete scenario: %v", err)
+	}
+
+	if _, err := app.FindRecordById("lodging_write_ins", live.Id); err != nil {
+		t.Fatalf("deleting a scenario took a LIVE write-in with it: %v", err)
+	}
 }
 
 // TestGuardUnitYearRejectsACrossYearWriteIn is lodging_write_ins's own entry

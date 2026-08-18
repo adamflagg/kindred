@@ -140,6 +140,41 @@ rule: it blocks legitimate work and teaches staff to ignore warnings.
   about the plan — a burst pipe closes a cabin in every scenario for that
   weekend.
 
+  **That boolean answered two questions, and kindred#2382 split them.** `true`
+  is a staff↔family ROLE override — "this staff cabin is released to families
+  this weekend" — which the owner ruled is *not* scenario-scoped, so it stays
+  here and `1500000135`'s reasoning above is exactly right for it. `false` was
+  an OCCUPANCY — somebody is in the room — and that *is* scenario-scoped,
+  because not every write-in is non-rostered staff: some are paper
+  registrations for families arriving with no children, which are a modelling
+  choice belonging to the scenario that made them. Migration `1500000161`
+  created `lodging_write_ins` and `lodging_write_ins_draft` for it and
+  `1500000162` moved the rows.
+
+  The pair behaves exactly as `lodging_assignments` / `lodging_assignments_draft`
+  does: a request naming a scenario reads the DRAFT and **replaces** the live
+  rows rather than falling through to them (kindred#1974's rule), and the live
+  board is a scope in its own right rather than the absence of one — staff must
+  be able to record a write-in on the real board, not only inside a modelling
+  sandbox. A fresh scenario is therefore seeded with the write-ins its source
+  had, in **both** seed paths (`copy_from_mirror` and
+  `copy_scenario_to_scenario`); without that the placement gate below would
+  offer a room the live board records as occupied. Deleting a scenario sweeps
+  its write-ins through the relation's `cascadeDelete`, the same mechanism
+  every other lodging draft table relies on — there is no hook and no
+  client-side pre-delete loop.
+
+  **The READ replaces; the WRITE does not yet choose.** `PUT
+  /api/lodging/availability` takes no `scenario` and writes the live occupancy
+  table, which was right while reads fell through and is a gap now that they
+  replace: a staff member working inside a scenario who records a write-in
+  lands it on the live board and does not see it on the board they made it on.
+  Closing it needs the frontend to send the scenario it already holds, so it
+  belongs with the rest of kindred#2382's frontend work — `set_availability`'s
+  own docstring carries the shape of the fix. Until then, a write-in meant for
+  a scenario has to be recorded on the live board and picked up by seeding the
+  scenario from it.
+
   ### What a hold represents (owner ruling, 2026-08-09; kindred#2090, kindred#2087)
 
   A hold records **who is in a building** — chiefly non-rostered staff, a

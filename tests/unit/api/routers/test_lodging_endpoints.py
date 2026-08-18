@@ -1178,8 +1178,22 @@ class TestCopyFromMirror:
 
     @staticmethod
     def _mirror_reads(**kwargs: Any) -> list[Any]:
-        query_filter = kwargs.get("query_params", {}).get("filter", "")
-        if "session_cm_id = 1000001" in query_filter:
+        """The synced placements, and nothing else.
+
+        KEYED ON `expand`, not on the filter alone, and it has to be: the seed
+        also reads `lodging_write_ins` (kindred#2382 PR 3) and that read's
+        filter is byte-identical to `fetch_assignments`' -- same weekend, same
+        year. One `mock_pb.collection.return_value` serves every collection
+        here, so a filter-only match would hand a placement row back as a
+        write-in and the seed would copy it into the draft occupancy table.
+        `expand: "units"` is what only the placement read asks for.
+
+        `_mirror_write_in_reads` below is the same trick from the other side,
+        for the test that exercises the write-in half.
+        """
+        params = kwargs.get("query_params", {})
+        query_filter = params.get("filter", "")
+        if "session_cm_id = 1000001" in query_filter and params.get("expand") == "units":
             return [
                 _rec(
                     id="assign_1",
@@ -1190,6 +1204,19 @@ class TestCopyFromMirror:
                     expand={"units": [_rec(id="u1", code="ridge-a", name="Ridge A")]},
                 )
             ]
+        return _session_lookup(**kwargs)
+
+    @staticmethod
+    def _mirror_write_in_reads(**kwargs: Any) -> list[Any]:
+        """One LIVE write-in and no placements -- the mirror image of the above.
+
+        Fictional occupant: a production write-in names a real family or a real
+        staff member.
+        """
+        params = kwargs.get("query_params", {})
+        query_filter = params.get("filter", "")
+        if "session_cm_id = 1000001" in query_filter and params.get("expand") != "units":
+            return [_rec(id="wi_1", unit="u1", occupant_name="Olivia Chen", note="Paper registration")]
         return _session_lookup(**kwargs)
 
     def test_copying_seeds_the_scenario_from_the_synced_placements(self, mock_pb: MagicMock) -> None:
@@ -1208,6 +1235,33 @@ class TestCopyFromMirror:
         assert payload["scenario"] == "scn_1"
         assert payload["units"] == ["u1"]
         assert payload["household_cm_id"] == 2000001
+
+    def test_the_seed_also_carries_the_live_boards_write_ins_into_the_scenario(self, mock_pb: MagicMock) -> None:
+        """Owner ruling, 2026-08-16, asserted at the endpoint rather than only in the service.
+
+        A scenario's write-ins REPLACE the live ones on read (kindred#2382),
+        so a scenario seeded without them shows every written-into cabin as
+        OPEN -- and kindred#2247's placement gate reads exactly that, so it
+        would offer a room the live board records as occupied. The split
+        creates that failure mode; this copy closes it.
+        """
+        with patch("api.routers.lodging.pb", mock_pb):
+            client = _write_client(_manage_user(), mock_pb)
+            mock_pb.collection.return_value.get_full_list.side_effect = self._mirror_write_in_reads
+            response = client.post(
+                "/api/lodging/placements/copy",
+                json={"year": 2026, "session_cm_id": 1000001, "scenario": "scn_1"},
+            )
+
+        assert response.status_code == 200, response.text
+        mock_pb.collection.assert_any_call("lodging_write_ins_draft")
+        payload = mock_pb.collection.return_value.create.call_args[0][0]
+        assert payload["scenario"] == "scn_1"
+        assert payload["unit"] == "u1"
+        assert payload["occupant_name"] == "Olivia Chen"
+        assert payload["note"] == "Paper registration"
+        assert payload["session_cm_id"] == 1000001
+        assert payload["year"] == 2026
 
     def test_copying_into_a_worked_scenario_is_a_409(self, mock_pb: MagicMock) -> None:
         """Refused, not merged: a second copy would overwrite the placements
@@ -1300,8 +1354,9 @@ class TestAvailabilityWrites:
         # field is `reason`. See AvailabilityWriteRequest.
         assert payload["note"] == "Burst pipe"
         # WEEKEND-scoped, and still no scenario: the live board is a scope in
-        # its own right, so this table has no scenario column at all. The
-        # draft twin behind it stays dark until PR 3 of kindred#2382.
+        # its own right, so this table has no scenario column at all. Routing
+        # this write to the draft twin when the caller names a scenario is
+        # PR 4's -- see `set_availability`, which carries the gap.
         assert "scenario" not in payload
         assert "state" not in payload
 
