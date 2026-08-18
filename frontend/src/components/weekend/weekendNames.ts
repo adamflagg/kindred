@@ -9,12 +9,23 @@
  *
  * Rendering the whole string everywhere makes a picker unreadable and a title
  * wrap. Splitting on the colon gives a short identity for compact places and a
- * qualifier for the row that has space, and is lossless — unlike inventing
- * abbreviations, which is how a UI starts disagreeing with CampMinder about
- * what a session is called.
+ * qualifier for the row that has space, and is lossless.
  *
  * Names without a colon ("Women's Weekend", "Ready, Set, Camp", "JFAM Winter
  * Family Camp") are already short and pass through untouched.
+ *
+ * ★ THREE FORMS, AND WHICH ONE A SURFACE MAY USE IS NOT A STYLE CHOICE:
+ *
+ * * `splitWeekendName` / `shortWeekendName` — the default. Lossless, and what
+ *   every title, picker and tab with room prints.
+ * * `weekendSlug` — an ADDRESS for a URL. Never rendered.
+ * * `weekendLabel` — an abbreviation, `FC1`, for a surface with no room for a
+ *   name. Owner-ruled on 2026-08-18 (kindred#2393) for the family journey
+ *   panel, which is 416px wide and must fit up to four weekends on one line.
+ *   It is a narrow licence and not a general one: reach for `shortWeekendName`
+ *   unless the space genuinely will not take it, because an abbreviation is
+ *   how a UI starts disagreeing with CampMinder about what a session is
+ *   called.
  */
 
 export interface WeekendName {
@@ -77,13 +88,17 @@ function initials(words: string[]): string {
 /**
  * A weekend's ADDRESS: `fc1`, `ww`, `mw`, `rsc`.
  *
- * THIS IS NOT A DISPLAY NAME, and the distinction is the whole reason it is
- * allowed to exist. The note at the top of this file argues against inventing
- * abbreviations because a UI that does starts disagreeing with CampMinder
- * about what a session is CALLED — every title, picker and tab still renders
- * `splitWeekendName`'s output verbatim. A URL is not a label; it is how staff
- * type and share a weekend, and `/weekend/fc1/map` is one they can say out
- * loud where `/weekend/1000001/map` is not.
+ * A URL, first and foremost: `/weekend/fc1/map` is one staff can say out loud
+ * where `/weekend/1000001/map` is not.
+ *
+ * ⚠️ NOT A LABEL BY ITSELF — render `weekendLabel`, never this. This function
+ * returns '' for a weekend it cannot address, which is the right answer for a
+ * URL and a blank on a screen; `weekendLabel` is the display wrapper that
+ * uppercases the slug and falls back to the weekend's own short name when
+ * there is none. (Until 2026-08-18 this comment forbade display use outright.
+ * The owner's kindred#2393 ruling granted the narrow licence the top-of-file
+ * note now describes, and the wrapper is where it lives — a doc block that
+ * forbids what the code beside it does is worse than either rule alone.)
  *
  * Initials of the identity, with a trailing number kept whole — "Family Camp
  * 10" must not collide with "Family Camp 1". Read from the identity only, so
@@ -119,6 +134,33 @@ export function weekendSlug(name: string): string {
   // Nothing but digits to work with even then: the numeric space belongs to
   // CampMinder ids, so this weekend has no address of its own to offer.
   return DIGITS_ONLY.test(slug) ? '' : slug
+}
+
+/**
+ * A weekend as `FC1`, for a surface with no room for its name (kindred#2393).
+ *
+ * The owner's 2026-08-18 ruling, settled against full-width mockups: the
+ * family journey panel is `w-[26rem]` = 416px, a household-year can carry up
+ * to four weekends, and "Family Camp 1: Memorial Day Weekend" four times over
+ * is not a line — `FC1 · FC4 · FC5` is. PLAIN TEXT, not a chip and not a
+ * badge: the row already carries a housing name, a "No enrollment" chip and a
+ * "See members" action, and a fourth decorated element makes none of them
+ * readable.
+ *
+ * Uppercased, because the slug is lowercase for a URL and `fc1` on a screen
+ * reads as a typo. NOT EVERY WEEKEND IS `FCx`: computed against 2026 the
+ * labels are FC1-FC8 plus `RS` (Ready, Set, Camp) and `W` (JFAM Winter Family
+ * Camp), the two sessions outside the day-group plan. They fall out of the
+ * same rule and are not special-cased.
+ *
+ * ⚠️ Falls back to `shortWeekendName`, NEVER to the CampMinder id. `weekendRef`
+ * falls back to the id because a URL must resolve; a label must be readable,
+ * and `1000005` names nothing a staff member recognises. That is also why this
+ * takes a name and not a session: it structurally cannot emit an id.
+ */
+export function weekendLabel(name: string): string {
+  const slug = weekendSlug(name)
+  return slug.length > 0 ? slug.toUpperCase() : shortWeekendName(name)
 }
 
 /** The minimum a weekend must carry to be addressed. */

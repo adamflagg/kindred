@@ -517,3 +517,104 @@ describe('the raw staff-written string, as provenance', () => {
     expect(rowFor(2023).textContent).toContain('Meadow House 1')
   })
 })
+
+/**
+ * WHICH WEEKENDS the household attended in a year (kindred#2393).
+ *
+ * A journey row is a YEAR, and until now the panel never said which of a
+ * season's six-to-ten family weekends the year was. 64 of 5,438 journey
+ * household-years (1.2%) are multi-weekend — the denominator being every
+ * traced household-year, the union of the three reads the journey issues,
+ * over all years with `year > 0`.
+ *
+ * ⚠️ ONE CABIN, RENDERED ONCE. The year holds exactly one cabin string and
+ * repeating it against each weekend is the fan-out that manufactured 12 of 17
+ * false multi-family occupancies in the phase-C shareability analysis. The
+ * owner's 2026-08-18 ruling also DROPPED the "cabin recorded for the year"
+ * note — staff know CampMinder overwrites the source value, and the note
+ * would have sat beside the existing "No enrollment" chip saying nearly the
+ * same thing.
+ */
+describe('the weekend line', () => {
+  const FC1 = {
+    session_cm_id: 1309514,
+    name: 'Family Camp 1: Memorial Day Weekend',
+    start_date: '2025-05-23',
+  }
+  const FC4 = {
+    session_cm_id: 1309517,
+    name: 'Family Camp 4: Labor Day Weekend',
+    start_date: '2025-09-05',
+  }
+  const RSC = { session_cm_id: 1366768, name: 'Ready, Set, Camp', start_date: '2025-06-13' }
+
+  function weekendLineFor(year: number): HTMLElement | null {
+    return within(rowFor(year)).queryByTestId('household-journey-weekends')
+  }
+
+  it('names every weekend the household attended, as plain FCx text', () => {
+    show([_row({ year: 2025, sessions: [FC1, FC4] })])
+
+    expect(weekendLineFor(2025)?.textContent).toBe('FC1 · FC4')
+  })
+
+  it('uppercases a weekend that does not slug to FCx', () => {
+    show([_row({ year: 2025, sessions: [RSC] })])
+
+    expect(weekendLineFor(2025)?.textContent).toBe('RSC')
+  })
+
+  it('never prints a bare CampMinder id when a name has no abbreviation', () => {
+    // `weekendSlug` declines to address a digits-only name — the numeric space
+    // belongs to CampMinder ids — and `weekendRef` falls back to the id for
+    // that. A LABEL must not: `1379005` names nothing a staff member reads.
+    show([
+      _row({ year: 2025, sessions: [{ session_cm_id: 1379005, name: '2025', start_date: '' }] }),
+    ])
+
+    expect(weekendLineFor(2025)?.textContent).toBe('2025')
+    expect(rowFor(2025).textContent).not.toContain('1379005')
+  })
+
+  it('renders no weekend line at all when no weekend is knowable', () => {
+    // 2021 has no family attendee rows despite 247 registrations, and the
+    // pre-kindred#2420 payload shape did not expand the session relation
+    // either. Empty is "not knowable", so the row says nothing rather than
+    // printing an empty line under the housing name.
+    show([_row({ year: 2021, sessions: [] })])
+
+    expect(weekendLineFor(2021)).toBeNull()
+  })
+
+  it('prints the cabin ONCE for a multi-weekend year, never once per weekend', () => {
+    show([
+      _row({
+        year: 2025,
+        housing: 'placed',
+        cabin_name: 'Cedar Lodge - Room 2',
+        sessions: [FC1, FC4],
+      }),
+    ])
+
+    const text = rowFor(2025).textContent ?? ''
+    expect(text.split('Cedar Lodge - Room 2')).toHaveLength(2)
+  })
+
+  it('adds no explanatory note for a year whose cabin belongs to no one weekend', () => {
+    // The owner struck it on 2026-08-18. The rule it came from is unchanged —
+    // one cabin, rendered once — but the sentence is not on the panel.
+    show([
+      _row({
+        year: 2025,
+        housing: 'placed',
+        cabin_name: 'Cedar Lodge - Room 2',
+        sessions: [FC1, FC4],
+        housing_session_cm_id: null,
+      }),
+    ])
+
+    const text = rowFor(2025).textContent ?? ''
+    expect(text).not.toContain('for the year')
+    expect(text).not.toContain('unresolved')
+  })
+})

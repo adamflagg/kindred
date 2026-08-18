@@ -48,6 +48,7 @@ import { QueryGuard } from '../QueryGuard'
 import { Tooltip } from '../ui/Tooltip'
 import { childSurnames, familyNameLabel, isAttendingAdultName } from './householdIdentity'
 import { HouseholdYearMembersModal } from './HouseholdYearMembersModal'
+import { weekendLabel } from './weekendNames'
 
 export interface HouseholdJourneyCardProps {
   /**
@@ -132,6 +133,12 @@ function JourneyRows({
           // still renders.
           const rawHousing = (row.cabin_name_raw ?? '').trim()
           const showsProvenance = isPlaced && rawHousing.length > 0 && rawHousing !== housing
+          // kindred#2393. `FC1 · FC4`, in the order the server sent — which is
+          // the season's own, earliest first. `weekendLabel` is the one
+          // sanctioned display use of the slug and falls back to the
+          // weekend's short name rather than to its CampMinder id, which
+          // names nothing a staff member reads.
+          const weekends = (row.sessions ?? []).map((session) => weekendLabel(session.name ?? ''))
 
           return (
             <div
@@ -177,35 +184,74 @@ function JourneyRows({
                   carry a wing or sub-unit suffix — exactly the substring
                   `truncate` chops — so summer's treatment does not transfer
                   here and this row earns its own. */}
-              <span
-                data-testid="household-journey-housing"
-                className={`flex min-w-0 items-center gap-1 text-sm ${
-                  isPlaced ? 'text-foreground font-medium' : 'text-muted-foreground italic'
-                }`}
-              >
-                {isPlaced && <Home className="h-3.5 w-3.5 flex-shrink-0 opacity-60" />}
-                {/* A real Tooltip and not a `title` (kindred#2177), and the
+              {/* Housing on one line, the weekends on the next (kindred#2393,
+                  owner ruling 2026-08-18). A column rather than a fourth item
+                  in the row: the panel is `w-[26rem]` = 416px and already
+                  carries a year, a housing name that wraps, a chip and an
+                  action, so a four-weekend list on the same line is not a
+                  line. `min-w-0` moves out here with it — it is what lets the
+                  flex child shrink below its content width, which is what
+                  makes the kindred#2253 wrap happen instead of the row
+                  overflowing. */}
+              <div className="flex min-w-0 flex-col">
+                <span
+                  data-testid="household-journey-housing"
+                  className={`flex min-w-0 items-center gap-1 text-sm ${
+                    isPlaced ? 'text-foreground font-medium' : 'text-muted-foreground italic'
+                  }`}
+                >
+                  {isPlaced && <Home className="h-3.5 w-3.5 flex-shrink-0 opacity-60" />}
+                  {/* A real Tooltip and not a `title` (kindred#2177), and the
                     same trigger shape `LodgingUnitCard` gives its occupancy
                     figure. `min-w-0 text-left` is what keeps the kindred#2253
                     wrap: a button centres its text and will not shrink below
                     its content width without it. */}
-                {showsProvenance ? (
-                  <Tooltip
-                    content={`Recorded as "${rawHousing}" that season`}
-                    data-testid="household-journey-housing-provenance"
-                    // Hover and focus only. The sentence restates what staff
-                    // typed that season and there is nothing to act on, so
-                    // the tap-pins default left a bubble stuck open over the
-                    // rows below it after a click that meant nothing.
-                    pinOnClick={false}
-                    className="decoration-muted-foreground/60 min-w-0 text-left underline decoration-dotted underline-offset-2"
+                  {showsProvenance ? (
+                    <Tooltip
+                      content={`Recorded as "${rawHousing}" that season`}
+                      data-testid="household-journey-housing-provenance"
+                      // Hover and focus only. The sentence restates what staff
+                      // typed that season and there is nothing to act on, so
+                      // the tap-pins default left a bubble stuck open over the
+                      // rows below it after a click that meant nothing.
+                      pinOnClick={false}
+                      className="decoration-muted-foreground/60 min-w-0 text-left underline decoration-dotted underline-offset-2"
+                    >
+                      {housing}
+                    </Tooltip>
+                  ) : (
+                    housing
+                  )}
+                </span>
+
+                {/* PLAIN TEXT, not chips (owner ruling 2026-08-18). The row
+                  already carries a housing name, a "No enrollment" chip and a
+                  "See members" action; a fourth decorated element makes none
+                  of them readable.
+
+                  ⚠️ ONE CABIN, RENDERED ONCE. There is deliberately no cabin
+                  against each weekend: `family_camp_registrations` holds a
+                  single string per household-year, and repeating it per
+                  weekend is the fan-out that manufactured 12 of 17 false
+                  multi-family occupancies in the phase-C shareability
+                  analysis. There is no explanatory note for the ambiguous
+                  case either — the owner struck it, because staff know
+                  CampMinder overwrites the source value and it would have sat
+                  beside the "No enrollment" chip saying nearly the same thing.
+
+                  Nothing at all when no weekend is knowable: an empty list is
+                  the pre-kindred#2420 payload shape and a year with no
+                  enrolled child (2020's cancelled season, 2021's adults-only
+                  rows), not a household that attended none. */}
+                {weekends.length > 0 && (
+                  <span
+                    data-testid="household-journey-weekends"
+                    className="text-muted-foreground text-xs"
                   >
-                    {housing}
-                  </Tooltip>
-                ) : (
-                  housing
+                    {weekends.join(' · ')}
+                  </span>
                 )}
-              </span>
+              </div>
 
               {/* NOT "a childless family" and NOT an error — 2020's season was
                   cancelled outright and 2021 has no family attendee rows at all

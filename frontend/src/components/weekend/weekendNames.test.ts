@@ -1,7 +1,14 @@
 /**
  * CampMinder joins a weekend's identity and its description with a colon.
- * Splitting is lossless; abbreviating would not be — which is why the slug
- * below is an ADDRESS and never a label. See the note in weekendNames.ts.
+ * Splitting is lossless; abbreviating is not — which is why there are three
+ * forms and not one, and why which form a surface may use is a rule rather
+ * than a preference. See the note in weekendNames.ts.
+ *
+ * `weekendSlug` is an ADDRESS for a URL and is never rendered on its own.
+ * `weekendLabel` is the narrow display licence the owner granted on
+ * 2026-08-18 (kindred#2393) for the 416px family journey panel: it uppercases
+ * the slug and falls back to the weekend's short name, never to a CampMinder
+ * id. Everywhere with room still prints `splitWeekendName`'s output verbatim.
  */
 import { describe, expect, it } from 'vitest'
 
@@ -9,6 +16,7 @@ import {
   resolveWeekendRef,
   shortWeekendName,
   splitWeekendName,
+  weekendLabel,
   weekendRef,
   weekendSlug,
 } from './weekendNames'
@@ -164,5 +172,78 @@ describe('resolveWeekendRef', () => {
   it('finds nothing for a reference that names no weekend', () => {
     expect(resolveWeekendRef([FC1, WOMENS], 'zz')).toBeUndefined()
     expect(resolveWeekendRef([FC1, WOMENS], undefined)).toBeUndefined()
+  })
+})
+
+describe('weekendLabel', () => {
+  /**
+   * The owner's 2026-08-18 ruling on kindred#2393: a weekend prints as `FC1`,
+   * as PLAIN TEXT, on the journey panel's weekend line and on the members
+   * modal's tabs. `w-[26rem]` has no room for "Family Camp 1: Memorial Day
+   * Weekend" three times over, and the abbreviation is the one staff already
+   * say out loud.
+   */
+  it('abbreviates a numbered family weekend to FCx', () => {
+    expect(weekendLabel('Family Camp 1: Memorial Day Weekend')).toBe('FC1')
+  })
+
+  it('keeps a two-digit weekend distinct from a one-digit one', () => {
+    // The same collision `weekendSlug` guards: FC10 must not read as FC1.
+    expect(weekendLabel('Family Camp 10')).toBe('FC10')
+    expect(weekendLabel('Family Camp 1')).toBe('FC1')
+  })
+
+  it('uppercases the two 2026 weekends that are not FCx', () => {
+    // Computed against the ten 2026 family sessions: FC1-FC8 plus these two,
+    // which sit outside the day-group plan. They are not special cases in the
+    // code and must not become them — they are what the rule already produces.
+    //
+    // ⚠️ kindred#2393's ruling called these `rs` and `w`. Both are off: the
+    // slug rule keeps EVERY initial of the identity, so "Ready, Set, Camp" is
+    // `rsc` (the example weekendSlug's own doc block gives) and "JFAM Winter
+    // Family Camp" is `wfc` once the shared JFAM token is dropped. Pinned here
+    // as computed rather than as written down, because the alternative is
+    // special-casing two weekends to match a note.
+    expect(weekendLabel('Ready, Set, Camp')).toBe('RSC')
+    expect(weekendLabel('JFAM Winter Family Camp')).toBe('WFC')
+  })
+
+  it('gives the ten 2026 family weekends ten distinct labels', () => {
+    // A label that collided would put two weekends on one tab in the members
+    // modal and read as one entry on the journey's weekend line.
+    const labels = [
+      'Ready, Set, Camp',
+      'Family Camp 1: Memorial Day Weekend',
+      'Family Camp 2: Keshet LGBTQ Weekend',
+      'Family Camp 3: JFAM Weekend (w/ kids 10 and under)',
+      'Family Camp 4: Labor Day Weekend',
+      'Family Camp 5: JFAM Weekend (w/ kids 10 and under)',
+      'Family Camp 6',
+      'Family Camp 7: Jewish Families of Color Weekend',
+      'Family Camp 8: JFAM Weekend (w/ kids 10 and under)',
+      'JFAM Winter Family Camp',
+    ].map(weekendLabel)
+
+    expect(new Set(labels).size).toBe(labels.length)
+  })
+
+  it('reads the identity only, so a description cannot drag the label', () => {
+    expect(weekendLabel('Family Camp 5: JFAM Weekend (w/ kids 10 and under)')).toBe('FC5')
+  })
+
+  it('falls back to the short name when there is nothing to abbreviate', () => {
+    // `weekendSlug` returns '' here on purpose: the numeric space belongs to
+    // CampMinder ids, so this weekend has no ADDRESS. It still has a name,
+    // and the label is that name — never the id `weekendRef` falls back to,
+    // which names nothing a staff member can read.
+    expect(weekendSlug('2026')).toBe('')
+    expect(weekendLabel('2026')).toBe('2026')
+    expect(weekendLabel('2026')).not.toBe(String(YEAR_ONLY.session_cm_id))
+  })
+
+  it('never returns an empty string for a weekend that has a name', () => {
+    for (const session of [FC1, WOMENS, WINTER, JFAM_10, YEAR_ONLY]) {
+      expect(weekendLabel(session.name).length).toBeGreaterThan(0)
+    }
   })
 })

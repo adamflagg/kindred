@@ -56,6 +56,12 @@ const _exhaustivePartyChild: Required<PartyChildRow> = {
   last_name: 'Martinez Garcia',
   age: 9,
   grade: 4,
+  // kindred#2393. WHICH WEEKENDS this child attended that year, earliest
+  // first — the journey populates it and every other surface leaves it empty,
+  // because the roster is already one weekend. `[]` is "not knowable", never
+  // "attended nothing", and the members modal keeps such a child visible on
+  // every weekend tab rather than hiding them from all of them.
+  session_cm_ids: [1309514, 1309517],
 }
 void _exhaustivePartyChild
 
@@ -77,6 +83,24 @@ const _exhaustiveHouseholdJourneyRow: Required<HouseholdJourneyRow> = {
   // snapshot, and it is the only case the card shows this field in.
   cabin_name_raw: 'Old Meadow 1',
   enrollment: 'enrolled',
+  // kindred#2393. The weekends the household attended that year, earliest
+  // first. Two of them here on purpose: that is the 64-of-5,438 case the
+  // field exists for, and it is also why the row below refuses to pin the
+  // cabin.
+  sessions: [
+    {
+      session_cm_id: 1309514,
+      name: 'Family Camp 1: Memorial Day Weekend',
+      start_date: '2026-05-22',
+    },
+    { session_cm_id: 1309517, name: 'Family Camp 4: Labor Day Weekend', start_date: '2026-09-04' },
+  ],
+  // `null` because there are two weekends and CampMinder holds ONE cabin
+  // string per household-year, so nothing can say which weekend it describes
+  // — deliberately the same refusal `AttributeSession` makes in the Go sync.
+  // A regen that turned this into a plain `number` would erase the state the
+  // whole field exists to carry.
+  housing_session_cm_id: null,
   adults: [],
   children: [],
 }

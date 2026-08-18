@@ -17,7 +17,7 @@
  *   despite 247 registrations — while adults exist for both years.
  */
 import { useState } from 'react'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import { describe, expect, it, vi, afterEach, beforeEach } from 'vitest'
 import { MemoryRouter, Route, Routes } from 'react-router'
 
@@ -328,5 +328,191 @@ describe('navigating to a linked camper unwinds the modal stack (kindred#2329)',
     expect(screen.getByRole('dialog')).toBeInTheDocument()
     expect(document.getElementById('root')).toHaveAttribute('inert')
     expect(hasOpenModal()).toBe(true)
+  })
+})
+
+/**
+ * WHICH WEEKEND (kindred#2393, owner ruling 2026-08-18: option A, tabs).
+ *
+ * ★ THIS IS THE HALF THAT ACTUALLY NEEDED THE SESSION GRAIN. A journey row is
+ * a household-YEAR, so a family that booked two of a season's weekends
+ * collapses into one merged member list. Measured on the production snapshot,
+ * 64 of 5,438 journey household-years are multi-weekend and 7 of those 64
+ * carry a child who did not attend every weekend — so today's list silently
+ * overstates at least one weekend's party, and once the weekends appear on
+ * the panel it becomes visibly wrong.
+ *
+ * ⚠️ THE ADULT LIST CANNOT BE TABBED. `family_camp_adults` is household-year
+ * grain with NO session dimension, so adults have no per-weekend truth to
+ * filter on. They render unchanged on every tab, and inventing an attendance
+ * claim for them is kindred#1943 — blocked on a 2027 form change.
+ */
+describe('the weekend tabs', () => {
+  const FC1 = {
+    session_cm_id: 1309514,
+    name: 'Family Camp 1: Memorial Day Weekend',
+    start_date: '2025-05-23',
+  }
+  const FC4 = {
+    session_cm_id: 1309517,
+    name: 'Family Camp 4: Labor Day Weekend',
+    start_date: '2025-09-05',
+  }
+
+  /** Emma went to both weekends; Liam only to the first. The 7-of-64 case. */
+  function _twoWeekendRow(overrides: Partial<HouseholdJourneyRow> = {}): HouseholdJourneyRow {
+    return _row({
+      sessions: [FC1, FC4],
+      children: [
+        {
+          person_cm_id: 1000001,
+          display_name: 'Emma Johnson',
+          last_name: 'Johnson',
+          age: 9,
+          grade: 4,
+          session_cm_ids: [1309514, 1309517],
+        },
+        {
+          person_cm_id: 1000002,
+          display_name: 'Liam Johnson',
+          last_name: 'Johnson',
+          age: 7,
+          grade: 2,
+          session_cm_ids: [1309514],
+        },
+      ],
+      ...overrides,
+    })
+  }
+
+  it('offers one tab per weekend plus All, labelled FCx', () => {
+    open(_twoWeekendRow())
+
+    const tabs = within(screen.getByTestId('year-members-weekend-tabs')).getAllByRole('button')
+    expect(tabs.map((tab) => tab.textContent)).toEqual(['All', 'FC1', 'FC4'])
+  })
+
+  it('opens on All, showing the whole year rather than one weekend of it', () => {
+    // Both halves matter. The strip must SAY All is on — a mutation that
+    // opened on the first weekend passed a names-only assertion, because
+    // every child here attended the first weekend. And a child who attended
+    // ONLY the later weekend must still be on screen at open.
+    open(
+      _twoWeekendRow({
+        children: [
+          {
+            person_cm_id: 1000004,
+            display_name: 'Noah Garcia',
+            last_name: 'Garcia',
+            age: 8,
+            grade: 3,
+            session_cm_ids: [1309517],
+          },
+        ],
+      })
+    )
+
+    expect(screen.getByRole('button', { name: 'All' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'FC1' })).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getByTestId('year-members-children').textContent).toContain('Noah Garcia')
+  })
+
+  it('shows every child of a multi-weekend year on All', () => {
+    open(_twoWeekendRow())
+
+    const names = screen.getByTestId('year-members-children').textContent ?? ''
+    expect(names).toContain('Emma Johnson')
+    expect(names).toContain('Liam Johnson')
+  })
+
+  it('drops a child who did not attend the selected weekend', () => {
+    open(_twoWeekendRow())
+
+    fireEvent.click(screen.getByRole('button', { name: 'FC4' }))
+
+    const names = screen.getByTestId('year-members-children').textContent ?? ''
+    expect(names).toContain('Emma Johnson')
+    expect(names).not.toContain('Liam Johnson')
+  })
+
+  it('brings the child back on the weekend they did attend', () => {
+    open(_twoWeekendRow())
+
+    fireEvent.click(screen.getByRole('button', { name: 'FC4' }))
+    fireEvent.click(screen.getByRole('button', { name: 'FC1' }))
+
+    expect(screen.getByTestId('year-members-children').textContent).toContain('Liam Johnson')
+  })
+
+  it('makes the headcount follow the selected tab', () => {
+    open(_twoWeekendRow())
+
+    // All: one adult + two children.
+    expect(screen.getByText(/3 people/)).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'FC4' }))
+
+    // FC4: the same adult + Emma alone. A headcount that stayed at 3 would be
+    // the exact overstatement the tabs exist to remove.
+    expect(screen.getByText(/2 people/)).toBeInTheDocument()
+  })
+
+  it('leaves the adult list untouched on a weekend tab', () => {
+    // `family_camp_adults` has no session dimension. Filtering adults would be
+    // an attendance claim nothing supports (kindred#1943).
+    open(_twoWeekendRow())
+
+    fireEvent.click(screen.getByRole('button', { name: 'FC4' }))
+
+    expect(screen.getByTestId('year-members-adults').textContent).toContain('Olivia Johnson')
+  })
+
+  it('marks the selected tab pressed so the strip says which one is on', () => {
+    open(_twoWeekendRow())
+
+    fireEvent.click(screen.getByRole('button', { name: 'FC4' }))
+
+    expect(screen.getByRole('button', { name: 'FC4' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'All' })).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  it('shows no tab strip for a single-weekend year', () => {
+    // `All · FC1` splits nothing. The card's own weekend line already names
+    // the weekend, so a strip here would be a control that cannot change
+    // anything.
+    open(_row({ sessions: [FC1] }))
+
+    expect(screen.queryByTestId('year-members-weekend-tabs')).toBeNull()
+  })
+
+  it('shows no tab strip when no weekend is knowable', () => {
+    open(_row({ sessions: [] }))
+
+    expect(screen.queryByTestId('year-members-weekend-tabs')).toBeNull()
+  })
+
+  it('keeps a child whose weekends are unknown visible on every tab', () => {
+    // An attendee row whose `session` relation did not expand carries no
+    // weekend. That is "not knowable", NOT "attended nothing" — hiding such a
+    // child from every weekend tab would lose a real member of the party.
+    open(
+      _row({
+        sessions: [FC1, FC4],
+        children: [
+          {
+            person_cm_id: 1000003,
+            display_name: 'Ava Garcia',
+            last_name: 'Garcia',
+            age: 10,
+            grade: 5,
+            session_cm_ids: [],
+          },
+        ],
+      })
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'FC4' }))
+
+    expect(screen.getByTestId('year-members-children').textContent).toContain('Ava Garcia')
   })
 })

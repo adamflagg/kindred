@@ -378,6 +378,23 @@ class PartyChild(BaseModel):
     last_name: str = ""
     age: float | None = None
     grade: int | None = None
+    # WHICH FAMILY WEEKENDS THIS CHILD ATTENDED that year, earliest first
+    # (kindred#2393). Populated by the household journey ONLY, and empty on
+    # every other surface: the roster is already one weekend, so a per-child
+    # weekend list there would restate the page's own title once per camper.
+    #
+    # The journey spans years and its rows are household-YEAR grain, which is
+    # where a family that booked two of a season's weekends collapses into one
+    # merged member list. Measured on the production snapshot, 64 of 5,438
+    # journey household-years are multi-weekend and 7 of those 64 carry a
+    # child who did not attend every weekend -- so the merged list overstates
+    # at least one weekend's party. This is what lets the client undo that.
+    #
+    # Empty is "not knowable", NOT "attended nothing": an attendee row whose
+    # `session` relation did not expand yields no weekend at all, and the
+    # client keeps such a child visible rather than hiding them from every
+    # weekend.
+    session_cm_ids: list[int] = Field(default_factory=list)
 
 
 class RequestTextEntry(BaseModel):
@@ -730,6 +747,27 @@ HousingState = Literal["placed", "not_placed", "unknown"]
 EnrollmentState = Literal["enrolled", "none_on_file"]
 
 
+class HouseholdJourneySession(BaseModel):
+    """One family weekend a household attended in a given year (kindred#2393).
+
+    THE WEEKEND, NOT THE HOUSING. A journey row is a year and a year holds
+    exactly ONE cabin string -- `family_camp_registrations` has no second
+    field for a second weekend -- so this list says which weekends the
+    household was at and says nothing about where it slept in each. Repeating
+    the year's cabin against every entry is the fan-out that manufactured 12
+    of 17 false multi-family occupancies in the phase-C shareability analysis.
+
+    `start_date` is the raw PocketBase string, exactly as
+    `WeekendSessionSummary` publishes it -- the client already reads that
+    shape, and the server's only use for it here is the ordering it has
+    already applied.
+    """
+
+    session_cm_id: int = 0
+    name: str = ""
+    start_date: str = ""
+
+
 class HouseholdJourneyYear(BaseModel):
     """One year of a household's family-camp record.
 
@@ -759,6 +797,32 @@ class HouseholdJourneyYear(BaseModel):
     # is 716 of 1,861 rows on the production snapshot: rendering it beside an
     # identical name would be noise on the other 1,145.
     cabin_name_raw: str = ""
+    # WHICH FAMILY WEEKENDS the household attended that year, earliest first
+    # (kindred#2393). Derived from the attendee rows this row's members
+    # already come from, so it costs no extra round trip -- the journey's
+    # attendee read has expanded `session` since kindred#2420.
+    #
+    # Empty for a year with no enrolled child (2020's cancelled season, 2021's
+    # adults-only rows) and for the pre-kindred#2420 payload shape where the
+    # relation did not expand. Empty is "no weekend is knowable", never "the
+    # household attended none".
+    sessions: list[HouseholdJourneySession] = Field(default_factory=list)
+    # Which weekend `cabin_name` belongs to -- and `None` whenever that cannot
+    # be said, which is the whole point of the field.
+    #
+    # ⚠️ DELIBERATELY THE SAME REFUSAL the Go ingest makes. `AttributeSession`
+    # (`pocketbase/sync/lodging_session_attribution.go:327`) pins the year's
+    # single cabin string to a weekend only when the household attended
+    # exactly one and otherwise declines, because CampMinder's one per-year
+    # value cannot say which weekend it describes. A read surface that guessed
+    # where the ingest refuses would put the two into disagreement about the
+    # same fact.
+    #
+    # `None` therefore covers three different situations and the client words
+    # none of them: several weekends (41 of the 1,861 cabin-bearing
+    # household-years on the production snapshot), no weekend on file (158),
+    # and no cabin to attribute in the first place.
+    housing_session_cm_id: int | None = None
     enrollment: EnrollmentState = "none_on_file"
     # Every `family_camp_adults` row for the year, blanks and placeholders
     # included -- the same contract `RosterParty.adults` publishes, so the

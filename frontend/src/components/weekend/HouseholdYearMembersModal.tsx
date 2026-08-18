@@ -10,6 +10,19 @@
  * children age out, adults change — so this renders the rows the server
  * derived for this year and nothing from an adjacent one.
  *
+ * ★ AND PER WEEKEND, WHERE THE YEAR HAD MORE THAN ONE (kindred#2393, owner
+ * ruling 2026-08-18). A journey row is a household-YEAR, so a family that
+ * booked two of a season's weekends collapsed into one merged list: 64 of
+ * 5,438 journey household-years are multi-weekend and 7 of those 64 carry a
+ * child who did not attend every weekend, which means the merged list
+ * overstates at least one weekend's party. The tab strip is what lets a staff
+ * member see one weekend's party at a time.
+ *
+ * ⚠️ THE ADULT LIST IS NOT TABBED, AND CANNOT BE. `family_camp_adults` is
+ * household-year grain with NO session dimension — there is no per-weekend
+ * truth to filter adults on, and inventing one is kindred#1943, which is
+ * blocked on a 2027 form change. The adults render unchanged on every tab.
+ *
  * Built on the shared `ui/Modal` primitive rather than a bespoke overlay, so
  * it inherits the portal at `z-[100]` (which is what lets it open on top of
  * the `z-[60]` family panel), the Escape handler, the background `inert`, and
@@ -33,12 +46,14 @@
  * overlay token for as long as the modal is mounted, exactly as before.
  */
 import { Baby, Users } from 'lucide-react'
+import { useState } from 'react'
 import { Link } from 'react-router'
 
 import type { HouseholdJourneyRow } from '../../types/lodging'
 import { displayCampMinderAge } from '../../utils/age'
 import { Modal } from '../ui/Modal'
 import { isAttendingAdultName } from './householdIdentity'
+import { weekendLabel } from './weekendNames'
 
 /**
  * Mirrors `CamperLink.tsx`'s own validity check — a CampMinder ID is only
@@ -118,6 +133,31 @@ export function HouseholdYearMembersModal({
   row,
   familyLabel,
 }: HouseholdYearMembersModalProps) {
+  // `null` is the All tab, which is where every year opens.
+  //
+  // A DELIBERATE DIVERGENCE from the root CLAUDE.md §4 rule that weekend tab
+  // state lives in the URL: that rule buys a linkable, reload-surviving tab,
+  // and this one has nothing to be linkable FROM. The modal itself is not
+  // addressable — the card holds the open row in `useState` — so a search
+  // param for its inner filter would outlive the modal that owns it and name
+  // a weekend nothing is showing.
+  const [selectedCmId, setSelectedCmId] = useState<number | null>(null)
+  // Hooks run before the null-row bail-out, so `sessions` is read defensively
+  // rather than after it.
+  const sessions = row?.sessions ?? []
+  // A stale selection resets ITSELF rather than through an effect. The card
+  // keeps this component mounted across opens (`row` goes null and back), so
+  // a weekend picked on 2025 would otherwise still be selected on 2024, where
+  // it names nothing and would empty the list.
+  const activeCmId =
+    selectedCmId !== null && sessions.some((session) => session.session_cm_id === selectedCmId)
+      ? selectedCmId
+      : null
+  // `All · FC1 · FC4`. Only where there is something to split: one weekend
+  // makes `All · FC1` a control that cannot change anything, and the journey
+  // card's own weekend line already names it.
+  const showsTabs = sessions.length > 1
+
   if (row === null) return null
 
   // A blank `family_camp_adults` slot is not an attending adult — the scrape
@@ -126,7 +166,18 @@ export function HouseholdYearMembersModal({
   // server publishes every row on purpose so the client applies ONE predicate
   // across every surface; this is that predicate.
   const adults = (row.adults ?? []).filter((adult) => isAttendingAdultName(adult.display_name))
-  const children = row.children ?? []
+  // A child with NO weekends on file stays visible on every tab. An empty
+  // `session_cm_ids` is "not knowable" — an attendee row whose `session`
+  // relation did not expand — never "attended nothing", and hiding such a
+  // child from every weekend would lose a real member of the party.
+  const children = (row.children ?? []).filter(
+    (child) =>
+      activeCmId === null ||
+      (child.session_cm_ids ?? []).length === 0 ||
+      (child.session_cm_ids ?? []).includes(activeCmId)
+  )
+  // Follows the selected tab. A headcount that stayed at the year's total
+  // would be the exact overstatement the tabs exist to remove.
   const headcount = adults.length + children.length
 
   const header = (
@@ -152,6 +203,45 @@ export function HouseholdYearMembersModal({
       ariaLabelledBy={TITLE_ID}
     >
       <div className="flex flex-col gap-4 p-4">
+        {/* The segmented control the weekend surface already uses — the same
+            grammar as `HouseholdRosterTable`'s need filters, tightened one
+            step for a modal. Buttons and `aria-pressed`, not `role="tablist"`:
+            per `frontend/CLAUDE.md`, accessibility here is deliberately
+            minimal, and `aria-pressed` is what the sibling control states. */}
+        {showsTabs && (
+          <div
+            data-testid="year-members-weekend-tabs"
+            className="bg-muted/50 dark:bg-muted/30 border-border/50 flex flex-wrap items-center gap-1 rounded-xl border p-1"
+          >
+            {[null, ...sessions.map((session) => session.session_cm_id ?? 0)].map((cmId) => {
+              const isSelected = activeCmId === cmId
+              const label =
+                cmId === null
+                  ? 'All'
+                  : weekendLabel(
+                      sessions.find((session) => session.session_cm_id === cmId)?.name ?? ''
+                    )
+              return (
+                <button
+                  key={cmId === null ? 'all' : String(cmId)}
+                  type="button"
+                  aria-pressed={isSelected}
+                  onClick={() => {
+                    setSelectedCmId(cmId)
+                  }}
+                  className={`rounded-lg px-2.5 py-1 text-xs font-medium transition-all duration-200 ${
+                    isSelected
+                      ? 'bg-primary text-primary-foreground shadow-lodge-sm'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-muted dark:hover:bg-muted/80'
+                  }`}
+                >
+                  {label}
+                </button>
+              )
+            })}
+          </div>
+        )}
+
         {adults.length > 0 && (
           <MemberSection title="Adults" icon={<Users className="h-3.5 w-3.5" />}>
             <ul data-testid="year-members-adults" className="flex flex-col gap-0.5">
