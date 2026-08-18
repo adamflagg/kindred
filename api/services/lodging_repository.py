@@ -809,8 +809,10 @@ class LodgingRepository:
 
         Carries the ingest-derived request layer -- share_cabin_gate,
         wants_near / wants_with / wants_similar_ages, request_text -- and the
-        four narrative-free housing flags. Read those columns; do not re-derive them
-        from share_cabin_preference / shared_cabin_modes_raw, which are the raw
+        five narrative-free housing flags -- needs_private_bathroom,
+        needs_power, needs_accommodation, has_infant, and needs_fridge since
+        kindred#2224. Read those columns; do not re-derive them from
+        share_cabin_preference / shared_cabin_modes_raw, which are the raw
         profile values kept for provenance.
 
         Cached (kindred#1963): year-scoped and sync-written only. See

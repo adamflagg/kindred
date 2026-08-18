@@ -2362,7 +2362,7 @@ class LodgingRosterService:
             needs_accommodation=_b(registration, "needs_accommodation"),
             accommodation_is_mandatory=_b(registration, "accommodation_is_mandatory"),
             has_infant=_b(registration, "has_infant"),
-            # kindred#2224. Read from the column for the same reason the four
+            # kindred#2224. Read from the column for the same reason the five
             # above are: the derivation runs over RAW per-person narrative
             # values in the sync layer, and this service cannot see them.
             needs_fridge=_b(registration, "needs_fridge"),
