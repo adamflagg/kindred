@@ -43,11 +43,22 @@
  * drag-time hatch, and shares this module's `fits/partial/unmet` vocabulary
  * and its `worseOf` precedence — imported, not re-declared. What it does not
  * share is the DIMENSION TABLE, deliberately: its list drives a mark painted
- * on ~82 cards mid-drag and is seeded with power alone, whereas a row in this
- * list has room for a sentence. Adding bathroom and capacity there to reach
- * them here would have changed a shipped board treatment as a side effect.
+ * on ~82 cards mid-drag, whereas a row in this list has room for a sentence.
+ * Adding bathroom and capacity there to reach them here would have changed a
+ * shipped board treatment as a side effect.
  *
- * The power rule is therefore stated in both places. ⚠️ CHANGE ONE, CHANGE
+ * ⚠️ THE TWO TABLES HAVE DIVERGED, and the divergence is a live decision
+ * rather than an oversight. `needsFit` was seeded with power ALONE; kindred#2224
+ * added `needs_fridge` there and NOT here, so a family whose accommodation
+ * narrative asks for a fridge is hatched mid-drag on a fridgeless cabin and
+ * annotated `fits` in this picker (and reported `settled` by
+ * `rosterAttention`'s `VERIFIABLE_NEEDS`, which does not carry it either).
+ * Whether the fridge need earns a sentence here and a roster-row reason there
+ * is a staff-copy question that belongs with kindred#2072's ruled glyph set
+ * (bathroom · power · fridge) — it is not settled by this comment. Until it
+ * is, do not assume silence here means the need does not apply.
+ *
+ * The power rule is stated in both places. ⚠️ CHANGE ONE, CHANGE
  * BOTH — same field (`power_coverage`, never the raw `has_power`), same
  * grading, same `unknown → fits`.
  */
@@ -107,7 +118,7 @@ function bathroomVerdict(party: RosterPartyRow, unit: LodgingUnitRow): Dimension
 /**
  * Does the space have power where this party needs it?
  *
- * ⚠️ The twin of `needsFit`'s only dimension — see the module doc. Uses
+ * ⚠️ The twin of `needsFit`'s POWER dimension — see the module doc. Uses
  * `power_coverage`, the server's resolution over the unit's LEAF descendants,
  * never the raw `has_power`: twelve of the fourteen 2026 family-pool
  * containers record `has_power = 0` while every leaf beneath them has power,

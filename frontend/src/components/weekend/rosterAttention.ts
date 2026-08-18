@@ -55,6 +55,18 @@ export const ATTENTION_LABEL: Record<AttentionLevel, string> = {
  * so no cabin field settles it. `has_infant` is absent too — it is derived
  * from the household's ages rather than asked for, so it informs which cabin
  * suits them without being an unfulfilled request.
+ *
+ * ⚠️ `needs_fridge` (kindred#2224) is a DIFFERENT kind of absence, and it is
+ * NOT settled. Unlike `needs_accommodation` it does name an amenity the
+ * registry answers (`fridge_coverage`), and `needsFit.ts` already grades it
+ * for the drag-time hatch — so a placed family with an unmet fridge need
+ * currently reports `settled` here while the same family+cabin pair hatches
+ * mid-drag. Wiring it is not mechanical: the two entries below read a RAW
+ * unit field, and a fridge entry cannot, because the owner's 2026-08-15
+ * ruling ("a shared fridge IS a fridge") and the container trap both live in
+ * the server-resolved `fridge_coverage` rather than in `has_fridge`. It also
+ * puts new words in front of staff. Both belong with kindred#2072's ruled
+ * glyph set (bathroom · power · fridge), not here.
  */
 const VERIFIABLE_NEEDS = [
   {
