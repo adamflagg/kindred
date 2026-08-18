@@ -136,12 +136,6 @@ export interface WriteInCardProps {
    */
   onEdit?: (write: { occupantName: string; reason: string }) => void
   /**
-   * The unit the row is recorded at, when that is NOT the card drawing this.
-   *
-   * See "WHOSE row it is" above. Undefined on the card whose own row it is.
-   */
-  atUnitName?: string | undefined
-  /**
    * True while a write this card's controls are waiting on is in flight.
    *
    * Card-level rather than row-level at the only caller: `LodgingBoard` knows
@@ -153,13 +147,7 @@ export interface WriteInCardProps {
   isSaving?: boolean
 }
 
-export function WriteInCard({
-  occupant,
-  onRemove,
-  onEdit,
-  atUnitName,
-  isSaving = false,
-}: WriteInCardProps) {
+export function WriteInCard({ occupant, onRemove, onEdit, isSaving = false }: WriteInCardProps) {
   const named = occupant.name !== ''
   const label = named ? occupant.name : UNNAMED
 
@@ -321,16 +309,14 @@ export function WriteInCard({
         // migration onward. That emptiness is correct, not a bug.
         <span className="text-muted-foreground text-xs leading-tight">{occupant.note}</span>
       )}
-      {atUnitName !== undefined && atUnitName !== '' && (
-        // WHERE the row lives, not a second occupant fact — which is why it
-        // sits under the note in the same muted key rather than beside the
-        // name. Four occupants in one merged well are four rooms, and the X
-        // on each of a split building's room cards points at the one row they
-        // all draw; neither is legible without this line.
-        <span className="text-muted-foreground text-xs leading-tight italic">
-          {`Written in at ${atUnitName}`}
-        </span>
-      )}
+      {/* NO "Written in at …" LINE — struck by the owner, 2026-08-18.
+          It said WHERE the row lives, for a merged well holding several
+          occupants from several rooms. The room dimension is real and still
+          worth showing; what was wrong was showing it once per write-in card
+          and nowhere else, so a merged building explained its write-ins' rooms
+          while saying nothing about its FAMILIES' rooms. That belongs to one
+          shorthand covering every occupant of a merged card — filed as
+          kindred#2458 — and this line was the half-built version of it. */}
     </div>
   )
 }

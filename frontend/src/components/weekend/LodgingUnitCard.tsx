@@ -629,10 +629,6 @@ export function LodgingUnitCard({
    *   - `held` — a hold blocks placement outright (#2087/#2090), and
    *     `resolveDrop` refuses the write. Offering the control would name an
    *     action that writes nothing.
-   *   - occupied — Hold's own rule, and the same reasoning: the card that
-   *     already holds a family is not the card staff are looking to fill.
-   *     A SECOND family still reaches a shareable space by drag, which
-   *     remains the path for a share that has to be looked at deliberately.
    *   - `isSplitContainer` — `resolveDrop` rejects one as a target, and it
    *     gets no card anyway; belt-and-braces, exactly as `sharing` above.
    *   - no writer / no `canPlace` — no scenario, or no `bunking.manage`.
@@ -640,9 +636,40 @@ export function LodgingUnitCard({
    * NOT gated on the list being empty. "Everyone has a cabin" is a real
    * answer to the question the control asks, and the picker says it; hiding
    * the control instead would leave staff wondering where it went.
+   *
+   * ★ NO LONGER GATED ON `parties.length === 0` (owner ruling, 2026-08-18).
+   *
+   * It was, and the reason was sound while this box only placed families: the
+   * card already holding one is not the card staff are looking to fill, and a
+   * second family reaches a shareable space by drag. That reasoning does not
+   * survive the box becoming the ONLY way to write somebody in. The owner hit
+   * it on a merged building:
+   *
+   *   > "if i populate 3/4 of clouds rest, i cannot add a write in directly
+   *   >  to it"
+   *
+   * — because the strip's "Write in" action refused an occupied card (#2090)
+   * and this box was hidden by the same condition, so a partly-filled merged
+   * container offered NO input at all. A container is the case that bites,
+   * since its rooms lose their own cards to the merge and there is nowhere
+   * else to go.
+   *
+   * Family rows on an occupied card are not a new claim: this control has
+   * always annotated rather than refused, and every refusal on the path is
+   * still `resolvePickerPlacement` → `resolveDrop`'s, inherited whole.
    */
-  const canPickFamily =
-    canPlace && onPlaceParty !== undefined && !held && !isSplitContainer && parties.length === 0
+  const canOfferPlacement = canPlace && onPlaceParty !== undefined
+  /**
+   * THE DIVERGENCE FROM `canPlace`, preserved from the strip's write-in.
+   *
+   * Who is sleeping in a cabin is a fact about the WEEKEND, not about a plan,
+   * so staff must be able to record one without first creating a scenario.
+   * The strip's "Write in" was gated on `canSetAvailability`, never on
+   * `canPlace`, and the box that replaced it has to keep that — otherwise the
+   * CampMinder mirror loses its write-in path entirely.
+   */
+  const canOfferWriteIn = canSetAvailability && onSetAvailability !== undefined
+  const canPickFamily = (canOfferPlacement || canOfferWriteIn) && !held && !isSplitContainer
 
   const cardStateClassName = [
     RING_CLASSES[ringState],
@@ -839,7 +866,6 @@ export function LodgingUnitCard({
         <UnitAvailabilityControl
           unit={unit}
           canManage={canSetAvailability && onSetAvailability !== undefined}
-          occupied={parties.length > 0}
           isSaving={savingAvailability}
           onSubmit={(write) => {
             onSetAvailability?.(write)
@@ -857,13 +883,39 @@ export function LodgingUnitCard({
         {canPickFamily && (
           <PlaceFamilyPicker
             unit={unit}
-            parties={unplacedParties}
+            // EMPTY where placement is refused, which is how the control knows
+            // it is a write-in box rather than both. Passing the queue anyway
+            // would offer rows that `resolvePickerPlacement` refuses.
+            parties={canOfferPlacement ? unplacedParties : []}
+            isSaving={savingAvailability}
             // The registry, only so a combined house is judged by its
             // whole-house capacity rather than by its container row's delta.
             units={units}
             onSelect={(party) => {
-              onPlaceParty(unit, party)
+              onPlaceParty?.(unit, party)
             }}
+            {...(canOfferWriteIn
+              ? {
+                  // The write the strip's "Write in" action used to send,
+                  // from the box that replaced it. `familyAvailable: false`
+                  // IS the write-in (kindred#2382 moved the row out of
+                  // `lodging_availability`, and the write shape stayed).
+                  //
+                  // `reason: ''` — the note is optional and this path does not
+                  // collect one. A write-in that wants a note gets it from the
+                  // pencil on its own card, which is where every other edit to
+                  // a write-in now lives.
+                  onWriteIn: (occupantName: string) => {
+                    onSetAvailability({
+                      unitId: unit.unit_id,
+                      unitName: unit.name,
+                      familyAvailable: false,
+                      occupantName,
+                      reason: '',
+                    })
+                  },
+                }
+              : {})}
           />
         )}
         {/* Merging is promotion to the parent: dragging this handle onto a
@@ -974,7 +1026,6 @@ export function LodgingUnitCard({
             // sleeping in four DIFFERENT rooms, and a split building's rooms
             // each draw a card for the one row the building holds, so without
             // this a name in the well names no space at all.
-            atUnitName={entry.source.isOwn ? undefined : entry.source.unitName}
             // BOUND TO THIS ROW, which is the whole point of the per-card X:
             // the strip's single "Clear Write-in" named whichever row the
             // server resolved first, so on a merged building a click removed

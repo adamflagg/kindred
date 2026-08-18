@@ -109,15 +109,6 @@ export interface UnitAvailabilityControlProps {
    * the board it was made on — see `useUnitAvailability`.
    */
   canManage: boolean
-  /**
-   * Whether the slot this unit sits in already holds a party this scenario —
-   * a fact read off the CARD, never off availability itself. Owner ruling on
-   * #2090: a write-in and a placement are mutually exclusive states, so an
-   * occupied unit offers no write-in action. Kept separate from `canManage`:
-   * folding occupancy into the permission gate would resurrect the scenario
-   * dimension 1500000135 deleted.
-   */
-  occupied: boolean
   /** True while THIS unit's write is in flight. */
   isSaving: boolean
   onSubmit: (write: UnitAvailabilityWrite) => void
@@ -126,19 +117,16 @@ export interface UnitAvailabilityControlProps {
 export function UnitAvailabilityControl({
   unit,
   canManage,
-  occupied,
   isSaving,
   onSubmit,
 }: UnitAvailabilityControlProps) {
-  // The REQUIRED field of whichever prompt is showing — an occupant for a
-  // write-in, a reason for a release. One piece of state, because exactly one
-  // of the two is ever mounted and a second would be dead on every render.
+  // The REQUIRED field of the one prompt that still exists: a release's
+  // reason. It was shared with the write-in's occupant field until the
+  // 2026-08-18 ruling moved write-in creation onto the card's family box.
   const [required, setRequired] = useState('')
-  // The optional note, mounted only by the write-in prompt.
-  const [note, setNote] = useState('')
   const [isOpen, setIsOpen] = useState(false)
   const [wantsRequired, setWantsRequired] = useState(false)
-  const action = availabilityAction(unit, occupied)
+  const action = availabilityAction(unit)
 
   const close = () => {
     setIsOpen(false)
@@ -146,7 +134,6 @@ export function UnitAvailabilityControl({
     // Cleared on the way out, not on the way in: an entry left over from an
     // abandoned edit is how one cabin's occupant ends up written into another.
     setRequired('')
-    setNote('')
   }
 
   // Shown to everyone, including a reader without `bunking.manage`. Knowing a
@@ -165,11 +152,12 @@ export function UnitAvailabilityControl({
   if (action === null || !canManage) return explanation
 
   if (isOpen && action.prompt !== 'none') {
-    const askingOccupant = action.prompt === 'occupant'
-    const requiredLabel = askingOccupant ? 'Occupant' : 'Reason'
-    const refusal = askingOccupant
-      ? 'Say who is in it, so next week’s staff know who to ask.'
-      : 'Say why, so next week’s staff can act on it.'
+    // ONE prompt reaches here now — a release's reason. The write-in's
+    // "Occupant" + optional "Note" pair went with the action that asked for
+    // it: a write-in is created by typing into the card's own family box, and
+    // its note is edited by the pencil on its own `WriteInCard`.
+    const requiredLabel = 'Reason'
+    const refusal = 'Say why, so next week’s staff can act on it.'
 
     return (
       <>
@@ -194,12 +182,10 @@ export function UnitAvailabilityControl({
               unitId: action.unitId,
               unitName: action.unitName,
               familyAvailable: action.familyAvailable,
-              // The note NEVER stands in for the occupant, and the occupant
-              // never doubles as the note: two fields, two facts. Collapsing
-              // them is the state 1500000148 spent two guarded statements
-              // unwinding.
-              occupantName: askingOccupant ? trimmed : '',
-              reason: askingOccupant ? note.trim() : trimmed,
+              // A release names no occupant, so this is always empty — the
+              // one prompt left asks for a reason and nothing else.
+              occupantName: '',
+              reason: trimmed,
             })
             close()
           }}
@@ -207,12 +193,12 @@ export function UnitAvailabilityControl({
           <input
             type="text"
             aria-label={requiredLabel}
-            placeholder={askingOccupant ? 'Emma Johnson, burst pipe…' : 'Burst pipe, caretaker…'}
+            placeholder="Burst pipe, caretaker…"
             value={required}
             maxLength={500}
-            // deliberate: this input only mounts when the staff member just clicked
-            // "Write in"/"Release" (a modal-open equivalent), and the whole point of the
-            // click is to type into it next.
+            // deliberate: this input only mounts when the staff member just
+            // clicked "Release" (a modal-open equivalent), and the whole point
+            // of the click is to type into it next.
             autoFocus
             aria-invalid={wantsRequired && required.trim() === ''}
             onChange={(event) => {
@@ -221,23 +207,6 @@ export function UnitAvailabilityControl({
             }}
             className="border-border bg-background text-foreground placeholder:text-muted-foreground/60 focus:border-primary/50 focus:ring-primary/10 w-full rounded-md border px-1.5 py-1 text-sm focus:ring-2 focus:outline-none aria-[invalid=true]:border-amber-500"
           />
-          {/* OPTIONAL, and only beside a write-in. It carries the "say why, so
-              next week's staff can act on it" affordance a bare name loses —
-              prospectively: 1500000148 cleared the note of every row it moved,
-              so this column is empty on all of them and that is correct. */}
-          {askingOccupant && (
-            <input
-              type="text"
-              aria-label="Note (optional)"
-              placeholder="Note (optional) — back Monday…"
-              value={note}
-              maxLength={500}
-              onChange={(event) => {
-                setNote(event.target.value)
-              }}
-              className="border-border bg-background text-foreground placeholder:text-muted-foreground/60 focus:border-primary/50 focus:ring-primary/10 w-full rounded-md border px-1.5 py-1 text-sm focus:ring-2 focus:outline-none"
-            />
-          )}
           {wantsRequired && required.trim() === '' && (
             <span className="text-xs font-medium text-amber-700 dark:text-amber-400">
               {refusal}

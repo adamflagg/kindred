@@ -88,7 +88,6 @@ function renderControl(props: Partial<React.ComponentProps<typeof UnitAvailabili
     <UnitAvailabilityControl
       unit={unit()}
       canManage
-      occupied={false}
       isSaving={false}
       onSubmit={onSubmit}
       {...props}
@@ -98,6 +97,26 @@ function renderControl(props: Partial<React.ComponentProps<typeof UnitAvailabili
 }
 
 describe('UnitAvailabilityControl', () => {
+  /*
+   * ★ THE WRITE-IN PROMPT IS GONE FROM THIS CONTROL (owner ruling, 2026-08-18).
+   *
+   * Nine tests were deleted here, not weakened — they specified a form this
+   * strip no longer mounts. Where each guarantee now lives:
+   *
+   *   an occupant name is REQUIRED      -> PlaceFamilyPicker.test.tsx, "offers
+   *                                        nothing for whitespace alone"
+   *   the note is OPTIONAL              -> WriteInCard.test.tsx's edit form
+   *   name and note never substitute    -> WriteInCard.test.tsx's edit form
+   *   a MERGED building can be written  -> LodgingUnitCard.test.tsx, the
+   *     into                               picker's own gate
+   *   an abandoned form is cleared      -> PlaceFamilyPicker clears its query
+   *
+   * The reason the strip lost it: the card already carried a family box, so
+   * every tile offered two typeable rectangles for one question — who is
+   * sleeping here — and #2090's gate on this one meant a partly-filled merged
+   * building could be written into by neither.
+   */
+
   it('offers nothing without bunking.manage', () => {
     // The same gate as the endpoint. A control that 403s on click is worse
     // than no control: it teaches staff the board is broken.
@@ -107,77 +126,23 @@ describe('UnitAvailabilityControl', () => {
   })
 
   it('offers nothing to write into an OCCUPIED unit — a write-in and a placement are mutually exclusive (#2090)', () => {
-    // A space that already has a family assigned may not also be marked
-    // held. `occupied` is a fact from the slot's own parties, kept separate
-    // from `canManage`'s permission gate — folding it in there would
-    // resurrect the scenario dimension 1500000135 deleted.
-    renderControl({ occupied: true })
+    // Nothing, and no longer BECAUSE it is occupied. The strip stopped
+    // offering a write-in at all on 2026-08-18 — creating one is the card's
+    // own family box — so occupancy is not a dimension this control has any
+    // more, and it takes no `occupied` prop to carry it.
+    renderControl()
 
-    expect(screen.queryByRole('button')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /write in/i })).not.toBeInTheDocument()
   })
 
-  it('still offers to write into an unoccupied unit (regression guard)', () => {
-    renderControl({ occupied: false })
+  it('offers no write-in on an ordinary family cabin either', () => {
+    // The regression guard, inverted by the same ruling: this used to assert
+    // the button WAS offered here. A second typeable box beside the card's
+    // family picker, both asking who is sleeping in the cabin, is exactly what
+    // the ruling removed.
+    renderControl()
 
-    expect(screen.getByRole('button', { name: /write in/i })).toBeInTheDocument()
-  })
-
-  it('writes an occupant into a family cabin, with no note at all', async () => {
-    // The note is OPTIONAL. This is the common path and the one that must not
-    // grow a second required field by accident.
-    const user = userEvent.setup()
-    const { onSubmit } = renderControl()
-
-    await user.click(screen.getByRole('button', { name: /write in/i }))
-    await user.type(screen.getByRole('textbox', { name: /^occupant$/i }), 'Emma Johnson')
-    await user.click(screen.getByRole('button', { name: /^write in$/i }))
-
-    expect(onSubmit).toHaveBeenCalledWith({
-      unitId: 'u1',
-      unitName: 'Cedar 1',
-      familyAvailable: false,
-      occupantName: 'Emma Johnson',
-      reason: '',
-    })
-  })
-
-  it('carries the optional note beside the occupant when staff give one', async () => {
-    const user = userEvent.setup()
-    const { onSubmit } = renderControl()
-
-    await user.click(screen.getByRole('button', { name: /write in/i }))
-    await user.type(screen.getByRole('textbox', { name: /^occupant$/i }), 'Liam Garcia')
-    await user.type(screen.getByRole('textbox', { name: /note/i }), 'Back Monday')
-    await user.click(screen.getByRole('button', { name: /^write in$/i }))
-
-    expect(onSubmit).toHaveBeenCalledWith({
-      unitId: 'u1',
-      unitName: 'Cedar 1',
-      familyAvailable: false,
-      occupantName: 'Liam Garcia',
-      reason: 'Back Monday',
-    })
-  })
-
-  it('accepts a note that is not a person, because there is no second control for one', async () => {
-    // The accepted cost, ruled on rather than prevented: a staff member who
-    // types "burst pipe" into the occupant field gets a card showing an
-    // occupant called "burst pipe". Splitting the two cases was explicitly
-    // rejected as not worth a second concept.
-    const user = userEvent.setup()
-    const { onSubmit } = renderControl()
-
-    await user.click(screen.getByRole('button', { name: /write in/i }))
-    await user.type(screen.getByRole('textbox', { name: /^occupant$/i }), 'burst pipe')
-    await user.click(screen.getByRole('button', { name: /^write in$/i }))
-
-    expect(onSubmit).toHaveBeenCalledWith({
-      unitId: 'u1',
-      unitName: 'Cedar 1',
-      familyAvailable: false,
-      occupantName: 'burst pipe',
-      reason: '',
-    })
+    expect(screen.queryByRole('button', { name: /write in/i })).not.toBeInTheDocument()
   })
 
   it('releases a staff cabin to families for this weekend', async () => {
@@ -208,64 +173,6 @@ describe('UnitAvailabilityControl', () => {
     expect(screen.queryByRole('textbox', { name: /^occupant$/i })).not.toBeInTheDocument()
   })
 
-  it('will not write a nameless occupant into a cabin, and says so', async () => {
-    // A write-in with no name is a closed room nobody can account for: staff
-    // can see it is unavailable and have no way to learn who is in it.
-    //
-    // The visible refusal is asserted, not just the absent call. An earlier
-    // version disabled the submit button AND guarded in the handler; deleting
-    // the guard broke no test, because a click on a disabled button never
-    // reaches a handler at all. Two guards masking each other means neither is
-    // pinned — so the button stays live and the refusal is a thing you can see.
-    const user = userEvent.setup()
-    const { onSubmit } = renderControl()
-
-    await user.click(screen.getByRole('button', { name: /write in/i }))
-    await user.click(screen.getByRole('button', { name: /^write in$/i }))
-
-    expect(onSubmit).not.toHaveBeenCalled()
-    expect(screen.getByText(/say who is in it/i)).toBeInTheDocument()
-  })
-
-  it('does not let the optional note stand in for the occupant', async () => {
-    // The whole point of two fields: a note is not a name, and a write-in
-    // with only a note is exactly the state 1500000148 unwound.
-    const user = userEvent.setup()
-    const { onSubmit } = renderControl()
-
-    await user.click(screen.getByRole('button', { name: /write in/i }))
-    await user.type(screen.getByRole('textbox', { name: /note/i }), 'Back Monday')
-    await user.click(screen.getByRole('button', { name: /^write in$/i }))
-
-    expect(onSubmit).not.toHaveBeenCalled()
-    expect(screen.getByText(/say who is in it/i)).toBeInTheDocument()
-  })
-
-  it('refuses an empty occupant submitted from the keyboard too', async () => {
-    // Enter in the text field is a second way into the same handler, and the
-    // one a staff member typing quickly will actually use.
-    const user = userEvent.setup()
-    const { onSubmit } = renderControl()
-
-    await user.click(screen.getByRole('button', { name: /write in/i }))
-    await user.type(screen.getByRole('textbox', { name: /^occupant$/i }), '{Enter}')
-
-    expect(onSubmit).not.toHaveBeenCalled()
-    expect(screen.getByText(/say who is in it/i)).toBeInTheDocument()
-  })
-
-  it('treats blank space as no occupant at all', async () => {
-    const user = userEvent.setup()
-    const { onSubmit } = renderControl()
-
-    await user.click(screen.getByRole('button', { name: /write in/i }))
-    await user.type(screen.getByRole('textbox', { name: /^occupant$/i }), '   ')
-    await user.click(screen.getByRole('button', { name: /^write in$/i }))
-
-    expect(onSubmit).not.toHaveBeenCalled()
-    expect(screen.getByText(/say who is in it/i)).toBeInTheDocument()
-  })
-
   it('still refuses a release with no reason', async () => {
     // The release branch keeps its own required field and its own wording.
     // Reshaping the flag must not quietly retire the guardrail on the branch
@@ -281,14 +188,18 @@ describe('UnitAvailabilityControl', () => {
   })
 
   it('takes the refusal back as soon as staff start typing', async () => {
+    // Generic form behaviour, pinned on the one prompt that still exists. It
+    // used to be pinned on the write-in's occupant field; that prompt went
+    // with the `hold` action on 2026-08-18.
     const user = userEvent.setup()
-    renderControl()
+    renderControl({ unit: STAFF_CABIN })
 
-    await user.click(screen.getByRole('button', { name: /write in/i }))
-    await user.click(screen.getByRole('button', { name: /^write in$/i }))
-    await user.type(screen.getByRole('textbox', { name: /^occupant$/i }), 'E')
+    await user.click(screen.getByRole('button', { name: /release/i }))
+    await user.click(screen.getByRole('button', { name: /^release$/i }))
+    expect(screen.getByText(/say why/i)).toBeInTheDocument()
 
-    expect(screen.queryByText(/say who is in it/i)).not.toBeInTheDocument()
+    await user.type(screen.getByRole('textbox', { name: 'Reason' }), 'B')
+    expect(screen.queryByText(/say why/i)).not.toBeInTheDocument()
   })
 
   it('offers NOTHING on a written-into cabin — the removal is the X on its card', () => {
@@ -363,59 +274,14 @@ describe('UnitAvailabilityControl', () => {
     expect(screen.queryByRole('button')).not.toBeInTheDocument()
   })
 
-  it('offers to write into a MERGED building', async () => {
-    // The staff-facing half of the container fix. A merged building IS the
-    // card the board draws in place of its rooms, so it is the only surface a
-    // write-in for that building can be recorded on -- merging is exactly what
-    // takes its rooms' own cards away.
-    const user = userEvent.setup()
-    const { onSubmit } = renderControl({
-      unit: unit({
-        unit_id: 'u3',
-        code: 'clouds-rest',
-        name: 'Clouds Rest',
-        is_container: true,
-        is_combined: true,
-      }),
-    })
+  it('offers nothing on a MERGED building — but no longer closes its write-in path', () => {
+    // #2090's gate used to leave a partly-filled merged building with NO
+    // write-in path at all: refused here, and its rooms have no cards of their
+    // own to carry one. The card's family box now takes it, whether or not a
+    // family is already placed. See `LodgingUnitCard`'s `canPickFamily`.
+    renderControl({ unit: unit({ is_container: true, is_combined: true }) })
 
-    await user.click(screen.getByRole('button', { name: 'Write in Clouds Rest' }))
-    await user.type(screen.getByRole('textbox', { name: /^occupant$/i }), 'Liam Garcia')
-    await user.click(screen.getByRole('button', { name: /^write in$/i }))
-
-    expect(onSubmit).toHaveBeenCalledWith({
-      unitId: 'u3',
-      unitName: 'Clouds Rest',
-      familyAvailable: false,
-      occupantName: 'Liam Garcia',
-      reason: '',
-    })
-  })
-
-  it('still offers nothing on a MERGED building that holds a family (#2090)', () => {
-    renderControl({
-      unit: unit({ is_container: true, is_combined: true }),
-      occupied: true,
-    })
-
-    expect(screen.queryByRole('button')).not.toBeInTheDocument()
-  })
-
-  it('abandons BOTH fields when the form is cancelled', async () => {
-    // Reopening with the last abandoned entry still in the box is how one
-    // cabin's occupant ends up written into another. Two fields, two ways to
-    // get that wrong.
-    const user = userEvent.setup()
-    renderControl()
-
-    await user.click(screen.getByRole('button', { name: /write in/i }))
-    await user.type(screen.getByRole('textbox', { name: /^occupant$/i }), 'Emma Johnson')
-    await user.type(screen.getByRole('textbox', { name: /note/i }), 'Back Monday')
-    await user.click(screen.getByRole('button', { name: /cancel/i }))
-    await user.click(screen.getByRole('button', { name: /write in/i }))
-
-    expect(screen.getByRole('textbox', { name: /^occupant$/i })).toHaveValue('')
-    expect(screen.getByRole('textbox', { name: /note/i })).toHaveValue('')
+    expect(screen.queryByRole('button', { name: /write in/i })).not.toBeInTheDocument()
   })
 })
 

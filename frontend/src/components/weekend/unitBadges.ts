@@ -252,7 +252,7 @@ export function sharingConflictBadge(
 
 /** Which of the three reachable availability outcomes this unit can move to. */
 export interface AvailabilityAction {
-  kind: 'hold' | 'release' | 'clear'
+  kind: 'release' | 'clear'
   /** The button's label, drawn from the same vocabulary as the badge above. */
   label: string
   /** What the write sends. `null` DELETES the row. */
@@ -287,18 +287,21 @@ export interface AvailabilityAction {
  * whether the action has anything to ask. What it asks FOR now differs by
  * action, and a boolean cannot say which:
  *
- *   'occupant' — a write-in. A REQUIRED occupant name plus an OPTIONAL note.
- *                ONE control and one action: hold IS the write-in (owner
- *                ruling, 2026-08-09), so there is no second "mark unavailable"
- *                path and no burst-pipe / staff-write-in split.
  *   'reason'   — a release. A required reason and nothing else: opening a
  *                staff cabin to families names no occupant, so prompting for
  *                one would ask for a fact that does not exist.
  *   'none'     — a clear. It restores the unit's standing role rather than
  *                asserting anything about this weekend, so there is nothing
  *                to say.
+ *
+ * There WAS a third, `'occupant'` — a write-in's required name plus an
+ * optional note. It went with the `hold` action on 2026-08-18: a write-in is
+ * created by typing into the card's own family box, so this strip no longer
+ * asks for an occupant, and the note is edited by the pencil on the write-in's
+ * own card. Removed rather than kept unused, because a prompt nothing returns
+ * is a form branch nothing can reach.
  */
-export type AvailabilityPrompt = 'occupant' | 'reason' | 'none'
+export type AvailabilityPrompt = 'reason' | 'none'
 
 /**
  * The one action a unit's card offers, or null if it offers none.
@@ -313,12 +316,12 @@ export type AvailabilityPrompt = 'occupant' | 'reason' | 'none'
  * Lives beside `reservationBadge` so the two cannot drift. A card badged
  * "Write-in" that offers to "Write in" says two things about one cabin.
  *
- * `occupied` names a fact from the SLOT (whether any party is placed on this
- * card this scenario), never folded into `canManage`'s permission gate.
- * Owner ruling on #2090: written-in and occupied are mutually exclusive
- * states, so a space that already holds a family may not also be written into
- * — but this must not become a THIRD dimension threaded onto availability
- * itself.
+ * ★ TAKES NO `occupied` ARGUMENT since the 2026-08-18 ruling, and the absence
+ * is the point. It used to, purely to enforce #2090's "written-in and occupied
+ * are mutually exclusive" gate on the one branch that offered a write-in. That
+ * branch is gone (see the bottom of the function), so occupancy no longer
+ * decides anything here: every action this returns is about the unit's ROLE
+ * row, which a placed family has never had any bearing on.
  *
  * `family_available_override` IS still weekend-level and scenario-less, and
  * that is now a statement about the staff↔family ROLE alone: "we're moving
@@ -329,10 +332,7 @@ export type AvailabilityPrompt = 'occupant' | 'reason' | 'none'
  * returns null here and is removed from its own card, because one action
  * cannot name one row out of the several a merged card may cover.
  */
-export function availabilityAction(
-  unit: LodgingUnitRow,
-  occupied = false
-): AvailabilityAction | null {
+export function availabilityAction(unit: LodgingUnitRow): AvailabilityAction | null {
   // A SPLIT container is a whole-building aggregate, never a bookable room:
   // `drawnUnits` descends past it and `resolveDrop` rejects it as a target, so
   // an availability row written against one is a row no surface could show or
@@ -421,10 +421,31 @@ export function availabilityAction(
   if (unit.inventory_class === 'staff_default') {
     return { kind: 'release', label: 'Release', familyAvailable: true, prompt: 'reason', ...own }
   }
-  // An already-occupied space offers no write-in: the fix for #2090. Only
-  // reachable here, past both branches above, so an already-held unit keeps
-  // its `clear` action regardless of occupancy — clearing only ever REDUCES
-  // the conflict, so it is never the state that needs blocking.
-  if (occupied) return null
-  return { kind: 'hold', label: 'Write in', familyAvailable: false, prompt: 'occupant', ...own }
+  // ★ THE STRIP NO LONGER OFFERS "Write in" AT ALL (owner ruling, 2026-08-18).
+  //
+  // It used to end here with a `hold` action, gated on `!occupied` — the fix
+  // for #2090. Both the action and its gate are gone, and the gate is the
+  // reason the action had to go rather than the other way round.
+  //
+  // Creating a write-in moved into the card's own family box: type a name, and
+  // if no registered family matches, that text becomes the write-in
+  // (`PlaceFamilyPicker`'s `onWriteIn`). The ruling's own framing:
+  //
+  //   > "one fewer chip on the board on every tile, big win ... it removes two
+  //   >  rectangular boxes coexisting and typeable when the write in is also
+  //   >  happening"
+  //
+  // — two controls asking "who is sleeping here", side by side, and a staff
+  // member forced to pick one before knowing which kind of answer they had.
+  //
+  // What the move FIXED, and what a re-introduction would break: #2090's gate
+  // made a partly-filled space refuse a write-in, and on a merged container
+  // that left no path at all, since the rooms lose their own cards to the
+  // merge. `LodgingUnitCard`'s `canPickFamily` carries the reasoning in full.
+  //
+  // Returning null here is therefore the whole of the write-in's absence from
+  // this strip: removal is the X on each `WriteInCard`, editing is the pencil
+  // beside it, and creation is the box. None of the three is an availability
+  // action any more.
+  return null
 }

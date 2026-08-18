@@ -2233,9 +2233,16 @@ describe('LodgingUnitCard — placing a family from the space itself (kindred#20
     expect(container.querySelector('.opacity-40')).toBeNull()
   })
 
-  it('is absent on an occupied space, mirroring Hold', () => {
+  it('is PRESENT on an occupied space — it is the only write-in path there is', () => {
+    // Inverted by the owner ruling of 2026-08-18. It used to be absent here,
+    // "mirroring Hold", and that was coherent while the box only placed
+    // families: a second family reaches a shareable space by drag. It stopped
+    // being coherent when the box became the only way to write somebody in —
+    // a partly-filled merged building then offered no input at all, since the
+    // strip's write-in was refused by #2090's gate and its rooms lose their
+    // cards to the merge.
     renderCard({ slot: slot({ parties: [party()] }) })
-    expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
+    expect(screen.getByRole('combobox')).toBeInTheDocument()
   })
 
   it('is absent without a scenario or without the permission to place', () => {
@@ -2430,12 +2437,14 @@ describe('LodgingUnitCard — the write-in chip, dropped in favour of the well (
 
     expect(screen.getByText('Emma Johnson')).toBeInTheDocument()
     expect(screen.getByText('Liam Garcia')).toBeInTheDocument()
-    // AND WHICH ROOM EACH IS IN. Four occupants in one merged well sleep in
-    // four different rooms; a name with no space beside it tells a staff
-    // member nothing they can act on. (The 2026 container this issue is about
-    // holds four — a loft, a side room, a back room and a laundry.)
-    expect(screen.getByText('Written in at House Back')).toBeInTheDocument()
-    expect(screen.getByText('Written in at House Loft')).toBeInTheDocument()
+    // WITHOUT a per-card "Written in at <room>" line, struck 2026-08-18. The
+    // room dimension is real — four occupants in one merged well sleep in four
+    // rooms — but a line that says it for write-ins and stays silent about the
+    // FAMILIES in the same well is worse than one that says it for neither.
+    // One shorthand covering every occupant is kindred#2458.
+    expect(screen.queryByText(/written in at/i)).not.toBeInTheDocument()
+    // The X still names its OWN row, which is what made the line dispensable:
+    // removal never depended on the reader knowing which room it was.
 
     fireEvent.click(screen.getByRole('button', { name: 'Remove write-in Liam Garcia' }))
 

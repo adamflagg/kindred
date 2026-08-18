@@ -238,18 +238,13 @@ describe('availabilityAction', () => {
   // must not say two things about one cabin: a card badged "Held" offering to
   // "Hold" it is the drift this prevents.
 
-  it('offers to write somebody into an ordinary family cabin', () => {
-    expect(availabilityAction(unit())).toEqual({
-      kind: 'hold',
-      label: 'Write in',
-      familyAvailable: false,
-      prompt: 'occupant',
-      // The write NAMES a unit, and for every action but an inherited clear
-      // that unit is the card's own. Asserted rather than left off, so the
-      // pair cannot quietly go missing from the payload the board sends.
-      unitId: 'u1',
-      unitName: 'Cedar 1',
-    })
+  it('offers NOTHING on an ordinary family cabin — the write-in left this strip', () => {
+    // This used to return a `hold`/"Write in" action, and it is the assertion
+    // that changed most in the 2026-08-18 ruling. Creating a write-in is now
+    // the card's own family box: type a name, and if no registered family
+    // matches, that text becomes the write-in. Two typeable boxes asking who
+    // is sleeping in one cabin was the thing the ruling removed.
+    expect(availabilityAction(unit())).toBeNull()
   })
 
   it('offers to release permanent staff housing', () => {
@@ -334,9 +329,9 @@ describe('availabilityAction', () => {
     // The trap. `unit.family_available_override !== null` is the test; a
     // truthiness test (`if (unit.family_available_override)`) treats an
     // ordinary cabin's null and a held cabin's false alike, and whichever way
-    // that branch falls, one of "Hold" or "Clear" becomes unreachable on most
-    // of the board.
-    expect(availabilityAction(unit({ family_available_override: null }))?.kind).toBe('hold')
+    // that branch falls, `clear` becomes either unreachable or offered on every
+    // ordinary cabin. Null must fall through to nothing; false must clear.
+    expect(availabilityAction(unit({ family_available_override: null }))).toBeNull()
     expect(
       availabilityAction(unit({ family_available_override: false, is_family_available: false }))
         ?.kind
@@ -348,12 +343,20 @@ describe('availabilityAction', () => {
     ).toBeNull()
   })
 
-  it('offers nothing to hold an OCCUPIED family cabin — held and occupied are mutually exclusive (#2090)', () => {
-    expect(availabilityAction(unit(), true)).toBeNull()
+  it('offers nothing on a plain family cabin — creating a write-in left this strip entirely', () => {
+    // The 2026-08-18 ruling: a write-in is created by typing into the card's
+    // own family box, so this strip has no write-in action to offer and no
+    // occupancy gate to apply. It used to return a `hold` here, and to refuse
+    // one on an occupied card (#2090) — both are gone together.
+    expect(availabilityAction(unit())).toBeNull()
   })
 
-  it('still offers to hold an unoccupied family cabin (regression guard)', () => {
-    expect(availabilityAction(unit(), false)?.kind).toBe('hold')
+  it('takes no occupancy argument at all any more', () => {
+    // The signature IS the guarantee: with the write-in branch gone, every
+    // action left is about the unit's ROLE row, which a placed family has
+    // never had any bearing on. A second parameter would be the #2090 gate
+    // growing back.
+    expect(availabilityAction).toHaveLength(1)
   })
 
   it('offers nothing on a SPLIT container', () => {
@@ -364,15 +367,15 @@ describe('availabilityAction', () => {
     expect(availabilityAction(unit({ is_container: true }))).toBeNull()
   })
 
-  it('offers a write-in on a MERGED building', () => {
-    // The gate used to refuse EVERY container, on the premise that a container
-    // gets no card and no family can be placed into one. Merge-by-drag (#2012)
-    // made both halves false for a COMBINED container: it is the one card the
-    // board draws in place of its rooms, and `dragPlacement` accepts it as a
-    // drop target. Refusing it here left the four `default_combined` buildings
-    // in the 2026 registry with no write-in path at all — their rooms have no
-    // cards to carry one either.
-    expect(availabilityAction(unit({ is_container: true, is_combined: true }))?.kind).toBe('hold')
+  it('offers nothing on a MERGED building, like every other card', () => {
+    // This once asserted a `hold`, and the reasoning behind it still matters:
+    // a COMBINED container is the one card the board draws in place of its
+    // rooms, so refusing it a write-in left the four `default_combined`
+    // buildings in the 2026 registry with no path at all — their rooms have no
+    // cards to carry one either. The 2026-08-18 ruling keeps that guarantee
+    // and moves it: the path is the card's own family box, which is reachable
+    // on a combined container whether or not it already holds a family.
+    expect(availabilityAction(unit({ is_container: true, is_combined: true }))).toBeNull()
   })
 
   it('offers nothing on a MERGED building that has been written into', () => {
@@ -384,11 +387,13 @@ describe('availabilityAction', () => {
     ).toBeNull()
   })
 
-  it('offers nothing on a MERGED building that already holds a family (#2090)', () => {
-    // The occupancy rule is untouched: a write-in and a placement stay mutually
-    // exclusive. A combined container simply now REACHES that rule instead of
-    // being refused a step earlier for being a container.
-    expect(availabilityAction(unit({ is_container: true, is_combined: true }), true)).toBeNull()
+  it('offers nothing on a MERGED building either — but the write-in path is no longer closed', () => {
+    // This strip stays silent on a combined container, as on every other card.
+    // What CHANGED is what that silence costs: it used to mean a partly-filled
+    // merged building had no write-in path at all, because its rooms lose their
+    // own cards to the merge and #2090's gate refused the building. The box on
+    // the card now takes it. See `LodgingUnitCard`'s `canPickFamily`.
+    expect(availabilityAction(unit({ is_container: true, is_combined: true }))).toBeNull()
   })
 })
 
@@ -528,16 +533,19 @@ describe('a write-in inherited from elsewhere in the tree', () => {
     expect(availabilityAction(unit({ code: 'house-a', write_ins: [coverFromBuilding] }))).toBeNull()
   })
 
-  it('offers nothing on an occupied card either, rather than a stale write-in path', () => {
-    expect(
-      availabilityAction(unit({ code: 'house-a', write_ins: [coverFromBuilding] }), true)
-    ).toBeNull()
+  it('offers nothing on a card covered by a relative’s write-in, occupied or not', () => {
+    expect(availabilityAction(unit({ code: 'house-a', write_ins: [coverFromBuilding] }))).toBeNull()
   })
 
-  it('names the card’s OWN unit when the write-in starts here', () => {
-    const action = availabilityAction(unit())
+  it('names the card’s OWN unit on the actions it does still return', () => {
+    // A released staff cabin is the reachable one: its `clear` names its own
+    // row. The unit pair is asserted rather than left off, so it cannot go
+    // quietly missing from the payload the board sends.
+    const action = availabilityAction(
+      unit({ inventory_class: 'staff_default', family_available_override: true })
+    )
 
-    expect(action?.kind).toBe('hold')
+    expect(action?.kind).toBe('clear')
     expect(action?.unitId).toBe('u1')
     expect(action?.unitName).toBe('Cedar 1')
   })

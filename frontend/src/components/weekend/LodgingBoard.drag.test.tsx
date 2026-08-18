@@ -353,14 +353,15 @@ describe('LodgingBoard — placing a family from the space itself (kindred#2080)
     return screen.getByRole('combobox', { name: new RegExp(`place a family in ${name}`, 'i') })
   }
 
-  it('mounts the control on an empty space while placement is live', () => {
+  it('mounts the control on every placeable space, occupied or not', () => {
     boardWithUnplaced()
     expect(pickerFor('Cedar 2')).toBeInTheDocument()
-    // Cedar 1 already holds a family, so it offers nothing — the same rule
-    // that hides Hold on an occupied card.
-    expect(
-      screen.queryByRole('combobox', { name: /place a family in cedar 1/i })
-    ).not.toBeInTheDocument()
+    // Cedar 1 already holds a family and STILL offers the box. It did not
+    // before 2026-08-18, on the rule that hid the strip's write-in on an
+    // occupied card — a rule this change deletes, because the box is now the
+    // only way to write somebody in and a partly-filled merged building was
+    // left with no path at all.
+    expect(screen.getByRole('combobox', { name: /place a family in cedar 1/i })).toBeInTheDocument()
   })
 
   it('offers nothing without a scenario', () => {

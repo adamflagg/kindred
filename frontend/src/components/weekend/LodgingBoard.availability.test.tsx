@@ -145,7 +145,12 @@ describe('LodgingBoard — the availability gate', () => {
     // it in.
     renderBoard({ scenario: '' })
 
-    expect(screen.getByRole('button', { name: 'Write in Cedar 1' })).toBeInTheDocument()
+    // The BOX, since 2026-08-18 — the strip's "Write in" button is gone and
+    // creating a write-in is typing into the card's own control. Named for the
+    // write-in alone here, because with no scenario there is nothing to place.
+    expect(
+      screen.getByRole('combobox', { name: /write in an occupant for cedar 1/i })
+    ).toBeInTheDocument()
   })
 
   it('offers no control without bunking.manage', () => {
@@ -191,10 +196,10 @@ describe('LodgingBoard — the control becomes a write', () => {
     const user = userEvent.setup()
     renderBoard()
 
-    await user.click(screen.getByRole('button', { name: 'Write in Cedar 2' }))
-    await user.type(screen.getByRole('textbox', { name: /^occupant$/i }), 'Emma Johnson')
-    await user.type(screen.getByRole('textbox', { name: /note/i }), 'Back Monday')
-    await user.click(screen.getByRole('button', { name: /^write in$/i }))
+    await user.type(
+      screen.getByRole('combobox', { name: /place a family in cedar 2/i }),
+      'Emma Johnson{Enter}'
+    )
 
     expect(setAvailability).toHaveBeenCalledTimes(1)
     expect(setAvailability).toHaveBeenCalledWith({
@@ -202,7 +207,11 @@ describe('LodgingBoard — the control becomes a write', () => {
       unitName: 'Cedar 2',
       familyAvailable: false,
       occupantName: 'Emma Johnson',
-      reason: 'Back Monday',
+      // EMPTY, and that is the shape change. The strip collected an optional
+      // note beside the occupant; the box collects a name only, and a note is
+      // added afterwards by the pencil on the write-in's own card. One control
+      // asking one question, rather than two boxes on every tile.
+      reason: '',
     })
   })
 
@@ -212,8 +221,11 @@ describe('LodgingBoard — the control becomes a write', () => {
     pendingUnitId = 'u1'
     renderBoard()
 
-    expect(screen.getByRole('button', { name: 'Write in Cedar 1' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Write in Cedar 2' })).toBeEnabled()
+    // The BOX carries the per-card gate now that the strip button is gone —
+    // and it matters more on a combobox, which invites a staff member to keep
+    // typing a second write-in against an unsettled first.
+    expect(screen.getByRole('combobox', { name: /place a family in cedar 1/i })).toBeDisabled()
+    expect(screen.getByRole('combobox', { name: /place a family in cedar 2/i })).toBeEnabled()
     await Promise.resolve()
   })
 })
