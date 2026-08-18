@@ -55,12 +55,37 @@ describe('CampJourneyTimeline program-agnostic strings (#2113)', () => {
     expect(screen.getByText('1 summer at camp')).toBeInTheDocument()
   })
 
-  it('tags a family-camp row with a de-emphasis label', () => {
+  it('does NOT tag a family-camp row — the session name already says it', () => {
+    // #2113 added a "Family" chip when family rows first entered this
+    // timeline, so a reader could visually skip a run of them. The mid-form
+    // session name now begins "Family Camp", which says the same thing where
+    // the reader is already looking. Owner, 2026-08-18: "we also dont need the
+    // 'family' tag in the journey, staff knows."
     const history: HistoricalRecord[] = [
-      { year: 2019, sessionName: 'Winter Family Weekend', sessionType: 'family' },
+      { year: 2026, sessionName: 'Family Camp 2: Keshet LGBTQ Weekend', sessionType: 'family' },
     ]
     render(<CampJourneyTimeline history={history} yearsAtCamp={1} currentYear={2026} />)
-    expect(screen.getByText('Family')).toBeInTheDocument()
+
+    expect(screen.queryByText('Family')).not.toBeInTheDocument()
+    expect(screen.getByText('Family Camp 2')).toBeInTheDocument()
+  })
+
+  it('prints the weekend’s subtitle beside the mid-form name', () => {
+    // The half that tells two numbered weekends apart, and the half CampMinder
+    // buries in a 54-character name.
+    const history: HistoricalRecord[] = [
+      {
+        year: 2026,
+        sessionName: 'Family Camp 8: JFAM Weekend w/ SFJCC (w/ kids 10 and under)',
+        sessionType: 'family',
+      },
+    ]
+    render(<CampJourneyTimeline history={history} yearsAtCamp={1} currentYear={2026} />)
+
+    expect(screen.getByText('Family Camp 8')).toBeInTheDocument()
+    expect(screen.getByText('JFAM')).toBeInTheDocument()
+    // And NOT the raw 54-character name that made this timeline unreadable.
+    expect(screen.queryByText(/w\/ kids 10 and under/)).not.toBeInTheDocument()
   })
 
   it('does not tag a summer row with the family de-emphasis label', () => {

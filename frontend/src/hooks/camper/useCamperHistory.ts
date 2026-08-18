@@ -7,6 +7,7 @@ import { useQuery } from '@tanstack/react-query'
 import { isAtCampSessionType } from '../../utils/sessionTypePredicates'
 import { filterEnrollmentsByStatus, toDisplayList } from '../../utils/enrollmentFilter'
 import { fetchCamperJourney, fetchParentMainSessions } from './fetchCamperJourney'
+import { byYearThenChronological } from './journeyOrder'
 import type { Camper } from '../../types/app-types'
 import type { CampSessionsResponse } from '../../types/pocketbase-types'
 import type { HistoricalRecord } from './types'
@@ -119,7 +120,12 @@ export function useCamperHistory(
         // Prior years from the shared enrollment-sourced fetcher.
         allHistory.push(...(await fetchCamperJourney(personCmId, currentYear)))
         // Sort by year descending.
-        allHistory.sort((a, b) => b.year - a.year)
+        // The SHARED comparator, not a second year-only one. This merge is
+        // where the reported defect actually lived: prior-year records arrive
+        // chronological by luck of the fetch order, the current year's do not,
+        // and a year-only sort preserves both — so 2025 read correctly while
+        // 2026 read "2a, 3a, FC1, FC6".
+        allHistory.sort(byYearThenChronological)
         return allHistory
       } catch (err) {
         console.error('Error fetching camp history:', err)

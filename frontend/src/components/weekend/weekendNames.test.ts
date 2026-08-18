@@ -15,6 +15,8 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  weekendSubtitle,
+  weekendTitle,
   resolveWeekendRef,
   shortWeekendName,
   splitWeekendName,
@@ -339,5 +341,63 @@ describe('weekendLabel', () => {
     for (const session of [FC1, WOMENS, WINTER, JFAM_10, YEAR_ONLY]) {
       expect(weekendLabel(session.name).length).toBeGreaterThan(0)
     }
+  })
+})
+
+describe('the camper journey mid-shorthand', () => {
+  /*
+   * Owner ruling, 2026-08-18. A LONGER form than the board's `FC3`, on purpose:
+   * the camper journey gives each session its own row beside a year and a
+   * status, where `FC3` is terser than the row can afford, while CampMinder's
+   * raw name runs to 54 characters.
+   *
+   *   > "instead use a mid shorthand, like 'Family Camp X' for the number, and
+   *   >  then a subtitle (if any) of Keshet, JFAM, JFoC, etc."
+   */
+  const CASES: ReadonlyArray<readonly [string, string, string]> = [
+    ['Family Camp 1: Memorial Day Weekend', 'Family Camp 1', 'Memorial Day'],
+    ['Family Camp 2: Keshet LGBTQ Weekend', 'Family Camp 2', 'Keshet'],
+    ['Family Camp 7: Jewish Families of Color Weekend', 'Family Camp 7', 'JFoC'],
+    ['Family Camp 5: JFAM Weekend (w/ kids 10 and under)', 'Family Camp 5', 'JFAM'],
+    ['Family Camp 8: JFAM Weekend w/ SFJCC (w/ kids 10 and under)', 'Family Camp 8', 'JFAM'],
+    [
+      'Family Camp 7: JFAM Sukkot Weekend with the JCCSF (w/ kids 8 and under)',
+      'Family Camp 7',
+      'JFAM Sukkot',
+    ],
+    [
+      'Family Camp 8: JFAM Chanukah Program (w/ kids 8 and under)',
+      'Family Camp 8',
+      'JFAM Chanukah',
+    ],
+    ['Family Camp 7: Sukkot', 'Family Camp 7', 'Sukkot'],
+    ['Family Camp 6', 'Family Camp 6', ''],
+    // Un-numbered weekends read as themselves and carry no subtitle.
+    ['Ready, Set, Camp', 'Ready, Set, Camp', ''],
+    ['Winter Family Camp', 'Winter Family Camp', ''],
+    ['JFAM Winter Family Camp', 'Winter Family Camp', ''],
+    // Legacy: the number the board assigns, with the original name beneath —
+    // which is the part a reader of a 2018 row actually recognises.
+    ['Spring Family Camp', 'Family Camp 1', 'Spring'],
+    ['Keshet LGBTQ Family Camp', 'Family Camp 2', 'Keshet'],
+    ['Summer Family Camp', 'Family Camp 3', 'Summer'],
+    ['Fall Family Camp II', 'Family Camp 5', 'Fall II'],
+  ]
+
+  it.each(CASES)('reads %s as "%s" / "%s"', (name, title, subtitle) => {
+    expect(weekendTitle(name)).toBe(title)
+    expect(weekendSubtitle(name)).toBe(subtitle)
+  })
+
+  it('tests JFAM Sukkot and JFAM Chanukah BEFORE the bare JFAM', () => {
+    // Order in `SUBTITLE_RULES` is load-bearing: a bare-JFAM-first list
+    // collapses both onto "JFAM" and loses the holiday, which is the only
+    // thing telling those weekends apart.
+    expect(weekendSubtitle('Family Camp 7: JFAM Sukkot Weekend with the JCCSF')).not.toBe('JFAM')
+    expect(weekendSubtitle('Family Camp 8: JFAM Chanukah Program')).not.toBe('JFAM')
+  })
+
+  it('keeps an unrecognised suffix rather than dropping it', () => {
+    expect(weekendSubtitle('Family Camp 9: Harvest Weekend')).toBe('Harvest Weekend')
   })
 })

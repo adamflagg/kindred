@@ -300,3 +300,97 @@ export function resolveWeekendRef(
   const matches = sessions.filter((session) => weekendSlug(session.name) === ref.toLowerCase())
   return matches.length === 1 ? matches[0] : undefined
 }
+
+/**
+ * The camper journey's form: `Family Camp 3` plus a short subtitle.
+ *
+ * A DIFFERENT shorthand from `weekendLabel`'s `FC3`, deliberately, because the
+ * two surfaces read differently. The weekend board's journey panel is 416px
+ * with one row per YEAR and often several weekends on a line, so it needs the
+ * shortest thing that identifies a weekend. The camper journey gives each
+ * session its own row beside a year and a status, and `FC3` there is terser
+ * than the row can afford to be — while CampMinder's raw name
+ * ("Family Camp 8: JFAM Weekend w/ SFJCC (w/ kids 10 and under)", 54
+ * characters) is far longer. Owner ruling, 2026-08-18:
+ *
+ *   > "instead use a mid shorthand, like 'Family Camp X' for the number, and
+ *   >  then a subtitle (if any) of Keshet, JFAM, JFoC, etc., and if they
+ *   >  attend winter or ready set it would be just Ready, Set, Camp or Winter
+ *   >  Family Camp"
+ *
+ * Both halves come off the SAME name, so a weekend cannot read as one thing
+ * here and another on the board.
+ */
+export function weekendTitle(name: string): string {
+  const trimmed = name.trim()
+  const legacy = LEGACY_MID[trimmed]
+  if (legacy !== undefined) return legacy.title
+  const unnumbered = UNNUMBERED_TITLES[trimmed]
+  if (unnumbered !== undefined) return unnumbered
+  const head = trimmed.split(':')[0]?.trim() ?? ''
+  return head.length > 0 ? head : trimmed
+}
+
+/** The parenthetical under the title, or `''` where the weekend has none. */
+export function weekendSubtitle(name: string): string {
+  const trimmed = name.trim()
+  const legacy = LEGACY_MID[trimmed]
+  if (legacy !== undefined) return legacy.subtitle
+  if (UNNUMBERED_TITLES[trimmed] !== undefined) return ''
+  const tail = trimmed.split(':').slice(1).join(':').trim()
+  if (tail.length === 0) return ''
+  for (const [prefix, short] of SUBTITLE_RULES) {
+    if (tail.startsWith(prefix)) return short
+  }
+  return tail
+}
+
+/**
+ * 2017-2019, which carried the identity in the NAME rather than a number.
+ * The title restates the chronological number `weekendLabel` assigns, and the
+ * subtitle keeps the original name — which is the part a reader of a
+ * historical row actually recognises.
+ */
+const LEGACY_MID: Readonly<Record<string, { title: string; subtitle: string }>> = {
+  'Spring Family Camp': { title: 'Family Camp 1', subtitle: 'Spring' },
+  'Keshet LGBTQ Family Camp': { title: 'Family Camp 2', subtitle: 'Keshet' },
+  'Summer Family Camp': { title: 'Family Camp 3', subtitle: 'Summer' },
+  'Fall Family Camp I': { title: 'Family Camp 4', subtitle: 'Fall I' },
+  'Fall Family Camp II': { title: 'Family Camp 5', subtitle: 'Fall II' },
+  'Fall Family Camp III': { title: 'Family Camp 6', subtitle: 'Fall III' },
+}
+
+/**
+ * The weekends that never took a number read as themselves and carry no
+ * subtitle — the owner named both by hand. `JFAM Winter Family Camp` is the
+ * same weekend as `Winter Family Camp` under a later spelling, so it reads as
+ * the one staff say.
+ */
+const UNNUMBERED_TITLES: Readonly<Record<string, string>> = {
+  'Ready, Set, Camp': 'Ready, Set, Camp',
+  'Winter Family Camp': 'Winter Family Camp',
+  'JFAM Winter Family Camp': 'Winter Family Camp',
+  'Spring Family Retreat': 'Spring Family Retreat',
+}
+
+/**
+ * Suffix -> subtitle, longest-prefix-first.
+ *
+ * ORDER MATTERS: `JFAM Sukkot` and `JFAM Chanukah` must be tested before the
+ * bare `JFAM`, or they collapse onto it and lose the holiday that is the whole
+ * reason a reader would tell those weekends apart.
+ *
+ * A suffix no rule matches falls through as itself rather than being dropped —
+ * this list covers every suffix in the 2017-2026 catalogue, and the fallthrough
+ * is for the one CampMinder invents next season.
+ */
+const SUBTITLE_RULES: ReadonlyArray<readonly [string, string]> = [
+  ['Memorial Day', 'Memorial Day'],
+  ['Labor Day', 'Labor Day'],
+  ['Keshet', 'Keshet'],
+  ['Jewish Families of Color', 'JFoC'],
+  ['JFAM Sukkot', 'JFAM Sukkot'],
+  ['JFAM Chanukah', 'JFAM Chanukah'],
+  ['JFAM', 'JFAM'],
+  ['Sukkot', 'Sukkot'],
+]

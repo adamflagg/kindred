@@ -28,7 +28,8 @@ function attendee(
   sessionCmId: number,
   sessionType: string,
   name: string,
-  parentId?: number
+  parentId?: number,
+  startDate?: string
 ) {
   return {
     id: `att-${year}-${sessionCmId}`,
@@ -42,6 +43,7 @@ function attendee(
         name,
         session_type: sessionType,
         ...(parentId !== undefined ? { parent_id: parentId } : {}),
+        ...(startDate !== undefined ? { start_date: startDate } : {}),
       },
     },
   }
@@ -231,5 +233,65 @@ describe('fetchCamperJourney', () => {
     ])
     const out = await fetchCamperJourney(PERSON, CURRENT_YEAR)
     expect(out.map((r) => r.year)).toEqual([2023, 2021, 2019])
+  })
+})
+
+describe('ordering within a year', () => {
+  /*
+   * Owner report, 2026-08-18: a camper who went to Family Camp 1 in May, two
+   * summer sessions in June and July, and Family Camp 6 in September read as
+   * "2a, 3a, FC1, FC6" — summer first and both family weekends after it.
+   *
+   * The sort was `b.year - a.year` alone, so within a year the rows kept the
+   * order the attendee fetch produced, which groups by program. The journey is
+   * a chronology and must cross programs.
+   */
+  it('orders a year chronologically ACROSS programs, not program by program', async () => {
+    mockAttendeesGetFullList.mockResolvedValue([
+      attendee(2026, 201, 'embedded', 'Session 2a', undefined, '2026-06-14'),
+      attendee(2026, 202, 'embedded', 'Session 3a', undefined, '2026-07-05'),
+      attendee(2026, 101, 'family', 'Family Camp 1: Memorial Day Weekend', undefined, '2026-05-22'),
+      attendee(2026, 106, 'family', 'Family Camp 6', undefined, '2026-09-24'),
+    ])
+    mockAssignmentsGetFullList.mockResolvedValue([])
+
+    const out = await fetchCamperJourney(PERSON, 2027)
+
+    expect(out.map((record) => record.sessionName)).toEqual([
+      'Family Camp 1: Memorial Day Weekend',
+      'Session 2a',
+      'Session 3a',
+      'Family Camp 6',
+    ])
+  })
+
+  it('keeps a row with no start date LAST in its year, never first', async () => {
+    // An empty string compares below every real date, so a naive comparator
+    // floats an undated row to the top of its year — where it reads as the
+    // first thing that happened.
+    mockAttendeesGetFullList.mockResolvedValue([
+      attendee(2026, 300, 'main', 'Undated Session'),
+      attendee(2026, 101, 'family', 'Family Camp 1: Memorial Day Weekend', undefined, '2026-05-22'),
+    ])
+    mockAssignmentsGetFullList.mockResolvedValue([])
+
+    const out = await fetchCamperJourney(PERSON, 2027)
+
+    expect(out.map((record) => record.sessionName)).toEqual([
+      'Family Camp 1: Memorial Day Weekend',
+      'Undated Session',
+    ])
+  })
+
+  it('still orders years newest first', async () => {
+    mockAttendeesGetFullList.mockResolvedValue([
+      attendee(2024, 101, 'family', 'Family Camp 1: Memorial Day Weekend', undefined, '2024-05-24'),
+      attendee(2026, 101, 'family', 'Family Camp 1: Memorial Day Weekend', undefined, '2026-05-22'),
+    ])
+    mockAssignmentsGetFullList.mockResolvedValue([])
+
+    const out = await fetchCamperJourney(PERSON, 2027)
+
+    expect(out.map((record) => record.year)).toEqual([2026, 2024])
   })
 })
