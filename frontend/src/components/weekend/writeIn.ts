@@ -61,7 +61,7 @@ export function writeInOccupant(unit: LodgingUnitRow): WriteInOccupant | null {
 
 /** Where a unit's write-in is recorded, or `null` if none covers it. */
 export interface WriteInSource {
-  /** The unit the `lodging_availability` row belongs to — a clear's target. */
+  /** The unit the `lodging_write_ins` row belongs to — a clear's target. */
   unitId: string
   unitCode: string
   unitName: string

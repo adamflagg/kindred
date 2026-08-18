@@ -704,10 +704,11 @@ class TestWriteInReads:
     live+draft pair sitting beside `lodging_assignments`/`_draft`. These
     reads are that pair's half of the repository.
 
-    NOTHING READS THEM YET. PR 1 lands the tables and the CRUD dark; the
-    switch of `write_in_covers`, `set_availability` and the frontend is PR 2
-    onward. What these tests pin is the shape the later PRs will read
-    through, not any behaviour the running application has today.
+    THE LIVE HALF IS LIVE. PR 2 moved the 21 rows (1500000162) and switched
+    `write_in_covers` and `set_availability` onto them. The DRAFT half is
+    still dark -- nothing reads or writes it until PR 3 gives write-ins their
+    scenario dimension -- so what its tests pin is the shape that PR will read
+    through, not behaviour the running application has today.
     """
 
     @pytest.mark.asyncio

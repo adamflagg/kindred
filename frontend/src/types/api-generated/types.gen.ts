@@ -7242,9 +7242,11 @@ export type WeeklyDataPoint = {
  * Resolved on READ, never cascaded on write. A row per leaf would duplicate
  * one fact across rows that then drift -- clear one room and the others still
  * close the space -- and would strand orphans behind a re-merge. There is
- * still exactly one `lodging_availability` row; this says which units it
- * covers, and `unit_id` is the row it belongs to, so a card that inherited
- * the write-in can still clear it at the source rather than dead-ending.
+ * still exactly one `lodging_write_ins` row (kindred#2382 moved occupancy off
+ * `lodging_availability`, which now answers only the staff<->family role);
+ * this says which units it covers, and `unit_id` is the row it belongs to, so
+ * a card that inherited the write-in can still clear it at the source rather
+ * than dead-ending.
  */
 export type WriteInCover = {
   /**

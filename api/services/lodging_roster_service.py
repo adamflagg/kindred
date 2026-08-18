@@ -137,6 +137,18 @@ def _b(record: Any, field: str) -> bool:
     return bool(getattr(record, field, False))
 
 
+def _maybe_bool(record: Any, field: str) -> bool | None:
+    """A stored boolean, or None when there is no ROW to read it off.
+
+    NOT `_b` with a default. `_b` flattens a missing row to False, which is the
+    right answer for a column that is always present on a row that always
+    exists; here the absence of a row is a THIRD state -- "no override for this
+    weekend, so the unit's own role decides" -- and collapsing it into False
+    would close every cabin nobody has said anything about.
+    """
+    return None if record is None else _b(record, field)
+
+
 def _f(record: Any, field: str) -> float | None:
     value = getattr(record, field, None)
     try:
@@ -546,7 +558,18 @@ def resolve_combined(*, default: bool, override: bool | None, session_override: 
     return default
 
 
-def write_in_covers(units: list[LodgingUnitSummary]) -> dict[str, WriteInCover]:
+def written_in_unit_ids(write_ins: list[Any]) -> frozenset[str]:
+    """The unit ids `lodging_write_ins` names, for `write_in_covers` to walk.
+
+    Built ONCE per request and threaded, rather than re-derived inside the
+    cover walk: `_build_units` already consumes the same rows on the way to the
+    payload, and two derivations of "which units hold a write-in" are two
+    things that can disagree about one cabin.
+    """
+    return frozenset(_s(row, "unit") for row in write_ins)
+
+
+def write_in_covers(units: list[LodgingUnitSummary], write_in_unit_ids: frozenset[str]) -> dict[str, WriteInCover]:
     """Which units each write-in closes, keyed by unit code.
 
     THE UNIT A ROW NAMES IS NOT THE ONLY SPACE IT CLOSES. A write-in is a fact
@@ -569,9 +592,18 @@ def write_in_covers(units: list[LodgingUnitSummary]) -> dict[str, WriteInCover]:
     building does not then close B, because that would take a lettable room off
     the board for no reason.
 
-    Only a write-in travels. `True` is a staff cabin OPENED to families for the
-    weekend: it names no occupant and closes nothing, so inheriting it would
-    silently open every room beneath a released building.
+    Only a write-in travels. A ROLE release is a staff cabin OPENED to families
+    for the weekend: it names no occupant and closes nothing, so inheriting it
+    would silently open every room beneath a released building.
+
+    WHICH UNITS HOLD ONE IS AN INPUT, not something read off the summary
+    (kindred#2382). It used to be `family_available_override is False`, which
+    was the only spelling occupancy had while it shared
+    `lodging_availability.family_available` with the staff<->family role. The
+    two are separate tables now, so this walks the OCCUPANCY source directly and
+    a bare `false` surviving on a role row -- which names nobody, and which
+    1500000162 leaves none of -- can no longer masquerade as somebody sleeping
+    in a cabin.
 
     Cycle-guarded on both walks. The server refuses to write a parent cycle
     (#1899), but one already in the data must not spin the roster build --
@@ -591,7 +623,7 @@ def write_in_covers(units: list[LodgingUnitSummary]) -> dict[str, WriteInCover]:
         bucket.sort(key=lambda child: child.code)
 
     def _is_written_in(unit: LodgingUnitSummary) -> bool:
-        return unit.family_available_override is False
+        return unit.unit_id in write_in_unit_ids
 
     def _nearest_ancestor(unit: LodgingUnitSummary) -> LodgingUnitSummary | None:
         seen = {unit.code}
@@ -638,14 +670,14 @@ def write_in_covers(units: list[LodgingUnitSummary]) -> dict[str, WriteInCover]:
     return covers
 
 
-def _resolve_write_in_covers(units: list[LodgingUnitSummary]) -> None:
+def _resolve_write_in_covers(units: list[LodgingUnitSummary], write_in_unit_ids: frozenset[str]) -> None:
     """Attach each unit's resolved write-in cover, in place.
 
     The mutating counterpart to `write_in_covers`, mirroring
     `_resolve_power_coverage`: the pure function is what the tests reason
     about, and this is the one line the response path calls.
     """
-    covers = write_in_covers(units)
+    covers = write_in_covers(units, write_in_unit_ids)
     for unit in units:
         unit.write_in = covers.get(unit.code)
 
@@ -1048,6 +1080,12 @@ class LodgingRosterService:
         async with asyncio.TaskGroup() as tg:
             units_task = tg.create_task(self.repository.fetch_units(year))
             availability_task = tg.create_task(self.repository.fetch_availability(year, session_cm_id))
+            # THE OCCUPANCY HALF, split out of availability by kindred#2382.
+            # Read with NO scenario predicate, and that is not the old shape
+            # coming back: the live board is a scope in its own right, exactly
+            # as `lodging_assignments` is, and the draft twin behind this table
+            # stays dark until PR 3 gives write-ins their scenario dimension.
+            write_ins_task = tg.create_task(self.repository.fetch_write_ins(year, session_cm_id))
             attendees_task = tg.create_task(self.repository.fetch_attendees_for_session(year, session_pb_id))
             households_task = tg.create_task(self.repository.fetch_households(year))
             prior_task = tg.create_task(self.repository.fetch_prior_household_cm_ids(year))
@@ -1104,9 +1142,11 @@ class LodgingRosterService:
 
         households = await self._resolve_households(session_type, attendees_task.result(), households_task.result())
 
+        write_ins = write_ins_task.result()
         unit_summaries = self._build_units(
             units_task.result(),
             availability_task.result(),
+            write_ins,
             merges_task.result(),
         )
         # ONE index, threaded to both consumers below -- see `_BathroomIndex`'s
@@ -1127,7 +1167,7 @@ class LodgingRosterService:
         # but its `WeekendSummaryEntry` carries no `units`, so resolving covers
         # there would be work no response can read -- once per weekend, across
         # every weekend of the year, on every lander request.
-        _resolve_write_in_covers(unit_summaries)
+        _resolve_write_in_covers(unit_summaries, written_in_unit_ids(write_ins))
         parties = self._build_parties(
             session_type=session_type,
             session_start=_as_date(_s(session, "start_date")),
@@ -1238,6 +1278,14 @@ class LodgingRosterService:
             entry_cm_id = _i(session, "cm_id")
             async with entry_gate, asyncio.TaskGroup() as inner:
                 availability_task = inner.create_task(self.repository.fetch_availability(year, entry_cm_id))
+                # Exactly as build_roster reads it, and separately, because
+                # this is a DIFFERENT TaskGroup -- wiring one and leaving the
+                # other is the half-fix the guards in this file's tests exist
+                # to catch. The lander keeps only counts, and every count on it
+                # goes through `is_family_available`, so a weekend card that
+                # never read this table would report a written-into cabin as
+                # open beside a board that draws it closed.
+                write_ins_task = inner.create_task(self.repository.fetch_write_ins(year, entry_cm_id))
                 attendees_task = inner.create_task(self.repository.fetch_attendees_for_session(year, session_pb_id))
                 # One placement source, exactly as build_roster chooses it.
                 placements_task = inner.create_task(
@@ -1268,6 +1316,7 @@ class LodgingRosterService:
             unit_summaries = self._build_units(
                 units,
                 availability_task.result(),
+                write_ins_task.result(),
                 merges_task.result(),
             )
             # Same one-index-per-call rule `build_roster` follows -- see the
@@ -1423,25 +1472,25 @@ class LodgingRosterService:
 
     # ---------------------------------------------------------------- units
 
-    def _build_units(self, units: list[Any], availability: list[Any], merges: list[Any]) -> list[LodgingUnitSummary]:
-        # ONE layer. The scenario overlay is gone (1500000135) -- availability
-        # is a fact about the weekend, so a scenario has nothing to overlay.
-        # `family_available` is stored EXPLICITLY, so the row IS the answer and
-        # the absence of a row falls through to the unit's role. A unit with no
-        # row must therefore map to None and not to False: those are different
-        # answers, and `bool(...)` on a missing row would silently close every
-        # cabin nobody has said anything about.
-        override_by_unit = {_s(row, "unit"): _b(row, "family_available") for row in availability}
-        # Display text travels BESIDE the decision, never into it. Stored in the
-        # `note` column (the migration header says why `note` was kept rather
-        # than renamed to `reason`); surfaced to the API as `reason`. This and
-        # `set_availability` are the only two places that translate.
-        reason_by_unit = {_s(row, "unit"): _s(row, "note") for row in availability}
-        # WHO is in the room (kindred#2078). Travels BESIDE the decision like
-        # `reason`, and translated nowhere: the column and the API field share
-        # one name, so unlike `note`/`reason` there is nothing here that can
-        # drift out of step with a writer.
-        occupant_by_unit = {_s(row, "unit"): _s(row, "occupant_name") for row in availability}
+    def _build_units(
+        self, units: list[Any], availability: list[Any], write_ins: list[Any], merges: list[Any]
+    ) -> list[LodgingUnitSummary]:
+        # TWO SOURCES, ONE FIELD, and the split between them is kindred#2382.
+        #
+        # `lodging_availability` answers the staff<->family ROLE question --
+        # "a staff cabin opened to families for this weekend" -- and keeps its
+        # no-scenario shape, because that is an operational fact about the
+        # WEEKEND and 1500000135's reasoning is exactly right for it.
+        # `lodging_write_ins` answers OCCUPANCY: somebody is in the room. That
+        # is a modelling fact (not every write-in is non-rostered staff -- some
+        # are paper registrations for families arriving with no children), so it
+        # got a table of its own with a draft twin waiting behind it.
+        #
+        # ONE layer each. There is still no scenario overlay: a scenario reads
+        # the same live rows it does today, and PR 3 of kindred#2382 is what
+        # gives the occupancy half its scenario dimension.
+        role_row_by_unit = {_s(row, "unit"): row for row in availability}
+        write_in_row_by_unit = {_s(row, "unit"): row for row in write_ins}
 
         # id -> code, so the parent relation can be published as a code.
         code_by_id = {_s(unit, "id"): _s(unit, "code") for unit in units}
@@ -1475,10 +1524,43 @@ class LodgingRosterService:
             group = _s(unit, "bathroom_group")
             area = (getattr(unit, "expand", None) or {}).get("area")
             inventory_class = _s(unit, "inventory_class")
-            override = override_by_unit.get(_s(unit, "id"))
+            unit_id = _s(unit, "id")
+            role_row = role_row_by_unit.get(unit_id)
+            write_in_row = write_in_row_by_unit.get(unit_id)
+            # `family_available_override` STILL SPELLS AN OCCUPANCY AS False,
+            # and that is deliberate rather than left over. Every count on the
+            # stats bar goes through `is_family_available`, which is derived
+            # from this one field, and the board's own open-tint reads `false`
+            # as a proxy for "is somebody in it" -- so a write-in that stopped
+            # spelling itself here would silently return an occupied cabin to
+            # the open count. Disentangling the two axes on the wire is PR 4 of
+            # kindred#2382; this PR moves the STORAGE and nothing a user can
+            # see.
+            #
+            # Occupancy OUTRANKS the role when a unit somehow carries both.
+            # No writer produces that pair -- `set_availability` clears the
+            # other fact on every write -- but two staff racing on one cabin
+            # can, and the safe answer is the closed one: reading the release
+            # instead would open a cabin with somebody sleeping in it.
+            #
+            # A unit with NEITHER row maps to None, never False: those are
+            # different answers, and `bool(...)` on a missing row would close
+            # every cabin nobody has said anything about.
+            override = False if write_in_row is not None else _maybe_bool(role_row, "family_available")
+            # Display text travels BESIDE the decision, never into it, and it
+            # comes from whichever row supplied the decision. Stored in the
+            # `note` column (1500000118's header says why `note` was kept
+            # rather than renamed to `reason`); surfaced to the API as
+            # `reason`. This and `set_availability` are the only two places
+            # that translate.
+            #
+            # WHO is in the room (kindred#2078) is translated nowhere: the
+            # column and the API field share one name, so unlike `note`/`reason`
+            # there is nothing here that can drift out of step with a writer.
+            source_row = write_in_row if write_in_row is not None else role_row
             summaries.append(
                 LodgingUnitSummary(
-                    unit_id=_s(unit, "id"),
+                    unit_id=unit_id,
                     code=code,
                     name=_s(unit, "name"),
                     area_code=_s(area, "code") if area is not None else "",
@@ -1516,8 +1598,8 @@ class LodgingRosterService:
                     parent_code=code_by_id.get(_s(unit, "parent_unit"), ""),
                     is_combined=resolve_combined(
                         default=_b(unit, "default_combined"),
-                        override=scenario_merge_by_unit.get(_s(unit, "id")),
-                        session_override=session_merge_by_unit.get(_s(unit, "id")),
+                        override=scenario_merge_by_unit.get(unit_id),
+                        session_override=session_merge_by_unit.get(unit_id),
                     ),
                     inventory_class=inventory_class,
                     # cast, not a re-derivation: `unit_shareability` is total
@@ -1526,8 +1608,12 @@ class LodgingRosterService:
                     # to the Literal on its own.
                     shareability=cast(Shareability, unit_shareability(_s(unit, "shareability"))),
                     family_available_override=override,
-                    occupant_name=occupant_by_unit.get(_s(unit, "id"), ""),
-                    reason=reason_by_unit.get(_s(unit, "id"), ""),
+                    # `_s` is total over a missing row -- `getattr(None, ..., "")`
+                    # -- so "no row at either source" reads as blank without a
+                    # second branch. `_maybe_bool` above needs its own, because
+                    # blank is not one of the three answers the decision has.
+                    occupant_name=_s(source_row, "occupant_name"),
+                    reason=_s(source_row, "note"),
                     is_family_available=is_family_available(inventory_class, override),
                     map_x=map_x,
                     map_y=map_y,
