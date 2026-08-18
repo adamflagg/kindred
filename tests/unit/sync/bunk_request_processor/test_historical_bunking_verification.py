@@ -40,10 +40,10 @@ class TestVerifyBunkTogether:
         """
         # Setup: Pre-populate historical bunking cache
         temporal_cache._historical_bunking = {
-            1001: {2024: {"bunk_name": "B-3", "session_cm_id": 123}},  # requester
-            1002: {2024: {"bunk_name": "B-3", "session_cm_id": 123}},  # target 1
-            1003: {2024: {"bunk_name": "B-3", "session_cm_id": 123}},  # target 2
-            1004: {2024: {"bunk_name": "B-3", "session_cm_id": 123}},  # target 3
+            1001: {2024: {"bunk_name": "B-3", "session_cm_id": 123, "session_type": "main"}},  # requester
+            1002: {2024: {"bunk_name": "B-3", "session_cm_id": 123, "session_type": "main"}},  # target 1
+            1003: {2024: {"bunk_name": "B-3", "session_cm_id": 123, "session_type": "main"}},  # target 2
+            1004: {2024: {"bunk_name": "B-3", "session_cm_id": 123, "session_type": "main"}},  # target 3
         }
 
         were_together, bunk_name = temporal_cache.verify_bunk_together(
@@ -56,9 +56,9 @@ class TestVerifyBunkTogether:
     def test_verify_bunk_together_different_bunks(self, temporal_cache):
         """When one target was in a different bunk, return (False, "")."""
         temporal_cache._historical_bunking = {
-            1001: {2024: {"bunk_name": "B-3", "session_cm_id": 123}},
-            1002: {2024: {"bunk_name": "B-3", "session_cm_id": 123}},
-            1003: {2024: {"bunk_name": "B-4", "session_cm_id": 123}},  # Different bunk!
+            1001: {2024: {"bunk_name": "B-3", "session_cm_id": 123, "session_type": "main"}},
+            1002: {2024: {"bunk_name": "B-3", "session_cm_id": 123, "session_type": "main"}},
+            1003: {2024: {"bunk_name": "B-4", "session_cm_id": 123, "session_type": "main"}},  # Different bunk!
         }
 
         were_together, bunk_name = temporal_cache.verify_bunk_together(
@@ -71,8 +71,8 @@ class TestVerifyBunkTogether:
     def test_verify_bunk_together_different_sessions(self, temporal_cache):
         """When targets were in same bunk name but different session, return False."""
         temporal_cache._historical_bunking = {
-            1001: {2024: {"bunk_name": "B-3", "session_cm_id": 123}},
-            1002: {2024: {"bunk_name": "B-3", "session_cm_id": 456}},  # Different session!
+            1001: {2024: {"bunk_name": "B-3", "session_cm_id": 123, "session_type": "main"}},
+            1002: {2024: {"bunk_name": "B-3", "session_cm_id": 456, "session_type": "main"}},  # Different session!
         }
 
         were_together, bunk_name = temporal_cache.verify_bunk_together(
@@ -86,7 +86,7 @@ class TestVerifyBunkTogether:
         """When requester has no historical data for the year, return (False, "")."""
         temporal_cache._historical_bunking = {
             # No entry for requester 1001
-            1002: {2024: {"bunk_name": "B-3", "session_cm_id": 123}},
+            1002: {2024: {"bunk_name": "B-3", "session_cm_id": 123, "session_type": "main"}},
         }
 
         were_together, bunk_name = temporal_cache.verify_bunk_together(
@@ -99,8 +99,8 @@ class TestVerifyBunkTogether:
     def test_verify_bunk_together_target_no_history(self, temporal_cache):
         """When any target has no historical data for the year, return False."""
         temporal_cache._historical_bunking = {
-            1001: {2024: {"bunk_name": "B-3", "session_cm_id": 123}},
-            1002: {2024: {"bunk_name": "B-3", "session_cm_id": 123}},
+            1001: {2024: {"bunk_name": "B-3", "session_cm_id": 123, "session_type": "main"}},
+            1002: {2024: {"bunk_name": "B-3", "session_cm_id": 123, "session_type": "main"}},
             # No entry for target 1003
         }
 
@@ -114,7 +114,7 @@ class TestVerifyBunkTogether:
     def test_verify_bunk_together_empty_targets(self, temporal_cache):
         """When target list is empty, return (True, bunk_name) - vacuously true."""
         temporal_cache._historical_bunking = {
-            1001: {2024: {"bunk_name": "B-3", "session_cm_id": 123}},
+            1001: {2024: {"bunk_name": "B-3", "session_cm_id": 123, "session_type": "main"}},
         }
 
         were_together, bunk_name = temporal_cache.verify_bunk_together(

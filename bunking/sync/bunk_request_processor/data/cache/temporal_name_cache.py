@@ -194,8 +194,23 @@ class TemporalNameCache:
 
         Unlike monolith which queries non-existent 'historical_bunking' table,
         we use the modern schema: bunk_assignments with year < current_year.
+
+        The query is deliberately NOT filtered by session type. This dict has
+        two consumers that want opposite things (#2427): `_build_name_index`
+        uses mere PRESENCE here to give a person a "historical" bucket in the
+        name index, and a Family Camp attendee is a perfectly real prior-year
+        person to resolve a name against — filtering at the load would silently
+        drop ~922 people from name resolution. `verify_bunk_together` instead
+        wants cabins only. So each record carries its `session_type` and the
+        bunk-comparison consumer does the filtering.
         """
         logger.info("Loading historical bunking data...")
+
+        # Imported at call time, not module scope: `bunking.graph` imports
+        # `bunking.satisfaction`, which imports this package's `core.models`, so
+        # a top-level import here is a genuine cycle. Importing at call time
+        # keeps ONE definition of the eligible-session-type set.
+        from bunking.graph.social_graph_builder import LAST_YEAR_HISTORY_SESSION_TYPES  # noqa: PLC0415
 
         try:
             # Get all sessions for name lookup
@@ -208,10 +223,16 @@ class TemporalNameCache:
             # This limits memory usage while still providing useful historical context
             # For bunk request processing, 2 years is sufficient for name disambiguation
             min_year = self.year - 2
+            # `sort: "id"` makes the per-(person, year) pick below deterministic.
+            # PocketBase's get_full_list has no inherent order, so without it the
+            # kept row could change between runs with no code change — 442 of the
+            # 3,826 (person, year) keys in this two-year window carry more than
+            # one row, so the pick decides something real.
             assignments = self.pb.collection("bunk_assignments").get_full_list(
                 query_params={
                     "filter": f"year >= {min_year} && year < {self.year}",
                     "expand": "person,bunk,session",
+                    "sort": "id",
                 }
             )
 
@@ -227,15 +248,29 @@ class TemporalNameCache:
                 person_cm_id = getattr(person_data, "cm_id", None)
                 year = getattr(assignment, "year", None)
                 session_cm_id = getattr(session_data, "cm_id", None) if session_data else None
+                session_type = (getattr(session_data, "session_type", "") if session_data else "") or ""
                 bunk_name = getattr(bunk_data, "name", "") if bunk_data else ""
 
                 if person_cm_id and year:
                     if person_cm_id not in self._historical_bunking:
                         self._historical_bunking[person_cm_id] = {}
 
-                    # Only store most recent assignment per year
-                    # (in case of duplicates)
-                    if year not in self._historical_bunking[person_cm_id]:
+                    # One record per (person, year). The old comment here said
+                    # "most recent assignment per year" — that was never true;
+                    # the rows arrive unordered and this kept whichever came
+                    # first. It is now the first row in record-id order, EXCEPT
+                    # that a cabin-bearing session beats a non-bunking one: a
+                    # person who held both a summer cabin and a Family Camp day
+                    # group last year must be remembered by the cabin, or the
+                    # bunk-comparison consumer loses their real history (#2427).
+                    existing = self._historical_bunking[person_cm_id].get(year)
+                    is_eligible = session_type in LAST_YEAR_HISTORY_SESSION_TYPES
+                    replaces_existing = (
+                        existing is not None
+                        and is_eligible
+                        and existing.get("session_type", "") not in LAST_YEAR_HISTORY_SESSION_TYPES
+                    )
+                    if existing is None or replaces_existing:
                         self._historical_bunking[person_cm_id][year] = {
                             "session_cm_id": session_cm_id,
                             "session_name": session_lookup.get(session_cm_id, f"Session {session_cm_id}")
@@ -243,7 +278,13 @@ class TemporalNameCache:
                             else "",
                             "parent_session_id": session_cm_id,  # Simplified - no parent tracking for historical
                             "parent_session_name": session_lookup.get(session_cm_id, "") if session_cm_id else "",
-                            "bunk": bunk_name,
+                            # `bunk_name` is the key `verify_bunk_together`
+                            # reads. It used to be written as "bunk", so that
+                            # consumer read "" for everybody and returned
+                            # (False, "") every time — the whole historical
+                            # verification path was inert (#2427).
+                            "bunk_name": bunk_name,
+                            "session_type": session_type,
                         }
 
             total_historical = sum(len(years) for years in self._historical_bunking.values())
@@ -503,11 +544,18 @@ class TemporalNameCache:
             target_cm_ids: List of target CM IDs to check
             year: Year to check
 
+        Only sessions that actually put children in a cabin count. A shared
+        Family Camp day group is not evidence that two children bunked
+        together — day groups run to a median of 53 people (#2427).
+
         Returns:
             Tuple of (were_together, bunk_name):
             - (True, bunk_name) if all were in same bunk
             - (False, "") if not all together or data missing
         """
+        # Imported at call time — see `_load_historical_bunking` for why.
+        from bunking.graph.social_graph_builder import LAST_YEAR_HISTORY_SESSION_TYPES  # noqa: PLC0415
+
         # Get requester's historical bunking for the year
         requester_data = self._historical_bunking.get(requester_cm_id, {})
         requester_year_data = requester_data.get(year, {})
@@ -519,6 +567,9 @@ class TemporalNameCache:
         requester_session = requester_year_data.get("session_cm_id")
 
         if not requester_bunk:
+            return False, ""
+
+        if requester_year_data.get("session_type", "") not in LAST_YEAR_HISTORY_SESSION_TYPES:
             return False, ""
 
         # Empty target list is vacuously true (all zero targets were in same bunk)
@@ -537,6 +588,10 @@ class TemporalNameCache:
             target_bunk = target_year_data.get("bunk_name", "")
             target_session = target_year_data.get("session_cm_id")
 
+            # No session-type check on the target: the comparison below already
+            # requires the target to be in the SAME session as the requester,
+            # and a session has exactly one type, so the requester-side check
+            # above settles it for everyone in the group.
             # Both bunk name and session must match
             if target_bunk != requester_bunk or target_session != requester_session:
                 return False, ""
