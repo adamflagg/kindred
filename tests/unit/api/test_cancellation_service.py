@@ -541,3 +541,65 @@ class TestTeenCrossSessionEnrollment:
 
         assert result.has_other_sessions == 1
         assert result.no_other_sessions == 0
+
+
+class TestFamilyCampCrossSessionEnrollment:
+    """A cancelled summer camper whose household still attends a Family Camp
+    weekend must count as 'has other sessions', not a true departure. The
+    cross-session enrollment lookup has to span Family Camp too, mirroring the
+    existing SCIT/TLI teen-program handling above.
+    """
+
+    @pytest.mark.asyncio
+    async def test_summer_camper_kept_in_family_camp_counts_as_has_other(
+        self, cancellation_service, mock_repository, sample_persons
+    ):
+        session1 = create_mock_session(1001, "Session 1", 2026, "main", "2026-06-15", "2026-07-05")
+        family_weekend = create_mock_session(3001, "Fall Family Camp", 2026, "family", "2026-09-11", "2026-09-13")
+        summer_sessions = {1001: session1}
+        family_sessions = {3001: family_weekend}
+
+        # Noah (104) cancelled his summer session but the household is still
+        # enrolled in a Family Camp weekend.
+        cancelled = [
+            create_mock_attendee(
+                104,
+                session_cm_id=session1.cm_id,
+                session=session1,
+                status="cancelled",
+                effective_date="2026-01-10",
+            ),
+        ]
+        enrolled = [
+            create_mock_attendee(
+                104,
+                session_cm_id=family_weekend.cm_id,
+                session=family_weekend,
+                status="enrolled",
+                effective_date="2025-11-10",
+            ),
+        ]
+
+        def fetch_sessions_side_effect(year, session_types=None):
+            requested = set(session_types or [])
+            if requested == {"family"}:
+                return family_sessions
+            return summer_sessions
+
+        mock_repository.fetch_sessions = AsyncMock(side_effect=fetch_sessions_side_effect)
+        mock_repository.fetch_persons.return_value = sample_persons
+        mock_repository.fetch_attendees = AsyncMock(
+            side_effect=lambda year, status_filter=None: (
+                cancelled if status_filter == ["cancelled", "withdrawn", "dismissed"] else enrolled
+            )
+        )
+        mock_repository.fetch_status_history = AsyncMock(return_value=[])
+
+        result = await cancellation_service.calculate_cancellations(year=2026)
+
+        # has_other_sessions / no_other_sessions is the "still-attending" lookup
+        # this fix corrects. true_departure_count is a separate metric (driven by
+        # detect_session_swaps' same-day cancel+enroll heuristic) that this fix
+        # deliberately does not touch -- out of scope per the issue.
+        assert result.has_other_sessions == 1
+        assert result.no_other_sessions == 0

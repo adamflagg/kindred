@@ -80,6 +80,13 @@ SUMMER_PROGRAM_SESSION_TYPES = ("main", "embedded", "ag", "quest")
 # exclude off-season noise (fall Family-Camp CIT, Aug->May Teen Interns, Feb L.A. Trip).
 SUMMER_TEEN_TYPES = ("scit", "tli")
 
+# Family Camp session type — not part of DISPLAY_SESSION_TYPES / DEFAULT_SUMMER_SESSION_TYPES
+# (adult-focused, separate program), but a household that cancels/waitlists for a summer
+# session while already enrolled in a Family Camp weekend is still attending camp. Folded
+# into the cross-session "still attending" enrollment lookup in cancellation_service.py and
+# waitlist_service.py only — never into the display scope.
+FAMILY_SESSION_TYPE = "family"
+
 # Display labels for the merged teen rows (one row per teen session_type),
 # shared by the forecast and availability services.
 TEEN_DISPLAY_NAMES: dict[str, str] = {"scit": "SCIT", "tli": "TLI"}
