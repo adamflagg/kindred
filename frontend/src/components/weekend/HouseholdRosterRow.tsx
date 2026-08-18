@@ -54,6 +54,7 @@ const NO_SHARE_REQUEST: ShareRequest = {
   proximity: [],
   request_text: '',
   needs_resolution: false,
+  request_blocks: [],
 }
 
 const NO_FLAGS: AccessibilityFlags = {

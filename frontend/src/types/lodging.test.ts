@@ -35,6 +35,8 @@ import type {
   HouseholdJourneyRow,
   LodgingUnitRow,
   PartyChildRow,
+  RequestTextBlockRow,
+  RequestTextEntryRow,
   RosterPartyRow,
 } from './lodging'
 
@@ -107,6 +109,12 @@ const _exhaustiveRosterParty: Required<RosterPartyRow> = {
     proximity: [],
     request_text: '',
     needs_resolution: false,
+    // kindred#2330. `RosterParty`'s own fixture writes an empty list, so it
+    // proves nothing about the block shape — the two fixtures below are the
+    // guard that a later regen dropping `source_field`, `authorship` or
+    // `contributors` stops the build here rather than silently collapsing
+    // the panel back to one unlabelled blob.
+    request_blocks: [],
     eligibility: 'unknown',
     eligibility_source: 'none',
     answers_conflict: false,
@@ -120,6 +128,34 @@ const _exhaustiveRosterParty: Required<RosterPartyRow> = {
   },
 }
 void _exhaustiveRosterParty
+
+/**
+ * One free-text source field's worth of a household's request (kindred#2330).
+ *
+ * `source_field` is the CampMinder field name VERBATIM — renaming it here
+ * would be a data change, not a refactor, however the panel chooses to spell
+ * it for staff (`DISPLAY_LABELS`). `authorship` paints nothing since the
+ * 2026-08-17 review standardised every block on the amber rail, but it is what
+ * `_may_read_staff_notes` uses to decide whether a staff-authored block is
+ * sent to this client at all — a regen dropping it would reopen that hole.
+ */
+const _exhaustiveRequestTextBlock: Required<RequestTextBlockRow> = {
+  source_field: 'COVID-19 Bunking Requests',
+  authorship: 'family',
+  entries: [],
+}
+void _exhaustiveRequestTextBlock
+
+/**
+ * `contributors` is a LIST because one parent's answer is routinely written
+ * onto every enrolled child's record — 48 of 131 sibling groups in the 2026
+ * snapshot are exact duplicates, and they collapse to one entry naming both.
+ */
+const _exhaustiveRequestTextEntry: Required<RequestTextEntryRow> = {
+  text: 'Please house us near a bathhouse',
+  contributors: ['Emma Johnson', 'Liam Johnson'],
+}
+void _exhaustiveRequestTextEntry
 
 const _exhaustivePlacementWriteRequest: Required<PlacementWriteRequest> = {
   year: 2026,

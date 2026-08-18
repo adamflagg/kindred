@@ -7,7 +7,7 @@ produces spurious 401s elsewhere in the suite.
 
 from collections.abc import Generator
 from typing import Any
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 from fastapi import FastAPI
@@ -20,7 +20,9 @@ from api.schemas.lodging import (
     PlacementCopyRequest,
     PlacementDeleteRequest,
     PlacementWriteRequest,
+    RosterCounts,
     SlotMergeRequest,
+    WeekendRosterResponse,
 )
 from bunking.auth_middleware import AuthUser, get_current_user
 from bunking.rbac.permissions import Permission
@@ -49,6 +51,16 @@ ADMIN = AuthUser(
     display_name="Test Admin",
     groups=["admin"],
     is_admin=True,
+)
+
+
+_EMPTY_ROSTER = WeekendRosterResponse(
+    year=2026,
+    session_cm_id=1000001,
+    session_name="Family Camp 1",
+    parties=[],
+    units=[],
+    counts=RosterCounts(),
 )
 
 
@@ -203,6 +215,43 @@ class TestRosterEndpoint:
         assert body["parties"] == []
         assert body["units"] == []
         assert body["counts"]["parties_total"] == 0
+
+
+class TestStaffAuthoredBlocksNeedBunkingManage:
+    """`/roster` is open, but the two staff-authored blocks inside it are not.
+
+    `BunkingNotes Notes` and `Internal Bunk Notes` come from
+    `original_bunk_requests`, whose PocketBase listRule is `bunking.manage`
+    and whose raw `content` every other route serves only to an admin
+    (`api/routers/debug.py`). This endpoint takes any authenticated user, so
+    the wiring below -- not the service, which its own tests pin -- is what
+    stops internal staff commentary reaching a caller who holds nothing.
+
+    Asserts on the ARGUMENT rather than the payload for the reason
+    `TestScenarioParameter` gives: an empty-fixture payload assertion passes
+    just as happily when the flag never reaches the service at all.
+    """
+
+    @staticmethod
+    def _include_staff_notes_for(user: AuthUser, mock_pb: MagicMock) -> bool:
+        app = _build_app(user, mock_pb)
+        with patch("api.routers.lodging.LodgingRosterService") as service_cls:
+            service_cls.return_value.build_roster = AsyncMock(return_value=_EMPTY_ROSTER)
+            with patch("api.routers.lodging.pb", mock_pb):
+                response = TestClient(app).get("/api/lodging/roster", params={"year": 2026, "session_cm_id": 1000001})
+            assert response.status_code == 200
+            return bool(service_cls.return_value.build_roster.await_args.kwargs["include_staff_notes"])
+
+    def test_a_caller_holding_nothing_does_not_get_them(self, mock_pb: MagicMock) -> None:
+        assert self._include_staff_notes_for(_plain_user(), mock_pb) is False
+
+    def test_a_caller_holding_bunking_manage_does(self, mock_pb: MagicMock) -> None:
+        assert self._include_staff_notes_for(_manage_user(), mock_pb) is True
+
+    def test_an_admin_does(self, mock_pb: MagicMock) -> None:
+        """Admin passes every permission check on this router, exactly as
+        `require_permission` lets it through."""
+        assert self._include_staff_notes_for(ADMIN, mock_pb) is True
 
 
 class TestScenarioParameter:

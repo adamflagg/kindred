@@ -4398,6 +4398,65 @@ export type RejectResponse = {
 export type RequestBucket = 'material_parent' | 'immaterial_parent' | 'staff'
 
 /**
+ * RequestTextBlock
+ *
+ * Every answer a household gave in ONE source field (kindred#2330).
+ *
+ * `source_field` is the CampMinder field name VERBATIM -- see
+ * `api/services/lodging_rules.REQUEST_TEXT_SOURCES` for why, including why
+ * `COVID-19 Bunking Requests` keeps a name nobody would choose today.
+ *
+ * `authorship` splits a family's own ask from a staff note. It is a fact
+ * about the FIELD, not a guess from the text: all 34 `BunkingNotes` values
+ * in the snapshot end in an inline staff signature and timestamp, and none
+ * of the parent-authored fields' values do. The panel renders `staff` on a
+ * grey rail so an internal note never reads as something the family said.
+ */
+export type RequestTextBlock = {
+  /**
+   * Source Field
+   */
+  source_field?: string
+  /**
+   * Authorship
+   */
+  authorship?: 'family' | 'staff'
+  /**
+   * Entries
+   */
+  entries?: Array<RequestTextEntry>
+}
+
+/**
+ * RequestTextEntry
+ *
+ * One distinct free-text answer inside a source-field block.
+ *
+ * `contributors` is WHO wrote it, so the panel can sub-label by child. It is
+ * a list rather than a single name because one parent's answer is routinely
+ * written onto every enrolled child's record: 48 of the 131 (household,
+ * source field) sibling groups in the 2026 production snapshot hold exactly
+ * duplicate text. Those collapse to one entry naming both children --
+ * rendering it twice is noise, and dropping a contributor misstates who
+ * asked. The other 83 groups genuinely disagree and stay as separate
+ * entries; `Share Bunk With` diverges almost universally, because siblings
+ * name their own friends.
+ *
+ * Empty when the answering person could not be resolved. The panel then
+ * renders the text with no sub-label at all, never a blank one.
+ */
+export type RequestTextEntry = {
+  /**
+   * Text
+   */
+  text?: string
+  /**
+   * Contributors
+   */
+  contributors?: Array<string>
+}
+
+/**
  * RetentionByCity
  *
  * Retention metrics by city.
@@ -5875,6 +5934,10 @@ export type ShareRequestSummary = {
    * Needs Resolution
    */
   needs_resolution?: boolean
+  /**
+   * Request Blocks
+   */
+  request_blocks?: Array<RequestTextBlock>
   /**
    * Eligibility
    */

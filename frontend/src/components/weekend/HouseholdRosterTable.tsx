@@ -78,7 +78,11 @@ function hasAnyRequest(parties: RosterPartyRow[]): boolean {
     return (
       (share.preference !== undefined && share.preference !== 'unknown') ||
       (share.proximity ?? []).length > 0 ||
-      (share.request_text ?? '').length > 0
+      (share.request_text ?? '').length > 0 ||
+      // kindred#2330: 32 rostered 2026 households carry their ask ONLY in the
+      // bunking-CSV lane, which `family_camp_registrations.request_text` is
+      // not fed from — so the joined column alone under-counts requests.
+      (share.request_blocks ?? []).length > 0
     )
   })
 }

@@ -16,7 +16,7 @@ retargeted the gate from the now-removed Permission.LODGING_PHI).
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from datetime import date
 from typing import TYPE_CHECKING, Any, NamedTuple, cast
 
@@ -34,6 +34,8 @@ from api.schemas.lodging import (
     PartyAdult,
     PartyChild,
     ProximityKind,
+    RequestTextBlock,
+    RequestTextEntry,
     RosterCounts,
     RosterParty,
     Shareability,
@@ -50,17 +52,20 @@ from api.schemas.lodging import (
     WriteInCover,
 )
 from api.services.lodging_rules import (
+    REQUEST_TEXT_SOURCES,
     amenity_coverage,
     container_bathroom,
     effective_bathroom,
     is_family_available,
+    request_text_authorship,
+    request_text_source_order,
     unit_capacity,
     unit_shareability,
 )
 from bunking.logging_config import get_logger
 
 if TYPE_CHECKING:
-    from api.services.lodging_repository import LodgingRepository
+    from api.services.lodging_repository import LodgingRepository, RequestValueRow
 
 logger = get_logger(__name__)
 
@@ -293,6 +298,81 @@ def placement_grain(row: Any) -> tuple[str, int] | None:
     if household_cm_id > 0:
         return "household", household_cm_id
     return None
+
+
+def _request_blocks(values: Sequence[RequestValueRow], *, include_staff_notes: bool) -> list[RequestTextBlock]:
+    """One block per SOURCE FIELD, one entry per distinct answer inside it.
+
+    kindred#2330, owner ruling 2026-08-17. BOTH dimensions render: which form
+    an answer came from, and which child said it. The `'; '` join destroyed
+    both, and recovering only one leaves the other still lost.
+
+    Rules, each of which is a measured fact about the 2026 production
+    snapshot rather than a preference:
+
+    * Dedup is per FIELD, on case-folded text -- not per household. Today's
+      ingest dedupes across fields, which hides the 4 rostered households
+      whose same sentence really was written into two different questions;
+      splitting by field re-exposes them, correctly.
+    * A repeated answer collapses to ONE entry naming EVERY contributor. 48
+      of the 131 (household, field) sibling groups are exact duplicates --
+      one parent's answer copied onto each child's record -- so rendering it
+      twice is noise, while dropping a name misstates who asked. The other 83
+      genuinely disagree and stay separate.
+    * Blocks follow `REQUEST_TEXT_SOURCES`: family-authored first, staff notes
+      last. Entries within a block sort by contributor then text, so the
+      panel does not reshuffle between requests because PocketBase paged the
+      rows back in a different order.
+    * An unregistered source field is DROPPED, not rendered under a label
+      nobody approved -- `Do Not Share Bunk With` is the live case, excluded
+      by the ruling's silence.
+    * A blank contributor is dropped rather than rendered as an empty
+      sub-label over a real request.
+    * The two STAFF-authored fields are withheld unless the caller holds
+      `bunking.manage`. They are `original_bunk_requests` rows, a table whose
+      own PocketBase listRule is `bunking.manage` and whose raw `content`
+      every other API route serves only to an admin; `/lodging/roster` takes
+      any authenticated user, so emitting them unconditionally would widen
+      who can read internal staff commentary about a family. The
+      family-authored blocks are NOT gated, for the same reason `request_text`
+      is not (kindred#2398): a household's own housing ask is a placement
+      input. Gating happens HERE rather than in the repository because that
+      read is cached per year and shared across callers.
+    """
+    by_field: dict[str, dict[str, tuple[str, list[str]]]] = {}
+    for value in values:
+        if request_text_source_order(value.source_field) >= len(REQUEST_TEXT_SOURCES):
+            continue
+        if not include_staff_notes and request_text_authorship(value.source_field) == "staff":
+            continue
+        text = value.text.strip()
+        if not text:
+            continue
+        entries = by_field.setdefault(value.source_field, {})
+        # FIRST spelling of the text wins the render; later ones only add
+        # their author. Two children carrying one parent's answer differ in
+        # capitalisation often enough that picking arbitrarily would make the
+        # panel flicker between syncs.
+        _, contributors = entries.setdefault(text.casefold(), (text, []))
+        name = _person_display_name(value.person) if value.person is not None else ""
+        if name and name not in contributors:
+            contributors.append(name)
+
+    blocks: list[RequestTextBlock] = []
+    for source_field in sorted(by_field, key=request_text_source_order):
+        entries_for_field = [
+            RequestTextEntry(text=text, contributors=sorted(contributors, key=str.casefold))
+            for text, contributors in by_field[source_field].values()
+        ]
+        entries_for_field.sort(key=lambda entry: ((entry.contributors or [""])[0].casefold(), entry.text.casefold()))
+        blocks.append(
+            RequestTextBlock(
+                source_field=source_field,
+                authorship=request_text_authorship(source_field),
+                entries=entries_for_field,
+            )
+        )
+    return blocks
 
 
 def _person_display_name(person: Any) -> str:
@@ -947,7 +1027,18 @@ class LodgingRosterService:
             status=cls._weekend_status(statuses.get(session_cm_id, "")),
         )
 
-    async def build_roster(self, year: int, session_cm_id: int, scenario: str = "") -> WeekendRosterResponse:
+    async def build_roster(
+        self,
+        year: int,
+        session_cm_id: int,
+        scenario: str = "",
+        *,
+        # Whether the caller may read the two staff-authored request blocks
+        # (`BunkingNotes Notes`, `Internal Bunk Notes`). DEFAULTS TO FALSE:
+        # a caller that forgets this shows staff less than it could, never
+        # more than it may. The router passes the caller's `bunking.manage`.
+        include_staff_notes: bool = False,
+    ) -> WeekendRosterResponse:
         """One weekend's roster, resolved through a scenario or not.
 
         No scenario is the CampMinder mirror -- the synced rows, exactly as
@@ -980,10 +1071,17 @@ class LodgingRosterService:
         # `object`, which would need eleven casts to use. Tasks keep their own
         # types and still run concurrently.
         #
-        # There is no raw custom-value fetch here. The share gate, the NEAR/WITH
-        # modes and the request text all arrive as derived columns on the
-        # registration row -- already collapsed to household grain, already
-        # carrying the normaliser fixes this layer cannot see.
+        # The share gate, the NEAR/WITH modes and the household-grain request
+        # text all arrive as DERIVED COLUMNS on the registration row --
+        # already collapsed, already carrying the normaliser fixes this layer
+        # cannot see -- and none of them is re-parsed here.
+        #
+        # There is ONE raw read, added by kindred#2330, and it buys back
+        # exactly what the collapse spends: `request_text` is a `'; '` join
+        # over several source fields with no field boundary kept, so the panel
+        # cannot attribute a sentence to a form or to a child without the
+        # values themselves. It derives nothing -- see
+        # `fetch_request_text_values`.
         async with asyncio.TaskGroup() as tg:
             units_task = tg.create_task(self.repository.fetch_units(year))
             availability_task = tg.create_task(self.repository.fetch_availability(year, session_cm_id))
@@ -1028,6 +1126,17 @@ class LodgingRosterService:
             last_year_cabins_task = tg.create_task(self.repository.fetch_cabin_assignments_by_household_cm_id(year - 1))
             adults_task = tg.create_task(self.repository.fetch_family_camp_adults(year))
             registrations_task = tg.create_task(self.repository.fetch_family_camp_registrations(year))
+            # kindred#2330. The RAW per-field, per-child request answers --
+            # the one read on this path that is not a derived column, and the
+            # only reason the paragraph above needs qualifying: the gate and
+            # the modes are still read off the registration row and are still
+            # never re-parsed here. This read exists because the derived
+            # `request_text` joins its sources with `'; '` and keeps no field
+            # boundary, so the panel cannot say which form -- or which child
+            # -- produced which sentence without going back to the values.
+            # Absent from `build_summary`'s TaskGroup for the same reason
+            # last year's cabins are.
+            request_values_task = tg.create_task(self.repository.fetch_request_text_values(year))
             aliases_task = tg.create_task(self.repository.count_open_unresolved_aliases(year))
             # ONE placement source, chosen here rather than merged later. A
             # scenario does not read the mirror at all -- which is what makes
@@ -1091,6 +1200,8 @@ class LodgingRosterService:
             last_year_cabins=last_year_cabins_task.result(),
             adults_by_household=adults_task.result(),
             registrations=registrations_task.result(),
+            request_values=request_values_task.result(),
+            include_staff_notes=include_staff_notes,
             assignments=placements_task.result(),
             unit_index=unit_index,
         )
@@ -1626,6 +1737,13 @@ class LodgingRosterService:
         # OTHER argument here is required precisely because a caller that
         # dropped it would silently degrade the roster.
         last_year_cabins: dict[int, str] | None = None,
+        # kindred#2330's raw per-field, per-child request answers, keyed by
+        # household PB id. DEFAULTED for exactly the reason above: no
+        # `WeekendSummaryEntry` carries a party, so the lander would pay two
+        # extra year-scoped reads to build provenance blocks nothing renders.
+        request_values: Mapping[str, list[RequestValueRow]] | None = None,
+        # Same default and the same reason as `build_roster`'s: withhold.
+        include_staff_notes: bool = False,
     ) -> list[RosterParty]:
         placement_by_household, placement_by_person = self._index_assignments(assignments)
 
@@ -1644,6 +1762,8 @@ class LodgingRosterService:
             last_year_cabins=last_year_cabins or {},
             adults_by_household=adults_by_household,
             registrations=registrations,
+            request_values=request_values or {},
+            include_staff_notes=include_staff_notes,
             placement_by_household=placement_by_household,
             bathroom_index=unit_index,
         )
@@ -1742,6 +1862,8 @@ class LodgingRosterService:
         last_year_cabins: dict[int, str],
         adults_by_household: dict[str, list[Any]],
         registrations: dict[str, Any],
+        request_values: Mapping[str, list[RequestValueRow]],
+        include_staff_notes: bool,
         placement_by_household: dict[int, _Placement],
         bathroom_index: _BathroomIndex,
     ) -> list[RosterParty]:
@@ -1821,14 +1943,24 @@ class LodgingRosterService:
                     # `is_returning`: the two derive from different tables and
                     # a cabin we have is a cabin we can show.
                     last_year_cabin=last_year_cabins.get(household_cm_id, ""),
-                    share=self._build_share(registration),
+                    share=self._build_share(
+                        registration,
+                        request_values.get(household_pb_id, []),
+                        include_staff_notes=include_staff_notes,
+                    ),
                     flags=self._build_flags(registration),
                 )
             )
         parties.sort(key=lambda p: (p.sort_name.casefold(), p.display_name.casefold()))
         return parties
 
-    def _build_share(self, registration: Any) -> ShareRequestSummary:
+    def _build_share(
+        self,
+        registration: Any,
+        request_values: Sequence[RequestValueRow] = (),
+        *,
+        include_staff_notes: bool = False,
+    ) -> ShareRequestSummary:
         """Read the ingest-derived request layer. Do NOT re-parse it here.
 
         Every field below has a raw counterpart still on the row
@@ -1846,9 +1978,22 @@ class LodgingRosterService:
 
         One writer, one reader. If a value looks wrong, fix it in the ingest
         layer so every surface sees the correction.
+
+        `request_values` is the ONE exception and it derives nothing
+        (kindred#2330). It is the same free text read raw, so the panel can
+        say which source field and which child produced each sentence -- both
+        facts the `'; '` join destroys, and neither recoverable from the
+        column afterwards. A household with no values still gets a summary:
+        112 of 382 rostered 2026 households have no free-text signal at all.
         """
+        blocks = _request_blocks(request_values, include_staff_notes=include_staff_notes)
         if registration is None:
-            return ShareRequestSummary()
+            # Blocks still travel. A household can have request text in the
+            # bunking-CSV lane and no `family_camp_registrations` row at all
+            # -- that lane is fed by a different sync and keyed through the
+            # requester person, not through this table. So does the marker:
+            # blank `request_text` is not evidence of nothing to resolve.
+            return ShareRequestSummary(request_blocks=blocks, needs_resolution=bool(blocks))
 
         gate = _s(registration, "share_cabin_gate")
         # An unrecognised or empty value is "unknown", never a default of open.
@@ -1890,7 +2035,12 @@ class LodgingRosterService:
             proximity=proximity,
             request_text=request_text,
             # Slice 1 resolves no names, so any free text is outstanding work.
-            needs_resolution=bool(request_text),
+            # BLOCKS COUNT AS TEXT (kindred#2330): 32 rostered 2026 households
+            # carry their ask only in the bunking-CSV lane, so `request_text`
+            # is blank for them and reading this off that column alone would
+            # render their request with no marker beside it.
+            needs_resolution=bool(request_text or blocks),
+            request_blocks=blocks,
             eligibility=eligibility,
             eligibility_source=eligibility_source,
             answers_conflict=_b(registration, "share_answers_conflict"),

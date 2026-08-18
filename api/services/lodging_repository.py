@@ -45,13 +45,21 @@ the NEAR/WITH/similar-ages modes, the household-grain request text and the four
 housing flags into typed columns on `family_camp_registrations`; this layer
 reads those columns. See api/services/lodging_rules.py for why re-deriving them
 in Python would regress fixes that live only on the Go side.
+
+`fetch_request_text_values` is the ONE read here that goes to raw values, and
+it derives nothing -- it is the same free text, unjoined. The household-grain
+`request_text` column concatenates several distinct source fields with `'; '`
+and keeps no field boundary, so which FORM and which CHILD produced a sentence
+is destroyed there and recoverable nowhere downstream (kindred#2330). It also
+reaches the summer bunking CSV lane, which `family_camp_registrations` is not
+fed from at all.
 """
 
 from __future__ import annotations
 
 import asyncio
 from collections import defaultdict
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, NamedTuple
 
 from api.constants.collections import (
     ATTENDEES,
@@ -69,10 +77,16 @@ from api.constants.collections import (
     LODGING_UNITS,
     LODGING_WRITE_INS,
     LODGING_WRITE_INS_DRAFT,
+    ORIGINAL_BUNK_REQUESTS,
+    PERSON_CUSTOM_VALUES,
 )
 from api.constants.filters import ACTIVE_ENROLLED_FILTER
 from api.dependencies import lodging_cache
 from api.services.lodging_cache import cached_by_year
+from api.services.lodging_rules import (
+    BUNKING_CSV_REQUEST_TEXT_FIELDS,
+    FAMILY_CAMP_REQUEST_TEXT_CM_IDS,
+)
 from api.utils.pb_filters import pb_escape
 from bunking.logging_config import get_logger
 
@@ -133,6 +147,46 @@ def _attendee_weekend_session_filter() -> str:
     directly and would produce the wrong field name if reused here.
     """
     return " || ".join(f'session.session_type = "{t}"' for t in WEEKEND_SESSION_TYPES)
+
+
+class RequestValueRow(NamedTuple):
+    """One free-text bunk-request answer exactly as it was written.
+
+    `source_field` is the CampMinder field name, verbatim -- resolved from
+    whichever key the answer's lane stores (a custom-field cm_id, or the
+    bunking CSV's own column slug), so both lanes reach the service under one
+    vocabulary. `person` is the raw record of whoever answered, or None; the
+    service turns it into a display name, because naming a person is its job
+    everywhere else on this surface too.
+    """
+
+    source_field: str
+    text: str
+    person: Any
+
+
+def _request_value(label: str, raw_text: str, person: Any) -> tuple[str, RequestValueRow] | None:
+    """One raw answer paired with the household it belongs to, or None to drop it.
+
+    THREE reasons to drop, and each is a state production really produces:
+
+    * a blank answer -- the panel renders nothing for a source field with no
+      text, so an empty rail must never be built (kindred#2255's ruling for
+      this same modal);
+    * an unregistered source field -- the filters name three keys per lane, so
+      a fourth arriving means the filter stopped narrowing, and rendering it
+      would put a block on the panel under a label nobody approved;
+    * a person that resolves to no household -- a blank household id is not an
+      identity, and grouping several of them together would invent a household
+      holding other families' request text.
+    """
+    text = raw_text.strip()
+    if not label or not text:
+        return None
+    household_pb_id = str(getattr(person, "household", "") or "") if person is not None else ""
+    if not household_pb_id:
+        return None
+    return household_pb_id, RequestValueRow(source_field=label, text=text, person=person)
 
 
 class LodgingRepository:
@@ -707,6 +761,110 @@ class LodgingRepository:
             query_params={"filter": f"year = {year}", "sort": STABLE_SORT},
         )
         return {str(getattr(row, "household", "")): row for row in rows}
+
+    @cached_by_year(lodging_cache)
+    async def fetch_request_text_values(self, year: int) -> dict[str, list[RequestValueRow]]:
+        """The RAW free-text bunk-request answers, keyed by household PB id.
+
+        The one read on this surface that is not a derived column, and the
+        module docstring above still holds: nothing here normalises a gate,
+        parses a NEAR/WITH mode or resolves a verdict. It reads free text as
+        it was written, because the derived column cannot be un-joined --
+        `CollapseToHouseholdGrain` joins its sources with `'; '` and keeps no
+        field boundary, and 10 of 422 non-blank 2026 values contain that
+        separator themselves (kindred#2330).
+
+        TWO LANES, because the five ruled fields live in two different tables:
+
+        * the family-camp forms, in `person_custom_values` keyed by
+          CampMinder custom-field id (422 rows on 2026);
+        * the summer bunking CSV, in `original_bunk_requests` keyed by its own
+          column slug (1,262 rows on 2026).
+
+        The second lane is why 32 households rostered into a 2026 family
+        session had request text that appeared on NO weekend surface: the
+        roster read only `family_camp_registrations`, and that table is fed
+        solely from the first lane.
+
+        Neither excluded field is requested at all rather than filtered later
+        -- see `REQUEST_TEXT_SOURCES` for why `Do Not Share Bunk With` and
+        `RetParent-Socializewithbest` are out.
+
+        Cached (kindred#1963): year-scoped and sync-written only, exactly like
+        the registrations read above. The family-camp lane is one page (422
+        rows on 2026); the bunking-CSV lane is two, because it is not narrowed
+        to family-camp people at all -- 1,262 of the year's rows come back
+        against a PAGE_SIZE of 1,000, and 1,086 of them belong to households
+        with no weekend party to hang them on. Narrowing it would need a
+        person-id OR clause of the same shape kindred#1966 measured returning
+        HTTP 400, so the cache is the lever, exactly as it is there.
+        """
+        family_camp, bunking_csv = await asyncio.gather(
+            self._fetch_family_camp_request_values(year),
+            self._fetch_bunking_csv_request_values(year),
+        )
+        grouped: dict[str, list[RequestValueRow]] = defaultdict(list)
+        for household_pb_id, value in family_camp + bunking_csv:
+            grouped[household_pb_id].append(value)
+        return dict(grouped)
+
+    async def _fetch_family_camp_request_values(self, year: int) -> list[tuple[str, RequestValueRow]]:
+        """The family-camp form lane, filtered on custom-field cm_id.
+
+        Both relations are expanded: `person` carries the household this
+        answer belongs to and the name that sub-labels it, and
+        `field_definition` carries the cm_id the label is resolved from. The
+        stored `name` is deliberately not trusted for the label -- matching is
+        on cm_id, so a CampMinder rename must not unlabel a block.
+        """
+        cm_id_filter = " || ".join(
+            f"field_definition.cm_id = {cm_id}" for cm_id in sorted(FAMILY_CAMP_REQUEST_TEXT_CM_IDS)
+        )
+        rows = await self._page(
+            PERSON_CUSTOM_VALUES,
+            query_params={
+                "filter": f"year = {year} && ({cm_id_filter})",
+                "expand": "person,field_definition",
+                "sort": STABLE_SORT,
+            },
+        )
+        out: list[tuple[str, RequestValueRow]] = []
+        for row in rows:
+            expand = getattr(row, "expand", None) or {}
+            definition = expand.get("field_definition") if isinstance(expand, dict) else None
+            label = FAMILY_CAMP_REQUEST_TEXT_CM_IDS.get(int(getattr(definition, "cm_id", 0) or 0), "")
+            person = expand.get("person") if isinstance(expand, dict) else None
+            entry = _request_value(label, str(getattr(row, "value", "") or ""), person)
+            if entry is not None:
+                out.append(entry)
+        return out
+
+    async def _fetch_bunking_csv_request_values(self, year: int) -> list[tuple[str, RequestValueRow]]:
+        """The summer bunking-CSV lane, filtered on the three column slugs.
+
+        `original_bunk_requests` carries no household relation at all, so the
+        only route to one is the `requester` person -- which is year-scoped,
+        exactly like the value rows in the other lane, so no cm_id bridge is
+        needed.
+        """
+        field_filter = " || ".join(f'field = "{slug}"' for slug in sorted(BUNKING_CSV_REQUEST_TEXT_FIELDS))
+        rows = await self._page(
+            ORIGINAL_BUNK_REQUESTS,
+            query_params={
+                "filter": f"year = {year} && ({field_filter})",
+                "expand": "requester",
+                "sort": STABLE_SORT,
+            },
+        )
+        out: list[tuple[str, RequestValueRow]] = []
+        for row in rows:
+            expand = getattr(row, "expand", None) or {}
+            person = expand.get("requester") if isinstance(expand, dict) else None
+            label = BUNKING_CSV_REQUEST_TEXT_FIELDS.get(str(getattr(row, "field", "") or ""), "")
+            entry = _request_value(label, str(getattr(row, "content", "") or ""), person)
+            if entry is not None:
+                out.append(entry)
+        return out
 
     @cached_by_year(lodging_cache)
     async def fetch_cabin_assignments_by_household_cm_id(self, year: int) -> dict[int, str]:
