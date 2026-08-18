@@ -38,8 +38,8 @@ from api.services.lodging_rules import RequestTextAuthorship
 # The narrative columns on family_camp_medical. Named here so the boundary test
 # can assert on them rather than on a hand-maintained list.
 #
-# This list is kept identical to `phiColumns` in
-# pocketbase/sync/lodging_phi_test.go, and a test asserts that. Go's list keeps
+# This list is kept identical to `narrativeColumns` in
+# pocketbase/sync/lodging_medical_narrative_test.go, and a test asserts that. Go's list keeps
 # the narrative out of exports and logs; this one keeps it out of API payloads.
 # A column registered in only one is screened on one side and served on the
 # other.

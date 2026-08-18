@@ -24,7 +24,7 @@ from api.schemas.lodging import (
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-GO_NARRATIVE_GUARD = REPO_ROOT / "pocketbase" / "sync" / "lodging_phi_test.go"
+GO_NARRATIVE_GUARD = REPO_ROOT / "pocketbase" / "sync" / "lodging_medical_narrative_test.go"
 
 
 def _reachable_models(model: type[BaseModel], seen: set[type[BaseModel]] | None = None) -> set[type[BaseModel]]:
@@ -58,14 +58,14 @@ def _all_field_names(model: type[BaseModel]) -> set[str]:
 
 
 def _go_narrative_columns() -> set[str]:
-    """The phiColumns list from the Go export/logging guard.
+    """The narrativeColumns list from the Go export/logging guard.
 
-    The Go identifier keeps its historical name; this side reads it by that
-    name, which is why the literal survives the rename.
+    Kindred#2409 renamed the Go side's PHI vocabulary to match this file's;
+    this parses the identifier by its current name.
     """
     source = GO_NARRATIVE_GUARD.read_text()
-    block = re.search(r"var phiColumns = \[\]string\{(.*?)\}", source, re.DOTALL)
-    assert block, "could not find phiColumns in lodging_phi_test.go"
+    block = re.search(r"var narrativeColumns = \[\]string\{(.*?)\}", source, re.DOTALL)
+    assert block, "could not find narrativeColumns in lodging_medical_narrative_test.go"
     return set(re.findall(r'"([^"]+)"', block.group(1)))
 
 
