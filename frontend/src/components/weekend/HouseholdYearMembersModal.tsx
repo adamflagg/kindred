@@ -153,10 +153,33 @@ export function HouseholdYearMembersModal({
     selectedCmId !== null && sessions.some((session) => session.session_cm_id === selectedCmId)
       ? selectedCmId
       : null
-  // `All · FC1 · FC4`. Only where there is something to split: one weekend
-  // makes `All · FC1` a control that cannot change anything, and the journey
-  // card's own weekend line already names it.
-  const showsTabs = sessions.length > 1
+  /**
+   * `All · FC1 · FC4`. Only where there is something to split.
+   *
+   * TWO conditions, and the second is the one that matters in practice. More
+   * than one weekend is necessary — `All · FC1` cannot change anything, and
+   * the journey card's own weekend line already names it. But it is not
+   * sufficient: if every child attended every weekend, each tab renders the
+   * identical list and the strip invites a staff member to hunt for a
+   * difference that is not there.
+   *
+   * Owner ruling, 2026-08-18: "if all of the members are the same across all
+   * sessions, we simply do not offer up the tabbed experience."
+   *
+   * That is the common case by a wide margin — of every household that has
+   * ever attended more than one weekend in a year, only SIX have differing
+   * members on the production snapshot.
+   *
+   * A child with an EMPTY `session_cm_ids` never triggers the strip: empty is
+   * "not knowable", such a child stays visible on every tab, and it therefore
+   * splits nothing. Only a child with a known, INCOMPLETE weekend list does.
+   */
+  const membersDifferByWeekend = (row?.children ?? []).some((child) => {
+    const attended = child.session_cm_ids ?? []
+    if (attended.length === 0) return false
+    return sessions.some((session) => !attended.includes(session.session_cm_id ?? 0))
+  })
+  const showsTabs = sessions.length > 1 && membersDifferByWeekend
 
   if (row === null) return null
 

@@ -198,11 +198,11 @@ describe('weekendLabel — the named weekends CampMinder never numbered', () => 
    */
   const CATALOGUE: ReadonlyArray<readonly [string, string]> = [
     ['Spring Family Camp', 'FC1'],
-    ['Fall Family Camp I', 'FC2'],
-    ['Fall Family Camp II', 'FC3'],
-    ['Fall Family Camp III', 'FC4'],
-    ['Keshet LGBTQ Family Camp', 'Keshet'],
-    ['Summer Family Camp', 'Summer FC'],
+    ['Keshet LGBTQ Family Camp', 'FC2'],
+    ['Summer Family Camp', 'FC3'],
+    ['Fall Family Camp I', 'FC4'],
+    ['Fall Family Camp II', 'FC5'],
+    ['Fall Family Camp III', 'FC6'],
     ['Winter Family Camp', 'WFC'],
     ['JFAM Winter Family Camp', 'WFC'],
     ['Ready, Set, Camp', 'RSC'],

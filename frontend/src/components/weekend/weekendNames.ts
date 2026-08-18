@@ -183,16 +183,20 @@ export function weekendSlug(name: string): string {
  * names is CLOSED — they are history and cannot gain a member — so a map is
  * exhaustive in a way a rule can never be.
  *
- * The legacy assignments are the owner's, 2026-08-18, made against the full
- * catalogue: 2017-2019 ran SIX weekends (Spring, Keshet, Summer, Fall I/II/III)
- * and the 2020 numbering maps onto them by slot —
+ * The legacy assignments are the owner's, 2026-08-18: 2017-2019 ran SIX
+ * weekends and are numbered CHRONOLOGICALLY, 1 through 6 —
  *
- *   > "Spring family camp = FC1. fall 1, 2, 3, are the new 2, 3, 4 — basically
- *   >  a year that had a spring, the fall numbers get bumped one."
+ *   > "spring is 1, if keshet and summer happened before 'fall family camp'
+ *   >  or 'family camp', they are 2 and 3 (whatever chronological order they
+ *   >  happened that year), and then alias the subsequent ones to 4+"
  *
- * Keshet and Summer keep names rather than numbers, which is what makes that
- * bumping consistent: they sit chronologically between Spring and Fall I, so
- * numbering them would push Fall to 3/4/5.
+ * ⚠️ THAT RULE APPLIES ONLY WHERE CAMPMINDER NUMBERED NOTHING, which is
+ * 2017-2019 and nothing else. Checked against the whole catalogue: those three
+ * seasons carry SIX un-numbered weekends and zero numbered ones, 2020-2022
+ * carry only numbered ones, and 2023-2026 carry eight numbered plus one or two
+ * un-numbered that BOOKEND them (April before FC1, December after FC8).
+ * Numbering a modern season by date would rename `Ready, Set, Camp` to "FC1"
+ * and shift every CampMinder number behind it.
  *
  * ⚠️ Falls back to `shortWeekendName`, NEVER to the CampMinder id. `weekendRef`
  * falls back to the id because a URL must resolve; a label must be readable,
@@ -210,16 +214,28 @@ export function weekendSlug(name: string): string {
  * reads as itself rather than as invented initials.
  */
 const NAMED_WEEKEND_LABELS: Readonly<Record<string, string>> = {
-  // 2017-2019, mapped onto the 2020 numbering by slot (owner, 2026-08-18).
+  // 2017-2019, numbered CHRONOLOGICALLY within the season (owner, revised
+  // 2026-08-18): "spring is 1, if keshet and summer happened before 'fall
+  // family camp' [...] they are 2 and 3 (whatever chronological order they
+  // happened that year), and then alias the subsequent ones to 4+".
+  //
+  // The order is identical in all three legacy seasons — Spring (late May),
+  // Keshet (late Aug), Summer (end Aug), then Fall I/II/III through September
+  // — so a static map expresses it exactly and no season context is needed.
+  // 1-6 with no gaps.
   'Spring Family Camp': 'FC1',
-  'Fall Family Camp I': 'FC2',
-  'Fall Family Camp II': 'FC3',
-  'Fall Family Camp III': 'FC4',
-  // Named, not numbered: both sit between Spring and Fall I, so numbering them
-  // would push Fall to 3/4/5 and break the owner's bumping rule.
-  'Keshet LGBTQ Family Camp': 'Keshet',
-  'Summer Family Camp': 'Summer FC',
-  // 2023-2026 additions that never took a number.
+  'Keshet LGBTQ Family Camp': 'FC2',
+  'Summer Family Camp': 'FC3',
+  'Fall Family Camp I': 'FC4',
+  'Fall Family Camp II': 'FC5',
+  'Fall Family Camp III': 'FC6',
+  // 2023-2026 additions that never took a number. These are NOT numbered
+  // chronologically, and that is the whole reason the legacy rule cannot be
+  // generalised: they BOOKEND the numbered run rather than joining it. `Ready,
+  // Set, Camp` and `Spring Family Retreat` fall in April/early May, BEFORE
+  // `Family Camp 1`; `Winter Family Camp` falls in late December, AFTER
+  // `Family Camp 8`. Numbering them by date would make RSC "FC1" and shift
+  // every CampMinder number in the season by one.
   'Winter Family Camp': 'WFC',
   'JFAM Winter Family Camp': 'WFC',
   'Ready, Set, Camp': 'RSC',

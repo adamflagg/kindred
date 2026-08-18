@@ -206,10 +206,19 @@ function JourneyRows({
                   separator for both would read as a flat list of four things
                   rather than a cabin and the weekends it was used for.
 
+                  `items-center`, NOT `items-baseline`. Baseline alignment reads
+                  the first flex item's baseline, and that item is the housing
+                  span — itself a flex row whose first child is the `Home`
+                  icon. An SVG has no text baseline, so the browser synthesises
+                  one from its bottom edge and the whole weekend run sat
+                  visibly low against the cabin name. Centring sidesteps the
+                  synthesis entirely and is what the two sizes (text-sm cabin,
+                  text-xs weekends) want anyway.
+
                   `min-w-0` stays — it is what lets the flex child shrink below
                   its content width, which is what makes the kindred#2253 wrap
                   happen instead of the row overflowing. */}
-              <div className="flex min-w-0 flex-wrap items-baseline gap-x-1.5">
+              <div className="flex min-w-0 flex-wrap items-center gap-x-1.5">
                 <span
                   data-testid="household-journey-housing"
                   className={`flex min-w-0 items-center gap-1 text-sm ${

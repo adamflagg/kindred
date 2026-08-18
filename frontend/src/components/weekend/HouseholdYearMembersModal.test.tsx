@@ -485,6 +485,59 @@ describe('the weekend tabs', () => {
     expect(screen.queryByTestId('year-members-weekend-tabs')).toBeNull()
   })
 
+  it('shows no tab strip when every member attended every weekend', () => {
+    /*
+     * Owner ruling, 2026-08-18: "if all of the members are the same across all
+     * sessions, we simply do not offer up the tabbed experience."
+     *
+     * This is the overwhelmingly common case, not an edge one. Measured on the
+     * production snapshot: of every household that has ever attended more than
+     * one weekend in a year, only SIX have differing members. So a strip that
+     * fires on `sessions.length > 1` alone offers a control that changes
+     * nothing on ~98% of the rows that show it, and invites a staff member to
+     * click through tabs looking for a difference that is not there.
+     */
+    open(
+      _row({
+        sessions: [FC1, FC4],
+        children: [
+          { person_cm_id: 9001, display_name: 'Mia Garcia', session_cm_ids: [1309514, 1309517] },
+          { person_cm_id: 9002, display_name: 'Noah Garcia', session_cm_ids: [1309514, 1309517] },
+        ],
+      })
+    )
+
+    expect(screen.queryByTestId('year-members-weekend-tabs')).toBeNull()
+  })
+
+  it('still shows the strip when ONE member differs on ONE weekend', () => {
+    // The whole point of the strip, and the smallest case that needs it.
+    open(
+      _row({
+        sessions: [FC1, FC4],
+        children: [
+          { person_cm_id: 9001, display_name: 'Mia Garcia', session_cm_ids: [1309514, 1309517] },
+          { person_cm_id: 9002, display_name: 'Noah Garcia', session_cm_ids: [1309514] },
+        ],
+      })
+    )
+
+    expect(screen.getByTestId('year-members-weekend-tabs')).toBeInTheDocument()
+  })
+
+  it('shows no strip when every child’s weekends are unknown', () => {
+    // An empty `session_cm_ids` means "not knowable", and such a child shows
+    // on every tab — so the tabs would all render identically.
+    open(
+      _row({
+        sessions: [FC1, FC4],
+        children: [{ person_cm_id: 9001, display_name: 'Mia Garcia', session_cm_ids: [] }],
+      })
+    )
+
+    expect(screen.queryByTestId('year-members-weekend-tabs')).toBeNull()
+  })
+
   it('shows no tab strip when no weekend is knowable', () => {
     open(_row({ sessions: [] }))
 
@@ -495,6 +548,11 @@ describe('the weekend tabs', () => {
     // An attendee row whose `session` relation did not expand carries no
     // weekend. That is "not knowable", NOT "attended nothing" — hiding such a
     // child from every weekend tab would lose a real member of the party.
+    //
+    // A SECOND child with a known, incomplete list is what makes the strip
+    // appear at all: an unknown-weekend child splits nothing by itself, so on
+    // its own the tabs are suppressed entirely (see above). The guarantee
+    // being pinned here is about what a tab SHOWS once one exists.
     open(
       _row({
         sessions: [FC1, FC4],
@@ -506,6 +564,14 @@ describe('the weekend tabs', () => {
             age: 10,
             grade: 5,
             session_cm_ids: [],
+          },
+          {
+            person_cm_id: 1000004,
+            display_name: 'Noah Garcia',
+            last_name: 'Garcia',
+            age: 8,
+            grade: 3,
+            session_cm_ids: [1309514],
           },
         ],
       })

@@ -1,6 +1,7 @@
 import type { Session } from '../types/app-types'
 import type { SessionDateLookup } from './sessionUtils'
 import { isAgSession, isQuestSession, isQuestSessionType } from './sessionTypePredicates'
+import { weekendLabel } from '../components/weekend/weekendNames'
 
 /**
  * Canonical short display name for a session — used by the camper page (full +
@@ -171,6 +172,16 @@ export function getParentSessionId(session: Session, allSessions: Session[]): st
  */
 export function getSessionDisplayNameFromString(sessionName: string, sessionType?: string): string {
   if (!sessionName) return 'Unknown Session'
+
+  // FAMILY CAMP USES THE BOARD'S OWN SHORT LABEL (kindred#2393, owner
+  // 2026-08-18). CampMinder's family-camp names run to
+  // "Family Camp 8: JFAM Weekend w/ SFJCC (w/ kids 10 and under)" — 54
+  // characters — and the camper journey printed them verbatim, one per row,
+  // which is what made that timeline unreadable for a family-camp household.
+  // `weekendLabel` is the one place the short form is decided, so the weekend
+  // board and the camper journey cannot drift into two vocabularies for one
+  // weekend.
+  if (sessionType === 'family') return weekendLabel(sessionName)
 
   // Check if it's an AG session by type or name pattern
   if (
