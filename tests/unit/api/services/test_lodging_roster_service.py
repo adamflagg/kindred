@@ -3875,12 +3875,23 @@ def _journey_repo(**overrides: Any) -> MagicMock:
     would make the whole housing-state derivation untestable.
     """
     cabins_by_year: dict[int, dict[int, str]] = overrides.pop("cabins_by_year", {})
+    # kindred#2420: each traced year's `camp_sessions` rows, so the journey
+    # can derive that year's age at ITS OWN family session start rather than
+    # publishing `persons.age` (a live attribute) unchanged. Empty by
+    # default -- a test that does not care gets no session for any year,
+    # which is the `as_of=None` / "keep the stored value" path and matches
+    # every pre-existing journey fixture here.
+    weekend_sessions_by_year: dict[int, list[Any]] = overrides.pop("weekend_sessions_by_year", {})
     repo = _repo(**overrides)
 
     async def _cabins(year: int) -> dict[int, str]:
         return cabins_by_year.get(year, {})
 
+    async def _sessions(year: int) -> list[Any]:
+        return weekend_sessions_by_year.get(year, [])
+
     repo.fetch_cabin_assignments_by_household_cm_id = AsyncMock(side_effect=_cabins)
+    repo.fetch_weekend_sessions = AsyncMock(side_effect=_sessions)
     return repo
 
 
@@ -4131,6 +4142,71 @@ class TestHouseholdJourney:
 
         assert journey.years == []
         repo.fetch_cabin_assignments_by_household_cm_id.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_a_historical_years_age_is_the_childs_age_that_year_not_today_kindred_2420(self) -> None:
+        """The regression pin for kindred#2420.
+
+        `persons.age` is CampMinder's LIVE attribute, mirrored verbatim
+        whenever the sync last touched the row -- not "age as of that
+        year's season", however plausible a stored number looks on its own.
+        A fixture whose stored `age` is a PLAUSIBLE-BUT-WRONG "today's age"
+        must still render the age computed at that YEAR's own family-camp
+        session start -- asserting on the stored value would re-pin the bug
+        this issue fixes (kindred#2420's acceptance condition 5).
+
+        Ava Chen, born 2010-08-01: the 2019 family session started
+        2019-07-05, four weeks before her ninth birthday, so she was
+        completed-8-years-11-months old that week -- nowhere near the
+        `age=17.04` the fixture's `persons` row carries (a later sync's
+        snapshot of her CURRENT age).
+        """
+        session_2019 = _rec(
+            id="sess_2019",
+            cm_id=3000001,
+            name="Family Camp 1",
+            session_type="family",
+            year=2019,
+            start_date="2019-07-05",
+            end_date="2019-07-08",
+            sort_order=1,
+        )
+        child = _child(cm_id=1000001, first="Ava", last="Chen", age=17.04, birthdate="2010-08-01")
+        repo = _journey_repo(
+            fetch_household_family_attendees=[_rec(year=2019, **vars(child))],
+            weekend_sessions_by_year={2019: [session_2019]},
+        )
+
+        journey = await LodgingRosterService(repo).build_household_journey(2000001)
+
+        assert journey.years[0].children[0].age == 8.11
+
+    @pytest.mark.asyncio
+    async def test_a_historical_child_with_no_birthdate_shows_no_age_kindred_2420(self) -> None:
+        """Acceptance condition 3: a child with no usable birthdate must
+        show NO age for a historical year, rather than falling back to the
+        stale stored value (which is exactly the bug being fixed) or
+        crashing on an unparseable date.
+        """
+        session_2019 = _rec(
+            id="sess_2019",
+            cm_id=3000001,
+            name="Family Camp 1",
+            session_type="family",
+            year=2019,
+            start_date="2019-07-05",
+            end_date="2019-07-08",
+            sort_order=1,
+        )
+        child = _child(cm_id=1000001, age=17.04, birthdate="")
+        repo = _journey_repo(
+            fetch_household_family_attendees=[_rec(year=2019, **vars(child))],
+            weekend_sessions_by_year={2019: [session_2019]},
+        )
+
+        journey = await LodgingRosterService(repo).build_household_journey(2000001)
+
+        assert journey.years[0].children[0].age is None
 
 
 class TestWriteInCovers:

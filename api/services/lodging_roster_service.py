@@ -397,8 +397,46 @@ def _party_adult(adult: Any) -> PartyAdult:
     )
 
 
-def _party_child(child: Any) -> PartyChild:
-    """A `persons` row as the wire sees it. See `_party_adult` on sharing."""
+def _age_at(birthdate: date, as_of: date) -> float | None:
+    """Completed years.months at `as_of`, in the same yy.mm encoding
+    `persons.age` uses (kindred#2420).
+
+    Built on `_completed_months` -- the same whole-month arithmetic
+    `_consumes_a_bed` already trusts for the infant-bed rule -- so a
+    historical age and an infant-bed decision can never disagree about how
+    a month is counted.
+
+    A negative month count means `as_of` predates the birth -- bad data, not
+    a valid age -- and is reported as unknown rather than a nonsense
+    negative number.
+    """
+    total_months = _completed_months(birthdate, as_of)
+    if total_months < 0:
+        return None
+    years, months = divmod(total_months, 12)
+    return float(f"{years}.{months:02d}")
+
+
+def _party_child(child: Any, *, as_of: date | None = None) -> PartyChild:
+    """A `persons` row as the wire sees it. See `_party_adult` on sharing.
+
+    `as_of` is the ONE thing that lets this stay one mapping instead of
+    forking (kindred#2420). `_build_household_parties` (the current-season
+    roster) omits it and gets the same `persons.age` snapshot it always has
+    -- that surface's blast radius is deliberately untouched. Only
+    `build_household_journey` passes it, because only the journey renders a
+    PAST year, and `persons.age` is CampMinder's LIVE attribute: the sync
+    mirrors it on every touch, so a historical row without `as_of` would
+    show the child's age TODAY on every year of their history, which is
+    kindred#2420's bug verbatim.
+    """
+    age = _f(child, "age") or None
+    if as_of is not None:
+        birthdate = _as_date(_s(child, "birthdate"))
+        # A missing/unparseable birthdate shows NO age for a historical row
+        # rather than falling back to the stale stored value -- that
+        # fallback is exactly the bug this branch exists to fix.
+        age = _age_at(birthdate, as_of) if birthdate is not None else None
     return PartyChild(
         person_cm_id=_i(child, "cm_id"),
         display_name=_person_display_name(child),
@@ -408,17 +446,17 @@ def _party_child(child: Any) -> PartyChild:
         # for which that split is wrong.
         last_name=_s(child, "last_name"),
         # persons.age is CampMinder's yy.mm as a REAL (kindred#2088): 0.06 is a
-        # real 6-month-old, not a rounding artifact, so this must read the raw
-        # float, not _i()'s truncated int. `or None` is still deliberate here
-        # -- age == 0.0 is the UNKNOWN-AGE population (no birthdate on file),
-        # not a newborn.
+        # real 6-month-old, not a rounding artifact, so the current-season
+        # (`as_of=None`) path must read the raw float, not _i()'s truncated
+        # int. `or None` is still deliberate there -- age == 0.0 is the
+        # UNKNOWN-AGE population (no birthdate on file), not a newborn.
         #
         # DO NOT threshold the infant discount on this field, here or
         # client-side (kindred#2046). yy.mm means months never exceed `.11`, so
         # `age < 1.5` is really "under 24 months" -- 44 children on 2026's
         # rostered cohort against the derived rule's 24. `_consumes_a_bed`
         # reads `birthdate` instead.
-        age=_f(child, "age") or None,
+        age=age,
         grade=_i(child, "grade") or None,
     )
 
@@ -1477,14 +1515,35 @@ class LodgingRosterService:
             )
             if year > 0
         ]
-        cabin_maps = await asyncio.gather(
-            *(self.repository.fetch_cabin_assignments_by_household_cm_id(year) for year in years)
+        cabin_maps, weekend_sessions_by_year = await asyncio.gather(
+            asyncio.gather(*(self.repository.fetch_cabin_assignments_by_household_cm_id(year) for year in years)),
+            # kindred#2420: the age shown for a past year has to be computed
+            # at THAT year's own family session start, not read off
+            # `persons.age` (a live CampMinder attribute the sync mirrors
+            # unchanged onto every year's row). `fetch_weekend_sessions`
+            # already exists for the roster's own session picker, so this
+            # reuses it rather than adding a new repository read.
+            asyncio.gather(*(self.repository.fetch_weekend_sessions(year) for year in years)),
         )
 
         rows: list[HouseholdJourneyYear] = []
-        for year, assignments in zip(years, cabin_maps, strict=True):
+        for year, assignments, sessions in zip(years, cabin_maps, weekend_sessions_by_year, strict=True):
             cabin = assignments.get(household_cm_id, "")
             children = _children_oldest_first(children_by_year.get(year, []))
+            # The EARLIEST family session of the year, matching how a family
+            # camp weekend book-ended by two sessions in one calendar year is
+            # already collapsed to one journey row above (`seen_by_year`).
+            # `None` when a year has no camp_sessions row at all (e.g. a
+            # registration-only year with neither a child nor an adult), in
+            # which case `_party_child` keeps the current-season fallback.
+            session_start = min(
+                (
+                    start
+                    for session in sessions
+                    if _s(session, "session_type") == "family" and (start := _as_date(_s(session, "start_date")))
+                ),
+                default=None,
+            )
             rows.append(
                 HouseholdJourneyYear(
                     year=year,
@@ -1496,7 +1555,7 @@ class LodgingRosterService:
                     # rendering either as an error or as a family with no kids.
                     enrollment="enrolled" if children else "none_on_file",
                     adults=[_party_adult(adult) for adult in adults_by_year.get(year, [])],
-                    children=[_party_child(child) for child in children],
+                    children=[_party_child(child, as_of=session_start) for child in children],
                 )
             )
         return HouseholdJourneyResponse(household_cm_id=household_cm_id, years=rows)
