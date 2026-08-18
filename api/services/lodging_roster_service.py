@@ -479,7 +479,12 @@ def resolve_combined(*, default: bool, override: bool | None, session_override: 
 
 
 def written_in_unit_ids(write_ins: list[Any]) -> frozenset[str]:
-    """The unit ids `lodging_write_ins` names, for `write_in_covers` to walk.
+    """The unit ids the chosen write-in source names, for `write_in_covers` to walk.
+
+    WHICHEVER source the request resolved to -- `lodging_write_ins` on the live
+    board, `lodging_write_ins_draft` inside a scenario (kindred#2382). The
+    caller has already made that choice, and a scenario REPLACES, so this walks
+    exactly one scope's rows.
 
     Built ONCE per request and threaded, rather than re-derived inside the
     cover walk: `_build_units` already consumes the same rows on the way to the
@@ -982,12 +987,30 @@ class LodgingRosterService:
         async with asyncio.TaskGroup() as tg:
             units_task = tg.create_task(self.repository.fetch_units(year))
             availability_task = tg.create_task(self.repository.fetch_availability(year, session_cm_id))
-            # THE OCCUPANCY HALF, split out of availability by kindred#2382.
-            # Read with NO scenario predicate, and that is not the old shape
-            # coming back: the live board is a scope in its own right, exactly
-            # as `lodging_assignments` is, and the draft twin behind this table
-            # stays dark until PR 3 gives write-ins their scenario dimension.
-            write_ins_task = tg.create_task(self.repository.fetch_write_ins(year, session_cm_id))
+            # THE OCCUPANCY HALF, split out of availability by kindred#2382,
+            # and chosen exactly the way the placement source below is chosen.
+            # A scenario reads its OWN write-ins and REPLACES the live ones --
+            # it does not read them at all -- matching kindred#1974's
+            # no-fall-through rule for `lodging_assignments_draft`. A unit with
+            # no draft row holds no write-in in that scenario, whatever the
+            # live board says.
+            #
+            # The live board is the other scope, not the absence of one: with
+            # no scenario this reads `lodging_write_ins` with no scenario
+            # predicate, exactly as `lodging_assignments` is read.
+            #
+            # A fresh scenario is seeded by an explicit COPY in both seed paths
+            # (`copy_from_mirror` and `copy_scenario_to_scenario`, owner ruling
+            # 2026-08-16), which is what stops it starting blank -- without it
+            # kindred#2247's placement gate would let a family be dropped into
+            # a room the live board records as occupied. Rendering the live
+            # rows through this read's gaps would be the overlay instead, and
+            # would make two scenarios unable to disagree.
+            write_ins_task = tg.create_task(
+                self.repository.fetch_draft_write_ins(year, session_cm_id, scenario)
+                if scenario
+                else self.repository.fetch_write_ins(year, session_cm_id)
+            )
             attendees_task = tg.create_task(self.repository.fetch_attendees_for_session(year, session_pb_id))
             households_task = tg.create_task(self.repository.fetch_households(year))
             prior_task = tg.create_task(self.repository.fetch_prior_household_cm_ids(year))
@@ -1086,7 +1109,7 @@ class LodgingRosterService:
     async def build_summary(self, year: int, scenario: str = "") -> WeekendSummaryResponse:
         """Every weekend in the year with its counts, in one pass.
 
-        `build_roster` makes TWELVE fetches (11 concurrent + `fetch_session`
+        `build_roster` makes THIRTEEN fetches (12 concurrent + `fetch_session`
         alone before them), of which SEVEN are year-scoped -- the unit
         registry, households, the prior-household set, family-camp adults,
         registrations, the unresolved-alias count and last year's cabins
@@ -1108,16 +1131,19 @@ class LodgingRosterService:
         in `_build_counts` from units already in hand rather than fetched.
 
         So the year-scoped work happens once here, and only the genuinely
-        session-scoped reads run per weekend: availability, attendees and one
-        placement read -- the synced rows, or the scenario's own. The
+        session-scoped reads run per weekend: availability, write-ins,
+        attendees and one placement read -- the synced rows, or the scenario's
+        own. The
         per-weekend numbers then come from the SAME `_build_units` /
         `_build_parties` / `_build_counts` helpers the roster uses, so the
         lander cannot drift from the page it links to, and it resolves a
         scenario the same way: replace, never fall through.
 
-        FOUR session-scoped reads per weekend, with or without a scenario:
-        availability, attendees, one placement source, and slot merges (the
-        last of these unconditional since 1500000140). A `Semaphore` below
+        FIVE session-scoped reads per weekend, with or without a scenario:
+        availability, one write-in source, attendees, one placement source, and
+        slot merges (the last of these unconditional since 1500000140). The two
+        "one source" reads are the scenario-aware pair -- the live table or the
+        scenario's draft, never both. A `Semaphore` below
         bounds how many weekends' worth of those run at once -- kindred#1920,
         which also records why a per-weekend cap was chosen over collapsing
         the placement read to one call for the whole year.
@@ -1167,14 +1193,19 @@ class LodgingRosterService:
             entry_cm_id = _i(session, "cm_id")
             async with entry_gate, asyncio.TaskGroup() as inner:
                 availability_task = inner.create_task(self.repository.fetch_availability(year, entry_cm_id))
-                # Exactly as build_roster reads it, and separately, because
-                # this is a DIFFERENT TaskGroup -- wiring one and leaving the
-                # other is the half-fix the guards in this file's tests exist
-                # to catch. The lander keeps only counts, and every count on it
-                # goes through `is_family_available`, so a weekend card that
-                # never read this table would report a written-into cabin as
-                # open beside a board that draws it closed.
-                write_ins_task = inner.create_task(self.repository.fetch_write_ins(year, entry_cm_id))
+                # Exactly as build_roster reads it, SCENARIO AND ALL, and
+                # separately, because this is a DIFFERENT TaskGroup -- wiring
+                # one and leaving the other is the half-fix the guards in this
+                # file's tests exist to catch. The lander keeps only counts,
+                # and every count on it goes through `is_family_available`, so
+                # a weekend card that read the wrong scope would report a
+                # written-into cabin as open beside a board that draws it
+                # closed.
+                write_ins_task = inner.create_task(
+                    self.repository.fetch_draft_write_ins(year, entry_cm_id, scenario)
+                    if scenario
+                    else self.repository.fetch_write_ins(year, entry_cm_id)
+                )
                 attendees_task = inner.create_task(self.repository.fetch_attendees_for_session(year, session_pb_id))
                 # One placement source, exactly as build_roster chooses it.
                 placements_task = inner.create_task(
@@ -1373,11 +1404,15 @@ class LodgingRosterService:
         # `lodging_write_ins` answers OCCUPANCY: somebody is in the room. That
         # is a modelling fact (not every write-in is non-rostered staff -- some
         # are paper registrations for families arriving with no children), so it
-        # got a table of its own with a draft twin waiting behind it.
+        # got a table of its own with a scenario-scoped draft twin beside it.
         #
-        # ONE layer each. There is still no scenario overlay: a scenario reads
-        # the same live rows it does today, and PR 3 of kindred#2382 is what
-        # gives the occupancy half its scenario dimension.
+        # ONE layer each, and still no overlay -- but since PR 3 of
+        # kindred#2382 the two halves SCOPE differently. The role rows are the
+        # same for every plan (`lodging_availability` has no scenario column).
+        # The write-in rows are whichever table the caller already chose, the
+        # live one or a scenario's own draft, and a scenario REPLACES -- so
+        # what arrives here is the whole occupancy answer for the scope that
+        # was asked for, and nothing below merges a second source into it.
         role_row_by_unit = {_s(row, "unit"): row for row in availability}
         write_in_row_by_unit = {_s(row, "unit"): row for row in write_ins}
 
@@ -1423,8 +1458,8 @@ class LodgingRosterService:
             # as a proxy for "is somebody in it" -- so a write-in that stopped
             # spelling itself here would silently return an occupied cabin to
             # the open count. Disentangling the two axes on the wire is PR 4 of
-            # kindred#2382; this PR moves the STORAGE and nothing a user can
-            # see.
+            # kindred#2382; until it lands this one field still answers both,
+            # whichever table the row came from.
             #
             # Occupancy OUTRANKS the role when a unit somehow carries both.
             # No writer produces that pair -- `set_availability` clears the
