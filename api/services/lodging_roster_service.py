@@ -1138,8 +1138,10 @@ class LodgingRosterService:
             # A fresh scenario is seeded by an explicit COPY in both seed paths
             # (`copy_from_mirror` and `copy_scenario_to_scenario`, owner ruling
             # 2026-08-16), which is what stops it starting blank -- without it
-            # kindred#2247's placement gate would let a family be dropped into
-            # a room the live board records as occupied. Rendering the live
+            # a room the live board records as occupied renders empty on the
+            # scenario, occupant and all. (Was "kindred#2247's placement gate
+            # would let a family be dropped into" one; kindred#2432 struck that
+            # gate -- the disclosure is the part that matters.) Rendering the live
             # rows through this read's gaps would be the overlay instead, and
             # would make two scenarios unable to disagree.
             write_ins_task = tg.create_task(

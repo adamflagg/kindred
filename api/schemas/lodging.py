@@ -344,10 +344,14 @@ class LodgingUnitSummary(BaseModel):
     # open every room beneath a released building.
     #
     # ⚠️ `is_family_available` deliberately does NOT read this field: it folds
-    # in the unit's OWN occupancy row only, so an inherited write-in badges and
-    # blocks placement without moving the bed counts. That is the behaviour the
-    # counts have always had, and changing it is a counts decision rather than
-    # a side effect of the split.
+    # in the unit's OWN occupancy row only, so an inherited write-in badges
+    # without moving the bed counts. That is the behaviour the counts have
+    # always had, and changing it is a counts decision rather than a side
+    # effect of the split.
+    #
+    # It said "badges and BLOCKS PLACEMENT" until kindred#2432, which struck
+    # every client-side refusal of a placement onto a written-into space. An
+    # inherited write-in now badges and discloses; it blocks nothing.
     write_ins: list[WriteInCover] = Field(default_factory=list)
     map_x: float | None = None
     map_y: float | None = None

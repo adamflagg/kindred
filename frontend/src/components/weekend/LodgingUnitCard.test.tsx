@@ -2079,7 +2079,8 @@ describe('LodgingUnitCard — the needs-misfit hatch (#1912)', () => {
    * The board's signal vocabulary, ruled 2026-08-09 and binding here:
    *
    *   dim (`opacity-40` + `pointer-events-none`) = REFUSAL — an invalid merge
-   *     target, or a held space (#2087). "You may not."
+   *     target, and since kindred#2432 nothing else. "You may not." A
+   *     written-into space (#2087) was the second owner until that reversal.
    *   hatch (`background-image`, FULL strength) = ADVISORY MISFIT — "it will
    *     work; nothing here meets the need". This block.
    *   forest tint = open and available, at rest (#2093).

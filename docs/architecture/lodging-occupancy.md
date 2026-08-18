@@ -183,31 +183,94 @@ rule: it blocks legitimate work and teaches staff to ignore warnings.
   remains the DERIVED answer and still folds both facts in: occupancy closes a
   unit whatever the role says, so no reported number moved.
 
-  ### What a hold represents (owner ruling, 2026-08-09; kindred#2090, kindred#2087)
+  ⚠️ **kindred#2432 did not touch that derivation, deliberately.** The board
+  now places a family into a written-into space, but `is_family_available`
+  still resolves `false` for one, so the stats bar's *spaces* figure stays
+  CONSERVATIVE about a space that can in fact take a family. That is the safe
+  direction to be wrong in and it keeps one narrow pre-existing edge from
+  widening: a `staff_default` cabin RELEASED to families and then written into
+  resolves `false` and drops off the board entirely via `isPlanningInventory`
+  (`boardLayout.ts`) — reachable only with a release and a write-in on the same
+  staff unit and no party placed on it, since any placement keeps the card
+  drawn. Loosening the derivation is an API-side decision that has to be taken
+  with the stats-bar arithmetic beside it, not as a side effect.
 
-  A hold records **who is in a building** — chiefly non-rostered staff, a
-  caretaker, a burst pipe — not a reservation of empty space. It is a fact
-  about the BUILDING for one weekend; a placement is a fact about a PLAN.
-  They used to live on different axes for that reason, but the two questions
-  "is anyone in this building" and "has a family been placed here" answer the
-  same underlying fact from two directions, and the ruling settles them as
-  **mutually exclusive states**: a unit cannot be both held and occupied.
+  ### What a write-in represents (owner ruling, 2026-08-18; kindred#2432)
 
-  Concretely: a write-in covering a unit **blocks placement outright**
-  (`resolveDrop` in `dragPlacement.ts`, plus the matching `useDroppable`
-  `disabled` flag in `LodgingUnitCard.tsx`, refuse a drop onto a written-into
-  unit rather than merely dimming it), and a unit already holding a placed
-  party offers no "Write in" action (`availabilityAction` in `unitBadges.ts`
-  takes the slot's own occupancy and returns `null` for the `hold` branch). The
-  `clear` action — removing an existing write-in — is never blocked by
-  occupancy, since clearing only ever reduces the conflict.
+  A write-in records **who is in a building** — non-rostered staff, a
+  caretaker, a paper registration — not a reservation of empty space. It is a
+  fact about the BUILDING for one weekend; a placement is a fact about a PLAN.
 
-  Both gates read the fact through `writeInOccupant` (`writeIn.ts`), never
-  through `family_available_override`. They were written against that column
-  when it still doubled as the occupancy store; naming the fact once is what
-  let kindred#2382 re-point it in one place, and it is also what makes them
-  respect the unit tree — a write-in names one unit but closes a SPACE, so a
-  building's write-in blocks a drop into its rooms and vice versa.
+  **A write-in NAMES AN OCCUPANT. It does not CLOSE THE SPACE.** A write-in
+  and a placement may share one unit, in either order:
+
+  > *"we should be able to add families to any write in space, or add a write
+  > in to a family space — regardless of which came first."*
+
+  ⚠️ **This REVERSES the 2026-08-09 ruling on kindred#2090/kindred#2087**,
+  which held the two "mutually exclusive states: a unit cannot be both held and
+  occupied", and the reversal is stated here rather than the old rule being
+  quietly deleted, because the old rule is the one the next reader will
+  otherwise re-derive from the shape of the surrounding code. #2090 was ruled
+  while a hold and a write-in were the same act (kindred#2078, *"hold IS the
+  write-in"*), and under that collapse "occupied and held" really was
+  contradictory. The collapse has one real exception, and it is the case staff
+  actually reported: a paper registration has no CampMinder record, so it
+  cannot be placed on the board at all and a write-in is the ONLY way to record
+  it — and such a party can legitimately share a cabin with a placed family.
+  Refusing made the one case the control exists for the one case it would not
+  do. (The production snapshot bears the shape out: of 16 written-into units in
+  the 2026 weekend, two name a paper registration explicitly, and 8 already
+  carried a draft placement alongside the write-in.)
+
+  Concretely, kindred#2432 struck **four** refusals, and they had to go
+  together — the first two are the enforcing and affordance halves of one gate,
+  and leaving either would have left the reversal half-done while looking
+  finished:
+
+  - `resolveDrop` in `dragPlacement.ts` — the load-bearing one, since
+    kindred#2080's picker reaches placement without touching a droppable.
+  - the `useDroppable` `disabled` flag in `LodgingUnitCard.tsx` — without this
+    dnd-kit never reports `isOver`, so a drop the resolver now accepts could
+    not be aimed at the card.
+  - `availabilityAction`'s occupancy gate in `unitBadges.ts` — the mirror
+    direction, a write-in onto a placed family. The `occupied` argument is
+    **deleted** rather than defaulted, here and on `UnitAvailabilityControl`'s
+    props, so a caller holding an occupancy fact has nowhere to spell it and
+    `tsc` enforces the reversal.
+  - `canPickFamily`'s `!held` in `LodgingUnitCard.tsx` — otherwise #2080's
+    picker stays absent for a placement drag performs happily.
+
+  `resolvePickerPlacement` needed no edit at all, which is the payoff of it
+  being a thin adapter over `resolveDrop`.
+
+  **What did NOT change.** `availabilityAction` still returns `null` for a
+  written-into card, and that gate is about **write-in arity**, not occupancy
+  (kindred#2381: one button cannot name which of four rows a click would
+  destroy). `canPickFamily` still requires `parties.length === 0` — a second
+  family reaches a shareable space by drag, which stays the deliberate path,
+  and kindred#2091 (marking a space that holds two families) is unbuilt. The
+  `clear` action is still never blocked by occupancy. The open-space forest
+  tint and the "Drop families here" placeholder still stand down on a
+  written-into cabin, on the surviving half of their reason: a room somebody is
+  sleeping in is not EMPTY, even though it is now placeable.
+
+  Every gate reads the fact through `writeInEntries`/`hasWriteIn`
+  (`writeIn.ts`), never through `family_available_override`. They were written
+  against that column when it still doubled as the occupancy store; naming the
+  fact once is what let kindred#2382 re-point it in one place, and the same
+  tree walk is what now lands the write-in and the family in the SAME card's
+  well whichever level the board draws — a write-in names one unit but covers a
+  SPACE.
+
+  **The known cost is filed, not hidden.** A write-in carries no headcount
+  (`lodging_write_ins` holds `occupant_name` and `note` and no count), so a
+  shared space's occupancy figure and its free-bed arithmetic both understate:
+  a 10-bed cabin holding a party of 6 plus a written-in party of 3 reads 4 free
+  when 1 is. That is kindred#2439, ruled an optional investigation and
+  explicitly not a blocker — an understated count on a space staff can share
+  beats a space they could not share at all. Do not guess a headcount to
+  paper over it.
 - The unique indexes on `lodging_assignments` are
   `(session, year, household_cm_id)` and the person-grain equivalent, each
   partial on `> 0` so the two grains do not collide. (Migration `1500000132`

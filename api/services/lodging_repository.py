@@ -502,9 +502,11 @@ class LodgingRepository:
         `fetch_write_ins` whenever the request names a scenario, and the live
         table is then not read at all. `copy_from_mirror` and
         `copy_scenario_to_scenario` both seed it, so a fresh scenario starts
-        with the write-ins its source had rather than blank -- without that,
-        kindred#2247's placement gate would let a family be dropped into a room
-        the live board records as occupied.
+        with the write-ins its source had rather than blank -- without that, a
+        room the live board records as occupied shows up empty on the scenario
+        and its occupant is not on the board at all. (The older reason here was
+        kindred#2247's placement gate refusing such a drop; kindred#2432 struck
+        the gate, and disclosure is what the seed protects.)
 
         `scenario_id` is client-supplied and escaped, for the reason
         `fetch_draft_assignments` spells out. The weekend is named by

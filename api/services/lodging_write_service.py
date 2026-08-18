@@ -322,11 +322,18 @@ class LodgingWriteService:
         of the boolean 1500000161 split apart (owner ruling, kindred#2382,
         2026-08-16). Once a scenario's write-ins REPLACE the live ones rather
         than falling through, a scenario seeded without them starts with every
-        written-into cabin looking OPEN -- and kindred#2247's placement gate
-        reads exactly that, so it would let a family be dropped into a room the
-        live board records as occupied. That failure mode is one this split
-        CREATES rather than inherits, and this copy is what closes it. See
-        `_seed_write_ins`.
+        written-into cabin looking OPEN, with the occupant gone from the
+        scenario entirely. That failure mode is one this split CREATES rather
+        than inherits, and this copy is what closes it. See `_seed_write_ins`.
+
+        ⚠️ THE REASON IS DISCLOSURE, NOT A GATE, since kindred#2432. This said
+        the seed existed because "kindred#2247's placement gate would let a
+        family be dropped into a room the live board records as occupied" --
+        and that gate is struck: a family may now be placed into a written-into
+        space on purpose. What the seed protects is the staff member's ability
+        to SEE the occupant before deciding to share the room, which is the
+        half that always mattered. Do not read the gate's removal as licence to
+        drop this copy.
 
         A mirror row is SKIPPED, not failed on, when it names no party grain
         (it would key on nothing, dedupe against nothing, and be exactly the
@@ -579,8 +586,10 @@ class LodgingWriteService:
         # and unlike the role override there IS something for two scenarios to
         # disagree about, which is the whole of kindred#2382. Dropping this
         # would make "copy from Option A" produce a board showing fewer
-        # occupied rooms than Option A does, and kindred#2247's placement gate
-        # would then offer those rooms.
+        # occupied rooms than Option A does -- those occupants would simply not
+        # be on the copy. (This used to add "and kindred#2247's placement gate
+        # would then offer those rooms"; kindred#2432 struck that gate, and the
+        # disclosure argument is what the seed always really rested on.)
         write_ins = await self._seed_write_ins(
             rows=await self.repository.fetch_draft_write_ins(year, session_cm_id, from_scenario),
             session_pb_id=session_pb_id,
@@ -617,10 +626,16 @@ class LodgingWriteService:
         it is a safety argument rather than a convenience one. A scenario's
         write-ins REPLACE the live ones on read (kindred#2382, matching
         kindred#1974's no-fall-through rule for placements), so a scenario
-        seeded without them shows every written-into cabin as OPEN --
-        kindred#2247's placement gate reads exactly that field, so it would
-        offer a room the live board records as occupied. The split creates that
+        seeded without them shows every written-into cabin as OPEN, with its
+        occupant absent from the scenario altogether. The split creates that
         failure mode; this copy is what closes it.
+
+        ⚠️ The safety argument is DISCLOSURE since kindred#2432, not refusal.
+        It used to run "kindred#2247's placement gate reads exactly that field,
+        so it would offer a room the live board records as occupied"; that gate
+        is gone and a family may now be placed alongside a write-in on purpose.
+        Staff still have to be able to SEE the occupant to make that call, so
+        this copy is load-bearing exactly as before.
 
         NO EMPTINESS CHECK AND NO RACE RECOVERY OF ITS OWN, following the
         `lodging_slot_merges` copy in `copy_scenario_to_scenario` rather than

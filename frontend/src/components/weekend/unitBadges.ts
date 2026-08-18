@@ -108,9 +108,14 @@ export function reservationBadge(unit: LodgingUnitRow): UnitBadge | null {
   // opposite expectation: a room kept empty, when in truth it is full.
   //
   // ONLY THE WORD CHANGES. The slate tone stays, because the underlying fact
-  // (this cabin is not available to a family this weekend) is the one the
-  // board already had a colour for, and inventing a second colour for a
-  // renamed concept is how a palette stops meaning anything.
+  // is the one the board already had a colour for, and inventing a second
+  // colour for a renamed concept is how a palette stops meaning anything.
+  //
+  // That fact is SOMEBODY IS IN IT, not "this cabin is not available to a
+  // family this weekend", which is what this comment said until kindred#2432
+  // and is no longer true: a written-into cabin now takes a family in either
+  // order. The chip reports an occupant the system has no record of; it does
+  // not report a closed space, and must not grow back into one.
   //
   // It still does not read `occupant_name`: "written in for a caretaker" and
   // "written in for a burst pipe" are the same fact about availability, which

@@ -322,10 +322,17 @@ export function LodgingBoard({
    * kindred#2080 — the unit card's picker, resolved through the DROP path.
    *
    * `resolvePickerPlacement` IS `resolveDrop`, so this branch inherits every
-   * refusal the drag has (a held space, a non-combined container, a party
-   * carrying neither CampMinder id, a party already alone in the room) rather
-   * than restating any of them, and produces the same `PlacementIntent` for
-   * the same `move`. One placement path with two affordances, not two paths.
+   * refusal the drag has (a non-combined container, a party carrying neither
+   * CampMinder id, a party already alone in the room) rather than restating
+   * any of them, and produces the same `PlacementIntent` for the same `move`.
+   * One placement path with two affordances, not two paths.
+   *
+   * That inheritance cuts both ways, which is what kindred#2432 proved: this
+   * list said "a held space" first until the written-into refusal was struck
+   * in `resolveDrop`, and this branch gave it up in the same change with
+   * nothing here to edit. A copy of the list is not a second gate — but a
+   * STALE copy of it is the next reader's evidence for restoring one, so keep
+   * the two in step.
    *
    * `canPlace` is re-checked here for the same reason `handleDragEnd`
    * re-checks it: the card's own gate is the affordance half, and a write

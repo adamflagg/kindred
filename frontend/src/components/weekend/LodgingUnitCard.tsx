@@ -659,10 +659,19 @@ export function LodgingUnitCard({
    * ⚠️ A FOURTH GATE, `!held`, was struck by kindred#2432 and must not come
    * back. It said "a hold blocks placement outright (#2087/#2090), so offering
    * the control would name an action that writes nothing" — true only while
-   * `resolveDrop` refused a written-into space, which it no longer does. This
-   * picker has NO rules of its own by design (`resolvePickerPlacement` is a
-   * thin adapter), so a gate here that the resolver does not share is the exact
-   * drift that design exists to prevent.
+   * `resolveDrop` refused a written-into space, which it no longer does.
+   * `resolvePickerPlacement` is a thin adapter over `resolveDrop`, so a gate
+   * here that RESTATES a refusal the resolver makes is the drift that design
+   * exists to prevent, and a gate that CONTRADICTS one is worse still.
+   *
+   * `parties.length === 0` is neither, and the distinction is the one to hold
+   * on to before reading the rule above as licence to delete it: the resolver
+   * ACCEPTS a second family onto an occupied card, and so does the drag. This
+   * gate does not refuse that placement — it declines to OFFER it from a
+   * surface whose question is "which family goes in this empty space", leaving
+   * the deliberate path (drag) intact. A gate that removes an affordance
+   * without removing an outcome is a scoping choice; only a gate that changes
+   * what the board will accept would be the drift.
    *
    * NOT gated on the list being empty. "Everyone has a cabin" is a real
    * answer to the question the control asks, and the picker says it; hiding
