@@ -251,20 +251,22 @@ class LodgingUnitSummary(BaseModel):
     # CampMinder has no sub-room concept for every building. Measured over
     # 2022-2025, resolving down instead would raise 36 false alarms.
     shareability: Shareability = "unknown"
-    # None when NEITHER a `lodging_availability` row nor a `lodging_write_ins`
-    # row exists for this unit this weekend, i.e. the unit's ROLE decides. None
-    # and False are different answers and must not be flattened into one: False
-    # is "closed this weekend".
+    # THE staff<->family ROLE, AND NOTHING ELSE, since kindred#2382 finished
+    # splitting the boolean's two questions apart. This is `lodging_availability`
+    # for this unit this weekend: True is "a staff cabin opened to families",
+    # False is "closed by role", and None means there is no row, so the unit's
+    # standing `inventory_class` decides. None and False are different answers
+    # and must not be flattened into one.
     #
-    # TWO SOURCES since kindred#2382 split the boolean's two questions apart:
-    # True comes from the availability row (a staff cabin opened to families
-    # for the weekend), and False from a write-in row (somebody is in it),
-    # which outranks the role when a unit somehow carries both. It still spells
-    # an occupancy as False deliberately -- `is_family_available`, and through
-    # it every count on the stats bar, is derived from this one field, and the
-    # board's open-tint reads False as a proxy for "is somebody in it".
-    # Disentangling the two axes on the wire is PR 4 of kindred#2382; ask
-    # `write_in` "is somebody in this space" in the meantime.
+    # IT DOES NOT ANSWER "IS SOMEBODY IN IT". That is `write_in` below, read
+    # from `lodging_write_ins` / `_draft`. Until PR 4 of kindred#2382 an
+    # occupancy also reported itself here as False, because
+    # `is_family_available` and the board's forest open-tint were both derived
+    # from this one field; both read the occupancy source directly now, so a
+    # False here means a role decision and never an occupant. A reader that
+    # wants "can a family go in this space" wants `is_family_available`, which
+    # folds both facts in; a reader that wants "is somebody in it" wants
+    # `write_in`.
     #
     # Stated explicitly rather than implied. The rejected encoding was a row
     # meaning "the opposite of this unit's current default", which an ordinary
@@ -279,8 +281,15 @@ class LodgingUnitSummary(BaseModel):
     # on both sides, so there is no second translation to keep in step.
     #
     # Display only, like `reason`. The rule never branches on it: what closes
-    # a cabin is `family_available_override`, and an occupant with no override
-    # is not a state any writer can produce.
+    # a cabin is `is_family_available`, which folds the ROLE and the OCCUPANCY
+    # together.
+    #
+    # AN OCCUPANT WITH NO ROLE OVERRIDE IS THE ORDINARY STATE since PR 4 of
+    # kindred#2382, and used to be an impossible one. A write-in says nothing
+    # about the staff<->family question, so `set_availability` writes the
+    # occupancy row alone and `family_available_override` stays None -- which
+    # is exactly what stopped this field having to spell an occupancy as
+    # `False`.
     occupant_name: str = ""
     # Display only. The rule never branches on it. Read from the `note` column
     # of whichever row supplied the decision -- the write-in row for an
@@ -295,20 +304,34 @@ class LodgingUnitSummary(BaseModel):
     # `occupant_name` back -- the note is PROSPECTIVE, for write-ins recorded
     # from 1500000148 onward.
     reason: str = ""
+    # CAN A FAMILY GO IN THIS SPACE -- the DERIVED answer, and the one every
+    # count on the stats bar goes through. Folds the two facts above together:
+    # the ROLE from `family_available_override`, and OCCUPANCY from this unit's
+    # own write-in row. Occupancy is absolute and closes the unit over a
+    # release, because a cabin somebody is sleeping in cannot take a family.
+    #
+    # Its rule is `is_family_available` in api/services/lodging_rules.py, and
+    # that is the only place the two are combined.
     is_family_available: bool = False
     # The write-in that closes this space, resolved through the unit tree --
     # this unit's own row, else the nearest ancestor's, else the nearest
     # descendant's. None means no write-in covers it.
     #
-    # The three fields above stay STRICTLY this unit's own row: they are what
-    # the write path reads back, and `family_available_override` alone is what
-    # `is_family_available` is derived from. Folding an inherited fact into any
-    # of them would make a room look like it carried a row it does not have. Ask this field "is somebody in this
-    # space", and those fields "what does this unit's own row say".
+    # The fields above stay STRICTLY this unit's own row: they are what the
+    # write path reads back. Folding an inherited fact into any of them would
+    # make a room look like it carried a row it does not have. Ask THIS field
+    # "is somebody in this space", and those fields "what does this unit's own
+    # row say".
     #
     # Only a write-in travels. A release (`family_available_override is True`)
     # names no occupant and closes nothing, so inheriting it would silently
     # open every room beneath a released building.
+    #
+    # ⚠️ `is_family_available` deliberately does NOT read this field: it folds
+    # in the unit's OWN occupancy row only, so an inherited write-in badges and
+    # blocks placement without moving the bed counts. That is the behaviour the
+    # counts have always had, and changing it is a counts decision rather than
+    # a side effect of the split.
     write_in: WriteInCover | None = None
     map_x: float | None = None
     map_y: float | None = None
@@ -686,10 +709,14 @@ class ScenarioWriteRequest(BaseModel):
     """Common shape of every lodging write that names a PLAN: one weekend, one scenario.
 
     Not every lodging write. `AvailabilityWriteRequest` deliberately does not
-    extend this, because availability is a fact about the weekend rather than
-    about the plan -- a burst pipe closes a cabin in every scenario for that
-    weekend -- and inheriting from here is exactly what left that endpoint
-    uncallable and its table empty (1500000135).
+    extend this, and the reason is the WORD `REQUIRED` rather than the word
+    `scenario`: inheriting from here is what left that endpoint uncallable and
+    its table empty (1500000135), because `min_length=1` demanded a dimension
+    nothing could supply. Since PR 4 of kindred#2382 that request DOES carry a
+    scenario -- optional, blank meaning the live board -- steering the
+    occupancy half alone. The staff<->family role it also writes is still a
+    fact about the weekend rather than about the plan, which is why
+    `lodging_availability` has no scenario column to inherit one into.
 
     `scenario` is REQUIRED and non-empty on the writes that do extend it. With no scenario the
     board is the CampMinder mirror and is read-only for everyone -- summer
@@ -791,13 +818,27 @@ class PlacementCopyRequest(ScenarioWriteRequest):
 
 
 class AvailabilityWriteRequest(BaseModel):
-    """Reserve or release one unit for one weekend.
+    """Write somebody into one unit for one weekend, or release one to families.
 
     Deliberately NOT a `ScenarioWriteRequest`, and that is the change that
     makes this endpoint callable at all: `scenario` there is required with
-    `min_length=1`, so the request asked for a dimension the data does not
-    have. Availability carries no scenario since 1500000135 -- a burst pipe
-    closes a cabin in every plan for that weekend.
+    `min_length=1`, so the request asked for a dimension nothing could supply.
+    `scenario` below is OPTIONAL instead -- the shape `SlotMergeRequest`
+    already uses, and for a related reason: blank is a real scope, not a
+    missing value.
+
+    ONE REQUEST, TWO GRAINS, split down the middle of `family_available` since
+    kindred#2382. `true` is the staff<->family ROLE for the weekend and is
+    stored in `lodging_availability`, which carries no scenario at all
+    (1500000135, and the owner's ruling that a role change is "a known 'were
+    moving staff to X for weekend Y'"). `false` is an OCCUPANCY and IS
+    scenario-scoped, because not every write-in is non-rostered staff: some are
+    paper registrations for families arriving with no children, which is a
+    modelling choice belonging to the plan that made it.
+
+    So `scenario` steers the OCCUPANCY half and nothing else. `set_availability`
+    ignores it for a release, deliberately, rather than refusing one from inside
+    a scenario -- a release is still a weekend fact whoever is looking at it.
 
     `family_available: null` CLEARS the override by deleting the row, which is
     how "whatever this unit's role says" is spelled. Writing a value that
@@ -807,6 +848,19 @@ class AvailabilityWriteRequest(BaseModel):
 
     year: int = Field(..., ge=2000, le=2100)
     session_cm_id: int = Field(..., gt=0)
+    # WHICH OCCUPANCY GRAIN this write lands on (kindred#2382, PR 4). Blank is
+    # the LIVE board -- a scope in its own right rather than the absence of one
+    # (owner, 2026-08-15: staff evaluate the real board, so a write-in has to
+    # be recordable there and not only inside a modelling sandbox) -- and a
+    # scenario id is that scenario's own draft write-in.
+    #
+    # OPTIONAL and blank-defaulted, mirroring `SlotMergeRequest`. Required
+    # would re-break the endpoint the way `ScenarioWriteRequest` did, and would
+    # leave the live board with no write path.
+    #
+    # THE ROLE HALF IGNORES IT. `lodging_availability` has no scenario column
+    # and is not getting one; see the class docstring.
+    scenario: str = Field(default="", description="saved_scenarios record id; blank is the live board")
     unit_id: str = Field(..., min_length=1)
     family_available: bool | None = None
     # WHO is being written in (kindred#2078). REQUIRED through the control and

@@ -112,9 +112,15 @@ async def get_weekend_roster(
     With no `scenario` this is the CampMinder mirror -- the synced rows, which
     no UI may write. With one, the scenario's own draft placements REPLACE
     them: a party with no draft row is unplaced in that scenario, and the
-    mirror is not read at all. Availability does NOT vary this way: 1500000135
-    deleted its scenario dimension, so the same rows resolve for every plan --
-    a burst pipe closes a cabin in all of them. See `set_availability` below.
+    mirror is not read at all.
+
+    WRITE-INS REPLACE THE SAME WAY (kindred#2382): a scenario reads
+    `lodging_write_ins_draft` and the live table is not read at all, because an
+    occupancy is a modelling choice belonging to the plan that made it. The
+    staff<->family ROLE does NOT vary this way -- 1500000135 deleted that
+    table's scenario dimension and the split left it deleted, so the same
+    `lodging_availability` rows resolve for every plan. See `set_availability`
+    below, which steers exactly the half that varies.
     """
     try:
         return await _service().build_roster(year, session_cm_id, scenario)
@@ -269,16 +275,22 @@ async def set_availability(
 
     ONE ENDPOINT, TWO TABLES since kindred#2382. `family_available` answers two
     unrelated questions and each is stored where it belongs: `false` is an
-    OCCUPANCY and goes to `lodging_write_ins`, `true` is a staff<->family ROLE
-    override for the weekend and stays in `lodging_availability`. The request
-    model, the URL and everything a staff member sees are unchanged -- the
-    split is behind them. `set_availability` carries the reasoning.
+    OCCUPANCY and goes to `lodging_write_ins` or its scenario-scoped draft
+    twin, `true` is a staff<->family ROLE override for the weekend and stays in
+    `lodging_availability`. The URL and everything a staff member sees are
+    unchanged -- the split is behind them, and the request model grew exactly
+    one optional field for it. `set_availability` carries the reasoning.
 
-    Takes NO scenario, unlike every other write on this router. The role half
-    is a fact about the weekend rather than about the plan, so 1500000135
-    deleted its dimension; the occupancy half writes the LIVE board, which is a
-    scope in its own right rather than the absence of one. Requiring a scenario
-    is what made this endpoint uncallable.
+    `scenario` is OPTIONAL on the body, as it is on `/merge` and unlike every
+    other write here, and it steers the OCCUPANCY half alone. Blank is the LIVE
+    board -- a scope in its own right rather than the absence of one, because
+    staff evaluate the real board and must be able to write onto it -- and a
+    scenario id writes that scenario's own draft occupancy. REQUIRING one is
+    what made this endpoint uncallable before kindred#2382, and would leave the
+    live board with no write path now.
+
+    The role half ignores it: `lodging_availability` has no scenario column,
+    and a release made from inside a plan is still a fact about the weekend.
 
     `family_available: null` clears the override, which is spelled as the
     ABSENCE of a row -- in BOTH tables. There is no value meaning "normal", and

@@ -156,9 +156,10 @@ export interface LodgingUnitCardProps {
    * Availability is writable: the user holds `bunking.manage` and a weekend is
    * selected.
    *
-   * SEPARATE from `canPlace`, which also requires a scenario. Availability
-   * carries none since 1500000135, so gating it on one would make a burst pipe
-   * unrecordable unless a draft plan happened to be open.
+   * SEPARATE from `canPlace`, which also requires a scenario. This write
+   * CARRIES one and never requires one (kindred#2382 PR 4) — blank is the LIVE
+   * board, a scope in its own right — so gating it on one would make a
+   * write-in unrecordable unless a draft plan happened to be open.
    */
   canSetAvailability?: boolean
   /** True while THIS unit's availability write is in flight. */
@@ -415,20 +416,22 @@ export function LodgingUnitCard({
   // above — and which one dnd-kit resolves `over` to would be a tie decided
   // by hook registration order, not by which gesture is actually in flight.
   //
-  // Disabled on a WRITTEN-INTO unit (#2078/#2087): a write-in is global and
-  // blocks placement outright, per the owner ruling on #2090. This is the
-  // AFFORDANCE half — it keeps dnd-kit from ever reporting `isOver` here, so
-  // the card cannot even highlight as a target — while `resolveDrop`
-  // (`dragPlacement.ts`) is the half that actually enforces it, because #2080
-  // adds a placement path that reaches `resolveDrop` without ever touching
-  // this hook.
+  // Disabled on a WRITTEN-INTO unit (#2078/#2087): a write-in blocks placement
+  // outright, per the owner ruling on #2090. This is the AFFORDANCE half — it
+  // keeps dnd-kit from ever reporting `isOver` here, so the card cannot even
+  // highlight as a target — while `resolveDrop` (`dragPlacement.ts`) is the
+  // half that actually enforces it, because #2080 adds a placement path that
+  // reaches `resolveDrop` without ever touching this hook.
   //
   // Read through `writeInOccupant` rather than as an inline
   // `family_available_override === false`, which is what this was until
   // kindred#2078. Three consumers on this card shared that expression under
   // the name `held`, and one of them — #2093's open-tint gate below — was
   // using it as a PROXY for "is somebody in this room". Naming the fact once
-  // is what stops the tint being keyed on a spelling.
+  // is what let the proxy be retired in ONE place: kindred#2382 split
+  // occupancy into its own scenario-scoped table, and that field now answers
+  // the staff↔family role alone. Had the three consumers kept the inline
+  // spelling, the split would have had to find all three.
   const writeIn = writeInOccupant(unit)
   // WHOSE row it is. Undefined whenever it is this card's own, so the common
   // case says nothing extra — see `WriteInCard`'s own prop doc.

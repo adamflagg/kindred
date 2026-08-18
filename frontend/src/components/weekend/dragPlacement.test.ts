@@ -8,7 +8,12 @@
  */
 import { describe, expect, it } from 'vitest'
 
-import type { LodgingUnitRow, RosterPartyRow, WeekendRoster } from '../../types/lodging'
+import type {
+  LodgingUnitRow,
+  RosterPartyRow,
+  WeekendRoster,
+  WriteInCoverRow,
+} from '../../types/lodging'
 import {
   UNPLACED_DROPPABLE_ID,
   applyPlacement,
@@ -46,6 +51,22 @@ function unit(overrides: Partial<LodgingUnitRow> = {}): LodgingUnitRow {
     is_family_available: true,
     map_x: 0.5,
     map_y: 0.5,
+    ...overrides,
+  }
+}
+
+/**
+ * The server-resolved write-in cover — the ONLY way the wire says "somebody is
+ * in this space" since kindred#2382 PR 4 retired the
+ * `family_available_override === false` shim.
+ */
+function cover(overrides: Partial<WriteInCoverRow> = {}): WriteInCoverRow {
+  return {
+    unit_id: 'u1',
+    unit_code: 'cedar-1',
+    unit_name: 'Cedar 1',
+    occupant_name: 'Emma Johnson',
+    note: '',
     ...overrides,
   }
 }
@@ -313,7 +334,7 @@ describe('resolveDrop', () => {
     // Owner ruling on #2090: a hold is global and blocks placement, not merely
     // dimmed. This is the load-bearing check, since `resolveDrop` is the only
     // path #2080's picker reaches — a `disabled`-only fix would not cover it.
-    const held = unit({ family_available_override: false, is_family_available: false })
+    const held = unit({ write_in: cover(), is_family_available: false })
     const p = party()
     expect(
       resolveDrop({
@@ -736,7 +757,7 @@ describe('resolvePickerPlacement', () => {
     // check of its own would be the second copy that comment exists to
     // prevent.
     const p = party()
-    const held = unit({ family_available_override: false })
+    const held = unit({ write_in: cover(), is_family_available: false })
     expect(
       resolvePickerPlacement({ party: p, unitCode: 'cedar-1', parties: [p], units: [held] })
     ).toBeNull()

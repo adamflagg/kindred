@@ -21,6 +21,21 @@
  * was storable and meaningless. The reason survives on `reason` as free text
  * and deliberately does NOT reach the badge: "held for staff" and "held for a
  * burst pipe" are the same fact about availability.
+ *
+ * TWO FIELDS FEED THOSE TWO BRANCHES, and they are not the same field.
+ * kindred#2382 found that the surviving boolean was still answering two
+ * unrelated questions and split them:
+ *
+ * | branch | fact | field | stored in | scope |
+ * |---|---|---|---|---|
+ * | "Released" | staff<->family ROLE | `family_available_override` | `lodging_availability` | the WEEKEND |
+ * | "Write-in" | OCCUPANCY | `write_in` (via `writeInOccupant`) | `lodging_write_ins`/`_draft` | the SCENARIO |
+ *
+ * So a `family_available_override === false` is a role decision that names
+ * NOBODY, and does not badge here. It used to badge "Write-in", because the
+ * wire spelled an occupancy that way as a compat shim while the split landed;
+ * it no longer does, and 1500000162 left no such row behind for it to be
+ * wrong about.
  */
 import type { LodgingUnitRow } from '../../types/lodging'
 import { writeInOccupant, writeInSource } from './writeIn'
@@ -298,12 +313,19 @@ export type AvailabilityPrompt = 'occupant' | 'reason' | 'none'
  *
  * `occupied` names a fact from the SLOT (whether any party is placed on this
  * card this scenario), never folded into `canManage`'s permission gate.
- * Owner ruling on #2090: held and occupied are mutually exclusive states, so
- * a space that already holds a family may not also be marked held — but this
- * must not become a THIRD dimension threaded onto availability itself.
- * `family_available_override` stays exactly what 1500000135 made it: global,
- * scenario-less, and reachable only through `clear` for a space that somehow
- * already carries both facts.
+ * Owner ruling on #2090: written-in and occupied are mutually exclusive
+ * states, so a space that already holds a family may not also be written into
+ * — but this must not become a THIRD dimension threaded onto availability
+ * itself.
+ *
+ * `family_available_override` IS still weekend-level and scenario-less, and
+ * that is now a statement about the staff↔family ROLE alone: "we're moving
+ * staff to X for weekend Y" is true in every plan, which is why 1500000135's
+ * reasoning survived kindred#2382 intact for this half. The OCCUPANCY that
+ * used to share the field is scenario-scoped and lives in `write_in` — so the
+ * `clear` this offers for a write-in unmakes a fact that belongs to the board
+ * you are looking at, while the `clear` it offers for a release unmakes one
+ * that belongs to the weekend.
  */
 export function availabilityAction(
   unit: LodgingUnitRow,
@@ -376,10 +398,13 @@ export function availabilityAction(
   if (source !== null) {
     return clear({ unitId: source.unitId, unitName: source.unitName }, 'Clear Write-in')
   }
-  // Any other override of its own. Reachable for a `true` on a family-pool
-  // row: it AGREES with that unit's role so no surface writes one and the
-  // badge stays silent, but the API does not check an override against the
-  // role, and nothing deletes one already stored.
+  // Any other ROLE override of its own — this branch has never been about
+  // occupancy and is less so since kindred#2382. Two states reach it, both
+  // storable and neither written by any surface: a `true` on a family-pool row
+  // (it AGREES with that unit's role, so the badge stays silent) and a bare
+  // `false`, which 1500000162 left none of and `set_availability` no longer
+  // writes. The API does not check an override against the role and nothing
+  // deletes one already stored, so the clear stays reachable for both.
   if (unit.family_available_override !== null && unit.family_available_override !== undefined) {
     return clear(own)
   }

@@ -125,13 +125,27 @@ export type ApproveRequest = {
 /**
  * AvailabilityWriteRequest
  *
- * Reserve or release one unit for one weekend.
+ * Write somebody into one unit for one weekend, or release one to families.
  *
  * Deliberately NOT a `ScenarioWriteRequest`, and that is the change that
  * makes this endpoint callable at all: `scenario` there is required with
- * `min_length=1`, so the request asked for a dimension the data does not
- * have. Availability carries no scenario since 1500000135 -- a burst pipe
- * closes a cabin in every plan for that weekend.
+ * `min_length=1`, so the request asked for a dimension nothing could supply.
+ * `scenario` below is OPTIONAL instead -- the shape `SlotMergeRequest`
+ * already uses, and for a related reason: blank is a real scope, not a
+ * missing value.
+ *
+ * ONE REQUEST, TWO GRAINS, split down the middle of `family_available` since
+ * kindred#2382. `true` is the staff<->family ROLE for the weekend and is
+ * stored in `lodging_availability`, which carries no scenario at all
+ * (1500000135, and the owner's ruling that a role change is "a known 'were
+ * moving staff to X for weekend Y'"). `false` is an OCCUPANCY and IS
+ * scenario-scoped, because not every write-in is non-rostered staff: some are
+ * paper registrations for families arriving with no children, which is a
+ * modelling choice belonging to the plan that made it.
+ *
+ * So `scenario` steers the OCCUPANCY half and nothing else. `set_availability`
+ * ignores it for a release, deliberately, rather than refusing one from inside
+ * a scenario -- a release is still a weekend fact whoever is looking at it.
  *
  * `family_available: null` CLEARS the override by deleting the row, which is
  * how "whatever this unit's role says" is spelled. Writing a value that
@@ -147,6 +161,12 @@ export type AvailabilityWriteRequest = {
    * Session Cm Id
    */
   session_cm_id: number
+  /**
+   * Scenario
+   *
+   * saved_scenarios record id; blank is the live board
+   */
+  scenario?: string
   /**
    * Unit Id
    */

@@ -10,7 +10,7 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
+import type { LodgingUnitRow, RosterPartyRow, WriteInCoverRow } from '../../types/lodging'
 import type { BoardSlot } from './boardLayout'
 import { mergeDragId, unitDroppableId } from './dragPlacement'
 import { LodgingUnitCard } from './LodgingUnitCard'
@@ -39,6 +39,23 @@ vi.mock('@dnd-kit/core', async (importOriginal) => {
 beforeEach(() => {
   overDroppableId = null
 })
+
+/**
+ * The server-resolved write-in cover — the ONLY way the wire says "somebody is
+ * in this space" since kindred#2382 PR 4 retired the
+ * `family_available_override === false` shim. That field answers the
+ * staff↔family ROLE alone now.
+ */
+function cover(overrides: Partial<WriteInCoverRow> = {}): WriteInCoverRow {
+  return {
+    unit_id: 'u1',
+    unit_code: 'cedar-1',
+    unit_name: 'Cedar 1',
+    occupant_name: 'Emma Johnson',
+    note: '',
+    ...overrides,
+  }
+}
 
 function unit(overrides: Partial<LodgingUnitRow> = {}): LodgingUnitRow {
   return {
@@ -461,7 +478,7 @@ describe('LodgingUnitCard — a held unit refuses the drop outright (#2087)', ()
     return el as HTMLElement
   }
 
-  const held = unit({ family_available_override: false, is_family_available: false })
+  const held = unit({ write_in: cover(), is_family_available: false })
 
   it('keeps the droppable disabled on a held unit even while placement is live', () => {
     overDroppableId = unitDroppableId('cedar-1')
@@ -1385,7 +1402,7 @@ describe('LodgingUnitCard — the open-space title marker (#2093)', () => {
     const { container } = render(
       <LodgingUnitCard
         slot={slot({
-          unit: unit({ family_available_override: false, occupant_name: 'Emma Johnson' }),
+          unit: unit({ write_in: cover(), occupant_name: 'Emma Johnson' }),
         })}
         hue={hue}
         canPlace
@@ -1413,7 +1430,7 @@ describe('LodgingUnitCard — the open-space title marker (#2093)', () => {
     // write schema.
     const { container } = render(
       <LodgingUnitCard
-        slot={slot({ unit: unit({ family_available_override: false }) })}
+        slot={slot({ unit: unit({ write_in: cover({ occupant_name: '' }) }) })}
         hue={hue}
         canPlace
         onOpenParty={vi.fn()}
@@ -1458,7 +1475,7 @@ describe('the write-in occupant card (kindred#2078)', () => {
       <LodgingUnitCard
         slot={slot({
           unit: unit({
-            family_available_override: false,
+            write_in: cover(),
             occupant_name: 'Emma Johnson',
             is_family_available: false,
           }),
@@ -1481,7 +1498,7 @@ describe('the write-in occupant card (kindred#2078)', () => {
       <LodgingUnitCard
         slot={slot({
           unit: unit({
-            family_available_override: false,
+            write_in: cover({ occupant_name: 'Liam Garcia' }),
             occupant_name: 'Liam Garcia',
             is_family_available: false,
           }),
@@ -1512,7 +1529,7 @@ describe('the write-in occupant card (kindred#2078)', () => {
       <LodgingUnitCard
         slot={slot({
           unit: unit({
-            family_available_override: false,
+            write_in: cover(),
             occupant_name: 'Emma Johnson',
             is_family_available: false,
           }),
@@ -2210,7 +2227,7 @@ describe('LodgingUnitCard — placing a family from the space itself (kindred#20
      * REFUSAL and is spoken for by the invalid merge target.
      */
     const { container } = renderCard({
-      slot: slot({ unit: unit({ family_available_override: false }) }),
+      slot: slot({ unit: unit({ write_in: cover() }) }),
     })
     expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
     expect(container.querySelector('.opacity-40')).toBeNull()
@@ -2292,7 +2309,7 @@ describe('LodgingUnitCard — no sr-only text of any kind (kindred#2348)', () =>
 describe('LodgingUnitCard — the write-in chip, dropped in favour of the well (kindred#2252)', () => {
   const HUE = 'hsl(160 45% 42%)'
   const WRITTEN_IN = unit({
-    family_available_override: false,
+    write_in: cover(),
     occupant_name: 'Emma Johnson',
     is_family_available: false,
   })
@@ -2335,7 +2352,7 @@ describe('LodgingUnitCard — the write-in chip, dropped in favour of the well (
         slot={slot({
           unit: unit({
             inventory_class: 'staff_default',
-            family_available_override: false,
+            write_in: cover(),
             occupant_name: 'Emma Johnson',
             is_family_available: false,
           }),

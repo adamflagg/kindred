@@ -1451,26 +1451,35 @@ class LodgingRosterService:
             unit_id = _s(unit, "id")
             role_row = role_row_by_unit.get(unit_id)
             write_in_row = write_in_row_by_unit.get(unit_id)
-            # `family_available_override` STILL SPELLS AN OCCUPANCY AS False,
-            # and that is deliberate rather than left over. Every count on the
-            # stats bar goes through `is_family_available`, which is derived
-            # from this one field, and the board's own open-tint reads `false`
-            # as a proxy for "is somebody in it" -- so a write-in that stopped
-            # spelling itself here would silently return an occupied cabin to
-            # the open count. Disentangling the two axes on the wire is PR 4 of
-            # kindred#2382; until it lands this one field still answers both,
-            # whichever table the row came from.
+            # TWO FIELDS, TWO QUESTIONS, since PR 4 of kindred#2382 took the
+            # compat shim out. `family_available_override` is now the ROLE row
+            # and nothing else -- a staff cabin opened to families for the
+            # weekend, or a bare `false` closing one -- while "is somebody in
+            # this space" is answered by `write_in` alone. Until PR 4 this field
+            # reported `False` for an occupancy too, because
+            # `is_family_available` and the board's open-tint were both derived
+            # from it; both read the occupancy source directly now.
             #
-            # Occupancy OUTRANKS the role when a unit somehow carries both.
-            # No writer produces that pair -- `set_availability` clears the
-            # other fact on every write -- but two staff racing on one cabin
-            # can, and the safe answer is the closed one: reading the release
-            # instead would open a cabin with somebody sleeping in it.
-            #
-            # A unit with NEITHER row maps to None, never False: those are
+            # A unit with NO role row maps to None, never False: those are
             # different answers, and `bool(...)` on a missing row would close
-            # every cabin nobody has said anything about.
-            override = False if write_in_row is not None else _maybe_bool(role_row, "family_available")
+            # every cabin nobody has said anything about. A written-into unit
+            # with no role row is exactly that case -- the write-in says
+            # nothing about the role, so neither does this.
+            #
+            # Occupancy still OUTRANKS the role, but in the DERIVED answer
+            # rather than by overwriting the role on the wire: see
+            # `is_family_available` below and its rule in lodging_rules.py.
+            #
+            # BOTH ROWS AT ONCE IS REACHABLE, and stopped needing a race in PR
+            # 4 of kindred#2382. `set_availability` still drops the fact it is
+            # not writing, but the occupancy drop is scoped to the caller's own
+            # grain while the role row is shared by every scope -- so writing
+            # somebody into a cabin on the live board and then releasing it
+            # from inside a scenario leaves the live write-in standing beside
+            # the new role row. Two staff racing on one cabin get there too.
+            # Either way the safe answer is the closed one, which is what the
+            # derivation returns.
+            override = _maybe_bool(role_row, "family_available")
             # Display text travels BESIDE the decision, never into it, and it
             # comes from whichever row supplied the decision. Stored in the
             # `note` column (1500000118's header says why `note` was kept
@@ -1538,7 +1547,15 @@ class LodgingRosterService:
                     # blank is not one of the three answers the decision has.
                     occupant_name=_s(source_row, "occupant_name"),
                     reason=_s(source_row, "note"),
-                    is_family_available=is_family_available(inventory_class, override),
+                    # THREE inputs, and the third is the split's whole point:
+                    # the ROLE from `lodging_availability`, and OCCUPANCY from
+                    # whichever write-in table this request resolved to. The
+                    # number staff read does not move -- what moved is that it
+                    # is now derived from two named facts instead of from one
+                    # boolean carrying both.
+                    is_family_available=is_family_available(
+                        inventory_class, override, is_occupied=write_in_row is not None
+                    ),
                     map_x=map_x,
                     map_y=map_y,
                 )

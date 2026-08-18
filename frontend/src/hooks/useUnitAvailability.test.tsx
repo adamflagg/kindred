@@ -73,8 +73,8 @@ beforeEach(() => {
   client.setQueryData(rosterKey(DRAFT), seededRoster())
 })
 
-function renderAvailability(sessionCmId = SESSION) {
-  return renderHook(() => useUnitAvailability({ year: YEAR, sessionCmId }), { wrapper })
+function renderAvailability(sessionCmId = SESSION, scenario = '') {
+  return renderHook(() => useUnitAvailability({ year: YEAR, sessionCmId, scenario }), { wrapper })
 }
 
 describe('useUnitAvailability', () => {
@@ -89,6 +89,7 @@ describe('useUnitAvailability', () => {
     expect(setUnitAvailability.mock.calls[0]?.[1]).toEqual({
       year: YEAR,
       sessionCmId: SESSION,
+      scenario: '',
       unitId: 'u1',
       familyAvailable: false,
       occupantName: 'Emma Johnson',
@@ -96,13 +97,34 @@ describe('useUnitAvailability', () => {
     })
   })
 
+  it('sends the scenario it was opened on, so the write lands on that board', async () => {
+    // kindred#2382 PR 4. A scenario's write-ins REPLACE the live ones on read
+    // (PR 3), so an occupancy written to the live table from inside a scenario
+    // is replaced away by that scenario's own read — the staff member records
+    // a write-in and the board they made it on does not show it.
+    //
+    // Still not GATED on having one, which is the distinction from
+    // `useLodgingPlacement`: blank is the live board, and staff evaluating the
+    // real board must be able to write onto it.
+    const { result } = renderAvailability(SESSION, DRAFT)
+
+    await act(async () => {
+      await result.current.setAvailability(WRITE_IN)
+    })
+
+    expect(setUnitAvailability.mock.calls[0]?.[1]).toMatchObject({ scenario: DRAFT })
+  })
+
   it('refreshes EVERY scenario of the weekend, not just the one on screen', async () => {
-    // The failure this pins is silent. Availability carries no scenario, so a
-    // write-in recorded while a draft is open changes the mirror and every other
-    // draft as well — and the weekend queries carry a 30 minute staleTime, so
-    // "stale" means half an hour of a board showing a cabin as open after
-    // staff closed it. Invalidating only the visible key looks correct on the
-    // screen you are looking at, which is why nobody reports it.
+    // The failure this pins is silent. ONE WRITE CAN MOVE TWO BOARDS: an
+    // occupancy lands on the scenario named on the request, while a RELEASE is
+    // a weekend-level fact every scenario of that weekend inherits, because
+    // `lodging_availability` still has no scenario column (kindred#2382 split
+    // the occupancy half out and left the role half where it was). And the
+    // weekend queries carry a 30 minute staleTime, so "stale" means half an
+    // hour of a board showing a cabin as open after staff closed it.
+    // Invalidating only the visible key looks correct on the screen you are
+    // looking at, which is why nobody reports it.
     const { result } = renderAvailability()
 
     await act(async () => {

@@ -1304,12 +1304,69 @@ class TestAvailabilityWrites:
         # The reason is display text and lives in the `note` COLUMN; the API
         # field is `reason`. See AvailabilityWriteRequest.
         assert payload["note"] == "Burst pipe"
-        # WEEKEND-scoped, and still no scenario: the live board is a scope in
-        # its own right, so this table has no scenario column at all. Routing
-        # this write to the draft twin when the caller names a scenario is
-        # PR 4's -- see `set_availability`, which carries the gap.
+        # THE LIVE BOARD, because the body named no scenario. That table has no
+        # scenario column at all -- the live board is a scope in its own right
+        # rather than the absence of one, so blank is a real answer here and
+        # not a missing value.
         assert "scenario" not in payload
         assert "state" not in payload
+
+    def test_writing_somebody_in_from_a_scenario_creates_a_draft_occupancy_row(self, mock_pb: MagicMock) -> None:
+        """kindred#2382 PR 4: the write follows the board staff are looking at.
+
+        PR 3 made a scenario's write-ins REPLACE the live ones on read. With no
+        scenario on the write, a write-in recorded inside a scenario landed
+        live and that scenario's own read replaced it away -- so the staff
+        member did not see it on the board they had just made it on.
+        """
+        with patch("api.routers.lodging.pb", mock_pb):
+            client = _write_client(_manage_user(), mock_pb)
+            response = client.put(
+                "/api/lodging/availability",
+                json={
+                    "year": 2026,
+                    "session_cm_id": 1000001,
+                    "scenario": "scn_1",
+                    "unit_id": "u1",
+                    "family_available": False,
+                    "occupant_name": "Emma Johnson",
+                },
+            )
+
+        assert response.status_code == 200
+        mock_pb.collection.assert_any_call("lodging_write_ins_draft")
+        payload = mock_pb.collection.return_value.create.call_args[0][0]
+        assert payload["scenario"] == "scn_1"
+        assert payload["unit"] == "u1"
+        assert payload["occupant_name"] == "Emma Johnson"
+        assert "family_available" not in payload
+
+    def test_a_release_from_a_scenario_is_still_a_weekend_fact(self, mock_pb: MagicMock) -> None:
+        """The ROLE half ignores `scenario`, and that is the owner's ruling.
+
+        staff<->family role is "a known 'were moving staff to X for weekend
+        Y'", not a modelling choice, so `lodging_availability` has no scenario
+        column and a release made from inside a plan still writes the weekend.
+        """
+        with patch("api.routers.lodging.pb", mock_pb):
+            client = _write_client(_manage_user(), mock_pb)
+            response = client.put(
+                "/api/lodging/availability",
+                json={
+                    "year": 2026,
+                    "session_cm_id": 1000001,
+                    "scenario": "scn_1",
+                    "unit_id": "u1",
+                    "family_available": True,
+                    "reason": "Director away",
+                },
+            )
+
+        assert response.status_code == 200
+        mock_pb.collection.assert_any_call("lodging_availability")
+        payload = mock_pb.collection.return_value.create.call_args[0][0]
+        assert payload["family_available"] is True
+        assert "scenario" not in payload
 
     def test_a_non_boolean_availability_is_refused(self, mock_pb: MagicMock) -> None:
         """The three-value enum is gone, so the edge validation is the bool.
@@ -1338,8 +1395,10 @@ class TestAvailabilityWrites:
 
         `AvailabilityWriteRequest` extended `ScenarioWriteRequest`, where
         `scenario` is `min_length=1`, so a body without one was a 422 -- and
-        there was no scenario worth supplying, which is a large part of why the
-        table still holds zero rows.
+        the live board, which is where staff evaluate, had no id to supply.
+        That is a large part of why the table still holds zero rows. The field
+        is back since kindred#2382 PR 4, OPTIONAL, and this test is what stops
+        it being tightened again.
         """
         with patch("api.routers.lodging.pb", mock_pb):
             client = _write_client(_manage_user(), mock_pb)

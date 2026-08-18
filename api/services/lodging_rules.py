@@ -73,20 +73,43 @@ def unit_shareability(stored: str) -> str:
     return stored if stored in SHAREABILITY_VALUES else "unknown"
 
 
-def is_family_available(inventory_class: str, override: bool | None) -> bool:
+def is_family_available(inventory_class: str, override: bool | None, is_occupied: bool) -> bool:
     """Whether this unit can take a family this weekend, in exactly one place.
 
-    | base          | override | family-available |
-    |---------------|----------|------------------|
-    | family_pool   | None     | yes              |
-    | family_pool   | False    | no  (burst pipe) |
-    | staff_default | None     | no               |
-    | staff_default | True     | yes (released)   |
+    | base          | override | occupied | family-available     |
+    |---------------|----------|----------|----------------------|
+    | family_pool   | None     | no       | yes                  |
+    | family_pool   | None     | yes      | no  (written into)   |
+    | family_pool   | False    | no       | no  (closed by role) |
+    | staff_default | None     | no       | no                   |
+    | staff_default | True     | no       | yes (released)       |
+    | staff_default | True     | yes      | no  (written into)   |
 
-    TWO layers, not three. `lodging_availability` lost its scenario dimension
-    in 1500000135 because availability is a fact about the WEEKEND rather than
-    about the plan -- a burst pipe closes a cabin in every scenario for that
-    weekend, so there was never anything for a scenario to disagree about.
+    TWO FACTS, TWO QUESTIONS, and `is_occupied` is what kindred#2382 made
+    honest. `override` is the staff<->family ROLE -- is this unit family
+    inventory this weekend at all -- and `is_occupied` is whether somebody is
+    already in it. One boolean used to answer both, spelling an occupancy as
+    `override = False`, which is why `family_available_override` and this
+    function looked like the same fact. They are not, and the row that ends the
+    conflation is `is_occupied` reaching here from `lodging_write_ins` rather
+    than from the role column.
+
+    OCCUPANCY IS ABSOLUTE. It closes the unit whatever the role says, including
+    over a `True` release -- a cabin somebody is sleeping in cannot take a
+    family, and no ordering of the two is worth a bed collision.
+
+    REQUIRED, never defaulted. A caller that has not thought about occupancy
+    must not be able to spell "no occupancy" by omission: this is the derivation
+    every count on the stats bar and the board's own open-tint go through, so
+    the failure mode of a forgotten argument is a written-into cabin reported
+    as open.
+
+    THE ROLE STILL HAS TWO LAYERS, NOT THREE. `lodging_availability` lost its
+    scenario dimension in 1500000135 because the ROLE is a fact about the
+    WEEKEND rather than about the plan -- "we're moving staff to X for weekend Y" -- and that
+    reasoning survived the split intact. Occupancy did not: it IS scenario
+    scoped, which is why it arrives here already resolved to one scope rather
+    than being looked up.
 
     The row STATES the outcome rather than implying it. An earlier design had
     the row mean "the opposite of this unit's current default", which an
@@ -104,6 +127,8 @@ def is_family_available(inventory_class: str, override: bool | None) -> bool:
     separately via RosterCounts.units_missing_allocation rather than hiding
     the gap.
     """
+    if is_occupied:
+        return False
     if override is not None:
         return override
     return inventory_class != "staff_default"

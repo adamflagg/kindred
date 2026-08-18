@@ -5,10 +5,26 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
-import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
+import type { LodgingUnitRow, RosterPartyRow, WriteInCoverRow } from '../../types/lodging'
 import type { MapUnit } from './mapModel'
 import { MapUnitPopover } from './MapUnitPopover'
 import { partyKey } from './partyKey'
+
+/**
+ * The server-resolved write-in cover — the ONLY way the wire says "somebody is
+ * in this space" since kindred#2382 PR 4 retired the
+ * `family_available_override === false` shim.
+ */
+function cover(overrides: Partial<WriteInCoverRow> = {}): WriteInCoverRow {
+  return {
+    unit_id: 'u1',
+    unit_code: 'cedar-1',
+    unit_name: 'Cedar 1',
+    occupant_name: 'Emma Johnson',
+    note: '',
+    ...overrides,
+  }
+}
 
 function row(overrides: Partial<LodgingUnitRow> = {}): LodgingUnitRow {
   return {
@@ -169,7 +185,7 @@ describe('MapUnitPopover — one room', () => {
         units={[
           mapUnit(
             row({
-              family_available_override: false,
+              write_in: cover(),
               occupant_name: 'Emma Johnson',
               is_family_available: false,
             })
@@ -510,7 +526,7 @@ describe('MapUnitPopover — a cluster of rooms', () => {
           unit_id: 'u2',
           code: 'cedar-2',
           name: 'Cedar 2',
-          family_available_override: false,
+          write_in: cover({ unit_id: 'u2', unit_code: 'cedar-2', unit_name: 'Cedar 2' }),
           is_family_available: false,
           is_active: false,
         })
@@ -938,7 +954,7 @@ describe('MapUnitPopover — the whole-building marker, extended from the board 
         units={[
           mapUnit(
             row({
-              family_available_override: false,
+              write_in: cover(),
               occupant_name: 'Emma Johnson',
               is_family_available: false,
             }),

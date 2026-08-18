@@ -704,12 +704,13 @@ class TestWriteInReads:
     live+draft pair sitting beside `lodging_assignments`/`_draft`. These
     reads are that pair's half of the repository.
 
-    BOTH HALVES ARE LIVE. PR 2 moved the 21 rows (1500000162) and switched
-    `write_in_covers` and `set_availability` onto the live table; PR 3 gave the
-    draft its readers, so `build_roster` and `build_summary` read it INSTEAD OF
-    the live one whenever the request names a scenario, and both seed paths
-    write it. `find_`, `update_` and `delete_draft_write_in` are the only ones
-    still dark, because `set_availability` takes no scenario until PR 4.
+    BOTH HALVES ARE LIVE, AND NOTHING HERE IS DARK ANY MORE. PR 2 moved the
+    21 rows (1500000162) and switched `write_in_covers` and `set_availability`
+    onto the live table; PR 3 gave the draft its readers, so `build_roster` and
+    `build_summary` read it INSTEAD OF the live one whenever the request names
+    a scenario, and both seed paths write it; PR 4 gave `set_availability` an
+    optional `scenario`, which is what reaches `find_`, `update_` and
+    `delete_draft_write_in`.
     """
 
     @pytest.mark.asyncio

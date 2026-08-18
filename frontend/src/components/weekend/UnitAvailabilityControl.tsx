@@ -83,12 +83,17 @@ export interface UnitAvailabilityControlProps {
   /**
    * `bunking.manage`, with a weekend selected.
    *
-   * NOT the board's `canPlace`, which also requires a scenario. Availability
-   * carries no scenario since 1500000135 — a burst pipe closes a cabin in
-   * every plan for that weekend, and a write-in is a fact about who is in the
-   * building rather than a draft — so requiring one to record it would put the
-   * deleted dimension back at the UI layer, and staff looking at the
-   * CampMinder mirror could not close a cabin at all.
+   * NOT the board's `canPlace`, which also requires a scenario. This write
+   * CARRIES one and never requires one, which is a different rule dressed in
+   * the same word (kindred#2382 PR 4): blank is the LIVE board, a scope in its
+   * own right, so gating on a selected scenario would leave staff looking at
+   * the CampMinder mirror — which is where most of them look — unable to
+   * record a write-in at all.
+   *
+   * The premise here used to be "availability carries no scenario since
+   * 1500000135". Half of that survives: the staff↔family ROLE is still a fact
+   * about the weekend. The OCCUPANCY half is scenario-scoped now and lands on
+   * the board it was made on — see `useUnitAvailability`.
    */
   canManage: boolean
   /**
