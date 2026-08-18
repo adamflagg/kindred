@@ -466,6 +466,19 @@ def _children_oldest_first(children: list[Any]) -> list[Any]:
     return sorted(children, key=lambda c: -(_f(c, "age") or 0.0))
 
 
+def _child_identity(person: Any) -> Any:
+    """The same key `PartyChild.person_cm_id` is published under.
+
+    CampMinder id when there is one; the PB record id string otherwise, for
+    the rare person row with neither -- kept rather than collapsed onto
+    every other anonymous sibling. Shared by `build_household_journey`'s
+    dedup (`seen_by_year`) and its per-child session lookup
+    (`session_start_by_year`) so the two can never disagree about which
+    child is which.
+    """
+    return _i(person, "cm_id") or str(getattr(person, "id", ""))
+
+
 def _housing_state(cabin: str, year_assignments: Mapping[int, str]) -> HousingState:
     """What is known about one household's housing in one year (kindred#2073).
 
@@ -1476,6 +1489,15 @@ class LodgingRosterService:
         )
 
         children_by_year: dict[int, list[Any]] = {}
+        # kindred#2420: each traced child's age has to be computed at THAT
+        # CHILD'S OWN family session start, not at the year's earliest
+        # camp-wide family session -- a season runs several (6 to 10 a year
+        # on the production snapshot, from May through December), and a
+        # household attends whichever one it booked, not necessarily the
+        # first of the year. Keyed the same way `seen_by_year` below is, so
+        # the year's earliest of THIS CHILD'S OWN attendee rows wins, ties
+        # included, without a second pass over `attendees`.
+        session_start_by_year: dict[int, dict[Any, date]] = {}
         # A JOURNEY ROW IS A YEAR, NOT A SESSION, and this is where that stops
         # being a wording point. A family can book two of a season's weekends,
         # which gives one child TWO enrolled family attendee rows in the same
@@ -1493,11 +1515,19 @@ class LodgingRosterService:
         # than collapsed onto every other anonymous sibling.
         seen_by_year: dict[int, set[Any]] = {}
         for attendee in attendees:
-            person = (getattr(attendee, "expand", None) or {}).get("person")
+            expand = getattr(attendee, "expand", None) or {}
+            person = expand.get("person")
             if person is None:
                 continue
             year = _i(attendee, "year")
-            identity = _i(person, "cm_id") or str(getattr(person, "id", ""))
+            identity = _child_identity(person)
+            session = expand.get("session")
+            start = _as_date(_s(session, "start_date")) if session is not None else None
+            if identity and start is not None:
+                starts = session_start_by_year.setdefault(year, {})
+                existing = starts.get(identity)
+                if existing is None or start < existing:
+                    starts[identity] = start
             if identity:
                 seen = seen_by_year.setdefault(year, set())
                 if identity in seen:
@@ -1515,35 +1545,15 @@ class LodgingRosterService:
             )
             if year > 0
         ]
-        cabin_maps, weekend_sessions_by_year = await asyncio.gather(
-            asyncio.gather(*(self.repository.fetch_cabin_assignments_by_household_cm_id(year) for year in years)),
-            # kindred#2420: the age shown for a past year has to be computed
-            # at THAT year's own family session start, not read off
-            # `persons.age` (a live CampMinder attribute the sync mirrors
-            # unchanged onto every year's row). `fetch_weekend_sessions`
-            # already exists for the roster's own session picker, so this
-            # reuses it rather than adding a new repository read.
-            asyncio.gather(*(self.repository.fetch_weekend_sessions(year) for year in years)),
+        cabin_maps = await asyncio.gather(
+            *(self.repository.fetch_cabin_assignments_by_household_cm_id(year) for year in years)
         )
 
         rows: list[HouseholdJourneyYear] = []
-        for year, assignments, sessions in zip(years, cabin_maps, weekend_sessions_by_year, strict=True):
+        for year, assignments in zip(years, cabin_maps, strict=True):
             cabin = assignments.get(household_cm_id, "")
             children = _children_oldest_first(children_by_year.get(year, []))
-            # The EARLIEST family session of the year, matching how a family
-            # camp weekend book-ended by two sessions in one calendar year is
-            # already collapsed to one journey row above (`seen_by_year`).
-            # `None` when a year has no camp_sessions row at all (e.g. a
-            # registration-only year with neither a child nor an adult), in
-            # which case `_party_child` keeps the current-season fallback.
-            session_start = min(
-                (
-                    start
-                    for session in sessions
-                    if _s(session, "session_type") == "family" and (start := _as_date(_s(session, "start_date")))
-                ),
-                default=None,
-            )
+            year_starts = session_start_by_year.get(year, {})
             rows.append(
                 HouseholdJourneyYear(
                     year=year,
@@ -1555,7 +1565,17 @@ class LodgingRosterService:
                     # rendering either as an error or as a family with no kids.
                     enrollment="enrolled" if children else "none_on_file",
                     adults=[_party_adult(adult) for adult in adults_by_year.get(year, [])],
-                    children=[_party_child(child, as_of=session_start) for child in children],
+                    children=[
+                        # Each child's OWN attended session start
+                        # (kindred#2420) -- `None` when this child's
+                        # attendee row carried no readable session date
+                        # (e.g. an unexpanded `session` relation, or a
+                        # camp_sessions row missing `start_date`), in which
+                        # case `_party_child` keeps the current-season
+                        # fallback rather than guessing at a camp-wide date.
+                        _party_child(child, as_of=year_starts.get(_child_identity(child)))
+                        for child in children
+                    ],
                 )
             )
         return HouseholdJourneyResponse(household_cm_id=household_cm_id, years=rows)
