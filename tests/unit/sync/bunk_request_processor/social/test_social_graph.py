@@ -14,6 +14,7 @@ from unittest.mock import Mock
 import networkx as nx
 import pytest
 
+from bunking.graph.social_graph_builder import LAST_YEAR_HISTORY_SESSION_TYPES
 from bunking.sync.bunk_request_processor.core.models import Person
 from bunking.sync.bunk_request_processor.resolution.interfaces import ResolutionResult
 from bunking.sync.bunk_request_processor.social.social_graph import (
@@ -1004,12 +1005,23 @@ class TestAddInformationalRelationshipsExpandedPerson:
         ]
 
         # Historical bunk assignments for previous year
+        # Both rows carry a session: prior-year bunkmate grouping is keyed on
+        # (year, bunk, session), because a bunk is a building reused by
+        # successive sessions (#2425).
         hist_assignment1 = Mock()
-        hist_assignment1.expand = {"person": Mock(cm_id=501), "bunk": Mock(id="bunk_A")}
+        hist_assignment1.expand = {
+            "person": Mock(cm_id=501),
+            "bunk": Mock(id="bunk_A"),
+            "session": Mock(id="sess_1"),
+        }
         hist_assignment1.year = 2024
 
         hist_assignment2 = Mock()
-        hist_assignment2.expand = {"person": Mock(cm_id=502), "bunk": Mock(id="bunk_A")}
+        hist_assignment2.expand = {
+            "person": Mock(cm_id=502),
+            "bunk": Mock(id="bunk_A"),
+            "session": Mock(id="sess_1"),
+        }
         hist_assignment2.year = 2024
 
         def mock_get_full_list(**kwargs):
@@ -1426,3 +1438,133 @@ class TestGenderAwareScoring:
         # AG session — no gender adjustment, both candidates have equal score (0.0)
         # Original order preserved when scores are tied
         assert len(ranked) == 2
+
+
+class TestHistoricalBunkingSessionScope:
+    """Prior-year BUNKMATE edges must come from a real summer cabin (#2425).
+
+    Two defects are pinned here:
+    1. the query had no ``session_type`` predicate, so Family Camp day groups
+       were scored as summer bunkmate history;
+    2. the grouping key was ``(year, bunk)`` with no session in it, so children
+       who occupied the same cabin in different weeks were paired.
+    """
+
+    @staticmethod
+    def _assignment(person_cm_id: int, bunk_id: str, year: int, session_id: str) -> Mock:
+        assignment = Mock(spec=["expand", "year"])
+        assignment.year = year
+        person = Mock(spec=["cm_id"])
+        person.cm_id = person_cm_id
+        bunk = Mock(spec=["id"])
+        bunk.id = bunk_id
+        session = Mock(spec=["id"])
+        session.id = session_id
+        assignment.expand = {"person": person, "bunk": bunk, "session": session}
+        return assignment
+
+    @staticmethod
+    def _graph(*person_cm_ids: int) -> nx.Graph:
+        graph = nx.Graph()
+        for cm_id in person_cm_ids:
+            graph.add_node(cm_id)
+        return graph
+
+    @pytest.mark.asyncio
+    async def test_query_carries_session_type_predicate(self):
+        """The prior-year query must exclude non-bunking session types in SQL."""
+        mock_pb = Mock()
+        sg = SocialGraph(pb=mock_pb, year=2026, session_cm_ids=[1234])
+
+        captured: list[dict[str, Any]] = []
+
+        def _get_full_list(**kwargs):
+            captured.append(kwargs.get("query_params", {}))
+            return []
+
+        mock_pb.collection.return_value.get_full_list.side_effect = _get_full_list
+
+        await sg._add_historical_bunking_relationships(self._graph(601), 1234)
+
+        assert captured, "expected a bunk_assignments query"
+        filter_str = captured[0]["filter"]
+        for session_type in LAST_YEAR_HISTORY_SESSION_TYPES:
+            assert f'session.session_type = "{session_type}"' in filter_str
+        assert "session" in captured[0]["expand"]
+
+    @pytest.mark.asyncio
+    async def test_same_bunk_different_session_is_not_a_bunkmate_edge(self):
+        """A cabin reused by a later session must not pair the two occupants."""
+        mock_pb = Mock()
+        sg = SocialGraph(pb=mock_pb, year=2026, session_cm_ids=[1234])
+
+        mock_pb.collection.return_value.get_full_list.return_value = [
+            self._assignment(701, "bunk_A", 2025, "sess_1"),
+            self._assignment(702, "bunk_A", 2025, "sess_2"),
+        ]
+
+        graph = self._graph(701, 702)
+        await sg._add_historical_bunking_relationships(graph, 1234)
+
+        assert not graph.has_edge(701, 702)
+
+    @pytest.mark.asyncio
+    async def test_same_bunk_same_session_is_a_bunkmate_edge(self):
+        """Real cabinmates — same bunk, same session, same year — still pair."""
+        mock_pb = Mock()
+        sg = SocialGraph(pb=mock_pb, year=2026, session_cm_ids=[1234])
+
+        mock_pb.collection.return_value.get_full_list.return_value = [
+            self._assignment(801, "bunk_A", 2025, "sess_1"),
+            self._assignment(802, "bunk_A", 2025, "sess_1"),
+        ]
+
+        graph = self._graph(801, 802)
+        await sg._add_historical_bunking_relationships(graph, 1234)
+
+        assert graph.has_edge(801, 802)
+        assert RelationshipType.BUNKMATE in graph[801][802]["relationship_types"]
+
+    @pytest.mark.asyncio
+    async def test_assignment_without_session_is_skipped(self):
+        """A row whose session cannot be resolved cannot be scoped, so it is dropped."""
+        mock_pb = Mock()
+        sg = SocialGraph(pb=mock_pb, year=2026, session_cm_ids=[1234])
+
+        rows = [
+            self._assignment(901, "bunk_A", 2025, "sess_1"),
+            self._assignment(902, "bunk_A", 2025, "sess_1"),
+        ]
+        for row in rows:
+            row.expand = {"person": row.expand["person"], "bunk": row.expand["bunk"]}
+
+        graph = self._graph(901, 902)
+        mock_pb.collection.return_value.get_full_list.return_value = rows
+        await sg._add_historical_bunking_relationships(graph, 1234)
+
+        assert not graph.has_edge(901, 902)
+
+    @pytest.mark.asyncio
+    async def test_a_pair_that_bunked_in_two_years_is_weighted_by_the_recent_one(self):
+        """`processed_pairs` keeps ONE edge per pair, so which year wins must not be luck.
+
+        The weight is documented as "more recent = stronger", but the pair is
+        deduped against whichever grouping key the unsorted query happened to
+        insert first. Feed the older year first: the surviving edge must still
+        carry the RECENT year's recency weight.
+        """
+        mock_pb = Mock()
+        sg = SocialGraph(pb=mock_pb, year=2026, session_cm_ids=[1234])
+
+        mock_pb.collection.return_value.get_full_list.return_value = [
+            self._assignment(1101, "bunk_OLD", 2023, "sess_old"),
+            self._assignment(1102, "bunk_OLD", 2023, "sess_old"),
+            self._assignment(1101, "bunk_NEW", 2025, "sess_new"),
+            self._assignment(1102, "bunk_NEW", 2025, "sess_new"),
+        ]
+
+        graph = self._graph(1101, 1102)
+        await sg._add_historical_bunking_relationships(graph, 1234)
+
+        expected = RELATIONSHIP_WEIGHTS[RelationshipType.BUNKMATE] * (1.0 / (1 + 1 * 0.2))
+        assert graph[1101][1102]["weight"] == pytest.approx(expected)

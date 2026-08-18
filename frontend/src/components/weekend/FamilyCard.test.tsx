@@ -7,8 +7,8 @@
  * later session would helpfully add back:
  *
  *   - request text: 12 of 232 contain health vocabulary including a named
- *     diagnosis, and the roster's PHI exposure was accepted for opening ONE
- *     row at a time, not for printing it across 62 cards at once;
+ *     diagnosis, and the roster's medical-narrative exposure was accepted for
+ *     opening ONE row at a time, not for printing it across 62 cards at once;
  *   - the medical affordance: true for 62 of 62 parties;
  *   - `needs_resolution`: true for 44 of 62.
  *

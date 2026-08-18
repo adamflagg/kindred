@@ -348,13 +348,13 @@ type medicalData struct {
 	allergyInfo      string
 	dietaryInfo      string
 	additionalInfo   string
-	// PHI narrative. Detailed medical disclosures about named individuals.
-	// Never logged, never exported (see lodging_phi_test.go).
+	// Medical narrative. Detailed medical disclosures about named individuals.
+	// Never logged, never exported (see lodging_medical_narrative_test.go).
 	//
 	// The two below are the ones this plan added, but the never-log/never-export
 	// contract covers EVERY text field on this struct -- cpapInfo, physicianInfo,
 	// specialNeedsInfo, allergyInfo, dietaryInfo and additionalInfo carry the
-	// same kind of sentence. lodging_phi_test.go's phiColumns is the full list
+	// same kind of sentence. lodging_medical_narrative_test.go's narrativeColumns is the full list
 	// and the authority; this comment sits here only because it is where a
 	// future editor adding a field will be looking.
 	bathroomExplain      string
@@ -637,7 +637,7 @@ func (s *FamilyCampDerivedSync) loadFieldDefinitions(_ context.Context) (map[str
 // a housing flag it now goes through lodgingRequestFields, which resolves the
 // canonical display name from the cm_id — so a rename survives admission AND
 // routing. What is left here is the residue: fields admitted by id whose routing
-// is either by name heuristic or, for the two PHI narratives, by a name-keyed
+// is either by name heuristic or, for the two medical narratives, by a name-keyed
 // lookup in processMedical.
 //
 // The entries duplicated in lodgingRequestFields are kept rather than deleted:
@@ -646,10 +646,10 @@ func (s *FamilyCampDerivedSync) loadFieldDefinitions(_ context.Context) (map[str
 var extraFieldCMIDs = map[int]bool{
 	274057: true, // Housing Accommodation        (Camper) — successor to FAM Camp-Accommodation
 	274055: true, // Housing Accomodation  (sic)  (Adult)
-	274058: true, // Housing Accommodation-Yes    (Camper) — PHI narrative, spec 5
-	274059: true, // Housing-Bathroom             (Camper) — PHI narrative, spec 5
+	274058: true, // Housing Accommodation-Yes    (Camper) — medical narrative, spec 5
+	274059: true, // Housing-Bathroom             (Camper) — medical narrative, spec 5
 	274053: true, // Adult-Bathroom               (Adult)
-	274054: true, // Bathroom-Yes                 (Adult)  — PHI narrative, spec 5
+	274054: true, // Bathroom-Yes                 (Adult)  — medical narrative, spec 5
 	256933: true, // Adult-CPAP                   (Adult)
 	257248: true, // Adult-Infant                 (Adult)
 	256935: true, // Adult-Opt Out                (Adult)
@@ -1808,10 +1808,10 @@ func (s *FamilyCampDerivedSync) processMedical(personValues []customValueEntry) 
 		med.additionalInfo = s.joinMedicalColumn(
 			householdID, "additional_info", fields.parts("Family Medical-Additional"))
 
-		// PHI narrative for the two accessibility questions. These sentences
+		// Medical narrative for the two accessibility questions. These sentences
 		// describe named individuals' medical circumstances, so they live only
 		// here -- family_camp_medical is admin-gated on all five rules and is
-		// absent from every export config (lodging_phi_test.go asserts that).
+		// absent from every export config (lodging_medical_narrative_test.go asserts that).
 		bathroomKeys := []string{"Housing-Bathroom", "Bathroom-Yes"}
 		bathroomParts := make([]string, 0, len(bathroomKeys))
 		for _, key := range bathroomKeys {

@@ -212,7 +212,14 @@ def _child(
     grade: int = 4,
     household_pb_id: str = "hh_1",
     birthdate: str = "",
+    session: Any | None = None,
 ) -> SimpleNamespace:
+    """An attendee row, `expand`ed the way `fetch_household_family_attendees`
+    hands one back. `session` (kindred#2420) is the family-camp session THIS
+    attendee row is enrolled in -- omitted by default because most fixtures
+    here do not care, which is also the `as_of=None` / "keep the stored
+    value" path every pre-existing journey fixture exercises.
+    """
     person = _rec(
         cm_id=cm_id,
         first_name=first,
@@ -226,7 +233,10 @@ def _child(
         # bed, which is itself pinned below.
         birthdate=birthdate,
     )
-    return _rec(person_id=cm_id, expand={"person": person})
+    expand: dict[str, Any] = {"person": person}
+    if session is not None:
+        expand["session"] = session
+    return _rec(person_id=cm_id, expand=expand)
 
 
 def _adult(
@@ -4131,6 +4141,105 @@ class TestHouseholdJourney:
 
         assert journey.years == []
         repo.fetch_cabin_assignments_by_household_cm_id.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_a_historical_years_age_is_the_childs_age_that_year_not_today_kindred_2420(self) -> None:
+        """The regression pin for kindred#2420.
+
+        `persons.age` is CampMinder's LIVE attribute, mirrored verbatim
+        whenever the sync last touched the row -- not "age as of that
+        year's season", however plausible a stored number looks on its own.
+        A fixture whose stored `age` is a PLAUSIBLE-BUT-WRONG "today's age"
+        must still render the age computed at that YEAR's own family-camp
+        session start -- asserting on the stored value would re-pin the bug
+        this issue fixes (kindred#2420's acceptance condition 5).
+
+        Ava Chen, born 2010-08-01: the 2019 family session started
+        2019-07-05, four weeks before her ninth birthday, so she was
+        completed-8-years-11-months old that week -- nowhere near the
+        `age=17.04` the fixture's `persons` row carries (a later sync's
+        snapshot of her CURRENT age).
+        """
+        session_2019 = _rec(
+            id="sess_2019",
+            cm_id=3000001,
+            name="Family Camp 1",
+            session_type="family",
+            year=2019,
+            start_date="2019-07-05",
+            end_date="2019-07-08",
+            sort_order=1,
+        )
+        child = _child(cm_id=1000001, first="Ava", last="Chen", age=17.04, birthdate="2010-08-01", session=session_2019)
+        repo = _journey_repo(fetch_household_family_attendees=[_rec(year=2019, **vars(child))])
+
+        journey = await LodgingRosterService(repo).build_household_journey(2000001)
+
+        assert journey.years[0].children[0].age == 8.11
+
+    @pytest.mark.asyncio
+    async def test_a_historical_child_with_no_birthdate_shows_no_age_kindred_2420(self) -> None:
+        """Acceptance condition 3: a child with no usable birthdate must
+        show NO age for a historical year, rather than falling back to the
+        stale stored value (which is exactly the bug being fixed) or
+        crashing on an unparseable date.
+        """
+        session_2019 = _rec(
+            id="sess_2019",
+            cm_id=3000001,
+            name="Family Camp 1",
+            session_type="family",
+            year=2019,
+            start_date="2019-07-05",
+            end_date="2019-07-08",
+            sort_order=1,
+        )
+        child = _child(cm_id=1000001, age=17.04, birthdate="", session=session_2019)
+        repo = _journey_repo(fetch_household_family_attendees=[_rec(year=2019, **vars(child))])
+
+        journey = await LodgingRosterService(repo).build_household_journey(2000001)
+
+        assert journey.years[0].children[0].age is None
+
+    @pytest.mark.asyncio
+    async def test_a_historical_age_uses_the_childs_own_attended_session_not_the_years_earliest_kindred_2420(
+        self,
+    ) -> None:
+        """A camp season runs several family-camp weekends months apart --
+        the production snapshot shows 6 to 10 a year, from May through
+        December (kindred#2420 follow-up: 2023 alone ran 2023-05-26 through
+        2023-12-28). Picking the YEAR'S EARLIEST family session camp-wide,
+        rather than the specific session THIS household's child was actually
+        enrolled in, reintroduces a smaller version of the exact bug this
+        issue fixes -- the age would still be wrong, just by weeks or months
+        instead of a full year.
+
+        Ava Chen, born 2010-08-01, is enrolled in the LATE (September)
+        session only -- nothing enrolls her in the year's early (May)
+        session. At the May session she would have been a completed
+        8-years-9-months; by her actual September session she is a completed
+        9-years-1-month. Asserting 9.01 (not 8.09) is what proves the age
+        comes from her own attendee row's session, not a camp-wide scan.
+        """
+        # The year's EARLIEST family session (2019-05-24) is deliberately
+        # never attached to this child anywhere in this fixture -- proving
+        # it is never read is the point.
+        session_late = _rec(
+            id="sess_late",
+            cm_id=3000003,
+            name="Family Camp 4",
+            session_type="family",
+            year=2019,
+            start_date="2019-09-19",
+            end_date="2019-09-22",
+            sort_order=4,
+        )
+        child = _child(cm_id=1000001, first="Ava", last="Chen", age=17.04, birthdate="2010-08-01", session=session_late)
+        repo = _journey_repo(fetch_household_family_attendees=[_rec(year=2019, **vars(child))])
+
+        journey = await LodgingRosterService(repo).build_household_journey(2000001)
+
+        assert journey.years[0].children[0].age == 9.01
 
 
 class TestWriteInCovers:

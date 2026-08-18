@@ -123,7 +123,7 @@ For jobs with other custom parameters (session, etc.), similar pattern applies.
 export config at all — that is the correct shape for anything writing data that must never reach a
 spreadsheet. `lodging_assignments` is the worked example: it is in the map so the skip optimisation
 knows what it writes, and deliberately absent from `GetReadableYearExports()`, with
-`sync/lodging_phi_test.go` asserting that membership in the map never implies an export.
+`sync/lodging_medical_narrative_test.go` asserting that membership in the map never implies an export.
 
 Example for a new `widgets` sync that populates the `widgets` table:
 ```go

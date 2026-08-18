@@ -2032,7 +2032,7 @@ func TestProcessRegistrationsUnansweredOptOutIsNotMandatory(t *testing.T) {
 }
 
 // TestProcessMedicalRoutesNarrativeToTheAdminGatedTable: the sentences explaining
-// a bathroom or accommodation need are PHI and belong only in
+// a bathroom or accommodation need are medical narrative and belong only in
 // family_camp_medical (spec 5.1).
 func TestProcessMedicalRoutesNarrativeToTheAdminGatedTable(t *testing.T) {
 	t.Parallel()
@@ -2077,7 +2077,7 @@ func TestProcessMedicalRoutesNarrativeToTheAdminGatedTable(t *testing.T) {
 		for _, field := range []string{r.requestText, r.notes, r.goals, r.specialOccasions} {
 			if strings.Contains(field, "documented condition") ||
 				strings.Contains(field, "ground-floor") {
-				t.Errorf("PHI narrative reached family_camp_registrations: %q", field)
+				t.Errorf("medical narrative reached family_camp_registrations: %q", field)
 			}
 		}
 	}

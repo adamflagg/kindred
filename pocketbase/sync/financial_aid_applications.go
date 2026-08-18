@@ -22,6 +22,14 @@ const (
 	faFieldSummerQuestAmtRequested       = "Summer/Quest: Amt Requested"
 	faFieldFamilyCampAmtRequested        = "Family Camp: Amt Requested"
 	faFieldBnaiMitzvahAmtRequested       = "B'nai Mitzvah: Amt Requested"
+	// WW- fields are the adult weekends' equivalent of the CA- interest
+	// indicators above -- same four-question shape (interest / amount
+	// awarded / donation amount / donation other), routed to the same four
+	// program-neutral columns. See kindred#2436.
+	faFieldWWFinancialAssistanceInterest = "WW-FA"
+	faFieldWWFinancialAssistanceAmount   = "WW-FA Amount"
+	faFieldWWDonationAmount              = "WW-Donation Amount"
+	faFieldWWDonationOther               = "WW-Donation Amount Other"
 	// Boolean string parsing constants (shared with other sync files)
 	boolYes = "yes"
 )
@@ -306,6 +314,18 @@ func isFAFieldName(name string) bool {
 		return false
 	}
 
+	// WW- prefix: the adult weekends' equivalent of the CA- interest
+	// indicators, same fixed allowlist shape (kindred#2436).
+	if len(name) >= 3 && name[:3] == "WW-" {
+		if name == faFieldWWFinancialAssistanceInterest ||
+			name == faFieldWWFinancialAssistanceAmount ||
+			name == faFieldWWDonationAmount ||
+			name == faFieldWWDonationOther {
+			return true
+		}
+		return false
+	}
+
 	// Special amount requested fields without FA- prefix
 	if name == faFieldSummerQuestAmtRequested ||
 		name == faFieldFamilyCampAmtRequested ||
@@ -471,6 +491,27 @@ func (s *FinancialAidApplicationsSync) mapFieldToApplication(app *faApplicationD
 			app.donationPreference = value
 		}
 	case faFieldCADonationOther:
+		if app.donationOther == "" {
+			app.donationOther = value
+		}
+
+	// Interest indicators (WW- prefix, adult weekends -- kindred#2436). Same
+	// four program-neutral columns as the CA- arms above: a WW- answer only
+	// ever lands on the row for the adult who filled out that form, so this
+	// is admission into an existing column, not a grain change.
+	case faFieldWWFinancialAssistanceInterest:
+		if !app.interestExpressed {
+			app.interestExpressed = hasInterestExpressed(value)
+		}
+	case faFieldWWFinancialAssistanceAmount:
+		if app.amountAwarded == 0 {
+			app.amountAwarded = parseNumberValue(value)
+		}
+	case faFieldWWDonationAmount:
+		if app.donationPreference == "" {
+			app.donationPreference = value
+		}
+	case faFieldWWDonationOther:
 		if app.donationOther == "" {
 			app.donationOther = value
 		}

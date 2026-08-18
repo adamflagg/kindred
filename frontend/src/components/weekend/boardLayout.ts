@@ -404,7 +404,7 @@ export interface ConsentFlag {
    * because the disagreement is the thing worth a human look.
    */
   conflictCount: number
-  /** Ready to render beside the slot. Never PHI. */
+  /** Ready to render beside the slot. Never the medical narrative. */
   reason: string
 }
 

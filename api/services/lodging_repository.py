@@ -581,7 +581,14 @@ class LodgingRepository:
                     f"person.household_id = {household_cm_id} "
                     f'&& session.session_type = "family" && {ACTIVE_ENROLLED_FILTER}'
                 ),
-                "expand": "person",
+                # `session` alongside `person` (kindred#2420): the journey
+                # needs to know WHICH family session this attendee row is
+                # enrolled in, to compute that child's age at that specific
+                # session's start rather than at the year's earliest
+                # camp-wide family session -- a season runs several, months
+                # apart, and a household does not necessarily attend the
+                # first one.
+                "expand": "person,session",
                 "sort": STABLE_SORT,
             },
         )

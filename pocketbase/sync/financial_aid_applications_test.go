@@ -47,6 +47,79 @@ func TestFinancialAidApplicationsLoadFieldDefinitionsTrimsNames(t *testing.T) {
 	}
 }
 
+// TestFinancialAidApplicationsAdmitsWWFields is the regression test for
+// kindred#2436. The adult weekends' four WW- financial-aid fields
+// (WW-FA, WW-FA Amount, WW-Donation Amount, WW-Donation Amount Other) were
+// dropped on the floor: isFAFieldName only ever admitted "FA-" and a fixed CA-
+// allowlist, so loadFieldDefinitions never put a WW- field_definition ID into
+// the map, and loadPersonCustomValues' `if !ok { continue }` silently threw
+// every WW- answer away before mapFieldToApplication ever saw it. Measured
+// against the production snapshot: 63 WW-FA Amount answers in 2025, 24 in
+// 2026.
+//
+// These four fields are structurally identical (interest / awarded amount /
+// donation amount / donation-other) to the CA- fields that already share the
+// same four columns -- interest_expressed, amount_awarded,
+// donation_preference, donation_other -- none of which carry a "_summer" or
+// any other program suffix. Routing WW- into them is admission, not a grain
+// change: the column's meaning ("did this person express interest in
+// financial assistance, for whatever program they applied to") does not
+// change, and a WW- answer only ever lands on the row for the adult who filled
+// out that form.
+func TestFinancialAidApplicationsAdmitsWWFields(t *testing.T) {
+	t.Parallel()
+	app := newFieldDefsTestApp(t, map[int]string{
+		1: "WW-FA",
+		2: "WW-FA Amount",
+		3: "WW-Donation Amount",
+		4: "WW-Donation Amount Other",
+	})
+
+	s := NewFinancialAidApplicationsSync(app)
+	got, err := s.loadFieldDefinitions(context.Background())
+	if err != nil {
+		t.Fatalf("loadFieldDefinitions: %v", err)
+	}
+
+	want := map[string]bool{
+		"WW-FA":                    true,
+		"WW-FA Amount":             true,
+		"WW-Donation Amount":       true,
+		"WW-Donation Amount Other": true,
+	}
+	for _, name := range got {
+		if !want[name] {
+			continue // other tests' fixtures may share this app; only check ours are present
+		}
+		delete(want, name)
+	}
+	for missing := range want {
+		t.Errorf("loadFieldDefinitions did not admit WW- field %q -- kindred#2436 not fixed", missing)
+	}
+
+	fa := &faApplicationData{}
+	s.mapFieldToApplication(fa, "WW-FA", "Yes")
+	if !fa.interestExpressed {
+		t.Errorf("mapFieldToApplication(%q) did not set interestExpressed", "WW-FA")
+	}
+	s.mapFieldToApplication(fa, "WW-FA Amount", "$1,200")
+	if fa.amountAwarded != 1200 {
+		t.Errorf("mapFieldToApplication(%q) amountAwarded = %v, want 1200", "WW-FA Amount", fa.amountAwarded)
+	}
+
+	fa2 := &faApplicationData{}
+	s.mapFieldToApplication(fa2, "WW-Donation Amount", "$50")
+	if fa2.donationPreference != "$50" {
+		t.Errorf("mapFieldToApplication(%q) donationPreference = %q, want %q",
+			"WW-Donation Amount", fa2.donationPreference, "$50")
+	}
+	s.mapFieldToApplication(fa2, "WW-Donation Amount Other", "In honor of Liam Garcia")
+	if fa2.donationOther != "In honor of Liam Garcia" {
+		t.Errorf("mapFieldToApplication(%q) donationOther = %q, want %q",
+			"WW-Donation Amount Other", fa2.donationOther, "In honor of Liam Garcia")
+	}
+}
+
 // TestFinancialAidApplicationsSync_Name verifies the service name is correct
 func TestFinancialAidApplicationsSync_Name(t *testing.T) {
 	t.Parallel()

@@ -31,7 +31,7 @@ const statusCollection = "lodging_session_status"
 // A source scan rather than a behavioral assertion, because the property is
 // an ABSENCE — there is no call to intercept and no mock that can observe a
 // write that was never coded. Same shape as the export-registry guards in
-// lodging_phi_test.go: cheap, and it fails at the moment someone adds the
+// lodging_medical_narrative_test.go: cheap, and it fails at the moment someone adds the
 // reference rather than in production.
 func TestSyncNeverWritesTheStaffOwnedWeekendStatus(t *testing.T) {
 	t.Parallel()

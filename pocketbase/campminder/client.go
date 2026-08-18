@@ -53,6 +53,10 @@ type Client struct {
 
 	// authURL overrides the production auth endpoint. Non-empty only in tests.
 	authURL string
+
+	// apiBaseURL overrides baseURL for regular (non-auth) API requests made via
+	// makeRequest. Non-empty only in tests.
+	apiBaseURL string
 }
 
 // Config holds CampMinder configuration
@@ -315,7 +319,11 @@ func (c *Client) makeRequest(method, endpoint string, params map[string]string) 
 	}
 
 	// Build URL with parameters
-	fullURL := fmt.Sprintf("%s/%s", baseURL, strings.TrimPrefix(endpoint, "/"))
+	base := baseURL
+	if c.apiBaseURL != "" {
+		base = c.apiBaseURL
+	}
+	fullURL := fmt.Sprintf("%s/%s", base, strings.TrimPrefix(endpoint, "/"))
 
 	if len(params) > 0 && method == "GET" {
 		values := url.Values{}
@@ -369,32 +377,49 @@ func (c *Client) makeRequest(method, endpoint string, params map[string]string) 
 	return body, nil
 }
 
-// GetSessions retrieves all sessions for the configured season
+// sessionsPageSize is the page size used by GetSessions and GetSessionGroups.
+// Both methods loop across pages using TotalCount, so this bounds request
+// count rather than capping the result set (see #2437).
+const sessionsPageSize = 100
+
+// GetSessions retrieves all sessions for the configured season, paginating
+// as needed so that a TotalCount beyond one page is never silently dropped
+// (#2437).
 //
 //nolint:dupl // Similar pattern to GetSessionGroups, intentional for different endpoints
 func (c *Client) GetSessions() ([]map[string]any, error) {
-	params := map[string]string{
-		"clientid":   c.clientID,
-		"seasonid":   strconv.Itoa(c.seasonID),
-		"pagenumber": "1",
-		"pagesize":   "100",
+	var all []map[string]any
+
+	for page := 1; ; page++ {
+		params := map[string]string{
+			"clientid":   c.clientID,
+			"seasonid":   strconv.Itoa(c.seasonID),
+			"pagenumber": strconv.Itoa(page),
+			"pagesize":   strconv.Itoa(sessionsPageSize),
+		}
+
+		body, err := c.makeRequest("GET", "sessions", params)
+		if err != nil {
+			return nil, err
+		}
+
+		var response struct {
+			TotalCount int              `json:"TotalCount"`
+			Results    []map[string]any `json:"Results"`
+		}
+
+		if err := json.Unmarshal(body, &response); err != nil {
+			return nil, fmt.Errorf("decode sessions response: %w", err)
+		}
+
+		all = append(all, response.Results...)
+
+		if len(response.Results) == 0 || len(all) >= response.TotalCount {
+			break
+		}
 	}
 
-	body, err := c.makeRequest("GET", "sessions", params)
-	if err != nil {
-		return nil, err
-	}
-
-	var response struct {
-		TotalCount int              `json:"TotalCount"`
-		Results    []map[string]any `json:"Results"`
-	}
-
-	if err := json.Unmarshal(body, &response); err != nil {
-		return nil, fmt.Errorf("decode sessions response: %w", err)
-	}
-
-	return response.Results, nil
+	return all, nil
 }
 
 // GetAttendeesPage retrieves attendees with pagination
@@ -683,32 +708,44 @@ func (c *Client) parseRateLimitSeconds(body string) int {
 	return 60
 }
 
-// GetSessionGroups retrieves session groupings for the configured season
+// GetSessionGroups retrieves session groupings for the configured season,
+// paginating as needed so that a TotalCount beyond one page is never
+// silently dropped (#2437).
 //
 //nolint:dupl // Similar pattern to GetSessions, intentional for different endpoints
 func (c *Client) GetSessionGroups() ([]map[string]any, error) {
-	params := map[string]string{
-		"clientid":   c.clientID,
-		"seasonid":   strconv.Itoa(c.seasonID),
-		"pagenumber": "1",
-		"pagesize":   "100",
+	var all []map[string]any
+
+	for page := 1; ; page++ {
+		params := map[string]string{
+			"clientid":   c.clientID,
+			"seasonid":   strconv.Itoa(c.seasonID),
+			"pagenumber": strconv.Itoa(page),
+			"pagesize":   strconv.Itoa(sessionsPageSize),
+		}
+
+		body, err := c.makeRequest("GET", "sessions/groups", params)
+		if err != nil {
+			return nil, err
+		}
+
+		var response struct {
+			TotalCount int              `json:"TotalCount"`
+			Results    []map[string]any `json:"Results"`
+		}
+
+		if err := json.Unmarshal(body, &response); err != nil {
+			return nil, fmt.Errorf("decode session groups response: %w", err)
+		}
+
+		all = append(all, response.Results...)
+
+		if len(response.Results) == 0 || len(all) >= response.TotalCount {
+			break
+		}
 	}
 
-	body, err := c.makeRequest("GET", "sessions/groups", params)
-	if err != nil {
-		return nil, err
-	}
-
-	var response struct {
-		TotalCount int              `json:"TotalCount"`
-		Results    []map[string]any `json:"Results"`
-	}
-
-	if err := json.Unmarshal(body, &response); err != nil {
-		return nil, fmt.Errorf("decode session groups response: %w", err)
-	}
-
-	return response.Results, nil
+	return all, nil
 }
 
 // GetPersonTagDefinitions retrieves person tag definitions from CampMinder

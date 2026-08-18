@@ -1134,7 +1134,10 @@ class TestFetchHouseholdFamilyAttendees:
         assert "status_id = 2" in params["filter"]
         # No year predicate at all -- the sweep IS every year on file.
         assert "year =" not in params["filter"]
-        assert params["expand"] == "person"
+        # `session` alongside `person` (kindred#2420): the journey computes
+        # each child's age at THEIR OWN attended session's start, which
+        # needs that session's `start_date` in hand.
+        assert params["expand"] == "person,session"
 
     @pytest.mark.asyncio
     async def test_an_unresolvable_household_reads_nothing(self, repo: LodgingRepository, pb: MagicMock) -> None:
