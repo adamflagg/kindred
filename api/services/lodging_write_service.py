@@ -625,11 +625,23 @@ class LodgingWriteService:
         NO EMPTINESS CHECK AND NO RACE RECOVERY OF ITS OWN, following the
         `lodging_slot_merges` copy in `copy_scenario_to_scenario` rather than
         the placement loop above it. Both seed paths have already refused a
-        destination that holds placements, and a create that collides with
-        `idx_lodging_write_in_draft_unique` surfaces through
-        `pb_error_to_http` the same way a colliding merge create does. Adding a
-        second, differently-shaped guard here would give one seed two answers
-        to "this scenario is already populated".
+        destination that holds placements, and adding a second,
+        differently-shaped guard here would give one seed two answers to "this
+        scenario is already populated".
+
+        THE CREATE IS STILL CONVERTED, because "no recovery" is not "no
+        handler", and the difference is reachable rather than theoretical. That
+        up-front guard counts PLACEMENTS, so a weekend whose mirror holds
+        nothing copyable -- early season, before CampMinder has assigned any
+        lodging -- passes it on every attempt while the write-ins the first
+        seed wrote are already in the scenario, and the second seed collides on
+        `idx_lodging_write_in_draft_unique`. Nothing on this router catches
+        `ClientResponseError`, so one escaping here unconverted would reach
+        api/main.py's catch-all as a 500: a state the server understands
+        perfectly well, reported as one it does not. `pb_error_to_http` is what
+        every other write on this service raises through, and it keeps a
+        refusal a refusal (401/403 -> 403) rather than folding it into the
+        collision.
 
         NOT counted into `LodgingCopyResponse.copied`, again as merges are not:
         that number is the one a staff member reads as "the board is
@@ -643,21 +655,25 @@ class LodgingWriteService:
         sentence `set_availability` carries over its own shared payload.
         """
         for row in rows:
-            await self.repository.create_draft_write_in(
-                {
-                    "unit": getattr(row, "unit", None),
-                    "session": session_pb_id,
-                    "session_cm_id": session_cm_id,
-                    "year": year,
-                    "scenario": scenario,
-                    "occupant_name": str(getattr(row, "occupant_name", "") or ""),
-                    # The column keeps its own name here, not the API's
-                    # `reason`: this is a table-to-table copy and never passes
-                    # through the schema. `set_availability` and `_build_units`
-                    # remain the only two places the two names meet.
-                    "note": str(getattr(row, "note", "") or ""),
-                }
-            )
+            try:
+                await self.repository.create_draft_write_in(
+                    {
+                        "unit": getattr(row, "unit", None),
+                        "session": session_pb_id,
+                        "session_cm_id": session_cm_id,
+                        "year": year,
+                        "scenario": scenario,
+                        "occupant_name": str(getattr(row, "occupant_name", "") or ""),
+                        # The column keeps its own name here, not the API's
+                        # `reason`: this is a table-to-table copy and never
+                        # passes through the schema. `set_availability` and
+                        # `_build_units` remain the only two places the two
+                        # names meet.
+                        "note": str(getattr(row, "note", "") or ""),
+                    }
+                )
+            except ClientResponseError as exc:
+                raise pb_error_to_http(exc) from exc
         return len(rows)
 
     async def _clear_row(self, existing: Any | None, delete: Callable[[str], Awaitable[None]]) -> tuple[str, bool]:
@@ -765,8 +781,19 @@ class LodgingWriteService:
         right (owner, 2026-08-15: staff must be able to record a write-in on
         the real board, not only inside a modelling sandbox), so this writes
         the LIVE occupancy table with no scenario predicate, exactly as
-        `lodging_assignments` has none. The draft twin behind it stays dark
-        until PR 3 of kindred#2382.
+        `lodging_assignments` has none.
+
+        ⚠️ AND THAT IS NOW A GAP RATHER THAN A RESTING STATE. PR 3 of
+        kindred#2382 made a scenario's write-ins REPLACE the live ones on read,
+        so a staff member working inside a scenario who writes one here lands
+        it on the LIVE board and then does not see it on the board they made it
+        on. It cannot be closed from this side alone -- the frontend has to
+        send the `scenario` it already holds -- so PR 4 owns it:
+        `AvailabilityWriteRequest` gains an optional `scenario` (blank meaning
+        the live board, exactly as `SlotMergeRequest` spells it), the OCCUPANCY
+        half below routes to `find/create/update/delete_draft_write_in` when it
+        is set, and the ROLE half stays on `lodging_availability` whatever the
+        request says, because that half is not scenario-scoped.
 
         ONE FACT AT A TIME, and this is the promise the split has to keep
         deliberately. A single row could only ever hold one of the two, so

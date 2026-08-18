@@ -164,6 +164,17 @@ rule: it blocks legitimate work and teaches staff to ignore warnings.
   every other lodging draft table relies on — there is no hook and no
   client-side pre-delete loop.
 
+  **The READ replaces; the WRITE does not yet choose.** `PUT
+  /api/lodging/availability` takes no `scenario` and writes the live occupancy
+  table, which was right while reads fell through and is a gap now that they
+  replace: a staff member working inside a scenario who records a write-in
+  lands it on the live board and does not see it on the board they made it on.
+  Closing it needs the frontend to send the scenario it already holds, so it
+  belongs with the rest of kindred#2382's frontend work — `set_availability`'s
+  own docstring carries the shape of the fix. Until then, a write-in meant for
+  a scenario has to be recorded on the live board and picked up by seeding the
+  scenario from it.
+
   ### What a hold represents (owner ruling, 2026-08-09; kindred#2090, kindred#2087)
 
   A hold records **who is in a building** — chiefly non-rostered staff, a

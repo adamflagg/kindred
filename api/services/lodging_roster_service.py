@@ -479,7 +479,12 @@ def resolve_combined(*, default: bool, override: bool | None, session_override: 
 
 
 def written_in_unit_ids(write_ins: list[Any]) -> frozenset[str]:
-    """The unit ids `lodging_write_ins` names, for `write_in_covers` to walk.
+    """The unit ids the chosen write-in source names, for `write_in_covers` to walk.
+
+    WHICHEVER source the request resolved to -- `lodging_write_ins` on the live
+    board, `lodging_write_ins_draft` inside a scenario (kindred#2382). The
+    caller has already made that choice, and a scenario REPLACES, so this walks
+    exactly one scope's rows.
 
     Built ONCE per request and threaded, rather than re-derived inside the
     cover walk: `_build_units` already consumes the same rows on the way to the
@@ -1399,11 +1404,15 @@ class LodgingRosterService:
         # `lodging_write_ins` answers OCCUPANCY: somebody is in the room. That
         # is a modelling fact (not every write-in is non-rostered staff -- some
         # are paper registrations for families arriving with no children), so it
-        # got a table of its own with a draft twin waiting behind it.
+        # got a table of its own with a scenario-scoped draft twin beside it.
         #
-        # ONE layer each. There is still no scenario overlay: a scenario reads
-        # the same live rows it does today, and PR 3 of kindred#2382 is what
-        # gives the occupancy half its scenario dimension.
+        # ONE layer each, and still no overlay -- but since PR 3 of
+        # kindred#2382 the two halves SCOPE differently. The role rows are the
+        # same for every plan (`lodging_availability` has no scenario column).
+        # The write-in rows are whichever table the caller already chose, the
+        # live one or a scenario's own draft, and a scenario REPLACES -- so
+        # what arrives here is the whole occupancy answer for the scope that
+        # was asked for, and nothing below merges a second source into it.
         role_row_by_unit = {_s(row, "unit"): row for row in availability}
         write_in_row_by_unit = {_s(row, "unit"): row for row in write_ins}
 
@@ -1449,8 +1458,8 @@ class LodgingRosterService:
             # as a proxy for "is somebody in it" -- so a write-in that stopped
             # spelling itself here would silently return an occupied cabin to
             # the open count. Disentangling the two axes on the wire is PR 4 of
-            # kindred#2382; this PR moves the STORAGE and nothing a user can
-            # see.
+            # kindred#2382; until it lands this one field still answers both,
+            # whichever table the row came from.
             #
             # Occupancy OUTRANKS the role when a unit somehow carries both.
             # No writer produces that pair -- `set_availability` clears the

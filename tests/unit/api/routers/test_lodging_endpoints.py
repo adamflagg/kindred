@@ -1305,8 +1305,9 @@ class TestAvailabilityWrites:
         # field is `reason`. See AvailabilityWriteRequest.
         assert payload["note"] == "Burst pipe"
         # WEEKEND-scoped, and still no scenario: the live board is a scope in
-        # its own right, so this table has no scenario column at all. The
-        # draft twin behind it stays dark until PR 3 of kindred#2382.
+        # its own right, so this table has no scenario column at all. Routing
+        # this write to the draft twin when the caller names a scenario is
+        # PR 4's -- see `set_availability`, which carries the gap.
         assert "scenario" not in payload
         assert "state" not in payload
 

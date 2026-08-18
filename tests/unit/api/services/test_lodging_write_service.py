@@ -63,9 +63,16 @@ def _repo(**overrides: Any) -> MagicMock:
         "delete_write_in": None,
         "fetch_write_ins": [],
         # The scenario grain of the same occupancy fact (kindred#2382, PR 3).
-        # Both seed paths copy into it and a scenario write targets it, so
-        # every one of these has a caller -- an empty default is the shape a
+        # Two of these have callers: `fetch_draft_write_ins` (the scenario seed
+        # reads its source through it) and `create_draft_write_in` (both seed
+        # paths write through it). An empty default for the read is the shape a
         # weekend with no write-ins really has.
+        #
+        # `find_`, `update_` and `delete_draft_write_in` are still DARK, and
+        # deliberately so: `set_availability` takes no scenario and writes the
+        # LIVE table, which is the gap PR 4 closes. They are stubbed anyway so
+        # that a test which starts reaching one fails on its own assertion
+        # rather than on an un-awaitable bare MagicMock.
         "fetch_draft_write_ins": [],
         "find_draft_write_in": None,
         "create_draft_write_in": SimpleNamespace(id="draft_write_in_new"),
@@ -883,6 +890,44 @@ class TestCopyFromMirrorAlsoCopiesWriteIns:
         repo.update_write_in.assert_not_called()
         repo.delete_write_in.assert_not_called()
 
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("status", [400, 403])
+    async def test_a_failed_seed_create_keeps_its_upstream_status(
+        self, write_service: LodgingWriteService, repo: MagicMock, status: int
+    ) -> None:
+        """A collision on the draft's unique index is a 400, never a 500.
+
+        REACHABLE, not hypothetical. The up-front guard counts PLACEMENTS
+        only, so a weekend whose mirror carries nothing copyable -- early
+        season, before CampMinder has assigned any lodging -- passes that
+        check on every attempt while the write-ins it seeded are already
+        sitting in the scenario. A second `POST /api/lodging/placements/copy`
+        then collides on `idx_lodging_write_in_draft_unique`.
+
+        Nothing on this router catches `ClientResponseError`, so one that
+        escapes `_seed_write_ins` unconverted reaches api/main.py's catch-all
+        handler and the caller is told "Internal server error" for a state the
+        server understands perfectly well -- the same shape
+        `test_copying_into_an_unknown_weekend_is_404_not_500` refuses for the
+        weekend lookup. 403 is parametrised beside it because a refusal must
+        not be reported as a collision either; `pb_error_to_http` maps both
+        auth flavours to 403 for the reason
+        `TestARefusedWriteIsNeverReportedAsSuccess` spells out.
+        """
+        repo.fetch_write_ins = AsyncMock(return_value=[_write_in_row()])
+        repo.create_draft_write_in = AsyncMock(
+            side_effect=ClientResponseError(
+                "duplicate", status=status, data={}, url="", is_abort=False, original_error=None
+            )
+        )
+
+        with pytest.raises(HTTPException) as excinfo:
+            await write_service.copy_from_mirror(
+                PlacementCopyRequest(year=2026, session_cm_id=1000001, scenario="scn_1")
+            )
+
+        assert excinfo.value.status_code == status
+
 
 class TestCopyScenarioToScenarioAlsoCopiesWriteIns:
     """The source SCENARIO's own write-ins, for the reason the mirror seed copies the live ones.
@@ -943,6 +988,29 @@ class TestCopyScenarioToScenarioAlsoCopiesWriteIns:
         )
 
         repo.create_draft_write_in.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_a_failed_seed_create_keeps_its_upstream_status(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        """The mirror seed's guard, asserted on this path too.
+
+        One helper serves both seeds, so this is the assertion that catches a
+        later change converting only the path it was looking at.
+        """
+        repo.fetch_draft_write_ins = AsyncMock(return_value=[_write_in_row()])
+        repo.create_draft_write_in = AsyncMock(
+            side_effect=ClientResponseError(
+                "duplicate", status=400, data={}, url="", is_abort=False, original_error=None
+            )
+        )
+
+        with pytest.raises(HTTPException) as excinfo:
+            await write_service.copy_scenario_to_scenario(
+                year=2026, session_cm_id=1000001, from_scenario="scn_source", to_scenario="scn_dest"
+            )
+
+        assert excinfo.value.status_code == 400
 
 
 class TestARefusedWriteIsNeverReportedAsSuccess:
@@ -1732,8 +1800,12 @@ class TestAWriteInIsStoredAsAnOccupancyNotAnAvailability:
         # The boolean is what the split REMOVED. A write-in table row IS the
         # occupancy; a column restating it would be the conflation coming back.
         assert "family_available" not in data
-        # No scenario yet -- the draft twin stays dark until PR 3. Writing one
-        # here would put rows in a table nothing reads.
+        # NO SCENARIO ON THIS WRITE, still: `set_availability` takes none and
+        # writes the LIVE table, which is a scope in its own right. Since PR 3
+        # of kindred#2382 that is also a known GAP rather than a resting state
+        # -- a write-in made from inside a scenario lands here and that
+        # scenario's own read replaces it away -- and routing the occupancy
+        # half to the draft twin is PR 4's. See `set_availability`.
         assert "scenario" not in data
 
     @pytest.mark.asyncio
