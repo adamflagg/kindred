@@ -69,28 +69,39 @@ class HistoricalService:
         if session_cm_id is not None:
             session_name = await self._get_session_name_for_filtering(session_cm_id, years, session_types)
 
-        # Fetch attendees, persons, sessions, and cancellation counts for all years in parallel
+        # Fetch attendees, persons, sessions, and cancellation transitions for all years in parallel
         attendee_futures = [self.repo.fetch_attendees(y) for y in years]
         person_futures = [self.repo.fetch_persons(y) for y in years]
         session_futures = [self.repo.fetch_sessions(y, session_types=session_types) for y in years]
-        cancel_futures = [self._fetch_cancellation_count(y) for y in years]
+        cancel_futures = [self._fetch_cancellation_transitions(y) for y in years]
 
         all_attendees = await asyncio.gather(*attendee_futures)
         all_persons = await asyncio.gather(*person_futures)
         all_sessions = await asyncio.gather(*session_futures)
-        all_cancel_counts = await asyncio.gather(*cancel_futures)
+        all_cancel_transitions = await asyncio.gather(*cancel_futures)
 
         # Compute metrics for each year
         year_metrics_list: list[YearMetrics] = []
 
-        for year, attendees, persons, sessions, cancel_count in zip(
-            years, all_attendees, all_persons, all_sessions, all_cancel_counts, strict=True
+        for year, attendees, persons, sessions, cancel_transitions in zip(
+            years, all_attendees, all_persons, all_sessions, all_cancel_transitions, strict=True
         ):
             # Filter attendees by session type and/or session name
             filtered = self._filter_attendees(attendees, sessions, session_types, session_cm_id, session_name, duration)
 
             # Deduplicate by person_id
             person_ids = {pid for a in filtered if (pid := getattr(a, "person_id", None)) is not None}
+
+            # Cancellations use the SAME scope (session_types/session_cm_id/duration) and the
+            # same distinct-person grain as the enrolled denominator above -- see #2434, where
+            # an unscoped, row-counted numerator inflated the rendered rate ~2.4x.
+            filtered_cancellations = self._filter_attendees(
+                cancel_transitions, sessions, session_types, session_cm_id, session_name, duration
+            )
+            cancelled_person_ids = {
+                pid for t in filtered_cancellations if (pid := getattr(t, "person_id", None)) is not None
+            }
+            cancel_count = len(cancelled_person_ids)
 
             year_metric = self._compute_year_metrics(year, person_ids, persons, cancel_count)
             year_metrics_list.append(year_metric)
@@ -149,16 +160,20 @@ class HistoricalService:
 
         return None
 
-    async def _fetch_cancellation_count(self, year: int) -> int:
-        """Fetch total cancellation count for a year."""
-        if hasattr(self.repo, "fetch_cancellation_count"):
-            result: int = await self.repo.fetch_cancellation_count(year)
-            return result
+    async def _fetch_cancellation_transitions(self, year: int) -> list[Any]:
+        """Fetch raw cancellation status-transition rows for a year.
+
+        Returns the unfiltered rows so the caller can scope them by
+        session_type/session_cm_id/duration identically to the enrolled
+        denominator (see calculate_historical_trends), and dedupe by
+        person_id for the correct grain. No repository defines a
+        pre-aggregated ``fetch_cancellation_count`` -- see #2434.
+        """
         try:
-            transitions = await self.repo.fetch_status_transitions(year, ["cancelled", "withdrawn", "dismissed"])
-            return len(transitions)
+            result: list[Any] = await self.repo.fetch_status_transitions(year, ["cancelled", "withdrawn", "dismissed"])
+            return result
         except Exception:
-            return 0
+            return []
 
     def _compute_year_metrics(
         self, year: int, person_ids: set[int], persons: dict[int, Any], total_cancelled: int = 0
