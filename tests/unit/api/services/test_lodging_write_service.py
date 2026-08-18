@@ -61,6 +61,16 @@ def _repo(**overrides: Any) -> MagicMock:
         "create_write_in": SimpleNamespace(id="write_in_new"),
         "update_write_in": SimpleNamespace(id="write_in_existing"),
         "delete_write_in": None,
+        "fetch_write_ins": [],
+        # The scenario grain of the same occupancy fact (kindred#2382, PR 3).
+        # Both seed paths copy into it and a scenario write targets it, so
+        # every one of these has a caller -- an empty default is the shape a
+        # weekend with no write-ins really has.
+        "fetch_draft_write_ins": [],
+        "find_draft_write_in": None,
+        "create_draft_write_in": SimpleNamespace(id="draft_write_in_new"),
+        "update_draft_write_in": SimpleNamespace(id="draft_write_in_existing"),
+        "delete_draft_write_in": None,
         "find_slot_merge": None,
         "create_slot_merge": SimpleNamespace(id="merge_new"),
         "update_slot_merge": SimpleNamespace(id="merge_existing"),
@@ -543,16 +553,25 @@ class TestCopyFromMirror:
         repo.count_draft_assignments.assert_awaited_once_with(2026, 1000001, "scn_1")
 
     @pytest.mark.asyncio
-    async def test_availability_is_not_copied(self, write_service: LodgingWriteService, repo: MagicMock) -> None:
-        """Availability stayed an OVERLAY (kindred#1974 changed placements
-        only), so a scenario already sees the live reservations as its base.
-        Copying them would pin the scenario against a later change to the live
-        plan -- the same argument that makes `state: null` a delete."""
+    async def test_the_staff_to_family_role_override_is_not_copied(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        """`lodging_availability` holds only the ROLE half now, and it is NOT
+        scenario-scoped (owner ruling, kindred#2382: "that's more of a known
+        'were moving staff to X for weekend Y'"). It has carried no scenario
+        column since 1500000135, so every scenario already reads the same rows
+        and a copy would be a row duplicating itself.
+
+        The OCCUPANCY half of that old boolean goes the other way and IS
+        copied -- see TestCopyFromMirrorAlsoCopiesWriteIns. This test is what
+        keeps the two halves from being conflated back together by a seed."""
         repo.fetch_assignments = AsyncMock(return_value=[_mirror_row()])
+        repo.fetch_write_ins = AsyncMock(return_value=[_write_in_row()])
 
         await write_service.copy_from_mirror(PlacementCopyRequest(year=2026, session_cm_id=1000001, scenario="scn_1"))
 
         repo.create_availability.assert_not_called()
+        repo.update_availability.assert_not_called()
 
 
 def _draft_row(**overrides: Any) -> SimpleNamespace:
@@ -770,6 +789,160 @@ class TestCopyScenarioToScenarioAlsoCopiesSlotMerges:
         )
 
         repo.create_slot_merge.assert_not_called()
+
+
+def _write_in_row(**overrides: Any) -> SimpleNamespace:
+    """One occupancy row, as `fetch_write_ins` / `fetch_draft_write_ins` return it.
+
+    Fictional occupant throughout -- a production write-in names a real family
+    or a real staff member (CLAUDE.md section 4).
+    """
+    fields: dict[str, Any] = {
+        "id": "write_in_1",
+        "unit": "u1",
+        "occupant_name": "Olivia Chen",
+        "note": "Paper registration",
+    }
+    fields.update(overrides)
+    return SimpleNamespace(**fields)
+
+
+class TestCopyFromMirrorAlsoCopiesWriteIns:
+    """A fresh scenario inherits the LIVE board's write-ins. Owner ruling, 2026-08-16.
+
+    THE REASON IS SAFETY, not convenience. Once a scenario's write-ins REPLACE
+    the live ones rather than falling through (kindred#2382 PR 3), a scenario
+    seeded without them starts with every written-into cabin looking OPEN --
+    and kindred#2247's placement gate reads exactly that, so it would let a
+    family be dropped into a room the live board records as occupied. The split
+    creates that failure mode; the copy is what closes it.
+
+    Shaped after the `lodging_slot_merges` copy in `copy_scenario_to_scenario`:
+    read the source tier, create the destination's own rows, no emptiness check
+    of its own and no separate count in the response.
+    """
+
+    @pytest.mark.asyncio
+    async def test_each_live_write_in_becomes_a_draft_row_in_the_scenario(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        repo.fetch_write_ins = AsyncMock(return_value=[_write_in_row()])
+
+        await write_service.copy_from_mirror(PlacementCopyRequest(year=2026, session_cm_id=1000001, scenario="scn_1"))
+
+        repo.fetch_write_ins.assert_awaited_once_with(2026, 1000001)
+        repo.create_draft_write_in.assert_awaited_once()
+        data = repo.create_draft_write_in.call_args[0][0]
+        assert data["unit"] == "u1"
+        assert data["scenario"] == "scn_1"
+        assert data["occupant_name"] == "Olivia Chen"
+        assert data["note"] == "Paper registration"
+        assert data["session"] == "sess_1"
+        assert data["session_cm_id"] == 1000001
+        assert data["year"] == 2026
+
+    @pytest.mark.asyncio
+    async def test_every_live_write_in_is_copied_not_only_the_first(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        repo.fetch_write_ins = AsyncMock(
+            return_value=[
+                _write_in_row(),
+                _write_in_row(id="write_in_2", unit="u2", occupant_name="Ava Martinez", note=""),
+            ]
+        )
+
+        await write_service.copy_from_mirror(PlacementCopyRequest(year=2026, session_cm_id=1000001, scenario="scn_1"))
+
+        assert [c[0][0]["unit"] for c in repo.create_draft_write_in.call_args_list] == ["u1", "u2"]
+
+    @pytest.mark.asyncio
+    async def test_no_live_write_ins_means_no_create_calls(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        await write_service.copy_from_mirror(PlacementCopyRequest(year=2026, session_cm_id=1000001, scenario="scn_1"))
+
+        repo.create_draft_write_in.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_the_live_write_in_table_is_not_written(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        """A seed writes the SCENARIO, never the board it copied from.
+
+        `create_write_in` is the live table's create. Reaching it here would
+        mean a scenario seed had edited the live board -- the direction
+        `copy_from_mirror`'s own docstring says the line permits only one way
+        round.
+        """
+        repo.fetch_write_ins = AsyncMock(return_value=[_write_in_row()])
+
+        await write_service.copy_from_mirror(PlacementCopyRequest(year=2026, session_cm_id=1000001, scenario="scn_1"))
+
+        repo.create_write_in.assert_not_called()
+        repo.update_write_in.assert_not_called()
+        repo.delete_write_in.assert_not_called()
+
+
+class TestCopyScenarioToScenarioAlsoCopiesWriteIns:
+    """The source SCENARIO's own write-ins, for the reason the mirror seed copies the live ones.
+
+    `copy_from_mirror` seeds from the live board, so it reads
+    `fetch_write_ins`; this seeds from another scenario, so it reads that
+    scenario's own draft rows -- exactly the split the placement copy already
+    makes between `fetch_assignments` and `fetch_draft_assignments`.
+    "Copy from Option A" that dropped Option A's write-ins would not copy what
+    Option A's board shows.
+    """
+
+    @pytest.mark.asyncio
+    async def test_the_source_scenarios_write_ins_are_copied_into_the_destination(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        repo.fetch_draft_write_ins = AsyncMock(return_value=[_write_in_row()])
+
+        await write_service.copy_scenario_to_scenario(
+            year=2026, session_cm_id=1000001, from_scenario="scn_source", to_scenario="scn_dest"
+        )
+
+        repo.fetch_draft_write_ins.assert_awaited_once_with(2026, 1000001, "scn_source")
+        repo.create_draft_write_in.assert_awaited_once()
+        data = repo.create_draft_write_in.call_args[0][0]
+        assert data["unit"] == "u1"
+        assert data["scenario"] == "scn_dest"
+        assert data["occupant_name"] == "Olivia Chen"
+        assert data["note"] == "Paper registration"
+        assert data["session"] == "sess_1"
+        assert data["session_cm_id"] == 1000001
+        assert data["year"] == 2026
+
+    @pytest.mark.asyncio
+    async def test_the_live_board_is_not_the_source_here(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        """Reading `fetch_write_ins` would seed the destination from the LIVE
+        board rather than from the scenario the caller named -- a copy that
+        silently ignores the source, and the one mistake sharing a helper
+        between the two seed paths would make."""
+        repo.fetch_write_ins = AsyncMock(return_value=[_write_in_row(unit="u9", occupant_name="Ava Martinez")])
+        repo.fetch_draft_write_ins = AsyncMock(return_value=[_write_in_row()])
+
+        await write_service.copy_scenario_to_scenario(
+            year=2026, session_cm_id=1000001, from_scenario="scn_source", to_scenario="scn_dest"
+        )
+
+        assert repo.fetch_write_ins.await_count == 0
+        assert [c[0][0]["unit"] for c in repo.create_draft_write_in.call_args_list] == ["u1"]
+
+    @pytest.mark.asyncio
+    async def test_no_source_write_ins_means_no_create_calls(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        await write_service.copy_scenario_to_scenario(
+            year=2026, session_cm_id=1000001, from_scenario="scn_source", to_scenario="scn_dest"
+        )
+
+        repo.create_draft_write_in.assert_not_called()
 
 
 class TestARefusedWriteIsNeverReportedAsSuccess:

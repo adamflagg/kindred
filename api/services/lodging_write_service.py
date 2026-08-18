@@ -310,13 +310,23 @@ class LodgingWriteService:
         scenario spans weekends, and placements in one must not refuse a seed
         of another.
 
-        Availability is NOT copied, and since 1500000135 there is nothing it
-        could mean to copy it: the table has no scenario column, so every
-        scenario reads the same rows and a copy would be a row duplicating
-        itself. The earlier reason -- that availability overlaid the live rows,
-        so copying them would pin the scenario against a later change -- has
-        become the stronger one that a scenario cannot disagree about
-        availability at all.
+        THE STAFF<->FAMILY ROLE OVERRIDE IS NOT COPIED, and since 1500000135
+        there is nothing it could mean to copy it: `lodging_availability` has
+        no scenario column, so every scenario reads the same rows and a copy
+        would be a row duplicating itself. The owner ruled that half is not
+        scenario-scoped -- "that's more of a known 'were moving staff to X for
+        weekend Y'" -- so there is nothing there for a scenario to disagree
+        about.
+
+        WRITE-INS ARE COPIED, and that is the opposite call on the other half
+        of the boolean 1500000161 split apart (owner ruling, kindred#2382,
+        2026-08-16). Once a scenario's write-ins REPLACE the live ones rather
+        than falling through, a scenario seeded without them starts with every
+        written-into cabin looking OPEN -- and kindred#2247's placement gate
+        reads exactly that, so it would let a family be dropped into a room the
+        live board records as occupied. That failure mode is one this split
+        CREATES rather than inherits, and this copy is what closes it. See
+        `_seed_write_ins`.
 
         A mirror row is SKIPPED, not failed on, when it names no party grain
         (it would key on nothing, dedupe against nothing, and be exactly the
@@ -395,12 +405,24 @@ class LodgingWriteService:
                 raise await self._seed_failure(exc, request, copied) from exc
             copied += 1
 
+        # The LIVE board's write-ins, because the live board is what this seed
+        # copies FROM. `copy_scenario_to_scenario` reads the source scenario's
+        # own draft rows instead, the same split the placement read above makes
+        # between `fetch_assignments` and `fetch_draft_assignments`.
+        write_ins = await self._seed_write_ins(
+            rows=await self.repository.fetch_write_ins(request.year, request.session_cm_id),
+            session_pb_id=session_pb_id,
+            session_cm_id=request.session_cm_id,
+            year=request.year,
+            scenario=request.scenario,
+        )
+
         # Inlined into the message, not `extra={}` -- see the identical note
         # on `copy_scenario_to_scenario`'s own logger.info call below.
         logger.info(
             f"Seeded lodging scenario from the CampMinder mirror: year={request.year} "
             f"session_cm_id={request.session_cm_id} scenario={request.scenario} "
-            f"copied={copied} skipped={skipped}"
+            f"copied={copied} skipped={skipped} write_ins={write_ins}"
         )
         return LodgingCopyResponse(copied=copied, skipped=skipped)
 
@@ -551,6 +573,22 @@ class LodgingWriteService:
                 }
             )
 
+        # Write-ins: the SOURCE SCENARIO's own, not the live board's. Unlike
+        # `fetch_slot_merges` above there is no weekend-level tier to filter
+        # out -- `fetch_draft_write_ins` returns exactly one scenario's rows --
+        # and unlike the role override there IS something for two scenarios to
+        # disagree about, which is the whole of kindred#2382. Dropping this
+        # would make "copy from Option A" produce a board showing fewer
+        # occupied rooms than Option A does, and kindred#2247's placement gate
+        # would then offer those rooms.
+        write_ins = await self._seed_write_ins(
+            rows=await self.repository.fetch_draft_write_ins(year, session_cm_id, from_scenario),
+            session_pb_id=session_pb_id,
+            session_cm_id=session_cm_id,
+            year=year,
+            scenario=to_scenario,
+        )
+
         # Inlined into the message, not `extra={}` -- `extra` is silently
         # dropped at format time (bunking/logging_config.py's
         # ISO8601Formatter.format only ever renders record.getMessage()),
@@ -558,9 +596,69 @@ class LodgingWriteService:
         # few hundred lines above.
         logger.info(
             f"Copied a lodging scenario into a fresh one: year={year} session_cm_id={session_cm_id} "
-            f"from_scenario={from_scenario} to_scenario={to_scenario} copied={copied} skipped={skipped}"
+            f"from_scenario={from_scenario} to_scenario={to_scenario} copied={copied} skipped={skipped} "
+            f"write_ins={write_ins}"
         )
         return LodgingCopyResponse(copied=copied, skipped=skipped)
+
+    async def _seed_write_ins(
+        self, *, rows: list[Any], session_pb_id: str, session_cm_id: int, year: int, scenario: str
+    ) -> int:
+        """Copy one weekend's write-ins into a scenario, and say how many.
+
+        ONE HELPER, TWO SEED PATHS, and the only thing that differs between
+        them is which read produced `rows`: `copy_from_mirror` hands over the
+        LIVE board's (`fetch_write_ins`), `copy_scenario_to_scenario` the
+        SOURCE scenario's own (`fetch_draft_write_ins`). Everything after that
+        is identical, and two copies of it is two chances for one seed path to
+        start writing a different row shape than the other.
+
+        WHY A SEED COPIES THESE AT ALL is the owner's ruling of 2026-08-16, and
+        it is a safety argument rather than a convenience one. A scenario's
+        write-ins REPLACE the live ones on read (kindred#2382, matching
+        kindred#1974's no-fall-through rule for placements), so a scenario
+        seeded without them shows every written-into cabin as OPEN --
+        kindred#2247's placement gate reads exactly that field, so it would
+        offer a room the live board records as occupied. The split creates that
+        failure mode; this copy is what closes it.
+
+        NO EMPTINESS CHECK AND NO RACE RECOVERY OF ITS OWN, following the
+        `lodging_slot_merges` copy in `copy_scenario_to_scenario` rather than
+        the placement loop above it. Both seed paths have already refused a
+        destination that holds placements, and a create that collides with
+        `idx_lodging_write_in_draft_unique` surfaces through
+        `pb_error_to_http` the same way a colliding merge create does. Adding a
+        second, differently-shaped guard here would give one seed two answers
+        to "this scenario is already populated".
+
+        NOT counted into `LodgingCopyResponse.copied`, again as merges are not:
+        that number is the one a staff member reads as "the board is
+        populated", and it means placements. The count comes back for the log
+        line, where it is the difference between a silent no-op and a visible
+        one.
+
+        `family_available` is deliberately absent from the payload. On the
+        occupancy tables the ROW is the fact; a column restating it would be
+        the conflation kindred#2382 split apart growing back -- the same
+        sentence `set_availability` carries over its own shared payload.
+        """
+        for row in rows:
+            await self.repository.create_draft_write_in(
+                {
+                    "unit": getattr(row, "unit", None),
+                    "session": session_pb_id,
+                    "session_cm_id": session_cm_id,
+                    "year": year,
+                    "scenario": scenario,
+                    "occupant_name": str(getattr(row, "occupant_name", "") or ""),
+                    # The column keeps its own name here, not the API's
+                    # `reason`: this is a table-to-table copy and never passes
+                    # through the schema. `set_availability` and `_build_units`
+                    # remain the only two places the two names meet.
+                    "note": str(getattr(row, "note", "") or ""),
+                }
+            )
+        return len(rows)
 
     async def _clear_row(self, existing: Any | None, delete: Callable[[str], Awaitable[None]]) -> tuple[str, bool]:
         """Drop one row if it is there, and say what happened.

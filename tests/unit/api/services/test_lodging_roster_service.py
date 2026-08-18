@@ -110,9 +110,10 @@ def _repo(**overrides: Any) -> MagicMock:
         # kindred#2382. Empty by default -- most weekends have no write-in at
         # all, and that must be the shape the board sees.
         "fetch_write_ins": [],
-        # The scenario half of the same split. Dark: nothing reads it until
-        # PR 3 of kindred#2382 gives write-ins their scenario dimension, and
-        # `test_no_scenario_dimension_is_read_yet` is what pins that.
+        # The scenario half of the same split (kindred#2382, PR 3). A request
+        # naming a scenario reads THIS instead of `fetch_write_ins` and
+        # REPLACES it -- see TestAScenariosWriteInsReplaceTheLiveOnes. Empty by
+        # default for the same reason its live sibling is.
         "fetch_draft_write_ins": [],
         "fetch_assignments": [],
         # The scenario layer. Only read when a scenario is asked for, which is
@@ -4463,9 +4464,11 @@ class TestWriteInsResolveFromTheirOwnTable:
         await LodgingRosterService(repo).build_summary(2026)
 
         assert repo.fetch_write_ins.await_args_list == [call(2026, 1000001), call(2026, 1000002)]
-        # And no scenario dimension here either -- the same line
-        # `test_no_scenario_dimension_is_read_yet` holds for the roster. Two
-        # TaskGroups, two places to get it wrong.
+        # The LIVE table, and only it, because this sweep names no scenario --
+        # the same line `test_the_mirror_reads_the_live_table_and_never_the_draft`
+        # holds for the roster. Two TaskGroups, two places to get it wrong;
+        # `test_the_lander_reads_each_weekends_draft_write_ins_in_a_scenario`
+        # is this assertion's mirror image.
         assert repo.fetch_draft_write_ins.await_count == 0
 
     @pytest.mark.asyncio
@@ -4507,15 +4510,14 @@ class TestWriteInsResolveFromTheirOwnTable:
         assert counts == roster.counts
 
     @pytest.mark.asyncio
-    async def test_no_scenario_dimension_is_read_yet(self) -> None:
-        """PR 2 moves the rows; PR 3 gives them a scenario.
+    async def test_the_mirror_reads_the_live_table_and_never_the_draft(self) -> None:
+        """No scenario means the LIVE board, which is a scope in its own right.
 
-        The draft table exists (1500000161) and its repository read exists, but
-        nothing may call it yet: the draft is EMPTY, and a scenario's write-ins
-        REPLACE the live ones rather than overlaying them, so reading it now
-        would empty every write-in off every scenario board. Behavioural parity
-        is the acceptance criterion for this PR, and this is the assertion that
-        holds the line.
+        The other side of `TestAScenariosWriteInsReplaceTheLiveOnes` below: a
+        request naming no scenario must not touch the draft table at all, the
+        same way it reads `fetch_assignments` rather than
+        `fetch_draft_assignments`. Reading both and merging is the overlay
+        kindred#1974 deleted for placements and this table never had.
         """
         repo = _repo(
             fetch_session=FAMILY_SESSION,
@@ -4523,11 +4525,10 @@ class TestWriteInsResolveFromTheirOwnTable:
             fetch_write_ins=[_rec(unit="u1", occupant_name="Liam Garcia", note="")],
         )
 
-        roster = await LodgingRosterService(repo).build_roster(2026, 1000001, scenario="scn_1")
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
 
-        assert repo.fetch_draft_write_ins.await_count == 0
         repo.fetch_write_ins.assert_awaited_once_with(2026, 1000001)
-        # And the live rows are what a scenario sees, unchanged from today.
+        assert repo.fetch_draft_write_ins.await_count == 0
         assert roster.units[0].write_in is not None
 
     @pytest.mark.asyncio
@@ -4575,3 +4576,227 @@ class TestWriteInsResolveFromTheirOwnTable:
         assert by_code["house-a"].write_in.unit_id == "u1"
         assert by_code["house-a"].write_in.occupant_name == "Liam Garcia"
         assert by_code["house-a"].write_in.note == "Back Monday"
+
+
+class TestAScenariosWriteInsReplaceTheLiveOnes:
+    """kindred#2382, PR 3 of 4 -- the occupancy half gains its scenario dimension.
+
+    REPLACE, NOT OVERLAY, and that is the whole rule. A request naming a
+    scenario reads `lodging_write_ins_draft` and does not read the live table
+    at all, exactly as kindred#1974 made a scenario read
+    `lodging_assignments_draft` instead of `lodging_assignments`. A unit with
+    no draft row holds NO write-in in that scenario, whatever the live board
+    says -- the live rows are not consulted, and are not even fetched.
+
+    Two staff members can therefore model the same paper-registered family into
+    two different cabins, which is the requirement the owner stated on
+    2026-08-15 and the thing a single shared table could not express.
+
+    The seed is what stops a fresh scenario losing the live board's write-ins:
+    `copy_from_mirror` and `copy_scenario_to_scenario` both copy them (owner
+    ruling, 2026-08-16). That is asserted in test_lodging_write_service.py; the
+    reason it is not asserted by rendering the live rows through the gaps HERE
+    is that doing so is precisely the fall-through this class forbids.
+
+    Fictional data throughout.
+    """
+
+    @pytest.mark.asyncio
+    async def test_a_scenario_reads_the_draft_table_and_not_the_live_one(self) -> None:
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[_unit("u1", "ridge-a", "Ridge A", sleeps=5)],
+            fetch_write_ins=[_rec(unit="u1", occupant_name="Liam Garcia", note="")],
+        )
+
+        await LodgingRosterService(repo).build_roster(2026, 1000001, scenario="scn_1")
+
+        repo.fetch_draft_write_ins.assert_awaited_once_with(2026, 1000001, "scn_1")
+        assert repo.fetch_write_ins.await_count == 0
+
+    @pytest.mark.asyncio
+    async def test_a_live_write_in_does_not_fall_through_into_a_scenario(self) -> None:
+        """The live board holds a write-in; the scenario holds none. The scenario is EMPTY.
+
+        This is the assertion a merge implementation would fail, and the one an
+        overlay was always going to get wrong in the safe-looking direction:
+        showing the live occupancy in a scenario that never asked for it is
+        exactly the shared-table behaviour kindred#2382 exists to end.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[_unit("u1", "ridge-a", "Ridge A", sleeps=5)],
+            fetch_write_ins=[_rec(unit="u1", occupant_name="Liam Garcia", note="Back Monday")],
+            fetch_draft_write_ins=[],
+        )
+
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001, scenario="scn_1")
+
+        unit = roster.units[0]
+        assert unit.write_in is None
+        assert unit.family_available_override is None
+        assert unit.is_family_available is True
+        assert unit.occupant_name == ""
+
+    @pytest.mark.asyncio
+    async def test_a_scenarios_own_write_in_closes_the_unit_and_names_its_occupant(self) -> None:
+        """Every field the card reads arrives from the draft row, unchanged.
+
+        The positive control for the two assertions above: without it, a
+        service that read the draft table and then dropped the rows on the
+        floor would pass both.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[_unit("u1", "ridge-a", "Ridge A", sleeps=5)],
+            fetch_write_ins=[],
+            fetch_draft_write_ins=[_rec(unit="u1", occupant_name="Olivia Chen", note="Paper registration")],
+        )
+
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001, scenario="scn_1")
+
+        unit = roster.units[0]
+        assert unit.family_available_override is False
+        assert unit.is_family_available is False
+        assert unit.occupant_name == "Olivia Chen"
+        assert unit.reason == "Paper registration"
+        assert unit.write_in is not None
+        assert unit.write_in.unit_id == "u1"
+
+    @pytest.mark.asyncio
+    async def test_two_scenarios_can_write_the_same_family_into_different_cabins(self) -> None:
+        """The requirement in one test.
+
+        Owner, 2026-08-15: "we do unfortunately need write in to be scenario
+        scoped, not only session scoped, because not all write ins would be for
+        staff, some are paper registrations for families coming with no kids."
+        A shared table could not express this at all -- the second write would
+        collide with the first on `idx_lodging_write_in_unique`.
+        """
+        units = [
+            _unit("u1", "ridge-a", "Ridge A", sleeps=5),
+            _unit("u2", "ridge-b", "Ridge B", sleeps=4),
+        ]
+        service_a = LodgingRosterService(
+            _repo(
+                fetch_session=FAMILY_SESSION,
+                fetch_units=units,
+                fetch_draft_write_ins=[_rec(unit="u1", occupant_name="Olivia Chen", note="")],
+            )
+        )
+        service_b = LodgingRosterService(
+            _repo(
+                fetch_session=FAMILY_SESSION,
+                fetch_units=units,
+                fetch_draft_write_ins=[_rec(unit="u2", occupant_name="Olivia Chen", note="")],
+            )
+        )
+
+        roster_a = await service_a.build_roster(2026, 1000001, scenario="scn_a")
+        roster_b = await service_b.build_roster(2026, 1000001, scenario="scn_b")
+
+        assert {u.code: u.occupant_name for u in roster_a.units} == {"ridge-a": "Olivia Chen", "ridge-b": ""}
+        assert {u.code: u.occupant_name for u in roster_b.units} == {"ridge-a": "", "ridge-b": "Olivia Chen"}
+
+    @pytest.mark.asyncio
+    async def test_a_scenarios_write_in_still_covers_the_rooms_beneath_a_building(self) -> None:
+        """The cover walk takes the scenario's rows, not the live ones.
+
+        `_resolve_write_in_covers` is fed from whichever source the request
+        chose, so a scenario that writes into a building closes the rooms under
+        it in THAT scenario. Wiring the fetch and leaving the cover walk on the
+        live list is the half-fix this catches.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("u1", "house", "House", is_container=True, default_combined=True),
+                _unit("u2", "house-a", "House A", sleeps=4, parent_unit="u1"),
+            ],
+            fetch_write_ins=[],
+            fetch_draft_write_ins=[_rec(unit="u1", occupant_name="Olivia Chen", note="Paper registration")],
+        )
+
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001, scenario="scn_1")
+
+        by_code = {u.code: u for u in roster.units}
+        assert by_code["house-a"].write_in is not None
+        assert by_code["house-a"].write_in.unit_id == "u1"
+        assert by_code["house-a"].write_in.occupant_name == "Olivia Chen"
+
+    @pytest.mark.asyncio
+    async def test_the_role_override_is_still_read_from_the_live_table_in_a_scenario(self) -> None:
+        """The ROLE half does NOT gain a scenario dimension, by owner ruling.
+
+        "staff vs family_available is not scenario scoped, no, that's more of a
+        known 'were moving staff to X for weekend Y'" -- so a release is read
+        from `lodging_availability` with no scenario predicate whether or not
+        the request names one. Scoping this half too is the mistake
+        1500000135's reasoning already argued against.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[_unit("u1", "le-shack", "Le Shack", sleeps=4, inventory_class="staff_default")],
+            fetch_availability=[_rec(unit="u1", family_available=True, occupant_name="", note="Director away")],
+        )
+
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001, scenario="scn_1")
+
+        repo.fetch_availability.assert_awaited_once_with(2026, 1000001)
+        assert roster.units[0].family_available_override is True
+        assert roster.units[0].reason == "Director away"
+
+    @pytest.mark.asyncio
+    async def test_the_lander_reads_each_weekends_draft_write_ins_in_a_scenario(self) -> None:
+        """`build_summary` carries its OWN TaskGroup -- two places to get this wrong.
+
+        The mirror image of the assertion in
+        `test_the_lander_reads_the_write_in_table_once_per_weekend`: wiring
+        `build_roster` and leaving the lander would put a scenario's write-in
+        on the board while the weekend card linking to it still counted from
+        the live table.
+
+        THE ARGUMENTS ARE PINNED, not only the count: the one `year`, each
+        weekend's OWN CampMinder id, and the one scenario for the sweep.
+        """
+        repo = _repo(fetch_weekend_sessions=[FAMILY_SESSION, ADULT_SESSION])
+
+        await LodgingRosterService(repo).build_summary(2026, scenario="scn_1")
+
+        assert repo.fetch_draft_write_ins.await_args_list == [
+            call(2026, 1000001, "scn_1"),
+            call(2026, 1000002, "scn_1"),
+        ]
+        assert repo.fetch_write_ins.await_count == 0
+
+    @pytest.mark.asyncio
+    async def test_the_lander_counts_a_scenarios_write_in_as_reserved(self) -> None:
+        """The rows the lander fetches have to REACH `_build_units`.
+
+        Awaiting `fetch_draft_write_ins` and then dropping its result on the
+        floor is a half-fix a call-count assertion cannot see -- the same trap
+        `test_the_lander_counts_a_written_into_cabin_as_reserved` names for the
+        live table. Pinned against `build_roster`'s own counts, because the two
+        endpoints link to each other and must never disagree about one weekend.
+        """
+        repo = _repo(
+            fetch_weekend_sessions=[FAMILY_SESSION],
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("u1", "ridge-a", "Ridge A", sleeps=5),
+                _unit("u2", "ridge-b", "Ridge B", sleeps=4),
+            ],
+            fetch_write_ins=[],
+            fetch_draft_write_ins=[_rec(unit="u1", occupant_name="Olivia Chen", note="")],
+        )
+        service = LodgingRosterService(repo)
+
+        summary = await service.build_summary(2026, scenario="scn_1")
+        roster = await service.build_roster(2026, 1000001, scenario="scn_1")
+
+        counts = summary.weekends[0].counts
+        assert counts.units_reserved == 1
+        assert counts.units_family_available == 1
+        # The written-into cabin's five beds are NOT on offer; only Ridge B's.
+        assert counts.beds_family_available == 4
+        assert counts == roster.counts
