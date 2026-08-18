@@ -1756,27 +1756,28 @@ func (s *FamilyCampDerivedSync) processMedical(personValues []customValueEntry) 
 			householdPBID: householdID,
 		}
 
-		// CPAP info. The two Camper-partition names are generations of the SAME
-		// question, so they collapse to one answer; Adult-CPAP is a DIFFERENT
-		// PERSON and is therefore additive.
+		// CPAP info, unioned across all three fields and deduplicated.
 		//
-		// That split has to match the flag logic in processRegistrations, which
-		// ORs across all three. A single first-wins loop over all three -- what
-		// this was -- meant a household with a camper "outlet needed" answer and
-		// an adult "bathroom ... needed" answer raised BOTH flags while the
-		// medical record kept only the camper's sentence, leaving
-		// needs_private_bathroom with nothing behind it in the one place staff
-		// can look for the reason.
+		// The union is what has to match the flag logic in processRegistrations,
+		// which ORs across all three: any answer that can raise needs_power or
+		// needs_private_bathroom has to be readable in the one place staff can
+		// look for the reason. Dedup is what keeps the union honest -- the two
+		// Camper-partition names are generations of the SAME question, and
+		// answering both must not print the sentence twice.
+		//
+		// It replaces a first-non-empty-wins loop over the two camper names,
+		// which stopped at whichever had an answer: a "No" on Family Camp-CPAP
+		// hid a disclosure on FAM CAMP-CPAP outright, in 27 households in 2025
+		// and 1 in 2026 on the production snapshot, each of them carrying a
+		// housing flag their cpap_info then denied. Taking one field's answer as
+		// the household's is the same first-wins mistake medicalAnswers exists
+		// to end, one level up.
 		cpapParts := []string{}
-		for _, key := range []string{fieldFamilyCampCPAP, fieldFamCampCPAP} {
-			if p := fields.parts(key); len(p) > 0 {
-				cpapParts = append(cpapParts, p...)
-				break
-			}
-		}
-		for _, v := range fields.parts(fieldAdultCPAP) {
-			if !slices.Contains(cpapParts, v) {
-				cpapParts = append(cpapParts, v)
+		for _, key := range []string{fieldFamilyCampCPAP, fieldFamCampCPAP, fieldAdultCPAP} {
+			for _, v := range fields.parts(key) {
+				if !slices.Contains(cpapParts, v) {
+					cpapParts = append(cpapParts, v)
+				}
 			}
 		}
 		cpapParts = cpapGateParts(cpapParts)

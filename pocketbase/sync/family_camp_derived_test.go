@@ -3359,9 +3359,15 @@ var medicalColumnMaxPattern = regexp.MustCompile(`name:\s*["']([a-z_]+)["'][^}]*
 // rather than a sentence -- so the map has to be checked against the schema and
 // not against itself.
 //
-// Every migration is scanned, in file-number order, so the LAST declaration
-// wins: a later migration that changes a cap is what this has to catch. Files
-// that never mention family_camp_medical are skipped, because
+// EVERY declaration found must agree with the map, rather than the last one
+// winning. A regex over JavaScript cannot tell which collection or which
+// direction of migrate() a field literal sits in, so last-wins would let a
+// same-named field on another collection, or a down() block, quietly stand in
+// for a narrowed medical limit. Requiring agreement turns that into a loud
+// failure naming the file, which is the safe direction for a guard: a migration
+// that legitimately changes a cap has to update this map anyway.
+//
+// Files that never mention family_camp_medical are skipped, because
 // 1500000044_camper_dietary.js declares an allergy_info of its own on a
 // different collection.
 func TestMedicalColumnLimitsMatchTheSchema(t *testing.T) {
@@ -3376,7 +3382,11 @@ func TestMedicalColumnLimitsMatchTheSchema(t *testing.T) {
 	}
 	slices.Sort(paths)
 
-	declared := make(map[string]int, len(medicalColumnLimits))
+	type declaration struct {
+		path string
+		max  int
+	}
+	declared := make(map[string][]declaration, len(medicalColumnLimits))
 	for _, path := range paths {
 		source, err := os.ReadFile(path) //nolint:gosec // fixed repo-relative glob
 		if err != nil {
@@ -3393,20 +3403,22 @@ func TestMedicalColumnLimitsMatchTheSchema(t *testing.T) {
 			if err != nil {
 				t.Fatalf("%s declares a non-numeric max for %s: %v", path, m[1], err)
 			}
-			declared[m[1]] = declaredMax
+			declared[m[1]] = append(declared[m[1]], declaration{path: path, max: declaredMax})
 		}
 	}
 
 	for column, limit := range medicalColumnLimits {
-		got, ok := declared[column]
-		if !ok {
+		sites := declared[column]
+		if len(sites) == 0 {
 			t.Errorf("medicalColumnLimits declares %q, which no migration creates on "+
 				"family_camp_medical -- record.Set() would be rejected", column)
 			continue
 		}
-		if got != limit {
-			t.Errorf("medicalColumnLimits[%q] = %d, but the migrations declare max %d",
-				column, limit, got)
+		for _, site := range sites {
+			if site.max != limit {
+				t.Errorf("medicalColumnLimits[%q] = %d, but %s declares max %d",
+					column, limit, filepath.Base(site.path), site.max)
+			}
 		}
 	}
 	for column := range declared {
@@ -3474,6 +3486,33 @@ func TestProcessMedicalKeepsTwoDifferentCPAPNeeds(t *testing.T) {
 	}
 	if got, want := meds[0].cpapInfo, bathroom+"; "+outlet; got != want {
 		t.Errorf("cpapInfo = %q, want %q", got, want)
+	}
+}
+
+// TestProcessMedicalUnionsBothCamperCPAPFields: the two Camper-partition CPAP
+// names are the same question asked twice, and a household can carry an answer
+// under each. processMedical used to stop at the first name that had one, so a
+// "No" on Family Camp-CPAP hid a disclosure on FAM CAMP-CPAP entirely -- while
+// processRegistrations ORs BOTH fields into needs_power and
+// needs_private_bathroom, so the household got a housing flag with a cpap_info
+// that denies it. 27 households in 2025 and 1 in 2026 on the production
+// snapshot.
+func TestProcessMedicalUnionsBothCamperCPAPFields(t *testing.T) {
+	t.Parallel()
+	s := NewFamilyCampDerivedSync(nil)
+	ts := time.Date(2026, 4, 21, 0, 0, 0, 0, time.UTC)
+
+	const outlet = "Yes, outlet needed for CPAP machine"
+	meds := s.processMedical([]customValueEntry{
+		{householdPBID: "hh_johnson", fieldName: "Family Camp-CPAP", value: "No", lastUpdated: ts},
+		{householdPBID: "hh_johnson", fieldName: "FAM CAMP-CPAP", value: outlet, lastUpdated: ts},
+	})
+	if len(meds) != 1 {
+		t.Fatalf("medical rows = %d, want 1", len(meds))
+	}
+	if got, want := meds[0].cpapInfo, outlet; got != want {
+		t.Errorf("cpapInfo = %q, want %q -- the flag says the household needs power "+
+			"and the narrative would deny it", got, want)
 	}
 }
 
