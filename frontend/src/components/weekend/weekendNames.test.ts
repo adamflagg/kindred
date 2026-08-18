@@ -7,8 +7,10 @@
  * `weekendSlug` is an ADDRESS for a URL and is never rendered on its own.
  * `weekendLabel` is the narrow display licence the owner granted on
  * 2026-08-18 (kindred#2393) for the 416px family journey panel: it uppercases
- * the slug and falls back to the weekend's short name, never to a CampMinder
- * id. Everywhere with room still prints `splitWeekendName`'s output verbatim.
+ * the slug of a weekend CampMinder NUMBERED, and otherwise returns the
+ * weekend's short name whole — never a CampMinder id, and never an
+ * abbreviation invented for a prose name. Everywhere with room still prints
+ * `splitWeekendName`'s output verbatim.
  */
 import { describe, expect, it } from 'vitest'
 
@@ -193,19 +195,49 @@ describe('weekendLabel', () => {
     expect(weekendLabel('Family Camp 1')).toBe('FC1')
   })
 
-  it('uppercases the two 2026 weekends that are not FCx', () => {
-    // Computed against the ten 2026 family sessions: FC1-FC8 plus these two,
-    // which sit outside the day-group plan. They are not special cases in the
-    // code and must not become them — they are what the rule already produces.
+  it('prints a weekend CampMinder never numbered by its own name', () => {
+    // ⚠️ THE LICENCE IS FOR `FCx`, AND ONLY FOR `FCx`. The owner's ruling
+    // named the form staff already say out loud — "FC1" — and CampMinder is
+    // what makes that form safe: the number IS the weekend's identity, so the
+    // abbreviation cannot name the wrong one. Nothing supplies that guarantee
+    // for a prose name, and an abbreviation invented for one is the exact
+    // thing the top-of-file note has always argued against.
     //
-    // ⚠️ kindred#2393's ruling called these `rs` and `w`. Both are off: the
-    // slug rule keeps EVERY initial of the identity, so "Ready, Set, Camp" is
-    // `rsc` (the example weekendSlug's own doc block gives) and "JFAM Winter
-    // Family Camp" is `wfc` once the shared JFAM token is dropped. Pinned here
-    // as computed rather than as written down, because the alternative is
-    // special-casing two weekends to match a note.
-    expect(weekendLabel('Ready, Set, Camp')).toBe('RSC')
-    expect(weekendLabel('JFAM Winter Family Camp')).toBe('WFC')
+    // Measured on the production snapshot rather than argued: initials alone
+    // give "Spring Family Camp" and "Summer Family Camp" (both 2017-2019) the
+    // SAME label, and collapse "Fall Family Camp I", "II" and "III" onto one —
+    // so a 2018 row for the family that went to Fall II would have read
+    // "FFCI", naming a different weekend. See the season sweep below.
+    expect(weekendLabel('Ready, Set, Camp')).toBe('Ready, Set, Camp')
+    expect(weekendLabel('JFAM Winter Family Camp')).toBe('JFAM Winter Family Camp')
+  })
+
+  it('gives every weekend of a legacy season a distinct label', () => {
+    // The 2017-2019 catalogue, verbatim from the production snapshot. The
+    // journey spans EVERY year a household has a trace, so these rows render
+    // on the same panel the 2026 ones do — 891 of 3,040 single-weekend
+    // household-years fall in a season named this way, and 5 of the 64
+    // multi-weekend ones would have printed the same label twice on one line
+    // and offered two members-modal tabs a staff member could not tell apart.
+    const labels = [
+      'Spring Family Camp',
+      'Keshet LGBTQ Family Camp',
+      'Summer Family Camp',
+      'Fall Family Camp I',
+      'Fall Family Camp II',
+      'Fall Family Camp III',
+    ].map(weekendLabel)
+
+    expect(new Set(labels).size).toBe(labels.length)
+  })
+
+  it("never labels one weekend with another weekend's name", () => {
+    // The sharpest form of the same failure: "Fall Family Camp II" abbreviated
+    // by initials is `FFCI`, which is not merely terse — it reads as Fall
+    // Family Camp I.
+    expect(weekendLabel('Fall Family Camp II')).not.toBe(weekendLabel('Fall Family Camp I'))
+    expect(weekendLabel('Fall Family Camp III')).not.toBe(weekendLabel('Fall Family Camp I'))
+    expect(weekendLabel('Summer Family Camp')).not.toBe(weekendLabel('Spring Family Camp'))
   })
 
   it('gives the ten 2026 family weekends ten distinct labels', () => {

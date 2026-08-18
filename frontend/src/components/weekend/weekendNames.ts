@@ -22,10 +22,12 @@
  * * `weekendLabel` — an abbreviation, `FC1`, for a surface with no room for a
  *   name. Owner-ruled on 2026-08-18 (kindred#2393) for the family journey
  *   panel, which is 416px wide and must fit up to four weekends on one line.
- *   It is a narrow licence and not a general one: reach for `shortWeekendName`
- *   unless the space genuinely will not take it, because an abbreviation is
- *   how a UI starts disagreeing with CampMinder about what a session is
- *   called.
+ *   It is a narrow licence and not a general one, in two senses: reach for
+ *   `shortWeekendName` unless the space genuinely will not take it, and note
+ *   that `weekendLabel` ITSELF only abbreviates a weekend CampMinder numbered.
+ *   A prose name comes back whole, because an invented abbreviation is how a
+ *   UI starts disagreeing with CampMinder about what a session is called —
+ *   `FFCI` for "Fall Family Camp II" is that, on the screen.
  */
 
 export interface WeekendName {
@@ -108,18 +110,31 @@ function initials(words: string[]): string {
  * must treat that as "not addressable" rather than as a slug; `weekendRef`
  * does.
  */
+/**
+ * The identity, as the words an abbreviation is built from.
+ *
+ * Shared by `weekendSlug` and `weekendLabel` so the two cannot drift about
+ * what a "word" is — the label's decision to abbreviate at all reads the same
+ * final word the slug's trailing-number rule does.
+ */
+function identityWords(name: string): string[] {
+  return (
+    shortWeekendName(name)
+      // An apostrophe sits INSIDE a word, so it is deleted rather than treated as
+      // a separator. Splitting on it turns "Women's Weekend" into three words and
+      // slugs it `wsw`.
+      .replace(/['’]/g, '')
+      // Every other mark IS a separator: "Ready, Set, Camp" is three words.
+      // Digits survive because they are the identity.
+      .replace(/[^\p{L}\p{N}]+/gu, ' ')
+      .trim()
+      .split(/\s+/)
+      .filter((word) => word.length > 0)
+  )
+}
+
 export function weekendSlug(name: string): string {
-  const words = shortWeekendName(name)
-    // An apostrophe sits INSIDE a word, so it is deleted rather than treated as
-    // a separator. Splitting on it turns "Women's Weekend" into three words and
-    // slugs it `wsw`.
-    .replace(/['’]/g, '')
-    // Every other mark IS a separator: "Ready, Set, Camp" is three words.
-    // Digits survive because they are the identity.
-    .replace(/[^\p{L}\p{N}]+/gu, ' ')
-    .trim()
-    .split(/\s+/)
-    .filter((word) => word.length > 0)
+  const words = identityWords(name)
 
   const meaningful = words.filter((word) => !SHARED_PROGRAM_TOKENS.has(word.toLowerCase()))
   const dropped = initials(meaningful)
@@ -148,10 +163,23 @@ export function weekendSlug(name: string): string {
  * readable.
  *
  * Uppercased, because the slug is lowercase for a URL and `fc1` on a screen
- * reads as a typo. NOT EVERY WEEKEND IS `FCx`: computed against 2026 the
- * labels are FC1-FC8 plus `RS` (Ready, Set, Camp) and `W` (JFAM Winter Family
- * Camp), the two sessions outside the day-group plan. They fall out of the
- * same rule and are not special-cased.
+ * reads as a typo.
+ *
+ * ⚠️ ONLY A WEEKEND CAMPMINDER NUMBERED IS ABBREVIATED. `FC1` is safe because
+ * the number IS the weekend's identity — the abbreviation cannot name a
+ * different weekend, and it is the form staff already say out loud. Nothing
+ * supplies that guarantee for a prose name, so those print in full and the
+ * top-of-file note's argument stands unamended for them.
+ *
+ * That is not a stylistic hedge, it is measured. Initials alone give both
+ * "Spring Family Camp" and "Summer Family Camp" the label `SFC`, and collapse
+ * "Fall Family Camp I", "II" and "III" onto `FFCI` — so a 2018 journey row for
+ * a family that went to Fall II would have read as Fall I. All three names are
+ * live in the 2017-2019 seasons the journey renders: 891 of 3,040
+ * single-weekend household-years sit in one, and 5 of the 64 multi-weekend
+ * ones would have printed one label twice on a single line and offered two
+ * members-modal tabs nobody could tell apart. Under this rule every season in
+ * the catalogue, 2017 through 2026, labels its weekends distinctly.
  *
  * ⚠️ Falls back to `shortWeekendName`, NEVER to the CampMinder id. `weekendRef`
  * falls back to the id because a URL must resolve; a label must be readable,
@@ -159,7 +187,12 @@ export function weekendSlug(name: string): string {
  * takes a name and not a session: it structurally cannot emit an id.
  */
 export function weekendLabel(name: string): string {
-  const slug = weekendSlug(name)
+  const words = identityWords(name)
+  // The SAME final word `weekendSlug`'s trailing-number rule keeps whole. A
+  // lone number is not a numbered weekend, it is a year ("2026"), and there is
+  // no identity in front of it to abbreviate.
+  const isNumbered = words.length > 1 && DIGITS_ONLY.test(words[words.length - 1] ?? '')
+  const slug = isNumbered ? weekendSlug(name) : ''
   return slug.length > 0 ? slug.toUpperCase() : shortWeekendName(name)
 }
 

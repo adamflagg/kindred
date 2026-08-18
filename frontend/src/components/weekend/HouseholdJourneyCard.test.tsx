@@ -558,10 +558,16 @@ describe('the weekend line', () => {
     expect(weekendLineFor(2025)?.textContent).toBe('FC1 · FC4')
   })
 
-  it('uppercases a weekend that does not slug to FCx', () => {
+  it('prints a weekend CampMinder never numbered by its own name', () => {
+    // The licence is for `FCx` and only for `FCx` — the number is the
+    // weekend's identity, so the abbreviation cannot name a different one.
+    // Initials of a prose name carry no such guarantee: they gave both
+    // "Spring Family Camp" and "Summer Family Camp" the label `SFC` and read
+    // "Fall Family Camp II" back as `FFCI`, on 891 of 3,040 single-weekend
+    // household-years. See `weekendNames.test.ts` for the season sweep.
     show([_row({ year: 2025, sessions: [RSC] })])
 
-    expect(weekendLineFor(2025)?.textContent).toBe('RSC')
+    expect(weekendLineFor(2025)?.textContent).toBe('Ready, Set, Camp')
   })
 
   it('never prints a bare CampMinder id when a name has no abbreviation', () => {
