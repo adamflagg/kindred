@@ -106,9 +106,15 @@ export function useWeekendRoster(year: number, sessionCmId: number | null, scena
  * exactly as the roster hooks above do and as summer's own board hooks do.
  * Nothing in this repo writes a past year's `cabin_assignment` or
  * `family_camp_adults` — both are sync-written — so there is no writer to
- * invalidate against and no freshness being given up. The lodging registry
- * edits that DO feed the roster do not reach this payload: it carries staff
- * free text out of `family_camp_registrations`, never a `lodging_units` row.
+ * invalidate against on the history itself.
+ *
+ * ⚠ kindred#2332 CHANGED THE SECOND HALF OF THAT ARGUMENT. `cabin_name` is now
+ * the unit's present-day `lodging_units.name`, resolved server-side, so an
+ * admin-panel rename DOES move this payload — and admin renames are written
+ * straight to PocketBase, not through this API. `invalidateLodgingRegistryQueries`
+ * is what covers it; a rename that leaves this key alone shows the old name in
+ * the history modal while the board behind it shows the new one, which is the
+ * exact disagreement this issue existed to remove.
  *
  * NOT year-scoped, unlike every other hook here. See `queryKeys.householdJourney`.
  */

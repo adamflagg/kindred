@@ -512,6 +512,9 @@ export const queryKeys = {
    * entry per season and re-pay a multi-year sweep for nothing.
    */
   householdJourney: (householdCmId: number) => ['household-journey', householdCmId] as const,
+  // The invalidation prefix, added by kindred#2332. `invalidateLodgingRegistryQueries`
+  // knows no household at all, and the real key carries one.
+  householdJourneyPrefix: () => ['household-journey'] as const,
   /** The medical narrative. Only ever fetched behind a `bunking.manage` check. */
   householdMedical: (year: number, householdCmId: number) =>
     ['household-medical', year, householdCmId] as const,
@@ -628,6 +631,15 @@ export function invalidateLodgingRegistryQueries(queryClient: {
   void queryClient.invalidateQueries({ queryKey: queryKeys.weekendRosterPrefix() })
   void queryClient.invalidateQueries({ queryKey: queryKeys.weekendSummaryPrefix() })
   void queryClient.invalidateQueries({ queryKey: queryKeys.weekendSessionsPrefix() })
+  // kindred#2332 put the household journey on this list. It used to carry the
+  // staff-written `cabin_assignment` free text, which no registry edit could
+  // move; it now carries the unit's PRESENT-DAY `lodging_units.name`, so a
+  // rename in the admin panel changes it. `useHouseholdJourney` inherits the
+  // 30 minute app default and has no other writer to invalidate against, so
+  // without this line the history modal would keep showing the old name while
+  // the board behind it shows the new one — the disagreement the issue exists
+  // to remove, re-created by the fix for it.
+  void queryClient.invalidateQueries({ queryKey: queryKeys.householdJourneyPrefix() })
 }
 
 /**

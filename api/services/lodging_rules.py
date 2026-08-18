@@ -376,3 +376,217 @@ def request_text_authorship(label: str) -> RequestTextAuthorship:
     once a staff member has read it as a parent's ask.
     """
     return _REQUEST_TEXT_AUTHORSHIP.get(label, "staff")
+
+
+# ------------------------------------------------------------ housing names
+#
+# kindred#2332. ONE housing-name display convention, for every surface that
+# shows where a household slept.
+#
+# Owner ruling 2026-08-18: *"the last year housing should use the same
+# language via the alias year over year concept so it appears in current
+# language."* Whatever staff call a unit in the admin GUI is what appears
+# everywhere -- the board card, the family history modal, and
+# `RosterParty.last_year_cabin` on the family card.
+#
+# THE ALIAS YEAR WINDOW SAYS WHICH RAW STRING WAS IN USE WHEN. It is an input
+# to FINDING the unit and never to NAMING it: once the unit is identified, its
+# present-day `lodging_units.name` is what renders. A 2022 row displaying a
+# name nobody has used since 2023 is a lookup task, not information -- and
+# renames are routine here, fourteen of the 118 units having been renamed one
+# at a time in the admin GUI inside two minutes on 2026-08-15.
+#
+# Deliberately a MIRROR of `AliasResolver` (`pocketbase/sync/lodging_alias_resolver.go`)
+# rather than a second opinion: same lookup key (outer whitespace and case
+# only, inner spacing significant), same all-or-nothing member translation
+# through `code`, same refusal on two rows whose windows both contain the
+# year. What is NOT shared is the target year -- the Go resolver places rows in
+# their own season, this one always names them in the registry's latest one.
+
+
+class RegistryUnit(NamedTuple):
+    """One `lodging_units` row, flattened to the columns naming needs.
+
+    `parent_id` is the raw `parent_unit` RELATION VALUE, which is a PocketBase
+    record id and not a code -- joining it against `code` returns nothing, with
+    no error (18 of the 118 units are grandchildren, so the silence is not even
+    total).
+    """
+
+    unit_id: str
+    code: str
+    name: str
+    year: int
+    parent_id: str
+
+
+class UnitAlias(NamedTuple):
+    """One `lodging_unit_aliases` row, flattened.
+
+    `valid_from_year` / `valid_to_year` are PocketBase number columns, declared
+    `NUMERIC DEFAULT 0 NOT NULL`. An unset bound stores as 0, never NULL --
+    181 of the 187 seeded rows are unbounded on both sides -- so 0 means "no
+    bound" and must never be compared as a real year.
+    """
+
+    alias_string: str
+    member_unit_ids: tuple[str, ...]
+    valid_from_year: int
+    valid_to_year: int
+
+    def covers(self, year: int) -> bool:
+        if self.valid_from_year > 0 and year < self.valid_from_year:
+            return False
+        return not (self.valid_to_year > 0 and year > self.valid_to_year)
+
+
+def housing_lookup_key(raw: str) -> str:
+    """Normalise OUTER whitespace and case only -- `aliasLookupKey`'s rule.
+
+    Inner spacing stays significant: the seed stores strings verbatim and one
+    of them genuinely carries a double space before its separator. Collapsing
+    inner runs would merge it with a single-space variant that means the same
+    room today but need not tomorrow.
+    """
+    return raw.strip().casefold()
+
+
+# What two or more member names are joined with when they share no parent. No
+# production row reaches this branch -- all seven in-use multi-member aliases
+# resolve to siblings under one container -- and the separator changes no
+# measured figure. It exists so the rule stays total.
+_MEMBER_JOIN = " + "
+
+
+class HousingNameResolver:
+    """Raw staff-written cabin string -> the name that unit carries TODAY.
+
+    Built from the whole `lodging_units` table and the whole alias table, and
+    read once per string. Both are small (118 units, 187 aliases) and there are
+    only 88 distinct raw values across 2022-2026 to resolve.
+    """
+
+    __slots__ = ("_alias_by_key", "_code_by_unit_id", "_current_by_code", "_direct_by_key", "registry_year")
+
+    def __init__(
+        self,
+        *,
+        registry_year: int,
+        current_by_code: dict[str, RegistryUnit],
+        code_by_unit_id: dict[str, str],
+        direct_by_key: dict[str, str | None],
+        alias_by_key: dict[str, list[UnitAlias]],
+    ) -> None:
+        self.registry_year = registry_year
+        self._current_by_code = current_by_code
+        self._code_by_unit_id = code_by_unit_id
+        self._direct_by_key = direct_by_key
+        self._alias_by_key = alias_by_key
+
+    @classmethod
+    def build(cls, units: Sequence[RegistryUnit], aliases: Sequence[UnitAlias]) -> HousingNameResolver:
+        """Index the registry once.
+
+        THE REGISTRY YEAR IS THE LATEST SEASON THE TABLE HOLDS, not the year
+        being rostered and not the year the row came from. `lodging_units` is
+        year-scoped and holds 2026 only today (118 of 118), so resolving a 2023
+        string against 2023's units would find nothing at all -- that is the
+        trap that makes this look impossible (kindred#2392). Naming a unit is a
+        question about the present, so the present season answers it.
+        """
+        registry_year = max((unit.year for unit in units), default=0)
+        # Codes are the cross-year identity thread, so this index spans EVERY
+        # season: an alias stores whichever season's record ids existed when it
+        # was written and is never re-pointed.
+        code_by_unit_id = {unit.unit_id: unit.code for unit in units}
+        current_by_code = {unit.code: unit for unit in units if unit.year == registry_year}
+
+        # A string that already names a unit today needs no alias, and the
+        # answer cannot be wrong. `None` marks a key two different units both
+        # answer to -- refuse rather than pick, the same call `Resolve` makes
+        # on two overlapping alias rows.
+        direct_by_key: dict[str, str | None] = {}
+        for unit in current_by_code.values():
+            for candidate in (unit.name, unit.code):
+                key = housing_lookup_key(candidate)
+                if not key:
+                    continue
+                if key in direct_by_key and direct_by_key[key] != unit.code:
+                    direct_by_key[key] = None
+                else:
+                    direct_by_key[key] = unit.code
+
+        alias_by_key: dict[str, list[UnitAlias]] = {}
+        for alias in aliases:
+            key = housing_lookup_key(alias.alias_string)
+            if key:
+                alias_by_key.setdefault(key, []).append(alias)
+
+        return cls(
+            registry_year=registry_year,
+            current_by_code=current_by_code,
+            code_by_unit_id=code_by_unit_id,
+            direct_by_key=direct_by_key,
+            alias_by_key=alias_by_key,
+        )
+
+    def display_name(self, raw: str, year: int) -> str:
+        """The unit's CURRENT name, or `raw` unchanged when nothing resolves.
+
+        `year` is the year the RAW STRING came from, and its only job is
+        picking which alias row was in use then.
+
+        THE COLLAPSE RULE, stated so it stops being re-derived: when a string
+        resolves to 2+ units that share one non-empty `parent_unit`, the parent
+        unit's name renders and never the joined member names. When it resolves
+        to one unit, that unit's name renders. When nothing resolves, the raw
+        string renders unchanged.
+
+        The collapse is what does the work, not the resolution: joining member
+        names is up to 35 characters, one MORE than the worst raw string, on a
+        `whitespace-nowrap` span. Every one of the seven in-use multi-member
+        aliases resolves to exactly two siblings under one container.
+        """
+        key = housing_lookup_key(raw)
+        if not key:
+            return raw
+
+        direct = self._direct_by_key.get(key, "")
+        if direct:
+            return self._current_by_code[direct].name
+
+        matches = [alias for alias in self._alias_by_key.get(key, ()) if alias.covers(year)]
+        if len(matches) != 1:
+            # 0 is a work-queue item, not an error -- three of the 88 distinct
+            # strings name a unit FAMILY rather than a unit and need staff
+            # knowledge (kindred#2392). 2+ is the overlapping-window pair the
+            # unique index on (alias_string, valid_from_year) permits; picking
+            # one arbitrarily would name a cabin nobody chose.
+            return raw
+
+        members: list[RegistryUnit] = []
+        for unit_id in matches[0].member_unit_ids:
+            # ALL OR NOTHING, on both doors, exactly as `Resolve` does it. A
+            # stored id whose unit row is gone, and a code with no row in the
+            # registry year, are the same failure: a member that cannot be
+            # carried into the present. Keeping the ones that survive would
+            # silently shrink a family's rooms.
+            code = self._code_by_unit_id.get(unit_id, "")
+            unit = self._current_by_code.get(code) if code else None
+            if unit is None:
+                return raw
+            members.append(unit)
+
+        if not members:
+            return raw
+        if len(members) == 1:
+            return members[0].name
+
+        parent_ids = {unit.parent_id for unit in members}
+        if len(parent_ids) == 1:
+            parent_id = next(iter(parent_ids))
+            parent_code = self._code_by_unit_id.get(parent_id, "") if parent_id else ""
+            parent = self._current_by_code.get(parent_code) if parent_code else None
+            if parent is not None:
+                return parent.name
+        return _MEMBER_JOIN.join(unit.name for unit in members)

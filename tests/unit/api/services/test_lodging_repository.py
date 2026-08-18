@@ -1934,3 +1934,65 @@ class TestFetchRequestTextValues:
         pb.collection.return_value.get_full_list.side_effect = None
         pb.collection.return_value.get_full_list.return_value = []
         assert await repo.fetch_request_text_values(2026) == first
+
+
+class TestRegistryNameReads:
+    """kindred#2332's two reads: the whole unit registry and the whole alias
+    table, which together let a prior year's housing render in TODAY's
+    language.
+
+    NEITHER IS YEAR-FILTERED, and that is the point of both. `lodging_units` is
+    year-scoped and holds 2026 only, so the registry's LATEST season has to be
+    discovered from the table rather than assumed to be the year being read --
+    filtering to a 2023 row's own year finds nothing at all (kindred#2392).
+    `lodging_unit_aliases` has no `year` column: a row's window
+    (`valid_from_year` / `valid_to_year`) says which raw string was in use
+    when, which is a rename history and not a per-year copy.
+    """
+
+    @pytest.mark.asyncio
+    async def test_all_units_are_read_without_a_year_filter(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        await repo.fetch_all_units()
+
+        pb.collection.assert_called_with("lodging_units")
+        assert "year" not in _last_query(pb).get("filter", "")
+
+    @pytest.mark.asyncio
+    async def test_all_units_does_not_pay_for_the_area_expand(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        """Naming needs `code`, `name`, `year` and `parent_unit` and nothing
+        else -- the area is `fetch_units`' business, for the board's grouping.
+        """
+        await repo.fetch_all_units()
+
+        assert "expand" not in _last_query(pb)
+
+    @pytest.mark.asyncio
+    async def test_all_units_is_never_cached(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        """Same reason `fetch_units` is not: `lodging_units.name` is written
+        straight to PocketBase from the admin panel, and this issue's own
+        evidence is that staff rename units in bursts -- fourteen of the 118 in
+        under two minutes on 2026-08-15. A TTL here shows the old name on every
+        surface at once.
+        """
+        await repo.fetch_all_units()
+        await repo.fetch_all_units()
+
+        assert pb.collection.return_value.get_full_list.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_aliases_are_read_whole_and_unfiltered(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        await repo.fetch_unit_aliases()
+
+        pb.collection.assert_called_with("lodging_unit_aliases")
+        assert not _last_query(pb).get("filter", "")
+
+    @pytest.mark.asyncio
+    async def test_aliases_are_never_cached(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        """`mapUnresolvedAlias` in `lodgingCrud.ts` writes this table straight
+        from the admin panel, never through this API -- the same argument
+        `count_open_unresolved_aliases` makes for the queue it feeds.
+        """
+        await repo.fetch_unit_aliases()
+        await repo.fetch_unit_aliases()
+
+        assert pb.collection.return_value.get_full_list.call_count == 2

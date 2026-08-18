@@ -74,6 +74,7 @@ from api.constants.collections import (
     LODGING_INGEST_ISSUES,
     LODGING_SESSION_STATUS,
     LODGING_SLOT_MERGES,
+    LODGING_UNIT_ALIASES,
     LODGING_UNITS,
     LODGING_WRITE_INS,
     LODGING_WRITE_INS_DRAFT,
@@ -310,6 +311,58 @@ class LodgingRepository:
                 "sort": "area.sort_order,name",
             },
         )
+
+    async def fetch_all_units(self) -> list[Any]:
+        """EVERY lodging unit, every season -- the registry, for NAMING things.
+
+        kindred#2332. Deliberately unfiltered, and that is what separates it
+        from `fetch_units`. Naming a unit is a question about the PRESENT, so
+        the registry's latest season has to be discovered from the table
+        rather than assumed to be the year being read: `lodging_units` holds
+        2026 only (118 of 118), so resolving a 2023 cabin string against 2023's
+        units finds nothing at all. That is the trap that made display
+        resolution look impossible (kindred#2392).
+
+        Older seasons are read too, not merely tolerated. An alias stores
+        whichever season's record ids existed when it was written and is never
+        re-pointed, so translating a stored member id needs `code` for units of
+        EVERY year -- `code` is the cross-year identity thread, exactly as
+        `AliasResolver` uses it.
+
+        No `expand`: `HousingNameResolver` wants `code`, `name`, `year` and
+        `parent_unit`, and the area relation is `fetch_units`' business.
+
+        Deliberately NOT cached, for `fetch_units`' reason made sharper by this
+        issue -- `lodging_units.name` is written straight to PocketBase from
+        the admin panel, and staff rename in bursts (fourteen of the 118 units
+        on 2026-08-15, inside two minutes). A TTL here would show the old name
+        on four surfaces at once.
+        """
+        return await self._page(LODGING_UNITS, query_params={"sort": STABLE_SORT})
+
+    async def fetch_unit_aliases(self) -> list[Any]:
+        """Every `lodging_unit_aliases` row -- the historical spellings.
+
+        NO YEAR FILTER, because the table has no `year` column and never
+        should: a row's `valid_from_year` / `valid_to_year` window records what
+        a building was CALLED from a given year, which is a rename history and
+        not a per-year copy. The window is applied per raw string at the year
+        THAT STRING came from (`HousingNameResolver.display_name`), never at
+        the registry's loaded year -- pinning it to the current season
+        discards the four rows carrying `valid_to_year = 2024` and strands 49
+        of the 1,861 cabin-bearing rows at their raw spelling.
+
+        `member_units` is left as raw relation ids rather than expanded: the
+        resolver maps id -> code -> the registry year's row off
+        `fetch_all_units`, which it holds anyway, so an expand would pay for
+        rows already in hand.
+
+        Deliberately NOT cached: `mapUnresolvedAlias` in `lodgingCrud.ts`
+        writes this table straight from the admin panel, never through this
+        API -- the same argument `count_open_unresolved_aliases` makes for the
+        queue that feeds it.
+        """
+        return await self._page(LODGING_UNIT_ALIASES, query_params={"sort": STABLE_SORT})
 
     async def fetch_availability(self, year: int, session_cm_id: int) -> list[Any]:
         """Staff RELEASES for one session -- the staff<->family role override.
@@ -878,14 +931,33 @@ class LodgingRepository:
         """Where each household slept in `year`, keyed by household CampMinder id.
 
         The staff-written string out of `family_camp_registrations.cabin_assignment`
-        -- FREE TEXT, not a relation. It is deliberately NOT resolved to a
-        `lodging_units` row here: `lodging_units` holds only the current year,
-        so a 2023 string can name a cabin that no longer exists under that
-        name, and 3 of the 88 distinct strings across 2022-2025 resolve to no
-        alias at all. What staff wrote is the fact they are recalling; the
-        alias resolution (`lodging_unit_aliases` → `member_units`, honouring
-        `valid_from_year` / `valid_to_year`) is a separate job with a separate
-        failure mode.
+        -- FREE TEXT, not a relation, and RAW: this read returns exactly what
+        staff typed that season and resolves nothing.
+
+        RESOLUTION HAPPENS AT DISPLAY, ONE LAYER UP (kindred#2332). Owner
+        ruling 2026-08-18: every surface renders the unit's CURRENT registry
+        name, so `HousingNameResolver` -- fed by `fetch_all_units` and
+        `fetch_unit_aliases` -- translates this string in the service, at the
+        year the string came from. Keeping the raw value here is what lets the
+        journey publish the name and its provenance from one read, and what
+        keeps `_housing_state` deciding placed/not-placed on PRESENCE rather
+        than on whether a name happened to resolve.
+
+        ⚠ ONE STRING PER HOUSEHOLD-YEAR, WITH NO SESSION DIMENSION, and no
+        caller may present it as per-weekend (kindred#2336). The source is a
+        single CampMinder household custom field (`Family Camp Cabin`, one
+        value per household-year), so a household attending two weekends of a
+        season has one cabin for both -- there is no second weekend's answer
+        being lost, and widening the grain would replicate one string N times
+        and bake the fan-out into the schema. Staff confirmed 2026-08-15 that
+        the overwrite is acceptable and declined a snapshot or lookback. 41 of
+        1,703 cabin-holding household-years are multi-weekend; cutting this
+        column by weekend as though it were a placement manufactured 12 of 17
+        false multi-household occupancies in one analysis. The honest
+        per-weekend rule already ships in Go
+        (`LodgingAssignmentsSync.AttributeSession`), which pins the year's
+        single string to a weekend only when the household attended exactly
+        one and queues an ingest issue otherwise.
 
         ⚠️ KEYED BY cm_id, AND THAT IS THE ENTIRE POINT. `registration.household`
         is a PocketBase relation into a YEAR-SCOPED `households` table, so a

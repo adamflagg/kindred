@@ -303,7 +303,14 @@ function FamilyCardIdentity({ party }: { party: RosterPartyRow }) {
   // surfaces that replaced the salutation with this same list (kindred#2084).
   const attendingAdults = computeAttendingAdults(party)
   const { names: adultNames, sharedSurname: sharedAdultSurname } = dedupeAdultNames(attendingAdults)
-  // Last year's cabin, right-anchored on the grey line below (kindred#2075).
+  // Last year's cabin, right-anchored on the grey line below (kindred#2075),
+  // resolved to the current registry name by kindred#2332.
+  //
+  // ⚠ A YEAR'S HOUSING, NOT A WEEKEND'S (kindred#2336). `cabin_assignment` has
+  // grain (household, year) because its CampMinder source is one household
+  // custom field per season, so a household attending two weekends carries one
+  // cabin for both. Staff accepted that 2026-08-15. Never read this as "where
+  // they slept on THIS weekend last year".
   //
   // Trimmed here rather than trusted: '' is the common case (202 of 2026's 459
   // registered households) and a whitespace-only string must read as the same
@@ -406,10 +413,16 @@ function FamilyCardIdentity({ party }: { party: RosterPartyRow }) {
                   {sharedAdultSurname.length > 0 && ` ${sharedAdultSurname}`}
                 </span>
               )}
-              {/* The staff-written string out of last year's registration,
-                  verbatim — never resolved against the unit registry, so it
-                  can legitimately name something no card on the board is
-                  called (see the schema field). `ml-auto` right-anchors it
+              {/* Last year's housing, named in TODAY's language (kindred#2332)
+                  — the server resolves the staff-written string through the
+                  alias layer and sends the unit's present-day registry name,
+                  so this line and the board card behind it finally agree.
+                  Nothing here strips or shortens it: `lodging_units.name`
+                  averages 10.5 characters and tops out at 24, against a raw
+                  string that reached 34. The raw string itself is provenance
+                  and is NOT duplicated onto this card — it rides on the
+                  journey's `cabin_name_raw`, one click away in the details
+                  panel this card opens. `ml-auto` right-anchors it
                   whether or not adults sit beside it: a household with no
                   attending adult has no grey line for the cabin to join, and
                   the cabin is real data that is not dropped to preserve a

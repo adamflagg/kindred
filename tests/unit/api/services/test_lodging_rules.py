@@ -19,6 +19,9 @@ from api.services.lodging_rules import (
     BUNKING_CSV_REQUEST_TEXT_FIELDS,
     FAMILY_CAMP_REQUEST_TEXT_CM_IDS,
     REQUEST_TEXT_SOURCES,
+    HousingNameResolver,
+    RegistryUnit,
+    UnitAlias,
     amenity_coverage,
     container_bathroom,
     effective_bathroom,
@@ -305,3 +308,165 @@ class TestRequestTextSourceRegistry:
         """`family` is the WRONG default for an unknown field: it would render
         a staff note in the amber treatment reserved for a family's own ask."""
         assert request_text_authorship("Some Field We Have Never Seen") == "staff"
+
+
+def _unit(unit_id: str, code: str, name: str, *, year: int = 2026, parent_id: str = "") -> RegistryUnit:
+    return RegistryUnit(unit_id=unit_id, code=code, name=name, year=year, parent_id=parent_id)
+
+
+def _alias(alias_string: str, *member_ids: str, valid_from: int = 0, valid_to: int = 0) -> UnitAlias:
+    return UnitAlias(
+        alias_string=alias_string,
+        member_unit_ids=tuple(member_ids),
+        valid_from_year=valid_from,
+        valid_to_year=valid_to,
+    )
+
+
+class TestHousingNameResolver:
+    """kindred#2332: a prior year's housing renders in TODAY's language.
+
+    Owner ruling 2026-08-18: *"the last year housing should use the same
+    language via the alias year over year concept so it appears in current
+    language."* The alias's year window says which raw string was in use WHEN;
+    it is an input to FINDING the unit, never to NAMING it. Once the unit is
+    identified, its present-day `lodging_units.name` renders.
+    """
+
+    def test_a_blank_string_stays_blank(self) -> None:
+        assert HousingNameResolver.build([], []).display_name("", 2025) == ""
+
+    def test_a_string_that_already_names_a_unit_resolves_without_an_alias(self) -> None:
+        resolver = HousingNameResolver.build([_unit("u1", "cedar-1", "Cedar Lodge 1")], [])
+
+        assert resolver.display_name("cedar lodge 1", 2023) == "Cedar Lodge 1"
+
+    def test_the_unit_code_resolves_too(self) -> None:
+        resolver = HousingNameResolver.build([_unit("u1", "cedar-1", "Cedar Lodge 1")], [])
+
+        assert resolver.display_name("cedar-1", 2023) == "Cedar Lodge 1"
+
+    def test_a_renamed_unit_renders_its_current_name_not_the_historical_string(self) -> None:
+        """THE RULING, in one test. `Old Meadow 1` is what staff typed in
+        2022; the unit is called `Meadow House 1` today, so that is what a
+        2022 row shows.
+        """
+        resolver = HousingNameResolver.build(
+            [_unit("u1", "meadow-1", "Meadow House 1")],
+            [_alias("Old Meadow 1", "u1")],
+        )
+
+        assert resolver.display_name("Old Meadow 1", 2022) == "Meadow House 1"
+
+    def test_an_alias_is_windowed_at_the_rows_own_year_not_the_registry_year(self) -> None:
+        """`valid_to_year = 2024` is correct for the years it covers. Windowing
+        every alias at the registry's loaded year would discard it -- 1,792 of
+        1,861 rows instead of 1,841 on the production snapshot.
+        """
+        resolver = HousingNameResolver.build(
+            [_unit("u1", "meadow-1", "Meadow House 1")],
+            [_alias("Old Meadow 1", "u1", valid_to=2024)],
+        )
+
+        assert resolver.display_name("Old Meadow 1", 2023) == "Meadow House 1"
+        assert resolver.display_name("Old Meadow 1", 2026) == "Old Meadow 1"
+
+    def test_two_members_under_one_parent_collapse_to_the_parents_name(self) -> None:
+        """THE COLLAPSE RULE. Joining member names gives up to 35 characters --
+        longer than the 34-character worst raw string, on a `whitespace-nowrap`
+        span. Every multi-member alias in use shares one container parent.
+        """
+        resolver = HousingNameResolver.build(
+            [
+                _unit("p1", "cedar", "Cedar Lodge"),
+                _unit("u1", "cedar-1", "Cedar Lodge Room 1", parent_id="p1"),
+                _unit("u2", "cedar-2", "Cedar Lodge Room 2", parent_id="p1"),
+            ],
+            [_alias("Cedar 1and2", "u1", "u2")],
+        )
+
+        assert resolver.display_name("Cedar 1and2", 2023) == "Cedar Lodge"
+
+    def test_members_with_no_shared_parent_join_rather_than_inventing_one(self) -> None:
+        """No production row reaches this branch -- all seven in-use
+        multi-member aliases share one parent -- but the rule stays total.
+        """
+        resolver = HousingNameResolver.build(
+            [_unit("u1", "cedar-1", "Cedar Lodge 1"), _unit("u2", "pine-1", "Pine Cabin 1")],
+            [_alias("Cedar 1 and Pine 1", "u1", "u2")],
+        )
+
+        assert resolver.display_name("Cedar 1 and Pine 1", 2023) == "Cedar Lodge 1 + Pine Cabin 1"
+
+    def test_two_alias_rows_covering_one_year_refuse_rather_than_guess(self) -> None:
+        """The unique index is on (alias_string, valid_from_year), not on
+        alias_string alone, so the admin UI can create an overlapping pair.
+        `AliasResolver.Resolve` calls that `Ambiguous` and places nobody.
+        """
+        resolver = HousingNameResolver.build(
+            [_unit("u1", "cedar-1", "Cedar Lodge 1"), _unit("u2", "pine-1", "Pine Cabin 1")],
+            [_alias("Overlap", "u1", valid_from=2020), _alias("Overlap", "u2", valid_from=2021)],
+        )
+
+        assert resolver.display_name("Overlap", 2023) == "Overlap"
+
+    def test_a_member_missing_from_the_registry_year_is_all_or_nothing(self) -> None:
+        """Go's `Resolve` refuses on the same door: returning the members that
+        DO exist would silently shrink a family's rooms.
+        """
+        resolver = HousingNameResolver.build(
+            [
+                _unit("p1", "cedar", "Cedar Lodge"),
+                _unit("u1", "cedar-1", "Cedar Lodge Room 1", parent_id="p1"),
+            ],
+            [_alias("Cedar 1and2", "u1", "u9")],
+        )
+
+        assert resolver.display_name("Cedar 1and2", 2023) == "Cedar 1and2"
+
+    def test_an_unresolvable_string_renders_unchanged(self) -> None:
+        """Three of the 88 distinct strings name a unit FAMILY and not a unit
+        (kindred#2392). What staff wrote is better than nothing.
+        """
+        resolver = HousingNameResolver.build([_unit("u1", "cedar-1", "Cedar Lodge 1")], [])
+
+        assert resolver.display_name("Ridge 2", 2022) == "Ridge 2"
+
+    def test_the_registry_year_is_the_latest_season_the_table_holds(self) -> None:
+        """`lodging_units` is a year-scoped table that today holds 2026 only.
+        A stale season's row must not become the display name.
+        """
+        resolver = HousingNameResolver.build(
+            # Current season FIRST, so an index that merely takes the last row
+            # per code -- rather than filtering to the registry year -- ends up
+            # holding the stale one and this test still catches it.
+            [
+                _unit("new", "cedar-1", "Cedar Lodge 1", year=2026),
+                _unit("old", "cedar-1", "Old Cedar 1", year=2025),
+            ],
+            [_alias("Old Cedar 1", "old")],
+        )
+
+        assert resolver.registry_year == 2026
+        assert resolver.display_name("Old Cedar 1", 2022) == "Cedar Lodge 1"
+
+    def test_inner_spacing_stays_significant_and_outer_does_not(self) -> None:
+        """`aliasLookupKey` in Go lowercases and trims and does no more: one
+        seeded string genuinely carries a double space before its separator.
+        """
+        resolver = HousingNameResolver.build(
+            [_unit("u1", "cedar-1", "Cedar Lodge 1")],
+            [_alias("Cedar  Lodge - 1", "u1")],
+        )
+
+        assert resolver.display_name("  cedar  lodge - 1  ", 2023) == "Cedar Lodge 1"
+        assert resolver.display_name("Cedar Lodge - 1", 2023) == "Cedar Lodge - 1"
+
+    def test_an_empty_registry_leaves_every_string_alone(self) -> None:
+        """A fresh deployment seeds no units. Rendering nothing, or rendering
+        a blank, would be worse than rendering what staff wrote.
+        """
+        resolver = HousingNameResolver.build([], [])
+
+        assert resolver.registry_year == 0
+        assert resolver.display_name("Cedar Lodge - Room 2", 2025) == "Cedar Lodge - Room 2"

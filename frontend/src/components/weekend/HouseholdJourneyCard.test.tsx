@@ -435,3 +435,64 @@ describe('a party with no household', () => {
     expect(useHouseholdJourney).toHaveBeenCalledWith(null)
   })
 })
+
+/**
+ * kindred#2332. A prior year's housing renders in TODAY's language.
+ *
+ * Owner ruling 2026-08-18: *"the last year housing should use the same
+ * language via the alias year over year concept so it appears in current
+ * language."* The server does the resolving — `cabin_name` is already the
+ * unit's present-day registry name and `cabin_name_raw` is what staff typed
+ * that season. What this surface owes is the provenance, and only where the
+ * two disagree: 716 of 1,861 rows on the production snapshot, and 1,145 where
+ * showing it would be noise.
+ */
+describe('the raw staff-written string, as provenance', () => {
+  it('offers what staff wrote when it disagrees with the registry name', () => {
+    show([
+      _row({
+        year: 2022,
+        housing: 'placed',
+        cabin_name: 'Meadow House 1',
+        cabin_name_raw: 'Old Meadow 1',
+      }),
+    ])
+
+    const trigger = within(rowFor(2022)).getByTestId('household-journey-housing-provenance')
+    expect(trigger.textContent).toContain('Meadow House 1')
+
+    fireEvent.click(trigger)
+
+    expect(screen.getByRole('tooltip').textContent).toContain('Old Meadow 1')
+  })
+
+  it('says nothing extra when the raw string IS the registry name', () => {
+    show([
+      _row({
+        year: 2025,
+        housing: 'placed',
+        cabin_name: 'Cedar Lodge 2',
+        cabin_name_raw: 'Cedar Lodge 2',
+      }),
+    ])
+
+    expect(within(rowFor(2025)).queryByTestId('household-journey-housing-provenance')).toBeNull()
+    expect(rowFor(2025).textContent).toContain('Cedar Lodge 2')
+  })
+
+  it('says nothing extra on a year with no cabin at all', () => {
+    show([_row({ year: 2019, housing: 'unknown', cabin_name: '', cabin_name_raw: '' })])
+
+    expect(within(rowFor(2019)).queryByTestId('household-journey-housing-provenance')).toBeNull()
+    expect(rowFor(2019).textContent).toContain('Housing unknown')
+  })
+
+  it('says nothing extra when the server sent no raw string', () => {
+    // An older payload, or a client reading a field a regen dropped. The name
+    // still renders; only the provenance affordance goes away.
+    show([_row({ year: 2023, housing: 'placed', cabin_name: 'Meadow House 1' })])
+
+    expect(within(rowFor(2023)).queryByTestId('household-journey-housing-provenance')).toBeNull()
+    expect(rowFor(2023).textContent).toContain('Meadow House 1')
+  })
+})
