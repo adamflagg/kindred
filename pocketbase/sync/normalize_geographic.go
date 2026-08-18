@@ -458,7 +458,13 @@ func (n *NormalizeGeographicSync) loadGeoOverrides(year int) (
 	records, findErr := n.App.FindRecordsByFilter(
 		"geo_overrides",
 		"year <= {:year}",
-		"year ASC",
+		// ASCENDING BY YEAR, and the direction is load-bearing: the loop below
+		// overwrites on each hit, so the newest year's value is the one that
+		// survives. A bare field name IS ascending in PocketBase -- `+year` and
+		// `-year` are the only decorated forms, and "year ASC" was read as a
+		// field name called "year ASC", failed the whole query, and left the
+		// caller logging a warning and continuing with no overrides at all.
+		"year",
 		0,
 		0,
 		dbx.Params{"year": year},
