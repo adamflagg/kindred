@@ -1655,11 +1655,21 @@ class TestHistoricalCancellationMetrics:
         mock_repo.fetch_persons.side_effect = mock_fetch_persons
         mock_repo.fetch_sessions = AsyncMock(return_value=sessions_both)
 
-        # Mock cancellation count
-        async def mock_fetch_cancellation_count(year, **kwargs):
-            return 5 if year == 2025 else 8
+        # Mock cancellation transitions (service derives the count itself,
+        # scoped and deduplicated by person_id — see #2434)
+        def make_transition(pid: int) -> Mock:
+            t = Mock()
+            t.person_id = pid
+            t.expand = {"session": mock_session}
+            return t
 
-        mock_repo.fetch_cancellation_count = mock_fetch_cancellation_count
+        transitions_2025 = [make_transition(2001 + i) for i in range(5)]
+        transitions_2026 = [make_transition(3001 + i) for i in range(8)]
+
+        async def mock_fetch_status_transitions(year, statuses, **kwargs):
+            return transitions_2025 if year == 2025 else transitions_2026
+
+        mock_repo.fetch_status_transitions = mock_fetch_status_transitions
 
         svc = HistoricalService(mock_repo)
         result = await svc.calculate_historical_trends(years=[2025, 2026])

@@ -45,6 +45,29 @@ def make_mock_attendee(
     return attendee
 
 
+def make_mock_transition(
+    person_id: int,
+    session_cm_id: int,
+    session_type: str = "main",
+    new_status: str = "cancelled",
+) -> MagicMock:
+    """Create a mock attendee_status_history transition with session expand.
+
+    Shaped identically to make_mock_attendee's expand so the same
+    session-scoping helper (filter_attendees_by_session) can filter both.
+    """
+    transition = MagicMock()
+    transition.person_id = person_id
+    transition.new_status = new_status
+
+    session = MagicMock()
+    session.cm_id = session_cm_id
+    session.session_type = session_type
+
+    transition.expand = {"session": session}
+    return transition
+
+
 def make_mock_session(
     cm_id: int,
     name: str,
@@ -66,7 +89,7 @@ def _make_repo_with_defaults() -> MagicMock:
     repo.fetch_attendees = AsyncMock(return_value=[])
     repo.fetch_persons = AsyncMock(return_value={})
     repo.fetch_sessions = AsyncMock(return_value={})
-    repo.fetch_cancellation_count = AsyncMock(return_value=0)
+    repo.fetch_status_transitions = AsyncMock(return_value=[])
     return repo
 
 
@@ -241,18 +264,19 @@ class TestHistoricalServiceFromAttendees:
         assert result.years[0].total_enrolled == 1
 
     @pytest.mark.asyncio
-    async def test_cancellation_metrics_unchanged(self, mock_repository: MagicMock) -> None:
-        """Cancellation logic should still work (already uses status_transitions)."""
+    async def test_cancellation_rate_from_status_transitions(self, mock_repository: MagicMock) -> None:
+        """Cancellation count is derived from fetch_status_transitions, distinct persons."""
         from api.services.historical_service import HistoricalService
 
         attendees = [make_mock_attendee(1001, 5001)]
         persons = {1001: make_mock_person(1001, "M")}
         sessions = {5001: make_mock_session(5001, "Session 1")}
+        transitions = [make_mock_transition(2001 + i, 5001) for i in range(5)]
 
         mock_repository.fetch_attendees = AsyncMock(return_value=attendees)
         mock_repository.fetch_persons = AsyncMock(return_value=persons)
         mock_repository.fetch_sessions = AsyncMock(return_value=sessions)
-        mock_repository.fetch_cancellation_count = AsyncMock(return_value=5)
+        mock_repository.fetch_status_transitions = AsyncMock(return_value=transitions)
 
         service = HistoricalService(mock_repository)
         result = await service.calculate_historical_trends(years=[2025])
@@ -261,6 +285,93 @@ class TestHistoricalServiceFromAttendees:
         assert year_metric.total_cancelled == 5
         # cancellation_rate = 5 / (1 + 5) = 83.33%
         assert abs(year_metric.cancellation_rate - 83.33) < 0.01
+
+    @pytest.mark.asyncio
+    async def test_cancellation_count_dedupes_by_person_not_rows(self, mock_repository: MagicMock) -> None:
+        """A person with two cancellation transition rows in a year counts once.
+
+        Regression test for #2434 grain mismatch: the fallback used to return
+        len(transitions) (rows), inflating the count above the distinct-person
+        denominator it was divided against.
+        """
+        from api.services.historical_service import HistoricalService
+
+        attendees = [make_mock_attendee(1001, 5001)]
+        persons = {1001: make_mock_person(1001, "M")}
+        sessions = {5001: make_mock_session(5001, "Session 1")}
+        # Person 3001 cancelled out of two different sessions the same year —
+        # two rows, one person.
+        transitions = [
+            make_mock_transition(3001, 5001),
+            make_mock_transition(3001, 5002),
+        ]
+
+        mock_repository.fetch_attendees = AsyncMock(return_value=attendees)
+        mock_repository.fetch_persons = AsyncMock(return_value=persons)
+        mock_repository.fetch_sessions = AsyncMock(return_value=sessions)
+        mock_repository.fetch_status_transitions = AsyncMock(return_value=transitions)
+
+        service = HistoricalService(mock_repository)
+        result = await service.calculate_historical_trends(years=[2025])
+
+        assert result.years[0].total_cancelled == 1
+
+    @pytest.mark.asyncio
+    async def test_cancellation_count_scoped_to_session_types(self, mock_repository: MagicMock) -> None:
+        """Cancellations outside the requested session_types are excluded.
+
+        Regression test for #2434 scope mismatch: the fallback counted every
+        cancellation regardless of session_types, against a denominator that
+        was already type-scoped.
+        """
+        from api.services.historical_service import HistoricalService
+
+        attendees = [make_mock_attendee(1001, 5001, "Session 1", "main")]
+        persons = {1001: make_mock_person(1001, "M")}
+        sessions = {5001: make_mock_session(5001, "Session 1", "main")}
+        transitions = [
+            make_mock_transition(3001, 5001, session_type="main"),
+            make_mock_transition(3002, 5002, session_type="family"),  # out of scope
+        ]
+
+        mock_repository.fetch_attendees = AsyncMock(return_value=attendees)
+        mock_repository.fetch_persons = AsyncMock(return_value=persons)
+        mock_repository.fetch_sessions = AsyncMock(return_value=sessions)
+        mock_repository.fetch_status_transitions = AsyncMock(return_value=transitions)
+
+        service = HistoricalService(mock_repository)
+        result = await service.calculate_historical_trends(years=[2025], session_types=["main"])
+
+        assert result.years[0].total_cancelled == 1
+
+    @pytest.mark.asyncio
+    async def test_phantom_fetch_cancellation_count_is_ignored(self, mock_repository: MagicMock) -> None:
+        """A repo that also happens to define fetch_cancellation_count is not consulted.
+
+        Regression test for #2434: the service used to hasattr()-probe for a
+        method no repository implementation defines, so the branch was dead in
+        production and only ever exercised by a test double. That probe/branch
+        must be gone — fetch_status_transitions is the only path now.
+        """
+        from api.services.historical_service import HistoricalService
+
+        attendees = [make_mock_attendee(1001, 5001)]
+        persons = {1001: make_mock_person(1001, "M")}
+        sessions = {5001: make_mock_session(5001, "Session 1")}
+        transitions = [make_mock_transition(3001, 5001)]
+
+        mock_repository.fetch_attendees = AsyncMock(return_value=attendees)
+        mock_repository.fetch_persons = AsyncMock(return_value=persons)
+        mock_repository.fetch_sessions = AsyncMock(return_value=sessions)
+        mock_repository.fetch_status_transitions = AsyncMock(return_value=transitions)
+        # If the service still probed for this, it would use 999 instead of
+        # the real status-transitions count of 1.
+        mock_repository.fetch_cancellation_count = AsyncMock(return_value=999)
+
+        service = HistoricalService(mock_repository)
+        result = await service.calculate_historical_trends(years=[2025])
+
+        assert result.years[0].total_cancelled == 1
 
 
 # ============================================================================
