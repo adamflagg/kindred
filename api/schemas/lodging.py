@@ -251,20 +251,22 @@ class LodgingUnitSummary(BaseModel):
     # CampMinder has no sub-room concept for every building. Measured over
     # 2022-2025, resolving down instead would raise 36 false alarms.
     shareability: Shareability = "unknown"
-    # None when NEITHER a `lodging_availability` row nor a `lodging_write_ins`
-    # row exists for this unit this weekend, i.e. the unit's ROLE decides. None
-    # and False are different answers and must not be flattened into one: False
-    # is "closed this weekend".
+    # THE staff<->family ROLE, AND NOTHING ELSE, since kindred#2382 finished
+    # splitting the boolean's two questions apart. This is `lodging_availability`
+    # for this unit this weekend: True is "a staff cabin opened to families",
+    # False is "closed by role", and None means there is no row, so the unit's
+    # standing `inventory_class` decides. None and False are different answers
+    # and must not be flattened into one.
     #
-    # TWO SOURCES since kindred#2382 split the boolean's two questions apart:
-    # True comes from the availability row (a staff cabin opened to families
-    # for the weekend), and False from a write-in row (somebody is in it),
-    # which outranks the role when a unit somehow carries both. It still spells
-    # an occupancy as False deliberately -- `is_family_available`, and through
-    # it every count on the stats bar, is derived from this one field, and the
-    # board's open-tint reads False as a proxy for "is somebody in it".
-    # Disentangling the two axes on the wire is PR 4 of kindred#2382; ask
-    # `write_in` "is somebody in this space" in the meantime.
+    # IT DOES NOT ANSWER "IS SOMEBODY IN IT". That is `write_in` below, read
+    # from `lodging_write_ins` / `_draft`. Until PR 4 of kindred#2382 an
+    # occupancy also reported itself here as False, because
+    # `is_family_available` and the board's forest open-tint were both derived
+    # from this one field; both read the occupancy source directly now, so a
+    # False here means a role decision and never an occupant. A reader that
+    # wants "can a family go in this space" wants `is_family_available`, which
+    # folds both facts in; a reader that wants "is somebody in it" wants
+    # `write_in`.
     #
     # Stated explicitly rather than implied. The rejected encoding was a row
     # meaning "the opposite of this unit's current default", which an ordinary
@@ -295,20 +297,34 @@ class LodgingUnitSummary(BaseModel):
     # `occupant_name` back -- the note is PROSPECTIVE, for write-ins recorded
     # from 1500000148 onward.
     reason: str = ""
+    # CAN A FAMILY GO IN THIS SPACE -- the DERIVED answer, and the one every
+    # count on the stats bar goes through. Folds the two facts above together:
+    # the ROLE from `family_available_override`, and OCCUPANCY from this unit's
+    # own write-in row. Occupancy is absolute and closes the unit over a
+    # release, because a cabin somebody is sleeping in cannot take a family.
+    #
+    # Its rule is `is_family_available` in api/services/lodging_rules.py, and
+    # that is the only place the two are combined.
     is_family_available: bool = False
     # The write-in that closes this space, resolved through the unit tree --
     # this unit's own row, else the nearest ancestor's, else the nearest
     # descendant's. None means no write-in covers it.
     #
-    # The three fields above stay STRICTLY this unit's own row: they are what
-    # the write path reads back, and `family_available_override` alone is what
-    # `is_family_available` is derived from. Folding an inherited fact into any
-    # of them would make a room look like it carried a row it does not have. Ask this field "is somebody in this
-    # space", and those fields "what does this unit's own row say".
+    # The fields above stay STRICTLY this unit's own row: they are what the
+    # write path reads back. Folding an inherited fact into any of them would
+    # make a room look like it carried a row it does not have. Ask THIS field
+    # "is somebody in this space", and those fields "what does this unit's own
+    # row say".
     #
     # Only a write-in travels. A release (`family_available_override is True`)
     # names no occupant and closes nothing, so inheriting it would silently
     # open every room beneath a released building.
+    #
+    # ⚠️ `is_family_available` deliberately does NOT read this field: it folds
+    # in the unit's OWN occupancy row only, so an inherited write-in badges and
+    # blocks placement without moving the bed counts. That is the behaviour the
+    # counts have always had, and changing it is a counts decision rather than
+    # a side effect of the split.
     write_in: WriteInCover | None = None
     map_x: float | None = None
     map_y: float | None = None

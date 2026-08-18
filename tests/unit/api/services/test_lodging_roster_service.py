@@ -4312,12 +4312,12 @@ class TestWriteInsResolveFromTheirOwnTable:
     while an occupancy IS, so the two facts are split apart and each scoped on
     its own terms.
 
-    This class pins the READ half of the split at BEHAVIOURAL PARITY: after it,
-    the board looks and behaves exactly as it did, and the only thing that moved
-    is which table the occupancy came out of. `family_available_override` is
-    still `False` on a written-into unit, and deliberately so -- it is what
-    `is_family_available`, and through it every count on the stats bar, is
-    derived from. Disentangling that boolean is PR 4.
+    This class pins the READ half of the split at BEHAVIOURAL PARITY: the board
+    looks and behaves exactly as it did, and the only thing that moved is which
+    table the occupancy came out of. PR 4 then disentangled the boolean itself
+    -- see TestTheWireStopsSpellingAnOccupancyAsFamilyAvailableFalse -- so
+    `family_available_override` reports the ROLE row alone and
+    `is_family_available` is where the two facts meet.
 
     Fictional data throughout.
     """
@@ -4343,11 +4343,12 @@ class TestWriteInsResolveFromTheirOwnTable:
         unit = roster.units[0]
         assert unit.occupant_name == "Liam Garcia"
         assert unit.reason == "Back Monday"
-        # The compat half, and it is load-bearing rather than leftover: every
-        # count on the stats bar goes through `is_family_available`, which is
-        # derived from this. PR 4 re-points it; until then a write-in still
-        # spells itself here.
-        assert unit.family_available_override is False
+        # The unit holds no `lodging_availability` row, so it reports no ROLE
+        # override -- the write-in says nothing about the staff<->family
+        # question. `is_family_available` is where the two facts meet, and it
+        # is the number staff read; PR 4 removed the shim that had this field
+        # answering both. See TestTheWireStopsSpellingAnOccupancyAsFamilyAvailableFalse.
+        assert unit.family_available_override is None
         assert unit.is_family_available is False
         assert unit.write_in is not None
         assert unit.write_in.unit_id == "u1"
@@ -4426,7 +4427,10 @@ class TestWriteInsResolveFromTheirOwnTable:
         roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
 
         unit = roster.units[0]
-        assert unit.family_available_override is False
+        # The ROLE row still reports what it says (PR 4 stopped this field
+        # doubling as the occupancy); the occupancy wins the DERIVED answer,
+        # which is the half that keeps the cabin closed.
+        assert unit.family_available_override is True
         assert unit.is_family_available is False
         assert unit.occupant_name == "Ava Martinez"
         assert unit.write_in is not None
@@ -4578,6 +4582,132 @@ class TestWriteInsResolveFromTheirOwnTable:
         assert by_code["house-a"].write_in.note == "Back Monday"
 
 
+class TestTheWireStopsSpellingAnOccupancyAsFamilyAvailableFalse:
+    """kindred#2382, PR 4 of 4 -- the COMPAT SHIM comes out.
+
+    PR 2 split the table but deliberately kept the wire conflated: a write-in
+    still reported `family_available_override = False`, because
+    `is_family_available` -- and through it every count on the stats bar, and
+    the board's own forest open-tint -- was derived from that one field. Every
+    consumer has since been re-pointed at the occupancy source (`write_in`, and
+    `writeInOccupant` on the client), so the field can go back to answering the
+    ONE question it is named for.
+
+    | on the wire | what it means now |
+    |---|---|
+    | `family_available_override` | the staff<->family ROLE row, and nothing else |
+    | `write_in` | somebody is in this space -- the occupancy, resolved |
+    | `is_family_available` | the DERIVED answer, which still folds both in |
+
+    `is_family_available` is what does not move, and that is the point of the
+    class: it is the number staff read, so it stays exactly what it was while
+    the two facts underneath it come apart.
+
+    Fictional data throughout.
+    """
+
+    @pytest.mark.asyncio
+    async def test_a_written_into_unit_reports_no_role_override(self) -> None:
+        """A write-in says nothing about the staff<->family role, so it says nothing here.
+
+        The unit holds no `lodging_availability` row at all, and `None` is the
+        honest answer for a question nobody has answered -- not `False`, which
+        used to mean "somebody is in it" and now would claim a role decision
+        that was never made.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[_unit("u1", "ridge-a", "Ridge A", sleeps=5)],
+            fetch_availability=[],
+            fetch_write_ins=[_rec(unit="u1", occupant_name="Liam Garcia", note="Back Monday")],
+        )
+
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        unit = roster.units[0]
+        assert unit.family_available_override is None
+        # THE HALF THAT MUST NOT MOVE. The derived answer still folds the
+        # occupancy in, so nothing staff read changes.
+        assert unit.is_family_available is False
+        assert unit.write_in is not None
+        assert unit.occupant_name == "Liam Garcia"
+
+    @pytest.mark.asyncio
+    async def test_a_released_cabin_that_is_also_written_into_keeps_its_role_on_the_wire(self) -> None:
+        """Two rows, two tables, two answers -- and the wire now carries both.
+
+        This pair is unproducible by any writer (`set_availability` drops the
+        other fact on every write) but two staff racing on one cabin can make
+        it. The conflated field could only report one of the two and reported
+        the occupancy; with the axes apart, the role row is reported as what it
+        is AND the derived answer still comes out closed.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[_unit("u1", "le-shack", "Le Shack", sleeps=4, inventory_class="staff_default")],
+            fetch_availability=[_rec(unit="u1", family_available=True, occupant_name="", note="Director away")],
+            fetch_write_ins=[_rec(unit="u1", occupant_name="Ava Martinez", note="")],
+        )
+
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        unit = roster.units[0]
+        assert unit.family_available_override is True
+        # Occupancy still outranks the role in the DERIVED answer, which is the
+        # safe direction: reading the release instead would open a cabin with
+        # somebody sleeping in it.
+        assert unit.is_family_available is False
+        assert unit.write_in is not None
+
+    @pytest.mark.asyncio
+    async def test_the_counts_do_not_move_when_the_shim_comes_out(self) -> None:
+        """`units_reserved` and `beds_family_available` are what staff read.
+
+        They are derived from `is_family_available`, which used to be derived
+        from the conflated boolean. Re-pointing the derivation without keeping
+        the occupancy in it would silently return a written-into cabin to the
+        open count -- the exact failure the shim was kept to prevent.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("u1", "ridge-a", "Ridge A", sleeps=5),
+                _unit("u2", "ridge-b", "Ridge B", sleeps=4),
+            ],
+            fetch_write_ins=[_rec(unit="u1", occupant_name="Liam Garcia", note="")],
+        )
+
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.counts.units_total == 2
+        assert roster.counts.units_family_available == 1
+        assert roster.counts.units_reserved == 1
+        assert roster.counts.beds_family_available == 4
+
+    @pytest.mark.asyncio
+    async def test_a_stale_role_false_still_closes_the_unit_and_still_reports_itself(self) -> None:
+        """A bare `false` in `lodging_availability` is a ROLE value, and stays one.
+
+        1500000162 moved every occupancy row out and no writer creates another,
+        so nothing should carry one -- but a surviving row must not be
+        laundered into "no override" either. It reports what it says and closes
+        the unit, and it produces no cover, because it names nobody.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[_unit("u1", "ridge-a", "Ridge A", sleeps=5)],
+            fetch_availability=[_rec(unit="u1", family_available=False, occupant_name="", note="")],
+            fetch_write_ins=[],
+        )
+
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        unit = roster.units[0]
+        assert unit.family_available_override is False
+        assert unit.is_family_available is False
+        assert unit.write_in is None
+
+
 class TestAScenariosWriteInsReplaceTheLiveOnes:
     """kindred#2382, PR 3 of 4 -- the occupancy half gains its scenario dimension.
 
@@ -4656,7 +4786,9 @@ class TestAScenariosWriteInsReplaceTheLiveOnes:
         roster = await LodgingRosterService(repo).build_roster(2026, 1000001, scenario="scn_1")
 
         unit = roster.units[0]
-        assert unit.family_available_override is False
+        # No ROLE row anywhere for this unit, so no role override -- the draft
+        # write-in answers the occupancy question only (PR 4).
+        assert unit.family_available_override is None
         assert unit.is_family_available is False
         assert unit.occupant_name == "Olivia Chen"
         assert unit.reason == "Paper registration"

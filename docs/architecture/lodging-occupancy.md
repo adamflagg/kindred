@@ -164,16 +164,24 @@ rule: it blocks legitimate work and teaches staff to ignore warnings.
   every other lodging draft table relies on — there is no hook and no
   client-side pre-delete loop.
 
-  **The READ replaces; the WRITE does not yet choose.** `PUT
-  /api/lodging/availability` takes no `scenario` and writes the live occupancy
-  table, which was right while reads fell through and is a gap now that they
-  replace: a staff member working inside a scenario who records a write-in
-  lands it on the live board and does not see it on the board they made it on.
-  Closing it needs the frontend to send the scenario it already holds, so it
-  belongs with the rest of kindred#2382's frontend work — `set_availability`'s
-  own docstring carries the shape of the fix. Until then, a write-in meant for
-  a scenario has to be recorded on the live board and picked up by seeding the
-  scenario from it.
+  **The WRITE chooses too.** `PUT /api/lodging/availability` carries an
+  OPTIONAL `scenario`, spelled exactly as `/api/lodging/merge` spells its own:
+  blank is the live board, a scope in its own right, and a scenario id writes
+  that scenario's draft occupancy. It steers the OCCUPANCY half alone — a
+  release ignores it and still writes `lodging_availability`, because the
+  staff↔family role is a fact about the weekend whoever is looking at it.
+  Requiring one is the shape that made this endpoint uncallable under
+  kindred#1998, and would now leave the live board with no write path.
+
+  **`family_available_override` on the wire is the ROLE alone.** While the
+  split was landing in four parts, the read layer kept spelling an occupancy as
+  `family_available_override = false`, because `is_family_available` — and
+  through it every count on the stats bar, and the board's forest open-tint —
+  was derived from that one field. Every consumer now reads the occupancy
+  source directly (`LodgingUnitSummary.write_in`, and `writeInOccupant` on the
+  client), so the field answers one question again. `is_family_available`
+  remains the DERIVED answer and still folds both facts in: occupancy closes a
+  unit whatever the role says, so no reported number moved.
 
   ### What a hold represents (owner ruling, 2026-08-09; kindred#2090, kindred#2087)
 
@@ -185,14 +193,21 @@ rule: it blocks legitimate work and teaches staff to ignore warnings.
   same underlying fact from two directions, and the ruling settles them as
   **mutually exclusive states**: a unit cannot be both held and occupied.
 
-  Concretely: `family_available_override = false` on a unit **blocks
-  placement outright** (`resolveDrop` in `dragPlacement.ts`, plus the
-  matching `useDroppable` `disabled` flag in `LodgingUnitCard.tsx`, refuse a
-  drop onto a held unit rather than merely dimming it), and a unit already
-  holding a placed party offers no "Hold" action (`availabilityAction` in
-  `unitBadges.ts` takes the slot's own occupancy and returns `null` for the
-  `hold` branch). The `clear` action — removing an existing hold — is never
-  blocked by occupancy, since clearing only ever reduces the conflict.
+  Concretely: a write-in covering a unit **blocks placement outright**
+  (`resolveDrop` in `dragPlacement.ts`, plus the matching `useDroppable`
+  `disabled` flag in `LodgingUnitCard.tsx`, refuse a drop onto a written-into
+  unit rather than merely dimming it), and a unit already holding a placed
+  party offers no "Write in" action (`availabilityAction` in `unitBadges.ts`
+  takes the slot's own occupancy and returns `null` for the `hold` branch). The
+  `clear` action — removing an existing write-in — is never blocked by
+  occupancy, since clearing only ever reduces the conflict.
+
+  Both gates read the fact through `writeInOccupant` (`writeIn.ts`), never
+  through `family_available_override`. They were written against that column
+  when it still doubled as the occupancy store; naming the fact once is what
+  let kindred#2382 re-point it in one place, and it is also what makes them
+  respect the unit tree — a write-in names one unit but closes a SPACE, so a
+  building's write-in blocks a drop into its rooms and vice versa.
 - The unique indexes on `lodging_assignments` are
   `(session, year, household_cm_id)` and the person-grain equivalent, each
   partial on `> 0` so the two grains do not collide. (Migration `1500000132`

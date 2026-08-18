@@ -39,20 +39,25 @@ class TestUnitCapacity:
 
 
 class TestIsFamilyAvailable:
-    """Two layers, not three, and the override STATES the outcome.
+    """TWO QUESTIONS, and the override answers only one of them.
 
-    1500000135 deleted availability's scenario dimension -- a burst pipe closes
-    a cabin in every plan for that weekend -- and collapsed the three-value
-    `state` enum to one boolean. The three values were REASONS, not states:
-    each only meant anything read against the unit's role, so
+    1500000135 deleted availability's scenario dimension and collapsed the
+    three-value `state` enum to one boolean. The three values were REASONS, not
+    states: each only meant anything read against the unit's role, so
     `released_to_family` on a family_pool unit was storable and meaningless.
+
+    kindred#2382 then found that the surviving boolean was still carrying two
+    unrelated facts -- the staff<->family ROLE and whether somebody is IN the
+    room -- and split them. `override` is the role; `is_occupied` is the
+    occupancy, read from `lodging_write_ins` rather than from the role column.
+    This function is where the two meet, and the only place they do.
     """
 
     @pytest.mark.parametrize(
         ("inventory_class", "override", "expected"),
         [
             ("family_pool", None, True),
-            ("family_pool", False, False),  # burst pipe
+            ("family_pool", False, False),  # closed by role
             ("family_pool", True, True),  # redundant but harmless
             ("staff_default", None, False),
             ("staff_default", True, True),  # released for this weekend
@@ -67,18 +72,38 @@ class TestIsFamilyAvailable:
     def test_the_override_wins_and_the_role_decides_without_one(
         self, inventory_class: str, override: bool | None, expected: bool
     ) -> None:
-        assert is_family_available(inventory_class, override) is expected
+        assert is_family_available(inventory_class, override, is_occupied=False) is expected
 
     def test_false_is_a_decision_and_not_an_absent_override(self) -> None:
         """`False` and `None` are different answers on a family_pool unit.
 
         This is the assertion that stops the override being read with a falsy
-        test (`if override:`), which would silently discard every reservation --
-        the write this column mainly exists for. Absence means "ask the role";
-        False means "closed this weekend".
+        test (`if override:`), which would silently discard every closure.
+        Absence means "ask the role"; False means "closed this weekend".
         """
-        assert is_family_available("family_pool", False) is False
-        assert is_family_available("family_pool", None) is True
+        assert is_family_available("family_pool", False, is_occupied=False) is False
+        assert is_family_available("family_pool", None, is_occupied=False) is True
+
+    @pytest.mark.parametrize(
+        ("inventory_class", "override"),
+        [
+            ("family_pool", None),
+            ("family_pool", True),
+            ("staff_default", True),  # released AND written into -- occupancy wins
+            ("", None),
+        ],
+    )
+    def test_an_occupancy_closes_the_unit_whatever_the_role_says(
+        self, inventory_class: str, override: bool | None
+    ) -> None:
+        """kindred#2382: somebody is in it, so no family can go in it.
+
+        The role can say "this is family inventory" as loudly as it likes; a
+        cabin with an occupant cannot take a second party. Ordering it the other
+        way round is a bed collision, which is the failure write-ins exist to
+        prevent.
+        """
+        assert is_family_available(inventory_class, override, is_occupied=True) is False
 
 
 class TestEffectiveBathroom:

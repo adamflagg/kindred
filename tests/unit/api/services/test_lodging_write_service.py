@@ -62,17 +62,13 @@ def _repo(**overrides: Any) -> MagicMock:
         "update_write_in": SimpleNamespace(id="write_in_existing"),
         "delete_write_in": None,
         "fetch_write_ins": [],
-        # The scenario grain of the same occupancy fact (kindred#2382, PR 3).
-        # Two of these have callers: `fetch_draft_write_ins` (the scenario seed
-        # reads its source through it) and `create_draft_write_in` (both seed
-        # paths write through it). An empty default for the read is the shape a
-        # weekend with no write-ins really has.
-        #
-        # `find_`, `update_` and `delete_draft_write_in` are still DARK, and
-        # deliberately so: `set_availability` takes no scenario and writes the
-        # LIVE table, which is the gap PR 4 closes. They are stubbed anyway so
-        # that a test which starts reaching one fails on its own assertion
-        # rather than on an un-awaitable bare MagicMock.
+        # The scenario grain of the same occupancy fact (kindred#2382). All
+        # five have callers now: `fetch_draft_write_ins` and
+        # `create_draft_write_in` are the seed paths' read and write (PR 3),
+        # and `find_`, `update_` and `delete_draft_write_in` are what
+        # `set_availability` reaches when the request names a scenario (PR 4).
+        # An empty default for the read is the shape a weekend with no
+        # write-ins really has.
         "fetch_draft_write_ins": [],
         "find_draft_write_in": None,
         "create_draft_write_in": SimpleNamespace(id="draft_write_in_new"),
@@ -1812,12 +1808,11 @@ class TestAWriteInIsStoredAsAnOccupancyNotAnAvailability:
         # The boolean is what the split REMOVED. A write-in table row IS the
         # occupancy; a column restating it would be the conflation coming back.
         assert "family_available" not in data
-        # NO SCENARIO ON THIS WRITE, still: `set_availability` takes none and
-        # writes the LIVE table, which is a scope in its own right. Since PR 3
-        # of kindred#2382 that is also a known GAP rather than a resting state
-        # -- a write-in made from inside a scenario lands here and that
-        # scenario's own read replaces it away -- and routing the occupancy
-        # half to the draft twin is PR 4's. See `set_availability`.
+        # NO SCENARIO IN THE PAYLOAD, because the request named none. The live
+        # table has no such column: the live board is a scope in its own right
+        # rather than the absence of one. A request that DOES name a scenario
+        # goes to the draft twin instead -- see
+        # TestAWriteInInsideAScenarioIsWrittenToTheDraftTable.
         assert "scenario" not in data
 
     @pytest.mark.asyncio
