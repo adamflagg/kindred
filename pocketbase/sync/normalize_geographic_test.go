@@ -2362,6 +2362,10 @@ func newNormalizeGeographicSyncTestApp(t *testing.T) core.App {
 		for _, f := range []string{
 			"name", "person", "field_definition", "value",
 			"type", "category", "canonical_name", "merged_into", "raw_value",
+			// The column loadGeoOverrides actually switches on. Absent from
+			// this fixture until the geo_overrides loader got its first test:
+			// "type" is a different column and never fed that switch.
+			"override_type",
 		} {
 			col.Fields.Add(&core.TextField{Name: f})
 		}
@@ -2478,5 +2482,119 @@ func TestNormalizeGeographicSyncPropagatesSweepRefusal(t *testing.T) {
 	if len(remaining) != OrphanSweepMinRows+5 {
 		t.Errorf("%d rows survived, want %d -- a refused sweep must delete nothing",
 			len(remaining), OrphanSweepMinRows+5)
+	}
+}
+
+// ============================================================================
+// geo_overrides loader (kindred: transform-phase log audit, 2026-08-18)
+// ============================================================================
+
+// TestLoadGeoOverrides_ReadsRows is the test the override feature never had.
+//
+// Every existing "override" test in this file assigns into a plain Go map and
+// asserts on the map — none of them issues the query, so the loader's sort
+// argument was never exercised. Production logged
+//
+//	WARN Could not load geo_overrides, continuing without overrides
+//	     error=loading geo_overrides: invalid sort field "year ASC"
+//
+// on every run: PocketBase sort expressions are `field` / `+field` / `-field`,
+// so "year ASC" is read as a FIELD NAME and rejected. The caller swallows the
+// error and continues with empty maps, so alias, merge and rejection overrides
+// have never been applied by this job and nothing went red.
+func TestLoadGeoOverrides_ReadsRows(t *testing.T) {
+	t.Parallel()
+	app := newNormalizeGeographicSyncTestApp(t)
+
+	col, err := app.FindCollectionByNameOrId("geo_overrides")
+	if err != nil {
+		t.Fatalf("find geo_overrides: %v", err)
+	}
+
+	save := func(overrideType, category string, year int, fields map[string]string) {
+		t.Helper()
+		rec := core.NewRecord(col)
+		rec.Set("override_type", overrideType)
+		rec.Set("category", category)
+		rec.Set("year", year)
+		for k, v := range fields {
+			rec.Set(k, v)
+		}
+		if saveErr := app.Save(rec); saveErr != nil {
+			t.Fatalf("save %s override: %v", overrideType, saveErr)
+		}
+	}
+
+	save("alias", categorySchool, 2025, map[string]string{
+		"raw_value": "Lakeview Elem", "canonical_name": "Lakeview Elementary",
+	})
+	save("merge", categoryCongregation, 2025, map[string]string{
+		"canonical_name": "Beth Shalom", "merged_into": "Congregation Beth Shalom",
+	})
+	save("rejected", categoryCity, 2025, map[string]string{
+		"canonical_name": "Unknown",
+	})
+
+	n := &NormalizeGeographicSync{App: app}
+	alias, merge, rejected, err := n.loadGeoOverrides(2026)
+	if err != nil {
+		t.Fatalf("loadGeoOverrides: %v", err)
+	}
+
+	if got := alias[categorySchool]["lakeview elem"]; got != "Lakeview Elementary" {
+		t.Errorf("alias override = %q, want %q", got, "Lakeview Elementary")
+	}
+	if got := merge[categoryCongregation]["Beth Shalom"]; got != "Congregation Beth Shalom" {
+		t.Errorf("merge override = %q, want %q", got, "Congregation Beth Shalom")
+	}
+	if !rejected[categoryCity]["unknown"] {
+		t.Errorf("rejected override for %q not loaded", "unknown")
+	}
+}
+
+// TestLoadGeoOverrides_NewestYearWins pins the reason the loader sorts at all:
+// the same alias key may be set in more than one year, later rows overwrite
+// earlier ones as the loop runs, so ascending year is what makes the newest
+// value the one that survives. The sibling TestOverrideMapDedup_* tests assert
+// that overwrite semantics against a hand-built map; this one asserts the sort
+// that feeds it, which is the half that was broken.
+func TestLoadGeoOverrides_NewestYearWins(t *testing.T) {
+	t.Parallel()
+	app := newNormalizeGeographicSyncTestApp(t)
+
+	col, err := app.FindCollectionByNameOrId("geo_overrides")
+	if err != nil {
+		t.Fatalf("find geo_overrides: %v", err)
+	}
+
+	// Saved newest-first, so a loader that does not sort would leave the 2025
+	// value in place.
+	for _, row := range []struct {
+		year      int
+		canonical string
+	}{
+		{2026, "Lakeview Elementary Academy"},
+		{2025, "Lakeview Elementary"},
+	} {
+		rec := core.NewRecord(col)
+		rec.Set("override_type", "alias")
+		rec.Set("category", categorySchool)
+		rec.Set("year", row.year)
+		rec.Set("raw_value", "Lakeview Elem")
+		rec.Set("canonical_name", row.canonical)
+		if saveErr := app.Save(rec); saveErr != nil {
+			t.Fatalf("save alias override for %d: %v", row.year, saveErr)
+		}
+	}
+
+	n := &NormalizeGeographicSync{App: app}
+	alias, _, _, err := n.loadGeoOverrides(2026)
+	if err != nil {
+		t.Fatalf("loadGeoOverrides: %v", err)
+	}
+
+	if got := alias[categorySchool]["lakeview elem"]; got != "Lakeview Elementary Academy" {
+		t.Errorf("alias override = %q, want the newest year's value %q",
+			got, "Lakeview Elementary Academy")
 	}
 }
