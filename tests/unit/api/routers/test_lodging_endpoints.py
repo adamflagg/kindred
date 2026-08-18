@@ -1395,8 +1395,10 @@ class TestAvailabilityWrites:
 
         `AvailabilityWriteRequest` extended `ScenarioWriteRequest`, where
         `scenario` is `min_length=1`, so a body without one was a 422 -- and
-        there was no scenario worth supplying, which is a large part of why the
-        table still holds zero rows.
+        the live board, which is where staff evaluate, had no id to supply.
+        That is a large part of why the table still holds zero rows. The field
+        is back since kindred#2382 PR 4, OPTIONAL, and this test is what stops
+        it being tightened again.
         """
         with patch("api.routers.lodging.pb", mock_pb):
             client = _write_client(_manage_user(), mock_pb)

@@ -1468,10 +1468,17 @@ class LodgingRosterService:
             #
             # Occupancy still OUTRANKS the role, but in the DERIVED answer
             # rather than by overwriting the role on the wire: see
-            # `is_family_available` below and its rule in lodging_rules.py. No
-            # writer produces both rows -- `set_availability` clears the other
-            # fact on every write -- but two staff racing on one cabin can, and
-            # the safe answer is the closed one.
+            # `is_family_available` below and its rule in lodging_rules.py.
+            #
+            # BOTH ROWS AT ONCE IS REACHABLE, and stopped needing a race in PR
+            # 4 of kindred#2382. `set_availability` still drops the fact it is
+            # not writing, but the occupancy drop is scoped to the caller's own
+            # grain while the role row is shared by every scope -- so writing
+            # somebody into a cabin on the live board and then releasing it
+            # from inside a scenario leaves the live write-in standing beside
+            # the new role row. Two staff racing on one cabin get there too.
+            # Either way the safe answer is the closed one, which is what the
+            # derivation returns.
             override = _maybe_bool(role_row, "family_available")
             # Display text travels BESIDE the decision, never into it, and it
             # comes from whichever row supplied the decision. Stored in the

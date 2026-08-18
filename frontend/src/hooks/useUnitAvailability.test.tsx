@@ -116,12 +116,15 @@ describe('useUnitAvailability', () => {
   })
 
   it('refreshes EVERY scenario of the weekend, not just the one on screen', async () => {
-    // The failure this pins is silent. Availability carries no scenario, so a
-    // write-in recorded while a draft is open changes the mirror and every other
-    // draft as well — and the weekend queries carry a 30 minute staleTime, so
-    // "stale" means half an hour of a board showing a cabin as open after
-    // staff closed it. Invalidating only the visible key looks correct on the
-    // screen you are looking at, which is why nobody reports it.
+    // The failure this pins is silent. ONE WRITE CAN MOVE TWO BOARDS: an
+    // occupancy lands on the scenario named on the request, while a RELEASE is
+    // a weekend-level fact every scenario of that weekend inherits, because
+    // `lodging_availability` still has no scenario column (kindred#2382 split
+    // the occupancy half out and left the role half where it was). And the
+    // weekend queries carry a 30 minute staleTime, so "stale" means half an
+    // hour of a board showing a cabin as open after staff closed it.
+    // Invalidating only the visible key looks correct on the screen you are
+    // looking at, which is why nobody reports it.
     const { result } = renderAvailability()
 
     await act(async () => {

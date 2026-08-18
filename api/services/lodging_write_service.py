@@ -813,6 +813,17 @@ class LodgingWriteService:
         would clear a fact nobody on this board can see, on the strength of a
         click made somewhere else.
 
+        WHICH MAKES "ONE FACT AT A TIME" A PER-SCOPE PROMISE, not a global one,
+        and that is the cost of the asymmetry rather than an oversight. Write
+        somebody into a cabin on the live board, then release it from inside a
+        scenario, and both rows exist: the live occupancy the scenario's drop
+        could not see, and the weekend-level role row it just wrote. Nothing
+        downstream is confused by it -- `is_family_available` folds both in and
+        occupancy wins, so the cabin reads closed on the live board -- and a
+        clear on either grain still removes the role row along with its own
+        occupancy. Narrowing the role drop instead would leave a release
+        standing under a write-in on the SAME board, which is worse.
+
         ORDER: the new fact is written BEFORE the old one is dropped. There is
         no transaction across two PocketBase tables, and a failure between the
         steps has to leave the board saying something true. Write-then-drop

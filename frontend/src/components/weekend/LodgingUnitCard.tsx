@@ -156,9 +156,10 @@ export interface LodgingUnitCardProps {
    * Availability is writable: the user holds `bunking.manage` and a weekend is
    * selected.
    *
-   * SEPARATE from `canPlace`, which also requires a scenario. Availability
-   * carries none since 1500000135, so gating it on one would make a burst pipe
-   * unrecordable unless a draft plan happened to be open.
+   * SEPARATE from `canPlace`, which also requires a scenario. This write
+   * CARRIES one and never requires one (kindred#2382 PR 4) — blank is the LIVE
+   * board, a scope in its own right — so gating it on one would make a
+   * write-in unrecordable unless a draft plan happened to be open.
    */
   canSetAvailability?: boolean
   /** True while THIS unit's availability write is in flight. */

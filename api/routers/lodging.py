@@ -112,9 +112,15 @@ async def get_weekend_roster(
     With no `scenario` this is the CampMinder mirror -- the synced rows, which
     no UI may write. With one, the scenario's own draft placements REPLACE
     them: a party with no draft row is unplaced in that scenario, and the
-    mirror is not read at all. Availability does NOT vary this way: 1500000135
-    deleted its scenario dimension, so the same rows resolve for every plan --
-    a burst pipe closes a cabin in all of them. See `set_availability` below.
+    mirror is not read at all.
+
+    WRITE-INS REPLACE THE SAME WAY (kindred#2382): a scenario reads
+    `lodging_write_ins_draft` and the live table is not read at all, because an
+    occupancy is a modelling choice belonging to the plan that made it. The
+    staff<->family ROLE does NOT vary this way -- 1500000135 deleted that
+    table's scenario dimension and the split left it deleted, so the same
+    `lodging_availability` rows resolve for every plan. See `set_availability`
+    below, which steers exactly the half that varies.
     """
     try:
         return await _service().build_roster(year, session_cm_id, scenario)
@@ -269,10 +275,11 @@ async def set_availability(
 
     ONE ENDPOINT, TWO TABLES since kindred#2382. `family_available` answers two
     unrelated questions and each is stored where it belongs: `false` is an
-    OCCUPANCY and goes to `lodging_write_ins`, `true` is a staff<->family ROLE
-    override for the weekend and stays in `lodging_availability`. The request
-    model, the URL and everything a staff member sees are unchanged -- the
-    split is behind them. `set_availability` carries the reasoning.
+    OCCUPANCY and goes to `lodging_write_ins` or its scenario-scoped draft
+    twin, `true` is a staff<->family ROLE override for the weekend and stays in
+    `lodging_availability`. The URL and everything a staff member sees are
+    unchanged -- the split is behind them, and the request model grew exactly
+    one optional field for it. `set_availability` carries the reasoning.
 
     `scenario` is OPTIONAL on the body, as it is on `/merge` and unlike every
     other write here, and it steers the OCCUPANCY half alone. Blank is the LIVE

@@ -281,8 +281,15 @@ class LodgingUnitSummary(BaseModel):
     # on both sides, so there is no second translation to keep in step.
     #
     # Display only, like `reason`. The rule never branches on it: what closes
-    # a cabin is `family_available_override`, and an occupant with no override
-    # is not a state any writer can produce.
+    # a cabin is `is_family_available`, which folds the ROLE and the OCCUPANCY
+    # together.
+    #
+    # AN OCCUPANT WITH NO ROLE OVERRIDE IS THE ORDINARY STATE since PR 4 of
+    # kindred#2382, and used to be an impossible one. A write-in says nothing
+    # about the staff<->family question, so `set_availability` writes the
+    # occupancy row alone and `family_available_override` stays None -- which
+    # is exactly what stopped this field having to spell an occupancy as
+    # `False`.
     occupant_name: str = ""
     # Display only. The rule never branches on it. Read from the `note` column
     # of whichever row supplied the decision -- the write-in row for an
@@ -702,10 +709,14 @@ class ScenarioWriteRequest(BaseModel):
     """Common shape of every lodging write that names a PLAN: one weekend, one scenario.
 
     Not every lodging write. `AvailabilityWriteRequest` deliberately does not
-    extend this, because availability is a fact about the weekend rather than
-    about the plan -- a burst pipe closes a cabin in every scenario for that
-    weekend -- and inheriting from here is exactly what left that endpoint
-    uncallable and its table empty (1500000135).
+    extend this, and the reason is the WORD `REQUIRED` rather than the word
+    `scenario`: inheriting from here is what left that endpoint uncallable and
+    its table empty (1500000135), because `min_length=1` demanded a dimension
+    nothing could supply. Since PR 4 of kindred#2382 that request DOES carry a
+    scenario -- optional, blank meaning the live board -- steering the
+    occupancy half alone. The staff<->family role it also writes is still a
+    fact about the weekend rather than about the plan, which is why
+    `lodging_availability` has no scenario column to inherit one into.
 
     `scenario` is REQUIRED and non-empty on the writes that do extend it. With no scenario the
     board is the CampMinder mirror and is read-only for everyone -- summer

@@ -4636,11 +4636,16 @@ class TestTheWireStopsSpellingAnOccupancyAsFamilyAvailableFalse:
     async def test_a_released_cabin_that_is_also_written_into_keeps_its_role_on_the_wire(self) -> None:
         """Two rows, two tables, two answers -- and the wire now carries both.
 
-        This pair is unproducible by any writer (`set_availability` drops the
-        other fact on every write) but two staff racing on one cabin can make
-        it. The conflated field could only report one of the two and reported
-        the occupancy; with the axes apart, the role row is reported as what it
-        is AND the derived answer still comes out closed.
+        REACHABLE WITHOUT A RACE since PR 4. `set_availability` still drops the
+        fact it is not writing, but the occupancy drop is scoped to the
+        caller's own grain while the role row is shared by every scope: write
+        somebody in on the live board, then release the cabin from inside a
+        scenario, and the live write-in is still there beside the new role row.
+        Two staff racing on one cabin get to the same place.
+
+        The conflated field could only report one of the two and reported the
+        occupancy; with the axes apart, the role row is reported as what it is
+        AND the derived answer still comes out closed.
         """
         repo = _repo(
             fetch_session=FAMILY_SESSION,
