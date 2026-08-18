@@ -240,15 +240,27 @@ class LodgingRepository:
         )
 
     async def fetch_availability(self, year: int, session_cm_id: int) -> list[Any]:
-        """Staff reservations and releases for one session.
+        """Staff RELEASES for one session -- the staff<->family role override.
+
+        HALF WHAT IT USED TO BE. `family_available` answered two unrelated
+        questions through one boolean, and kindred#2382 split them: `true` is a
+        staff cabin OPENED to families for this weekend, an operational fact
+        that stays here, and `false` was an OCCUPANCY -- somebody is in the
+        room -- which 1500000162 moved to `lodging_write_ins`. A reservation is
+        therefore NOT in this table any more; `fetch_write_ins` is the read for
+        it, and every `family_available = 0` row was moved out. Reading a
+        surviving one as a write-in is the mistake `write_in_covers` documents
+        at length.
 
         ONE layer, read identically with or without a scenario. 1500000135
-        dropped this table's `scenario` column: availability is a fact about
-        the WEEKEND rather than about the plan, so a burst pipe closes a cabin
-        in every scenario for that weekend and there is nothing for a scenario
+        dropped this table's `scenario` column, and that reasoning is exactly
+        right for the half that is left: a role move is a fact about the
+        WEEKEND rather than about the plan, so there is nothing for a scenario
         to disagree about. There is no companion `fetch_scenario_availability`
         to overlay on top of this, and adding one back would reintroduce the
-        last overlay in the lodging model.
+        last overlay in the lodging model. The occupancy half scopes
+        differently -- see `fetch_draft_write_ins` -- which is why it needed a
+        table rather than this one growing a column back.
         """
         return await self._page(
             LODGING_AVAILABILITY,
@@ -383,9 +395,10 @@ class LodgingRepository:
         write-ins come from `fetch_draft_write_ins` and REPLACE these; there
         is no overlay.
 
-        NOTHING READS THIS YET. PR 1 of kindred#2382 lands the tables and this
-        CRUD dark; `write_in_covers` still resolves write-ins out of
-        `lodging_availability` until PR 2 switches it.
+        `build_roster` and `build_summary` both read this, and `_build_units`
+        is where a row becomes the occupancy half of a unit's answer. PR 2 of
+        kindred#2382 switched them over and 1500000162 moved the rows; the
+        DRAFT sibling below is still dark until PR 3.
         """
         return await self._page(
             LODGING_WRITE_INS,
@@ -411,6 +424,12 @@ class LodgingRepository:
         writes, so a shared tier costs nothing. A write-in is an occupancy,
         the same kind of fact as a placement, so it follows the placement
         rule.
+
+        NOTHING READS THIS YET, unlike its live sibling above. PR 2 of
+        kindred#2382 moved the rows and switched the readers over to the LIVE
+        table at behavioural parity; giving write-ins their scenario dimension
+        -- this read, and the seed copies in both `copy_from_mirror` and
+        `copy_scenario_to_scenario` -- is PR 3.
 
         `scenario_id` is client-supplied and escaped, for the reason
         `fetch_draft_assignments` spells out. The weekend is named by

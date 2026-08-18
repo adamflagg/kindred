@@ -265,16 +265,24 @@ async def set_availability(
     request: AvailabilityWriteRequest,
     user: AuthUser = Depends(require_permission(Permission.BUNKING_MANAGE)),
 ) -> LodgingWriteResponse:
-    """Reserve or release one unit for this weekend.
+    """Write somebody into one unit for this weekend, or release one to families.
 
-    Takes NO scenario, unlike every other write on this router. Availability is
-    a fact about the weekend rather than about the plan -- a burst pipe closes
-    a cabin in every scenario for that weekend -- so 1500000135 deleted the
-    dimension. Requiring one is what made this endpoint uncallable.
+    ONE ENDPOINT, TWO TABLES since kindred#2382. `family_available` answers two
+    unrelated questions and each is stored where it belongs: `false` is an
+    OCCUPANCY and goes to `lodging_write_ins`, `true` is a staff<->family ROLE
+    override for the weekend and stays in `lodging_availability`. The request
+    model, the URL and everything a staff member sees are unchanged -- the
+    split is behind them. `set_availability` carries the reasoning.
+
+    Takes NO scenario, unlike every other write on this router. The role half
+    is a fact about the weekend rather than about the plan, so 1500000135
+    deleted its dimension; the occupancy half writes the LIVE board, which is a
+    scope in its own right rather than the absence of one. Requiring a scenario
+    is what made this endpoint uncallable.
 
     `family_available: null` clears the override, which is spelled as the
-    ABSENCE of a row: there is no value meaning "normal", and writing one would
-    pin the unit against a later change to its role.
+    ABSENCE of a row -- in BOTH tables. There is no value meaning "normal", and
+    writing one would pin the unit against a later change to its role.
     """
     try:
         return await _writes().set_availability(request)

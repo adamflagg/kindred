@@ -7,8 +7,8 @@
  * `held`, and a rename alone would have left the tint keyed on a spelling
  * rather than on the fact.
  *
- * Fictional data throughout. Production `lodging_availability` notes are real
- * family and staff names; nothing here is dumped from any database.
+ * Fictional data throughout. Production write-in notes are real family and
+ * staff names; nothing here is dumped from any database.
  */
 import { describe, expect, it } from 'vitest'
 
