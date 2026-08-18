@@ -33,12 +33,12 @@
  * four blocks and one renders seven entries inside them. The expectation is
  * explicitly that this ships and gets tuned against real staff use.
  *
- * Labels are the ORIGINAL CampMinder field names, verbatim, including the
- * misnamed `COVID-19 Bunking Requests` that carries 205 households of general
- * bunking requests. Ruled deliberately — "call them the original fieldnames
- * for now until staff can weigh in after it's live". Staff have since weighed
- * in on exactly ONE of them, and `DISPLAY_LABELS` below carries that single
- * exception. Do not "improve" any other label here.
+ * Labels are the ORIGINAL CampMinder field names, verbatim, UNLESS THE OWNER
+ * NAMED ONE. That was the 2026-08-17 ruling — "call them the original
+ * fieldnames for now until staff can weigh in after it's live" — and staff
+ * have since weighed in on three of the six, so `DISPLAY_LABELS` below is the
+ * whole list of exceptions and the other three keep the raw CampMinder
+ * spelling. Do not "improve" a label that is not already in that map.
  *
  * ## One treatment
  *
@@ -117,14 +117,28 @@ const REQUEST_RAIL =
  * DISPLAY names. The key stays the CampMinder source-field identity — it is
  * what the ingest, `REQUEST_TEXT_SOURCES` and the permission gate all key on,
  * so only the right-hand side may ever be edited to change what staff read.
+ * Renaming a key here would be a data change wearing a label change's clothes.
  *
- * One entry, and it is meant to stay small: the owner's 2026-08-17 review
- * relabelled `BunkingNotes Notes`, which reads as a typo, and explicitly left
- * every other label verbatim — `Internal Bunk Notes` and the misnamed
- * `COVID-19 Bunking Requests` included — until staff have used this live.
+ * Three entries, from two passes of the owner's 2026-08-17 review of the live
+ * panel: `BunkingNotes Notes` reads as a typo, and the two general-purpose
+ * fields are better named by the FORM staff meet them on than by whatever
+ * CampMinder happened to call the column.
+ *
+ * ⚠️ `Shared-request` (cm_id 274133) is the CURRENT family-camp form field —
+ * 112 rostered 2026 households — and is NOT its lookalike `FAM CAMP-Share
+ * Comments` (cm_id 240598), which has 171 values in 2025, 112 in 2024 and
+ * ZERO in 2026. Only the live one is renamed; renaming the retired one would
+ * leave the field staff actually read still called `Shared-request`.
+ *
+ * The other three fields stay verbatim, and the rule for the next reader is
+ * **verbatim unless the owner named it** — `Internal Bunk Notes`, `Share Bunk
+ * With` and `FAM CAMP-Share Comments` were not named, and silence is not a
+ * rename. Do not "improve" a label here on your own judgement.
  */
 const DISPLAY_LABELS: Readonly<Record<string, string>> = {
   'BunkingNotes Notes': 'Bunking Notes',
+  'COVID-19 Bunking Requests': 'Reg Form Bunk Notes',
+  'Shared-request': 'Fam Info Form Bunk Notes',
 }
 
 export interface ShareRequestPanelProps {
@@ -185,9 +199,9 @@ function RequestBlock({
         {/* Deliberately NOT the section heading's uppercase/tracked style,
             which `FamilyDetailsPanel`'s `Section` already spends above this.
             Repeating it would make a block read as a peer of "Share request"
-            rather than a child of it — and at 11px in a 416px panel,
-            "COVID-19 Bunking Requests" set in tracked uppercase is both
-            wider and harder to read. */}
+            rather than a child of it — and at 11px in a 416px panel, a
+            label as long as "Fam Info Form Bunk Notes" set in tracked
+            uppercase is both wider and harder to read. */}
         <span className="text-xs font-semibold">{label}</span>
       </button>
 

@@ -66,9 +66,12 @@ export type ShareRequest = ShareRequestSummary
 /**
  * Every answer a household gave in ONE free-text source field (kindred#2330).
  *
- * `source_field` is the CampMinder field name verbatim, `COVID-19 Bunking
- * Requests` included. Owner ruling 2026-08-17: original field names until
- * staff have used this live and can say what they should be called.
+ * `source_field` is the CampMinder field name VERBATIM, `COVID-19 Bunking
+ * Requests` and `Shared-request` included — it is an identity the ingest,
+ * `REQUEST_TEXT_SOURCES` and the staff-notes permission gate all key on, so it
+ * is never a caption. Three of the six now DISPLAY under a different name
+ * after the owner's 2026-08-17 review; that mapping lives only in
+ * `ShareRequestPanel`'s `DISPLAY_LABELS` and never reaches the wire.
  */
 export type RequestTextBlockRow = RequestTextBlock
 /** One distinct answer inside a block, with the child or children who wrote it. */

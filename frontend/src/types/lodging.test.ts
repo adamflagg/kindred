@@ -132,10 +132,12 @@ void _exhaustiveRosterParty
 /**
  * One free-text source field's worth of a household's request (kindred#2330).
  *
- * `source_field` is the CampMinder field name VERBATIM — a rename here is a
- * product decision staff have not made yet, not a refactor. `authorship` is
- * what decides amber vs grey, so a regen dropping it would render an internal
- * staff note as a family's own ask.
+ * `source_field` is the CampMinder field name VERBATIM — renaming it here
+ * would be a data change, not a refactor, however the panel chooses to spell
+ * it for staff (`DISPLAY_LABELS`). `authorship` paints nothing since the
+ * 2026-08-17 review standardised every block on the amber rail, but it is what
+ * `_may_read_staff_notes` uses to decide whether a staff-authored block is
+ * sent to this client at all — a regen dropping it would reopen that hole.
  */
 const _exhaustiveRequestTextBlock: Required<RequestTextBlockRow> = {
   source_field: 'COVID-19 Bunking Requests',
