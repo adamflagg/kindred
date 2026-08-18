@@ -326,7 +326,7 @@ class LodgingUnitSummary(BaseModel):
     #
     # A LIST since kindred#2381, and that arity is the whole point rather than
     # future-proofing. A merged container draws in place of its rooms, so the
-    # four write-ins Clouds Rest carries in one 2026 weekend collapsed to
+    # four write-ins one 2026 container carries in a single weekend collapsed to
     # whichever room sorted first and the other three were invisible -- while
     # each clear silently re-populated the card with the next occupant, so
     # destroying all four read as four failed clicks. A write-in must survive a
