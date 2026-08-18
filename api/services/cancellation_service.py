@@ -25,6 +25,7 @@ from api.services.breakdown_calculator import calculate_percentage, compute_regi
 from api.services.extractors import extract_gender, extract_grade
 from api.utils.session_metrics import (
     DEFAULT_SUMMER_SESSION_TYPES,
+    FAMILY_SESSION_TYPE,
     SUMMER_TEEN_TYPES,
     build_ag_parent_map,
     get_session_from_expand,
@@ -35,11 +36,6 @@ from bunking.logging_config import get_logger
 
 # Back-compat alias as an explicit module export (shared default lives in session_metrics).
 SUMMER_SESSION_TYPES = DEFAULT_SUMMER_SESSION_TYPES
-
-# Family Camp session type -- not part of DISPLAY_SESSION_TYPES / DEFAULT_SUMMER_SESSION_TYPES
-# (adult-focused, separate program), but a household that cancels a summer session while
-# keeping a Family Camp weekend is still attending camp. See enrollment_session_ids below.
-FAMILY_SESSION_TYPE = "family"
 
 if TYPE_CHECKING:
     from .metrics_repository import MetricsRepository

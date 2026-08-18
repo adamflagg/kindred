@@ -24,6 +24,7 @@ from api.services.breakdown_calculator import calculate_percentage, compute_regi
 from api.services.extractors import extract_gender, extract_grade
 from api.utils.session_metrics import (
     DEFAULT_SUMMER_SESSION_TYPES,
+    FAMILY_SESSION_TYPE,
     SUMMER_TEEN_TYPES,
     build_ag_parent_map,
     get_session_from_expand,
@@ -74,7 +75,14 @@ class WaitlistService:
         # not no_enrollment. Fold teen session ids into the enrollment lookup only
         # -- the display scope below stays summer-only / the requested filter.
         teen_sessions = await self.repository.fetch_sessions(year, list(SUMMER_TEEN_TYPES))
-        enrollment_session_ids = set(all_sessions.keys()) | set(teen_sessions.keys())
+
+        # Family Camp also counts as "enrolled at camp": a household waitlisted
+        # for a summer session but already enrolled in a Family Camp weekend
+        # reads as has_enrollment, not no_enrollment. Fold family session ids
+        # into the enrollment lookup only -- same rule as teens above, the
+        # display scope below stays summer-only / the requested filter.
+        family_sessions = await self.repository.fetch_sessions(year, [FAMILY_SESSION_TYPE])
+        enrollment_session_ids = set(all_sessions.keys()) | set(teen_sessions.keys()) | set(family_sessions.keys())
 
         # Fetch filtered sessions for waitlist display
         effective_types = session_types or list(SUMMER_SESSION_TYPES)
