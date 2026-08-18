@@ -4,7 +4,10 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
+	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -3339,24 +3342,157 @@ func TestJoinMedicalColumnKeepsEverythingForAnUndeclaredColumn(t *testing.T) {
 	}
 }
 
-// TestMedicalColumnLimitsMatchTheSchema pins the map against the migrations
-// that declare the columns (1500000035 and 1500000126). A limit larger than the
-// real one does not cap anything -- record.Set() past a PocketBase field's max
-// fails the whole row's save, losing a household rather than a sentence.
+// medicalColumnMaxPattern finds one text field's declared cap in a PocketBase
+// migration: `name: "<column>"` and the `max:` that belongs to the SAME field
+// literal. `[^}]*?` is what binds the two -- it cannot cross the closing brace
+// of the field it started in, so a field that declares no max reads as absent
+// rather than silently borrowing the next field's.
+var medicalColumnMaxPattern = regexp.MustCompile(`name:\s*["']([a-z_]+)["'][^}]*?max:\s*(\d+)`)
+
+// TestMedicalColumnLimitsMatchTheSchema pins medicalColumnLimits against the
+// migrations that declare the columns, by READING them.
+//
+// It used to restate the same literals a second time, which pins nothing: a
+// migration that narrowed a column would leave the map too large and the test
+// still green. A limit larger than the real one caps nothing -- record.Set()
+// past a PocketBase field's max fails the whole row's save, losing a household
+// rather than a sentence -- so the map has to be checked against the schema and
+// not against itself.
+//
+// Every migration is scanned, in file-number order, so the LAST declaration
+// wins: a later migration that changes a cap is what this has to catch. Files
+// that never mention family_camp_medical are skipped, because
+// 1500000044_camper_dietary.js declares an allergy_info of its own on a
+// different collection.
 func TestMedicalColumnLimitsMatchTheSchema(t *testing.T) {
 	t.Parallel()
-	want := map[string]int{
-		"allergy_info": 10000, "dietary_info": 10000,
-		"special_needs_info": 10000, "additional_info": 10000,
-		"cpap_info": 5000, "physician_info": 5000,
-		"bathroom_explain": 4000, "accommodation_explain": 4000,
+
+	paths, err := filepath.Glob("../pb_migrations/*.js")
+	if err != nil {
+		t.Fatalf("globbing migrations: %v", err)
 	}
-	if len(medicalColumnLimits) != len(want) {
-		t.Fatalf("medicalColumnLimits has %d columns, want %d", len(medicalColumnLimits), len(want))
+	if len(paths) == 0 {
+		t.Fatal("no migrations found -- this test would pass vacuously")
 	}
-	for column, limit := range want {
-		if got := medicalColumnLimits[column]; got != limit {
-			t.Errorf("medicalColumnLimits[%q] = %d, want %d", column, got, limit)
+	slices.Sort(paths)
+
+	declared := make(map[string]int, len(medicalColumnLimits))
+	for _, path := range paths {
+		source, err := os.ReadFile(path) //nolint:gosec // fixed repo-relative glob
+		if err != nil {
+			t.Fatalf("reading %s: %v", path, err)
 		}
+		if !strings.Contains(string(source), "family_camp_medical") {
+			continue
+		}
+		for _, m := range medicalColumnMaxPattern.FindAllStringSubmatch(string(source), -1) {
+			if _, wanted := medicalColumnLimits[m[1]]; !wanted {
+				continue
+			}
+			declaredMax, err := strconv.Atoi(m[2])
+			if err != nil {
+				t.Fatalf("%s declares a non-numeric max for %s: %v", path, m[1], err)
+			}
+			declared[m[1]] = declaredMax
+		}
+	}
+
+	for column, limit := range medicalColumnLimits {
+		got, ok := declared[column]
+		if !ok {
+			t.Errorf("medicalColumnLimits declares %q, which no migration creates on "+
+				"family_camp_medical -- record.Set() would be rejected", column)
+			continue
+		}
+		if got != limit {
+			t.Errorf("medicalColumnLimits[%q] = %d, but the migrations declare max %d",
+				column, limit, got)
+		}
+	}
+	for column := range declared {
+		if _, ok := medicalColumnLimits[column]; !ok {
+			t.Errorf("family_camp_medical.%s has a declared max but no entry in "+
+				"medicalColumnLimits -- joinMedicalColumn would not cap it", column)
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// The CPAP column is the one gate/explain pair processMedical still stores as a
+// gate STRING. docs/reference/family-camp-field-provenance.md section 4 names
+// Special Needs and CPAP as the two pairs where a split across children does
+// real harm; Special Needs is now ORed, and CPAP is carved out of kindred#2255
+// for its own pass. Aggregating it the way every other field is aggregated is
+// what would put a denial and a disclosure in one column.
+// ---------------------------------------------------------------------------
+
+// TestProcessMedicalDropsADeniedCPAPGateBesideADisclosedOne: one child's form
+// says No and another's says Yes. Keeping both renders
+// "No; Yes; <explanation>" -- the contradiction medicalGateFields exists to
+// prevent, reaching the row through the one column medicalGateFields does not
+// cover.
+func TestProcessMedicalDropsADeniedCPAPGateBesideADisclosedOne(t *testing.T) {
+	t.Parallel()
+	s := NewFamilyCampDerivedSync(nil)
+	ts := time.Date(2026, 4, 21, 0, 0, 0, 0, time.UTC)
+
+	meds := s.processMedical([]customValueEntry{
+		{householdPBID: "hh_johnson", fieldName: "Family Camp-CPAP", value: "No", lastUpdated: ts},
+		{householdPBID: "hh_johnson", fieldName: "Family Camp-CPAP", value: "Yes", lastUpdated: ts},
+		{householdPBID: "hh_johnson", fieldName: "Adult-CPAP", value: "No", lastUpdated: ts},
+		{householdPBID: "hh_johnson", fieldName: "Family Medical-CPAP Explain",
+			value: "needs an outlet overnight", lastUpdated: ts},
+	})
+	if len(meds) != 1 {
+		t.Fatalf("medical rows = %d, want 1", len(meds))
+	}
+	if got, want := meds[0].cpapInfo, "Yes; needs an outlet overnight"; got != want {
+		t.Errorf("cpapInfo = %q, want %q -- a denial in front of the need it denies", got, want)
+	}
+}
+
+// TestProcessMedicalKeepsTwoDifferentCPAPNeeds: the CPAP fields are NOT a
+// two-value gate (kindred#1875) -- every affirmative option names WHICH
+// accommodation is needed, so two different affirmatives are two different
+// needs and neither may be collapsed away. Only the pure denial goes.
+func TestProcessMedicalKeepsTwoDifferentCPAPNeeds(t *testing.T) {
+	t.Parallel()
+	s := NewFamilyCampDerivedSync(nil)
+	ts := time.Date(2026, 4, 21, 0, 0, 0, 0, time.UTC)
+
+	const (
+		outlet   = "Yes, outlet needed for CPAP machine"
+		bathroom = "Yes, bathroom or other housing accommodation needed"
+	)
+	meds := s.processMedical([]customValueEntry{
+		{householdPBID: "hh_johnson", fieldName: "FAM CAMP-CPAP", value: "No", lastUpdated: ts},
+		{householdPBID: "hh_johnson", fieldName: "FAM CAMP-CPAP", value: outlet, lastUpdated: ts},
+		{householdPBID: "hh_johnson", fieldName: "FAM CAMP-CPAP", value: bathroom, lastUpdated: ts},
+	})
+	if len(meds) != 1 {
+		t.Fatalf("medical rows = %d, want 1", len(meds))
+	}
+	if got, want := meds[0].cpapInfo, bathroom+"; "+outlet; got != want {
+		t.Errorf("cpapInfo = %q, want %q", got, want)
+	}
+}
+
+// TestProcessMedicalKeepsAnUnanimousCPAPDenial: dropping negatives is only the
+// half of the OR that applies. A household where nobody said Yes still has an
+// answer, and blanking it would be the silent loss this whole change ends.
+func TestProcessMedicalKeepsAnUnanimousCPAPDenial(t *testing.T) {
+	t.Parallel()
+	s := NewFamilyCampDerivedSync(nil)
+	ts := time.Date(2026, 4, 21, 0, 0, 0, 0, time.UTC)
+
+	meds := s.processMedical([]customValueEntry{
+		{householdPBID: "hh_johnson", fieldName: "Family Camp-CPAP", value: "No", lastUpdated: ts},
+		{householdPBID: "hh_johnson", fieldName: "Family Camp-CPAP", value: "No", lastUpdated: ts},
+	})
+	if len(meds) != 1 {
+		t.Fatalf("medical rows = %d, want 1", len(meds))
+	}
+	if got, want := meds[0].cpapInfo, "No"; got != want {
+		t.Errorf("cpapInfo = %q, want %q", got, want)
 	}
 }

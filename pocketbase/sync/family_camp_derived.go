@@ -1598,7 +1598,10 @@ var medicalColumnLimits = map[string]int{
 // "Family Camp-CPAP" is a true binary gate too and is deliberately absent. The
 // CPAP column is fed by three fields of two different shapes -- the other two
 // are multi-option selects whose text says WHICH accommodation is needed -- and
-// kindred#2255 carves it out for its own pass.
+// kindred#2255 carves it out for its own pass. Absent from this map is NOT
+// absent from the rule: cpapGateParts drops that column's denials by the half
+// of the OR that survives multi-option answers, so no household's row renders a
+// gate contradicting the need beside it.
 var medicalGateFields = map[string]struct{}{
 	"Family Medical-Allergies":     {},
 	"Family Medical-Dietary Needs": {},
@@ -1652,6 +1655,46 @@ func (m medicalAnswers) parts(fieldName string) []string {
 		}
 	}
 	return slices.Clone(values)
+}
+
+// cpapGateParts drops a household's pure CPAP denials whenever anyone in it
+// disclosed a need.
+//
+// The CPAP column is the one gate/explain pair processMedical still stores as a
+// gate STRING, and docs/reference/family-camp-field-provenance.md section 4
+// names Special Needs and CPAP as the two pairs where splitting the halves does
+// real harm. Special Needs is a Yes/No gate and collapses by OR through
+// medicalGateFields; CPAP cannot, because the three CPAP fields are
+// multi-option selects whose affirmative options say WHICH accommodation is
+// needed (kindred#1875, see classifyCPAPAnswer). Two different affirmatives are
+// two different needs and both have to survive, so this is only the half of the
+// OR that applies: a household that needs an outlet needs it whoever else on
+// the form said no.
+//
+// Without it the household aggregation would put a denial and a disclosure in
+// one column -- "No; Yes, outlet needed for CPAP machine" -- which is the
+// rendered contradiction medicalGateFields exists to prevent, arriving through
+// the one column medicalGateFields does not cover. Measured on the production
+// snapshot it is 1 household-year in 2026 and 1-2 a year back to 2022: rare,
+// and on a column staff read to decide whether a family needs a powered cabin.
+//
+// Every stored answer to the three fields is either "No" or starts "Yes"
+// (30,124 values checked), so parseBoolFieldValue -- which anchors on the
+// leading token, the whole reason it is not enough to CLASSIFY these answers --
+// is exactly the right test for which of them is a denial.
+func cpapGateParts(parts []string) []string {
+	disclosed := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if parseBoolFieldValue(part) {
+			disclosed = append(disclosed, part)
+		}
+	}
+	if len(disclosed) == 0 {
+		// Nobody disclosed. "No" is still an answer, and blanking it would be
+		// the silent loss this whole function's neighbors exist to end.
+		return parts
+	}
+	return disclosed
 }
 
 // joinMedicalColumn concatenates one column's parts within its declared cap,
@@ -1736,6 +1779,7 @@ func (s *FamilyCampDerivedSync) processMedical(personValues []customValueEntry) 
 				cpapParts = append(cpapParts, v)
 			}
 		}
+		cpapParts = cpapGateParts(cpapParts)
 		cpapParts = append(cpapParts, fields.parts("Family Medical-CPAP Explain")...)
 		med.cpapInfo = s.joinMedicalColumn(householdID, "cpap_info", cpapParts)
 
