@@ -53,6 +53,9 @@ from api.schemas.lodging import (
 )
 from api.services.lodging_rules import (
     REQUEST_TEXT_SOURCES,
+    HousingNameResolver,
+    RegistryUnit,
+    UnitAlias,
     amenity_coverage,
     container_bathroom,
     effective_bathroom,
@@ -1175,6 +1178,14 @@ class LodgingRosterService:
             # deliberately absent from `build_summary`'s parallel TaskGroup,
             # which keeps nothing but counts.
             last_year_cabins_task = tg.create_task(self.repository.fetch_cabin_assignments_by_household_cm_id(year - 1))
+            # kindred#2332's registry index, for turning the raw string above
+            # into the name the unit carries TODAY. Two reads, neither
+            # year-filtered and neither cached -- see `_housing_names`.
+            # Deliberately absent from `build_summary`'s TaskGroup for exactly
+            # the reason last year's cabins are: no `WeekendSummaryEntry`
+            # carries a party, so both would be paid on every weekend of the
+            # year to name a field nothing renders.
+            housing_names_task = tg.create_task(self._housing_names())
             adults_task = tg.create_task(self.repository.fetch_family_camp_adults(year))
             registrations_task = tg.create_task(self.repository.fetch_family_camp_registrations(year))
             # kindred#2330. The RAW per-field, per-child request answers --
@@ -1242,13 +1253,24 @@ class LodgingRosterService:
         # there would be work no response can read -- once per weekend, across
         # every weekend of the year, on every lander request.
         _resolve_write_in_covers(unit_summaries, written_in_unit_ids(write_ins))
+        housing_names = housing_names_task.result()
         parties = self._build_parties(
             session_type=session_type,
             session_start=_as_date(_s(session, "start_date")),
             attendees=attendees_task.result(),
             households=households,
             prior_cm_ids=prior_task.result(),
-            last_year_cabins=last_year_cabins_task.result(),
+            # RESOLVED HERE, not in the party builder, and at `year - 1`
+            # (kindred#2332). The string came out of the PRIOR season, so the
+            # prior season is the year its alias window is tested at; testing
+            # it at the roster's own year would strand every row whose alias
+            # carries `valid_to_year = 2024` on its raw spelling. The NAME is
+            # still the present one -- the window finds the unit, it does not
+            # name it.
+            last_year_cabins={
+                household_cm_id: housing_names.display_name(raw, year - 1)
+                for household_cm_id, raw in last_year_cabins_task.result().items()
+            },
             adults_by_household=adults_task.result(),
             registrations=registrations_task.result(),
             request_values=request_values_task.result(),
@@ -1271,20 +1293,27 @@ class LodgingRosterService:
     async def build_summary(self, year: int, scenario: str = "") -> WeekendSummaryResponse:
         """Every weekend in the year with its counts, in one pass.
 
-        `build_roster` makes THIRTEEN fetches (12 concurrent + `fetch_session`
-        alone before them), of which SEVEN are year-scoped -- the unit
+        `build_roster` makes SIXTEEN reads (fourteen concurrent tasks issuing
+        fifteen reads -- `_housing_names` is one task making two -- plus
+        `fetch_session` alone before them), of which TEN are constant across
+        every weekend of the year. EIGHT of the ten are year-scoped: the unit
         registry, households, the prior-household set, family-camp adults,
-        registrations, the unresolved-alias count and last year's cabins
-        (kindred#2075) are identical for every weekend in the year. Calling it
-        once per weekend to fill the lander would repeat all seven N times,
-        which is why a weekend with zero parties still costs about three
-        seconds.
+        registrations, the unresolved-alias count, last year's cabins
+        (kindred#2075) and the raw per-field request answers (kindred#2330).
+        The other two are kindred#2332's registry-naming pair, which carry no
+        year at all and are therefore constant for the same reason. Calling
+        `build_roster` once per weekend to fill the lander would repeat all
+        ten N times, which is why a weekend with zero parties still costs
+        about three seconds.
 
-        The lander fetches only SIX of those seven. Last year's cabins feed
-        `RosterParty.last_year_cabin`, and no `WeekendSummaryEntry` carries a
-        party -- `_build_parties` runs here purely to be counted, so the
-        seventh read would buy a field nothing renders. `_build_parties` takes
-        it as a defaulted keyword for exactly that reason.
+        The lander fetches only SIX of those ten, and declines four. No
+        `WeekendSummaryEntry` carries a party -- `_build_parties` runs here
+        purely to be counted -- so last year's cabins
+        (`RosterParty.last_year_cabin`), kindred#2330's request answers, and
+        kindred#2332's two registry reads that would name the cabin all buy
+        fields nothing renders. `_build_parties` takes the first two as
+        defaulted keywords for exactly that reason, and the naming pair is
+        simply absent from the TaskGroup below.
 
         kindred#1963 measures this from eleven and eight, so that issue is
         partly pre-paid: kindred#1889 deleted `has_medical_narrative`, the only
@@ -1447,6 +1476,50 @@ class LodgingRosterService:
             **{field: _s(record, field) for field in sorted(MEDICAL_NARRATIVE_FIELD_NAMES)},
         )
 
+    async def _housing_names(self) -> HousingNameResolver:
+        """The registry, indexed for naming -- kindred#2332's one helper.
+
+        TWO READS, NEITHER YEAR-FILTERED, and both deliberately uncached (see
+        their docstrings). `lodging_units` is year-scoped and holds 2026 only,
+        so the season that NAMES a unit has to be discovered from the table;
+        `lodging_unit_aliases` has no year column at all, because a row's
+        window is a rename history rather than a per-year copy.
+
+        The flattening happens here and the rule happens in `lodging_rules`,
+        which is what keeps the resolution total over plain values and
+        unit-testable without a database.
+        """
+        units, aliases = await asyncio.gather(
+            self.repository.fetch_all_units(),
+            self.repository.fetch_unit_aliases(),
+        )
+        return HousingNameResolver.build(
+            [
+                RegistryUnit(
+                    unit_id=_s(unit, "id"),
+                    code=_s(unit, "code"),
+                    name=_s(unit, "name"),
+                    year=_i(unit, "year"),
+                    # The RAW relation value, which is a PocketBase record id
+                    # and not a code -- joining `parent_unit` against `code`
+                    # returns nothing, silently. `_build_units` publishes the
+                    # code form for the board; the collapse rule needs the id
+                    # form, because that is what it is stored as.
+                    parent_id=_s(unit, "parent_unit"),
+                )
+                for unit in units
+            ],
+            [
+                UnitAlias(
+                    alias_string=_s(alias, "alias_string"),
+                    member_unit_ids=tuple(str(member) for member in (getattr(alias, "member_units", None) or [])),
+                    valid_from_year=_i(alias, "valid_from_year"),
+                    valid_to_year=_i(alias, "valid_to_year"),
+                )
+                for alias in aliases
+            ],
+        )
+
     async def build_household_journey(self, household_cm_id: int) -> HouseholdJourneyResponse:
         """A household's family-camp record, year by year (kindred#2073).
 
@@ -1545,8 +1618,12 @@ class LodgingRosterService:
             )
             if year > 0
         ]
-        cabin_maps = await asyncio.gather(
-            *(self.repository.fetch_cabin_assignments_by_household_cm_id(year) for year in years)
+        # The cabin sweep and the registry read go together: the sweep is
+        # `@cached_by_year` and usually free, the registry read never is, and
+        # neither depends on the other.
+        cabin_maps, housing_names = await asyncio.gather(
+            asyncio.gather(*(self.repository.fetch_cabin_assignments_by_household_cm_id(year) for year in years)),
+            self._housing_names(),
         )
 
         rows: list[HouseholdJourneyYear] = []
@@ -1557,8 +1634,17 @@ class LodgingRosterService:
             rows.append(
                 HouseholdJourneyYear(
                     year=year,
+                    # PRESENCE, not resolvability: a string nobody can map is
+                    # still a household that was placed. Deriving the state
+                    # from `cabin_name` instead would report the three
+                    # unmappable strings (kindred#2392) as unplaced families.
                     housing=_housing_state(cabin, assignments),
-                    cabin_name=cabin,
+                    # kindred#2332. THIS ROW'S OWN YEAR is the alias window --
+                    # the window says which raw string was in use then, which
+                    # is what finds the unit. The name is always the present
+                    # one.
+                    cabin_name=housing_names.display_name(cabin, year),
+                    cabin_name_raw=cabin,
                     # An empty child list is NOT a childless family: 2020 was
                     # cancelled outright and 2021 has no family attendee rows
                     # at all. Naming the state here is what stops the client

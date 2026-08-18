@@ -178,6 +178,26 @@ describe('invalidateLodgingRegistryQueries', () => {
     expect(client.keys).toContainEqual([...queryKeys.lodgingIngestIssuesPrefix()])
   })
 
+  it('invalidates the household journey, which kindred#2332 made registry-fed', () => {
+    // It was NOT registry-fed before: the journey carried the staff-written
+    // `cabin_assignment` free text, so a unit rename could not move it and
+    // `useHouseholdJourney` inherits the 30 minute app default with no writer
+    // to invalidate against. kindred#2332 resolves `cabin_name` to the unit's
+    // present-day `lodging_units.name`, so an admin rename now DOES move this
+    // payload — and staff rename in bursts (fourteen units in two minutes on
+    // 2026-08-15). Without this the history modal shows the old name for half
+    // an hour while the board behind it shows the new one, which is the exact
+    // disagreement the issue existed to remove.
+    const client = recordingClient()
+    invalidateLodgingRegistryQueries(client)
+
+    const journey = client.keys.find((k) => k[0] === 'household-journey')
+    expect(journey).toHaveLength(1)
+    // By PREFIX: the real key is ['household-journey', householdCmId] and the
+    // admin panel knows no household at all.
+    expect(queryKeys.householdJourney(2000001).slice(0, 1)).toEqual(journey)
+  })
+
   it('invalidates the weekend keys by PREFIX, not by exact key', () => {
     // The admin panel knows neither the year nor the weekend, and the real
     // keys are [key, year] / [key, year, sessionCmId]. An exact-key

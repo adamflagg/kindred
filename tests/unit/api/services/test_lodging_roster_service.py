@@ -53,6 +53,10 @@ def _unit(
     sleeps: int = 0,
     is_container: bool = False,
     inventory_class: str = "family_pool",
+    # The registry season. `lodging_units` is year-scoped (1500000141) and
+    # holds 2026 only on the snapshot; kindred#2332's naming resolver reads
+    # the column to find the LATEST season, so it has to be on the fixture.
+    year: int = 2026,
     is_active: bool = True,
     is_confirmed: bool = True,
     bathroom: str = "none",
@@ -72,6 +76,7 @@ def _unit(
         id=pb_id,
         code=code,
         name=name,
+        year=year,
         sleeps=sleeps,
         is_container=is_container,
         inventory_class=inventory_class,
@@ -157,6 +162,13 @@ def _repo(**overrides: Any) -> MagicMock:
         "fetch_household_by_cm_id": None,
         "fetch_medical_for_household": None,
         "count_open_unresolved_aliases": 0,
+        # kindred#2332's two registry reads, neither year-filtered. EMPTY is
+        # the honest default and the one that keeps every other test in this
+        # file meaningful: an empty registry resolves nothing, so a raw cabin
+        # string travels through unchanged, which is exactly what a fresh
+        # deployment does.
+        "fetch_all_units": [],
+        "fetch_unit_aliases": [],
         # DELIBERATELY still here, though the repository method is gone: the
         # tests that pin the roster no longer asking for this count need an
         # attribute to run `assert_not_called()` against. A bare MagicMock
@@ -2755,15 +2767,20 @@ class TestMedicalFlagsAndNarrative:
 class TestBuildSummary:
     """The lander's batched read.
 
-    It exists for one reason: `build_roster` makes twelve fetches of which
-    seven are year-scoped, so filling a lander weekend-by-weekend repeats that
-    year-wide work once per weekend. The point of these tests is that the
-    batch does it ONCE and still agrees with the roster.
+    It exists for one reason: `build_roster` makes sixteen reads of which TEN
+    are constant across every weekend of the year -- eight year-scoped, plus
+    kindred#2332's two year-agnostic registry-naming reads -- so filling a
+    lander weekend-by-weekend repeats that year-wide work once per weekend.
+    The point of these tests is that the batch does it ONCE and still agrees
+    with the roster.
 
-    Both counts were one lower until kindred#2075 added last year's cabins,
-    and one higher again before that until kindred#1889 removed the whole-year
-    medical read from both paths. The lander batches SIX of the seven -- see
-    `test_the_lander_never_reads_last_years_cabins` for the one it declines.
+    The constant count has only ever grown: kindred#2075 added last year's
+    cabins, kindred#2330 the raw request answers, kindred#2332 the naming
+    pair; kindred#1889 removed the whole-year medical read from both paths.
+    The lander batches SIX of the ten and declines four -- see
+    `test_the_lander_never_reads_last_years_cabins`,
+    `test_the_lander_summary_does_not_pay_for_the_raw_request_read` and
+    `test_the_lander_pays_for_neither_registry_read`.
     """
 
     @pytest.mark.asyncio
@@ -5367,3 +5384,193 @@ class TestStaffAuthoredBlocksAreScreenReduced:
             ("BunkingNotes Notes", "staff"),
             ("Internal Bunk Notes", "staff"),
         ]
+
+
+def _alias_row(alias_string: str, *member_ids: str, valid_from: int = 0, valid_to: int = 0) -> SimpleNamespace:
+    """One `lodging_unit_aliases` row as PocketBase hands it over.
+
+    `member_units` is a relation column, so it arrives as a LIST OF RECORD IDS
+    -- never codes. 0 on either bound means "no bound": PocketBase number
+    columns are `NUMERIC DEFAULT 0 NOT NULL` and an unset year stores as 0.
+    """
+    return _rec(
+        alias_string=alias_string,
+        member_units=list(member_ids),
+        valid_from_year=valid_from,
+        valid_to_year=valid_to,
+    )
+
+
+class TestHousingRendersInTodaysLanguage:
+    """kindred#2332 / kindred#2336. ONE housing-name display convention.
+
+    Owner ruling 2026-08-18: *"the last year housing should use the same
+    language via the alias year over year concept so it appears in current
+    language."* Whatever staff call a unit in the admin GUI is what appears on
+    every surface. The alias's year window says which raw string was in use
+    WHEN -- an input to finding the unit, never to naming it.
+
+    Measured on the production snapshot: 37 of 88 distinct raw strings resolve
+    to a different registry name, covering 716 of 1,861 rows (38.5%).
+    """
+
+    @pytest.mark.asyncio
+    async def test_the_journey_renames_a_prior_year_into_the_current_registry(self) -> None:
+        repo = _journey_repo(
+            fetch_household_family_attendees=[_rec(year=2022, **vars(_child()))],
+            cabins_by_year={2022: {2000001: "Old Meadow 1"}},
+            fetch_all_units=[_unit("u1", "meadow-1", "Meadow House 1")],
+            fetch_unit_aliases=[_alias_row("Old Meadow 1", "u1")],
+        )
+
+        journey = await LodgingRosterService(repo).build_household_journey(2000001)
+
+        assert journey.years[0].cabin_name == "Meadow House 1"
+
+    @pytest.mark.asyncio
+    async def test_the_journey_keeps_the_raw_string_as_provenance(self) -> None:
+        """*What staff wrote in 2022* is a real fact and stays on the wire --
+        it is just not the NAME. The journey is the surface that shows it,
+        because the journey is the surface whose whole job is the record.
+        """
+        repo = _journey_repo(
+            fetch_household_family_attendees=[_rec(year=2022, **vars(_child()))],
+            cabins_by_year={2022: {2000001: "Old Meadow 1"}},
+            fetch_all_units=[_unit("u1", "meadow-1", "Meadow House 1")],
+            fetch_unit_aliases=[_alias_row("Old Meadow 1", "u1")],
+        )
+
+        journey = await LodgingRosterService(repo).build_household_journey(2000001)
+
+        assert journey.years[0].cabin_name_raw == "Old Meadow 1"
+
+    @pytest.mark.asyncio
+    async def test_an_unresolvable_string_renders_and_travels_unchanged(self) -> None:
+        """Three of the 88 distinct strings name a unit FAMILY and not a unit
+        (kindred#2392). What staff wrote beats a blank.
+        """
+        repo = _journey_repo(
+            fetch_household_family_attendees=[_rec(year=2022, **vars(_child()))],
+            cabins_by_year={2022: {2000001: "Ridge 2"}},
+            fetch_all_units=[_unit("u1", "meadow-1", "Meadow House 1")],
+        )
+
+        journey = await LodgingRosterService(repo).build_household_journey(2000001)
+
+        assert journey.years[0].cabin_name == "Ridge 2"
+        assert journey.years[0].cabin_name_raw == "Ridge 2"
+
+    @pytest.mark.asyncio
+    async def test_a_year_with_no_cabin_carries_neither_a_name_nor_a_raw_string(self) -> None:
+        repo = _journey_repo(
+            fetch_household_family_attendees=[_rec(year=2019, **vars(_child()))],
+            fetch_all_units=[_unit("u1", "meadow-1", "Meadow House 1")],
+        )
+
+        journey = await LodgingRosterService(repo).build_household_journey(2000001)
+
+        assert journey.years[0].cabin_name == ""
+        assert journey.years[0].cabin_name_raw == ""
+
+    @pytest.mark.asyncio
+    async def test_the_journey_resolves_each_year_at_its_own_window(self) -> None:
+        """An alias carrying `valid_to_year = 2024` is CORRECT for the years it
+        covers. Evaluating every window at the registry's loaded year discards
+        it -- 1,792 of 1,861 rows instead of 1,841 on the snapshot -- and the
+        row that ought to rename silently keeps its raw spelling.
+        """
+        repo = _journey_repo(
+            fetch_household_family_attendees=[
+                _rec(year=2023, **vars(_child())),
+                _rec(year=2026, **vars(_child())),
+            ],
+            cabins_by_year={2023: {2000001: "Old Meadow 1"}, 2026: {2000001: "Old Meadow 1"}},
+            fetch_all_units=[_unit("u1", "meadow-1", "Meadow House 1")],
+            fetch_unit_aliases=[_alias_row("Old Meadow 1", "u1", valid_to=2024)],
+        )
+
+        journey = await LodgingRosterService(repo).build_household_journey(2000001)
+
+        by_year = {row.year: row.cabin_name for row in journey.years}
+        assert by_year == {2026: "Old Meadow 1", 2023: "Meadow House 1"}
+
+    @pytest.mark.asyncio
+    async def test_the_family_card_renames_last_years_cabin_too(self) -> None:
+        """`RosterParty.last_year_cabin` was NOT alias-resolved at all before
+        this -- it came straight out of
+        `fetch_cabin_assignments_by_household_cm_id(year - 1)`. If only the
+        journey adopts the registry name, the board contradicts itself on the
+        family card.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_households={"hh_1": _household(title="The Garcia Family")},
+            fetch_attendees_for_session=[_child(cm_id=1000002, first="Liam", last="Garcia")],
+            fetch_prior_household_cm_ids={2000001},
+            fetch_cabin_assignments_by_household_cm_id={2000001: "Old Meadow 1"},
+            fetch_all_units=[_unit("u1", "meadow-1", "Meadow House 1")],
+            fetch_unit_aliases=[_alias_row("Old Meadow 1", "u1")],
+        )
+
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.parties[0].last_year_cabin == "Meadow House 1"
+
+    @pytest.mark.asyncio
+    async def test_last_years_cabin_is_windowed_at_last_year_not_this_one(self) -> None:
+        """The string came out of the PRIOR season, so the prior season is the
+        year its alias window is tested at. Testing it at the roster's own year
+        strands the row on its raw spelling.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_households={"hh_1": _household(title="The Garcia Family")},
+            fetch_attendees_for_session=[_child(cm_id=1000002, first="Liam", last="Garcia")],
+            fetch_prior_household_cm_ids={2000001},
+            fetch_cabin_assignments_by_household_cm_id={2000001: "Old Meadow 1"},
+            fetch_all_units=[_unit("u1", "meadow-1", "Meadow House 1")],
+            fetch_unit_aliases=[_alias_row("Old Meadow 1", "u1", valid_to=2025)],
+        )
+
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.parties[0].last_year_cabin == "Meadow House 1"
+
+    @pytest.mark.asyncio
+    async def test_a_multi_room_alias_collapses_to_its_container(self) -> None:
+        """THE COLLAPSE RULE. Joining member names reaches 35 characters, one
+        MORE than the worst raw string, on a `whitespace-nowrap` span -- so
+        naive resolution makes truncation WORSE. All seven in-use multi-member
+        aliases resolve to two siblings under one container.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_households={"hh_1": _household(title="The Garcia Family")},
+            fetch_attendees_for_session=[_child(cm_id=1000002, first="Liam", last="Garcia")],
+            fetch_prior_household_cm_ids={2000001},
+            fetch_cabin_assignments_by_household_cm_id={2000001: "Cedar 1and2"},
+            fetch_all_units=[
+                _unit("p1", "cedar", "Cedar Lodge", is_container=True),
+                _unit("u1", "cedar-1", "Cedar Lodge Room 1", parent_unit="p1"),
+                _unit("u2", "cedar-2", "Cedar Lodge Room 2", parent_unit="p1"),
+            ],
+            fetch_unit_aliases=[_alias_row("Cedar 1and2", "u1", "u2")],
+        )
+
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.parties[0].last_year_cabin == "Cedar Lodge"
+
+    @pytest.mark.asyncio
+    async def test_the_lander_pays_for_neither_registry_read(self) -> None:
+        """`build_summary` keeps nothing but counts and no `WeekendSummaryEntry`
+        carries a party, so it already skips last year's cabins. Resolving
+        names there would put back the per-weekend cost kindred#1963 bought
+        out -- two more year-agnostic reads on every weekend of the year.
+        """
+        repo = _repo(fetch_weekend_sessions=[FAMILY_SESSION])
+
+        await LodgingRosterService(repo).build_summary(2026)
+
+        repo.fetch_all_units.assert_not_called()
+        repo.fetch_unit_aliases.assert_not_called()

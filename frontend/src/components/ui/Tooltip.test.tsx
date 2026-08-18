@@ -184,6 +184,43 @@ describe('Tooltip — touch', () => {
   })
 })
 
+describe('Tooltip — a purely informational trigger (pinOnClick={false})', () => {
+  /**
+   * kindred#2332's provenance affordance on the family history modal. The
+   * bubble only restates what staff typed that season; there is nothing to
+   * act on and nothing to keep open while you work beside it. Pinning made
+   * it stick after a click and read as a stuck popover, so this trigger opts
+   * out of the tap-pins default while staying a focusable button — hover and
+   * Tab must both still reach it.
+   */
+  it('does not stay open after a click once the pointer leaves', () => {
+    renderChip({ pinOnClick: false })
+    fireEvent.pointerEnter(trigger())
+    fireEvent.click(trigger())
+    fireEvent.pointerOut(trigger(), { relatedTarget: document.body })
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
+  })
+
+  it('still opens on hover and on keyboard focus', () => {
+    renderChip({ pinOnClick: false })
+    fireEvent.pointerEnter(trigger())
+    expect(screen.getByRole('tooltip')).toBeInTheDocument()
+    fireEvent.pointerOut(trigger(), { relatedTarget: document.body })
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
+
+    fireEvent.focus(trigger())
+    expect(screen.getByRole('tooltip')).toBeInTheDocument()
+  })
+
+  it('leaves the tap-pins default alone for every other trigger', () => {
+    renderChip()
+    fireEvent.pointerEnter(trigger())
+    fireEvent.click(trigger())
+    fireEvent.pointerOut(trigger(), { relatedTarget: document.body })
+    expect(screen.getByRole('tooltip')).toBeInTheDocument()
+  })
+})
+
 describe('Tooltip — a trigger that already has its own action', () => {
   it('runs the action on click instead of pinning', () => {
     const onActivate = vi.fn()

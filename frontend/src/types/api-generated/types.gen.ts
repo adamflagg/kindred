@@ -2007,6 +2007,10 @@ export type HouseholdJourneyYear = {
    */
   cabin_name?: string
   /**
+   * Cabin Name Raw
+   */
+  cabin_name_raw?: string
+  /**
    * Enrollment
    */
   enrollment?: 'enrolled' | 'none_on_file'

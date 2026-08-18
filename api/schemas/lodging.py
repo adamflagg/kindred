@@ -577,12 +577,37 @@ class RosterParty(BaseModel):
     # 1,433 rows from 2017-2021. So "" is NOT "nobody assigned them", and no
     # consumer should render a placeholder or a dash for it.
     #
-    # FREE TEXT out of `cabin_assignment`, deliberately NOT resolved against
-    # `lodging_units` -- see `fetch_cabin_assignments_by_household_cm_id` for
-    # why (the registry holds only the current year, and 3 of the 88 distinct
-    # strings across 2022-2025 resolve to no alias at all). It may therefore
-    # name something no card on the board is called. Never match it against a
-    # `unit_code`.
+    # RESOLVED TO THE REGISTRY NAME (kindred#2332), not the raw string staff
+    # typed last season. Owner ruling 2026-08-18: *"the last year housing
+    # should use the same language via the alias year over year concept so it
+    # appears in current language."* This field used to carry the prior year's
+    # `cabin_assignment` free text straight through, so the family card
+    # contradicted the board card beside it -- 37 of 88 distinct raw strings
+    # resolve to a different registry name, covering 716 of 1,861 rows (38.5%).
+    #
+    # `HousingNameResolver.display_name` does the work, at the PRIOR year's
+    # alias window: the window says which raw string was in use when, and is an
+    # input to FINDING the unit, never to naming it. A string that resolves to
+    # nothing renders unchanged, which is what the three strings naming a unit
+    # FAMILY rather than a unit do (kindred#2392).
+    #
+    # THE RAW STRING IS NOT DUPLICATED HERE. It is provenance, and it lives on
+    # `HouseholdJourneyYear.cabin_name_raw` -- the same household-year fact, on
+    # the surface whose job is the record, one click away through this card.
+    #
+    # Still never match it against a `unit_code`: it is a NAME, and a name is
+    # not an identity. The board's own placement travels in `unit_code` /
+    # `unit_codes`.
+    #
+    # ⚠️ NOT PER-WEEKEND, and no consumer may render it as such (kindred#2336).
+    # `cabin_assignment` has grain (household, year) because its source is one
+    # CampMinder household custom field per household-year -- so a household
+    # attending two weekends of a season shows the SAME cabin for both, and its
+    # later weekend overwrites nothing because there was never a second value.
+    # Staff confirmed 2026-08-15 that this is acceptable and asked for no
+    # snapshot or lookback. 41 of 1,703 cabin-holding household-years are
+    # multi-weekend; treating the fan-out as per-weekend placement manufactured
+    # 12 of 17 false multi-household occupancies in one analysis.
     #
     # Only ever populated on the ROSTER, and only for household-grain parties:
     # `build_summary` keeps nothing but counts, and an adult-weekend guest is
@@ -705,11 +730,25 @@ class HouseholdJourneyYear(BaseModel):
 
     year: int = 0
     housing: HousingState = "unknown"
-    # The staff-written free text out of `family_camp_registrations`, NOT
-    # resolved to a `lodging_units` row: `lodging_units` holds only the
-    # current year, so a 2023 string can name a cabin that no longer exists
-    # under that name. See `fetch_cabin_assignments_by_household_cm_id`.
+    # The unit's name TODAY (kindred#2332), whichever year the row is.
+    #
+    # Owner ruling 2026-08-18: a prior year's housing renders in the current
+    # language, because staff recognise the cabin they use now -- a 2022 row
+    # displaying a name nobody has used since 2023 is a lookup task, not
+    # information. Renames are routine: fourteen of the 118 units were renamed
+    # one at a time in the admin GUI on 2026-08-15, inside two minutes.
+    #
+    # `HousingNameResolver.display_name` resolves it at THIS ROW'S OWN YEAR --
+    # the alias window says which raw string was in use when, which is what
+    # finds the unit; the unit's present-day `lodging_units.name` is what names
+    # it. Falls back to the raw string unchanged when nothing resolves.
     cabin_name: str = ""
+    # What staff actually typed that season, verbatim -- provenance, not a
+    # name. Equal to `cabin_name` whenever nothing resolved, and "" whenever
+    # `cabin_name` is. The client shows it only where the two DISAGREE, which
+    # is 716 of 1,861 rows on the production snapshot: rendering it beside an
+    # identical name would be noise on the other 1,145.
+    cabin_name_raw: str = ""
     enrollment: EnrollmentState = "none_on_file"
     # Every `family_camp_adults` row for the year, blanks and placeholders
     # included -- the same contract `RosterParty.adults` publishes, so the

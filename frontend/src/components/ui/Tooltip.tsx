@@ -100,6 +100,20 @@ export interface TooltipProps {
    * focus the tap produced.
    */
   onActivate?: () => void
+  /**
+   * Opt a purely informational trigger out of decision 3's tap-pins default.
+   *
+   * That default exists so a bubble a staff member opened stays readable while
+   * they work beside it. Worth having where the sentence is something to act
+   * on; it reads as a stuck popover where the sentence merely restates a value
+   * already on screen. `HouseholdJourneyCard`'s provenance name is the second
+   * kind — it says what staff typed that season and there is nothing to do
+   * about it — so a click there should leave no residue (kindred#2332).
+   *
+   * This is NOT a way to make a tooltip mouse-only: the trigger stays a
+   * focusable button and Tab still opens the bubble.
+   */
+  pinOnClick?: boolean
 }
 
 /**
@@ -127,6 +141,7 @@ export function Tooltip({
   'aria-pressed': ariaPressed,
   'data-testid': testId,
   onActivate,
+  pinOnClick = true,
 }: TooltipProps) {
   const triggerRef = useRef<HTMLButtonElement>(null)
   const bubbleRef = useRef<HTMLDivElement>(null)
@@ -260,6 +275,7 @@ export function Tooltip({
             onActivate()
             return
           }
+          if (!pinOnClick) return
           setPinned((wasPinned) => !wasPinned)
         }}
         onKeyDown={(event) => {

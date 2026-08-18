@@ -68,7 +68,14 @@ void _exhaustivePartyChild
 const _exhaustiveHouseholdJourneyRow: Required<HouseholdJourneyRow> = {
   year: 2025,
   housing: 'placed',
-  cabin_name: 'Cedar Lodge - Room 2',
+  // kindred#2332: the unit's name TODAY, whichever year the row is — the
+  // server resolves the staff-written string through the alias layer and
+  // renders the present-day registry name.
+  cabin_name: 'Meadow House 1',
+  // What staff typed that season. Provenance, not a name, and the two
+  // DISAGREE here on purpose: that disagreement is 716 of 1,861 rows on the
+  // snapshot, and it is the only case the card shows this field in.
+  cabin_name_raw: 'Old Meadow 1',
   enrollment: 'enrolled',
   adults: [],
   children: [],
@@ -97,11 +104,13 @@ const _exhaustiveRosterParty: Required<RosterPartyRow> = {
   effective_bathroom: 'unknown',
   arrival_eta: '',
   is_returning: false,
-  // kindred#2075: the DIRECTLY prior year's staff-written cabin string, free
-  // text out of `family_camp_registrations.cabin_assignment`. '' is the
-  // common case and means UNKNOWN, not "unassigned" — a regen that dropped
-  // this field would degrade every returning family's card to silence with
-  // nothing else to notice.
+  // kindred#2075, resolved by kindred#2332: the DIRECTLY prior year's housing,
+  // rendered as the unit's PRESENT-DAY registry name rather than the raw
+  // string staff typed that season. '' is the common case and means UNKNOWN,
+  // not "unassigned" — a regen that dropped this field would degrade every
+  // returning family's card to silence with nothing else to notice. The raw
+  // string is provenance and lives on `HouseholdJourneyRow.cabin_name_raw`,
+  // one click away through this card.
   last_year_cabin: '',
   share: {
     preference: 'unknown',

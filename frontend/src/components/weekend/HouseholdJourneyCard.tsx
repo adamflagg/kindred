@@ -117,6 +117,21 @@ function JourneyRows({
           const isCurrentYear = year === currentYear
           const isPlaced = row.housing === 'placed'
           const count = memberCount(row)
+          const housing = housingLabel(row, currentYear)
+          // kindred#2332. The server resolves `cabin_name` to the unit's
+          // PRESENT-DAY registry name, so a 2022 row reads in the language
+          // staff use now — which is the whole point, since fourteen of the
+          // 118 units were renamed in one two-minute burst on 2026-08-15.
+          // `cabin_name_raw` is what was typed that season: real provenance,
+          // and not the name.
+          //
+          // OFFERED ONLY WHERE THE TWO DISAGREE — 716 of 1,861 rows on the
+          // snapshot. On the other 1,145 the trigger would decorate a name
+          // with a tooltip repeating it back, which is how an affordance stops
+          // being read. Absent or blank means an older payload, and the name
+          // still renders.
+          const rawHousing = (row.cabin_name_raw ?? '').trim()
+          const showsProvenance = isPlaced && rawHousing.length > 0 && rawHousing !== housing
 
           return (
             <div
@@ -169,7 +184,27 @@ function JourneyRows({
                 }`}
               >
                 {isPlaced && <Home className="h-3.5 w-3.5 flex-shrink-0 opacity-60" />}
-                {housingLabel(row, currentYear)}
+                {/* A real Tooltip and not a `title` (kindred#2177), and the
+                    same trigger shape `LodgingUnitCard` gives its occupancy
+                    figure. `min-w-0 text-left` is what keeps the kindred#2253
+                    wrap: a button centres its text and will not shrink below
+                    its content width without it. */}
+                {showsProvenance ? (
+                  <Tooltip
+                    content={`Recorded as "${rawHousing}" that season`}
+                    data-testid="household-journey-housing-provenance"
+                    // Hover and focus only. The sentence restates what staff
+                    // typed that season and there is nothing to act on, so
+                    // the tap-pins default left a bubble stuck open over the
+                    // rows below it after a click that meant nothing.
+                    pinOnClick={false}
+                    className="decoration-muted-foreground/60 min-w-0 text-left underline decoration-dotted underline-offset-2"
+                  >
+                    {housing}
+                  </Tooltip>
+                ) : (
+                  housing
+                )}
               </span>
 
               {/* NOT "a childless family" and NOT an error — 2020's season was
