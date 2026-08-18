@@ -386,6 +386,7 @@ Known pairs — housing plus the medical forms that use the same convention:
 | `Family Camp-Special Needs` (182696) | `Family Camp-Special Needs Yes` (182698) |
 | `Family Camp-CPAP` (171577) | `Family Medical-CPAP Explain` (171578) |
 | `Housing Accommodation` (274057) | `Housing Accommodation-Yes` (274058) |
+| `Housing Accomodation` (274055, Adult, sic) | `Accommodation-Explain` (224987) |
 | `FAM CAMP-bathroom` (274056) | `Housing-Bathroom` (274059) |
 | `Family Camp-Special occasions` (60413) | `Family Camp-describe special occasion` |
 | `Adult-Bathroom` (274053) | `Bathroom-Yes` (274054) |
