@@ -1047,7 +1047,9 @@ def _resolve_fridge_coverage(units: list[LodgingUnitSummary], index: _BathroomIn
     Production carries zero shared-without-parent rows, and the ruling
     generalises: a child column may never downgrade its parent's verdict, which
     is what keeps `has_fridge` safe to read alone and settles the same question
-    for `has_tub ⊂ bathroom` and `has_kitchenette ⊂ has_kitchen`.
+    for `has_tub ⊂ bathroom`. (`has_kitchenette ⊂ has_kitchen` was the third
+    such pair; kindred#2390 collapsed it into `has_kitchen` and migration
+    1500000159 dropped the column, so do not go looking for it.)
 
     Reading `has_fridge` alone would therefore give the same answer on today's
     data. The OR is here so that a future row carrying only the child cannot

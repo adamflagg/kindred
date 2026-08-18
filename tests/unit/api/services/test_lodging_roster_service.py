@@ -3928,9 +3928,11 @@ class TestUnitFridgeCoverage:
     reads `fits`, never `partial`. It is defined in the registry as a NARROWING
     of `has_fridge`, and the general rule the ruling settled is that a child
     column may never downgrade its parent's verdict -- the same contract
-    governs `has_tub` under `bathroom` and `has_kitchenette` under
-    `has_kitchen`. Production carries zero shared-without-parent rows, so the
-    OR below is the contract written down rather than a repair.
+    governs `has_tub` under `bathroom`. (`has_kitchenette` under `has_kitchen`
+    was the third pair the ruling named; kindred#2390 has since collapsed it
+    into `has_kitchen` and dropped the column.) Production carries zero
+    shared-without-parent rows, so the OR is the contract written down rather
+    than a repair.
     """
 
     @pytest.mark.asyncio
