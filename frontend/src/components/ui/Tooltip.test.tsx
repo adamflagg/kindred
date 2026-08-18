@@ -212,6 +212,53 @@ describe('Tooltip — a purely informational trigger (pinOnClick={false})', () =
     expect(screen.getByRole('tooltip')).toBeInTheDocument()
   })
 
+  it('does not stay open after a REAL pointer click — the one a browser focuses', () => {
+    /*
+     * THE REGRESSION THIS FILE MISSED FIRST TIME.
+     *
+     * `open` is `hovering || focused || pinned`, and a browser FOCUSES a
+     * <button> on pointer-down. So suppressing `pinned` alone left the bubble
+     * held open by `focused` after the pointer left — the exact symptom
+     * pinOnClick={false} exists to prevent, reported on the family history
+     * modal after the first fix shipped.
+     *
+     * The first version of this test used `fireEvent.click` alone. jsdom does
+     * not synthesise focus from a click, so it passed against behaviour that
+     * had not changed. This fires the sequence a browser really produces.
+     */
+    renderChip({ pinOnClick: false })
+    fireEvent.pointerEnter(trigger())
+    fireEvent.pointerDown(trigger())
+    fireEvent.focus(trigger())
+    fireEvent.click(trigger())
+    fireEvent.pointerOut(trigger(), { relatedTarget: document.body })
+
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
+  })
+
+  it('still opens on a KEYBOARD focus, which arrives with no pointer press', () => {
+    // The other half: suppressing pointer-driven focus must not make the
+    // trigger unreachable by Tab. No pointerdown precedes this focus.
+    renderChip({ pinOnClick: false })
+    fireEvent.focus(trigger())
+
+    expect(screen.getByRole('tooltip')).toBeInTheDocument()
+  })
+
+  it('re-opens on a Tab return after an earlier pointer click', () => {
+    // The pointer flag must not latch. Click it, leave, then Tab back.
+    renderChip({ pinOnClick: false })
+    fireEvent.pointerEnter(trigger())
+    fireEvent.pointerDown(trigger())
+    fireEvent.focus(trigger())
+    fireEvent.click(trigger())
+    fireEvent.pointerOut(trigger(), { relatedTarget: document.body })
+    fireEvent.blur(trigger())
+
+    fireEvent.focus(trigger())
+    expect(screen.getByRole('tooltip')).toBeInTheDocument()
+  })
+
   it('leaves the tap-pins default alone for every other trigger', () => {
     renderChip()
     fireEvent.pointerEnter(trigger())
