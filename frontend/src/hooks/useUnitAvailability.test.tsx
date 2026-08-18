@@ -165,28 +165,43 @@ describe('useUnitAvailability', () => {
     })
   })
 
-  it('confirms a write-in by NAMING the occupant, which is the fact just asserted', async () => {
-    // The toast is what a staff member checks the card against. "Cedar 1 is
-    // held for this weekend" said neither what happened nor to whom.
+  it('stays SILENT on success, like every other direct-manipulation write on this board', async () => {
+    /*
+     * Owner ruling, 2026-08-18: no toast for adding or removing a write-in.
+     *
+     *   > "idk what 'Clouds Rest Laundry Room follows its usual role again' is
+     *   >  needed for, if anything. dont think we need toasts for adding or
+     *   >  removing write ins."
+     *
+     * This hook was the only mutation on the weekend board that confirmed
+     * success in a toast. `useLodgingPlacement` (place/move/unplace a family)
+     * and `useUnitMerge` (merge/split a building) both raise errors only, and
+     * the board redraws either way — the card IS the confirmation.
+     *
+     * Asserted as "no success toast at all", not "a different string", so a
+     * future re-introduction fails here rather than passing with new wording.
+     */
     const { result } = renderAvailability()
 
     await act(async () => {
       await result.current.setAvailability(WRITE_IN)
     })
 
-    expect(toastSuccess).toHaveBeenCalledWith(
-      'Emma Johnson is written into Cedar 1 for this weekend'
-    )
+    expect(toastSuccess).not.toHaveBeenCalled()
   })
 
-  it('confirms a nameless write-in without pretending to a name', async () => {
+  it('stays silent when a write-in is REMOVED, too', async () => {
+    // The clear branch — the one that said "<cabin> follows its usual role
+    // again", which is the message that prompted the ruling. Removing a
+    // write-in is the X on its own card; the card disappearing is the
+    // confirmation.
     const { result } = renderAvailability()
 
     await act(async () => {
-      await result.current.setAvailability({ ...WRITE_IN, occupantName: '  ' })
+      await result.current.setAvailability({ ...WRITE_IN, familyAvailable: null, occupantName: '' })
     })
 
-    expect(toastSuccess).toHaveBeenCalledWith('Cedar 1 is written in for this weekend')
+    expect(toastSuccess).not.toHaveBeenCalled()
   })
 
   it('says what a refused write was, rather than leaving the card looking saved', async () => {

@@ -28,11 +28,33 @@
  * The placement hook has one because dnd-kit drops the card the moment the
  * pointer is released, so an invalidate-only path rubber-bands it back into
  * its old cabin for the seconds `build_roster` takes. Nothing here moves under
- * the pointer: the control disables itself, the toast confirms, and the board
- * redraws when the roster returns. Patching the cache optimistically would have
+ * the pointer: the control disables itself and the board redraws when the
+ * roster returns. Patching the cache optimistically would have
  * to patch every cached scenario of the weekend — the same reason the
  * invalidation is a prefix — for a click that is not a direct-manipulation
  * gesture.
+ *
+ * ## No success toast (owner ruling, 2026-08-18)
+ *
+ * This hook was the ONLY mutation on the weekend board that confirmed success
+ * in a toast. `useLodgingPlacement` (place, move and unplace a family) and
+ * `useUnitMerge` (merge and split a building) both raise errors only, and the
+ * ruling settled the inconsistency in their favour:
+ *
+ *   > "dont think we need toasts for adding or removing write ins"
+ *
+ * The card IS the confirmation — a write-in appears in the well, or its card
+ * goes away — so the toast restated what the board had already redrawn. The
+ * clear branch was the worst of the three: "<cabin> follows its usual role
+ * again" described an internal availability state rather than the thing the
+ * staff member had just done, which is what prompted the ruling.
+ *
+ * ⚠️ A DELIBERATE divergence from summer, stated here because the root
+ * CLAUDE.md requires one to be justified where it happens:
+ * `session/useCamperMovement.ts` fires `toast.success('Camper moved
+ * successfully')`. Summer's move changes a value in a dense table where
+ * nothing else marks the write; this board draws or removes a whole card.
+ * Errors still toast on both surfaces.
  */
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useCallback } from 'react'
@@ -92,23 +114,6 @@ export interface UseUnitAvailabilityReturn {
   pendingUnitId: string
 }
 
-/**
- * Outcome wording, matching the badge vocabulary in `unitBadges.ts`.
- *
- * The write-in line NAMES the occupant, because that is the fact the staff
- * member just asserted and the one they can check the card against. It falls
- * back to the cabin alone if the name is somehow empty — the write schema is
- * permissive where the control is not — rather than confirming a blank.
- */
-function confirmation({ unitName, familyAvailable, occupantName }: AvailabilityIntent): string {
-  if (familyAvailable === null) return `${unitName} follows its usual role again`
-  if (familyAvailable) return `${unitName} is released to families for this weekend`
-  const named = occupantName.trim()
-  return named === ''
-    ? `${unitName} is written in for this weekend`
-    : `${named} is written into ${unitName} for this weekend`
-}
-
 export function useUnitAvailability({
   year,
   sessionCmId,
@@ -128,10 +133,6 @@ export function useUnitAvailability({
         occupantName: intent.occupantName,
         reason: intent.reason,
       })
-    },
-
-    onSuccess: (_result, intent) => {
-      toast.success(confirmation(intent))
     },
 
     onError: (error) => {
