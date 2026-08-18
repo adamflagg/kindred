@@ -1390,7 +1390,7 @@ describe('LodgingUnitCard — the open-space title marker (#2093)', () => {
      *
      * kindred#2078 RE-EXPRESSED this conjunct. It used to read the proxy
      * `unit.family_available_override === false` inline under the name `held`;
-     * it now goes through `writeInOccupant`, so the tint is keyed on the fact
+     * it now goes through `writeInEntries`, so the tint is keyed on the fact
      * ("somebody is in this room") rather than on a spelling. This test is
      * what pins that the re-expression did not drop the gate.
      *
@@ -2340,13 +2340,11 @@ describe('LodgingUnitCard — the write-in chip, dropped in favour of the well (
 
   it('does not suppress the "Staff" badge — a closed staff cabin is exempt from the gate, not just no write-in', () => {
     // This is the case `writeInBadgeApplies`'s `inventory_class !==
-    // 'staff_default'` half exists for: a staff cabin closed for the weekend
-    // synthesises a `writeInOccupant` cover the same way a family room's
-    // write-in does (`writeIn.ts`'s `coveringWriteIn` fallback reads
-    // `family_available_override === false` for either role), so reading
-    // `writeInOccupant(unit) !== null` alone here would swallow the "Staff"
-    // chip along with the "Write-in" one. Pins both halves of the gate at
-    // once — the class check AND the scoping to this card only.
+    // 'staff_default'` half exists for: a staff cabin written into for the
+    // weekend carries a cover the same way a family room's write-in does, so
+    // reading `hasWriteIn(unit)` alone here would swallow the "Staff" chip
+    // along with the "Write-in" one. Pins both halves of the gate at once —
+    // the class check AND the scoping to this card only.
     render(
       <LodgingUnitCard
         slot={slot({

@@ -4642,14 +4642,14 @@ class TestTheWireStopsSpellingAnOccupancyAsFamilyAvailableFalse:
     still reported `family_available_override = False`, because
     `is_family_available` -- and through it every count on the stats bar, and
     the board's own forest open-tint -- was derived from that one field. Every
-    consumer has since been re-pointed at the occupancy source (`write_in`, and
-    `writeInOccupant` on the client), so the field can go back to answering the
+    consumer has since been re-pointed at the occupancy source (`write_ins`, and
+    `writeInEntries` on the client), so the field can go back to answering the
     ONE question it is named for.
 
     | on the wire | what it means now |
     |---|---|
     | `family_available_override` | the staff<->family ROLE row, and nothing else |
-    | `write_in` | somebody is in this space -- the occupancy, resolved |
+    | `write_ins` | who is in this space -- the occupancy, resolved |
     | `is_family_available` | the DERIVED answer, which still folds both in |
 
     `is_family_available` is what does not move, and that is the point of the
