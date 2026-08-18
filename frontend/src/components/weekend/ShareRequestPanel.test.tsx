@@ -204,8 +204,9 @@ describe('per-field split', () => {
     // Owner ruling 2026-08-17: "call them the original fieldnames for now
     // until staff can weigh in after it's live". `COVID-19 Bunking Requests`
     // is the misnamed field carrying 205 rostered households of general
-    // bunking requests, and it renders under that name on purpose. A display-
-    // names issue gets filed once staff have used this.
+    // bunking requests, and it renders under that name on purpose. The owner
+    // has since weighed in on exactly ONE label -- `BunkingNotes Notes`, below
+    // -- and on no other. This one is still verbatim, deliberately.
     render(
       <ShareRequestPanel
         share={share({
@@ -215,6 +216,60 @@ describe('per-field split', () => {
     )
 
     expect(screen.getByText('COVID-19 Bunking Requests')).toBeInTheDocument()
+  })
+
+  it('renders the one relabelled field as `Bunking Notes`', () => {
+    // Owner review 2026-08-17, after seeing the panel live: `BunkingNotes
+    // Notes` reads as a typo and gets a DISPLAY name. It is the only one.
+    render(
+      <ShareRequestPanel
+        share={share({
+          request_blocks: [
+            block('BunkingNotes Notes', [{ text: 'Called the family Tuesday.' }], 'staff'),
+          ],
+        })}
+      />
+    )
+
+    expect(screen.getByText('Bunking Notes')).toBeInTheDocument()
+    expect(screen.queryByText('BunkingNotes Notes')).not.toBeInTheDocument()
+  })
+
+  it('relabels the DISPLAY only, and leaves the source-field identity alone', () => {
+    // `BunkingNotes Notes` is the CampMinder field name. `REQUEST_TEXT_SOURCES`
+    // keys the authorship lane on it, `_may_read_staff_notes` gates on the
+    // table it comes from, and the Go ingest maps it to the `bunking_notes`
+    // slug. A display map that renamed the identity would be a data change
+    // wearing a label change's clothes.
+    render(
+      <ShareRequestPanel
+        share={share({
+          request_blocks: [
+            block('BunkingNotes Notes', [{ text: 'Called the family Tuesday.' }], 'staff'),
+          ],
+        })}
+      />
+    )
+
+    const rendered = screen.getByTestId('request-block')
+    expect(rendered.getAttribute('data-source-field')).toBe('BunkingNotes Notes')
+    expect(rendered.getAttribute('data-authorship')).toBe('staff')
+  })
+
+  it('leaves `Internal Bunk Notes` verbatim -- it already reads correctly', () => {
+    // The sibling staff field was explicitly NOT relabelled. One label moved,
+    // and only one.
+    render(
+      <ShareRequestPanel
+        share={share({
+          request_blocks: [
+            block('Internal Bunk Notes', [{ text: 'Watch the cabin split here.' }], 'staff'),
+          ],
+        })}
+      />
+    )
+
+    expect(screen.getByText('Internal Bunk Notes')).toBeInTheDocument()
   })
 
   it('never joins two blocks into one run of text', () => {
@@ -343,7 +398,7 @@ describe('expanded by default, collapsible by click', () => {
   })
 })
 
-describe('family and staff treatments are not the same', () => {
+describe('one treatment, and the lane is data rather than colour', () => {
   it('renders a family-authored answer in the inherited amber blockquote', () => {
     // The SAME amber blockquote the camper details panel uses for parent
     // request text, so a request reads the same wherever staff meet one.
@@ -360,10 +415,13 @@ describe('family and staff treatments are not the same', () => {
     expect(entry.className).toContain('bg-amber-50/60')
   })
 
-  it('renders the two staff-authored fields on a grey rail, never the amber one', () => {
-    // All 34 `BunkingNotes` values end in an inline staff signature and
-    // timestamp; no parent-authored field does. An internal note must never
-    // read as a family's own ask.
+  it('renders the two staff-authored fields on that SAME amber rail', () => {
+    // Owner review 2026-08-17, after seeing the panel live: the shipped design
+    // gave these two a grey rail so an internal note could not read as a
+    // family's own ask. Standardise on amber for now instead. What is dropped
+    // is the COLOUR, not the distinction -- `authorship` still decides whether
+    // these blocks reach the client at all (`_may_read_staff_notes`), which
+    // the next test pins.
     render(
       <ShareRequestPanel
         share={share({
@@ -376,8 +434,10 @@ describe('family and staff treatments are not the same', () => {
     )
 
     for (const entry of screen.getAllByTestId('request-entry')) {
-      expect(entry.className).not.toContain('amber')
-      expect(entry.className).toContain('border-border')
+      expect(entry.className).toContain('border-amber-300')
+      expect(entry.className).toContain('bg-amber-50/60')
+      expect(entry.className).not.toContain('border-border')
+      expect(entry.className).not.toContain('bg-muted')
     }
   })
 

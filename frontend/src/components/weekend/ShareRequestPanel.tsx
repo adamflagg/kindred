@@ -36,18 +36,20 @@
  * Labels are the ORIGINAL CampMinder field names, verbatim, including the
  * misnamed `COVID-19 Bunking Requests` that carries 205 households of general
  * bunking requests. Ruled deliberately — "call them the original fieldnames
- * for now until staff can weigh in after it's live" — with a display-names
- * issue to be filed once they have. Do not "improve" them here.
+ * for now until staff can weigh in after it's live". Staff have since weighed
+ * in on exactly ONE of them, and `DISPLAY_LABELS` below carries that single
+ * exception. Do not "improve" any other label here.
  *
- * ## Two treatments, and only two
+ * ## One treatment
  *
  * The amber blockquote is INHERITED, not invented: it is the same one the
  * camper details panel uses for parent request text, so a request reads the
- * same wherever staff meet one. The staff-authored fields (`BunkingNotes
- * Notes`, `Internal Bunk Notes`) get a grey rail in the same grammar, so an
- * internal note never reads as a family's own ask — a weekend-only divergence
- * from summer, which renders its staff notes in amber too, and one the ruling
- * made on purpose.
+ * same wherever staff meet one — and, after the owner's 2026-08-17 review of
+ * the live panel, the same whoever wrote it. The two staff-authored fields
+ * (`BunkingNotes Notes`, `Internal Bunk Notes`) briefly shipped on a grey rail
+ * to keep an internal note from reading as a family's own ask; that is the one
+ * thing the review reversed, and it also removes a weekend-only divergence
+ * from summer, which renders its staff notes in amber too.
  *
  * A source field with no text renders NOTHING — no "nothing applicable"
  * clutter, composing with kindred#2255's chip ruling in this same modal.
@@ -75,8 +77,9 @@
  * lists behind `bunking.manage` and whose raw text every other API route
  * serves only to an admin, so `/lodging/roster` omits them for a caller
  * without it (`_may_read_staff_notes`, api/routers/lodging.py). Nothing is
- * hidden client-side: a block that arrives is a block staff may read, which
- * is why `authorship` still only decides amber vs grey here.
+ * hidden client-side: a block that arrives is a block staff may read. That
+ * gate is the whole reason `authorship` still travels on the wire now that it
+ * paints nothing — see `REQUEST_RAIL`.
  */
 import { AlertCircle, ChevronDown, ChevronRight, MapPin, Users } from 'lucide-react'
 import { useCallback, useState } from 'react'
@@ -95,13 +98,34 @@ const PROXIMITY: Record<ProximityKindValue, { label: string; icon: typeof MapPin
  * verbatim. `break-words` is the one addition: the longest single 2026 answer
  * is 680 characters in a 416px panel, and an unbroken token — an email
  * address, a URL — would otherwise push the panel into a horizontal scroll.
+ *
+ * EVERY block gets this one, family-authored or staff-authored. The two staff
+ * fields briefly had a grey variant; the owner's 2026-08-17 review of the live
+ * panel standardised on amber instead. **The authorship distinction is not
+ * gone — it is merely not painted.** `block.authorship` still decides whether
+ * `/lodging/roster` sends a staff block to this client at all
+ * (`_may_read_staff_notes`, api/routers/lodging.py: `BunkingNotes Notes` and
+ * `Internal Bunk Notes` are `original_bunk_requests` rows, gated on
+ * `bunking.manage`), and it is still surfaced as `data-authorship` below.
+ * Deleting the field because nothing reads it for colour would reopen that
+ * permission hole.
  */
-const FAMILY_RAIL =
+const REQUEST_RAIL =
   'text-foreground rounded-r-lg border-l-2 border-amber-300 bg-amber-50/60 px-3 py-2 text-sm whitespace-pre-wrap break-words italic dark:border-amber-500/60 dark:bg-amber-900/20'
 
-/** The same grammar, drained of colour, for the two staff-authored fields. */
-const STAFF_RAIL =
-  'text-muted-foreground rounded-r-lg border-l-2 border-border bg-muted/40 px-3 py-2 text-sm whitespace-pre-wrap break-words'
+/**
+ * DISPLAY names. The key stays the CampMinder source-field identity — it is
+ * what the ingest, `REQUEST_TEXT_SOURCES` and the permission gate all key on,
+ * so only the right-hand side may ever be edited to change what staff read.
+ *
+ * One entry, and it is meant to stay small: the owner's 2026-08-17 review
+ * relabelled `BunkingNotes Notes`, which reads as a typo, and explicitly left
+ * every other label verbatim — `Internal Bunk Notes` and the misnamed
+ * `COVID-19 Bunking Requests` included — until staff have used this live.
+ */
+const DISPLAY_LABELS: Readonly<Record<string, string>> = {
+  'BunkingNotes Notes': 'Bunking Notes',
+}
 
 export interface ShareRequestPanelProps {
   share: ShareRequest
@@ -136,19 +160,20 @@ function RequestBlock({
   // rostered households share `COVID-19 Bunking Requests`, so the next
   // family's request text arrived already hidden.
   const isStaff = block.authorship === 'staff'
-  const label = block.source_field ?? ''
+  const sourceField = block.source_field ?? ''
+  const label = DISPLAY_LABELS[sourceField] ?? sourceField
 
   return (
     <section
       data-testid="request-block"
-      data-source-field={label}
+      data-source-field={sourceField}
       data-authorship={isStaff ? 'staff' : 'family'}
       className="flex flex-col gap-1"
     >
       <button
         type="button"
         onClick={() => {
-          onToggle(label)
+          onToggle(sourceField)
         }}
         className="text-muted-foreground hover:text-foreground flex w-full items-center gap-1 text-left transition-colors"
       >
@@ -177,7 +202,7 @@ function RequestBlock({
                 {(entry.contributors ?? []).join(', ')}
               </span>
             )}
-            <blockquote data-testid="request-entry" className={isStaff ? STAFF_RAIL : FAMILY_RAIL}>
+            <blockquote data-testid="request-entry" className={REQUEST_RAIL}>
               {entry.text}
             </blockquote>
           </div>
@@ -256,7 +281,7 @@ export function ShareRequestPanel({ share }: ShareRequestPanelProps) {
       ))}
 
       {showJoinedFallback && (
-        <blockquote data-testid="request-entry" className={FAMILY_RAIL}>
+        <blockquote data-testid="request-entry" className={REQUEST_RAIL}>
           {requestText}
         </blockquote>
       )}
