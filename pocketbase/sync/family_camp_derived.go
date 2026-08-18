@@ -648,6 +648,7 @@ var extraFieldCMIDs = map[int]bool{
 	274055: true, // Housing Accomodation  (sic)  (Adult)
 	274058: true, // Housing Accommodation-Yes    (Camper) — medical narrative, spec 5
 	274059: true, // Housing-Bathroom             (Camper) — medical narrative, spec 5
+	224987: true, // Accommodation-Explain        (Adult)  — medical narrative, spec 5; twin of 274058, kindred#2224
 	274053: true, // Adult-Bathroom               (Adult)
 	274054: true, // Bathroom-Yes                 (Adult)  — medical narrative, spec 5
 	256933: true, // Adult-CPAP                   (Adult)
@@ -1819,8 +1820,19 @@ func (s *FamilyCampDerivedSync) processMedical(personValues []customValueEntry) 
 		}
 		med.bathroomExplain = s.joinMedicalColumn(householdID, "bathroom_explain", bathroomParts)
 
+		// Same two-partition shape as bathroomExplain above: "Housing
+		// Accommodation-Yes" is the Camper-partition narrative and
+		// "Accommodation-Explain" (cm_id 224987) is its Adult-partition twin.
+		// Reading the Camper key alone dropped every household narrated only
+		// through the adult gate -- 12 of 42 accommodation-gated households in
+		// 2026 production. kindred#2224.
+		accommodationKeys := []string{"Housing Accommodation-Yes", "Accommodation-Explain"}
+		accommodationParts := make([]string, 0, len(accommodationKeys))
+		for _, key := range accommodationKeys {
+			accommodationParts = append(accommodationParts, fields.parts(key)...)
+		}
 		med.accommodationExplain = s.joinMedicalColumn(
-			householdID, "accommodation_explain", fields.parts("Housing Accommodation-Yes"))
+			householdID, "accommodation_explain", accommodationParts)
 
 		// Only include if has some data
 		if med.cpapInfo != "" || med.physicianInfo != "" ||

@@ -1422,6 +1422,7 @@ func TestLoadFieldDefinitionsIncludesCMIDAllowlist(t *testing.T) {
 		223999: "FAM Camp-Accommodation", // retired but kept for 2023/2024 backfill
 		274057: "Housing Accommodation",  // Camper successor, name heuristic misses it
 		274055: "Housing Accomodation",   // Adult twin, CampMinder's own typo
+		224987: "Accommodation-Explain",  // Adult explain twin of 274058 (kindred#2224)
 		274133: "Shared-request",         // request-layer free text (spec 4.1)
 		206286: "COVID-19 Bunking Requests",
 		34140:  "CA-Register for Family Camp", // matched by the NAME heuristic
@@ -1443,6 +1444,7 @@ func TestLoadFieldDefinitionsIncludesCMIDAllowlist(t *testing.T) {
 		"FAM Camp-Accommodation",
 		"Housing Accommodation",
 		"Housing Accomodation",
+		"Accommodation-Explain",
 		"Shared-request",
 		"COVID-19 Bunking Requests",
 		"CA-Register for Family Camp",
@@ -1941,6 +1943,37 @@ func TestProcessMedicalCPAPIncludesAdultField(t *testing.T) {
 	}
 	if meds[0].cpapInfo == "" {
 		t.Error("cpapInfo empty; an adult-only CPAP answer was dropped")
+	}
+}
+
+// TestProcessMedicalAccommodationExplainIncludesAdultField is the accommodation
+// twin of TestProcessMedicalCPAPIncludesAdultField, and of the two-key loop
+// bathroomExplain already runs. accommodationExplain read only "Housing
+// Accommodation-Yes" (the Camper key), so a household narrated solely through
+// the adult gate's own explain twin -- "Accommodation-Explain", cm_id 224987,
+// admitted by extraFieldCMIDs -- lost its narrative outright even though the
+// field was in the map. kindred#2224.
+//
+// Measured against production, 2026: of 42 accommodation-gated households, 12
+// had no Camper-side narrative, and all 12 have text in this field -- so
+// admitting it alone takes the un-narrated count from 12 to 0.
+func TestProcessMedicalAccommodationExplainIncludesAdultField(t *testing.T) {
+	t.Parallel()
+	s := NewFamilyCampDerivedSync(nil)
+	ts := time.Date(2025, 4, 21, 0, 0, 0, 0, time.UTC)
+
+	const accommodationText = "requires accessible transfer space"
+
+	meds := s.processMedical([]customValueEntry{
+		{householdPBID: "hh_martinez", fieldName: "Accommodation-Explain",
+			value: accommodationText, lastUpdated: ts},
+	})
+	if len(meds) != 1 {
+		t.Fatalf("medical rows = %d, want 1", len(meds))
+	}
+	if meds[0].accommodationExplain != accommodationText {
+		t.Errorf("accommodationExplain = %q; an adult-only accommodation "+
+			"explain was dropped", meds[0].accommodationExplain)
 	}
 }
 
