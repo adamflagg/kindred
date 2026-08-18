@@ -354,6 +354,35 @@ describe('resolveDrop', () => {
     ).toMatchObject({ kind: 'place', unitId: 'u1', unitCode: 'cedar-1' })
   })
 
+  it('accepts a PLACED party moved onto a written-into room — the reported case', () => {
+    /*
+     * The direction the first #2432 pass did not cover in a test: not a fresh
+     * placement from the queue, but a family ALREADY in another cabin dragged
+     * across onto a room that holds a write-in.
+     *
+     * Reported against the worktree: an unplaced family could be added to a
+     * written-into room from the card's box, while the same family already
+     * placed in another cabin could not be dragged there.
+     */
+    const writtenInto = unit({
+      unit_id: 'u2',
+      code: 'cedar-2',
+      name: 'Cedar 2',
+      write_ins: [cover({ unit_id: 'u2', unit_code: 'cedar-2', unit_name: 'Cedar 2' })],
+      is_family_available: false,
+    })
+    const p = party({ unit_code: 'cedar-1', unit_name: 'Cedar 1', unit_codes: ['cedar-1'] })
+
+    expect(
+      resolveDrop({
+        activeId: partyKey(p),
+        overId: unitDroppableId('cedar-2'),
+        parties: [p],
+        units: [CEDAR_1, writtenInto],
+      })
+    ).toMatchObject({ kind: 'place', unitId: 'u2', unitCode: 'cedar-2' })
+  })
+
   it('accepts a drop into a ROOM of a building somebody is written into (#2432)', () => {
     // The split case, reversed with the rest. Staff wrote into the whole house
     // while it was merged, then split it: the row still names the house, which
