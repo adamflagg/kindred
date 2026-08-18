@@ -7,15 +7,15 @@ import (
 	"testing"
 )
 
-// phiCollections hold detailed medical disclosures about named individuals.
+// narrativeCollections hold detailed medical disclosures about named individuals.
 // Spec 5.1 puts them in a separate, admin-gated collection; 5.2 keeps them out
 // of every export.
-var phiCollections = []string{"family_camp_medical"}
+var narrativeCollections = []string{"family_camp_medical"}
 
-// phiColumns are the column names carrying narrative medical text. Any of these
-// appearing in an export config means a disclosure is being written to a Google
-// Sheet next to the person's name.
-var phiColumns = []string{
+// narrativeColumns are the column names carrying narrative medical text. Any of
+// these appearing in an export config means a disclosure is being written to a
+// Google Sheet next to the person's name.
+var narrativeColumns = []string{
 	"cpap_info",
 	"special_needs_info",
 	"allergy_info",
@@ -28,37 +28,37 @@ var phiColumns = []string{
 
 // KNOWN EXPOSURE, deliberately not fixed here. person_custom_values and
 // household_custom_values ARE exported to Google Sheets, with First Name, Last
-// Name, Field Name and the raw Value, so the PHI narrative already reaches
+// Name, Field Name and the raw Value, so the medical narrative already reaches
 // Sheets through the raw tables alongside the individual's name. That predates
 // this work and staff may depend on the sheet, so narrowing it is a behavior
 // change with a real chance of breaking a workflow -- it is recorded for the
 // owner rather than changed silently. What follows covers what this plan is
-// responsible for: no NEW collection carries PHI into an export.
+// responsible for: no NEW collection carries medical narrative into an export.
 
-// TestPHICollectionsAreNotExported is the assertion spec 5.4 asks for.
-func TestPHICollectionsAreNotExported(t *testing.T) {
+// TestNarrativeCollectionsAreNotExported is the assertion spec 5.4 asks for.
+func TestNarrativeCollectionsAreNotExported(t *testing.T) {
 	t.Parallel()
 	configs := append(GetReadableYearExports(), GetReadableGlobalExports()...)
 
 	// Without this the test passes by looking at nothing: every assertion below
-	// is inside the loop, so an empty config list reads as "no PHI exported"
-	// rather than as "the export registry moved and this test went blind".
+	// is inside the loop, so an empty config list reads as "no medical narrative
+	// exported" rather than as "the export registry moved and this test went blind".
 	if len(configs) == 0 {
-		t.Fatal("no export configs found; this test cannot prove anything about PHI containment")
+		t.Fatal("no export configs found; this test cannot prove anything about medical narrative containment")
 	}
 
 	for _, cfg := range configs {
-		for _, phi := range phiCollections {
-			if cfg.Collection == phi {
+		for _, collection := range narrativeCollections {
+			if cfg.Collection == collection {
 				t.Errorf("collection %q is exported to sheet %q; spec 5.2 forbids it",
-					phi, cfg.SheetName)
+					collection, cfg.SheetName)
 			}
 		}
 		for _, col := range cfg.Columns {
-			for _, phi := range phiColumns {
-				if col.Field == phi {
-					t.Errorf("export %q writes PHI column %q to sheet %q",
-						cfg.Collection, phi, cfg.SheetName)
+			for _, column := range narrativeColumns {
+				if col.Field == column {
+					t.Errorf("export %q writes medical narrative column %q to sheet %q",
+						cfg.Collection, column, cfg.SheetName)
 				}
 			}
 		}
@@ -121,8 +121,8 @@ func TestLodgingCollectionsAreNeverExported(t *testing.T) {
 // TestFamilyCampDerivedManifestIsNotAnExportList is the family-camp half of the
 // same claim TestLodgingCollectionsAreNeverExported makes about the ingest, and
 // it is the half that matters most here: SyncJobToCollections["family_camp_derived"]
-// lists family_camp_medical, which is the PHI collection this whole file exists
-// to keep out of Google Sheets.
+// lists family_camp_medical, which is the narrative collection this whole file
+// exists to keep out of Google Sheets.
 //
 // The two lists look interchangeable and are not -- one is a write manifest, the
 // other a publish list -- and the cost of confusing them is different for each
@@ -146,10 +146,10 @@ func TestFamilyCampDerivedManifestIsNotAnExportList(t *testing.T) {
 		t.Fatalf("%q missing from SyncJobToCollections", serviceNameFamilyCampDerived)
 	}
 
-	sawPHICollection := false
+	sawNarrativeCollection := false
 	for _, collection := range written {
-		if slices.Contains(phiCollections, collection) {
-			sawPHICollection = true
+		if slices.Contains(narrativeCollections, collection) {
+			sawNarrativeCollection = true
 		}
 		if where, isExported := exported[collection]; isExported {
 			t.Errorf("%s is both written by %s and exported by %s",
@@ -158,51 +158,52 @@ func TestFamilyCampDerivedManifestIsNotAnExportList(t *testing.T) {
 	}
 
 	// Without this the test drifts into vacuity the day the manifest stops
-	// listing the PHI collection: the loop above would still pass, having
+	// listing the narrative collection: the loop above would still pass, having
 	// checked nothing that matters.
-	if !sawPHICollection {
-		t.Errorf("%q no longer writes any collection in phiCollections (%v); "+
+	if !sawNarrativeCollection {
+		t.Errorf("%q no longer writes any collection in narrativeCollections (%v); "+
 			"either the manifest is wrong or this test needs rescoping",
-			serviceNameFamilyCampDerived, phiCollections)
+			serviceNameFamilyCampDerived, narrativeCollections)
 	}
 }
 
-// TestPHINarrativeIsNeverLogged: spec 5.2 bars PHI from logs as well as
-// exports. This greps the source rather than the runtime, because the failure
-// mode is a slog call somebody adds later while debugging.
+// TestNarrativeIsNeverLogged: spec 5.2 bars medical narrative from logs as well
+// as exports. This greps the source rather than the runtime, because the
+// failure mode is a slog call somebody adds later while debugging.
 //
 // It reads the source text of every file that handles narrative or request
-// text: a slog line naming any PHI field would put a disclosure into the log
-// stream, which on this deployment goes to the container log and from there
-// wherever logs go.
-func TestPHINarrativeIsNeverLogged(t *testing.T) {
+// text: a slog line naming any narrative field would put a disclosure into the
+// log stream, which on this deployment goes to the container log and from
+// there wherever logs go.
+func TestNarrativeIsNeverLogged(t *testing.T) {
 	t.Parallel()
 	for _, file := range []string{"family_camp_derived.go", "lodging_requests.go"} {
-		for _, v := range phiLogViolations(readSourceFile(t, file)) {
+		for _, v := range narrativeLogViolations(readSourceFile(t, file)) {
 			t.Errorf("%s: %s", file, v)
 		}
 	}
 }
 
-// phiNarrativeExprs are the Go expressions that evaluate to narrative text.
-// Separate from phiColumns because a log line can name either the column or the
-// struct field that feeds it.
-var phiNarrativeExprs = []string{
+// narrativeExprs are the Go expressions that evaluate to narrative text.
+// Separate from narrativeColumns because a log line can name either the
+// column or the struct field that feeds it.
+var narrativeExprs = []string{
 	"med.cpapInfo", "med.specialNeedsInfo", "med.allergyInfo",
 	"med.dietaryInfo", "med.additionalInfo", "med.bathroomExplain",
 	"med.accommodationExplain", "med.physicianInfo",
 	"reg.requestText", "req.RequestText", "a.req.RequestText",
 }
 
-// phiLogViolations returns one message per slog call that names PHI.
+// narrativeLogViolations returns one message per slog call that names medical
+// narrative.
 //
 // It joins each call across lines before matching. The previous version tested
 // `strings.HasPrefix(trimmed, "slog.")` on individual lines, which meant gofmt
 // wrapping a long call -- exactly what happens when arguments are added to it --
-// moved the PHI argument onto a continuation line the scanner never looked at.
-// A guard with a formatting-dependent blind spot is worse than no guard, because
-// it reads as coverage.
-func phiLogViolations(src string) []string {
+// moved the narrative argument onto a continuation line the scanner never
+// looked at. A guard with a formatting-dependent blind spot is worse than no
+// guard, because it reads as coverage.
+func narrativeLogViolations(src string) []string {
 	var out []string
 	lines := strings.Split(src, "\n")
 
@@ -221,12 +222,12 @@ func phiLogViolations(src string) []string {
 			i = j
 		}
 
-		for _, phi := range phiColumns {
-			if strings.Contains(call, `"`+phi+`"`) {
-				out = append(out, "a slog call references the PHI column "+phi+":\n  "+call)
+		for _, column := range narrativeColumns {
+			if strings.Contains(call, `"`+column+`"`) {
+				out = append(out, "a slog call references the medical narrative column "+column+":\n  "+call)
 			}
 		}
-		for _, expr := range phiNarrativeExprs {
+		for _, expr := range narrativeExprs {
 			if strings.Contains(call, expr) {
 				out = append(out, "a slog call logs "+expr+":\n  "+call)
 			}
@@ -239,10 +240,10 @@ func parenDepth(s string) int {
 	return strings.Count(s, "(") - strings.Count(s, ")")
 }
 
-// TestPHILogScannerCatchesWrappedCalls is the guard for the guard. The bug this
-// covers is not hypothetical: the line-anchored version passed on every input
-// below except the first.
-func TestPHILogScannerCatchesWrappedCalls(t *testing.T) {
+// TestNarrativeLogScannerCatchesWrappedCalls is the guard for the guard. The
+// bug this covers is not hypothetical: the line-anchored version passed on
+// every input below except the first.
+func TestNarrativeLogScannerCatchesWrappedCalls(t *testing.T) {
 	t.Parallel()
 	cases := map[string]bool{
 		`slog.Info("x", "v", med.bathroomExplain)`:                                      true,
@@ -253,9 +254,9 @@ func TestPHILogScannerCatchesWrappedCalls(t *testing.T) {
 		`bathroomParts = append(bathroomParts, med.bathroomExplain)`:                    false,
 	}
 	for src, wantViolation := range cases {
-		got := phiLogViolations(src)
+		got := narrativeLogViolations(src)
 		if wantViolation && len(got) == 0 {
-			t.Errorf("scanner missed a PHI log call:\n%s", src)
+			t.Errorf("scanner missed a medical narrative log call:\n%s", src)
 		}
 		if !wantViolation && len(got) > 0 {
 			t.Errorf("scanner false-positived on:\n%s\n  -> %v", src, got)

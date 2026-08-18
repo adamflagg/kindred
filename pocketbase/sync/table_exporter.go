@@ -57,7 +57,7 @@ var SyncJobToCollections = map[string][]string{
 	"family_camp_derived": {"family_camp_adults", "family_camp_registrations", "family_camp_medical"},
 	// Assignment ingest. Present so the export-skip optimisation knows which
 	// collections this job writes -- NOT an export. None of these collections
-	// appears in GetReadableYearExports(), and lodging_phi_test.go asserts that.
+	// appears in GetReadableYearExports(), and lodging_medical_narrative_test.go asserts that.
 	"lodging_assignments": {
 		"lodging_assignments", "lodging_assignment_history", "lodging_ingest_issues",
 	},
