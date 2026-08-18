@@ -330,29 +330,40 @@ describe('resolveDrop', () => {
     ).toEqual({ kind: 'unplace', party: merged })
   })
 
-  it('refuses a drop onto a held unit (#2087) — a hold blocks placement outright', () => {
-    // Owner ruling on #2090: a hold is global and blocks placement, not merely
-    // dimmed. This is the load-bearing check, since `resolveDrop` is the only
-    // path #2080's picker reaches — a `disabled`-only fix would not cover it.
-    const held = unit({ write_ins: [cover()], is_family_available: false })
+  it('accepts a drop onto a WRITTEN-INTO unit — a write-in names an occupant, it does not close the space (#2432)', () => {
+    // THE REVERSAL of #2090, and this is the site that enforced it: `if
+    // (hasWriteIn(unit)) return null`, whose own comment called it "the
+    // load-bearing one". Owner ruling 2026-08-18 — *"we should be able to add
+    // families to any write in space, or add a write in to a family space —
+    // regardless of which came first"* — so this direction (family onto a
+    // written-into space) must go through.
+    //
+    // The case staff reported is one paper registration (recordable ONLY as a
+    // write-in, since it has no CampMinder record) sharing a cabin with one
+    // CampMinder family. Refusing here is what made the one case the control
+    // exists for the one case it would not do.
+    const writtenInto = unit({ write_ins: [cover()], is_family_available: false })
     const p = party()
     expect(
       resolveDrop({
         activeId: partyKey(p),
         overId: unitDroppableId('cedar-1'),
         parties: [p],
-        units: [held],
+        units: [writtenInto],
       })
-    ).toBeNull()
+    ).toMatchObject({ kind: 'place', unitId: 'u1', unitCode: 'cedar-1' })
   })
 
-  it('refuses a drop into a ROOM of a building somebody is written into', () => {
-    // The split case. Staff wrote into the whole house while it was merged,
-    // then split it: the row still names the house, which now has no card, and
-    // without the server's resolved cover this drop went through — a family
-    // into a space somebody is already sleeping in, with nothing on screen to
-    // warn them. The refusal reads the COVER, so both directions of the tree
-    // arrive here as the same fact.
+  it('accepts a drop into a ROOM of a building somebody is written into (#2432)', () => {
+    // The split case, reversed with the rest. Staff wrote into the whole house
+    // while it was merged, then split it: the row still names the house, which
+    // now has no card, and the drop lands in one of its rooms.
+    //
+    // This ONE tree walk is what the reversal keeps: the family and the
+    // write-in must land in the same well so the card names both occupants,
+    // and the server's resolved cover is what puts them there whichever level
+    // the board happens to be drawing. What is gone is the refusal that used
+    // to sit on top of it.
     const room = unit({
       code: 'house-a',
       write_ins: [
@@ -373,13 +384,13 @@ describe('resolveDrop', () => {
         parties: [p],
         units: [room],
       })
-    ).toBeNull()
+    ).toMatchObject({ kind: 'place', unitCode: 'house-a' })
   })
 
-  it('refuses a whole-house drop when one of its ROOMS is written into', () => {
-    // The mirror case, and the one that predates the split fix: merge a
-    // building over a written-into room and the room stops being drawn, so the
-    // building's card said nothing about the caretaker in it and took the drop.
+  it('accepts a whole-house drop when one of its ROOMS is written into (#2432)', () => {
+    // The mirror case: merge a building over a written-into room and the room
+    // stops being drawn, so the building's card is where both the write-in and
+    // the placement now read.
     const house = unit({
       code: 'house',
       is_container: true,
@@ -402,7 +413,7 @@ describe('resolveDrop', () => {
         parties: [p],
         units: [house],
       })
-    ).toBeNull()
+    ).toMatchObject({ kind: 'place', unitCode: 'house' })
   })
 
   it('still accepts a drop onto an ordinary unheld unit (regression guard)', () => {
@@ -755,16 +766,17 @@ describe('resolvePickerPlacement', () => {
     })
   })
 
-  it('inherits the held-space refusal rather than adding a second one', () => {
-    // #2087/#2199 put the refusal in `resolveDrop` precisely because #2080
-    // reaches placement without touching a `useDroppable`. A picker-layer
-    // check of its own would be the second copy that comment exists to
-    // prevent.
+  it('inherits the written-into space’s ACCEPTANCE rather than keeping a refusal of its own (#2432)', () => {
+    // The adapter has no rules, which is the whole design — so reversing #2090
+    // in `resolveDrop` reverses it here for free. Pinned in both directions on
+    // purpose: a picker-layer copy of the old refusal would survive the
+    // reversal silently and leave #2080's placement path saying no while drag
+    // said yes.
     const p = party()
-    const held = unit({ write_ins: [cover()], is_family_available: false })
+    const writtenInto = unit({ write_ins: [cover()], is_family_available: false })
     expect(
-      resolvePickerPlacement({ party: p, unitCode: 'cedar-1', parties: [p], units: [held] })
-    ).toBeNull()
+      resolvePickerPlacement({ party: p, unitCode: 'cedar-1', parties: [p], units: [writtenInto] })
+    ).toMatchObject({ kind: 'place', unitCode: 'cedar-1' })
   })
 
   it('refuses a party carrying neither CampMinder id', () => {

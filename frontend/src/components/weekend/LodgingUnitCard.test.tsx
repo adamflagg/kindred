@@ -480,7 +480,15 @@ describe('LodgingUnitCard — a held unit refuses the drop outright (#2087)', ()
 
   const held = unit({ write_ins: [cover()], is_family_available: false })
 
-  it('keeps the droppable disabled on a held unit even while placement is live', () => {
+  it('lights a WRITTEN-INTO unit as a drop target — a write-in does not close the space', () => {
+    /*
+     * Inverted by kindred#2432's ruling. The droppable was disabled on a
+     * written-into unit, the affordance half of #2090's refusal, so a family
+     * dragged toward a cabin holding one paper registration never even
+     * highlighted. `resolveDrop` no longer refuses that drop, so the
+     * affordance must not either — a target that refuses silently is worse
+     * than one that never lit.
+     */
     overDroppableId = unitDroppableId('cedar-1')
     const { container } = render(
       <LodgingUnitCard
@@ -490,7 +498,7 @@ describe('LodgingUnitCard — a held unit refuses the drop outright (#2087)', ()
         onOpenParty={vi.fn()}
       />
     )
-    expect(card(container)).not.toHaveClass('border-primary')
+    expect(card(container)).toHaveClass('border-primary')
   })
 
   it('keeps an ordinary unheld unit droppable enabled (regression guard)', () => {
@@ -2219,17 +2227,21 @@ describe('LodgingUnitCard — placing a family from the space itself (kindred#20
     expect(onPlaceParty.mock.calls[0]?.[1]).toEqual(unplaced)
   })
 
-  it('is ABSENT on a held space, not dimmed', () => {
+  it('is PRESENT on a written-into space, so a second occupant can be added either way round', () => {
     /*
-     * A hold refuses placement outright (#2087/#2090), and Hold's own control
-     * vanishes rather than dimming in the same situation. Absent adds no
-     * fifth meaning to the board's ruled signal vocabulary — `opacity-40` is
-     * REFUSAL and is spoken for by the invalid merge target.
+     * Also inverted by kindred#2432. The box used to vanish here, mirroring
+     * the strip's write-in, on #2090's rule that a write-in and a placement
+     * were mutually exclusive. They are not: the reported case is one paper
+     * registration — which has no CampMinder record, so a write-in is the only
+     * way to record it — sharing a cabin with one placed family.
+     *
+     * Still not DIMMED, which is the half that survives: `opacity-40` means
+     * REFUSAL on this board and is spoken for by the invalid merge target.
      */
     const { container } = renderCard({
       slot: slot({ unit: unit({ write_ins: [cover()] }) }),
     })
-    expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
+    expect(screen.getByRole('combobox')).toBeInTheDocument()
     expect(container.querySelector('.opacity-40')).toBeNull()
   })
 

@@ -369,12 +369,14 @@ export function PlaceFamilyPicker({
               className="bg-muted flex w-full flex-col gap-0.5 px-2 py-1.5 text-left text-sm"
             >
               <span className="truncate">{`Write in "${trimmed}"`}</span>
-              {/* Both halves of what just happened: no family matched, and
-                  this records a name instead. The muted key is the list's own
+              {/* THE ACTION, not a description of it (owner, 2026-08-18).
+                  This read "records who is in this space", which explained
+                  what a write-in is to a staff member who already knew and
+                  left the keystroke unsaid. The muted key is the list's own
                   advisory ink, not a warning — writing somebody in is an
                   ordinary act, not a fallback from a failure. */}
               <span className="text-muted-foreground text-xs">
-                No family matches — records who is in this space
+                No family matches — press Enter to save this write-in
               </span>
             </button>
           ) : parties.length === 0 ? (

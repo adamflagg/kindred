@@ -6,7 +6,9 @@
  * unconfirmed (measured against the production snapshot of 2026-08-06, cabins
  * were 118/118 confirmed) but because staff routinely place families against
  * the machine's opinion and are right to. Deliberately a DIFFERENT mechanism
- * from #2087's hard block on a held space, which is a refusal.
+ * from the invalid merge target's hard block, which is a refusal. #2087's
+ * block on a written-into space used to be the other example here; kindred#2432
+ * struck it, so the merge target is now the only thing on the refusal channel.
  *
  * Fictional data throughout.
  */

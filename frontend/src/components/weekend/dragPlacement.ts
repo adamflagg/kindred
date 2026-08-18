@@ -23,13 +23,18 @@
  * nine tasks and removed in kindred#1903; `docs/architecture/lodging-occupancy.md`
  * says why, and the reasoning is not obvious. Do not add one here.
  *
+ * **It never refuses a WRITTEN-INTO space.** It did until kindred#2432, on
+ * #2090's ruling that a write-in and a placement were mutually exclusive. They
+ * are not: a write-in names an occupant the system has no record of — a paper
+ * registration, most often — and such a party can legitimately share a cabin
+ * with a placed family. See the gate's own headstone inside `resolveDrop`.
+ *
  * What it does refuse is a write that cannot succeed: a unit the payload does
  * not carry, a container row, and a party carrying neither CampMinder id.
  */
 import type { LodgingUnitRow, RosterPartyRow, WeekendRoster } from '../../types/lodging'
 import { occupiedCodes } from './boardLayout'
 import { partyKey } from './partyKey'
-import { hasWriteIn } from './writeIn'
 
 /**
  * The queue droppable. One id, imported by the badge that registers it and
@@ -216,21 +221,33 @@ export function resolveDrop({
 
   const unit = units.find((candidate) => candidate.code === target.unitCode)
   if (unit === undefined) return null
-  // Owner ruling on #2090: a hold is a GLOBAL fact about the building (who is
-  // in it, chiefly non-rostered staff), not a scenario-scoped reservation of
-  // empty space, and held/occupied are mutually exclusive states. Dragging
-  // onto a held unit is refused outright, not dimmed — see #2087. This is
-  // the load-bearing check: #2080 adds a placement path that never touches a
-  // `useDroppable`, so a refusal only on that hook's `disabled` flag would be
-  // silently bypassed by it. `LodgingUnitCard` also disables its droppable
-  // for the drag affordance, but this is what actually enforces it.
-  // Read through `hasWriteIn`, never the raw column: a row names one unit but
-  // closes a SPACE, and the board draws whichever level the tree resolves to.
-  // Split a written-into building and this drop lands in one of its rooms;
-  // merge over a written-into room and it lands on the building.
-  // The column answers only for the unit it sits on, so both of those went
-  // through — a family into a space somebody is already sleeping in.
-  if (hasWriteIn(unit)) return null
+  // ⚠️ NO WRITE-IN REFUSAL HERE, and its absence is a ruling rather than an
+  // omission — do not restore one.
+  //
+  // `if (hasWriteIn(unit)) return null` stood on this line until kindred#2432,
+  // under #2090 ("held and occupied are mutually exclusive"), and its own
+  // comment called it *the load-bearing one*: #2080 adds a placement path that
+  // never touches a `useDroppable`, so a refusal living only on that hook's
+  // `disabled` flag would be silently bypassed. That reasoning about WHERE a
+  // refusal has to live was correct and is why this was the last gate standing;
+  // what was struck is the refusal itself.
+  //
+  // Owner ruling 2026-08-18: *"we should be able to add families to any write
+  // in space, or add a write in to a family space — regardless of which came
+  // first."* A write-in NAMES AN OCCUPANT; it does not CLOSE THE SPACE. The
+  // reported case is one paper registration — which has no CampMinder record,
+  // so a write-in is the only way to record it at all — sharing a cabin with
+  // one placed CampMinder family, and this line is what refused it.
+  //
+  // The tree walk the refusal used to ride on is still doing its job upstream:
+  // `hasWriteIn` read the SERVER-RESOLVED cover rather than the raw column
+  // precisely because a row names one unit but covers a whole space, and that
+  // is what still lands the write-in and the family in the SAME card's well
+  // whichever level the board draws (`LodgingUnitCard`'s `writeInEntries`).
+  //
+  // The known cost is filed, not hidden: a write-in carries no headcount, so a
+  // shared space's free-bed figure overstates once both are in it (kindred#2439,
+  // ruled an optional investigation and explicitly not a blocker).
   // A COMBINED container IS a card now — Task 6 draws its own row in place of
   // its rooms (unitLevel.ts, `drawnUnits`) — so it must accept a drop exactly
   // like any other drawn unit. A NON-combined container still carries only
@@ -267,9 +284,11 @@ export interface ResolvePickerPlacementArgs {
  *
  * A thin adapter and nothing more, and that is the whole design: the second
  * placement path must not be a second set of rules. Everything that makes a
- * drop a no-op or a refusal — a held space (#2087), a non-combined container,
- * a party carrying neither CampMinder id, a party already alone in this room —
- * is inherited here for free because the answer is literally `resolveDrop`'s.
+ * drop a no-op or a refusal — a non-combined container, a party carrying
+ * neither CampMinder id, a party already alone in this room — is inherited
+ * here for free because the answer is literally `resolveDrop`'s. That cuts
+ * both ways, which kindred#2432 is the proof of: striking the written-into
+ * refusal in `resolveDrop` struck it here too, with nothing to edit.
  * A picker-layer copy of any of them is the drift this exists to prevent.
  *
  * The party is re-resolved out of `parties` by its own key rather than trusted
