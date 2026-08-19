@@ -48,6 +48,19 @@ func addLodgingValueHistoryCollection(t *testing.T, app core.App) {
 	col.Fields.Add(&core.BoolField{Name: "is_genesis"})
 	col.Fields.Add(&core.AutodateField{Name: "created", OnCreate: true})
 
+	// The indexes are part of the fixture, not decoration. Without
+	// idx_lvh_observation the "idempotency contract" the migration header names
+	// is never exercised: a typo in its column list, or dropping it outright,
+	// would ship green because the Go pre-check alone would carry every test.
+	// Keep this list byte-identical to the migration's.
+	col.Indexes = []string{
+		"CREATE UNIQUE INDEX idx_lvh_observation ON lodging_value_history " +
+			"(year, field_cm_id, household_cm_id, person_cm_id, source_changed_at, " +
+			"old_value, new_value)",
+		"CREATE INDEX idx_lvh_household_year ON lodging_value_history (household_cm_id, year)",
+		"CREATE INDEX idx_lvh_person_year ON lodging_value_history (person_cm_id, year)",
+	}
+
 	if err := app.Save(col); err != nil {
 		t.Fatalf("save lodging_value_history: %v", err)
 	}
@@ -60,6 +73,24 @@ func historyRows(t *testing.T, app core.App) []*core.Record {
 		t.Fatalf("re-query lodging_value_history: %v", err)
 	}
 	return rows
+}
+
+// theRow returns the single row matching genesis, and fails if there is not
+// exactly one. Deliberately NOT positional: `created` is a millisecond autodate
+// and two writes inside one test can land in the same millisecond, after which
+// SQLite is free to return either order and `rows[1]` stops meaning anything.
+func theRow(t *testing.T, app core.App, genesis bool) *core.Record {
+	t.Helper()
+	var found []*core.Record
+	for _, r := range historyRows(t, app) {
+		if r.GetBool("is_genesis") == genesis {
+			found = append(found, r)
+		}
+	}
+	if len(found) != 1 {
+		t.Fatalf("want exactly 1 row with is_genesis=%v, got %d", genesis, len(found))
+	}
+	return found[0]
 }
 
 // newHouseholdCabinSync returns a service with its own ProcessedKeys, so the
@@ -105,10 +136,7 @@ func TestHouseholdCabinValueChangeIsCaptured(t *testing.T) {
 	if len(rows) != 1 {
 		t.Fatalf("after genesis: %d history rows, want 1", len(rows))
 	}
-	g := rows[0]
-	if !g.GetBool("is_genesis") {
-		t.Errorf("genesis row is_genesis = false, want true")
-	}
+	g := theRow(t, app, true)
 	if g.GetString("old_value") != "" {
 		t.Errorf("genesis old_value = %q, want empty", g.GetString("old_value"))
 	}
@@ -160,10 +188,7 @@ func TestHouseholdCabinValueChangeIsCaptured(t *testing.T) {
 	if len(rows) != 2 {
 		t.Fatalf("after value change: %d history rows, want 2", len(rows))
 	}
-	c := rows[1]
-	if c.GetBool("is_genesis") {
-		t.Errorf("transition row is_genesis = true, want false")
-	}
+	c := theRow(t, app, false)
 	if c.GetString("old_value") != testCabinValueOld {
 		t.Errorf("transition old_value = %q, want %q", c.GetString("old_value"), testCabinValueOld)
 	}
@@ -222,15 +247,16 @@ func TestPersonCabinValueChangeIsCaptured(t *testing.T) {
 	if len(rows) != 1 {
 		t.Fatalf("after genesis: %d history rows, want 1", len(rows))
 	}
-	if rows[0].GetInt("person_cm_id") != personCMID {
-		t.Errorf("person_cm_id = %d, want %d", rows[0].GetInt("person_cm_id"), personCMID)
+	pg := theRow(t, app, true)
+	if pg.GetInt("person_cm_id") != personCMID {
+		t.Errorf("person_cm_id = %d, want %d", pg.GetInt("person_cm_id"), personCMID)
 	}
-	if rows[0].GetInt("household_cm_id") != 0 {
-		t.Errorf("household_cm_id = %d, want 0 on the person grain", rows[0].GetInt("household_cm_id"))
+	if pg.GetInt("household_cm_id") != 0 {
+		t.Errorf("household_cm_id = %d, want 0 on the person grain", pg.GetInt("household_cm_id"))
 	}
-	if rows[0].GetString("source_field") != fieldNameReportableFamilyCampCabin {
+	if pg.GetString("source_field") != fieldNameReportableFamilyCampCabin {
 		t.Errorf("source_field = %q, want %q",
-			rows[0].GetString("source_field"), fieldNameReportableFamilyCampCabin)
+			pg.GetString("source_field"), fieldNameReportableFamilyCampCabin)
 	}
 
 	seeded, err := app.FindRecordsByFilter("person_custom_values", "", "", 0, 0)
@@ -254,10 +280,11 @@ func TestPersonCabinValueChangeIsCaptured(t *testing.T) {
 	if len(rows) != 2 {
 		t.Fatalf("after value change: %d history rows, want 2", len(rows))
 	}
-	if rows[1].GetString("old_value") != testCabinValueOld ||
-		rows[1].GetString("new_value") != testCabinValueNew {
+	tr := theRow(t, app, false)
+	if tr.GetString("old_value") != testCabinValueOld ||
+		tr.GetString("new_value") != testCabinValueNew {
 		t.Errorf("transition = %q -> %q, want %q -> %q",
-			rows[1].GetString("old_value"), rows[1].GetString("new_value"),
+			tr.GetString("old_value"), tr.GetString("new_value"),
 			testCabinValueOld, testCabinValueNew)
 	}
 }
@@ -406,5 +433,123 @@ func TestLodgingValueHistorySkipsEmptyGenesis(t *testing.T) {
 	}
 	if got := len(historyRows(t, app)); got != 0 {
 		t.Errorf("an empty first observation wrote %d genesis rows; want 0", got)
+	}
+}
+
+// TestLodgingValueHistoryIdempotencyWithEmptyColumns pins the two dedupe-key
+// columns that can legitimately be EMPTY, which a naive `field = {:param}`
+// filter does not match:
+//
+//   - source_changed_at is empty whenever CampMinder returns no `lastUpdated`
+//     for the value (transformHouseholdCustomFieldValueToPB only sets the field
+//     when it is present and non-empty).
+//   - new_value is empty when staff CLEAR a cabin, which is a real transition
+//     this table is meant to record.
+//
+// Without this, the pre-insert check misses its own row and every sync run
+// re-attempts the insert: in production the unique index rejects it and the
+// swallowed error is logged on every run, and in any fixture without that index
+// the rows simply duplicate.
+func TestLodgingValueHistoryIdempotencyWithEmptyColumns(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name string
+		obs  lodgingValueObservation
+	}{
+		{
+			name: "empty source_changed_at",
+			obs: lodgingValueObservation{
+				Year: 2026, FieldCMID: cmIDFamilyCampCabin, HouseholdCMID: 54321,
+				NewValue: testCabinValueOld, SourceChangedAt: "", IsGenesis: true,
+			},
+		},
+		{
+			name: "empty new_value (staff cleared the cabin)",
+			obs: lodgingValueObservation{
+				Year: 2026, FieldCMID: cmIDFamilyCampCabin, HouseholdCMID: 54321,
+				OldValue: testCabinValueOld, NewValue: "",
+				SourceChangedAt: testLastUpdatedTransition,
+			},
+		},
+		{
+			name: "both empty",
+			obs: lodgingValueObservation{
+				Year: 2026, FieldCMID: cmIDReportableFamilyCampCabin, PersonCMID: 12345,
+				OldValue: testCabinValueOld, NewValue: "", SourceChangedAt: "",
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := newOrphanSweepTestApp(t, "household_custom_values",
+				"household", "field_definition", "value", "last_updated")
+			addLodgingValueHistoryCollection(t, app)
+
+			obs := tc.obs
+			for i := range 2 {
+				if err := recordLodgingValueChange(app, &obs); err != nil {
+					t.Fatalf("observation %d: %v", i, err)
+				}
+			}
+			if got := len(historyRows(t, app)); got != 1 {
+				t.Errorf("two identical observations produced %d rows; want 1", got)
+			}
+		})
+	}
+}
+
+// TestLodgingValueHistoryKeepsAReturnToAPreviousCabin is the regression for the
+// degenerate-key case the migration header calls out. With an empty
+// `source_changed_at` -- which CampMinder produces whenever it returns no
+// `lastUpdated` -- a key without `old_value` collapses to
+// (year, field, household, person, ”, new_value), so a household whose cabin
+// goes A -> B -> A has its third, genuine observation matched against the first
+// and silently dropped, leaving B as the last recorded state.
+//
+// The fixture carries the real unique index, so this pins the index and the Go
+// pre-check together rather than only one of them.
+func TestLodgingValueHistoryKeepsAReturnToAPreviousCabin(t *testing.T) {
+	t.Parallel()
+
+	app := newOrphanSweepTestApp(t, "household_custom_values",
+		"household", "field_definition", "value", "last_updated")
+	addLodgingValueHistoryCollection(t, app)
+
+	base := lodgingValueObservation{
+		Year: 2026, FieldCMID: cmIDFamilyCampCabin, HouseholdCMID: 54321,
+		SourceChangedAt: "", // CampMinder returned no lastUpdated
+	}
+
+	genesis := base
+	genesis.NewValue, genesis.IsGenesis = testCabinValueOld, true
+	away := base
+	away.OldValue, away.NewValue = testCabinValueOld, testCabinValueNew
+	back := base
+	back.OldValue, back.NewValue = testCabinValueNew, testCabinValueOld
+
+	for i, obs := range []lodgingValueObservation{genesis, away, back} {
+		if err := recordLodgingValueChange(app, &obs); err != nil {
+			t.Fatalf("observation %d: %v", i, err)
+		}
+	}
+
+	rows := historyRows(t, app)
+	if len(rows) != 3 {
+		t.Fatalf("A -> B -> A produced %d rows; want 3 (the return was dropped)", len(rows))
+	}
+
+	// The return to the earlier cabin must be the one that survives as latest.
+	var returned bool
+	for _, r := range rows {
+		if r.GetString("old_value") == testCabinValueNew && r.GetString("new_value") == testCabinValueOld {
+			returned = true
+		}
+	}
+	if !returned {
+		t.Errorf("no row records the return %q -> %q", testCabinValueNew, testCabinValueOld)
 	}
 }

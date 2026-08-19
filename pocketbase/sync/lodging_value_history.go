@@ -89,6 +89,15 @@ type lodgingValueObservation struct {
 	SourceChangedAt string
 
 	// IsGenesis marks the first observation of a value rather than a transition.
+	//
+	// It means "the first observation THIS TABLE HOLDS for this key", NOT "no
+	// earlier value existed", and a reader must not collapse the two. If
+	// CampMinder stops returning the field entry for a household, the orphan
+	// sweep deletes the custom-values row and nothing is captured; a later
+	// re-entry then reaches the create branch and is stamped IsGenesis with an
+	// empty OldValue even though a different cabin really did precede it. A
+	// genesis row is a floor on what is known, in the same sense the whole
+	// table is a floor rather than a history.
 	IsGenesis bool
 }
 
@@ -101,8 +110,10 @@ type lodgingValueObservation struct {
 //
 // Re-observing the same change is idempotent: the table carries a unique index
 // on (year, field_cm_id, household_cm_id, person_cm_id, source_changed_at,
-// new_value), and this checks for the row before inserting so a re-run neither
-// duplicates nor produces a constraint error to swallow.
+// old_value, new_value), and this checks for the row before inserting so a
+// re-run neither duplicates nor produces a constraint error to swallow. Keep
+// this predicate and that index in step -- the migration header explains why
+// old_value is load-bearing rather than decorative.
 func recordLodgingValueChange(app core.App, obs *lodgingValueObservation) error {
 	sourceField, retained := lodgingRetainedHistoryFields[obs.FieldCMID]
 	if !retained {
@@ -117,12 +128,46 @@ func recordLodgingValueChange(app core.App, obs *lodgingValueObservation) error 
 		return fmt.Errorf("finding %s collection: %w", lodgingValueHistoryCollection, err)
 	}
 
-	const dedupe = "year = {:year} && field_cm_id = {:field} && household_cm_id = {:household} && " +
-		"person_cm_id = {:person} && source_changed_at = {:changed} && new_value = {:new}"
+	// The two text halves of the dedupe key can legitimately be EMPTY, and a
+	// bound `field = {:param}` carrying "" does NOT match a stored empty string
+	// in PocketBase -- it has to be written as the literal `field = ''`.
+	// Getting this wrong is quiet in the worst way: the check misses its own
+	// row, the insert is re-attempted on every sync run, and the unique index
+	// turns that into a swallowed error logged forever. Both cases are real --
+	// `source_changed_at` is empty whenever CampMinder returns no `lastUpdated`
+	// (the transform only sets the field when it is present and non-empty), and
+	// `new_value` is empty when staff CLEAR a cabin, which is a transition this
+	// table exists to record.
+	dedupe := "year = {:year} && field_cm_id = {:field} && household_cm_id = {:household} && " +
+		"person_cm_id = {:person}"
 	params := map[string]any{
-		"year": obs.Year, "field": obs.FieldCMID, "household": obs.HouseholdCMID,
-		"person": obs.PersonCMID, "changed": obs.SourceChangedAt, "new": obs.NewValue,
+		"year": obs.Year, "field": obs.FieldCMID,
+		"household": obs.HouseholdCMID, "person": obs.PersonCMID,
 	}
+	if obs.SourceChangedAt == "" {
+		dedupe += " && source_changed_at = ''"
+	} else {
+		dedupe += " && source_changed_at = {:changed}"
+		params["changed"] = obs.SourceChangedAt
+	}
+	if obs.NewValue == "" {
+		dedupe += " && new_value = ''"
+	} else {
+		dedupe += " && new_value = {:new}"
+		params["new"] = obs.NewValue
+	}
+	// old_value is part of the key, not just of the payload. Without it, an
+	// empty source_changed_at degenerates the key to
+	// (year, field, household, person, '', new_value), and a cabin that goes
+	// A -> B -> A has its third observation matched against the first and
+	// silently dropped.
+	if obs.OldValue == "" {
+		dedupe += " && old_value = ''"
+	} else {
+		dedupe += " && old_value = {:old}"
+		params["old"] = obs.OldValue
+	}
+
 	existing, err := app.FindRecordsByFilter(lodgingValueHistoryCollection, dedupe, "", 1, 0, params)
 	if err != nil {
 		return fmt.Errorf("checking for an existing %s row: %w", lodgingValueHistoryCollection, err)

@@ -3,8 +3,9 @@
  * lodging_value_history — append-only capture of cabin-value changes.
  *
  * Dark on arrival for every reader. This migration creates one empty table and
- * moves nothing; no published value changes because of it, and the seven open
- * `ambiguous_session` rows in the lodging work queue stay exactly as they are.
+ * moves nothing; no published value changes because of it, and the nine open
+ * `ambiguous_session` rows in the lodging work queue (8 distinct households,
+ * production snapshot 2026-08-18 22:11) stay exactly as they are.
  * The write hook in pocketbase/sync/lodging_value_history.go fills it going
  * forward. Deriving a weekend from these rows is a separate change.
  *
@@ -59,6 +60,16 @@
  *      is a fact worth keeping; `attendee_status_history` logs only
  *      transitions.
  *
+ *      ⚠️ `is_genesis` MEANS "the first observation THIS TABLE HOLDS for this
+ *      key", NOT "no earlier value existed". Do not read it as the latter. If
+ *      CampMinder stops returning the field entry for a household, the orphan
+ *      sweep deletes the `household_custom_values` row and no history is
+ *      written; a later re-entry then arrives at the CREATE branch and is
+ *      stamped `is_genesis` with an empty `old_value`, even though a different
+ *      cabin really did precede it. A reader deriving a weekend's cabin must
+ *      treat a genesis row as a floor on what is known, exactly as the backfill
+ *      is a floor rather than a history.
+ *
  * ── source_changed_at IS text, NOT date ─────────────────────────────────────
  *
  * The issue's shape sketch said `date`. The source column it copies is
@@ -86,10 +97,22 @@
  * ── THE UNIQUE INDEX IS THE IDEMPOTENCY CONTRACT ────────────────────────────
  *
  * (year, field_cm_id, household_cm_id, person_cm_id, source_changed_at,
- * new_value) — re-running a sync re-observes the same change, and the table is
- * append-only, so without this a weekly sweep would stack duplicates. The Go
- * side checks for the row before inserting so a re-run is quiet rather than a
- * swallowed constraint error; the index is the guarantee behind that check.
+ * old_value, new_value) — re-running a sync re-observes the same change, and
+ * the table is append-only, so without this a weekly sweep would stack
+ * duplicates. The Go side checks for the row before inserting so a re-run is
+ * quiet rather than a swallowed constraint error; the index is the guarantee
+ * behind that check.
+ *
+ * `old_value` IS IN THE KEY, and dropping it would be a silent data-loss bug
+ * rather than a tidier index. `source_changed_at` is empty whenever CampMinder
+ * returns no `lastUpdated` (the transform only sets it when present and
+ * non-empty), and without `old_value` the key then degenerates to
+ * (year, field, household, person, '', new_value): a household whose cabin goes
+ * A -> B -> A has its third, genuine observation matched against the first and
+ * SILENTLY DROPPED, leaving B as the last recorded state. With `old_value` the
+ * two are ('', A) and (B, A) and both survive. Latent today — every cabin row
+ * in the production snapshot carries a `last_updated` — but the transform
+ * explicitly anticipates the empty case, so the key does too.
  *
  * Exactly one of household_cm_id / person_cm_id is set per row, the other stays
  * 0 — which is what keeps two grains in one table without a nullable relation,
@@ -103,11 +126,12 @@
  * instead of the 500 declared below.
  */
 
-// VERBATIM from the sibling history table (1500000057) and the lodging
-// migrations. Do not paraphrase — the permission is read off
-// `cached_permissions` as a dotted string, and the plausible alternative
-// matches nothing and denies every write SILENTLY.
-const AUTHED_READ = '@request.auth.id != ""';
+// VERBATIM from the sibling history table (1500000057). Do not paraphrase —
+// these rule strings are matched literally, and a plausible-looking alternative
+// denies every request SILENTLY.
+//
+// Every rule on this collection is ADMIN_ONLY, reads included; see the create
+// site below for why that is tighter than attendee_status_history on purpose.
 const ADMIN_ONLY = '@request.auth.is_admin = true';
 
 // Used for the skip guard and the down arm. The `name:` inside the
@@ -137,8 +161,19 @@ migrate(
       new Collection({
         type: 'base',
         name: 'lodging_value_history',
-        listRule: AUTHED_READ,
-        viewRule: AUTHED_READ,
+        // ADMIN-ONLY READS, deliberately tighter than attendee_status_history.
+        // This table stores `household_custom_values` / `person_custom_values`
+        // values VERBATIM, and both of those source collections are
+        // admin-only reads. Publishing a copy at authed-read would hand every
+        // non-admin account cabin strings it cannot read from the source.
+        //
+        // The forward-looking half matters more than today's delta: the
+        // retention scope is a Go map, so widening it needs no migration --
+        // which means a later edit could copy admin-only, medical-adjacent
+        // answers into this table with nobody re-reading this rule. Matching
+        // the source tables now makes that safe by default.
+        listRule: ADMIN_ONLY,
+        viewRule: ADMIN_ONLY,
         // Written by the sync, never by the UI — same posture as
         // attendee_status_history.
         createRule: ADMIN_ONLY,
@@ -172,7 +207,8 @@ migrate(
         ],
         indexes: [
           'CREATE UNIQUE INDEX idx_lvh_observation ON lodging_value_history ' +
-            '(year, field_cm_id, household_cm_id, person_cm_id, source_changed_at, new_value)',
+            '(year, field_cm_id, household_cm_id, person_cm_id, source_changed_at, ' +
+            'old_value, new_value)',
           'CREATE INDEX idx_lvh_household_year ON lodging_value_history (household_cm_id, year)',
           'CREATE INDEX idx_lvh_person_year ON lodging_value_history (person_cm_id, year)',
         ],
