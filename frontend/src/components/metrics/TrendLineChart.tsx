@@ -17,7 +17,7 @@ import {
 import { useMemo } from 'react'
 import type { YearMetrics } from '../../types/metrics'
 import { ChartCard } from './ChartCard'
-import { getNiceTicks, calculateVerticalLayout } from './cssChartUtils'
+import { getNiceTicks, calculateVerticalLayout, computeCoverageBands } from './cssChartUtils'
 import { formatLabelListValue, formatLabelListPercent } from '../../utils/chartFormatters'
 
 const COLORS = {
@@ -79,6 +79,18 @@ export function TrendLineChart({
           cancellation_rate: yearData.cancellation_rate ?? 0,
         }
       }),
+    [data, metric]
+  )
+
+  // #2443 -- greyed band(s) behind years with no attendee_status_history
+  // coverage, scoped to the cancellation-rate metric (the only one with a
+  // coverage concept -- enrollment/gender/new-vs-returning are always
+  // measured).
+  const coverageBands = useMemo(
+    () =>
+      metric === 'cancellation_rate'
+        ? computeCoverageBands(data.map((d) => d.has_cancellation_data !== false))
+        : [],
     [data, metric]
   )
 
@@ -159,6 +171,22 @@ export function TrendLineChart({
       xAxisRightPadding={20}
       {...(legendItems.length > 1 && { legend: legendItems })}
     >
+      {coverageBands.length > 0 && (
+        // Reduced-width box mirrors the recharts LineChart margin (right: 20,
+        // matching xAxisRightPadding above) and VerticalXAxis's own inner div
+        // (cssChartUtils.ts, edgeAligned branch), so percentages inside it
+        // land on the same pixels as the year labels below the chart.
+        <div className="pointer-events-none absolute inset-0" style={{ right: '20px' }}>
+          {coverageBands.map((band, i) => (
+            <div
+              key={i}
+              data-testid="coverage-band"
+              className="bg-muted-foreground/10 absolute inset-y-0"
+              style={{ left: `${band.leftPct}%`, width: `${band.widthPct}%` }}
+            />
+          ))}
+        </div>
+      )}
       <ResponsiveContainer width="100%" height={barsHeight}>
         <LineChart
           data={chartData}
