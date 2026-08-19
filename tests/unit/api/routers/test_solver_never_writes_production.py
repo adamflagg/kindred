@@ -50,6 +50,15 @@ BUNK_CM_ID = 4276
 BUNK_NAME = "Bunk 7"
 
 
+class _MalformedExistingRecord:
+    """Neither a dict with an "id" key nor an object exposing ``.id``.
+
+    Stands in for whatever shape PocketBase could plausibly hand back that
+    the ``isinstance(existing_record, dict)`` branch in ``apply_solver_results``
+    does not anticipate (kindred#2471 follow-up review finding).
+    """
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -227,10 +236,21 @@ class TestSolverNeverWritesProduction:
         assert pb.mutated(DRAFT_COLLECTION), "The scenario apply must still write the draft table"
 
     def test_apply_function_never_names_the_production_collection(self) -> None:
-        """Source-level tripwire: re-adding a production write means naming the table.
+        """Secondary tripwire: re-adding a production write means naming the table.
 
         Both spellings count — the literal and the ``BUNK_ASSIGNMENTS`` constant
         from ``api/constants/collections.py``.
+
+        This is a cheap, fast source-level check, and it is foolable: a
+        module-level alias for the production collection (e.g. ``_ALIAS =
+        BUNK_ASSIGNMENTS`` referenced inside the function) walks past this
+        AST scan without ever naming ``BUNK_ASSIGNMENTS`` or the literal
+        directly. The load-bearing coverage is the *behavioral* tests above
+        (``test_apply_without_scenario_never_touches_production`` and
+        ``test_apply_with_scenario_never_touches_production``), which assert
+        against a ``RecordingPB`` and catch a bypass like that regardless of
+        how the write got there. Do not simplify this suite down to just this
+        AST check — it only catches the naive re-introduction.
         """
         from api.routers.solver import apply_solver_results
 
@@ -370,3 +390,34 @@ class TestApplyDoesNotSwallowWriteFailures:
             f"A failed write returned {resp.status_code}: {resp.text}. "
             "Reporting success over a swallowed write failure is how #2467 stayed invisible."
         )
+
+    def test_malformed_existing_draft_record_is_counted_not_raised(self) -> None:
+        """A malformed *existing*-record shape must degrade this camper, not raise
+        AttributeError and abort the whole remaining batch.
+
+        ``existing_record.id`` on a shape that is neither a dict nor an object
+        exposing ``.id`` raises AttributeError. The narrowed
+        ``except (ClientResponseError, ValueError)`` added for kindred#2467 does
+        not catch AttributeError on purpose — so if the malformed shape reaches
+        that line, the exception escapes the per-camper try/except entirely and
+        this app (which registers no global exception handler of its own) falls
+        through to Starlette's bare 500, distinguishable from the endpoint's own
+        controlled failure response by its plain-text body and content type.
+        """
+        pb = _pb_with_one_assignable_camper(lists={"bunk_assignments_draft": [_MalformedExistingRecord()]})
+        runs = {"run-2467": _completed_run(scenario="scn_abc123")}
+
+        with _apply_client(pb, runs, MagicMock()) as client:
+            resp = client.post("/api/solver/apply/run-2467")
+
+        assert resp.status_code == 500, (
+            f"Expected the endpoint's own failure response, got {resp.status_code}: {resp.text}"
+        )
+        assert resp.headers["content-type"].startswith("application/json"), (
+            f"Got content-type {resp.headers.get('content-type')!r} body {resp.text!r}. "
+            "A non-JSON 500 means AttributeError escaped the per-camper try/except and aborted "
+            "the batch instead of being counted as a write failure."
+        )
+        assert "assignments failed to write" in resp.text
+        assert pb.mutated(PRODUCTION_COLLECTION) == []
+        assert pb.mutated(DRAFT_COLLECTION) == [], "The malformed existing record must never be written through"

@@ -733,8 +733,24 @@ async def apply_solver_results(
 
             if existing:
                 existing_record = existing[0]
-                existing_id_val = existing_record.get("id") if isinstance(existing_record, dict) else existing_record.id
-                existing_id = str(existing_id_val) if existing_id_val else ""
+                # getattr, not `.id` — a malformed record shape here must degrade
+                # this one camper, not raise AttributeError and abort the whole
+                # remaining batch. The narrowed `except` below (kindred#2467) no
+                # longer catches AttributeError on purpose, so it has to be kept
+                # from happening in the first place rather than caught late.
+                existing_id_val = (
+                    existing_record.get("id")
+                    if isinstance(existing_record, dict)
+                    else getattr(existing_record, "id", None)
+                )
+                if not existing_id_val:
+                    logger.error(
+                        f"Existing draft record for person {person_cm_id_str} has no usable id "
+                        f"(record={existing_record!r}); treating as a write failure"
+                    )
+                    write_failures.append(person_cm_id_str)
+                    continue
+                existing_id = str(existing_id_val)
                 await asyncio.to_thread(pb.collection(collection_name).update, existing_id, assignment_data)
             else:
                 await asyncio.to_thread(pb.collection(collection_name).create, assignment_data)
