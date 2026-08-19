@@ -37,8 +37,13 @@ func GetFolderID() string {
 
 // GetRosterFolderID returns the configured Google Drive folder ID for Family Camp
 // roster workbooks. This is deliberately a different folder from GetFolderID: see
-// envRosterFolderID. Returns "" when unset, which callers must treat as an error
-// rather than falling back to the export folder.
+// envRosterFolderID.
+//
+// Returns "" when unset. Callers MUST refuse and name the variable -- never fall
+// back to GetFolderID(), and never degrade to a silent no-op. The fallback would
+// publish family contact details into the Exports folder's wider audience, and a
+// silent no-op is indistinguishable from a weekend with no enrolled campers.
+// .env.example states the same contract; keep the two in step.
 func GetRosterFolderID() string {
 	return strings.TrimSpace(os.Getenv(envRosterFolderID))
 }

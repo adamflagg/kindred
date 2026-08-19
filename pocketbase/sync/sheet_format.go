@@ -40,8 +40,9 @@ type CellStyle struct {
 	VerticalAlignment   string // "" leaves it unchanged; TOP, MIDDLE, BOTTOM
 }
 
-// isEmpty reports whether the style would produce an empty field mask, which the
-// Sheets API rejects.
+// isEmpty reports whether the style sets nothing at all. It is not on its own a
+// guarantee of a non-empty field mask -- buildStyleRequest rejects a negative
+// FontSize and asserts the mask before emitting, which is what supplies that.
 func (s *CellStyle) isEmpty() bool {
 	return s.BackgroundHex == "" && s.FontHex == "" && s.FontSize == 0 &&
 		s.Bold == nil && s.HorizontalAlignment == "" && s.VerticalAlignment == ""
@@ -214,6 +215,14 @@ func buildStyleRequest(sheetID int64, rule *StyleRule) (*sheets.Request, error) 
 		return nil, nil
 	}
 
+	// Refused rather than ignored, matching FrozenRows and Pixels. A negative size
+	// is not "empty" by isEmpty's == 0 test but appends no mask under the > 0 test
+	// below, so silently dropping it emits a repeatCell with an empty field mask --
+	// a 400 that takes the whole tab's single batchUpdate down with it.
+	if rule.Style.FontSize < 0 {
+		return nil, fmt.Errorf("font size must be positive, got %d", rule.Style.FontSize)
+	}
+
 	gridRange, err := gridRangeFor(sheetID, rule.Range)
 	if err != nil {
 		return nil, fmt.Errorf("style range: %w", err)
@@ -259,6 +268,13 @@ func buildStyleRequest(sheetID int64, rule *StyleRule) (*sheets.Request, error) 
 
 	if rule.Style.Bold != nil || rule.Style.FontSize > 0 || rule.Style.FontHex != "" {
 		cellFormat.TextFormat = textFormat
+	}
+
+	// Unreachable given the guards above, and deliberately kept: the Sheets API
+	// rejects an empty mask, and the failure is a 400 on the whole tab rather than
+	// anything that names the style that caused it.
+	if len(masks) == 0 {
+		return nil, fmt.Errorf("style %+v produced an empty field mask", rule.Style)
 	}
 
 	return &sheets.Request{

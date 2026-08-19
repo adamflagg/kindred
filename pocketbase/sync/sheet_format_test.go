@@ -530,6 +530,57 @@ func TestBuildFormatRequests_RejectsBadColumnWidth(t *testing.T) {
 	}
 }
 
+// A negative FontSize is not "empty" by isEmpty's == 0 test, but the mask is only
+// appended when FontSize > 0 -- so it used to slip through both and emit a
+// repeatCell with an EMPTY field mask. Sheets rejects that with a 400, and since
+// the whole tab is one batchUpdate, every merge, freeze, width, style and border
+// for that tab dies with it. Refused explicitly, like every other numeric input.
+func TestBuildFormatRequests_RejectsNegativeFontSize(t *testing.T) {
+	t.Parallel()
+	_, err := buildFormatRequests(&SheetFormat{
+		SheetID: 1,
+		Styles: []StyleRule{{
+			Range: GridRange{StartRow: 0, EndRow: 1, StartCol: 0, EndCol: 5},
+			Style: CellStyle{FontSize: -5},
+		}},
+	})
+	if err == nil {
+		t.Error("expected an error for a negative FontSize, got nil")
+	}
+}
+
+// The belt-and-braces half of the same invariant: whatever the inputs, a
+// repeatCell must never carry an empty field mask. This is what keeps a future
+// CellStyle field added with the same == 0 / > 0 asymmetry from reintroducing a
+// silent whole-tab failure instead of a loud one.
+func TestBuildFormatRequests_NeverEmitsAnEmptyFieldMask(t *testing.T) {
+	t.Parallel()
+	styles := []CellStyle{
+		{BackgroundHex: "#FFFFFF"},
+		{FontHex: "#000000"},
+		{FontSize: 9},
+		{Bold: boolPtr(false)},
+		{HorizontalAlignment: "LEFT"},
+		{VerticalAlignment: "MIDDLE"},
+	}
+	for i := range styles {
+		got, err := buildFormatRequests(&SheetFormat{
+			SheetID: 1,
+			Styles: []StyleRule{
+				{Range: GridRange{StartRow: 0, EndRow: 1, StartCol: 0, EndCol: 5}, Style: styles[i]},
+			},
+		})
+		if err != nil {
+			t.Fatalf("style %+v: %v", styles[i], err)
+		}
+		for _, request := range got {
+			if request.RepeatCell != nil && request.RepeatCell.Fields == "" {
+				t.Errorf("style %+v emitted a repeatCell with an empty field mask", styles[i])
+			}
+		}
+	}
+}
+
 func TestBuildFormatRequests_RejectsNegativeFrozenRows(t *testing.T) {
 	t.Parallel()
 	if _, err := buildFormatRequests(&SheetFormat{FrozenRows: -1}); err == nil {
