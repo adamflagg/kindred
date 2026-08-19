@@ -90,14 +90,78 @@ Always offer the user the choice for borderline cases.
 
 So don't "improve" this by leaving transfers open too. It's a tempting idea — keep everything open and linked so triage can always reach the private context — but it buys nothing and costs the signal. Closing a GitHub issue doesn't delete it, and the footer from Step 7 already makes the private original reachable, so the context is available either way. Leaving transfers open instead turns Step 1a into a filter over every issue ever transferred, gives Step 1b an unbounded sweep, and destroys the one bit of state the open/closed flag was carrying. There's a safety argument too: when every public issue routinely drags its private twin into an agent's context during triage, real names are in context constantly and only discipline keeps them out of a public body. Opt-in per issue is the safer default.
 
-## Step 3: Anonymize each issue
+## Step 3: Anonymize each issue — ★ VERBATIM ALWAYS, ANONYMOUS ALWAYS
+
+**The reporter's own words survive in full. Only PII is removed. Never summarise, tighten, or
+generalise an ask — those two rules are not in tension, and where they seem to be, privatise the
+identifier and keep the sentence.**
 
 Strip the following from the body:
 - `**Reported by:**` line (name + email)
 - `**Environment:**` block (browser UA, viewport, app version)
 - Any organization/company-specific names — replace with `{org_name}` or similar placeholder
 - Any real person names — replace with fictional equivalents (Emma Johnson set per CLAUDE.md)
-- Any real session IDs, school names, or other PII
+- Any real session IDs, school names, real CampMinder person/household ids, or other PII
+
+### ★ Quote the ask verbatim, then add your analysis BENEATH it
+
+Open the transferred body with the reporter's description **word for word**, in a blockquote, typos
+and all. Put your own tracing, anchors and measurements in a section *below* it under a heading that
+marks them as yours.
+
+```markdown
+## What was reported
+
+> share bunk with - put at bottom, start closed. Change arrow on side to click
+
+## What this means in the code
+…your analysis here…
+```
+
+**Why verbatim is a hard rule, and why paraphrase is the failure mode:** staff report *specific*
+things, and the specificity is the signal. A reporter who writes *"can we filter this in different
+ways (needs bathroom, needs kitchen or other accomodation, under 2yrs old, needs electrivity, etc)?
+Or even to keep it simple - needs any accomodation vs doesn't?"* has named a **vocabulary**, ranked a
+**fallback**, and revealed which distinctions they actually hold in their head. Compressing that to
+*"add filters to the picker"* throws away every part that was worth having — including the fallback,
+which is often the cheapest shippable version of the request.
+
+A paraphrase also silently launders a misreading. If you compressed the ask wrongly, nothing
+downstream can catch it, because the original wording is now only in a private repo nobody opens.
+The verbatim quote is what lets a later reader notice you misread it.
+
+Keep, verbatim, in particular:
+- **Every option the reporter listed**, in their order — the order encodes their priority.
+- **Their "or even simpler…" fallbacks** — that is scope guidance you did not have to ask for.
+- **Their stated reason**, when they give one. A reason overrides your inference about intent.
+- **Hedges** (*"I forget if I asked for this"*, *"I think"*) — they tell you how firm the ask is.
+- **Typos and shorthand.** Do not clean them up; a fixed typo is one more edit between the reader and
+  what was actually said.
+
+### Where PII is load-bearing, privatise the identifier — do not drop the sentence
+
+A report like *"bunk notes not showing up"* plus a link to a real person record keeps its full
+sentence; the **link and id** go. If the identifier IS the reproduction case, that is what
+placeholder mode (Step 2) is for — but even then the *description* stays verbatim, and only the
+identifier is withheld.
+
+### Screenshots: look at them, and say what you saw
+
+The screenshot cannot travel to a public repo, so a body that says *"make this highlighted a bright
+green (neon)"* is unactionable once the image is gone — "this" is unresolvable. **Open the screenshot
+and name the element**, then record it as your own observation beneath the verbatim quote:
+
+```markdown
+## What was reported
+
+> make this highlighted a bright green (neon)
+
+## Which element
+The screenshot shows the **"N families" chip** on a unit card (rendering "2 families").
+```
+
+Download with `gh api repos/{owner}/{repo}-feedback/contents/attachments/{file} --jq .download_url`
+and read the image. Never paste a real name visible in a screenshot into the public body.
 
 ## Step 4: Rewrite title
 
