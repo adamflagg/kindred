@@ -4,8 +4,17 @@ package google
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"google.golang.org/api/drive/v3"
+)
+
+// Drive MIME types used when creating and searching for files.
+const (
+	// MimeTypeSpreadsheet is the Drive MIME type for a Google Sheets workbook.
+	MimeTypeSpreadsheet = "application/vnd.google-apps.spreadsheet"
+	// MimeTypeFolder is the Drive MIME type for a folder.
+	MimeTypeFolder = "application/vnd.google-apps.folder"
 )
 
 // NewDriveClient creates a new Google Drive API client using service account credentials.
@@ -41,29 +50,27 @@ func CreateSpreadsheet(ctx context.Context, title string) (string, error) {
 		return "", fmt.Errorf("GOOGLE_DRIVE_FOLDER_ID not set - required for creating spreadsheets")
 	}
 
-	driveClient, err := NewDriveClient(ctx)
-	if err != nil {
-		return "", fmt.Errorf("failed to create drive client: %w", err)
+	return CreateSpreadsheetInFolder(ctx, folderID, title)
+}
+
+// CreateSpreadsheetInFolder creates a new Google Sheets spreadsheet in an explicit folder.
+// Unlike CreateSpreadsheet it does not consult GOOGLE_DRIVE_FOLDER_ID, so callers that
+// write to a different surface (Family Camp rosters) cannot land in the export folder.
+// The folder must be shared with the service account (Editor access).
+func CreateSpreadsheetInFolder(ctx context.Context, folderID, title string) (string, error) {
+	if !IsEnabled() {
+		return "", fmt.Errorf("google sheets is not enabled")
 	}
-	if driveClient == nil {
-		return "", fmt.Errorf("google drive client is nil")
+	if strings.TrimSpace(folderID) == "" {
+		return "", fmt.Errorf("folder ID is required for creating spreadsheets")
 	}
 
-	file := &drive.File{
-		Name:     title,
-		MimeType: "application/vnd.google-apps.spreadsheet",
-		Parents:  []string{folderID},
-	}
-
-	created, err := driveClient.Files.Create(file).
-		SupportsAllDrives(true). // Required for Shared Drives
-		Context(ctx).
-		Do()
+	created, err := createDriveFile(ctx, folderID, title, MimeTypeSpreadsheet)
 	if err != nil {
 		return "", fmt.Errorf("failed to create spreadsheet in folder: %w", err)
 	}
 
-	return created.Id, nil
+	return created, nil
 }
 
 // FormatSpreadsheetURL returns the edit URL for a Google Sheets spreadsheet.
@@ -85,6 +92,66 @@ func FindSpreadsheetByName(ctx context.Context, name string) (string, error) {
 		return "", fmt.Errorf("GOOGLE_DRIVE_FOLDER_ID not set - required for searching spreadsheets")
 	}
 
+	return FindSpreadsheetInFolder(ctx, folderID, name)
+}
+
+// FindSpreadsheetInFolder searches for a spreadsheet by exact name in an explicit folder.
+// Returns the spreadsheet ID if found, empty string if not found.
+// Returns "", nil when Google Sheets is disabled (graceful degradation).
+// Returns error only for API failures, NOT for "not found" scenarios.
+func FindSpreadsheetInFolder(ctx context.Context, folderID, name string) (string, error) {
+	if !IsEnabled() {
+		return "", nil
+	}
+	if strings.TrimSpace(folderID) == "" {
+		return "", fmt.Errorf("folder ID is required for searching spreadsheets")
+	}
+
+	id, err := findDriveFile(ctx, folderID, name, MimeTypeSpreadsheet)
+	if err != nil {
+		return "", fmt.Errorf("failed to search for spreadsheet: %w", err)
+	}
+	return id, nil
+}
+
+// FindOrCreateFolder returns the ID of the folder called name directly beneath parentID,
+// creating it if it does not exist. Only folder names the code itself owns should go
+// through this -- a configured folder is addressed by ID, so that renaming it in Drive
+// surfaces as an error rather than silently creating a duplicate.
+//
+// Not concurrency-safe: two simultaneous callers can both miss the search and create
+// two folders of the same name. Drive permits that. Exports are staff-triggered and
+// synchronous, so the window is not worth a lock.
+func FindOrCreateFolder(ctx context.Context, parentID, name string) (string, error) {
+	if !IsEnabled() {
+		return "", fmt.Errorf("google sheets is not enabled")
+	}
+	if strings.TrimSpace(parentID) == "" {
+		// An empty parent would put the folder in the service account's own Drive,
+		// where no member of staff can see it.
+		return "", fmt.Errorf("parent folder ID is required for creating a folder")
+	}
+	if strings.TrimSpace(name) == "" {
+		return "", fmt.Errorf("folder name is required")
+	}
+
+	existing, err := findDriveFile(ctx, parentID, name, MimeTypeFolder)
+	if err != nil {
+		return "", fmt.Errorf("failed to search for folder %q: %w", name, err)
+	}
+	if existing != "" {
+		return existing, nil
+	}
+
+	created, err := createDriveFile(ctx, parentID, name, MimeTypeFolder)
+	if err != nil {
+		return "", fmt.Errorf("failed to create folder %q: %w", name, err)
+	}
+	return created, nil
+}
+
+// createDriveFile creates a file of the given MIME type inside folderID and returns its ID.
+func createDriveFile(ctx context.Context, folderID, name, mimeType string) (string, error) {
 	driveClient, err := NewDriveClient(ctx)
 	if err != nil {
 		return "", fmt.Errorf("failed to create drive client: %w", err)
@@ -93,24 +160,43 @@ func FindSpreadsheetByName(ctx context.Context, name string) (string, error) {
 		return "", fmt.Errorf("google drive client is nil")
 	}
 
-	// Build query to search for spreadsheet by exact name in the folder
-	// Escape single quotes in the name to prevent query injection
-	escapedName := escapeQueryString(name)
-	query := fmt.Sprintf(
-		"name='%s' and '%s' in parents and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false",
-		escapedName,
-		folderID,
-	)
+	file := &drive.File{
+		Name:     name,
+		MimeType: mimeType,
+		Parents:  []string{folderID},
+	}
+
+	created, err := driveClient.Files.Create(file).
+		SupportsAllDrives(true). // Required for Shared Drives
+		Context(ctx).
+		Do()
+	if err != nil {
+		return "", err //nolint:wrapcheck // callers add the surface-specific context
+	}
+
+	return created.Id, nil
+}
+
+// findDriveFile returns the ID of the first non-trashed file of mimeType named exactly
+// name directly inside folderID, or "" when there is none. "" is not an error.
+func findDriveFile(ctx context.Context, folderID, name, mimeType string) (string, error) {
+	driveClient, err := NewDriveClient(ctx)
+	if err != nil {
+		return "", fmt.Errorf("failed to create drive client: %w", err)
+	}
+	if driveClient == nil {
+		return "", fmt.Errorf("google drive client is nil")
+	}
 
 	fileList, err := driveClient.Files.List().
-		Q(query).
+		Q(buildFileSearchQuery(folderID, name, mimeType)).
 		SupportsAllDrives(true).         // Required for Shared Drives
 		IncludeItemsFromAllDrives(true). // Required for Shared Drives
 		Fields("files(id, name)").
 		Context(ctx).
 		Do()
 	if err != nil {
-		return "", fmt.Errorf("failed to search for spreadsheet: %w", err)
+		return "", err //nolint:wrapcheck // callers add the surface-specific context
 	}
 
 	if len(fileList.Files) == 0 {
@@ -121,16 +207,31 @@ func FindSpreadsheetByName(ctx context.Context, name string) (string, error) {
 	return fileList.Files[0].Id, nil
 }
 
-// escapeQueryString escapes single quotes for Drive API queries
+// buildFileSearchQuery builds a Drive API query matching one exactly-named,
+// non-trashed file of mimeType directly inside folderID.
+func buildFileSearchQuery(folderID, name, mimeType string) string {
+	return fmt.Sprintf(
+		"name='%s' and '%s' in parents and mimeType='%s' and trashed=false",
+		escapeQueryString(name),
+		folderID,
+		mimeType,
+	)
+}
+
+// driveQueryEscaper escapes the two characters the Drive API treats as special
+// inside a quoted string value.
+//
+// A BACKSLASH, not SQL-style doubling. Google's own wording: "if a filename
+// contains both an apostrophe (') and a backslash (\) character, use a
+// backslash to escape them: name contains 'quinn\'s paper\\essay'".
+// https://developers.google.com/workspace/drive/api/guides/search-files
+//
+// A Replacer makes a single left-to-right pass and never rescans what it wrote,
+// so the backslash rule cannot re-escape the backslash the apostrophe rule just
+// introduced -- which two sequential strings.ReplaceAll calls would do.
+var driveQueryEscaper = strings.NewReplacer(`\`, `\\`, `'`, `\'`)
+
+// escapeQueryString escapes a value for interpolation into a Drive API query.
 func escapeQueryString(s string) string {
-	// In Drive API queries, single quotes are escaped by doubling them
-	result := ""
-	for _, c := range s {
-		if c == '\'' {
-			result += "''"
-		} else {
-			result += string(c)
-		}
-	}
-	return result
+	return driveQueryEscaper.Replace(s)
 }

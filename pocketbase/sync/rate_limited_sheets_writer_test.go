@@ -35,6 +35,7 @@ type trackingMock struct {
 	getMetadataErrFn   func() error
 	batchUpdateErrFn   func() error
 	deleteErrFn        func() error
+	applyFormatErrFn   func() error
 	writeCalls         atomic.Int32
 	clearCalls         atomic.Int32
 	ensureCalls        atomic.Int32
@@ -43,6 +44,7 @@ type trackingMock struct {
 	getMetadataCallCnt atomic.Int32
 	batchUpdateCallCnt atomic.Int32
 	deleteCallCount    atomic.Int32
+	applyFormatCallCnt atomic.Int32
 }
 
 func newTrackingMock() *trackingMock {
@@ -133,6 +135,16 @@ func (t *trackingMock) DeleteSheet(ctx context.Context, spreadsheetID, sheetTab 
 	return t.MockSheetsWriter.DeleteSheet(ctx, spreadsheetID, sheetTab)
 }
 
+func (t *trackingMock) ApplyFormatting(ctx context.Context, spreadsheetID string, format *SheetFormat) error {
+	t.applyFormatCallCnt.Add(1)
+	if t.applyFormatErrFn != nil {
+		if err := t.applyFormatErrFn(); err != nil {
+			return err
+		}
+	}
+	return t.MockSheetsWriter.ApplyFormatting(ctx, spreadsheetID, format)
+}
+
 // testConfig returns a config with very fast backoff for testing
 func testConfig() *SheetsRateLimitConfig {
 	return &SheetsRateLimitConfig{
@@ -219,6 +231,14 @@ func TestRateLimitedWriter_DelegatesAllMethods(t *testing.T) {
 	}
 	if mock.deleteCallCount.Load() != 1 {
 		t.Errorf("DeleteSheet: inner called %d times, want 1", mock.deleteCallCount.Load())
+	}
+
+	// ApplyFormatting
+	if err := writer.ApplyFormatting(ctx, "s1", &SheetFormat{SheetID: 1, FrozenRows: 3}); err != nil {
+		t.Fatalf("ApplyFormatting: %v", err)
+	}
+	if mock.applyFormatCallCnt.Load() != 1 {
+		t.Errorf("ApplyFormatting: inner called %d times, want 1", mock.applyFormatCallCnt.Load())
 	}
 }
 
@@ -566,5 +586,20 @@ func TestRateLimitedWriter_RetriesDeleteSheetOn429(t *testing.T) {
 	}
 	if mock.deleteCallCount.Load() != 2 {
 		t.Errorf("DeleteSheet: inner called %d times, want 2", mock.deleteCallCount.Load())
+	}
+}
+
+func TestRateLimitedWriter_RetriesApplyFormattingOn429(t *testing.T) {
+	t.Parallel()
+	mock := newTrackingMock()
+	mock.applyFormatErrFn = failNTimes(1)
+	writer := NewRateLimitedSheetsWriter(mock, testConfig())
+
+	err := writer.ApplyFormatting(context.Background(), "s1", &SheetFormat{SheetID: 1, FrozenRows: 3})
+	if err != nil {
+		t.Fatalf("ApplyFormatting should succeed after retry, got: %v", err)
+	}
+	if mock.applyFormatCallCnt.Load() != 2 {
+		t.Errorf("ApplyFormatting: inner called %d times, want 2", mock.applyFormatCallCnt.Load())
 	}
 }

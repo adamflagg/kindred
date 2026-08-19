@@ -13,10 +13,15 @@ import (
 )
 
 const (
-	envEnabled     = "GOOGLE_SHEETS_ENABLED"
-	envKeyFile     = "GOOGLE_SERVICE_ACCOUNT_KEY_FILE"
-	envFolderID    = "GOOGLE_DRIVE_FOLDER_ID"
-	defaultKeyFile = "/config/google_sheets.json" // Docker: /config volume, Dev: set via env
+	envEnabled  = "GOOGLE_SHEETS_ENABLED"
+	envKeyFile  = "GOOGLE_SERVICE_ACCOUNT_KEY_FILE"
+	envFolderID = "GOOGLE_DRIVE_FOLDER_ID"
+	// envRosterFolderID points at a SEPARATE Drive folder from envFolderID.
+	// Family Camp rosters carry family contact details, and Drive folder sharing
+	// is the privacy control for them, so they must not inherit the audience of
+	// the data-workbook Exports folder. kindred#2433.
+	envRosterFolderID = "GOOGLE_DRIVE_ROSTER_FOLDER_ID"
+	defaultKeyFile    = "/config/google_sheets.json" // Docker: /config volume, Dev: set via env
 )
 
 // IsEnabled returns true if Google Sheets sync is enabled via environment variable
@@ -28,6 +33,19 @@ func IsEnabled() bool {
 // GetFolderID returns the configured Google Drive folder ID for creating spreadsheets
 func GetFolderID() string {
 	return strings.TrimSpace(os.Getenv(envFolderID))
+}
+
+// GetRosterFolderID returns the configured Google Drive folder ID for Family Camp
+// roster workbooks. This is deliberately a different folder from GetFolderID: see
+// envRosterFolderID.
+//
+// Returns "" when unset. Callers MUST refuse and name the variable -- never fall
+// back to GetFolderID(), and never degrade to a silent no-op. The fallback would
+// publish family contact details into the Exports folder's wider audience, and a
+// silent no-op is indistinguishable from a weekend with no enrolled campers.
+// .env.example states the same contract; keep the two in step.
+func GetRosterFolderID() string {
+	return strings.TrimSpace(os.Getenv(envRosterFolderID))
 }
 
 // getAuthenticatedHTTPClient creates an authenticated HTTP client for the given scope.

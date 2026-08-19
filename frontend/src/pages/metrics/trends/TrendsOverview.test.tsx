@@ -4,7 +4,7 @@
  * Tests are written FIRST before implementation (TDD).
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, within, fireEvent } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
 // --- module mocks ---
@@ -83,11 +83,11 @@ const mockHistoricalYear = {
 }
 
 vi.mock('../../../hooks/useMetrics', () => ({
-  useHistoricalTrends: () => ({
+  useHistoricalTrends: vi.fn(() => ({
     data: { years: [mockHistoricalYear] },
     isLoading: false,
     error: null,
-  }),
+  })),
 }))
 
 // Stub out recharts to avoid ResizeObserver issues in jsdom
@@ -117,6 +117,7 @@ function renderWithClient() {
 // Import after mocks are set up
 import TrendsOverview from './TrendsOverview'
 import { useRetentionTrends } from '../../../hooks/useRetentionTrends'
+import { useHistoricalTrends } from '../../../hooks/useMetrics'
 
 describe('TrendsOverview — Camp → Teen checkbox', () => {
   beforeEach(() => {
@@ -182,5 +183,88 @@ describe('TrendsOverview — teen-pipeline flag gating', () => {
       2026,
       expect.objectContaining({ includeTeenPipeline: false })
     )
+  })
+})
+
+describe('TrendsOverview — no-coverage years render em-dash, not fabricated zero (#2443)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockMetricsSession.includeTeenPipeline = false
+    vi.mocked(useRetentionTrends).mockReturnValue(
+      mockRetentionTrends as unknown as ReturnType<typeof useRetentionTrends>
+    )
+  })
+
+  it('renders an em-dash for Cancelled/Cancel % when has_cancellation_data is false', () => {
+    vi.mocked(useHistoricalTrends).mockReturnValue({
+      data: {
+        years: [
+          {
+            ...mockHistoricalYear,
+            year: 2022,
+            total_cancelled: 0,
+            cancellation_rate: 0,
+            has_cancellation_data: false,
+          },
+        ],
+      },
+      isLoading: false,
+      error: null,
+    } as unknown as ReturnType<typeof useHistoricalTrends>)
+
+    renderWithClient()
+
+    const table = screen.getByRole('table')
+    const row = within(table).getByText('2022').closest('tr')
+    expect(row).not.toBeNull()
+    const cells = row ? Array.from(row.querySelectorAll('td')).map((td) => td.textContent) : []
+    // Cancelled and Cancel % are the last two columns.
+    expect(cells.at(-2)).toBe('—')
+    expect(cells.at(-1)).toBe('—')
+  })
+
+  it('renders the real numbers when has_cancellation_data is true', () => {
+    vi.mocked(useHistoricalTrends).mockReturnValue({
+      data: {
+        years: [
+          {
+            ...mockHistoricalYear,
+            year: 2026,
+            total_cancelled: 276,
+            cancellation_rate: 43.9,
+            has_cancellation_data: true,
+          },
+        ],
+      },
+      isLoading: false,
+      error: null,
+    } as unknown as ReturnType<typeof useHistoricalTrends>)
+
+    renderWithClient()
+
+    const table = screen.getByRole('table')
+    const row = within(table).getByText('2026').closest('tr')
+    expect(row).not.toBeNull()
+    const cells = row ? Array.from(row.querySelectorAll('td')).map((td) => td.textContent) : []
+    expect(cells.at(-2)).toBe('276')
+    expect(cells.at(-1)).toBe('43.9%')
+  })
+
+  it('treats has_cancellation_data as true when the field is absent (backward compat)', () => {
+    vi.mocked(useHistoricalTrends).mockReturnValue({
+      data: {
+        years: [{ ...mockHistoricalYear, year: 2026, total_cancelled: 5, cancellation_rate: 4.5 }],
+      },
+      isLoading: false,
+      error: null,
+    } as unknown as ReturnType<typeof useHistoricalTrends>)
+
+    renderWithClient()
+
+    const table = screen.getByRole('table')
+    const row = within(table).getByText('2026').closest('tr')
+    const cells = row ? Array.from(row.querySelectorAll('td')).map((td) => td.textContent) : []
+    expect(cells.at(-2)).toBe('5')
+    expect(cells.at(-1)).toBe('4.5%')
   })
 })

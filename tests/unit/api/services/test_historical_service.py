@@ -90,6 +90,7 @@ def _make_repo_with_defaults() -> MagicMock:
     repo.fetch_persons = AsyncMock(return_value={})
     repo.fetch_sessions = AsyncMock(return_value={})
     repo.fetch_status_transitions = AsyncMock(return_value=[])
+    repo.fetch_status_history = AsyncMock(return_value=[])
     return repo
 
 
@@ -811,3 +812,126 @@ class TestHistoricalServiceSessionFiltering:
         assert year_dict[2024].total_enrolled == 0
         # 2025 has Session 2 with 1 camper
         assert year_dict[2025].total_enrolled == 1
+
+
+# ============================================================================
+# TestCancellationDataCoverage - #2443: distinguish no-coverage years from
+# measured-zero years. attendee_status_history holds rows for only one year
+# in production; other years in the trend window must be flagged as
+# uncovered rather than rendering a fabricated 0 / 0.0%.
+# ============================================================================
+
+
+class TestCancellationDataCoverage:
+    """has_cancellation_data reflects whether attendee_status_history has ANY
+    rows for that year -- not filtered by session_types or status, because
+    coverage is a year-level fact (per the issue's suggested fix)."""
+
+    @pytest.fixture
+    def mock_repository(self) -> MagicMock:
+        return _make_repo_with_defaults()
+
+    @pytest.mark.asyncio
+    async def test_has_cancellation_data_false_when_no_history_rows(self, mock_repository: MagicMock) -> None:
+        """A year with zero attendee_status_history rows is uncovered, not zero."""
+        from api.services.historical_service import HistoricalService
+
+        mock_repository.fetch_status_history = AsyncMock(return_value=[])
+
+        service = HistoricalService(mock_repository)
+        result = await service.calculate_historical_trends(years=[2022])
+
+        assert result.years[0].has_cancellation_data is False
+
+    @pytest.mark.asyncio
+    async def test_has_cancellation_data_true_when_history_rows_exist(self, mock_repository: MagicMock) -> None:
+        """A year with any attendee_status_history rows is covered, even if
+        none of those rows are cancellations -- coverage != cancellation count."""
+        from api.services.historical_service import HistoricalService
+
+        # Only an "enrolled" transition -- no cancellations at all this year,
+        # but the table DOES have rows, so this is a measured zero, not a gap.
+        history_row = make_mock_transition(9001, 5001, new_status="enrolled")
+
+        mock_repository.fetch_status_history = AsyncMock(return_value=[history_row])
+        mock_repository.fetch_status_transitions = AsyncMock(return_value=[])
+
+        service = HistoricalService(mock_repository)
+        result = await service.calculate_historical_trends(years=[2026])
+
+        assert result.years[0].has_cancellation_data is True
+        assert result.years[0].total_cancelled == 0
+
+    @pytest.mark.asyncio
+    async def test_coverage_probe_called_per_year_unfiltered(self, mock_repository: MagicMock) -> None:
+        """fetch_status_history is called with the year alone (both status
+        filters left at their defaults) -- the year-level coverage question,
+        not a filtered one. Do NOT add a new repository method (see #2443)."""
+        from api.services.historical_service import HistoricalService
+
+        mock_repository.fetch_status_history = AsyncMock(return_value=[])
+
+        service = HistoricalService(mock_repository)
+        await service.calculate_historical_trends(years=[2023, 2024])
+
+        calls = mock_repository.fetch_status_history.call_args_list
+        called_years = {c.args[0] if c.args else c.kwargs.get("year") for c in calls}
+        assert called_years == {2023, 2024}
+        for c in calls:
+            # No positional/keyword status filters -- year alone.
+            assert len(c.args) <= 1
+            assert "old_status" not in c.kwargs
+            assert "new_statuses" not in c.kwargs
+
+    @pytest.mark.asyncio
+    async def test_coverage_independent_per_year(self, mock_repository: MagicMock) -> None:
+        """Each year's coverage flag is independent -- 2026 covered, 2022 not."""
+        from api.services.historical_service import HistoricalService
+
+        async def mock_fetch_status_history(year: int, old_status: Any = None, new_statuses: Any = None) -> list[Any]:
+            return [make_mock_transition(9001, 5001)] if year == 2026 else []
+
+        mock_repository.fetch_status_history = AsyncMock(side_effect=mock_fetch_status_history)
+
+        service = HistoricalService(mock_repository)
+        result = await service.calculate_historical_trends(years=[2022, 2026])
+
+        year_dict = {y.year: y for y in result.years}
+        assert year_dict[2022].has_cancellation_data is False
+        assert year_dict[2026].has_cancellation_data is True
+
+    @pytest.mark.asyncio
+    async def test_coverage_false_when_cancellation_fetch_fails_even_if_history_probe_succeeds(
+        self, mock_repository: MagicMock
+    ) -> None:
+        """A failed fetch_status_transitions must NOT be reported as a
+        confidently-measured zero cancellation count.
+
+        Regression test (scan-it finding on #2443's own PR): coverage was
+        wired to a separate probe (fetch_status_history) from the count
+        (fetch_status_transitions). A repository fetch error was already
+        swallowed to total_cancelled=0 (pre-existing) -- but adding
+        has_cancellation_data without tying it to that same failure makes
+        the wrong number look MORE trustworthy, not less: has_cancellation_data
+        would read True (the unrelated history probe succeeded) while the
+        cancellation count itself was never actually measured this call.
+        """
+        from api.services.historical_service import HistoricalService
+
+        async def failing_fetch_status_transitions(year: int, statuses: Any) -> list[Any]:
+            raise RuntimeError("simulated repository failure")
+
+        mock_repository.fetch_status_transitions = AsyncMock(side_effect=failing_fetch_status_transitions)
+        # The unrelated year-level coverage probe succeeds and has rows.
+        mock_repository.fetch_status_history = AsyncMock(
+            return_value=[make_mock_transition(9001, 5001, new_status="enrolled")]
+        )
+
+        service = HistoricalService(mock_repository)
+        result = await service.calculate_historical_trends(years=[2026])
+
+        year_metric = result.years[0]
+        # The cancellation count was never actually measured this call --
+        # the flag must say so, not present total_cancelled=0 as trustworthy.
+        assert year_metric.has_cancellation_data is False
+        assert year_metric.total_cancelled == 0

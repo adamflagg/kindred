@@ -74,17 +74,19 @@ class HistoricalService:
         person_futures = [self.repo.fetch_persons(y) for y in years]
         session_futures = [self.repo.fetch_sessions(y, session_types=session_types) for y in years]
         cancel_futures = [self._fetch_cancellation_transitions(y) for y in years]
+        coverage_futures = [self._fetch_cancellation_data_coverage(y) for y in years]
 
         all_attendees = await asyncio.gather(*attendee_futures)
         all_persons = await asyncio.gather(*person_futures)
         all_sessions = await asyncio.gather(*session_futures)
         all_cancel_transitions = await asyncio.gather(*cancel_futures)
+        all_coverage = await asyncio.gather(*coverage_futures)
 
         # Compute metrics for each year
         year_metrics_list: list[YearMetrics] = []
 
-        for year, attendees, persons, sessions, cancel_transitions in zip(
-            years, all_attendees, all_persons, all_sessions, all_cancel_transitions, strict=True
+        for year, attendees, persons, sessions, cancel_transitions, has_cancellation_data in zip(
+            years, all_attendees, all_persons, all_sessions, all_cancel_transitions, all_coverage, strict=True
         ):
             # Filter attendees by session type and/or session name
             filtered = self._filter_attendees(attendees, sessions, session_types, session_cm_id, session_name, duration)
@@ -95,15 +97,25 @@ class HistoricalService:
             # Cancellations use the SAME scope (session_types/session_cm_id/duration) and the
             # same distinct-person grain as the enrolled denominator above -- see #2434, where
             # an unscoped, row-counted numerator inflated the rendered rate ~2.4x.
+            #
+            # cancel_transitions is None when the underlying fetch failed (see
+            # _fetch_cancellation_transitions) -- that failure must not be reported as a
+            # confidently-measured zero: fold it into has_cancellation_data so the count and
+            # the coverage flag can never disagree about whether this year was actually
+            # measured this call.
+            cancellation_fetch_failed = cancel_transitions is None
             filtered_cancellations = self._filter_attendees(
-                cancel_transitions, sessions, session_types, session_cm_id, session_name, duration
+                cancel_transitions or [], sessions, session_types, session_cm_id, session_name, duration
             )
             cancelled_person_ids = {
                 pid for t in filtered_cancellations if (pid := getattr(t, "person_id", None)) is not None
             }
             cancel_count = len(cancelled_person_ids)
+            year_has_cancellation_data = has_cancellation_data and not cancellation_fetch_failed
 
-            year_metric = self._compute_year_metrics(year, person_ids, persons, cancel_count)
+            year_metric = self._compute_year_metrics(
+                year, person_ids, persons, cancel_count, year_has_cancellation_data
+            )
             year_metrics_list.append(year_metric)
 
         return HistoricalTrendsResponse(years=year_metrics_list)
@@ -160,7 +172,7 @@ class HistoricalService:
 
         return None
 
-    async def _fetch_cancellation_transitions(self, year: int) -> list[Any]:
+    async def _fetch_cancellation_transitions(self, year: int) -> list[Any] | None:
         """Fetch raw cancellation status-transition rows for a year.
 
         Returns the unfiltered rows so the caller can scope them by
@@ -168,15 +180,41 @@ class HistoricalService:
         denominator (see calculate_historical_trends), and dedupe by
         person_id for the correct grain. No repository defines a
         pre-aggregated ``fetch_cancellation_count`` -- see #2434.
+
+        Returns ``None`` (not ``[]``) on a repository failure, so the caller
+        can distinguish "queried, zero rows" from "never queried" -- a fetch
+        failure must not be reported as a confidently-measured zero
+        cancellation count (see #2443's has_cancellation_data).
         """
         try:
             result: list[Any] = await self.repo.fetch_status_transitions(year, ["cancelled", "withdrawn", "dismissed"])
             return result
         except Exception:
-            return []
+            return None
+
+    async def _fetch_cancellation_data_coverage(self, year: int) -> bool:
+        """Whether attendee_status_history has ANY rows for this year.
+
+        Not filtered by session_types, session_cm_id, duration, or status --
+        coverage is a year-level fact, independent of the scoping applied to
+        the enrolled/cancelled counts. Reuses the existing, already-defined
+        ``fetch_status_history(year, old_status=None, new_statuses=None)``
+        probe (both filters default) rather than adding a new repository
+        method -- see #2443.
+        """
+        try:
+            rows: list[Any] = await self.repo.fetch_status_history(year)
+            return len(rows) > 0
+        except Exception:
+            return False
 
     def _compute_year_metrics(
-        self, year: int, person_ids: set[int], persons: dict[int, Any], total_cancelled: int = 0
+        self,
+        year: int,
+        person_ids: set[int],
+        persons: dict[int, Any],
+        total_cancelled: int = 0,
+        has_cancellation_data: bool = True,
     ) -> YearMetrics:
         """Compute metrics for a single year from deduplicated person IDs.
 
@@ -220,4 +258,5 @@ class HistoricalService:
             new_vs_returning=new_vs_returning,
             total_cancelled=total_cancelled,
             cancellation_rate=cancellation_rate,
+            has_cancellation_data=has_cancellation_data,
         )

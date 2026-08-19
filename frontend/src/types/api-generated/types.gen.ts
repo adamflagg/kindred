@@ -7456,6 +7456,12 @@ export type YearMetrics = {
    * Cancelled / (enrolled + cancelled)
    */
   cancellation_rate?: number
+  /**
+   * Has Cancellation Data
+   *
+   * Whether attendee_status_history holds any rows for this year at all. attendee_status_history only began being written in 2026, so prior years have no coverage and total_cancelled/cancellation_rate are unmeasured, not zero -- consumers should render 'no data' rather than the fabricated 0/0.0%.
+   */
+  has_cancellation_data?: boolean
 }
 
 /**

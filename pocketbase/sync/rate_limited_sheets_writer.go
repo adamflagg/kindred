@@ -151,6 +151,16 @@ func (w *RateLimitedSheetsWriter) DeleteSheet(
 		})
 }
 
+// ApplyFormatting delegates to inner writer with rate limiting and 429 retry.
+func (w *RateLimitedSheetsWriter) ApplyFormatting(
+	ctx context.Context, spreadsheetID string, format *SheetFormat,
+) error {
+	return w.executeWithRetry(ctx, "ApplyFormatting",
+		[]*rate.Limiter{w.writeLimiter}, func() error {
+			return w.inner.ApplyFormatting(ctx, spreadsheetID, format)
+		})
+}
+
 // executeWithRetry waits on the applicable rate limiters, executes fn, and retries on 429 errors
 // with exponential backoff.
 func (w *RateLimitedSheetsWriter) executeWithRetry(

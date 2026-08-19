@@ -356,10 +356,14 @@ export default function TrendsOverview() {
                       {femaleCount.toLocaleString()}
                     </td>
                     <td className="text-foreground px-4 py-3 text-right">
-                      {(year.total_cancelled ?? 0).toLocaleString()}
+                      {year.has_cancellation_data === false
+                        ? '—'
+                        : (year.total_cancelled ?? 0).toLocaleString()}
                     </td>
                     <td className="text-muted-foreground px-4 py-3 text-right">
-                      {(year.cancellation_rate ?? 0).toFixed(1)}%
+                      {year.has_cancellation_data === false
+                        ? '—'
+                        : `${(year.cancellation_rate ?? 0).toFixed(1)}%`}
                     </td>
                   </tr>
                 )

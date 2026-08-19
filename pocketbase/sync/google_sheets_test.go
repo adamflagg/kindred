@@ -31,6 +31,10 @@ type MockSheetsWriter struct {
 	BatchUpdateError error
 	GetMetadataCalls int              // Number of GetSheetMetadata calls
 	SheetIDsByName   map[string]int64 // tab name -> sheet ID for metadata lookups
+
+	ApplyFormattingCalls int           // Number of ApplyFormatting calls
+	AppliedFormats       []SheetFormat // Every format passed to ApplyFormatting, in order
+	ApplyFormattingError error
 }
 
 func NewMockSheetsWriter() *MockSheetsWriter {
@@ -143,6 +147,19 @@ func (m *MockSheetsWriter) DeleteSheet(_ context.Context, _, sheetTab string) er
 	m.DeletedSheets = append(m.DeletedSheets, sheetTab)
 	// Remove from existing tabs
 	delete(m.ExistingTabs, sheetTab)
+	return nil
+}
+
+// ApplyFormatting records the directives it was handed so tests can assert the
+// shape of a tab's formatting without calling Google.
+func (m *MockSheetsWriter) ApplyFormatting(_ context.Context, _ string, format *SheetFormat) error {
+	m.ApplyFormattingCalls++
+	if m.ApplyFormattingError != nil {
+		return m.ApplyFormattingError
+	}
+	if format != nil {
+		m.AppliedFormats = append(m.AppliedFormats, *format)
+	}
 	return nil
 }
 
