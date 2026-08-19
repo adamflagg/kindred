@@ -346,6 +346,11 @@ type registrationData struct {
 	// admin-gated and absent from every export (lodging_medical_narrative_test.go).
 	needsFridge bool
 
+	// kindred#2438. The step-free twin of needsFridge, and the reason it is a
+	// SEPARATE derivation rather than a wider keyword list on the same one: it
+	// routes BOTH narrative fields. See stepFreeKeywords.
+	needsStepFree bool
+
 	// Housing-suitability signal rather than an accessibility need (kindred#1876).
 	hasInfant bool
 
@@ -1606,6 +1611,20 @@ func (s *FamilyCampDerivedSync) processRegistrations(
 			if isAccommodationExplainField(v.fieldName) {
 				reg.needsFridge = reg.needsFridge || mentionsFridge(v.value)
 			}
+			// The step-free need reads BOTH narratives, and that difference is
+			// measured rather than defensive (kindred#2438). Copying the fridge
+			// route verbatim would lose more than a third of this signal: on
+			// the 2026 snapshot 5 of the 14 mobility households narrate ONLY
+			// through the bathroom field and 3 through both, against 0 of the 6
+			// fridge households. A family explaining why it needs a private bathroom
+			// is often explaining that someone cannot walk to the shared one.
+			//
+			// The two routes stay separate for the same measured reason: no
+			// fridge ask lands in the bathroom field, so widening one must not
+			// widen the other.
+			if isAccommodationExplainField(v.fieldName) || isBathroomExplainField(v.fieldName) {
+				reg.needsStepFree = reg.needsStepFree || mentionsStepFree(v.value)
+			}
 		}
 	}
 
@@ -1649,6 +1668,12 @@ func (s *FamilyCampDerivedSync) processRegistrations(
 			// only parseable answer is the narrative-derived need would be the
 			// row dropped before it is written.
 			reg.needsFridge ||
+			// And needs_step_free more so than the fridge line above: 3 of the
+			// 14 mobility households on the 2026 snapshot are NOT
+			// accommodation-gated, against 0 of the 6 fridge households, so
+			// this is a guard entry with rows actually behind it rather than a
+			// defensive one (kindred#2438).
+			reg.needsStepFree ||
 			// accommodationIsMandatory belongs here for the same reason as the
 			// rest, and more so: it is the blocker signal, and a household whose
 			// only answer is the blocker was the one row that got dropped before
@@ -1717,6 +1742,110 @@ func mentionsFridge(text string) bool {
 		}
 	}
 	return false
+}
+
+// bathroomExplainFieldNames routes the bathroom NARRATIVE, by literal display
+// name, in both places that read it: processMedical (which stores the sentence)
+// and processRegistrations (which derives needs_step_free from it and stores
+// nothing). ONE list, for the reason accommodationExplainFieldNames states
+// above -- two copies of a name-keyed route drift the moment a generation is
+// added.
+//
+// "Housing-Bathroom" (cm_id 274059) is the Camper partition and "Bathroom-Yes"
+// (274054) the Adult twin. Unlike the accommodation list this carries NO
+// defensive successors: that list has them because CampMinder demonstrably
+// misspells "Accommodation" with one m -- it is how the live adult gate is
+// spelled -- and no comparable misspelling of these two has ever been observed.
+// The name-routing fragility is identical, so a rename here would silently stop
+// population too; inventing spellings nobody has seen is a guess, and this
+// comment is the warning instead.
+var bathroomExplainFieldNames = []string{
+	"Housing-Bathroom",
+	"Bathroom-Yes",
+}
+
+// isBathroomExplainField reports whether name routes the bathroom narrative.
+func isBathroomExplainField(name string) bool {
+	return slices.Contains(bathroomExplainFieldNames, name)
+}
+
+// stepFreeKeywords is the recall surface for needs_step_free (kindred#2438).
+//
+// RECALL OVER PRECISION, for the reason fridgeKeywords states: the flag is
+// ADVISORY -- it hatches a unit card, it never refuses a drop -- so a false
+// positive costs a mark staff overrule at a glance while a false negative costs
+// the ask entirely and returns the household to prose nobody parses.
+//
+// Measured over BOTH narrative fields on the production snapshot, 2026,
+// household grain: this surface finds 14 of the 86 households carrying any
+// narrative, against 6 for fridge. Contributions, so the surface can be argued
+// rather than inherited:
+//
+//	"walk"          -- 10, and as a SUBSTRING, so it also catches
+//	                   walking/walkway. Every one of the ten reads as a genuine
+//	                   step-free ask on inspection.
+//	"mobilit"       -- 2, one of them new.
+//	"knee" / "hip"  -- 3 and 3, THREE of them new. Every knee/hip mention in
+//	                   the corpus, in every year, is a mobility limitation:
+//	                   a joint replacement, a post-surgical recovery, or a
+//	                   stated limit on how far someone can walk. Zero false
+//	                   positives, which is why a diagnosis word earns its place
+//	                   in an otherwise ask-shaped list. (Aggregate only -- the
+//	                   narratives themselves are PHI and are not quoted here.)
+//	"crutch"        -- 1, none new.
+//
+// Every other entry matches 0 households today and is kept because each is the
+// plain word for an ask `has_ramp` answers. 2026 is only 16% placed, so 14 is
+// the SHAPE of the demand, not a rate.
+//
+// DELIBERATELY EXCLUDED: bare "close to". It matches 5 households, and it is
+// PROXIMITY rather than step-free access -- a different ask, which the registry
+// answers with `map_x`/`map_y` and `near_bathhouse` rather than with `has_ramp`,
+// so a household flagged on it would be hatched against a column that cannot
+// speak to what they asked for. The mobility-bearing one of the five is already
+// caught by "knee"; the three that remain uncaught are a child who needs to be
+// near activities, a family recalling a past illness, and a bathroom-proximity
+// request that `needs_private_bathroom` already carries. None is a step-free
+// ask. (This is the one exclusion, and it is a PRECISION judgement made against
+// a specific supply column -- not a retreat from the recall rule above.)
+//
+// SUBSTRING matching, as fridgeKeywords uses, because the input is unvalidated
+// prose and anything stricter loses answers to punctuation and compounding:
+// "walk" has to catch walking and walkway, "mobilit" has to catch mobility and
+// mobilities, "stair" has to catch stairs and stairway.
+var stepFreeKeywords = []string{
+	"walk", "mobilit", "wheelchair", "scooter", "crutch",
+	"knee", "stair", "steps",
+	"ground floor", "single level", "one level",
+}
+
+// stepFreeWordPattern holds the three keywords that must match as WHOLE WORDS.
+//
+// Substring matching is the rule above and it is right for the rest, but these
+// three are short enough to sit inside common, unrelated words: "hip" is in
+// RELATIONSHIP and SHIPPING, "cane" is in HURRICANE, "ramp" is in CRAMP. None
+// of those says anything about mobility, so firing on them is not the
+// near-miss that recall-over-precision buys -- it is an unrelated word, and it
+// would mark a household that asked for nothing of the kind.
+//
+// Deliberately still generous WITHIN the word: the plural and the hyphenated
+// compound both match ("hips", "post-op hip", "ramps", "canes"), because \b
+// treats the hyphen as a boundary.
+var stepFreeWordPattern = regexp.MustCompile(`\b(hips?|canes?|ramps?)\b`)
+
+// mentionsStepFree reports whether a free-text answer describes a mobility or
+// step-free access need. Case-insensitive substring matching, exactly as
+// mentionsFridge does and for the same reason: the input is unvalidated
+// family-authored prose, so anything stricter loses answers to punctuation and
+// compounding.
+func mentionsStepFree(text string) bool {
+	lower := strings.ToLower(text)
+	for _, kw := range stepFreeKeywords {
+		if strings.Contains(lower, kw) {
+			return true
+		}
+	}
+	return stepFreeWordPattern.MatchString(lower)
 }
 
 // cpapAnswer is the result of classifying one answer to a CPAP field.
@@ -2069,9 +2198,12 @@ func (s *FamilyCampDerivedSync) processMedical(personValues []customValueEntry) 
 		// describe named individuals' medical circumstances, so they live only
 		// here -- family_camp_medical is admin-gated on all five rules and is
 		// absent from every export config (lodging_medical_narrative_test.go asserts that).
-		bathroomKeys := []string{"Housing-Bathroom", "Bathroom-Yes"}
-		bathroomParts := make([]string, 0, len(bathroomKeys))
-		for _, key := range bathroomKeys {
+		// bathroomExplainFieldNames is the ONE routing list, shared with
+		// processRegistrations' needs_step_free derivation (kindred#2438) so a
+		// generation added for one is added for both -- the same discipline
+		// accommodationExplainFieldNames below already follows.
+		bathroomParts := make([]string, 0, len(bathroomExplainFieldNames))
+		for _, key := range bathroomExplainFieldNames {
 			bathroomParts = append(bathroomParts, fields.parts(key)...)
 		}
 		med.bathroomExplain = s.joinMedicalColumn(householdID, "bathroom_explain", bathroomParts)
@@ -2526,6 +2658,7 @@ func (s *FamilyCampDerivedSync) registrationNeedsUpdate(existing *core.Record, r
 		existing.GetBool("accommodation_is_mandatory") != reg.accommodationIsMandatory ||
 		existing.GetBool("has_infant") != reg.hasInfant ||
 		existing.GetBool("needs_fridge") != reg.needsFridge ||
+		existing.GetBool("needs_step_free") != reg.needsStepFree ||
 		existing.GetString("share_eligibility") != normalizedEligibility ||
 		existing.GetString("share_eligibility_source") != normalizedSource ||
 		existing.GetBool("share_answers_conflict") != reg.shareAnswersConflict ||
@@ -2550,6 +2683,7 @@ func setRegistrationRequestFields(record *core.Record, reg *registrationData) {
 	record.Set("accommodation_is_mandatory", reg.accommodationIsMandatory)
 	record.Set("has_infant", reg.hasInfant)
 	record.Set("needs_fridge", reg.needsFridge)
+	record.Set("needs_step_free", reg.needsStepFree)
 	// The board's placement verdict. share_cabin_gate above stays the raw
 	// REGISTRATION answer; this is the resolved one, and the Family Camp
 	// information form outranks the gate wherever both were answered.

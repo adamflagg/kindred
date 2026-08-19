@@ -72,6 +72,12 @@ def _unit(
     # kindred#2224): a shared fridge IS a fridge. Zero of the 118 production
     # units carry shared without the parent.
     has_shared_fridge: bool = False,
+    # THREE-VALUE select, not a bool (migration 1500000131): "yes" / "no" /
+    # "partial", and blank = NOT ASSESSED. A bool read of it reports 0 of 118
+    # and erases all 14 staff assessments, which is the trap kindred#2438
+    # exists to undo -- so the fixture default is the blank string, exactly as
+    # 104 of the 118 production rows are.
+    has_ramp: str = "",
     # False builds the default RIDGE area (honouring `area_sort_order`); True
     # resolves the expanded `area` relation to None -- the missing-area case.
     area_missing: bool = False,
@@ -94,6 +100,7 @@ def _unit(
         has_ac=False,
         has_fridge=has_fridge,
         has_shared_fridge=has_shared_fridge,
+        has_ramp=has_ramp,
         is_accessible=False,
         map_x=map_x,
         map_y=map_y,
@@ -2748,6 +2755,22 @@ class TestMedicalFlagsAndNarrative:
         assert roster.parties[0].flags.needs_fridge is True
 
     @pytest.mark.asyncio
+    async def test_step_free_need_comes_from_the_derived_column(self) -> None:
+        """kindred#2438. Derived in the SYNC layer from BOTH housing narratives
+        and read here as a column, for the same reason `needs_fridge` above is:
+        the narrative is PHI-adjacent, so only the boolean crosses into a
+        payload this service builds."""
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_households={"hh_1": _household(title="The Chen Family")},
+            fetch_attendees_for_session=[_child(cm_id=1000001, first="Olivia", last="Chen", age=10, grade=5)],
+            fetch_family_camp_registrations={"hh_1": _rec(needs_step_free=True)},
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.parties[0].flags.needs_step_free is True
+
+    @pytest.mark.asyncio
     async def test_has_infant_reaches_the_roster(self) -> None:
         """kindred#1876: Adult-Infant was loaded every sync and discarded. An
         infant changes what a unit has to provide, so it reaches the board."""
@@ -4045,6 +4068,187 @@ class TestUnitFridgeCoverage:
 
         assert roster.units[0].power_coverage == "all"
         assert roster.units[0].fridge_coverage == "none"
+
+
+class TestUnitRampCoverage:
+    """kindred#2438 -- `LodgingUnitSummary.ramp_coverage`, the third resolved
+    supply grade, over the same leaf walk as power and fridge.
+
+    ONE thing separates it from either: `has_ramp` is a THREE-VALUE select
+    (`yes` / `no` / `partial`, blank = NOT ASSESSED), added deliberately as a
+    select in migration 1500000131 because "a bool maps every unassessed cabin
+    to false, which asserts 'no ramp' about cabins nobody has looked at". The
+    production distribution is 104 blank / 4 `no` / 5 `partial` / 5 `yes` -- 14
+    staff assessments a bool read reports as 0.
+
+    So the verdict carries a FIFTH grade the boolean amenities do not:
+
+        all      every answering room is fully step-free
+        some     at least one is, but not all
+        partial  none is, but at least one is a qualified ramp
+        none     every answering room answered `no`
+        unknown  nothing answers -- blank, unconfirmed, or no active room
+
+    `partial` is its own grade rather than folding into `none`, because folding
+    it would re-erase 5 of the 14 assessments in the very direction the select
+    exists to prevent; and rather than folding into `some`, because "no room is
+    step-free but one has a ramp with a lip" is not "some rooms are step-free".
+    """
+
+    @pytest.mark.asyncio
+    async def test_a_leaf_answers_for_itself(self) -> None:
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("u1", "ridge-1", "Ridge 1", sleeps=4, has_ramp="yes"),
+                _unit("u2", "ridge-2", "Ridge 2", sleeps=4, has_ramp="no"),
+                _unit("u3", "ridge-3", "Ridge 3", sleeps=4, has_ramp="partial"),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        by_code = {u.code: u for u in roster.units}
+        assert by_code["ridge-1"].ramp_coverage == "all"
+        assert by_code["ridge-2"].ramp_coverage == "none"
+        assert by_code["ridge-3"].ramp_coverage == "partial"
+
+    @pytest.mark.asyncio
+    async def test_blank_is_unknown_never_none(self) -> None:
+        """THE TRAP THIS DIMENSION EXISTS TO AVOID. 104 of the 118 production
+        units are blank, so reading blank as `no` would mark almost the whole
+        registry step-free-hostile on evidence nobody recorded."""
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[_unit("u1", "ridge-1", "Ridge 1", sleeps=4, has_ramp="")],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.units[0].ramp_coverage == "unknown"
+
+    @pytest.mark.asyncio
+    async def test_an_unrecognised_value_is_unknown_not_a_yes(self) -> None:
+        """PocketBase validates the select on save, so this state does not
+        arrive through the registry loader. It pins the railing against the two
+        directions that CAN produce it: a later migration widening the value
+        list, and a record built before the column existed. A grade this code
+        has never heard of must read as NOT ASSESSED, never as a claim."""
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[_unit("u1", "ridge-1", "Ridge 1", sleeps=4, has_ramp="Yes, but a lip")],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.units[0].has_ramp == ""
+        assert roster.units[0].ramp_coverage == "unknown"
+
+    @pytest.mark.asyncio
+    async def test_a_container_inherits_from_its_rooms_not_its_own_row(self) -> None:
+        """One of the 14 assessments IS on a container, and it is ignored for
+        the same reason `has_power` on a container is: the row describes the
+        building, not the rooms staff place families into."""
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("c1", "gt-lodge", "Lodge", is_container=True, has_ramp="no"),
+                _unit("u1", "gt-lodge-1", "Lodge 1", sleeps=4, has_ramp="yes", parent_unit="c1"),
+                _unit("u2", "gt-lodge-2", "Lodge 2", sleeps=4, has_ramp="yes", parent_unit="c1"),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        by_code = {u.code: u for u in roster.units}
+        assert by_code["gt-lodge"].ramp_coverage == "all"
+        assert by_code["gt-lodge"].has_ramp == "no"
+
+    @pytest.mark.asyncio
+    async def test_a_split_building_is_some(self) -> None:
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("c1", "gt-lodge", "Lodge", is_container=True, has_ramp="yes"),
+                _unit("u1", "gt-lodge-1", "Lodge 1", sleeps=4, has_ramp="yes", parent_unit="c1"),
+                _unit("u2", "gt-lodge-2", "Lodge 2", sleeps=4, has_ramp="no", parent_unit="c1"),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert {u.code: u.ramp_coverage for u in roster.units}["gt-lodge"] == "some"
+
+    @pytest.mark.asyncio
+    async def test_a_building_whose_best_room_is_qualified_is_partial_not_none(self) -> None:
+        """The grade a boolean amenity has no room for. Three of the five
+        production `partial` units carry the qualifier in `notes`; collapsing
+        them into `none` would throw away the one thing staff wrote down."""
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("c1", "gt-lodge", "Lodge", is_container=True),
+                _unit("u1", "gt-lodge-1", "Lodge 1", sleeps=4, has_ramp="partial", parent_unit="c1"),
+                _unit("u2", "gt-lodge-2", "Lodge 2", sleeps=4, has_ramp="no", parent_unit="c1"),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert {u.code: u.ramp_coverage for u in roster.units}["gt-lodge"] == "partial"
+
+    @pytest.mark.asyncio
+    async def test_one_unassessed_room_makes_the_whole_building_unknown(self) -> None:
+        """The same all-or-nothing evidence bar `amenity_coverage` already
+        applies to an unconfirmed row: a building is not step-free on the
+        strength of the rooms somebody happened to get to."""
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("c1", "gt-lodge", "Lodge", is_container=True),
+                _unit("u1", "gt-lodge-1", "Lodge 1", sleeps=4, has_ramp="yes", parent_unit="c1"),
+                _unit("u2", "gt-lodge-2", "Lodge 2", sleeps=4, has_ramp="", parent_unit="c1"),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert {u.code: u.ramp_coverage for u in roster.units}["gt-lodge"] == "unknown"
+
+    @pytest.mark.asyncio
+    async def test_an_unconfirmed_room_is_unknown_not_unmet(self) -> None:
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[_unit("u1", "ridge-1", "Ridge 1", sleeps=4, is_confirmed=False, has_ramp="no")],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.units[0].ramp_coverage == "unknown"
+
+    @pytest.mark.asyncio
+    async def test_ramp_is_independent_of_is_accessible(self) -> None:
+        """NEITHER COLUMN DETERMINES THE OTHER, measured: `has_ramp = 'yes'`
+        splits 2 `is_accessible` true / 3 false, and the 4 `no`s plus 5
+        `partial`s are invisible to `is_accessible` entirely. So no fold in
+        either direction is information-preserving, and this resolver reads one
+        column only."""
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[_unit("u1", "ridge-1", "Ridge 1", sleeps=4, has_ramp="yes")],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.units[0].ramp_coverage == "all"
+        assert roster.units[0].is_accessible is False
+
+    @pytest.mark.asyncio
+    async def test_the_three_coverages_are_resolved_independently(self) -> None:
+        """One walk, three answers. Adding the third must not let any of them
+        borrow a verdict from another."""
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("u1", "ridge-1", "Ridge 1", sleeps=4, has_power=True, has_fridge=False, has_ramp="no"),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.units[0].power_coverage == "all"
+        assert roster.units[0].fridge_coverage == "none"
+        assert roster.units[0].ramp_coverage == "none"
 
 
 def _journey_repo(**overrides: Any) -> MagicMock:

@@ -115,6 +115,30 @@ Shareability = Literal["unknown", "shareable", "single_party"]
 # means "nobody has said", not "there is no power". See `amenity_coverage`.
 AmenityCoverage = Literal["all", "some", "none", "unknown"]
 
+# The registry's own step-free assessment, mirrored from the `has_ramp` select
+# added by migration 1500000131 (kindred#2438). THREE values plus blank, and
+# the blank is the load-bearing one: it means NOT ASSESSED, which is neither
+# "yes" nor "no". That migration's comment says why it is not a bool -- "a bool
+# maps every unassessed cabin to false, which asserts 'no ramp' about cabins
+# nobody has looked at" -- and reading it as one reports 0 of 118 units while
+# erasing all 14 staff assessments.
+RampAssessment = Literal["", "yes", "no", "partial"]
+
+# How much of a slot is step-free, resolved over its LEAF descendants
+# (kindred#2438). FIVE grades rather than `AmenityCoverage`'s four, because the
+# supply column is three-valued and a qualified ramp is a real answer with
+# nowhere to go in a boolean grain:
+#
+#   all      every answering room is fully step-free
+#   some     at least one is, but not all
+#   partial  NO room is, but at least one has a qualified ramp
+#   none     every answering room answered `no`
+#   unknown  nothing answers -- blank, unconfirmed, or no active room left
+#
+# See `ramp_coverage` in `api/services/lodging_rules.py` for why `partial`
+# folds into neither of its neighbours.
+RampCoverage = Literal["all", "some", "partial", "none", "unknown"]
+
 # The STAFF-OWNED weekend status, from lodging_session_status (1500000142).
 # Unlike every other vocabulary in this module it mirrors no Go ingest, because
 # there is no ingest: CampMinder's Sessions API has no status concept at all,
@@ -229,6 +253,29 @@ class LodgingUnitSummary(BaseModel):
     # units carry `has_fridge`, four of those also carry `has_shared_fridge`,
     # and none carries shared without the parent.
     fridge_coverage: AmenityCoverage = "unknown"
+    # The registry's own step-free fact about THIS ROW, published beside its
+    # resolution exactly as `has_power` and `has_fridge` are (kindred#2438).
+    #
+    # ⚠️ NOT the field a drop is judged against -- `ramp_coverage` below is,
+    # and reading this instead reintroduces the container trap AND the
+    # truthiness trap at once: `has_ramp` is a STRING, so `'no'` is truthy, and
+    # a consumer filtering on it renders "step-free" on the four cabins staff
+    # assessed as explicitly having no ramp. Blank means NOT ASSESSED (104 of
+    # 118 production rows) and is never coerced to "no".
+    has_ramp: RampAssessment = ""
+    # The step-free twin of `power_coverage` and `fridge_coverage`, resolved
+    # over the same leaf walk and defaulting to "unknown" for the same reason:
+    # a payload built without the resolution pass must not claim an unmet need.
+    # Fourteen of 118 production units carry an assessment (5 yes / 5 partial /
+    # 4 no), so almost every unit resolves "unknown" today -- which is the
+    # honest answer, not a gap.
+    ramp_coverage: RampCoverage = "unknown"
+    # ⚠️ INDEPENDENT of `has_ramp` above, measured: `has_ramp = 'yes'` splits 2
+    # `is_accessible` true / 3 false, and the 4 explicit `no`s plus 5
+    # `partial`s are invisible to this flag, which reads them identically to
+    # the 104 rows nobody has looked at. No fold in either direction is
+    # information-preserving (kindred#2438), and #2327's ruling -- accessible
+    # draws only when TRUE -- is unchanged by the ramp dimension.
     is_accessible: bool = False
     is_confirmed: bool = False
     is_active: bool = False
@@ -532,6 +579,24 @@ class AccessibilityFlagSummary(BaseModel):
     # board hatches a unit for this and never dims one -- see `needsFit.ts`,
     # where the mark it feeds changes `background-image` and nothing else.
     needs_fridge: bool = False
+    # kindred#2438. The second need resolved out of the housing narrative, and
+    # the one the registry has always been able to answer: `lodging_units`
+    # has carried `has_ramp` since migration 1500000131 and nothing read it.
+    #
+    # ⚠️ ROUTED DIFFERENTLY from `needs_fridge` above, and the difference is
+    # measured. Fridge reads the accommodation narrative alone; this reads the
+    # BATHROOM narrative too, because 5 of the 14 mobility households on the
+    # 2026 snapshot narrate only through that field and 3 through both -- a
+    # family explaining why it needs a private bathroom is often explaining
+    # that someone cannot walk to the shared one.
+    #
+    # ⚠️ NOT GATED on `needs_accommodation`. All 6 fridge households are gated;
+    # only 11 of the 14 mobility households are.
+    #
+    # DERIVED IN THE SYNC LAYER and ADVISORY, on the same terms as the flag
+    # above: only the boolean crosses into this payload, and the mark it feeds
+    # hatches a unit card rather than refusing a drop.
+    needs_step_free: bool = False
     # True when the family said they can only attend WITH the accommodation
     # in place: `FAM CAMP-Opt Out VIP` = "Yes, please register regardless of
     # cabin type" means they will come either way, so the need is a warning;

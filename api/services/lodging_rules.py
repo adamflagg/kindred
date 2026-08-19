@@ -223,6 +223,65 @@ def amenity_coverage(values: Sequence[bool | None]) -> str:
     return "none"
 
 
+def ramp_coverage(values: Sequence[str | None]) -> str:
+    """How much of a slot is step-free — kindred#2438.
+
+    The twin of `amenity_coverage` above, and a SEPARATE function for one
+    reason: `has_ramp` is a three-value select (`yes` / `no` / `partial`, blank
+    = NOT ASSESSED) rather than a bool, so a room can answer "qualified" and
+    the boolean grain has nowhere to put that. Migration 1500000131 made it a
+    select deliberately -- "a bool maps every unassessed cabin to false, which
+    asserts 'no ramp' about cabins nobody has looked at" -- and a boolean read
+    of it reports 0 of 118 units, erasing all 14 staff assessments (5 `yes`,
+    5 `partial`, 4 `no`, 104 blank on the production snapshot).
+
+    It does not walk anything, exactly as `amenity_coverage` does not: the
+    caller resolves which rooms answer, and `_BathroomIndex.leaf_codes_under`
+    is the ONE walk over that tree.
+
+    Args:
+        values: one entry per unit that answers for the slot -- `"yes"`,
+            `"partial"` or `"no"`. `None` means NO ANSWER, and it covers both
+            an unconfirmed row and an assessed-nobody blank; the caller maps
+            an unrecognised string to `None` too, because an unreadable answer
+            is not a claim in either direction.
+
+    Returns:
+        "all" | "some" | "partial" | "none" | "unknown".
+
+        FIVE grades, one more than the boolean amenities carry, and each is a
+        different claim:
+
+            all      every answering room is fully step-free
+            some     at least one is, but not all -- the reading that invites
+                     the placement landing in one of the others
+            partial  NO room is, but at least one has a qualified ramp
+            none     every answering room answered `no`
+            unknown  nothing answers
+
+        `partial` does not fold into `none`, because that would re-erase 5 of
+        the 14 assessments in the exact direction the select exists to prevent,
+        and 3 of those 5 carry the qualifier text in `notes`. It does not fold
+        into `some` either: "no room is step-free but one has a ramp with a
+        lip" is a weaker claim than "some rooms are step-free", and collapsing
+        them would make the grade order lie.
+
+        `unknown` whenever ANY contributing unit is unanswered -- the same
+        all-or-nothing evidence bar `amenity_coverage` states, and it matters
+        far more here: 104 of 118 units are blank, so a looser bar would grade
+        buildings step-free on the strength of the rooms somebody got to.
+    """
+    if not values or any(value is None for value in values):
+        return "unknown"
+    if all(value == "yes" for value in values):
+        return "all"
+    if any(value == "yes" for value in values):
+        return "some"
+    if any(value == "partial" for value in values):
+        return "partial"
+    return "none"
+
+
 def container_bathroom(leaf_bathroom_groups: frozenset[str]) -> tuple[str, str]:
     """A container's bathroom, inherited from its leaf descendants.
 
