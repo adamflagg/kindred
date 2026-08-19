@@ -160,7 +160,7 @@ class TestWasBunkmateFlag:
         mock_pb.collection = Mock(return_value=mock_collection)
 
         # Call the method
-        result = attendee_repo.find_prior_year_bunkmates(requester_cm_id=1001, session_cm_id=123, year=2025)
+        result = attendee_repo.find_prior_year_bunkmates(requester_cm_id=1001, year=2025)
 
         # Verify was_bunkmate flag is set
         assert result is not None

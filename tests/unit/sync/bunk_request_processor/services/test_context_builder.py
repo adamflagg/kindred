@@ -1151,7 +1151,8 @@ class TestNeedsHistoricalContextFetchesPriorBunkmates:
         mock_attendee_repo = Mock()
         mock_attendee_repo.find_prior_year_bunkmates.return_value = {
             "cm_ids": [100, 101, 102],
-            "prior_bunk": "B-7",
+            "prior_bunk_by_cm_id": {100: "B-7", 101: "B-7", 102: "B-4"},
+            "prior_bunks": ["B-7", "B-4"],
             "prior_year": 2024,
             "total_in_bunk": 5,
             "returning_count": 3,
@@ -1175,9 +1176,10 @@ class TestNeedsHistoricalContextFetchesPriorBunkmates:
         )
 
         # Must call find_prior_year_bunkmates
+        # No session is passed: the current session deliberately does not narrow
+        # the prior-year pool, and the parameter that implied it did is gone (#2456).
         mock_attendee_repo.find_prior_year_bunkmates.assert_called_once_with(
             11111,  # requester_cm_id
-            1000002,  # session_cm_id
             2025,  # year
         )
 
@@ -1186,12 +1188,13 @@ class TestNeedsHistoricalContextFetchesPriorBunkmates:
 
         The context should have:
         - previous_year: int (year - 1)
-        - previous_year_bunkmates: dict with cm_ids, prior_bunk, etc.
+        - previous_year_bunkmates: dict with cm_ids, prior_bunk_by_cm_id, etc.
         """
         mock_attendee_repo = Mock()
         mock_attendee_repo.find_prior_year_bunkmates.return_value = {
             "cm_ids": [100, 101, 102],
-            "prior_bunk": "B-7",
+            "prior_bunk_by_cm_id": {100: "B-7", 101: "B-7", 102: "B-4"},
+            "prior_bunks": ["B-7", "B-4"],
             "prior_year": 2024,
             "total_in_bunk": 5,
             "returning_count": 3,
@@ -1219,7 +1222,7 @@ class TestNeedsHistoricalContextFetchesPriorBunkmates:
         prior_data = context.additional_context.get("previous_year_bunkmates")
         assert prior_data is not None
         assert prior_data["cm_ids"] == [100, 101, 102]
-        assert prior_data["prior_bunk"] == "B-7"
+        assert prior_data["prior_bunk_by_cm_id"][100] == "B-7"
         assert prior_data["returning_count"] == 3
 
     def test_needs_historical_false_does_not_call_find_prior_year_bunkmates(self):
