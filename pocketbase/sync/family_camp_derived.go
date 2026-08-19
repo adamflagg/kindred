@@ -1033,6 +1033,13 @@ func (s *FamilyCampDerivedSync) processAdults(
 		}
 	}
 
+	// Dedupe rows that coalesce to the same adult (kindred#2483) BEFORE the
+	// admission filter below, so a merged slot's survivor is judged for
+	// admission exactly like any other adult.
+	for _, adults := range adultMap {
+		dedupeAdultSlots(adults)
+	}
+
 	// Convert map to slice, only include adults with a real name somewhere.
 	// kindred#1946: the email/gender arms this filter used to carry let 194
 	// wholly nameless rows into production -- an adult with only a gender
@@ -1049,6 +1056,128 @@ func (s *FamilyCampDerivedSync) processAdults(
 	}
 
 	return result
+}
+
+// coalescedAdultName reproduces the API's `_adult_display_name` coalesce
+// (`api/services/lodging_roster_service.py`) so the dedupe key groups the
+// same way the read path does: `name` (the household column of record) if
+// set, otherwise the split first/last columns joined and trimmed.
+func coalescedAdultName(a *adultData) string {
+	if a.name != "" {
+		return a.name
+	}
+	return strings.TrimSpace(strings.TrimSpace(a.firstName) + " " + strings.TrimSpace(a.lastName))
+}
+
+// dedupeAdultSlots collapses adult slots within one household that coalesce
+// to the same casefolded display name with a non-conflicting date of birth
+// (kindred#2483 -- see the correction on the issue for why name alone is
+// unsafe: it merges 27 groups of genuinely different people who share a
+// name, sample DOB pairs include a child and an adult).
+//
+// "Non-conflicting" means the group's non-empty date_of_birth values are all
+// equal, or at most one slot in the group carries a DOB at all. A plain
+// equality key is not enough -- one of the two reported 2026 pairs has a
+// blank DOB on one side, so it looks like a single non-empty DOB, not an
+// equal pair. Any group with two or more DISTINCT non-empty DOBs is refused
+// entirely, matching the issue's measurement (MERGE 15 / REFUSE 27 over all
+// years; 2026 merges = exactly 2).
+//
+// Deleting a losing slot's map entry removes it from processAdults' result,
+// which is also what marks its stored row (if any) unprocessed for this run
+// -- the existing orphan sweep in deleteOrphanedAdults then deletes it, the
+// same path kindred#2335 already uses for rows the computed set no longer
+// accounts for. That is the intended outcome here: the duplicate slot is
+// destroyed, not archived (owner ruling 2026-08-19 -- this trades away the
+// raw-slot evidence deliberately).
+//
+// The survivor is the LOWEST adult_number in the group. adult_number is the
+// one deterministic ordering available here (Go map iteration is not), and
+// it mirrors "first-wins" -- Adult 1 is filled first on the form.
+func dedupeAdultSlots(adults map[int]*adultData) {
+	groups := make(map[string][]*adultData, len(adults))
+	for _, adult := range adults {
+		key := strings.ToLower(coalescedAdultName(adult))
+		if key == "" {
+			continue // nameless slots are not a duplicate of anything; left to the admission filter
+		}
+		groups[key] = append(groups[key], adult)
+	}
+
+	for _, group := range groups {
+		if len(group) < 2 {
+			continue
+		}
+		if adultGroupDOBConflicts(group) {
+			continue // 27-groups-of-different-people case: leave every slot as its own adult
+		}
+
+		slices.SortFunc(group, func(a, b *adultData) int {
+			return a.adultNumber - b.adultNumber
+		})
+		survivor := group[0]
+		for _, loser := range group[1:] {
+			mergeAdultSlot(survivor, loser)
+			delete(adults, loser.adultNumber)
+		}
+	}
+}
+
+// adultGroupDOBConflicts reports whether a same-name group holds two or more
+// DISTINCT non-empty date_of_birth values -- the signal that the group is
+// actually different people who share a name, not one person duplicated
+// across slots. date_of_birth is normalised (normalizeDateOfBirth) before it
+// ever reaches processAdults' map, so a straight string comparison is a
+// straight date comparison.
+func adultGroupDOBConflicts(group []*adultData) bool {
+	seen := ""
+	for _, adult := range group {
+		if adult.dateOfBirth == "" {
+			continue
+		}
+		if seen == "" {
+			seen = adult.dateOfBirth
+			continue
+		}
+		if adult.dateOfBirth != seen {
+			return true
+		}
+	}
+	return false
+}
+
+// mergeAdultSlot folds loser's non-blank attributes onto survivor using the
+// SAME per-field merge policy processAdults already applies when two
+// siblings answer for one slot (kindred#2483 ruling: reuse mergeFirstNonEmpty
+// rather than invent a second merge implementation). email keeps its
+// existing preferEmail validity tie-break rather than plain first-wins, for
+// the same reason the sibling-merge loop above does.
+func mergeAdultSlot(survivor, loser *adultData) {
+	survivor.name = survivor.mergeFirstNonEmpty("name", survivor.name, loser.name)
+	survivor.firstName = survivor.mergeFirstNonEmpty("first_name", survivor.firstName, loser.firstName)
+	survivor.lastName = survivor.mergeFirstNonEmpty("last_name", survivor.lastName, loser.lastName)
+	survivor.pronouns = survivor.mergeFirstNonEmpty("pronouns", survivor.pronouns, loser.pronouns)
+	survivor.gender = survivor.mergeFirstNonEmpty("gender", survivor.gender, loser.gender)
+	survivor.dateOfBirth = survivor.mergeFirstNonEmpty("date_of_birth", survivor.dateOfBirth, loser.dateOfBirth)
+	survivor.relationship = survivor.mergeFirstNonEmpty(
+		"relationship_to_camper", survivor.relationship, loser.relationship)
+
+	if loser.email != "" {
+		if preferEmail(survivor.email, loser.email) {
+			if !sameAnswer(survivor.email, loser.email) {
+				survivor.noteConflict("email", survivor.email)
+			}
+			survivor.email = loser.email
+		} else if !sameAnswer(survivor.email, loser.email) {
+			survivor.noteConflict("email", loser.email)
+		}
+	}
+
+	for column, others := range loser.conflicts {
+		for _, other := range others {
+			survivor.noteConflict(column, other)
+		}
+	}
 }
 
 // ---------------------------------------------------------------------------
