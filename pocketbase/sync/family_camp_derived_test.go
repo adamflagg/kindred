@@ -3741,3 +3741,123 @@ func TestProcessMedicalAccommodationExplainCarriesSuccessorSpellings(t *testing.
 		t.Errorf("accommodationExplain = %q", meds[0].accommodationExplain)
 	}
 }
+
+// TestProcessAdultsDedupesCoalescedNameMatch pins kindred#2483: two adult
+// slots in the same household that coalesce to the identical casefolded
+// display name, with non-conflicting dates of birth, are the same human
+// counted twice. This is the exact reproduction from the issue -- one slot
+// carries the name in the household `name` column, the other carries it
+// (mislabeled, per the doc comment above processAdults) in `first_name`,
+// plus an email and a date_of_birth the other slot never answered.
+func TestProcessAdultsDedupesCoalescedNameMatch(t *testing.T) {
+	t.Parallel()
+	s := &FamilyCampDerivedSync{}
+
+	// A local constant rather than the literal three times: goconst counts
+	// repeated string literals across the package and this name is already
+	// used in other sync tests.
+	const wantMergedName = "Emma Johnson"
+
+	householdValues := []customValueEntry{
+		{householdPBID: "hh_1", fieldName: "Family Camp Adult 1", value: wantMergedName},
+	}
+	personValues := []customValueEntry{
+		{householdPBID: "hh_1", fieldName: "Family Camp-P2 First Name", value: wantMergedName},
+		{householdPBID: "hh_1", fieldName: "Family Camp Adult 2 Email", value: "test@example.com"},
+		{householdPBID: "hh_1", fieldName: "Family Camp DOB 2", value: "1980-06-15"},
+	}
+
+	adults := s.processAdults(householdValues, personValues)
+
+	if len(adults) != 1 {
+		t.Fatalf("expected the duplicate slot collapsed to 1 adult, got %d: %+v", len(adults), adults)
+	}
+	got := adults[0]
+	if got.adultNumber != 1 {
+		t.Errorf("survivor adult_number = %d, want 1 (lower slot wins)", got.adultNumber)
+	}
+	if got.name != wantMergedName {
+		t.Errorf("survivor name = %q, want %q", got.name, wantMergedName)
+	}
+	// Field survival: the losing slot's email and date_of_birth must attach
+	// to the survivor rather than being dropped.
+	if got.email != "test@example.com" {
+		t.Errorf("survivor email = %q, want the losing slot's email to attach", got.email)
+	}
+	if got.dateOfBirth != "1980-06-15" {
+		t.Errorf("survivor date_of_birth = %q, want the losing slot's DOB to attach", got.dateOfBirth)
+	}
+}
+
+// TestProcessAdultsDedupesCaseOnlyNameMatch pins the second reported 2026
+// pair: a byte-exact comparison misses this one, only casefolding catches
+// it, matching the pattern is_attending_adult_name already uses.
+func TestProcessAdultsDedupesCaseOnlyNameMatch(t *testing.T) {
+	t.Parallel()
+	s := &FamilyCampDerivedSync{}
+
+	personValues := []customValueEntry{
+		{householdPBID: "hh_1", fieldName: "Family Camp-P1 First Name", value: "Liam Garcia"},
+		{householdPBID: "hh_1", fieldName: "Family Camp Adult 1 Email", value: "test@example.com"},
+		{householdPBID: "hh_1", fieldName: "Family Camp DOB 1", value: "1985-03-22"},
+		{householdPBID: "hh_1", fieldName: "Family Camp-P2 First Name", value: "liam garcia"},
+		{householdPBID: "hh_1", fieldName: "Family Camp DOB 2", value: "1985-03-22"},
+	}
+
+	adults := s.processAdults(nil, personValues)
+
+	if len(adults) != 1 {
+		t.Fatalf("expected the case-only duplicate collapsed to 1 adult, got %d: %+v", len(adults), adults)
+	}
+	if adults[0].firstName != "Liam Garcia" {
+		t.Errorf("survivor first_name = %q, want the first-loaded spelling kept", adults[0].firstName)
+	}
+	if adults[0].email != "test@example.com" {
+		t.Errorf("survivor email = %q, want the only email to attach", adults[0].email)
+	}
+}
+
+// TestProcessAdultsRefusesConflictingDOBSameName pins the falsification in
+// the issue's correction: a name-only key would merge 27 groups of DIFFERENT
+// people who happen to share a name. Same casefolded name with a genuinely
+// conflicting (both populated, unequal) date_of_birth must NOT be merged.
+func TestProcessAdultsRefusesConflictingDOBSameName(t *testing.T) {
+	t.Parallel()
+	s := &FamilyCampDerivedSync{}
+
+	personValues := []customValueEntry{
+		{householdPBID: "hh_1", fieldName: "Family Camp-P1 First Name", value: "Noah Smith"},
+		{householdPBID: "hh_1", fieldName: "Family Camp DOB 1", value: "2013-05-03"},
+		{householdPBID: "hh_1", fieldName: "Family Camp-P2 First Name", value: "Noah Smith"},
+		{householdPBID: "hh_1", fieldName: "Family Camp DOB 2", value: "1960-08-07"},
+	}
+
+	adults := s.processAdults(nil, personValues)
+
+	if len(adults) != 2 {
+		t.Fatalf("conflicting DOB must refuse the merge -- expected 2 adults, got %d: %+v", len(adults), adults)
+	}
+}
+
+// TestProcessAdultsDedupesHandlesThreeRowGroup pins the n>2 requirement:
+// one production 2024 group holds three rows for the same person, and the
+// merge must not assume a pair.
+func TestProcessAdultsDedupesHandlesThreeRowGroup(t *testing.T) {
+	t.Parallel()
+	s := &FamilyCampDerivedSync{}
+
+	householdValues := []customValueEntry{
+		{householdPBID: "hh_1", fieldName: "Family Camp Adult 1", value: "Sofia Nguyen"},
+		{householdPBID: "hh_1", fieldName: "Family Camp Adult 3", value: "Sofia Nguyen"},
+		{householdPBID: "hh_1", fieldName: "Family Camp Adult 5", value: "sofia nguyen"},
+	}
+
+	adults := s.processAdults(householdValues, nil)
+
+	if len(adults) != 1 {
+		t.Fatalf("expected the three-row group collapsed to 1 adult, got %d: %+v", len(adults), adults)
+	}
+	if adults[0].adultNumber != 1 {
+		t.Errorf("survivor adult_number = %d, want 1 (lowest slot wins)", adults[0].adultNumber)
+	}
+}
