@@ -22,6 +22,14 @@ type HouseholdCustomFieldValuesSync struct {
 	BaseSyncService
 	Session     string                 // Session filter: "all", "1", "2", "2a", "3", "4", etc.
 	rateLimiter *ratelimit.RateLimiter // Rate limiter for API calls
+
+	// FamilyCampBounded selects the bounded daily family-camp cohort (any attendee status,
+	// via SessionResolver.GetFamilyCampHouseholdIDsAnyStatus) instead of Session or the
+	// year-wide fallback. Set only on the dedicated "household_custom_values_family_camp"
+	// service instance registered for the daily cron (kindred#2482) -- the plain
+	// "household_custom_values" instance used by the weekly sweep and manual runs leaves
+	// this false.
+	FamilyCampBounded bool
 }
 
 // NewHouseholdCustomFieldValuesSync creates a new household custom field values sync service
@@ -251,6 +259,23 @@ func (s *HouseholdCustomFieldValuesSync) preloadFieldDefMapping() (map[int]strin
 
 // getHouseholdIDsToSync returns the list of household CampMinder IDs to sync based on session filter
 func (s *HouseholdCustomFieldValuesSync) getHouseholdIDsToSync(year int) ([]int, error) {
+	// Bounded daily family-camp pass (kindred#2482): any attendee status, across every
+	// family-camp weekend, resolved via attendees rather than Session so it can span
+	// multiple weekend sessions in one run.
+	if s.FamilyCampBounded {
+		resolver := NewSessionResolver(s.App)
+		householdIDs, err := resolver.GetFamilyCampHouseholdIDsAnyStatus(year)
+		if err != nil {
+			return nil, err
+		}
+
+		s.DebugLog("Resolved family-camp bounded cohort to household IDs",
+			"count", len(householdIDs),
+			"year", year)
+
+		return householdIDs, nil
+	}
+
 	// Use session resolver if session filter is specified
 	if s.Session != "" && s.Session != DefaultSession {
 		resolver := NewSessionResolver(s.App)

@@ -104,6 +104,13 @@ var syncJobMeta = []JobMeta{
 	// Expensive phase - Custom values (on-demand, rate limited)
 	{"person_custom_values", PhaseExpensive, "Person custom field values"},
 	{"household_custom_values", PhaseExpensive, "Household custom field values"},
+	// Bounded daily family-camp pass (kindred#2482): same API cost per entity as the two
+	// above, scoped to family-camp attendees (any status) and run as part of the daily
+	// cron -- see getDailySyncJobs.
+	{"person_custom_values_family_camp", PhaseExpensive,
+		"Person custom field values -- bounded daily pass, family-camp attendees, any status"},
+	{"household_custom_values_family_camp", PhaseExpensive,
+		"Household custom field values -- bounded daily pass, family-camp attendees, any status"},
 
 	// Transform phase - PocketBase → PocketBase
 	{"family_camp_derived", PhaseTransform, "Compute family camp tables from custom values"},
@@ -1216,9 +1223,20 @@ func getDailySyncJobs() []string {
 		"bunk_assignments",       // Depends on sessions, persons, bunks
 		"staff",                  // Staff sync: depends on divisions, bunks, persons
 		"financial_transactions", // Source data: depends on sessions, persons, households, divisions
-		// Transform phase: derived tables run daily using latest source data
-		// and existing custom values from the most recent weekly sync.
-		// New enrollments, session changes, etc. are reflected immediately.
+		// Bounded daily family-camp custom-values pass (kindred#2482), inserted here --
+		// between the source jobs above and the transform jobs below -- so the transform
+		// phase sees today's cabin answers instead of up to 7 days stale ones. Scoped to
+		// family-camp attendees (any status, via SessionResolver's attendees-backed
+		// cohort) so it stays cheap: ~11.5 min for ~450 households against the weekly
+		// sweep's ~43 min for everyone. The weekly unrestricted sweep (Scheduler, cron
+		// "0 4 * * 0") is UNCHANGED and still refreshes every other custom-values
+		// consumer -- dietary, transportation, financial aid, staff skills, and so on.
+		"person_custom_values_family_camp",
+		"household_custom_values_family_camp",
+		// Transform phase: derived tables run daily using the freshest source data, plus
+		// today's family-camp custom values (the bounded pass immediately above) and every
+		// other custom value from the most recent weekly sync. New enrollments, session
+		// changes, etc. are reflected immediately.
 		"family_camp_derived",
 		"lodging_assignments", // Derived: cabin custom fields -> lodging_assignments (+ history)
 		"staff_skills",
@@ -2390,6 +2408,17 @@ func (o *Orchestrator) InitializeSyncServices() error {
 	// These require N API calls (one per entity) so are triggered manually
 	o.RegisterService("person_custom_values", NewPersonCustomFieldValuesSync(o.app, client))
 	o.RegisterService("household_custom_values", NewHouseholdCustomFieldValuesSync(o.app, client))
+
+	// Bounded daily family-camp custom-values pass (kindred#2482) -- distinct service
+	// instances from the two above, scoped via FamilyCampBounded to family-camp attendees
+	// (any status) rather than Session. Part of the daily cron: see getDailySyncJobs.
+	familyCampPersonValues := NewPersonCustomFieldValuesSync(o.app, client)
+	familyCampPersonValues.FamilyCampBounded = true
+	o.RegisterService("person_custom_values_family_camp", familyCampPersonValues)
+
+	familyCampHouseholdValues := NewHouseholdCustomFieldValuesSync(o.app, client)
+	familyCampHouseholdValues.FamilyCampBounded = true
+	o.RegisterService("household_custom_values_family_camp", familyCampHouseholdValues)
 
 	// Family camp derived tables (computes from custom values - on-demand)
 	o.RegisterService("family_camp_derived", NewFamilyCampDerivedSync(o.app))

@@ -100,7 +100,28 @@ func (r *SessionResolver) ResolveSessionCMIDs(session string, year int) ([]int, 
 
 // GetPersonIDsForSession returns CampMinder person IDs for persons enrolled in the specified session.
 // For "all" or empty session, returns nil (caller should handle all persons case).
+//
+// Enrolled-only. This backs manual `?session=` runs, where enrolled-only is the correct
+// behavior -- see GetPersonIDsForSessionAnyStatus for the status-agnostic sibling.
 func (r *SessionResolver) GetPersonIDsForSession(session string, year int) ([]int, error) {
+	return r.personIDsForSession(session, year, true)
+}
+
+// GetPersonIDsForSessionAnyStatus is GetPersonIDsForSession's status-agnostic sibling
+// (kindred#2482). It returns persons attached to the session regardless of attendee status --
+// enrolled, cancelled, waitlisted, and so on. It exists for the bounded daily family-camp
+// custom-values pass, which must observe a household moving IN or OUT of enrolled: a
+// cancellation or a waitlist entry is exactly the transition the pass exists to catch, so
+// filtering it out would defeat the point.
+//
+// Deliberately a sibling, not a relaxation of GetPersonIDsForSession: that function's
+// enrolled-only behavior also backs manual `?session=` runs, where enrolled-only remains
+// correct.
+func (r *SessionResolver) GetPersonIDsForSessionAnyStatus(session string, year int) ([]int, error) {
+	return r.personIDsForSession(session, year, false)
+}
+
+func (r *SessionResolver) personIDsForSession(session string, year int, enrolledOnly bool) ([]int, error) {
 	cmIDs, err := r.ResolveSessionCMIDs(session, year)
 	if err != nil {
 		return nil, err
@@ -118,7 +139,10 @@ func (r *SessionResolver) GetPersonIDsForSession(session string, year int) ([]in
 	sessionFilter := "(" + strings.Join(sessionConditions, " || ") + ")"
 
 	// Query attendees for persons in target sessions
-	filter := fmt.Sprintf("year = %d && status = 'enrolled' && %s", year, sessionFilter)
+	filter := fmt.Sprintf("year = %d && %s", year, sessionFilter)
+	if enrolledOnly {
+		filter = fmt.Sprintf("year = %d && status = 'enrolled' && %s", year, sessionFilter)
+	}
 	attendees, err := r.app.FindRecordsByFilter("attendees", filter, "", 0, 0)
 	if err != nil {
 		return nil, fmt.Errorf("querying attendees: %w", err)
@@ -143,7 +167,21 @@ func (r *SessionResolver) GetPersonIDsForSession(session string, year int) ([]in
 // GetHouseholdIDsForSession returns CampMinder household IDs for households
 // with persons enrolled in the specified session.
 // For "all" or empty session, returns nil (caller should handle all households case).
+//
+// Enrolled-only. This backs manual `?session=` runs -- see
+// GetHouseholdIDsForSessionAnyStatus for the status-agnostic sibling.
 func (r *SessionResolver) GetHouseholdIDsForSession(session string, year int) ([]int, error) {
+	return r.householdIDsForSession(session, year, true)
+}
+
+// GetHouseholdIDsForSessionAnyStatus is GetHouseholdIDsForSession's status-agnostic sibling
+// (kindred#2482) -- see GetPersonIDsForSessionAnyStatus's doc comment for why this is a
+// sibling function rather than a relaxation of the shared enrolled-only path.
+func (r *SessionResolver) GetHouseholdIDsForSessionAnyStatus(session string, year int) ([]int, error) {
+	return r.householdIDsForSession(session, year, false)
+}
+
+func (r *SessionResolver) householdIDsForSession(session string, year int, enrolledOnly bool) ([]int, error) {
 	cmIDs, err := r.ResolveSessionCMIDs(session, year)
 	if err != nil {
 		return nil, err
@@ -161,7 +199,10 @@ func (r *SessionResolver) GetHouseholdIDsForSession(session string, year int) ([
 	sessionFilter := "(" + strings.Join(sessionConditions, " || ") + ")"
 
 	// Query attendees for persons in target sessions, then get their households
-	filter := fmt.Sprintf("year = %d && status = 'enrolled' && %s", year, sessionFilter)
+	filter := fmt.Sprintf("year = %d && %s", year, sessionFilter)
+	if enrolledOnly {
+		filter = fmt.Sprintf("year = %d && status = 'enrolled' && %s", year, sessionFilter)
+	}
 	attendees, err := r.app.FindRecordsByFilter("attendees", filter, "", 0, 0)
 	if err != nil {
 		return nil, fmt.Errorf("querying attendees: %w", err)
@@ -217,4 +258,85 @@ func (r *SessionResolver) GetHouseholdIDsForSession(session string, year int) ([
 	}
 
 	return householdIDs, nil
+}
+
+// GetFamilyCampSessionCMIDs returns the CampMinder ids of every family-camp weekend session
+// in the given year (session_type = "family").
+//
+// This is the entry point for the bounded daily custom-values pass (kindred#2482). The pass's
+// cohort must come from a table that already knows about sessions -- not from custom values --
+// because the weekend cabin value IS a custom value: reading custom values to decide who to
+// sync custom values for is circular.
+func (r *SessionResolver) GetFamilyCampSessionCMIDs(year int) ([]int, error) {
+	filter := fmt.Sprintf("year = %d && session_type = '%s'", year, sessionTypeFamily)
+	sessions, err := r.app.FindRecordsByFilter("camp_sessions", filter, "", 0, 0)
+	if err != nil {
+		return nil, fmt.Errorf("querying family-camp sessions: %w", err)
+	}
+
+	cmIDs := make([]int, 0, len(sessions))
+	for _, s := range sessions {
+		if cmID, ok := s.Get("cm_id").(float64); ok && cmID > 0 {
+			cmIDs = append(cmIDs, int(cmID))
+		}
+	}
+
+	return cmIDs, nil
+}
+
+// GetFamilyCampPersonIDsAnyStatus returns the union, across every family-camp weekend in the
+// year, of GetPersonIDsForSessionAnyStatus -- the bounded daily pass's person cohort
+// (kindred#2482). Any status, deliberately: the pass exists to observe a household moving in
+// or out of enrolled, so a cancelled or waitlisted attendee belongs in the cohort exactly as
+// much as an enrolled one.
+func (r *SessionResolver) GetFamilyCampPersonIDsAnyStatus(year int) ([]int, error) {
+	sessionCMIDs, err := r.GetFamilyCampSessionCMIDs(year)
+	if err != nil {
+		return nil, err
+	}
+
+	idSet := make(map[int]bool)
+	for _, cmID := range sessionCMIDs {
+		ids, err := r.GetPersonIDsForSessionAnyStatus(strconv.Itoa(cmID), year)
+		if err != nil {
+			return nil, err
+		}
+		for _, id := range ids {
+			idSet[id] = true
+		}
+	}
+
+	result := make([]int, 0, len(idSet))
+	for id := range idSet {
+		result = append(result, id)
+	}
+
+	return result, nil
+}
+
+// GetFamilyCampHouseholdIDsAnyStatus is GetFamilyCampPersonIDsAnyStatus's household twin
+// (kindred#2482).
+func (r *SessionResolver) GetFamilyCampHouseholdIDsAnyStatus(year int) ([]int, error) {
+	sessionCMIDs, err := r.GetFamilyCampSessionCMIDs(year)
+	if err != nil {
+		return nil, err
+	}
+
+	idSet := make(map[int]bool)
+	for _, cmID := range sessionCMIDs {
+		ids, err := r.GetHouseholdIDsForSessionAnyStatus(strconv.Itoa(cmID), year)
+		if err != nil {
+			return nil, err
+		}
+		for _, id := range ids {
+			idSet[id] = true
+		}
+	}
+
+	result := make([]int, 0, len(idSet))
+	for id := range idSet {
+		result = append(result, id)
+	}
+
+	return result, nil
 }
