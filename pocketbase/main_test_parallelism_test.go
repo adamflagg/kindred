@@ -214,6 +214,34 @@ var serialGroups = []struct {
 		},
 	},
 	{
+		// The Family Camp roster stamps its tab name -- and computes ages -- in
+		// camp-local time, defaulting to Pacific when TZ is unset (kindred#2433).
+		// TZ is process-global and read through time.LoadLocation, so these five
+		// have to set it for real; there is no injection seam that would still be
+		// testing the fallback. The export path takes an injected clock precisely
+		// so that only the timezone tests need this, not the other twelve.
+		pkg:    "sync",
+		reason: "t.Setenv: TZ drives the camp-local timezone fallback itself",
+		tests: []string{
+			"TestCampLocationDefaultsToPacific",
+			"TestCampLocationFallsBackOnAnUnknownZone",
+			"TestCampLocationHonoursTZ",
+			"TestRosterExportStampsAgesInCampLocalTime",
+		},
+	},
+	{
+		// google.IsEnabled() reads GOOGLE_SHEETS_ENABLED from the process
+		// environment, and this test asserts that a staff-triggered export
+		// REFUSES when it is off rather than degrading silently as the sync path
+		// does. There is no seam short of the env var: IsEnabled is what the
+		// production constructor calls.
+		pkg:    "sync",
+		reason: "t.Setenv: GOOGLE_SHEETS_ENABLED drives the export's refusal itself",
+		tests: []string{
+			"TestNewRosterExporterForAppRefusesWhenSheetsIsDisabled",
+		},
+	},
+	{
 		// captureStdout redirects the process's os.Stdout; captureLogs swaps
 		// slog's default handler. Both are process-global, so a parallel test
 		// would capture some other test's output instead of its own.

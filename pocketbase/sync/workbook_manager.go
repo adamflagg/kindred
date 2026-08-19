@@ -20,21 +20,38 @@ const (
 
 	// workbookTypeGlobals is the type identifier for the globals workbook
 	workbookTypeGlobals = "globals"
+
+	// workbookTypeFCRoster is the type identifier for a Family Camp weekend's
+	// roster workbook (kindred#2433). Unlike globals and year, several rows share
+	// a year -- one per weekend -- so these are the only rows whose key needs the
+	// session dimension. workbook_type stays a CLOSED vocabulary: one type per
+	// session would turn GetWorkbookByType's filter into id string-matching and
+	// the admin Sheets tab's grouping into noise.
+	workbookTypeFCRoster = "fc_roster"
+
+	// notSessionScoped is the session_cm_id a globals or per-year workbook
+	// carries. A real CampMinder id is never 0, and PocketBase declares number
+	// columns NUMERIC DEFAULT 0 NOT NULL, so the rows that predate migration
+	// 1500000165 already read as this.
+	notSessionScoped = 0
 )
 
 // WorkbookRecord represents a workbook stored in the database.
 type WorkbookRecord struct {
 	ID            string
 	SpreadsheetID string
-	WorkbookType  string // "globals" or "year"
+	WorkbookType  string // "globals", "year" or "fc_roster"
 	Year          int    // 0 for globals
-	Title         string
-	URL           string
-	TabCount      int
-	TotalRecords  int
-	Status        string // "ok", "error", "syncing"
-	ErrorMessage  string
-	LastSync      string
+	// SessionCMID scopes a roster workbook to one Family Camp weekend, and is
+	// notSessionScoped for globals and per-year workbooks.
+	SessionCMID  int
+	Title        string
+	URL          string
+	TabCount     int
+	TotalRecords int
+	Status       string // "ok", "error", "syncing"
+	ErrorMessage string
+	LastSync     string
 }
 
 // DriveSearcher allows searching Drive for existing spreadsheets (enables mocking)
@@ -91,18 +108,35 @@ func NewWorkbookManagerWithSearcher(
 // GetWorkbookByType retrieves a workbook record by type and year.
 // For globals workbook, pass year=0.
 // Returns nil if no workbook exists.
-func (m *WorkbookManager) GetWorkbookByType(_ context.Context, workbookType string, year int) (*WorkbookRecord, error) {
-	var filter string
-	if workbookType == workbookTypeGlobals {
-		filter = fmt.Sprintf("workbook_type = '%s'", workbookType)
-	} else {
-		filter = fmt.Sprintf("workbook_type = '%s' && year = %d", workbookType, year)
+//
+// This is the NON-session-scoped lookup: it matches only rows carrying
+// session_cm_id = notSessionScoped, which is every globals and per-year row.
+// Roster workbooks share a year with the per-year workbook, so without that
+// clause this would start returning an arbitrary weekend's roster to the data
+// export. Use GetWorkbookForSession for those.
+func (m *WorkbookManager) GetWorkbookByType(
+	ctx context.Context, workbookType string, year int,
+) (*WorkbookRecord, error) {
+	return m.GetWorkbookForSession(ctx, workbookType, year, notSessionScoped)
+}
+
+// GetWorkbookForSession retrieves a workbook record by type, year and session.
+// Returns nil if no workbook exists.
+func (m *WorkbookManager) GetWorkbookForSession(
+	_ context.Context, workbookType string, year, sessionCMID int,
+) (*WorkbookRecord, error) {
+	// Note the spaces around every operator -- PocketBase's filter parser
+	// silently returns wrong results without them.
+	filter := fmt.Sprintf("workbook_type = '%s' && session_cm_id = %d", workbookType, sessionCMID)
+	if workbookType != workbookTypeGlobals {
+		filter = fmt.Sprintf("%s && year = %d", filter, year)
 	}
 
 	records, err := m.app.FindRecordsByFilter(sheetsWorkbooksCollection, filter, "", 1, 0)
 	if err != nil {
 		// Collection might not exist yet (before migration runs)
-		slog.Debug("Error finding workbook", "error", err, "type", workbookType, "year", year)
+		slog.Debug("Error finding workbook",
+			"error", err, "type", workbookType, "year", year, "session_cm_id", sessionCMID)
 		return nil, nil
 	}
 
@@ -116,6 +150,7 @@ func (m *WorkbookManager) GetWorkbookByType(_ context.Context, workbookType stri
 		SpreadsheetID: safeString(record.Get("spreadsheet_id")),
 		WorkbookType:  safeString(record.Get("workbook_type")),
 		Year:          safeInt(record.Get("year")),
+		SessionCMID:   safeInt(record.Get("session_cm_id")),
 		Title:         safeString(record.Get("title")),
 		URL:           safeString(record.Get("url")),
 		TabCount:      safeInt(record.Get("tab_count")),
@@ -133,8 +168,11 @@ func (m *WorkbookManager) SaveWorkbookRecord(ctx context.Context, wb *WorkbookRe
 		return nil, fmt.Errorf("collection %s not found: %w", sheetsWorkbooksCollection, err)
 	}
 
-	// Check if record already exists
-	existing, err := m.GetWorkbookByType(ctx, wb.WorkbookType, wb.Year)
+	// Check if record already exists. Keyed on the SESSION too: without it the
+	// second Family Camp weekend of a season matches the first weekend's row,
+	// takes the update branch below, and silently overwrites its spreadsheet_id.
+	// The unique index cannot catch that -- this check short-circuits ahead of it.
+	existing, err := m.GetWorkbookForSession(ctx, wb.WorkbookType, wb.Year, wb.SessionCMID)
 	if err != nil {
 		return nil, fmt.Errorf("checking existing workbook: %w", err)
 	}
@@ -157,6 +195,9 @@ func (m *WorkbookManager) SaveWorkbookRecord(ctx context.Context, wb *WorkbookRe
 	if wb.Year > 0 {
 		record.Set("year", wb.Year)
 	}
+	// Always set, unlike year: 0 is a meaningful value here (notSessionScoped),
+	// and it must match what GetWorkbookForSession filters on.
+	record.Set("session_cm_id", wb.SessionCMID)
 	record.Set("title", wb.Title)
 	record.Set("url", wb.URL)
 	record.Set("tab_count", wb.TabCount)
@@ -215,6 +256,7 @@ func (m *WorkbookManager) ListAllWorkbooks(_ context.Context) ([]WorkbookRecord,
 			SpreadsheetID: safeString(record.Get("spreadsheet_id")),
 			WorkbookType:  safeString(record.Get("workbook_type")),
 			Year:          safeInt(record.Get("year")),
+			SessionCMID:   safeInt(record.Get("session_cm_id")),
 			Title:         safeString(record.Get("title")),
 			URL:           safeString(record.Get("url")),
 			TabCount:      safeInt(record.Get("tab_count")),
@@ -413,10 +455,24 @@ func (m *WorkbookManager) UpdateMasterIndex(ctx context.Context) error {
 
 // BuildIndexSheetData builds the data matrix for the master index sheet.
 // Rows are sorted: globals first, then years in descending order.
+//
+// Family Camp roster workbooks are EXCLUDED. The Index sheet lives in the
+// globals workbook, in the Exports folder, whose audience is deliberately wider
+// than the roster folder's -- that per-folder split is the privacy control for
+// workbooks carrying family contact details (kindred#2433 design §2). Listing
+// one here would publish its weekend name and a clickable link to that wider
+// audience. They would also all render as their year, since the index has no
+// session column, so eight 2026 weekends would arrive as eight rows labeled
+// 2026. Staff reach a roster through the roster folder or the export's own
+// response, never through this index.
 func BuildIndexSheetData(workbooks []WorkbookRecord) [][]any {
 	// Sort workbooks: globals first, then years descending
-	sorted := make([]WorkbookRecord, len(workbooks))
-	copy(sorted, workbooks)
+	sorted := make([]WorkbookRecord, 0, len(workbooks))
+	for i := range workbooks {
+		if workbooks[i].WorkbookType != workbookTypeFCRoster {
+			sorted = append(sorted, workbooks[i])
+		}
+	}
 	slices.SortFunc(sorted, func(a, b WorkbookRecord) int {
 		// Globals always first
 		aGlobal := a.WorkbookType == workbookTypeGlobals

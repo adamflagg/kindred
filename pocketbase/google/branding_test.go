@@ -435,3 +435,47 @@ func TestIsDevEnvironment(t *testing.T) {
 		})
 	}
 }
+
+// The Family Camp roster workbook title. kindred#2433.
+//
+// Unlike the data workbooks, the camp name is NOT in it: these live in a folder
+// that is entirely this camp's, and the session name is what staff pick a
+// workbook out of a folder by.
+
+func TestFormatRosterWorkbookTitle(t *testing.T) {
+	resetBrandingCache()
+	t.Setenv("IS_DOCKER", "true")
+
+	title := FormatRosterWorkbookTitle("Family Camp 2: Keshet LGBTQ Weekend", 2026)
+	expected := "Family Camp 2: Keshet LGBTQ Weekend 2026 Roster"
+	if title != expected {
+		t.Errorf("FormatRosterWorkbookTitle = %q, want %q", title, expected)
+	}
+}
+
+// TestFormatRosterWorkbookTitleMarksDev pins the second signal that a run is not
+// production. It matters more here than for the data workbooks: prod and dev
+// roster folders are configured by two values of ONE env var, so a mispointed id
+// is the only thing between a dev run and the real folder.
+func TestFormatRosterWorkbookTitleMarksDev(t *testing.T) {
+	resetBrandingCache()
+	t.Setenv("IS_DOCKER", "")
+
+	title := FormatRosterWorkbookTitle("Family Camp 6", 2026)
+	expected := "(DEV) Family Camp 6 2026 Roster"
+	if title != expected {
+		t.Errorf("FormatRosterWorkbookTitle = %q, want %q", title, expected)
+	}
+}
+
+// TestFormatRosterWorkbookTitleTrimsTheSessionName keeps a stray space in
+// CampMinder's session name out of the Drive file name, where it would make the
+// find-by-name lookup miss the workbook it just created.
+func TestFormatRosterWorkbookTitleTrimsTheSessionName(t *testing.T) {
+	resetBrandingCache()
+	t.Setenv("IS_DOCKER", "true")
+
+	if title := FormatRosterWorkbookTitle("  Family Camp 6 ", 2026); title != "Family Camp 6 2026 Roster" {
+		t.Errorf("FormatRosterWorkbookTitle = %q, want the name trimmed", title)
+	}
+}
