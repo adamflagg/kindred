@@ -899,3 +899,39 @@ class TestCancellationDataCoverage:
         year_dict = {y.year: y for y in result.years}
         assert year_dict[2022].has_cancellation_data is False
         assert year_dict[2026].has_cancellation_data is True
+
+    @pytest.mark.asyncio
+    async def test_coverage_false_when_cancellation_fetch_fails_even_if_history_probe_succeeds(
+        self, mock_repository: MagicMock
+    ) -> None:
+        """A failed fetch_status_transitions must NOT be reported as a
+        confidently-measured zero cancellation count.
+
+        Regression test (scan-it finding on #2443's own PR): coverage was
+        wired to a separate probe (fetch_status_history) from the count
+        (fetch_status_transitions). A repository fetch error was already
+        swallowed to total_cancelled=0 (pre-existing) -- but adding
+        has_cancellation_data without tying it to that same failure makes
+        the wrong number look MORE trustworthy, not less: has_cancellation_data
+        would read True (the unrelated history probe succeeded) while the
+        cancellation count itself was never actually measured this call.
+        """
+        from api.services.historical_service import HistoricalService
+
+        async def failing_fetch_status_transitions(year: int, statuses: Any) -> list[Any]:
+            raise RuntimeError("simulated repository failure")
+
+        mock_repository.fetch_status_transitions = AsyncMock(side_effect=failing_fetch_status_transitions)
+        # The unrelated year-level coverage probe succeeds and has rows.
+        mock_repository.fetch_status_history = AsyncMock(
+            return_value=[make_mock_transition(9001, 5001, new_status="enrolled")]
+        )
+
+        service = HistoricalService(mock_repository)
+        result = await service.calculate_historical_trends(years=[2026])
+
+        year_metric = result.years[0]
+        # The cancellation count was never actually measured this call --
+        # the flag must say so, not present total_cancelled=0 as trustworthy.
+        assert year_metric.has_cancellation_data is False
+        assert year_metric.total_cancelled == 0
