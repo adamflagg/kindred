@@ -81,7 +81,7 @@ func (s *BunkAssignmentsSync) Sync(ctx context.Context) error {
 	// We need to build keys based on person/session CampMinder IDs stored during creation
 	year := s.Client.GetSeasonID()
 
-	existingAssignments, err := s.preloadExistingAssignments(year)
+	existingAssignments, existingByPersonBunk, err := s.preloadExistingAssignments(year)
 	if err != nil {
 		return err
 	}
@@ -196,17 +196,13 @@ func (s *BunkAssignmentsSync) Sync(ctx context.Context) error {
 				// full ladder; ambiguous is only ever true on the staff path,
 				// where a (bunkPlan, bunk) key has more than one candidate
 				// session and guessing would be worse than skipping (kindred#2264).
-				sessionID, ambiguous := s.resolveAssignmentSession(personCMID, bunkPlanID, bunkID, bunkPlanSessions)
-				if ambiguous {
-					candidateCount := len(s.bunkPlanBunkToSession[fmt.Sprintf("%d:%d", bunkPlanID, bunkID)])
-					slog.Warn("Ambiguous (bunkPlan, bunk) staff session lookup, skipping assignment",
-						"bunkPlanCMID", bunkPlanID, "bunkCMID", bunkID, "personCMID", personCMID,
-						"candidateCount", candidateCount)
-					s.Stats.Skipped++
-					continue
-				}
-				if sessionID == 0 {
-					s.Stats.Skipped++
+				// Both no-session outcomes go through one wrapper because both
+				// owe the same bookkeeping before they skip -- counting the
+				// failure where it can be seen, and keeping the assignment's
+				// stored rows out of the orphan sweep (kindred#2465).
+				sessionID, unresolved := s.resolveSessionOrTrackUnresolved(
+					personCMID, bunkPlanID, bunkID, bunkPlanSessions, existingByPersonBunk, year)
+				if unresolved {
 					continue
 				}
 
@@ -254,7 +250,11 @@ func (s *BunkAssignmentsSync) Sync(ctx context.Context) error {
 	}
 
 	// Use extra stats to show fetched count
-	s.LogSyncComplete("Bunk assignments", fmt.Sprintf("fetched=%d assignments", totalAssignments))
+	// unresolved_session is named in the completion line, not left to the JSON
+	// alone: it is the counter an operator watches to know kindred#2465 has not
+	// come back, and LogSyncComplete's own stats string cannot show it.
+	s.LogSyncComplete("Bunk assignments", fmt.Sprintf("fetched=%d assignments, unresolved_session=%d",
+		totalAssignments, s.Stats.UnresolvedSession))
 
 	return nil
 }
@@ -264,6 +264,34 @@ func (s *BunkAssignmentsSync) loadMappings() error {
 	slog.Info("Loading valid CampMinder IDs")
 
 	year := s.Client.GetSeasonID()
+
+	// Every map this function builds describes THIS run and is rebuilt from
+	// scratch here (kindred#2465). The orchestrator constructs one
+	// BunkAssignmentsSync at boot and dispatches every scheduled run to it, so
+	// without this the append-shaped maps -- personEnrollments,
+	// bunkPlanSessionsList, bunkPlanBunkToSession -- gained a full extra copy of
+	// their contents every hour: a (bunkPlan, bunk) pair with ONE bunk_plans row
+	// behind it read as two candidates on run 2, resolveStaffSession called that
+	// ambiguous, the assignment was skipped without being tracked, and
+	// deleteOrphans deleted the row for being untracked. 262 rows for 70 active
+	// bunk staff, every hour, restored only by a container restart. The same
+	// accumulation silently disabled kindred#2259/#2264's bunk-specific
+	// narrowing on the camper path from run 2 onward.
+	//
+	// It belongs HERE, not in Sync()'s reset block: loadMappings is the only
+	// writer of all eight, and bunkPBIDToCMID must be rebuilt before the
+	// bunk_plans pass below reads it -- which the existing load order already
+	// guarantees. The constructor's make() calls stay: several tests build
+	// BunkAssignmentsSync as a struct literal and never call loadMappings.
+	// stranded_assignment_cleanup.go's Sync() names the same hazard for Stats.
+	s.validPersonCMIDs = make(map[int]bool)
+	s.validBunkCMIDs = make(map[int]bool)
+	s.validSessionCMIDs = make(map[int]bool)
+	s.personEnrollments = make(map[int][]int)
+	s.bunkPlanSessionsList = make(map[int][]int)
+	s.staffPersonCMIDs = make(map[int]bool)
+	s.bunkPlanBunkToSession = make(map[string][]int)
+	s.bunkPBIDToCMID = make(map[string]int)
 
 	// Load person enrollments: personCMID -> list of sessionCMIDs they're enrolled in
 	// This is the source of truth for which session a person belongs to
@@ -408,7 +436,16 @@ func (s *BunkAssignmentsSync) loadMappings() error {
 // two is silently lost. See the write key in processAssignment and the
 // orphan key in deleteOrphans -- all three (plus this preload key, the
 // fourth of the grain) must move together.
-func (s *BunkAssignmentsSync) preloadExistingAssignments(year int) (map[string]*core.Record, error) {
+//
+// The second return is an index of the same rows by "personCMID:bunkCMID" ->
+// the tracking keys ("personCMID:sessionCMID:bunkCMID") they were stored
+// under. It exists for the branch that cannot name a session
+// (resolveSessionOrTrackUnresolved): person and bunk are the two thirds of the
+// grain an unresolved assignment still knows, and this is how it finds the
+// stored rows to keep from the sweep (kindred#2465, the kindred#2394 pattern).
+func (s *BunkAssignmentsSync) preloadExistingAssignments(
+	year int,
+) (existing map[string]*core.Record, byPersonBunk map[string][]string, err error) {
 	filter := fmt.Sprintf("year = %d", year)
 
 	assignmentMappings, err := s.BuildRecordCMIDMappings("bunk_assignments", filter, map[string]string{
@@ -417,10 +454,11 @@ func (s *BunkAssignmentsSync) preloadExistingAssignments(year int) (map[string]*
 		"bunk":    "bunks",
 	})
 	if err != nil {
-		return nil, fmt.Errorf("loading assignment mappings: %w", err)
+		return nil, nil, fmt.Errorf("loading assignment mappings: %w", err)
 	}
 
-	return s.PreloadCompositeRecords(
+	byPersonBunk = make(map[string][]string)
+	existing, err = s.PreloadCompositeRecords(
 		"bunk_assignments", filter, func(record *core.Record) (string, bool) {
 			mapping := assignmentMappings[record.Id]
 			personCMID := mapping["personCMID"]
@@ -430,10 +468,73 @@ func (s *BunkAssignmentsSync) preloadExistingAssignments(year int) (map[string]*
 
 			if personCMID > 0 && sessionCMID > 0 && bunkCMID > 0 && recordYear > 0 {
 				key := fmt.Sprintf("%d:%d:%d:%d", personCMID, sessionCMID, bunkCMID, int(recordYear))
+				personBunk := fmt.Sprintf("%d:%d", personCMID, bunkCMID)
+				byPersonBunk[personBunk] = append(byPersonBunk[personBunk],
+					fmt.Sprintf("%d:%d:%d", personCMID, sessionCMID, bunkCMID))
 				return key, true
 			}
 			return "", false
 		})
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return existing, byPersonBunk, nil
+}
+
+// resolveSessionOrTrackUnresolved runs the resolution ladder for one
+// CampMinder assignment and, when it comes back with no session, does the
+// bookkeeping the skip needs: log the ambiguity, count it somewhere an
+// operator can see it, and keep the rows this assignment already has on disk
+// out of the orphan sweep. unresolved being true means the caller must skip
+// this assignment.
+//
+// The tracking is the load-bearing half (kindred#2465, the kindred#2394
+// pattern). Both skip branches used to `continue` before
+// TrackProcessedCompositeKey, so the assignment was absent from ProcessedKeys
+// and deleteOrphans read absence as "CampMinder no longer returns this row"
+// and deleted it. That is the opposite of what the run observed -- CampMinder
+// returned this person in this bunk, the run just could not say which session.
+// persons.go's transformPersonToPB skip carries the same patch for the same
+// symptom -- "Skipped and orphaned are different facts, and this branch only
+// ever meant the first one."
+//
+// Session is the one third of the (person, session, bunk) grain an unresolved
+// assignment does not know, so the keys come from the person:bunk index off
+// preloadExistingAssignments -- every stored session for this person in this
+// bunk. That is deliberately wider than one row: if a shared bunk gave a
+// staffer two stored assignments, an unresolvable run must keep both, because
+// it has no basis for choosing between them.
+func (s *BunkAssignmentsSync) resolveSessionOrTrackUnresolved(
+	personCMID, bunkPlanID, bunkID int,
+	bunkPlanSessions []int,
+	existingByPersonBunk map[string][]string,
+	year int,
+) (sessionID int, unresolved bool) {
+	sessionID, ambiguous := s.resolveAssignmentSession(personCMID, bunkPlanID, bunkID, bunkPlanSessions)
+	if !ambiguous && sessionID != 0 {
+		return sessionID, false
+	}
+
+	if ambiguous {
+		key := fmt.Sprintf("%d:%d", bunkPlanID, bunkID)
+		slog.Warn("Ambiguous (bunkPlan, bunk) staff session lookup, skipping assignment",
+			"bunkPlanCMID", bunkPlanID, "bunkCMID", bunkID, "personCMID", personCMID,
+			"candidateCount", len(distinctSessions(s.bunkPlanBunkToSession[key])))
+	}
+
+	// Skipped keeps its existing meaning -- no row was written -- and
+	// UnresolvedSession names the subset of it that is a resolution failure
+	// rather than an unchanged row. See Stats.UnresolvedSession for why one
+	// counter could not do both jobs.
+	s.Stats.Skipped++
+	s.Stats.UnresolvedSession++
+
+	for _, trackingKey := range existingByPersonBunk[fmt.Sprintf("%d:%d", personCMID, bunkID)] {
+		s.TrackProcessedCompositeKey(trackingKey, year)
+	}
+
+	return 0, true
 }
 
 // findMatchingSession finds the session that a person is enrolled in that also belongs to the bunk plan.
@@ -498,17 +599,50 @@ func (s *BunkAssignmentsSync) resolveViaBunk(personSessions []int, bunkPlanID, b
 		personSessionSet[sessionID] = true
 	}
 
-	match, matches := 0, 0
+	// DISTINCT sessions, not candidate occurrences (kindred#2465). candidates
+	// legitimately lists the same session more than once -- there is one entry
+	// per bunk_plans row, and loadMappings deliberately keeps every one of them
+	// (kindred#2264) -- so counting occurrences made a bunk that is listed twice
+	// under a single session look like two competing answers and silently
+	// dropped this narrowing in favor of the plan-wide fallback.
+	match := 0
+	matched := make(map[int]bool, len(candidates))
 	for _, sessionID := range candidates {
 		if personSessionSet[sessionID] {
 			match = sessionID
-			matches++
+			matched[sessionID] = true
 		}
 	}
-	if matches == 1 {
+	if len(matched) == 1 {
 		return match, true
 	}
 	return 0, false
+}
+
+// distinctSessions returns the candidate session CM IDs with duplicates
+// removed, preserving first-seen order.
+//
+// bunkPlanBunkToSession holds one entry per bunk_plans row, so a bunk listed
+// under one session by two rows of the same plan appears twice -- and every
+// read site must decide on how many DIFFERENT sessions it names, never on how
+// many entries there are (kindred#2465). Deduping here rather than at the
+// build site is deliberate: the build site's duplicates are real data, and
+// TestLoadMappings_KeepsEveryCandidateSessionForASharedBunk pins them as a
+// kindred#2264 regression guard.
+func distinctSessions(candidates []int) []int {
+	if len(candidates) < 2 {
+		return candidates
+	}
+	seen := make(map[int]bool, len(candidates))
+	out := make([]int, 0, len(candidates))
+	for _, sessionID := range candidates {
+		if seen[sessionID] {
+			continue
+		}
+		seen[sessionID] = true
+		out = append(out, sessionID)
+	}
+	return out
 }
 
 // resolveStaffSession looks up the session(s) a specific (bunkPlan, bunk)
@@ -522,7 +656,13 @@ func (s *BunkAssignmentsSync) resolveViaBunk(personSessions []int, bunkPlanID, b
 // an arbitrary session with no error and no log line.
 func (s *BunkAssignmentsSync) resolveStaffSession(bunkPlanID, bunkID int) (sessionID int, ambiguous bool) {
 	key := fmt.Sprintf("%d:%d", bunkPlanID, bunkID)
-	candidates := s.bunkPlanBunkToSession[key]
+	// DISTINCT, not len(candidates) (kindred#2465): the raw list holds one entry
+	// per bunk_plans row, so before the map was rebuilt per run this switch was
+	// reading the number of syncs since boot rather than anything in the
+	// database, and reported every staff assignment in the season ambiguous from
+	// run 2 onward. Rebuilding the map fixed the cause; deciding on distinct
+	// sessions is what makes this switch mean what it says either way.
+	candidates := distinctSessions(s.bunkPlanBunkToSession[key])
 	switch len(candidates) {
 	case 0:
 		return 0, false

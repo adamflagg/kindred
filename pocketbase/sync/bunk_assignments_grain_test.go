@@ -160,7 +160,7 @@ func TestProcessAssignment_MultiSessionPlanDisambiguatedByBunk(t *testing.T) {
 	s.validSessionCMIDs = map[int]bool{sessionACMID: true, sessionBCMID: true}
 	s.validBunkCMIDs = map[int]bool{bunkACMID: true, bunkBCMID: true}
 
-	existing, err := s.preloadExistingAssignments(year)
+	existing, _, err := s.preloadExistingAssignments(year)
 	if err != nil {
 		t.Fatalf("preloadExistingAssignments: %v", err)
 	}
@@ -282,7 +282,7 @@ func TestProcessAssignment_FamilyStylePlanPreservesBothRowsImprecisely(t *testin
 	s.validSessionCMIDs = map[int]bool{sessionACMID: true, sessionBCMID: true}
 	s.validBunkCMIDs = map[int]bool{bunkXCMID: true, bunkYCMID: true}
 
-	existing, err := s.preloadExistingAssignments(year)
+	existing, _, err := s.preloadExistingAssignments(year)
 	if err != nil {
 		t.Fatalf("preloadExistingAssignments: %v", err)
 	}
@@ -393,7 +393,7 @@ func TestBunkAssignmentGrain_SecondSyncRunNeitherLosesNorDuplicates(t *testing.T
 		t.Helper()
 		s := newSync()
 
-		existing, err := s.preloadExistingAssignments(year)
+		existing, _, err := s.preloadExistingAssignments(year)
 		if err != nil {
 			t.Fatalf("preloadExistingAssignments: %v", err)
 		}
@@ -540,5 +540,365 @@ func TestLoadMappings_KeepsEveryCandidateSessionForASharedBunk(t *testing.T) {
 	}
 	if sessionCMID, ambiguous := s.resolveStaffSession(planCMID, soloBunkCMID); ambiguous || sessionCMID != sessionACMID {
 		t.Errorf("resolveStaffSession(solo bunk) = (%d, %v), want (%d, false)", sessionCMID, ambiguous, sessionACMID)
+	}
+}
+
+// TestBunkAssignment_StaffRowSurvivesASecondRunOnTheSameInstance pins
+// kindred#2465: the orchestrator constructs ONE BunkAssignmentsSync at boot
+// and dispatches every scheduled run to it, but loadMappings only ever
+// APPENDED to bunkPlanSessionsList and bunkPlanBunkToSession. Run 2 therefore
+// read run 1's candidates still sitting in the map plus its own fresh copy,
+// so a (bunkPlan, bunk) pair with exactly ONE session in the database
+// presented as two candidates, resolveStaffSession called it ambiguous, the
+// assignment was skipped without ever being tracked as processed, and
+// deleteOrphans read "untracked" as "CampMinder dropped it" and deleted the
+// row. In production that was 262 rows for 70 active bunk staff, deleted
+// every hour, restored only by a container restart.
+//
+// Why TestBunkAssignmentGrain_SecondSyncRunNeitherLosesNorDuplicates does not
+// catch it, and what this test does differently: that test's newSync() closure
+// builds a FRESH instance per run AND hand-assigns the maps, so the real
+// loadMappings never executes at all. This one uses a single instance across
+// both runs and drives the production loadMappings, which is the only place
+// the accumulation is observable.
+//
+// The tightest assertion is the map one -- two loadMappings() calls over one
+// bunk_plans row must leave one candidate, not two. The run-2 resolution and
+// surviving-row assertions are what make the consequence legible.
+func TestBunkAssignment_StaffRowSurvivesASecondRunOnTheSameInstance(t *testing.T) {
+	t.Parallel()
+
+	app, err := pbtests.NewTestApp()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer app.Cleanup()
+	setupBunkAssignmentGrainCollections(t, app)
+
+	const year = 2026
+	const staffPersonCMID = 9000005
+	const planCMID = 8005
+	const sessionCMID = 5501
+	const bunkCMID = 6501
+
+	// Three campers share the bunk with the counselor. They are not decoration:
+	// OrphanSweepGuard refuses a sweep whose computed set is under half of what
+	// is on disk, so a fixture holding ONLY the staff row would have the guard
+	// stop the deletion and hide the bug. Production has no such luck -- the 262
+	// staff rows sat inside a table whose camper rows still resolved and still
+	// tracked, so the guard's floor was met and the sweep ran. This fixture is
+	// that shape in miniature: 3 of 4 rows keep tracking, 1 does not.
+	camperCMIDs := []int{9000006, 9000007, 9000008}
+
+	saveRec(t, app, "persons", map[string]any{"cm_id": staffPersonCMID, "year": year})
+	session := saveRec(t, app, "camp_sessions", map[string]any{"cm_id": sessionCMID, "year": year})
+	bunk := saveRec(t, app, "bunks", map[string]any{"cm_id": bunkCMID, "year": year})
+	for _, camperCMID := range camperCMIDs {
+		saveRec(t, app, "persons", map[string]any{"cm_id": camperCMID, "year": year})
+		saveRec(t, app, "attendees", map[string]any{
+			"person_id": camperCMID, "session": session.Id, "status_id": 2, "year": year,
+		})
+	}
+	// Exactly ONE bunk_plans row: this (plan, bunk) pair is unambiguous in the
+	// database. Any ambiguity a run reports is manufactured in memory.
+	saveRec(t, app, "bunk_plans", map[string]any{
+		"cm_id": planCMID, "bunk": bunk.Id, "session": session.Id, "year": year,
+	})
+	// A bunk staffer: active, bunk_staff, and NOT in attendees -- which is why
+	// resolveAssignmentSession falls all the way through to resolveStaffSession
+	// for them (staff have no enrollment to intersect).
+	saveRec(t, app, "staff", map[string]any{
+		"person_id": staffPersonCMID, "bunk_staff": true, "status": "active", "year": year,
+	})
+
+	// ONE instance, reused across both runs -- the orchestrator's actual shape.
+	s := NewBunkAssignmentsSync(app, newParallelTestCampMinderClient(t, year))
+
+	// runOnce mirrors Sync()'s body over the four assignments CampMinder returns
+	// for this bunk: the same per-run reset Sync() performs at its top, the real
+	// loadMappings, the real preload, the real resolution ladder, and -- on the
+	// skip branch -- exactly what Sync()'s loop does today, which is to count a
+	// Skipped and continue WITHOUT tracking the key. That last detail is the
+	// whole mechanism: the untracked key is what deleteOrphans then deletes.
+	runOnce := func(t *testing.T) (staffSession int, staffAmbiguous bool) {
+		t.Helper()
+
+		s.Stats = Stats{}
+		s.SyncSuccessful = false
+		s.ClearProcessedKeys()
+
+		if err := s.loadMappings(); err != nil {
+			t.Fatalf("loadMappings: %v", err)
+		}
+
+		existing, _, err := s.preloadExistingAssignments(year)
+		if err != nil {
+			t.Fatalf("preloadExistingAssignments: %v", err)
+		}
+
+		for _, personCMID := range append([]int{staffPersonCMID}, camperCMIDs...) {
+			sessionID, ambiguous := s.resolveAssignmentSession(
+				personCMID, planCMID, bunkCMID, s.bunkPlanSessionsList[planCMID])
+			if personCMID == staffPersonCMID {
+				staffSession, staffAmbiguous = sessionID, ambiguous
+			}
+			if ambiguous || sessionID == 0 {
+				s.Stats.Skipped++
+				continue
+			}
+			assignmentData := map[string]any{
+				"PersonID":   float64(personCMID),
+				"BunkID":     float64(bunkCMID),
+				"BunkPlanID": float64(planCMID),
+				"SessionID":  float64(sessionID),
+				"ID":         float64(730000 + personCMID),
+			}
+			if err := s.processAssignment(assignmentData, existing); err != nil {
+				t.Fatalf("processAssignment(person=%d): %v", personCMID, err)
+			}
+		}
+
+		s.SyncSuccessful = true // Sync() sets this after a successful first page fetch
+		if err := s.protectThenSweepOrphans(year); err != nil {
+			t.Fatalf("protectThenSweepOrphans: %v", err)
+		}
+		return staffSession, staffAmbiguous
+	}
+
+	if sessionID, ambiguous := runOnce(t); ambiguous || sessionID != sessionCMID {
+		t.Fatalf("run 1: staff resolution = (%d, ambiguous=%v), want (%d, false)", sessionID, ambiguous, sessionCMID)
+	}
+	if rows := bunkAssignmentsForYear(t, app, year); len(rows) != 4 {
+		t.Fatalf("run 1: bunk_assignments rows = %d, want 4 (3 campers + 1 counselor)", len(rows))
+	}
+
+	sessionID, ambiguous := runOnce(t)
+
+	bunkKey := fmt.Sprintf("%d:%d", planCMID, bunkCMID)
+	if got := s.bunkPlanBunkToSession[bunkKey]; len(got) != 1 {
+		t.Errorf("after two loadMappings() calls on one instance, bunkPlanBunkToSession[%q] = %v "+
+			"(%d candidates), want exactly 1 -- the maps must be rebuilt per run, not appended to",
+			bunkKey, got, len(got))
+	}
+	if ambiguous {
+		t.Errorf("run 2: staff resolution reported ambiguous for a (plan, bunk) pair with ONE bunk_plans " +
+			"row -- candidateCount is counting runs since boot, not sessions in the database")
+	}
+	if sessionID != sessionCMID {
+		t.Errorf("run 2: staff resolved session = %d, want %d", sessionID, sessionCMID)
+	}
+	// Deliberately NOT asserted here: Stats.Skipped. On this run it reads 4 --
+	// three legitimate no-change skips from base_sync's ProcessCompositeRecord
+	// for the campers, plus the one ambiguous staff skip -- and it read 4 before
+	// the sweep destroyed anything too. That indistinguishability is the reason
+	// kindred#2465 ran for 119 hourly syncs reporting status='success' with a
+	// flat skipped_count. The counter that CAN see it is asserted in
+	// TestBunkAssignment_UnresolvedAssignmentIsCountedAndKeptFromTheSweep.
+
+	if rows := bunkAssignmentsForYear(t, app, year); len(rows) != 4 {
+		t.Errorf("after run 2: bunk_assignments rows = %d, want 4 -- the staff assignment must survive the "+
+			"hourly sync, not be swept as an orphan the run never tracked", len(rows))
+	}
+}
+
+// TestResolveViaBunk_DecidesOnDISTINCTSessions pins the camper-side half of
+// kindred#2465. resolveViaBunk counted matches per candidate OCCURRENCE, so
+// once the accumulated map held the same session twice, matches == 2 and the
+// kindred#2264 bunk-specific narrowing silently reverted to the plan-wide
+// findMatchingSession fallback from run 2 onward.
+//
+// The decision belongs at the READ site, not the build site: duplicates within
+// a single run are legitimate (one entry per bunk_plans row -- see
+// TestLoadMappings_KeepsEveryCandidateSessionForASharedBunk, which pins
+// [A, A, B] deliberately), so what must change is what "ambiguous" counts.
+func TestResolveViaBunk_DecidesOnDISTINCTSessions(t *testing.T) {
+	t.Parallel()
+
+	const planCMID = 8006
+	const sessionACMID = 5601
+	const sessionBCMID = 5602
+	const bunkCMID = 6601
+	key := fmt.Sprintf("%d:%d", planCMID, bunkCMID)
+
+	t.Run("one session listed twice still narrows", func(t *testing.T) {
+		t.Parallel()
+		s := &BunkAssignmentsSync{}
+		s.bunkPlanBunkToSession = map[string][]int{key: {sessionACMID, sessionACMID}}
+
+		got, ok := s.resolveViaBunk([]int{sessionACMID}, planCMID, bunkCMID)
+		if !ok || got != sessionACMID {
+			t.Errorf("resolveViaBunk = (%d, %v), want (%d, true) -- two entries naming ONE session "+
+				"are one candidate, not two", got, ok, sessionACMID)
+		}
+	})
+
+	t.Run("two genuinely different sessions still refuse to narrow", func(t *testing.T) {
+		t.Parallel()
+		s := &BunkAssignmentsSync{}
+		s.bunkPlanBunkToSession = map[string][]int{key: {sessionACMID, sessionBCMID}}
+
+		got, ok := s.resolveViaBunk([]int{sessionACMID, sessionBCMID}, planCMID, bunkCMID)
+		if ok || got != 0 {
+			t.Errorf("resolveViaBunk = (%d, %v), want (0, false) -- a bunk shared across two sessions "+
+				"the person is enrolled in must fall back to findMatchingSession (kindred#2264)", got, ok)
+		}
+	})
+}
+
+// TestResolveStaffSession_DecidesOnDISTINCTSessions pins the staff-side half
+// of kindred#2465: switching on len(candidates) made the RUN COUNT the
+// ambiguity signal. It must switch on the number of distinct sessions, while
+// keeping the kindred#2264 behavior for a bunk genuinely shared across two
+// sessions of one plan.
+func TestResolveStaffSession_DecidesOnDISTINCTSessions(t *testing.T) {
+	t.Parallel()
+
+	const planCMID = 8007
+	const sessionACMID = 5701
+	const sessionBCMID = 5702
+	const bunkCMID = 6701
+	key := fmt.Sprintf("%d:%d", planCMID, bunkCMID)
+
+	t.Run("one session listed twice is not ambiguous", func(t *testing.T) {
+		t.Parallel()
+		s := &BunkAssignmentsSync{}
+		s.bunkPlanBunkToSession = map[string][]int{key: {sessionACMID, sessionACMID}}
+
+		got, ambiguous := s.resolveStaffSession(planCMID, bunkCMID)
+		if ambiguous || got != sessionACMID {
+			t.Errorf("resolveStaffSession = (%d, %v), want (%d, false) -- one session listed twice "+
+				"is one candidate", got, ambiguous, sessionACMID)
+		}
+	})
+
+	t.Run("two distinct sessions stay ambiguous", func(t *testing.T) {
+		t.Parallel()
+		s := &BunkAssignmentsSync{}
+		s.bunkPlanBunkToSession = map[string][]int{key: {sessionACMID, sessionACMID, sessionBCMID}}
+
+		got, ambiguous := s.resolveStaffSession(planCMID, bunkCMID)
+		if !ambiguous || got != 0 {
+			t.Errorf("resolveStaffSession = (%d, %v), want (0, true) -- a bunk under two sessions of "+
+				"one plan is genuinely ambiguous and must still be skipped (kindred#2264)", got, ambiguous)
+		}
+	})
+
+	t.Run("no candidates is not ambiguous", func(t *testing.T) {
+		t.Parallel()
+		s := &BunkAssignmentsSync{}
+		s.bunkPlanBunkToSession = map[string][]int{}
+
+		got, ambiguous := s.resolveStaffSession(planCMID, bunkCMID)
+		if ambiguous || got != 0 {
+			t.Errorf("resolveStaffSession = (%d, %v), want (0, false)", got, ambiguous)
+		}
+	})
+}
+
+// TestBunkAssignment_UnresolvedAssignmentIsCountedAndKeptFromTheSweep pins the
+// two halves of kindred#2465 that are correct on their own terms even with the
+// map accumulation fixed, because a (plan, bunk) pair CAN be genuinely
+// ambiguous (kindred#2264: a family-camp bunk listed under every session of
+// its plan) and a run can genuinely fail to resolve a session:
+//
+//  1. An unresolved assignment gets its own counter. Folded into Stats.Skipped
+//     it is invisible -- base_sync's ProcessCompositeRecord increments the same
+//     field for every unchanged row, so on a steady-state run Skipped is
+//     roughly the whole table. That is why 119 destructive hourly runs all read
+//     status='success' with a flat skipped_count.
+//
+//  2. An unresolved assignment does NOT hand its existing row to deleteOrphans.
+//     The run SAW this person in this bunk; it just could not name the session.
+//     Absence from ProcessedKeys means "CampMinder no longer returns this",
+//     which is the opposite of what happened. This is persons.go:487-508's
+//     kindred#2394 patch applied to the same symptom: "Skipped and orphaned are
+//     different facts, and this branch only ever meant the first one."
+//
+// Skipped keeps incrementing alongside the new counter: no row was written, and
+// that is what Skipped has always counted here. The new field is a named subset
+// of it, not a replacement -- unlike Stats.DuplicateStaffStatus, whose branch
+// never touched Skipped in the first place.
+func TestBunkAssignment_UnresolvedAssignmentIsCountedAndKeptFromTheSweep(t *testing.T) {
+	t.Parallel()
+
+	app, err := pbtests.NewTestApp()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer app.Cleanup()
+	setupBunkAssignmentGrainCollections(t, app)
+
+	const year = 2026
+	const staffPersonCMID = 9000009
+	const planCMID = 8008
+	const sessionACMID = 5801
+	const sessionBCMID = 5802
+	const bunkCMID = 6801
+
+	saveRec(t, app, "persons", map[string]any{"cm_id": staffPersonCMID, "year": year})
+	sessionA := saveRec(t, app, "camp_sessions", map[string]any{"cm_id": sessionACMID, "year": year})
+	sessionB := saveRec(t, app, "camp_sessions", map[string]any{"cm_id": sessionBCMID, "year": year})
+	bunk := saveRec(t, app, "bunks", map[string]any{"cm_id": bunkCMID, "year": year})
+	// The family-camp shape: ONE bunk under TWO sessions of one plan. Genuinely
+	// ambiguous in the database, not an artifact of a reused instance.
+	saveRec(t, app, "bunk_plans", map[string]any{
+		"cm_id": planCMID, "bunk": bunk.Id, "session": sessionA.Id, "year": year,
+	})
+	saveRec(t, app, "bunk_plans", map[string]any{
+		"cm_id": planCMID, "bunk": bunk.Id, "session": sessionB.Id, "year": year,
+	})
+	saveRec(t, app, "staff", map[string]any{
+		"person_id": staffPersonCMID, "bunk_staff": true, "status": "active", "year": year,
+	})
+
+	s := NewBunkAssignmentsSync(app, newParallelTestCampMinderClient(t, year))
+	if loadErr := s.loadMappings(); loadErr != nil {
+		t.Fatalf("loadMappings: %v", loadErr)
+	}
+
+	// A row already on disk from a run that COULD name the session -- e.g. the
+	// historical backfill, or a season before the bunk was shared. Its survival
+	// is the whole point: nothing upstream said this staffer left.
+	person, err := app.FindFirstRecordByFilter("persons", fmt.Sprintf("cm_id = %d", staffPersonCMID))
+	if err != nil {
+		t.Fatalf("find person: %v", err)
+	}
+	saveRec(t, app, "bunk_assignments", map[string]any{
+		"cm_id": 740001, "person": person.Id, "session": sessionA.Id, "bunk": bunk.Id, "year": year,
+	})
+
+	existing, existingByPersonBunk, err := s.preloadExistingAssignments(year)
+	if err != nil {
+		t.Fatalf("preloadExistingAssignments: %v", err)
+	}
+	if len(existing) != 1 {
+		t.Fatalf("existing = %d, want 1", len(existing))
+	}
+
+	sessionID, unresolved := s.resolveSessionOrTrackUnresolved(
+		staffPersonCMID, planCMID, bunkCMID, s.bunkPlanSessionsList[planCMID], existingByPersonBunk, year)
+	if !unresolved || sessionID != 0 {
+		t.Fatalf("resolveSessionOrTrackUnresolved = (%d, %v), want (0, true) -- a bunk under two sessions "+
+			"of one plan is genuinely ambiguous for staff (kindred#2264)", sessionID, unresolved)
+	}
+
+	if s.Stats.UnresolvedSession != 1 {
+		t.Errorf("Stats.UnresolvedSession = %d, want 1 -- an unresolved assignment needs a counter of its "+
+			"own, or it hides inside Skipped alongside every unchanged row", s.Stats.UnresolvedSession)
+	}
+	if s.Stats.Skipped != 1 {
+		t.Errorf("Stats.Skipped = %d, want 1 -- the new counter is a named subset of Skipped, not a "+
+			"replacement for it", s.Stats.Skipped)
+	}
+
+	// The row the run could not resolve must be tracked as processed, so the
+	// sweep reads it as "seen, could not key" rather than "gone from CampMinder".
+	s.SyncSuccessful = true
+	if err := s.protectThenSweepOrphans(year); err != nil {
+		t.Fatalf("protectThenSweepOrphans: %v", err)
+	}
+	if rows := bunkAssignmentsForYear(t, app, year); len(rows) != 1 {
+		t.Errorf("after the sweep: bunk_assignments rows = %d, want 1 -- an assignment the run SAW but "+
+			"could not resolve is not an orphan (kindred#2394)", len(rows))
 	}
 }
