@@ -49,7 +49,7 @@ import (
 //     fact worth keeping; attendee_status_history logs only transitions.
 
 // lodgingValueHistoryCollection is the append-only capture table created by
-// pb_migrations/1500000165_lodging_value_history.js.
+// pb_migrations/1500000168_lodging_value_history.js.
 const lodgingValueHistoryCollection = "lodging_value_history"
 
 // lodgingRetainedHistoryFields is the RETENTION SCOPE, ruled as cabin fields
