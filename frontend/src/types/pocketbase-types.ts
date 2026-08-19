@@ -619,6 +619,7 @@ export type FamilyCampAdultsRecord<Tattribute_conflicts = unknown> = {
   created: IsoAutoDateString
   date_of_birth?: string
   email?: string
+  enrollment_status?: string
   first_name?: string
   gender?: string
   household: RecordIdString
@@ -639,6 +640,7 @@ export type FamilyCampMedicalRecord = {
   cpap_info?: string
   created: IsoAutoDateString
   dietary_info?: string
+  enrollment_status?: string
   household: RecordIdString
   id: string
   physician_info?: string
@@ -676,6 +678,7 @@ export type FamilyCampRegistrationsRecord = {
   arrival_eta?: string
   cabin_assignment?: string
   created: IsoAutoDateString
+  enrollment_status?: string
   goals?: string
   has_infant?: boolean
   household: RecordIdString

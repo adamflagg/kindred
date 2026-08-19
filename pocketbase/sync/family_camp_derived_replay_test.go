@@ -63,6 +63,23 @@ func newFamilyCampReplayTestApp(t *testing.T) core.App {
 	text(persons, "household")
 	save(persons)
 
+	// The two collections the kindred#2305 enrollment derivation reads. Sync
+	// now loads them on every run, so they are part of the minimum schema a
+	// Sync test needs -- not optional extras for the enrollment tests alone.
+	sessions := core.NewBaseCollection("camp_sessions")
+	sessions.Fields.Add(&core.NumberField{Name: "cm_id"})
+	sessions.Fields.Add(&core.NumberField{Name: "year"})
+	text(sessions, "name", "session_type")
+	sessions.Fields.Add(&core.DateField{Name: "start_date"})
+	sessions.Fields.Add(&core.DateField{Name: "end_date"})
+	save(sessions)
+
+	attendees := core.NewBaseCollection("attendees")
+	attendees.Fields.Add(&core.NumberField{Name: "year"})
+	attendees.Fields.Add(&core.NumberField{Name: "status_id"})
+	text(attendees, "person", "session", "status")
+	save(attendees)
+
 	hcv := core.NewBaseCollection("household_custom_values")
 	hcv.Fields.Add(&core.NumberField{Name: "year"})
 	text(hcv, "household", "field_definition", "value", "last_updated")
@@ -83,6 +100,7 @@ func newFamilyCampReplayTestApp(t *testing.T) core.App {
 	// types.JSONRaw whose empty form renders "null" -- a text stand-in would
 	// hide exactly the round-trip this scaffolding is here to exercise.
 	adults.Fields.Add(&core.JSONField{Name: "attribute_conflicts"})
+	text(adults, enrollmentStatusColumn)
 	save(adults)
 
 	regs := core.NewBaseCollection("family_camp_registrations")
@@ -95,13 +113,14 @@ func newFamilyCampReplayTestApp(t *testing.T) core.App {
 		"wants_similar_ages", "needs_private_bathroom", "needs_power",
 		"accommodation_is_mandatory", "has_infant", "share_answers_conflict",
 		"needs_fridge")
+	text(regs, enrollmentStatusColumn)
 	save(regs)
 
 	medical := core.NewBaseCollection("family_camp_medical")
 	medical.Fields.Add(&core.NumberField{Name: "year"})
 	text(medical, "household", "cpap_info", "physician_info", "special_needs_info",
 		"allergy_info", "dietary_info", "additional_info", "bathroom_explain",
-		"accommodation_explain")
+		"accommodation_explain", enrollmentStatusColumn)
 	save(medical)
 
 	return app
@@ -421,17 +440,22 @@ func seedDryRunFixture(t *testing.T, app core.App, year int) {
 		"year": year, "person": personA, "field_definition": fdMedAdd, "value": "Inhaler in the day bag",
 	})
 
-	// Rows already on disk.
+	// Rows already on disk. This fixture seeds no camp_sessions and no
+	// attendees, so every household here resolves to `none_on_file`
+	// (kindred#2305) -- which is what the UNCHANGED row must already hold to
+	// stay unchanged. A row still carrying "" is one an older sync wrote, and
+	// the derivation is meant to rewrite it.
 	for _, row := range []struct {
-		household, name string
+		household, name, enrollment string
 	}{
-		{hhA, "Emma Johnson"}, // identical to what this run computes
-		{hhB, "Stale Name"},   // differs -> update
-		{hhC, "Noah Wilson"},  // no source values at all -> orphan
+		{hhA, "Emma Johnson", enrollmentStatusNoneOnFile}, // identical to what this run computes
+		{hhB, "Stale Name", enrollmentStatusNoneOnFile},   // differs -> update
+		{hhC, "Noah Wilson", enrollmentStatusNoneOnFile},  // no source values at all -> orphan
 	} {
 		seedRow(t, app, "family_camp_adults", map[string]any{
 			"year": year, "household": row.household,
 			"adult_number": 1, "name": row.name,
+			enrollmentStatusColumn: row.enrollment,
 		})
 	}
 }

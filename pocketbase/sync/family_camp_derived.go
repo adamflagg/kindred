@@ -150,6 +150,11 @@ type adultData struct {
 	dateOfBirth   string
 	relationship  string
 
+	// enrollmentStatus is the household's family-camp enrollment verdict for
+	// the year (kindred#2305). A household-year attribute, so every adult slot
+	// in one household carries the same value -- see loadHouseholdEnrollmentStatus.
+	enrollmentStatus string
+
 	// conflicts holds the answers this merge DISCARDED, keyed by the
 	// family_camp_adults column they were destined for. It is written to the
 	// additive `attribute_conflicts` JSON column and nothing else: the merge
@@ -343,6 +348,10 @@ type registrationData struct {
 
 	// Housing-suitability signal rather than an accessibility need (kindred#1876).
 	hasInfant bool
+
+	// The household's family-camp enrollment verdict for the year
+	// (kindred#2305). Registering is not attending.
+	enrollmentStatus string
 }
 
 // medicalData holds extracted medical information
@@ -365,6 +374,12 @@ type medicalData struct {
 	// future editor adding a field will be looking.
 	bathroomExplain      string
 	accommodationExplain string
+
+	// The household's family-camp enrollment verdict for the year
+	// (kindred#2305). Not a narrative and not medical -- it is here because
+	// this table is one of the three keyed on (household, year) and a reader
+	// of any one of them needs the same answer.
+	enrollmentStatus string
 }
 
 // Sync executes the family camp derived computation
@@ -424,6 +439,16 @@ func (s *FamilyCampDerivedSync) Sync(ctx context.Context) error {
 	}
 	slog.Info("Loaded person custom values", "count", len(personValues))
 
+	// Step 4b: Resolve each household's family-camp enrollment for the year
+	// (kindred#2305). Reads attendees and camp_sessions, and reuses the
+	// person -> household mapping loaded in step 2 rather than building a
+	// second one.
+	enrollmentByHousehold, err := s.loadHouseholdEnrollmentStatus(ctx, year, personToHousehold)
+	if err != nil {
+		return fmt.Errorf("loading household enrollment status: %w", err)
+	}
+	slog.Info("Loaded household enrollment statuses", "count", len(enrollmentByHousehold))
+
 	// Step 5: Process adults data
 	adults := s.processAdults(householdValues, personValues)
 	slog.Info("Processed adults", "count", len(adults))
@@ -435,6 +460,22 @@ func (s *FamilyCampDerivedSync) Sync(ctx context.Context) error {
 	// Step 7: Process medical data
 	medical := s.processMedical(personValues)
 	slog.Info("Processed medical", "count", len(medical))
+
+	// Step 7b: Stamp the enrollment verdict onto EVERY computed row, on all
+	// three tables. Applied here rather than inside the three process* helpers
+	// so there is one rule and one place it is read from -- and so a row that
+	// already exists is rewritten rather than left at the column default. An
+	// untouched row keeping "" is exactly the "could not determine" case a
+	// non-nullable derived column exists to prevent.
+	for _, adult := range adults {
+		adult.enrollmentStatus = enrollmentStatusForHousehold(enrollmentByHousehold, adult.householdPBID)
+	}
+	for _, reg := range registrations {
+		reg.enrollmentStatus = enrollmentStatusForHousehold(enrollmentByHousehold, reg.householdPBID)
+	}
+	for _, med := range medical {
+		med.enrollmentStatus = enrollmentStatusForHousehold(enrollmentByHousehold, med.householdPBID)
+	}
 
 	// Step 8: Preload existing records for upsert.
 	//
@@ -2453,6 +2494,7 @@ func (s *FamilyCampDerivedSync) adultNeedsUpdate(existing *core.Record, adult *a
 		existing.GetString("gender") != adult.gender ||
 		existing.GetString("date_of_birth") != adult.dateOfBirth ||
 		existing.GetString("relationship_to_camper") != adult.relationship ||
+		existing.GetString(enrollmentStatusColumn) != adult.enrollmentStatus ||
 		storedAttributeConflicts(existing) != adult.conflictsJSON()
 }
 
@@ -2486,7 +2528,8 @@ func (s *FamilyCampDerivedSync) registrationNeedsUpdate(existing *core.Record, r
 		existing.GetBool("needs_fridge") != reg.needsFridge ||
 		existing.GetString("share_eligibility") != normalizedEligibility ||
 		existing.GetString("share_eligibility_source") != normalizedSource ||
-		existing.GetBool("share_answers_conflict") != reg.shareAnswersConflict
+		existing.GetBool("share_answers_conflict") != reg.shareAnswersConflict ||
+		existing.GetString(enrollmentStatusColumn) != reg.enrollmentStatus
 }
 
 // setRegistrationRequestFields writes the household-grain request layer and the
@@ -2494,6 +2537,7 @@ func (s *FamilyCampDerivedSync) registrationNeedsUpdate(existing *core.Record, r
 // cannot drift -- PocketBase Set on a column the schema lacks is a silent no-op,
 // so a field written in only one branch fails invisibly on the other path.
 func setRegistrationRequestFields(record *core.Record, reg *registrationData) {
+	record.Set(enrollmentStatusColumn, reg.enrollmentStatus)
 	record.Set("share_cabin_gate", reg.shareCabinGate)
 	record.Set("wants_near", reg.wantsNear)
 	record.Set("wants_with", reg.wantsWith)
@@ -2539,7 +2583,8 @@ func (s *FamilyCampDerivedSync) medicalNeedsUpdate(existing *core.Record, med *m
 		existing.GetString("dietary_info") != med.dietaryInfo ||
 		existing.GetString("additional_info") != med.additionalInfo ||
 		existing.GetString("bathroom_explain") != med.bathroomExplain ||
-		existing.GetString("accommodation_explain") != med.accommodationExplain
+		existing.GetString("accommodation_explain") != med.accommodationExplain ||
+		existing.GetString(enrollmentStatusColumn) != med.enrollmentStatus
 }
 
 // ============================================================================
@@ -2577,6 +2622,7 @@ func (s *FamilyCampDerivedSync) upsertAdults(
 				existingRecord.Set("gender", adult.gender)
 				existingRecord.Set("date_of_birth", adult.dateOfBirth)
 				existingRecord.Set("relationship_to_camper", adult.relationship)
+				existingRecord.Set(enrollmentStatusColumn, adult.enrollmentStatus)
 				setAttributeConflicts(existingRecord, adult)
 
 				if err := s.App.Save(existingRecord); err != nil {
@@ -2602,6 +2648,7 @@ func (s *FamilyCampDerivedSync) upsertAdults(
 			record.Set("gender", adult.gender)
 			record.Set("date_of_birth", adult.dateOfBirth)
 			record.Set("relationship_to_camper", adult.relationship)
+			record.Set(enrollmentStatusColumn, adult.enrollmentStatus)
 			setAttributeConflicts(record, adult)
 
 			if err := s.App.Save(record); err != nil {
@@ -2718,6 +2765,7 @@ func (s *FamilyCampDerivedSync) upsertMedical(
 				existingRecord.Set("additional_info", med.additionalInfo)
 				existingRecord.Set("bathroom_explain", med.bathroomExplain)
 				existingRecord.Set("accommodation_explain", med.accommodationExplain)
+				existingRecord.Set(enrollmentStatusColumn, med.enrollmentStatus)
 
 				if err := s.App.Save(existingRecord); err != nil {
 					slog.Error("Error updating medical record", "household", med.householdPBID, "error", err)
@@ -2741,6 +2789,7 @@ func (s *FamilyCampDerivedSync) upsertMedical(
 			record.Set("additional_info", med.additionalInfo)
 			record.Set("bathroom_explain", med.bathroomExplain)
 			record.Set("accommodation_explain", med.accommodationExplain)
+			record.Set(enrollmentStatusColumn, med.enrollmentStatus)
 
 			if err := s.App.Save(record); err != nil {
 				slog.Error("Error creating medical record", "household", med.householdPBID, "error", err)
