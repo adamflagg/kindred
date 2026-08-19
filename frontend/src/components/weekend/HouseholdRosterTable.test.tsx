@@ -1167,3 +1167,63 @@ describe('HouseholdRosterTable — filters by housing need (kindred#2251)', () =
     expect(visibleRowNames().sort()).toEqual(['No Needs Parent', 'Power Parent'])
   })
 })
+
+// The roster export affordance's placement and gating (kindred#2433 §4.6).
+// The button's own behaviour is covered in RosterExportButton.test.tsx; what
+// this block pins is that the table only offers it where it can succeed.
+describe('roster export button', () => {
+  const exportParties = [party({ display_name: 'Settled Family', unit_name: 'Ridge A' })]
+
+  it('offers the export on a family weekend to someone who can manage lodging', () => {
+    render(
+      <HouseholdRosterTable
+        year={2026}
+        parties={exportParties}
+        sessionCmId={1000001}
+        sessionType="family"
+        canManage
+      />,
+      { wrapper }
+    )
+    expect(screen.getByRole('button', { name: /export roster/i })).toBeInTheDocument()
+  })
+
+  // Gated in the UI as well as at the API: the endpoint requires
+  // bunking.manage, so showing the button to a read-only viewer offers an
+  // action whose only outcome is a 403.
+  it('hides the export from a viewer without bunking.manage', () => {
+    render(
+      <HouseholdRosterTable
+        year={2026}
+        parties={exportParties}
+        sessionCmId={1000001}
+        sessionType="family"
+        canManage={false}
+      />,
+      { wrapper }
+    )
+    expect(screen.queryByRole('button', { name: /export roster/i })).not.toBeInTheDocument()
+  })
+
+  it('hides the export on an adult weekend', () => {
+    render(
+      <HouseholdRosterTable
+        year={2026}
+        parties={exportParties}
+        sessionCmId={1000001}
+        sessionType="adult"
+        canManage
+      />,
+      { wrapper }
+    )
+    expect(screen.queryByRole('button', { name: /export roster/i })).not.toBeInTheDocument()
+  })
+
+  // The props are optional and default to "no export", matching sessionCmId's
+  // own default — most tests in this file render one weekend and never pass
+  // them, and none of them should sprout a button.
+  it('hides the export when the new props are not supplied at all', () => {
+    render(<HouseholdRosterTable year={2026} parties={exportParties} />, { wrapper })
+    expect(screen.queryByRole('button', { name: /export roster/i })).not.toBeInTheDocument()
+  })
+})

@@ -556,6 +556,20 @@ export const queryKeys = {
    * are filtered out of it at the query — see `useSheetsWorkbooks`.
    */
   sheetsWorkbooks: () => ['sheets-workbooks'] as const,
+  /**
+   * The last roster export for one weekend (kindred#2433).
+   *
+   * A CACHE SLOT, not a fetch. The export is a POST that appends a tab to a
+   * Google Sheet, so this key is never fetched and never invalidated — it is
+   * written with `setQueryData` and read back through a disabled query.
+   * Refetching it would mean exporting again, and every tab in that workbook is
+   * hand-edited staff work.
+   *
+   * Keyed per weekend because each owns its own workbook: one weekend's link
+   * shown on another's roster opens the wrong families' contact details.
+   */
+  rosterExport: (year: number, sessionCmId: number) =>
+    ['roster-export', year, sessionCmId] as const,
 }
 
 /**

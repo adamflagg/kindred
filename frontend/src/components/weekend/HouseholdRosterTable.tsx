@@ -19,6 +19,7 @@ import { FamilyDetailsPanel } from './FamilyDetailsPanel'
 import { HouseholdRosterRow } from './HouseholdRosterRow'
 import { partyKey } from './partyKey'
 import { attentionSections, indexUnitsByCode, resolvePartyUnit } from './rosterAttention'
+import { RosterExportButton } from './RosterExportButton'
 
 /**
  * First season `needs_private_bathroom`/`needs_power` carry real signal.
@@ -67,6 +68,21 @@ export interface HouseholdRosterTableProps {
    * exercise a session change.
    */
   sessionCmId?: number
+  /**
+   * The weekend's `camp_sessions.session_type`. Only `family` weekends have a
+   * roster to export (kindred#2433) — adult weekends enrol individuals rather
+   * than households. Optional and defaulting to "" for the same reason
+   * `sessionCmId` defaults to 0: most tests in this file render one weekend's
+   * roster and never exercise the export.
+   */
+  sessionType?: string
+  /**
+   * Whether the viewer holds `bunking.manage`. Gates the roster export in the
+   * UI as well as at the API, so a read-only viewer is not offered an action
+   * whose only outcome is a 403. Named to match `WeekendFriendGroups`, the
+   * sibling on this page that already takes the same pair.
+   */
+  canManage?: boolean
 }
 
 const HEAD_CELL = 'text-muted-foreground pb-2 text-xs font-bold tracking-wider uppercase'
@@ -92,6 +108,8 @@ export function HouseholdRosterTable({
   units = [],
   year,
   sessionCmId = 0,
+  sessionType = '',
+  canManage = false,
 }: HouseholdRosterTableProps) {
   // A third `FamilyDetailsPanel` callsite (kindred#1996), wired exactly as
   // `LodgingBoard` and `LodgingMap` wire the other two — same `usePanelParty`
@@ -229,11 +247,16 @@ export function HouseholdRosterTable({
             )
           })}
         </div>
-        {activeNeeds.length > 0 && (
-          <span className="text-muted-foreground text-sm tabular-nums">
-            {filteredParties.length} of {parties.length}
-          </span>
-        )}
+        <div className="ml-auto flex items-center gap-3">
+          {activeNeeds.length > 0 && (
+            <span className="text-muted-foreground text-sm tabular-nums">
+              {filteredParties.length} of {parties.length}
+            </span>
+          )}
+          {canManage && (
+            <RosterExportButton year={year} sessionCmId={sessionCmId} sessionType={sessionType} />
+          )}
+        </div>
       </div>
 
       {showHistoricalGapWarning && (
