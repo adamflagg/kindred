@@ -333,6 +333,14 @@ func TestFamilyCampSyncSurfacesASweepRefusal(t *testing.T) {
 	const year = 2026
 
 	app := newFamilyCampReplayTestApp(t)
+	// One weekend on file, for the reason seedDryRunFixture states: Sync
+	// refuses a year whose camp_sessions were never synced, and the collapse
+	// under test here is the SOURCE VALUES collapsing, not the sessions table.
+	seedRow(t, app, "camp_sessions", map[string]any{
+		"cm_id": 9001, "name": "Family Camp 1", "session_type": sessionTypeFamily,
+		"year": year, "start_date": "2026-06-05 07:00:00.000Z",
+		"end_date": "2026-06-07 07:00:00.000Z",
+	})
 	// Rows on disk with no source values behind them at all: the computed set
 	// comes back empty, which is OrphanSweepGuard's total-collapse arm.
 	seedDerivedRows(t, app, "family_camp_registrations", year, 40)
@@ -380,6 +388,17 @@ func seedDryRunFixture(t *testing.T, app core.App, year int) {
 		personA = "paaaaaaaaaaaaa1"
 		personB = "pbbbbbbbbbbbbb1"
 	)
+
+	// One weekend on file. Sync refuses a year with no camp_sessions rows at
+	// all (kindred#2305) -- writing none_on_file off an unsynced sessions table
+	// would assert a household never enrolled -- so every fixture that reaches
+	// Sync has to look like a season that was actually synced. No attendees are
+	// seeded, so every household here is honestly none_on_file.
+	seedRow(t, app, "camp_sessions", map[string]any{
+		"cm_id": 9001, "name": "Family Camp 1", "session_type": sessionTypeFamily,
+		"year": year, "start_date": "2026-06-05 07:00:00.000Z",
+		"end_date": "2026-06-07 07:00:00.000Z",
+	})
 
 	defCol, err := app.FindCollectionByNameOrId("custom_field_defs")
 	if err != nil {

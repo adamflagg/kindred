@@ -42,6 +42,16 @@ const (
 	enrollmentStatusUnknown = "unknown"
 )
 
+// ⚠️ THE STORED VOCABULARY IS WIDER THAN THE WIRE'S, and the read layer has to
+// catch up before it can publish this column verbatim.
+// api/schemas/lodging.py's EnrollmentState is
+// Literal["enrolled", "none_on_file"] and it types
+// HouseholdJourneyYear.enrollment -- so the kindred#2305 follow-on that
+// switches build_household_journey onto this column must WIDEN that Literal
+// first. 55 of 2026's 479 registration rows store a status slug (cancelled,
+// incomplete, waitlisted, withdrawn, applied) the two-value Literal would
+// reject with a Pydantic ValidationError the moment the journey was built.
+
 // familyCampWeekendSessionTypes is which session types ARE family camp.
 //
 // ⚠️ An adult weekend is a family-camp weekend. It differs only in being
@@ -152,8 +162,36 @@ func (s *FamilyCampDerivedSync) loadHouseholdEnrollmentStatus(
 		return nil, fmt.Errorf("loading family/adult sessions for %d: %w", year, err)
 	}
 	if len(weekends) == 0 {
-		// A year with no weekends on file has no enrollments to find. Returning
-		// early skips a whole-year attendee scan that could only ever miss.
+		// NO WEEKENDS IS TWO DIFFERENT FACTS, and only one of them is an answer.
+		//
+		// `none_on_file` is a POSITIVE claim -- "we hold no attendee row for
+		// this household" -- and absence from the returned map is what produces
+		// it. If camp_sessions was simply never synced for the year, every
+		// household is absent for a reason that has nothing to do with the
+		// household, and because this column is part of all three change
+		// comparisons the wrong answer WRITES rather than sitting inert. That
+		// is precisely the "could not determine" case the column exists to
+		// prevent, so the run refuses rather than asserting it.
+		//
+		// The discriminator is the year's camp_sessions rows, not its weekends.
+		// A season that ran sessions and no family or adult weekend is a real
+		// answer; a season with no sessions row at all has not been synced.
+		// Every year 2017-2026 on the production snapshot carries between 6 and
+		// 18 weekends, so the second case is never a real season.
+		sessions, countErr := s.App.FindRecordsByFilter(
+			"camp_sessions", fmt.Sprintf("year = %d", year), sortByID, 1, 0)
+		if countErr != nil {
+			return nil, fmt.Errorf("checking camp_sessions for %d: %w", year, countErr)
+		}
+		if len(sessions) == 0 {
+			return nil, fmt.Errorf(
+				"no camp_sessions rows for year %d: enrollment status is underivable, and "+
+					"writing none_on_file would assert a household never enrolled on the "+
+					"strength of a table that was never synced -- run the sessions service first",
+				year)
+		}
+		// Sessions exist, none of them is a weekend: every household is
+		// honestly none_on_file, and the attendee scan below could only miss.
 		return map[string]string{}, nil
 	}
 

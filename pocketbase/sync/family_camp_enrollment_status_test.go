@@ -277,3 +277,65 @@ func TestFamilyCampStatusPriorityMatchesTheFrontend(t *testing.T) {
 		}
 	}
 }
+
+// TestFamilyCampEnrollmentStatusRefusesAYearWithNoSessionsAtAll closes the one
+// way this column can assert something it does not know.
+//
+// `none_on_file` is a POSITIVE claim -- "we hold no attendee row for this
+// household" -- and absence from the status map is what produces it. If the
+// sessions sync has not run for the year, every household is absent for a
+// reason that has nothing to do with the household, and because the column is
+// part of all three change comparisons the wrong answer WRITES. That is the
+// exact "could not determine" case the column exists to prevent, so the run
+// refuses instead.
+//
+// The discriminator is the year's camp_sessions rows, not its weekends: a
+// season that ran sessions but no family or adult weekend is a real answer
+// (`none_on_file` for everyone), while a season with no sessions row at all has
+// not been synced yet. Every year 2017-2026 on the production snapshot carries
+// between 6 and 18 weekends, so the second case is never a real season.
+func TestFamilyCampEnrollmentStatusRefusesAYearWithNoSessionsAtAll(t *testing.T) {
+	t.Parallel()
+	const year = 2026
+
+	app := newFamilyCampReplayTestApp(t)
+	seedHouseholdMember(t, app, "hh_1", year)
+
+	s := NewFamilyCampDerivedSync(app)
+	personToHousehold, err := s.loadPersonHouseholdMapping(context.Background(), year)
+	if err != nil {
+		t.Fatalf("loadPersonHouseholdMapping: %v", err)
+	}
+
+	if _, err := s.loadHouseholdEnrollmentStatus(context.Background(), year, personToHousehold); err == nil {
+		t.Fatal("accepted a year with no camp_sessions rows -- every household would be " +
+			"written none_on_file on the strength of a table that was never synced")
+	}
+
+	// And the refusal reaches the caller rather than being swallowed.
+	s.Year = year
+	if err := s.Sync(context.Background()); err == nil {
+		t.Fatal("Sync reported success for a year whose sessions were never synced")
+	}
+}
+
+// TestFamilyCampEnrollmentStatusAcceptsASeasonWithNoWeekends is the other half:
+// the guard above must not fire on a season that genuinely ran no family or
+// adult weekend. Sessions exist, none of them is a weekend, so every household
+// is honestly none_on_file.
+func TestFamilyCampEnrollmentStatusAcceptsASeasonWithNoWeekends(t *testing.T) {
+	t.Parallel()
+	const year = 2026
+
+	app := newFamilyCampReplayTestApp(t)
+	seedWeekendSession(t, app, 401, "Session 1", "main", year)
+	seedHouseholdMember(t, app, "hh_1", year)
+
+	statuses := enrollmentStatusesForYear(t, app, year)
+	if len(statuses) != 0 {
+		t.Errorf("statuses = %v, want empty", statuses)
+	}
+	if got := enrollmentStatusForHousehold(statuses, "hh_1"); got != enrollmentStatusNoneOnFile {
+		t.Errorf("enrollmentStatusForHousehold = %q, want %q", got, enrollmentStatusNoneOnFile)
+	}
+}
