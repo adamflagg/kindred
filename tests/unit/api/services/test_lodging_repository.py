@@ -885,17 +885,75 @@ class TestFetchUnits:
 
 
 class TestFetchPriorHouseholdCmIds:
+    """kindred#2475: the returning-family signal must be an ENROLLED prior
+    attendance, not a bare `households` row -- a household row exists for a
+    year a family only cancelled or waitlisted, `households` carries no
+    status column at all, and the old bare `year < {year}` read on
+    `households` badged those families Returning anyway.
+    """
+
     @pytest.mark.asyncio
-    async def test_returns_cm_ids_from_earlier_years_only(self, repo: LodgingRepository, pb: MagicMock) -> None:
+    async def test_returns_household_ids_from_enrolled_weekend_attendees_only(
+        self, repo: LodgingRepository, pb: MagicMock
+    ) -> None:
+        enrolled_person = _record(household_id=2000001)
         pb.collection.return_value.get_full_list.return_value = [
-            _record(cm_id=2000001),
-            _record(cm_id=2000002),
+            _record(expand={"person": enrolled_person}),
         ]
 
         result = await repo.fetch_prior_household_cm_ids(2026)
 
-        assert "year < 2026" in _last_query(pb)["filter"]
-        assert result == {2000001, 2000002}
+        pb.collection.assert_called_with("attendees")
+        filter_str = _last_query(pb)["filter"]
+        assert "year < 2026" in filter_str
+        assert "status_id = 2" in filter_str
+        assert _last_query(pb)["expand"] == "person"
+        assert result == {2000001}
+
+    @pytest.mark.asyncio
+    async def test_a_cancelled_or_waitlisted_only_household_is_not_returning(
+        self, repo: LodgingRepository, pb: MagicMock
+    ) -> None:
+        """The literal reported bug: a household whose only prior rows are
+        cancelled/waitlisted attendees has no ENROLLED row, so ACTIVE_ENROLLED_FILTER
+        (status_id = 2) excludes it at the PocketBase filter -- the mock never
+        returns a row for it, exactly as the real filter would not.
+        """
+        pb.collection.return_value.get_full_list.return_value = []
+
+        result = await repo.fetch_prior_household_cm_ids(2026)
+
+        assert result == set()
+
+    @pytest.mark.asyncio
+    async def test_filters_to_weekend_session_types_through_the_relation(
+        self, repo: LodgingRepository, pb: MagicMock
+    ) -> None:
+        """Same weekend types as `_weekend_type_filter`, but through the
+        `session.` relation prefix -- summer's main/embedded/ag/quest
+        sessions must not count as a prior weekend visit.
+        """
+        pb.collection.return_value.get_full_list.return_value = []
+
+        await repo.fetch_prior_household_cm_ids(2026)
+
+        filter_str = _last_query(pb)["filter"]
+        for session_type in WEEKEND_SESSION_TYPES:
+            assert f'session.session_type = "{session_type}"' in filter_str
+
+    @pytest.mark.asyncio
+    async def test_a_person_with_no_household_id_contributes_nothing(
+        self, repo: LodgingRepository, pb: MagicMock
+    ) -> None:
+        pb.collection.return_value.get_full_list.return_value = [
+            _record(expand={"person": _record(household_id=0)}),
+            _record(expand={}),
+            _record(expand=None),
+        ]
+
+        result = await repo.fetch_prior_household_cm_ids(2026)
+
+        assert result == set()
 
 
 class TestFetchFamilyCampAdults:
