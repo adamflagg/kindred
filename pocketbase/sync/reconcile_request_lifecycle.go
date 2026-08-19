@@ -61,6 +61,12 @@ func (s *ReconcileLifecycleSync) WasSuccessful() bool {
 // to CAMPMINDER_SEASON_ID via ParseSeasonYear, matching the convention used
 // by every other yearless service in this package.
 func (s *ReconcileLifecycleSync) Sync(_ context.Context) error {
+	// Stats describe THIS run, not the process. The orchestrator registers one
+	// long-lived instance, so without this reset the first error of a process's
+	// life makes WasSuccessful() false — and applyCompletionStatus records every
+	// later run as failed — until the container restarts.
+	s.Stats = Stats{}
+
 	year := s.Year
 	if year == 0 {
 		var err error

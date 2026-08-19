@@ -507,3 +507,54 @@ func TestReconcileRequestLifecycle_SuccessPathReturnsZeroMarkErrors(t *testing.T
 		t.Errorf("markErrors = %d, want 0", markErrors)
 	}
 }
+
+// TestReconcileLifecycleSync_ResetsStatsBetweenRunsOnSameInstance pins the
+// per-run contract for Stats on the ONE long-lived instance the orchestrator
+// registers (orchestrator.go registers a single ReconcileLifecycleSync for the
+// life of the process, plus one for the year-scoped path). A run's Stats.Errors
+// must describe that run alone: applyCompletionStatus derives a run's status
+// from stats.Errors > 0, so a counter that carries over makes every later run
+// record as failed, with a monotonically climbing errors_count, until the
+// container restarts.
+//
+// The instance is reused deliberately. A test that constructs a fresh service
+// per run cannot observe carry-over at all, which is how this class of bug
+// survives its own suite.
+func TestReconcileLifecycleSync_ResetsStatsBetweenRunsOnSameInstance(t *testing.T) {
+	t.Parallel()
+	app, err := pbtests.NewTestApp()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer app.Cleanup()
+
+	s := NewReconcileLifecycleSync(app)
+	s.SetYear(2025)
+
+	// Run 1 -- failure injected here and only here: the collections the
+	// reconciliation queries do not exist yet, so the attendees lookup errors
+	// out and the run records one error.
+	if syncErr := s.Sync(context.Background()); syncErr == nil {
+		t.Fatal("run 1: want an error from the missing collections to inject the failure, got nil")
+	}
+	if s.Stats.Errors != 1 {
+		t.Fatalf("run 1: Stats.Errors = %d, want 1 -- the failure injection did not take",
+			s.Stats.Errors)
+	}
+	if s.WasSuccessful() {
+		t.Fatal("run 1: WasSuccessful() = true, want false")
+	}
+
+	// Run 2 -- same instance, schema now present and nothing to reconcile.
+	setupReconcileCollections(t, app)
+	if syncErr := s.Sync(context.Background()); syncErr != nil {
+		t.Fatalf("run 2: Sync = %v, want nil", syncErr)
+	}
+	if s.Stats.Errors != 0 {
+		t.Errorf("run 2: Stats.Errors = %d, want 0 -- run 1's error carried over into a clean run",
+			s.Stats.Errors)
+	}
+	if !s.WasSuccessful() {
+		t.Error("run 2: WasSuccessful() = false, want true -- a clean run must not inherit run 1's error")
+	}
+}
