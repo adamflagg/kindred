@@ -1,7 +1,6 @@
 """Cache invalidation contract for every ``bunk_assignments_draft`` writer.
 
-Each writer that mutates ``bunk_assignments_draft`` (or, for solver apply,
-``bunk_assignments`` in the production case) must invalidate the matching
+Each writer that mutates ``bunk_assignments_draft`` must invalidate the matching
 scenario-scoped graph cache slot immediately. Without this, the
 ``GraphCacheManager`` serves a stale graph (TTL 15 min) keyed under
 ``session_{session_cm_id}_{year}_{scenario_id}`` after a solver re-run and
@@ -9,7 +8,9 @@ apply, so the social-graph view shows campers grouped by the previous
 draft state — exactly the "big lump" symptom reported on the May 7 scenario.
 
 Writers covered:
-  * POST   /api/solver/apply/{run_id}                 (scenario + prod)
+  * POST   /api/solver/apply/{run_id}                 (scenario only — kindred#2467
+    made a scenario-less apply a 422, so there is no production case left to cover;
+    the refusal itself lives in test_solver_never_writes_production.py)
   * POST   /api/sessions/{cm_id}/clear-assignments    (scenario + prod)
   * POST   /api/scenarios/{id}/clear
   * DELETE /api/scenarios/{id}
@@ -84,6 +85,7 @@ class TestApplySolverResultsInvalidatesCache:
         scenario: str | None,
         session_cm_id: int = 1235404,
         year: int = 2026,
+        expected_status: int = 200,
     ) -> MagicMock:
         from api.dependencies import solver_runs
         from api.routers.solver import router
@@ -114,7 +116,7 @@ class TestApplySolverResultsInvalidatesCache:
         ):
             client = TestClient(app)
             resp = client.post(f"/api/solver/apply/{run_id}")
-            assert resp.status_code == 200, f"{resp.status_code}: {resp.text}"
+            assert resp.status_code == expected_status, f"{resp.status_code}: {resp.text}"
 
         solver_runs.clear()
         return mock_cache
@@ -126,11 +128,17 @@ class TestApplySolverResultsInvalidatesCache:
         # Don't broadly nuke the prod or session-wide cache in scenario mode.
         cache.invalidate_session.assert_not_called()
 
-    def test_prod_apply_invalidates_session_slot(self) -> None:
-        """Apply without a scenario writes to bunk_assignments — invalidate the
-        session cache so the prod graph rebuilds from current DB."""
-        cache = self._run_apply(scenario=None)
-        cache.invalidate_session.assert_called_once_with(1235404, 2026)
+    def test_prod_apply_is_refused_and_invalidates_nothing(self) -> None:
+        """Apply without a scenario is refused (kindred#2467), so nothing is dropped.
+
+        This used to assert a session-slot invalidation, because the endpoint took
+        an ``else`` branch that tried to write the production ``bunk_assignments``
+        table. The owner's rule is that production is read-only for the solver, so
+        that branch is gone and the apply is a 422 — with no write, there is no
+        stale cache slot to drop.
+        """
+        cache = self._run_apply(scenario=None, expected_status=422)
+        cache.invalidate_session.assert_not_called()
         cache.invalidate_scenario.assert_not_called()
 
 

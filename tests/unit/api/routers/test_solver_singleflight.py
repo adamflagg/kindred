@@ -29,6 +29,13 @@ from bunking.rbac.permissions import ALL_PERMISSIONS
 # ---------------------------------------------------------------------------
 
 
+# Every solver-run endpoint requires a scenario (kindred#2467): production bunk
+# assignments are read-only for the solver, so a scenario-less run has nowhere to
+# land and is refused with a 422 before the single-flight guard is even consulted.
+# These tests are about the guard, so every request body carries one.
+SCENARIO_ID = "scn_singleflight"
+
+
 def _mock_admin_user() -> AuthUser:
     user = AuthUser(
         username="TestAdmin",
@@ -95,7 +102,7 @@ class TestRunSolverSingleFlight:
         with _solver_client(solver_runs_state) as client:
             resp = client.post(
                 "/api/solver/run",
-                json={"session_cm_id": 1001, "year": 2026},
+                json={"session_cm_id": 1001, "year": 2026, "scenario": SCENARIO_ID},
             )
 
         assert resp.status_code == 409, f"Expected 409, got {resp.status_code}: {resp.text}"
@@ -119,7 +126,7 @@ class TestRunSolverSingleFlight:
         with _solver_client(solver_runs_state) as client:
             resp = client.post(
                 "/api/solver/run",
-                json={"session_cm_id": 2002, "year": 2026},
+                json={"session_cm_id": 2002, "year": 2026, "scenario": SCENARIO_ID},
             )
 
         assert resp.status_code == 409, f"Expected 409, got {resp.status_code}: {resp.text}"
@@ -146,7 +153,7 @@ class TestRunSolverSingleFlight:
         with _solver_client(solver_runs_state) as client:
             resp = client.post(
                 "/api/solver/run",
-                json={"session_cm_id": 3003, "year": 2026},
+                json={"session_cm_id": 3003, "year": 2026, "scenario": SCENARIO_ID},
             )
 
         assert resp.status_code == 200, f"Expected 200, got {resp.status_code}: {resp.text}"
@@ -168,7 +175,7 @@ class TestRunSolverSingleFlight:
         with _solver_client(solver_runs_state) as client:
             resp = client.post(
                 "/api/solver/run",
-                json={"session_cm_id": 4004, "year": 2026},
+                json={"session_cm_id": 4004, "year": 2026, "scenario": SCENARIO_ID},
             )
 
         assert resp.status_code == 200, f"Expected 200, got {resp.status_code}: {resp.text}"
@@ -191,7 +198,7 @@ class TestRunSolverSingleFlight:
         with _solver_client(solver_runs_state) as client:
             resp = client.post(
                 "/api/solver/run",
-                json={"session_cm_id": 5005, "year": 2026},  # Different session
+                json={"session_cm_id": 5005, "year": 2026, "scenario": SCENARIO_ID},  # Different session
             )
 
         assert resp.status_code == 200, f"Expected 200, got {resp.status_code}: {resp.text}"
@@ -203,7 +210,7 @@ class TestRunSolverSingleFlight:
         with _solver_client(solver_runs_state) as client:
             resp = client.post(
                 "/api/solver/run",
-                json={"session_cm_id": 6006, "year": 2026},
+                json={"session_cm_id": 6006, "year": 2026, "scenario": SCENARIO_ID},
             )
 
         assert resp.status_code == 200, f"Expected 200, got {resp.status_code}: {resp.text}"
@@ -222,7 +229,7 @@ class TestRunSolverSingleFlight:
         with _solver_client(solver_runs_state) as client:
             resp = client.post(
                 "/api/solver/run",
-                json={"session_cm_id": 7007, "year": 2026},
+                json={"session_cm_id": 7007, "year": 2026, "scenario": SCENARIO_ID},
             )
 
         assert resp.status_code == 409
@@ -295,7 +302,7 @@ class TestRunMultiSessionSolverSingleFlight:
         with _multi_session_client(solver_runs_state, child_sessions) as client:
             resp = client.post(
                 "/api/solver/run-multi-session",
-                json={"parent_session_cm_id": 100, "year": 2026},
+                json={"parent_session_cm_id": 100, "year": 2026, "scenario": SCENARIO_ID},
             )
 
         assert resp.status_code == 409, f"Expected 409, got {resp.status_code}: {resp.text}"
@@ -320,7 +327,7 @@ class TestRunMultiSessionSolverSingleFlight:
         with _multi_session_client(solver_runs_state, child_sessions) as client:
             resp = client.post(
                 "/api/solver/run-multi-session",
-                json={"parent_session_cm_id": 200, "year": 2026},
+                json={"parent_session_cm_id": 200, "year": 2026, "scenario": SCENARIO_ID},
             )
 
         assert resp.status_code == 409, f"Expected 409, got {resp.status_code}: {resp.text}"
@@ -345,7 +352,7 @@ class TestRunMultiSessionSolverSingleFlight:
         with _multi_session_client(solver_runs_state, child_sessions) as client:
             resp = client.post(
                 "/api/solver/run-multi-session",
-                json={"parent_session_cm_id": 300, "year": 2026},
+                json={"parent_session_cm_id": 300, "year": 2026, "scenario": SCENARIO_ID},
             )
 
         assert resp.status_code == 200, f"Expected 200, got {resp.status_code}: {resp.text}"
@@ -365,7 +372,7 @@ class TestRunMultiSessionSolverSingleFlight:
         with _multi_session_client(solver_runs_state, child_sessions) as client:
             resp = client.post(
                 "/api/solver/run-multi-session",
-                json={"parent_session_cm_id": 400, "year": 2026},
+                json={"parent_session_cm_id": 400, "year": 2026, "scenario": SCENARIO_ID},
             )
 
         assert resp.status_code == 200, f"Expected 200, got {resp.status_code}: {resp.text}"
@@ -467,7 +474,7 @@ class TestScenarioSolverSingleFlight:
         with _solver_client(solver_runs_state) as client:
             resp = client.post(
                 "/api/solver/run",
-                json={"session_cm_id": 5001, "year": 2026},
+                json={"session_cm_id": 5001, "year": 2026, "scenario": SCENARIO_ID},
             )
 
         assert resp.status_code == 409, (
@@ -493,7 +500,7 @@ class TestScenarioSolverSingleFlight:
         with _solver_client(solver_runs_state) as client:
             resp = client.post(
                 "/api/solver/run",
-                json={"session_cm_id": 5001, "year": 2026},
+                json={"session_cm_id": 5001, "year": 2026, "scenario": SCENARIO_ID},
             )
 
         assert resp.status_code == 200, (
