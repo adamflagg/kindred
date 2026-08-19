@@ -27,6 +27,7 @@
  */
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
 import { partyHeadcount } from './householdIdentity'
+import { needCoverage, needGlyph, needVerdict } from './needGlyphs'
 import { coveredCodes, drawnUnits } from './unitLevel'
 
 /** Ordered most urgent first. The order of this array IS the section order. */
@@ -41,7 +42,10 @@ export interface PartyAttention {
 }
 
 export const ATTENTION_LABEL: Record<AttentionLevel, string> = {
-  required: 'Accommodation required',
+  // Renamed under kindred#2072. The label is EXPLICITLY NOT LOCKED — it is one
+  // of the five marks parked for staff input — so it lives here, in one
+  // place, and `HouseholdRosterRow` no longer carries a hardcoded copy of it.
+  required: 'Needs Accommodation',
   unmet: "Cabin doesn't fit the request",
   unplaced: 'Needs a cabin',
   unverified: 'Fit not verified',
@@ -49,55 +53,56 @@ export const ATTENTION_LABEL: Record<AttentionLevel, string> = {
 }
 
 /**
- * The needs a cabin field can actually answer.
+ * WHICH needs the roster's own sections grade — and the grading itself is NOT
+ * here any more.
  *
- * `needs_accommodation` is deliberately absent: it names no specific amenity,
- * so no cabin field settles it. `has_infant` is absent too — it is derived
- * from the household's ages rather than asked for, so it informs which cabin
- * suits them without being an unfulfilled request.
+ * Every verdict now comes from `needGlyphs.ts`, the one place a need is
+ * graded (kindred#2072). This module used to hold a `VERIFIABLE_NEEDS` table
+ * with its own `satisfiedBy` implementations, and the copy had drifted: power
+ * was read off the RAW `unit.has_power`, so the twelve 2026 family-pool
+ * containers that record `has_power = 0` while every leaf beneath them has
+ * power reported "No power" on the roster while the board's own hatch, reading
+ * the server-resolved `power_coverage`, called the same building fine.
  *
- * ⚠️ `needs_fridge` (kindred#2224) and `needs_step_free` (kindred#2438) are a
- * DIFFERENT kind of absence, and neither is settled. Unlike
- * `needs_accommodation` both name an amenity the registry answers
- * (`fridge_coverage`, `ramp_coverage`), and `needsFit.ts` already grades both
- * for the drag-time hatch — so a placed family with an unmet fridge or
- * step-free need currently reports `settled` here while the same family+cabin
- * pair hatches mid-drag. Wiring either is not mechanical: the two entries
- * below read a RAW unit field, and neither of these can, because the owner's
- * 2026-08-15 ruling ("a shared fridge IS a fridge") and the container trap
- * live in the server-resolved `fridge_coverage`, while `has_ramp` is a
- * three-value select whose `'no'` is a TRUTHY string — reading it raw would
- * report "step-free" on the four cabins staff assessed as having no ramp. It
- * also puts new words in front of staff. Both belong with kindred#2072's ruled
- * glyph set (bathroom · power · fridge), not here — and note the step-free
- * need is not in that ruled set at all.
+ * ⚠️ `needs_fridge` (kindred#2224) and `needs_step_free` (kindred#2438) are
+ * still OUT, and the reason has changed — read this before adding them.
+ *
+ * It used to be mechanical: they read a raw unit field this module had no
+ * resolved value for. That objection is gone, since `needGlyphs` grades all
+ * four off the server's resolved coverage. What remains is that these sections
+ * are a staff-facing CLASSIFICATION with counts on them, and folding two more
+ * needs in moves parties out of `settled` and into `unmet` — a change to what
+ * a number staff read means, which needs its own ruling rather than arriving
+ * as a side effect of a refactor. The two needs are not unreported meanwhile:
+ * both draw a per-family glyph on the card (kindred#2072).
+ *
+ * `needs_accommodation` is a different kind of absence and is settled: it
+ * names no specific amenity, so no cabin field answers it. `has_infant` is
+ * absent too — derived from the household's ages rather than asked for, so it
+ * informs which cabin suits them without being an unfulfilled request.
  */
-const VERIFIABLE_NEEDS = [
+const ROSTER_NEEDS = ['bathroom', 'power'] as const
+
+/**
+ * The roster's own wording for those two, which is NOT the glyph's label.
+ *
+ * The glyph is called "Bathroom in unit", because that is the axis the
+ * CampMinder question asks about (`weekend-card-vocabulary.md` §4). The RULE
+ * still grades exclusivity until kindred#2501 lands, and these strings are
+ * read on the roster row, the details panel and the map peek — surfaces that
+ * report the verdict, not the ask. Saying "No bathroom in unit" about a cabin
+ * with a shared bathroom in it would be false; saying "No private bathroom"
+ * is exactly what was checked.
+ *
+ * Both halves move to the glyph's vocabulary when #2501 flips the rule, and
+ * not before. That is the same one-release contradiction the card accepts and
+ * `needGlyphs.bathroomCoverage` documents.
+ */
+const ROSTER_NEED_WORDING: Record<(typeof ROSTER_NEEDS)[number], { asked: string; unmet: string }> =
   {
-    flag: 'needs_private_bathroom',
-    label: 'Private bathroom',
-    unmet: 'No private bathroom',
-    // NOT `unit.bathroom` — that is one room's own field, and a merged
-    // slot's `unit_code` is "" BY DESIGN (kindred#1982), so there is no
-    // single unit to read it off for exactly the placement this need exists
-    // to catch: a whole-house merge that IS the private-bathroom
-    // accommodation. `RosterParty.effective_bathroom` is the SERVER's
-    // answer across every code the placement covers
-    // (`lodging_rules.effective_bathroom`, kindred#2022) — it already
-    // credits "private" once the party's placement covers every member of a
-    // bathroom_group, container inheritance included. Reading it here means
-    // no caller changes: every `party` this function receives already
-    // carries it.
-    satisfiedBy: (_unit: LodgingUnitRow, party: RosterPartyRow) =>
-      party.effective_bathroom === 'private',
-  },
-  {
-    flag: 'needs_power',
-    label: 'Power',
-    unmet: 'No power',
-    satisfiedBy: (unit: LodgingUnitRow, _party: RosterPartyRow) => unit.has_power === true,
-  },
-] as const
+    bathroom: { asked: 'Private bathroom', unmet: 'No private bathroom' },
+    power: { asked: 'Power', unmet: 'No power' },
+  }
 
 /**
  * How many beds the party consumes. Adult weekends enrol one person.
@@ -135,10 +140,11 @@ export function partyBeds(party: RosterPartyRow): number {
  * single-unit gate already enforces, not a looser one for having more
  * rooms.
  *
- * The first resolved member stands in as the representative for a
- * `VERIFIABLE_NEEDS` check that reads a raw unit field (`needs_power`).
- * `needs_private_bathroom` never looks at it — it reads
- * `party.effective_bathroom` — so which member gets picked never changes
+ * The first resolved member stands in as the representative for the needs that
+ * read a UNIT field — since kindred#2072 that is `power_coverage`, resolved by
+ * the server over the unit's leaf descendants, rather than the raw `has_power`
+ * this used to say. The bathroom need never looks at the unit at all — it
+ * reads `party.effective_bathroom` — so which member gets picked never changes
  * that verdict; `is_confirmed` is what has to hold for every one of them.
  *
  * The map surface (`MapUnitPopover`) does not call this: it already resolves
@@ -185,7 +191,7 @@ export function partyAttention(
     return { level: 'unplaced', reason: 'No cabin yet' }
   }
 
-  const asked = VERIFIABLE_NEEDS.filter((need) => flags[need.flag] === true)
+  const asked = ROSTER_NEEDS.filter((key) => flags[needGlyph(key).flag] === true)
   const genericAccommodation = flags.needs_accommodation === true
 
   if (asked.length === 0 && !genericAccommodation) {
@@ -194,9 +200,17 @@ export function partyAttention(
 
   // Only a confirmed cabin is evidence. Anything else is an absence of data.
   if (unit?.is_confirmed === true) {
-    const unmet = asked.filter((need) => !need.satisfiedBy(unit, party))
+    // ANYTHING SHORT OF `fits` COUNTS AS UNMET HERE, and the roster is binary
+    // on purpose: it has no third band to put a qualification in. That is also
+    // the conservative direction against the old raw-flag read — every case
+    // that used to flag still flags, except the fully-covered container the
+    // raw flag got wrong.
+    const unmet = asked.filter((key) => needVerdict(key, needCoverage(key, party, unit)) !== 'fits')
     if (unmet.length > 0) {
-      return { level: 'unmet', reason: unmet.map((need) => need.unmet).join(' · ') }
+      return {
+        level: 'unmet',
+        reason: unmet.map((key) => ROSTER_NEED_WORDING[key].unmet).join(' · '),
+      }
     }
     // Every specific need is answered. A generic accommodation can still be
     // outstanding — no cabin field settles it — but the answered needs must
@@ -207,7 +221,7 @@ export function partyAttention(
       : { level: 'settled', reason: '' }
   }
 
-  const outstanding: string[] = asked.map((need) => need.label)
+  const outstanding: string[] = asked.map((key) => ROSTER_NEED_WORDING[key].asked)
   if (genericAccommodation) outstanding.push('Accommodation')
   return { level: 'unverified', reason: outstanding.join(' · ') }
 }

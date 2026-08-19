@@ -27,7 +27,7 @@ import { Tooltip } from '../ui/Tooltip'
 import { AccessibilityFlagList } from './AccessibilityFlagList'
 import { namedAdults, partyIdentityLabel } from './householdIdentity'
 import type { AttentionLevel } from './rosterAttention'
-import { partyAttention } from './rosterAttention'
+import { ATTENTION_LABEL, partyAttention } from './rosterAttention'
 import { ShareRequestPanel } from './ShareRequestPanel'
 
 export interface HouseholdRosterRowProps {
@@ -202,7 +202,13 @@ export function HouseholdRosterRow({ party, showRequests, unit, onOpen }: Househ
                 rail and the section heading already carry the state. */}
             {(attention.level === 'required' || attention.level === 'unmet') && (
               <span className={`mt-0.5 block text-xs font-medium ${REASON_TONE[attention.level]}`}>
-                {attention.level === 'required' ? 'Accommodation required' : attention.reason}
+                {/* `ATTENTION_LABEL`, not a hardcoded copy of it. The two had
+                    already diverged once by the time kindred#2072 renamed the
+                    card's chip: this line spelled the label out, so the rename
+                    would have left the roster saying one thing and the card
+                    beside it another. The label is explicitly NOT LOCKED —
+                    it is parked for staff input — so it has to be one edit. */}
+                {attention.level === 'required' ? ATTENTION_LABEL.required : attention.reason}
               </span>
             )}
             <span className="text-muted-foreground mt-1 block text-xs tabular-nums">

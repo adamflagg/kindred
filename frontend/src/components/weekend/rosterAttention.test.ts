@@ -72,6 +72,12 @@ function unit(overrides: Partial<LodgingUnitRow> = {}): LodgingUnitRow {
     sleeps: 5,
     bathroom: 'none',
     has_power: false,
+    // The RESOLVED field the grading actually reads since kindred#2072, kept
+    // in step with the raw flag beside it because a real server row carries
+    // both. `has_power: false` alone used to be enough to fail a power check;
+    // it no longer is, and that is the container bug's fix rather than a
+    // loosened assertion — see the `power_coverage` block below.
+    power_coverage: 'none',
     is_confirmed: true,
     is_active: true,
     is_container: false,
@@ -118,7 +124,7 @@ describe('partyAttention — does the cabin provide what was asked for', () => {
         flags: { needs_private_bathroom: true, needs_power: true },
         effective_bathroom: 'private',
       }),
-      unit({ is_confirmed: true, bathroom: 'private', has_power: true })
+      unit({ is_confirmed: true, bathroom: 'private', has_power: true, power_coverage: 'all' })
     )
     expect(a.level).toBe('settled')
   })
@@ -133,6 +139,74 @@ describe('partyAttention — does the cabin provide what was asked for', () => {
     )
     expect(a.level).toBe('unmet')
     expect(a.reason).toBe('No private bathroom · No power')
+  })
+
+  /*
+   * kindred#2072 — power is graded on the SERVER'S RESOLVED COVERAGE now, not
+   * on the raw `has_power` this module used to read.
+   *
+   * Twelve of the fourteen 2026 family-pool containers record `has_power = 0`
+   * while every leaf beneath them has power. The raw read called all twelve
+   * unpowered, so the roster said "No power" about a building the board's own
+   * drag-time hatch called fine — one fact, two answers, which is the
+   * disagreement `needGlyphs.ts` exists to end.
+   */
+  it('settles a container whose rooms all have power, though its own row does not', () => {
+    const a = partyAttention(
+      party({ flags: { needs_power: true } }),
+      unit({ is_confirmed: true, has_power: false, power_coverage: 'all' })
+    )
+    expect(a.level).toBe('settled')
+  })
+
+  it('still flags a cabin where no room has power', () => {
+    const a = partyAttention(
+      party({ flags: { needs_power: true } }),
+      unit({ is_confirmed: true, power_coverage: 'none' })
+    )
+    expect(a.level).toBe('unmet')
+    expect(a.reason).toBe('No power')
+  })
+
+  it('flags a building where only SOME rooms have power — the roster has no third band', () => {
+    // The board grades this `partial` and hatches it more loosely. The roster
+    // is binary and takes the conservative direction: everything short of
+    // `fits` stays flagged, so no case that used to flag has quietly stopped.
+    const a = partyAttention(
+      party({ flags: { needs_power: true } }),
+      unit({ is_confirmed: true, power_coverage: 'some' })
+    )
+    expect(a.level).toBe('unmet')
+  })
+
+  it('does not flag a cabin whose power nobody has resolved', () => {
+    // `unknown` is the fourth value's whole point: absence of evidence is not
+    // evidence of absence.
+    const a = partyAttention(
+      party({ flags: { needs_power: true } }),
+      unit({ is_confirmed: true, power_coverage: 'unknown' })
+    )
+    expect(a.level).toBe('settled')
+  })
+
+  /*
+   * ⚠️ THE SCOPE, PINNED — the roster grades TWO of the four ruled needs.
+   *
+   * `needs_fridge` and `needs_step_free` draw a glyph on the family card
+   * (kindred#2072) and move the board's hatch, and `needGlyphs.ts` grades all
+   * four identically. They stay OUT of these sections deliberately: the
+   * sections are a staff-facing classification with counts on them, and
+   * folding two more needs in moves parties from `settled` into `unmet`.
+   * That is a ruling to take, not a side effect to inherit — so this pins the
+   * scope rather than leaving the next reader to guess whether the omission
+   * was deliberate.
+   */
+  it('does not grade fridge or step-free on the roster, though the card draws both', () => {
+    const a = partyAttention(
+      party({ flags: { needs_fridge: true, needs_step_free: true } }),
+      unit({ is_confirmed: true, fridge_coverage: 'none', ramp_coverage: 'none' })
+    )
+    expect(a.level).toBe('settled')
   })
 
   it('reports "not verified" when the cabin amenities are unconfirmed', () => {
@@ -222,7 +296,7 @@ describe('partyAttention — does the cabin provide what was asked for', () => {
     // settles it.
     const a = partyAttention(
       party({ flags: { needs_accommodation: true } }),
-      unit({ is_confirmed: true, bathroom: 'private', has_power: true })
+      unit({ is_confirmed: true, bathroom: 'private', has_power: true, power_coverage: 'all' })
     )
     expect(a.level).toBe('unverified')
   })
@@ -235,7 +309,7 @@ describe('partyAttention — does the cabin provide what was asked for', () => {
     // when the registry says it does.
     const a = partyAttention(
       party({ flags: { needs_power: true, needs_accommodation: true } }),
-      unit({ is_confirmed: true, has_power: true })
+      unit({ is_confirmed: true, has_power: true, power_coverage: 'all' })
     )
     expect(a.level).toBe('unverified')
     expect(a.reason).toBe('Accommodation')
@@ -246,7 +320,7 @@ describe('partyAttention — does the cabin provide what was asked for', () => {
     // so both the specific need and the generic accommodation are outstanding.
     const a = partyAttention(
       party({ flags: { needs_power: true, needs_accommodation: true } }),
-      unit({ is_confirmed: false, has_power: true })
+      unit({ is_confirmed: false, has_power: true, power_coverage: 'all' })
     )
     expect(a.level).toBe('unverified')
     expect(a.reason).toBe('Power · Accommodation')
