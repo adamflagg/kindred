@@ -611,12 +611,16 @@ func TestBunkAssignment_StaffRowSurvivesASecondRunOnTheSameInstance(t *testing.T
 	const departedRunTwoAssignmentCMID = 740004
 
 	// Three campers share the bunk with the counselor. They are not decoration:
-	// OrphanSweepGuard refuses a sweep whose computed set is under half of what
-	// is on disk, so a fixture holding ONLY the staff row would have the guard
-	// stop the deletion and hide the bug. Production has no such luck -- the 262
-	// staff rows sat inside a table whose camper rows still resolved and still
-	// tracked, so the guard's floor was met and the sweep ran. This fixture is
-	// that shape in miniature: 3 of 4 rows keep tracking, 1 does not.
+	// OrphanSweepGuard refuses a sweep outright when the computed set is EMPTY,
+	// at any table size, so a fixture holding ONLY the staff row would have the
+	// guard stop the deletion and hide the bug -- the test would go red on a
+	// guard error rather than on a destroyed row, which pins the guard and not
+	// the tracking. (Its ratio arm is not what saves such a fixture: that one
+	// only applies from OrphanSweepMinRows = 20 rows up, and nothing here is
+	// near that.) Production had no such luck -- the 262 staff rows sat inside a
+	// table whose camper rows still resolved and still tracked, so the computed
+	// set was never empty and the sweep ran. This fixture is that shape in
+	// miniature: 3 of 4 rows keep tracking, 1 does not.
 	camperCMIDs := []int{9000006, 9000007, 9000008}
 
 	saveRec(t, app, "persons", map[string]any{"cm_id": staffPersonCMID, "year": year})
