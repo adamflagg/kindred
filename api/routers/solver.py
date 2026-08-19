@@ -33,6 +33,7 @@ from bunking.solver.impossibility import filter_immaterial_requests, validate_im
 
 from ..constants.collections import (
     ATTENDEES,
+    BUNK_ASSIGNMENTS_DRAFT,
     BUNKS,
     CAMP_SESSIONS,
     SOLVER_RUNS,
@@ -74,6 +75,31 @@ def _resolve_time_limit(value: int | None, default: int = 60) -> int:
     return value if value is not None else default
 
 
+_SCENARIO_REQUIRED_DETAIL = (
+    "A scenario is required: solver output applies to a scenario's draft assignments. "
+    "Production bunk assignments are read-only for the solver."
+)
+
+
+def _require_scenario(scenario: str | None) -> str:
+    """Return *scenario*, or refuse with 422 when it is missing or blank.
+
+    The solver cannot write production. It applies to a scenario's
+    ``bunk_assignments_draft`` rows and nowhere else — production bunk
+    assignments are read-only for both the solver and drag/drop. A scenario-less
+    run therefore has nowhere legal to land, so it is refused rather than
+    repaired (kindred#2467: the old production branch built a payload the
+    collection rejected, logged the failure per camper and still returned 200).
+
+    Same rule the lodging side already encodes on ``PlacementWriteBase.scenario``
+    (``frontend/src/services/lodgingApi.ts``): *"REQUIRED and non-empty. A blank
+    scenario is a 422, never a write to the live plan."*
+    """
+    if scenario is None or not scenario.strip():
+        raise HTTPException(status_code=422, detail=_SCENARIO_REQUIRED_DETAIL)
+    return scenario
+
+
 # ========================================
 # Solver Run Endpoints
 # ========================================
@@ -86,6 +112,10 @@ async def run_solver(
     user: AuthUser = Depends(require_permission(Permission.BUNKING_MANAGE)),
 ) -> SolverResponse:
     """Run the bunking solver for a session."""
+    # Refuse before anything else: a run with no scenario can only ever be
+    # applied to production, which is read-only for the solver.
+    _require_scenario(request.scenario)
+
     # Single-flight guard: reject duplicate in-progress runs for the same session.
     # FastAPI serializes coroutines on the event loop and solver_runs is in-process,
     # so no locking is needed beyond a plain dict scan.
@@ -571,9 +601,9 @@ async def analyze_solver_run(
 async def apply_solver_results(
     run_id: str, user: AuthUser = Depends(require_permission(Permission.BUNKING_MANAGE))
 ) -> dict[str, str]:
-    """Apply the results of a solver run to the database."""
+    """Apply the results of a solver run to its scenario's draft assignments."""
     session_cm_id = None
-    scenario = None
+    scenario: str | None = None
 
     results: dict[str, Any] = {}
     if run_id not in solver_runs:
@@ -598,6 +628,10 @@ async def apply_solver_results(
         session_cm_id = run_data.get("session_cm_id")
         scenario = run_data.get("scenario")
 
+    # Refuse before touching PocketBase. A run with no scenario has nowhere
+    # legal to land — the solver does not write production.
+    scenario = _require_scenario(scenario)
+
     assignments = results["assignments"]
 
     # Get year from run config, fall back to results or current year
@@ -621,6 +655,8 @@ async def apply_solver_results(
     ctx = await build_session_context(int(session_cm_id), run_year, pb)
     session_filter = ctx.session_relation_filter
 
+    write_failures: list[str] = []
+
     for person_cm_id_str, bunk_name in assignments.items():
         try:
             person_cm_id = int(person_cm_id_str)
@@ -640,125 +676,94 @@ async def apply_solver_results(
                 logger.warning(f"Bunk {bunk_name} has no cm_id")
                 continue
 
-            if scenario:
-                collection_name = "bunk_assignments_draft"
-                person_pb_id = await cache.get_person_pb_id(person_cm_id)
-                if not person_pb_id:
-                    logger.warning(f"Person with cm_id {person_cm_id} not found")
-                    continue
+            collection_name = BUNK_ASSIGNMENTS_DRAFT
+            person_pb_id = await cache.get_person_pb_id(person_cm_id)
+            if not person_pb_id:
+                logger.warning(f"Person with cm_id {person_cm_id} not found")
+                continue
 
-                existing = await asyncio.to_thread(
-                    pb.collection(collection_name).get_full_list,
-                    query_params={
-                        "filter": (f'person = "{person_pb_id}" && scenario = "{scenario}" && year = {run_year}')
-                    },
+            existing = await asyncio.to_thread(
+                pb.collection(collection_name).get_full_list,
+                query_params={"filter": (f'person = "{person_pb_id}" && scenario = "{scenario}" && year = {run_year}')},
+            )
+
+            # Use session_filter to get correct attendee for multi-enrolled campers
+            attendees = await asyncio.to_thread(
+                pb.collection(ATTENDEES).get_full_list,
+                query_params={
+                    "filter": f'person_id = {person_cm_id} && year = {run_year} && status = "enrolled" && ({session_filter})',
+                    "expand": "session",
+                },
+            )
+
+            if not attendees:
+                logger.warning(
+                    f"No attendee record found for person CM ID {person_cm_id} in session(s) {ctx.related_session_ids}"
                 )
+                continue
 
-                # Use session_filter to get correct attendee for multi-enrolled campers
-                attendees = await asyncio.to_thread(
-                    pb.collection(ATTENDEES).get_full_list,
-                    query_params={
-                        "filter": f'person_id = {person_cm_id} && year = {run_year} && status = "enrolled" && ({session_filter})',
-                        "expand": "session",
-                    },
+            session_data = get_session_from_expand(attendees[0])
+            actual_session_cm_id_val = session_data.cm_id if session_data and hasattr(session_data, "cm_id") else None
+            if not actual_session_cm_id_val:
+                logger.warning(f"No session cm_id found for attendee of person CM ID {person_cm_id}")
+                continue
+            actual_session_cm_id = int(actual_session_cm_id_val)
+
+            # Use cache to resolve all PB IDs (cache handles the lookups properly)
+            bunk_pb_id = await cache.get_bunk_pb_id(int(bunk_cm_id))
+            session_pb_id = await cache.get_session_pb_id(actual_session_cm_id)
+            bunk_plan_pb_id = await cache.get_bunk_plan_id(int(bunk_cm_id), actual_session_cm_id, run_year)
+
+            if not all([bunk_pb_id, session_pb_id, bunk_plan_pb_id]):
+                logger.warning(
+                    f"Failed to resolve PB IDs for person {person_cm_id}: "
+                    f"bunk={bunk_pb_id}, session={session_pb_id}, bunk_plan={bunk_plan_pb_id}"
                 )
+                continue
 
-                if not attendees:
-                    logger.warning(
-                        f"No attendee record found for person CM ID {person_cm_id} in session(s) {ctx.related_session_ids}"
-                    )
-                    continue
-
-                session_data = get_session_from_expand(attendees[0])
-                actual_session_cm_id_val = (
-                    session_data.cm_id if session_data and hasattr(session_data, "cm_id") else None
-                )
-                if not actual_session_cm_id_val:
-                    logger.warning(f"No session cm_id found for attendee of person CM ID {person_cm_id}")
-                    continue
-                actual_session_cm_id = int(actual_session_cm_id_val)
-
-                # Use cache to resolve all PB IDs (cache handles the lookups properly)
-                bunk_pb_id = await cache.get_bunk_pb_id(int(bunk_cm_id))
-                session_pb_id = await cache.get_session_pb_id(actual_session_cm_id)
-                bunk_plan_pb_id = await cache.get_bunk_plan_id(int(bunk_cm_id), actual_session_cm_id, run_year)
-
-                if not all([bunk_pb_id, session_pb_id, bunk_plan_pb_id]):
-                    logger.warning(
-                        f"Failed to resolve PB IDs for person {person_cm_id}: "
-                        f"bunk={bunk_pb_id}, session={session_pb_id}, bunk_plan={bunk_plan_pb_id}"
-                    )
-                    continue
-
-                assignment_data = {
-                    "scenario": scenario,
-                    "person": person_pb_id,
-                    "session": session_pb_id,
-                    "bunk": bunk_pb_id,
-                    "bunk_plan": bunk_plan_pb_id,
-                    "year": run_year,
-                    "assignment_locked": False,
-                }
-            else:
-                collection_name = "bunk_assignments"
-
-                # Use session_filter to get correct attendee for multi-enrolled campers
-                attendees = await asyncio.to_thread(
-                    pb.collection(ATTENDEES).get_full_list,
-                    query_params={
-                        "filter": f'person_id = {person_cm_id} && year = {run_year} && status = "enrolled" && ({session_filter})',
-                        "expand": "session",
-                    },
-                )
-
-                if not attendees:
-                    logger.warning(
-                        f"No attendee record found for person CM ID {person_cm_id} in session(s) {ctx.related_session_ids}"
-                    )
-                    continue
-
-                session_data = get_session_from_expand(attendees[0])
-                actual_session_cm_id_raw = (
-                    session_data.cm_id if session_data and hasattr(session_data, "cm_id") else None
-                )
-                if not actual_session_cm_id_raw:
-                    logger.warning(f"No session cm_id found for attendee of person CM ID {person_cm_id}")
-                    continue
-                actual_session_cm_id = int(actual_session_cm_id_raw)
-
-                existing = await asyncio.to_thread(
-                    pb.collection(collection_name).get_full_list,
-                    query_params={
-                        "filter": (
-                            f"person.cm_id = {person_cm_id} && "
-                            f"session.cm_id = {actual_session_cm_id} && "
-                            f"year = {run_year}"
-                        ),
-                        "expand": "person,session,bunk",
-                    },
-                )
-
-                assignment_data = {
-                    "person_cm_id": person_cm_id,
-                    "session_cm_id": actual_session_cm_id,
-                    "bunk_cm_id": bunk_cm_id,
-                    "year": run_year,
-                    "assigned_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
-                    "assigned_by": "solver",
-                }
+            assignment_data = {
+                "scenario": scenario,
+                "person": person_pb_id,
+                "session": session_pb_id,
+                "bunk": bunk_pb_id,
+                "bunk_plan": bunk_plan_pb_id,
+                "year": run_year,
+                "assignment_locked": False,
+            }
 
             if existing:
                 existing_record = existing[0]
-                existing_id_val = existing_record.get("id") if isinstance(existing_record, dict) else existing_record.id
-                existing_id = str(existing_id_val) if existing_id_val else ""
+                # getattr, not `.id` — a malformed record shape here must degrade
+                # this one camper, not raise AttributeError and abort the whole
+                # remaining batch. The narrowed `except` below (kindred#2467) no
+                # longer catches AttributeError on purpose, so it has to be kept
+                # from happening in the first place rather than caught late.
+                existing_id_val = (
+                    existing_record.get("id")
+                    if isinstance(existing_record, dict)
+                    else getattr(existing_record, "id", None)
+                )
+                if not existing_id_val:
+                    logger.error(
+                        f"Existing draft record for person {person_cm_id_str} has no usable id "
+                        f"(record={existing_record!r}); treating as a write failure"
+                    )
+                    write_failures.append(person_cm_id_str)
+                    continue
+                existing_id = str(existing_id_val)
                 await asyncio.to_thread(pb.collection(collection_name).update, existing_id, assignment_data)
             else:
                 await asyncio.to_thread(pb.collection(collection_name).create, assignment_data)
 
-        except Exception as e:
-            logger.error(f"Failed to update person {person_cm_id_str}: {e}")
+        except (ClientResponseError, ValueError) as e:
+            # Narrowed on purpose (kindred#2467). A bare `except Exception` here
+            # swallowed every failed write while the endpoint still returned 200,
+            # which is how a branch that could never write went unnoticed. Per-camper
+            # resilience is kept — one bad row must not abandon the rest — but the
+            # failures are counted and the response says so below.
+            logger.error(f"Failed to apply assignment for person {person_cm_id_str}: {e}")
+            write_failures.append(person_cm_id_str)
 
-    table_name = "bunk_assignments_draft" if scenario else "bunk_assignments"
     assignments_dict: dict[str, Any] = assignments if isinstance(assignments, dict) else {}
 
     # Drop the matching graph cache slot so the next /social-graph request
@@ -766,12 +771,19 @@ async def apply_solver_results(
     # the previous draft's bunk_cm_id node attrs for up to TTL (15 min) — the
     # symptom is "everyone in a big lump" because bubble grouping no longer
     # matches the active scenario's assignments.
-    if scenario:
-        graph_cache.invalidate_scenario(int(session_cm_id), run_year, scenario)
-    else:
-        graph_cache.invalidate_session(int(session_cm_id), run_year)
+    graph_cache.invalidate_scenario(int(session_cm_id), run_year, scenario)
 
-    return {"message": f"Applied {len(assignments_dict)} assignments to {table_name}"}
+    if write_failures:
+        # Never report success over a failed write — see the handler above.
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                f"{len(write_failures)} of {len(assignments_dict)} assignments failed to write "
+                f"(applied {len(assignments_dict) - len(write_failures)}); see server logs"
+            ),
+        )
+
+    return {"message": f"Applied {len(assignments_dict)} assignments to {BUNK_ASSIGNMENTS_DRAFT}"}
 
 
 # ========================================
@@ -786,6 +798,9 @@ async def run_multi_session_solver(
     user: AuthUser = Depends(require_permission(Permission.BUNKING_MANAGE)),
 ) -> dict[str, Any]:
     """Run the bunking solver for multiple child sessions of a parent session."""
+    # Same rule as /solver/run: every child run must have a scenario to land in.
+    _require_scenario(request.scenario)
+
     time_limit = _resolve_time_limit(request.time_limit_per_session)
 
     try:

@@ -61,7 +61,7 @@ Start a new solver run for a session.
 
 **Parameters:**
 - `session_id` (required): CampMinder session ID to solve
-- `apply_results` (optional, default=false): Auto-apply results to production
+- `apply_results` (optional, default=false): Auto-apply results to the run's scenario
 - `time_limit` (optional, default=30): Max seconds to run (1-600)
 
 **Response:**
@@ -136,7 +136,10 @@ Get status and results of a solver run.
 ---
 
 #### POST /solver/apply/{run_id}
-Apply solver results to production bunk assignments.
+Apply solver results to the run's **scenario** (`bunk_assignments_draft`).
+
+⚠️ **Production is read-only for the solver.** A run carrying no scenario is refused with a 422 rather
+than applied — see kindred#2467. The solver never writes `bunk_assignments`.
 
 **Path Parameters:**
 - `run_id`: The solver run identifier
@@ -537,21 +540,36 @@ Error responses include detail:
 
 ### Basic Solving
 ```bash
-# 1. Start solver run
+# 1. Create (or reuse) a scenario. The solver only ever writes a scenario's
+#    draft assignments — production is read-only for the solver (kindred#2467) —
+#    so a run has to name one to have anywhere legal to land.
+POST /scenarios
+{
+  "name": "Session 1 Draft",
+  "session_cm_id": 1000001,
+  "copy_from_production": true
+}
+# Returns: {"id": "scn_abc123", "name": "Session 1 Draft", ...}
+
+# 2. Start solver run against that scenario
 POST /solver/run
 {
-  "session_id": "1000001",
+  "session_cm_id": 1000001,
+  "year": 2025,
+  "scenario": "scn_abc123",
   "time_limit": 60
 }
 # Returns: {"run_id": "abc123", "status": "started"}
+# A request with no "scenario" (or a blank one) is refused with 422 here,
+# before the solver ever runs.
 
-# 2. Check status
+# 3. Check status
 GET /solver/run/abc123
 # Returns: {"status": "completed", "results": {...}}
 
-# 3. Apply results
+# 4. Apply results to the scenario's draft assignments
 POST /solver/apply/abc123
-# Returns: {"message": "Applied 150 assignments"}
+# Returns: {"message": "Applied 150 assignments to bunk_assignments_draft"}
 ```
 
 ### Scenario Planning

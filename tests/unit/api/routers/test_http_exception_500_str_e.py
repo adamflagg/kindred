@@ -287,14 +287,18 @@ class TestMultiSessionSolverNoLeakOnError:
     def test_status_is_500(self, client: TestClient) -> None:
         resp = client.post(
             "/api/solver/run-multi-session",
-            json={"parent_session_cm_id": 2001, "year": 2025},
+            # `scenario` is required (kindred#2467) — without it the endpoint
+            # refuses with a 422 and never reaches the PB call this test raises on.
+            json={"parent_session_cm_id": 2001, "year": 2025, "scenario": "scn_leak_probe"},
         )
         assert resp.status_code == 500
 
     def test_detail_is_generic_not_str_e(self, client: TestClient) -> None:
         resp = client.post(
             "/api/solver/run-multi-session",
-            json={"parent_session_cm_id": 2001, "year": 2025},
+            # `scenario` is required (kindred#2467) — without it the endpoint
+            # refuses with a 422 and never reaches the PB call this test raises on.
+            json={"parent_session_cm_id": 2001, "year": 2025, "scenario": "scn_leak_probe"},
         )
         body = resp.json()
         assert body == INTERNAL_ERROR_BODY, (
