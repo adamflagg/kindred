@@ -1449,6 +1449,7 @@ export type SessionGroupsRecord = {
 export const SheetsWorkbooksWorkbookTypeOptions = {
   globals: 'globals',
   year: 'year',
+  fc_roster: 'fc_roster',
 } as const
 export type SheetsWorkbooksWorkbookTypeOptions =
   (typeof SheetsWorkbooksWorkbookTypeOptions)[keyof typeof SheetsWorkbooksWorkbookTypeOptions]
@@ -1465,6 +1466,7 @@ export type SheetsWorkbooksRecord = {
   error_message?: string
   id: string
   last_sync: IsoAutoDateString
+  session_cm_id?: number
   spreadsheet_id: string
   status?: SheetsWorkbooksStatusOptions
   tab_count?: number
