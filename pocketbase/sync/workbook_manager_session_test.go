@@ -56,6 +56,16 @@ func newWorkbookTestApp(t *testing.T) core.App {
 	return app
 }
 
+// Two synthetic weekend ids. The registry key is what these tests are about, so
+// they deliberately name no real weekend -- a reader should not have to wonder
+// which season's data a key-collision test is describing. The roster BUILDER
+// tests use sync_testsupport_test.go's shared cmIDFamilyCamp* constants, because
+// those fixtures do stand in for real weekends.
+const (
+	cmIDTestWeekendA = 1000001
+	cmIDTestWeekendB = 1000002
+)
+
 func rosterWorkbook(sessionCMID int, spreadsheetID string) *WorkbookRecord {
 	return &WorkbookRecord{
 		SpreadsheetID: spreadsheetID,
@@ -83,11 +93,11 @@ func TestSaveWorkbookRecordKeepsRosterWorkbooksApartBySession(t *testing.T) {
 	manager := NewWorkbookManager(app, NewMockSheetsWriter())
 	ctx := context.Background()
 
-	first, err := manager.SaveWorkbookRecord(ctx, rosterWorkbook(1309515, "sheet-fc2"))
+	first, err := manager.SaveWorkbookRecord(ctx, rosterWorkbook(cmIDTestWeekendA, "sheet-weekend-a"))
 	if err != nil {
 		t.Fatalf("save first roster workbook: %v", err)
 	}
-	second, err := manager.SaveWorkbookRecord(ctx, rosterWorkbook(1309519, "sheet-fc6"))
+	second, err := manager.SaveWorkbookRecord(ctx, rosterWorkbook(cmIDTestWeekendB, "sheet-weekend-b"))
 	if err != nil {
 		t.Fatalf("save second roster workbook: %v", err)
 	}
@@ -104,15 +114,15 @@ func TestSaveWorkbookRecordKeepsRosterWorkbooksApartBySession(t *testing.T) {
 		t.Fatalf("stored %d workbooks, want 2: %+v", len(all), all)
 	}
 
-	got, err := manager.GetWorkbookForSession(ctx, workbookTypeFCRoster, 2026, 1309519)
+	got, err := manager.GetWorkbookForSession(ctx, workbookTypeFCRoster, 2026, cmIDTestWeekendB)
 	if err != nil {
 		t.Fatalf("GetWorkbookForSession: %v", err)
 	}
-	if got == nil || got.SpreadsheetID != "sheet-fc6" {
-		t.Fatalf("lookup for weekend 1309519 returned %+v, want sheet-fc6", got)
+	if got == nil || got.SpreadsheetID != "sheet-weekend-b" {
+		t.Fatalf("lookup for weekend %d returned %+v, want the second weekend's sheet", cmIDTestWeekendB, got)
 	}
-	if got.SessionCMID != 1309519 {
-		t.Errorf("SessionCMID = %d, want 1309519 -- the column is not round-tripping", got.SessionCMID)
+	if got.SessionCMID != cmIDTestWeekendB {
+		t.Errorf("SessionCMID = %d, want %d -- the column is not round-tripping", got.SessionCMID, cmIDTestWeekendB)
 	}
 }
 
@@ -125,12 +135,12 @@ func TestSaveWorkbookRecordUpdatesTheSameSessionInPlace(t *testing.T) {
 	manager := NewWorkbookManager(app, NewMockSheetsWriter())
 	ctx := context.Background()
 
-	first, err := manager.SaveWorkbookRecord(ctx, rosterWorkbook(1309515, "sheet-fc2"))
+	first, err := manager.SaveWorkbookRecord(ctx, rosterWorkbook(cmIDTestWeekendA, "sheet-weekend-a"))
 	if err != nil {
 		t.Fatalf("first save: %v", err)
 	}
 
-	again := rosterWorkbook(1309515, "sheet-fc2")
+	again := rosterWorkbook(cmIDTestWeekendA, "sheet-weekend-a")
 	again.TabCount = 3
 	second, err := manager.SaveWorkbookRecord(ctx, again)
 	if err != nil {
@@ -161,7 +171,7 @@ func TestGetWorkbookByTypeIgnoresSessionScopedRows(t *testing.T) {
 	manager := NewWorkbookManager(app, NewMockSheetsWriter())
 	ctx := context.Background()
 
-	if _, err := manager.SaveWorkbookRecord(ctx, rosterWorkbook(1309515, "sheet-fc2")); err != nil {
+	if _, err := manager.SaveWorkbookRecord(ctx, rosterWorkbook(cmIDTestWeekendA, "sheet-weekend-a")); err != nil {
 		t.Fatalf("save roster workbook: %v", err)
 	}
 	if _, err := manager.SaveWorkbookRecord(ctx, &WorkbookRecord{
@@ -186,7 +196,7 @@ func TestGetWorkbookForSessionReturnsNilWhenAbsent(t *testing.T) {
 	t.Parallel()
 	manager := NewWorkbookManager(newWorkbookTestApp(t), NewMockSheetsWriter())
 
-	got, err := manager.GetWorkbookForSession(context.Background(), workbookTypeFCRoster, 2026, 1309515)
+	got, err := manager.GetWorkbookForSession(context.Background(), workbookTypeFCRoster, 2026, cmIDTestWeekendA)
 	if err != nil {
 		t.Fatalf("GetWorkbookForSession: %v", err)
 	}
@@ -210,7 +220,7 @@ func TestBuildIndexSheetDataOmitsRosterWorkbooks(t *testing.T) {
 	data := BuildIndexSheetData([]WorkbookRecord{
 		{WorkbookType: workbookTypeGlobals, Title: "CM Data - Globals", URL: "u1"},
 		{WorkbookType: "year", Year: 2026, Title: "CM Data - 2026", URL: "u2"},
-		{WorkbookType: workbookTypeFCRoster, Year: 2026, SessionCMID: 1309515,
+		{WorkbookType: workbookTypeFCRoster, Year: 2026, SessionCMID: cmIDTestWeekendA,
 			Title: "Weekend Roster", URL: "u3"},
 	})
 

@@ -62,7 +62,7 @@ export async function fetchSheetsWorkbooks(): Promise<SheetsWorkbook[]> {
  */
 export function useSheetsWorkbooks() {
   return useQuery({
-    queryKey: ['sheets-workbooks'],
+    queryKey: queryKeys.sheetsWorkbooks(),
     queryFn: fetchSheetsWorkbooks,
     // Refetch every 30 seconds to catch status updates
     refetchInterval: 30000,
@@ -108,7 +108,7 @@ export function useMultiWorkbookExport() {
         })
       }
       // Invalidate workbooks to show status change
-      void queryClient.invalidateQueries({ queryKey: ['sheets-workbooks'] })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.sheetsWorkbooks() })
       void queryClient.invalidateQueries({ queryKey: queryKeys.syncStatus() })
     },
     onError: (error) => {
@@ -143,7 +143,7 @@ export function useRefreshMasterIndex() {
           borderLeft: '4px solid hsl(160, 100%, 21%)',
         },
       })
-      void queryClient.invalidateQueries({ queryKey: ['sheets-workbooks'] })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.sheetsWorkbooks() })
     },
     onError: (error) => {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error'

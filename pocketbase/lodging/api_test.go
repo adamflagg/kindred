@@ -67,6 +67,10 @@ func TestYearsFromQueryAcceptsARealSeasonPair(t *testing.T) {
 // off the query string, and how a builder refusal becomes a status code.
 // kindred#2433.
 
+// A synthetic weekend id: these tests parse a query string and never reach the
+// database, so naming a real weekend would imply a specificity they do not have.
+const testWeekendCMID = 1000001
+
 func rosterParamsFor(t *testing.T, query string) (year, sessionCMID int, err error) {
 	t.Helper()
 	re := &core.RequestEvent{}
@@ -76,12 +80,12 @@ func rosterParamsFor(t *testing.T, query string) (year, sessionCMID int, err err
 
 func TestRosterExportParamsAcceptsAWeekend(t *testing.T) {
 	t.Parallel()
-	year, session, err := rosterParamsFor(t, "year=2026&session=1309515")
+	year, session, err := rosterParamsFor(t, "year=2026&session=1000001")
 	if err != nil {
 		t.Fatalf("rosterExportParams: %v", err)
 	}
-	if year != 2026 || session != 1309515 {
-		t.Errorf("year,session = %d,%d; want 2026,1309515", year, session)
+	if year != 2026 || session != testWeekendCMID {
+		t.Errorf("year,session = %d,%d; want 2026,%d", year, session, testWeekendCMID)
 	}
 }
 
@@ -91,10 +95,10 @@ func TestRosterExportParamsAcceptsAWeekend(t *testing.T) {
 func TestRosterExportParamsRejectsBadInput(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct{ name, query, wantIn string }{
-		{"missing year", "session=1309515", "year"},
-		{"unparseable year", "year=abc&session=1309515", "year"},
-		{"year below the field minimum", "year=1999&session=1309515", "year"},
-		{"year above the field maximum", "year=2999&session=1309515", "year"},
+		{"missing year", "session=1000001", "year"},
+		{"unparseable year", "year=abc&session=1000001", "year"},
+		{"year below the field minimum", "year=1999&session=1000001", "year"},
+		{"year above the field maximum", "year=2999&session=1000001", "year"},
 		{"missing session", "year=2026", "session"},
 		{"unparseable session", "year=2026&session=abc", "session"},
 		{"zero session", "year=2026&session=0", "session"},

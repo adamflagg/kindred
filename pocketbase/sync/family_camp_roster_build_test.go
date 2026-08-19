@@ -565,3 +565,30 @@ func TestBuildFamilyCampRosterUsesTheGivenInstantForAges(t *testing.T) {
 		t.Errorf("age two days earlier = %q, want %q -- ages must follow the export instant", got, "7")
 	}
 }
+
+// TestBuildFamilyCampRosterCityFallbackIsYearScoped pins the year filter on the
+// fallback query.
+//
+// Belt-and-braces today, deliberately. `households` is itself year-scoped --
+// unique on (cm_id, year), one record per household per season -- so a 2026
+// household record cannot be reached by a 2025 person, and production carries
+// zero households whose persons span years. The filter costs nothing, states the
+// scoping at the query rather than leaving it to a reader who has to know the
+// households invariant, and matches attachRosterAdults, which filters the same
+// way. This test seeds the shape the invariant forbids so that the filter is
+// pinned rather than merely present.
+func TestBuildFamilyCampRosterCityFallbackIsYearScoped(t *testing.T) {
+	t.Parallel()
+	f := newRosterFixture(t)
+	household := f.addHousehold(9001)
+	f.addCamper(household, &rosterTestPerson{CMID: 1, First: "Emma", Last: "Johnson", Birthdate: "2014-03-02"})
+	// A prior season's member of the same household record, carrying a city.
+	f.addPerson(household, &rosterTestPerson{
+		CMID: 2, First: "Sarah", Last: "Johnson", AddressCity: "Fresno, CA", Year: 2025,
+	})
+
+	roster := f.mustBuild()
+	if got := roster.Blocks[0].City; got != "" {
+		t.Errorf("city = %q, want empty -- a prior season's row must not supply this year's city", got)
+	}
+}

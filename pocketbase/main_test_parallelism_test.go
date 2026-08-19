@@ -216,7 +216,7 @@ var serialGroups = []struct {
 	{
 		// The Family Camp roster stamps its tab name -- and computes ages -- in
 		// camp-local time, defaulting to Pacific when TZ is unset (kindred#2433).
-		// TZ is process-global and read through time.LoadLocation, so these five
+		// TZ is process-global and read through time.LoadLocation, so these four
 		// have to set it for real; there is no injection seam that would still be
 		// testing the fallback. The export path takes an injected clock precisely
 		// so that only the timezone tests need this, not the other twelve.

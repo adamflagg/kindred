@@ -133,7 +133,7 @@ func BuildFamilyCampRoster(app core.App, year, sessionCMID int, on time.Time) (*
 	}
 	orderRosterHouseholds(ordered)
 
-	if err := attachRosterCityFallback(app, ordered); err != nil {
+	if err := attachRosterCityFallback(app, year, ordered); err != nil {
 		return nil, err
 	}
 	if err := attachRosterAdults(app, year, ordered); err != nil {
@@ -276,7 +276,15 @@ func loadRosterHouseholds(app core.App, year int, sessionID string) (map[string]
 //
 // Scoped to the household, never widened: a wrong city on a family's block is
 // worse than a blank one. Households that already have a city are not queried.
-func attachRosterCityFallback(app core.App, households []rosterHousehold) error {
+//
+// The year filter is belt-and-braces and kept deliberately. `households` is
+// itself year-scoped -- unique on (cm_id, year), one record per household per
+// season -- so a 2026 household record is unreachable from a 2025 person, and
+// production carries zero households whose persons span years. Filtering anyway
+// states the scoping at the query instead of leaving it to a reader who has to
+// know that invariant, and matches attachRosterAdults, which filters the same
+// way for the same reason.
+func attachRosterCityFallback(app core.App, year int, households []rosterHousehold) error {
 	missing := make([]string, 0)
 	for _, household := range households {
 		if household.City == "" {
@@ -289,7 +297,8 @@ func attachRosterCityFallback(app core.App, households []rosterHousehold) error 
 
 	found := make(map[string]string, len(missing))
 	err := forEachRosterIDChunk(missing, func(filter string, params dbx.Params) error {
-		records, chunkErr := findAllRecords(app, "persons", filter, params)
+		records, chunkErr := findAllRecords(app, "persons",
+			fmt.Sprintf("year = %d && (%s)", year, filter), params)
 		if chunkErr != nil {
 			return chunkErr
 		}
