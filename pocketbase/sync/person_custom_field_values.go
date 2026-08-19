@@ -16,12 +16,24 @@ import (
 // Service name constant - uses new table name
 const serviceNamePersonCustomValues = "person_custom_values"
 
-// PersonCustomFieldValuesSync handles syncing custom field values for persons from CampMinder
-// This is an ON-DEMAND sync (not part of daily sync) because it requires 1 API call per person
+// PersonCustomFieldValuesSync handles syncing custom field values for persons from CampMinder.
+// The unrestricted instance (Session=DefaultSession) is ON-DEMAND -- weekly cron + manual runs
+// only -- because a year-wide sweep is 1 API call per person. A second, FamilyCampBounded
+// instance of this same type IS part of the daily cron (kindred#2482): scoped to family-camp
+// attendees, it stays cheap enough to run daily. See orchestrator.go's getDailySyncJobs and the
+// "person_custom_values_family_camp" registration.
 type PersonCustomFieldValuesSync struct {
 	BaseSyncService
 	Session     string                 // Session filter: "all", "1", "2", "2a", "3", "4", etc.
 	rateLimiter *ratelimit.RateLimiter // Rate limiter for API calls
+
+	// FamilyCampBounded selects the bounded daily family-camp cohort (any attendee status,
+	// via SessionResolver.GetFamilyCampPersonIDsAnyStatus) instead of Session or the
+	// year-wide fallback. Set only on the dedicated "person_custom_values_family_camp"
+	// service instance registered for the daily cron (kindred#2482) -- the plain
+	// "person_custom_values" instance used by the weekly sweep and manual runs leaves this
+	// false.
+	FamilyCampBounded bool
 }
 
 // NewPersonCustomFieldValuesSync creates a new person custom field values sync service
@@ -255,6 +267,23 @@ func (s *PersonCustomFieldValuesSync) preloadFieldDefMapping() (map[int]string, 
 
 // getPersonIDsToSync returns the list of person CampMinder IDs to sync based on session filter
 func (s *PersonCustomFieldValuesSync) getPersonIDsToSync(year int) ([]int, error) {
+	// Bounded daily family-camp pass (kindred#2482): any attendee status, across every
+	// family-camp weekend, resolved via attendees rather than Session so it can span
+	// multiple weekend sessions in one run.
+	if s.FamilyCampBounded {
+		resolver := NewSessionResolver(s.App)
+		personIDs, err := resolver.GetFamilyCampPersonIDsAnyStatus(year)
+		if err != nil {
+			return nil, err
+		}
+
+		s.DebugLog("Resolved family-camp bounded cohort to person IDs",
+			"count", len(personIDs),
+			"year", year)
+
+		return personIDs, nil
+	}
+
 	// Use session resolver if session filter is specified
 	if s.Session != "" && s.Session != DefaultSession {
 		resolver := NewSessionResolver(s.App)
