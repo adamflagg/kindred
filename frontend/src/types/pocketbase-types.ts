@@ -56,6 +56,7 @@ export const Collections = {
   LodgingSlotMerges: 'lodging_slot_merges',
   LodgingUnitAliases: 'lodging_unit_aliases',
   LodgingUnits: 'lodging_units',
+  LodgingValueHistory: 'lodging_value_history',
   LodgingWriteIns: 'lodging_write_ins',
   LodgingWriteInsDraft: 'lodging_write_ins_draft',
   NormalizedMappings: 'normalized_mappings',
@@ -1212,6 +1213,21 @@ export type LodgingUnitsRecord<Tbeds = unknown> = {
   year: number
 }
 
+export type LodgingValueHistoryRecord = {
+  created: IsoAutoDateString
+  field_cm_id: number
+  household_cm_id?: number
+  id: string
+  is_genesis?: boolean
+  new_value?: string
+  observed_at?: IsoDateString
+  old_value?: string
+  person_cm_id?: number
+  source_changed_at?: string
+  source_field?: string
+  year: number
+}
+
 export type LodgingWriteInsRecord = {
   created: IsoAutoDateString
   id: string
@@ -1873,6 +1889,8 @@ export type LodgingUnitsResponse<Tbeds = unknown, Texpand = unknown> = Required<
   LodgingUnitsRecord<Tbeds>
 > &
   BaseSystemFields<Texpand>
+export type LodgingValueHistoryResponse<Texpand = unknown> = Required<LodgingValueHistoryRecord> &
+  BaseSystemFields<Texpand>
 export type LodgingWriteInsResponse<Texpand = unknown> = Required<LodgingWriteInsRecord> &
   BaseSystemFields<Texpand>
 export type LodgingWriteInsDraftResponse<Texpand = unknown> = Required<LodgingWriteInsDraftRecord> &
@@ -1993,6 +2011,7 @@ export type CollectionRecords = {
   lodging_slot_merges: LodgingSlotMergesRecord
   lodging_unit_aliases: LodgingUnitAliasesRecord
   lodging_units: LodgingUnitsRecord
+  lodging_value_history: LodgingValueHistoryRecord
   lodging_write_ins: LodgingWriteInsRecord
   lodging_write_ins_draft: LodgingWriteInsDraftRecord
   normalized_mappings: NormalizedMappingsRecord
@@ -2070,6 +2089,7 @@ export type CollectionResponses = {
   lodging_slot_merges: LodgingSlotMergesResponse
   lodging_unit_aliases: LodgingUnitAliasesResponse
   lodging_units: LodgingUnitsResponse
+  lodging_value_history: LodgingValueHistoryResponse
   lodging_write_ins: LodgingWriteInsResponse
   lodging_write_ins_draft: LodgingWriteInsDraftResponse
   normalized_mappings: NormalizedMappingsResponse
