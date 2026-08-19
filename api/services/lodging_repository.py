@@ -761,26 +761,58 @@ class LodgingRepository:
 
     @cached_by_year(lodging_cache)
     async def fetch_prior_household_cm_ids(self, year: int) -> set[int]:
-        """CampMinder ids of every household seen in an EARLIER year.
+        """CampMinder ids of every household with an ENROLLED weekend attendee
+        in an EARLIER year -- the returning-family signal (kindred#2475).
 
-        This is the returning-family signal: households rows are per-year, so
-        a cm_id present before `year` means the family has been here before.
+        This used to page `households` on a bare `year < {year}`, with no
+        enrollment predicate at all. A `households` row exists for a year
+        because a *person* record existed that year -- registration,
+        waitlist, cancellation and inquiry alike, since `households` carries
+        no status column of its own. That badged a family Returning off a
+        year they only ever cancelled or waitlisted (21 of 396 badged
+        2026 households on the production snapshot, 8-11% in settled years).
 
-        The expensive one -- 20,256 rows on 2026 prod data for one boolean
-        per party (kindred#1966). #1966/#1976 already bought back the
-        round-trip cost (batch=PAGE_SIZE, 21 requests instead of 203) and
-        explicitly rejected narrowing the filter to the current year's
-        household ids: a 250-term OR clause returns HTTP 400 (undocumented,
-        fails closed), so there is no query-shape lever left to pull. Caching
-        is what is left, and it is safe here for the same reason as
-        fetch_households: year-scoped, sync-written only. See
-        api/services/lodging_cache.py.
+        `attendees` is where enrollment actually lives, so this reads THAT
+        table instead: `status_id = 2` (`ACTIVE_ENROLLED_FILTER`) is the
+        single source of truth for enrollment everywhere else in this file,
+        and `_attendee_weekend_session_filter` keeps summer sessions
+        (main/embedded/ag/quest/...) from counting as a prior weekend visit.
+
+        Bridged through `person.household_id` (the CampMinder id) rather than
+        `person.household` (the PocketBase relation): this is a cross-YEAR
+        read, exactly like `fetch_household_family_attendees`, and
+        `household` is a relation into the year-scoped `households` table --
+        it can only ever match one season. `household_id` is the identity
+        thread across seasons (CLAUDE.md section 1).
+
+        Deliberately NOT `persons.years_at_camp`: it counts only SUMMER
+        attendance and is blind to weekends (225 of 360 genuine 2026
+        returners have `max(years_at_camp) = 0`) -- it would misclassify most
+        real returners as first-time.
+
+        `attendees` is the pricier table to page here (each row expands
+        `person`), but this is still the once-per-year cross-season read
+        #1966/#1976 already bought the round-trip cost down for
+        (batch=PAGE_SIZE); caching is what is left, and it is safe here for
+        the same reason as fetch_households: year-scoped, sync-written only.
+        See api/services/lodging_cache.py.
         """
         rows = await self._page(
-            HOUSEHOLDS,
-            query_params={"filter": f"year < {year}", "fields": "cm_id", "sort": STABLE_SORT},
+            ATTENDEES,
+            query_params={
+                "filter": (f"year < {year} && ({_attendee_weekend_session_filter()}) && {ACTIVE_ENROLLED_FILTER}"),
+                "expand": "person",
+                "sort": STABLE_SORT,
+            },
         )
-        return {int(getattr(row, "cm_id", 0)) for row in rows if getattr(row, "cm_id", 0)}
+        ids: set[int] = set()
+        for row in rows:
+            expand = getattr(row, "expand", None) or {}
+            person = expand.get("person") if isinstance(expand, dict) else None
+            household_id = int(getattr(person, "household_id", 0) or 0) if person is not None else 0
+            if household_id:
+                ids.add(household_id)
+        return ids
 
     @cached_by_year(lodging_cache)
     async def fetch_family_camp_adults(self, year: int) -> dict[str, list[Any]]:
