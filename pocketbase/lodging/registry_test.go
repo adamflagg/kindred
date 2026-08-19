@@ -212,6 +212,25 @@ const fixtureRegistry = `{
 }`
 
 // withRegistryBasePath points the path resolution at a temp tree for one test.
+//
+// registryBasePath and registryAbsoluteRoots (registry.go) are package globals,
+// and registryCandidatePaths reads both on the live path of SeedRegistry,
+// RegistryFilePresent and RegistryHasRows. A test that swaps either one and
+// runs under t.Parallel() races every other test's read of the same global —
+// -race trips, and even when it doesn't, two overlapping swaps restore in
+// completion (not nesting) order, so a test can resolve the registry file out
+// of a different test's temp tree (kindred#2451; the same defect kindred#2337
+// fixed for pocketbase/sync's captureSweepLogs).
+//
+// Fix chosen: drop t.Parallel() from the handful of tests that call
+// withRegistryBasePath/withRegistryAbsoluteRoots (TestSeedRegistryStampsTheSeason,
+// TestFindByCodeAndYearIgnoresOtherYears, TestSeedRegistryLeavesNothingBehindWhenAPassFails —
+// directly or via withYearFixtureRegistry), rather than a mutex (silences -race but
+// leaves the wrong-file hazard) or threading the base path through SeedRegistry's
+// production signatures (the only fix that removes the shared state, but it touches
+// a shared package's public API for a test-only bug). ./lodging/ shares a CI shard
+// with ./sync/ (kindred#2288) and runs in ~58s under -race; serializing three of the
+// package's 118 tests costs nothing measurable against that budget.
 func withRegistryBasePath(t *testing.T, base string) {
 	t.Helper()
 	prev := registryBasePath
@@ -1091,7 +1110,6 @@ func withYearFixtureRegistry(t *testing.T) {
 }
 
 func TestSeedRegistryStampsTheSeason(t *testing.T) {
-	t.Parallel()
 	app := newRegistryTestApp(t)
 	withYearFixtureRegistry(t)
 
@@ -1108,7 +1126,6 @@ func TestSeedRegistryStampsTheSeason(t *testing.T) {
 }
 
 func TestFindByCodeAndYearIgnoresOtherYears(t *testing.T) {
-	t.Parallel()
 	app := newRegistryTestApp(t)
 	withYearFixtureRegistry(t)
 
@@ -1266,7 +1283,6 @@ func TestSeedRegistrySecondSeasonIsANoOpOnceOneSeasonHasRows(t *testing.T) {
 // to land all-or-nothing instead, so a failed bootstrap leaves an empty
 // registry the next boot will retry from scratch.
 func TestSeedRegistryLeavesNothingBehindWhenAPassFails(t *testing.T) {
-	t.Parallel()
 	app := newRegistryTestApp(t)
 	withYearFixtureRegistry(t)
 	lift := failUnitCreate(app, "test-unit-a-room-1") // the second of two units
