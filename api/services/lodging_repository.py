@@ -119,10 +119,14 @@ STABLE_SORT = "id"
 #
 # The SDK's `get_full_list(batch: int = 100, ...)` defaults to 100 and recurses
 # once per page, so a read is round-trip-bound rather than row-bound.
-# `fetch_prior_household_cm_ids` pages every household from every prior year --
-# 20,256 rows on 2026 data -- which at the default is 203 requests and ~2.3s of
-# the roster's ~3.1s, to produce one boolean per party. At 1000 it is 21
-# requests and ~1.0s (#1966).
+# `fetch_prior_household_cm_ids` pages every ENROLLED weekend attendee from
+# every prior year (kindred#2475 moved it off `households`, which had no
+# enrollment predicate at all) -- at the default batch of 100 that is still a
+# round-trip-bound read over thousands of rows to produce one boolean per
+# party. At 1000 it was 21 requests and ~1.0s against the smaller `households`
+# read this replaced (#1966); the `attendees` read is pricier per row (each
+# expands `person`), but the same round-trip-bound argument for PAGE_SIZE
+# applies to it unchanged.
 #
 # Applied in ONE place, `_page`, rather than at each call site: `batch` is a
 # parameter of `get_full_list` itself and NOT a member of `query_params`, so
