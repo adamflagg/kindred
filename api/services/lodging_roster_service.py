@@ -16,7 +16,7 @@ retargeted the gate from the now-removed Permission.LODGING_PHI).
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from datetime import date
 from typing import TYPE_CHECKING, Any, NamedTuple, cast
 
@@ -1055,6 +1055,61 @@ def _resolve_power_coverage(units: list[LodgingUnitSummary], index: _BathroomInd
     pointing at the pre-resolution copies, which is exactly the kind of drift
     the one-index-per-call rule above exists to prevent.
     """
+    _resolve_amenity_coverage(units, index, answer=lambda room: room.has_power, target="power_coverage")
+
+
+def _resolve_fridge_coverage(units: list[LodgingUnitSummary], index: _BathroomIndex) -> None:
+    """Fill in every unit's `fridge_coverage` in place — kindred#2224.
+
+    The twin of `_resolve_power_coverage` above, and it shares that function's
+    walk rather than repeating it, because two walks over one tree are free to
+    drift. Every word of its docstring applies here unchanged: a container's
+    registry row describes the CONTAINER, an unconfirmed row means "nobody has
+    said", a deactivated room does not answer for its building, and a container
+    with no active room left reports `unknown` rather than falling back to its
+    own flag.
+
+    ONE thing is this function's own, and it is the owner ruling of 2026-08-15:
+    A SHARED FRIDGE IS A FRIDGE. `has_shared_fridge` NARROWS `has_fridge` --
+    the registry defines it that way and states the contract as "none can
+    contradict its parent, so a consumer reading only the parent stays
+    correct" — so the OR below is that contract written down, not a repair.
+    Production carries zero shared-without-parent rows, and the ruling
+    generalises: a child column may never downgrade its parent's verdict, which
+    is what keeps `has_fridge` safe to read alone and settles the same question
+    for `has_tub ⊂ bathroom`. (`has_kitchenette ⊂ has_kitchen` was the third
+    such pair; kindred#2390 collapsed it into `has_kitchen` and migration
+    1500000159 dropped the column, so do not go looking for it.)
+
+    Reading `has_fridge` alone would therefore give the same answer on today's
+    data. The OR is here so that a future row carrying only the child cannot
+    silently downgrade to "no fridge at all" — the direction that looks
+    plausible and is wrong.
+    """
+    _resolve_amenity_coverage(
+        units,
+        index,
+        answer=lambda room: room.has_fridge or room.has_shared_fridge,
+        target="fridge_coverage",
+    )
+
+
+def _resolve_amenity_coverage(
+    units: list[LodgingUnitSummary],
+    index: _BathroomIndex,
+    *,
+    answer: Callable[[LodgingUnitSummary], bool],
+    target: str,
+) -> None:
+    """The one leaf walk both resolvers above run.
+
+    Parameterised on WHICH flag a room answers with and WHICH field receives
+    the verdict, so a second amenity is a call site rather than a second
+    traversal. The rules — leaves answer for themselves, containers never do,
+    inactive rooms do not answer, unconfirmed rooms answer `None` — live here
+    once; the reasoning for each lives in `_resolve_power_coverage`, which is
+    the function that established them.
+    """
     for unit in units:
         rooms = [
             leaf
@@ -1062,13 +1117,17 @@ def _resolve_power_coverage(units: list[LodgingUnitSummary], index: _BathroomInd
             if (leaf := index.units_by_code.get(code)) is not None and leaf.is_active
         ]
         answering = rooms if unit.is_container else [unit]
-        unit.power_coverage = cast(
-            AmenityCoverage,
-            # `None` where nobody has confirmed the row: an unconfirmed
-            # `has_power = False` means "nobody has said", never "there is no
-            # power" -- the same gate `rosterAttention` already applies to the
-            # roster's own fit check.
-            amenity_coverage([room.has_power if room.is_confirmed else None for room in answering]),
+        setattr(
+            unit,
+            target,
+            cast(
+                AmenityCoverage,
+                # `None` where nobody has confirmed the row: an unconfirmed
+                # `has_power = False` means "nobody has said", never "there is
+                # no power" -- the same gate `rosterAttention` already applies
+                # to the roster's own fit check.
+                amenity_coverage([answer(room) if room.is_confirmed else None for room in answering]),
+            ),
         )
 
 
@@ -1311,6 +1370,10 @@ class LodgingRosterService:
         # get at the counts, but its `WeekendSummaryEntry` carries no `units`
         # -- so resolving coverage there would be work no response can read.
         _resolve_power_coverage(unit_summaries, unit_index)
+        # The same walk, one amenity over (kindred#2224). Same path-only
+        # reasoning as above: `build_summary` carries no `units`, so resolving
+        # coverage there would be work no response can read.
+        _resolve_fridge_coverage(unit_summaries, unit_index)
         # A SECOND PASS, and it has to be: a unit's cover can come from a row
         # on a unit built after it, so there is no order in which one pass over
         # `_build_units` would see every own-row it needs.
@@ -1929,6 +1992,7 @@ class LodgingRosterService:
                     has_power=_b(unit, "has_power"),
                     has_ac=_b(unit, "has_ac"),
                     has_fridge=_b(unit, "has_fridge"),
+                    has_shared_fridge=_b(unit, "has_shared_fridge"),
                     is_accessible=_b(unit, "is_accessible"),
                     is_confirmed=_b(unit, "is_confirmed"),
                     is_active=_b(unit, "is_active"),
@@ -2389,6 +2453,10 @@ class LodgingRosterService:
             needs_accommodation=_b(registration, "needs_accommodation"),
             accommodation_is_mandatory=_b(registration, "accommodation_is_mandatory"),
             has_infant=_b(registration, "has_infant"),
+            # kindred#2224. Read from the column for the same reason the five
+            # above are: the derivation runs over RAW per-person narrative
+            # values in the sync layer, and this service cannot see them.
+            needs_fridge=_b(registration, "needs_fridge"),
         )
 
     # --------------------------------------------------------------- counts

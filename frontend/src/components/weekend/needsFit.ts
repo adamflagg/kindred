@@ -49,12 +49,14 @@ export type NeedsFit = (typeof FIT_ORDER)[number]
 /**
  * The worse of two verdicts, by `FIT_ORDER`.
  *
- * Exported, and a named function rather than an inline comparison in the
- * loop below, because `NEEDS_DIMENSIONS` holds exactly ONE entry: the loop
- * can never run twice, so no assertion made through `resolveNeedsFit` can
- * distinguish "worst wins" from "the last dimension wins". The combining
- * rule is the one part of this module that a second dimension will lean on,
- * and it would otherwise ship untested — pinned directly instead.
+ * Exported, and a named function rather than an inline comparison in the loop
+ * below. It was written when `NEEDS_DIMENSIONS` held exactly ONE entry, so the
+ * loop could never run twice and no assertion made through `resolveNeedsFit`
+ * could distinguish "worst wins" from "the last dimension wins" — the
+ * combining rule would otherwise have shipped untested, so it was pinned
+ * directly. kindred#2224 added the second entry and `resolveNeedsFit` can now
+ * exercise the rule too; the direct test stays, because it is the one that
+ * still holds if the table ever shrinks back.
  */
 export function worseOf(a: NeedsFit, b: NeedsFit): NeedsFit {
   return FIT_ORDER.indexOf(a) <= FIT_ORDER.indexOf(b) ? a : b
@@ -66,7 +68,9 @@ export function worseOf(a: NeedsFit, b: NeedsFit): NeedsFit {
  * SEEDED WITH EXACTLY ONE — `needs_power` vs the server's resolved power
  * coverage — to prove the case. A second dimension is a further entry in this
  * array and nothing else; if adding one needs design work, dimension one was
- * built wrong.
+ * built wrong. `needs_fridge` (kindred#2224) is that second entry, and it cost
+ * exactly one object literal: no new glyph, no new colour, no new chip, and
+ * no change to this function.
  *
  * `someIs` is the per-criterion nuance the grain deliberately does NOT carry,
  * because the three grains do not mean the same thing for every criterion.
@@ -98,6 +102,30 @@ const NEEDS_DIMENSIONS: readonly NeedsDimension[] = [
     // buildings unpowered. `?? 'unknown'` is the Pydantic-default gotcha, not
     // a guess: a field with a default renders optional in TypeScript.
     coverage: (unit) => unit.power_coverage ?? 'unknown',
+    someIs: 'partial',
+  },
+  {
+    // kindred#2224. `needs_accommodation` is a GATE question, not a need:
+    // CampMinder asks a plain Yes/No and the substance of the ask lands in a
+    // free-text field the product never read. This is the first need resolved
+    // out of that narrative, in the SYNC layer — the sentences name diagnoses,
+    // medications and feeding disorders, so only the boolean ever reaches this
+    // module. Six of the 42 accommodation-gated 2026 households ask for cold
+    // storage against 12 of 118 units carrying a fridge, and until now nothing
+    // connected them. 2026 is only 16% placed, so 6 is the SHAPE of the
+    // demand, not a rate.
+    flag: 'needs_fridge',
+    // `fridge_coverage`, never `has_fridge` — the same container trap the
+    // power entry above spells out, AND the place the owner's 2026-08-15
+    // ruling lives: a SHARED fridge IS a fridge, so `_resolve_fridge_coverage`
+    // ORs `has_shared_fridge` into the answer. Re-deriving that here would put
+    // a second implementation of one ruling on the client.
+    coverage: (unit) => unit.fridge_coverage ?? 'unknown',
+    // Advisory-softer, the same reading power takes: a building where some
+    // rooms have a fridge is a real improvement on one where none do. NOT the
+    // `is_accessible` shape, where SOME is worse than NONE — the shared-fridge
+    // ruling is what rules that out, since a fridge one room over is still a
+    // fridge a family can use.
     someIs: 'partial',
   },
 ]

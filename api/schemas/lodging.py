@@ -215,6 +215,20 @@ class LodgingUnitSummary(BaseModel):
     power_coverage: AmenityCoverage = "unknown"
     has_ac: bool = False
     has_fridge: bool = False
+    # NARROWS `has_fridge` -- it can never contradict its parent, so a consumer
+    # reading only `has_fridge` stays correct (the registry's own contract,
+    # pocketbase/lodging/registry.go). Published because A SHARED FRIDGE IS A
+    # FRIDGE (owner ruling, kindred#2224): it satisfies a fridge need outright
+    # and reads `fits`, never `partial`. Whether the sharedness is SURFACED on
+    # a card is a display question and belongs to kindred#2072; this is only
+    # the fact.
+    has_shared_fridge: bool = False
+    # The fridge twin of `power_coverage`, resolved over the same leaf walk and
+    # defaulting to "unknown" for the same reason: a payload built without the
+    # resolution pass must not claim an unmet need. Twelve of 118 production
+    # units carry `has_fridge`, four of those also carry `has_shared_fridge`,
+    # and none carries shared without the parent.
+    fridge_coverage: AmenityCoverage = "unknown"
     is_accessible: bool = False
     is_confirmed: bool = False
     is_active: bool = False
@@ -503,6 +517,21 @@ class AccessibilityFlagSummary(BaseModel):
     needs_private_bathroom: bool = False
     needs_power: bool = False
     needs_accommodation: bool = False
+    # kindred#2224. `needs_accommodation` above is a GATE question, not a need:
+    # CampMinder asks a plain Yes/No and the substance lands in a free-text
+    # field. This is the first need resolved out of that narrative -- six of the
+    # 42 accommodation-gated 2026 households ask for cold storage, against 12 of
+    # 118 units carrying a fridge, and nothing connected them.
+    #
+    # DERIVED IN THE SYNC LAYER, exactly as the flags around it are. The
+    # narrative names diagnoses, medications and feeding disorders, so only the
+    # boolean crosses into this payload; the sentence stays in
+    # family_camp_medical behind Permission.BUNKING_MANAGE.
+    #
+    # ADVISORY. Keyword resolution over family prose is wrong sometimes, so the
+    # board hatches a unit for this and never dims one -- see `needsFit.ts`,
+    # where the mark it feeds changes `background-image` and nothing else.
+    needs_fridge: bool = False
     # True when the family said they can only attend WITH the accommodation
     # in place: `FAM CAMP-Opt Out VIP` = "Yes, please register regardless of
     # cabin type" means they will come either way, so the need is a warning;

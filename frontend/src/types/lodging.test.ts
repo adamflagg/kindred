@@ -274,6 +274,14 @@ const _exhaustiveLodgingUnit: Required<LodgingUnitRow> = {
   power_coverage: 'none',
   has_ac: false,
   has_fridge: false,
+  // NARROWS `has_fridge` and can never contradict it. Published beside its
+  // parent (kindred#2224) because A SHARED FRIDGE IS A FRIDGE — the owner's
+  // 2026-08-15 ruling — so it reads `fits` and never `partial`.
+  has_shared_fridge: false,
+  // The fridge twin of `power_coverage`, resolved over the same leaf walk. A
+  // container's row describes the CONTAINER, so this is what a drop is judged
+  // against; `has_fridge` above stays the registry's own fact about the row.
+  fridge_coverage: 'none',
   is_accessible: false,
   is_confirmed: true,
   is_active: true,

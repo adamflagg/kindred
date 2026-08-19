@@ -67,6 +67,11 @@ def _unit(
     parent_unit: str = "",
     shareability: str = "",
     has_power: bool = False,
+    has_fridge: bool = False,
+    # NARROWS `has_fridge` and can never contradict it (owner ruling,
+    # kindred#2224): a shared fridge IS a fridge. Zero of the 118 production
+    # units carry shared without the parent.
+    has_shared_fridge: bool = False,
     # False builds the default RIDGE area (honouring `area_sort_order`); True
     # resolves the expanded `area` relation to None -- the missing-area case.
     area_missing: bool = False,
@@ -87,7 +92,8 @@ def _unit(
         near_bathhouse=False,
         has_power=has_power,
         has_ac=False,
-        has_fridge=False,
+        has_fridge=has_fridge,
+        has_shared_fridge=has_shared_fridge,
         is_accessible=False,
         map_x=map_x,
         map_y=map_y,
@@ -2726,6 +2732,22 @@ class TestMedicalFlagsAndNarrative:
         assert roster.parties[0].flags.needs_private_bathroom is True
 
     @pytest.mark.asyncio
+    async def test_fridge_need_comes_from_the_derived_column(self) -> None:
+        """kindred#2224. Derived in the SYNC layer from the accommodation
+        narrative and read here as a column, for the same reason the three
+        flags above are: the narrative is PHI-adjacent, so only the boolean
+        crosses into a payload this service builds."""
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_households={"hh_1": _household(title="The Chen Family")},
+            fetch_attendees_for_session=[_child(cm_id=1000001, first="Olivia", last="Chen", age=10, grade=5)],
+            fetch_family_camp_registrations={"hh_1": _rec(needs_fridge=True)},
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.parties[0].flags.needs_fridge is True
+
+    @pytest.mark.asyncio
     async def test_has_infant_reaches_the_roster(self) -> None:
         """kindred#1876: Adult-Infant was loaded every sync and discarded. An
         infant changes what a unit has to provide, so it reaches the board."""
@@ -3890,6 +3912,139 @@ class TestUnitPowerCoverage:
         roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
 
         assert roster.units[0].power_coverage == "unknown"
+
+
+class TestUnitFridgeCoverage:
+    """kindred#2224 -- `LodgingUnitSummary.fridge_coverage`, the twin of
+    `power_coverage` and resolved by the same walk.
+
+    The demand it answers was invisible: `needs_accommodation` is a GATE
+    question, and the substance landed in a free-text field nothing read. Six
+    of the 42 accommodation-gated 2026 households name a refrigerator, against
+    12 of 118 units carrying `has_fridge` -- and nothing connected them. 2026 is
+    only 16% placed, so 6 is the SHAPE of the demand, not a rate.
+
+    A SHARED FRIDGE IS A FRIDGE (owner ruling, 2026-08-15): `has_shared_fridge`
+    reads `fits`, never `partial`. It is defined in the registry as a NARROWING
+    of `has_fridge`, and the general rule the ruling settled is that a child
+    column may never downgrade its parent's verdict -- the same contract
+    governs `has_tub` under `bathroom`. (`has_kitchenette` under `has_kitchen`
+    was the third pair the ruling named; kindred#2390 has since collapsed it
+    into `has_kitchen` and dropped the column.) Production carries zero
+    shared-without-parent rows, so the OR is the contract written down rather
+    than a repair.
+    """
+
+    @pytest.mark.asyncio
+    async def test_a_leaf_answers_for_itself(self) -> None:
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("u1", "ridge-1", "Ridge 1", sleeps=4, has_fridge=True),
+                _unit("u2", "ridge-2", "Ridge 2", sleeps=4, has_fridge=False),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        by_code = {u.code: u for u in roster.units}
+        assert by_code["ridge-1"].fridge_coverage == "all"
+        assert by_code["ridge-2"].fridge_coverage == "none"
+
+    @pytest.mark.asyncio
+    async def test_a_shared_fridge_is_a_fridge(self) -> None:
+        """The owner ruling, and the one assertion that separates this from a
+        copy of the power resolver: a room whose only fridge is shared covers
+        the need outright."""
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("u1", "ridge-1", "Ridge 1", sleeps=4, has_fridge=False, has_shared_fridge=True),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.units[0].fridge_coverage == "all"
+
+    @pytest.mark.asyncio
+    async def test_the_shared_flag_is_published_beside_the_parent(self) -> None:
+        """Additive, never a replacement. Whether the sharedness is SURFACED is
+        a display question left to whoever builds the needs UI (kindred#2072),
+        but the fit resolver cannot be the only thing that knows."""
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[_unit("u1", "ridge-1", "Ridge 1", sleeps=4, has_fridge=True, has_shared_fridge=True)],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.units[0].has_fridge is True
+        assert roster.units[0].has_shared_fridge is True
+
+    @pytest.mark.asyncio
+    async def test_a_container_inherits_from_its_rooms_not_its_own_row(self) -> None:
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("c1", "gt-lodge", "Lodge", is_container=True, has_fridge=False),
+                _unit("u1", "gt-lodge-1", "Lodge 1", sleeps=4, has_fridge=True, parent_unit="c1"),
+                _unit("u2", "gt-lodge-2", "Lodge 2", sleeps=4, has_fridge=True, parent_unit="c1"),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        by_code = {u.code: u for u in roster.units}
+        assert by_code["gt-lodge"].fridge_coverage == "all"
+        assert by_code["gt-lodge"].has_fridge is False
+
+    @pytest.mark.asyncio
+    async def test_a_split_building_is_some_not_all_or_none(self) -> None:
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("c1", "gt-lodge", "Lodge", is_container=True, has_fridge=True),
+                _unit("u1", "gt-lodge-1", "Lodge 1", sleeps=4, has_fridge=True, parent_unit="c1"),
+                _unit("u2", "gt-lodge-2", "Lodge 2", sleeps=4, has_fridge=False, parent_unit="c1"),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert {u.code: u.fridge_coverage for u in roster.units}["gt-lodge"] == "some"
+
+    @pytest.mark.asyncio
+    async def test_an_unconfirmed_room_is_unknown_not_unmet(self) -> None:
+        """`has_fridge = False` on an unconfirmed row means "nobody has said"."""
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[_unit("u1", "ridge-1", "Ridge 1", sleeps=4, is_confirmed=False, has_fridge=False)],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.units[0].fridge_coverage == "unknown"
+
+    @pytest.mark.asyncio
+    async def test_a_building_with_no_active_room_left_is_unknown_never_its_own_row(self) -> None:
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("c1", "gt-lodge", "Lodge", is_container=True, has_fridge=False),
+                _unit("u1", "gt-lodge-1", "Lodge 1", sleeps=4, has_fridge=True, is_active=False, parent_unit="c1"),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert {u.code: u.fridge_coverage for u in roster.units}["gt-lodge"] == "unknown"
+
+    @pytest.mark.asyncio
+    async def test_power_and_fridge_are_resolved_independently(self) -> None:
+        """One walk, two answers. A room with power and no fridge must not
+        borrow either verdict from the other."""
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[_unit("u1", "ridge-1", "Ridge 1", sleeps=4, has_power=True, has_fridge=False)],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.units[0].power_coverage == "all"
+        assert roster.units[0].fridge_coverage == "none"
 
 
 def _journey_repo(**overrides: Any) -> MagicMock:

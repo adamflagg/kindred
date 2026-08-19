@@ -19,7 +19,8 @@ has_field() {
 # could not have caught going away.
 for f in share_cabin_gate wants_near wants_with request_text request_source_field \
          request_last_updated needs_private_bathroom needs_power \
-         accommodation_is_mandatory has_infant; do
+         accommodation_is_mandatory has_infant \
+         needs_fridge; do
   [[ "$(has_field family_camp_registrations "$f")" -eq 1 ]] \
     || note "family_camp_registrations.$f missing"
 done

@@ -334,6 +334,12 @@ type registrationData struct {
 	needsPrivateBathroom     bool
 	needsPower               bool
 	accommodationIsMandatory bool
+	// kindred#2224. Resolved from the accommodation NARRATIVE, not from a
+	// question CampMinder asks: the gate is a bare Yes/No and the substance
+	// lands in the explain twins. Only this boolean leaves the sync layer --
+	// the sentence it came from stays in family_camp_medical, which is
+	// admin-gated and absent from every export (lodging_medical_narrative_test.go).
+	needsFridge bool
 
 	// Housing-suitability signal rather than an accessibility need (kindred#1876).
 	hasInfant bool
@@ -1412,6 +1418,24 @@ func (s *FamilyCampDerivedSync) processRegistrations(
 			// registrant says the question does not apply. It correctly parses
 			// false and must NOT be special-cased -- the data is not dirty.
 			reg.hasInfant = reg.hasInfant || parseBoolFieldValue(v.value)
+		// The accommodation NARRATIVE, resolved into a boolean the registry can
+		// answer (kindred#2224). A default arm rather than a case list, because
+		// the names live in accommodationExplainFieldNames -- the same list
+		// processMedical routes on, so a generation added for one is added for
+		// both. A case list here would be the second copy that drifts.
+		//
+		// Derived from the RAW per-person values with an OR, exactly as the
+		// gate above is, and never from the collapsed
+		// family_camp_medical.accommodation_explain: that column's
+		// first-non-empty flatten has already discarded 13 of 43 sibling
+		// narratives before anything can read them.
+		//
+		// Nothing about the sentence is stored here. The switch reads it and
+		// keeps one bit.
+		default:
+			if isAccommodationExplainField(v.fieldName) {
+				reg.needsFridge = reg.needsFridge || mentionsFridge(v.value)
+			}
 		}
 	}
 
@@ -1451,6 +1475,10 @@ func (s *FamilyCampDerivedSync) processRegistrations(
 			reg.shareCabinGate != "" || reg.requestText != "" ||
 			reg.wantsNear || reg.wantsWith || reg.wantsSimilarAges ||
 			reg.needsPrivateBathroom || reg.needsPower || reg.hasInfant ||
+			// Same reason as accommodationIsMandatory below: a household whose
+			// only parseable answer is the narrative-derived need would be the
+			// row dropped before it is written.
+			reg.needsFridge ||
 			// accommodationIsMandatory belongs here for the same reason as the
 			// rest, and more so: it is the blocker signal, and a household whose
 			// only answer is the blocker was the one row that got dropped before
@@ -1461,6 +1489,64 @@ func (s *FamilyCampDerivedSync) processRegistrations(
 	}
 
 	return result
+}
+
+// accommodationExplainFieldNames routes the accommodation NARRATIVE, by literal
+// display name, in both places that read it: processMedical (which stores the
+// sentence) and processRegistrations (which derives booleans from it and stores
+// nothing). ONE list, because two copies of a name-keyed route drift the moment
+// a generation is added -- which is exactly how the Adult twin came to be read
+// in one of the two and not the other.
+//
+// "Housing Accommodation-Yes" (cm_id 274058) is the Camper partition and
+// "Accommodation-Explain" (224987) the Adult twin. The remaining two are
+// DEFENSIVE successors, not fields that exist today: admission is by cm_id
+// (extraFieldCMIDs) and survives a CampMinder rename, but routing is by display
+// name and does not, so a rename silently stops population with no error. The
+// gate's own arm already carries three generations for the same reason, and
+// CampMinder's one-m misspelling of "Accomodation" is real -- it is how the
+// live Adult gate is spelled -- so it is the likeliest shape a successor takes.
+// A name here that never appears costs nothing: nothing is admitted under it.
+var accommodationExplainFieldNames = []string{
+	"Housing Accommodation-Yes",
+	"Accommodation-Explain",
+	"Housing Accomodation-Yes",
+	"Accomodation-Explain",
+}
+
+// isAccommodationExplainField reports whether name routes the accommodation
+// narrative. A linear scan of four strings, called once per person value.
+func isAccommodationExplainField(name string) bool {
+	return slices.Contains(accommodationExplainFieldNames, name)
+}
+
+// fridgeKeywords is the recall surface for needs_fridge (kindred#2224).
+//
+// RECALL OVER PRECISION, on purpose. The flag is ADVISORY -- it hatches a unit
+// card, it never refuses a drop -- so a false positive costs a mark staff can
+// overrule at a glance, while a false negative costs the ask entirely and
+// returns the household to the prose nobody parses.
+//
+// Measured over the two narrative fields on the production snapshot, 2026:
+// "fridge" and "refrigerat" together find 6 households, "cooler" adds 0 but is
+// kept because a family asking for a cooler is asking the registry the same
+// question. "fridge" as a substring also catches the doubled-d misspelling of
+// "refrigerator" that families commonly type, which a word list would miss.
+// 2026 is only 16% placed, so 6 is the SHAPE of the demand, not a rate.
+var fridgeKeywords = []string{"fridge", "refrigerat", "cooler"}
+
+// mentionsFridge reports whether a free-text accommodation answer asks for cold
+// storage. Case-insensitive substring matching -- the input is unvalidated
+// family-authored prose, so anything stricter (word boundaries, a token list)
+// loses answers to punctuation and compounding.
+func mentionsFridge(text string) bool {
+	lower := strings.ToLower(text)
+	for _, kw := range fridgeKeywords {
+		if strings.Contains(lower, kw) {
+			return true
+		}
+	}
+	return false
 }
 
 // cpapAnswer is the result of classifying one answer to a CPAP field.
@@ -1826,9 +1912,11 @@ func (s *FamilyCampDerivedSync) processMedical(personValues []customValueEntry) 
 		// Reading the Camper key alone dropped every household narrated only
 		// through the adult gate -- 12 of 42 accommodation-gated households in
 		// 2026 production. kindred#2224.
-		accommodationKeys := []string{"Housing Accommodation-Yes", "Accommodation-Explain"}
-		accommodationParts := make([]string, 0, len(accommodationKeys))
-		for _, key := range accommodationKeys {
+		// accommodationExplainFieldNames is the ONE routing list, shared with
+		// processRegistrations' needs_fridge derivation (kindred#2224) so a
+		// generation added for one is added for both.
+		accommodationParts := make([]string, 0, len(accommodationExplainFieldNames))
+		for _, key := range accommodationExplainFieldNames {
 			accommodationParts = append(accommodationParts, fields.parts(key)...)
 		}
 		med.accommodationExplain = s.joinMedicalColumn(
@@ -2266,6 +2354,7 @@ func (s *FamilyCampDerivedSync) registrationNeedsUpdate(existing *core.Record, r
 		existing.GetBool("needs_power") != reg.needsPower ||
 		existing.GetBool("accommodation_is_mandatory") != reg.accommodationIsMandatory ||
 		existing.GetBool("has_infant") != reg.hasInfant ||
+		existing.GetBool("needs_fridge") != reg.needsFridge ||
 		existing.GetString("share_eligibility") != normalizedEligibility ||
 		existing.GetString("share_eligibility_source") != normalizedSource ||
 		existing.GetBool("share_answers_conflict") != reg.shareAnswersConflict
@@ -2287,6 +2376,7 @@ func setRegistrationRequestFields(record *core.Record, reg *registrationData) {
 	record.Set("needs_power", reg.needsPower)
 	record.Set("accommodation_is_mandatory", reg.accommodationIsMandatory)
 	record.Set("has_infant", reg.hasInfant)
+	record.Set("needs_fridge", reg.needsFridge)
 	// The board's placement verdict. share_cabin_gate above stays the raw
 	// REGISTRATION answer; this is the resolved one, and the Family Camp
 	// information form outranks the gate wherever both were answered.

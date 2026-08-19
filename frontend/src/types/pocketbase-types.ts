@@ -681,6 +681,7 @@ export type FamilyCampRegistrationsRecord = {
   household: RecordIdString
   id: string
   needs_accommodation?: boolean
+  needs_fridge?: boolean
   needs_power?: boolean
   needs_private_bathroom?: boolean
   notes?: string
