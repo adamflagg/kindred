@@ -27,6 +27,7 @@ from api.schemas.lodging import (
     AmenityCoverage,
     EffectiveBathroom,
     HouseholdJourneyResponse,
+    HouseholdJourneySession,
     HouseholdJourneyYear,
     HouseholdMedicalResponse,
     HousingState,
@@ -420,8 +421,14 @@ def _age_at(birthdate: date, as_of: date) -> float | None:
     return float(f"{years}.{months:02d}")
 
 
-def _party_child(child: Any, *, as_of: date | None = None) -> PartyChild:
+def _party_child(child: Any, *, as_of: date | None = None, session_cm_ids: Sequence[int] = ()) -> PartyChild:
     """A `persons` row as the wire sees it. See `_party_adult` on sharing.
+
+    `session_cm_ids` is the same kind of journey-only argument `as_of` is
+    (kindred#2393): the weekends THIS child attended that year, earliest
+    first. `_build_household_parties` omits it and publishes an empty list,
+    because the roster is already one weekend and a per-child weekend list
+    there would restate the page's own title once per camper.
 
     `as_of` is the ONE thing that lets this stay one mapping instead of
     forking (kindred#2420). `_build_household_parties` (the current-season
@@ -461,6 +468,10 @@ def _party_child(child: Any, *, as_of: date | None = None) -> PartyChild:
         # reads `birthdate` instead.
         age=age,
         grade=_i(child, "grade") or None,
+        # A LIST COPY, not the caller's own: the journey builds one list per
+        # (year, child) and a shared reference would let a later mutation
+        # reach a wire object already handed out.
+        session_cm_ids=list(session_cm_ids),
     )
 
 
@@ -480,6 +491,25 @@ def _child_identity(person: Any) -> Any:
     child is which.
     """
     return _i(person, "cm_id") or str(getattr(person, "id", ""))
+
+
+def _session_order(entry: HouseholdJourneySession) -> tuple[int, date, int]:
+    """A season read left to right (kindred#2393).
+
+    Start date first, because that is the order staff say the weekends in;
+    the CampMinder id breaks a tie, so two weekends opening on the same day
+    print in a stable order rather than in whatever order the attendee rows
+    happened to arrive.
+
+    A weekend with no readable `start_date` sorts LAST rather than first. An
+    unparseable date is an unknown, and `date.min` would file the unknown at
+    the head of the season -- claiming a position the data does not support,
+    in the one spot a reader trusts most.
+    """
+    start = _as_date(entry.start_date)
+    if start is None:
+        return (1, date.min, entry.session_cm_id)
+    return (0, start, entry.session_cm_id)
 
 
 def _housing_state(cabin: str, year_assignments: Mapping[int, str]) -> HousingState:
@@ -1688,6 +1718,18 @@ class LodgingRosterService:
         # the rare person row with no cm_id; a row with neither is kept rather
         # than collapsed onto every other anonymous sibling.
         seen_by_year: dict[int, set[Any]] = {}
+        # WHICH WEEKENDS, and who went to which (kindred#2393). Both fall out
+        # of the SAME attendee rows the members already come from, so the
+        # session grain costs no extra round trip -- `session` has been in the
+        # expand since kindred#2420.
+        #
+        # Filled BEFORE the dedup below, deliberately: the second attendee row
+        # for a child is exactly the second weekend, so skipping it here would
+        # publish a multi-weekend year as a single-weekend one and then pin the
+        # cabin to it -- the precise wrong answer `AttributeSession` refuses to
+        # give.
+        sessions_by_year: dict[int, dict[int, HouseholdJourneySession]] = {}
+        child_sessions_by_year: dict[int, dict[Any, set[int]]] = {}
         for attendee in attendees:
             expand = getattr(attendee, "expand", None) or {}
             person = expand.get("person")
@@ -1702,6 +1744,25 @@ class LodgingRosterService:
                 existing = starts.get(identity)
                 if existing is None or start < existing:
                     starts[identity] = start
+            # `cm_id` and not the PB record id: it is the identity the wire
+            # publishes a weekend under everywhere else, and the key the
+            # client tabs on. A session row without one is dropped rather
+            # than published as weekend 0, which would collapse every
+            # unidentified weekend onto a single tab.
+            session_cm_id = _i(session, "cm_id") if session is not None else 0
+            if session_cm_id:
+                year_sessions = sessions_by_year.setdefault(year, {})
+                if session_cm_id not in year_sessions:
+                    year_sessions[session_cm_id] = HouseholdJourneySession(
+                        session_cm_id=session_cm_id,
+                        # VERBATIM. The client abbreviates it for the panel
+                        # (`weekendLabel`); the wire carries what CampMinder
+                        # calls the weekend.
+                        name=_s(session, "name"),
+                        start_date=_s(session, "start_date"),
+                    )
+                if identity:
+                    child_sessions_by_year.setdefault(year, {}).setdefault(identity, set()).add(session_cm_id)
             if identity:
                 seen = seen_by_year.setdefault(year, set())
                 if identity in seen:
@@ -1732,6 +1793,8 @@ class LodgingRosterService:
             cabin = assignments.get(household_cm_id, "")
             children = _children_oldest_first(children_by_year.get(year, []))
             year_starts = session_start_by_year.get(year, {})
+            year_sessions_ordered = sorted(sessions_by_year.get(year, {}).values(), key=_session_order)
+            child_sessions = child_sessions_by_year.get(year, {})
             rows.append(
                 HouseholdJourneyYear(
                     year=year,
@@ -1746,6 +1809,22 @@ class LodgingRosterService:
                     # one.
                     cabin_name=housing_names.display_name(cabin, year),
                     cabin_name_raw=cabin,
+                    sessions=year_sessions_ordered,
+                    # THE GO INGEST'S REFUSAL, MIRRORED (kindred#2393).
+                    # `AttributeSession` pins the year's one cabin string to a
+                    # weekend only when the household attended exactly one; a
+                    # read surface that guessed where the ingest declines
+                    # would put the two into disagreement about the same fact.
+                    #
+                    # `cabin` and not `housing == "placed"` for the same
+                    # reason `_housing_state` reads presence: an unmappable
+                    # string is still a cabin to attribute. With no cabin
+                    # there is nothing to pin, and publishing the weekend id
+                    # anyway would read as "housed in FC1" for a household
+                    # nobody placed.
+                    housing_session_cm_id=(
+                        year_sessions_ordered[0].session_cm_id if cabin and len(year_sessions_ordered) == 1 else None
+                    ),
                     # An empty child list is NOT a childless family: 2020 was
                     # cancelled outright and 2021 has no family attendee rows
                     # at all. Naming the state here is what stops the client
@@ -1760,7 +1839,19 @@ class LodgingRosterService:
                         # camp_sessions row missing `start_date`), in which
                         # case `_party_child` keeps the current-season
                         # fallback rather than guessing at a camp-wide date.
-                        _party_child(child, as_of=year_starts.get(_child_identity(child)))
+                        _party_child(
+                            child,
+                            as_of=year_starts.get(_child_identity(child)),
+                            # Ordered through the YEAR'S ordering rather than
+                            # sorted again, so a child's weekends read in the
+                            # same left-to-right order the row's own weekend
+                            # line does. One rule, applied once.
+                            session_cm_ids=[
+                                entry.session_cm_id
+                                for entry in year_sessions_ordered
+                                if entry.session_cm_id in child_sessions.get(_child_identity(child), frozenset())
+                            ],
+                        )
                         for child in children
                     ],
                 )

@@ -154,7 +154,38 @@ describe('a membership write is not finished until the list it was computed from
       await result.current.mutations.updateGroupAsync('grp_1', { name: 'Lake cabins' })
     })
 
-    expect(toastSuccess).toHaveBeenCalledWith('Group updated')
+    // The write landed — evidenced by the call itself, not by a toast, since
+    // the weekend board no longer confirms a success in one.
+    expect(updateFriendGroup).toHaveBeenCalled()
+    expect(toastError).not.toHaveBeenCalled()
+  })
+
+  it('stays SILENT on a successful create, update or dissolve', async () => {
+    /*
+     * Owner ruling, 2026-08-18: "lets lose the toasts on success for weekend".
+     *
+     * The weekend board's other direct-manipulation writes — placing a family,
+     * merging a building, writing an occupant in — all raise errors only and
+     * let the redraw be the confirmation. Friend groups were one of the two
+     * places on this surface that still announced success, and a group
+     * appearing or its chips disappearing already says the same thing.
+     *
+     * Errors are untouched: a refused write must never look saved.
+     */
+    createFriendGroup.mockResolvedValue({ group_id: 'grp_2', name: 'Lake cabins' })
+    updateFriendGroup.mockResolvedValue({ group_id: 'grp_1' })
+    deleteFriendGroup.mockResolvedValue(undefined)
+
+    const { result } = renderHook(useBoth, { wrapper })
+    await waitFor(() => {
+      expect(result.current.query.isSuccess).toBe(true)
+    })
+
+    await act(async () => {
+      await result.current.mutations.updateGroupAsync('grp_1', { name: 'Lake cabins' })
+    })
+
+    expect(toastSuccess).not.toHaveBeenCalled()
     expect(toastError).not.toHaveBeenCalled()
   })
 })

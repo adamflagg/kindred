@@ -20,6 +20,7 @@
 import type {
   AccessibilityFlagSummary,
   HouseholdJourneyResponse,
+  HouseholdJourneySession,
   HouseholdJourneyYear,
   HouseholdMedicalResponse,
   LodgingUnitSummary,
@@ -86,8 +87,18 @@ export type WeekendSummaryRow = WeekendSummaryEntry
 export type HouseholdMedical = HouseholdMedicalResponse
 /** A household's year-over-year family-camp record, newest year first. */
 export type HouseholdJourney = HouseholdJourneyResponse
-/** One year of it — housing, enrollment, and that year's own party. */
+/** One year of it — housing, enrollment, the weekends, and that year's own party. */
 export type HouseholdJourneyRow = HouseholdJourneyYear
+/**
+ * One family weekend a household attended in a year (kindred#2393).
+ *
+ * THE WEEKEND, NOT THE HOUSING. A year holds exactly one cabin string, so this
+ * says which weekends the household was at and nothing about where it slept in
+ * each — repeating the cabin against every entry is the fan-out that
+ * manufactured 12 of 17 false multi-family occupancies in the phase-C
+ * shareability analysis.
+ */
+export type HouseholdJourneySessionRow = HouseholdJourneySession
 /** A registered adult on a household party. */
 export type PartyAdultRow = PartyAdult
 /** An enrolled child on a household party. */

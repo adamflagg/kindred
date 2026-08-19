@@ -4,7 +4,7 @@ import json
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 SCRIPT_PATH = Path(__file__).parents[3] / "scripts" / "ci" / "validate_migrations.py"
 
@@ -308,3 +308,82 @@ class TestEdgeCases:
         )
         # Will fail on missing collections but should parse correctly
         assert "Validating PocketBase schema" in result.stdout
+
+
+class TestTextFieldExactLimits:
+    """Exact caps on the columns that mirror free-text CampMinder answers.
+
+    `TEXT_FIELDS_REQUIRE_CUSTOM_LIMIT` only asserts a field is not sitting on
+    PocketBase's 5000 default, which says nothing about a field capped far too
+    LOW. That is the failure that reached production: `away_from_date` at 100
+    refused a parent's 130-character answer and the whole
+    `household_demographics` transform job reported failure.
+
+    Migration 1500000163 widened those columns by mutating fields in place, so
+    no collection literal in `pb_migrations/` states the resulting cap and no
+    static read of the migrations can confirm it. This validator runs against a
+    booted PocketBase's `/api/collections` after every migration has applied,
+    which is the only place the real number is observable.
+    """
+
+    HOUSEHOLD_DEMOGRAPHICS_WIDENED: ClassVar[list[str]] = [
+        "jewish_affiliation",
+        "jewish_affiliation_other",
+        "congregation_summer",
+        "congregation_family",
+        "jcc_summer",
+        "jcc_family",
+        "away_location",
+        "away_phone",
+        "away_from_date",
+        "away_return_date",
+        "form_filler",
+    ]
+
+    def _household_demographics(self, overrides: dict[str, int] | None = None) -> dict[str, Any]:
+        caps = dict.fromkeys(self.HOUSEHOLD_DEMOGRAPHICS_WIDENED, 1000)
+        caps.update(overrides or {})
+        return make_collection(
+            "household_demographics",
+            fields=[make_field(name, max=cap) for name, cap in caps.items()],
+        )
+
+    def test_narrowed_field_detected(self):
+        """A column back at its old cap fails, naming the field and the cap."""
+        collections = [self._household_demographics({"away_from_date": 100})]
+        code, stdout, _ = run_validator(collections)
+
+        assert code == 1
+        assert "away_from_date" in stdout
+        assert "1000" in stdout
+
+    def test_every_widened_field_is_checked(self):
+        """Each of the eleven is guarded, not just the two that failed.
+
+        Narrowing them one at a time proves the spec covers all of them --
+        a check listing only `away_*` would pass nine of these.
+        """
+        for field_name in self.HOUSEHOLD_DEMOGRAPHICS_WIDENED:
+            collections = [self._household_demographics({field_name: 100})]
+            code, stdout, _ = run_validator(collections)
+
+            assert code == 1, f"{field_name} narrowed to 100 did not fail validation"
+            assert field_name in stdout, f"{field_name} narrowed to 100 was not reported"
+
+    def test_correct_limits_raise_no_text_cap_error(self):
+        """All eleven at 1000 produce no cap complaint.
+
+        Other validations still fail on this deliberately minimal input, so
+        this asserts the ABSENCE of the cap message rather than exit code 0.
+        """
+        collections = [self._household_demographics()]
+        _, stdout, _ = run_validator(collections)
+
+        assert "expected max" not in stdout
+
+    def test_missing_collection_is_not_an_error_here(self):
+        """A dump without the collection is another check's problem, not this one."""
+        collections = [make_collection("persons")]
+        _, stdout, _ = run_validator(collections)
+
+        assert "expected max" not in stdout

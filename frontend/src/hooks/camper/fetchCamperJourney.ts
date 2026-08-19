@@ -10,6 +10,7 @@
  * camp_sessions, since AG session names aren't reliably derivable).
  */
 import { pb } from '../../lib/pocketbase'
+import { byYearThenChronological } from './journeyOrder'
 import { buildCamperJourneySessionTypeFilter } from '../../utils/sessionTypePredicates'
 import type {
   AttendeesResponse,
@@ -164,5 +165,5 @@ export async function fetchCamperJourney(
     }
   })
 
-  return records.sort((a, b) => b.year - a.year)
+  return records.sort(byYearThenChronological)
 }

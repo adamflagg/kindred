@@ -96,6 +96,37 @@ TEXT_FIELDS_REQUIRE_CUSTOM_LIMIT = {
     "bunk_requests": ["notes"],
 }
 
+# Text fields whose EXACT cap matters, checked against a booted PocketBase.
+#
+# TEXT_FIELDS_REQUIRE_CUSTOM_LIMIT above only asks whether a field is sitting on
+# PocketBase's 5000 default, which says nothing about one capped far too LOW.
+# That is the failure this exists for: household_demographics mirrors free-text
+# CampMinder custom fields a parent types into, CampMinder enforces no length on
+# any of them, and `away_from_date` at 100 refused a 130-character answer --
+# turning one family's sentence into a failed transform-phase job on every run.
+#
+# Migration 1500000163 widened these by mutating fields IN PLACE, so no
+# collection literal in pb_migrations/ states the resulting cap and no static
+# read of the migration source can confirm it. This validator runs against
+# /api/collections after every migration has applied, which is the only place
+# the real number is observable -- and therefore the only place a later
+# migration silently narrowing one of them would be caught.
+TEXT_FIELD_EXACT_LIMITS = {
+    "household_demographics": {
+        "jewish_affiliation": 1000,
+        "jewish_affiliation_other": 1000,
+        "congregation_summer": 1000,
+        "congregation_family": 1000,
+        "jcc_summer": 1000,
+        "jcc_family": 1000,
+        "away_location": 1000,
+        "away_phone": 1000,
+        "away_from_date": 1000,
+        "away_return_date": 1000,
+        "form_filler": 1000,
+    },
+}
+
 
 class ValidationError(Exception):
     """Raised when validation fails."""
@@ -259,6 +290,47 @@ def validate_text_field_limits(collection_map: dict[str, Any]) -> list[str]:
     return errors
 
 
+def validate_text_field_exact_limits(collection_map: dict[str, Any]) -> list[str]:
+    """Validate text fields carry exactly the cap TEXT_FIELD_EXACT_LIMITS names.
+
+    A collection absent from the dump is NOT an error here -- that is
+    validate_required_collections' job, and duplicating it would report the
+    same missing table twice. A named field that has vanished IS reported: the
+    caps in the spec exist to keep a specific column wide enough, so a rename
+    that leaves the spec behind must not read as "nothing to check".
+    """
+    errors = []
+    for col_name, expected_limits in TEXT_FIELD_EXACT_LIMITS.items():
+        if col_name not in collection_map:
+            continue
+
+        collection = collection_map[col_name]
+        for field_name, expected_max in expected_limits.items():
+            field = get_field(collection, field_name)
+            if field is None:
+                errors.append(f"Text field '{field_name}' on '{col_name}' is missing - expected max {expected_max}")
+                continue
+
+            if field.get("type") != "text":
+                errors.append(
+                    f"Field '{field_name}' on '{col_name}' is type "
+                    f"'{field.get('type')}', expected max {expected_max} on a text field"
+                )
+                continue
+
+            # v0.23+ keeps max as a direct property; older migrations nested it.
+            max_val = field.get("max")
+            if max_val is None:
+                max_val = field.get("options", {}).get("max")
+
+            if max_val != expected_max:
+                errors.append(
+                    f"Text field '{field_name}' on '{col_name}' has max {max_val}, expected max {expected_max}"
+                )
+
+    return errors
+
+
 def validate_indexes(collection_map: dict[str, Any]) -> list[str]:
     """Validate that critical unique indexes exist."""
     errors = []
@@ -316,6 +388,7 @@ def main() -> int:
     all_errors.extend(validate_relations(collection_map, id_map))
     all_errors.extend(validate_select_values(collection_map))
     all_errors.extend(validate_text_field_limits(collection_map))
+    all_errors.extend(validate_text_field_exact_limits(collection_map))
     all_errors.extend(validate_indexes(collection_map))
 
     if all_errors:

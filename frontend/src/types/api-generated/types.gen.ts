@@ -1989,6 +1989,38 @@ export type HouseholdJourneyResponse = {
 }
 
 /**
+ * HouseholdJourneySession
+ *
+ * One family weekend a household attended in a given year (kindred#2393).
+ *
+ * THE WEEKEND, NOT THE HOUSING. A journey row is a year and a year holds
+ * exactly ONE cabin string -- `family_camp_registrations` has no second
+ * field for a second weekend -- so this list says which weekends the
+ * household was at and says nothing about where it slept in each. Repeating
+ * the year's cabin against every entry is the fan-out that manufactured 12
+ * of 17 false multi-family occupancies in the phase-C shareability analysis.
+ *
+ * `start_date` is the raw PocketBase string, exactly as
+ * `WeekendSessionSummary` publishes it -- the client already reads that
+ * shape, and the server's only use for it here is the ordering it has
+ * already applied.
+ */
+export type HouseholdJourneySession = {
+  /**
+   * Session Cm Id
+   */
+  session_cm_id?: number
+  /**
+   * Name
+   */
+  name?: string
+  /**
+   * Start Date
+   */
+  start_date?: string
+}
+
+/**
  * HouseholdJourneyYear
  *
  * One year of a household's family-camp record.
@@ -2014,6 +2046,14 @@ export type HouseholdJourneyYear = {
    * Cabin Name Raw
    */
   cabin_name_raw?: string
+  /**
+   * Sessions
+   */
+  sessions?: Array<HouseholdJourneySession>
+  /**
+   * Housing Session Cm Id
+   */
+  housing_session_cm_id?: number | null
   /**
    * Enrollment
    */
@@ -3188,6 +3228,10 @@ export type PartyChild = {
    * Grade
    */
   grade?: number | null
+  /**
+   * Session Cm Ids
+   */
+  session_cm_ids?: Array<number>
 }
 
 /**
