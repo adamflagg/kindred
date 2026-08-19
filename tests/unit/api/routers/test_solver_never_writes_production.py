@@ -204,6 +204,30 @@ def _run_client(runs: dict[str, Any]) -> Iterator[TestClient]:
         yield TestClient(app, raise_server_exceptions=False)
 
 
+@contextmanager
+def _clear_client(pb: RecordingPB, cache: MagicMock) -> Iterator[TestClient]:
+    from api.routers.solver import router
+
+    app = FastAPI()
+    app.include_router(router)
+    app.dependency_overrides[get_current_user] = _admin
+
+    with (
+        patch("api.routers.solver.pb", pb),
+        patch("api.routers.solver.graph_cache", cache),
+        patch("api.routers.solver.build_session_context", AsyncMock(return_value=_session_context_stub())),
+    ):
+        yield TestClient(app, raise_server_exceptions=False)
+
+
+def _clear_body(scenario: str | None, **overrides: Any) -> dict[str, Any]:
+    body: dict[str, Any] = {"session_cm_id": SESSION_CM_ID, "year": YEAR}
+    if scenario is not None:
+        body["scenario"] = scenario
+    body.update(overrides)
+    return body
+
+
 # ---------------------------------------------------------------------------
 # The class guard: no write to bunk_assignments, ever
 # ---------------------------------------------------------------------------
@@ -235,41 +259,68 @@ class TestSolverNeverWritesProduction:
         assert pb.mutated(PRODUCTION_COLLECTION) == []
         assert pb.mutated(DRAFT_COLLECTION), "The scenario apply must still write the draft table"
 
-    def test_apply_function_never_names_the_production_collection(self) -> None:
-        """Secondary tripwire: re-adding a production write means naming the table.
+    def test_clear_assignments_without_scenario_never_deletes_from_production(self) -> None:
+        """The delete side of the same rule (kindred#2473).
 
-        Both spellings count — the literal and the ``BUNK_ASSIGNMENTS`` constant
-        from ``api/constants/collections.py``.
+        Unlike the old apply-time production branch, a delete-by-id has nothing
+        to fail validation on — so this is the one mutating path that could
+        actually change production data. Same class guard, opposite verb.
+        """
+        existing = SimpleNamespace(id="assignment_pb_1")
+        pb = RecordingPB(lists={PRODUCTION_COLLECTION: [existing], "camp_sessions": []})
+
+        with _clear_client(pb, MagicMock()) as client:
+            client.post(
+                f"/api/sessions/{SESSION_CM_ID}/clear-assignments",
+                json=_clear_body(scenario=None),
+            )
+
+        assert pb.mutated(PRODUCTION_COLLECTION) == [], (
+            f"clear-assignments mutated {PRODUCTION_COLLECTION}: {pb.mutated(PRODUCTION_COLLECTION)}. "
+            "Production is read-only for the solver — deletes belong to a scenario draft, same as writes."
+        )
+
+    def test_router_never_names_the_production_collection_for_a_mutation(self) -> None:
+        """Source-level tripwire, run across every mutating solver-router endpoint.
+
+        One rule pinning the class: any function here that writes *or deletes*
+        ``bunk_assignments`` by naming it (the literal or the ``BUNK_ASSIGNMENTS``
+        constant from ``api/constants/collections.py``) fails. Extending the list
+        of functions below — rather than adding a second, endpoint-specific AST
+        test — is what keeps this a class-level guard instead of one that only
+        happens to cover today's known offenders.
 
         This is a cheap, fast source-level check, and it is foolable: a
         module-level alias for the production collection (e.g. ``_ALIAS =
-        BUNK_ASSIGNMENTS`` referenced inside the function) walks past this
-        AST scan without ever naming ``BUNK_ASSIGNMENTS`` or the literal
-        directly. The load-bearing coverage is the *behavioral* tests above
-        (``test_apply_without_scenario_never_touches_production`` and
-        ``test_apply_with_scenario_never_touches_production``), which assert
-        against a ``RecordingPB`` and catch a bypass like that regardless of
-        how the write got there. Do not simplify this suite down to just this
-        AST check — it only catches the naive re-introduction.
+        BUNK_ASSIGNMENTS`` referenced inside the function) walks past this AST
+        scan without ever naming ``BUNK_ASSIGNMENTS`` or the literal directly.
+        The load-bearing coverage is the *behavioral* tests above, which assert
+        against a ``RecordingPB`` and catch a bypass like that regardless of how
+        the write or delete got there. Do not simplify this suite down to just
+        this AST check — it only catches the naive re-introduction.
         """
-        from api.routers.solver import apply_solver_results
+        from api.routers.solver import apply_solver_results, clear_session_assignments
 
-        tree = ast.parse(textwrap.dedent(inspect.getsource(apply_solver_results)))
-        offenders: list[str] = []
-        for node in ast.walk(tree):
-            if (
-                isinstance(node, ast.Constant)
-                and isinstance(node.value, str)
-                and PRODUCTION_COLLECTION in node.value
-                and DRAFT_COLLECTION not in node.value
-            ):
-                offenders.append(node.value)
-            if isinstance(node, ast.Name) and node.id == "BUNK_ASSIGNMENTS":
-                offenders.append(node.id)
+        offenders: dict[str, list[str]] = {}
+        for fn in (apply_solver_results, clear_session_assignments):
+            tree = ast.parse(textwrap.dedent(inspect.getsource(fn)))
+            found: list[str] = []
+            for node in ast.walk(tree):
+                if (
+                    isinstance(node, ast.Constant)
+                    and isinstance(node.value, str)
+                    and PRODUCTION_COLLECTION in node.value
+                    and DRAFT_COLLECTION not in node.value
+                ):
+                    found.append(node.value)
+                if isinstance(node, ast.Name) and node.id == "BUNK_ASSIGNMENTS":
+                    found.append(node.id)
+            if found:
+                offenders[fn.__name__] = found
 
-        assert offenders == [], (
-            f"apply_solver_results names the production collection: {offenders}. "
-            "Solver output applies to a scenario; production is read-only."
+        assert offenders == {}, (
+            f"Solver router function(s) name the production collection: {offenders}. "
+            "Production is read-only for the solver — no write, and no delete."
         )
 
 
@@ -370,6 +421,62 @@ class TestRunCreationRequiresScenario:
 
         assert resp.status_code == 200, f"{resp.status_code}: {resp.text}"
         assert len(runs) == 1
+
+
+# ---------------------------------------------------------------------------
+# Refusal at clear-assignments time (kindred#2473)
+# ---------------------------------------------------------------------------
+
+
+class TestClearAssignmentsRequiresScenario:
+    """clear-assignments reuses run-creation's refusal shape and message, not a second one."""
+
+    @pytest.mark.parametrize("scenario", [None, "", "   "])
+    def test_clear_without_scenario_is_refused(self, scenario: str | None) -> None:
+        existing = SimpleNamespace(id="assignment_pb_1")
+        pb = RecordingPB(lists={PRODUCTION_COLLECTION: [existing], "camp_sessions": []})
+
+        with _clear_client(pb, MagicMock()) as client:
+            resp = client.post(
+                f"/api/sessions/{SESSION_CM_ID}/clear-assignments",
+                json=_clear_body(scenario=scenario),
+            )
+
+        assert resp.status_code == 422, f"Expected a refusal, got {resp.status_code}: {resp.text}"
+        assert "scenario" in resp.text.lower()
+        assert pb.mutations == [], f"A refused clear must delete nothing: {pb.mutations}"
+
+    def test_clear_refusal_reuses_run_creation_message(self) -> None:
+        """Same refusal shape as PR #2471 — one message, not a second one invented here."""
+        pb = RecordingPB(lists={"camp_sessions": []})
+
+        with _clear_client(pb, MagicMock()) as client:
+            clear_resp = client.post(
+                f"/api/sessions/{SESSION_CM_ID}/clear-assignments",
+                json=_clear_body(scenario=None),
+            )
+
+        with _run_client({}) as client:
+            run_resp = client.post("/api/solver/run", json={"session_cm_id": SESSION_CM_ID, "year": YEAR})
+
+        assert clear_resp.status_code == run_resp.status_code == 422
+        assert clear_resp.json()["detail"] == run_resp.json()["detail"]
+
+    def test_clear_with_scenario_still_deletes_the_draft(self) -> None:
+        existing = SimpleNamespace(id="draft_pb_1")
+        pb = RecordingPB(lists={DRAFT_COLLECTION: [existing], "camp_sessions": []})
+        cache = MagicMock()
+
+        with _clear_client(pb, cache) as client:
+            resp = client.post(
+                f"/api/sessions/{SESSION_CM_ID}/clear-assignments",
+                json=_clear_body(scenario="scn_abc123"),
+            )
+
+        assert resp.status_code == 200, f"{resp.status_code}: {resp.text}"
+        assert pb.mutated(DRAFT_COLLECTION), "The legal path must still delete the scenario draft"
+        assert pb.mutated(PRODUCTION_COLLECTION) == []
+        cache.invalidate_scenario.assert_called()
 
 
 # ---------------------------------------------------------------------------
