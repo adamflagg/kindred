@@ -481,6 +481,11 @@ export default function WeekendRosterPage() {
                         units={units}
                         year={currentYear}
                         sessionCmId={selectedCmId ?? 0}
+                        /* The roster export (kindred#2433) is family-only and
+                           gated on bunking.manage, same pair `WeekendFriendGroups`
+                           below already takes. */
+                        sessionType={selectedSession?.session_type ?? ''}
+                        canManage={canManageLodging}
                       />
                     </ErrorBoundary>
                   </Activity>
