@@ -28,7 +28,7 @@ const (
 )
 
 // addLodgingValueHistoryCollection mirrors the collection created by
-// pocketbase/pb_migrations/1500000165_lodging_value_history.js. The sync
+// pocketbase/pb_migrations/1500000168_lodging_value_history.js. The sync
 // package's fixtures build collections by hand (see the CI note on
 // TestLodgingTestsupportFixtureFieldsExistInProductionSchema), so this shape has
 // to be kept in step with that migration by hand too.
