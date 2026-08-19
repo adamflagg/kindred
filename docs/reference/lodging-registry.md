@@ -210,6 +210,7 @@ loud on purpose, rather than a silently empty registry.
       "has_lights": true,
 
       "has_ramp": "partial",    // yes | no | partial; "" or absent = NOT ASSESSED
+                                //   read by the roster as ramp_coverage (#2438)
       "max_beds": 14,           // total sleeping spots. NOT sleeps — see below
 
       "shareability": "shareable"  // shareable | single_party; absent = not curated
@@ -333,6 +334,17 @@ default and splits fields by how much damage writing them could do:
 Two further rules: an empty `has_ramp` never overwrites a real assessment, and
 `notes` are filled only when the database has none — replacing free text a staff
 member wrote would destroy it.
+
+Since kindred#2438 `has_ramp` is no longer write-only: the weekend roster
+publishes it as `ramp_coverage`, resolved over a unit's LEAF descendants exactly
+as `power_coverage` and `fridge_coverage` are, and the board grades a family's
+`needs_step_free` flag against it. Two things follow for anyone editing this
+file. **Blank still means NOT ASSESSED and resolves `unknown`, never `none`** —
+104 of the 118 units are blank, so writing `no` into them would mark almost the
+whole registry step-free-hostile on evidence nobody recorded. And **`partial` is
+carried through** as its own grade rather than folded into either neighbour, so
+the ramp qualifier a `partial` unit records in `notes` stays the thing staff are
+being pointed at.
 
 `parent_unit` is compared as a **code**. The database stores it as a relation —
 a record id — so comparing raw values reports every parented unit as needing a

@@ -24,7 +24,6 @@ from api.constants.lodging import INFANT_BED_EXEMPT_MONTHS, is_attending_adult_n
 from api.schemas.lodging import (
     MEDICAL_NARRATIVE_FIELD_NAMES,
     AccessibilityFlagSummary,
-    AmenityCoverage,
     EffectiveBathroom,
     HouseholdJourneyResponse,
     HouseholdJourneySession,
@@ -35,6 +34,7 @@ from api.schemas.lodging import (
     PartyAdult,
     PartyChild,
     ProximityKind,
+    RampAssessment,
     RequestTextBlock,
     RequestTextEntry,
     RosterCounts,
@@ -61,6 +61,7 @@ from api.services.lodging_rules import (
     container_bathroom,
     effective_bathroom,
     is_family_available,
+    ramp_coverage,
     request_text_authorship,
     request_text_source_order,
     unit_capacity,
@@ -135,6 +136,29 @@ def _i(record: Any, field: str, default: int = 0) -> int:
         return int(value)
     except TypeError, ValueError:
         return default
+
+
+def _ramp_assessment(value: str) -> RampAssessment:
+    """Rail a raw `has_ramp` string to the select's own vocabulary.
+
+    NOT a defence against the registry loader: migration 1500000131 declares
+    `has_ramp` as a PocketBase `select` with `values: ['yes','no','partial']`,
+    and PB validates that on save, so `registry.go`'s write of a typo'd value
+    fails the save rather than persisting it. This rails two OTHER directions,
+    both real. A later migration may WIDEN the value list -- that is how a
+    select grows -- and a grade this code has never heard of must read as NOT
+    ASSESSED rather than fall through `ramp_coverage`'s chain to `none`, which
+    is a claim. And `_s` is total over a record that lacks the attribute
+    entirely, which is what a summary built before the column existed looks
+    like.
+
+    Blank already means NOT ASSESSED -- 104 of the 118 production rows are
+    blank -- and coercing either case to "no" is the inversion the select
+    exists to prevent.
+    """
+    if value in ("yes", "no", "partial"):
+        return cast(RampAssessment, value)
+    return ""
 
 
 def _b(record: Any, field: str) -> bool:
@@ -1055,7 +1079,9 @@ def _resolve_power_coverage(units: list[LodgingUnitSummary], index: _BathroomInd
     pointing at the pre-resolution copies, which is exactly the kind of drift
     the one-index-per-call rule above exists to prevent.
     """
-    _resolve_amenity_coverage(units, index, answer=lambda room: room.has_power, target="power_coverage")
+    _resolve_amenity_coverage(
+        units, index, answer=lambda room: room.has_power, grade=amenity_coverage, target="power_coverage"
+    )
 
 
 def _resolve_fridge_coverage(units: list[LodgingUnitSummary], index: _BathroomIndex) -> None:
@@ -1090,18 +1116,60 @@ def _resolve_fridge_coverage(units: list[LodgingUnitSummary], index: _BathroomIn
         units,
         index,
         answer=lambda room: room.has_fridge or room.has_shared_fridge,
+        grade=amenity_coverage,
         target="fridge_coverage",
     )
 
 
-def _resolve_amenity_coverage(
+def _resolve_ramp_coverage(units: list[LodgingUnitSummary], index: _BathroomIndex) -> None:
+    """Fill in every unit's `ramp_coverage` in place — kindred#2438.
+
+    The third resolver over the one leaf walk, and every rule
+    `_resolve_power_coverage` established applies here unchanged: a container's
+    registry row describes the CONTAINER, an unconfirmed row means "nobody has
+    said", a deactivated room does not answer for its building, and a container
+    with no active room left reports `unknown` rather than falling back to its
+    own flag. One of the 14 production assessments IS on a container, and it is
+    ignored for exactly that reason.
+
+    TWO things are this function's own, and both come from `has_ramp` being a
+    three-value select rather than a bool:
+
+    1. A room answers in a THREE-VALUE vocabulary, so the verdict is graded by
+       `ramp_coverage` rather than `amenity_coverage` and carries a fifth
+       grade, `partial`. See that function for why `partial` folds into neither
+       `none` nor `some`.
+    2. BLANK IS NOT `no`. `_resolve_power_coverage`'s `None` case covers only
+       the unconfirmed ROW; here the field itself can be unanswered on a
+       confirmed row, and 104 of 118 production units are. So blank maps to
+       `None` — not assessed — and the building reports `unknown`. Reading it
+       as `no` would mark almost the whole registry step-free-hostile on
+       evidence nobody recorded, which is the inversion migration 1500000131
+       made the column a select to prevent.
+
+    An unrecognised string maps to `None` too — see `_ramp_assessment` for the
+    two directions that can produce one, neither of which is the registry
+    loader. An unreadable answer is no answer, never a claim in either
+    direction.
+    """
+    _resolve_amenity_coverage(
+        units,
+        index,
+        answer=lambda room: room.has_ramp or None,
+        grade=ramp_coverage,
+        target="ramp_coverage",
+    )
+
+
+def _resolve_amenity_coverage[Answer](
     units: list[LodgingUnitSummary],
     index: _BathroomIndex,
     *,
-    answer: Callable[[LodgingUnitSummary], bool],
+    answer: Callable[[LodgingUnitSummary], Answer | None],
+    grade: Callable[[Sequence[Answer | None]], str],
     target: str,
 ) -> None:
-    """The one leaf walk both resolvers above run.
+    """The one leaf walk all three resolvers above run.
 
     Parameterised on WHICH flag a room answers with and WHICH field receives
     the verdict, so a second amenity is a call site rather than a second
@@ -1109,6 +1177,14 @@ def _resolve_amenity_coverage(
     inactive rooms do not answer, unconfirmed rooms answer `None` — live here
     once; the reasoning for each lives in `_resolve_power_coverage`, which is
     the function that established them.
+
+    `Answer` is the vocabulary a ROOM answers in — `bool` for the boolean
+    flags, `str` for `has_ramp`'s three-value select — and `grade` is
+    parameterised alongside it for ONE reason, not for generality
+    (kindred#2438): `has_ramp` is a three-value select, so its rooms answer
+    `"yes"` / `"partial"` / `"no"` rather than a bool and need
+    `ramp_coverage`'s five-grade verdict. The WALK is what must not be
+    duplicated; which vocabulary a room answers in is the caller's business.
     """
     for unit in units:
         rooms = [
@@ -1120,14 +1196,11 @@ def _resolve_amenity_coverage(
         setattr(
             unit,
             target,
-            cast(
-                AmenityCoverage,
-                # `None` where nobody has confirmed the row: an unconfirmed
-                # `has_power = False` means "nobody has said", never "there is
-                # no power" -- the same gate `rosterAttention` already applies
-                # to the roster's own fit check.
-                amenity_coverage([answer(room) if room.is_confirmed else None for room in answering]),
-            ),
+            # `None` where nobody has confirmed the row: an unconfirmed
+            # `has_power = False` means "nobody has said", never "there is
+            # no power" -- the same gate `rosterAttention` already applies
+            # to the roster's own fit check.
+            grade([answer(room) if room.is_confirmed else None for room in answering]),
         )
 
 
@@ -1374,6 +1447,9 @@ class LodgingRosterService:
         # reasoning as above: `build_summary` carries no `units`, so resolving
         # coverage there would be work no response can read.
         _resolve_fridge_coverage(unit_summaries, unit_index)
+        # The same walk, one dimension over (kindred#2438), and the third and
+        # last read of it. Same path-only reasoning as above.
+        _resolve_ramp_coverage(unit_summaries, unit_index)
         # A SECOND PASS, and it has to be: a unit's cover can come from a row
         # on a unit built after it, so there is no order in which one pass over
         # `_build_units` would see every own-row it needs.
@@ -1993,6 +2069,11 @@ class LodgingRosterService:
                     has_ac=_b(unit, "has_ac"),
                     has_fridge=_b(unit, "has_fridge"),
                     has_shared_fridge=_b(unit, "has_shared_fridge"),
+                    # RAILED to the select's own vocabulary, not cast, so a
+                    # grade this code has never heard of reads as NOT ASSESSED
+                    # rather than leaking into the payload's Literal
+                    # (kindred#2438). See `_ramp_assessment`.
+                    has_ramp=_ramp_assessment(_s(unit, "has_ramp")),
                     is_accessible=_b(unit, "is_accessible"),
                     is_confirmed=_b(unit, "is_confirmed"),
                     is_active=_b(unit, "is_active"),
@@ -2457,6 +2538,11 @@ class LodgingRosterService:
             # above are: the derivation runs over RAW per-person narrative
             # values in the sync layer, and this service cannot see them.
             needs_fridge=_b(registration, "needs_fridge"),
+            # kindred#2438, and read from the column for the same reason: the
+            # derivation runs over RAW per-person narrative values in the sync
+            # layer, across BOTH housing narratives, and this service cannot
+            # see them.
+            needs_step_free=_b(registration, "needs_step_free"),
         )
 
     # --------------------------------------------------------------- counts

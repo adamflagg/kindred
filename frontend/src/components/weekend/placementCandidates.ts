@@ -49,14 +49,16 @@
  *
  * ⚠️ THE TWO TABLES HAVE DIVERGED, and the divergence is a live decision
  * rather than an oversight. `needsFit` was seeded with power ALONE; kindred#2224
- * added `needs_fridge` there and NOT here, so a family whose accommodation
- * narrative asks for a fridge is hatched mid-drag on a fridgeless cabin and
- * annotated `fits` in this picker (and reported `settled` by
- * `rosterAttention`'s `VERIFIABLE_NEEDS`, which does not carry it either).
- * Whether the fridge need earns a sentence here and a roster-row reason there
- * is a staff-copy question that belongs with kindred#2072's ruled glyph set
- * (bathroom · power · fridge) — it is not settled by this comment. Until it
- * is, do not assume silence here means the need does not apply.
+ * added `needs_fridge` there and NOT here, and kindred#2438 added
+ * `needs_step_free` on the same terms — so a family whose housing narrative
+ * asks for a fridge or for step-free access is hatched mid-drag on a cabin
+ * that cannot supply it and annotated `fits` in this picker (and reported
+ * `settled` by `rosterAttention`'s `VERIFIABLE_NEEDS`, which carries neither).
+ * Whether those needs earn a sentence here and a roster-row reason there is a
+ * staff-copy question that belongs with kindred#2072's ruled glyph set
+ * (bathroom · power · fridge) — it is not settled by this comment, and the
+ * step-free need is not in that ruled set at all. Until it is, do not assume
+ * silence here means the need does not apply.
  *
  * The power rule is stated in both places. ⚠️ CHANGE ONE, CHANGE
  * BOTH — same field (`power_coverage`, never the raw `has_power`), same

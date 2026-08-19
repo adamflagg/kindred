@@ -27,6 +27,8 @@ function unit(overrides: Partial<LodgingUnitRow> = {}): LodgingUnitRow {
     has_fridge: false,
     has_shared_fridge: false,
     fridge_coverage: 'none',
+    has_ramp: '',
+    ramp_coverage: 'none',
     ...overrides,
   }
 }
@@ -196,6 +198,122 @@ describe('resolveNeedsFit — the fridge dimension (kindred#2224)', () => {
         unit({ power_coverage: 'none', fridge_coverage: 'all' })
       )
     ).toBe('fits')
+  })
+})
+
+describe('resolveNeedsFit — the step-free dimension (kindred#2438)', () => {
+  /*
+   * Dimension three, and the first one whose supply column is NOT a boolean.
+   * `has_ramp` is a three-value select (`yes` / `no` / `partial`, blank = NOT
+   * ASSESSED, migration 1500000131), which is why `ramp_coverage` carries a
+   * fifth grade the other two do not.
+   *
+   * Measured on the 2026 snapshot, household grain, both housing narratives:
+   * 14 of the 86 households carrying any narrative describe a mobility or
+   * step-free need, against 6 naming a fridge — more than twice the signal that
+   * justified shipping the fridge dimension. Supply: 14 of 118 units carry a
+   * staff assessment (5 yes / 5 partial / 4 no), which a BOOLEAN read of the
+   * select reports as 0 of 118. 2026 is only 16% placed, so 14 is the SHAPE of
+   * the demand, not a rate.
+   */
+  it('marks a space where no room is step-free as unmet', () => {
+    expect(
+      resolveNeedsFit(party({ flags: { needs_step_free: true } }), unit({ ramp_coverage: 'none' }))
+    ).toBe('unmet')
+  })
+
+  it('marks a space where only SOME rooms are step-free as unmet, not partial', () => {
+    // ⚠️ NOT the fridge reading. This is the `is_accessible` reasoning the
+    // module doc already spells out: a building advertising two step-free
+    // rooms out of ten invites precisely the placement that lands in one of
+    // the other eight. A fridge one room over is still a fridge a family can
+    // use; a ramp one room over is not.
+    expect(
+      resolveNeedsFit(party({ flags: { needs_step_free: true } }), unit({ ramp_coverage: 'some' }))
+    ).toBe('unmet')
+  })
+
+  it('marks a space whose best room is a QUALIFIED ramp as partial', () => {
+    // The fifth grade, and the reason the supply column is a select. Three of
+    // the five production `partial` units carry the ramp qualifier in `notes`
+    // — "look at this one" is exactly what the softer hatch says.
+    expect(
+      resolveNeedsFit(
+        party({ flags: { needs_step_free: true } }),
+        unit({ ramp_coverage: 'partial' })
+      )
+    ).toBe('partial')
+  })
+
+  it('marks nothing when every room is step-free', () => {
+    expect(
+      resolveNeedsFit(party({ flags: { needs_step_free: true } }), unit({ ramp_coverage: 'all' }))
+    ).toBe('fits')
+  })
+
+  it('marks nothing when nobody has assessed the space', () => {
+    // 104 of 118 production units are blank. Marking them would assert "no
+    // ramp" about cabins nobody has looked at — the exact inversion the select
+    // exists to prevent, and the reason the server resolves `unknown`.
+    expect(
+      resolveNeedsFit(
+        party({ flags: { needs_step_free: true } }),
+        unit({ ramp_coverage: 'unknown' })
+      )
+    ).toBe('fits')
+  })
+
+  it('never reads the raw has_ramp — a truthy string would invert the mark', () => {
+    // `has_ramp` is a STRING, so `'no'` is TRUTHY. Any consumer filtering on
+    // truthiness renders "step-free" on the four cabins staff assessed as
+    // explicitly having NO ramp. The resolved field is the only safe read, and
+    // this pins that the dimension takes it.
+    expect(
+      resolveNeedsFit(
+        party({ flags: { needs_step_free: true } }),
+        unit({ has_ramp: 'no', ramp_coverage: 'all' })
+      )
+    ).toBe('fits')
+    expect(
+      resolveNeedsFit(
+        party({ flags: { needs_step_free: true } }),
+        unit({ has_ramp: 'yes', ramp_coverage: 'none' })
+      )
+    ).toBe('unmet')
+  })
+
+  it('leaves a family that did not ask unmarked', () => {
+    expect(resolveNeedsFit(party(), unit({ ramp_coverage: 'none' }))).toBe('fits')
+  })
+
+  it('keeps the three dimensions independent', () => {
+    expect(
+      resolveNeedsFit(
+        party({ flags: { needs_step_free: true } }),
+        unit({ power_coverage: 'none', fridge_coverage: 'none', ramp_coverage: 'all' })
+      )
+    ).toBe('fits')
+    expect(
+      resolveNeedsFit(
+        party({ flags: { needs_power: true } }),
+        unit({ power_coverage: 'all', ramp_coverage: 'none' })
+      )
+    ).toBe('fits')
+  })
+
+  it('takes the WORSE of a soft ramp verdict and a hard one', () => {
+    expect(
+      resolveNeedsFit(
+        party({ flags: { needs_power: true, needs_step_free: true } }),
+        unit({ power_coverage: 'none', ramp_coverage: 'partial' })
+      )
+    ).toBe('unmet')
+    expect(
+      resolveNeedsFit(
+        party({ flags: { needs_power: true, needs_step_free: true } }),
+        unit({ power_coverage: 'all', ramp_coverage: 'partial' })
+      )
+    ).toBe('partial')
   })
 })
 

@@ -3861,3 +3861,222 @@ func TestProcessAdultsDedupesHandlesThreeRowGroup(t *testing.T) {
 		t.Errorf("survivor adult_number = %d, want 1 (lowest slot wins)", adults[0].adultNumber)
 	}
 }
+
+// -------------------------------------------------------------- needs_step_free
+//
+// kindred#2438. The third graded need dimension, mirroring needs_fridge
+// (kindred#2224) one column over: the family's ask is resolved out of the same
+// free-text narrative, and the registry answers it with `has_ramp`.
+//
+// Measured on the production snapshot, 2026, at the household grain and over
+// BOTH narrative fields: 86 households carry any narrative at all, 6 name cold
+// storage, and 14 describe a mobility or step-free need -- more than twice the
+// signal that justified shipping needs_fridge. Supply: 14 of 118 units carry a
+// staff `has_ramp` assessment (5 yes / 5 partial / 4 no), which a boolean read
+// of that three-value select reports as 0.
+//
+// The narrative is PHI-adjacent, so only the BOOLEAN is derived here; the
+// sentence stays in family_camp_medical, which is admin-gated and absent from
+// every export.
+
+func TestProcessRegistrationsDerivesNeedsStepFreeFromTheAccommodationNarrative(t *testing.T) {
+	t.Parallel()
+	s := NewFamilyCampDerivedSync(nil)
+
+	regs := s.processRegistrations(nil, []customValueEntry{
+		{householdPBID: "hh_johnson", fieldName: "Housing Accommodation", value: "Yes"},
+		{householdPBID: "hh_johnson", fieldName: "Housing Accommodation-Yes",
+			value: "One adult in our party cannot manage a long uphill walk"},
+	})
+	if len(regs) != 1 {
+		t.Fatalf("registrations = %d, want 1", len(regs))
+	}
+	if !regs[0].needsStepFree {
+		t.Error("an accommodation narrative describing limited walking did not set needsStepFree")
+	}
+}
+
+// ⚠️ THE ROUTING TRAP. needs_fridge reads the accommodation narrative ALONE,
+// and copying that routing verbatim loses more than a third of this signal: on
+// the 2026 snapshot 5 of the 14 mobility households narrate ONLY through the
+// bathroom field and 3 through both, against 0 of the 6 fridge households. It makes
+// sense -- a family explaining why they need a private bathroom is often
+// explaining that someone cannot walk to the shared one.
+func TestProcessRegistrationsDerivesNeedsStepFreeFromTheBathroomNarrative(t *testing.T) {
+	t.Parallel()
+
+	// Both partitions of the bathroom narrative: "Housing-Bathroom" is the
+	// Camper key (cm_id 274059) and "Bathroom-Yes" the Adult twin (274054).
+	for _, name := range []string{"Housing-Bathroom", "Bathroom-Yes"} {
+		s := NewFamilyCampDerivedSync(nil)
+		regs := s.processRegistrations(nil, []customValueEntry{
+			{householdPBID: "hh_garcia", fieldName: name,
+				value: "Grandmother uses crutches and cannot manage the steps to the bathhouse"},
+		})
+		if len(regs) != 1 || !regs[0].needsStepFree {
+			t.Errorf("field %q did not route into needsStepFree", name)
+		}
+	}
+}
+
+// The two routings stay DISTINCT. needs_fridge deliberately reads only the
+// accommodation narrative (kindred#2224 measured 0 fridge asks in the bathroom
+// field), so widening the step-free route must not widen the fridge one with it.
+func TestProcessRegistrationsDoesNotDeriveNeedsFridgeFromTheBathroomNarrative(t *testing.T) {
+	t.Parallel()
+	s := NewFamilyCampDerivedSync(nil)
+
+	regs := s.processRegistrations(nil, []customValueEntry{
+		// A gate answer, so the row survives the has-some-data guard on
+		// something other than the flag under test.
+		{householdPBID: "hh_garcia", fieldName: "Housing Accommodation", value: "Yes"},
+		{householdPBID: "hh_garcia", fieldName: "Housing-Bathroom",
+			value: "we would like a fridge in the cabin"},
+	})
+	if len(regs) != 1 {
+		t.Fatalf("registrations = %d, want 1", len(regs))
+	}
+	if regs[0].needsFridge {
+		t.Error("the bathroom narrative set needsFridge -- the fridge route reads accommodation only")
+	}
+}
+
+// RECALL OVER PRECISION, on the same reasoning as mentionsFridge: the flag is
+// ADVISORY -- it hatches a card and never refuses a drop -- so a false positive
+// costs a mark staff overrule at a glance while a false negative costs the ask.
+func TestMentionsStepFreeVocabulary(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		text string
+		want bool
+	}{
+		// "walk" carries most of the signal on its own: 10 of the 14 2026
+		// households, as a SUBSTRING so it also catches walking/walkway.
+		{"cannot walk to the bathhouse in the dark", true},
+		{"trouble walking on uneven ground", true},
+		{"somewhere with an even walkway from the parking area", true},
+		{"limited mobility", true},
+		{"MOBILITY ISSUES, please", true},
+		{"she walks on crutches", true},
+		// Zero households on the 2026 snapshot, kept for recall: each is the
+		// plain word for an ask the registry's has_ramp column answers.
+		{"we need a wheelchair accessible cabin", true},
+		{"a cabin with a ramp", true},
+		{"cannot manage stairs", true},
+		{"no steps please", true},
+		{"a ground floor room", true},
+		{"anywhere on a single level", true},
+		{"one level, no climbing", true},
+		{"he uses a mobility scooter", true},
+		{"dad walks with a cane", true},
+		// Diagnosis words, admitted on evidence rather than on shape: every
+		// knee/hip mention in the corpus, in every year, is a mobility
+		// limitation -- a joint replacement, a post-surgical recovery, or a
+		// stated limit on distance -- and three are households nothing else in
+		// this surface catches.
+		{"her knee replacement is still healing", true},
+		{"post-op hip, cannot manage a slope", true},
+		// ⚠️ "hip" MUST match as a whole word. As a bare substring it fires on
+		// "relationship" and "shipping", which are ordinary words in a family
+		// narrative and say nothing about mobility -- a false positive that
+		// recall-over-precision does not buy, because it is not a near-miss on
+		// the ask, it is an unrelated word. "cane" and "ramp" are the same
+		// shape ("hurricane", "cramp"), so they take the same rule.
+		{"our family relationship with camp goes back years", false},
+		{"shipping the trunk ahead of time", false},
+		{"the hurricane year, 2024", false},
+		{"she gets leg cramps at night", false},
+		{"", false},
+		{"We need a private bathroom", false},
+		{"a mini fridge for insulin", false},
+		// Deliberately OUT of the surface. Bare "close to" matches 5 of the 86
+		// 2026 narrative households and is PROXIMITY, not step-free access --
+		// the registry answers it with map coordinates and near_bathhouse, not
+		// with has_ramp, so flagging on it hatches cards against a column that
+		// cannot speak to the ask.
+		{"please put us close to the dining hall", false},
+	} {
+		if got := mentionsStepFree(tc.text); got != tc.want {
+			t.Errorf("mentionsStepFree(%q) = %v, want %v", tc.text, got, tc.want)
+		}
+	}
+}
+
+// ⚠️ THE GATE TRAP. 3 of the 14 2026 mobility households are NOT
+// accommodation-gated, so needs_step_free has to join the has-some-data guard
+// that decides whether a registration row is written at all -- otherwise those
+// three rows are dropped before they are stored, and the flag is invisible for
+// exactly the households nothing else records.
+func TestProcessRegistrationsStepFreeOnlyHouseholdSurvives(t *testing.T) {
+	t.Parallel()
+	s := NewFamilyCampDerivedSync(nil)
+
+	regs := s.processRegistrations(nil, []customValueEntry{
+		{householdPBID: "hh_lee", fieldName: "Housing-Bathroom",
+			value: "cannot walk far from the parking area"},
+	})
+	if len(regs) != 1 {
+		t.Fatalf("registrations = %d, want 1 -- the ungated step-free household was dropped", len(regs))
+	}
+	if !regs[0].needsStepFree {
+		t.Error("needsStepFree not set")
+	}
+	if regs[0].needsAccommodation {
+		t.Error("needsAccommodation set -- this household answered no gate question at all")
+	}
+}
+
+// PHI CONTAINMENT, the same bar needs_fridge holds. The mobility narrative names
+// individuals and their conditions; only the boolean may reach
+// family_camp_registrations, which is not admin-gated.
+func TestProcessRegistrationsNeverStoresTheMobilityNarrative(t *testing.T) {
+	t.Parallel()
+	s := NewFamilyCampDerivedSync(nil)
+
+	const narrative = "Grandmother has late-stage neuropathy and cannot walk on gravel"
+	regs := s.processRegistrations(nil, []customValueEntry{
+		{householdPBID: "hh_lee", fieldName: "Housing-Bathroom", value: narrative},
+	})
+	if len(regs) != 1 {
+		t.Fatalf("registrations = %d, want 1", len(regs))
+	}
+	for column, stored := range map[string]string{
+		"notes":                  regs[0].notes,
+		"goals":                  regs[0].goals,
+		"special_occasions":      regs[0].specialOccasions,
+		"request_text":           regs[0].requestText,
+		"cabin_assignment":       regs[0].cabinAssignment,
+		"share_cabin_preference": regs[0].shareCabinPreference,
+		"shared_cabin_modes_raw": regs[0].sharedCabinModesRaw,
+		"arrival_eta":            regs[0].arrivalETA,
+	} {
+		if strings.Contains(stored, "neuropathy") {
+			t.Errorf("registration column %s carries the medical narrative: %q", column, stored)
+		}
+	}
+}
+
+// ONE routing list, shared by processMedical (which stores the sentence) and
+// processRegistrations (which derives a boolean and stores nothing) -- the same
+// discipline accommodationExplainFieldNames already follows, and for the same
+// reason: two copies of a name-keyed route drift the moment a generation is
+// added, which is how the Adult accommodation twin came to be read in one of
+// the two and not the other.
+func TestProcessMedicalBathroomExplainUsesTheSharedRoutingList(t *testing.T) {
+	t.Parallel()
+	ts := time.Date(2026, 4, 21, 0, 0, 0, 0, time.UTC)
+
+	for _, name := range bathroomExplainFieldNames {
+		s := NewFamilyCampDerivedSync(nil)
+		meds := s.processMedical([]customValueEntry{
+			{householdPBID: "hh_lee", fieldName: name, value: "narrative for " + name, lastUpdated: ts},
+		})
+		if len(meds) != 1 {
+			t.Fatalf("field %q: medical rows = %d, want 1", name, len(meds))
+		}
+		if !strings.Contains(meds[0].bathroomExplain, "narrative for "+name) {
+			t.Errorf("field %q: bathroomExplain = %q", name, meds[0].bathroomExplain)
+		}
+	}
+}

@@ -112,7 +112,7 @@ func newFamilyCampReplayTestApp(t *testing.T) core.App {
 	boolean(regs, "needs_accommodation", "opt_out_vip", "wants_near", "wants_with",
 		"wants_similar_ages", "needs_private_bathroom", "needs_power",
 		"accommodation_is_mandatory", "has_infant", "share_answers_conflict",
-		"needs_fridge")
+		"needs_fridge", "needs_step_free")
 	text(regs, enrollmentStatusColumn)
 	save(regs)
 

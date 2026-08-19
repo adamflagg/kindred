@@ -688,6 +688,7 @@ export type FamilyCampRegistrationsRecord = {
   needs_fridge?: boolean
   needs_power?: boolean
   needs_private_bathroom?: boolean
+  needs_step_free?: boolean
   notes?: string
   opt_out_vip?: boolean
   request_last_updated?: IsoDateString

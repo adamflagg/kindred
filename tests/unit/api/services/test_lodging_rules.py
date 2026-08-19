@@ -26,6 +26,7 @@ from api.services.lodging_rules import (
     container_bathroom,
     effective_bathroom,
     is_family_available,
+    ramp_coverage,
     request_text_authorship,
     request_text_source_order,
     unit_capacity,
@@ -228,6 +229,57 @@ class TestAmenityCoverage:
         assert amenity_coverage([True, None]) == "unknown"
         assert amenity_coverage([False, None]) == "unknown"
         assert amenity_coverage([None]) == "unknown"
+
+
+class TestRampCoverage:
+    """kindred#2438. The step-free twin of `amenity_coverage`, and the reason
+    it is a separate function rather than a call into that one: `has_ramp` is a
+    THREE-VALUE select, so a room can answer "qualified" and no boolean grain
+    has anywhere to put that.
+
+    Migration 1500000131 made it a select on purpose -- "a bool maps every
+    unassessed cabin to false, which asserts 'no ramp' about cabins nobody has
+    looked at". The production distribution is 104 blank / 4 `no` / 5 `partial`
+    / 5 `yes`; a bool read reports 0 of 118 and erases all 14 assessments.
+
+    Five grades, worst-known first: `none` < `partial` < `some` < `all`, plus
+    `unknown` for the absence of evidence.
+    """
+
+    def test_every_room_step_free_is_all(self) -> None:
+        assert ramp_coverage(["yes", "yes"]) == "all"
+
+    def test_every_room_refused_is_none(self) -> None:
+        assert ramp_coverage(["no", "no"]) == "none"
+
+    def test_a_mixed_set_is_some(self) -> None:
+        assert ramp_coverage(["yes", "no"]) == "some"
+        assert ramp_coverage(["yes", "partial"]) == "some"
+
+    def test_qualified_without_a_full_yes_is_partial(self) -> None:
+        """The grade a boolean amenity has no room for, and the one that must
+        NOT collapse into `none`: three of the five production `partial` units
+        carry the ramp qualifier in `notes`, which is the record of somebody
+        having gone and looked."""
+        assert ramp_coverage(["partial"]) == "partial"
+        assert ramp_coverage(["partial", "no"]) == "partial"
+
+    def test_partial_is_not_some(self) -> None:
+        """`some` says at least one room IS step-free, which invites the
+        placement that lands in one of the others. `partial` says none is, and
+        the two are different claims."""
+        assert ramp_coverage(["partial", "partial"]) != "some"
+
+    def test_blank_is_unknown_never_none(self) -> None:
+        """104 of 118 production units are blank. Reading blank as `no` marks
+        almost the whole registry step-free-hostile on evidence nobody
+        recorded -- the exact inversion the select exists to prevent."""
+        assert ramp_coverage([None]) == "unknown"
+        assert ramp_coverage(["yes", None]) == "unknown"
+        assert ramp_coverage(["no", None]) == "unknown"
+
+    def test_nothing_to_judge_is_unknown(self) -> None:
+        assert ramp_coverage([]) == "unknown"
 
 
 class TestRequestTextSourceRegistry:
