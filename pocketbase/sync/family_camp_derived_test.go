@@ -3861,3 +3861,39 @@ func TestProcessAdultsDedupesHandlesThreeRowGroup(t *testing.T) {
 		t.Errorf("survivor adult_number = %d, want 1 (lowest slot wins)", adults[0].adultNumber)
 	}
 }
+
+// TestProcessAdultsDedupesMergesWhenNeitherSlotHasADOB pins a deliberate
+// edge of the ruled key, not a gap in it: "non-conflicting" is defined as
+// the group's non-empty DOBs being equal OR AT MOST ONE slot carrying a DOB
+// at all -- and zero populated DOBs satisfies "at most one" same as one
+// does. This is not a hypothetical: the production household this pins
+// (fictionalised here) is exactly this shape -- same coalesced name, both
+// slots' date_of_birth blank -- and it is one of the measured 15 merge
+// groups (kindred#2483), not a false positive. A key that instead refused
+// whenever BOTH sides were blank would silently stop merging that real
+// household and would not match the issue's measured MERGE 15 / REFUSE 27
+// split.
+//
+// This does trade away detecting two different same-named people who both
+// left DOB blank -- there is no signal left to refuse on once neither slot
+// answers the question BOTH the name key and the DOB check depend on. That
+// is the accepted cost of the ruled key, not this test's job to relitigate.
+func TestProcessAdultsDedupesMergesWhenNeitherSlotHasADOB(t *testing.T) {
+	t.Parallel()
+	s := &FamilyCampDerivedSync{}
+
+	householdValues := []customValueEntry{
+		{householdPBID: "hh_1", fieldName: "Family Camp Adult 1", value: "Ariel Rubin"},
+		{householdPBID: "hh_1", fieldName: "Family Camp Adult 2", value: "Ariel Rubin"},
+	}
+
+	adults := s.processAdults(householdValues, nil)
+
+	if len(adults) != 1 {
+		t.Fatalf("both-blank-DOB same-name slots must still merge (kindred#2483's ruled key), got %d: %+v",
+			len(adults), adults)
+	}
+	if adults[0].adultNumber != 1 {
+		t.Errorf("survivor adult_number = %d, want 1 (lower slot wins)", adults[0].adultNumber)
+	}
+}

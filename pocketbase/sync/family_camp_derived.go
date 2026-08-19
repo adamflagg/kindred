@@ -1129,6 +1129,17 @@ func dedupeAdultSlots(adults map[int]*adultData) {
 // across slots. date_of_birth is normalised (normalizeDateOfBirth) before it
 // ever reaches processAdults' map, so a straight string comparison is a
 // straight date comparison.
+//
+// A group where NEITHER slot has a DOB reports no conflict -- zero populated
+// values is "at most one populated", the same as one. This is deliberate,
+// not a gap: the issue's ruled key defines non-conflicting that way, and one
+// production household is exactly this shape (same coalesced name, both
+// slots' DOB blank) and is one of the measured 15 merge groups
+// (TestProcessAdultsDedupesMergesWhenNeitherSlotHasADOB). The trade this
+// accepts is real -- two different same-named people who both left DOB blank
+// would merge too -- but there is no signal left to refuse on once neither
+// slot answers the question the whole key depends on, and the owner ruling
+// accepted that cost in exchange for the measured MERGE 15 / REFUSE 27 split.
 func adultGroupDOBConflicts(group []*adultData) bool {
 	seen := ""
 	for _, adult := range group {
