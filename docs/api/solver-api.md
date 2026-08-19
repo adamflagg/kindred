@@ -61,7 +61,7 @@ Start a new solver run for a session.
 
 **Parameters:**
 - `session_id` (required): CampMinder session ID to solve
-- `apply_results` (optional, default=false): Auto-apply results to production
+- `apply_results` (optional, default=false): Auto-apply results to the run's scenario
 - `time_limit` (optional, default=30): Max seconds to run (1-600)
 
 **Response:**
@@ -136,7 +136,10 @@ Get status and results of a solver run.
 ---
 
 #### POST /solver/apply/{run_id}
-Apply solver results to production bunk assignments.
+Apply solver results to the run's **scenario** (`bunk_assignments_draft`).
+
+⚠️ **Production is read-only for the solver.** A run carrying no scenario is refused with a 422 rather
+than applied — see kindred#2467. The solver never writes `bunk_assignments`.
 
 **Path Parameters:**
 - `run_id`: The solver run identifier
