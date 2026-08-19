@@ -3753,11 +3753,16 @@ func TestProcessAdultsDedupesCoalescedNameMatch(t *testing.T) {
 	t.Parallel()
 	s := &FamilyCampDerivedSync{}
 
+	// A local constant rather than the literal three times: goconst counts
+	// repeated string literals across the package and this name is already
+	// used in other sync tests.
+	const wantMergedName = "Emma Johnson"
+
 	householdValues := []customValueEntry{
-		{householdPBID: "hh_1", fieldName: "Family Camp Adult 1", value: "Emma Johnson"},
+		{householdPBID: "hh_1", fieldName: "Family Camp Adult 1", value: wantMergedName},
 	}
 	personValues := []customValueEntry{
-		{householdPBID: "hh_1", fieldName: "Family Camp-P2 First Name", value: "Emma Johnson"},
+		{householdPBID: "hh_1", fieldName: "Family Camp-P2 First Name", value: wantMergedName},
 		{householdPBID: "hh_1", fieldName: "Family Camp Adult 2 Email", value: "test@example.com"},
 		{householdPBID: "hh_1", fieldName: "Family Camp DOB 2", value: "1980-06-15"},
 	}
@@ -3771,8 +3776,8 @@ func TestProcessAdultsDedupesCoalescedNameMatch(t *testing.T) {
 	if got.adultNumber != 1 {
 		t.Errorf("survivor adult_number = %d, want 1 (lower slot wins)", got.adultNumber)
 	}
-	if got.name != "Emma Johnson" {
-		t.Errorf("survivor name = %q, want %q", got.name, "Emma Johnson")
+	if got.name != wantMergedName {
+		t.Errorf("survivor name = %q, want %q", got.name, wantMergedName)
 	}
 	// Field survival: the losing slot's email and date_of_birth must attach
 	// to the survivor rather than being dropped.
