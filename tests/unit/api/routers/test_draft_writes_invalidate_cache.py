@@ -148,7 +148,12 @@ class TestApplySolverResultsInvalidatesCache:
 
 
 class TestClearSessionAssignmentsInvalidatesCache:
-    """Bulk-clearing draft (or prod) assignments must drop the matching cache."""
+    """Clearing a scenario's draft assignments must drop the matching cache slot.
+
+    Production is out of reach here — kindred#2473: a scenario-less clear is
+    refused with a 422 before any PocketBase call, so there is no production
+    cache slot to invalidate any more.
+    """
 
     def _run(self, *, scenario: str | None) -> MagicMock:
         from api.routers.solver import router
@@ -172,19 +177,30 @@ class TestClearSessionAssignmentsInvalidatesCache:
             body: dict[str, Any] = {"year": 2026, "session_cm_id": 1235404}
             if scenario is not None:
                 body["scenario"] = scenario
-            client = TestClient(app)
+            client = TestClient(app, raise_server_exceptions=False)
             resp = client.post("/api/sessions/1235404/clear-assignments", json=body)
-            assert resp.status_code == 200, f"{resp.status_code}: {resp.text}"
 
-        return mock_cache
+        return mock_cache, resp  # type: ignore[return-value]
 
     def test_scenario_clear_invalidates_scenario_slot(self) -> None:
-        cache = self._run(scenario="scn_abc123")
+        cache, resp = self._run(scenario="scn_abc123")
+        assert resp.status_code == 200, f"{resp.status_code}: {resp.text}"
         cache.invalidate_scenario.assert_called_once_with(1235404, 2026, "scn_abc123")
 
-    def test_prod_clear_invalidates_session_slot(self) -> None:
-        cache = self._run(scenario=None)
-        cache.invalidate_session.assert_called_once_with(1235404, 2026)
+    def test_prod_clear_is_refused_and_invalidates_nothing(self) -> None:
+        """kindred#2473: production is read-only for the solver, same as writes.
+
+        This was ``test_prod_clear_invalidates_session_slot`` before #2473 — it
+        asserted the old production behaviour (200 + session-slot invalidation).
+        It now asserts the refusal and that nothing is invalidated, since there
+        is no write (or delete) to go stale. Spec change, not a test bent to
+        fit the code, mirroring what #2471 did to this same file's apply-side
+        counterpart.
+        """
+        cache, resp = self._run(scenario=None)
+        assert resp.status_code == 422, f"Expected a refusal, got {resp.status_code}: {resp.text}"
+        cache.invalidate_session.assert_not_called()
+        cache.invalidate_scenario.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

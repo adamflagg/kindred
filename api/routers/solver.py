@@ -907,7 +907,11 @@ async def clear_session_assignments(
     request: ClearAssignmentsRequest,
     user: AuthUser = Depends(require_permission(Permission.BUNKING_MANAGE)),
 ) -> dict[str, Any]:
-    """Clear all assignments for a session and its related sessions."""
+    """Clear all assignments for a session and its related sessions' scenario draft."""
+    # Refuse before touching PocketBase: clearing is a delete, and production
+    # bunk assignments are read-only for the solver, same as writes (kindred#2473).
+    scenario = _require_scenario(request.scenario)
+
     try:
         # Build session context from request (validates session exists for year)
         ctx = await build_session_context(session_cm_id, request.year, pb)
@@ -916,18 +920,11 @@ async def clear_session_assignments(
         deletions_by_session: defaultdict[int, int] = defaultdict(int)
         total_deleted = 0
 
-        if request.scenario:
-            collection_name = "bunk_assignments_draft"
-            base_filter = f'scenario = "{request.scenario}"'
-        else:
-            collection_name = "bunk_assignments"
-            base_filter = ""
+        collection_name = BUNK_ASSIGNMENTS_DRAFT
+        base_filter = f'scenario = "{scenario}"'
 
         for sid in ctx.related_session_ids:
-            if base_filter:
-                filter_str = f"{base_filter} && session.cm_id = {sid} && year = {ctx.year}"
-            else:
-                filter_str = f"session.cm_id = {sid} && year = {ctx.year}"
+            filter_str = f"{base_filter} && session.cm_id = {sid} && year = {ctx.year}"
 
             assignments = await asyncio.to_thread(
                 pb.collection(collection_name).get_full_list, query_params={"filter": filter_str}
@@ -960,15 +957,12 @@ async def clear_session_assignments(
         # assignments materially changes the social graph, so any cached
         # rendering would be stale.
         for sid in ctx.related_session_ids:
-            if request.scenario:
-                graph_cache.invalidate_scenario(int(sid), int(ctx.year), request.scenario)
-            else:
-                graph_cache.invalidate_session(int(sid), int(ctx.year))
+            graph_cache.invalidate_scenario(int(sid), int(ctx.year), scenario)
 
         return {
             "message": f"Cleared {total_deleted} assignments across {len(ctx.related_session_ids)} related sessions",
             "total_deleted": total_deleted,
-            "scenario": request.scenario,
+            "scenario": scenario,
             "session_breakdown": breakdown,
         }
 
