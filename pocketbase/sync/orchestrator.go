@@ -373,6 +373,32 @@ type Stats struct {
 	// -- that would need a new migration column, which is out of scope here; the counter
 	// still reaches the live Sync tab via this JSON field.
 	DuplicateStaffStatus int `json:"duplicate_staff_status,omitempty"`
+	// UnresolvedSession counts bunk_assignments the run fetched from CampMinder but could
+	// not attach to a session (kindred#2465) -- either the (bunkPlan, bunk) pair named more
+	// than one candidate session for a staff member, or no step of the resolution ladder
+	// matched at all. Nothing but bunk_assignments.go increments it.
+	//
+	// Its own field for the reason Stats.DuplicateStaffStatus is: base_sync.go's
+	// ProcessCompositeRecord increments Skipped for every unchanged row, so on a
+	// steady-state run Skipped is roughly the whole table and an unresolved assignment is
+	// invisible inside it. That is not hypothetical -- kindred#2465 deleted 262 staff rows
+	// an hour for 119 consecutive runs, every one of them reporting status='success' with a
+	// flat skipped_count, because the rows only moved from the no-change bucket into the
+	// ambiguous one and both buckets were this same counter.
+	//
+	// Unlike DuplicateStaffStatus, the branches that write this ALSO increment Skipped, and
+	// deliberately: no row was written, which is what Skipped has always counted at these
+	// sites, so this is a named subset rather than a replacement and skipped_count keeps its
+	// existing meaning. Not persisted to the sync_runs table (sync_runs.go) -- that would need
+	// a new migration column.
+	//
+	// It rides along in the sync-status JSON this struct serializes to, but nothing DISPLAYS
+	// it: SyncTab.tsx picks its badges from a hardcoded list (created / updated / skipped /
+	// skipped_values / errors) in two places and unresolved_session is in neither -- zero hits
+	// for it anywhere in frontend/src. The acceptance surface kindred#2465 names is the
+	// bunk_assignments completion log line, which does print it; a badge is frontend work and
+	// outside that issue.
+	UnresolvedSession int `json:"unresolved_session,omitempty"`
 	// Expanded tracks many-to-many expansions (e.g., bunk plans)
 	Expanded int `json:"expanded,omitempty"`
 	// AlreadyProcessed tracks records already processed (for process_requests)
