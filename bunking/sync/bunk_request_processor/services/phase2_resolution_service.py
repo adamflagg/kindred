@@ -14,6 +14,31 @@ from ..shared.nickname_groups import find_nickname_variations, names_match_via_n
 
 logger = get_logger(__name__)
 
+# Temporal markers that admit a request to the prior-year bunkmate path.
+#
+# Both branches of `_has_last_year_context` test this ONE list. They used to
+# disagree — the keyword branch carried three patterns and the raw-text branch
+# tested the single string "last year" — so `from before` was admitted or
+# refused depending only on which branch happened to see it.
+#
+# The raw-text branch is the live one: `keywords_found` reaches
+# `ParsedRequest.metadata` from a single producer (`integration/openai_provider.py`)
+# whose schema asks the model for PRIORITY keywords, never temporal markers, so
+# the keyword branch has never fired on a production request. Widening the
+# keyword list alone would have changed nothing (#2457).
+#
+# Deliberately NOT here: bare "before" and bare year numbers. "2024"/"2025"
+# appear in unrelated contexts, and the resolver only ever searches `year - 1`
+# anyway, so a year number could not steer it even if matched.
+LAST_YEAR_CONTEXT_PATTERNS: tuple[str, ...] = (
+    "last year",
+    "last summer",
+    "previous year",
+    "previous summer",
+    "last yr",
+    "from before",
+)
+
 
 class ResolutionCase:
     """Container for parsed requests that need resolution"""
@@ -177,7 +202,6 @@ class Phase2ResolutionService:
                     prior_result = self._try_prior_bunkmate_resolution(
                         target_name=parsed.target_name,
                         requester_cm_id=parse_result.parse_request.requester_cm_id,
-                        session_cm_id=parse_result.parse_request.session_cm_id,
                         year=parse_result.parse_request.year,
                     )
                     if prior_result and prior_result.is_resolved:
@@ -823,30 +847,35 @@ class Phase2ResolutionService:
         }
 
     def _has_last_year_context(self, parsed_request: ParsedRequest) -> bool:
-        """Detect if a request has "last year" context keywords.
+        """Detect if a request refers to a previous season.
 
-        - Check metadata.keywords_found for "last year" variants
-        - Check raw_text for "last year" pattern
+        This is the ONLY gate on `_try_prior_bunkmate_resolution`, which is the
+        highest-confidence resolution the pipeline has (0.95 full name / 0.90
+        first name). It tested the single phrasing "last year", so a parent
+        writing "last summer" — arguably the more natural way to put it — was
+        never offered the cabin evidence at all (#2457).
+
+        Both branches test `LAST_YEAR_CONTEXT_PATTERNS`; see that constant for
+        why the raw-text branch is the one that matters.
 
         Args:
             parsed_request: The parsed request to check
 
         Returns:
-            True if "last year" context detected
+            True if previous-season context detected
         """
         # Check keywords in metadata (from AI parsing)
         keywords = parsed_request.metadata.get("keywords_found", []) if parsed_request.metadata else []
-        keyword_patterns = ["from last year", "last year", "from before"]
-        has_keyword_context = any(kw in str(keywords).lower() for kw in keyword_patterns)
-        if has_keyword_context:
+        if any(pattern in str(keywords).lower() for pattern in LAST_YEAR_CONTEXT_PATTERNS):
             return True
 
-        # Check raw text (fallback if keywords not parsed)
-        raw_text = getattr(parsed_request, "raw_text", "") or ""
-        return "last year" in raw_text.lower()
+        # Check raw text (fallback if keywords not parsed -- in practice the
+        # only branch that has ever fired)
+        raw_text = (getattr(parsed_request, "raw_text", "") or "").lower()
+        return any(pattern in raw_text for pattern in LAST_YEAR_CONTEXT_PATTERNS)
 
     def _try_prior_bunkmate_resolution(
-        self, target_name: str, requester_cm_id: int, session_cm_id: int, year: int
+        self, target_name: str, requester_cm_id: int, year: int
     ) -> ResolutionResult | None:
         """Try to resolve target name from prior year bunkmates.
 
@@ -854,10 +883,14 @@ class Phase2ResolutionService:
         - Check if target name matches any bunkmate (full name → 0.95, first name → 0.90)
         - Add metadata: found_in_last_years_bunk, last_year_bunk
 
+        `last_year_bunk` names the cabin the MATCHED peer was in. It used to be
+        a single top-level value stamped onto every match, which named an
+        arbitrary one of the requester's cabins once all of them are searched
+        (#2456) — and that string is the evidence a staff reviewer reads.
+
         Args:
             target_name: Name to resolve
             requester_cm_id: Person making the request
-            session_cm_id: Current session CM ID
             year: Current year
 
         Returns:
@@ -868,12 +901,12 @@ class Phase2ResolutionService:
 
         try:
             # Get prior year bunkmates
-            prior_data = self.attendee_repository.find_prior_year_bunkmates(requester_cm_id, session_cm_id, year)
+            prior_data = self.attendee_repository.find_prior_year_bunkmates(requester_cm_id, year)
             if not prior_data or not prior_data.get("cm_ids"):
                 return None
 
             bunkmate_ids = prior_data["cm_ids"]
-            prior_bunk = prior_data.get("prior_bunk", "")
+            prior_bunk_by_cm_id = prior_data.get("prior_bunk_by_cm_id", {})
             normalized_target = normalize_name(target_name)
 
             # Check each bunkmate for name match
@@ -897,7 +930,7 @@ class Phase2ResolutionService:
                         method="prior_bunkmate_exact",
                         metadata={
                             "found_in_last_years_bunk": True,
-                            "last_year_bunk": prior_bunk,
+                            "last_year_bunk": prior_bunk_by_cm_id.get(bunkmate_id, ""),
                         },
                     )
 
@@ -915,7 +948,7 @@ class Phase2ResolutionService:
                             method="prior_bunkmate_first_name",
                             metadata={
                                 "found_in_last_years_bunk": True,
-                                "last_year_bunk": prior_bunk,
+                                "last_year_bunk": prior_bunk_by_cm_id.get(bunkmate_id, ""),
                             },
                         )
 

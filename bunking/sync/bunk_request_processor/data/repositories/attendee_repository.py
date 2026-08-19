@@ -451,20 +451,40 @@ class AttendeeRepository:
         months = diff.days / 30.44  # Average days per month
         return int(abs(months))
 
-    def find_prior_year_bunkmates(self, requester_cm_id: int, session_cm_id: int, year: int) -> dict[str, Any]:
+    def find_prior_year_bunkmates(self, requester_cm_id: int, year: int) -> dict[str, Any]:
         """Find eligible bunkmates from prior year who are returning.
 
         This mirrors monolith's find_prior_year_bunkmates functionality,
         using bunk_assignments table instead of deprecated historical_bunking.
 
+        EVERY eligible prior-year cabin of the requester is searched, not one.
+        The method used to keep `assignments[0]` and take the bunk, the session
+        and therefore the whole peer pool from that single row; 66 of the 1,257
+        campers with a 2025 assignment held two or more, in different cabins
+        every time, so a real cabin of friends was unreachable for all of them.
+        `sort: "id"` (#2445) made that pick stable, not right — PocketBase
+        record ids are random, so which of a camper's three or four cabins won
+        was arbitrary.
+
+        There is one peer query per `(bunk, session)` pair rather than one
+        overall. 94.7% of requesters have exactly one pair, so this is normally
+        the same single query it always was.
+
         Args:
             requester_cm_id: The camper requesting continuity
-            session_cm_id: Current year session CM ID (used for checking returning)
             year: Current year
 
         Returns:
-            Dict with cm_ids, prior_bunk, prior_year, total_in_bunk, returning_count
-            Empty dict if no prior year assignment found or on error
+            Dict with cm_ids, prior_bunk_by_cm_id, prior_bunks, prior_year,
+            total_in_bunk (distinct peers across ALL prior cabins) and
+            returning_count. Empty dict if no prior year assignment found or on
+            error.
+
+            There is deliberately no single top-level `prior_bunk`: with every
+            cabin searched it could only name an arbitrary one of them, which
+            is what stamped the wrong cabin onto `last_year_bunk`. Use
+            `prior_bunk_by_cm_id[cm_id]` for the cabin that peer actually
+            shared with the requester.
         """
         # Imported at call time, not module scope: `bunking.graph` imports
         # `bunking.satisfaction`, which imports this package's `core.models`, so
@@ -476,18 +496,17 @@ class AttendeeRepository:
         try:
             previous_year = year - 1
 
-            # Find requester's bunk assignment from prior year.
+            # Find the requester's bunk assignments from prior year.
             #
             # The session-type predicate is pushed INTO the query so the
             # database returns only rows from a session that actually puts
             # children in a cabin. Without it a Family Camp DAY GROUP was
-            # eligible to be returned as a summer `prior_bunk`, and the whole
+            # eligible to be returned as a summer prior cabin, and the whole
             # day group then came back as "bunkmates" (#2426). `sort: "id"`
-            # breaks ties deterministically for the rarer case of two eligible
-            # rows -- PocketBase's get_full_list has no inherent order, so the
-            # winner could otherwise change between runs with no code change.
-            # Same predicate and same STABLE_SORT convention as
-            # `bunking/graph/social_graph_builder.py`, which already carries
+            # fixes the order the cabins are searched in, which decides the
+            # `cm_ids` order and therefore which of two same-named peers a
+            # resolution picks. Same predicate and same STABLE_SORT convention
+            # as `bunking/graph/social_graph_builder.py`, which already carries
             # this fix for its own query.
             type_clause = " || ".join(f'session.session_type = "{t}"' for t in LAST_YEAR_HISTORY_SESSION_TYPES)
             try:
@@ -502,71 +521,87 @@ class AttendeeRepository:
                 logger.exception("find_prior_year_bunkmates failed querying assignments for cm_id=%s", requester_cm_id)
                 return {}
 
+            # Only `year - 1` is ever searched, so a camper who skipped a season
+            # resolves nothing here by construction (#2457). Say so rather than
+            # returning silently — from a sync log the two are indistinguishable.
             if not assignments:
+                logger.debug(
+                    "No eligible %s bunk assignment for cm_id=%s; the prior-year bunkmate path only searches year-1",
+                    previous_year,
+                    requester_cm_id,
+                )
                 return {}
 
-            # Get the bunk from the assignment
-            requester_assignment = assignments[0]
-            expand = getattr(requester_assignment, "expand", {}) or {}
-            bunk_data = expand.get("bunk")
-            session_data = get_session_from_expand(requester_assignment)
+            # Collect every DISTINCT (bunk, session) pair the requester held.
+            # A bunk is a building: 42 of the 57 bunks carrying a 2025
+            # assignment served more than one session, so the pair — not the
+            # bunk — is the set of children the requester actually lived with.
+            cabins: dict[tuple[str, str], str] = {}
+            for assignment in assignments:
+                expand = getattr(assignment, "expand", {}) or {}
+                bunk_data = expand.get("bunk")
+                session_data = get_session_from_expand(assignment)
 
-            if not bunk_data:
+                bunk_id = getattr(bunk_data, "id", None) if bunk_data else None
+                session_id = getattr(session_data, "id", None) if session_data else None
+
+                # Without the session we cannot scope the bunk to a week, and an
+                # unscoped query would return the whole building -- which is the
+                # defect this method was fixed for. Skip THIS cabin; the
+                # requester's other cabins are still perfectly searchable.
+                if not bunk_id or not session_id:
+                    continue
+
+                cabins.setdefault((bunk_id, session_id), getattr(bunk_data, "name", None) or "")
+
+            if not cabins:
                 return {}
 
-            bunk_id = getattr(bunk_data, "id", None)
-            bunk_name = getattr(bunk_data, "name", None)
-            session_id = getattr(session_data, "id", None) if session_data else None
+            # Union the peer sets, each still scoped to its own (bunk, session)
+            # pair. The first cabin to contribute a peer owns them, so a child
+            # the requester lived with twice is listed once.
+            prior_bunk_by_cm_id: dict[int, str] = {}
+            peer_cm_ids: list[int] = []
+            for (bunk_id, session_id), bunk_name in cabins.items():
+                # Same `sort: "id"` STABLE_SORT convention as the query above,
+                # and for the same reason: `_try_prior_bunkmate_resolution`
+                # returns the FIRST camper in `cm_ids` whose name matches the
+                # target, so two cabinmates sharing a first name are separated
+                # by nothing but the order this query happened to return.
+                bunkmates = self.pb.collection("bunk_assignments").get_full_list(
+                    query_params={
+                        "filter": f'bunk = "{bunk_id}" && year = {previous_year} && session = "{session_id}"',
+                        "expand": "person",
+                        "sort": "id",
+                    }
+                )
 
-            # Without the session we cannot scope the bunk to a week, and an
-            # unscoped query would return the whole building -- which is the
-            # defect this method is being fixed for. Return nothing instead.
-            if not bunk_id or not session_id:
-                return {}
-
-            # Find all campers in that bunk for prior year, IN THAT SESSION. A
-            # bunk is a building: 42 of the 57 bunks carrying a 2025 assignment
-            # served more than one session, so filtering on bunk + year alone
-            # returned children the requester never met (median peer set 29
-            # against a session-scoped 8).
-            #
-            # Same `sort: "id"` STABLE_SORT convention as the query above, and
-            # for the same reason: `_try_prior_bunkmate_resolution` returns the
-            # FIRST camper in `cm_ids` whose name matches the target, so two
-            # cabinmates sharing a first name are separated by nothing but the
-            # order this query happened to return.
-            bunkmates = self.pb.collection("bunk_assignments").get_full_list(
-                query_params={
-                    "filter": f'bunk = "{bunk_id}" && year = {previous_year} && session = "{session_id}"',
-                    "expand": "person",
-                    "sort": "id",
-                }
-            )
-
-            if not bunkmates:
-                return {}
-
-            # Extract bunkmate CM IDs (excluding requester)
-            bunkmate_cm_ids = []
-            for assignment in bunkmates:
-                person_data = get_person_from_expand(assignment)
-                if person_data:
+                for assignment in bunkmates:
+                    person_data = get_person_from_expand(assignment)
+                    if not person_data:
+                        continue
                     cm_id = getattr(person_data, "cm_id", None)
-                    if cm_id and cm_id != requester_cm_id:
-                        bunkmate_cm_ids.append(cm_id)
+                    if not cm_id or cm_id == requester_cm_id or cm_id in prior_bunk_by_cm_id:
+                        continue
+                    prior_bunk_by_cm_id[cm_id] = bunk_name
+                    peer_cm_ids.append(cm_id)
 
-            if not bunkmate_cm_ids:
+            if not peer_cm_ids:
                 return {}
 
-            # Check which bunkmates are returning this year
-            sessions_map = self.bulk_get_sessions_for_persons(bunkmate_cm_ids, year)
-            returning_ids = [cm_id for cm_id in bunkmate_cm_ids if cm_id in sessions_map]
+            # Check which bunkmates are returning this year. Deliberately not
+            # narrowed to the requester's current session: a camper in Session 4
+            # this year must still be able to request a friend from Session 1
+            # last year.
+            sessions_map = self.bulk_get_sessions_for_persons(peer_cm_ids, year)
+            returning_ids = [cm_id for cm_id in peer_cm_ids if cm_id in sessions_map]
 
             return {
                 "cm_ids": returning_ids,
-                "prior_bunk": bunk_name,
+                "prior_bunk_by_cm_id": {cm_id: prior_bunk_by_cm_id[cm_id] for cm_id in returning_ids},
+                "prior_bunks": list(dict.fromkeys(cabins.values())),
                 "prior_year": previous_year,
-                "total_in_bunk": len(bunkmate_cm_ids),
+                "total_in_bunk": len(peer_cm_ids),
                 "returning_count": len(returning_ids),
             }
 

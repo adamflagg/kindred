@@ -128,7 +128,6 @@ class ContextBuilder:
                 try:
                     prior_bunkmates = self.attendee_repository.find_prior_year_bunkmates(
                         requester_cm_id,
-                        session_cm_id,
                         year,
                     )
                     additional_context["previous_year_bunkmates"] = prior_bunkmates or None
@@ -359,7 +358,7 @@ class ContextBuilder:
         # Get prior year bunkmates to populate was_bunkmate flag
         prior_bunkmate_ids: set[int] = set()
         try:
-            prior_data = self.attendee_repository.find_prior_year_bunkmates(requester_cm_id, session_cm_id, year)
+            prior_data = self.attendee_repository.find_prior_year_bunkmates(requester_cm_id, year)
             if prior_data and prior_data.get("cm_ids"):
                 prior_bunkmate_ids = set(prior_data["cm_ids"])
         except Exception as e:

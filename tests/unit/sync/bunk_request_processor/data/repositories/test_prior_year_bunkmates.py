@@ -4,7 +4,9 @@ Three defects are pinned here:
 
 1. the first query had no ``session_type`` predicate, so a Family Camp day
    group was eligible to be returned as a summer ``prior_bunk``;
-2. it had no sort, then took ``assignments[0]`` — an arbitrary pick;
+2. it had no sort, then took ``assignments[0]`` — an arbitrary pick (the
+   pick itself is gone in #2456; every eligible cabin is searched, and
+   ``test_prior_year_multi_cabin.py`` pins that);
 3. the second query filtered on ``bunk`` + ``year`` with no session, and a bunk
    is a building reused by successive sessions, so the returned "bunkmates"
    were largely children the requester never met.
@@ -64,7 +66,7 @@ class TestFindPriorYearBunkmatesSessionScope:
     def test_first_query_filters_session_type_and_sorts_deterministically(self, captured):
         repo = self._repo(captured, lambda _query_params: [])
 
-        repo.find_prior_year_bunkmates(requester_cm_id=1001, session_cm_id=123, year=2026)
+        repo.find_prior_year_bunkmates(requester_cm_id=1001, year=2026)
 
         assert len(captured) == 1
         filter_str = captured[0]["filter"]
@@ -85,7 +87,7 @@ class TestFindPriorYearBunkmatesSessionScope:
         repo = self._repo(captured, responder)
         repo.bulk_get_sessions_for_persons = Mock(return_value={2002: 4321})  # type: ignore[method-assign]
 
-        result = repo.find_prior_year_bunkmates(requester_cm_id=1001, session_cm_id=123, year=2026)
+        result = repo.find_prior_year_bunkmates(requester_cm_id=1001, year=2026)
 
         assert len(captured) == 2
         bunkmate_filter = captured[1]["filter"]
@@ -93,7 +95,7 @@ class TestFindPriorYearBunkmatesSessionScope:
         assert "year = 2025" in bunkmate_filter
         assert 'session = "sess_1"' in bunkmate_filter
 
-        assert result["prior_bunk"] == "Cabin 7"
+        assert result["prior_bunk_by_cm_id"] == {2002: "Cabin 7"}
         assert result["cm_ids"] == [2002]
         assert result["total_in_bunk"] == 1
         assert result["returning_count"] == 1
@@ -108,7 +110,7 @@ class TestFindPriorYearBunkmatesSessionScope:
 
         repo = self._repo(captured, lambda _query_params: [requester_row])
 
-        result = repo.find_prior_year_bunkmates(requester_cm_id=1001, session_cm_id=123, year=2026)
+        result = repo.find_prior_year_bunkmates(requester_cm_id=1001, year=2026)
 
         assert result == {}
         assert len(captured) == 1, "must not fall back to an unscoped bunkmate query"
@@ -130,7 +132,7 @@ class TestFindPriorYearBunkmatesSessionScope:
 
         repo = self._repo(captured, responder)
 
-        repo.find_prior_year_bunkmates(requester_cm_id=1001, session_cm_id=123, year=2026)
+        repo.find_prior_year_bunkmates(requester_cm_id=1001, year=2026)
 
         assert len(captured) == 2
         assert captured[1].get("sort") == "id"
