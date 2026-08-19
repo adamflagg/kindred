@@ -389,9 +389,15 @@ type Stats struct {
 	// Unlike DuplicateStaffStatus, the branches that write this ALSO increment Skipped, and
 	// deliberately: no row was written, which is what Skipped has always counted at these
 	// sites, so this is a named subset rather than a replacement and skipped_count keeps its
-	// existing meaning. Not persisted to the sync_runs table (sync_runs.go) -- that would
-	// need a new migration column; the counter reaches the live Sync tab via this JSON field
-	// and the service's own completion log line.
+	// existing meaning. Not persisted to the sync_runs table (sync_runs.go) -- that would need
+	// a new migration column.
+	//
+	// It rides along in the sync-status JSON this struct serializes to, but nothing DISPLAYS
+	// it: SyncTab.tsx picks its badges from a hardcoded list (created / updated / skipped /
+	// skipped_values / errors) in two places and unresolved_session is in neither -- zero hits
+	// for it anywhere in frontend/src. The acceptance surface kindred#2465 names is the
+	// bunk_assignments completion log line, which does print it; a badge is frontend work and
+	// outside that issue.
 	UnresolvedSession int `json:"unresolved_session,omitempty"`
 	// Expanded tracks many-to-many expansions (e.g., bunk plans)
 	Expanded int `json:"expanded,omitempty"`

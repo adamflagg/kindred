@@ -148,79 +148,7 @@ func (s *BunkAssignmentsSync) Sync(ctx context.Context) error {
 
 		// Process each result
 		for _, result := range assignments {
-			bunkIDFloat, ok := result["BunkID"].(float64)
-			if !ok {
-				slog.Warn("Missing or invalid BunkID in result")
-				continue
-			}
-			bunkID := int(bunkIDFloat)
-
-			bunkPlanIDFloat, ok := result["BunkPlanID"].(float64)
-			if !ok {
-				slog.Warn("Missing or invalid BunkPlanID in result")
-				continue
-			}
-			bunkPlanID := int(bunkPlanIDFloat)
-
-			// Get the assignments array from this result
-			assignmentsArray, ok := result["Assignments"].([]any)
-			if !ok {
-				slog.Warn("No Assignments array in result")
-				continue
-			}
-
-			// Get the list of sessions this bunk plan applies to
-			bunkPlanSessions := s.bunkPlanSessionsList[bunkPlanID]
-			if len(bunkPlanSessions) == 0 {
-				slog.Warn("No sessions found for bunk plan, skipping", "bunkPlanID", bunkPlanID)
-				continue
-			}
-
-			// Process each assignment in the array
-			for _, assignment := range assignmentsArray {
-				assignmentData, ok := assignment.(map[string]any)
-				if !ok {
-					slog.Warn("Invalid assignment data type")
-					continue
-				}
-
-				// Get the person ID to look up their enrollment
-				personID, ok := assignmentData["PersonID"].(float64)
-				if !ok {
-					slog.Warn("No PersonID in assignment")
-					continue
-				}
-				personCMID := int(personID)
-
-				// Find the correct session. See resolveAssignmentSession for the
-				// full ladder; ambiguous is only ever true on the staff path,
-				// where a (bunkPlan, bunk) key has more than one candidate
-				// session and guessing would be worse than skipping (kindred#2264).
-				// Both no-session outcomes go through one wrapper because both
-				// owe the same bookkeeping before they skip -- counting the
-				// failure where it can be seen, and keeping the assignment's
-				// stored rows out of the orphan sweep (kindred#2465).
-				sessionID, unresolved := s.resolveSessionOrTrackUnresolved(
-					personCMID, bunkPlanID, bunkID, bunkPlanSessions, existingByPersonBunk, year)
-				if unresolved {
-					continue
-				}
-
-				// Add BunkID, BunkPlanID, and SessionID to the assignment data
-				assignmentData["BunkID"] = float64(bunkID)
-				assignmentData["BunkPlanID"] = float64(bunkPlanID)
-				assignmentData["SessionID"] = float64(sessionID)
-
-				if err := s.processAssignment(assignmentData, existingAssignments); err != nil {
-					if errors.Is(err, errRejectedRecord) {
-						slog.Warn("Rejected assignment", "error", err)
-						s.Stats.Rejected++
-					} else {
-						slog.Error("Error processing assignment", "error", err)
-						s.Stats.Errors++
-					}
-				}
-			}
+			s.processResultGroup(result, existingAssignments, existingByPersonBunk, year)
 		}
 
 		page++
@@ -439,8 +367,10 @@ func (s *BunkAssignmentsSync) loadMappings() error {
 //
 // The second return is an index of the same rows by "personCMID:bunkCMID" ->
 // the tracking keys ("personCMID:sessionCMID:bunkCMID") they were stored
-// under. It exists for the branch that cannot name a session
-// (resolveSessionOrTrackUnresolved): person and bunk are the two thirds of the
+// under -- the fourth site in this file built on that tracking format,
+// alongside processAssignment, protectNonActiveStaffAssignments and the orphan
+// key deleteOrphans rebuilds. It exists for the branch that cannot name a
+// session (resolveSessionOrTrackUnresolved): person and bunk are the two thirds of the
 // grain an unresolved assignment still knows, and this is how it finds the
 // stored rows to keep from the sweep (kindred#2465, the kindred#2394 pattern).
 func (s *BunkAssignmentsSync) preloadExistingAssignments(
@@ -599,12 +529,13 @@ func (s *BunkAssignmentsSync) resolveViaBunk(personSessions []int, bunkPlanID, b
 		personSessionSet[sessionID] = true
 	}
 
-	// DISTINCT sessions, not candidate occurrences (kindred#2465). candidates
-	// legitimately lists the same session more than once -- there is one entry
-	// per bunk_plans row, and loadMappings deliberately keeps every one of them
-	// (kindred#2264) -- so counting occurrences made a bunk that is listed twice
-	// under a single session look like two competing answers and silently
-	// dropped this narrowing in favor of the plan-wide fallback.
+	// DISTINCT sessions, not candidate occurrences (kindred#2465). On a clean
+	// run this changes nothing -- see distinctSessions for why a duplicate
+	// inside one map key is a bug rather than data. What it buys is that a
+	// RECURRENCE of the run-to-run accumulation degrades into the right answer:
+	// counting occurrences is what made a bunk listed under a single session
+	// look like two competing answers, silently dropping this narrowing in
+	// favor of the plan-wide fallback from run 2 onward.
 	match := 0
 	matched := make(map[int]bool, len(candidates))
 	for _, sessionID := range candidates {
@@ -622,13 +553,28 @@ func (s *BunkAssignmentsSync) resolveViaBunk(personSessions []int, bunkPlanID, b
 // distinctSessions returns the candidate session CM IDs with duplicates
 // removed, preserving first-seen order.
 //
-// bunkPlanBunkToSession holds one entry per bunk_plans row, so a bunk listed
-// under one session by two rows of the same plan appears twice -- and every
-// read site must decide on how many DIFFERENT sessions it names, never on how
-// many entries there are (kindred#2465). Deduping here rather than at the
-// build site is deliberate: the build site's duplicates are real data, and
-// TestLoadMappings_KeepsEveryCandidateSessionForASharedBunk pins them as a
-// kindred#2264 regression guard.
+// On a clean run it is a NO-OP, and saying so plainly is the point.
+// bunkPlanBunkToSession is keyed "bunkPlanCMID:bunkCMID", and bunk_plans
+// carries a unique index on (year, bunk, session, cm_id) -- see
+// pb_migrations/1500000017_bunk_plans.js -- so the rows behind any ONE map key
+// differ only in session. Within a key the same session cannot legitimately
+// repeat: a duplicate there is not data, it is a bug.
+//
+// It exists as defense against a RECURRENCE of that bug. kindred#2465 was one
+// instance reused across scheduled runs with append-only maps, so every hour
+// added another copy of every candidate; a read site that decides on how many
+// ENTRIES there are rather than how many DIFFERENT sessions they name mistakes
+// that accumulation for ambiguity, and for bunk staff that meant an untracked
+// skip and a deleted row. Rebuilding the maps per run (loadMappings) removed
+// the cause; this keeps the read sites correct either way.
+//
+// Deduping here rather than at the build site is still deliberate, but the
+// reason is the SIBLING map, not this one: bunkPlanSessionsList legitimately
+// holds one entry per bunk_plans row, which
+// TestLoadMappings_KeepsEveryCandidateSessionForASharedBunk pins as [A, A, B]
+// for a plan whose shared bunk spans two sessions. That same test pins
+// bunkPlanBunkToSession duplicate-FREE ([A, B]) for that bunk. Nothing here
+// licenses the build site to start emitting duplicates it does not emit today.
 func distinctSessions(candidates []int) []int {
 	if len(candidates) < 2 {
 		return candidates
@@ -706,6 +652,112 @@ func (s *BunkAssignmentsSync) resolveAssignmentSession(
 	return 0, false
 }
 
+// processResultGroup handles one entry of a CampMinder bunk-assignments page:
+// the (bunkPlan, bunk) pair and every assignment CampMinder returned for it.
+//
+// It is a method rather than an inline block so the group-level skips below
+// are reachable from a test. Client is a concrete *campminder.Client, so
+// Sync() itself cannot be driven without an HTTP fake, and the skips are
+// precisely the branches kindred#2465 showed nobody was pinning.
+func (s *BunkAssignmentsSync) processResultGroup(
+	result map[string]any,
+	existingAssignments map[string]*core.Record,
+	existingByPersonBunk map[string][]string,
+	year int,
+) {
+	// The three shape checks below are the only skips in this file that stay
+	// untracked, and they are the one case where that is right: a result with
+	// no BunkID, no BunkPlanID or no Assignments array names no person and no
+	// bunk, so there is no key to keep from the sweep and nothing to count
+	// against a grain. Every skip that DOES know a person and a bunk goes
+	// through resolveSessionOrTrackUnresolved instead.
+	bunkIDFloat, ok := result["BunkID"].(float64)
+	if !ok {
+		slog.Warn("Missing or invalid BunkID in result")
+		return
+	}
+	bunkID := int(bunkIDFloat)
+
+	bunkPlanIDFloat, ok := result["BunkPlanID"].(float64)
+	if !ok {
+		slog.Warn("Missing or invalid BunkPlanID in result")
+		return
+	}
+	bunkPlanID := int(bunkPlanIDFloat)
+
+	// Get the assignments array from this result
+	assignmentsArray, ok := result["Assignments"].([]any)
+	if !ok {
+		slog.Warn("No Assignments array in result")
+		return
+	}
+
+	// Get the list of sessions this bunk plan applies to. Warned once for the
+	// group, but deliberately NOT skipped as a group (kindred#2465): dropping
+	// the whole (bunkPlan, bunk) pair here is the same untracked-skip mechanism
+	// the wrapper below exists to close, only a group at a time -- every
+	// assignment under it would be missing from ProcessedKeys and deleteOrphans
+	// would read that absence as "CampMinder dropped these rows".
+	//
+	// Falling through cannot write a row to the wrong session: loadMappings
+	// gates bunkPlanSessionsList and bunkPlanBunkToSession on the same
+	// `bpCMID > 0 && sessionCMID > 0`, so an empty plan-session list guarantees
+	// an empty candidate list too, and every step of the resolution ladder
+	// fails. Each assignment therefore lands in the unresolved branch, which is
+	// the honest place for it.
+	bunkPlanSessions := s.bunkPlanSessionsList[bunkPlanID]
+	if len(bunkPlanSessions) == 0 {
+		slog.Warn("No sessions found for bunk plan, every assignment under it is unresolved",
+			"bunkPlanID", bunkPlanID, "bunkCMID", bunkID, "assignments", len(assignmentsArray))
+	}
+
+	// Process each assignment in the array
+	for _, assignment := range assignmentsArray {
+		assignmentData, ok := assignment.(map[string]any)
+		if !ok {
+			slog.Warn("Invalid assignment data type")
+			continue
+		}
+
+		// Get the person ID to look up their enrollment
+		personID, ok := assignmentData["PersonID"].(float64)
+		if !ok {
+			slog.Warn("No PersonID in assignment")
+			continue
+		}
+		personCMID := int(personID)
+
+		// Find the correct session. See resolveAssignmentSession for the
+		// full ladder; ambiguous is only ever true on the staff path,
+		// where a (bunkPlan, bunk) key has more than one candidate
+		// session and guessing would be worse than skipping (kindred#2264).
+		// Both no-session outcomes go through one wrapper because both
+		// owe the same bookkeeping before they skip -- counting the
+		// failure where it can be seen, and keeping the assignment's
+		// stored rows out of the orphan sweep (kindred#2465).
+		sessionID, unresolved := s.resolveSessionOrTrackUnresolved(
+			personCMID, bunkPlanID, bunkID, bunkPlanSessions, existingByPersonBunk, year)
+		if unresolved {
+			continue
+		}
+
+		// Add BunkID, BunkPlanID, and SessionID to the assignment data
+		assignmentData["BunkID"] = float64(bunkID)
+		assignmentData["BunkPlanID"] = float64(bunkPlanID)
+		assignmentData["SessionID"] = float64(sessionID)
+
+		if err := s.processAssignment(assignmentData, existingAssignments); err != nil {
+			if errors.Is(err, errRejectedRecord) {
+				slog.Warn("Rejected assignment", "error", err)
+				s.Stats.Rejected++
+			} else {
+				slog.Error("Error processing assignment", "error", err)
+				s.Stats.Errors++
+			}
+		}
+	}
+}
+
 // processAssignment processes a single bunk assignment using pre-loaded existing assignments
 func (s *BunkAssignmentsSync) processAssignment(
 	assignmentData map[string]any,
@@ -739,10 +791,14 @@ func (s *BunkAssignmentsSync) processAssignment(
 	bunkPlanCMID := int(bunkPlanID)
 
 	// Track this assignment as processed using base class tracking. The key
-	// includes bunk (kindred#2259) so it matches the ORPHAN key deleteOrphans
-	// rebuilds and the one protectNonActiveStaffAssignments writes for
-	// protected non-active staff -- all three must move together, or a run
-	// after this one deletes the very rows this widening exists to keep.
+	// includes bunk (kindred#2259), and FOUR sites now build that same
+	// person:session:bunk tracking format: this one, the ORPHAN key
+	// deleteOrphans rebuilds, the one protectNonActiveStaffAssignments writes
+	// for protected non-active staff, and -- since kindred#2465 -- the values
+	// preloadExistingAssignments indexes by person:bunk, which
+	// resolveSessionOrTrackUnresolved re-tracks when a run cannot name the
+	// session. All four must move together, or a run after this one deletes
+	// the very rows this widening exists to keep.
 	s.TrackProcessedCompositeKey(fmt.Sprintf("%d:%d:%d", personCMID, sessionCMID, bunkCMID), s.Client.GetSeasonID())
 
 	// Validate person exists
@@ -986,8 +1042,12 @@ func (s *BunkAssignmentsSync) deleteOrphans() error {
 				}
 				// For composite records, append year to the composite key.
 				// This must match TrackProcessedCompositeKey's format exactly
-				// (person:session:bunk, then "|" + year) -- processAssignment
-				// and protectNonActiveStaffAssignments both build it that way.
+				// (person:session:bunk, then "|" + year). Three sites feed that
+				// format in: processAssignment, protectNonActiveStaffAssignments,
+				// and preloadExistingAssignments' person:bunk index, whose values
+				// resolveSessionOrTrackUnresolved re-tracks for an assignment it
+				// could not resolve (kindred#2465). Change the shape in one and
+				// the other three stop matching -- which reads here as an orphan.
 				key := fmt.Sprintf("%d:%d:%d|%d", personCMID, sessionCMID, bunkCMID, int(year))
 				return key, true
 			}

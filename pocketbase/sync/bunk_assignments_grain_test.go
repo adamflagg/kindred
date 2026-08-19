@@ -99,6 +99,23 @@ func bunkAssignmentsForYear(t *testing.T, app core.App, year int) []*core.Record
 	return rows
 }
 
+// assignmentCMIDsForYear returns the set of bunk_assignments cm_ids stored for
+// the given year. Counting rows says a sweep deleted the right NUMBER; naming
+// the survivors says it deleted the right ROWS, which is what a test that
+// pins "this one is kept and that one is not" actually needs.
+func assignmentCMIDsForYear(t *testing.T, app core.App, year int) map[int]bool {
+	t.Helper()
+	out := make(map[int]bool)
+	for _, row := range bunkAssignmentsForYear(t, app, year) {
+		cmID, ok := row.Get("cm_id").(float64)
+		if !ok {
+			t.Fatalf("bunk_assignments row %s has no numeric cm_id", row.Id)
+		}
+		out[int(cmID)] = true
+	}
+	return out
+}
+
 // TestProcessAssignment_MultiSessionPlanDisambiguatedByBunk is the
 // regression test kindred#2259's acceptance checklist asks for: "a
 // bunk_assignments sync test where one bunk plan covers two sessions, one
@@ -580,6 +597,18 @@ func TestBunkAssignment_StaffRowSurvivesASecondRunOnTheSameInstance(t *testing.T
 	const planCMID = 8005
 	const sessionCMID = 5501
 	const bunkCMID = 6501
+	// The counselor's own row, as processAssignment writes it (730000 + person).
+	const staffAssignmentCMID = 730000 + staffPersonCMID
+	// Two campers who really did leave, one per run: their stored rows are the
+	// proof that the sweep is DOING something. Without them a run that swept
+	// nothing at all -- guard refusal, empty orphan set, a no-op DeleteOrphans
+	// -- would satisfy every "the staff row is still here" assertion below.
+	// kindred#2294 settled this shape on
+	// TestProtectThenSweepOrphans_DismissedStaffAssignmentSurvivesSweep.
+	const departedRunOneCMID = 9000014
+	const departedRunTwoCMID = 9000015
+	const departedRunOneAssignmentCMID = 740003
+	const departedRunTwoAssignmentCMID = 740004
 
 	// Three campers share the bunk with the counselor. They are not decoration:
 	// OrphanSweepGuard refuses a sweep whose computed set is under half of what
@@ -610,6 +639,14 @@ func TestBunkAssignment_StaffRowSurvivesASecondRunOnTheSameInstance(t *testing.T
 	saveRec(t, app, "staff", map[string]any{
 		"person_id": staffPersonCMID, "bunk_staff": true, "status": "active", "year": year,
 	})
+	departedRunOne := saveRec(t, app, "persons", map[string]any{"cm_id": departedRunOneCMID, "year": year})
+	departedRunTwo := saveRec(t, app, "persons", map[string]any{"cm_id": departedRunTwoCMID, "year": year})
+	// Stored by an earlier run and absent from this run's feed: a real orphan,
+	// seeded before run 1 so run 1's sweep has something it must delete.
+	saveRec(t, app, "bunk_assignments", map[string]any{
+		"cm_id": departedRunOneAssignmentCMID, "person": departedRunOne.Id,
+		"session": session.Id, "bunk": bunk.Id, "year": year,
+	})
 
 	// ONE instance, reused across both runs -- the orchestrator's actual shape.
 	s := NewBunkAssignmentsSync(app, newParallelTestCampMinderClient(t, year))
@@ -617,9 +654,16 @@ func TestBunkAssignment_StaffRowSurvivesASecondRunOnTheSameInstance(t *testing.T
 	// runOnce mirrors Sync()'s body over the four assignments CampMinder returns
 	// for this bunk: the same per-run reset Sync() performs at its top, the real
 	// loadMappings, the real preload, the real resolution ladder, and -- on the
-	// skip branch -- exactly what Sync()'s loop does today, which is to count a
-	// Skipped and continue WITHOUT tracking the key. That last detail is the
-	// whole mechanism: the untracked key is what deleteOrphans then deletes.
+	// skip branch -- what Sync()'s loop DID, before this fix: count a Skipped and
+	// continue WITHOUT tracking the key. That last detail is the whole mechanism;
+	// the untracked key is what deleteOrphans then deletes.
+	//
+	// Sync() no longer has that branch -- it routes both no-session outcomes
+	// through resolveSessionOrTrackUnresolved, which tracks -- and hand-rolling
+	// the OLD shape here is deliberate. It isolates the map reset: with the
+	// tracking wrapper standing in, reverting loadMappings' reset alone would
+	// still keep the row, and this test would stop pinning the bug it is named
+	// for. Verified by mutation both ways.
 	runOnce := func(t *testing.T) (staffSession int, staffAmbiguous bool) {
 		t.Helper()
 
@@ -668,9 +712,21 @@ func TestBunkAssignment_StaffRowSurvivesASecondRunOnTheSameInstance(t *testing.T
 	if sessionID, ambiguous := runOnce(t); ambiguous || sessionID != sessionCMID {
 		t.Fatalf("run 1: staff resolution = (%d, ambiguous=%v), want (%d, false)", sessionID, ambiguous, sessionCMID)
 	}
-	if rows := bunkAssignmentsForYear(t, app, year); len(rows) != 4 {
-		t.Fatalf("run 1: bunk_assignments rows = %d, want 4 (3 campers + 1 counselor)", len(rows))
+	afterRunOne := assignmentCMIDsForYear(t, app, year)
+	if len(afterRunOne) != 4 {
+		t.Fatalf("run 1: bunk_assignments rows = %d, want 4 (3 campers + 1 counselor); survivors = %v",
+			len(afterRunOne), afterRunOne)
 	}
+	if afterRunOne[departedRunOneAssignmentCMID] {
+		t.Fatalf("run 1: the departed camper's row (cm_id %d) survived -- if the sweep deletes nothing, "+
+			"every surviving-row assertion in this test is vacuous", departedRunOneAssignmentCMID)
+	}
+
+	// Run 2 gets its own orphan, for the same reason run 1 did.
+	saveRec(t, app, "bunk_assignments", map[string]any{
+		"cm_id": departedRunTwoAssignmentCMID, "person": departedRunTwo.Id,
+		"session": session.Id, "bunk": bunk.Id, "year": year,
+	})
 
 	sessionID, ambiguous := runOnce(t)
 
@@ -695,9 +751,18 @@ func TestBunkAssignment_StaffRowSurvivesASecondRunOnTheSameInstance(t *testing.T
 	// flat skipped_count. The counter that CAN see it is asserted in
 	// TestBunkAssignment_UnresolvedAssignmentIsCountedAndKeptFromTheSweep.
 
-	if rows := bunkAssignmentsForYear(t, app, year); len(rows) != 4 {
-		t.Errorf("after run 2: bunk_assignments rows = %d, want 4 -- the staff assignment must survive the "+
-			"hourly sync, not be swept as an orphan the run never tracked", len(rows))
+	afterRunTwo := assignmentCMIDsForYear(t, app, year)
+	if !afterRunTwo[staffAssignmentCMID] {
+		t.Errorf("after run 2: the counselor's row (cm_id %d) is gone -- the staff assignment must survive "+
+			"the hourly sync, not be swept as an orphan the run never tracked", staffAssignmentCMID)
+	}
+	if afterRunTwo[departedRunTwoAssignmentCMID] {
+		t.Errorf("after run 2: the departed camper's row (cm_id %d) survived -- run 2's sweep did nothing, "+
+			"so the assertion above proves nothing", departedRunTwoAssignmentCMID)
+	}
+	if len(afterRunTwo) != 4 {
+		t.Errorf("after run 2: bunk_assignments rows = %d, want 4 (3 campers + 1 counselor); survivors = %v",
+			len(afterRunTwo), afterRunTwo)
 	}
 }
 
@@ -830,15 +895,40 @@ func TestBunkAssignment_UnresolvedAssignmentIsCountedAndKeptFromTheSweep(t *test
 
 	const year = 2026
 	const staffPersonCMID = 9000009
+	const departedCamperCMID = 9000013
 	const planCMID = 8008
 	const sessionACMID = 5801
 	const sessionBCMID = 5802
 	const bunkCMID = 6801
+	const staffAssignmentCMID = 740001
+	const departedAssignmentCMID = 740002
+
+	// Three campers who resolve normally. They are load-bearing fixture, not
+	// scenery: OrphanSweepGuard refuses a sweep outright when the computed set
+	// is EMPTY, so with only the staff row in play, deleting the tracking this
+	// test exists to pin would abort the sweep instead of destroying anything,
+	// and the row-count assertion below would never be reached. The test would
+	// still go red -- on protectThenSweepOrphans returning an error -- which
+	// says nothing about whether tracking kept the row. Three resolving campers
+	// keep the computed set non-empty so the sweep genuinely runs, which is the
+	// shape production had: the 262 staff rows sat in a table whose camper rows
+	// still resolved and still tracked. Sibling test
+	// TestBunkAssignmentGrain_SecondSyncRunNeitherLosesNorDuplicates widens its
+	// fixture for the same reason.
+	camperCMIDs := []int{9000010, 9000011, 9000012}
 
 	saveRec(t, app, "persons", map[string]any{"cm_id": staffPersonCMID, "year": year})
 	sessionA := saveRec(t, app, "camp_sessions", map[string]any{"cm_id": sessionACMID, "year": year})
 	sessionB := saveRec(t, app, "camp_sessions", map[string]any{"cm_id": sessionBCMID, "year": year})
 	bunk := saveRec(t, app, "bunks", map[string]any{"cm_id": bunkCMID, "year": year})
+	for _, camperCMID := range camperCMIDs {
+		saveRec(t, app, "persons", map[string]any{"cm_id": camperCMID, "year": year})
+		// Enrolled in session A only, so resolveViaBunk narrows the plan's two
+		// candidate sessions down to one for them and they resolve cleanly.
+		saveRec(t, app, "attendees", map[string]any{
+			"person_id": camperCMID, "session": sessionA.Id, "status_id": 2, "year": year,
+		})
+	}
 	// The family-camp shape: ONE bunk under TWO sessions of one plan. Genuinely
 	// ambiguous in the database, not an artifact of a reused instance.
 	saveRec(t, app, "bunk_plans", map[string]any{
@@ -850,6 +940,12 @@ func TestBunkAssignment_UnresolvedAssignmentIsCountedAndKeptFromTheSweep(t *test
 	saveRec(t, app, "staff", map[string]any{
 		"person_id": staffPersonCMID, "bunk_staff": true, "status": "active", "year": year,
 	})
+	// A camper who really has left: stored from an earlier run, and this run's
+	// feed does not mention them. The sweep MUST delete this row, or the test
+	// would pass simply because the sweep did nothing at all -- the shape
+	// kindred#2294 settled on for
+	// TestProtectThenSweepOrphans_DismissedStaffAssignmentSurvivesSweep.
+	departed := saveRec(t, app, "persons", map[string]any{"cm_id": departedCamperCMID, "year": year})
 
 	s := NewBunkAssignmentsSync(app, newParallelTestCampMinderClient(t, year))
 	if loadErr := s.loadMappings(); loadErr != nil {
@@ -864,15 +960,39 @@ func TestBunkAssignment_UnresolvedAssignmentIsCountedAndKeptFromTheSweep(t *test
 		t.Fatalf("find person: %v", err)
 	}
 	saveRec(t, app, "bunk_assignments", map[string]any{
-		"cm_id": 740001, "person": person.Id, "session": sessionA.Id, "bunk": bunk.Id, "year": year,
+		"cm_id": staffAssignmentCMID, "person": person.Id,
+		"session": sessionA.Id, "bunk": bunk.Id, "year": year,
+	})
+	saveRec(t, app, "bunk_assignments", map[string]any{
+		"cm_id": departedAssignmentCMID, "person": departed.Id,
+		"session": sessionA.Id, "bunk": bunk.Id, "year": year,
 	})
 
 	existing, existingByPersonBunk, err := s.preloadExistingAssignments(year)
 	if err != nil {
 		t.Fatalf("preloadExistingAssignments: %v", err)
 	}
-	if len(existing) != 1 {
-		t.Fatalf("existing = %d, want 1", len(existing))
+	if len(existing) != 2 {
+		t.Fatalf("existing = %d, want 2 (the staffer's stored row and the departed camper's)", len(existing))
+	}
+
+	// The campers go through the same wrapper the staffer does, and resolve.
+	for _, camperCMID := range camperCMIDs {
+		camperSession, camperUnresolved := s.resolveSessionOrTrackUnresolved(
+			camperCMID, planCMID, bunkCMID, s.bunkPlanSessionsList[planCMID], existingByPersonBunk, year)
+		if camperUnresolved || camperSession != sessionACMID {
+			t.Fatalf("camper %d resolution = (%d, unresolved=%v), want (%d, false)",
+				camperCMID, camperSession, camperUnresolved, sessionACMID)
+		}
+		if err := s.processAssignment(map[string]any{
+			"PersonID":   float64(camperCMID),
+			"BunkID":     float64(bunkCMID),
+			"BunkPlanID": float64(planCMID),
+			"SessionID":  float64(camperSession),
+			"ID":         float64(740000 + camperCMID),
+		}, existing); err != nil {
+			t.Fatalf("processAssignment(camper %d): %v", camperCMID, err)
+		}
 	}
 
 	sessionID, unresolved := s.resolveSessionOrTrackUnresolved(
@@ -887,8 +1007,8 @@ func TestBunkAssignment_UnresolvedAssignmentIsCountedAndKeptFromTheSweep(t *test
 			"own, or it hides inside Skipped alongside every unchanged row", s.Stats.UnresolvedSession)
 	}
 	if s.Stats.Skipped != 1 {
-		t.Errorf("Stats.Skipped = %d, want 1 -- the new counter is a named subset of Skipped, not a "+
-			"replacement for it", s.Stats.Skipped)
+		t.Errorf("Stats.Skipped = %d, want 1 -- the three campers were CREATED, not skipped, so the only "+
+			"Skipped here is the staffer, and the new counter is a named subset of it", s.Stats.Skipped)
 	}
 
 	// The row the run could not resolve must be tracked as processed, so the
@@ -897,8 +1017,89 @@ func TestBunkAssignment_UnresolvedAssignmentIsCountedAndKeptFromTheSweep(t *test
 	if err := s.protectThenSweepOrphans(year); err != nil {
 		t.Fatalf("protectThenSweepOrphans: %v", err)
 	}
-	if rows := bunkAssignmentsForYear(t, app, year); len(rows) != 1 {
-		t.Errorf("after the sweep: bunk_assignments rows = %d, want 1 -- an assignment the run SAW but "+
-			"could not resolve is not an orphan (kindred#2394)", len(rows))
+	survivors := assignmentCMIDsForYear(t, app, year)
+	if !survivors[staffAssignmentCMID] {
+		t.Errorf("after the sweep: the unresolved staffer's row (cm_id %d) is gone -- an assignment the "+
+			"run SAW but could not resolve is not an orphan (kindred#2394)", staffAssignmentCMID)
+	}
+	if survivors[departedAssignmentCMID] {
+		t.Errorf("after the sweep: the departed camper's row (cm_id %d) survived -- if the sweep deletes "+
+			"nothing, the assertion above proves nothing either", departedAssignmentCMID)
+	}
+	if len(survivors) != 4 {
+		t.Errorf("after the sweep: bunk_assignments rows = %d, want 4 (3 campers + the unresolved "+
+			"staffer); survivors = %v", len(survivors), survivors)
+	}
+}
+
+// TestProcessResultGroup_PlanWithNoSessionsStillTracksItsAssignments pins the
+// last untracked skip in the assignment loop -- one line above the two
+// kindred#2465 closed, and the same mechanism.
+//
+// When a bunk plan has no sessions the loop used to drop the ENTIRE
+// (bunkPlan, bunk) group with a warning, without counting it and without
+// tracking a single key. Every assignment in that group was therefore absent
+// from ProcessedKeys, and deleteOrphans reads absence as "CampMinder no longer
+// returns this row" and deletes it -- exactly the path that deleted 262 staff
+// rows an hour.
+//
+// The trigger is narrow, which is why it outlived kindred#2465's own two:
+// loadMappings gates both bunkPlanSessionsList and bunkPlanBunkToSession on
+// `bpCMID > 0 && sessionCMID > 0`, and bunk_plans.session is required in
+// production, so emptying the list needs a dangling session relation or a null
+// cm_id. Narrow is not the same as impossible, and the blast radius is a whole
+// group rather than one assignment.
+//
+// Because the same gate builds both maps, an empty plan-session list
+// guarantees an empty bunkPlanBunkToSession entry too -- so every step of the
+// resolution ladder fails and no assignment here can be written to a wrong
+// session. The only correct handling is the one the other skips already use:
+// count it, and keep the rows already on disk out of the sweep.
+func TestProcessResultGroup_PlanWithNoSessionsStillTracksItsAssignments(t *testing.T) {
+	t.Parallel()
+
+	const year = 2026
+	const personCMID = 9000011
+	const sessionCMID = 5901
+	const bunkCMID = 6901
+	const planCMID = 8009
+
+	s := &BunkAssignmentsSync{}
+	s.ProcessedKeys = make(map[string]bool)
+	// No bunkPlanSessionsList entry for planCMID, and no bunkPlanBunkToSession
+	// entry either: that is the state loadMappings leaves behind for a plan
+	// whose only bunk_plans row could not be resolved to a session cm_id.
+
+	existingByPersonBunk := map[string][]string{
+		fmt.Sprintf("%d:%d", personCMID, bunkCMID): {
+			fmt.Sprintf("%d:%d:%d", personCMID, sessionCMID, bunkCMID),
+		},
+	}
+
+	result := map[string]any{
+		"BunkID":     float64(bunkCMID),
+		"BunkPlanID": float64(planCMID),
+		"Assignments": []any{
+			map[string]any{"PersonID": float64(personCMID), "ID": float64(750001)},
+		},
+	}
+
+	s.processResultGroup(result, nil, existingByPersonBunk, year)
+
+	if s.Stats.UnresolvedSession != 1 {
+		t.Errorf("Stats.UnresolvedSession = %d, want 1 -- an assignment under a session-less bunk plan "+
+			"is a resolution failure and has to be counted as one, not dropped silently",
+			s.Stats.UnresolvedSession)
+	}
+	if s.Stats.Skipped != 1 {
+		t.Errorf("Stats.Skipped = %d, want 1 -- no row was written, which is what Skipped counts here",
+			s.Stats.Skipped)
+	}
+
+	wantKey := fmt.Sprintf("%d:%d:%d|%d", personCMID, sessionCMID, bunkCMID, year)
+	if !s.ProcessedKeys[wantKey] {
+		t.Errorf("ProcessedKeys = %v, want it to contain %q -- the run SAW this person in this bunk, so "+
+			"its stored row must be kept from the orphan sweep (kindred#2394, kindred#2465)",
+			s.ProcessedKeys, wantKey)
 	}
 }
