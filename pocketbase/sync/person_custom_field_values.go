@@ -16,8 +16,12 @@ import (
 // Service name constant - uses new table name
 const serviceNamePersonCustomValues = "person_custom_values"
 
-// PersonCustomFieldValuesSync handles syncing custom field values for persons from CampMinder
-// This is an ON-DEMAND sync (not part of daily sync) because it requires 1 API call per person
+// PersonCustomFieldValuesSync handles syncing custom field values for persons from CampMinder.
+// The unrestricted instance (Session=DefaultSession) is ON-DEMAND -- weekly cron + manual runs
+// only -- because a year-wide sweep is 1 API call per person. A second, FamilyCampBounded
+// instance of this same type IS part of the daily cron (kindred#2482): scoped to family-camp
+// attendees, it stays cheap enough to run daily. See orchestrator.go's getDailySyncJobs and the
+// "person_custom_values_family_camp" registration.
 type PersonCustomFieldValuesSync struct {
 	BaseSyncService
 	Session     string                 // Session filter: "all", "1", "2", "2a", "3", "4", etc.
