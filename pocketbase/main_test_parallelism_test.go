@@ -202,6 +202,15 @@ var serialGroups = []struct {
 			"TestSeedRegistryWithNoConfigAnywhereIsANoOp",
 			"TestSeedRegistryFileErrorIsNotTaggedAsARowCheckFailure",
 			"TestClassifyShareability",
+			// kindred#2451: these three reach the same globals (the last two
+			// via withYearFixtureRegistry -> withRegistryBasePath) and were
+			// still running t.Parallel() -- that gap is what let
+			// TestSeedRegistryLeavesNothingBehindWhenAPassFails observe
+			// another test's temp tree and fail with "0 units after the
+			// retry; want 2" instead of a race report.
+			"TestSeedRegistryStampsTheSeason",
+			"TestFindByCodeAndYearIgnoresOtherYears",
+			"TestSeedRegistryLeavesNothingBehindWhenAPassFails",
 		},
 	},
 	{
