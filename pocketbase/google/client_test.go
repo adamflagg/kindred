@@ -152,3 +152,41 @@ func containsHelper(s, substr string) bool {
 	}
 	return false
 }
+
+func TestGetRosterFolderID(t *testing.T) {
+	tests := []struct {
+		name     string
+		envValue string
+		want     string
+	}{
+		{"Empty", "", ""},
+		{"Simple ID", "1ROSTER-xyz_123", "1ROSTER-xyz_123"},
+		{"With spaces trimmed", "  1ROSTER-xyz  ", "1ROSTER-xyz"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("GOOGLE_DRIVE_ROSTER_FOLDER_ID", tt.envValue)
+
+			got := GetRosterFolderID()
+			if got != tt.want {
+				t.Errorf("GetRosterFolderID() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// The roster folder is a SEPARATE Drive folder from the data-workbook exports:
+// rosters carry family contact details and must not inherit the Exports folder's
+// audience. Reading the wrong var would silently write them into the shared folder.
+func TestGetRosterFolderID_IndependentOfExportFolderID(t *testing.T) {
+	t.Setenv("GOOGLE_DRIVE_FOLDER_ID", "export-folder")
+	t.Setenv("GOOGLE_DRIVE_ROSTER_FOLDER_ID", "roster-folder")
+
+	if got := GetRosterFolderID(); got != "roster-folder" {
+		t.Errorf("GetRosterFolderID() = %q, want %q", got, "roster-folder")
+	}
+	if got := GetFolderID(); got != "export-folder" {
+		t.Errorf("GetFolderID() = %q, want %q", got, "export-folder")
+	}
+}

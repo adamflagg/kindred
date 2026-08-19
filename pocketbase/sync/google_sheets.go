@@ -41,6 +41,10 @@ type SheetsWriter interface {
 	// DeleteSheet deletes a sheet tab from the spreadsheet (idempotent - no error if sheet doesn't exist).
 	// This is useful for removing the default "Sheet1" created by Google when a new spreadsheet is made.
 	DeleteSheet(ctx context.Context, spreadsheetID, sheetTab string) error
+	// ApplyFormatting applies one tab's whole appearance -- merges, frozen rows,
+	// column widths, cell styles and borders -- in a single batchUpdate.
+	// One call per tab, not per block: a 63-household roster is one round trip.
+	ApplyFormatting(ctx context.Context, spreadsheetID string, format *SheetFormat) error
 }
 
 // RealSheetsWriter implements SheetsWriter using the Google Sheets API
@@ -320,6 +324,32 @@ func (w *RealSheetsWriter) DeleteSheet(ctx context.Context, spreadsheetID, sheet
 	}
 
 	slog.Info("Deleted sheet tab", "tab", sheetTab)
+	return nil
+}
+
+// ApplyFormatting applies a tab's formatting directives in a single batchUpdate.
+// A format carrying no directives issues no API call at all.
+func (w *RealSheetsWriter) ApplyFormatting(
+	ctx context.Context, spreadsheetID string, format *SheetFormat,
+) error {
+	if format == nil || format.isEmpty() {
+		return nil
+	}
+
+	requests, err := buildFormatRequests(format)
+	if err != nil {
+		return fmt.Errorf("building formatting requests: %w", err)
+	}
+	if len(requests) == 0 {
+		return nil
+	}
+
+	req := &sheets.BatchUpdateSpreadsheetRequest{Requests: requests}
+	if _, err := w.service.Spreadsheets.BatchUpdate(spreadsheetID, req).Context(ctx).Do(); err != nil {
+		return fmt.Errorf("applying formatting to sheet %d: %w", format.SheetID, err)
+	}
+
+	slog.Debug("Applied sheet formatting", "sheet_id", format.SheetID, "requests", len(requests))
 	return nil
 }
 
