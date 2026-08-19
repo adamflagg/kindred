@@ -460,9 +460,14 @@ func (s *PersonCustomFieldValuesSync) processPersonCustomFieldValue(
 			return nil
 		}
 
-		// Value or lastUpdated changed - update record
+		// Value or lastUpdated changed - update record.
+		//
+		// oldValue is read BEFORE the Set loop below overwrites it: the cabin
+		// change capture (kindred#2482) needs old and new simultaneously, and
+		// this is the only point in the pipeline where both are in scope.
 		newValue, _ := pbData["value"].(string)
-		if existing.GetString("value") != newValue || existingLastUpdated != newLastUpdated {
+		oldValue := existing.GetString("value")
+		if oldValue != newValue || existingLastUpdated != newLastUpdated {
 			for key, val := range pbData {
 				existing.Set(key, val)
 			}
@@ -480,6 +485,20 @@ func (s *PersonCustomFieldValuesSync) processPersonCustomFieldValue(
 				s.Stats.Errors++
 			} else {
 				s.Stats.Updated++
+				// Capture the change, but only a VALUE change -- the branch
+				// condition above also fires on a bare last_updated bump, which
+				// is not a change to where anyone slept. No-op for any field
+				// outside the retention scope (lodging_value_history.go).
+				if oldValue != newValue {
+					logLodgingValueChange(s.App, &lodgingValueObservation{
+						Year:            year,
+						FieldCMID:       fieldCMID,
+						PersonCMID:      personCMID,
+						OldValue:        oldValue,
+						NewValue:        newValue,
+						SourceChangedAt: newLastUpdated,
+					})
+				}
 			}
 		} else {
 			s.Stats.Skipped++
@@ -515,6 +534,18 @@ func (s *PersonCustomFieldValuesSync) processPersonCustomFieldValue(
 			// same key hits the "existing" branch (which the guard above now also
 			// short-circuits before it can be reached by a true duplicate).
 			existingRecords[yearScopedKey] = record
+			// The first observed cabin is a fact worth keeping, so the create
+			// branch writes history too, as is_genesis (kindred#2482).
+			newValue, _ := pbData["value"].(string)
+			newLastUpdated, _ := pbData["last_updated"].(string)
+			logLodgingValueChange(s.App, &lodgingValueObservation{
+				Year:            year,
+				FieldCMID:       fieldCMID,
+				PersonCMID:      personCMID,
+				NewValue:        newValue,
+				SourceChangedAt: newLastUpdated,
+				IsGenesis:       true,
+			})
 		}
 	}
 
