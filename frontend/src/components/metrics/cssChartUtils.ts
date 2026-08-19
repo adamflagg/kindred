@@ -29,6 +29,52 @@ export function getYAxisMarginLeft(width: YAxisWidth = 'w-8'): string {
   return width === 'w-10' ? '3rem' : '2.5rem'
 }
 
+/**
+ * #2443 -- compute greyed-band extents for contiguous runs of years without
+ * attendee_status_history coverage (has_cancellation_data === false).
+ *
+ * A recharts `ReferenceArea` was tried first and rejected: `TrendLineChart`'s
+ * x-axis is a categorical `point` scale with zero bandwidth (recharts
+ * ^3.10.1, `combineRealScaleType` for `type:'category'` inside `LineChart`),
+ * so a ReferenceArea lands tick-to-tick rather than covering each year's
+ * share of the axis, and the visible axis is drawn in the DOM by ChartCard
+ * (this file's `VerticalXAxis`), not by recharts -- see the issue body's
+ * build-risk analysis. This ships the issue's named fallback instead: a
+ * DOM-layer band using the SAME edge-aligned percentage math `VerticalXAxis`
+ * uses below to place the year labels (`left = i/(n-1) * 100%` inside a box
+ * reduced by the same right padding), so the band's alignment with the
+ * labels is correct by construction rather than asserted from the SVG scale.
+ *
+ * Each band's edges sit halfway between the last/first uncovered index and
+ * its covered neighbor -- e.g. for [uncovered, uncovered, covered] it spans
+ * from the left edge to halfway between index 1 and index 2, so it reads as
+ * "behind the uncovered years" rather than stopping dead on a tick.
+ */
+export function computeCoverageBands(
+  covered: boolean[]
+): Array<{ leftPct: number; widthPct: number }> {
+  const n = covered.length
+  if (n < 2) return []
+
+  const bands: Array<{ leftPct: number; widthPct: number }> = []
+  let i = 0
+  while (i < n) {
+    if (covered[i]) {
+      i++
+      continue
+    }
+    let j = i
+    while (j < n && !covered[j]) j++
+    // Uncovered run is [i, j-1].
+    const leftIndex = Math.max(0, i - 0.5)
+    const rightIndex = Math.min(n - 1, j - 1 + 0.5)
+    const leftPct = (leftIndex / (n - 1)) * 100
+    bands.push({ leftPct, widthPct: ((rightIndex - leftIndex) / (n - 1)) * 100 })
+    i = j
+  }
+  return bands
+}
+
 function pickNiceResidual(residual: number): number {
   if (residual <= 1.5) return 1
   if (residual <= 3) return 2

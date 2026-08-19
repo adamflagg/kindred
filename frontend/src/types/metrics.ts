@@ -273,6 +273,13 @@ export interface YearMetrics {
   new_vs_returning: NewVsReturning
   total_cancelled?: number
   cancellation_rate?: number
+  /**
+   * Whether attendee_status_history holds any rows for this year at all.
+   * When false, total_cancelled/cancellation_rate were never measured (not
+   * a measured zero) -- render "no data", not 0 / 0.0%. Defaults to true
+   * for backward compatibility with callers built before this field existed.
+   */
+  has_cancellation_data?: boolean
 }
 
 export interface HistoricalTrendsResponse {
