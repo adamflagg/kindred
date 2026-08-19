@@ -181,11 +181,33 @@ func TestBuildFileSearchQuery(t *testing.T) {
 				"mimeType='application/vnd.google-apps.folder' and trashed=false",
 		},
 		{
-			name:     "Single quote in name is doubled",
+			// Drive v3 escapes with a BACKSLASH, not by SQL-style doubling.
+			// https://developers.google.com/workspace/drive/api/guides/search-files
+			name:     "Apostrophe is backslash-escaped",
 			folderID: "folder123",
 			fileName: "Camp's Roster",
 			mimeType: MimeTypeSpreadsheet,
-			want: "name='Camp''s Roster' and 'folder123' in parents and " +
+			want: `name='Camp\'s Roster' and 'folder123' in parents and ` +
+				"mimeType='application/vnd.google-apps.spreadsheet' and trashed=false",
+		},
+		{
+			name:     "Backslash is doubled",
+			folderID: "folder123",
+			fileName: `a\b`,
+			mimeType: MimeTypeFolder,
+			want: `name='a\\b' and 'folder123' in parents and ` +
+				"mimeType='application/vnd.google-apps.folder' and trashed=false",
+		},
+		{
+			// Google's own worked example, verbatim: "name contains
+			// 'quinn\'s paper\\essay'". It is the case that catches a two-pass
+			// implementation, where the backslash rule re-escapes the backslash
+			// the apostrophe rule just wrote.
+			name:     "Both, as the Drive guide spells it",
+			folderID: "folder123",
+			fileName: `quinn's paper\essay`,
+			mimeType: MimeTypeSpreadsheet,
+			want: `name='quinn\'s paper\\essay' and 'folder123' in parents and ` +
 				"mimeType='application/vnd.google-apps.spreadsheet' and trashed=false",
 		},
 	}

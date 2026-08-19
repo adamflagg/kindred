@@ -218,16 +218,20 @@ func buildFileSearchQuery(folderID, name, mimeType string) string {
 	)
 }
 
-// escapeQueryString escapes single quotes for Drive API queries
+// driveQueryEscaper escapes the two characters the Drive API treats as special
+// inside a quoted string value.
+//
+// A BACKSLASH, not SQL-style doubling. Google's own wording: "if a filename
+// contains both an apostrophe (') and a backslash (\) character, use a
+// backslash to escape them: name contains 'quinn\'s paper\\essay'".
+// https://developers.google.com/workspace/drive/api/guides/search-files
+//
+// A Replacer makes a single left-to-right pass and never rescans what it wrote,
+// so the backslash rule cannot re-escape the backslash the apostrophe rule just
+// introduced -- which two sequential strings.ReplaceAll calls would do.
+var driveQueryEscaper = strings.NewReplacer(`\`, `\\`, `'`, `\'`)
+
+// escapeQueryString escapes a value for interpolation into a Drive API query.
 func escapeQueryString(s string) string {
-	// In Drive API queries, single quotes are escaped by doubling them
-	result := ""
-	for _, c := range s {
-		if c == '\'' {
-			result += "''"
-		} else {
-			result += string(c)
-		}
-	}
-	return result
+	return driveQueryEscaper.Replace(s)
 }
