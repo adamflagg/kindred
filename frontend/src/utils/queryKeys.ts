@@ -550,6 +550,12 @@ export const queryKeys = {
   lodgingUnitsPrefix: () => ['lodging-units'] as const,
   lodgingIngestIssuesPrefix: () => ['lodging-ingest-issues'] as const,
   lodgingRollForwardPreviewPrefix: () => ['lodging-roll-forward-preview'] as const,
+  /**
+   * The admin Sheets tab's workbook list. Not year-keyed: one query returns
+   * every workbook and the tab groups them itself. Family Camp roster workbooks
+   * are filtered out of it at the query — see `useSheetsWorkbooks`.
+   */
+  sheetsWorkbooks: () => ['sheets-workbooks'] as const,
 }
 
 /**

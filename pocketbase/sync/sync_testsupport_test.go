@@ -69,6 +69,16 @@ func newSyncTestApp(t *testing.T) core.App {
 	persons.Fields.Add(&core.NumberField{Name: "household_id"})
 	persons.Fields.Add(&core.RelationField{Name: "household", CollectionId: households.Id, MaxSelect: 1})
 	persons.Fields.Add(&core.NumberField{Name: "year"})
+	// Identity, age and city, for the Family Camp roster export (kindred#2433).
+	// birthdate is TEXT holding "YYYY-MM-DD", not a PocketBase date -- a DateField
+	// here would round-trip through PB's own layout and hide the parse the
+	// exporter actually performs.
+	persons.Fields.Add(&core.TextField{Name: "first_name"})
+	persons.Fields.Add(&core.TextField{Name: "last_name"})
+	persons.Fields.Add(&core.TextField{Name: "preferred_name"})
+	persons.Fields.Add(&core.TextField{Name: "birthdate"})
+	persons.Fields.Add(&core.TextField{Name: "address_city"})
+	persons.Fields.Add(&core.TextField{Name: "normalized_city"})
 	saveCollection(t, app, persons)
 
 	attendees := core.NewBaseCollection("attendees")
@@ -87,6 +97,13 @@ func newSyncTestApp(t *testing.T) core.App {
 	adults.Fields.Add(&core.NumberField{Name: "year"})
 	adults.Fields.Add(&core.NumberField{Name: "adult_number"})
 	adults.Fields.Add(&core.TextField{Name: "name"})
+	// The roster coalesces `name` over the split pair and renders the email
+	// (kindred#2433). last_name is blank on every 2026 row, which is exactly why
+	// the fixture carries all three: a test that seeded only `name` could not
+	// tell a correct coalesce from one that never reads the fallback.
+	adults.Fields.Add(&core.TextField{Name: "first_name"})
+	adults.Fields.Add(&core.TextField{Name: "last_name"})
+	adults.Fields.Add(&core.TextField{Name: "email"})
 	saveCollection(t, app, adults)
 
 	hcv := core.NewBaseCollection("household_custom_values")

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 )
 
@@ -107,4 +108,24 @@ func FormatWorkbookTitle(workbookType string, year int) string {
 	}
 
 	return fmt.Sprintf("%s%s CM Data - %d", prefix, campName, year)
+}
+
+// FormatRosterWorkbookTitle generates the title of one Family Camp weekend's
+// roster workbook: "{session name} {year} Roster". kindred#2433.
+//
+// The camp name is deliberately absent, unlike FormatWorkbookTitle: these
+// workbooks sit in a folder that is entirely this camp's, and what staff pick
+// one out of that folder by is the weekend.
+//
+// The "(DEV) " prefix matters more here than for the data workbooks. Prod and
+// dev roster folders are two values of ONE env var
+// (GOOGLE_DRIVE_ROSTER_FOLDER_ID), so nothing but that id separates a dev run
+// from the real folder, and the service account can write anywhere on the shared
+// drive. The prefix is the second signal.
+func FormatRosterWorkbookTitle(sessionName string, year int) string {
+	prefix := ""
+	if isDevEnvironment() {
+		prefix = devPrefix
+	}
+	return fmt.Sprintf("%s%s %d Roster", prefix, strings.TrimSpace(sessionName), year)
 }
