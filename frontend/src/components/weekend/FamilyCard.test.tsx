@@ -999,11 +999,13 @@ describe('FamilyCard — summer’s type scale', () => {
     expect(screen.getByText('Near another family')).toHaveClass('text-xs')
   })
 
-  it('sets the need glyph at the chip row’s own icon size', () => {
+  it('sets the need glyph at the chip row’s own icon size, in a chip-height box', () => {
     // The glyph replaced a `text-xs` chip and has to sit on the same line as
-    // the ones that remain: a 12px icon in a 2px box is 18px against the word
-    // chips' 20px. The board-wide arbitrary-size sweep covers `text-[Npx]`
-    // and would not see an icon, so the icon gets its own pin.
+    // the ones that remain, so its BOX matches their height: `h-5 w-5` is
+    // 20px, the same as a word chip's 2px padding around 16px of line. It was
+    // `p-0.5` — an 18px box against 20px chips, which reads as a misalignment
+    // rather than as a smaller mark. The board-wide arbitrary-size sweep
+    // covers `text-[Npx]` and would not see either, so both get a pin here.
     render(
       <FamilyCard
         party={party({ flags: { needs_power: true } })}
@@ -1011,7 +1013,9 @@ describe('FamilyCard — summer’s type scale', () => {
         onOpen={vi.fn()}
       />
     )
-    expect(screen.getByTestId('need-glyph-power').querySelector('svg')).toHaveClass('h-3', 'w-3')
+    const glyph = screen.getByTestId('need-glyph-power')
+    expect(glyph.querySelector('svg')).toHaveClass('h-3', 'w-3')
+    expect(glyph).toHaveClass('h-5', 'w-5')
   })
 
   it('carries the same scale into the drag overlay', () => {
@@ -1437,13 +1441,28 @@ describe('FamilyCard — the need glyphs (kindred#2072)', () => {
   })
 
   it('writes no hex into any glyph class', () => {
+    /*
+     * ⚠️ MOUNTS ALL FOUR, and that is the whole value of the sweep. The
+     * implementation spec records the failure this repeats otherwise: an
+     * earlier class-string sweep "silently checked a card that never mounted
+     * the merge/split pills" — a sweep is only as good as what its render
+     * mounts. Two of the four glyphs are NEW UI with no production precedent,
+     * so they are exactly the ones a narrow sweep would miss.
+     */
     const { container } = render(
       <FamilyCard
-        party={needy({ needs_private_bathroom: true, needs_power: true })}
-        unit={confirmedUnit({ power_coverage: 'none' })}
+        party={needy({
+          needs_private_bathroom: true,
+          needs_power: true,
+          needs_fridge: true,
+          needs_step_free: true,
+        })}
+        unit={confirmedUnit({ power_coverage: 'none', fridge_coverage: 'all' })}
         onOpen={vi.fn()}
       />
     )
+    // Every glyph in the closed set is actually on the card being swept.
+    expect(container.querySelectorAll('[data-testid^="need-glyph-"]')).toHaveLength(4)
     const classes = [...container.querySelectorAll('*')]
       .flatMap((element) => [...element.classList])
       .join(' ')
@@ -1535,13 +1554,18 @@ describe('FamilyCard — single parent is a mark on line 2 (S2 + Sa)', () => {
   it('marks the adult line of a household with exactly one attending adult', () => {
     render(<FamilyCard party={party()} onOpen={vi.fn()} />)
     const mark = screen.getByTestId('family-card-single-parent')
-    expect(mark).toBeInTheDocument()
-    // Before the adult name, which is what makes it read as a fact about the
-    // person rather than a preference in the chip row.
-    expect(screen.getByTestId('family-card-adults').textContent).toContain('Emma Johnson')
-    expect(mark.compareDocumentPosition(screen.getByTestId('family-card-adults'))).toBe(
-      Node.DOCUMENT_POSITION_FOLLOWING
-    )
+    const adults = screen.getByTestId('family-card-adults')
+    expect(adults.textContent).toContain('Emma Johnson')
+    // BEFORE the adult name AND INSIDE the run, which is what makes it read as
+    // a fact about that person rather than a preference in the chip row.
+    //
+    // Inside, not a preceding sibling: an `<svg>` has no baseline, so a flex
+    // wrapper around the icon and the names took ITS baseline from the icon's
+    // bottom edge and dropped line 2's right-anchored cabin 2.25px — on the
+    // single-parent cards only, so a column of them showed the cabin
+    // jittering. Pinned structurally because jsdom has no layout engine to
+    // catch the pixels.
+    expect(adults.firstElementChild).toBe(mark)
   })
 
   it('is AMBER — First-time’s tone, so amber means "notice this household" on both', () => {

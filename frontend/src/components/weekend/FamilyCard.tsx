@@ -175,13 +175,23 @@ const GLYPH_UNMET = `${WARN_TONE} border-red-800 dark:border-red-300`
 /**
  * The icon-only chip is a GEOMETRY, not a seventh tone.
  *
- * Transparent ground, a 1px border in the card's own border token, and square
- * padding — it composes with `GLYPH_UNMET` above for the unmet state rather
- * than being a variant of it. `rounded-lg` rather than the word chips'
+ * Transparent ground, a 1px border in the card's own border token, and a
+ * SQUARE 20×20 box — it composes with `GLYPH_UNMET` above for the unmet state
+ * rather than being a variant of it. `rounded-lg` rather than the word chips'
  * `rounded-full`: a circle around a 12px glyph reads as a bullet, and the
  * shape difference is what says "this is a need, not a preference".
+ *
+ * ⚠️ 20px IS THE WORD CHIPS' OWN HEIGHT, and matching it is the point. This
+ * was `p-0.5`, which is 18px — two pixels shorter than every chip it shares a
+ * line with, which reads as a misalignment rather than as a smaller mark. The
+ * review artifact reaches 20 with 3px of padding; `h-5 w-5` reaches it on
+ * Tailwind's own scale, with `justify-center` doing what the padding did.
+ *
+ * It also closes a 2px overlap: `ui/Tooltip`'s invisible 24px hit target
+ * overhung an 18px glyph by 3px a side against a 4px gap, so adjacent glyphs'
+ * hit areas collided and the later one in the DOM won.
  */
-const GLYPH_BASE = 'inline-flex items-center rounded-lg border p-0.5'
+const GLYPH_BASE = 'inline-flex h-5 w-5 items-center justify-center rounded-lg border'
 
 function Chip({
   label,
@@ -490,37 +500,22 @@ function FamilyCardIdentity({ party }: { party: RosterPartyRow }) {
         ? (attendingAdults.length > 0 || lastYearCabin.length > 0) && (
             <span className="flex items-baseline gap-2">
               {attendingAdults.length > 0 && (
-                /* The mark and the names share one flex box so the cabin
-                   opposite still gets the whole remaining row: `min-w-0
-                   flex-1` has to sit on THIS wrapper, or the names below stop
-                   being the thing that gives way. `items-center` rather than
-                   the row's `items-baseline` — an icon has no baseline worth
-                   aligning, and against 12px text the two read level. */
-                <span className="flex min-w-0 flex-1 items-center gap-1">
-                  {isSingleParent && (
-                    /* AMBER, and specifically First-time's amber: one language
-                       for "notice this household" across both marks (Sa). */
-                    <User
-                      data-testid="family-card-single-parent"
-                      className="h-3 w-3 flex-shrink-0 text-amber-700 dark:text-amber-300"
-                    />
-                  )}
-                  <span
-                    data-testid="family-card-adults"
-                    // `min-w-0` is not decoration: without it a flex child
-                    // refuses to shrink below its content width and `truncate`
-                    // never fires, leaving the cabin pushed off the card.
-                    //
-                    // Truncated even when no cabin sits beside it, so line 2 is
-                    // ONE line on every card. The bold identity line above
-                    // already truncates for the same reason, and a four-adult
-                    // household that wraps here pushes the chip row down and
-                    // grows the card — the density problem this card fights
-                    // everywhere else. The full list is one click away in
-                    // `FamilyDetailsPanel`.
-                    className="text-muted-foreground min-w-0 flex-1 truncate text-xs leading-snug"
-                  >
-                    {/* A surname every adult shares is printed once at the end of
+                <span
+                  data-testid="family-card-adults"
+                  // `min-w-0` is not decoration: without it a flex child
+                  // refuses to shrink below its content width and `truncate`
+                  // never fires, leaving the cabin pushed off the card.
+                  //
+                  // Truncated even when no cabin sits beside it, so line 2 is
+                  // ONE line on every card. The bold identity line above
+                  // already truncates for the same reason, and a four-adult
+                  // household that wraps here pushes the chip row down and
+                  // grows the card — the density problem this card fights
+                  // everywhere else. The full list is one click away in
+                  // `FamilyDetailsPanel`.
+                  className="text-muted-foreground min-w-0 flex-1 truncate text-xs leading-snug"
+                >
+                  {/* A surname every adult shares is printed once at the end of
                   the line, the same shape as the children's run above
                   (kindred#2180) -- but on a weaker signal, and deliberately
                   not the same rule: `family_camp_adults.last_name` is empty
@@ -529,14 +524,37 @@ function FamilyCardIdentity({ party }: { party: RosterPartyRow }) {
                   the 340 multi-adult rostered households and leaves the other
                   205 written out in full. The adults are the FILTERED list,
                   so a placeholder slot cannot suppress the dedupe. */}
-                    {adultNames.map((name, index) => (
-                      <Fragment key={String(attendingAdults[index]?.adult_number ?? index)}>
-                        {index > 0 && ' · '}
-                        <span>{name}</span>
-                      </Fragment>
-                    ))}
-                    {sharedAdultSurname.length > 0 && ` ${sharedAdultSurname}`}
-                  </span>
+                  {/* ⚠️ INLINE, INSIDE THE NAMES — not a flex sibling of them,
+                      and the difference is 2.25px of visible jitter.
+
+                      The first version wrapped the icon and the names in a flex
+                      box. An `<svg>` has NO BASELINE, so that wrapper's baseline
+                      was synthesised from the icon's bottom edge, and line 2's
+                      `items-baseline` then dropped the right-anchored cabin
+                      2.25px below the adult names — but ONLY on the cards
+                      carrying this mark, so a column of cards showed the cabin
+                      jittering. Measured across 30 live cards: 2.25px with the
+                      mark, 0 without.
+
+                      Inline, the span's baseline is the text's own and the two
+                      halves of line 2 sit level again. It is also what the
+                      review artifact does.
+
+                      AMBER, and specifically First-time's amber: one language
+                      for "notice this household" across both marks (Sa). */}
+                  {isSingleParent && (
+                    <User
+                      data-testid="family-card-single-parent"
+                      className="mr-0.5 inline h-3 w-3 align-text-bottom text-amber-700 dark:text-amber-300"
+                    />
+                  )}
+                  {adultNames.map((name, index) => (
+                    <Fragment key={String(attendingAdults[index]?.adult_number ?? index)}>
+                      {index > 0 && ' · '}
+                      <span>{name}</span>
+                    </Fragment>
+                  ))}
+                  {sharedAdultSurname.length > 0 && ` ${sharedAdultSurname}`}
                 </span>
               )}
               {/* Last year's housing, named in TODAY's language (kindred#2332)
@@ -695,7 +713,11 @@ function FamilyCardChips({
           // away, so the icon is the only carrier left.
           aria-label={party.is_returning === true ? 'Returning family' : 'First-time family'}
           data-testid="family-card-history"
-          className={`ml-auto flex-shrink-0 ${
+          // `pl-1.5` is the review artifact's own 6px, and it earns its place:
+          // without it the mark sits 4px from the last chip — the row gap
+          // alone — and reads as the end of the chip run rather than as a
+          // separate mark pinned to the corner.
+          className={`ml-auto flex-shrink-0 pl-1.5 ${
             party.is_returning === true
               ? 'text-forest-700 dark:text-forest-300'
               : 'text-amber-700 dark:text-amber-300'
