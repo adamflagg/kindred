@@ -828,7 +828,24 @@ export function LodgingMap({ parties, units, year, sessionCmId = 0 }: LodgingMap
               </p>
               <div className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] items-start gap-2.5">
                 {model.offMap.map((entry) => (
-                  <FamilyCard key={partyKey(entry.party)} party={entry.party} onOpen={openParty} />
+                  <FamilyCard
+                    key={partyKey(entry.party)}
+                    party={entry.party}
+                    // ⚠️ THE UNIT IS NOT OPTIONAL HERE, though the prop is.
+                    // These parties are PLACED — the section says so — and
+                    // since kindred#2072 the card grades its need glyphs
+                    // against whatever unit it is handed. Passing nothing
+                    // makes every glyph read as met, which is a positive
+                    // claim about a cabin this surface never looked at; it
+                    // used to print "Fit not verified" instead, and that chip
+                    // is struck. `resolvePartyUnit` is the same call the
+                    // details panel below already makes, and it is what
+                    // resolves a MERGED slot, whose `unit_code` is "" by
+                    // design (kindred#1982) — which is most of what lands in
+                    // this section.
+                    unit={resolvePartyUnit(entry.party, unitsByCode)}
+                    onOpen={openParty}
+                  />
                 ))}
               </div>
             </section>

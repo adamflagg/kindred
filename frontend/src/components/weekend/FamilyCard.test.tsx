@@ -2,9 +2,12 @@
  * The family card is the board's atom — a household of mixed ages, not a
  * camper.
  *
- * The load-bearing tests here are the ABSENCES. Spec §3.8 keeps three things
- * off the card, each for a measured reason, and each is the kind of thing a
- * later session would helpfully add back:
+ * The load-bearing tests here are the ABSENCES.
+ * `docs/reference/weekend-card-vocabulary.md` §3 keeps three things off the
+ * card, each for a measured reason, and each is the kind of thing a later
+ * session would helpfully add back (the citation used to read "spec §3.8" and
+ * pointed at a gitignored file — kindred#2072 moved the record somewhere
+ * everyone can read):
  *
  *   - request text: 12 of 232 contain health vocabulary including a named
  *     diagnosis, and the roster's medical-narrative exposure was accepted for
@@ -91,6 +94,22 @@ function confirmedUnit(overrides: Partial<LodgingUnitRow> = {}): LodgingUnitRow 
 }
 
 const REQUEST_TEXT = 'Please put us near the Garcia family, and we need a ground-floor room.'
+
+/**
+ * Which of the two history marks R3 drew, read off its tooltip.
+ *
+ * The mark is a 16px ICON with no text (kindred#2072), so `getByText`
+ * cannot see it any more. The tooltip is the only place the word lives, and
+ * reading it here rather than asserting on an icon class keeps these tests
+ * about the FACT the card states.
+ */
+function historyMark(): string | null {
+  const mark = screen.getByTestId('family-card-history')
+  fireEvent.focus(mark)
+  const label = screen.getByRole('tooltip').textContent
+  fireEvent.blur(mark)
+  return label
+}
 
 describe('FamilyCard — what it shows', () => {
   // kindred#2152: the badge used to render the server's raw `party_size`,
@@ -372,16 +391,11 @@ describe('FamilyCard — what it shows', () => {
     })
   })
 
-  it('chips the housing needs the fit check judges', () => {
-    render(
-      <FamilyCard
-        party={party({ flags: { needs_power: true, needs_private_bathroom: true } })}
-        onOpen={vi.fn()}
-      />
-    )
-    expect(screen.getByText('Power')).toBeInTheDocument()
-    expect(screen.getByText('Private bathroom')).toBeInTheDocument()
-  })
+  // The two NEED chips this file used to assert here are glyphs now
+  // (kindred#2072). The positive assertion lives in "the need glyphs"; their
+  // absence as words is pinned in "the marks kindred#2072 STRUCK". Deleted
+  // rather than softened — a test that still passed with either shape on the
+  // card would defend neither.
 
   it('marks a mandatory accommodation, which outranks placement', () => {
     render(
@@ -390,18 +404,19 @@ describe('FamilyCard — what it shows', () => {
         onOpen={vi.fn()}
       />
     )
-    expect(screen.getByText('Accommodation required')).toBeInTheDocument()
+    expect(screen.getByText('Needs Accommodation')).toBeInTheDocument()
   })
 
   it('marks a returning household', () => {
     render(<FamilyCard party={party({ is_returning: true })} onOpen={vi.fn()} />)
-    expect(screen.getByText('Returning')).toBeInTheDocument()
+    // R3: a 16px icon, not the word. The tooltip carries the word, and
+    // "Returning / First-time is a 16px icon" below pins the geometry.
+    expect(historyMark()).toBe('Returning family')
   })
 
   it('marks a first-time household when is_returning is false', () => {
     render(<FamilyCard party={party({ is_returning: false })} onOpen={vi.fn()} />)
-    expect(screen.getByText('First-time')).toBeInTheDocument()
-    expect(screen.queryByText('Returning')).not.toBeInTheDocument()
+    expect(historyMark()).toBe('First-time family')
   })
 
   it('marks a first-time household when is_returning is undefined', () => {
@@ -411,8 +426,7 @@ describe('FamilyCard — what it shows', () => {
     // `delete` leaves `p` at its declared type and the assertion only hid
     // that from the reader (`@typescript-eslint/no-unnecessary-type-assertion`).
     render(<FamilyCard party={p} onOpen={vi.fn()} />)
-    expect(screen.getByText('First-time')).toBeInTheDocument()
-    expect(screen.queryByText('Returning')).not.toBeInTheDocument()
+    expect(historyMark()).toBe('First-time family')
   })
 
   // Adult weekend guests are `grain: 'person'`. The API never computes
@@ -422,35 +436,15 @@ describe('FamilyCard — what it shows', () => {
   // brand every adult weekend regular a newcomer on every visit.
   it('stays silent on returning status for an adult weekend guest (person grain)', () => {
     render(<FamilyCard party={party({ grain: 'person', is_returning: false })} onOpen={vi.fn()} />)
-    expect(screen.queryByText('First-time')).not.toBeInTheDocument()
-    expect(screen.queryByText('Returning')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('family-card-history')).not.toBeInTheDocument()
   })
 
-  it('says the fit is unverified rather than judging against an unconfirmed cabin', () => {
-    // `has_power: false` on an UNCONFIRMED row means "nobody has said", which
-    // is what this fixture pins. It used to add "0 of 93 units are confirmed
-    // today, so this is the normal verdict" — production is 118/118 confirmed
-    // as of 2026-08-09, so this is now the exception branch, not the norm.
-    render(
-      <FamilyCard
-        party={party({ flags: { needs_power: true } })}
-        unit={confirmedUnit({ is_confirmed: false })}
-        onOpen={vi.fn()}
-      />
-    )
-    expect(screen.getByText('Fit not verified')).toBeInTheDocument()
-  })
-
-  it('says the cabin does not fit only once the cabin is confirmed', () => {
-    render(
-      <FamilyCard
-        party={party({ flags: { needs_power: true } })}
-        unit={confirmedUnit({ has_power: false })}
-        onOpen={vi.fn()}
-      />
-    )
-    expect(screen.getByText('No power')).toBeInTheDocument()
-  })
+  // The `unverified` ("Fit not verified") and `unmet` ("No power") chips are
+  // both struck (vocabulary §3). The RULE behind them is untouched and still
+  // tested — `rosterAttention.test.ts` owns the confirmed-cabin gate and the
+  // per-need verdicts, which is where it always belonged; these two only ever
+  // asserted that the card printed the result. Their negative pins are in
+  // "the marks kindred#2072 STRUCK".
 
   it('marks the party that did not request sharing when it is in a flagged slot', () => {
     // Keyed off the RESOLVED verdict, not the registration gate: the gate is
@@ -635,46 +629,27 @@ describe('FamilyCard — what it shows', () => {
     expect(screen.getByText('Wants to share')).toBeInTheDocument()
   })
 
-  it('marks a placement that holds a whole building — #2008', () => {
-    render(<FamilyCard party={party()} holdsWholeBuilding={true} onOpen={vi.fn()} />)
-    expect(screen.getByText('Whole building')).toBeInTheDocument()
-  })
-
-  it('says nothing about a placement that does not hold a whole building', () => {
-    render(<FamilyCard party={party()} onOpen={vi.fn()} />)
-    expect(screen.queryByText('Whole building')).not.toBeInTheDocument()
-  })
-
   describe('single-parent flag (kindred#2254 half 2)', () => {
-    // #2072's own scoping ruling replaces only the two need chips
-    // (`Private bathroom`/`Power`) with the glyph gutter — `Whole building`,
-    // the warn chips and the share chips, including this one, stay as
-    // words. So this reuses the muted `Near another family` chip's exact
-    // grammar rather than inventing a new visual channel, and does not wait
-    // on #2072.
+    /*
+     * ⚠️ THE COMMENT THAT USED TO SIT HERE IS SUPERSEDED, and is rewritten
+     * rather than deleted because it recorded a real earlier scoping.
+     *
+     * It said #2072 replaced ONLY the two need chips, so this one "stays as
+     * words" in the muted `Near another family` grammar and did not wait on
+     * #2072. The 2026-08-19 rulings went further: S2 moves the mark off the
+     * chip row entirely, onto line 2 before the adult it describes, and Sa
+     * makes it AMBER — First-time's tone — precisely because borrowing the
+     * sharing chips' grammar made a fact about who is in the room read as a
+     * preference the household expressed.
+     *
+     * The geometry and the colour are pinned in "single parent is a mark on
+     * line 2"; what stays here is the DERIVATION, which is unchanged and is
+     * the half that had the bug.
+     */
     it('flags a household with exactly one attending adult', () => {
       // The default fixture already has one adult (`Emma Johnson`).
       render(<FamilyCard party={party()} onOpen={vi.fn()} />)
-      expect(screen.getByText('Single parent')).toBeInTheDocument()
-    })
-
-    it('matches the muted "Near another family" chip\'s classes exactly — no new tone invented', () => {
-      render(
-        <FamilyCard
-          party={party({
-            share: {
-              preference: 'yes_share',
-              proximity: ['near'],
-              request_text: '',
-              needs_resolution: false,
-            },
-          })}
-          onOpen={vi.fn()}
-        />
-      )
-      const singleParentChip = screen.getByText('Single parent')
-      const nearChip = screen.getByText('Near another family')
-      expect(singleParentChip.className).toBe(nearChip.className)
+      expect(screen.getByTestId('family-card-single-parent')).toBeInTheDocument()
     })
 
     it('says nothing when two adults are attending', () => {
@@ -689,7 +664,7 @@ describe('FamilyCard — what it shows', () => {
           onOpen={vi.fn()}
         />
       )
-      expect(screen.queryByText('Single parent')).not.toBeInTheDocument()
+      expect(screen.queryByTestId('family-card-single-parent')).not.toBeInTheDocument()
     })
 
     // A placeholder slot ("NA", "-", ...) is not an attending adult
@@ -708,12 +683,12 @@ describe('FamilyCard — what it shows', () => {
           onOpen={vi.fn()}
         />
       )
-      expect(screen.getByText('Single parent')).toBeInTheDocument()
+      expect(screen.getByTestId('family-card-single-parent')).toBeInTheDocument()
     })
 
     it('says nothing when no adult is named at all — a data gap, not a single parent', () => {
       render(<FamilyCard party={party({ adults: [] })} onOpen={vi.fn()} />)
-      expect(screen.queryByText('Single parent')).not.toBeInTheDocument()
+      expect(screen.queryByTestId('family-card-single-parent')).not.toBeInTheDocument()
     })
 
     // Person-grain parties (adult weekend guests) ARE their own identity —
@@ -732,12 +707,12 @@ describe('FamilyCard — what it shows', () => {
           onOpen={vi.fn()}
         />
       )
-      expect(screen.queryByText('Single parent')).not.toBeInTheDocument()
+      expect(screen.queryByTestId('family-card-single-parent')).not.toBeInTheDocument()
     })
   })
 })
 
-describe('FamilyCard — spec §3.8, what must stay off it', () => {
+describe('FamilyCard — weekend-card-vocabulary §3, what must stay off it', () => {
   it('never prints request text on the card', () => {
     // THE regression guard. 12 of 232 request texts carry health vocabulary
     // including a named diagnosis; the roster's accepted exposure was one row
@@ -825,10 +800,15 @@ describe('FamilyCard — draggable state does not recreate an ARIA button on the
     // `useDraggable` returns, and only one belongs on this element.
     expect(frame).not.toHaveAttribute('role')
     expect(frame).not.toHaveAttribute('tabindex')
-    // Exactly the inner control(s) are real buttons -- the frame itself
-    // never joins that count, draggable or not.
+    // The FRAME never joins the button count, draggable or not — that is the
+    // assertion, and it is why this no longer counts to exactly one. The chip
+    // row legitimately holds tooltip triggers of its own since kindred#2072
+    // (the need glyphs and R3's history mark), and they are SIBLINGS of the
+    // card's control rather than descendants of the frame's role, which is
+    // the property this guard exists to protect.
     const roleButtons = within(container).getAllByRole('button')
-    expect(roleButtons).toHaveLength(1)
+    expect(roleButtons).not.toContain(frame)
+    // The first control in document order is still the card's own opener.
     expect(roleButtons[0]).toBe(frame?.querySelector('button'))
   })
 
@@ -872,9 +852,17 @@ describe('FamilyCardPreview — the drag overlay', () => {
     expect(container.querySelector('[aria-roledescription="draggable"]')).toBeNull()
   })
 
-  it('is not a button, so it cannot steal the click target', () => {
+  it('carries no card-opening control, so it cannot steal the click target', () => {
     render(<FamilyCardPreview party={party()} />)
-    expect(screen.queryByRole('button')).not.toBeInTheDocument()
+    // The identity lines are plain text in the overlay — the real card wraps
+    // them in a `<button>` that calls `onOpen`, and the overlay has no
+    // `onOpen` to call.
+    expect(screen.getByTestId('family-card-name').closest('button')).toBeNull()
+    // It DOES carry the chip row's own tooltip triggers, because it shares
+    // `FamilyCardChips` rather than copying it — R3's history mark here. That
+    // is the sharing working, not a leak: this used to assert "no button at
+    // all", which only held while no chip had a tooltip.
+    expect(screen.getAllByRole('button')).toEqual([screen.getByTestId('family-card-history')])
   })
 
   it('shows the same children and truncated ages the real card does', () => {
@@ -991,14 +979,43 @@ describe('FamilyCard — summer’s type scale', () => {
   })
 
   it('sets chips at summer’s meta size', () => {
+    // Retargeted off the struck `Power` NEED chip onto a surviving word chip
+    // (kindred#2072). The size rule is unchanged; only the chip that carried
+    // the assertion went.
     render(
       <FamilyCard
-        party={party({ flags: { needs_power: true } })}
+        party={party({
+          share: {
+            preference: 'yes_share',
+            proximity: ['near'],
+            request_text: '',
+            needs_resolution: false,
+          },
+        })}
         unit={confirmedUnit()}
         onOpen={vi.fn()}
       />
     )
-    expect(screen.getByText('Power')).toHaveClass('text-xs')
+    expect(screen.getByText('Near another family')).toHaveClass('text-xs')
+  })
+
+  it('sets the need glyph at the chip row’s own icon size, in a chip-height box', () => {
+    // The glyph replaced a `text-xs` chip and has to sit on the same line as
+    // the ones that remain, so its BOX matches their height: `h-5 w-5` is
+    // 20px, the same as a word chip's 2px padding around 16px of line. It was
+    // `p-0.5` — an 18px box against 20px chips, which reads as a misalignment
+    // rather than as a smaller mark. The board-wide arbitrary-size sweep
+    // covers `text-[Npx]` and would not see either, so both get a pin here.
+    render(
+      <FamilyCard
+        party={party({ flags: { needs_power: true } })}
+        unit={confirmedUnit({ power_coverage: 'all' })}
+        onOpen={vi.fn()}
+      />
+    )
+    const glyph = screen.getByTestId('need-glyph-power')
+    expect(glyph.querySelector('svg')).toHaveClass('h-3', 'w-3')
+    expect(glyph).toHaveClass('h-5', 'w-5')
   })
 
   it('carries the same scale into the drag overlay', () => {
@@ -1208,11 +1225,25 @@ describe('FamilyCard — last year’s housing', () => {
     expect(housing.parentElement).toContainElement(screen.getByTestId('family-card-adults'))
   })
 
-  // THE COMMON CASE. 202 of 2026's 459 registered households have no 2025
-  // cabin, and "" covers three different facts (first-timer, skipped a year,
-  // last here before 2022 when `cabin_assignment` was blank on all 1,433
-  // rows). None of them is "nobody assigned them", so none of them gets a
-  // placeholder, an em dash, or a "First year" label.
+  /*
+   * THE COMMON CASE. 202 of 2026's 459 registered households have no 2025
+   * cabin, and "" covers three different facts (first-timer, skipped a year,
+   * last here before 2022 when `cabin_assignment` was blank on all 1,433
+   * rows). None of them is "nobody assigned them", so none of them gets a
+   * placeholder, an em dash, or a "First year" label.
+   *
+   * ⚠️ THE REVIEW ARTIFACT DRAWS A DIMMED EM DASH HERE. This is one of the
+   * few places the shipped card and that artifact deliberately differ, so the
+   * pin below is what stops a later session "fixing" the card to match the
+   * mock. Owner ruling 2026-08-20, and it is a better argument than the one
+   * above: the card ALREADY distinguishes a returning household from a
+   * first-time one — that is what R3's icon is — so a returning family with
+   * no cabin string reads as "we do not know where they stayed", and a
+   * first-time family needs no mark for housing it never had. The dash would
+   * spend a glyph restating the icon beside it.
+   *
+   * `docs/reference/weekend-card-vocabulary.md` §6 carries the ruling.
+   */
   it('renders nothing at all when there is no prior-year cabin', () => {
     render(<FamilyCard party={party({ last_year_cabin: '' })} onOpen={vi.fn()} />)
     expect(screen.queryByTestId('family-card-last-year-cabin')).not.toBeInTheDocument()
@@ -1228,7 +1259,7 @@ describe('FamilyCard — last year’s housing', () => {
     render(
       <FamilyCard party={party({ is_returning: true, last_year_cabin: '' })} onOpen={vi.fn()} />
     )
-    expect(screen.getByText('Returning')).toBeInTheDocument()
+    expect(historyMark()).toBe('Returning family')
     expect(screen.queryByTestId('family-card-last-year-cabin')).not.toBeInTheDocument()
   })
 
@@ -1298,5 +1329,345 @@ describe('FamilyCard — last year’s housing', () => {
   it('carries the cabin into the drag overlay too', () => {
     render(<FamilyCardPreview party={party({ last_year_cabin: 'Pine Cabin' })} />)
     expect(screen.getByTestId('family-card-last-year-cabin')).toHaveTextContent('Pine Cabin')
+  })
+})
+
+describe('FamilyCard — the need glyphs (kindred#2072)', () => {
+  /*
+   * The vocabulary this file now pins lives in
+   * `docs/reference/weekend-card-vocabulary.md` §2 (what each mark means) and
+   * §6 (the two policies with no other line of code to sit on: the absence
+   * rule, and the closed hue set).
+   *
+   * These replace the two NEED chips — `Private bathroom` and `Power` — and
+   * add two needs that had no card presence at all (`needs_fridge` #2224,
+   * `needs_step_free` #2438 were graded for the drag hatch and drawn nowhere).
+   */
+  const needy = (flags: Record<string, boolean>, rest: Partial<RosterPartyRow> = {}) =>
+    party({ flags: { ...flags }, ...rest })
+
+  it('draws one icon-only glyph per asked need, in the closed set order', () => {
+    render(
+      <FamilyCard
+        party={needy(
+          { needs_private_bathroom: true, needs_power: true, needs_step_free: true },
+          { effective_bathroom: 'private' }
+        )}
+        unit={confirmedUnit({ power_coverage: 'all', ramp_coverage: 'all' })}
+        onOpen={vi.fn()}
+      />
+    )
+    expect(screen.getByTestId('need-glyph-bathroom')).toBeInTheDocument()
+    expect(screen.getByTestId('need-glyph-power')).toBeInTheDocument()
+    expect(screen.getByTestId('need-glyph-step_free')).toBeInTheDocument()
+    expect(screen.queryByTestId('need-glyph-fridge')).not.toBeInTheDocument()
+  })
+
+  it('carries no text label — the shape and the hue are the whole mark', () => {
+    render(
+      <FamilyCard
+        party={needy({ needs_power: true })}
+        unit={confirmedUnit({ power_coverage: 'all' })}
+        onOpen={vi.fn()}
+      />
+    )
+    expect(screen.getByTestId('need-glyph-power').textContent).toBe('')
+    // The chip it replaced, pinned gone.
+    expect(screen.queryByText('Power')).not.toBeInTheDocument()
+  })
+
+  it('names the need in a reachable tooltip, not a title attribute', () => {
+    // A glyph with no words is unreadable without one, and `title` fires on
+    // mouse hover alone (kindred#2177). `ui/Tooltip` is the board's answer.
+    render(
+      <FamilyCard
+        party={needy({ needs_private_bathroom: true }, { effective_bathroom: 'private' })}
+        unit={confirmedUnit()}
+        onOpen={vi.fn()}
+      />
+    )
+    const glyph = screen.getByTestId('need-glyph-bathroom')
+    expect(glyph).not.toHaveAttribute('title')
+    fireEvent.focus(glyph)
+    expect(screen.getByRole('tooltip')).toHaveTextContent('Bathroom in unit')
+  })
+
+  it('takes the locked hue for a need the room meets', () => {
+    // The mock renders #0ea5e9; that value IS `sky-500`. Never hand-written
+    // hex — §6, "The mock's colours are approximations".
+    render(
+      <FamilyCard
+        party={needy({ needs_power: true })}
+        unit={confirmedUnit({ power_coverage: 'all' })}
+        onOpen={vi.fn()}
+      />
+    )
+    const icon = screen.getByTestId('need-glyph-power').querySelector('svg')
+    expect(icon?.getAttribute('class')).toContain('text-purple-500')
+    expect(icon?.getAttribute('class')).toContain('dark:text-purple-400')
+  })
+
+  it('takes the warn fill, border and icon colour for a need the room does not meet', () => {
+    // N2: the glyph goes red-filled. The SHAPE still says which need it is,
+    // which is what makes losing the hue affordable.
+    render(
+      <FamilyCard
+        party={needy({ needs_power: true })}
+        unit={confirmedUnit({ power_coverage: 'none' })}
+        onOpen={vi.fn()}
+      />
+    )
+    const glyph = screen.getByTestId('need-glyph-power')
+    expect(glyph.className).toContain('bg-red-100')
+    expect(glyph.className).toContain('border-red-800')
+    const icon = glyph.querySelector('svg')
+    expect(icon?.getAttribute('class')).toContain('text-red-800')
+    expect(icon?.getAttribute('class')).not.toContain('text-purple-500')
+  })
+
+  it('says so in the tooltip when the cabin does not meet it', () => {
+    render(
+      <FamilyCard
+        party={needy({ needs_fridge: true })}
+        unit={confirmedUnit({ fridge_coverage: 'none' })}
+        onOpen={vi.fn()}
+      />
+    )
+    fireEvent.focus(screen.getByTestId('need-glyph-fridge'))
+    expect(screen.getByRole('tooltip')).toHaveTextContent('Fridge — the cabin does not meet it')
+  })
+
+  it('OMITS a need nobody asked for — never dims it', () => {
+    // THE ABSENCE RULE (§6), pinned on the card as well as on the resolver,
+    // because "draw all four and grey the unasked ones" is the helpful thing
+    // a later session adds.
+    render(<FamilyCard party={party()} unit={confirmedUnit()} onOpen={vi.fn()} />)
+    expect(screen.queryByTestId('need-glyph-bathroom')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('need-glyph-power')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('need-glyph-fridge')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('need-glyph-step_free')).not.toBeInTheDocument()
+  })
+
+  it('draws an asked need un-warned while the party is unplaced', () => {
+    // No cabin to be a misfit for. A queue drawn red says nothing at all.
+    render(<FamilyCard party={needy({ needs_power: true })} onOpen={vi.fn()} />)
+    expect(screen.getByTestId('need-glyph-power').className).not.toContain('bg-red-100')
+  })
+
+  it('writes no hex into any glyph class', () => {
+    /*
+     * ⚠️ MOUNTS ALL FOUR, and that is the whole value of the sweep. The
+     * implementation spec records the failure this repeats otherwise: an
+     * earlier class-string sweep "silently checked a card that never mounted
+     * the merge/split pills" — a sweep is only as good as what its render
+     * mounts. Two of the four glyphs are NEW UI with no production precedent,
+     * so they are exactly the ones a narrow sweep would miss.
+     */
+    const { container } = render(
+      <FamilyCard
+        party={needy({
+          needs_private_bathroom: true,
+          needs_power: true,
+          needs_fridge: true,
+          needs_step_free: true,
+        })}
+        unit={confirmedUnit({ power_coverage: 'none', fridge_coverage: 'all' })}
+        onOpen={vi.fn()}
+      />
+    )
+    // Every glyph in the closed set is actually on the card being swept.
+    expect(container.querySelectorAll('[data-testid^="need-glyph-"]')).toHaveLength(4)
+    const classes = [...container.querySelectorAll('*')]
+      .flatMap((element) => [...element.classList])
+      .join(' ')
+    expect(classes).not.toMatch(/#[0-9a-fA-F]{3,8}\b/)
+  })
+})
+
+describe('FamilyCard — the marks kindred#2072 STRUCK', () => {
+  /*
+   * A CUT IS A RULING, and this codebase has twice restored an element whose
+   * absence was undefended — `LodgingUnitCard.test.tsx`'s "no sr-only text of
+   * any kind (kindred#2348)" describe records an
+   * sr-only region that came back after being ruled out, twice. Every cut in
+   * `weekend-card-vocabulary.md` §3 that lands on this card is pinned here.
+   */
+  const confirmed = confirmedUnit({ power_coverage: 'none' })
+
+  it('draws no "Private bathroom" or "Power" NEED chip — the glyph is the mark', () => {
+    render(
+      <FamilyCard
+        party={party({ flags: { needs_private_bathroom: true, needs_power: true } })}
+        unit={confirmed}
+        onOpen={vi.fn()}
+      />
+    )
+    expect(screen.queryByText('Private bathroom')).not.toBeInTheDocument()
+    expect(screen.queryByText('Power')).not.toBeInTheDocument()
+  })
+
+  it('draws no "No private bathroom" / "No power" chip — one fact stated twice', () => {
+    // §3: a bathroom glyph beside a chip saying the bathroom is missing states
+    // one fact twice. The glyph carries the state itself (N2).
+    render(
+      <FamilyCard
+        party={party({ flags: { needs_power: true }, effective_bathroom: 'none' })}
+        unit={confirmed}
+        onOpen={vi.fn()}
+      />
+    )
+    expect(screen.queryByText(/No power/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/No private bathroom/)).not.toBeInTheDocument()
+  })
+
+  it('draws no "Fit not verified" chip — the whole unverified arm is struck', () => {
+    // §3, `Reconfirm amenities`: the name was wrong on BOTH arms. Arm (a) is
+    // superseded by the unit card's `Reconfirm space`; arm (b) fires BECAUSE
+    // the cabin is confirmed, so "reconfirm" asked for a check already done.
+    render(
+      <FamilyCard
+        party={party({ flags: { needs_power: true } })}
+        unit={confirmedUnit({ is_confirmed: false })}
+        onOpen={vi.fn()}
+      />
+    )
+    expect(screen.queryByText('Fit not verified')).not.toBeInTheDocument()
+  })
+
+  it('draws no "Fit not verified" chip for a generic accommodation either', () => {
+    render(
+      <FamilyCard
+        party={party({ flags: { needs_accommodation: true } })}
+        unit={confirmedUnit()}
+        onOpen={vi.fn()}
+      />
+    )
+    expect(screen.queryByText('Fit not verified')).not.toBeInTheDocument()
+  })
+
+  it('draws no "Whole building" chip, and takes no prop that could ask for one', () => {
+    // §3, "Earlier cuts, still struck". The chip survives on the MAP
+    // (`MapUnitPopover`), which is a different surface and keeps its own copy.
+    //
+    // The PROP went with the chip, and that is defended by the type checker
+    // rather than here: `holdsWholeBuilding` no longer exists on
+    // `FamilyCardProps`, so a session wiring it back up fails `tsc` at the
+    // call site before it reaches a test. `LodgingUnitCard.test` holds the
+    // behavioural half, against a real whole-building placement.
+    render(<FamilyCard party={party()} onOpen={vi.fn()} />)
+    expect(screen.queryByText('Whole building')).not.toBeInTheDocument()
+  })
+
+  it('draws no "Single parent" CHIP — the mark moved to line 2', () => {
+    render(<FamilyCard party={party()} onOpen={vi.fn()} />)
+    expect(screen.queryByText('Single parent')).not.toBeInTheDocument()
+  })
+})
+
+describe('FamilyCard — single parent is a mark on line 2 (S2 + Sa)', () => {
+  it('marks the adult line of a household with exactly one attending adult', () => {
+    render(<FamilyCard party={party()} onOpen={vi.fn()} />)
+    const mark = screen.getByTestId('family-card-single-parent')
+    const adults = screen.getByTestId('family-card-adults')
+    expect(adults.textContent).toContain('Emma Johnson')
+    // BEFORE the adult name AND INSIDE the run, which is what makes it read as
+    // a fact about that person rather than a preference in the chip row.
+    //
+    // Inside, not a preceding sibling: an `<svg>` has no baseline, so a flex
+    // wrapper around the icon and the names took ITS baseline from the icon's
+    // bottom edge and dropped line 2's right-anchored cabin 2.25px — on the
+    // single-parent cards only, so a column of them showed the cabin
+    // jittering. Pinned structurally because jsdom has no layout engine to
+    // catch the pixels.
+    expect(adults.firstElementChild).toBe(mark)
+  })
+
+  it('is AMBER — First-time’s tone, so amber means "notice this household" on both', () => {
+    // Sa. It left the chip row, where it borrowed the sharing chips' muted
+    // grammar and read as a preference.
+    render(<FamilyCard party={party()} onOpen={vi.fn()} />)
+    const mark = screen.getByTestId('family-card-single-parent')
+    expect(mark.getAttribute('class')).toContain('text-amber-700')
+    expect(mark.getAttribute('class')).toContain('dark:text-amber-300')
+  })
+
+  it('says nothing when two adults are attending', () => {
+    render(
+      <FamilyCard
+        party={party({
+          adults: [
+            { adult_number: 1, display_name: 'Emma Johnson', relationship: 'Mother' },
+            { adult_number: 2, display_name: 'Liam Johnson', relationship: 'Father' },
+          ],
+        })}
+        onOpen={vi.fn()}
+      />
+    )
+    expect(screen.queryByTestId('family-card-single-parent')).not.toBeInTheDocument()
+  })
+})
+
+describe('FamilyCard — Returning / First-time is a 16px icon, bottom right (R3)', () => {
+  it('draws Returning as an icon with no text label', () => {
+    render(<FamilyCard party={party({ is_returning: true })} onOpen={vi.fn()} />)
+    expect(screen.queryByText('Returning')).not.toBeInTheDocument()
+    const mark = screen.getByTestId('family-card-history')
+    expect(mark.querySelector('svg')?.getAttribute('class')).toContain('h-4 w-4')
+  })
+
+  it('draws First-time as an icon with no text label', () => {
+    render(<FamilyCard party={party()} onOpen={vi.fn()} />)
+    expect(screen.queryByText('First-time')).not.toBeInTheDocument()
+    expect(screen.getByTestId('family-card-history').querySelector('svg')).toBeInTheDocument()
+  })
+
+  it('names itself in a tooltip, since the icon carries no words', () => {
+    render(<FamilyCard party={party({ is_returning: true })} onOpen={vi.fn()} />)
+    fireEvent.focus(screen.getByTestId('family-card-history'))
+    expect(screen.getByRole('tooltip')).toHaveTextContent('Returning family')
+  })
+
+  it('sits at the END of the chip row, pushed right and never wrapping', () => {
+    render(
+      <FamilyCard
+        party={party({
+          is_returning: true,
+          share: {
+            preference: 'yes_share',
+            proximity: ['near'],
+            request_text: '',
+            needs_resolution: false,
+          },
+        })}
+        onOpen={vi.fn()}
+      />
+    )
+    const mark = screen.getByTestId('family-card-history')
+    expect(mark.className).toContain('ml-auto')
+    expect(mark.className).toContain('flex-shrink-0')
+    // Last child of the row, after the wrapping chip group.
+    expect(mark.parentElement?.lastElementChild).toBe(mark)
+  })
+
+  it('still draws nothing at all for a person-grain party', () => {
+    // `is_returning` is only ever computed for household-grain parties, so an
+    // adult weekend guest arrives with the Pydantic default `false` —
+    // untracked, not "no".
+    render(
+      <FamilyCard party={party({ grain: 'person', display_name: 'Ada Okafor' })} onOpen={vi.fn()} />
+    )
+    expect(screen.queryByTestId('family-card-history')).not.toBeInTheDocument()
+  })
+})
+
+describe('FamilyCard — the mandatory-accommodation chip is renamed', () => {
+  it('reads "Needs Accommodation"', () => {
+    // Renamed under kindred#2072; the label is EXPLICITLY NOT LOCKED and is
+    // one of the five marks parked for staff input.
+    render(
+      <FamilyCard party={party({ flags: { accommodation_is_mandatory: true } })} onOpen={vi.fn()} />
+    )
+    expect(screen.getByText('Needs Accommodation')).toBeInTheDocument()
+    expect(screen.queryByText('Accommodation required')).not.toBeInTheDocument()
   })
 })

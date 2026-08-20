@@ -74,12 +74,22 @@ export interface MapUnitPopoverProps {
 const NO_WHOLE_BUILDING_HOLDERS: Set<string> = new Set()
 
 /**
- * The board's own "Whole building" chip (`FamilyCard.tsx`'s `Chip` with
- * `tone="building"`), reproduced rather than imported: that `Chip` is local
- * to `FamilyCard.tsx` and not exported, and exporting it is a `FamilyCard.tsx`
- * change outside this fix's scope. Same label, same indigo tokens, same
- * `Home` icon, so the fact reads identically on both surfaces — mirroring the
- * board's vocabulary, not inventing a second one for it.
+ * The "Whole building" chip, and since kindred#2072 the MAP IS ITS ONLY HOME.
+ *
+ * It was a mirror of `FamilyCard.tsx`'s own chip (its `Chip` with
+ * `tone="building"`), reproduced rather than imported because that `Chip` is
+ * local and unexported. The board's copy is now STRUCK — vocabulary §3,
+ * "Earlier cuts, still struck" — along with its indigo tone, so what was a
+ * deliberate mirror is the last one standing.
+ *
+ * It stays here, and the asymmetry is the reason it can: a board card's
+ * geometry says nothing about containment, where the map draws a building as
+ * one mark among its neighbours and the fact is worth stating. The same
+ * split `Staff` takes — cut from the card, alive on the map and the units
+ * admin table.
+ *
+ * So do NOT "restore consistency" by putting it back on the card, and do not
+ * delete it here for having lost its twin.
  */
 function WholeBuildingBadge() {
   return (

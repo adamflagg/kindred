@@ -265,7 +265,11 @@ describe('MapUnitPopover — one room', () => {
     }
     render(
       <MapUnitPopover
-        units={[mapUnit(row({ is_confirmed: true, has_power: false }), [needsPower])]}
+        units={[
+          mapUnit(row({ is_confirmed: true, has_power: false, power_coverage: 'none' }), [
+            needsPower,
+          ]),
+        ]}
         hue={HUE}
         onOpenParty={vi.fn()}
       />
@@ -285,7 +289,11 @@ describe('MapUnitPopover — one room', () => {
     }
     render(
       <MapUnitPopover
-        units={[mapUnit(row({ is_confirmed: true, has_power: false }), [needsPower])]}
+        units={[
+          mapUnit(row({ is_confirmed: true, has_power: false, power_coverage: 'none' }), [
+            needsPower,
+          ]),
+        ]}
         hue={HUE}
         onOpenParty={vi.fn()}
       />

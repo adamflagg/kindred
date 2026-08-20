@@ -753,7 +753,22 @@ describe('LodgingUnitCard — the per-party sharing chip follows ROOM overlap, n
   })
 })
 
-describe('LodgingUnitCard — the whole-building mark (#2008)', () => {
+describe('LodgingUnitCard — the whole-building mark is STRUCK from the card (kindred#2072)', () => {
+  /*
+   * §3 of `weekend-card-vocabulary.md`, "Earlier cuts, still struck" — the
+   * `Whole building` chip was ruled out and had never been landed.
+   *
+   * The three cases below are UNCHANGED fixtures with inverted expectations,
+   * which is the point: what was tested here was `wholeBuildingHolders`'s
+   * containment rule, and that rule is untouched and still exercised by
+   * `boardLayout.test.ts` and by the MAP, which keeps the chip
+   * (`MapUnitPopover`). Deleting these would have deleted the only pin
+   * standing between a future session and helpfully restoring the chip.
+   *
+   * Kept as a full describe rather than one assertion because the chip could
+   * come back through any of the three doors: a whole-house let, a single
+   * room, or two households splitting a combined card.
+   */
   // A halved house: `upstairs`/`downstairs` are DIFFERENT buildings under
   // the immediate-parent grain ruled on #2008, even though both share the
   // `house` root.
@@ -771,7 +786,7 @@ describe('LodgingUnitCard — the whole-building mark (#2008)', () => {
     is_combined: true,
   })
 
-  it('marks a party whose own unit_codes cover the whole card it is drawn on', () => {
+  it('draws no chip for a party whose own unit_codes cover the whole card', () => {
     render(
       <LodgingUnitCard
         slot={slot({
@@ -789,10 +804,10 @@ describe('LodgingUnitCard — the whole-building mark (#2008)', () => {
         onOpenParty={vi.fn()}
       />
     )
-    expect(screen.getByText('Whole building')).toBeInTheDocument()
+    expect(screen.queryByText('Whole building')).not.toBeInTheDocument()
   })
 
-  it('does not mark a party holding only one room of a two-room half', () => {
+  it('draws none for a party holding only one room of a two-room half either', () => {
     render(
       <LodgingUnitCard
         slot={slot({
@@ -807,7 +822,7 @@ describe('LodgingUnitCard — the whole-building mark (#2008)', () => {
     expect(screen.queryByText('Whole building')).not.toBeInTheDocument()
   })
 
-  it('does not mark either of two households splitting a combined card between disjoint rooms', () => {
+  it('draws none for two households splitting a combined card between disjoint rooms', () => {
     render(
       <LodgingUnitCard
         slot={slot({

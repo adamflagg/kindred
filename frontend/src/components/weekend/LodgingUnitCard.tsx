@@ -16,12 +16,7 @@ import { Bath, Merge, Plug, Snowflake, Split, TriangleAlert, Users } from 'lucid
 
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
 import { Tooltip } from '../ui/Tooltip'
-import {
-  overlappingPartyKeys,
-  slotOccupancy,
-  wholeBuildingHolders,
-  type BoardSlot,
-} from './boardLayout'
+import { overlappingPartyKeys, slotOccupancy, type BoardSlot } from './boardLayout'
 import { isValidMergeTarget, mergeDragId, unitDroppableId } from './dragPlacement'
 import { FamilyCard } from './FamilyCard'
 import { partyHeadcount } from './householdIdentity'
@@ -368,13 +363,17 @@ export function LodgingUnitCard({
   // answer "do these two overlap" two different ways.
   const overlappingKeys = overlappingPartyKeys(parties, units)
 
-  // #2008: read against each party's OWN occupied leaves, not the slot's
-  // combined membership — two households splitting this card between
-  // disjoint rooms neither holds it alone, even when the CARD itself is the
-  // whole building. Computed from THIS slot's own parties, the same way
-  // `overlappingKeys` above is: the answer depends only on a party's own
-  // occupied codes, never on its neighbours in the slot.
-  const wholeBuildingKeys = wholeBuildingHolders(parties, units)
+  /*
+   * ⚠️ `wholeBuildingHolders` IS NO LONGER READ HERE, and the absence is a
+   * ruling (kindred#2072, vocabulary §3 "Earlier cuts, still struck").
+   *
+   * #2008's `Whole building` chip is struck from the family card: staff know
+   * which placements take a house, and the chip cost one of the widest slots
+   * in a row that now has to fit up to four need glyphs. The helper itself
+   * stays in `boardLayout.ts` — `LodgingMap` and `MapUnitPopover` still draw
+   * the chip, on a surface where the card's own geometry says nothing about
+   * containment.
+   */
 
   // Merging is promotion to the parent, so a parentless room offers nothing
   // to promote it to — the handle is ABSENT, not merely disabled.
@@ -1040,8 +1039,11 @@ export function LodgingUnitCard({
         </span>
       )}
 
-      {/* Spec §11: a household answered `no_share` and is sharing anyway. On
-          2026 data this fires exactly once, and that one case is real. */}
+      {/* A household answered `no_share` and is sharing anyway — the
+          consent warning, `docs/reference/weekend-card-vocabulary.md` §1
+          (a gitignored "spec §11" until kindred#2072). On 2026 data this
+          fires exactly once, and that one case is real. Still PENDING STAFF
+          INPUT: it is one of five marks parked for them. */}
       {consent && (
         <p className="text-sm font-medium text-amber-700 dark:text-amber-400">{consent.reason}</p>
       )}
@@ -1162,7 +1164,6 @@ export function LodgingUnitCard({
               party={party}
               unit={unit}
               sharedSlot={overlappingKeys.has(partyKey(party))}
-              holdsWholeBuilding={wholeBuildingKeys.has(partyKey(party))}
               isDraggable={canPlace}
               onOpen={onOpenParty}
             />

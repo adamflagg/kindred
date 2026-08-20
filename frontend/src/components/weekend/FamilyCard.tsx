@@ -7,7 +7,13 @@
  * this is a new component rather than a branch inside the 849-line
  * `BunkingBoardByArea.tsx`.
  *
- * ## Three things stay OFF this card (spec §3.8), each measured
+ * ## Three things stay OFF this card, each measured
+ *
+ * Recorded in `docs/reference/weekend-card-vocabulary.md` §3. That citation
+ * used to read "spec §3.8", pointing at
+ * `docs/superpowers/specs/2026-07-31-family-camp-lodging-board-map-design.md`,
+ * which is GITIGNORED and exists in nobody's clone — one of at least nine
+ * such citations in shipped code, and the reason the tracked doc exists.
  *
  * - **Request text.** 12 of 232 request texts contain health vocabulary
  *   including a named diagnosis. HANDOFF §8 accepted that exposure on the
@@ -26,7 +32,28 @@
  * What IS here: the children lead, bold, with truncated whole-year ages —
  * ages are the entire point of a "similar ages" match — the party size, the
  * attending adults one line down in grey with last year's cabin right-anchored
- * opposite them, and the housing chips the fit check actually judges.
+ * opposite them, and a third line carrying the household's needs and
+ * intentions.
+ *
+ * ## The third line is a GLYPH ROW now (kindred#2072)
+ *
+ * It used to be words: `Private bathroom`, `Power`, `No power`, `Fit not
+ * verified`, `Whole building`, `Single parent`, `Returning`. Seven possible
+ * chips, of which the pair that fires on nearly every card (Returning /
+ * First-time, 279 against 123) took two of the widest slots to say something
+ * staff read at a glance.
+ *
+ * Now: the four ruled needs — bathroom, power, fridge, step-free — as
+ * icon-only chips in a closed hue set, red-filled when the room does not meet
+ * them (N2); the sharing intentions still as words, because they are the
+ * marks staff have not yet ruled on; the single-parent mark moved UP to line 2
+ * where it describes the adult beside it (S2 + Sa); and Returning/First-time
+ * as one 16px icon pinned bottom-right (R3).
+ *
+ * A need the household did not ask for is OMITTED, never dimmed. Every mark,
+ * every cut and the reason for each is in
+ * `docs/reference/weekend-card-vocabulary.md` — read §3 before adding
+ * anything here, because seven marks were removed on purpose.
  *
  * ## Last year's cabin shares line 2; it does not get one (kindred#2075)
  *
@@ -54,7 +81,7 @@
  * its `display_name` stays.
  */
 import { useDraggable } from '@dnd-kit/core'
-import { Home, Repeat, Star, Users, type LucideIcon } from 'lucide-react'
+import { Repeat, Star, User, Users } from 'lucide-react'
 import { Fragment } from 'react'
 
 import type { LodgingUnitRow, PartyChildRow, RosterPartyRow } from '../../types/lodging'
@@ -67,6 +94,7 @@ import {
   dedupeChildNames,
   partyHeadcount,
 } from './householdIdentity'
+import { resolveNeedGlyphs, type ResolvedNeedGlyph } from './needGlyphs'
 import { partyKey } from './partyKey'
 import { ATTENTION_LABEL, partyAttention } from './rosterAttention'
 
@@ -77,17 +105,11 @@ export interface FamilyCardProps {
   /**
    * Whether another party is in the same room. Declining to share is the
    * ordinary answer and contradicts nothing on its own — it only becomes
-   * worth saying when somebody else is in the room (spec §11).
+   * worth saying when somebody else is in the room
+   * (`docs/reference/weekend-card-vocabulary.md` §2, the sharing-intent
+   * chips — a gitignored "spec §11" until kindred#2072).
    */
   sharedSlot?: boolean
-  /**
-   * Whether this PLACEMENT — this party's own occupied leaves, not the
-   * card it happens to share — covers an entire building (kindred#2008).
-   * A household holding a whole building is private in a way no
-   * combination of room-level flags conveys; the caller computes this from
-   * `boardLayout.ts`'s `wholeBuildingHolders`, never re-derived here.
-   */
-  holdsWholeBuilding?: boolean
   /**
    * The card is in the unplaced queue rather than in a slot on the board.
    * Purely a surface choice: the popover's own background is already the
@@ -107,31 +129,77 @@ export interface FamilyCardProps {
   onOpen: (party: RosterPartyRow) => void
 }
 
-type ChipTone = 'need' | 'warn' | 'share' | 'quiet' | 'muted' | 'building'
+/**
+ * The warn treatment, named once because TWO shapes wear it.
+ *
+ * A word chip takes it as a fill; a need glyph takes it as fill, border AND
+ * icon colour (N2). Those have to be the same red — the glyph replaced the
+ * `No power` chip that used to sit beside it, and two reds for one meaning is
+ * how a palette stops meaning anything. A complete literal, because Tailwind
+ * scans raw source text.
+ */
+const WARN_TONE = 'bg-red-100 text-red-800 dark:bg-red-950/50 dark:text-red-300'
+
+/**
+ * ⚠️ THREE TONES WERE REMOVED WITH THEIR CHIPS (kindred#2072) AND MUST NOT
+ * COME BACK AS DECORATION:
+ *
+ *   `need`     — the amber fill of `Private bathroom` / `Power`. Those two
+ *                chips ARE the need glyphs now.
+ *   `quiet`    — the dashed `Fit not verified` chip, struck with both arms of
+ *                `Reconfirm amenities` (vocabulary §3).
+ *   `building` — the indigo `Whole building` chip, an earlier cut that had
+ *                never been landed. It survives on the MAP, which keeps its
+ *                own copy in `MapUnitPopover`.
+ *
+ * A tone with no chip is an invitation to invent one.
+ */
+type ChipTone = 'warn' | 'share' | 'muted'
 
 const CHIP_TONE: Record<ChipTone, string> = {
-  need: 'bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300',
-  warn: 'bg-red-100 text-red-800 dark:bg-red-950/50 dark:text-red-300',
+  warn: WARN_TONE,
   share: 'bg-forest-100 text-forest-800 dark:bg-forest-950/50 dark:text-forest-300',
-  quiet: 'border-border text-muted-foreground border border-dashed',
   muted: 'bg-muted text-muted-foreground',
-  // Distinct from `share` (a REQUEST) and `warn` (a problem) — a whole
-  // building held is neither, it is a privacy fact staff act on. Distinct
-  // from `unitBadges.ts`'s violet "Staff" badge too, so the two never read
-  // as the same signal on adjoining cards.
-  building: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-950/50 dark:text-indigo-300',
 }
+
+/**
+ * The unmet glyph: warn fill, warn BORDER, warn icon (N2).
+ *
+ * The border is what distinguishes it from a word chip wearing the same fill —
+ * an icon-only mark is small, and a fill alone at 18px reads as a smudge. The
+ * mock sets `border-color: var(--warn-fg)`, which is this `text-red-800` step
+ * on the light side and `red-300` on the dark.
+ */
+const GLYPH_UNMET = `${WARN_TONE} border-red-800 dark:border-red-300`
+
+/**
+ * The icon-only chip is a GEOMETRY, not a seventh tone.
+ *
+ * Transparent ground, a 1px border in the card's own border token, and a
+ * SQUARE 20×20 box — it composes with `GLYPH_UNMET` above for the unmet state
+ * rather than being a variant of it. `rounded-lg` rather than the word chips'
+ * `rounded-full`: a circle around a 12px glyph reads as a bullet, and the
+ * shape difference is what says "this is a need, not a preference".
+ *
+ * ⚠️ 20px IS THE WORD CHIPS' OWN HEIGHT, and matching it is the point. This
+ * was `p-0.5`, which is 18px — two pixels shorter than every chip it shares a
+ * line with, which reads as a misalignment rather than as a smaller mark. The
+ * review artifact reaches 20 with 3px of padding; `h-5 w-5` reaches it on
+ * Tailwind's own scale, with `justify-center` doing what the padding did.
+ *
+ * It also closes a 2px overlap: `ui/Tooltip`'s invisible 24px hit target
+ * overhung an 18px glyph by 3px a side against a 4px gap, so adjacent glyphs'
+ * hit areas collided and the later one in the DOM won.
+ */
+const GLYPH_BASE = 'inline-flex h-5 w-5 items-center justify-center rounded-lg border'
 
 function Chip({
   label,
   tone,
-  icon: Icon,
   title,
 }: {
   label: string
   tone: ChipTone
-  /** Optional, e.g. the "Whole building" chip's `Home` — every other chip omits it. */
-  icon?: LucideIcon
   /**
    * The chip's per-party detail, e.g. "Answers disagree"'s account of which
    * two answers disagreed (kindred#2083).
@@ -160,12 +228,10 @@ function Chip({
   title?: string
 }) {
   const chipClassName = `inline-flex items-center rounded-full px-1.5 py-0.5 text-xs font-semibold whitespace-nowrap ${CHIP_TONE[tone]}`
-  const content = (
-    <>
-      {Icon && <Icon className="mr-0.5 h-3 w-3 flex-shrink-0" aria-hidden="true" />}
-      {label}
-    </>
-  )
+  // No icon slot. The one chip that carried one ("Whole building", a `Home`)
+  // is struck; every need that wants an icon is a glyph now, and a word chip
+  // that grows one would be the two vocabularies collapsing back together.
+  const content = label
   if (title !== undefined && title.length > 0) {
     return (
       <Tooltip content={title} className={chipClassName}>
@@ -174,6 +240,45 @@ function Chip({
     )
   }
   return <span className={chipClassName}>{content}</span>
+}
+
+/**
+ * One need glyph — the whole point of kindred#2072.
+ *
+ * ICON-ONLY, and that is the ruling rather than a space saving: four needs
+ * wearing four hues read as a gutter a staff member scans, where four word
+ * chips wrapped the card and pushed the sharing chips onto a third line. The
+ * SHAPE says which need it is, which is what makes losing the hue affordable
+ * when the glyph goes to warn (N2).
+ *
+ * A REACHABLE tooltip, not a `title`: `title` fires on mouse hover and
+ * nothing else (kindred#2177), and a mark with no words is unreadable without
+ * one. Valid HTML here because the chip row is a SIBLING of the card's own
+ * `<button>`, never its child (kindred#2222) — the same thing that let
+ * "Answers disagree" grow a real trigger in kindred#2250.
+ */
+function NeedGlyphMark({ glyph }: { glyph: ResolvedNeedGlyph }) {
+  const { Icon, label, hueClassName, isUnmet } = glyph
+  const sentence = isUnmet ? `${label} — the cabin does not meet it` : label
+  return (
+    <Tooltip
+      content={sentence}
+      // ★ NAMED, and this is a hard requirement of the change rather than an
+      // accessibility flourish. After kindred#2072 the strings "Private
+      // bathroom" and "Power" appear NOWHERE on this card — the glyph is the
+      // only carrier — so a trigger with no accessible name is a control that
+      // announces nothing and a `getByRole('button', { name })` query that
+      // cannot find it. `frontend/CLAUDE.md` puts it plainly inside the
+      // opt-out policy: "An icon-only button needs a name — give it one", and
+      // `ui/Tooltip`'s own `aria-label` doc scopes itself to exactly this case
+      // — a trigger whose visible content does not name it.
+      aria-label={sentence}
+      data-testid={`need-glyph-${glyph.key}`}
+      className={`${GLYPH_BASE} ${isUnmet ? GLYPH_UNMET : 'border-border bg-transparent'}`}
+    >
+      <Icon className={`h-3 w-3 ${isUnmet ? 'text-red-800 dark:text-red-300' : hueClassName}`} />
+    </Tooltip>
+  )
 }
 
 /**
@@ -319,6 +424,21 @@ function FamilyCardIdentity({ party }: { party: RosterPartyRow }) {
   // because a redundant `isHousehold` guard would look like the load-bearing
   // one and outlive the branch it duplicates.
   const lastYearCabin = (party.last_year_cabin ?? '').trim()
+  /*
+   * S2 + Sa (kindred#2072): the single-parent mark LEFT the chip row.
+   *
+   * It sat there wearing the muted `Near another family` grammar, which made
+   * a fact about who is in the room read as a preference the household
+   * expressed. On line 2, immediately before the adult it describes, it reads
+   * as what it is. Freeing that chip slot also un-wrapped the densest cards.
+   *
+   * Derived from the ATTENDING adult list, never `party.adults.length` or
+   * `party_size` — both count listed-but-not-attending adults
+   * (kindred#1925/#2046) and would false-positive a two-parent household
+   * where one adult never RSVP'd for this session. `computeAttendingAdults`
+   * already grain-gates, so no separate household check is needed.
+   */
+  const isSingleParent = attendingAdults.length === 1
 
   return (
     <>
@@ -404,6 +524,30 @@ function FamilyCardIdentity({ party }: { party: RosterPartyRow }) {
                   the 340 multi-adult rostered households and leaves the other
                   205 written out in full. The adults are the FILTERED list,
                   so a placeholder slot cannot suppress the dedupe. */}
+                  {/* ⚠️ INLINE, INSIDE THE NAMES — not a flex sibling of them,
+                      and the difference is 2.25px of visible jitter.
+
+                      The first version wrapped the icon and the names in a flex
+                      box. An `<svg>` has NO BASELINE, so that wrapper's baseline
+                      was synthesised from the icon's bottom edge, and line 2's
+                      `items-baseline` then dropped the right-anchored cabin
+                      2.25px below the adult names — but ONLY on the cards
+                      carrying this mark, so a column of cards showed the cabin
+                      jittering. Measured across 30 live cards: 2.25px with the
+                      mark, 0 without.
+
+                      Inline, the span's baseline is the text's own and the two
+                      halves of line 2 sit level again. It is also what the
+                      review artifact does.
+
+                      AMBER, and specifically First-time's amber: one language
+                      for "notice this household" across both marks (Sa). */}
+                  {isSingleParent && (
+                    <User
+                      data-testid="family-card-single-parent"
+                      className="mr-0.5 inline h-3 w-3 align-text-bottom text-amber-700 dark:text-amber-300"
+                    />
+                  )}
                   {adultNames.map((name, index) => (
                     <Fragment key={String(attendingAdults[index]?.adult_number ?? index)}>
                       {index > 0 && ' · '}
@@ -474,14 +618,11 @@ function FamilyCardChips({
   party,
   unit,
   sharedSlot,
-  holdsWholeBuilding = false,
 }: {
   party: RosterPartyRow
   unit?: LodgingUnitRow | undefined
   sharedSlot: boolean
-  holdsWholeBuilding?: boolean
 }) {
-  const flags = party.flags ?? {}
   const isHousehold = party.grain === 'household'
   const attention = partyAttention(party, unit)
   const proximity = party.share?.proximity ?? []
@@ -491,42 +632,44 @@ function FamilyCardChips({
   const wantsToShare = proximity.includes('with') || proximity.includes('similar_ages')
   const wantsNear = proximity.includes('near')
   const conflictDetail = answersConflictDetail(party.share)
-  // kindred#2254 half 2: single-parent, derived from the ATTENDING adult
-  // list, not `party.adults.length` or `party_size` -- both of those count
-  // listed-but-not-attending adults (kindred#1925/#2046) and would
-  // false-positive a two-parent household where one adult never RSVP'd for
-  // this session. `computeAttendingAdults` already grain-gates to household
-  // parties (an adult weekend guest IS its own identity, not a household of
-  // one), so no separate `isHousehold` check is needed here.
-  const isSingleParent = computeAttendingAdults(party).length === 1
+  // The four ruled needs, graded once, in `needGlyphs.ts`. A need the
+  // household did not ask for is ABSENT from this array — never dimmed (§6).
+  const glyphs = resolveNeedGlyphs(party, unit)
 
   return (
-    <span className="flex flex-wrap gap-1">
-      {/* #2008: this PLACEMENT covers every leaf of a building, not merely
-            a card it happens to share — see `holdsWholeBuilding`'s doc.
-            First in the row: it is a fact about the household's privacy, not
-            a need or a warning, and staff scan left-to-right. */}
-      {holdsWholeBuilding && <Chip label="Whole building" tone="building" icon={Home} />}
-      {/* The needs a cabin field can actually answer — the same two the fit
-            check judges. `needs_accommodation` names no specific amenity, so
-            it is carried by the verdict chip below instead of duplicated. */}
-      {flags.needs_private_bathroom === true && <Chip label="Private bathroom" tone="need" />}
-      {flags.needs_power === true && <Chip label="Power" tone="need" />}
+    /* `flex-nowrap` on the ROW and the wrapping confined to the group inside
+       it: that is what pins the Returning/First-time mark bottom-right (R3)
+       however many chips the household carries. `items-end` keeps it sitting
+       on the last chip line rather than floating beside the first. */
+    <span className="flex flex-nowrap items-end gap-1">
+      <span className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
+        {/* Glyphs lead, in the closed set's own order, because they are the
+            household's ASK and everything after them is context for it. */}
+        {glyphs.map((glyph) => (
+          <NeedGlyphMark key={glyph.key} glyph={glyph} />
+        ))}
 
-      {attention.level === 'required' && <Chip label={ATTENTION_LABEL.required} tone="warn" />}
-      {attention.level === 'unmet' && <Chip label={attention.reason} tone="warn" />}
-      {attention.level === 'unverified' && <Chip label={ATTENTION_LABEL.unverified} tone="quiet" />}
+        {/* The hardest stop on the board — a member cannot attend without the
+            accommodation. Two households on 2026 data.
 
-      {/* Keyed off the RESOLVED verdict, not the registration gate. The gate
+            THE LABEL IS NOT LOCKED. It is one of the five marks parked for
+            staff input, along with the four sharing chips below and the unit
+            card's consent warning, so it lives in `ATTENTION_LABEL` where a
+            rename is one line. The two OTHER arms of `partyAttention` that
+            used to chip here — `unmet` ("No power") and `unverified` ("Fit not
+            verified") — are struck; see the tone block above. */}
+        {attention.level === 'required' && <Chip label={ATTENTION_LABEL.required} tone="warn" />}
+
+        {/* Keyed off the RESOLVED verdict, not the registration gate. The gate
             is superseded wherever the Family Camp form answered, so a household
             that said no at registration and then named a partner is legitimately
             placed — chipping it "declined" repeats at card level exactly the
             false positive the slot flag was moved off the gate to avoid.
             Wording matches the slot: the form has no refusal option. */}
-      {sharedSlot && party.share?.eligibility === 'declined' && (
-        <Chip label={shareWordingChip(SHARE_WORDING.declined)} tone="warn" />
-      )}
-      {/* 16 households for 2026 carry disagreeing answers. Shown on the card
+        {sharedSlot && party.share?.eligibility === 'declined' && (
+          <Chip label={shareWordingChip(SHARE_WORDING.declined)} tone="warn" />
+        )}
+        {/* 16 households for 2026 carry disagreeing answers. Shown on the card
             as well as the slot, so a party sitting alone still surfaces one.
             Gated on the DETAIL, not the raw boolean (kindred#2083): a party
             this can't explain — none exist today, but a person-grain party
@@ -534,36 +677,58 @@ function FamilyCardChips({
             chip. The tooltip names which two answers disagreed and which one
             staff are acting on, matching `SharePreferenceChip`'s hover
             pattern rather than a bare unexplained flag. */}
-      {conflictDetail !== null && (
-        <Chip label={shareWordingChip(SHARE_WORDING.conflict)} tone="warn" title={conflictDetail} />
-      )}
-      {wantsToShare && <Chip label="Wants to share" tone="share" />}
-      {/* NEAR and WITH are different requests: NEAR is satisfied by map
+        {conflictDetail !== null && (
+          <Chip
+            label={shareWordingChip(SHARE_WORDING.conflict)}
+            tone="warn"
+            title={conflictDetail}
+          />
+        )}
+        {wantsToShare && <Chip label="Wants to share" tone="share" />}
+        {/* NEAR and WITH are different requests: NEAR is satisfied by map
             distance between units, WITH by putting both in one room. */}
-      {wantsNear && <Chip label="Near another family" tone="muted" />}
-      {/* #2072's own scoping ruling replaces only the two NEED chips
-            (`Private bathroom`/`Power`) with its glyph gutter -- this is not
-            a housing-need flag, so it stays a word, reusing this same
-            `Near another family` muted grammar rather than a new one. */}
-      {isSingleParent && <Chip label="Single parent" tone="muted" />}
+        {wantsNear && <Chip label="Near another family" tone="muted" />}
+      </span>
 
-      {party.is_returning === true && (
-        <span className="text-forest-700 dark:text-forest-300 inline-flex items-center gap-0.5 text-xs font-semibold">
-          <Repeat className="h-2.5 w-2.5 flex-shrink-0" />
-          Returning
-        </span>
-      )}
-      {/* `is_returning` is only ever computed for household-grain parties
-            (`_build_household_parties` sets it from `prior_cm_ids`). An
-            adult weekend guest is `grain: 'person'`, for which the field is
-            never set and arrives as the Pydantic default `false` -- untracked,
-            not "no". Gating on grain keeps this badge from calling every
-            adult weekend regular a first-timer. */}
-      {isHousehold && party.is_returning !== true && (
-        <span className="inline-flex items-center gap-0.5 text-xs font-semibold text-amber-700 dark:text-amber-300">
-          <Star className="h-2.5 w-2.5 flex-shrink-0" />
-          First-time
-        </span>
+      {/* R3 — a 16px ICON, no text label, pinned bottom-right.
+          "Returning" and "First-time" spelled out cost two of the widest chips
+          on the card to say something staff read as a glance, and they said it
+          on EVERY household card: 279 returning against 123 first-time, so the
+          pair is never absent and never discriminating in the way a chip's
+          position implies.
+
+          BOTH gated on household grain, and that is not new: `is_returning` is
+          only ever computed for household parties (`_build_household_parties`
+          sets it from `prior_cm_ids`), so a person-grain adult weekend guest
+          arrives with the Pydantic default `false` — untracked, not "no".
+          Drawing First-time there would call every adult weekend regular a
+          first-timer.
+
+          A tooltip because the icon carries no words, on the same primitive
+          the glyphs use. */}
+      {isHousehold && (
+        <Tooltip
+          content={party.is_returning === true ? 'Returning family' : 'First-time family'}
+          // Named for the same reason the need glyphs are: R3 took the words
+          // away, so the icon is the only carrier left.
+          aria-label={party.is_returning === true ? 'Returning family' : 'First-time family'}
+          data-testid="family-card-history"
+          // `pl-1.5` is the review artifact's own 6px, and it earns its place:
+          // without it the mark sits 4px from the last chip — the row gap
+          // alone — and reads as the end of the chip run rather than as a
+          // separate mark pinned to the corner.
+          className={`ml-auto flex-shrink-0 pl-1.5 ${
+            party.is_returning === true
+              ? 'text-forest-700 dark:text-forest-300'
+              : 'text-amber-700 dark:text-amber-300'
+          }`}
+        >
+          {party.is_returning === true ? (
+            <Repeat className="h-4 w-4" />
+          ) : (
+            <Star className="h-4 w-4" />
+          )}
+        </Tooltip>
       )}
     </span>
   )
@@ -588,7 +753,6 @@ export function FamilyCard({
   party,
   unit,
   sharedSlot = false,
-  holdsWholeBuilding = false,
   inQueue = false,
   isDraggable = false,
   onOpen,
@@ -651,12 +815,7 @@ export function FamilyCard({
       >
         <FamilyCardIdentity party={party} />
       </button>
-      <FamilyCardChips
-        party={party}
-        unit={unit}
-        sharedSlot={sharedSlot}
-        holdsWholeBuilding={holdsWholeBuilding}
-      />
+      <FamilyCardChips party={party} unit={unit} sharedSlot={sharedSlot} />
     </div>
   )
 }
@@ -681,22 +840,15 @@ export function FamilyCardPreview({
   party,
   unit,
   sharedSlot = false,
-  holdsWholeBuilding = false,
 }: {
   party: RosterPartyRow
   unit?: LodgingUnitRow | undefined
   sharedSlot?: boolean
-  holdsWholeBuilding?: boolean
 }) {
   return (
     <div className={`${CARD_FRAME} bg-card shadow-lodge-lg border-primary/50 rotate-2`}>
       <FamilyCardIdentity party={party} />
-      <FamilyCardChips
-        party={party}
-        unit={unit}
-        sharedSlot={sharedSlot}
-        holdsWholeBuilding={holdsWholeBuilding}
-      />
+      <FamilyCardChips party={party} unit={unit} sharedSlot={sharedSlot} />
     </div>
   )
 }
