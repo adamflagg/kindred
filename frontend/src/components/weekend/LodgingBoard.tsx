@@ -625,6 +625,14 @@ export function LodgingBoard({
                     <FamilyCard
                       key={partyKey(party)}
                       party={party}
+                      // ⚠️ PLACED, so the unit has to be resolved and passed —
+                      // see the twin of this comment in `LodgingMap`. Without
+                      // it the need glyphs kindred#2072 added all read as met,
+                      // asserting something about a cabin this section never
+                      // resolved. `resolvePartyUnit` is the call the details
+                      // panel below already makes, and it is what handles a
+                      // merged slot's empty `unit_code`.
+                      unit={resolvePartyUnit(party, unitsByCode)}
                       isDraggable={canPlace}
                       onOpen={openParty}
                     />

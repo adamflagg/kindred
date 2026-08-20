@@ -179,6 +179,46 @@ describe('partyAttention — does the cabin provide what was asked for', () => {
     expect(a.level).toBe('unmet')
   })
 
+  /*
+   * ⚠️ THE SECOND VERDICT kindred#2072 MOVED, pinned because it is a real
+   * staff-facing reclassification and the only one in the change.
+   *
+   * The old rule was `party.effective_bathroom === 'private'`, so `unknown`
+   * and an absent value both FAILED it and reported "No private bathroom".
+   * They now grade `unknown → fits` like every other need.
+   *
+   * Kept deliberately: it applies one rule to all four needs, which is the
+   * point of consolidating three tables, and its reach is zero — all 118
+   * registry rows carry a valid `bathroom` and no placement holds an orphan
+   * code. A reader who thinks this is wrong is looking at a real decision,
+   * not an oversight.
+   */
+  it('settles a bathroom need the server could not resolve, rather than failing it', () => {
+    const a = partyAttention(
+      party({ flags: { needs_private_bathroom: true }, effective_bathroom: 'unknown' }),
+      unit({ is_confirmed: true })
+    )
+    expect(a.level).toBe('settled')
+  })
+
+  it('settles it when the field is absent entirely — the Pydantic-default case', () => {
+    const p = party({ flags: { needs_private_bathroom: true } })
+    delete p.effective_bathroom
+    expect(partyAttention(p, unit({ is_confirmed: true })).level).toBe('settled')
+  })
+
+  it('still flags a bathroom the server resolved as SHARED — until kindred#2501', () => {
+    // The rule itself has not moved: exclusivity is still what is graded, and
+    // loosening it to `!== 'none'` is kindred#2501, gated on reading the Adult
+    // form's wording. Only the unresolvable case changed.
+    const a = partyAttention(
+      party({ flags: { needs_private_bathroom: true }, effective_bathroom: 'shared' }),
+      unit({ is_confirmed: true })
+    )
+    expect(a.level).toBe('unmet')
+    expect(a.reason).toBe('No private bathroom')
+  })
+
   it('does not flag a cabin whose power nobody has resolved', () => {
     // `unknown` is the fourth value's whole point: absence of evidence is not
     // evidence of absence.

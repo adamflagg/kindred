@@ -125,10 +125,11 @@ describe('needCoverage — where each need reads its supply', () => {
   /**
    * ⚠️ THE ONE PLACE TWO RULINGS CONTRADICT, ACCEPTED FOR ONE RELEASE.
    *
-   * The unit card draws its bathroom mark as PRESENCE (`bathroom != 'none'`),
-   * because that is the axis the CampMinder question actually asks. This
-   * grading still says a SHARED bathroom does not satisfy the need, because
-   * that is what `rosterAttention` has always said and changing it is
+   * The unit card will draw its bathroom mark as PRESENCE
+   * (`bathroom != 'none'`) once stage 3 lands, because that is the axis the
+   * CampMinder question actually asks. This grading still says a SHARED
+   * bathroom does not satisfy the need, because that is what `rosterAttention`
+   * has always said and changing it is
    * kindred#2501 — itself gated on reading the Adult form's wording, which
    * supplies 19 of 66 flagged households and has never been audited.
    *

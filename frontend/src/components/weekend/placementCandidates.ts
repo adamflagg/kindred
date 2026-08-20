@@ -53,16 +53,22 @@
  * `needs_step_free` on the same terms — so a family whose housing narrative
  * asks for a fridge or for step-free access is hatched mid-drag on a cabin
  * that cannot supply it and annotated `fits` in this picker (and reported
- * `settled` by `rosterAttention`'s `VERIFIABLE_NEEDS`, which carries neither).
+ * `settled` by `rosterAttention`, whose own scope carries neither).
  * Whether those needs earn a sentence here and a roster-row reason there is a
  * staff-copy question that belongs with kindred#2072's ruled glyph set
  * (bathroom · power · fridge) — it is not settled by this comment, and the
  * step-free need is not in that ruled set at all. Until it is, do not assume
  * silence here means the need does not apply.
  *
- * The power rule is stated in both places. ⚠️ CHANGE ONE, CHANGE
- * BOTH — same field (`power_coverage`, never the raw `has_power`), same
- * grading, same `unknown → fits`.
+ * ⚠️ "CHANGE ONE, CHANGE BOTH" NO LONGER APPLIES, AND THAT IS THE POINT.
+ *
+ * This paragraph used to say the power rule was stated in both this file and
+ * `needsFit.ts`, and to change them together. kindred#2072 removed the second
+ * statement: the grading lives in `needGlyphs.ts` now, which `needsFit` calls
+ * and which this file does NOT yet — that consolidation is stage 2. Until it
+ * lands, this module's `powerVerdict` below is the last hand-written copy of
+ * a rule that exists properly elsewhere, and it is the copy to delete rather
+ * than the one to keep in step.
  */
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
 import { partyIdentityLabel } from './householdIdentity'
@@ -111,9 +117,8 @@ function bathroomVerdict(party: RosterPartyRow, unit: LodgingUnitRow): Dimension
   if (party.flags?.needs_private_bathroom !== true) return FITS
   const bathroom = unit.bathroom ?? 'unknown'
   if (bathroom === 'private' || bathroom === 'unknown') return FITS
-  // Same wording as `rosterAttention`'s `VERIFIABLE_NEEDS` entry for this
-  // need. Staff read both surfaces; two phrasings of one fact read as two
-  // facts.
+  // Same wording as `rosterAttention`'s own entry for this need. Staff read
+  // both surfaces; two phrasings of one fact read as two facts.
   return { fit: 'unmet', note: 'No private bathroom' }
 }
 
@@ -169,7 +174,7 @@ function capacityVerdict(
  * How well one party fits one candidate space.
  *
  * `needs_accommodation` and `accommodation_is_mandatory` are deliberately
- * absent, for the reason `rosterAttention`'s `VERIFIABLE_NEEDS` gives: they
+ * absent, for the reason `rosterAttention`'s own scope gives: they
  * name no specific amenity, so no field on any cabin settles them and an
  * annotation here could only restate the flag. And there is no step-free
  * dimension to add — `is_accessible` exists on the UNIT with nothing on the

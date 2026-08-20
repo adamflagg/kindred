@@ -200,11 +200,37 @@ export function partyAttention(
 
   // Only a confirmed cabin is evidence. Anything else is an absence of data.
   if (unit?.is_confirmed === true) {
-    // ANYTHING SHORT OF `fits` COUNTS AS UNMET HERE, and the roster is binary
-    // on purpose: it has no third band to put a qualification in. That is also
-    // the conservative direction against the old raw-flag read — every case
-    // that used to flag still flags, except the fully-covered container the
-    // raw flag got wrong.
+    /*
+     * ANYTHING SHORT OF `fits` COUNTS AS UNMET HERE, and the roster is binary
+     * on purpose: it has no third band to put a qualification in.
+     *
+     * ⚠️ TWO VERDICTS MOVED WITH kindred#2072, NOT ONE. An earlier draft of
+     * this comment claimed "every case that used to flag still flags, except
+     * the fully-covered container the raw flag got wrong" — that was FALSE,
+     * and the review that caught it is the reason this paragraph is longer
+     * than it looks like it needs to be.
+     *
+     *   POWER, and this is the fix: a container whose leaves all have power
+     *   reported "No power" off its own `has_power = 0` row. Twelve of the
+     *   fourteen 2026 family-pool containers. That case stops flagging, and
+     *   should.
+     *
+     *   BATHROOM, and this one is a real reclassification: `unknown` and an
+     *   absent `effective_bathroom` used to fail `=== 'private'` and flag;
+     *   they now grade `unknown → fits` like every other need and settle.
+     *
+     * The bathroom move is DELIBERATE and kept, on two grounds. It applies
+     * the same rule to all four needs — the absence of evidence is not
+     * evidence of absence — which is the whole point of consolidating the
+     * three tables. And its reach is zero: all 118 registry rows carry a
+     * valid `bathroom` and no placement holds an orphan code, so nothing on
+     * the board changes today. kindred#2502 (a container scored on its own
+     * blank row rather than its covered leaves) narrows the ways `unknown`
+     * can arise further still, on the unit side.
+     *
+     * It is pinned below, so a future reader meets the decision rather than
+     * inferring it from behaviour.
+     */
     const unmet = asked.filter((key) => needVerdict(key, needCoverage(key, party, unit)) !== 'fits')
     if (unmet.length > 0) {
       return {

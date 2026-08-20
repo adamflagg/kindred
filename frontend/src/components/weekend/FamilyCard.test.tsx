@@ -1454,7 +1454,8 @@ describe('FamilyCard — the need glyphs (kindred#2072)', () => {
 describe('FamilyCard — the marks kindred#2072 STRUCK', () => {
   /*
    * A CUT IS A RULING, and this codebase has twice restored an element whose
-   * absence was undefended — `LodgingUnitCard.test.tsx:2277` records an
+   * absence was undefended — `LodgingUnitCard.test.tsx`'s "no sr-only text of
+   * any kind (kindred#2348)" describe records an
    * sr-only region that came back after being ruled out, twice. Every cut in
    * `weekend-card-vocabulary.md` §3 that lands on this card is pinned here.
    */

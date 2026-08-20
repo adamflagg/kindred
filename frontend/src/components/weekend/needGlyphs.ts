@@ -117,9 +117,11 @@ export interface NeedGlyphSpec {
  *
  * ⚠️ THIS IS THE HALF OF THE RULING THAT HAS NOT LANDED, DELIBERATELY.
  *
- * The unit card draws its bathroom mark as PRESENCE — `bathroom != 'none'`,
- * the axis the form actually asks about. This still grades a SHARED bathroom
- * as not meeting the need, because that is what the product has always said
+ * The unit card WILL draw its bathroom mark as PRESENCE — `bathroom != 'none'`,
+ * the axis the form actually asks about — when kindred#2072's stage 3 lands;
+ * today it still spells out `Private` / `Shared`. This grades a SHARED
+ * bathroom as not meeting the need either way, because that is what the
+ * product has always said
  * and changing it is kindred#2501 — itself gated on reading the Adult form's
  * wording, which supplies 19 of 66 flagged households and has never been
  * audited.

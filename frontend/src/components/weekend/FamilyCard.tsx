@@ -249,9 +249,20 @@ function Chip({
  */
 function NeedGlyphMark({ glyph }: { glyph: ResolvedNeedGlyph }) {
   const { Icon, label, hueClassName, isUnmet } = glyph
+  const sentence = isUnmet ? `${label} — the cabin does not meet it` : label
   return (
     <Tooltip
-      content={isUnmet ? `${label} — the cabin does not meet it` : label}
+      content={sentence}
+      // ★ NAMED, and this is a hard requirement of the change rather than an
+      // accessibility flourish. After kindred#2072 the strings "Private
+      // bathroom" and "Power" appear NOWHERE on this card — the glyph is the
+      // only carrier — so a trigger with no accessible name is a control that
+      // announces nothing and a `getByRole('button', { name })` query that
+      // cannot find it. `frontend/CLAUDE.md` puts it plainly inside the
+      // opt-out policy: "An icon-only button needs a name — give it one", and
+      // `ui/Tooltip`'s own `aria-label` doc scopes itself to exactly this case
+      // — a trigger whose visible content does not name it.
+      aria-label={sentence}
       data-testid={`need-glyph-${glyph.key}`}
       className={`${GLYPH_BASE} ${isUnmet ? GLYPH_UNMET : 'border-border bg-transparent'}`}
     >
@@ -680,6 +691,9 @@ function FamilyCardChips({
       {isHousehold && (
         <Tooltip
           content={party.is_returning === true ? 'Returning family' : 'First-time family'}
+          // Named for the same reason the need glyphs are: R3 took the words
+          // away, so the icon is the only carrier left.
+          aria-label={party.is_returning === true ? 'Returning family' : 'First-time family'}
           data-testid="family-card-history"
           className={`ml-auto flex-shrink-0 ${
             party.is_returning === true
