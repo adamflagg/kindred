@@ -113,11 +113,11 @@ empty. (That measurement was taken while `UnitAvailabilityControl` was the
 third of the three; kindred#2072 stage 3 deleted it, and the rule it was
 measured under governs whatever renders inside the card next.)
 
-A sweep test fails on any arbitrary
-size anywhere inside either card — including variant-prefixed and rem/em forms
-(`sm:text-[11px]`, `text-[0.75rem]`), though arbitrary _colours_ stay out of
-scope — because a single arbitrary size left on a nested row is invisible in a
-spot check and is how the two scales diverged in the first place.
+A sweep test fails on any arbitrary size anywhere inside either card —
+including variant-prefixed and rem/em forms (`sm:text-[11px]`,
+`text-[0.75rem]`), though arbitrary _colours_ stay out of scope — because a
+single arbitrary size left on a nested row is invisible in a spot check and is
+how the two scales diverged in the first place.
 
 **The typeface was the larger half of this row, and it is not a size at all.**
 `index.css` sets `h1, h2, h3 { font-family: var(--font-display) }` — Fraunces,
