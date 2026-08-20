@@ -837,10 +837,18 @@ export function LodgingUnitCard({
        * sets. A summer bunk card holds 10–14 campers, so 16px of padding and a
        * 12px rhythm are a small fraction of a tall card. A lodging card holds
        * nothing, one party, or occasionally two — at `p-4` the chrome was most
-       * of an empty card, and 81% of live cards are empty. Measured: `p-2.5
-       * px-3` plus `gap-2` takes 148px off the board, 8.3%, and with B·2's
-       * dropped well min-height about −15% of column height. The two were
-       * measured together and found perfectly additive.
+       * of an empty card, and 81% of live cards are empty. The review artifact
+       * measured `p-2.5 px-3` plus `gap-2` at 148px off the board, 8.3%, and
+       * with B·2's dropped well min-height about −15% of column height — the
+       * two were measured together and found perfectly additive.
+       *
+       * ⚠️ DRIVEN IN A BROWSER AFTERWARDS THE WHOLE STAGE LANDS BIGGER: the
+       * 2026 board's scroll height goes 7000px → 5286px (−24.5%) and the sum
+       * of its 73 card heights 19937px → 14373px (−27.9%). The difference is
+       * not padding — the mock measured the geometry alone, where the shipped
+       * change also removed the empty-state sentence, the meta row and five
+       * chips. The card is shorter because it SAYS LESS, and only secondarily
+       * because it is tighter.
        *
        * `px-3` rather than a flat `p-2.5`: the horizontal squeeze is what the
        * ~244px inner width can least afford, so the vertical tightening is the

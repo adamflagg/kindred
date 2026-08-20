@@ -394,6 +394,24 @@ measured together and found perfectly additive.
 ~244px inner width can least afford: the vertical tightening is the aggressive
 half, the horizontal one is not.
 
+⚠️ **MEASURED IN THE APP AFTER THE FACT, and it is bigger than the mock's
+figure — do not "correct" this back.** The review artifact measured B·1 and
+B·2 alone at −148px (8.3%) and about −15% of column height. Driven in a real
+browser against the 2026 board, 73 cards at the same viewport, the whole stage
+lands at:
+
+|                      | before  | after   |            |
+| -------------------- | ------- | ------- | ---------- |
+| Board scroll height  | 7000px  | 5286px  | **−24.5%** |
+| Sum of card heights  | 19937px | 14373px | **−27.9%** |
+| Empty card, shortest | 219px   | 91px    | −58%       |
+| Empty card, median   | 273px   | 178px   | −35%       |
+
+The difference is not padding: the mock measured the geometry change alone,
+while the shipped stage also removed the empty-state sentence, the meta row and
+five chips. **The card is shorter because it says less, and only secondarily
+because it is tighter.**
+
 ⚠️ This supersedes §1's own note that the card "ran at a flat 8px, which left
 the title sitting on top of the amenity row". T2 lifted the amenities onto the
 title row, so there is no amenity row left for the title to sit on top of.
