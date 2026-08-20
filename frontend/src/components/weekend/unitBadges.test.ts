@@ -20,12 +20,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { LodgingUnitRow, WriteInCoverRow } from '../../types/lodging'
-import {
-  availabilityAction,
-  reservationBadge,
-  shareabilityBadge,
-  sharingConflictBadge,
-} from './unitBadges'
+import { availabilityAction, reservationBadge, shareabilityBadge } from './unitBadges'
 
 function unit(overrides: Partial<LodgingUnitRow> = {}): LodgingUnitRow {
   return {
@@ -230,6 +225,48 @@ describe('reservationBadge', () => {
     expect(held?.label).toBe('Write-in')
 
     expect(held).toEqual(alsoHeld)
+  })
+})
+
+describe('reservationBadge — the write-in gate’s two halves (kindred#2252, re-homed by #2072)', () => {
+  /*
+   * ⚠️ THESE MOVED HERE FROM `LodgingUnitCard.test.tsx`, and the move is the
+   * point rather than a tidy-up.
+   *
+   * `writeInBadgeApplies` was exported so the unit card could suppress the
+   * "Write-in" chip without re-deriving the gate. kindred#2072 struck EVERY
+   * reservation badge from that card, so the card can no longer exercise the
+   * gate at all — and the two halves it protects are still live for
+   * `MapUnitPopover`, which draws the chip. Pinned against `reservationBadge`
+   * directly, where no change to a card surface can take them away again.
+   */
+  it('badges a written-into family room "Write-in"', () => {
+    expect(
+      reservationBadge(unit({ write_ins: [cover()], is_family_available: false }))?.label
+    ).toBe('Write-in')
+  })
+
+  it('badges a written-into STAFF cabin "Staff", never "Write-in"', () => {
+    // The `inventory_class !== 'staff_default'` half. A staff cabin written
+    // into for the weekend carries a cover exactly as a family room's write-in
+    // does, so reading `hasWriteIn` alone would swallow the "Staff" chip.
+    expect(
+      reservationBadge(
+        unit({
+          inventory_class: 'staff_default',
+          write_ins: [cover()],
+          is_family_available: false,
+        })
+      )?.label
+    ).toBe('Staff')
+  })
+
+  it('reads the OCCUPANCY table, never the raw role override', () => {
+    // The `hasWriteIn` half. Since kindred#2382 `family_available_override`
+    // answers the staff↔family ROLE and names nobody, so a `false` on it is
+    // not a write-in — 1500000162 left no such row behind for it to be wrong
+    // about.
+    expect(reservationBadge(unit({ family_available_override: false }))).toBeNull()
   })
 })
 
@@ -445,59 +482,14 @@ describe('shareabilityBadge', () => {
  * of one building never reach the > 1 branch — the same "disjoint means no
  * shared bedroom" reasoning that killed the ring.
  */
-describe('sharingConflictBadge', () => {
-  const AMBER = 'bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300'
-
-  it('warns when a second party lands in a unit classified one-family', () => {
-    expect(sharingConflictBadge(unit({ shareability: 'single_party' }), 2)).toEqual({
-      label: 'One-family space',
-      className: AMBER,
-      title: 'Classified for one family — 2 families are sharing a room here',
-    })
-  })
-
-  it('counts every party in the room, not just the second', () => {
-    expect(sharingConflictBadge(unit({ shareability: 'single_party' }), 3)?.title).toBe(
-      'Classified for one family — 3 families are sharing a room here'
-    )
-  })
-
-  it('reuses the board amber rather than introducing a fourth alarm colour', () => {
-    // The vocabulary ruled 2026-08-09 commits opacity to REFUSAL, the hatch to
-    // advisory misfit and the forest tint to open-and-available. A warning
-    // spends the board's existing amber — consent's tone — and nothing new.
-    expect(sharingConflictBadge(unit({ shareability: 'single_party' }), 2)?.className).toBe(AMBER)
-  })
-
-  it('is silent on the one-family unit holding exactly one party', () => {
-    expect(sharingConflictBadge(unit({ shareability: 'single_party' }), 1)).toBeNull()
-  })
-
-  it('is silent on an empty one-family unit', () => {
-    expect(sharingConflictBadge(unit({ shareability: 'single_party' }), 0)).toBeNull()
-  })
-
-  it('is silent on a shareable unit holding two parties — that is the designed case', () => {
-    // Under 1500000145's backfill predicate every family-pool CONTAINER is
-    // shareable, which is why a whole-house let can never fire this warning.
-    // That is the compare-at-the-assignment's-own-level ruling working, not a
-    // gap in the check.
-    expect(sharingConflictBadge(unit({ shareability: 'shareable' }), 2)).toBeNull()
-  })
-
-  it('is silent on an unclassified unit — there is no rule there to violate', () => {
-    // Nagging on a unit nobody has classified teaches staff to dismiss the
-    // chip, which is exactly what `docs/architecture/lodging-occupancy.md:112`
-    // warns against.
-    expect(sharingConflictBadge(unit({ shareability: 'unknown' }), 2)).toBeNull()
-  })
-
-  it('is silent when an older payload omits the field entirely', () => {
-    const withoutField = unit()
-    delete (withoutField as Partial<LodgingUnitRow>).shareability
-    expect(sharingConflictBadge(withoutField, 2)).toBeNull()
-  })
-})
+/*
+ * ⚠️ `sharingConflictBadge`'s describe was here and went with the function —
+ * kindred#2072 struck the `One-family space` chip it drew (vocabulary §3).
+ * It never fired: all 23 room-sharing cards in the registry are classified
+ * `shareable`. Its absence from the card is pinned in
+ * `LodgingUnitCard.test.tsx`, "the marks kindred#2072 STRUCK from the unit
+ * card".
+ */
 
 describe('a write-in inherited from elsewhere in the tree', () => {
   /*

@@ -58,17 +58,17 @@ empty string and proves nothing — pin **classes** in vitest and measure
 
 ---
 
-## 1. Card chrome and geometry — CLOSED
+## 1. Card chrome and geometry — CLOSED, with two deliberate divergences
 
-| Dimension  | Summer                   | Family                       | Status           |
-| ---------- | ------------------------ | ---------------------------- | ---------------- |
-| Base class | `.card-lodge`            | `.card-lodge`                | done             |
-| Radius     | `rounded-2xl` (16px)     | same                         | done             |
-| Border     | `border-2 border-border` | same, + `border-t-[3px]` hue | done             |
-| Shadow     | two-layer lodge          | same                         | done             |
-| Padding    | `p-4` (16px)             | `p-4`                        | done             |
-| Row rhythm | `mb-3` (12px)            | `gap-3`                      | done             |
-| Hover      | `.card-lodge:hover`      | `.card-lodge:hover`          | done — see below |
+| Dimension  | Summer                   | Family                       | Status             |
+| ---------- | ------------------------ | ---------------------------- | ------------------ |
+| Base class | `.card-lodge`            | `.card-lodge`                | done               |
+| Radius     | `rounded-2xl` (16px)     | same                         | done               |
+| Border     | `border-2 border-border` | same, + `border-t-[3px]` hue | done               |
+| Shadow     | two-layer lodge          | same                         | done               |
+| Padding    | `p-4` (16px)             | `p-2.5 px-3`                 | **divergent — §6** |
+| Row rhythm | `mb-3` (12px)            | `gap-2` (8px)                | **divergent — §6** |
+| Hover      | `.card-lodge:hover`      | `.card-lodge:hover`          | done — see below   |
 
 **Hover is deliberately NOT matched class-for-class.** `BunkCard` carries
 `hover:shadow-lodge-lg`; this card does not, and `LodgingUnitCard.test.tsx` pins
@@ -125,23 +125,35 @@ rule's `text-2xl md:text-3xl`, so only the face and tracking carry over.
 
 ## 3. What the card reports — ONE ROW OPEN
 
-| Row                    | Summer                           | Family                         | Status                      |
-| ---------------------- | -------------------------------- | ------------------------------ | --------------------------- |
-| Occupancy figure       | `{occupancy}/{capacity}`         | `{occupancy}/{capacity}`       | **done**                    |
-| Over-capacity emphasis | `border-destructive/50 border-2` | `text-destructive` + chip      | **done, differently**       |
-| Colour ramp            | 4 stops                          | none                           | **closed — will not build** |
-| Utilization bar        | `BunkUtilizationBar`             | none                           | **closed — will not build** |
-| Empty state wording    | "Drop campers here"              | "Drop families here" / "Empty" | done                        |
-| Empty state geometry   | `py-8 text-center`               | centred in the well            | done                        |
-| Occupant well          | `min-h-[100px]`                  | `min-h-[100px] flex-1`         | done                        |
-| Actions                | 2×2 `btn-ghost` grid             | pills; `Assign` opens a modal  | **CLOSED — see below**      |
-| Warnings block         | `BunkWarnings`                   | consent line only              | keep divergent              |
+| Row                    | Summer                           | Family                        | Status                      |
+| ---------------------- | -------------------------------- | ----------------------------- | --------------------------- |
+| Occupancy figure       | `{occupancy}/{capacity}`         | `{occupancy}/{capacity}`      | **done**                    |
+| Over-capacity emphasis | `border-destructive/50 border-2` | `text-destructive` + chip     | **done, differently**       |
+| Colour ramp            | 4 stops                          | none                          | **closed — will not build** |
+| Utilization bar        | `BunkUtilizationBar`             | none                          | **closed — will not build** |
+| Empty state wording    | "Drop campers here"              | **nothing — struck**          | **divergent — see below**   |
+| Empty state geometry   | `py-8 text-center`               | centred in the well           | done                        |
+| Occupant well          | `min-h-[100px]`                  | `flex-1`, no min-height       | **divergent — see below**   |
+| Actions                | 2×2 `btn-ghost` grid             | pills; `Assign` opens a modal | **CLOSED — see below**      |
+| Warnings block         | `BunkWarnings`                   | consent line only             | keep divergent              |
 
-**Empty state wording is conditional on `canPlace`.** Without a scenario or
-without `bunking.manage` there is nothing to drop, so the invitation would name
-an action the reader cannot take. Summer renders _nothing at all_ in production
-mode; these cards are small enough that a blank body reads as broken rather than
-read-only, so the state is stated instead.
+⚠️ **The empty-state text is STRUCK, and this paragraph used to argue FOR it.**
+It read: _"Empty state wording is conditional on `canPlace`. Without a scenario
+or without `bunking.manage` there is nothing to drop, so the invitation would
+name an action the reader cannot take. Summer renders nothing at all in
+production mode; these cards are small enough that a blank body reads as broken
+rather than read-only, so the state is stated instead."_
+
+That reasoning was sound about ONE card and wrong about the board. Measured:
+**81% of live cards are empty**, so "Drop families here" was the most-repeated
+sentence on the screen — and a sentence repeated sixty times is chrome, not a
+state. The dashed border and the visibly empty well already say it, which lands
+the board where summer's production mode already was.
+
+It took the well's `min-h-[100px]` with it, and that coupling is why both rows
+above moved together: the min-height existed to give that sentence room to sit
+in. `flex-1` STAYS — it is what makes the grid's stretch survivable, which is a
+different decision entirely (kindred#2072, B·1 and B·2).
 
 **The ramp and the bar are closed as WILL NOT BUILD, not as pending.** Summer's
 ramp is a percentage of a fixed capacity of 12 and has five distinguishable
@@ -360,9 +372,31 @@ _because_ "the section headers do the actual grouping". **Sections and hue stand
 or fall together.** Removing the sections obliges you to delete the hue or
 re-justify it against §3.10.
 
-**The card border is full.** Area hue on top, amber for consent all round. That is
-why over-capacity took a text colour and a chip rather than summer's
+**The card border is full.** Area hue on top, amber for consent all round. That
+is why over-capacity took a text colour rather than summer's
 `border-destructive/50`, and why any future state needs somewhere else to live.
+The `Over capacity` chip that used to accompany that text colour is struck
+(kindred#2072): it stated at chip weight exactly what the red figure states in
+colour.
+
+**The padding and the row rhythm are TIGHTER than summer's, and that is
+topology rather than taste.** Summer is `p-4` (16px) with an `mb-3` (12px)
+rhythm; this card is `p-2.5 px-3` with `gap-2`.
+
+A summer bunk card holds **10–14 campers**, so 16px of padding and a 12px
+rhythm are a small fraction of a tall card. A lodging card holds nothing, one
+party, or occasionally two — at `p-4` the chrome was most of an empty card, and
+81% of live cards are empty. Measured: **−148px across the board, 8.3%**, and
+with the dropped well min-height about **−15% of column height**. The two were
+measured together and found perfectly additive.
+
+`px-3` rather than a flat `p-2.5` because the horizontal squeeze is what the
+~244px inner width can least afford: the vertical tightening is the aggressive
+half, the horizontal one is not.
+
+⚠️ This supersedes §1's own note that the card "ran at a flat 8px, which left
+the title sitting on top of the amenity row". T2 lifted the amenities onto the
+title row, so there is no amenity row left for the title to sit on top of.
 
 ---
 

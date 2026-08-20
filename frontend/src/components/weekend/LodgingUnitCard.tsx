@@ -12,7 +12,7 @@
  * and "sleeps 0" would be a lie about a cabin nobody has measured.
  */
 import { useDraggable, useDroppable } from '@dnd-kit/core'
-import { Bath, Merge, Plug, Plus, Snowflake, Split, TriangleAlert, Users } from 'lucide-react'
+import { Bath, Merge, Plug, Plus, Snowflake, Split } from 'lucide-react'
 import { useState } from 'react'
 
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
@@ -25,16 +25,7 @@ import { partyHeadcount } from './householdIdentity'
 import { resolveNeedsFit } from './needsFit'
 import { resolveRingPrecedence } from './ringPrecedence'
 import { partyKey } from './partyKey'
-import {
-  reservationBadge,
-  shareabilityBadge,
-  sharingConflictBadge,
-  writeInBadgeApplies,
-  type UnitBadge,
-} from './unitBadges'
-import { UnitAvailabilityControl } from './UnitAvailabilityControl'
-import type { UnitAvailabilityWrite } from './UnitAvailabilityControl'
-import { writeInEntries } from './writeIn'
+import { writeInEntries, type UnitAvailabilityWrite } from './writeIn'
 import { WriteInCard } from './WriteInCard'
 
 /**
@@ -53,9 +44,10 @@ import { WriteInCard } from './WriteInCard'
  * all the time — and a constant is not a signal. NOTHING REPLACED IT: not a
  * subtler ring, not a fixed hue, not a smaller dot. `consentFlagged` already
  * outranked it, so every share worth an alarm was already caught. The one
- * occupancy warning that is genuinely rare — a second party in a unit
- * classified `single_party` — is a CHIP in the badge row below
- * (`sharingConflictBadge`), on a channel of its own.
+ * occupancy warning that was genuinely rare — a second party in a unit
+ * classified `single_party` — was a chip on a channel of its own, and
+ * kindred#2072 struck that too: it never fired, because all 23 room-sharing
+ * cards in the registry are classified `shareable`.
  *
  * With that ring gone, nothing here writes `box-shadow` inline any more, so
  * `.card-lodge`'s own elevation AND its `:hover` lift (`index.css`) apply to
@@ -259,31 +251,6 @@ export interface LodgingUnitCardProps {
   onOpenParty: (party: RosterPartyRow) => void
 }
 
-/**
- * The one-family-space warning chip (kindred#2179), with its count reachable
- * by keyboard and touch rather than by mouse hover alone (kindred#2177).
- *
- * `UnitBadge.title` is optional, so the no-detail case renders a plain
- * `<span>`: a focusable chip that reveals nothing is a dead stop in the tab
- * order, which is the same reason `FamilyCard`'s `Chip` and
- * `SharePreferenceChip` branch the same way.
- */
-function SharingConflictChip({ badge }: { badge: UnitBadge }) {
-  const className = `inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-xs font-medium ${badge.className}`
-  const body = (
-    <>
-      <TriangleAlert className="h-3 w-3 flex-shrink-0" />
-      {badge.label}
-    </>
-  )
-  if (badge.title === undefined) return <span className={className}>{body}</span>
-  return (
-    <Tooltip content={badge.title} className={className}>
-      {body}
-    </Tooltip>
-  )
-}
-
 export function LodgingUnitCard({
   slot,
   units = [],
@@ -310,7 +277,24 @@ export function LodgingUnitCard({
   // redundant here. `reservationBadge` itself is untouched: `MapUnitPopover`'s
   // header and its collapsed grid cell draw no `WriteInCard` of their own and
   // still call it directly, so the chip is still the only signal there.
-  const badge = writeInBadgeApplies(unit) ? null : reservationBadge(unit)
+  /*
+   * ⚠️ `reservationBadge` IS NO LONGER READ HERE, and every one of its arms is
+   * a ruling rather than an omission (vocabulary §3).
+   *
+   *   `Building`  — cut 2026-08-19, owner ruling.
+   *   `Staff`     — cut. All 25 staff units fail `isPlanningInventory`, so no
+   *                 staff card is ever drawn on this board.
+   *   `Released`  — cut with the whole release workflow: it needs a staff unit
+   *                 or an existing override, and `lodging_availability` is
+   *                 empty in every year.
+   *   `Write-in`  — already suppressed here since kindred#2252, because the
+   *                 `WriteInCard` in the well names the occupant.
+   *
+   * With all four gone the function draws NOTHING on a board card, so the
+   * render site is deleted rather than left standing and quiet. The function
+   * itself is untouched: `MapUnitPopover`'s header and its collapsed grid cell
+   * still call it, and on that surface the marks still discriminate.
+   */
   // On every unit this card can be a SLOT for, which includes a COMBINED
   // container and excludes a split one.
   //
@@ -324,7 +308,23 @@ export function LodgingUnitCard({
   // say so. The guard remains as belt-and-braces for the split case rather
   // than being dropped, since nothing here enforces how the card is mounted.
   const isSplitContainer = unit.is_container === true && unit.is_combined !== true
-  const sharing = isSplitContainer ? null : shareabilityBadge(unit)
+  /*
+   * ★ `Sharing unset` BECAME `Reconfirm space`, AND THE GATE MOVED COLUMNS —
+   * ruling 23, and the gate is the substance of it.
+   *
+   * The old chip fired on `shareability`, where all 118 registry rows are
+   * classified: 44 shareable, 74 single_party, 0 unset. It could not appear.
+   * Keyed on `is_confirmed` it becomes the mark staff actually want — "nobody
+   * has checked this cabin this season" — and it goes live the moment
+   * kindred#2500 makes a new year start unconfirmed: every unit flagged at
+   * season start, worked down as staff check them. Today it draws on nothing,
+   * because production is 118 of 118 confirmed.
+   *
+   * `shareabilityBadge` itself stays in `unitBadges.ts` for `MapUnitPopover`,
+   * which still draws `Shared OK` — a permission that has to be legible on a
+   * surface with no card geometry to imply it.
+   */
+  const needsReconfirm = unit.is_confirmed === false
   const capacityKnown = unit.sleeps !== null && unit.sleeps !== undefined
   /*
    * How full the room is. The corner figure used to be CAPACITY alone, so the
@@ -351,11 +351,11 @@ export function LodgingUnitCard({
   // past the definition: "the overlap aware should understand disjoint means
   // no shared bedroom, so don't do the overlap glow, it is nonsensical", and
   // then — since the ring lit the units built to hold several families —
-  // "let's strike that". So `parties.length > 1` now drives ONLY this count
-  // chip, where a slot-wide count is the true statement. Nothing that judges
-  // a SHARE reads it: `consent` and `sharingConflictBadge` both go through
-  // `overlappingPartyKeys` below.
-  const isShared = parties.length > 1
+  // "let's strike that". The `N families` COUNT CHIP that inherited
+  // `parties.length > 1` afterwards is struck too (kindred#2072): it counted
+  // what the well already shows by drawing that many cards. Nothing left on
+  // this card reads a slot-wide party count, and nothing that judges a SHARE
+  // ever did — `consent` goes through `overlappingPartyKeys` below.
   // Each FamilyCard's own "did not request sharing" chip, in contrast, must
   // be a true statement about that ONE party — whether it shares a ROOM with
   // somebody, not merely a merged card. Same overlap definition `consentFlag`
@@ -380,6 +380,23 @@ export function LodgingUnitCard({
   // to promote it to — the handle is ABSENT, not merely disabled.
   const hasParent = (unit.parent_code ?? '').length > 0
   const showMergeHandle = canMerge && hasParent
+  /*
+   * The inverse control, on the combined card itself.
+   *
+   * `is_container` is part of the gate, not decoration: the API resolves
+   * `is_combined` for EVERY row, leaves included, so a leaf can carry a stale
+   * `default_combined: true`. The admin form now clears it when "is a
+   * building" is unticked, so nothing writes that combination any more — but
+   * rows saved before it did still hold it and no migration went back for
+   * them, which is why the gate stays. Splitting a room into rooms it does not
+   * have is not an operation, so the control is absent rather than offered and
+   * then failing.
+   *
+   * Hoisted out of the JSX by kindred#2072 because the FOOTER now needs to
+   * know whether it has anything to draw before it draws itself.
+   */
+  const showSplitControl =
+    canMerge && unit.is_container === true && unit.is_combined === true && onSplit !== undefined
   const mergeDragActive = mergeSourceUnit !== null
   const isValidTarget = isValidMergeTarget(mergeSourceUnit, unit)
 
@@ -611,8 +628,11 @@ export function LodgingUnitCard({
    * SERVER's `power_coverage`, which is taken over the unit's leaf
    * descendants rather than off its own row. Twelve of the fourteen 2026
    * family-pool containers record `has_power = 0` while every leaf beneath
-   * them has power, so judging a building by the flag the amenity strip
-   * renders would mark twelve entirely-powered buildings unpowered.
+   * them has power, so judging a building by the raw flag would mark twelve
+   * entirely-powered buildings unpowered. The TITLE ROW's own plug reads the
+   * same resolved field since kindred#2072's T2 — it used to render the raw
+   * flag, and promoting that to the most prominent row on the card is what
+   * made fixing it part of the same change.
    *
    * `'fits'` at rest, and that is the state, not a fallback: with no family
    * in flight there is nothing to be a misfit FOR, and a board hatched all
@@ -631,15 +651,14 @@ export function LodgingUnitCard({
    * shared ROOM rather than a shared card — the distinction the struck ring
    * never made, and the reason two households in disjoint rooms of one
    * combined building do not raise it. Judged against THIS card's own unit,
-   * which is the level the assignment was made at (owner ruling 2026-08-07);
-   * see `sharingConflictBadge` for why that makes a whole-house let silent.
+   * which is the level the assignment was made at (owner ruling 2026-08-07).
    *
-   * Gated on `isSplitContainer` for the same reason `sharing` above is, and it
-   * has to be the same gate: both read `unit.shareability` off this one card,
-   * so gating one and not the other would let the LOUDER of the two speak
-   * about a unit the quieter one has already ruled is not a slot at all.
+   * The chip this paragraph used to introduce — `One-family space` — is struck
+   * (kindred#2072), along with the `isSplitContainer` gate that kept it and
+   * `Shared OK` speaking about the same unit with one voice. Both marks are
+   * gone from the card; what survives is `overlappingKeys` itself, which the
+   * consent flag and each family card's own sharing chip still read.
    */
-  const sharingConflict = isSplitContainer ? null : sharingConflictBadge(unit, overlappingKeys.size)
 
   /*
    * Whether this card offers to place a family from itself (kindred#2080).
@@ -804,13 +823,40 @@ export function LodgingUnitCard({
        * a no-op by imitation, which is the `forest-950` failure (#1894) that
        * CLAUDE.md §4 names by name.
        *
-       * `gap-3` is summer's 12px row rhythm (`BunkCard` separates header, bar
-       * and roster with `mb-3`). This ran at a flat 8px, which left the title
-       * sitting on top of the amenity row.
+       * ⚠️ THE PADDING AND THE GAP ARE DELIBERATELY **NOT** SUMMER'S, AND THIS
+       * PARAGRAPH USED TO SAY THE OPPOSITE — B·1, kindred#2072.
+       *
+       * It read: "`gap-3` is summer's 12px row rhythm (`BunkCard` separates
+       * header, bar and roster with `mb-3`). This ran at a flat 8px, which
+       * left the title sitting on top of the amenity row." Both halves were
+       * true when written, and the second one is what has changed: T2 lifted
+       * the amenities onto the title row, so there is no amenity row left for
+       * the title to sit on top of.
+       *
+       * The divergence is TOPOLOGY, not taste, which is the bar CLAUDE.md §4
+       * sets. A summer bunk card holds 10–14 campers, so 16px of padding and a
+       * 12px rhythm are a small fraction of a tall card. A lodging card holds
+       * nothing, one party, or occasionally two — at `p-4` the chrome was most
+       * of an empty card, and 81% of live cards are empty. Measured: `p-2.5
+       * px-3` plus `gap-2` takes 148px off the board, 8.3%, and with B·2's
+       * dropped well min-height about −15% of column height. The two were
+       * measured together and found perfectly additive.
+       *
+       * `px-3` rather than a flat `p-2.5`: the horizontal squeeze is what the
+       * ~244px inner width can least afford, so the vertical tightening is the
+       * aggressive half and the horizontal one is not.
        */
-      className={`card-lodge flex flex-col gap-3 border-t-[3px] p-4 ${cardStateClassName}`}
+      className={`card-lodge flex flex-col gap-2 border-t-[3px] p-2.5 px-3 ${cardStateClassName}`}
     >
-      <div className="flex items-baseline gap-1.5">
+      {/* THE TITLE ROW — T2, and the amenities ride it as a VARIABLE BLOCK.
+          A fixed three-icon slot truncates six of the 73 drawn names at the
+          280px column, and truncates the WRONG END: those six are a numbered
+          series whose only distinguishing character is the last one, so a
+          fixed slot leaves six identical-looking cards. Drawn only when the
+          room has them, the block fits every card with ≥31px to spare. The
+          board lives in a 280–292px band, so it sits on the cliff rather than
+          past it — do not assume a wider column will save it. */}
+      <div data-testid="unit-title-row" className="flex items-center gap-1.5">
         {/* Summer's scale, not a parallel one (CLAUDE.md §4): `text-lg` title
             over `text-sm` body over `text-xs` meta, the same three steps
             `BunkCard` uses. This card was built on `text-[13px]` /
@@ -823,13 +869,67 @@ export function LodgingUnitCard({
             As a `<span>` this title rendered the same 18px in the body sans,
             which is why the boards still read differently once the sizes
             matched. `text-lg` is a utility and outranks the base rule's
-            `text-2xl md:text-3xl`, so only the face and tracking carry over. */}
-        <h3 className={`truncate text-lg ${openTitleClassName}`}>{unit.name}</h3>
+            `text-2xl md:text-3xl`, so only the face and tracking carry over.
+
+            `min-w-0` is what lets `truncate` fire at all: a flex child's
+            default `min-width: auto` refuses to shrink below its content, and
+            the title now has icons beside it competing for the row. */}
+        <h3 className={`min-w-0 truncate text-lg ${openTitleClassName}`}>{unit.name}</h3>
+        {/* PRESENCE, AND NEVER WHICH KIND (ruling 2). The meta row spelled
+            this out as `Bath Private` / `Bath Shared`; the CampMinder question
+            behind the family's flag asks for "a bathroom that doesn't require
+            you to leave your cabin", which is `bathroom != 'none'`, and a
+            shared unit satisfies it as fully as a private one. Of the 6
+            private units, 5 are staff housing no weekend has ever released —
+            so the distinction is one no staff member on this board can act on.
+            Vocabulary §4 carries the full correction; kindred#2501 is the
+            matching fix to the family-side RULE, which still grades
+            exclusivity for one more release. */}
+        {unit.bathroom !== undefined && unit.bathroom !== 'none' && unit.bathroom !== 'unknown' && (
+          <Bath
+            data-testid="amenity-bathroom"
+            aria-label="Bathroom in unit"
+            className="text-muted-foreground h-3.5 w-3.5 flex-shrink-0"
+          />
+        )}
+        {/* `power_coverage`, NEVER the raw `has_power` — see `needsFit` above.
+            The raw flag drew no plug on twelve entirely-powered buildings, and
+            T2 would have made that the first thing staff read.
+
+            PRESENCE again, so `some` draws the plug: the mark says the
+            building offers power somewhere. Whether it reaches a particular
+            family is the need glyph's question, and `needsFit` already grades
+            `some` as the softer misfit on the drag hatch. */}
+        {(unit.power_coverage ?? 'unknown') !== 'none' &&
+          (unit.power_coverage ?? 'unknown') !== 'unknown' && (
+            <Plug
+              data-testid="amenity-power"
+              aria-label="Power"
+              className="text-muted-foreground h-3.5 w-3.5 flex-shrink-0"
+            />
+          )}
+        {/* NO DEMAND COUNTERPART, and that is measured rather than assumed: 0
+            of 184 housing narratives mention air conditioning, against 54 for
+            a bathroom, 34 for CPAP power and 11 for a fridge — so the same
+            scan that found the others found none of these. It stays because
+            staff place against it; it gets no glyph because nobody asks. */}
+        {unit.has_ac === true && (
+          <Snowflake
+            data-testid="amenity-ac"
+            aria-label="Air conditioning"
+            className="text-muted-foreground h-3.5 w-3.5 flex-shrink-0"
+          />
+        )}
         {/* The tooltip hangs on THIS figure, never on the `<h3>` above it
             (kindred#2177). It is also the smallest trigger on the board, which
             is why `ui/Tooltip` grows a transparent 24px hit target around
             whatever it wraps — a drawn box would collide with the dashed
-            border this card already spends on "empty room". */}
+            border this card already spends on "empty room".
+
+            ⚠️ THE RED FIGURE IS NOW THE WHOLE OVER-CAPACITY MARK. The
+            `Over capacity` pill beside it is struck: it stated at chip weight
+            exactly what the figure states in colour, on the two cards a
+            weekend that qualify. */}
         <Tooltip
           content={occupancyTooltip}
           data-testid="unit-occupancy"
@@ -849,224 +949,76 @@ export function LodgingUnitCard({
         </Tooltip>
       </div>
 
-      <div className="text-muted-foreground flex flex-wrap items-center gap-1.5 text-sm">
-        {unit.bathroom === 'private' && (
-          <span className="inline-flex items-center gap-0.5">
-            <Bath className="h-3 w-3" /> Private
-          </span>
-        )}
-        {unit.bathroom === 'shared' && (
-          <span className="inline-flex items-center gap-0.5">
-            <Bath className="h-3 w-3" /> Shared
-          </span>
-        )}
-        {unit.has_power === true && <Plug className="h-3 w-3" aria-label="Power" />}
-        {unit.has_ac === true && <Snowflake className="h-3 w-3" aria-label="Air conditioning" />}
-        {badge && (
-          <span className={`rounded-full px-1.5 py-0.5 text-xs font-medium ${badge.className}`}>
-            {badge.label}
-          </span>
-        )}
-        {/* Beside the availability badge because the two answer adjacent
-            questions about the same room: whether a family may go in it at
-            all, and whether a SECOND one may. */}
-        {sharing && (
-          <span className={`rounded-full px-1.5 py-0.5 text-xs font-medium ${sharing.className}`}>
-            {sharing.label}
-          </span>
-        )}
-        {/* kindred#2179. Beside the sharing badge because it answers the same
-            question in the one case that badge is deliberately silent on: the
-            space says one family, and there are two in it.
+      {/* THE META ROW, AND IT RENDERS ONLY WHEN IT HAS SOMETHING TO SAY (0a).
+          Ruling 12 deleted this row on the premise that T2 and the footer move
+          empty it. They empty EIGHT of its ten things; `Inactive` and
+          `Reconfirm space` were in neither set and nobody ruled them cut, so
+          deleting the row literally would have deleted two marks by accident.
 
-            A WARNING, not a refusal — the chip is the whole mark. Nothing here
-            touches `useDroppable`, `opacity` or `pointer-events`: the drop
-            stays accepted, and `opacity-40` is spoken for by refusal in the
-            board's ruled vocabulary. The count is in the tooltip because
-            colour alone is not a signal (WCAG 1.4.1) and the icon carries no
-            text — and it is a reachable tooltip, not a `title`, since
-            kindred#2177. `UnitBadge.title` is optional, so a badge that ever
-            arrives without one stays a plain chip rather than becoming a tab
-            stop with nothing behind it. */}
-        {sharingConflict && <SharingConflictChip badge={sharingConflict} />}
-        {/* The only actionable capacity state, and the only one summer's
-            four-stop ramp carries that survives at these denominators — a
-            room that sleeps two goes green to orange on its second occupant,
-            which is a binary wearing four colours. */}
-        {overCapacity && (
-          <span className="rounded-full bg-red-100 px-1.5 py-0.5 text-xs font-medium text-red-800 dark:bg-red-950/50 dark:text-red-300">
-            Over capacity
-          </span>
-        )}
-        {/* Without this the bare figure reads as overfull whether or not it is
-            coloured, which is worse than showing nothing. It says the count
-            belongs to a placement wider than this card, not that the room is
-            in trouble. */}
-        {spanWidth > 0 && (
-          <span className="border-border text-muted-foreground rounded-full border px-1.5 py-0.5 text-xs font-medium">
-            {`Spans ${String(spanWidth)} rooms`}
-          </span>
-        )}
-        {/* A deactivated room only reaches the board when somebody is still in
-            it — hiding it would drop them. */}
-        {unit.is_active === false && (
-          <span className="rounded-full bg-slate-200 px-1.5 py-0.5 text-xs font-medium text-slate-800 dark:bg-slate-800 dark:text-slate-200">
-            Inactive
-          </span>
-        )}
-        {/* Beside the badge, because the two report the same fact and a card
-            that says "Held" in one place and offers to hold it in another says
-            two things about one cabin. The control's own children carry
-            `w-full`, so the reason line and the open form wrap onto their own
-            rows inside this wrapping flex. */}
-        <UnitAvailabilityControl
-          unit={unit}
-          canManage={canSetAvailability && onSetAvailability !== undefined}
-          isSaving={savingAvailability}
-          onSubmit={(write) => {
-            onSetAvailability?.(write)
-          }}
-        />
-        {/* kindred#2080 — the space's own placement path, for the staff
-            member who has the cabin on screen and not the family.
-
-            ⚠️ A PILL THAT OPENS A MODAL SINCE AS2 (owner, 2026-08-19), which
-            SUPERSEDES the 2026-08-09 ruling this control was built on — "not a
-            popover and not a second surface", option A, literally Hold's
-            shape. The supersession is scoped to this one control, and the
-            width is what buys it: a candidate row now carries party size
-            against the beds left, the need glyphs coloured against this room,
-            last year's cabin and a fit verdict, none of which fits in a 244px
-            card. `UnitAvailabilityControl` and the merge/split pills stay
-            inline, because none of them has information that wants width.
-
-            It also collapses ~82 mounted comboboxes to one. The inline picker
-            was mounted on every placeable card, each holding the WHOLE
-            unplaced queue and memoising an annotate-and-sort over it; the
-            modal is mounted only while it is open.
-
-            NAMED FOR THE CABIN, as the combobox was: ~82 controls all called
-            "Assign" is unusable, and the visible word is the only thing that
-            fits on the pill.
-
-            AND NAMED FOR WHAT THIS CARD CAN ACTUALLY DO, which the combobox
-            was careful about and this inherits: on the CampMinder mirror there
-            is no scenario, so nothing can be PLACED and the modal opens as a
-            write-in box only. The visible word stays "Assign" — it is the
-            ruled label, and writing an occupant in is still assigning the
-            space — but the accessible name says the truth. */}
-        {canPickFamily && (
-          <button
-            type="button"
-            aria-label={
-              canOfferPlacement ? `Assign to ${unit.name}` : `Write in an occupant for ${unit.name}`
-            }
-            disabled={savingAvailability}
-            onClick={() => {
-              setAssignOpen(true)
-            }}
-            className="border-border text-muted-foreground hover:text-foreground hover:border-foreground/30 inline-flex items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-xs font-medium disabled:opacity-40"
-          >
-            <Plus className="h-3 w-3" />
-            Assign
-          </button>
-        )}
-        {/* Merging is promotion to the parent: dragging this handle onto a
-            sibling's card writes `combined: true` on the shared parent. Absent
-            entirely on a parentless room — there is nothing to promote it to —
-            rather than merely disabled. */}
-        {showMergeHandle && (
-          <button
-            type="button"
-            ref={setMergeDragRef}
-            data-testid={`merge-handle-${unit.code}`}
-            aria-label={`Merge ${unit.name} into its building`}
-            disabled={savingMerge}
-            {...mergeAttributes}
-            {...mergeListeners}
-            // AFTER the listener spread, so dnd-kit cannot overwrite it. The
-            // two do not race: MouseSensor activates at 10px, and a plain
-            // click never travels that far — the same reason the card itself
-            // stays clickable while being draggable.
-            onClick={() => {
-              onMerge?.(unit)
-            }}
-            className="border-border text-muted-foreground hover:text-foreground hover:border-foreground/30 inline-flex cursor-grab items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-xs font-medium active:cursor-grabbing disabled:opacity-40"
-          >
-            <Merge className="h-3 w-3" />
-            Merge
-          </button>
-        )}
-        {/* The inverse control, on the combined card itself.
-            `is_container` is part of the gate, not decoration: the API
-            resolves `is_combined` for EVERY row, leaves included, so a leaf
-            can carry a stale `default_combined: true`. The admin form now
-            clears it when "is a building" is unticked, so nothing writes that
-            combination any more — but rows saved before it did still hold it
-            and no migration went back for them, which is why the gate stays.
-            Splitting a room into rooms it does not have is not an operation,
-            so the control is absent rather than offered and then failing. */}
-        {canMerge &&
-          unit.is_container === true &&
-          unit.is_combined === true &&
-          onSplit !== undefined && (
-            <button
-              type="button"
-              disabled={savingMerge}
-              aria-label={`Split ${unit.name} into its rooms`}
-              onClick={() => {
-                onSplit(unit)
-              }}
-              className="border-border text-muted-foreground hover:text-foreground hover:border-foreground/30 inline-flex items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-xs font-medium disabled:opacity-40"
-            >
-              <Split className="h-3 w-3" />
-              Split
-            </button>
-          )}
-      </div>
-
-      {isShared && (
-        <span
-          className={`inline-flex w-fit items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ${
-            consent
-              ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300'
-              : 'bg-muted text-muted-foreground'
-          }`}
+          Conditional rather than rehomed, on the owner's ruling: on today's
+          data neither fires — 0 of 118 inactive, 118 of 118 confirmed — so
+          every live card gets ruling 12's outcome including its 12px gap, and
+          both marks keep a home for when kindred#2500 makes a new season start
+          unconfirmed and flags all 118 at once. */}
+      {(needsReconfirm || unit.is_active === false) && (
+        <div
+          data-testid="unit-meta"
+          className="text-muted-foreground flex flex-wrap items-center gap-1.5 text-sm"
         >
-          {consent ? (
-            <TriangleAlert className="h-3 w-3 flex-shrink-0" />
-          ) : (
-            <Users className="h-3 w-3 flex-shrink-0" />
+          {needsReconfirm && (
+            <span className="border-border text-muted-foreground rounded-full border px-1.5 py-0.5 text-xs font-medium">
+              Reconfirm space
+            </span>
           )}
-          {`${String(parties.length)} families`}
-        </span>
+          {/* A deactivated room only reaches the board when somebody is still
+              in it — hiding it would drop them. Kept for that unlikely case,
+              and parked for staff input along with the sharing chips. */}
+          {unit.is_active === false && (
+            <span className="rounded-full bg-slate-200 px-1.5 py-0.5 text-xs font-medium text-slate-800 dark:bg-slate-800 dark:text-slate-200">
+              Inactive
+            </span>
+          )}
+        </div>
       )}
 
       {/* A household answered `no_share` and is sharing anyway — the
           consent warning, `docs/reference/weekend-card-vocabulary.md` §1
           (a gitignored "spec §11" until kindred#2072). On 2026 data this
           fires exactly once, and that one case is real. Still PENDING STAFF
-          INPUT: it is one of five marks parked for them. */}
+          INPUT: it is one of five marks parked for them.
+
+          ⚠️ THE `N families` CHIP THAT USED TO SIT ABOVE IT IS STRUCK. It
+          counted what the well below already shows by drawing that many
+          cards, and it fired on every shared card — including the ones built
+          to be shared. This sentence is the mark that survived that cut,
+          because `consentReason` builds a whole statement rather than a
+          count. */}
       {consent && (
         <p className="text-sm font-medium text-amber-700 dark:text-amber-400">{consent.reason}</p>
       )}
 
       {/*
-        The occupant well — summer's `min-h-[100px]`, and ONE element across
-        both branches. Two wells drift; this one cannot.
+        The occupant well — ONE element across both branches. Two wells drift;
+        this one cannot.
 
-        `flex-1` is what makes dropping the grid's `items-start` survivable.
-        A grid row is already as tall as its tallest card, so stretching the
-        cards reclaims no space at all — it moves the whitespace from outside
-        the card border to inside it. Without a well that absorbs the extra
-        height, stretch just yields 28 blown-up empty cards with the message
-        pinned to the top edge, which is worse than the raggedness it fixes.
+        `flex-1` STAYS, and it is what makes dropping the grid's `items-start`
+        survivable. A grid row is already as tall as its tallest card, so
+        stretching the cards reclaims no space at all — it moves the whitespace
+        from outside the card border to inside it. Without a well that absorbs
+        the extra height, stretch just yields 28 blown-up empty cards with
+        their contents pinned to the top edge, which is worse than the
+        raggedness it fixes.
 
-        `min-h-[100px]` earns its place separately: it lifts an empty card off
-        its 139px floor toward the 188px occupied median, so rows start closer
-        together before stretch has to do anything.
+        ⚠️ `min-h-[100px]` IS STRUCK (B·2), and it is a DIFFERENT decision from
+        `flex-1` above — read that before restoring it. It was summer's, and it
+        earned its place by lifting an empty card off its 139px floor toward
+        the 188px occupied median so rows started closer together. What paid
+        for it was the empty-state sentence sitting in the middle of that
+        space; with `Drop families here` struck there is nothing in an empty
+        well to give height TO, and 81% of live cards are empty. Measured with
+        B·1 and found perfectly additive: about −15% of column height together.
       */}
-      <div className="flex min-h-[100px] flex-1 flex-col gap-2">
+      <div data-testid="occupant-well" className="flex flex-1 flex-col gap-2">
         {/* A write-in, drawn where the board draws occupancy (kindred#2078).
             FIRST and unconditionally, never in an either/or with the parties
             below. That was defensive when it was written — #2090 ruled the two
@@ -1134,45 +1086,131 @@ export function LodgingUnitCard({
             isSaving={savingAvailability}
           />
         ))}
-        {/* The invitation, and it stands down for a write-in even though the
-            card now accepts a drop: the well is not EMPTY — a `WriteInCard` is
-            sitting in it — and "Drop families here" under a named occupant
-            describes the wrong space. The card is still a live drop target;
-            the placeholder is about what the well contains, not about what the
-            card will accept. */}
-        {parties.length === 0 && !writtenInto ? (
-          /* Summer's wording in family vocabulary — `BunkCard` says "Drop
-             campers here". An empty slot's job is to be a target, and "Empty"
-             described the state without offering the action.
+        {/* ⚠️ THE EMPTY-STATE SENTENCE IS STRUCK, AND ITS ABSENCE IS THE
+            RULING (vocabulary §3).
 
-             Only while placement is live, though. Without a scenario or
-             without `bunking.manage` there is nothing to drop, so the
-             invitation would name an action the reader cannot take. Summer
-             renders NOTHING at all in production mode; these cards are small
-             enough that a blank body reads as broken rather than read-only, so
-             the state is stated instead.
+            It read `Drop families here` while placement was live and `Empty`
+            otherwise — summer's wording in family vocabulary, centred with
+            `m-auto` because these cards stretch across a 139–357px range, and
+            it stood down for a write-in because "Drop families here" under a
+            named occupant describes the wrong space.
 
-             `m-auto` CENTRES it, where summer top-aligns under `py-8`. A
-             deliberate divergence (§4): summer's bunk cards are uniformly
-             tall, so a top-aligned message always sits near its own floor.
-             These stretch across a 139–357px range, where the same message
-             would hang 130px above the bottom of a tall empty card. */
-          <p className="text-muted-foreground m-auto text-center text-sm italic">
-            {canPlace ? 'Drop families here' : 'Empty'}
-          </p>
-        ) : (
-          parties.map((party) => (
-            <FamilyCard
-              key={partyKey(party)}
-              party={party}
-              unit={unit}
-              sharedSlot={overlappingKeys.has(partyKey(party))}
-              isDraggable={canPlace}
-              onOpen={onOpenParty}
-            />
-          ))
-        )}
+            At 81% of live cards empty it was the most-repeated sentence on the
+            board, and the dashed border plus an empty well already say it.
+
+            ⚠️ `lodging-board-vs-summer.md` §3 argued FOR this text — that
+            paragraph is superseded, and has been edited rather than left
+            standing.
+
+            It took `min-h-[100px]` with it: the min-height's whole job was to
+            give this sentence room to sit in. */}
+        {parties.map((party) => (
+          <FamilyCard
+            key={partyKey(party)}
+            party={party}
+            unit={unit}
+            sharedSlot={overlappingKeys.has(partyKey(party))}
+            isDraggable={canPlace}
+            onOpen={onOpenParty}
+          />
+        ))}
       </div>
+
+      {/* THE FOOTER ROW — the controls, moved out of the meta row.
+          Assign, Merge and Split answer "what do I do with this space", where
+          every mark above answers "what IS this space". Mixing the two in one
+          wrapping row is what made the meta row a general-purpose strip in the
+          first place, and it is why a card could grow a control and a badge
+          that said the same thing. Below the well, so the card reads
+          title → state → occupants → actions.
+
+          ABSENT ENTIRELY when nothing is offered, rather than an empty row
+          spending a gap on nothing — the same rule the meta row now follows. A
+          read-only board draws neither. */}
+      {(canPickFamily || showMergeHandle || showSplitControl) && (
+        <div
+          data-testid="unit-footer"
+          className="text-muted-foreground flex flex-wrap items-center gap-1.5 text-sm"
+        >
+          {/* kindred#2080 — the space's own placement path, for the staff
+              member who has the cabin on screen and not the family.
+
+              ⚠️ A PILL THAT OPENS A MODAL SINCE AS2 (owner, 2026-08-19), which
+              SUPERSEDES the 2026-08-09 ruling this control was built on — "not
+              a popover and not a second surface", option A, literally Hold's
+              shape. The supersession is scoped to this one control, and the
+              width is what buys it: a candidate row carries party size against
+              the beds left, the need glyphs coloured against this room, last
+              year's cabin and a fit verdict, none of which fits in a 244px
+              card. It also collapses ~82 mounted comboboxes to one.
+
+              NAMED FOR THE CABIN, as the combobox was: ~82 controls all called
+              "Assign" is unusable, and the visible word is the only thing that
+              fits on the pill. AND NAMED FOR WHAT THIS CARD CAN ACTUALLY DO —
+              on the CampMinder mirror there is no scenario, so nothing can be
+              PLACED and the modal opens as a write-in box only. */}
+          {canPickFamily && (
+            <button
+              type="button"
+              aria-label={
+                canOfferPlacement
+                  ? `Assign to ${unit.name}`
+                  : `Write in an occupant for ${unit.name}`
+              }
+              disabled={savingAvailability}
+              onClick={() => {
+                setAssignOpen(true)
+              }}
+              className="border-border text-muted-foreground hover:text-foreground hover:border-foreground/30 inline-flex items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-xs font-medium disabled:opacity-40"
+            >
+              <Plus className="h-3 w-3" />
+              Assign
+            </button>
+          )}
+          {/* Merging is promotion to the parent: dragging this handle onto a
+              sibling's card writes `combined: true` on the shared parent.
+              Absent entirely on a parentless room — there is nothing to
+              promote it to — rather than merely disabled. */}
+          {showMergeHandle && (
+            <button
+              type="button"
+              ref={setMergeDragRef}
+              data-testid={`merge-handle-${unit.code}`}
+              aria-label={`Merge ${unit.name} into its building`}
+              disabled={savingMerge}
+              {...mergeAttributes}
+              {...mergeListeners}
+              // AFTER the listener spread, so dnd-kit cannot overwrite it. The
+              // two do not race: MouseSensor activates at 10px, and a plain
+              // click never travels that far — the same reason the card itself
+              // stays clickable while being draggable.
+              onClick={() => {
+                onMerge?.(unit)
+              }}
+              className="border-border text-muted-foreground hover:text-foreground hover:border-foreground/30 inline-flex cursor-grab items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-xs font-medium active:cursor-grabbing disabled:opacity-40"
+            >
+              <Merge className="h-3 w-3" />
+              Merge
+            </button>
+          )}
+          {showSplitControl && (
+            <button
+              type="button"
+              disabled={savingMerge}
+              aria-label={`Split ${unit.name} into its rooms`}
+              onClick={() => {
+                // Not `onSplit?.` — `showSplitControl` above already requires
+                // it, and TypeScript narrows through that `const`.
+                onSplit(unit)
+              }}
+              className="border-border text-muted-foreground hover:text-foreground hover:border-foreground/30 inline-flex items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-xs font-medium disabled:opacity-40"
+            >
+              <Split className="h-3 w-3" />
+              Split
+            </button>
+          )}
+        </div>
+      )}
 
       {/* MOUNTED ONLY WHILE OPEN. `ui/Modal` portals to `document.body`, so
           nothing here sits inside the card's own stacking context or its

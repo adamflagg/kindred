@@ -32,11 +32,17 @@
  * ring, not a fixed hue, not a smaller dot.
  *
  * Striking it lost nothing, because `consentFlagged` already outranked it:
- * every share worth an alarm was already being caught one tier up. The one
- * occupancy warning that IS rare — a second party in a unit classified
- * `single_party` — is a CHIP in the card's badge row (`unitBadges.ts`'s
- * `sharingConflictBadge`), on a channel of its own, and must not be brought
- * back through this table.
+ * every share worth an alarm was already being caught one tier up.
+ *
+ * ⚠️ THE ONE NARROW SURVIVOR OF THAT CUT IS NOW STRUCK TOO. A second party in
+ * a unit classified `single_party` was a CHIP in the card's badge row
+ * (`unitBadges.ts`'s `sharingConflictBadge`), on a channel of its own —
+ * kindred#2072 removed it, because it never fired: all 23 room-sharing cards
+ * in the registry are classified `shareable`.
+ *
+ * So the board now marks a shared space in NO way at all, deliberately, and
+ * this table is the place a future session would most naturally put one back.
+ * Do not — not as a ring, not as a tint, not as a dot. It takes a ruling.
  */
 
 export interface RingPrecedenceInputs {

@@ -49,6 +49,46 @@
 import type { LodgingUnitRow, WriteInCoverRow } from '../../types/lodging'
 
 /** Who is in a room, and anything staff said about them. */
+/**
+ * What a write to `set_availability` says.
+ *
+ * ⚠️ IT LIVED IN `UnitAvailabilityControl.tsx` UNTIL kindred#2072, and moved
+ * here when that control was cut from the board (vocabulary §3: the `Released`
+ * badge and the `Release` / `Clear` control both need a staff unit or an
+ * existing override, and this board has neither). Nothing renders that control
+ * any more, so the type had to leave with it — and this is the right home,
+ * because every remaining producer of this write is a WRITE-IN: the Assign
+ * modal creates one, and each `WriteInCard`'s pencil and X edit and remove one.
+ *
+ * The `familyAvailable: true` arm survives in the shape rather than in any UI:
+ * the endpoint still accepts it, and releasing a staff cabin to families is a
+ * registry edit on the season's row (Manage → Lodging) rather than a
+ * per-weekend override.
+ */
+export interface UnitAvailabilityWrite {
+  /**
+   * The unit the write NAMES, which is not always the card it came from.
+   *
+   * A write-in covers a space and the board draws whichever level the unit
+   * tree resolves to, so a room can inherit its building's write-in and a
+   * merged building one of its rooms'. Removing one has to target the unit
+   * that HOLDS the row — the card's own id would delete nothing, and the unit
+   * holding the row has no card of its own.
+   *
+   * TWO CALLERS: the Assign modal, which always names the card's own unit,
+   * and each `WriteInCard`'s corner X, which sends this same write bound to
+   * the row that card draws. The field carries the target either way.
+   */
+  unitId: string
+  /** That unit's name, for the confirmation toast. */
+  unitName: string
+  familyAvailable: boolean | null
+  /** Who is in the room. `''` on a clear. */
+  occupantName: string
+  /** The write-in's optional note. `''` on a clear. */
+  reason: string
+}
+
 export interface WriteInOccupant {
   /**
    * The occupant's name, or `''` when nobody named them.

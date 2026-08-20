@@ -243,7 +243,7 @@ visual work.
 | ----- | ----------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
 | 1     | The glyph vocabulary — `needGlyphs.ts`, the family card's third line, S2 + Sa, R3, and the family-card half of the cuts | `feature/weekend-glyph-vocabulary` |
 | 2     | The Assign modal — AS2 + W3                                                                                             | `feature/weekend-assign-modal`     |
-| 3     | The unit card — T2, the footer, the padding, and the board half of the cuts                                             | pending                            |
+| 3     | The unit card — T2, the footer, the padding, and the board half of the cuts                                             | `feature/weekend-unit-card`        |
 
 **`needGlyphs.ts` is the artifact to know about.** There was no per-need fit
 resolver before it: the four ruled glyphs were graded by three mutually
