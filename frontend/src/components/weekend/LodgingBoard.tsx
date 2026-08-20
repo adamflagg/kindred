@@ -63,7 +63,7 @@ import { FloatingUnplacedBadge } from './FloatingUnplacedBadge'
 import { LodgingUnitCard } from './LodgingUnitCard'
 import { partyKey } from './partyKey'
 import { resolvePartyUnit } from './rosterAttention'
-import type { UnitAvailabilityWrite } from './UnitAvailabilityControl'
+import type { UnitAvailabilityWrite } from './writeIn'
 import { writeInEntries } from './writeIn'
 
 export interface LodgingBoardProps {

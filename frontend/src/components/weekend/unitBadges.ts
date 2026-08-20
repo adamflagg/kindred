@@ -55,17 +55,25 @@ export interface UnitBadge {
 }
 
 /**
- * Whether `reservationBadge` badges this unit "Write-in" — exported so a
- * caller that shows the same fact another way can suppress the chip WITHOUT
- * re-deriving the branch's own gate and risking drift from it (kindred#2252).
+ * Whether `reservationBadge` badges this unit "Write-in".
  *
- * `LodgingUnitCard` is that caller: the occupant already gets a `WriteInCard`
- * in the unit's well, so the chip beside it repeated the same fact under a
- * second name. The two other surfaces that draw this chip — `MapUnitPopover`'s
- * header and its collapsed grid cell — carry no such card and still call
- * `reservationBadge` directly, unaffected by this function existing.
+ * ⚠️ NO LONGER EXPORTED, and that is a consequence of kindred#2072 rather
+ * than a tidy-up. It was exported so `LodgingUnitCard` could suppress the chip
+ * WITHOUT re-deriving this gate and drifting from it (kindred#2252): the
+ * occupant already gets a `WriteInCard` in the well, so the chip beside it
+ * repeated the same fact under a second name. That card now draws NO
+ * reservation badge at all, so there is nothing left to suppress.
+ *
+ * The two surfaces that still draw the chip — `MapUnitPopover`'s header and
+ * its collapsed grid cell — call `reservationBadge` directly and always did.
+ *
+ * Both halves of the gate matter and are pinned in `unitBadges.test.ts`: the
+ * `staff_default` exemption (a staff cabin written into for the weekend badges
+ * "Staff", not "Write-in") and the `hasWriteIn` read (never the raw
+ * `family_available_override`, which since kindred#2382 answers the staff↔family
+ * ROLE and names nobody).
  */
-export function writeInBadgeApplies(unit: LodgingUnitRow): boolean {
+function writeInBadgeApplies(unit: LodgingUnitRow): boolean {
   return unit.inventory_class !== 'staff_default' && hasWriteIn(unit)
 }
 
@@ -174,81 +182,27 @@ export function shareabilityBadge(unit: LodgingUnitRow): UnitBadge | null {
   }
 }
 
-/**
- * A second party in a space classified for one — kindred#2179's warning, and
- * the counterpart `shareabilityBadge` above deliberately does not render.
+/*
+ * ⚠️ `sharingConflictBadge` WAS HERE AND IS STRUCK — kindred#2072,
+ * vocabulary §3.
  *
- * A NEW element rather than a variant of that badge, because `single_party` is
- * SILENT there on purpose: it is 74 of the 118 registry rows, so a chip
- * restating it would sit on most of the board. There is no chip there to turn
- * red. This one appears only in the anomaly.
+ * It drew `One-family space`: a warning when a second party landed in a unit
+ * classified `single_party`, read off `overlappingPartyKeys` so it asked about
+ * a shared ROOM rather than a shared card. It NEVER FIRED — all 23
+ * room-sharing cards in the registry are classified `shareable` — and staff
+ * know which spaces hold one family.
  *
- * ⚠️ IT IS THE RARE ONE, AND THAT IS THE WHOLE POINT. Its opposite number — the
- * shared-space ring, which lit any card holding two families — was STRUCK on
- * 2026-08-09 (see `ringPrecedence.ts`) for firing on the units DESIGNED to hold
- * several families, every weekend, by construction. A mark that is always on is
- * chrome staff learn to read past, which is the failure
- * `docs/architecture/lodging-occupancy.md:112` names. Anything that would make
- * this chip common again is the same mistake wearing a different shape.
+ * Deleted rather than kept unused, unlike `availabilityAction` below: that one
+ * has a live write path standing behind it, where this was presentation logic
+ * for one chip and nothing else ever called it.
  *
- * WARN, DO NOT BLOCK. The placement has already happened and the drop stays
- * accepted: no `opacity-40` (the board's reserved REFUSAL signal), no hatch
- * (advisory needs misfit, #1912), no forest tint (open and available, #2093).
- * A chip in the badge row is a fourth channel and takes none of those three.
- *
- * `overlappingParties` is a count of parties that actually share a ROOM
- * (`overlappingPartyKeys`), never the card's raw party count. Two households in
- * disjoint rooms of one building is a legitimate share — the owner ruling of
- * 2026-08-07 — and the same "disjoint means no shared bedroom" reasoning that
- * struck the ring applies here. Compare at the level the assignment was made:
- * a container-level placement is judged against the CONTAINER's own
- * `shareability`, and since 1500000145's backfill makes every family-pool
- * container `shareable`, a whole-house let cannot fire this. That is the ruling
- * working, not a gap.
- *
- * AUDITED against kindred#2339 — a two-unit `lodging_unit_aliases` row writes
- * its whole member set onto every household that resolves through it, so two
- * DIFFERENT households independently resolving through the same alias can
- * each claim the identical two-code set without ever having agreed to share
- * either room. `overlappingPartyKeys` guards exactly that: it will not read
- * such a pair as sharing a room with EACH OTHER while the number of
- * households claiming that set is no bigger than the set itself (H <= N).
- * This badge takes `overlappingParties` as given and needs no guard of its
- * own — it only ever sees the count after that ambiguity has already been
- * resolved upstream.
- *
- * Silent on an unclassified unit for the reason the doc gives: a unit nobody
- * has classified has no rule to violate, and nagging there teaches dismissal.
- * This reads the STORED value and re-states the classification rule nowhere —
- * `shareabilityDrift.ts` already records that the rule has three expressions
- * (the migration header, `registry.go`'s `classifyShareability`, and itself)
- * and that a fourth would make that worse.
+ * ⚠️ THE MARK IT REPLACED IS ALSO STILL STRUCK, and this is where the two
+ * meet: the shared-space RING (kindred#2179) lit any card holding two
+ * families, fired on the units designed to hold several, and was struck on
+ * 2026-08-09 with nothing put in its place. This chip was the one narrow
+ * survivor of that cut. Reintroducing either — as a ring, a chip, a tint or a
+ * dot — needs a ruling, not an inference from this comment.
  */
-export function sharingConflictBadge(
-  unit: LodgingUnitRow,
-  overlappingParties: number
-): UnitBadge | null {
-  if (unit.shareability !== 'single_party') return null
-  if (overlappingParties < 2) return null
-  return {
-    label: 'One-family space',
-    // The board's existing amber — consent's tone, and the precedent this
-    // issue names for "a human should look at this". Not a fourth alarm
-    // colour: the palette is committed (forest to area identity and open
-    // space, amber to a share worth a look, red to over-capacity).
-    className: 'bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300',
-    /*
-     * "SHARING a room", not "placed here", because the count is an OVERLAP and
-     * the card already carries a placement count of its own. On a leaf the two
-     * agree; on a card that is a whole building they need not — three families
-     * under it, two of them in the same room, gives 2 here beside a chip
-     * reading "3 families". Reporting the overlap as an occupancy would make
-     * the card contradict itself, and the number has to be the one that
-     * TRIGGERED the warning or the warning cannot be checked against the card.
-     */
-    title: `Classified for one family — ${String(overlappingParties)} families are sharing a room here`,
-  }
-}
 
 /** Which of the three reachable availability outcomes this unit can move to. */
 export interface AvailabilityAction {

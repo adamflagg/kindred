@@ -6,7 +6,7 @@
  *
  * Fictional data throughout.
  */
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -69,10 +69,23 @@ function unit(overrides: Partial<LodgingUnitRow> = {}): LodgingUnitRow {
     bathroom_group: '',
     near_bathhouse: false,
     has_power: false,
+    // The RESOLVED field the title row reads since kindred#2072's T2, kept in
+    // step with the raw flag beside it because a real server row carries both.
+    // `has_power: true` alone no longer draws a plug: twelve of the fourteen
+    // 2026 family-pool containers record `has_power = 0` while every leaf
+    // beneath them has power, and T2 would have promoted that wrong answer to
+    // the most prominent row on the card.
+    power_coverage: 'none',
     has_ac: false,
     has_fridge: false,
     is_accessible: false,
-    is_confirmed: false,
+    // TRUE, and it was `false` until kindred#2072. Production has been 118 of
+    // 118 confirmed since 2026-08-09, so an unconfirmed default described no
+    // real cabin — and it now decides whether the card draws a meta row at
+    // all, since `Reconfirm space` is gated on exactly this field (ruling 23).
+    // The unconfirmed branch is the exception, and the tests that want it say
+    // so.
+    is_confirmed: true,
     is_active: true,
     is_container: false,
     inventory_class: 'family_pool',
@@ -299,62 +312,35 @@ describe('LodgingUnitCard', () => {
     expect(screen.getByText('Cedar 1').tagName).toBe('H3')
   })
 
-  it('invites a drop into an empty unit while placement is live', () => {
-    // Summer's wording, in family vocabulary: `BunkCard` says "Drop campers
-    // here". The card's job in an empty slot is to be a target, and "Empty"
-    // described the state without offering the action.
-    render(<LodgingUnitCard slot={slot()} hue="hsl(160 45% 42%)" canPlace onOpenParty={vi.fn()} />)
-    expect(screen.getByText('Drop families here')).toBeInTheDocument()
-  })
+  /*
+   * ⚠️ TWO TESTS WERE HERE AND THE ELEMENT THEY ASSERTED IS STRUCK —
+   * `Drop families here` while placement was live, `Empty` otherwise
+   * (kindred#2072, vocabulary §3). At 81% of live cards empty it was the
+   * most-repeated sentence on the board, and the dashed border plus an empty
+   * well already say it.
+   *
+   * The `canPlace` CONDITIONALITY they protected went with the sentence: there
+   * is no wording left to be conditional. The absence is pinned in "the marks
+   * kindred#2072 STRUCK from the unit card", along with the dashed border that
+   * now carries the state alone.
+   */
 
-  it('says an empty unit is empty when nothing can be dropped', () => {
-    /*
-     * Without a scenario, or without `bunking.manage`, there is nothing to
-     * drop and no way to drop it — so the invitation would name an action the
-     * reader cannot take. Summer reaches the same conclusion and renders
-     * NOTHING in production mode (`BunkCard`: `!isProductionMode && …`); these
-     * cards are small enough that a blank body reads as a broken card rather
-     * than a read-only one, so the state gets stated instead.
-     */
-    render(<LodgingUnitCard slot={slot()} hue="hsl(160 45% 42%)" onOpenParty={vi.fn()} />)
-    expect(screen.getByText('Empty')).toBeInTheDocument()
-    expect(screen.queryByText('Drop families here')).not.toBeInTheDocument()
-  })
-
-  it('renders the families it holds', () => {
-    // kindred#2074 removed the household salutation from the card -- it
-    // leads with the children instead, so two parties need DISTINCT
-    // children to stay distinguishable here (the default fixture's child
-    // is 'Noah Johnson' regardless of which household overrides display_name).
-    render(
-      <LodgingUnitCard
-        slot={slot({
-          parties: [
-            party(),
-            party({
-              household_cm_id: 102,
-              display_name: 'Garcia',
-              children: [{ person_cm_id: 9002, display_name: 'Liam Garcia', age: 6, grade: 0 }],
-            }),
-          ],
-        })}
-        hue="hsl(160 45% 42%)"
-        onOpenParty={vi.fn()}
-      />
-    )
-    expect(screen.getByText(/Noah Johnson/)).toBeInTheDocument()
-    expect(screen.getByText(/Liam Garcia/)).toBeInTheDocument()
-  })
-
-  it('says two parties are sharing', () => {
-    render(
+  it('says two parties are sharing by DRAWING two of them', () => {
+    // The `2 families` chip is struck (kindred#2072, vocabulary §3): it
+    // counted what the well below already shows by drawing that many cards,
+    // and it fired on every shared card including the ones built to be
+    // shared. What survives is the well itself, and — where a household
+    // declined — the consent sentence, which states a fact rather than a
+    // count.
+    const { container } = render(
       <LodgingUnitCard
         slot={slot({ parties: [party(), party({ household_cm_id: 102, display_name: 'Garcia' })] })}
         hue="hsl(160 45% 42%)"
         onOpenParty={vi.fn()}
       />
     )
-    expect(screen.getByText('2 families')).toBeInTheDocument()
+    expect(container.querySelectorAll('[data-family-card]')).toHaveLength(2)
+    expect(screen.queryByText('2 families')).not.toBeInTheDocument()
   })
 
   it('flags a shared unit where a family declined', () => {
@@ -391,10 +377,13 @@ describe('LodgingUnitCard', () => {
     expect(card).toHaveClass('border-dashed')
   })
 
-  it('badges a staff hold rather than hiding the room', () => {
+  it('draws a staff room rather than hiding it, and no longer badges it', () => {
     // Staff reason about adjacency; hiding a held room makes the site look
-    // smaller than it is. The Staff badge is ROLE-driven since 1500000135 --
-    // `reserved_staff` was a reason, and reasons are now free text.
+    // smaller than it is — THAT half is unchanged and is what this test now
+    // protects. The `Staff` badge itself is struck (kindred#2072): all 25
+    // staff units fail `isPlanningInventory`, so no staff card is ever drawn
+    // on this board and the badge could not appear. It survives on the map and
+    // the units admin table, where such a card does exist.
     render(
       <LodgingUnitCard
         slot={slot({
@@ -405,7 +394,7 @@ describe('LodgingUnitCard', () => {
       />
     )
     expect(screen.getByText('Cedar 1')).toBeInTheDocument()
-    expect(screen.getByText('Staff')).toBeInTheDocument()
+    expect(screen.queryByText('Staff')).not.toBeInTheDocument()
   })
 
   it('carries the area hue on its top edge as a secondary channel', () => {
@@ -1088,269 +1077,24 @@ describe('LodgingUnitCard — no shared-space ring (#2179)', () => {
  * advisory needs misfit and the forest tint on open-and-available; this is a
  * warning about a placement that already happened, so it takes none of them.
  */
-describe('LodgingUnitCard — the one-family conflict chip (#2179)', () => {
-  const hue = 'hsl(160 45% 42%)'
-  const twoParties = [party(), party({ household_cm_id: 102, display_name: 'Garcia' })]
-
-  function card(container: HTMLElement): HTMLElement {
-    const el = container.querySelector('[data-unit-card]')
-    if (!el) throw new Error('no card rendered')
-    return el as HTMLElement
-  }
-
-  it('warns when a second family lands in a unit classified one-family', () => {
-    render(
-      <LodgingUnitCard
-        slot={slot({ unit: unit({ shareability: 'single_party' }), parties: twoParties })}
-        hue={hue}
-        onOpenParty={vi.fn()}
-      />
-    )
-    expect(screen.getByText('One-family space')).toBeInTheDocument()
-  })
-
-  it('says the count in words on the chip itself, not in colour alone', () => {
-    render(
-      <LodgingUnitCard
-        slot={slot({ unit: unit({ shareability: 'single_party' }), parties: twoParties })}
-        hue={hue}
-        onOpenParty={vi.fn()}
-      />
-    )
-    const chip = screen.getByRole('button', { name: 'One-family space' })
-    fireEvent.focus(chip)
-    expect(screen.getByRole('tooltip')).toHaveTextContent(/2 families are sharing a room here/i)
-  })
-
-  it('is silent on the same unit holding one family', () => {
-    render(
-      <LodgingUnitCard
-        slot={slot({ unit: unit({ shareability: 'single_party' }), parties: [party()] })}
-        hue={hue}
-        onOpenParty={vi.fn()}
-      />
-    )
-    expect(screen.queryByText('One-family space')).not.toBeInTheDocument()
-  })
-
-  it('is silent on a shareable unit holding two families', () => {
-    render(
-      <LodgingUnitCard
-        slot={slot({ unit: unit({ shareability: 'shareable' }), parties: twoParties })}
-        hue={hue}
-        onOpenParty={vi.fn()}
-      />
-    )
-    expect(screen.queryByText('One-family space')).not.toBeInTheDocument()
-  })
-
-  it('is silent on an unclassified unit holding two families', () => {
-    render(
-      <LodgingUnitCard
-        slot={slot({ unit: unit({ shareability: 'unknown' }), parties: twoParties })}
-        hue={hue}
-        onOpenParty={vi.fn()}
-      />
-    )
-    expect(screen.queryByText('One-family space')).not.toBeInTheDocument()
-  })
-
-  it('does not fire on two families in DISJOINT rooms of one combined building', () => {
-    // The compare-at-the-assignment's-own-level ruling, and the same reason
-    // the ring was struck: disjoint means no shared bedroom. Two households
-    // in different rooms of one building is not a share, so a card that
-    // happens to be the whole building must not report one — even when the
-    // building itself is classified one-family.
-    const building = unit({
-      code: 'east-wing',
-      name: 'East Wing',
-      is_container: true,
-      is_combined: true,
-      shareability: 'single_party',
-    })
-    const front = unit({ code: 'east-1', name: 'East 1', parent_code: 'east-wing' })
-    const back = unit({ code: 'east-2', name: 'East 2', parent_code: 'east-wing' })
-    render(
-      <LodgingUnitCard
-        slot={slot({
-          unit: building,
-          parties: [
-            party({ unit_code: 'east-1', unit_name: 'East 1' }),
-            party({
-              household_cm_id: 102,
-              display_name: 'Garcia',
-              unit_code: 'east-2',
-              unit_name: 'East 2',
-            }),
-          ],
-        })}
-        units={[building, front, back]}
-        hue={hue}
-        onOpenParty={vi.fn()}
-      />
-    )
-    expect(screen.queryByText('One-family space')).not.toBeInTheDocument()
-  })
-
-  it('DOES fire when both families named the same room beneath that building', () => {
-    // The mirror of the test above, so "never fires on a container" cannot
-    // pass for "correctly overlap-aware".
-    const building = unit({
-      code: 'east-wing',
-      name: 'East Wing',
-      is_container: true,
-      is_combined: true,
-      shareability: 'single_party',
-    })
-    const front = unit({ code: 'east-1', name: 'East 1', parent_code: 'east-wing' })
-    const back = unit({ code: 'east-2', name: 'East 2', parent_code: 'east-wing' })
-    render(
-      <LodgingUnitCard
-        slot={slot({
-          unit: building,
-          parties: [
-            party({ unit_code: 'east-1', unit_name: 'East 1' }),
-            party({
-              household_cm_id: 102,
-              display_name: 'Garcia',
-              unit_code: 'east-1',
-              unit_name: 'East 1',
-            }),
-          ],
-        })}
-        units={[building, front, back]}
-        hue={hue}
-        onOpenParty={vi.fn()}
-      />
-    )
-    expect(screen.getByText('One-family space')).toBeInTheDocument()
-  })
-
-  it('WARNS without refusing — no dim, no blocked drop, no new ring', () => {
-    // `opacity-40` + `pointer-events-none` is the board's REFUSAL signal and
-    // this is not a refusal; the placement has already happened and staff are
-    // being told, not stopped. Nor does it become a fourth ring: the channel
-    // this issue struck stays struck.
-    overDroppableId = unitDroppableId('cedar-1')
-    const { container } = render(
-      <LodgingUnitCard
-        slot={slot({ unit: unit({ shareability: 'single_party' }), parties: twoParties })}
-        hue={hue}
-        canPlace
-        onOpenParty={vi.fn()}
-      />
-    )
-    expect(screen.getByText('One-family space')).toBeInTheDocument()
-    expect(card(container)).not.toHaveClass('opacity-40')
-    expect(card(container)).not.toHaveClass('pointer-events-none')
-    expect(card(container).style.boxShadow).toBe('')
-    // Still an active, highlighted drop target while the warning shows.
-    expect(card(container)).toHaveClass('border-primary')
-  })
-
-  it('sits in the badge row beside the availability chips', () => {
-    // Not a ring, not a wash, not a row of its own — the existing chip row,
-    // which is where the card already answers "may a family go in here".
-    render(
-      <LodgingUnitCard
-        slot={slot({
-          unit: unit({ shareability: 'single_party', inventory_class: 'staff_default' }),
-          parties: twoParties,
-        })}
-        hue={hue}
-        onOpenParty={vi.fn()}
-      />
-    )
-    const chip = screen.getByText('One-family space')
-    expect(chip.parentElement).toBe(screen.getByText('Staff').parentElement)
-  })
-
-  it('states the count as a SHARE, never as the card’s occupancy', () => {
-    // The two numbers on this card are counting different things and only one
-    // of them is a placement count. `overlappingPartyKeys` returns the parties
-    // that share a ROOM, so on a card holding three families of which only two
-    // are in the same room it is 2 — while the card's own chip, correctly,
-    // says three families are placed here. A warning that says "2 families are
-    // placed here" next to a chip saying "3 families" is not a rounding
-    // difference, it is a false statement about the placement.
-    const building = unit({
-      code: 'east-wing',
-      name: 'East Wing',
-      is_container: true,
-      is_combined: true,
-      shareability: 'single_party',
-    })
-    const front = unit({ code: 'east-1', name: 'East 1', parent_code: 'east-wing' })
-    const back = unit({ code: 'east-2', name: 'East 2', parent_code: 'east-wing' })
-    render(
-      <LodgingUnitCard
-        slot={slot({
-          unit: building,
-          parties: [
-            party({ unit_code: 'east-1', unit_name: 'East 1' }),
-            party({
-              household_cm_id: 102,
-              display_name: 'Garcia',
-              unit_code: 'east-1',
-              unit_name: 'East 1',
-            }),
-            party({
-              household_cm_id: 103,
-              display_name: 'Nguyen',
-              unit_code: 'east-2',
-              unit_name: 'East 2',
-            }),
-          ],
-        })}
-        units={[building, front, back]}
-        hue={hue}
-        onOpenParty={vi.fn()}
-      />
-    )
-    expect(screen.getByText('3 families')).toBeInTheDocument()
-    const chip = screen.getByRole('button', { name: 'One-family space' })
-    fireEvent.focus(chip)
-    expect(screen.getByRole('tooltip')).toHaveTextContent(/2 families are sharing a room here/i)
-  })
-
-  it('is silent on a SPLIT container, exactly as the sharing badge beside it is', () => {
-    // A split container is not a slot: the board fans its parties down to the
-    // room cards and draws no card for the container itself, which is why
-    // `shareabilityBadge` is suppressed on one. This chip reads the SAME
-    // `unit.shareability` from the SAME card, so leaving it ungated makes the
-    // belt-and-braces guard beside it half a guard — and the sentence it would
-    // print, "two families are in this one-family space", is about a space
-    // nobody was placed in.
-    const container = unit({
-      code: 'east-wing',
-      name: 'East Wing',
-      is_container: true,
-      is_combined: false,
-      shareability: 'single_party',
-    })
-    const front = unit({ code: 'east-1', name: 'East 1', parent_code: 'east-wing' })
-    render(
-      <LodgingUnitCard
-        slot={slot({
-          unit: container,
-          parties: [
-            party({ unit_code: 'east-wing', unit_name: 'East Wing' }),
-            party({
-              household_cm_id: 102,
-              display_name: 'Garcia',
-              unit_code: 'east-wing',
-              unit_name: 'East Wing',
-            }),
-          ],
-        })}
-        units={[container, front]}
-        hue={hue}
-        onOpenParty={vi.fn()}
-      />
-    )
-    expect(screen.queryByText('One-family space')).not.toBeInTheDocument()
-  })
-})
+/*
+ * ⚠️ THE ONE-FAMILY CONFLICT CHIP IS STRUCK — kindred#2072, vocabulary §3.
+ *
+ * A whole describe block went with it, and that is worth stating rather than
+ * leaving as a silent deletion. `One-family space` warned when a second party
+ * landed in a unit classified `single_party`; it NEVER FIRED, because all 23
+ * room-sharing cards in the registry are classified `shareable`, and staff
+ * know which spaces hold one family.
+ *
+ * `sharingConflictBadge` itself is deleted too — unlike `availabilityAction`,
+ * which survives its cut because a write path still stands behind it, this
+ * function was presentation logic for one chip and nothing else called it.
+ *
+ * The absence is pinned in "the marks kindred#2072 STRUCK from the unit card".
+ * What the deleted tests protected that is NOT about this chip — that a
+ * warning must never dim, refuse a drop, or draw a ring — is a property of
+ * `ringPrecedence` and is pinned in "no shared-space ring (#2179)".
+ */
 
 describe('LodgingUnitCard — the open-space title marker (#2093)', () => {
   // Owner ruling 2026-08-09: the master housing sheet marks an open space
@@ -1539,7 +1283,9 @@ describe('the write-in occupant card (kindred#2078)', () => {
   it('does not draw an occupant card on an ordinary open room', () => {
     render(<LodgingUnitCard slot={slot()} hue={hue} canPlace onOpenParty={vi.fn()} />)
 
-    expect(screen.getByText('Drop families here')).toBeInTheDocument()
+    // The empty well draws NOTHING now — not an occupant card, and not the
+    // struck invitation sentence either.
+    expect(screen.getByTestId('occupant-well')).toBeEmptyDOMElement()
     expect(screen.queryByText('Occupant not named')).not.toBeInTheDocument()
   })
 
@@ -1585,8 +1331,10 @@ describe('LodgingUnitCard — summer’s type scale', () => {
    * The sweep is the load-bearing test and the per-element ones below are its
    * documentation: a single `text-[11px]` left on a nested row is invisible in
    * a spot check and is exactly how the two scales diverged in the first
-   * place. `UnitAvailabilityControl` renders INSIDE this card and is swept
-   * with it — a 10px pill sitting in a 12px meta row is the same bug.
+   * place. It swept `UnitAvailabilityControl` too while that control still
+   * rendered inside this card — a 10px pill in a 12px meta row was the same
+   * bug — and it is cut as of this change (vocabulary §3); the sweep is
+   * unchanged because it walks whatever the card actually renders.
    */
   function arbitraryTextSizes(container: HTMLElement): string[] {
     const card = container.querySelector('[data-unit-card]')
@@ -1701,16 +1449,18 @@ describe('LodgingUnitCard — summer’s type scale', () => {
     expect(screen.getByText('One household declined sharing')).toHaveClass('text-sm')
   })
 
-  it('sets the empty state at body size', () => {
-    render(<LodgingUnitCard slot={slot()} hue="hsl(160 45% 42%)" onOpenParty={vi.fn()} />)
-    expect(screen.getByText('Empty')).toHaveClass('text-sm')
-  })
+  // The empty-state size assertion went with the sentence it measured
+  // (kindred#2072). Nothing renders in an empty well now, so there is no size
+  // to pin; the absence is pinned in the STRUCK describe instead.
 
-  it('sets badges and the shared-slot chip at summer’s meta size', () => {
+  it('sets the surviving meta marks at summer’s meta size', () => {
+    // `2 families` was the other half of this assertion and is struck. What
+    // remains of the meta row is `Inactive` and `Reconfirm space`, and the
+    // scale rule they have to meet is unchanged.
     render(
       <LodgingUnitCard
         slot={slot({
-          unit: unit({ is_active: false }),
+          unit: unit({ is_active: false, is_confirmed: false }),
           parties: [party(), party({ household_cm_id: 102, display_name: 'Garcia' })],
         })}
         hue="hsl(160 45% 42%)"
@@ -1718,7 +1468,7 @@ describe('LodgingUnitCard — summer’s type scale', () => {
       />
     )
     expect(screen.getByText('Inactive')).toHaveClass('text-xs')
-    expect(screen.getByText('2 families')).toHaveClass('text-xs')
+    expect(screen.getByText('Reconfirm space')).toHaveClass('text-xs')
   })
 })
 
@@ -1761,8 +1511,12 @@ describe('LodgingUnitCard — how full the room is', () => {
         onOpenParty={vi.fn()}
       />
     )
+    // The RED FIGURE IS THE WHOLE MARK now: the `Over capacity` pill beside
+    // it is struck (kindred#2072), because it stated at chip weight exactly
+    // what the figure states in colour, on the two cards a weekend that
+    // qualify.
     expect(screen.getByText('6/4')).toHaveClass('text-destructive')
-    expect(screen.getByText('Over capacity')).toBeInTheDocument()
+    expect(screen.queryByText('Over capacity')).not.toBeInTheDocument()
   })
 
   it('leaves a room within capacity unmarked', () => {
@@ -1818,25 +1572,18 @@ describe('LodgingUnitCard — how full the room is', () => {
     expect(screen.queryByText('Over capacity')).not.toBeInTheDocument()
   })
 
-  it('says the household spans rooms, so the figure is not read as a fault', () => {
-    // Without this the bare `6/3` reads as overfull whether or not it is
-    // coloured, which is worse than showing nothing.
-    const house = unit({ code: 'house', name: 'Aspen House', is_container: true, sleeps: 7 })
-    const r1 = unit({ code: 'r1', unit_id: 'u2', name: 'Aspen 1', parent_code: 'house', sleeps: 3 })
-    const r2 = unit({ code: 'r2', unit_id: 'u3', name: 'Aspen 2', parent_code: 'house', sleeps: 3 })
-    render(
-      <LodgingUnitCard
-        slot={slot({
-          unit: r1,
-          parties: [party({ party_size: 6, unit_code: '', unit_codes: ['r1', 'r2'] })],
-        })}
-        units={[house, r1, r2]}
-        hue="hsl(160 45% 42%)"
-        onOpenParty={vi.fn()}
-      />
-    )
-    expect(screen.getByText('Spans 2 rooms')).toBeInTheDocument()
-  })
+  /*
+   * ⚠️ `Spans N rooms` IS STRUCK (kindred#2072, vocabulary §3), and the test
+   * that asserted it is gone rather than inverted here — the STRUCK describe
+   * carries the negative pin with the same fixture.
+   *
+   * What it protected is NOT the chip and is untouched: `slotOccupancy`'s
+   * `spanWidth` still withholds the over-capacity CLAIM from a party drawn on
+   * several cards, which is the half that could produce a wrong red figure.
+   * The chip only explained the figure, and dropping somebody into a container
+   * is a deliberate act that needs no explaining. Measured at ZERO spanning
+   * parties after #2040.
+   */
 
   it('says nothing about spanning on an ordinary room', () => {
     render(
@@ -1864,18 +1611,21 @@ describe('LodgingUnitCard — the occupant well', () => {
    * blown-up empty boxes with the message pinned to the top edge.
    */
   function well(container: HTMLElement): HTMLElement | null {
-    const card = container.querySelector('[data-unit-card]')
-    const occupant = card?.querySelector('[data-family-card]')
-    if (occupant) return occupant.parentElement
-    // Empty slot: the invitation is the well's only child.
-    return card?.querySelector('p.italic')?.parentElement ?? null
+    // By its own testid since kindred#2072. It used to be found through its
+    // children — the occupant card, or the empty state's italic `<p>` — and
+    // the second of those is struck, so an empty well now has no child to find
+    // it by at all.
+    return container.querySelector('[data-testid="occupant-well"]')
   }
 
   it('gives an empty slot a well that grows with the row', () => {
     const { container } = render(
       <LodgingUnitCard slot={slot()} hue="hsl(160 45% 42%)" onOpenParty={vi.fn()} />
     )
-    expect(well(container)).toHaveClass('min-h-[100px]')
+    // B·2: the min-height is struck and `flex-1` is not. They were always two
+    // decisions — the floor lifted an empty card toward the occupied median,
+    // and `flex-1` is what makes the grid's stretch survivable at all.
+    expect(well(container)).not.toHaveClass('min-h-[100px]')
     expect(well(container)).toHaveClass('flex-1')
   })
 
@@ -1888,29 +1638,19 @@ describe('LodgingUnitCard — the occupant well', () => {
         onOpenParty={vi.fn()}
       />
     )
-    expect(well(container)).toHaveClass('min-h-[100px]')
+    expect(well(container)).not.toHaveClass('min-h-[100px]')
     expect(well(container)).toHaveClass('flex-1')
   })
 
-  it('centres the invitation in the well rather than pinning it to the top', () => {
-    /*
-     * A deliberate divergence, stated because §4 requires it. Summer
-     * top-aligns its message under `py-8`, which reads fine because a bunk
-     * card is uniformly tall. These cards stretch across a 139–357px range, so
-     * a top-aligned message in a tall empty card sits 130px above its own
-     * floor. `m-auto` on the sole child of a flex column centres it both ways.
-     */
-    const { container } = render(
-      <LodgingUnitCard slot={slot()} hue="hsl(160 45% 42%)" canPlace onOpenParty={vi.fn()} />
-    )
-    const invitation = screen.getByText('Drop families here')
-    expect(invitation).toHaveClass('m-auto')
-    expect(invitation).not.toHaveClass('py-1')
-    expect(container.querySelector('[data-unit-card]')).toBeInTheDocument()
-  })
-})
+  /*
+   * ⚠️ The `m-auto` centring test went with the sentence it centred
+   * (kindred#2072). It recorded a deliberate divergence — summer top-aligns
+   * its message under `py-8`, which reads fine on a uniformly tall bunk card
+   * and leaves a message 130px above the floor of a 357px empty lodging card.
+   * With no message there is nothing to align, and the divergence retires with
+   * it rather than being restated about an empty box.
+   */
 
-describe('LodgingUnitCard — summer’s chrome, the rest of it', () => {
   it('does not copy BunkCard’s inert hover class', () => {
     /*
      * `BunkCard` carries `hover:shadow-lodge-lg`, and trueing this card up
@@ -1936,16 +1676,28 @@ describe('LodgingUnitCard — summer’s chrome, the rest of it', () => {
     expect(container.querySelector('[data-unit-card]')).toHaveClass('card-lodge')
   })
 
-  it('spaces its rows on summer’s 12px rhythm', () => {
-    // Summer separates header / bar / roster with `mb-3` (12px) and the
-    // campers inside with `space-y-2` (8px). This card ran everything at a
-    // flat 8px, so the title did not separate from the amenity row.
+  it('spaces its rows TIGHTER than summer, deliberately (B·1)', () => {
+    /*
+     * ⚠️ THIS ASSERTION IS INVERTED, and the inversion is the ruling.
+     *
+     * It used to read `gap-3` and NOT `gap-2`, on the reasoning that summer
+     * separates header / bar / roster with `mb-3` and that a flat 8px left the
+     * title sitting on top of the amenity row. The second half is what
+     * changed: T2 lifted the amenities onto the title row, so there is no
+     * amenity row left to separate from.
+     *
+     * The divergence is topology rather than taste, which is the bar
+     * CLAUDE.md §4 sets: a summer bunk card holds 10–14 campers, so 12px is a
+     * small fraction of a tall card, where a lodging card holds nothing or one
+     * party and the same rhythm is most of it. Measured at −148px across the
+     * board, 8.3%, and about −15% of column height together with B·2.
+     */
     const { container } = render(
       <LodgingUnitCard slot={slot()} hue="hsl(160 45% 42%)" onOpenParty={vi.fn()} />
     )
     const card = container.querySelector('[data-unit-card]')
-    expect(card).toHaveClass('gap-3')
-    expect(card).not.toHaveClass('gap-2')
+    expect(card).toHaveClass('gap-2')
+    expect(card).not.toHaveClass('gap-3')
   })
 
   it('spaces two parties on summer’s 8px roster rhythm', () => {
@@ -1962,8 +1714,29 @@ describe('LodgingUnitCard — summer’s chrome, the rest of it', () => {
   })
 })
 
-describe('LodgingUnitCard shareability (kindred#2026)', () => {
-  it('marks a unit a second family may be placed into', () => {
+describe('LodgingUnitCard — shareability left the card (kindred#2026 → kindred#2072)', () => {
+  /*
+   * ⚠️ THREE ASSERTIONS ARE INVERTED HERE, AND ONE SURVIVES UNCHANGED.
+   *
+   * `Shared OK` is struck from the CARD (vocabulary §3): it granted something,
+   * so kindred#2026 made it legible — but it sits on 44 of 118 rows, and the
+   * board's own geometry already says which cards take two families, because
+   * the well simply draws two. `shareabilityBadge` is untouched and
+   * `MapUnitPopover` still draws it, on a surface with no card geometry to
+   * imply it.
+   *
+   * `Sharing unset` is not struck but RE-GATED and renamed: `Reconfirm space`,
+   * keyed on `is_confirmed` instead of `shareability` — the old gate was the
+   * wrong column, where all 118 rows are classified and none is unset, so the
+   * chip could never appear (ruling 23).
+   *
+   * What survives untouched is the WHOLE-HOUSE case's reasoning: a split
+   * container gets no card at all, so the only container reaching this
+   * component is a combined one, and two households on it is a legitimate
+   * share. That is now expressed by the card accepting them rather than by a
+   * chip announcing the permission.
+   */
+  it('draws no "Shared OK" chip on a shareable room', () => {
     render(
       <LodgingUnitCard
         slot={slot({ unit: unit({ shareability: 'shareable' }) })}
@@ -1971,44 +1744,43 @@ describe('LodgingUnitCard shareability (kindred#2026)', () => {
         onOpenParty={vi.fn()}
       />
     )
-    expect(screen.getByText('Shared OK')).toBeInTheDocument()
+    expect(screen.queryByText('Shared OK')).not.toBeInTheDocument()
   })
 
-  it('says nothing on a one-family room', () => {
+  it('says nothing on a one-family room either', () => {
     render(<LodgingUnitCard slot={slot()} hue="hsl(160 45% 42%)" onOpenParty={vi.fn()} />)
     expect(screen.queryByText('Shared OK')).not.toBeInTheDocument()
     expect(screen.queryByText('Sharing unset')).not.toBeInTheDocument()
   })
 
-  it('marks a WHOLE-HOUSE let, which is the card the ruling is actually about', () => {
-    // A split container gets no card at all — `dragPlacement` rejects it as a
-    // drop target and `unitLevel` fans down past it — so the only container
-    // that reaches this component is a COMBINED one, and that is the slot
-    // staff place into. The owner's ruling is that two households on one
-    // container is a legitimate share, so this is the card that most needs to
-    // say so. An earlier version suppressed the chip on every container and
-    // hid it in exactly the place it earns its keep.
-    render(
+  it('draws no chip on a WHOLE-HOUSE let, and still takes both households', () => {
+    const { container } = render(
       <LodgingUnitCard
         slot={slot({
           unit: unit({ is_container: true, is_combined: true, shareability: 'shareable' }),
+          parties: [party(), party({ household_cm_id: 102, display_name: 'Garcia' })],
         })}
         hue="hsl(160 45% 42%)"
         onOpenParty={vi.fn()}
       />
     )
-    expect(screen.getByText('Shared OK')).toBeInTheDocument()
+    expect(screen.queryByText('Shared OK')).not.toBeInTheDocument()
+    expect(container.querySelectorAll('[data-family-card]')).toHaveLength(2)
   })
 
-  it('flags a unit nobody has classified rather than letting it read as safe', () => {
+  it('no longer flags an unclassified unit — that chip changed columns', () => {
+    // `Sharing unset` fired on `shareability`, where 0 of 118 rows are unset.
+    // `Reconfirm space` fires on `is_confirmed`, which is the question staff
+    // actually have at season start — see the ruling 23 describe.
     render(
       <LodgingUnitCard
-        slot={slot({ unit: unit({ shareability: 'unknown' }) })}
+        slot={slot({ unit: unit({ shareability: 'unknown', is_confirmed: true }) })}
         hue="hsl(160 45% 42%)"
         onOpenParty={vi.fn()}
       />
     )
-    expect(screen.getByText('Sharing unset')).toBeInTheDocument()
+    expect(screen.queryByText('Sharing unset')).not.toBeInTheDocument()
+    expect(screen.queryByText('Reconfirm space')).not.toBeInTheDocument()
   })
 })
 
@@ -2427,9 +2199,333 @@ describe('LodgingUnitCard — the write-in chip, dropped in favour of the well (
     expect(screen.queryByText('Write-in')).not.toBeInTheDocument()
   })
 
-  it('does not suppress OTHER badges on this card — the sharing badge survives untouched', () => {
-    // Regression guard: the suppression is scoped to the write-in chip only,
-    // not to `reservationBadge`'s output wholesale on this card.
+  it('draws NO reservation badge of any kind on this card any more', () => {
+    /*
+     * ⚠️ TWO TESTS COLLAPSED INTO THIS ONE, and the change is bigger than the
+     * suppression they guarded.
+     *
+     * They pinned that #2252's write-in suppression was SCOPED — that
+     * `Shared OK` and `Staff` still reached the card through
+     * `reservationBadge` / `shareabilityBadge`. kindred#2072 struck every one
+     * of those marks from this card (vocabulary §3), so the scoping question
+     * has no card-side answer left: the render site is gone, not merely quiet.
+     *
+     * Both functions are untouched and `MapUnitPopover` still calls them.
+     * `writeInBadgeApplies`'s own two halves — the `staff_default` exemption
+     * and the `hasWriteIn` read — are pinned directly in `unitBadges.test.ts`
+     * now, against `reservationBadge`, where they cannot be lost to a change
+     * on this surface again.
+     */
+    const { container } = render(
+      <LodgingUnitCard
+        slot={slot({
+          unit: unit({
+            shareability: 'shareable',
+            inventory_class: 'staff_default',
+            write_ins: [cover()],
+            family_available_override: true,
+          }),
+        })}
+        hue={HUE}
+        onOpenParty={vi.fn()}
+      />
+    )
+    for (const label of ['Shared OK', 'Staff', 'Released', 'Write-in', 'Building']) {
+      expect(within(container).queryByText(label)).not.toBeInTheDocument()
+    }
+  })
+})
+
+describe('LodgingUnitCard — T2: the amenities ride the TITLE row', () => {
+  /*
+   * A VARIABLE BLOCK, never a fixed three-icon slot, and the measurement is
+   * the whole reason. An agent shaped all 73 drawn unit names in the exact
+   * Fraunces the app loads and cross-validated in headless Chrome: at the
+   * 280px column the variable block fits every card with ≥31px to spare,
+   * while a fixed slot truncates six — and truncates the WRONG END, because
+   * those six are a numbered series whose only distinguishing character is
+   * the last one. The board lives in a 280–292px band, so it sits on the
+   * cliff rather than past it.
+   */
+  const HUE = 'hsl(160 45% 42%)'
+  const renderUnit = (overrides: Partial<LodgingUnitRow>) =>
+    render(
+      <LodgingUnitCard slot={slot({ unit: unit(overrides) })} hue={HUE} onOpenParty={vi.fn()} />
+    )
+
+  it('draws only what the room actually has', () => {
+    const { container } = renderUnit({
+      bathroom: 'shared',
+      has_power: true,
+      power_coverage: 'all',
+      has_ac: false,
+    })
+    const title = container.querySelector('[data-testid="unit-title-row"]')
+    expect(title?.querySelector('[data-testid="amenity-bathroom"]')).not.toBeNull()
+    expect(title?.querySelector('[data-testid="amenity-power"]')).not.toBeNull()
+    expect(title?.querySelector('[data-testid="amenity-ac"]')).toBeNull()
+  })
+
+  it('draws nothing at all for a room with no recorded amenities', () => {
+    const { container } = renderUnit({ bathroom: 'none', has_power: false, has_ac: false })
+    expect(container.querySelectorAll('[data-testid^="amenity-"]')).toHaveLength(0)
+  })
+
+  it('keeps the title, the amenities and the occupancy figure on ONE row', () => {
+    const { container } = renderUnit({
+      bathroom: 'shared',
+      has_power: true,
+      power_coverage: 'all',
+      has_ac: true,
+    })
+    const title = container.querySelector('[data-testid="unit-title-row"]')
+    expect(title?.querySelector('h3')).not.toBeNull()
+    expect(title?.querySelector('[data-testid="unit-occupancy"]')).not.toBeNull()
+    expect(title?.querySelectorAll('[data-testid^="amenity-"]')).toHaveLength(3)
+  })
+
+  it('says the room HAS a bathroom, and never which kind', () => {
+    /*
+     * Ruling 2, and vocabulary §4 is the argument: the CampMinder question
+     * behind the flag asks for "a bathroom that doesn't require you to leave
+     * your cabin", which is `bathroom != 'none'`. A shared unit satisfies it
+     * as fully as a private one, and of the 6 private units 5 are staff
+     * housing no weekend has ever released — so the distinction is one no
+     * staff member can act on.
+     *
+     * The old meta row spelled it out as `Bath Private` / `Bath Shared`.
+     */
+    const shared = renderUnit({ bathroom: 'shared' })
+    expect(screen.getByTestId('amenity-bathroom')).toBeInTheDocument()
+    expect(screen.queryByText('Shared')).not.toBeInTheDocument()
+    shared.unmount()
+
+    renderUnit({ bathroom: 'private' })
+    expect(screen.getByTestId('amenity-bathroom')).toBeInTheDocument()
+    expect(screen.queryByText('Private')).not.toBeInTheDocument()
+  })
+
+  it('draws no bathroom mark for a room with none, or one nobody recorded', () => {
+    const none = renderUnit({ bathroom: 'none' })
+    expect(screen.queryByTestId('amenity-bathroom')).not.toBeInTheDocument()
+    none.unmount()
+    renderUnit({ bathroom: 'unknown' })
+    expect(screen.queryByTestId('amenity-bathroom')).not.toBeInTheDocument()
+  })
+
+  it('reads POWER off the resolved coverage, not the container’s own blank row', () => {
+    /*
+     * ⚠️ T2 PROMOTES A MEASURED PRE-EXISTING BUG TO THE MOST PROMINENT ROW ON
+     * THE CARD, which is why it is fixed in the same change rather than after
+     * it. Twelve of the fourteen 2026 family-pool containers record
+     * `has_power = 0` while every leaf beneath them has power. The amenity
+     * strip rendered the raw flag, so those twelve drew no plug; moving that
+     * to the title row would have made the wrong answer the first thing staff
+     * read. `power_coverage` is already on the wire and is what `needsFit` and
+     * `needGlyphs` have always used.
+     */
+    renderUnit({ is_container: true, is_combined: true, has_power: false, power_coverage: 'all' })
+    expect(screen.getByTestId('amenity-power')).toBeInTheDocument()
+  })
+
+  it('draws the plug for a building where only SOME rooms have power', () => {
+    // Presence, like the bathroom: the mark says the building offers it
+    // somewhere. WHETHER IT REACHES THIS FAMILY is the need glyph's question,
+    // and `needsFit` already grades `some` as a softer misfit on the hatch.
+    renderUnit({ is_container: true, is_combined: true, power_coverage: 'some' })
+    expect(screen.getByTestId('amenity-power')).toBeInTheDocument()
+  })
+
+  it('draws no plug where no room has power', () => {
+    renderUnit({ has_power: false, power_coverage: 'none' })
+    expect(screen.queryByTestId('amenity-power')).not.toBeInTheDocument()
+  })
+})
+
+describe('LodgingUnitCard — the FOOTER row', () => {
+  const HUE = 'hsl(160 45% 42%)'
+
+  it('carries Assign, Merge and Split together, below the well', () => {
+    const { container } = render(
+      <LodgingUnitCard
+        slot={slot({ unit: unit({ parent_code: 'house', is_container: false }) })}
+        hue={HUE}
+        canPlace={true}
+        unplacedParties={[]}
+        onPlaceParty={vi.fn()}
+        canMerge={true}
+        onMerge={vi.fn()}
+        onOpenParty={vi.fn()}
+      />
+    )
+    const footer = screen.getByTestId('unit-footer')
+    expect(within(footer).getByRole('button', { name: /assign to cedar 1/i })).toBeInTheDocument()
+    expect(within(footer).getByRole('button', { name: /merge cedar 1/i })).toBeInTheDocument()
+    // Below the occupant well, which is what makes it a footer rather than a
+    // second meta row.
+    const well = container.querySelector('[data-testid="occupant-well"]')
+    expect(well?.compareDocumentPosition(footer)).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
+  })
+
+  it('holds Split on a combined container', () => {
+    render(
+      <LodgingUnitCard
+        slot={slot({ unit: unit({ is_container: true, is_combined: true }) })}
+        hue={HUE}
+        canMerge={true}
+        onSplit={vi.fn()}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(
+      within(screen.getByTestId('unit-footer')).getByRole('button', { name: /split cedar 1/i })
+    ).toBeInTheDocument()
+  })
+
+  it('is absent entirely when the card offers no control at all', () => {
+    // A read-only board. An empty footer would spend a row saying nothing —
+    // the same reasoning the meta row now follows.
+    render(<LodgingUnitCard slot={slot()} hue={HUE} onOpenParty={vi.fn()} />)
+    expect(screen.queryByTestId('unit-footer')).not.toBeInTheDocument()
+  })
+})
+
+describe('LodgingUnitCard — the meta row survives ONLY for what needs it (0a)', () => {
+  /*
+   * Ruling 12 said the meta row is deleted because T2 and the footer move
+   * empty it. That premise was FALSE against the tree: the row held ten
+   * things, and three of them were in neither the amenities nor the controls.
+   * `Building` was ruled cut on 2026-08-19; `Inactive` and `Reconfirm space`
+   * were not, so deleting the row literally would have deleted two marks
+   * nobody ruled on.
+   *
+   * Owner ruling: keep a row that renders ONLY when one of the two is
+   * present. On today's data that is never — 0 of 118 inactive, 118 of 118
+   * confirmed — so every live card gets ruling 12's outcome, and both marks
+   * keep a home for when kindred#2500 makes a new season start unconfirmed.
+   */
+  const HUE = 'hsl(160 45% 42%)'
+
+  it('draws NO meta row on an ordinary card', () => {
+    render(<LodgingUnitCard slot={slot()} hue={HUE} onOpenParty={vi.fn()} />)
+    expect(screen.queryByTestId('unit-meta')).not.toBeInTheDocument()
+  })
+
+  it('draws it for a deactivated room somebody is still in', () => {
+    render(
+      <LodgingUnitCard
+        slot={slot({ unit: unit({ is_active: false }), parties: [party()] })}
+        hue={HUE}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(within(screen.getByTestId('unit-meta')).getByText('Inactive')).toBeInTheDocument()
+  })
+
+  it('draws it for a cabin nobody has checked this season', () => {
+    render(
+      <LodgingUnitCard
+        slot={slot({ unit: unit({ is_confirmed: false }) })}
+        hue={HUE}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(within(screen.getByTestId('unit-meta')).getByText('Reconfirm space')).toBeInTheDocument()
+  })
+})
+
+describe('LodgingUnitCard — Reconfirm space is re-gated on is_confirmed (ruling 23)', () => {
+  /*
+   * ★ THE OLD GATE WAS THE WRONG COLUMN. `Sharing unset` fired on
+   * `shareability`, where all 118 registry rows are classified — 44
+   * shareable, 74 single_party, 0 unset — so it could never appear. Keyed on
+   * `is_confirmed` it becomes the mark staff actually want, and it goes live
+   * the moment kindred#2500 makes a new year start unconfirmed: every unit
+   * flagged at season start, worked down as staff check them.
+   */
+  const HUE = 'hsl(160 45% 42%)'
+
+  it('fires on an unconfirmed cabin', () => {
+    render(
+      <LodgingUnitCard
+        slot={slot({ unit: unit({ is_confirmed: false }) })}
+        hue={HUE}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.getByText('Reconfirm space')).toBeInTheDocument()
+  })
+
+  it('is silent on a confirmed cabin, whatever its shareability says', () => {
+    for (const shareability of ['shareable', 'single_party', 'unknown'] as const) {
+      const view = render(
+        <LodgingUnitCard
+          slot={slot({ unit: unit({ is_confirmed: true, shareability }) })}
+          hue={HUE}
+          onOpenParty={vi.fn()}
+        />
+      )
+      expect(screen.queryByText('Reconfirm space')).not.toBeInTheDocument()
+      expect(screen.queryByText('Sharing unset')).not.toBeInTheDocument()
+      view.unmount()
+    }
+  })
+
+  it('fires on an unconfirmed cabin whose shareability IS classified', () => {
+    // The two columns are independent, which is the whole point of the
+    // re-gate: the old one keyed on a column with no unset rows in it.
+    render(
+      <LodgingUnitCard
+        slot={slot({ unit: unit({ is_confirmed: false, shareability: 'shareable' }) })}
+        hue={HUE}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.getByText('Reconfirm space')).toBeInTheDocument()
+  })
+})
+
+describe('LodgingUnitCard — the marks kindred#2072 STRUCK from the unit card', () => {
+  /*
+   * A CUT IS A RULING, and each of these is pinned negatively because this
+   * codebase has twice restored an element whose absence was undefended.
+   * Several of them are also cuts that were RULED EARLIER and never landed —
+   * they were still in the code when this change was written.
+   *
+   * Every one of them survives on another surface where it still discriminates
+   * (`MapUnitPopover`, the units admin table) — the split `Staff` already took.
+   */
+  const HUE = 'hsl(160 45% 42%)'
+
+  it('draws no "Over capacity" pill — the red figure absorbed it', () => {
+    render(
+      <LodgingUnitCard
+        slot={slot({ unit: unit({ sleeps: 1 }), parties: [party({ party_size: 4 })] })}
+        hue={HUE}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.queryByText('Over capacity')).not.toBeInTheDocument()
+    // The figure still carries it, and still in red. The pill was the second
+    // statement of one fact.
+    expect(screen.getByTestId('unit-occupancy')).toHaveTextContent('4/1')
+    expect(screen.getByTestId('unit-occupancy').className).toContain('text-destructive')
+  })
+
+  it('draws no "N families" chip', () => {
+    render(
+      <LodgingUnitCard
+        slot={slot({
+          parties: [party({ household_cm_id: 1 }), party({ household_cm_id: 2 })],
+        })}
+        hue={HUE}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.queryByText(/\d families/)).not.toBeInTheDocument()
+  })
+
+  it('draws no "Shared OK" or "Sharing unset" badge', () => {
     render(
       <LodgingUnitCard
         slot={slot({ unit: unit({ shareability: 'shareable' }) })}
@@ -2437,177 +2533,268 @@ describe('LodgingUnitCard — the write-in chip, dropped in favour of the well (
         onOpenParty={vi.fn()}
       />
     )
-    expect(screen.getByText('Shared OK')).toBeInTheDocument()
+    expect(screen.queryByText('Shared OK')).not.toBeInTheDocument()
+    expect(screen.queryByText('Sharing unset')).not.toBeInTheDocument()
   })
 
-  it('does not suppress the "Staff" badge — a closed staff cabin is exempt from the gate, not just no write-in', () => {
-    // This is the case `writeInBadgeApplies`'s `inventory_class !==
-    // 'staff_default'` half exists for: a staff cabin written into for the
-    // weekend carries a cover the same way a family room's write-in does, so
-    // reading `hasWriteIn(unit)` alone here would swallow the "Staff" chip
-    // along with the "Write-in" one. Pins both halves of the gate at once —
-    // the class check AND the scoping to this card only.
+  it('draws no "One-family space" warning chip', () => {
+    // Never fired: all 23 room-sharing cards in the registry are classified
+    // `shareable`. Staff know which spaces hold one family.
     render(
       <LodgingUnitCard
         slot={slot({
-          unit: unit({
-            inventory_class: 'staff_default',
-            write_ins: [cover()],
-            occupant_name: 'Emma Johnson',
-            is_family_available: false,
-          }),
+          unit: unit({ shareability: 'single_party' }),
+          parties: [party({ household_cm_id: 1 }), party({ household_cm_id: 2 })],
         })}
         hue={HUE}
         onOpenParty={vi.fn()}
       />
     )
-    expect(screen.getByText('Staff')).toBeInTheDocument()
+    expect(screen.queryByText('One-family space')).not.toBeInTheDocument()
   })
 
-  it('removes a write-in from the card that draws it, not from the availability strip', () => {
-    // kindred#2381. The strip's single "Clear Write-in" could name only one
-    // row, so a merged card covering four destroyed them one silent click at
-    // a time. The X lives on the `WriteInCard`, and the write it sends names
-    // that card's own row.
-    const onSetAvailability = vi.fn()
-    render(
-      <LodgingUnitCard
-        slot={slot({ unit: WRITTEN_IN })}
-        hue={HUE}
-        canSetAvailability
-        onSetAvailability={onSetAvailability}
-        onOpenParty={vi.fn()}
-      />
-    )
-
-    expect(screen.queryByRole('button', { name: /clear/i })).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Remove write-in Emma Johnson' }))
-
-    expect(onSetAvailability).toHaveBeenCalledWith({
-      unitId: 'u1',
-      unitName: 'Cedar 1',
-      familyAvailable: null,
-      occupantName: '',
-      reason: '',
-    })
-  })
-
-  it('draws one card per write-in, each removing its own row', () => {
-    // THE REPORTED CASE. A merged building stands in for its rooms, so every
-    // write-in beneath it lands in this one well. Before kindred#2381 the card
-    // showed whichever room sorted first and hid the rest.
-    const onSetAvailability = vi.fn()
+  it('draws no "Spans N rooms" chip', () => {
+    // Dropping somebody into a container is a deliberate act, so the figure
+    // needs no explaining. Measured at ZERO spanning parties after #2040.
     render(
       <LodgingUnitCard
         slot={slot({
-          unit: unit({
-            unit_id: 'u-house',
-            code: 'house',
-            name: 'House',
-            is_container: true,
-            is_combined: true,
-            is_family_available: false,
-            write_ins: [
-              cover({
-                unit_id: 'u-back',
-                unit_code: 'house-back',
-                unit_name: 'House Back',
-                occupant_name: 'Emma Johnson',
-              }),
-              cover({
-                unit_id: 'u-loft',
-                unit_code: 'house-loft',
-                unit_name: 'House Loft',
-                occupant_name: 'Liam Garcia',
-              }),
-            ],
-          }),
+          unit: unit({ code: 'up-r1', parent_code: 'upstairs' }),
+          parties: [party({ unit_code: 'upstairs', unit_codes: ['upstairs'] })],
         })}
+        units={[
+          unit({ unit_id: 'up', code: 'upstairs', is_container: true }),
+          unit({ unit_id: 'r1', code: 'up-r1', parent_code: 'upstairs' }),
+          unit({ unit_id: 'r2', code: 'up-r2', parent_code: 'upstairs' }),
+        ]}
         hue={HUE}
-        canSetAvailability
-        onSetAvailability={onSetAvailability}
         onOpenParty={vi.fn()}
       />
     )
-
-    expect(screen.getByText('Emma Johnson')).toBeInTheDocument()
-    expect(screen.getByText('Liam Garcia')).toBeInTheDocument()
-    // WITHOUT a per-card "Written in at <room>" line, struck 2026-08-18. The
-    // room dimension is real — four occupants in one merged well sleep in four
-    // rooms — but a line that says it for write-ins and stays silent about the
-    // FAMILIES in the same well is worse than one that says it for neither.
-    // One shorthand covering every occupant is kindred#2458.
-    expect(screen.queryByText(/written in at/i)).not.toBeInTheDocument()
-    // The X still names its OWN row, which is what made the line dispensable:
-    // removal never depended on the reader knowing which room it was.
-
-    fireEvent.click(screen.getByRole('button', { name: 'Remove write-in Liam Garcia' }))
-
-    expect(onSetAvailability).toHaveBeenCalledWith({
-      unitId: 'u-loft',
-      unitName: 'House Loft',
-      familyAvailable: null,
-      occupantName: '',
-      reason: '',
-    })
+    expect(screen.queryByText(/Spans \d+ rooms/)).not.toBeInTheDocument()
   })
 
-  it('says nothing extra when the row is the drawing card\u2019s own', () => {
-    // The overwhelmingly common case. `WRITTEN_IN`'s cover names `cedar-1`,
-    // which is the card's own code, so the source line stays off.
+  it('draws no "Building" badge on a combined container', () => {
+    // Owner ruling 2026-08-19. `reservationBadge`'s arm survives for
+    // `MapUnitPopover`'s header and its collapsed grid cell; on a board card
+    // that function now draws nothing at all, so the render site is gone
+    // rather than merely quiet.
     render(
       <LodgingUnitCard
-        slot={slot({ unit: WRITTEN_IN })}
+        slot={slot({ unit: unit({ is_container: true, is_combined: true }) })}
         hue={HUE}
-        canSetAvailability
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.queryByText('Building')).not.toBeInTheDocument()
+  })
+
+  it('draws no "Staff" or "Released" badge, and no Release / Clear control', () => {
+    // All 25 staff units fail `isPlanningInventory`, so no staff card is ever
+    // drawn here, and `lodging_availability` is empty in every year. The whole
+    // release workflow was unreachable on this board.
+    render(
+      <LodgingUnitCard
+        slot={slot({
+          unit: unit({ inventory_class: 'staff_default', family_available_override: true }),
+        })}
+        hue={HUE}
+        canSetAvailability={true}
         onSetAvailability={vi.fn()}
         onOpenParty={vi.fn()}
       />
     )
-
-    expect(screen.queryByText(/^Written in at/)).not.toBeInTheDocument()
+    expect(screen.queryByText('Staff')).not.toBeInTheDocument()
+    expect(screen.queryByText('Released')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^release/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^clear/i })).not.toBeInTheDocument()
   })
 
-  it('offers no removal to a reader without bunking.manage', () => {
-    render(<LodgingUnitCard slot={slot({ unit: WRITTEN_IN })} hue={HUE} onOpenParty={vi.fn()} />)
-
-    expect(screen.queryByRole('button', { name: /remove write-in/i })).not.toBeInTheDocument()
-  })
-
-  it('edits a write-in from the card that draws it, upserting the same row (kindred#2430)', () => {
-    // No delete-and-recreate: the edit write names the SAME row the removal
-    // above does (`unitId`/`unitName` from the row's own source), with
-    // `familyAvailable: false` — the write-in "hold" value, not `null` — so
-    // `set_availability`'s upsert updates the row in place.
-    const onSetAvailability = vi.fn()
+  it('draws no "Drop families here" or "Empty" text in the well', () => {
+    // At 81% of live cards empty this was the most-repeated sentence on the
+    // board. The dashed border and the empty well already say it.
     render(
       <LodgingUnitCard
-        slot={slot({ unit: WRITTEN_IN })}
+        slot={slot({ parties: [] })}
         hue={HUE}
-        canSetAvailability
-        onSetAvailability={onSetAvailability}
+        canPlace={true}
+        unplacedParties={[]}
+        onPlaceParty={vi.fn()}
         onOpenParty={vi.fn()}
       />
     )
-
-    fireEvent.click(screen.getByRole('button', { name: 'Edit write-in Emma Johnson' }))
-    fireEvent.change(screen.getByRole('textbox', { name: 'Occupant' }), {
-      target: { value: 'Emma Johnson-Reyes' },
-    })
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
-
-    expect(onSetAvailability).toHaveBeenCalledWith({
-      unitId: 'u1',
-      unitName: 'Cedar 1',
-      familyAvailable: false,
-      occupantName: 'Emma Johnson-Reyes',
-      reason: '',
-    })
+    expect(screen.queryByText('Drop families here')).not.toBeInTheDocument()
+    expect(screen.queryByText('Empty')).not.toBeInTheDocument()
   })
 
-  it('offers no edit to a reader without bunking.manage', () => {
-    render(<LodgingUnitCard slot={slot({ unit: WRITTEN_IN })} hue={HUE} onOpenParty={vi.fn()} />)
+  it('keeps the dashed border that now carries the empty state alone', () => {
+    const { container } = render(
+      <LodgingUnitCard slot={slot({ parties: [] })} hue={HUE} onOpenParty={vi.fn()} />
+    )
+    expect(container.querySelector('[data-unit-card]')?.className).toContain('border-dashed')
+  })
+})
 
-    expect(screen.queryByRole('button', { name: /edit write-in/i })).not.toBeInTheDocument()
+describe('LodgingUnitCard — B·1 and B·2, the card gets shorter', () => {
+  /*
+   * Measured together and found perfectly additive: −148px across every card
+   * from the padding and gap (8.3%), and the well's `min-h-[100px]` on top of
+   * it, for about −15% of column height.
+   */
+  const HUE = 'hsl(160 45% 42%)'
+
+  it('drops the well’s min-height', () => {
+    // B·2. The min-height lifted an empty card off its 139px floor toward the
+    // 188px occupied median; with the empty-state sentence gone there is
+    // nothing left in an empty well to give height to, and 81% of live cards
+    // are empty.
+    const { container } = render(<LodgingUnitCard slot={slot()} hue={HUE} onOpenParty={vi.fn()} />)
+    const well = container.querySelector('[data-testid="occupant-well"]')
+    expect(well?.className).not.toContain('min-h-[100px]')
+    // `flex-1` STAYS: it is what makes the grid's stretch survivable, and it
+    // is a different decision from the floor.
+    expect(well?.className).toContain('flex-1')
+  })
+
+  it('tightens the card’s own padding and row rhythm', () => {
+    // B·1. A DELIBERATE DIVERGENCE from summer's `p-4` / `mb-3`, and the
+    // reason is topology rather than taste: a summer bunk card holds 10–14
+    // campers, so 16px of padding is a small fraction of a tall card, where
+    // a lodging card holds nothing or one party and the same padding is most
+    // of it.
+    const { container } = render(<LodgingUnitCard slot={slot()} hue={HUE} onOpenParty={vi.fn()} />)
+    const card = container.querySelector('[data-unit-card]')
+    expect(card?.className).toContain('p-2.5')
+    expect(card?.className).toContain('px-3')
+    expect(card?.className).toContain('gap-2')
+    expect(card?.className).not.toContain('p-4')
+    expect(card?.className).not.toContain('gap-3')
+  })
+})
+
+describe('LodgingUnitCard — the denominator is the WHOLE space (owner ruling 2026-08-20)', () => {
+  /*
+   * ⚠️ THE CARD AND THE ASSIGN MODAL DISAGREED ABOUT THE SAME ROOM, and the
+   * card was the one that was wrong. Its denominator was the RAW `unit.sleeps`,
+   * which under kindred#2041's delta ruling is a container's beds in space
+   * belonging to no single room — not the house. All 15 production containers
+   * record 0 there, which the API maps to `null`, so every combined house drew
+   * `3/—`: "capacity not recorded", about a building whose rooms are measured.
+   * The modal opened FROM that card read `effectiveSleeps` and said, correctly,
+   * "4 of 7 beds free".
+   *
+   * Ruled 2026-08-20: *"the card should always show the denominator of total
+   * possible sleeps — whether that is a leaf, or a container sum. The modal is
+   * always the available diff. Both respect leaf vs container with subleaves."*
+   *
+   * `effectiveSleeps` is that number and is already the board's answer
+   * elsewhere — `countUnmeasuredSpaces`, `mapModel`'s peek and the Assign
+   * modal's header all read it. This card was the last reader of the raw
+   * value. It is a MIRROR of `_effective_sleeps` in
+   * `api/services/lodging_roster_service.py`; keep the two in step.
+   *
+   * ⚠️ FOR A LEAF THIS IS A NO-OP, and that is load-bearing rather than
+   * incidental: `effectiveSleeps` returns `unit.sleeps` unchanged for anything
+   * that is not a container, so 103 of the 118 registry rows draw exactly what
+   * they drew before. The negative pins below are what hold that.
+   */
+  const house = unit({
+    unit_id: 'u-house',
+    code: 'gt-house',
+    name: 'Granite House',
+    sleeps: null,
+    is_container: true,
+    is_combined: true,
+  })
+  const roomA = unit({
+    unit_id: 'u-ga',
+    code: 'gt-a',
+    name: 'Granite A',
+    sleeps: 3,
+    parent_code: 'gt-house',
+  })
+  const roomB = unit({
+    unit_id: 'u-gb',
+    code: 'gt-b',
+    name: 'Granite B',
+    sleeps: 4,
+    parent_code: 'gt-house',
+  })
+  const registry = [house, roomA, roomB]
+
+  it('totals a combined house rather than printing an em dash about it', () => {
+    render(
+      <LodgingUnitCard
+        slot={slot({ unit: house, parties: [party({ party_size: 3, unit_code: 'gt-house' })] })}
+        units={registry}
+        hue="hsl(160 45% 42%)"
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.getByTestId('unit-occupancy')).toHaveTextContent('3/7')
+    expect(screen.queryByText('3/—')).not.toBeInTheDocument()
+  })
+
+  it('leaves a leaf’s own figure exactly as it was', () => {
+    // The no-op half of the ruling. `effectiveSleeps` short-circuits on
+    // anything that is not a container, so this must not move.
+    render(
+      <LodgingUnitCard
+        slot={slot({ unit: unit({ sleeps: 5 }), parties: [party({ party_size: 3 })] })}
+        units={[unit({ sleeps: 5 })]}
+        hue="hsl(160 45% 42%)"
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.getByTestId('unit-occupancy')).toHaveTextContent('3/5')
+  })
+
+  it('still refuses a total when one active room is unmeasured', () => {
+    // The refusal survives the change and is the reason the em dash exists at
+    // all: one unmeasured active room leaves the whole house unknown, and a
+    // partial sum would be a confident wrong number.
+    const unmeasured = unit({
+      unit_id: 'u-gc',
+      code: 'gt-c',
+      sleeps: null,
+      parent_code: 'gt-house',
+    })
+    render(
+      <LodgingUnitCard
+        slot={slot({ unit: house, parties: [party({ party_size: 3, unit_code: 'gt-house' })] })}
+        units={[house, roomA, unmeasured]}
+        hue="hsl(160 45% 42%)"
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.getByTestId('unit-occupancy')).toHaveTextContent('3/—')
+  })
+
+  it('grades over-capacity against the whole house, not against the container row', () => {
+    // The other half of reading the right number: a house whose rooms sleep 7
+    // IS over capacity at 9, and used to escape the verdict entirely because
+    // `capacityKnown` was false on a null container row.
+    render(
+      <LodgingUnitCard
+        slot={slot({ unit: house, parties: [party({ party_size: 9, unit_code: 'gt-house' })] })}
+        units={registry}
+        hue="hsl(160 45% 42%)"
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.getByTestId('unit-occupancy')).toHaveTextContent('9/7')
+    expect(screen.getByTestId('unit-occupancy')).toHaveClass('text-destructive')
+  })
+
+  it('does not call a whole-house let over capacity when it fits', () => {
+    render(
+      <LodgingUnitCard
+        slot={slot({ unit: house, parties: [party({ party_size: 7, unit_code: 'gt-house' })] })}
+        units={registry}
+        hue="hsl(160 45% 42%)"
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.getByTestId('unit-occupancy')).not.toHaveClass('text-destructive')
   })
 })

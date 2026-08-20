@@ -7,15 +7,23 @@
  * The 2026-08-09 ruling on kindred#2080 was explicit — *"not a popover and not
  * a second surface"* — and `PlaceFamilyPicker` honoured it: an inline combobox
  * in the unit card's own badge row, growing the card in place exactly as
- * `UnitAvailabilityControl` does. That ruling is superseded FOR THIS CONTROL
+ * `UnitAvailabilityControl` did before that control was itself cut. That ruling is superseded FOR THIS CONTROL
  * ONLY (owner, 2026-08-19), and the width is what buys the supersession: every
  * candidate row now carries its party size against the beds left, the need
  * glyphs already coloured against this room, last year's cabin and a plain fit
  * verdict. None of that fits in a 244px card.
  *
- * Nothing else on the board moves to a modal. `UnitAvailabilityControl` and
- * the merge/split controls stay inline, because none of them has information
- * that wants width.
+ * Nothing else on the board moves to a modal: the merge and split controls
+ * stay inline, because neither has information that wants width.
+ *
+ * ⚠️ THIS PARAGRAPH USED TO NAME `UnitAvailabilityControl` AS THE OTHER
+ * CONTROL STAYING INLINE. It is not inline any more — it is GONE, cut with
+ * the `Released` badge and the `Release` / `Clear` control it drew
+ * (kindred#2072 stage 3, vocabulary §3: both need a staff unit or an existing
+ * override, and this board has neither). Its `UnitAvailabilityWrite` type
+ * moved to `writeIn.ts`, where every remaining producer of that write is a
+ * write-in — this modal's `onWriteIn`, and each `WriteInCard`'s pencil and X.
+ * The reasoning above is unchanged; only its example was.
  *
  * ## One mounted control instead of ~82
  *

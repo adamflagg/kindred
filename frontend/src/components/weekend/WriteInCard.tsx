@@ -179,11 +179,16 @@ export function WriteInCard({ occupant, onRemove, onEdit, isSaving = false }: Wr
           onSubmit={(event) => {
             event.preventDefault()
             const trimmedName = draftName.trim()
-            // THE SAME GUARD `UnitAvailabilityControl`'s occupant prompt
-            // uses: a write-in that names nobody is a valid state a legacy
-            // row can already be in, but an edit that CLEARS a name is a
-            // staff member erasing who is in the room, which is worth a
-            // refusal rather than a silent write.
+            // THE SAME GUARD THE ASSIGN MODAL'S WRITE-IN OFFER USES
+            // (`offersWriteIn`, which requires a non-empty trimmed name): a
+            // write-in that names nobody is a valid state a legacy row can
+            // already be in, but an edit that CLEARS a name is a staff member
+            // erasing who is in the room, which is worth a refusal rather
+            // than a silent write.
+            //
+            // It named `UnitAvailabilityControl`'s occupant prompt until that
+            // control was cut (kindred#2072 stage 3, vocabulary §3). The rule
+            // outlived the control; the modal is where it lives now.
             if (trimmedName === '') {
               setWantsName(true)
               return
@@ -195,11 +200,13 @@ export function WriteInCard({ occupant, onRemove, onEdit, isSaving = false }: Wr
           <input
             type="text"
             aria-label="Occupant"
-            // THE SAME PLACEHOLDERS `UnitAvailabilityControl`'s occupant
-            // prompt uses. Not decoration on the second box: 1500000148
-            // cleared the note of every row it moved, so an edit opened on
-            // any pre-existing write-in shows an empty, otherwise unlabelled
-            // input under the name.
+            // THE SAME PLACEHOLDER SHAPE the Assign modal's write-in form
+            // uses — a name, then an optional note. (It named
+            // `UnitAvailabilityControl`'s occupant prompt until that control
+            // was cut; see the guard above.) Not decoration on the second
+            // box: 1500000148 cleared the note of every row it moved, so an
+            // edit opened on any pre-existing write-in shows an empty,
+            // otherwise unlabelled input under the name.
             placeholder="Emma Johnson, burst pipe…"
             value={draftName}
             maxLength={500}
