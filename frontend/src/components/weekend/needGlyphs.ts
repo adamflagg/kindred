@@ -106,11 +106,19 @@ export interface NeedGlyphSpec {
    * The locked hue, as the Tailwind step — NEVER hand-written hex.
    *
    * The review mock renders `#0ea5e9` / `#a855f7` / `#14b8a6` / `#f97316` and
-   * one step lighter in dark. Those values ARE `sky-500` / `purple-500` /
-   * `teal-500` / `orange-500` and their `-400` steps: the mock simulates the
-   * app's tokens rather than defining them (§6). A complete literal per
-   * entry, because Tailwind scans raw source text and a composed string emits
-   * no rule at all — the `forest-950` failure (#1894) CLAUDE.md §4 names.
+   * one step lighter in dark. Those values STAND IN FOR `sky-500` /
+   * `purple-500` / `teal-500` / `orange-500` and their `-400` steps — they do
+   * not equal them. They are Tailwind **v3**'s hex; this project ships v4,
+   * which retuned the default ramps to OKLCH, so what actually renders is
+   * `#00a6f4` / `#ad46ff` / `#00bba7` / `#ff6900`. The tokens below are still
+   * exactly right and nothing about them should change: §6 makes the app's own
+   * scale the definition and the mock the approximation. This comment used to
+   * say the two were the same value, which sent a reader looking for a bug
+   * that is not there.
+   *
+   * A complete literal per entry, because Tailwind scans raw source text and a
+   * composed string emits no rule at all — the `forest-950` failure (#1894)
+   * CLAUDE.md §4 names.
    */
   readonly hueClassName: string
   /**

@@ -1393,8 +1393,10 @@ describe('FamilyCard — the need glyphs (kindred#2072)', () => {
   })
 
   it('takes the locked hue for a need the room meets', () => {
-    // The mock renders #0ea5e9; that value IS `sky-500`. Never hand-written
-    // hex — §6, "The mock's colours are approximations".
+    // The mock renders #0ea5e9, which STANDS IN FOR `sky-500` rather than
+    // equalling it — that is Tailwind v3's hex and this project ships v4,
+    // where sky-500 renders #00a6f4. Never hand-written hex either way: §6
+    // makes the app's scale the definition and the mock the approximation.
     render(
       <FamilyCard
         party={needy({ needs_power: true })}
@@ -1583,12 +1585,67 @@ describe('FamilyCard — single parent is a mark on line 2 (S2 + Sa)', () => {
   })
 
   it('is AMBER — First-time’s tone, so amber means "notice this household" on both', () => {
-    // Sa. It left the chip row, where it borrowed the sharing chips' muted
-    // grammar and read as a preference.
-    render(<FamilyCard party={party()} onOpen={vi.fn()} />)
-    const mark = screen.getByTestId('family-card-single-parent')
-    expect(mark.getAttribute('class')).toContain('text-amber-700')
-    expect(mark.getAttribute('class')).toContain('dark:text-amber-300')
+    /*
+     * Sa. It left the chip row, where it borrowed the sharing chips' muted
+     * grammar and read as a preference.
+     *
+     * ⚠️ IT READS BOTH MARKS, and it did not before (post-merge review of
+     * #2505, P1-4). The two ambers are independent literals in
+     * `FamilyCard.tsx` with no shared token between them, and this test — the
+     * only one that names the coupling — asserted the single-parent one alone.
+     * Mutating the First-time branch to `rose-700` left the whole weekend
+     * suite green, so "amber means notice this household across both marks"
+     * could be made false with no signal at all. Asserting they are EQUAL is
+     * the pin; asserting the literal twice would not be.
+     */
+    render(<FamilyCard party={party({ is_returning: false })} onOpen={vi.fn()} />)
+    const singleParent = screen.getByTestId('family-card-single-parent')
+    const firstTime = screen.getByTestId('family-card-history')
+
+    expect(singleParent.getAttribute('class')).toContain('text-amber-700')
+    expect(singleParent.getAttribute('class')).toContain('dark:text-amber-300')
+
+    // The relationship the test is named for, not a second copy of the literal.
+    const amberOf = (el: Element) =>
+      (el.getAttribute('class') ?? '')
+        .split(/\s+/)
+        .filter((token) => token.includes('amber'))
+        .sort()
+        .join(' ')
+    expect(amberOf(firstTime)).toBe(amberOf(singleParent))
+  })
+
+  it('draws Returning in the SEMANTIC green, not the lodge’s forest', () => {
+    /*
+     * ⚠️ MEASURED, NOT PREFERRED (owner, 2026-08-20, from a pixel comparison
+     * against the review artifact). R3 rules a 16px icon with NO WORDS, so
+     * colour is the only thing separating Returning from First-time — and
+     * `text-forest-700` resolves to `#003917` against a `--foreground` of
+     * `#0c3125`. That is **1.08 : 1**: the mark was the same ink as the card's
+     * own text, while First-time's amber sat at 2.82 : 1. The common mark —
+     * 279 households of 402 — was the invisible one.
+     *
+     * `green-700` / `green-300` is 2.87 : 1 and is the artifact's own `--ret`.
+     * It is also the ramp the Assign modal's `fits` verdict uses, so the board
+     * carries ONE semantic green; `forest` stays what it has always been, the
+     * lodge's chrome — buttons, headers, borders, the primary.
+     *
+     * jsdom cannot check contrast. The numbers above came from Chromium
+     * against this app's own tokens; this pins the token they belong to.
+     */
+    render(<FamilyCard party={party({ is_returning: true })} onOpen={vi.fn()} />)
+    const mark = screen.getByTestId('family-card-history')
+    expect(mark.getAttribute('class')).toContain('text-green-700')
+    expect(mark.getAttribute('class')).toContain('dark:text-green-300')
+    expect(mark.getAttribute('class')).not.toContain('forest')
+  })
+
+  it('does NOT share that amber with Returning, which is a different fact', () => {
+    // The other half of Sa, and the reason the assertion above is an equality
+    // rather than a sweep: amber says "notice this household". A returning
+    // family is the ordinary case — 279 of 402 — so it must not wear it.
+    render(<FamilyCard party={party({ is_returning: true })} onOpen={vi.fn()} />)
+    expect(screen.getByTestId('family-card-history').getAttribute('class')).not.toContain('amber')
   })
 
   it('says nothing when two adults are attending', () => {

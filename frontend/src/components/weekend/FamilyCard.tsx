@@ -595,9 +595,21 @@ function FamilyCardChips({
           // without it the mark sits 4px from the last chip — the row gap
           // alone — and reads as the end of the chip run rather than as a
           // separate mark pinned to the corner.
+          //
+          // ⚠️ `green`, NOT `forest`, AND THAT WAS MEASURED (owner ruling
+          // 2026-08-20). R3 takes the words away, so colour is the ONLY thing
+          // separating these two marks — and `forest-700` resolves to
+          // `#003917` against a `--foreground` of `#0c3125`: a contrast of
+          // **1.08 : 1** between the mark and the card's own text. Returning
+          // fires on 279 households of 402, so the common mark was the one
+          // nobody could see, while First-time's amber sat at 2.82 : 1.
+          // `green-700` is 2.87 : 1, is the review artifact's own `--ret`, and
+          // is the ramp `AssignFamilyModal`'s `fits` verdict already uses — so
+          // the board carries ONE semantic green. `forest` keeps what it has
+          // always been: the lodge's chrome, not a status.
           className={`ml-auto flex-shrink-0 pl-1.5 ${
             party.is_returning === true
-              ? 'text-forest-700 dark:text-forest-300'
+              ? 'text-green-700 dark:text-green-300'
               : 'text-amber-700 dark:text-amber-300'
           }`}
         >

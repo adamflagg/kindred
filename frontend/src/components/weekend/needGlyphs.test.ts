@@ -58,9 +58,11 @@ describe('NEED_GLYPHS — the closed set', () => {
 
   it('carries the locked hues as Tailwind steps, never hand-written hex', () => {
     // The mock renders #0ea5e9 / #a855f7 / #14b8a6 / #f97316 and one step
-    // lighter in dark. Those hex values ARE these Tailwind steps; the mock
-    // simulates the app's tokens and is not the source (§6, "The mock's
-    // colours are approximations").
+    // lighter in dark. Those hex values STAND IN FOR these Tailwind steps —
+    // they are v3's, and this project ships v4, whose OKLCH ramps render
+    // #00a6f4 / #ad46ff / #00bba7 / #ff6900. The tokens asserted below are the
+    // definition and the mock is the approximation (§6); the difference is the
+    // mock's, not the app's.
     expect(NEED_GLYPHS.map((glyph) => glyph.hueClassName)).toEqual([
       'text-sky-500 dark:text-sky-400',
       'text-purple-500 dark:text-purple-400',

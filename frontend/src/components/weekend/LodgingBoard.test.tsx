@@ -583,6 +583,54 @@ describe('LodgingBoard — nobody disappears', () => {
     expect(screen.getByText(/Noah Johnson/)).toBeInTheDocument()
   })
 
+  it('grades the need glyphs of an off-board party against its real cabin', () => {
+    /*
+     * ⚠️ THIS PINS A PROP THAT WAS LOAD-BEARING AND UNDEFENDED (post-merge
+     * review of #2505, P1-3). The `unit={resolvePartyUnit(...)}` on this
+     * section's `FamilyCard` could be DELETED with the whole weekend suite
+     * green, and `FamilyCardProps.unit` is optional so `tsc` said nothing.
+     *
+     * Deleting it makes `resolveNeedGlyphs(party, undefined)` return every
+     * asked need at `fits` — the card would draw a family's power glyph in its
+     * full hue, a positive claim that a cabin meets a need, about a cabin this
+     * section never resolved. "Fit not verified" used to cover that case and
+     * is struck (vocabulary §3), so the glyph is the only carrier left.
+     *
+     * The reachable shape is invariant 2's third route: a CONTAINER with no
+     * drawable rooms. It is real, it is in the payload — so `resolvePartyUnit`
+     * resolves it — and the board still cannot draw a card for it.
+     */
+    const childless = unit({
+      unit_id: 'u9',
+      code: 'ghost-house',
+      name: 'Ghost House',
+      is_container: true,
+      // `power_coverage` must be set explicitly: this file's `unit()` helper
+      // carries none of the resolved coverage columns, which is most of why
+      // nothing here exercised the glyph grading.
+      power_coverage: 'none',
+    })
+    render(
+      <LodgingBoard
+        parties={[
+          party({
+            household_cm_id: 104,
+            display_name: 'Garcia',
+            sort_name: 'Garcia',
+            unit_code: 'ghost-house',
+            unit_name: 'Ghost House',
+            flags: { needs_power: true },
+          }),
+        ]}
+        units={[unit(), childless]}
+        year={2026}
+      />,
+      { wrapper }
+    )
+    expect(screen.getByText(/Placed outside the board/i)).toBeInTheDocument()
+    expect(screen.getByTestId('need-glyph-power').className).toContain('bg-red-100')
+  })
+
   it('does not draw that section when everything fits on the board', () => {
     render(<LodgingBoard parties={[party()]} units={[unit()]} year={2026} />, { wrapper })
     expect(screen.queryByText(/Placed outside the board/i)).not.toBeInTheDocument()
