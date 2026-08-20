@@ -125,17 +125,17 @@ rule's `text-2xl md:text-3xl`, so only the face and tracking carry over.
 
 ## 3. What the card reports — ONE ROW OPEN
 
-| Row                    | Summer                           | Family                         | Status                           |
-| ---------------------- | -------------------------------- | ------------------------------ | -------------------------------- |
-| Occupancy figure       | `{occupancy}/{capacity}`         | `{occupancy}/{capacity}`       | **done**                         |
-| Over-capacity emphasis | `border-destructive/50 border-2` | `text-destructive` + chip      | **done, differently**            |
-| Colour ramp            | 4 stops                          | none                           | **closed — will not build**      |
-| Utilization bar        | `BunkUtilizationBar`             | none                           | **closed — will not build**      |
-| Empty state wording    | "Drop campers here"              | "Drop families here" / "Empty" | done                             |
-| Empty state geometry   | `py-8 text-center`               | centred in the well            | done                             |
-| Occupant well          | `min-h-[100px]`                  | `min-h-[100px] flex-1`         | done                             |
-| Actions                | 2×2 `btn-ghost` grid             | one inline pill                | **open — decision, not a build** |
-| Warnings block         | `BunkWarnings`                   | consent line only              | keep divergent                   |
+| Row                    | Summer                           | Family                         | Status                      |
+| ---------------------- | -------------------------------- | ------------------------------ | --------------------------- |
+| Occupancy figure       | `{occupancy}/{capacity}`         | `{occupancy}/{capacity}`       | **done**                    |
+| Over-capacity emphasis | `border-destructive/50 border-2` | `text-destructive` + chip      | **done, differently**       |
+| Colour ramp            | 4 stops                          | none                           | **closed — will not build** |
+| Utilization bar        | `BunkUtilizationBar`             | none                           | **closed — will not build** |
+| Empty state wording    | "Drop campers here"              | "Drop families here" / "Empty" | done                        |
+| Empty state geometry   | `py-8 text-center`               | centred in the well            | done                        |
+| Occupant well          | `min-h-[100px]`                  | `min-h-[100px] flex-1`         | done                        |
+| Actions                | 2×2 `btn-ghost` grid             | pills; `Assign` opens a modal  | **CLOSED — see below**      |
+| Warnings block         | `BunkWarnings`                   | consent line only              | keep divergent              |
 
 **Empty state wording is conditional on `canPlace`.** Without a scenario or
 without `bunking.manage` there is nothing to drop, so the invitation would name
@@ -155,12 +155,37 @@ qualify on 2026 data.
 Consequently the over-capacity emphasis is `text-destructive` on the figure plus
 a chip, **not** summer's border treatment. See §6 on why the border is full.
 
-**Actions should probably not be ported.** Three of summer's four have no family
-analogue — there is no roster swap, no social graph and no lock concept for
-lodging. CSV export is the only survivor, and a room holds one party, so the
-useful export is an area or the whole board. If it is wanted, it belongs on the
-area header or a board toolbar, not the card. Treat this row as a decision to
-close, not a build.
+**Actions are CLOSED, and kindred#2072 is what closed them.** Summer's four do
+not port: there is no roster swap, no social graph and no lock concept for
+lodging, and CSV export belongs on an area header or a board toolbar rather
+than on a card that holds one party. What the row was really open on was the
+shape of the card's OWN actions, and that is now ruled — the controls sit in
+the card's own row as pills, and `Assign` opens a modal.
+
+**The modal is a CONVERGENCE with summer, not a divergence, and it is worth
+being precise about which.** Summer already solves "pick somebody for this
+container, starting from the container" with a dialog — `BunkSwapModal`,
+reached from a bunk. The weekend board reached the same interaction by a
+different road: kindred#2080 built it inline under a 2026-08-09 ruling ("not a
+popover and not a second surface"), and kindred#2072's AS2 superseded that
+ruling for this one control once the row had to carry party size against the
+beds left, the need glyphs coloured against the room, last year's cabin and a
+fit verdict. So the two boards now agree on the shape.
+
+They still disagree on FILTERING, deliberately: `BunkSwapModal` hides
+ineligible bunks via `isEligibleSwapTarget`, and this list hides nothing.
+`placementCandidates.ts` carries the arithmetic — 6 of 118 units have a private
+bathroom against **63 of 459 registrations** asking for one, so a list narrowed
+to "what fits" would be empty most of the time and staff would go back to
+dragging. (An earlier draft of this paragraph said "45 parties". That figure is
+real but belongs to `needsFit.ts`, which counts ROSTERED parties for the
+drag-time hatch rather than raw registrations — a different population, and the
+mis-attribution is the defect rather than the number.) Summer's
+gender rule is a hard constraint; amenity fit here is explicitly advisory.
+
+`UnitAvailabilityControl` and the merge/split pills stay INLINE. Nothing else
+on the card has information that wants width, and the supersession was scoped
+to the one control that does.
 
 **`BunkWarnings` stays divergent.** Summer's four hazards — age gap, grade ratio,
 grade count, over capacity — have no family analogue. Over capacity is the
@@ -347,10 +372,28 @@ Both merged while this branch was in flight. Neither is optional reading before
 touching occupancy or the draw level.
 
 **#2040 — a whole-let building draws as one card.** A merge is a **promotion to
-the parent**: the card is the container's own registry row carrying its measured
-whole-house `sleeps`, which is **not** the sum of its rooms (one building records
-7 against rooms summing to 6). _Never re-derive it_ — an earlier draft of §3
-proposed exactly that and was wrong. It also gave this board `unitLevel.ts`
+the parent**: the card is the container's own registry row.
+
+⚠️ **This paragraph used to add that the container row "carries its measured
+whole-house `sleeps`, which is not the sum of its rooms (one building records 7
+against rooms summing to 6)", and to say _never re-derive it_. That is false
+against the registry and was measured so on 2026-08-20**: **all 15 containers
+record `sleeps = 0`**, so no container carries a measured whole-house figure at
+all. The four combined ones hold 8, 7, 5 and 5 beds in their rooms and 0 on
+their own row.
+
+What supersedes it is kindred#2041's delta ruling — a container's own `sleeps`
+is the beds belonging to no single room, so the whole-house capacity IS the
+delta plus its rooms, which is what `effectiveSleeps` computes and what
+`countUnmeasuredSpaces` and the map peek already read. The unit card is the one
+surface still reading the raw value, so a combined container's card prints an em
+dash ("capacity not recorded") over rooms that are all measured. Raised by
+CodeRabbit on PR #2506; owner ruled it fixed in kindred#2072's stage 3, since
+the card is that stage's file.
+
+The instruction that DOES survive is the narrow one #2040 actually earned: do
+not re-derive **containment** — `unitLevel.ts` owns which codes a card covers,
+and `slotOccupancy` reads it rather than working it out again. It also gave this board `unitLevel.ts`
 (`coveredCodes`, `drawnUnits`, `representingCodes`) and `overlappingPartyKeys` /
 `occupiedLeafCodes`, which `slotOccupancy` reads rather than re-deriving
 containment. #2040 records what re-deriving costs: the overlap rule was fixed at
@@ -385,9 +428,12 @@ The uniform slot shape made this _more_ urgent, not less: every empty card is no
 an identically well-formed target, so they are harder to tell apart at a glance
 than when they were ragged.
 
-### Closing §3's actions row
+### ~~Closing §3's actions row~~ — CLOSED
 
-A documentation decision, not a build. See §3.
+Closed by kindred#2072's AS2, 2026-08-19. See §3: the card's own actions are
+pills, `Assign` opens a modal, and summer's 2×2 grid is not ported. Summer's
+`BunkSwapModal` is the convergence; the refusal to filter the list is the
+remaining, deliberate divergence.
 
 ---
 

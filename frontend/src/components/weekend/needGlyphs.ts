@@ -63,6 +63,60 @@ export type Coverage = AmenityCoverage | RampCoverage
 /** The four dimensions, and the set is CLOSED (§6). */
 export type NeedKey = 'bathroom' | 'power' | 'fridge' | 'step_free'
 
+/**
+ * WHICH QUESTION IS BEING ASKED. Two, and they are genuinely different.
+ *
+ *   `placed`      — "does the cabin they are IN meet this need?" The family
+ *                   card, the roster, the drag-time hatch.
+ *   `prospective` — "would THIS cabin meet it?" The Assign modal's candidate
+ *                   rows, where the party has no placement yet.
+ *
+ * Only the bathroom need reads them differently, and that difference is
+ * load-bearing rather than an inconsistency left behind: its placed supply is
+ * `party.effective_bathroom`, the SERVER's verdict across every code the
+ * placement covers — which is meaningless for a candidate that has no
+ * placement, since every unplaced party would then grade identically no
+ * matter which cabin was under consideration.
+ *
+ * `placementCandidates.ts` had reached that conclusion and kept a table of its
+ * own because of it — the fourth table, and the one the kindred#2072 survey
+ * did not count. It calls this instead now: one grading, parameterised by the
+ * question, rather than two implementations that agree until somebody edits
+ * one.
+ */
+export type NeedReading = 'placed' | 'prospective'
+
+/**
+ * WHAT AN `unknown` COVERAGE MEANS FOR THE MARK BEING DRAWN, and the two marks
+ * genuinely ask different questions.
+ *
+ *   `'unmet'`  — the default, and every GLYPH. The glyph reports what is known
+ *                about the cabin, and `fits` is not silence: it is the mark in
+ *                its full hue, asserting the need is met. Owner ruling
+ *                2026-08-20 — *"unknown values should not equal fits, across
+ *                all surfaces on the glyphs, its unconfirmed information."*
+ *
+ *   `'fits'`   — the drag-time HATCH, and this is not a leftover. The hatch is
+ *                not a report, it is an INTERRUPTION: it darkens a cabin under
+ *                a card being dragged to say "not this one". Its bar is
+ *                therefore evidence of ABSENCE, not absence of evidence.
+ *
+ * ⚠️ THE NUMBER IS WHY, AND IT IS NOT CLOSE. 102 of 118 cabins carry
+ * `ramp_coverage: 'unknown'` — nobody has assessed them, which is exactly what
+ * the three-value select exists to record. Measured across 2026's twelve
+ * weekends: reading `unknown` as unmet in the hatch takes a step-free
+ * household's hatched cabins from **32 of 944 pairs to 848** — 3.4% to 90%. A
+ * hatch that fires on nine cabins in ten has stopped saying anything, which is
+ * the same failure as a queue drawn red all the time. The glyph, on the same
+ * data, moves THREE marks.
+ *
+ * This is one grading with two documented readings, not two tables. The
+ * coverage derivation is still single-sourced in `needCoverage`; only what an
+ * absent answer MEANS differs, and it differs at one call site with a reason
+ * written at both ends. `needsFit` is that call site.
+ */
+export type UnknownReading = Extract<NeedsFit, 'unmet' | 'fits'>
+
 export interface NeedGlyphSpec {
   readonly key: NeedKey
   /** The household's asked-for need. */
@@ -83,11 +137,19 @@ export interface NeedGlyphSpec {
    * The locked hue, as the Tailwind step — NEVER hand-written hex.
    *
    * The review mock renders `#0ea5e9` / `#a855f7` / `#14b8a6` / `#f97316` and
-   * one step lighter in dark. Those values ARE `sky-500` / `purple-500` /
-   * `teal-500` / `orange-500` and their `-400` steps: the mock simulates the
-   * app's tokens rather than defining them (§6). A complete literal per
-   * entry, because Tailwind scans raw source text and a composed string emits
-   * no rule at all — the `forest-950` failure (#1894) CLAUDE.md §4 names.
+   * one step lighter in dark. Those values STAND IN FOR `sky-500` /
+   * `purple-500` / `teal-500` / `orange-500` and their `-400` steps — they do
+   * not equal them. They are Tailwind **v3**'s hex; this project ships v4,
+   * which retuned the default ramps to OKLCH, so what actually renders is
+   * `#00a6f4` / `#ad46ff` / `#00bba7` / `#ff6900`. The tokens below are still
+   * exactly right and nothing about them should change: §6 makes the app's own
+   * scale the definition and the mock the approximation. This comment used to
+   * say the two were the same value, which sent a reader looking for a bug
+   * that is not there.
+   *
+   * A complete literal per entry, because Tailwind scans raw source text and a
+   * composed string emits no rule at all — the `forest-950` failure (#1894)
+   * CLAUDE.md §4 names.
    */
   readonly hueClassName: string
   /**
@@ -102,7 +164,7 @@ export interface NeedGlyphSpec {
    */
   readonly someIs: Exclude<NeedsFit, 'fits'>
   /** Where this need reads its supply. See each implementation for why. */
-  readonly coverage: (party: RosterPartyRow, unit: LodgingUnitRow) => Coverage
+  readonly coverage: (party: RosterPartyRow, unit: LodgingUnitRow, reading: NeedReading) => Coverage
 }
 
 /**
@@ -131,10 +193,17 @@ export interface NeedGlyphSpec {
  * When #2501 lands this becomes `'shared'` joining the `'private'` arm, and
  * `needGlyphs.test.ts` carries the assertion that flips.
  */
-function bathroomCoverage(party: RosterPartyRow): Coverage {
-  const effective = party.effective_bathroom
-  if (effective === 'private') return 'all'
-  if (effective === undefined || effective === 'unknown') return 'unknown'
+function bathroomCoverage(
+  party: RosterPartyRow,
+  unit: LodgingUnitRow,
+  reading: NeedReading
+): Coverage {
+  // The PROSPECTIVE half: the candidate cabin's own field, which is also what
+  // the unit card's amenity mark prints — so a row in the Assign modal can
+  // never contradict the card it was opened from.
+  const value = reading === 'prospective' ? (unit.bathroom ?? 'unknown') : party.effective_bathroom
+  if (value === 'private') return 'all'
+  if (value === undefined || value === 'unknown') return 'unknown'
   return 'none'
 }
 
@@ -159,7 +228,7 @@ export const NEED_GLYPHS: readonly NeedGlyphSpec[] = [
     // covered placement should be the mark staff look at, not the one they
     // do not.
     someIs: 'unmet',
-    coverage: (party) => bathroomCoverage(party),
+    coverage: bathroomCoverage,
   },
   {
     key: 'power',
@@ -223,20 +292,64 @@ export function needGlyph(key: NeedKey): NeedGlyphSpec {
   return spec
 }
 
-/** Where `key` reads its supply for this party in this cabin. */
-export function needCoverage(key: NeedKey, party: RosterPartyRow, unit: LodgingUnitRow): Coverage {
-  return needGlyph(key).coverage(party, unit)
+/**
+ * Where `key` reads its supply for this party in this cabin.
+ *
+ * `reading` defaults to `placed`, so an unqualified call is the card's
+ * question — the one every existing caller was asking.
+ */
+export function needCoverage(
+  key: NeedKey,
+  party: RosterPartyRow,
+  unit: LodgingUnitRow,
+  reading: NeedReading = 'placed'
+): Coverage {
+  return needGlyph(key).coverage(party, unit, reading)
 }
 
 /**
  * How a coverage grade reads for one need.
  *
- * `unknown` reports `fits`, and that is the whole point of the fourth value:
- * the absence of evidence is not evidence of absence. An unconfirmed cabin's
- * `has_power = false` means "nobody has said", so marking it would assert
+ * ⚠️ `unknown` REPORTS `unmet`, AND THAT REVERSES WHAT THIS FUNCTION SHIPPED
+ * WITH (owner ruling 2026-08-20). The old rule was `unknown → fits`, argued as
+ * "the absence of evidence is not evidence of absence": an unconfirmed cabin's
+ * `has_power = false` means *nobody has said*, so marking it would assert
  * something about a space nobody has measured.
+ *
+ * The argument is kept because it is half right, and because seeing it is what
+ * stops it being re-adopted. What it missed: `fits` IS NOT SILENCE. It is the
+ * glyph in its full hue, and that asserts the cabin MEETS the need — a claim
+ * about an unmeasured space just as much as the warn treatment is. There is no
+ * neutral verdict to fall back on, because two glyph states are ruled and not
+ * three (§2). So the only real question is which claim is safer to make about a
+ * space nobody has measured, and the owner ruled, verbatim:
+ *
+ *   "unknown values should not equal fits, across all surfaces on the glyphs,
+ *    its unconfirmed information."
+ *
+ * It agrees with the same owner on 2026-08-19 — *"if something's unconfirmed,
+ * I'm always going to want to know"* — and it closes the asymmetry that made
+ * BATHROOM the only one of the four able to go red on an unconfirmed cabin:
+ * its supply is resolved server-side without the `is_confirmed` gate the other
+ * three pass through, so the others reported `unknown` and stayed silent while
+ * it spoke. Now all four speak.
+ *
+ * ⚠️ AN UNPLACED PARTY IS A DIFFERENT CASE AND IS NOT GRADED HERE. No unit
+ * means nothing to be unconfirmed ABOUT; `resolveNeedGlyphs` short-circuits to
+ * `fits` before this function is reached, because a queue drawn red all the
+ * time says nothing at all. Do not "make that consistent" with this.
+ *
+ * Measured before the change, across all twelve of 2026's weekends and 575
+ * parties: exactly THREE glyphs move, all of them `step_free` against a cabin
+ * whose `ramp_coverage` the server could not resolve. The roster's section
+ * counts do not move at all — `ROSTER_NEEDS` grades bathroom and power, and
+ * every placed party's coverage for those two is already `all` or `none`.
  */
-export function needVerdict(key: NeedKey, coverage: Coverage): NeedsFit {
+export function needVerdict(
+  key: NeedKey,
+  coverage: Coverage,
+  unknownIs: UnknownReading = 'unmet'
+): NeedsFit {
   if (coverage === 'none') return 'unmet'
   if (coverage === 'some') return needGlyph(key).someIs
   // The fifth grade, reachable only from `ramp_coverage`. It says the space
@@ -244,6 +357,7 @@ export function needVerdict(key: NeedKey, coverage: Coverage): NeedsFit {
   // "nothing here" in every reading of it, and softer than `some`, which is
   // about a building whose rooms disagree.
   if (coverage === 'partial') return 'partial'
+  if (coverage === 'unknown') return unknownIs
   return 'fits'
 }
 
@@ -254,11 +368,24 @@ export interface ResolvedNeedGlyph extends NeedGlyphSpec {
    * Whether the glyph takes the warn treatment.
    *
    * TWO STATES, NOT THREE, and that is ruled (§2): the hue means "asked for",
-   * warn means "the placed room has not got it". `partial` — "a ramp with a
-   * lip", "some rooms have power" — is a QUALIFICATION rather than a warning,
-   * and `PlaceFamilyPicker` already grades it as advisory-muted against
-   * `unmet`'s amber. It keeps its hue; degree lives on the card's drag-time
-   * hatch, which grades it on the hatch PERIOD.
+   * warn means "the room has not got it". `partial` — "a ramp with a lip",
+   * "some rooms have power" — is a QUALIFICATION rather than a warning, so it
+   * keeps its hue. Degree lives on the drag-time hatch, which grades it over
+   * the hatch period.
+   *
+   * ⚠️ THE OLD REASON FOR THAT WAS WRONG AND IS CORRECTED HERE. This comment
+   * used to say `partial` may keep its hue because "the Assign modal's
+   * candidate rows already grade it as advisory-muted against `unmet`'s
+   * amber". That was true of the deleted `PlaceFamilyPicker`; the sentence was
+   * redirected at the Assign modal without being re-checked, and there the
+   * modal's amber was keyed on capacity, not on degree. Since the owner's
+   * 2026-08-20 verdict ruling the modal draws exactly two inks — green for
+   * `fits`, the warn red for everything else, `partial` included. So the modal
+   * distinguishes degree in WORDS (`partial fit` against `does not fit`) and
+   * never in colour, and it is not a reason to keep three states here.
+   *
+   * The real reason is unchanged and stands on its own: a qualification is not
+   * a warning, and the glyph has two states to spend.
    */
   readonly isUnmet: boolean
 }
@@ -290,11 +417,12 @@ export function askedNeedGlyphs(party: RosterPartyRow): NeedGlyphSpec[] {
  */
 export function resolveNeedGlyphs(
   party: RosterPartyRow,
-  unit: LodgingUnitRow | undefined
+  unit: LodgingUnitRow | undefined,
+  reading: NeedReading = 'placed'
 ): ResolvedNeedGlyph[] {
   return askedNeedGlyphs(party).map((glyph) => {
     const verdict: NeedsFit =
-      unit === undefined ? 'fits' : needVerdict(glyph.key, glyph.coverage(party, unit))
+      unit === undefined ? 'fits' : needVerdict(glyph.key, glyph.coverage(party, unit, reading))
     return { ...glyph, verdict, isUnmet: verdict === 'unmet' }
   })
 }

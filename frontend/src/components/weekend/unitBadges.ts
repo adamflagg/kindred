@@ -427,9 +427,11 @@ export function availabilityAction(unit: LodgingUnitRow): AvailabilityAction | n
   // for #2090. Both the action and its gate are gone, and the gate is the
   // reason the action had to go rather than the other way round.
   //
-  // Creating a write-in moved into the card's own family box: type a name, and
-  // if no registered family matches, that text becomes the write-in
-  // (`PlaceFamilyPicker`'s `onWriteIn`). The ruling's own framing:
+  // Creating a write-in moved into the Assign MODAL: type a name into its one
+  // live box, and if no registered family matches, that text becomes the
+  // write-in (`AssignFamilyModal`'s `onWriteIn`). It was an inline box on the
+  // card until kindred#2072's AS2 replaced it — `PlaceFamilyPicker` is
+  // historical context here and no longer exists. The ruling's own framing:
   //
   //   > "one fewer chip on the board on every tile, big win ... it removes two
   //   >  rectangular boxes coexisting and typeable when the write in is also

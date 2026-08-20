@@ -12,16 +12,17 @@
  * and "sleeps 0" would be a lie about a cabin nobody has measured.
  */
 import { useDraggable, useDroppable } from '@dnd-kit/core'
-import { Bath, Merge, Plug, Snowflake, Split, TriangleAlert, Users } from 'lucide-react'
+import { Bath, Merge, Plug, Plus, Snowflake, Split, TriangleAlert, Users } from 'lucide-react'
+import { useState } from 'react'
 
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
 import { Tooltip } from '../ui/Tooltip'
 import { overlappingPartyKeys, slotOccupancy, type BoardSlot } from './boardLayout'
+import { AssignFamilyModal } from './AssignFamilyModal'
 import { isValidMergeTarget, mergeDragId, unitDroppableId } from './dragPlacement'
 import { FamilyCard } from './FamilyCard'
 import { partyHeadcount } from './householdIdentity'
 import { resolveNeedsFit } from './needsFit'
-import { PlaceFamilyPicker } from './PlaceFamilyPicker'
 import { resolveRingPrecedence } from './ringPrecedence'
 import { partyKey } from './partyKey'
 import {
@@ -449,6 +450,11 @@ export function LodgingUnitCard({
     id: unitDroppableId(unit.code),
     disabled: !canPlace || mergeDragActive,
   })
+
+  // Whether THIS card's Assign modal is open. Per-card state rather than
+  // board-level: the modal names one cabin and writes to one cabin, and
+  // hoisting it would make every card re-render when any card opened one.
+  const [assignOpen, setAssignOpen] = useState(false)
 
   const setCardRef = (node: HTMLDivElement | null) => {
     setUnitDropRef(node)
@@ -924,49 +930,46 @@ export function LodgingUnitCard({
         {/* kindred#2080 — the space's own placement path, for the staff
             member who has the cabin on screen and not the family.
 
-            Inline and in this row on the owner's ruling (option A): no
-            popover, no second surface, literally Hold's shape. Like Hold's
-            reason form it carries `w-full`, so it wraps onto its own line of
-            this flex row; unlike Hold, it renders its LIST only once the
-            search box is engaged, which is what keeps ~82 resting cards from
-            growing. */}
+            ⚠️ A PILL THAT OPENS A MODAL SINCE AS2 (owner, 2026-08-19), which
+            SUPERSEDES the 2026-08-09 ruling this control was built on — "not a
+            popover and not a second surface", option A, literally Hold's
+            shape. The supersession is scoped to this one control, and the
+            width is what buys it: a candidate row now carries party size
+            against the beds left, the need glyphs coloured against this room,
+            last year's cabin and a fit verdict, none of which fits in a 244px
+            card. `UnitAvailabilityControl` and the merge/split pills stay
+            inline, because none of them has information that wants width.
+
+            It also collapses ~82 mounted comboboxes to one. The inline picker
+            was mounted on every placeable card, each holding the WHOLE
+            unplaced queue and memoising an annotate-and-sort over it; the
+            modal is mounted only while it is open.
+
+            NAMED FOR THE CABIN, as the combobox was: ~82 controls all called
+            "Assign" is unusable, and the visible word is the only thing that
+            fits on the pill.
+
+            AND NAMED FOR WHAT THIS CARD CAN ACTUALLY DO, which the combobox
+            was careful about and this inherits: on the CampMinder mirror there
+            is no scenario, so nothing can be PLACED and the modal opens as a
+            write-in box only. The visible word stays "Assign" — it is the
+            ruled label, and writing an occupant in is still assigning the
+            space — but the accessible name says the truth. */}
         {canPickFamily && (
-          <PlaceFamilyPicker
-            unit={unit}
-            // EMPTY where placement is refused, which is how the control knows
-            // it is a write-in box rather than both. Passing the queue anyway
-            // would offer rows that `resolvePickerPlacement` refuses.
-            parties={canOfferPlacement ? unplacedParties : []}
-            isSaving={savingAvailability}
-            // The registry, only so a combined house is judged by its
-            // whole-house capacity rather than by its container row's delta.
-            units={units}
-            onSelect={(party) => {
-              onPlaceParty?.(unit, party)
+          <button
+            type="button"
+            aria-label={
+              canOfferPlacement ? `Assign to ${unit.name}` : `Write in an occupant for ${unit.name}`
+            }
+            disabled={savingAvailability}
+            onClick={() => {
+              setAssignOpen(true)
             }}
-            {...(canOfferWriteIn
-              ? {
-                  // The write the strip's "Write in" action used to send,
-                  // from the box that replaced it. `familyAvailable: false`
-                  // IS the write-in (kindred#2382 moved the row out of
-                  // `lodging_availability`, and the write shape stayed).
-                  //
-                  // `reason: ''` — the note is optional and this path does not
-                  // collect one. A write-in that wants a note gets it from the
-                  // pencil on its own card, which is where every other edit to
-                  // a write-in now lives.
-                  onWriteIn: (occupantName: string) => {
-                    onSetAvailability({
-                      unitId: unit.unit_id,
-                      unitName: unit.name,
-                      familyAvailable: false,
-                      occupantName,
-                      reason: '',
-                    })
-                  },
-                }
-              : {})}
-          />
+            className="border-border text-muted-foreground hover:text-foreground hover:border-foreground/30 inline-flex items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-xs font-medium disabled:opacity-40"
+          >
+            <Plus className="h-3 w-3" />
+            Assign
+          </button>
         )}
         {/* Merging is promotion to the parent: dragging this handle onto a
             sibling's card writes `combined: true` on the shared parent. Absent
@@ -1170,6 +1173,62 @@ export function LodgingUnitCard({
           ))
         )}
       </div>
+
+      {/* MOUNTED ONLY WHILE OPEN. `ui/Modal` portals to `document.body`, so
+          nothing here sits inside the card's own stacking context or its
+          `overflow-hidden` grid — and, more to the point, the whole
+          annotate-and-sort over the unplaced queue happens for one card
+          rather than for all ~82. */}
+      {assignOpen && (
+        <AssignFamilyModal
+          isOpen={assignOpen}
+          onClose={() => {
+            setAssignOpen(false)
+          }}
+          unit={unit}
+          // EMPTY where placement is refused, which is how the modal knows it
+          // is a write-in box rather than both. Passing the queue anyway would
+          // offer rows that `resolvePickerPlacement` refuses.
+          parties={canOfferPlacement ? unplacedParties : []}
+          units={units}
+          // The card's own numerator, passed rather than re-derived: the modal
+          // states beds FREE against it, and two computations of one figure is
+          // how the header and the card start disagreeing.
+          occupants={occupants}
+          // The same figure the card withholds its own over-capacity claim on
+          // — see the modal's `spanWidth` doc. Passed rather than re-derived,
+          // so the two surfaces cannot answer "is this over capacity" two
+          // different ways.
+          spanWidth={spanWidth}
+          isSaving={savingAvailability}
+          onSelect={(party) => {
+            onPlaceParty?.(unit, party)
+          }}
+          {...(canOfferWriteIn
+            ? {
+                // The write the strip's "Write in" action used to send.
+                // `familyAvailable: false` IS the write-in (kindred#2382 moved
+                // the row out of `lodging_availability`, and the write shape
+                // stayed).
+                //
+                // ★ THE NOTE IS CARRIED NOW. The inline box sent `reason: ''`
+                // with a comment saying that path did not collect one, so a
+                // staff member wanting to record WHY had to write the occupant
+                // in and then edit it from the pencil on its own card. The
+                // modal has room for the field, so the first write carries it.
+                onWriteIn: (write: { occupantName: string; note: string }) => {
+                  onSetAvailability({
+                    unitId: unit.unit_id,
+                    unitName: unit.name,
+                    familyAvailable: false,
+                    occupantName: write.occupantName,
+                    reason: write.note,
+                  })
+                },
+              }
+            : {})}
+        />
+      )}
     </div>
   )
 }

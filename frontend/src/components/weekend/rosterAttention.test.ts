@@ -180,31 +180,39 @@ describe('partyAttention — does the cabin provide what was asked for', () => {
   })
 
   /*
-   * ⚠️ THE SECOND VERDICT kindred#2072 MOVED, pinned because it is a real
-   * staff-facing reclassification and the only one in the change.
+   * ⚠️ THIS VERDICT HAS MOVED TWICE, AND BOTH MOVES ARE KEPT HERE BECAUSE THE
+   * SECOND ONE UNDOES THE FIRST.
    *
-   * The old rule was `party.effective_bathroom === 'private'`, so `unknown`
-   * and an absent value both FAILED it and reported "No private bathroom".
-   * They now grade `unknown → fits` like every other need.
+   * Originally the rule was `party.effective_bathroom === 'private'`, so
+   * `unknown` and an absent value both FAILED it and reported "No private
+   * bathroom". kindred#2072 changed that to `unknown → fits`, on the argument
+   * that the absence of evidence is not evidence of absence — one rule for all
+   * four needs, and a reach of zero on today's data.
    *
-   * Kept deliberately: it applies one rule to all four needs, which is the
-   * point of consolidating three tables, and its reach is zero — all 118
-   * registry rows carry a valid `bathroom` and no placement holds an orphan
-   * code. A reader who thinks this is wrong is looking at a real decision,
-   * not an oversight.
+   * The owner reversed it on 2026-08-20: *"unknown values should not equal
+   * fits, across all surfaces on the glyphs, its unconfirmed information."*
+   * What the middle position missed is that `fits` is not silence — on the
+   * card it is the glyph in full hue, and on the roster it is a household
+   * counted as SETTLED. Both are claims about a cabin nobody has measured, so
+   * there was never a neutral option to pick.
+   *
+   * The reach is still nearly nil, and now measured rather than asserted:
+   * across 2026's twelve weekends and 575 parties, no placed party's bathroom
+   * or power coverage is anything but `all` or `none`, so no roster section
+   * count moves today. It is the shape of the rule that changed.
    */
-  it('settles a bathroom need the server could not resolve, rather than failing it', () => {
+  it('flags a bathroom need the server could not resolve, rather than settling it', () => {
     const a = partyAttention(
       party({ flags: { needs_private_bathroom: true }, effective_bathroom: 'unknown' }),
       unit({ is_confirmed: true })
     )
-    expect(a.level).toBe('settled')
+    expect(a.level).toBe('unmet')
   })
 
-  it('settles it when the field is absent entirely — the Pydantic-default case', () => {
+  it('flags it when the field is absent entirely — the Pydantic-default case', () => {
     const p = party({ flags: { needs_private_bathroom: true } })
     delete p.effective_bathroom
-    expect(partyAttention(p, unit({ is_confirmed: true })).level).toBe('settled')
+    expect(partyAttention(p, unit({ is_confirmed: true })).level).toBe('unmet')
   })
 
   it('still flags a bathroom the server resolved as SHARED — until kindred#2501', () => {
@@ -219,14 +227,36 @@ describe('partyAttention — does the cabin provide what was asked for', () => {
     expect(a.reason).toBe('No private bathroom')
   })
 
-  it('does not flag a cabin whose power nobody has resolved', () => {
-    // `unknown` is the fourth value's whole point: absence of evidence is not
-    // evidence of absence.
+  it('flags a CONFIRMED cabin whose power nobody has resolved', () => {
+    /*
+     * ⚠️ REVERSED 2026-08-20 with the rule above. `unknown` used to be the
+     * fourth value's whole point — absence of evidence is not evidence of
+     * absence — and it now reports `unmet`, because a household counted as
+     * SETTLED is as much a claim about an unmeasured cabin as one counted as
+     * unmet.
+     *
+     * The `is_confirmed` gate above this branch is UNCHANGED and still does
+     * most of the work: an unconfirmed cabin never reaches here at all, and
+     * falls through to `unverified`. What this pins is the narrower case the
+     * gate does not cover — a cabin somebody HAS confirmed whose coverage the
+     * server still could not resolve.
+     */
     const a = partyAttention(
       party({ flags: { needs_power: true } }),
       unit({ is_confirmed: true, power_coverage: 'unknown' })
     )
-    expect(a.level).toBe('settled')
+    expect(a.level).toBe('unmet')
+  })
+
+  it('still routes an UNCONFIRMED cabin to unverified, never to unmet', () => {
+    // The gate that predates all of this (kindred#1982) and is untouched by
+    // the 2026-08-20 ruling: an unconfirmed cabin is an absence of data, and
+    // the roster says so in its own band rather than borrowing the unmet one.
+    const a = partyAttention(
+      party({ flags: { needs_power: true } }),
+      unit({ is_confirmed: false, power_coverage: 'unknown' })
+    )
+    expect(a.level).toBe('unverified')
   })
 
   /*

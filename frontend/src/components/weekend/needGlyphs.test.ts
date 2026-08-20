@@ -58,9 +58,11 @@ describe('NEED_GLYPHS — the closed set', () => {
 
   it('carries the locked hues as Tailwind steps, never hand-written hex', () => {
     // The mock renders #0ea5e9 / #a855f7 / #14b8a6 / #f97316 and one step
-    // lighter in dark. Those hex values ARE these Tailwind steps; the mock
-    // simulates the app's tokens and is not the source (§6, "The mock's
-    // colours are approximations").
+    // lighter in dark. Those hex values STAND IN FOR these Tailwind steps —
+    // they are v3's, and this project ships v4, whose OKLCH ramps render
+    // #00a6f4 / #ad46ff / #00bba7 / #ff6900. The tokens asserted below are the
+    // definition and the mock is the approximation (§6); the difference is the
+    // mock's, not the app's.
     expect(NEED_GLYPHS.map((glyph) => glyph.hueClassName)).toEqual([
       'text-sky-500 dark:text-sky-400',
       'text-purple-500 dark:text-purple-400',
@@ -163,30 +165,57 @@ describe('needVerdict — the truth table', () => {
   const TABLE: ReadonlyArray<[string, 'all' | 'some' | 'partial' | 'none' | 'unknown', string]> = [
     ['bathroom', 'all', 'fits'],
     ['bathroom', 'none', 'unmet'],
-    ['bathroom', 'unknown', 'fits'],
+    ['bathroom', 'unknown', 'unmet'],
     ['power', 'all', 'fits'],
     ['power', 'some', 'partial'],
     ['power', 'none', 'unmet'],
-    ['power', 'unknown', 'fits'],
+    ['power', 'unknown', 'unmet'],
     ['fridge', 'all', 'fits'],
     ['fridge', 'some', 'partial'],
     ['fridge', 'none', 'unmet'],
-    ['fridge', 'unknown', 'fits'],
+    ['fridge', 'unknown', 'unmet'],
     ['step_free', 'all', 'fits'],
     ['step_free', 'some', 'unmet'],
     ['step_free', 'partial', 'partial'],
     ['step_free', 'none', 'unmet'],
-    ['step_free', 'unknown', 'fits'],
+    ['step_free', 'unknown', 'unmet'],
   ]
 
   it.each(TABLE)('grades %s at %s coverage as %s', (key, coverage, expected) => {
     expect(needVerdict(key as never, coverage)).toBe(expected)
   })
 
-  it('reports fits for unknown, because absence of evidence is not evidence of absence', () => {
-    // An unconfirmed cabin's `has_power = false` means "nobody has said".
-    // Marking it would assert something about a space nobody has measured.
-    expect(needVerdict('power', 'unknown')).toBe('fits')
+  it('reports UNMET for unknown — unconfirmed information is not a met need', () => {
+    /*
+     * ⚠️ THIS REVERSES THE RULE THE RESOLVER SHIPPED WITH, and the old
+     * reasoning is kept here rather than deleted because it was not silly.
+     *
+     * It used to grade `unknown → fits`, on the argument that "the absence of
+     * evidence is not evidence of absence": an unconfirmed cabin's
+     * `has_power = false` means "nobody has said", so marking it would assert
+     * something about a space nobody has measured.
+     *
+     * What that argument missed is that `fits` is not silence — it is the
+     * glyph in its full hue, which asserts the cabin MEETS the need. Both
+     * verdicts make a claim; the question is only which claim is safer to make
+     * about a space nobody has measured. Owner ruling 2026-08-20, verbatim:
+     * *"unknown values should not equal fits, across all surfaces on the
+     * glyphs, its unconfirmed information."* It matches what the same owner
+     * said on 2026-08-19 — *"if something's unconfirmed, i'm always going to
+     * want to know."*
+     *
+     * Two states are ruled, not three (§2), so "not fits" is `unmet` and the
+     * glyph takes the warn treatment. The shape still says WHICH need it is.
+     *
+     * ⚠️ THE NO-CABIN CASE IS DIFFERENT AND IS NOT THIS. An unplaced party has
+     * no unit at all — there is nothing to be unconfirmed ABOUT — and
+     * `resolveNeedGlyphs` still reports `fits` there. See its own test below:
+     * a queue drawn red all the time says nothing at all.
+     */
+    expect(needVerdict('power', 'unknown')).toBe('unmet')
+    expect(needVerdict('bathroom', 'unknown')).toBe('unmet')
+    expect(needVerdict('fridge', 'unknown')).toBe('unmet')
+    expect(needVerdict('step_free', 'unknown')).toBe('unmet')
   })
 })
 
@@ -230,9 +259,14 @@ describe('resolveNeedGlyphs — what the card actually draws', () => {
   it('keeps a partial verdict out of the warn state', () => {
     // Two states are locked, not three: the hue (asked for) and warn (the
     // room has not got it). `partial` is a QUALIFICATION — "a ramp with a lip",
-    // "some rooms have power" — and `PlaceFamilyPicker` already grades it as
-    // advisory-muted rather than as a warning. It keeps its hue; the card's
-    // drag-time hatch is where degree is expressed.
+    // "some rooms have power" — not a warning, so it keeps its hue. Degree is
+    // expressed by the drag-time hatch, over the hatch period.
+    //
+    // ⚠️ This used to add "and the Assign modal's rows already grade it as
+    // advisory-muted", which was true of the deleted `PlaceFamilyPicker` and
+    // never of the modal. Since the 2026-08-20 verdict ruling the modal draws
+    // two inks only and prints `partial fit` as WORDS. Corrected rather than
+    // dropped, because the surviving reason above is the one that matters.
     const glyphs = resolveNeedGlyphs(
       party({ flags: { needs_power: true } }),
       unit({ power_coverage: 'some' })
@@ -247,5 +281,62 @@ describe('resolveNeedGlyphs — what the card actually draws', () => {
       unit({ fridge_coverage: 'none' })
     )
     expect(unmet[0]?.isUnmet).toBe(true)
+  })
+})
+
+describe('needCoverage — the PROSPECTIVE reading', () => {
+  /*
+   * Two questions, one table.
+   *
+   *   PLACED      — "does the cabin they are in meet this need?"  The card.
+   *   PROSPECTIVE — "would this cabin meet it?"                   The modal.
+   *
+   * They differ for exactly one need, and the difference is not a bug that
+   * was consolidated away: `effective_bathroom` is the SERVER's verdict on
+   * the placement a party already holds, which is meaningless for a candidate
+   * that has none — every unplaced party would grade identically no matter
+   * which cabin was being considered. `placementCandidates.ts` had worked
+   * this out and kept its own table because of it; the reading is a parameter
+   * now instead.
+   */
+  it('grades a candidate bathroom off the CABIN, not the placement the party does not have', () => {
+    const unplaced = party({ effective_bathroom: 'none' })
+    expect(needCoverage('bathroom', unplaced, unit({ bathroom: 'private' }), 'prospective')).toBe(
+      'all'
+    )
+    expect(needCoverage('bathroom', unplaced, unit({ bathroom: 'shared' }), 'prospective')).toBe(
+      'none'
+    )
+  })
+
+  it('reports unknown for a cabin whose bathroom nobody has recorded', () => {
+    expect(needCoverage('bathroom', party(), unit({ bathroom: 'unknown' }), 'prospective')).toBe(
+      'unknown'
+    )
+    const noField = unit()
+    delete noField.bathroom
+    expect(needCoverage('bathroom', party(), noField, 'prospective')).toBe('unknown')
+  })
+
+  it('reads the other three identically in both readings — they were never party-scoped', () => {
+    const p = party({ effective_bathroom: 'private' })
+    const u = unit({ power_coverage: 'some', fridge_coverage: 'all', ramp_coverage: 'partial' })
+    for (const key of ['power', 'fridge', 'step_free'] as const) {
+      expect(needCoverage(key, p, u, 'prospective')).toBe(needCoverage(key, p, u, 'placed'))
+    }
+  })
+
+  it('defaults to the placed reading, so an unqualified call is the card’s', () => {
+    const placed = party({ effective_bathroom: 'private' })
+    expect(needCoverage('bathroom', placed, unit({ bathroom: 'none' }))).toBe('all')
+  })
+
+  it('draws a candidate’s glyphs against the cabin being considered', () => {
+    const glyphs = resolveNeedGlyphs(
+      party({ flags: { needs_private_bathroom: true }, effective_bathroom: 'none' }),
+      unit({ bathroom: 'private' }),
+      'prospective'
+    )
+    expect(glyphs.map((glyph) => glyph.isUnmet)).toEqual([false])
   })
 })

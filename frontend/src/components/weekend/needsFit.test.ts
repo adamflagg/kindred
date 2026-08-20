@@ -320,11 +320,17 @@ describe('resolveNeedsFit — the step-free dimension (kindred#2438)', () => {
 describe('worseOf', () => {
   /*
    * The combining rule, tested directly rather than through
-   * `resolveNeedsFit`, because `NEEDS_DIMENSIONS` holds ONE entry: a
-   * `resolveNeedsFit` assertion would pass just as happily against a
-   * combiner that kept the LAST verdict rather than the worst, and so would
-   * pin nothing. The issue's whole claim is that dimension two is a constant
-   * in the table and not a design exercise; this is what makes that true.
+   * `resolveNeedsFit`: a `resolveNeedsFit` assertion would pass just as
+   * happily against a combiner that kept the LAST verdict rather than the
+   * worst, and so would pin nothing.
+   *
+   * ⚠️ This used to say the reason was that `NEEDS_DIMENSIONS` holds ONE
+   * entry. That symbol was deleted by kindred#2072, and the claim had already
+   * been false since kindred#2224 added the fridge entry. The table is
+   * `needGlyphs.NEED_GLYPHS` now and carries four, of which
+   * `needsFit.HATCHED_NEEDS` grades three — so the direct test stays for the
+   * reason its twin in `needsFit.ts` gives: it is the one that still holds if
+   * the scope ever shrinks back to one.
    */
   it('keeps the worse verdict whichever side it arrives on', () => {
     expect(worseOf('unmet', 'fits')).toBe('unmet')

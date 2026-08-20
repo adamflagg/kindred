@@ -210,6 +210,57 @@ describe('LodgingMap', () => {
     expect(screen.queryByTestId('map-unplaced-rail')).not.toBeInTheDocument()
   })
 
+  it('grades the need glyphs of a party placed off the map, against its real cabin', () => {
+    /*
+     * ⚠️ THIS PINS A PROP THAT WAS LOAD-BEARING AND UNDEFENDED (post-merge
+     * review of #2505, P1-3). The `unit={resolvePartyUnit(...)}` on this
+     * section's `FamilyCard` could be DELETED with the whole weekend suite
+     * green — 43 files, 1415 tests — and `FamilyCardProps.unit` is optional,
+     * so `tsc` said nothing either.
+     *
+     * What deleting it does: `resolveNeedGlyphs(party, undefined)` returns
+     * every asked need at `fits`, so this section would draw a family's power
+     * glyph in its full hue — a positive claim that a cabin meets a need,
+     * about a cabin this surface never resolved. The card used to print "Fit
+     * not verified" in that situation and that chip is struck (vocabulary §3),
+     * so the glyph is now the only carrier.
+     *
+     * `no-coordinates` is the reachable shape: the cabin is REAL and in the
+     * payload — it simply has no pin on the map — so `resolvePartyUnit`
+     * resolves it and the grading is available if the prop asks for it.
+     */
+    // `power_coverage` has to be set explicitly: this file's `unit()` helper
+    // carries none of the resolved coverage columns, which is a large part of
+    // why nothing here exercised the glyph grading in the first place.
+    const unpinned = unit({
+      unit_id: 'u9',
+      code: 'attic-1',
+      name: 'Attic 1',
+      map_x: null,
+      map_y: null,
+      power_coverage: 'none',
+    })
+    render(
+      <LodgingMap
+        parties={[
+          party({
+            display_name: 'Garcia',
+            unit_code: 'attic-1',
+            unit_name: 'Attic 1',
+            flags: { needs_power: true },
+          }),
+        ]}
+        units={[...UNITS, unpinned]}
+        year={2026}
+      />
+    )
+    expect(screen.getByText(/Placed, off the map/i)).toBeInTheDocument()
+    // The cabin resolves `power_coverage: 'none'`, so the need is UNMET and
+    // the glyph takes the warn fill. Passing no unit would make this `fits`
+    // and drop the fill entirely.
+    expect(screen.getByTestId('need-glyph-power').className).toContain('bg-red-100')
+  })
+
   it('puts an unplaced party in the corner queue', async () => {
     render(
       <LodgingMap

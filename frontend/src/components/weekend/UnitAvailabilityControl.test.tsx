@@ -103,13 +103,21 @@ describe('UnitAvailabilityControl', () => {
    * Nine tests were deleted here, not weakened — they specified a form this
    * strip no longer mounts. Where each guarantee now lives:
    *
-   *   an occupant name is REQUIRED      -> PlaceFamilyPicker.test.tsx, "offers
-   *                                        nothing for whitespace alone"
-   *   the note is OPTIONAL              -> WriteInCard.test.tsx's edit form
+   *   an occupant name is REQUIRED      -> AssignFamilyModal.test.tsx, "will
+   *                                        not write in an empty name"
+   *   the note is OPTIONAL              -> WriteInCard.test.tsx's edit form,
+   *                                        and AssignFamilyModal.test.tsx's
+   *                                        "writes in from the Write in button"
    *   name and note never substitute    -> WriteInCard.test.tsx's edit form
    *   a MERGED building can be written  -> LodgingUnitCard.test.tsx, the
-   *     into                               picker's own gate
-   *   an abandoned form is cleared      -> PlaceFamilyPicker clears its query
+   *     into                               Assign pill's own gate
+   *   an abandoned form is cleared      -> AssignFamilyModal clears its query
+   *                                        and note on write
+   *
+   * ⚠️ Those pointers named `PlaceFamilyPicker` until kindred#2072's AS2
+   * replaced the inline box with `AssignFamilyModal`. Repointed rather than
+   * dropped — a pointer into a deleted file is how a guarantee stops being
+   * findable and then stops being true.
    *
    * The reason the strip lost it: the card already carried a family box, so
    * every tile offered two typeable rectangles for one question — who is

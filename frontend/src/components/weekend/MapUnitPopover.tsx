@@ -306,10 +306,16 @@ function DetailCard({ entry, hue, onOpenParty, wholeBuildingKeys }: DetailCardPr
       {(tags.length > 0 || holdsWholeBuilding) && (
         <ul className="flex flex-wrap gap-1">
           {/* Its own indigo/`Home` token, not pushed into `tags` above: those
-              render as hue-coloured pills, which would put this fact in a
-              SECOND visual language from the board's own indigo chip for the
-              same fact — exactly what kindred#2174 rules out. Same tags ROW,
-              different token, on purpose. */}
+              render as hue-coloured pills keyed to an AREA, and this fact is
+              about the building, not about where the building sits. Same tags
+              ROW, different token, on purpose.
+
+              ⚠️ This used to justify itself against "the board's own indigo
+              chip for the same fact", which kindred#2072 deleted — see
+              `WholeBuildingBadge`'s doc above, which is the surviving account:
+              the board's copy is STRUCK and this is the last one standing. Do
+              not restore the chip on the card for consistency, and do not
+              delete this one for having lost its twin. */}
           {holdsWholeBuilding && (
             <li>
               <WholeBuildingBadge />

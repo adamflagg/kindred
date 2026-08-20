@@ -37,41 +37,36 @@
  * CANDIDATE. This asks the other question, off the candidate unit's own
  * fields.
  *
- * ## Why this is not `needsFit`
+ * ## Why this is not `needsFit` — and what they now share
  *
  * `needsFit` (kindred#1912) answers the same shape of question for the card's
- * drag-time hatch, and shares this module's `fits/partial/unmet` vocabulary
- * and its `worseOf` precedence — imported, not re-declared. What it does not
- * share is the DIMENSION TABLE, deliberately: its list drives a mark painted
- * on ~82 cards mid-drag, whereas a row in this list has room for a sentence.
- * Adding bathroom and capacity there to reach them here would have changed a
- * shipped board treatment as a side effect.
+ * drag-time hatch. Since kindred#2072 both read ONE grading, `needGlyphs.ts`,
+ * so a (need, party, cabin) triple can no longer get two answers. What still
+ * differs is SCOPE, and each scope is written down where it lives: the hatch
+ * grades three needs (bathroom would hatch 112 of 118 cards on any pick-up),
+ * this grades all four plus capacity.
  *
- * ⚠️ THE TWO TABLES HAVE DIVERGED, and the divergence is a live decision
- * rather than an oversight. `needsFit` was seeded with power ALONE; kindred#2224
- * added `needs_fridge` there and NOT here, and kindred#2438 added
- * `needs_step_free` on the same terms — so a family whose housing narrative
- * asks for a fridge or for step-free access is hatched mid-drag on a cabin
- * that cannot supply it and annotated `fits` in this picker (and reported
- * `settled` by `rosterAttention`, whose own scope carries neither).
- * Whether those needs earn a sentence here and a roster-row reason there is a
- * staff-copy question that belongs with kindred#2072's ruled glyph set
- * (bathroom · power · fridge) — it is not settled by this comment, and the
- * step-free need is not in that ruled set at all. Until it is, do not assume
- * silence here means the need does not apply.
+ * ⚠️ AND ONE READING, which is this module's own contribution to that
+ * consolidation. A candidate has NO PLACEMENT, so its bathroom must be graded
+ * against the cabin under consideration and never against
+ * `party.effective_bathroom` — the server's verdict on a placement it does not
+ * have, which would annotate every unplaced party identically on every cabin.
+ * That is `needGlyphs`' `prospective` reading, and this module is why it
+ * exists. `partyAttention`, by contrast, asks the PLACED question and returns
+ * `{ level: 'unplaced' }` before it ever reads its unit argument, which is
+ * what makes it the wrong function for this list.
  *
- * ⚠️ "CHANGE ONE, CHANGE BOTH" NO LONGER APPLIES, AND THAT IS THE POINT.
+ * ## The notes shrank on purpose
  *
- * This paragraph used to say the power rule was stated in both this file and
- * `needsFit.ts`, and to change them together. kindred#2072 removed the second
- * statement: the grading lives in `needGlyphs.ts` now, which `needsFit` calls
- * and which this file does NOT yet — that consolidation is stage 2. Until it
- * lands, this module's `powerVerdict` below is the last hand-written copy of
- * a rule that exists properly elsewhere, and it is the copy to delete rather
- * than the one to keep in step.
+ * They used to name each unmet need. The rows draw the need GLYPHS now, and
+ * N2 makes the glyph the mark — a sentence beside a red bathroom glyph saying
+ * the bathroom is missing states one fact twice, the same reason
+ * `No private bathroom` was struck from the family card. `notes` is therefore
+ * what no glyph can say, which today is capacity alone.
  */
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
 import { partyIdentityLabel } from './householdIdentity'
+import { resolveNeedGlyphs } from './needGlyphs'
 import { worseOf, type NeedsFit } from './needsFit'
 import { effectiveSleeps, partyBeds } from './rosterAttention'
 
@@ -98,50 +93,6 @@ interface DimensionVerdict {
   note: string | null
 }
 
-const FITS: DimensionVerdict = { fit: 'fits', note: null }
-
-/**
- * Does the space give this party its own bathroom?
- *
- * Reads `unit.bathroom` — the candidate row's own field, which is also what
- * the card's amenity strip prints, so the annotation can never contradict the
- * card it sits inside. It is NOT `party.effective_bathroom`: that is the
- * server's answer about the placement the party already has, and every party
- * in this list has none.
- *
- * `unknown` (and an absent field) report `fits` with no note. The absence of
- * evidence is not evidence of absence — the same bar `needsFit`'s `unknown`
- * coverage and `rosterAttention`'s `is_confirmed` gate already apply.
- */
-function bathroomVerdict(party: RosterPartyRow, unit: LodgingUnitRow): DimensionVerdict {
-  if (party.flags?.needs_private_bathroom !== true) return FITS
-  const bathroom = unit.bathroom ?? 'unknown'
-  if (bathroom === 'private' || bathroom === 'unknown') return FITS
-  // Same wording as `rosterAttention`'s own entry for this need. Staff read
-  // both surfaces; two phrasings of one fact read as two facts.
-  return { fit: 'unmet', note: 'No private bathroom' }
-}
-
-/**
- * Does the space have power where this party needs it?
- *
- * ⚠️ The twin of `needsFit`'s POWER dimension — see the module doc. Uses
- * `power_coverage`, the server's resolution over the unit's LEAF descendants,
- * never the raw `has_power`: twelve of the fourteen 2026 family-pool
- * containers record `has_power = 0` while every leaf beneath them has power,
- * so the raw flag marks twelve entirely-powered buildings unpowered.
- *
- * SOME is softer than NONE here, as it is there: a building where some rooms
- * have power is a real improvement on one where none do.
- */
-function powerVerdict(party: RosterPartyRow, unit: LodgingUnitRow): DimensionVerdict {
-  if (party.flags?.needs_power !== true) return FITS
-  const coverage = unit.power_coverage ?? 'unknown'
-  if (coverage === 'none') return { fit: 'unmet', note: 'No power' }
-  if (coverage === 'some') return { fit: 'partial', note: 'Some rooms have power' }
-  return FITS
-}
-
 /**
  * Will they all sleep here?
  *
@@ -154,19 +105,50 @@ function powerVerdict(party: RosterPartyRow, unit: LodgingUnitRow): DimensionVer
  * by its whole-house total (its own delta plus its rooms) rather than by
  * whatever the container row happens to carry. An unmeasured space says
  * nothing: `null` is "nobody has counted", not "sleeps nobody".
+ *
+ * ⚠️ THE ONLY DIMENSION LEFT THAT WRITES A NOTE, and that is the rule rather
+ * than an accident of what survived. The four ruled NEEDS draw a glyph on
+ * every candidate row (kindred#2072), and N2 makes the glyph itself the mark
+ * — a note beside a red bathroom glyph saying the bathroom is missing states
+ * one fact twice, which is exactly why `No private bathroom` was struck from
+ * the family card. Capacity has no glyph, so it keeps its sentence.
+ *
+ * ⚠️ IT GRADES THE BEDS LEFT, NOT THE ROOM (owner ruling 2026-08-20), AND IT
+ * DID NOT USED TO. `beds <= capacity` asked "would this party fit an empty
+ * room", while the header above these rows has asked "will they fit in what
+ * is LEFT" since the 2026-08-19 ruling — it prints "2 of 4 beds free". The
+ * two disagreed in the one direction that misleads: Aspen sleeps 4 and holds
+ * 2, so a three-bed household's row printed a bold green `fits`, and the card
+ * behind the dialog read 5/4 in red the moment staff clicked it. The 08-19
+ * ruling settled what the header COUNTS and never what the row GRADES, which
+ * is why this went back to the owner: *"grade against the remainder,
+ * otherwise it makes no sense."*
+ *
+ * The note counts free beds for the same reason — "sleeps 4" is no longer the
+ * number being graded against, so printing it beside "needs 3" invited the
+ * reader to do the subtraction the row had just refused to do.
+ *
+ * @param occupied Beds already taken on this card, which a candidate has to
+ *   fit AROUND. `0` for an empty room, and the default — a caller with no
+ *   occupancy figure must get the reading this had before, not a room graded
+ *   as full.
  */
 function capacityVerdict(
   party: RosterPartyRow,
   unit: LodgingUnitRow,
-  units: LodgingUnitRow[]
+  units: LodgingUnitRow[],
+  occupied: number
 ): DimensionVerdict {
   const capacity = effectiveSleeps(unit, units)
-  if (capacity === null) return FITS
+  if (capacity === null) return { fit: 'fits', note: null }
   const beds = partyBeds(party)
-  if (beds <= capacity) return FITS
+  // `Math.max(0, …)` for the same reason the header does it: a room already
+  // over its capacity has nothing left, never a negative number of beds.
+  const free = Math.max(0, capacity - occupied)
+  if (beds <= free) return { fit: 'fits', note: null }
   return {
     fit: 'unmet',
-    note: `Over capacity · needs ${String(beds)}, sleeps ${String(capacity)}`,
+    note: `Over capacity · needs ${String(beds)}, ${String(free)} free`,
   }
 }
 
@@ -174,32 +156,39 @@ function capacityVerdict(
  * How well one party fits one candidate space.
  *
  * `needs_accommodation` and `accommodation_is_mandatory` are deliberately
- * absent, for the reason `rosterAttention`'s own scope gives: they
- * name no specific amenity, so no field on any cabin settles them and an
- * annotation here could only restate the flag. And there is no step-free
- * dimension to add — `is_accessible` exists on the UNIT with nothing on the
- * party side asking for it.
+ * absent, for the reason `rosterAttention`'s own scope gives: they name no
+ * specific amenity, so no field on any cabin settles them and an annotation
+ * here could only restate the flag.
+ *
+ * ⚠️ THIS PARAGRAPH USED TO END "and there is no step-free dimension to add —
+ * `is_accessible` exists on the UNIT with nothing on the party side asking for
+ * it." That was true when written and is now FALSE twice over: kindred#2438
+ * added `needs_step_free` on the party, and this function grades it — the body
+ * five lines below calls `resolveNeedGlyphs`, whose closed set carries it.
+ * Corrected rather than deleted, because the reasoning it gave for the two
+ * accommodation flags is still exactly right.
  *
  * @param units The whole registry, needed only to total a combined house's
  *   capacity. `[]` is correct for every leaf.
+ * @param occupied Beds already taken on this card — see `capacityVerdict`.
  */
 export function candidateFit(
   party: RosterPartyRow,
   unit: LodgingUnitRow,
-  units: LodgingUnitRow[] = []
+  units: LodgingUnitRow[] = [],
+  occupied = 0
 ): PlacementCandidate {
-  const verdicts = [
-    bathroomVerdict(party, unit),
-    powerVerdict(party, unit),
-    capacityVerdict(party, unit, units),
-  ]
-  let fit: CandidateFitLevel = 'fits'
-  const notes: string[] = []
-  for (const verdict of verdicts) {
-    fit = worseOf(verdict.fit, fit)
-    if (verdict.note !== null) notes.push(verdict.note)
-  }
-  return { party, fit, notes }
+  // ONE grading, in `needGlyphs.ts`, read in its PROSPECTIVE sense — see that
+  // module's `NeedReading`. All four ruled needs, where this table used to
+  // carry two: a family whose narrative asks for a fridge or for step-free
+  // access was hatched mid-drag on a cabin that could not supply it and
+  // annotated `fits` right here.
+  const glyphs = resolveNeedGlyphs(party, unit, 'prospective')
+  const capacity = capacityVerdict(party, unit, units, occupied)
+
+  let fit: CandidateFitLevel = capacity.fit
+  for (const glyph of glyphs) fit = worseOf(glyph.verdict, fit)
+  return { party, fit, notes: capacity.note === null ? [] : [capacity.note] }
 }
 
 /** Best first — the reverse of `needsFit`'s worst-first `FIT_ORDER`. */
@@ -216,10 +205,11 @@ const DISPLAY_ORDER: readonly CandidateFitLevel[] = ['fits', 'partial', 'unmet']
 export function placementCandidates(
   parties: RosterPartyRow[],
   unit: LodgingUnitRow,
-  units: LodgingUnitRow[] = []
+  units: LodgingUnitRow[] = [],
+  occupied = 0
 ): PlacementCandidate[] {
   return parties
-    .map((party) => candidateFit(party, unit, units))
+    .map((party) => candidateFit(party, unit, units, occupied))
     .sort((a, b) => {
       const byFit = DISPLAY_ORDER.indexOf(a.fit) - DISPLAY_ORDER.indexOf(b.fit)
       if (byFit !== 0) return byFit

@@ -409,8 +409,8 @@ describe('FamilyCard — what it shows', () => {
 
   it('marks a returning household', () => {
     render(<FamilyCard party={party({ is_returning: true })} onOpen={vi.fn()} />)
-    // R3: a 16px icon, not the word. The tooltip carries the word, and
-    // "Returning / First-time is a 16px icon" below pins the geometry.
+    // R3: an icon, not the word. The tooltip carries the word, and
+    // "Returning / First-time is a 20px icon" below pins the geometry.
     expect(historyMark()).toBe('Returning family')
   })
 
@@ -1129,7 +1129,17 @@ describe('FamilyCard — a shared surname is not repeated', () => {
     )
   })
 
-  it('leaves an only child their whole name', () => {
+  it('lifts an only child’s surname too, so the age follows the first name', () => {
+    /*
+     * ⚠️ REVERSED BY RULING (owner, 2026-08-20). This test used to assert
+     * `Noah Johnson (8)`, on kindred#2180's "a single child shares nothing
+     * with anybody". The lift's purpose on this board is to put the AGE next
+     * to the first name — the pair staff read when they are matching families
+     * by how old the children are — and a surname sits between them just as
+     * much on a household with one child as on one with three. The rule moved
+     * in `dedupeChildNames`, so the card, the details panel and the Assign
+     * modal's candidate rows all moved together.
+     */
     render(
       <FamilyCard
         party={party({
@@ -1140,7 +1150,7 @@ describe('FamilyCard — a shared surname is not repeated', () => {
         onOpen={vi.fn()}
       />
     )
-    expect(screen.getByTestId('family-card-name')).toHaveTextContent('Noah Johnson (8)')
+    expect(screen.getByTestId('family-card-name')).toHaveTextContent('Noah (8) Johnson')
   })
 
   it('prints the adults’ shared surname once, after their line', () => {
@@ -1393,8 +1403,10 @@ describe('FamilyCard — the need glyphs (kindred#2072)', () => {
   })
 
   it('takes the locked hue for a need the room meets', () => {
-    // The mock renders #0ea5e9; that value IS `sky-500`. Never hand-written
-    // hex — §6, "The mock's colours are approximations".
+    // The mock renders #0ea5e9, which STANDS IN FOR `sky-500` rather than
+    // equalling it — that is Tailwind v3's hex and this project ships v4,
+    // where sky-500 renders #00a6f4. Never hand-written hex either way: §6
+    // makes the app's scale the definition and the mock the approximation.
     render(
       <FamilyCard
         party={needy({ needs_power: true })}
@@ -1507,15 +1519,35 @@ describe('FamilyCard — the marks kindred#2072 STRUCK', () => {
   })
 
   it('draws no "No private bathroom" / "No power" chip — one fact stated twice', () => {
-    // §3: a bathroom glyph beside a chip saying the bathroom is missing states
-    // one fact twice. The glyph carries the state itself (N2).
+    /*
+     * §3: a bathroom glyph beside a chip saying the bathroom is missing states
+     * one fact twice. The glyph carries the state itself (N2).
+     *
+     * ⚠️ `needs_private_bathroom` IS SET, and without it half this test was
+     * unfalsifiable (post-merge review of #2505, P1-2). The fixture used to
+     * arm only `effective_bathroom: 'none'` — the SUPPLY side — so bathroom
+     * never entered `partyAttention`'s `asked` list, `attention.reason` was
+     * always exactly 'No power', and the `/No private bathroom/` assertion
+     * could not fail however the chip came back. Demonstrated at the time:
+     * adding a bathroom-specific verdict chip to `FamilyCardChips` passed all
+     * 1415 weekend tests with a struck §3 mark back on the card.
+     *
+     * Arming both sides also gives the bathroom glyph's warn treatment its
+     * first test on this card — no fixture anywhere asked for a bathroom AND
+     * failed to get one.
+     */
     render(
       <FamilyCard
-        party={party({ flags: { needs_power: true }, effective_bathroom: 'none' })}
+        party={party({
+          flags: { needs_power: true, needs_private_bathroom: true },
+          effective_bathroom: 'none',
+        })}
         unit={confirmed}
         onOpen={vi.fn()}
       />
     )
+    // The demand side is really armed: the glyph is present and red.
+    expect(screen.getByTestId('need-glyph-bathroom').className).toContain('bg-red-100')
     expect(screen.queryByText(/No power/)).not.toBeInTheDocument()
     expect(screen.queryByText(/No private bathroom/)).not.toBeInTheDocument()
   })
@@ -1582,13 +1614,100 @@ describe('FamilyCard — single parent is a mark on line 2 (S2 + Sa)', () => {
     expect(adults.firstElementChild).toBe(mark)
   })
 
-  it('is AMBER — First-time’s tone, so amber means "notice this household" on both', () => {
-    // Sa. It left the chip row, where it borrowed the sharing chips' muted
-    // grammar and read as a preference.
+  it('sits ON the baseline and is sized to the capital beside it', () => {
+    /*
+     * ⚠️ MEASURED AGAINST THE LETTER, NOT AGAINST THE LINE BOX (owner,
+     * 2026-08-20). The mark shipped as `h-3 w-3 align-text-bottom` — a 12px
+     * box hung from the DESCENDER line — and the owner read it off the screen
+     * exactly: *"in the worktree its head top of the icon is below the top of
+     * the S, and it extends lower than the text it is next to."*
+     *
+     * Confirmed in Chromium against the real font. The lucide `user` glyph
+     * inks from y=2 to y=22 of its 24 viewBox (circle top 7−4−1, shoulder
+     * bottom 21+1), so at 12px hung from text-bottom its ink began **0.75px
+     * BELOW** the cap-top of the S and ran **2.75px BELOW** the baseline.
+     *
+     * `align-baseline` puts the box's bottom ON the baseline, which alone
+     * guarantees the ink can never dip under the letters. 9px is then the size
+     * whose ink top lands on the cap: +0.50px above it, against +1.42 at 10px
+     * and +2.33 at 11px. The review artifact's own mark is 11px hung at
+     * `vertical-align:-1px`, which measures +1.33 / −0.17 — the owner called
+     * that close but wanted the top ON the S, and this is nearer.
+     *
+     * jsdom has no layout engine, so the classes are what is pinned here and
+     * the numbers above are what the browser said.
+     */
     render(<FamilyCard party={party()} onOpen={vi.fn()} />)
     const mark = screen.getByTestId('family-card-single-parent')
-    expect(mark.getAttribute('class')).toContain('text-amber-700')
-    expect(mark.getAttribute('class')).toContain('dark:text-amber-300')
+    expect(mark.getAttribute('class')).toContain('align-baseline')
+    expect(mark.getAttribute('class')).toContain('h-[9px]')
+    expect(mark.getAttribute('class')).toContain('w-[9px]')
+    // The old hanging alignment is what put it under the text.
+    expect(mark.getAttribute('class')).not.toContain('align-text-bottom')
+  })
+
+  it('is AMBER — First-time’s tone, so amber means "notice this household" on both', () => {
+    /*
+     * Sa. It left the chip row, where it borrowed the sharing chips' muted
+     * grammar and read as a preference.
+     *
+     * ⚠️ IT READS BOTH MARKS, and it did not before (post-merge review of
+     * #2505, P1-4). The two ambers are independent literals in
+     * `FamilyCard.tsx` with no shared token between them, and this test — the
+     * only one that names the coupling — asserted the single-parent one alone.
+     * Mutating the First-time branch to `rose-700` left the whole weekend
+     * suite green, so "amber means notice this household across both marks"
+     * could be made false with no signal at all. Asserting they are EQUAL is
+     * the pin; asserting the literal twice would not be.
+     */
+    render(<FamilyCard party={party({ is_returning: false })} onOpen={vi.fn()} />)
+    const singleParent = screen.getByTestId('family-card-single-parent')
+    const firstTime = screen.getByTestId('family-card-history')
+
+    expect(singleParent.getAttribute('class')).toContain('text-amber-700')
+    expect(singleParent.getAttribute('class')).toContain('dark:text-amber-300')
+
+    // The relationship the test is named for, not a second copy of the literal.
+    const amberOf = (el: Element) =>
+      (el.getAttribute('class') ?? '')
+        .split(/\s+/)
+        .filter((token) => token.includes('amber'))
+        .sort()
+        .join(' ')
+    expect(amberOf(firstTime)).toBe(amberOf(singleParent))
+  })
+
+  it('draws Returning in the SEMANTIC green, not the lodge’s forest', () => {
+    /*
+     * ⚠️ MEASURED, NOT PREFERRED (owner, 2026-08-20, from a pixel comparison
+     * against the review artifact). R3 rules an icon with NO WORDS, so
+     * colour is the only thing separating Returning from First-time — and
+     * `text-forest-700` resolves to `#003917` against a `--foreground` of
+     * `#0c3125`. That is **1.08 : 1**: the mark was the same ink as the card's
+     * own text, while First-time's amber sat at 2.82 : 1. The common mark —
+     * 279 households of 402 — was the invisible one.
+     *
+     * `green-700` / `green-300` is 2.87 : 1 and is the artifact's own `--ret`.
+     * It is also the ramp the Assign modal's `fits` verdict uses, so the board
+     * carries ONE semantic green; `forest` stays what it has always been, the
+     * lodge's chrome — buttons, headers, borders, the primary.
+     *
+     * jsdom cannot check contrast. The numbers above came from Chromium
+     * against this app's own tokens; this pins the token they belong to.
+     */
+    render(<FamilyCard party={party({ is_returning: true })} onOpen={vi.fn()} />)
+    const mark = screen.getByTestId('family-card-history')
+    expect(mark.getAttribute('class')).toContain('text-green-700')
+    expect(mark.getAttribute('class')).toContain('dark:text-green-300')
+    expect(mark.getAttribute('class')).not.toContain('forest')
+  })
+
+  it('does NOT share that amber with Returning, which is a different fact', () => {
+    // The other half of Sa, and the reason the assertion above is an equality
+    // rather than a sweep: amber says "notice this household". A returning
+    // family is the ordinary case — 279 of 402 — so it must not wear it.
+    render(<FamilyCard party={party({ is_returning: true })} onOpen={vi.fn()} />)
+    expect(screen.getByTestId('family-card-history').getAttribute('class')).not.toContain('amber')
   })
 
   it('says nothing when two adults are attending', () => {
@@ -1607,12 +1726,37 @@ describe('FamilyCard — single parent is a mark on line 2 (S2 + Sa)', () => {
   })
 })
 
-describe('FamilyCard — Returning / First-time is a 16px icon, bottom right (R3)', () => {
-  it('draws Returning as an icon with no text label', () => {
+describe('FamilyCard — Returning / First-time is a 20px icon, bottom right (R3)', () => {
+  it('draws Returning as an icon with no text label, at the glyph row\u2019s own size', () => {
+    /*
+     * ⚠️ 20px, AND R3 ORIGINALLY RULED 16 (owner, 2026-08-20, after seeing the
+     * two side by side at 4×). The mark shares a row with the need glyphs,
+     * which are 20px chips, and it was bottom-aligned against them: measured
+     * in Chromium, its 13.33px of ink sat 5.33px below the chips' top edge and
+     * 1.33px above their bottom, so the one mark on the card that is not an
+     * ask read as smaller and lower than the asks beside it. At 20px the ink
+     * is 1.67px inside each edge — level with the run — and the row's height
+     * does not change, because the chips already set it at 20px.
+     *
+     * The alternative was a 20px BOX around the 16px icon, which centres it
+     * vertically but pushes its ink from 2px to 4px off the card's right
+     * content edge. Rejected on that trade.
+     *
+     * The vocabulary doc's §2 row carries the new size and the reason.
+     */
     render(<FamilyCard party={party({ is_returning: true })} onOpen={vi.fn()} />)
     expect(screen.queryByText('Returning')).not.toBeInTheDocument()
     const mark = screen.getByTestId('family-card-history')
-    expect(mark.querySelector('svg')?.getAttribute('class')).toContain('h-4 w-4')
+    expect(mark.querySelector('svg')?.getAttribute('class')).toContain('h-5 w-5')
+  })
+
+  it('draws First-time at that size too — one mark, two states', () => {
+    // The amber half must not be left at 16px: the two are the same mark and a
+    // card shows exactly one of them, so a size difference would never be seen
+    // side by side and would never be noticed until somebody measured.
+    render(<FamilyCard party={party()} onOpen={vi.fn()} />)
+    const mark = screen.getByTestId('family-card-history')
+    expect(mark.querySelector('svg')?.getAttribute('class')).toContain('h-5 w-5')
   })
 
   it('draws First-time as an icon with no text label', () => {

@@ -90,11 +90,12 @@ import { Tooltip } from '../ui/Tooltip'
 import { answersConflictDetail, SHARE_WORDING, shareWordingChip } from './boardLayout'
 import {
   attendingAdults as computeAttendingAdults,
+  childrenRun,
   dedupeAdultNames,
-  dedupeChildNames,
   partyHeadcount,
 } from './householdIdentity'
-import { resolveNeedGlyphs, type ResolvedNeedGlyph } from './needGlyphs'
+import { NeedGlyphMark, WARN_TONE } from './NeedGlyph'
+import { resolveNeedGlyphs } from './needGlyphs'
 import { partyKey } from './partyKey'
 import { ATTENTION_LABEL, partyAttention } from './rosterAttention'
 
@@ -130,17 +131,6 @@ export interface FamilyCardProps {
 }
 
 /**
- * The warn treatment, named once because TWO shapes wear it.
- *
- * A word chip takes it as a fill; a need glyph takes it as fill, border AND
- * icon colour (N2). Those have to be the same red — the glyph replaced the
- * `No power` chip that used to sit beside it, and two reds for one meaning is
- * how a palette stops meaning anything. A complete literal, because Tailwind
- * scans raw source text.
- */
-const WARN_TONE = 'bg-red-100 text-red-800 dark:bg-red-950/50 dark:text-red-300'
-
-/**
  * ⚠️ THREE TONES WERE REMOVED WITH THEIR CHIPS (kindred#2072) AND MUST NOT
  * COME BACK AS DECORATION:
  *
@@ -153,6 +143,11 @@ const WARN_TONE = 'bg-red-100 text-red-800 dark:bg-red-950/50 dark:text-red-300'
  *                own copy in `MapUnitPopover`.
  *
  * A tone with no chip is an invitation to invent one.
+ *
+ * `warn` is imported rather than spelled out, because the GLYPH defines that
+ * ink and this merely borrows it: the glyph replaced the `No power` chip that
+ * used to sit beside it, and two reds for one meaning is how a palette stops
+ * meaning anything.
  */
 type ChipTone = 'warn' | 'share' | 'muted'
 
@@ -161,37 +156,6 @@ const CHIP_TONE: Record<ChipTone, string> = {
   share: 'bg-forest-100 text-forest-800 dark:bg-forest-950/50 dark:text-forest-300',
   muted: 'bg-muted text-muted-foreground',
 }
-
-/**
- * The unmet glyph: warn fill, warn BORDER, warn icon (N2).
- *
- * The border is what distinguishes it from a word chip wearing the same fill —
- * an icon-only mark is small, and a fill alone at 18px reads as a smudge. The
- * mock sets `border-color: var(--warn-fg)`, which is this `text-red-800` step
- * on the light side and `red-300` on the dark.
- */
-const GLYPH_UNMET = `${WARN_TONE} border-red-800 dark:border-red-300`
-
-/**
- * The icon-only chip is a GEOMETRY, not a seventh tone.
- *
- * Transparent ground, a 1px border in the card's own border token, and a
- * SQUARE 20×20 box — it composes with `GLYPH_UNMET` above for the unmet state
- * rather than being a variant of it. `rounded-lg` rather than the word chips'
- * `rounded-full`: a circle around a 12px glyph reads as a bullet, and the
- * shape difference is what says "this is a need, not a preference".
- *
- * ⚠️ 20px IS THE WORD CHIPS' OWN HEIGHT, and matching it is the point. This
- * was `p-0.5`, which is 18px — two pixels shorter than every chip it shares a
- * line with, which reads as a misalignment rather than as a smaller mark. The
- * review artifact reaches 20 with 3px of padding; `h-5 w-5` reaches it on
- * Tailwind's own scale, with `justify-center` doing what the padding did.
- *
- * It also closes a 2px overlap: `ui/Tooltip`'s invisible 24px hit target
- * overhung an 18px glyph by 3px a side against a 4px gap, so adjacent glyphs'
- * hit areas collided and the later one in the DOM won.
- */
-const GLYPH_BASE = 'inline-flex h-5 w-5 items-center justify-center rounded-lg border'
 
 function Chip({
   label,
@@ -243,88 +207,23 @@ function Chip({
 }
 
 /**
- * One need glyph — the whole point of kindred#2072.
- *
- * ICON-ONLY, and that is the ruling rather than a space saving: four needs
- * wearing four hues read as a gutter a staff member scans, where four word
- * chips wrapped the card and pushed the sharing chips onto a third line. The
- * SHAPE says which need it is, which is what makes losing the hue affordable
- * when the glyph goes to warn (N2).
- *
- * A REACHABLE tooltip, not a `title`: `title` fires on mouse hover and
- * nothing else (kindred#2177), and a mark with no words is unreadable without
- * one. Valid HTML here because the chip row is a SIBLING of the card's own
- * `<button>`, never its child (kindred#2222) — the same thing that let
- * "Answers disagree" grow a real trigger in kindred#2250.
- */
-function NeedGlyphMark({ glyph }: { glyph: ResolvedNeedGlyph }) {
-  const { Icon, label, hueClassName, isUnmet } = glyph
-  const sentence = isUnmet ? `${label} — the cabin does not meet it` : label
-  return (
-    <Tooltip
-      content={sentence}
-      // ★ NAMED, and this is a hard requirement of the change rather than an
-      // accessibility flourish. After kindred#2072 the strings "Private
-      // bathroom" and "Power" appear NOWHERE on this card — the glyph is the
-      // only carrier — so a trigger with no accessible name is a control that
-      // announces nothing and a `getByRole('button', { name })` query that
-      // cannot find it. `frontend/CLAUDE.md` puts it plainly inside the
-      // opt-out policy: "An icon-only button needs a name — give it one", and
-      // `ui/Tooltip`'s own `aria-label` doc scopes itself to exactly this case
-      // — a trigger whose visible content does not name it.
-      aria-label={sentence}
-      data-testid={`need-glyph-${glyph.key}`}
-      className={`${GLYPH_BASE} ${isUnmet ? GLYPH_UNMET : 'border-border bg-transparent'}`}
-    >
-      <Icon className={`h-3 w-3 ${isUnmet ? 'text-red-800 dark:text-red-300' : hueClassName}`} />
-    </Tooltip>
-  )
-}
-
-/**
- * Youngest-first display order for one party's children (kindred#2254).
- *
- * A COPY, never the input array sorted in place: `party.children` is the
- * frontend's own copy of the server's `_children_oldest_first` — the order
- * `lodging_roster_service.py` computes once and every surface prints in —
- * and `FamilyCardIdentity` reads it twice (this component is rendered for
- * both the bold and grey lines from the SAME `children` array). Sorting in
- * place on the first render would leave the second render, and any sibling
- * component still holding that reference, reading an order nobody asked it
- * to have.
- *
- * Unknown age (`null` — this field's already-converted form of the raw
- * `0.0` sentinel the API collapses before the wire, kindred#2088) is not a
- * fact about how young a child is, so it cannot take part in the
- * comparison at all. A comparator naive enough to do
- * `(a.age ?? 0) - (b.age ?? 0)` coerces it to 0 and sorts it FIRST under an
- * ascending youngest-first order — the exact opposite of the intent, and
- * wrong in a way that looks right. Unknown-age children go in their own
- * trailing bucket instead, in their original relative order (`Array.sort`
- * is stable, so ties within the known-age bucket keep theirs too) — the
- * same place the server's own descending sort already puts them, since its
- * raw-float sentinel sorts last there too.
- */
-function youngestFirst(children: readonly PartyChildRow[]): PartyChildRow[] {
-  const known: PartyChildRow[] = []
-  const unknown: PartyChildRow[] = []
-  for (const child of children) {
-    ;(child.age === null || child.age === undefined ? unknown : known).push(child)
-  }
-  known.sort((a, b) => (a.age as number) - (b.age as number))
-  return [...known, ...unknown]
-}
-
-/**
  * A party's children as one `Name (age) · Name (age)` run, youngest first.
  *
- * `FamilyCardIdentity` renders a child list TWICE — the household bold
- * identity line and the person-grain grey secondary line — and the two
- * differ only in which age formatter they call and what wraps them.
- * Everything else (the ordering, the key strategy, the separator, the
- * missing-age omission, the blank-name fallback) is one decision each, and
- * each was drifting toward being made in two places: the blank-name
- * fallback had to be hand-applied to both copies in kindred#2074. Shared
+ * ⚠️ THE DERIVATION ITSELF NOW LIVES IN `householdIdentity.ts`
+ * (`childrenRun`), and this component is only its markup. It moved there
+ * when the owner ruled 2026-08-20 that the Assign modal's candidate rows
+ * print the SAME identity (kindred#2072 §3.5) — two surfaces, one rule.
+ *
+ * The reasoning that put the derivation in one place is unchanged and still
+ * the point, so it is repeated at neither site and stated at `childrenRun`:
+ * the ordering, the unknown-age bucket, the omitted age, the blank-name
+ * fallback and the lifted surname were each drifting toward being decided
+ * twice. The blank-name fallback already HAD to be hand-applied to both
+ * copies once (kindred#2074).
+ *
+ * `FamilyCardIdentity` still renders a child list TWICE — the household bold
+ * identity line and the person-grain grey secondary line — and the two still
+ * differ only in which age formatter they call and what wraps them. Shared
  * for the same reason `FamilyCardPreview` shares
  * `FamilyCardIdentity`/`FamilyCardChips` (kindred#2222, formerly one
  * `FamilyCardBody`) — so the copies cannot drift apart (kindred#2153).
@@ -339,16 +238,6 @@ function youngestFirst(children: readonly PartyChildRow[]): PartyChildRow[] {
  * a large family: the OLDEST now vanish first, the reverse of before. That
  * is the deliberate trade the ordering makes, not an accident of it.
  *
- * A surname every child shares is lifted off the individual names and
- * printed ONCE, after the run — `Ava (5) · Noah (8) Johnson` (kindred#2180).
- * The derivation is `dedupeChildNames`, which reads the structured
- * `last_name` the API sends rather than splitting `display_name`: 4.7% of
- * 2026's rostered children have a surname containing a space and 10.6% a
- * hyphenated one, and both break under a token split. Nothing is lifted
- * unless every child shares it, so a two-surname household still prints in
- * full. Fed the ALREADY-SORTED order below, not the raw prop, so the names
- * returned line up index-for-index with what actually renders.
- *
  * @param formatAge - `displayTruncatedAge` on the bold line (whole years are
  *   the point of a similar-ages match), `displayCampMinderAge` on the grey one.
  */
@@ -359,24 +248,13 @@ function ChildList({
   children: PartyChildRow[]
   formatAge: (age: number) => string
 }) {
-  const ordered = youngestFirst(children)
-  const { names, sharedSurname } = dedupeChildNames(ordered)
+  const { segments, sharedSurname } = childrenRun(children, formatAge)
   return (
     <>
-      {ordered.map((child, index) => (
-        <Fragment key={String(child.person_cm_id ?? index)}>
+      {segments.map((segment, index) => (
+        <Fragment key={segment.key}>
           {index > 0 && ' · '}
-          {/* An age we do not have is omitted, never rendered as 0.
-              A blank name (no first/preferred/last name on file --
-              `_person_display_name` has no fallback the way
-              `_household_display_name` does) falls back rather than
-              leaving this segment, or the whole card when it's the
-              only child, with no accessible text at all. */}
-          <span>
-            {child.age === null || child.age === undefined
-              ? names[index] || 'Unnamed camper'
-              : `${names[index] || 'Unnamed camper'} (${formatAge(child.age)})`}
-          </span>
+          <span>{segment.text}</span>
         </Fragment>
       ))}
       {sharedSurname.length > 0 && ` ${sharedSurname}`}
@@ -540,12 +418,34 @@ function FamilyCardIdentity({ party }: { party: RosterPartyRow }) {
                       halves of line 2 sit level again. It is also what the
                       review artifact does.
 
+                      ⚠️ SIZED AND ALIGNED TO THE CAPITAL BESIDE IT, NOT TO THE
+                      LINE BOX (owner, 2026-08-20). It was `h-3 w-3` —12px —
+                      hung from `align-text-bottom`, which is the DESCENDER
+                      line, not the baseline. Measured in Chromium against the
+                      real font: the lucide `user` glyph inks from y=2 to y=22
+                      of its 24 viewBox (circle top 7−4−1, shoulder bottom
+                      21+1), so that box put the head 0.75px BELOW the cap-top
+                      of the S it stands before and ran 2.75px BELOW the
+                      baseline. The owner read both off the screen before any
+                      of this was measured.
+
+                      `align-baseline` puts the box's bottom ON the baseline,
+                      which alone stops the ink dipping under the letters at
+                      any size. 9px is then the size whose ink top lands on the
+                      cap: +0.50px above it, against +1.42 at 10px and +2.33 at
+                      11px. The artifact's own mark is 11px at
+                      `vertical-align:-1px` and measures +1.33 / −0.17; the
+                      owner wanted the top ON the S, and this is nearer.
+
+                      The jitter above stays fixed: at 9px the box sits wholly
+                      inside a 16.5px line box, so it grows nothing.
+
                       AMBER, and specifically First-time's amber: one language
                       for "notice this household" across both marks (Sa). */}
                   {isSingleParent && (
                     <User
                       data-testid="family-card-single-parent"
-                      className="mr-0.5 inline h-3 w-3 align-text-bottom text-amber-700 dark:text-amber-300"
+                      className="mr-0.5 inline h-[9px] w-[9px] align-baseline text-amber-700 dark:text-amber-300"
                     />
                   )}
                   {adultNames.map((name, index) => (
@@ -717,16 +617,43 @@ function FamilyCardChips({
           // without it the mark sits 4px from the last chip — the row gap
           // alone — and reads as the end of the chip run rather than as a
           // separate mark pinned to the corner.
+          //
+          // ⚠️ `green`, NOT `forest`, AND THAT WAS MEASURED (owner ruling
+          // 2026-08-20). R3 takes the words away, so colour is the ONLY thing
+          // separating these two marks — and `forest-700` resolves to
+          // `#003917` against a `--foreground` of `#0c3125`: a contrast of
+          // **1.08 : 1** between the mark and the card's own text. Returning
+          // fires on 279 households of 402, so the common mark was the one
+          // nobody could see, while First-time's amber sat at 2.82 : 1.
+          // `green-700` is 2.87 : 1, is the review artifact's own `--ret`, and
+          // is the ramp `AssignFamilyModal`'s `fits` verdict already uses — so
+          // the board carries ONE semantic green. `forest` keeps what it has
+          // always been: the lodge's chrome, not a status.
           className={`ml-auto flex-shrink-0 pl-1.5 ${
             party.is_returning === true
-              ? 'text-forest-700 dark:text-forest-300'
+              ? 'text-green-700 dark:text-green-300'
               : 'text-amber-700 dark:text-amber-300'
           }`}
         >
+          {/* ⚠️ 20px, AND R3 FIRST RULED 16 (owner, 2026-08-20, having seen the
+              two at 4×). This mark shares its row with the need glyphs, which
+              are 20px chips, and `items-end` bottom-aligns it against them: at
+              16px its 13.33px of ink sat 5.33px below the chips' top edge and
+              1.33px above their bottom, so the one mark here that is NOT an
+              ask read as smaller and lower than the asks beside it. 20px puts
+              the ink 1.67px inside each edge, level with the run, and costs no
+              height — the chips already set the row at 20px.
+
+              A 20px BOX around the 16px icon was the other candidate: it
+              centres the ink vertically but moves it from 2px to 4px off the
+              card's right content edge. Rejected on that trade.
+
+              The vocabulary doc's §2 carries the size and this reason; if one
+              of them moves, move both. */}
           {party.is_returning === true ? (
-            <Repeat className="h-4 w-4" />
+            <Repeat className="h-5 w-5" />
           ) : (
-            <Star className="h-4 w-4" />
+            <Star className="h-5 w-5" />
           )}
         </Tooltip>
       )}

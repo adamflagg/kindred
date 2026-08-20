@@ -1,4 +1,5 @@
 import { render, screen, fireEvent } from '@testing-library/react'
+import { useRef } from 'react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { Modal } from './Modal'
 import { hasOpenModal } from './modalStack'
@@ -230,6 +231,55 @@ describe('Modal', () => {
 
       expect(screen.getByRole('button', { name: /close/i })).toBeInTheDocument()
     })
+
+    it('floats the close button at the top by default, as every caller has it today', () => {
+      // `top-4` against a header slot whose height the caller owns. This is
+      // the default precisely BECAUSE it is what ~20 dialogs already draw;
+      // the opt-in below exists so one of them can differ without moving the
+      // rest.
+      render(
+        <Modal isOpen={true} onClose={() => {}} header={<div>Custom Header</div>}>
+          <p>Modal content</p>
+        </Modal>
+      )
+      expect(screen.getByRole('button', { name: /close/i }).className).toContain('top-4')
+    })
+
+    it('centres the close button in the header band when the caller asks it to', () => {
+      /*
+       * ⚠️ OPT-IN FOR A MEASURED OVERHANG (owner ruling 2026-08-20).
+       * `top-4` + a 36px box needs a header at least 52px tall, and it is a
+       * constant: a caller that tightens its header makes the button hang
+       * past it. `AssignFamilyModal` took the artifact's 14px inset and its
+       * header went to 47px, so the button ended 5px past the header's own
+       * ground — its hover fill painted across the divider that was there at
+       * the time, and its hit area covered the search box's top edge. The
+       * later no-rule ruling took the header to 51px and the overhang to 1px;
+       * this closes the last of it and, more to the point, stops the geometry
+       * depending on a header height nobody is holding still.
+       *
+       * OPT-IN rather than the new default: the wrapper is the header slot
+       * itself, so centring is right for any header — but the app's ~20 other
+       * custom-header dialogs were all drawn against `top-4`, and moving them
+       * is its own review. The 18px in-flow mark the design artifact draws is
+       * the standardisation the owner wants instead, and it is filed as its
+       * own issue rather than smuggled in here.
+       */
+      render(
+        <Modal
+          isOpen={true}
+          onClose={() => {}}
+          header={<div>Custom Header</div>}
+          closeAlign="center"
+        >
+          <p>Modal content</p>
+        </Modal>
+      )
+      const close = screen.getByRole('button', { name: /close/i })
+      expect(close.className).toContain('top-1/2')
+      expect(close.className).toContain('-translate-y-1/2')
+      expect(close.className).not.toContain('top-4')
+    })
   })
 
   describe('footer slot', () => {
@@ -369,6 +419,84 @@ describe('Modal', () => {
 
       const dialog = screen.getByRole('dialog')
       expect(dialog.contains(document.activeElement)).toBe(true)
+    })
+
+    /**
+     * ⚠️ THESE THREE PIN TWO MEASURED DEFECTS, NOT A NICETY (found 2026-08-20
+     * while comparing `AssignFamilyModal` against its design artifact in a
+     * real browser, and reproduced in jsdom before the fix).
+     *
+     * A child's `autoFocus` LOST every time — React applies it during commit
+     * and the focus effect runs after, so `focusable[0]` took it back. In a
+     * dialog with a custom `header` that is the CLOSE BUTTON, since Close is
+     * rendered above the body: `AssignFamilyModal` opened with focus on
+     * Close, where a printable key does nothing and Space or Enter shuts the
+     * dialog, while its own doc said "the modal exists to be typed into".
+     *
+     * And it broke RESTORATION, silently: `previouslyFocusedRef` captures
+     * `document.activeElement` in that same effect, by which time `autoFocus`
+     * had moved it inside the dialog — so on close the modal restored focus
+     * to its own detached field and focus landed on `<body>` instead of on
+     * the control that opened it. Probed before the fix: `BODY is NOT the
+     * trigger`.
+     *
+     * `initialFocusRef` closes both. Nothing changes for a dialog that passes
+     * none, which the second test pins.
+     */
+    it('focuses initialFocusRef rather than the Close button', () => {
+      function Harness() {
+        const ref = useRef<HTMLInputElement>(null)
+        return (
+          <Modal
+            isOpen={true}
+            onClose={() => {}}
+            header={<h2>Custom header</h2>}
+            ariaLabel="Auto"
+            initialFocusRef={ref}
+          >
+            <input ref={ref} placeholder="Search field" />
+          </Modal>
+        )
+      }
+      render(<Harness />)
+      expect(document.activeElement).toBe(screen.getByPlaceholderText('Search field'))
+    })
+
+    it('still lands on the first focusable element when no initialFocusRef is given', () => {
+      render(
+        <Modal isOpen={true} onClose={() => {}} header={<h2>Custom header</h2>} ariaLabel="Plain">
+          <input placeholder="Untouched field" />
+        </Modal>
+      )
+      expect(document.activeElement).toBe(screen.getByRole('button', { name: /close/i }))
+    })
+
+    it('restores focus to the opener even when a field was focused on open', () => {
+      // The second half of the defect. With `autoFocus` this restored to the
+      // dialog's own detached input and focus fell to `<body>`.
+      const trigger = document.createElement('button')
+      trigger.textContent = 'Assign'
+      document.body.appendChild(trigger)
+      trigger.focus()
+      function Harness({ open }: { open: boolean }) {
+        const ref = useRef<HTMLInputElement>(null)
+        return (
+          <Modal
+            isOpen={open}
+            onClose={() => {}}
+            header={<h2>Custom header</h2>}
+            ariaLabel="Auto"
+            initialFocusRef={ref}
+          >
+            <input ref={ref} placeholder="Search field" />
+          </Modal>
+        )
+      }
+      const { rerender } = render(<Harness open={true} />)
+      expect(document.activeElement).toBe(screen.getByPlaceholderText('Search field'))
+      rerender(<Harness open={false} />)
+      expect(document.activeElement).toBe(trigger)
+      trigger.remove()
     })
 
     it('restores focus to the previously focused element when the dialog closes', () => {

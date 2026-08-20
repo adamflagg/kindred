@@ -2175,7 +2175,23 @@ describe('LodgingUnitCard — the needs-misfit hatch (#1912)', () => {
   })
 })
 
-describe('LodgingUnitCard — placing a family from the space itself (kindred#2080)', () => {
+describe('LodgingUnitCard — placing a family from the space itself (kindred#2080, AS2)', () => {
+  /*
+   * THE GATES ARE UNCHANGED; ONLY THE CONTROL'S SHAPE MOVED.
+   *
+   * kindred#2080's ruling put an inline combobox in the card's own badge row —
+   * "not a popover and not a second surface" — and every gate below was
+   * written against it. AS2 (owner, 2026-08-19) supersedes that ruling FOR
+   * THIS CONTROL: an `Assign` pill opens `AssignFamilyModal`, because a
+   * candidate row now carries party size against the beds left, the need
+   * glyphs coloured against this room, last year's cabin and a fit verdict,
+   * and none of that fits in a 244px card.
+   *
+   * So these tests are RETARGETED rather than rewritten: each one still asks
+   * exactly what it asked before — is the control offered, and does the write
+   * land — against the control that exists now. The one that changed meaning
+   * is called out where it sits.
+   */
   const HUE = 'hsl(160 45% 42%)'
   const unplaced = party({
     household_cm_id: 202,
@@ -2204,47 +2220,87 @@ describe('LodgingUnitCard — placing a family from the space itself (kindred#20
     return { ...view, onPlaceParty }
   }
 
+  const assignPill = () => screen.getByRole('button', { name: /assign to cedar 1/i })
+
   it('offers the control on an empty, available space while placement is live', () => {
     renderCard()
-    expect(screen.getByRole('combobox', { name: /place a family in cedar 1/i })).toBeInTheDocument()
+    expect(assignPill()).toBeInTheDocument()
   })
 
-  it('does not grow the card until the search box is engaged', () => {
+  it('does not grow the card at all, and mounts no list until it is opened', () => {
     /*
-     * Option A's only real cost, and the owner's answer to it: the list is
-     * not rendered until a staff member clicks into the typeahead, so the
-     * card — and therefore the whole grid row of up to ~82 cards — stays put.
+     * The old ruling's only real cost was that the inline list grew the card,
+     * and its answer was to render the list only once the box was engaged.
+     * The modal removes the cost outright: the card holds a pill, and the list
+     * does not exist anywhere until somebody clicks it.
+     *
+     * That is also the performance half of AS2, and it is why this assertion
+     * is worth more than it looks: ~82 cards each mounted a picker holding the
+     * WHOLE unplaced queue, memoising an annotate-and-sort over up to 63
+     * parties. One modal replaces all of it.
      *
      * jsdom has no layout engine, so the claim is pinned STRUCTURALLY rather
-     * than in pixels: at rest the card contains no listbox and no rows.
+     * than in pixels.
      */
     renderCard()
     expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+    expect(screen.queryByRole('searchbox')).not.toBeInTheDocument()
     expect(screen.queryAllByRole('option')).toHaveLength(0)
     expect(screen.queryByText('Liam Garcia')).not.toBeInTheDocument()
   })
 
-  it('grows only once the staff member clicks in', async () => {
+  it('opens the modal on the pill, with the queue in it', async () => {
     const user = userEvent.setup()
     renderCard()
-    await user.click(screen.getByRole('combobox', { name: /place a family in cedar 1/i }))
-    expect(screen.getByRole('listbox')).toBeInTheDocument()
+    await user.click(assignPill())
+    expect(screen.getByRole('dialog')).toHaveTextContent('Assign to Cedar 1')
     expect(screen.getByRole('option', { name: /Liam Garcia/ })).toBeInTheDocument()
   })
 
   it('writes the placement through the board', async () => {
     const user = userEvent.setup()
     const { onPlaceParty } = renderCard()
-    await user.click(screen.getByRole('combobox', { name: /place a family in cedar 1/i }))
+    await user.click(assignPill())
     await user.click(screen.getByRole('option', { name: /Liam Garcia/ }))
     expect(onPlaceParty).toHaveBeenCalledTimes(1)
     expect(onPlaceParty.mock.calls[0]?.[0]).toMatchObject({ code: 'cedar-1' })
     expect(onPlaceParty.mock.calls[0]?.[1]).toEqual(unplaced)
   })
 
+  it('closes the modal once the placement is written', async () => {
+    // The card the staff member was filling is filled. Leaving the dialog open
+    // over a board that just changed under it invites a second placement
+    // nobody asked for.
+    const user = userEvent.setup()
+    renderCard()
+    await user.click(assignPill())
+    await user.click(screen.getByRole('option', { name: /Liam Garcia/ }))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('sends a write-in, with its note, through the availability write', async () => {
+    // The note is NEW: the inline box collected an occupant name and sent
+    // `reason: ''` with a comment saying this path did not collect one. The
+    // modal has room for it, so the write finally carries what staff typed.
+    const user = userEvent.setup()
+    const onSetAvailability = vi.fn()
+    renderCard({ canSetAvailability: true, onSetAvailability })
+    await user.click(assignPill())
+    await user.type(screen.getByRole('searchbox'), 'Burst pipe')
+    await user.type(screen.getByLabelText(/note/i), 'back Monday')
+    await user.click(screen.getByRole('button', { name: /^write in$/i }))
+    expect(onSetAvailability).toHaveBeenCalledWith({
+      unitId: 'u1',
+      unitName: 'Cedar 1',
+      familyAvailable: false,
+      occupantName: 'Burst pipe',
+      reason: 'back Monday',
+    })
+  })
+
   it('is PRESENT on a written-into space, so a second occupant can be added either way round', () => {
     /*
-     * Also inverted by kindred#2432. The box used to vanish here, mirroring
+     * Inverted by kindred#2432. The control used to vanish here, mirroring
      * the strip's write-in, on #2090's rule that a write-in and a placement
      * were mutually exclusive. They are not: the reported case is one paper
      * registration — which has no CampMinder record, so a write-in is the only
@@ -2256,7 +2312,7 @@ describe('LodgingUnitCard — placing a family from the space itself (kindred#20
     const { container } = renderCard({
       slot: slot({ unit: unit({ write_ins: [cover()] }) }),
     })
-    expect(screen.getByRole('combobox')).toBeInTheDocument()
+    expect(assignPill()).toBeInTheDocument()
     expect(container.querySelector('.opacity-40')).toBeNull()
   })
 
@@ -2269,25 +2325,37 @@ describe('LodgingUnitCard — placing a family from the space itself (kindred#20
     // strip's write-in was refused by #2090's gate and its rooms lose their
     // cards to the merge.
     renderCard({ slot: slot({ parties: [party()] }) })
-    expect(screen.getByRole('combobox')).toBeInTheDocument()
+    expect(assignPill()).toBeInTheDocument()
   })
 
   it('is absent without a scenario or without the permission to place', () => {
     renderCard({ canPlace: false })
-    expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /assign to cedar 1/i })).not.toBeInTheDocument()
   })
 
   it('is absent when the board wires no writer', () => {
     // `undefined` is how the board spells "not writable right now" under
     // `exactOptionalPropertyTypes`, matching `onSetAvailability`.
     renderCard({ onPlaceParty: undefined })
-    expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /assign to cedar 1/i })).not.toBeInTheDocument()
   })
 
   it('is absent on a container the tree has not combined', () => {
     // `resolveDrop` refuses one as a target, so offering the control would
     // name an action that writes nothing.
     renderCard({ slot: slot({ unit: unit({ is_container: true, is_combined: false }) }) })
+    expect(screen.queryByRole('button', { name: /assign to cedar 1/i })).not.toBeInTheDocument()
+  })
+
+  it('mounts no inline combobox anywhere on the card — the picker is STRUCK', () => {
+    /*
+     * The negative pin for AS2. `PlaceFamilyPicker` is deleted, and the shape
+     * it had — a typeahead living in the card's badge row, growing the card in
+     * place — is what must not come back: it is the shape the superseded
+     * ruling asked for, so it is exactly what a later reader would restore
+     * from that ruling without knowing it had moved.
+     */
+    renderCard({ canSetAvailability: true, onSetAvailability: vi.fn() })
     expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
   })
 })

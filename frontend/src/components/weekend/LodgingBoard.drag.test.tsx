@@ -337,6 +337,13 @@ describe('LodgingBoard — placing a family from the space itself (kindred#2080)
     display_name: 'Garcia',
     sort_name: 'Garcia',
     adults: [{ adult_number: 1, display_name: 'Liam Garcia', relationship: 'Father' }],
+    // ⚠️ ITS OWN CHILD, because the candidate row names a household by its
+    // CHILDREN now (owner ruling 2026-08-20, kindred#2072 §3.5). Inheriting
+    // the base helper's Johnson child left this fixture naming a Garcia adult
+    // over a Johnson camper, so the row read "Noah Johnson" on the Garcia
+    // household — a fixture that was internally inconsistent all along and
+    // that only the identity change made visible.
+    children: [{ person_cm_id: 9202, display_name: 'Mia Garcia', last_name: 'Garcia', age: 6 }],
   })
 
   function boardWithUnplaced(props: Partial<Parameters<typeof LodgingBoard>[0]> = {}) {
@@ -349,8 +356,11 @@ describe('LodgingBoard — placing a family from the space itself (kindred#2080)
     })
   }
 
+  // The Assign pill, which OPENS the modal — kindred#2072's AS2 replaced the
+  // inline combobox this used to reach for. The gate each test below asks
+  // about is unchanged; the control it asks through is not.
   function pickerFor(name: string) {
-    return screen.getByRole('combobox', { name: new RegExp(`place a family in ${name}`, 'i') })
+    return screen.getByRole('button', { name: new RegExp(`assign to ${name}`, 'i') })
   }
 
   it('mounts the control on every placeable space, occupied or not', () => {
@@ -361,17 +371,17 @@ describe('LodgingBoard — placing a family from the space itself (kindred#2080)
     // occupied card — a rule this change deletes, because the box is now the
     // only way to write somebody in and a partly-filled merged building was
     // left with no path at all.
-    expect(screen.getByRole('combobox', { name: /place a family in cedar 1/i })).toBeInTheDocument()
+    expect(pickerFor('Cedar 1')).toBeInTheDocument()
   })
 
   it('offers nothing without a scenario', () => {
     boardWithUnplaced({ scenario: '' })
-    expect(screen.queryByRole('combobox', { name: /place a family/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /assign to/i })).not.toBeInTheDocument()
   })
 
   it('offers nothing without the permission to place', () => {
     boardWithUnplaced({ canManage: false })
-    expect(screen.queryByRole('combobox', { name: /place a family/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /assign to/i })).not.toBeInTheDocument()
   })
 
   it('lists the UNPLACED parties, never one already in a cabin', async () => {
@@ -380,14 +390,19 @@ describe('LodgingBoard — placing a family from the space itself (kindred#2080)
     await user.click(pickerFor('Cedar 2'))
     const options = screen.getAllByRole('option')
     expect(options).toHaveLength(1)
-    expect(options[0]).toHaveTextContent('Liam Garcia')
+    // The row names the household by its children (§3.5), and an only child's
+    // surname is lifted like any other since the 2026-08-20 ruling — so the
+    // age follows the first name. The assertion this test makes — that the
+    // PLACED household is absent and the unplaced one is present — is
+    // unchanged by either.
+    expect(options[0]).toHaveTextContent('Mia (6) Garcia')
   })
 
   it('writes the same intent the equivalent drop would', async () => {
     const user = userEvent.setup()
     boardWithUnplaced()
     await user.click(pickerFor('Cedar 2'))
-    await user.click(screen.getByRole('option', { name: /Liam Garcia/ }))
+    await user.click(screen.getByRole('option', { name: /Mia \(6\) Garcia/ }))
     expect(move).toHaveBeenCalledTimes(1)
     expect(move.mock.calls[0]?.[0]).toEqual({
       kind: 'place',
