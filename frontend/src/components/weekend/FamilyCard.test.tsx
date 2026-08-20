@@ -1225,11 +1225,25 @@ describe('FamilyCard — last year’s housing', () => {
     expect(housing.parentElement).toContainElement(screen.getByTestId('family-card-adults'))
   })
 
-  // THE COMMON CASE. 202 of 2026's 459 registered households have no 2025
-  // cabin, and "" covers three different facts (first-timer, skipped a year,
-  // last here before 2022 when `cabin_assignment` was blank on all 1,433
-  // rows). None of them is "nobody assigned them", so none of them gets a
-  // placeholder, an em dash, or a "First year" label.
+  /*
+   * THE COMMON CASE. 202 of 2026's 459 registered households have no 2025
+   * cabin, and "" covers three different facts (first-timer, skipped a year,
+   * last here before 2022 when `cabin_assignment` was blank on all 1,433
+   * rows). None of them is "nobody assigned them", so none of them gets a
+   * placeholder, an em dash, or a "First year" label.
+   *
+   * ⚠️ THE REVIEW ARTIFACT DRAWS A DIMMED EM DASH HERE. This is one of the
+   * few places the shipped card and that artifact deliberately differ, so the
+   * pin below is what stops a later session "fixing" the card to match the
+   * mock. Owner ruling 2026-08-20, and it is a better argument than the one
+   * above: the card ALREADY distinguishes a returning household from a
+   * first-time one — that is what R3's icon is — so a returning family with
+   * no cabin string reads as "we do not know where they stayed", and a
+   * first-time family needs no mark for housing it never had. The dash would
+   * spend a glyph restating the icon beside it.
+   *
+   * `docs/reference/weekend-card-vocabulary.md` §6 carries the ruling.
+   */
   it('renders nothing at all when there is no prior-year cabin', () => {
     render(<FamilyCard party={party({ last_year_cabin: '' })} onOpen={vi.fn()} />)
     expect(screen.queryByTestId('family-card-last-year-cabin')).not.toBeInTheDocument()

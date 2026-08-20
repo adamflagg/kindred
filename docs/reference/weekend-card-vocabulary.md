@@ -54,6 +54,7 @@ the home for _divergences_; this file is the home for _vocabulary_.
 | — absent state                                                                            |                                   | not asked for                  | **omitted entirely, never dimmed**                                                                                                                                                                    | absence rule  |
 | Single parent                                                                             | **line 2**, before the adult name | exactly one attending adult    | left the chip row, where it borrowed the sharing chips' muted grammar and read as a preference. **Amber** — the same tone _First-time_ uses, so amber means _notice this household_ across both marks | S2 + Sa       |
 | Returning / First-time                                                                    | bottom-right                      | prior Family Camp attendance   | a **16px icon**, no text label                                                                                                                                                                        | R3            |
+| Last year's cabin                                                                         | line 2, right-anchored            | where they slept last season   | drawn when known, and **nothing at all when not** — no em dash, no placeholder. See §6                                                                                                                | 2026-08-20    |
 | `Needs Accommodation`                                                                     | chip row                          | `accommodation_is_mandatory`   | the hardest stop on the board. Renamed from _Accommodation required_; **the label is explicitly not locked**                                                                                          | pending staff |
 | `Near another family` · `Wants to share` · `Did not request sharing` · `Answers disagree` | chip row                          | sharing intent                 | four chips from one object                                                                                                                                                                            | pending staff |
 
@@ -153,6 +154,32 @@ resolved by an implementer without guessing.
   keybinding is the implementation.
 - **The mock's colours are approximations.** The review artifact simulates the
   app's tokens. Use the app's own scale, never hex copied out of the mock.
+- **An absent last-year cabin draws NOTHING — not an em dash** (owner,
+  2026-08-20). ⚠️ The review artifact shows a dimmed em dash here, so this is a
+  place the artifact and the shipped card deliberately differ; do not "restore"
+  it from the mock.
+
+  The reasoning that settled it is the owner's, and it is better than the one
+  the code originally carried: the card already distinguishes a returning
+  household from a first-time one — that is exactly what R3's icon is — so a
+  returning family with no cabin string reads as _"we do not know where they
+  stayed"_, and a first-time family needs no mark for housing it never had. An
+  em dash spends a glyph saying what the icon beside it already says.
+
+  The older argument still holds and is kept: an em dash reads as _"nobody
+  assigned them"_ on the 202 of 459 households where the answer is simply
+  unknown (kindred#2075).
+
+- **The tooltip triggers' tab stops were measured and accepted** (owner,
+  2026-08-20): _"we are not catering to keyboard users. primary use is
+  desktop/laptop w/mouse."_ The policy itself is `frontend/CLAUDE.md`; what is
+  recorded here is the number, so nobody re-raises it as a finding: making the
+  need glyphs and the history mark `ui/Tooltip` triggers turns each into a
+  `<button>` and takes the visible board from roughly 62 tab stops to 190+.
+  The cost falls entirely on a keyboard user, and there is none. The triggers
+  stay — hovering one is how a mouse user reads a mark that has no words, which
+  is why kindred#2177 replaced `title` in the first place. The `aria-label` on
+  each is unaffected: that is test infrastructure under the same policy.
 
 ## 7. Deferred, with issues
 
