@@ -1331,8 +1331,10 @@ describe('LodgingUnitCard — summer’s type scale', () => {
    * The sweep is the load-bearing test and the per-element ones below are its
    * documentation: a single `text-[11px]` left on a nested row is invisible in
    * a spot check and is exactly how the two scales diverged in the first
-   * place. `UnitAvailabilityControl` renders INSIDE this card and is swept
-   * with it — a 10px pill sitting in a 12px meta row is the same bug.
+   * place. It swept `UnitAvailabilityControl` too while that control still
+   * rendered inside this card — a 10px pill in a 12px meta row was the same
+   * bug — and it is cut as of this change (vocabulary §3); the sweep is
+   * unchanged because it walks whatever the card actually renders.
    */
   function arbitraryTextSizes(container: HTMLElement): string[] {
     const card = container.querySelector('[data-unit-card]')
@@ -2667,5 +2669,132 @@ describe('LodgingUnitCard — B·1 and B·2, the card gets shorter', () => {
     expect(card?.className).toContain('gap-2')
     expect(card?.className).not.toContain('p-4')
     expect(card?.className).not.toContain('gap-3')
+  })
+})
+
+describe('LodgingUnitCard — the denominator is the WHOLE space (owner ruling 2026-08-20)', () => {
+  /*
+   * ⚠️ THE CARD AND THE ASSIGN MODAL DISAGREED ABOUT THE SAME ROOM, and the
+   * card was the one that was wrong. Its denominator was the RAW `unit.sleeps`,
+   * which under kindred#2041's delta ruling is a container's beds in space
+   * belonging to no single room — not the house. All 15 production containers
+   * record 0 there, which the API maps to `null`, so every combined house drew
+   * `3/—`: "capacity not recorded", about a building whose rooms are measured.
+   * The modal opened FROM that card read `effectiveSleeps` and said, correctly,
+   * "4 of 7 beds free".
+   *
+   * Ruled 2026-08-20: *"the card should always show the denominator of total
+   * possible sleeps — whether that is a leaf, or a container sum. The modal is
+   * always the available diff. Both respect leaf vs container with subleaves."*
+   *
+   * `effectiveSleeps` is that number and is already the board's answer
+   * elsewhere — `countUnmeasuredSpaces`, `mapModel`'s peek and the Assign
+   * modal's header all read it. This card was the last reader of the raw
+   * value. It is a MIRROR of `_effective_sleeps` in
+   * `api/services/lodging_roster_service.py`; keep the two in step.
+   *
+   * ⚠️ FOR A LEAF THIS IS A NO-OP, and that is load-bearing rather than
+   * incidental: `effectiveSleeps` returns `unit.sleeps` unchanged for anything
+   * that is not a container, so 103 of the 118 registry rows draw exactly what
+   * they drew before. The negative pins below are what hold that.
+   */
+  const house = unit({
+    unit_id: 'u-house',
+    code: 'gt-house',
+    name: 'Granite House',
+    sleeps: null,
+    is_container: true,
+    is_combined: true,
+  })
+  const roomA = unit({
+    unit_id: 'u-ga',
+    code: 'gt-a',
+    name: 'Granite A',
+    sleeps: 3,
+    parent_code: 'gt-house',
+  })
+  const roomB = unit({
+    unit_id: 'u-gb',
+    code: 'gt-b',
+    name: 'Granite B',
+    sleeps: 4,
+    parent_code: 'gt-house',
+  })
+  const registry = [house, roomA, roomB]
+
+  it('totals a combined house rather than printing an em dash about it', () => {
+    render(
+      <LodgingUnitCard
+        slot={slot({ unit: house, parties: [party({ party_size: 3, unit_code: 'gt-house' })] })}
+        units={registry}
+        hue="hsl(160 45% 42%)"
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.getByTestId('unit-occupancy')).toHaveTextContent('3/7')
+    expect(screen.queryByText('3/—')).not.toBeInTheDocument()
+  })
+
+  it('leaves a leaf’s own figure exactly as it was', () => {
+    // The no-op half of the ruling. `effectiveSleeps` short-circuits on
+    // anything that is not a container, so this must not move.
+    render(
+      <LodgingUnitCard
+        slot={slot({ unit: unit({ sleeps: 5 }), parties: [party({ party_size: 3 })] })}
+        units={[unit({ sleeps: 5 })]}
+        hue="hsl(160 45% 42%)"
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.getByTestId('unit-occupancy')).toHaveTextContent('3/5')
+  })
+
+  it('still refuses a total when one active room is unmeasured', () => {
+    // The refusal survives the change and is the reason the em dash exists at
+    // all: one unmeasured active room leaves the whole house unknown, and a
+    // partial sum would be a confident wrong number.
+    const unmeasured = unit({
+      unit_id: 'u-gc',
+      code: 'gt-c',
+      sleeps: null,
+      parent_code: 'gt-house',
+    })
+    render(
+      <LodgingUnitCard
+        slot={slot({ unit: house, parties: [party({ party_size: 3, unit_code: 'gt-house' })] })}
+        units={[house, roomA, unmeasured]}
+        hue="hsl(160 45% 42%)"
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.getByTestId('unit-occupancy')).toHaveTextContent('3/—')
+  })
+
+  it('grades over-capacity against the whole house, not against the container row', () => {
+    // The other half of reading the right number: a house whose rooms sleep 7
+    // IS over capacity at 9, and used to escape the verdict entirely because
+    // `capacityKnown` was false on a null container row.
+    render(
+      <LodgingUnitCard
+        slot={slot({ unit: house, parties: [party({ party_size: 9, unit_code: 'gt-house' })] })}
+        units={registry}
+        hue="hsl(160 45% 42%)"
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.getByTestId('unit-occupancy')).toHaveTextContent('9/7')
+    expect(screen.getByTestId('unit-occupancy')).toHaveClass('text-destructive')
+  })
+
+  it('does not call a whole-house let over capacity when it fits', () => {
+    render(
+      <LodgingUnitCard
+        slot={slot({ unit: house, parties: [party({ party_size: 7, unit_code: 'gt-house' })] })}
+        units={registry}
+        hue="hsl(160 45% 42%)"
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.getByTestId('unit-occupancy')).not.toHaveClass('text-destructive')
   })
 })

@@ -271,8 +271,12 @@ describe('LodgingBoard — layout', () => {
      *
      * It does NOT reduce how often that row wraps — 28/29/25 cards at one,
      * two and three lines at BOTH widths. The wrapping is structural, not a
-     * width problem: `UnitAvailabilityControl` gives its reason line and its
-     * open form `w-full`, so they take their own line whatever the card is.
+     * width problem: the card's full-width rows — the write-in cards' own
+     * frames, and the reason line — take their own line whatever the card is.
+     * (This measurement was taken while `UnitAvailabilityControl` still drew
+     * the widest of them; that control was cut in kindred#2072 stage 3 and the
+     * structural point survives it, since the remaining rows are `w-full` for
+     * the same reason.)
      *
      * Cost is 11% more scroll (board 5172px → 5754px), which is what fewer
      * columns means.

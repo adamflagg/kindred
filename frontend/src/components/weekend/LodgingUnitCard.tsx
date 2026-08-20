@@ -24,6 +24,7 @@ import { FamilyCard } from './FamilyCard'
 import { partyHeadcount } from './householdIdentity'
 import { resolveNeedsFit } from './needsFit'
 import { resolveRingPrecedence } from './ringPrecedence'
+import { effectiveSleeps } from './rosterAttention'
 import { partyKey } from './partyKey'
 import { writeInEntries, type UnitAvailabilityWrite } from './writeIn'
 import { WriteInCard } from './WriteInCard'
@@ -325,7 +326,33 @@ export function LodgingUnitCard({
    * surface with no card geometry to imply it.
    */
   const needsReconfirm = unit.is_confirmed === false
-  const capacityKnown = unit.sleeps !== null && unit.sleeps !== undefined
+  /*
+   * ⚠️ THE WHOLE SPACE, NOT THE CONTAINER ROW (owner ruling 2026-08-20). This
+   * read the RAW `unit.sleeps`, which under kindred#2041's delta ruling is a
+   * container's beds in space belonging to no single room — the corridor, not
+   * the house. All 15 production containers record 0 there, which the API maps
+   * to `null`, so every combined house drew `3/—` — "capacity not recorded" —
+   * about a building whose rooms are measured and whose beds the backend has
+   * summed since #2041.
+   *
+   * The Assign modal opened FROM this card said "4 of 7 beds free" at the same
+   * moment. The card was the last reader of the raw value on the board:
+   * `countUnmeasuredSpaces` and `mapModel`'s peek already read this one.
+   *
+   * The ruling states both halves: *"the card should always show the
+   * denominator of total possible sleeps — whether that is a leaf, or a
+   * container sum. The modal is always the available diff."* So this figure is
+   * capacity and the modal's is the remainder, deliberately, and neither is the
+   * other made consistent.
+   *
+   * ⚠️ A NO-OP FOR EVERY LEAF: `effectiveSleeps` short-circuits on anything
+   * that is not a container and returns `unit.sleeps` unchanged, so 103 of the
+   * 118 registry rows draw exactly what they drew before. It also keeps the
+   * refusal — one unmeasured ACTIVE room leaves the whole total `null` rather
+   * than summing what happens to be measured.
+   */
+  const capacity = effectiveSleeps(unit, units)
+  const capacityKnown = capacity !== null
   /*
    * How full the room is. The corner figure used to be CAPACITY alone, so the
    * card read identically whether the room was empty or full.
@@ -339,7 +366,10 @@ export function LodgingUnitCard({
    * rooms it needs is not over anything.
    */
   const { occupants, spanWidth } = slotOccupancy(slot, units)
-  const overCapacity = capacityKnown && spanWidth === 0 && occupants > (unit.sleeps ?? 0)
+  // `capacity` rather than `capacity ?? 0`: TypeScript narrows it through
+  // `capacityKnown`, which is an aliased `!== null` check, so the fallback is
+  // unreachable and eslint's type-aware rule says so.
+  const overCapacity = capacityKnown && spanWidth === 0 && occupants > capacity
   // The "N families" count chip below: a true statement about the CARD
   // regardless of which rooms anyone actually holds, so it stays keyed on
   // the card's whole party count.
@@ -616,10 +646,10 @@ export function LodgingUnitCard({
 
   const occupancyTooltip = wholesaleWriteIn
     ? capacityKnown
-      ? `Written in — occupies the whole room · sleeps ${String(unit.sleeps)}`
+      ? `Written in — occupies the whole room · sleeps ${String(capacity)}`
       : 'Written in — occupies the whole room · capacity not recorded'
     : capacityKnown
-      ? `Sleeps ${String(unit.sleeps)} · ${String(occupants)} placed${infantExemptionClause}`
+      ? `Sleeps ${String(capacity)} · ${String(occupants)} placed${infantExemptionClause}`
       : `Capacity not recorded · ${String(occupants)} placed${infantExemptionClause}`
 
   /*
@@ -953,7 +983,7 @@ export function LodgingUnitCard({
               bed arithmetic, so `0/5` beside a full room is a lie and `5/5`
               is a different one. The em dash is this card's existing way of
               refusing to assert a number it does not have. */}
-          {`${occupancyFigure}/${capacityKnown ? String(unit.sleeps) : '—'}`}
+          {`${occupancyFigure}/${capacityKnown ? String(capacity) : '—'}`}
         </Tooltip>
       </div>
 

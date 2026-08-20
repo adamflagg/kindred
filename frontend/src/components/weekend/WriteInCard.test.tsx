@@ -166,7 +166,10 @@ describe('the corner control that edits THIS write-in (kindred#2430)', () => {
    * (`_upsert_row(what='write-in', ...)` in
    * `api/services/lodging_write_service.py`), so a second write to the same
    * row updates it in place. This control only has to collect the edit and
-   * send the same shape `UnitAvailabilityControl`'s occupant prompt does.
+   * send the same shape the write path has always taken — the shape
+   * `UnitAvailabilityControl`'s occupant prompt sent until that control was
+   * cut (kindred#2072 stage 3), and the one `writeIn.ts` now owns the type
+   * for.
    */
   it('is absent when the reader cannot edit', () => {
     render(<WriteInCard occupant={{ name: 'Liam Garcia', note: '' }} />)
@@ -203,9 +206,11 @@ describe('the corner control that edits THIS write-in (kindred#2430)', () => {
   it('labels both boxes with the prompt\u2019s own placeholders', () => {
     // The note is EMPTY on every row predating kindred#2078 (1500000148
     // cleared each one it copied), so without a placeholder the second box is
-    // a blank unlabelled input under the name. Same strings
-    // `UnitAvailabilityControl`'s occupant prompt uses, so one control does
-    // not teach a different vocabulary from the other.
+    // a blank unlabelled input under the name. Same strings the Assign
+    // modal's write-in form uses, so one control does not teach a different
+    // vocabulary from the other. (They came from
+    // `UnitAvailabilityControl`'s occupant prompt, which was cut in
+    // kindred#2072 stage 3 — the strings outlived it.)
     render(<WriteInCard occupant={{ name: 'Liam Garcia', note: '' }} onEdit={() => undefined} />)
 
     fireEvent.click(screen.getByRole('button', { name: 'Edit write-in Liam Garcia' }))
