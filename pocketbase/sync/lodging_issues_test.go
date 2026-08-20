@@ -193,7 +193,7 @@ func TestIssueRecorderFlushKeepsAnEarlierSuggestion(t *testing.T) {
 }
 
 // TestIssueRecorderHandlesApostrophes: real cabin strings contain apostrophes
-// ("Golden Triangle - Doctor's House", "Golden Triangle - Cloud's Rest"). A
+// (two area-prefixed building strings from the same area). A
 // filter built by string concatenation would be a syntax error here, which is
 // exactly the class of bug that made Plan 1's alias verifier unable to pass.
 func TestIssueRecorderHandlesApostrophes(t *testing.T) {

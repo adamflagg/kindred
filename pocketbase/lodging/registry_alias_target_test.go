@@ -12,8 +12,9 @@ import (
 // Guards an alias that EXISTS but points at the wrong unit.
 //
 // This class had no writer at all until it was found by hand on 2026-08-03:
-// "New Trailer (Manzanitas)" resolved to manzanita-7 instead of
-// manzanita-new-trailer, which left the trailer unreachable and made Manzanita
+// A parenthesised trailer alias resolved to the numbered room sharing its
+// stem instead of the trailer's own unit, which left the trailer unreachable
+// and made that area
 // 7 a double-booking candidate -- one string, two rooms, no error anywhere.
 //
 // Nothing existing can see it. verify-lodging-seed.sh asserts the database
@@ -25,19 +26,19 @@ import (
 // every code named is a real unit.
 //
 // The invariant that does see it: an alias string that is EXACTLY some unit's
-// name must resolve to that unit. "New Trailer (Manzanitas)" is verbatim the
+// name must resolve to that unit. The parenthesised trailer alias is verbatim the
 // name of manzanita-new-trailer, so an alias spelling it and resolving
 // elsewhere is a misdirection rather than a synonym.
 //
 // A merge is not a violation. A 2+ member alias is a legitimate shorthand when
-// the unit it names is among its targets ("Tioga 1" for the merged 1+2 pair);
+// the unit it names is among its targets (the first room of a merged pair);
 // it is only wrong when the named unit is absent from its own alias.
 //
 // Nor is a container resolving to its own rooms. "Health Center Downstairs" and
 // "Forest Village 5" both name a container and resolve to its children, which
 // is what booking a whole building HAS to mean: the container is not bookable
 // itself, so the alias has to name the rooms it is made of. That is the same
-// whole-versus-split distinction Clouds Rest turns on. Requiring the container
+// whole-versus-split distinction a multi-room building turns on. Requiring the container
 // to appear in its own member list would flag both of these real rows.
 //
 // Deliberately NOT a fuzzy check. It fires only on an exact name collision, so

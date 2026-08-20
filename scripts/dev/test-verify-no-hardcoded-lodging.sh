@@ -41,7 +41,7 @@ fi
 echo "=== TEST 1: needles in application CODE should exit 1 and name file:line ==="
 # Probes are code, not comments: spec 3.8 forbids the registry living in
 # source, and a registry lives in string literals. Comments are covered by
-# TEST 4, which requires the opposite result.
+# TEST 4, which since kindred#2512 requires the SAME result.
 echo 'const UNITS = ["Tuolumne 1"]' > "$JS_PROBE"
 echo 'UNITS = ["Manzanita 3"]' > "$PY_PROBE"
 
@@ -106,12 +106,26 @@ else
 fi
 
 echo
-echo "=== TEST 4: needles in comments and docstrings should NOT fail the guard ==="
-# kindred#1891: the guard failed on api/services/lodging_rules.py, whose
-# docstring names two units to explain why merging changes bathroom privacy.
-# That is prose about a rule, not the registry living in code -- and because
-# HANDOFF tells the next agent to run this gate, it opened Phase C on a red
-# that was not theirs.
+echo "=== TEST 4: needles in comments and docstrings MUST fail the guard ==="
+# ⚠️ THIS TEST WAS INVERTED IN kindred#2512. It asserted the opposite until
+# then -- that prose naming a unit does NOT trip the guard -- and this is a
+# REWRITE, not an adaptation: the specification changed, the implementation
+# did not drift from it.
+#
+# The original reasoning (kindred#1891) was that a docstring naming two units
+# to explain why merging changes bathroom privacy is "prose about a rule, not
+# the registry living in code", and that failing on it opened an unrelated
+# phase on a red that was not theirs.
+#
+# What that reasoning missed: a comment is source. It ships in the repo and a
+# public repo leaks it exactly as a literal does. The exemption is how a real
+# building name sat in an `api/` docstring, in three migration headers, in a
+# `frontend/src/**` component comment and in eleven Go test comments while
+# this guard reported OK -- eighteen hits, found only by widening the scan by
+# hand. All were rewritten without losing their explanatory force, which is
+# the point: prose can say what it needs to say without naming a building.
+#
+# The 1891 objection is spent -- that very docstring is one of the eighteen.
 cat > "$PY_PROBE" <<'PROBE'
 """Module docstring naming Tuolumne 1 and Tuolumne 2 to explain a rule."""
 
@@ -135,10 +149,19 @@ OUT=$("$GUARD_SCRIPT" 2>&1)
 rc=$?
 set -e
 rm -f "$JS_PROBE" "$PY_PROBE"
-if [[ $rc -eq 0 ]]; then
-  echo "PASS: prose in comments and docstrings does not trip the guard"
+if [[ $rc -eq 1 ]]; then
+  # Assert it names BOTH probes, not merely that something failed: a guard
+  # that caught only the Python docstring and silently dropped the JS comment
+  # would still exit 1 here and would still be half broken.
+  if grep -q "leak_probe_kindred1869.py" <<<"$OUT" && grep -q "leak_probe_kindred1869.js" <<<"$OUT"; then
+    echo "PASS: prose in comments and docstrings trips the guard, in both languages"
+  else
+    echo "FAIL: exit 1 but the report did not name both probes" >&2
+    echo "$OUT" >&2
+    exit 1
+  fi
 else
-  echo "FAIL: expected exit 0 for comment/docstring-only mentions, got $rc" >&2
+  echo "FAIL: expected exit 1 for comment/docstring mentions, got $rc" >&2
   echo "$OUT" >&2
   exit 1
 fi
@@ -149,7 +172,8 @@ echo "=== TEST 5: a unit list in a MIGRATION should exit 1 ==="
 # directory entirely. Now that the data lives in the private
 # config/lodging_registry.json, the exclusion would be a hole in exactly the
 # place a future seed would land -- this asserts it is gone. Prose in a
-# migration is still fine; TEST 4 covers that, and this probe is a literal.
+# migration is NO LONGER fine either (kindred#2512 inverted TEST 4); this
+# probe is a literal, which has always failed.
 MIG_PROBE="$REPO_ROOT/pocketbase/pb_migrations/9999999999_leak_probe_kindred1909.js"
 cleanup3() { rm -f "$MIG_PROBE"; }
 trap 'cleanup3; cleanup' EXIT INT TERM
@@ -200,7 +224,7 @@ fi
 echo "PASS: a failed scan exits 2 and says so"
 
 echo
-echo "=== TEST 7: a needle on the CLOSING line of a multi-line JSX comment should NOT fail ==="
+echo "=== TEST 7: a needle on the CLOSING line of a multi-line JSX comment MUST fail ==="
 # kindred#2181: this is the exact shape that carried a real unit name past
 # review on `main` until #2178 scrubbed it at the source -- a two-line JSX
 # {/* ... */} comment whose needle sits on the second line, alongside the
@@ -208,6 +232,15 @@ echo "=== TEST 7: a needle on the CLOSING line of a multi-line JSX comment shoul
 # to be blank once comment content was stripped, and a JSX comment's own
 # `{`/`}` scaffolding survived that strip as leftover "code", so this needle
 # never got dropped even though it sits in ordinary documentation prose.
+#
+# ⚠️ INVERTED IN kindred#2512, and the inversion makes this probe MORE
+# valuable, not redundant. Comments now fail everywhere, so the dropper no
+# longer decides whether a comment leaks -- but it still decides whether a
+# line is reported as a comment hit or a code hit, and this shape is the one
+# that has historically confused it. Asserting the needle is REPORTED keeps
+# the #2181 regression covered: a dropper that mis-parsed this line back into
+# "code" would still fail, but a dropper that lost the line entirely would
+# not, and only the assertion below tells those apart.
 TSX_PROBE="$REPO_ROOT/frontend/src/leak_probe_kindred2181.tsx"
 cleanup4() { rm -f "$TSX_PROBE"; }
 trap 'cleanup4; cleanup3; cleanup' EXIT INT TERM
@@ -227,10 +260,10 @@ OUT=$("$GUARD_SCRIPT" 2>&1)
 rc=$?
 set -e
 rm -f "$TSX_PROBE"
-if [[ $rc -eq 0 ]]; then
-  echo "PASS: a needle on a JSX comment's closing */} line does not trip the guard"
+if [[ $rc -eq 1 ]] && grep -q "leak_probe_kindred2181.tsx" <<<"$OUT"; then
+  echo "PASS: a needle on a JSX comment's closing */} line is reported"
 else
-  echo "FAIL: expected exit 0 for a needle inside a multi-line JSX comment, got $rc" >&2
+  echo "FAIL: expected exit 1 naming the probe for a needle inside a multi-line JSX comment, got $rc" >&2
   echo "$OUT" >&2
   exit 1
 fi
@@ -353,10 +386,19 @@ else
 fi
 
 echo
-echo "=== TEST 12: a needle in a COMMENT inside a non-frontend test file must still exit 0 ==="
-# The comment-scanning widening is deliberately scoped to frontend/src/**
-# (measured blast radius: kindred#2367 PR body). A Go test file's comment
-# stays exempted -- narrowing this far, not repo-wide, is the point.
+echo "=== TEST 12: a needle in a COMMENT inside a non-frontend test file MUST fail too ==="
+# ⚠️ INVERTED IN kindred#2512. This asserted exit 0 until then, because #2367
+# scoped its comment-scanning widening to frontend/src/** and said so:
+# "leaves the pocketbase/ side for a future pass, rather than guessing at
+# files another issue may be mid-edit on". This IS that future pass, so the
+# scoping this test pinned is no longer the spec.
+#
+# It was not a hypothetical gap: eleven real comment hits were sitting in
+# pocketbase/ Go test files, naming buildings and areas, with the guard green
+# on every PR. They are scrubbed in the same change as this inversion.
+#
+# Fixture CODE in a test file remains exempt -- TEST 11 pins that for the
+# frontend and the assertion below deliberately does not extend to it.
 GO_TEST_PROBE="$REPO_ROOT/pocketbase/leak_probe_kindred2367_test.go"
 cleanup9() { rm -f "$GO_TEST_PROBE"; }
 trap 'cleanup9; cleanup8; cleanup7; cleanup6; cleanup5; cleanup4; cleanup3; cleanup' EXIT INT TERM
@@ -366,10 +408,10 @@ OUT=$("$GUARD_SCRIPT" 2>&1)
 rc=$?
 set -e
 rm -f "$GO_TEST_PROBE"
-if [[ $rc -eq 0 ]]; then
-  echo "PASS: a needle in a non-frontend test file's comment is still exempt"
+if [[ $rc -eq 1 ]] && grep -q "leak_probe_kindred2367_test.go" <<<"$OUT"; then
+  echo "PASS: a needle in a non-frontend test file's comment is caught"
 else
-  echo "FAIL: expected exit 0 for a needle in a non-frontend test comment, got $rc" >&2
+  echo "FAIL: expected exit 1 naming the probe for a non-frontend test comment, got $rc" >&2
   echo "$OUT" >&2
   exit 1
 fi

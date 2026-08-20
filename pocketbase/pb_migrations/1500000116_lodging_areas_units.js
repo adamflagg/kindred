@@ -7,7 +7,8 @@
  * and fully editable in the Family Camp admin UI — no unit list lives in
  * source code. 1500000120 seeded it until the data moved out of this repo.
  *
- * lodging_units holds ATOMIC rooms. Merges (e.g. "Tenaya 1and2") are separate
+ * lodging_units holds ATOMIC rooms. Merges (a staff string naming two adjacent
+ * rooms at once) are separate
  * rows in lodging_merges, not parent activations, because merges are frequently
  * partial (2 of a 4-room building).
  *

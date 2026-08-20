@@ -44,7 +44,7 @@ func TestAliasResolverUnboundedWindows(t *testing.T) {
 }
 
 // TestAliasResolverRespectsRenameWindows is the load-bearing case. Both
-// Doctor's Houses existed 2022-2024; the Golden Triangle one was renamed Wawona
+// Two same-named buildings existed 2022-2024; the one in the first area was renamed
 // in 2025. Resolving either side into the other silently relocates a household
 // across camp, and nothing downstream would notice.
 func TestAliasResolverRespectsRenameWindows(t *testing.T) {
@@ -166,7 +166,7 @@ func TestAliasResolverMergeDenotingAlias(t *testing.T) {
 
 // TestAliasResolverUnresolvedIsNotAnError: four strings observed 2022-2023 have
 // no alias row at all -- "Ridge 2", "River Side - R1", "River Side - R2",
-// "Tuolumne 7". They must come back unresolved, with the raw string preserved,
+// an unknown cabin string. It must come back unresolved, with the raw string preserved,
 // and must not panic or error.
 func TestAliasResolverUnresolvedIsNotAnError(t *testing.T) {
 	t.Parallel()

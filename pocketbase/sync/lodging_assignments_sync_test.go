@@ -269,7 +269,7 @@ func TestLodgingAssignmentsSyncRespectsStaffTouched(t *testing.T) {
 	}
 }
 
-// TestLodgingAssignmentsSyncQueuesUnresolvedAlias: "Tuolumne 7" has no alias row
+// TestLodgingAssignmentsSyncQueuesUnresolvedAlias: an unknown cabin string has no alias row
 // -- one of four such strings in the real 2022/2023 data. It must become a work
 // queue item and must not be dropped, and must not stop the run.
 func TestLodgingAssignmentsSyncQueuesUnresolvedAlias(t *testing.T) {
@@ -277,7 +277,7 @@ func TestLodgingAssignmentsSyncQueuesUnresolvedAlias(t *testing.T) {
 	app := newSyncTestApp(t)
 	sess := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family",
 		"2025-05-23 07:00:00.000Z", "2025-05-26 07:00:00.000Z", 2025)
-	// Unrelated to "Tuolumne 7" below -- this only gives 2025 a registry, so
+	// Unrelated to the unknown cabin string below -- this only gives 2025 a registry, so
 	// Sync's #2061 year guard (no lodging_units rows for the year) does not
 	// intercept before reaching alias resolution. Without it, this fixture is
 	// indistinguishable from "no registry loaded at all," and the case this
@@ -361,7 +361,8 @@ func TestLodgingAssignmentsSyncQueuesAmbiguousSession(t *testing.T) {
 }
 
 // TestIngestWritesAMultiRoomPlacementAsOneRow closes the case that used to
-// create a merge row: "Golden Triangle - Tioga 1and2" resolves to two units,
+// create a merge row: an area-prefixed string naming two adjacent rooms
+// resolves to two units,
 // so a two-room alias lands as one assignment naming both -- see placementFor.
 // A merged slot is the alias's own member set, not a row pointing at it.
 func TestIngestWritesAMultiRoomPlacementAsOneRow(t *testing.T) {

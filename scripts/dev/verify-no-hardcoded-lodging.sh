@@ -113,42 +113,69 @@ done
 # blanket test-file exemption instead of this comment-only scan -- the exact
 # gap this pattern exists to close. Verified by TEST 13 in
 # test-verify-no-hardcoded-lodging.sh (kindred#2367 review).
-FRONTEND_TEST_PATTERN='^frontend/src/(.*/)?tests?/|^frontend/src/.*(_test\.|\.test\.)'
+# kindred#2512 completes the pass #2367 deferred. Comments are now scanned in
+# EVERY scan root, not only under frontend/src/**, so the split below is by
+# TEST-vs-NOT rather than by directory:
+#
+#   not a test file -> code hits fail, comment hits fail
+#   a test file     -> code hits are exempt, comment hits fail
+#
+# The 18 comment hits this widening newly caught were scrubbed in the same
+# change (7 outside test files, including `effective_bathroom`'s own docstring
+# and three migration headers; 11 in pocketbase/ Go test comments). #2367 said
+# it was leaving the pocketbase/ side "for a future pass, rather than guessing
+# at files another issue may be mid-edit on" -- this is that pass.
+#
+# What is still exempt, and still deliberately: fixture CODE in a test file.
+# Real unit names as fixture DATA are legitimate there -- an alias resolver
+# test has to resolve the strings staff actually wrote -- and narrowing that
+# would fail the many lodging test files built on exactly that. The blind spot
+# kindred#1909 found was two needle-matching literals in fixture code, and the
+# fix applied there was to scrub them at the source, not to narrow this filter.
+# That trade is unchanged; only comments moved.
+TEST_FILE_PATTERN='(.*/)?tests?/|(_test\.|\.test\.)'
 HITS=""
 if [[ -n "$RAW" ]]; then
-  FRONTEND_TEST_RAW=$(printf '%s\n' "$RAW" | grep -E "$FRONTEND_TEST_PATTERN" || true)
-  OTHER_RAW=$(printf '%s\n' "$RAW" | grep -vE "$FRONTEND_TEST_PATTERN" || true)
+  TEST_RAW=$(printf '%s\n' "$RAW" | grep -E "$TEST_FILE_PATTERN" || true)
+  OTHER_RAW=$(printf '%s\n' "$RAW" | grep -vE "$TEST_FILE_PATTERN" || true)
 
   HITS=$(printf '%s\n' "$OTHER_RAW" \
-    | grep -v '_test\.\|\.test\.\|/tests\?/' \
     | grep -v 'frontend/src/data/cityGeo\.ts\|frontend/src/data/schoolGeo\.ts' || true)
 
-  FRONTEND_TEST_COMMENT_HITS=""
-  if [[ -n "$FRONTEND_TEST_RAW" ]]; then
-    FRONTEND_TEST_COMMENT_HITS=$(printf '%s\n' "$FRONTEND_TEST_RAW" \
+  TEST_COMMENT_HITS=""
+  if [[ -n "$TEST_RAW" ]]; then
+    TEST_COMMENT_HITS=$(printf '%s\n' "$TEST_RAW" \
+      | grep -v 'frontend/src/data/cityGeo\.ts\|frontend/src/data/schoolGeo\.ts' \
       | python3 "$REPO_ROOT/scripts/dev/lib/drop_comment_hits.py" --only-comments)
   fi
 fi
 
-# Prose that names a unit to explain a rule is documentation, not the registry
-# living in code. Dropping comment and docstring hits is what makes this guard
-# green on a clean `main`: it failed on a docstring in lodging_rules.py, which
-# opened Phase C on a red that was not Phase C's (kindred#1891). A file that
-# cannot be parsed is treated as all code, so its hits survive.
-if [[ -n "$HITS" ]]; then
-  HITS=$(printf '%s\n' "$HITS" | python3 "$REPO_ROOT/scripts/dev/lib/drop_comment_hits.py")
-fi
+# ⚠️ COMMENTS ARE NO LONGER DROPPED (kindred#2512). This block used to run
+# every non-test hit back through drop_comment_hits.py, on the reasoning that
+# "prose naming a unit to explain a rule is documentation, not the registry
+# living in code" -- which is how a real unit name sat in an `api/` docstring
+# and in three migration headers while this guard reported OK.
+#
+# The reasoning was never wrong about intent, only about consequence: a
+# comment is source, it ships in the repo, and a public repo leaks it exactly
+# as a literal would. Prose can say what it needs to say without naming a
+# building -- all 18 hits this change caught were rewritten, not deleted, and
+# none lost its explanatory force.
+#
+# The historical objection (kindred#1891: it "failed on a docstring in
+# lodging_rules.py", reddening an unrelated phase) is spent -- that docstring
+# is one of the 18 now scrubbed.
 # cityGeo.ts / schoolGeo.ts are unrelated city/school geocoding lookup tables
 # (a different feature) that coincidentally contain place-name substrings
 # ("Manzanita, OR", "El Capitan, AZ", "Wawona, CA", "Tuolumne City, CA") — not
 # the lodging registry. Excluded to keep this guard meaningful.
 
-# FRONTEND_TEST_COMMENT_HITS is already comment-only (produced by
-# --only-comments above) -- append it here, AFTER the drop-comments step
-# above, not before: running it back through that filter would drop the very
-# comment hits it exists to report.
-if [[ -n "${FRONTEND_TEST_COMMENT_HITS:-}" ]]; then
-  HITS=$(printf '%s\n%s\n' "$HITS" "$FRONTEND_TEST_COMMENT_HITS" | sed '/^$/d')
+# TEST_COMMENT_HITS is already comment-only (produced by --only-comments
+# above) -- append it here, AFTER the drop-comments step above, not before:
+# running it back through that filter would drop the very comment hits it
+# exists to report.
+if [[ -n "${TEST_COMMENT_HITS:-}" ]]; then
+  HITS=$(printf '%s\n%s\n' "$HITS" "$TEST_COMMENT_HITS" | sed '/^$/d')
 fi
 
 if [[ -n "$HITS" ]]; then
