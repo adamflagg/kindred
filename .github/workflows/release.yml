@@ -17,6 +17,7 @@ permissions:
   checks: read
   actions: write
   packages: write
+  pull-requests: read  # git-cliff reads /pulls for changelog author attribution
 
 jobs:
   release:
@@ -106,6 +107,10 @@ jobs:
       id: version
       env:
         INPUT_VERSION: ${{ inputs.version }}
+        # cliff.toml has [remote.github], so git-cliff calls the GitHub API (~40
+        # requests) even for --bumped-version. Unauthenticated that is 60/hr shared
+        # across the runner's IP; a 403 makes git-cliff panic, not degrade.
+        GITHUB_TOKEN: ${{ github.token }}
       run: |
         # Get last tag
         LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
@@ -116,7 +121,7 @@ jobs:
           [[ "$VER" != v* ]] && VER="v$VER"
         else
           # Auto-bump via git-cliff
-          VER=$(git cliff --bumped-version 2>/dev/null | grep -E '^v?[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+          VER=$(git cliff --bumped-version | grep -E '^v?[0-9]+\.[0-9]+\.[0-9]+' | head -1)
           [[ -z "$VER" ]] && { echo "::error::git-cliff could not determine version"; exit 1; }
           [[ "$VER" != v* ]] && VER="v$VER"
         fi
@@ -132,6 +137,8 @@ jobs:
 
     - name: Generate changelog
       id: changelog
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
       run: |
         git cliff --unreleased --strip header > RELEASE_NOTES.md
         echo "### Release Notes" >> "$GITHUB_STEP_SUMMARY"
