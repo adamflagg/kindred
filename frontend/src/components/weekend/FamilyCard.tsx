@@ -635,10 +635,25 @@ function FamilyCardChips({
               : 'text-amber-700 dark:text-amber-300'
           }`}
         >
+          {/* ⚠️ 20px, AND R3 FIRST RULED 16 (owner, 2026-08-20, having seen the
+              two at 4×). This mark shares its row with the need glyphs, which
+              are 20px chips, and `items-end` bottom-aligns it against them: at
+              16px its 13.33px of ink sat 5.33px below the chips' top edge and
+              1.33px above their bottom, so the one mark here that is NOT an
+              ask read as smaller and lower than the asks beside it. 20px puts
+              the ink 1.67px inside each edge, level with the run, and costs no
+              height — the chips already set the row at 20px.
+
+              A 20px BOX around the 16px icon was the other candidate: it
+              centres the ink vertically but moves it from 2px to 4px off the
+              card's right content edge. Rejected on that trade.
+
+              The vocabulary doc's §2 carries the size and this reason; if one
+              of them moves, move both. */}
           {party.is_returning === true ? (
-            <Repeat className="h-4 w-4" />
+            <Repeat className="h-5 w-5" />
           ) : (
-            <Star className="h-4 w-4" />
+            <Star className="h-5 w-5" />
           )}
         </Tooltip>
       )}

@@ -409,8 +409,8 @@ describe('FamilyCard — what it shows', () => {
 
   it('marks a returning household', () => {
     render(<FamilyCard party={party({ is_returning: true })} onOpen={vi.fn()} />)
-    // R3: a 16px icon, not the word. The tooltip carries the word, and
-    // "Returning / First-time is a 16px icon" below pins the geometry.
+    // R3: an icon, not the word. The tooltip carries the word, and
+    // "Returning / First-time is a 20px icon" below pins the geometry.
     expect(historyMark()).toBe('Returning family')
   })
 
@@ -1680,7 +1680,7 @@ describe('FamilyCard — single parent is a mark on line 2 (S2 + Sa)', () => {
   it('draws Returning in the SEMANTIC green, not the lodge’s forest', () => {
     /*
      * ⚠️ MEASURED, NOT PREFERRED (owner, 2026-08-20, from a pixel comparison
-     * against the review artifact). R3 rules a 16px icon with NO WORDS, so
+     * against the review artifact). R3 rules an icon with NO WORDS, so
      * colour is the only thing separating Returning from First-time — and
      * `text-forest-700` resolves to `#003917` against a `--foreground` of
      * `#0c3125`. That is **1.08 : 1**: the mark was the same ink as the card's
@@ -1726,12 +1726,37 @@ describe('FamilyCard — single parent is a mark on line 2 (S2 + Sa)', () => {
   })
 })
 
-describe('FamilyCard — Returning / First-time is a 16px icon, bottom right (R3)', () => {
-  it('draws Returning as an icon with no text label', () => {
+describe('FamilyCard — Returning / First-time is a 20px icon, bottom right (R3)', () => {
+  it('draws Returning as an icon with no text label, at the glyph row\u2019s own size', () => {
+    /*
+     * ⚠️ 20px, AND R3 ORIGINALLY RULED 16 (owner, 2026-08-20, after seeing the
+     * two side by side at 4×). The mark shares a row with the need glyphs,
+     * which are 20px chips, and it was bottom-aligned against them: measured
+     * in Chromium, its 13.33px of ink sat 5.33px below the chips' top edge and
+     * 1.33px above their bottom, so the one mark on the card that is not an
+     * ask read as smaller and lower than the asks beside it. At 20px the ink
+     * is 1.67px inside each edge — level with the run — and the row's height
+     * does not change, because the chips already set it at 20px.
+     *
+     * The alternative was a 20px BOX around the 16px icon, which centres it
+     * vertically but pushes its ink from 2px to 4px off the card's right
+     * content edge. Rejected on that trade.
+     *
+     * The vocabulary doc's §2 row carries the new size and the reason.
+     */
     render(<FamilyCard party={party({ is_returning: true })} onOpen={vi.fn()} />)
     expect(screen.queryByText('Returning')).not.toBeInTheDocument()
     const mark = screen.getByTestId('family-card-history')
-    expect(mark.querySelector('svg')?.getAttribute('class')).toContain('h-4 w-4')
+    expect(mark.querySelector('svg')?.getAttribute('class')).toContain('h-5 w-5')
+  })
+
+  it('draws First-time at that size too — one mark, two states', () => {
+    // The amber half must not be left at 16px: the two are the same mark and a
+    // card shows exactly one of them, so a size difference would never be seen
+    // side by side and would never be noticed until somebody measured.
+    render(<FamilyCard party={party()} onOpen={vi.fn()} />)
+    const mark = screen.getByTestId('family-card-history')
+    expect(mark.querySelector('svg')?.getAttribute('class')).toContain('h-5 w-5')
   })
 
   it('draws First-time as an icon with no text label', () => {
