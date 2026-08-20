@@ -1509,15 +1509,35 @@ describe('FamilyCard — the marks kindred#2072 STRUCK', () => {
   })
 
   it('draws no "No private bathroom" / "No power" chip — one fact stated twice', () => {
-    // §3: a bathroom glyph beside a chip saying the bathroom is missing states
-    // one fact twice. The glyph carries the state itself (N2).
+    /*
+     * §3: a bathroom glyph beside a chip saying the bathroom is missing states
+     * one fact twice. The glyph carries the state itself (N2).
+     *
+     * ⚠️ `needs_private_bathroom` IS SET, and without it half this test was
+     * unfalsifiable (post-merge review of #2505, P1-2). The fixture used to
+     * arm only `effective_bathroom: 'none'` — the SUPPLY side — so bathroom
+     * never entered `partyAttention`'s `asked` list, `attention.reason` was
+     * always exactly 'No power', and the `/No private bathroom/` assertion
+     * could not fail however the chip came back. Demonstrated at the time:
+     * adding a bathroom-specific verdict chip to `FamilyCardChips` passed all
+     * 1415 weekend tests with a struck §3 mark back on the card.
+     *
+     * Arming both sides also gives the bathroom glyph's warn treatment its
+     * first test on this card — no fixture anywhere asked for a bathroom AND
+     * failed to get one.
+     */
     render(
       <FamilyCard
-        party={party({ flags: { needs_power: true }, effective_bathroom: 'none' })}
+        party={party({
+          flags: { needs_power: true, needs_private_bathroom: true },
+          effective_bathroom: 'none',
+        })}
         unit={confirmed}
         onOpen={vi.fn()}
       />
     )
+    // The demand side is really armed: the glyph is present and red.
+    expect(screen.getByTestId('need-glyph-bathroom').className).toContain('bg-red-100')
     expect(screen.queryByText(/No power/)).not.toBeInTheDocument()
     expect(screen.queryByText(/No private bathroom/)).not.toBeInTheDocument()
   })
