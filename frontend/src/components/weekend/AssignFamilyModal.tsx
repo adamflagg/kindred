@@ -131,6 +131,26 @@ function amenityWords(unit: LodgingUnitRow): string[] {
  * by its whole-house total (its own delta plus its rooms). `null` is "nobody
  * has counted", never "sleeps nobody", and says so rather than printing a
  * number it does not have — the same refusal the card's em dash makes.
+ *
+ * ⚠️ THE UNIT CARD DOES NOT AGREE WITH THIS YET, AND THAT IS A KNOWN,
+ * DELIBERATE ONE-RELEASE DIVERGENCE (owner ruling 2026-08-20, option A: the
+ * card is stage 3's file, so it is fixed there).
+ *
+ * The card's denominator is the RAW `unit.sleeps`. Measured against the
+ * production snapshot, **all 15 containers record `sleeps = 0`**, which the API
+ * maps to `null` and the card renders as an em dash — so on each of the four
+ * combined containers the card says "capacity not recorded" while this header
+ * says, correctly, how many beds the rooms beneath it hold:
+ *
+ *     gt-clouds-rest   own 0, 4 rooms, leaves sum 8
+ *     gt-wawona        own 0, 2 rooms, leaves sum 7
+ *     hc-downstairs    own 0, 2 rooms, leaves sum 5
+ *     hc-doctors-house own 0, 2 rooms, leaves sum 5
+ *
+ * THIS surface is the correct one — `countUnmeasuredSpaces` and the map peek
+ * already use `effectiveSleeps`, and the card is the only reader of the raw
+ * value left. Do not "resolve" the disagreement by making this one read
+ * `unit.sleeps`. Raised by CodeRabbit on PR #2506.
  */
 function capacitySentence(
   unit: LodgingUnitRow,
@@ -260,7 +280,20 @@ export function AssignFamilyModal({
   )
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} header={header} footer={footer} noPadding size="lg">
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      header={header}
+      footer={footer}
+      // `ui/Modal`'s own contract: a caller using the custom `header` slot has
+      // to thread a name, because there is no `title` for it to derive one
+      // from. Threaded for that reason rather than as an accessibility
+      // measure — it names the dialog after the cabin it writes to, which is
+      // also the only thing distinguishing one of these from another.
+      ariaLabel={`Assign to ${unit.name}`}
+      noPadding
+      size="lg"
+    >
       <div className="flex flex-col gap-3 px-6 py-4">
         {/* THE ONE LIVE INPUT, and it is also the occupant name. It is never
             disabled by the flip and never remounted by it — it is rendered
@@ -385,9 +418,16 @@ export function AssignFamilyModal({
                         <Users className="h-3 w-3" />
                         {partyBeds(party)}
                       </span>
+                      {/* ⚠️ `insideControl` IS LOAD-BEARING HERE, not a style
+                          flag. This row IS a `<button>` that places the family,
+                          and a `ui/Tooltip` trigger is a `<button>` too — so
+                          the default mark nested one control inside another
+                          and a click on a glyph silently placed the family and
+                          closed the modal. `NeedGlyph.tsx` carries the full
+                          account and the rule it comes from (kindred#2222). */}
                       <span className="flex flex-shrink-0 items-center gap-1">
                         {glyphs.map((glyph) => (
-                          <NeedGlyphMark key={glyph.key} glyph={glyph} />
+                          <NeedGlyphMark key={glyph.key} glyph={glyph} insideControl />
                         ))}
                       </span>
                     </span>

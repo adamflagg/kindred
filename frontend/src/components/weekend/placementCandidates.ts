@@ -132,11 +132,17 @@ function capacityVerdict(
  * How well one party fits one candidate space.
  *
  * `needs_accommodation` and `accommodation_is_mandatory` are deliberately
- * absent, for the reason `rosterAttention`'s own scope gives: they
- * name no specific amenity, so no field on any cabin settles them and an
- * annotation here could only restate the flag. And there is no step-free
- * dimension to add — `is_accessible` exists on the UNIT with nothing on the
- * party side asking for it.
+ * absent, for the reason `rosterAttention`'s own scope gives: they name no
+ * specific amenity, so no field on any cabin settles them and an annotation
+ * here could only restate the flag.
+ *
+ * ⚠️ THIS PARAGRAPH USED TO END "and there is no step-free dimension to add —
+ * `is_accessible` exists on the UNIT with nothing on the party side asking for
+ * it." That was true when written and is now FALSE twice over: kindred#2438
+ * added `needs_step_free` on the party, and this function grades it — the body
+ * five lines below calls `resolveNeedGlyphs`, whose closed set carries it.
+ * Corrected rather than deleted, because the reasoning it gave for the two
+ * accommodation flags is still exactly right.
  *
  * @param units The whole registry, needed only to total a combined house's
  *   capacity. `[]` is correct for every leaf.

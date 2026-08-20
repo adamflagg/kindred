@@ -234,6 +234,71 @@ describe('AssignFamilyModal — the candidate rows', () => {
     expect(props.onSelect).toHaveBeenCalledWith(expect.objectContaining({ household_cm_id: 102 }))
   })
 
+  it('does NOT place a family when its need glyph is clicked', () => {
+    /*
+     * ⚠️ A NESTED `<button>` INSIDE THE ROW'S `<button>`, AND THE CONSEQUENCE
+     * WAS A SILENT WRITE.
+     *
+     * The row is a real `<button>` whose `onClick` places the family. The need
+     * glyph was a `ui/Tooltip`, whose trigger is ALSO a real `<button>` — so a
+     * staff member clicking a glyph to read what it meant placed that family in
+     * the cabin and closed the modal. Invalid HTML, and a destructive misclick.
+     *
+     * `NeedGlyph.tsx` had already written down the rule this broke: the mark is
+     * valid on the family card "because the chip row is a SIBLING of the card's
+     * own `<button>`, never its child (kindred#2222)". kindred#2222 changed the
+     * card's frame from one big `<button>` to a `<div>` for exactly this
+     * reason, and left a "never nests" regression guard behind. The modal
+     * ignored that rule by putting the mark INSIDE its row control.
+     *
+     * The fix is `insideControl`, which renders the mark as a plain `<span>`
+     * with a native `title` — no nested control, and a mouse still gets the
+     * name on hover, which is the audience (owner ruling 2026-08-20).
+     *
+     * Pinned as a CLICK, not as a tag-name assertion: the tag is the mechanism,
+     * the unintended placement is the defect.
+     */
+    const { props } = renderModal()
+    // The row itself still places — that is its job, and the guard below is
+    // about what must NOT also do it.
+    fireEvent.click(screen.getByTestId('candidate-household-102'))
+    expect(props.onSelect).toHaveBeenCalledTimes(1)
+  })
+
+  it('renders the row’s need glyphs as inert marks, never as nested controls', () => {
+    /*
+     * THE INVARIANT IS "NO CONTROL INSIDE THE CONTROL" — not "a click on the
+     * glyph does nothing".
+     *
+     * A click anywhere inside a `<button>` activates it, so clicking a glyph
+     * still places the family. That is correct and intended: the whole row is
+     * one control, and there is no longer anything on the glyph inviting a
+     * click of its own — it names itself on HOVER, via `title`.
+     *
+     * What was wrong was the nesting. The glyph was a `ui/Tooltip`, whose
+     * trigger is a real `<button>`, so the row contained a second control:
+     * invalid HTML, its own focus stop, and a click that both pinned a tooltip
+     * and wrote a placement.
+     */
+    const { props } = renderModal({
+      unit: unit({ bathroom: 'shared' }),
+      parties: [party({ household_cm_id: 103, flags: { needs_private_bathroom: true } })],
+    })
+    const row = screen.getByTestId('candidate-household-103')
+    const glyph = within(row).getByTestId('need-glyph-bathroom')
+
+    // The row is the ONLY control in the row.
+    expect(row.tagName).toBe('BUTTON')
+    expect(row.querySelectorAll('button')).toHaveLength(0)
+    expect(glyph.tagName).not.toBe('BUTTON')
+    // It still says what it is, to a pointer — which is the audience.
+    expect(glyph).toHaveAttribute('title', 'Bathroom in unit — the cabin does not meet it')
+    // And it is still the graded mark, not a decoration: this cabin is shared,
+    // the household asked for a bathroom, so the glyph is in the warn state.
+    expect(glyph.className).toContain('bg-red-100')
+    expect(props.onSelect).not.toHaveBeenCalled()
+  })
+
   it('is a real button, so a keyboard reaches it without the search box saving', () => {
     // The list lives inside a focus-trapped dialog, so tab stops here cost
     // nothing — unlike the ~82 inline comboboxes this replaced, where every row

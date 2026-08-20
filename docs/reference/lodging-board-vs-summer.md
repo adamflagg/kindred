@@ -175,8 +175,12 @@ fit verdict. So the two boards now agree on the shape.
 They still disagree on FILTERING, deliberately: `BunkSwapModal` hides
 ineligible bunks via `isEligibleSwapTarget`, and this list hides nothing.
 `placementCandidates.ts` carries the arithmetic — 6 of 118 units have a private
-bathroom against 45 parties asking for one, so a list narrowed to "what fits"
-would be empty most of the time and staff would go back to dragging. Summer's
+bathroom against **63 of 459 registrations** asking for one, so a list narrowed
+to "what fits" would be empty most of the time and staff would go back to
+dragging. (An earlier draft of this paragraph said "45 parties". That figure is
+real but belongs to `needsFit.ts`, which counts ROSTERED parties for the
+drag-time hatch rather than raw registrations — a different population, and the
+mis-attribution is the defect rather than the number.) Summer's
 gender rule is a hard constraint; amenity fit here is explicitly advisory.
 
 `UnitAvailabilityControl` and the merge/split pills stay INLINE. Nothing else
@@ -368,10 +372,28 @@ Both merged while this branch was in flight. Neither is optional reading before
 touching occupancy or the draw level.
 
 **#2040 — a whole-let building draws as one card.** A merge is a **promotion to
-the parent**: the card is the container's own registry row carrying its measured
-whole-house `sleeps`, which is **not** the sum of its rooms (one building records
-7 against rooms summing to 6). _Never re-derive it_ — an earlier draft of §3
-proposed exactly that and was wrong. It also gave this board `unitLevel.ts`
+the parent**: the card is the container's own registry row.
+
+⚠️ **This paragraph used to add that the container row "carries its measured
+whole-house `sleeps`, which is not the sum of its rooms (one building records 7
+against rooms summing to 6)", and to say _never re-derive it_. That is false
+against the registry and was measured so on 2026-08-20**: **all 15 containers
+record `sleeps = 0`**, so no container carries a measured whole-house figure at
+all. The four combined ones hold 8, 7, 5 and 5 beds in their rooms and 0 on
+their own row.
+
+What supersedes it is kindred#2041's delta ruling — a container's own `sleeps`
+is the beds belonging to no single room, so the whole-house capacity IS the
+delta plus its rooms, which is what `effectiveSleeps` computes and what
+`countUnmeasuredSpaces` and the map peek already read. The unit card is the one
+surface still reading the raw value, so a combined container's card prints an em
+dash ("capacity not recorded") over rooms that are all measured. Raised by
+CodeRabbit on PR #2506; owner ruled it fixed in kindred#2072's stage 3, since
+the card is that stage's file.
+
+The instruction that DOES survive is the narrow one #2040 actually earned: do
+not re-derive **containment** — `unitLevel.ts` owns which codes a card covers,
+and `slotOccupancy` reads it rather than working it out again. It also gave this board `unitLevel.ts`
 (`coveredCodes`, `drawnUnits`, `representingCodes`) and `overlappingPartyKeys` /
 `occupiedLeafCodes`, which `slotOccupancy` reads rather than re-deriving
 containment. #2040 records what re-deriving costs: the overlap rule was fixed at

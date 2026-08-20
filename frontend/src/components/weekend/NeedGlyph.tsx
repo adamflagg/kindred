@@ -76,15 +76,55 @@ const GLYPH_BASE = 'inline-flex h-5 w-5 items-center justify-center rounded-lg b
  * card's own `<button>`, never its child (kindred#2222) — the same thing that
  * let "Answers disagree" grow a real trigger in kindred#2250.
  *
+ * ⚠️ `insideControl` EXISTS BECAUSE THAT SIBLING RULE HAS A SECOND CONSUMER
+ * THAT CANNOT HONOUR IT, and ignoring it cost a silent write.
+ *
+ * The Assign modal draws these marks inside a candidate ROW, and the row is
+ * itself a `<button>` that places the family. A `ui/Tooltip` trigger is also a
+ * real `<button>`, so the mark nested one control inside another: invalid
+ * HTML, and — because the trigger does not stop propagation — a staff member
+ * clicking a glyph to read what it meant PLACED that family and closed the
+ * modal.
+ *
+ * Where the mark cannot be a sibling, it must not be a control. `insideControl`
+ * renders a plain `<span>` carrying a native `title` instead. That is a
+ * deliberate, scoped return to the attribute kindred#2177 replaced, and it is
+ * affordable for exactly one reason: `title` is mouse-only, and the board's
+ * audience is mouse-only (owner ruling, 2026-08-20). Do not widen it to the
+ * family card, where the sibling shape makes a real trigger possible.
+ *
  * ⚠️ THE TOOLTIP DOES NOT DISTINGUISH `partial`. Two glyph states are ruled,
  * not three (§2), and inventing a third word here would be the same collapse
  * a third colour would be. `partial` — "a ramp with a lip", "some rooms have
  * power" — reads as met; degree lives on the card's drag-time hatch, which
  * grades it on the hatch period.
  */
-export function NeedGlyphMark({ glyph }: { glyph: ResolvedNeedGlyph }) {
+export function NeedGlyphMark({
+  glyph,
+  insideControl = false,
+}: {
+  glyph: ResolvedNeedGlyph
+  /**
+   * The mark is being drawn INSIDE another control, so it must not be one
+   * itself. See the nesting hazard in this module's doc.
+   */
+  insideControl?: boolean
+}) {
   const { Icon, label, hueClassName, isUnmet } = glyph
   const sentence = isUnmet ? `${label} — the cabin does not meet it` : label
+  const icon = (
+    <Icon className={`h-3 w-3 ${isUnmet ? 'text-red-800 dark:text-red-300' : hueClassName}`} />
+  )
+  const className = `${GLYPH_BASE} ${isUnmet ? GLYPH_UNMET : 'border-border bg-transparent'}`
+
+  if (insideControl) {
+    return (
+      <span className={className} title={sentence} data-testid={`need-glyph-${glyph.key}`}>
+        {icon}
+      </span>
+    )
+  }
+
   return (
     <Tooltip
       content={sentence}
@@ -99,9 +139,9 @@ export function NeedGlyphMark({ glyph }: { glyph: ResolvedNeedGlyph }) {
       // — a trigger whose visible content does not name it.
       aria-label={sentence}
       data-testid={`need-glyph-${glyph.key}`}
-      className={`${GLYPH_BASE} ${isUnmet ? GLYPH_UNMET : 'border-border bg-transparent'}`}
+      className={className}
     >
-      <Icon className={`h-3 w-3 ${isUnmet ? 'text-red-800 dark:text-red-300' : hueClassName}`} />
+      {icon}
     </Tooltip>
   )
 }
