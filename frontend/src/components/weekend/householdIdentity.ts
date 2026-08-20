@@ -398,8 +398,13 @@ export function dedupeAdultNames(adults: readonly PartyAdultRow[]): DedupedNameR
  *
  * ⚠️ MOVED HERE FROM `FamilyCard.tsx` (kindred#2072 §3.5). It is half of the
  * children-run below, and the run now has two callers.
+ *
+ * NOT exported: `childrenRun` is the only thing that should order children,
+ * because ordering and dedupe have to see the same array — the surname lift
+ * reads index-for-index against the sorted order. A second caller sorting on
+ * its own is how the two would drift apart again.
  */
-export function youngestFirst(children: readonly PartyChildRow[]): PartyChildRow[] {
+function youngestFirst(children: readonly PartyChildRow[]): PartyChildRow[] {
   const known: PartyChildRow[] = []
   const unknown: PartyChildRow[] = []
   for (const child of children) {

@@ -163,11 +163,126 @@ describe('AssignFamilyModal — it opens ready to be typed into', () => {
     expect(searchBox()).toHaveFocus()
   })
 
+  it('gives focus back to whatever opened it', async () => {
+    /*
+     * ⚠️ THE OTHER HALF OF THE FOCUS DEFECT, AND IT NEEDS ITS OWN PIN HERE.
+     * `Modal.test.tsx` pins the primitive; this pins that THIS dialog still
+     * benefits. Re-adding `autoFocus` to the search box would leave every
+     * assertion above green — `initialFocusRef` still wins the opening focus —
+     * while silently breaking restoration, because `ui/Modal` would capture an
+     * `activeElement` React had already moved inside the dialog and would then
+     * restore focus to a detached input. Measured before the fix: focus fell
+     * to `<body>`, not to the Assign pill.
+     */
+    const opener = document.createElement('button')
+    opener.textContent = 'Assign'
+    document.body.appendChild(opener)
+    opener.focus()
+
+    const props = {
+      isOpen: true,
+      onClose: vi.fn(),
+      unit: unit(),
+      parties: [party(), NGUYEN],
+      units: [],
+      occupants: 2,
+      onSelect: vi.fn(),
+      onWriteIn: vi.fn(),
+    }
+    const { rerender } = render(<AssignFamilyModal {...props} />)
+    expect(searchBox()).toHaveFocus()
+
+    rerender(<AssignFamilyModal {...props} isOpen={false} />)
+    expect(document.activeElement).toBe(opener)
+    opener.remove()
+  })
+
   it('takes a keystroke without a click first', async () => {
     const user = userEvent.setup()
     renderModal()
     await user.keyboard('Ngu')
     expect(searchBox()).toHaveValue('Ngu')
+  })
+})
+
+describe('AssignFamilyModal — the geometry the owner ruled on 2026-08-20', () => {
+  /*
+   * ⚠️ CLASS ASSERTIONS, AND THE REASON IS NAMED RATHER THAN GLOSSED. jsdom has
+   * no layout engine, so none of this can be checked as pixels here — a test
+   * called "the rows are 6px apart" that renders in jsdom asserts nothing, and
+   * that is exactly how a 133px jump survived this file for a whole release.
+   *
+   * The numbers behind every class below WERE measured, in Chromium, with the
+   * real module mounted through Vite and diffed against the review artifact's
+   * own computed styles. They are recorded in the PR body. What these tests do
+   * is stop the class being changed silently; what the browser did is prove the
+   * class produces the ruled number.
+   *
+   * They exist because three of the six rulings shipped with nothing pinning
+   * them at all: the width, the whole vertical rhythm, and the type.
+   */
+  it('is 520px wide — the artifact’s own `.modalcard`, not a size step', () => {
+    // `size="lg"` was 672px, a default nobody chose. Tailwind has no 520 step,
+    // so this goes through `ui/Modal`'s opt-in rather than through `size`.
+    renderModal()
+    expect(screen.getByTestId('modal-content').className).toContain('max-w-[520px]')
+  })
+
+  it('keeps the artifact’s 14px inset and 9px rhythm on all three sections', () => {
+    renderModal()
+    const header = screen.getByRole('heading', { level: 2 }).parentElement
+    const body = screen.getByTestId('assign-swap-region').parentElement
+    const footer = screen.getByTestId('modal-footer').firstElementChild
+    // 14px in, 4px + rule + 4px out — the artifact has no header rule, so its
+    // 9px is plain gap and ours is split around the one `ui/Modal` draws.
+    expect(header?.className).toContain('px-3.5')
+    expect(header?.className).toContain('pt-3.5')
+    expect(header?.className).toContain('pb-1')
+    // 9px between the box and the separator, and again below the region.
+    expect(body?.className).toContain('gap-[9px]')
+    expect(body?.className).toContain('pb-[9px]')
+    expect(footer?.className).toContain('pt-1')
+    expect(footer?.className).toContain('pb-3.5')
+  })
+
+  it('draws BOTH separators dashed, never one of each', () => {
+    // `.mswap` and `.mfoot` are one ruled block. The footer's was solid while
+    // its sibling 200px above it was dashed, which read as two grammars.
+    renderModal()
+    const footer = screen.getByTestId('modal-footer').firstElementChild
+    expect(screen.getByTestId('assign-swap-region').className).toContain('border-dashed')
+    expect(footer?.className).toContain('border-dashed')
+  })
+
+  it('separates the rows by the artifact’s 6px, not the chip row’s 4px', () => {
+    renderModal()
+    expect(screen.getByRole('listbox').className).toContain('gap-[6px]')
+    expect(screen.getByTestId('assign-swap-region').className).toContain('pt-[9px]')
+  })
+
+  it('sets the row at 13px with a semibold name — the answer to “a different font”', () => {
+    // The FACE was never the difference: the title is Fraunces and the body is
+    // DM Sans in both, because `index.css` applies `--font-display` to h1–h3.
+    // The size was: 14px against the artifact's 13px.
+    renderModal({ parties: [NGUYEN] })
+    const row = screen.getByTestId('candidate-household-102')
+    expect(row.className).toContain('text-[13px]')
+    expect(row.firstElementChild?.className).toContain('font-semibold')
+  })
+
+  it('gives the two text inputs one set of numbers, because the artifact does', () => {
+    // `.pinput` is a single class in the artifact and both the search box and
+    // the write-in Note are it. The Note kept `px-2 py-1.5` through the first
+    // pass and stood 4px taller than the box above it.
+    const { rerender, props } = renderModal()
+    fireEvent.change(searchBox(), { target: { value: 'Nobody at all' } })
+    void rerender
+    void props
+    const note = screen.getByPlaceholderText(/Optional/)
+    expect(searchBox().className).toContain('px-1.5')
+    expect(searchBox().className).toContain('py-1')
+    expect(note.className).toContain('px-1.5')
+    expect(note.className).toContain('py-1')
   })
 })
 

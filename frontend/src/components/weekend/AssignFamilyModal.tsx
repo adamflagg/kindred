@@ -228,6 +228,13 @@ function capacitySentence(
  * its own identity rather than a salutation over one.
  */
 function candidateIdentity(party: RosterPartyRow): string {
+  // ⚠️ GRAIN-GATED, because the card's bold line is. `FamilyCardIdentity`
+  // renders the children run only under `isHousehold`; a person-grain party —
+  // an adult-weekend guest — is named by its own `display_name`, and the rare
+  // one that carries children of its own draws them on a SEPARATE grey line.
+  // Without this gate the modal would name such a guest by their children
+  // while the card names them by themselves.
+  if (party.grain !== 'household') return partyIdentityLabel(party)
   return childrenRunLabel(party.children, displayTruncatedAge) || partyIdentityLabel(party)
 }
 
@@ -414,7 +421,10 @@ export function AssignFamilyModal({
   )
 
   const footer = (
-    <div className="border-border text-muted-foreground flex items-center gap-2.5 border-t px-3.5 pt-1 pb-3.5 text-xs">
+    // `border-dashed`, the artifact's `.mfoot{border-top:1px dashed}` — the
+    // same ruled block that gives the swap region its dashed separator. Solid
+    // here and dashed 200px above it made one dialog draw two grammars of rule.
+    <div className="border-border text-muted-foreground flex items-center gap-2.5 border-t border-dashed px-3.5 pt-1 pb-3.5 text-xs">
       {offersWriteIn ? (
         <>
           <span className="flex-1">↵ in a field saves · backspace to a match to go back</span>
@@ -476,6 +486,11 @@ export function AssignFamilyModal({
       // design it is being compared against is not the design. `ui/Modal`'s
       // `maxWidthClassName` is opt-in and no other caller is touched.
       maxWidthClassName="max-w-[520px]"
+      // ⚠️ THE CARD'S BORDER IS `ui/Modal`'s 1px, NOT the artifact's 2px, and
+      // that is deliberate and unresolved rather than missed. §3.3's quoted
+      // block carries `.modalcard{border:2px}`, but that ruling's subject is
+      // spacing; the weight is `ui/Modal`'s and changing it moves ~20 unrelated
+      // dialogs. Raised for the owner 2026-08-20 rather than decided here."
     >
       {/* ⚠️ THE WHOLE VERTICAL RHYTHM IS THE ARTIFACT'S, AND IT IS RULED
           (owner, 2026-08-20). It was `px-6 py-4 gap-3` against the artifact's
@@ -593,7 +608,12 @@ export function AssignFamilyModal({
                     event.preventDefault()
                     writeIn()
                   }}
-                  className="border-border bg-background text-foreground placeholder:text-muted-foreground/60 focus:border-primary/50 focus:ring-primary/10 rounded-md border px-2 py-1.5 text-sm font-normal focus:ring-2 focus:outline-none"
+                  // The SAME `.pinput` as the search box above — one class in
+                  // the artifact, so one set of numbers here. It kept the
+                  // pre-ruling `px-2 py-1.5` when §3.3 was applied, which left
+                  // the two inputs 4px different in height with both on screen
+                  // at once.
+                  className="border-border bg-background text-foreground placeholder:text-muted-foreground/60 focus:border-primary/50 focus:ring-primary/10 rounded-md border px-1.5 py-1 text-sm font-normal focus:ring-2 focus:outline-none"
                 />
               </label>
             </div>
