@@ -152,10 +152,16 @@ describe('candidateFit', () => {
     expect(result.notes).toEqual([])
   })
 
-  it('annotates a party that does not fit the recorded capacity', () => {
+  it('annotates a party that does not fit the beds left', () => {
+    // ⚠️ THE NOTE NOW COUNTS FREE BEDS, NOT THE ROOM'S WHOLE CAPACITY (owner
+    // ruling 2026-08-20 — see the `capacityVerdict` describe below). An empty
+    // room's free beds ARE its capacity, so this case reads the same as it
+    // always did; only the words changed, and they changed to match the
+    // header immediately above these rows, which has said "N of M beds free"
+    // since the 2026-08-19 ruling.
     const result = candidateFit(party({ party_size: 6 }), unit({ sleeps: 4 }), [])
     expect(result.fit).toBe('unmet')
-    expect(result.notes).toContain('Over capacity · needs 6, sleeps 4')
+    expect(result.notes).toContain('Over capacity · needs 6, 4 free')
   })
 
   it('says nothing about capacity nobody has recorded', () => {
@@ -217,7 +223,96 @@ describe('candidateFit', () => {
       []
     )
     expect(result.fit).toBe('unmet')
-    expect(result.notes).toEqual(['Over capacity · needs 6, sleeps 4'])
+    expect(result.notes).toEqual(['Over capacity · needs 6, 4 free'])
+  })
+})
+
+describe('capacityVerdict — the row grades the beds LEFT (owner ruling 2026-08-20)', () => {
+  /*
+   * ⚠️ THE DEFECT THIS CLOSES SHIPPED A GREEN `fits` ON A ROW THAT WOULD
+   * OVER-FILL THE ROOM, and it was pre-existing rather than introduced by the
+   * modal — the review artifact draws it the same way.
+   *
+   * The header above these rows answers "will they fit in what is LEFT" (the
+   * 2026-08-19 ruling: it prints "2 of 4 beds free"). The row graded
+   * `partyBeds <= effectiveSleeps` — the room's whole capacity — and never saw
+   * the occupants the header had just counted. Aspen sleeps 4 and already
+   * holds 2; a three-bed household's row printed a bold green `fits`, and
+   * clicking it made the card behind the dialog read 5/4 in red.
+   *
+   * The 2026-08-19 ruling settled what the HEADER counts and said nothing
+   * about what the ROW grades, which is why this went to the owner rather
+   * than being decided here. Ruled 2026-08-20: "grade against the remainder,
+   * otherwise it makes no sense."
+   */
+  it('refuses a party that fits the room but not the beds left', () => {
+    // 3 ≤ 4, so this row used to say `fits`. 3 > 4 − 2, so it does not.
+    const result = candidateFit(party({ party_size: 3 }), unit({ sleeps: 4 }), [], 2)
+    expect(result.fit).toBe('unmet')
+    expect(result.notes).toEqual(['Over capacity · needs 3, 2 free'])
+  })
+
+  it('accepts a party that fits what is left', () => {
+    const result = candidateFit(party({ party_size: 2 }), unit({ sleeps: 4 }), [], 2)
+    expect(result.fit).toBe('fits')
+    expect(result.notes).toEqual([])
+  })
+
+  it('never counts a negative bed, however over-filled the room already is', () => {
+    // The header refuses to print a negative remainder for the same reason
+    // (`Math.max(0, …)`), and says "Over capacity — 5 placed, sleeps 2"
+    // instead. Nothing fits into a room with nothing left.
+    const result = candidateFit(party({ party_size: 1 }), unit({ sleeps: 2 }), [], 5)
+    expect(result.fit).toBe('unmet')
+    expect(result.notes).toEqual(['Over capacity · needs 1, 0 free'])
+  })
+
+  it('still says nothing about a capacity nobody has recorded', () => {
+    // `null` is "nobody has counted", not "sleeps nobody" — occupants cannot
+    // turn an unmeasured room into a full one.
+    const result = candidateFit(party({ party_size: 6 }), unit({ sleeps: null }), [], 4)
+    expect(result.fit).toBe('fits')
+    expect(result.notes).toEqual([])
+  })
+
+  it('discounts the occupants of a COMBINED house against its whole-house total', () => {
+    const house = unit({
+      unit_id: 'u9',
+      code: 'gt-house',
+      name: 'Granite House',
+      sleeps: 1,
+      is_container: true,
+      is_combined: true,
+    })
+    const rooms = [
+      unit({ unit_id: 'u10', code: 'gt-house-a', sleeps: 3, parent_code: 'gt-house' }),
+      unit({ unit_id: 'u11', code: 'gt-house-b', sleeps: 3, parent_code: 'gt-house' }),
+    ]
+    // 7 beds in the house, 4 taken, so a 3-bed household is the last that fits.
+    expect(candidateFit(party({ party_size: 3 }), house, [house, ...rooms], 4).fit).toBe('fits')
+    expect(candidateFit(party({ party_size: 4 }), house, [house, ...rooms], 4).fit).toBe('unmet')
+  })
+
+  it('grades every row in the list against the same remainder', () => {
+    const rows = placementCandidates(
+      [
+        party({ household_cm_id: 1, sort_name: 'Garcia', party_size: 2 }),
+        party({ household_cm_id: 2, sort_name: 'Johnson', party_size: 3 }),
+      ],
+      unit({ sleeps: 4 }),
+      [],
+      2
+    )
+    const byId = new Map(rows.map((row) => [row.party.household_cm_id, row]))
+    expect(byId.get(1)?.fit).toBe('fits')
+    expect(byId.get(2)?.fit).toBe('unmet')
+  })
+
+  it('defaults to an EMPTY room when no occupancy is passed', () => {
+    // The parameter is optional so no caller is forced to thread a number it
+    // does not have; the default has to be the reading this function had
+    // before, not a silent zero-capacity room.
+    expect(candidateFit(party({ party_size: 4 }), unit({ sleeps: 4 }), []).fit).toBe('fits')
   })
 })
 
@@ -333,6 +428,6 @@ describe('candidateFit — one grading, and the notes the glyphs now carry (kind
   it('keeps the CAPACITY note, which no glyph carries', () => {
     const result = candidateFit(party({ party_size: 6 }), unit({ sleeps: 4 }), [])
     expect(result.fit).toBe('unmet')
-    expect(result.notes).toEqual(['Over capacity · needs 6, sleeps 4'])
+    expect(result.notes).toEqual(['Over capacity · needs 6, 4 free'])
   })
 })

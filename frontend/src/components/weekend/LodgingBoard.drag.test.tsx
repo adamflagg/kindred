@@ -390,17 +390,19 @@ describe('LodgingBoard — placing a family from the space itself (kindred#2080)
     await user.click(pickerFor('Cedar 2'))
     const options = screen.getAllByRole('option')
     expect(options).toHaveLength(1)
-    // The row names the household by its children (§3.5); the assertion this
-    // test makes — that the PLACED household is absent and the unplaced one
-    // is present — is unchanged.
-    expect(options[0]).toHaveTextContent('Mia Garcia (6)')
+    // The row names the household by its children (§3.5), and an only child's
+    // surname is lifted like any other since the 2026-08-20 ruling — so the
+    // age follows the first name. The assertion this test makes — that the
+    // PLACED household is absent and the unplaced one is present — is
+    // unchanged by either.
+    expect(options[0]).toHaveTextContent('Mia (6) Garcia')
   })
 
   it('writes the same intent the equivalent drop would', async () => {
     const user = userEvent.setup()
     boardWithUnplaced()
     await user.click(pickerFor('Cedar 2'))
-    await user.click(screen.getByRole('option', { name: /Mia Garcia/ }))
+    await user.click(screen.getByRole('option', { name: /Mia \(6\) Garcia/ }))
     expect(move).toHaveBeenCalledTimes(1)
     expect(move.mock.calls[0]?.[0]).toEqual({
       kind: 'place',

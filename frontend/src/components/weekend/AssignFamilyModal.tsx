@@ -346,13 +346,28 @@ export function AssignFamilyModal({
   // Annotated and ordered FIRST, then narrowed by what the staff member typed.
   // The typed filter is the user's own; it is not a fit gate, and it is the
   // only thing that ever removes a row.
+  /*
+   * ⚠️ THE OCCUPANCY IS THREADED IN, AND A ROW GRADES WHAT IS LEFT (owner
+   * ruling 2026-08-20). See `capacityVerdict`. Without it the row said `fits`
+   * about a party the header directly above it had just said there was no
+   * room for.
+   *
+   * `spanWidth` gates it exactly as it gates the header's own over-capacity
+   * claim, and mirrors the card (`overCapacity` gates on `spanWidth === 0`):
+   * a party holding several rooms is drawn on every one of them (#2010), so
+   * `occupants` counts the same people more than once and legitimately
+   * over-states. Subtracting an over-stated figure would print `does not fit`
+   * on rows that fit — a worse failure than the one being fixed, because the
+   * header beside it would be claiming nothing was wrong.
+   */
+  const occupied = spanWidth === 0 ? occupants : 0
   const candidates = useMemo(
     () =>
-      placementCandidates(parties, unit, units).filter(
+      placementCandidates(parties, unit, units, occupied).filter(
         (candidate) =>
           needle === '' || partySearchText(candidate.party).toLowerCase().includes(needle)
       ),
-    [parties, unit, units, needle]
+    [parties, unit, units, occupied, needle]
   )
 
   /**
@@ -411,8 +426,24 @@ export function AssignFamilyModal({
    * `flex-wrap` is the artifact's too — a long cabin name drops the sub to its
    * own line rather than squeezing it.
    */
+  /*
+   * ⚠️ NO RULE UNDER THE HEADER (owner ruling 2026-08-20), and the comment
+   * that used to justify one was simply WRONG. It said `ui/Modal`'s header
+   * slot "draws one on every dialog in the app" — it does not: the custom
+   * header branch renders `{header}` and a floating close button and nothing
+   * else, so the `border-b` here was this dialog's own and removing it moves
+   * no other surface.
+   *
+   * What the rule cost: measured in Chromium, the title's ink ended ~10px
+   * above it while it sat 4px above the search box, so the line read as
+   * belonging to the input rather than as dividing anything — "the spacing
+   * under the title and its line seems a bit too tight… why a line there at
+   * all". The approved artifact has none (`.modalcard{gap:9px}` is plain
+   * whitespace between `.mhead` and `.pinput`), and the ruled 9px is now
+   * undivided and carried entirely here, in `pb-[9px]`.
+   */
   const header = (
-    <div className="border-border flex flex-wrap items-baseline gap-x-2 gap-y-0.5 border-b px-3.5 pt-3.5 pr-14 pb-1">
+    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 px-3.5 pt-3.5 pr-14 pb-[9px]">
       <h2 className="min-w-0 truncate text-lg font-bold">{`Assign to ${unit.name}`}</h2>
       <p data-testid="assign-capacity" className="text-muted-foreground text-xs">
         {[capacitySentence(unit, units, occupants, spanWidth), ...amenityWords(unit)].join(' · ')}
@@ -501,18 +532,21 @@ export function AssignFamilyModal({
           `.modalcard{padding:14px; gap:9px}` is what every number here comes
           from, and the three sections split it:
              card top → header text      14px   `pt-3.5`
-             header text → search box     9px   `pb-1` + 1px rule + `pt-1`
+             header text → search box     9px   the header's own `pb-[9px]`
              box → dashed separator       9px   this `gap-[9px]`
              separator → first row        9px   the swap region's `pt-[9px]`
              row → row                    6px   the list's `gap-[6px]`
              last row → footer rule       9px   this `pb-[9px]`
              footer rule → footer text    4px   the footer's `pt-1`
              footer text → card bottom   14px   the footer's `pb-3.5`
-          The artifact has NO rule under its header, so its 9px there is
-          plain gap; `ui/Modal`'s header slot draws one on every dialog in the
-          app, so the 9px is split 4 + 1 + 4 around it and the total distance
-          is the artifact's exactly. */}
-      <div className="flex flex-col gap-[9px] px-3.5 pt-1 pb-[9px]">
+          The artifact has NO rule under its header and NEITHER DOES THIS ONE
+          any more (owner, 2026-08-20) — the 9px above is plain gap, carried by
+          the header's own `pb-[9px]`, so this element adds nothing on top of
+          it. `pt-0` is therefore load-bearing rather than noise: the previous
+          `pt-1` was the lower half of a 4 + rule + 4 split that no longer
+          exists, and leaving it would make the one distance §3.3 ruled 13px
+          instead of 9. */}
+      <div className="flex flex-col gap-[9px] px-3.5 pt-0 pb-[9px]">
         {/* THE ONE LIVE INPUT, and it is also the occupant name. It is never
             disabled by the flip and never remounted by it — it is rendered
             outside the swap region below precisely so React keeps the same
@@ -648,10 +682,6 @@ export function AssignFamilyModal({
                 // considered, never against a placement this party does not
                 // have. See `needGlyphs.NeedReading`.
                 const glyphs = resolveNeedGlyphs(party, unit, 'prospective')
-                // The detail line earns its height only if it carries
-                // something. The verdict alone does not qualify — it moves
-                // back up to line 1 rather than holding a line open.
-                const hasDetail = glyphs.length > 0 || lastYearCabin.length > 0
                 return (
                   <button
                     key={partyKey(party)}
@@ -719,52 +749,68 @@ export function AssignFamilyModal({
                       </span>
 
                       {/* LINE 2 — what they asked for, where they were, how
-                          this room answers. RENDERED ONLY WHEN IT CARRIES
-                          SOMETHING: a household with no glyphs and no cabin
-                          would otherwise pay a whole line for one word, and
-                          the common case must not cost more than it did
-                          before. When it is absent the verdict rejoins line 1
-                          below. */}
-                      {hasDetail ? (
-                        <span
-                          data-testid="candidate-detail-line"
-                          className="flex min-w-0 items-center gap-1.5"
-                        >
-                          {/* `gap-[3px]` — the artifact's `.cglyphs{gap:3px}`. */}
+                          this room answers. ALWAYS RENDERED (owner ruling
+                          2026-08-20), and it used to be dropped when it held
+                          nothing but the verdict.
+
+                          ⚠️ THE COLLAPSE WAS THE WRONG SAVING, AND THE
+                          MEASUREMENT IS WHY. Its reasoning was sound as far as
+                          it went — a household with no glyphs and no cabin
+                          should not pay a whole line for one word — but
+                          dropping the line put the verdict back on line 1,
+                          where it competes with the identity. The verdict is
+                          at its LONGEST precisely when the row carries nothing
+                          else, because an over-capacity note is a sentence:
+                          measured in Chromium, a three-child household with no
+                          glyphs, no cabin and 9 beds against 4 rendered its
+                          name clipped at 268px of the 335px it wanted. The
+                          same failure the two-line row exists to prevent,
+                          reached by the branch meant to be cheap.
+
+                          It also ends a raggedness: rows measured 53.5px with
+                          a glyph, 50px without one and 31.5px collapsed, in
+                          one list. */}
+                      <span
+                        data-testid="candidate-detail-line"
+                        className="flex min-w-0 items-center gap-1.5"
+                      >
+                        {/* ⚠️ RENDERED ONLY WHEN THERE ARE GLYPHS (owner ruling
+                            2026-08-20). An empty flex child still takes the
+                            line's 6px gap, so last year's cabin began at x=404
+                            while the name directly above it began at x=398 — a
+                            6px indent drawn by a glyph that is not there, and
+                            not the 26px a row WITH a glyph indents by either,
+                            so it lined nothing up. Reserving a fixed slot so
+                            every cabin shares one x was the alternative, was
+                            mocked, and was rejected: "drop the empty strip".
+                            `gap-[3px]` is the artifact's `.cglyphs{gap:3px}`. */}
+                        {glyphs.length > 0 ? (
                           <span className="flex flex-shrink-0 items-center gap-[3px]">
                             {glyphs.map((glyph) => (
                               <NeedGlyphMark key={glyph.key} glyph={glyph} insideControl />
                             ))}
                           </span>
-                          {/* THE COLUMN THAT YIELDS. `min-w-0 flex-1 truncate`
-                              rather than the `whitespace-nowrap` it carried on
-                              one line: a cabin name is the one thing here that
-                              still means something half-read. */}
-                          <span className="text-muted-foreground min-w-0 flex-1 truncate text-xs">
-                            {lastYearCabin}
-                          </span>
-                          <span
-                            data-testid={`candidate-${partyKey(party)}-fit`}
-                            className={`flex-shrink-0 text-[11px] font-bold whitespace-nowrap ${fitTone(candidate)}`}
-                          >
-                            {fitVerdict(candidate)}
-                          </span>
+                        ) : null}
+                        {/* THE COLUMN THAT YIELDS. `min-w-0 flex-1 truncate`
+                            rather than the `whitespace-nowrap` it carried on
+                            one line: a cabin name is the one thing here that
+                            still means something half-read. Empty when there is
+                            no cabin on file, where it becomes the spacer that
+                            keeps the verdict at the line's end. */}
+                        <span className="text-muted-foreground min-w-0 flex-1 truncate text-xs">
+                          {lastYearCabin}
                         </span>
-                      ) : null}
-                    </span>
-
-                    {/* The single-line fallback's verdict — see the detail
-                        line above. Stated for every row either way (see
-                        `fitVerdict`): capacity is the only dimension that
-                        still spends words, because no glyph carries it. */}
-                    {hasDetail ? null : (
-                      <span
-                        data-testid={`candidate-${partyKey(party)}-fit`}
-                        className={`flex-shrink-0 text-[11px] font-bold whitespace-nowrap ${fitTone(candidate)}`}
-                      >
-                        {fitVerdict(candidate)}
+                        {/* Stated for every row (see `fitVerdict`): capacity is
+                            the only dimension that still spends words, because
+                            no glyph carries it. */}
+                        <span
+                          data-testid={`candidate-${partyKey(party)}-fit`}
+                          className={`flex-shrink-0 text-[11px] font-bold whitespace-nowrap ${fitTone(candidate)}`}
+                        >
+                          {fitVerdict(candidate)}
+                        </span>
                       </span>
-                    )}
+                    </span>
                   </button>
                 )
               })}

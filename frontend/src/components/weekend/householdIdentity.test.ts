@@ -498,10 +498,46 @@ describe('dedupeChildNames -- kindred#2180', () => {
     expect(run.sharedSurname).toBe('')
   })
 
-  it('leaves an only child their whole name -- one name shares nothing', () => {
+  it('lifts the surname off an only child too, so the age follows the first name', () => {
+    /*
+     * ⚠️ THIS EXPECTATION IS THE REVERSE OF THE ONE IT REPLACES, BY RULING
+     * (owner, 2026-08-20) -- and the reasoning it overturns is worth keeping
+     * rather than deleting. kindred#2180 lifted a surname only for two or
+     * more children, on the argument that "a single child shares nothing with
+     * anybody", so an only child printed `Ava Johnson (5)` while a pair
+     * printed `Ava (5) · Liam (8) Johnson`.
+     *
+     * What that argument missed is what the lift is FOR on this board. It is
+     * not a deduplication for its own sake: it puts the AGE immediately after
+     * the first name, which is the pair staff read when they are matching
+     * families by how old the children are. `Ava Johnson (5)` puts a surname
+     * between them; `Ava (5) Johnson` does not, and the review artifact drew
+     * it that way throughout.
+     *
+     * The two-or-more gate remains for ADULTS (`dedupeAdultNames`), whose
+     * surname is a guessed trailing token rather than a structured field.
+     */
     const run = dedupeChildNames([
       { person_cm_id: 1, display_name: 'Ava Johnson', last_name: 'Johnson' },
     ])
+    expect(run.names).toEqual(['Ava'])
+    expect(run.sharedSurname).toBe('Johnson')
+  })
+
+  it('still leaves an only child whose name IS the surname whole', () => {
+    // The `nameBeforeSurname` guard is what the relaxed gate must not reach
+    // past: lifting `Johnson` off `Johnson` leaves an empty segment, and the
+    // card would render a bare age in front of a surname.
+    const run = dedupeChildNames([
+      { person_cm_id: 1, display_name: 'Johnson', last_name: 'Johnson' },
+    ])
+    expect(run.names).toEqual(['Johnson'])
+    expect(run.sharedSurname).toBe('')
+  })
+
+  it('still leaves an only child with no surname on file alone', () => {
+    // Nothing structured to lift. The run prints exactly what is filed.
+    const run = dedupeChildNames([{ person_cm_id: 1, display_name: 'Ava Johnson', last_name: '' }])
     expect(run.names).toEqual(['Ava Johnson'])
     expect(run.sharedSurname).toBe('')
   })
@@ -807,6 +843,19 @@ describe('childrenRun -- one derivation for the card and the modal (kindred#2072
         fmt
       )
     ).toBe('Liam (8) · Ava Johnson')
+  })
+
+  it('puts an only child’s age straight after their first name (owner, 2026-08-20)', () => {
+    // The whole point of the ruling, stated at the surface that renders it:
+    // `Isla (3) Nguyen`, not `Isla Nguyen (3)`. Both the card's bold line and
+    // the modal's candidate row read this one function, so they cannot
+    // disagree about it.
+    expect(
+      childrenRunLabel(
+        [{ person_cm_id: 1, display_name: 'Ava Johnson', last_name: 'Johnson', age: 5 }],
+        fmt
+      )
+    ).toBe('Ava (5) Johnson')
   })
 
   it('names a child with nothing on file rather than leaving a blank segment', () => {

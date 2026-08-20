@@ -297,9 +297,19 @@ function nameBeforeSurname(displayName: string, surname: string): string | null 
   return head.length > 0 ? head : null
 }
 
-function dedupedRun(displayNames: readonly string[], surname: string): DedupedNameRun {
+/**
+ * @param minimum How many names it takes before the surname is worth lifting.
+ *   `1` for children and `2` for adults, and the difference is the strength of
+ *   the signal rather than a taste: a child's surname is the structured
+ *   `last_name` field, an adult's is a guessed trailing token.
+ */
+function dedupedRun(
+  displayNames: readonly string[],
+  surname: string,
+  minimum: number
+): DedupedNameRun {
   const unchanged: DedupedNameRun = { names: [...displayNames], sharedSurname: '' }
-  if (displayNames.length < 2 || surname.length === 0) return unchanged
+  if (displayNames.length < minimum || surname.length === 0) return unchanged
   const heads: string[] = []
   for (const name of displayNames) {
     const head = nameBeforeSurname(name, surname)
@@ -310,15 +320,28 @@ function dedupedRun(displayNames: readonly string[], surname: string): DedupedNa
 }
 
 /**
- * The children of a party as one run, with a surname every one of them
- * shares printed once at the end (kindred#2180).
+ * The children of a party as one run, with the surname printed once at the
+ * end (kindred#2180).
  *
  * Driven by the structured `last_name`, so a multi-word or hyphenated
- * surname is lifted WHOLE. Nothing is lifted unless all of it holds: two or
- * more children, every one carrying the same surname, and every one having
- * something in front of it. A single child shares nothing with anybody, and
- * a household whose children have two surnames has nothing to factor out --
- * both print unchanged, which is the right answer rather than a gap.
+ * surname is lifted WHOLE. Nothing is lifted unless every child carries the
+ * same surname and every one has something in front of it: a household whose
+ * children have two surnames has nothing to factor out, and one whose only
+ * child IS the surname would be left with a bare age.
+ *
+ * ⚠️ ONE CHILD IS ENOUGH, AND IT WAS NOT UNTIL 2026-08-20. kindred#2180 set
+ * the floor at two on the argument that "a single child shares nothing with
+ * anybody" -- so an only child read `Ava Johnson (5)` while a pair read
+ * `Ava (5) · Liam (8) Johnson`. The owner ruled the floor down to one, and
+ * the reason is what the lift is FOR on this board: it is not deduplication
+ * for its own sake, it puts the AGE immediately after the first name, which
+ * is the pair staff read when they are matching families by how old the
+ * children are. A surname sitting between them costs the same on a household
+ * with one child as on a household with three, and the approved design
+ * artifact drew `Isla (3) Nguyen` throughout.
+ *
+ * The floor stays at two for ADULTS -- see `dedupeAdultNames`, whose surname
+ * is a guessed trailing token rather than a field.
  */
 export function dedupeChildNames(
   children: readonly PartyChildRow[] | null | undefined
@@ -336,7 +359,8 @@ export function dedupeChildNames(
   ) {
     return { names: displayNames, sharedSurname: '' }
   }
-  return dedupedRun(displayNames, shared)
+  // ONE child is enough (owner, 2026-08-20) -- see this function's doc.
+  return dedupedRun(displayNames, shared, 1)
 }
 
 /**
@@ -370,7 +394,9 @@ export function dedupeAdultNames(adults: readonly PartyAdultRow[]): DedupedNameR
   if (trailing.some((token) => token.toLowerCase() !== first.toLowerCase())) {
     return { names: displayNames, sharedSurname: '' }
   }
-  return dedupedRun(displayNames, first)
+  // TWO, and never one: a lone adult's "surname" here is only the last word
+  // of free text, so lifting it off would print a first name and a guess.
+  return dedupedRun(displayNames, first, 2)
 }
 
 /**

@@ -1129,7 +1129,17 @@ describe('FamilyCard — a shared surname is not repeated', () => {
     )
   })
 
-  it('leaves an only child their whole name', () => {
+  it('lifts an only child’s surname too, so the age follows the first name', () => {
+    /*
+     * ⚠️ REVERSED BY RULING (owner, 2026-08-20). This test used to assert
+     * `Noah Johnson (8)`, on kindred#2180's "a single child shares nothing
+     * with anybody". The lift's purpose on this board is to put the AGE next
+     * to the first name — the pair staff read when they are matching families
+     * by how old the children are — and a surname sits between them just as
+     * much on a household with one child as on one with three. The rule moved
+     * in `dedupeChildNames`, so the card, the details panel and the Assign
+     * modal's candidate rows all moved together.
+     */
     render(
       <FamilyCard
         party={party({
@@ -1140,7 +1150,7 @@ describe('FamilyCard — a shared surname is not repeated', () => {
         onOpen={vi.fn()}
       />
     )
-    expect(screen.getByTestId('family-card-name')).toHaveTextContent('Noah Johnson (8)')
+    expect(screen.getByTestId('family-card-name')).toHaveTextContent('Noah (8) Johnson')
   })
 
   it('prints the adults’ shared surname once, after their line', () => {

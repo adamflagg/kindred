@@ -112,19 +112,43 @@ interface DimensionVerdict {
  * — a note beside a red bathroom glyph saying the bathroom is missing states
  * one fact twice, which is exactly why `No private bathroom` was struck from
  * the family card. Capacity has no glyph, so it keeps its sentence.
+ *
+ * ⚠️ IT GRADES THE BEDS LEFT, NOT THE ROOM (owner ruling 2026-08-20), AND IT
+ * DID NOT USED TO. `beds <= capacity` asked "would this party fit an empty
+ * room", while the header above these rows has asked "will they fit in what
+ * is LEFT" since the 2026-08-19 ruling — it prints "2 of 4 beds free". The
+ * two disagreed in the one direction that misleads: Aspen sleeps 4 and holds
+ * 2, so a three-bed household's row printed a bold green `fits`, and the card
+ * behind the dialog read 5/4 in red the moment staff clicked it. The 08-19
+ * ruling settled what the header COUNTS and never what the row GRADES, which
+ * is why this went back to the owner: *"grade against the remainder,
+ * otherwise it makes no sense."*
+ *
+ * The note counts free beds for the same reason — "sleeps 4" is no longer the
+ * number being graded against, so printing it beside "needs 3" invited the
+ * reader to do the subtraction the row had just refused to do.
+ *
+ * @param occupied Beds already taken on this card, which a candidate has to
+ *   fit AROUND. `0` for an empty room, and the default — a caller with no
+ *   occupancy figure must get the reading this had before, not a room graded
+ *   as full.
  */
 function capacityVerdict(
   party: RosterPartyRow,
   unit: LodgingUnitRow,
-  units: LodgingUnitRow[]
+  units: LodgingUnitRow[],
+  occupied: number
 ): DimensionVerdict {
   const capacity = effectiveSleeps(unit, units)
   if (capacity === null) return { fit: 'fits', note: null }
   const beds = partyBeds(party)
-  if (beds <= capacity) return { fit: 'fits', note: null }
+  // `Math.max(0, …)` for the same reason the header does it: a room already
+  // over its capacity has nothing left, never a negative number of beds.
+  const free = Math.max(0, capacity - occupied)
+  if (beds <= free) return { fit: 'fits', note: null }
   return {
     fit: 'unmet',
-    note: `Over capacity · needs ${String(beds)}, sleeps ${String(capacity)}`,
+    note: `Over capacity · needs ${String(beds)}, ${String(free)} free`,
   }
 }
 
@@ -146,11 +170,13 @@ function capacityVerdict(
  *
  * @param units The whole registry, needed only to total a combined house's
  *   capacity. `[]` is correct for every leaf.
+ * @param occupied Beds already taken on this card — see `capacityVerdict`.
  */
 export function candidateFit(
   party: RosterPartyRow,
   unit: LodgingUnitRow,
-  units: LodgingUnitRow[] = []
+  units: LodgingUnitRow[] = [],
+  occupied = 0
 ): PlacementCandidate {
   // ONE grading, in `needGlyphs.ts`, read in its PROSPECTIVE sense — see that
   // module's `NeedReading`. All four ruled needs, where this table used to
@@ -158,7 +184,7 @@ export function candidateFit(
   // access was hatched mid-drag on a cabin that could not supply it and
   // annotated `fits` right here.
   const glyphs = resolveNeedGlyphs(party, unit, 'prospective')
-  const capacity = capacityVerdict(party, unit, units)
+  const capacity = capacityVerdict(party, unit, units, occupied)
 
   let fit: CandidateFitLevel = capacity.fit
   for (const glyph of glyphs) fit = worseOf(glyph.verdict, fit)
@@ -179,10 +205,11 @@ const DISPLAY_ORDER: readonly CandidateFitLevel[] = ['fits', 'partial', 'unmet']
 export function placementCandidates(
   parties: RosterPartyRow[],
   unit: LodgingUnitRow,
-  units: LodgingUnitRow[] = []
+  units: LodgingUnitRow[] = [],
+  occupied = 0
 ): PlacementCandidate[] {
   return parties
-    .map((party) => candidateFit(party, unit, units))
+    .map((party) => candidateFit(party, unit, units, occupied))
     .sort((a, b) => {
       const byFit = DISPLAY_ORDER.indexOf(a.fit) - DISPLAY_ORDER.indexOf(b.fit)
       if (byFit !== 0) return byFit

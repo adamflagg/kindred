@@ -70,7 +70,12 @@ const NGUYEN = party({
   display_name: 'Nguyen',
   sort_name: 'Nguyen',
   adults: [{ adult_number: 1, display_name: 'Mai Nguyen', relationship: 'Mother' }],
-  children: [{ person_cm_id: 9002, display_name: 'Isla Nguyen', age: 3, grade: 0 }],
+  // `last_name` is what the surname lift reads — an only child with a blank
+  // one prints whole, which is a real case (`householdIdentity.test.ts` pins
+  // it) but not the one this fixture is here to exercise.
+  children: [
+    { person_cm_id: 9002, display_name: 'Isla Nguyen', last_name: 'Nguyen', age: 3, grade: 0 },
+  ],
   party_size: 2,
   last_year_cabin: 'Lakeside',
 })
@@ -233,16 +238,39 @@ describe('AssignFamilyModal — the geometry the owner ruled on 2026-08-20', () 
     const header = screen.getByRole('heading', { level: 2 }).parentElement
     const body = screen.getByTestId('assign-swap-region').parentElement
     const footer = screen.getByTestId('modal-footer').firstElementChild
-    // 14px in, 4px + rule + 4px out — the artifact has no header rule, so its
-    // 9px is plain gap and ours is split around the one `ui/Modal` draws.
+    // 14px in, 9px of PLAIN GAP out — see the no-rule test below.
     expect(header?.className).toContain('px-3.5')
     expect(header?.className).toContain('pt-3.5')
-    expect(header?.className).toContain('pb-1')
+    expect(header?.className).toContain('pb-[9px]')
     // 9px between the box and the separator, and again below the region.
     expect(body?.className).toContain('gap-[9px]')
     expect(body?.className).toContain('pb-[9px]')
     expect(footer?.className).toContain('pt-1')
     expect(footer?.className).toContain('pb-3.5')
+  })
+
+  it('puts NOTHING between the title and the search box but 9px of ground', () => {
+    /*
+     * ⚠️ THE HEADER RULE IS GONE, BY RULING (owner, 2026-08-20), and the line
+     * this replaces was drawn by THIS dialog, never by `ui/Modal` — the
+     * comment that used to sit at the code site claimed otherwise and was
+     * wrong. `ui/Modal`'s custom-header slot renders `{header}` and a floating
+     * close button and draws no rule of its own, so removing it moves no other
+     * dialog.
+     *
+     * Measured in Chromium before the change: the title's ink ended ~10px
+     * above the rule while the rule sat 4px above the search box, so the line
+     * read as belonging to the input rather than as dividing anything. The
+     * approved artifact has no rule at all — `.modalcard{gap:9px}` is plain
+     * whitespace between `.mhead` and `.pinput` — and the 9px is now
+     * undivided, carried entirely by the header's own bottom padding.
+     */
+    renderModal()
+    const header = screen.getByRole('heading', { level: 2 }).parentElement
+    const body = screen.getByTestId('assign-swap-region').parentElement
+    expect(header?.className).not.toContain('border-b')
+    // The whole 9px lives on the header now, so the body must not add to it.
+    expect(body?.className).toContain('pt-0')
   })
 
   it('draws BOTH separators dashed, never one of each', () => {
@@ -276,25 +304,81 @@ describe('AssignFamilyModal — the geometry the owner ruled on 2026-08-20', () 
 
     // The name shares line 1 with the bed count only.
     expect(identityLine?.children).toHaveLength(2)
-    expect(identityLine).toHaveTextContent('Isla Nguyen (3)')
+    expect(identityLine).toHaveTextContent('Isla (3) Nguyen')
     // The verdict is on the detail line, not competing with the name.
     expect(detailLine).toContainElement(screen.getByTestId('candidate-household-102-fit'))
     expect(detailLine).toHaveTextContent('Lakeside')
   })
 
-  it('drops the detail line entirely when there is nothing to put on it', () => {
+  it('KEEPS the second line even when the verdict is all it carries', () => {
     /*
-     * A household with no glyphs and no last-year cabin would otherwise pay a
-     * whole line for one word. The row collapses back to a single line and the
-     * verdict rejoins the identity — which is also what keeps the common case
-     * from costing 20px more than it did before.
+     * ⚠️ THIS REVERSES THE COLLAPSE THIS ROW SHIPPED WITH (owner, 2026-08-20),
+     * and the reasoning it overturns is kept because it was not wrong, only
+     * incomplete. The collapse existed so a household with no glyphs and no
+     * last-year cabin would not pay a whole line for one word — the common
+     * case must not cost 20px more than it did before.
+     *
+     * What it missed is that the collapse puts the verdict back on line 1,
+     * where it competes with the identity — and the verdict is at its LONGEST
+     * exactly when the row has nothing else on it, because an over-capacity
+     * note is a sentence. Measured in Chromium: a three-child household with
+     * no glyphs, no cabin and 9 beds against 4 rendered its name clipped at
+     * 268px of the 335px it wanted. Line 2 gives the name the full 447px.
+     *
+     * It also settles a raggedness the collapse caused: rows were 53.5px with
+     * a glyph, 50px without one and 31.5px collapsed, in one list.
      */
     renderModal({
       parties: [party({ household_cm_id: 120, flags: {}, last_year_cabin: '' })],
     })
     const row = screen.getByTestId('candidate-household-120')
-    expect(row.querySelector('[data-testid="candidate-detail-line"]')).toBeNull()
-    expect(row).toContainElement(screen.getByTestId('candidate-household-120-fit'))
+    const detailLine = row.querySelector('[data-testid="candidate-detail-line"]')
+    expect(detailLine).not.toBeNull()
+    expect(detailLine).toContainElement(screen.getByTestId('candidate-household-120-fit'))
+    // Line 1 is the identity and the bed count, and nothing has rejoined it.
+    expect(row.firstElementChild?.firstElementChild?.children).toHaveLength(2)
+  })
+
+  it('omits the glyph strip on a row that has no glyphs, rather than a gap where one would be', () => {
+    /*
+     * ⚠️ MEASURED, owner ruling 2026-08-20. The strip rendered unconditionally
+     * and an empty flex child still takes the line's 6px gap, so last year's
+     * cabin started at x=404 while the name directly above it started at
+     * x=398 — a 6px indent produced by a glyph that is not there. Rows WITH a
+     * glyph put the cabin at x=424, so the indent did not line anything up
+     * either.
+     *
+     * The alternative — reserving a fixed 20px slot so every cabin shares one
+     * x — was mocked and rejected (owner, 2026-08-20): "drop the empty strip".
+     */
+    renderModal({
+      parties: [party({ household_cm_id: 121, flags: {}, last_year_cabin: 'Willow Creek' })],
+    })
+    const detailLine = screen
+      .getByTestId('candidate-household-121')
+      .querySelector('[data-testid="candidate-detail-line"]')
+    // The cabin IS the first thing on the line — no zero-width strip in front.
+    expect(detailLine?.firstElementChild).toHaveTextContent('Willow Creek')
+  })
+
+  it('still draws the glyph strip first when there ARE glyphs', () => {
+    // The negative pin's other half: dropping the strip must not drop the
+    // glyphs with it, and they stay in front of the cabin.
+    renderModal({
+      unit: unit({ bathroom: 'shared' }),
+      parties: [
+        party({
+          household_cm_id: 122,
+          flags: { needs_private_bathroom: true },
+          last_year_cabin: 'Willow Creek',
+        }),
+      ],
+    })
+    const detailLine = screen
+      .getByTestId('candidate-household-122')
+      .querySelector('[data-testid="candidate-detail-line"]')
+    expect(detailLine?.firstElementChild?.querySelector('svg')).not.toBeNull()
+    expect(detailLine?.children[1]).toHaveTextContent('Willow Creek')
   })
 
   it('separates the rows by the artifact’s 6px, not the chip row’s 4px', () => {
@@ -361,15 +445,15 @@ describe('AssignFamilyModal — the candidate rows', () => {
      */
     renderModal()
     const row = screen.getByTestId('candidate-household-102')
-    // ⚠️ `Isla Nguyen (3)`, and the review artifact draws `Isla (3) Nguyen`.
-    // The artifact lifts the surname off a household with ONE child;
-    // kindred#2180's rule does not — "a single child shares nothing with
-    // anybody" — and the shipped FAMILY CARD therefore prints the same
-    // `Isla Nguyen (3)`. The ruling is that this row shows what the card's
-    // bold line shows, so the card wins over the mock, exactly as vocabulary
-    // §8 says it must. The artifact's own family card diverges here too; that
-    // is a stage-1 observation, not something this row introduced.
-    expect(row).toHaveTextContent('Isla Nguyen (3)')
+    // ⚠️ `Isla (3) Nguyen`, WHICH THE ROW DID NOT PRINT AT FIRST. #2506
+    // shipped `Isla Nguyen (3)`, because kindred#2180 lifted a shared surname
+    // only for two or more children ("a single child shares nothing with
+    // anybody") and the ruling was that this row shows what the card's bold
+    // line shows. The owner ruled the other half on 2026-08-20 — the age
+    // follows the first name for an only child too — so the rule itself moved,
+    // in `dedupeChildNames`, and the card moved with it. The row still shows
+    // what the card shows; both now agree with the artifact.
+    expect(row).toHaveTextContent('Isla (3) Nguyen')
     expect(row).not.toHaveTextContent('Mai Nguyen')
     expect(row).toHaveTextContent('2')
     expect(row).toHaveTextContent('Lakeside')
@@ -463,8 +547,50 @@ describe('AssignFamilyModal — the candidate rows', () => {
       parties: [party({ household_cm_id: 104, party_size: 6 })],
     })
     expect(screen.getByTestId('candidate-household-104')).toHaveTextContent(
-      'Over capacity · needs 6, sleeps 2'
+      'Over capacity · needs 6, 2 free'
     )
+  })
+
+  it('grades the row against the beds LEFT, exactly as the header counts them', () => {
+    /*
+     * ⚠️ THE DEFECT: a row said a bold green `fits` about a household that
+     * would over-fill the room. The header has answered "will they fit in what
+     * is left" since the 2026-08-19 ruling, and the row graded the room's
+     * WHOLE capacity — so with Ridge 1 sleeping 4 and holding 2, a three-bed
+     * household read `fits`, and the card behind the dialog went to 5/4 red
+     * the moment it was clicked. Ruled 2026-08-20: grade against the
+     * remainder. `placementCandidates` carries the arithmetic; this pins that
+     * the modal actually threads its own occupancy into it.
+     */
+    renderModal({
+      unit: unit({ sleeps: 4 }),
+      occupants: 2,
+      parties: [party({ household_cm_id: 130, party_size: 3 })],
+    })
+    expect(screen.getByTestId('assign-capacity')).toHaveTextContent('2 of 4 beds free')
+    const verdict = screen.getByTestId('candidate-household-130-fit')
+    expect(verdict).toHaveTextContent('Over capacity · needs 3, 2 free')
+    expect(verdict).not.toHaveTextContent('fits')
+  })
+
+  it('withholds the remainder from a SPANNING placement, exactly as the card does', () => {
+    /*
+     * The other half of `spanWidth`, and it has to move with the first. A
+     * party holding several rooms is drawn on every one of them (#2010), so
+     * the same people are counted on more than one card and `occupants`
+     * legitimately over-states. The card keeps the figure and withholds the
+     * verdict (`overCapacity` gates on `spanWidth === 0`), and the header here
+     * already mirrors that. Subtracting an over-stated occupancy would print
+     * `does not fit` on rows that fit perfectly well, which is worse than the
+     * defect above: the header would be saying nothing was wrong.
+     */
+    renderModal({
+      unit: unit({ sleeps: 4 }),
+      occupants: 5,
+      spanWidth: 2,
+      parties: [party({ household_cm_id: 131, party_size: 3 })],
+    })
+    expect(screen.getByTestId('candidate-household-131-fit')).toHaveTextContent('fits')
   })
 
   /*
@@ -499,8 +625,15 @@ describe('AssignFamilyModal — the candidate rows', () => {
   it('states it in the SAME red the unmet glyph uses when it does not', () => {
     // The warn ink `NeedGlyph` owns (`text-red-800 dark:text-red-300`), not a
     // second red. The artifact's `--warn-fg` IS those two Tailwind steps.
+    //
+    // `occupants: 0` isolates the dimension under test. The default fixture
+    // room holds 2 of 4, and since the 2026-08-20 remainder ruling a 3-bed
+    // household no longer fits it — so the row would carry the CAPACITY note,
+    // which is a different sentence in the same red and would leave this test
+    // passing for the wrong reason.
     renderModal({
       unit: unit({ bathroom: 'shared' }),
+      occupants: 0,
       parties: [party({ household_cm_id: 105, flags: { needs_private_bathroom: true } })],
     })
     const verdict = screen.getByTestId('candidate-household-105-fit')
