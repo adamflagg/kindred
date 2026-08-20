@@ -1,4 +1,5 @@
 import { render, screen, fireEvent } from '@testing-library/react'
+import { useRef } from 'react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { Modal } from './Modal'
 import { hasOpenModal } from './modalStack'
@@ -369,6 +370,84 @@ describe('Modal', () => {
 
       const dialog = screen.getByRole('dialog')
       expect(dialog.contains(document.activeElement)).toBe(true)
+    })
+
+    /**
+     * ⚠️ THESE THREE PIN TWO MEASURED DEFECTS, NOT A NICETY (found 2026-08-20
+     * while comparing `AssignFamilyModal` against its design artifact in a
+     * real browser, and reproduced in jsdom before the fix).
+     *
+     * A child's `autoFocus` LOST every time — React applies it during commit
+     * and the focus effect runs after, so `focusable[0]` took it back. In a
+     * dialog with a custom `header` that is the CLOSE BUTTON, since Close is
+     * rendered above the body: `AssignFamilyModal` opened with focus on
+     * Close, where a printable key does nothing and Space or Enter shuts the
+     * dialog, while its own doc said "the modal exists to be typed into".
+     *
+     * And it broke RESTORATION, silently: `previouslyFocusedRef` captures
+     * `document.activeElement` in that same effect, by which time `autoFocus`
+     * had moved it inside the dialog — so on close the modal restored focus
+     * to its own detached field and focus landed on `<body>` instead of on
+     * the control that opened it. Probed before the fix: `BODY is NOT the
+     * trigger`.
+     *
+     * `initialFocusRef` closes both. Nothing changes for a dialog that passes
+     * none, which the second test pins.
+     */
+    it('focuses initialFocusRef rather than the Close button', () => {
+      function Harness() {
+        const ref = useRef<HTMLInputElement>(null)
+        return (
+          <Modal
+            isOpen={true}
+            onClose={() => {}}
+            header={<h2>Custom header</h2>}
+            ariaLabel="Auto"
+            initialFocusRef={ref}
+          >
+            <input ref={ref} placeholder="Search field" />
+          </Modal>
+        )
+      }
+      render(<Harness />)
+      expect(document.activeElement).toBe(screen.getByPlaceholderText('Search field'))
+    })
+
+    it('still lands on the first focusable element when no initialFocusRef is given', () => {
+      render(
+        <Modal isOpen={true} onClose={() => {}} header={<h2>Custom header</h2>} ariaLabel="Plain">
+          <input placeholder="Untouched field" />
+        </Modal>
+      )
+      expect(document.activeElement).toBe(screen.getByRole('button', { name: /close/i }))
+    })
+
+    it('restores focus to the opener even when a field was focused on open', () => {
+      // The second half of the defect. With `autoFocus` this restored to the
+      // dialog's own detached input and focus fell to `<body>`.
+      const trigger = document.createElement('button')
+      trigger.textContent = 'Assign'
+      document.body.appendChild(trigger)
+      trigger.focus()
+      function Harness({ open }: { open: boolean }) {
+        const ref = useRef<HTMLInputElement>(null)
+        return (
+          <Modal
+            isOpen={open}
+            onClose={() => {}}
+            header={<h2>Custom header</h2>}
+            ariaLabel="Auto"
+            initialFocusRef={ref}
+          >
+            <input ref={ref} placeholder="Search field" />
+          </Modal>
+        )
+      }
+      const { rerender } = render(<Harness open={true} />)
+      expect(document.activeElement).toBe(screen.getByPlaceholderText('Search field'))
+      rerender(<Harness open={false} />)
+      expect(document.activeElement).toBe(trigger)
+      trigger.remove()
     })
 
     it('restores focus to the previously focused element when the dialog closes', () => {

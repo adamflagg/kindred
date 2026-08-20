@@ -10,6 +10,8 @@ import {
   attendingAdults,
   childSurnames,
   dedupeAdultNames,
+  childrenRun,
+  childrenRunLabel,
   dedupeChildNames,
   familyNameLabel,
   isAttendingAdultName,
@@ -752,5 +754,97 @@ describe('partySearchText', () => {
       party({ grain: 'person', person_cm_id: 501, display_name: 'Liam Garcia', adults: [] })
     )
     expect(text).toContain('Liam Garcia')
+  })
+})
+
+/**
+ * The children-run, lifted out of `FamilyCard`'s `ChildList` so the Assign
+ * modal's candidate rows can print the SAME identity (owner ruling
+ * 2026-08-20, kindred#2072 §3.5).
+ *
+ * The card renders it as JSX and the modal needs it as text, so the shared
+ * derivation returns SEGMENTS and the label is built from them. Everything
+ * that used to be a decision inside `ChildList` -- the youngest-first
+ * ordering, the unknown-age bucket, the omitted age, the blank-name fallback,
+ * the lifted surname -- is made once, here.
+ */
+describe('childrenRun -- one derivation for the card and the modal (kindred#2072)', () => {
+  const fmt = (age: number) => String(Math.trunc(age))
+
+  it('runs youngest first, with the shared surname printed once at the end', () => {
+    expect(
+      childrenRunLabel(
+        [
+          { person_cm_id: 2, display_name: 'Liam Johnson', last_name: 'Johnson', age: 8 },
+          { person_cm_id: 1, display_name: 'Ava Johnson', last_name: 'Johnson', age: 5 },
+        ],
+        fmt
+      )
+    ).toBe('Ava (5) · Liam (8) Johnson')
+  })
+
+  it('prints two surnames in full rather than inventing a shared one', () => {
+    expect(
+      childrenRunLabel(
+        [
+          { person_cm_id: 1, display_name: 'Ava Johnson', last_name: 'Johnson', age: 5 },
+          { person_cm_id: 2, display_name: 'Liam Garcia', last_name: 'Garcia', age: 8 },
+        ],
+        fmt
+      )
+    ).toBe('Ava Johnson (5) · Liam Garcia (8)')
+  })
+
+  it('omits an age it does not have, and sorts that child LAST rather than first', () => {
+    // `(a.age ?? 0) - (b.age ?? 0)` would coerce the unknown to 0 and lead
+    // with it -- the exact bug `youngestFirst` was written to avoid.
+    expect(
+      childrenRunLabel(
+        [
+          { person_cm_id: 1, display_name: 'Ava Johnson', last_name: 'Johnson', age: null },
+          { person_cm_id: 2, display_name: 'Liam Johnson', last_name: 'Johnson', age: 8 },
+        ],
+        fmt
+      )
+    ).toBe('Liam (8) · Ava Johnson')
+  })
+
+  it('names a child with nothing on file rather than leaving a blank segment', () => {
+    expect(
+      childrenRunLabel([{ person_cm_id: 1, display_name: '', last_name: '', age: 4 }], fmt)
+    ).toBe('Unnamed camper (4)')
+  })
+
+  it('is EMPTY for a party with no children, so a caller can fall back', () => {
+    // The modal's candidate row falls back to `partyIdentityLabel` on this,
+    // which is what an adult-weekend person-grain party gets.
+    expect(childrenRunLabel([], fmt)).toBe('')
+    expect(childrenRunLabel(undefined, fmt)).toBe('')
+  })
+
+  it('returns keyed segments, so the card can render one element per child', () => {
+    const run = childrenRun(
+      [
+        { person_cm_id: 22, display_name: 'Liam Johnson', last_name: 'Johnson', age: 8 },
+        { person_cm_id: 11, display_name: 'Ava Johnson', last_name: 'Johnson', age: 5 },
+      ],
+      fmt
+    )
+    expect(run.segments.map((s) => s.text)).toEqual(['Ava (5)', 'Liam (8)'])
+    expect(run.segments.map((s) => s.key)).toEqual(['11', '22'])
+    expect(run.sharedSurname).toBe('Johnson')
+  })
+
+  it('keys a child with no CampMinder id by its position, never by a blank string', () => {
+    // Two nameless, id-less children in one household would otherwise collide
+    // on the same React key.
+    const run = childrenRun(
+      [
+        { display_name: 'Ava Johnson', last_name: 'Johnson', age: 5 },
+        { display_name: 'Liam Johnson', last_name: 'Johnson', age: 8 },
+      ],
+      fmt
+    )
+    expect(new Set(run.segments.map((s) => s.key)).size).toBe(2)
   })
 })

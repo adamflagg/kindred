@@ -1,6 +1,6 @@
 import { X } from 'lucide-react'
 import { useEffect, useRef } from 'react'
-import type { ReactNode } from 'react'
+import type { ReactNode, RefObject } from 'react'
 import { createPortal } from 'react-dom'
 
 import {
@@ -51,6 +51,54 @@ interface ModalProps {
    * dialog reads better centred and nothing else here has this problem.
    */
   anchor?: 'center' | 'top'
+  /**
+   * An exact `max-w-*` class, REPLACING `size`'s step for this one caller.
+   *
+   * ⚠️ OPT-IN, AND IT EXISTS FOR A RULED NUMBER RATHER THAN FOR TASTE.
+   * `size` is a five-step scale and every step is somebody's deliberate
+   * choice; `AssignFamilyModal` is the one dialog whose width was MEASURED
+   * and ruled — 520px, from the kindred#2072 review artifact
+   * (`.modalcard{max-width:520px}`), which is the width the candidate row's
+   * five columns were laid out against. Tailwind has no 520 step: `max-w-lg`
+   * is 512 and `max-w-xl` is 576, so `size` cannot express it.
+   *
+   * `size="lg"` (`max-w-2xl`, 672px) is what it shipped with, and that was a
+   * default nobody chose — 152px wider than the design it was drawn from.
+   *
+   * Reach for `size` first. This is for a width that is itself a ruling.
+   */
+  maxWidthClassName?: string
+  /**
+   * The element to focus when the dialog opens. USE THIS INSTEAD OF A CHILD'S
+   * `autoFocus` — that attribute is actively harmful here, in two ways that
+   * were both measured on `AssignFamilyModal` (2026-08-20, browser and jsdom
+   * alike).
+   *
+   * 1. IT NEVER WON. React applies `autoFocus` during commit and this effect
+   *    runs after it, so the line below took the focus straight back to
+   *    `focusable[0]` — which, in any dialog using the custom `header` slot,
+   *    is the CLOSE BUTTON, because the close button is rendered above the
+   *    body. A dialog whose whole point was to be typed into opened with
+   *    focus on Close, where a printable key does nothing and Space or Enter
+   *    SHUTS IT.
+   * 2. IT BROKE FOCUS RESTORATION TOO, silently. `previouslyFocusedRef`
+   *    captures `document.activeElement` in this same effect — by which time
+   *    React's `autoFocus` had already moved it INSIDE the dialog. So the
+   *    element restored on close was the dialog's own field, detached by
+   *    then, and `.focus()` on a detached node is a no-op: focus landed on
+   *    `<body>` rather than back on the control that opened it.
+   *
+   * A ref is attached during commit, before this effect, so passing one is
+   * both reliable and leaves `document.activeElement` outside the dialog for
+   * the capture above to read correctly.
+   *
+   * ⚠️ FIVE OTHER DIALOGS STILL DECLARE `autoFocus` on a field and still lose
+   * it the same way: `ManualResolutionModal`, `MergeDialog`, `ResolveDialog`,
+   * `ScenarioEditModal`, `NewScenarioModal`. They are untouched here because
+   * each is a separate surface with its own review; this is the primitive
+   * they should move to.
+   */
+  initialFocusRef?: RefObject<HTMLElement | null>
   // Set when the `header` slot paints a dark ground (the forest band the
   // sessions landing header uses). The close button defaults to
   // `text-muted-foreground`, which is a mid grey — legible on the card, poor
@@ -128,6 +176,8 @@ export function Modal({
   ariaLabel,
   backdropInsetRight,
   anchor = 'center',
+  maxWidthClassName,
+  initialFocusRef,
   headerOnDark = false,
 }: ModalProps) {
   const contentRef = useRef<HTMLDivElement>(null)
@@ -198,7 +248,14 @@ export function Modal({
 
     const container = contentRef.current
     const focusable = container ? getFocusable(container) : []
-    ;(focusable[0] ?? container)?.focus()
+    // `initialFocusRef` wins — see its prop doc for the two measured defects
+    // it exists to close. Unchanged for every caller that passes none.
+    ;(initialFocusRef?.current ?? focusable[0] ?? container)?.focus()
+    // eslint asks for `initialFocusRef` in the deps below and it is there, not
+    // suppressed: a ref object from `useRef` is stable, so the effect does not
+    // re-run for any caller that follows the prop's contract. A caller passing
+    // an unstable object would re-run it, which is balanced (the cleanup
+    // releases exactly what the body acquires) but pointless — pass a ref.
 
     return () => {
       releaseBackgroundInert()
@@ -207,7 +264,7 @@ export function Modal({
       previouslyFocusedRef.current?.focus()
       previouslyFocusedRef.current = null
     }
-  }, [isOpen])
+  }, [isOpen, initialFocusRef])
 
   if (!isOpen) return null
 
@@ -255,7 +312,7 @@ export function Modal({
           // light 1px ring around it reads as a white outline against the
           // colour rather than as an edge. Bordered stays the default.
           headerOnDark ? '' : 'border-border border'
-        } ${noPadding ? '' : 'p-6'} ${sizeClasses[size]} mx-4 w-full`}
+        } ${noPadding ? '' : 'p-6'} ${maxWidthClassName ?? sizeClasses[size]} mx-4 w-full`}
         style={{
           boxShadow:
             '0 24px 60px -24px rgba(7, 20, 14, 0.35), 0 8px 24px -12px rgba(7, 20, 14, 0.18)',

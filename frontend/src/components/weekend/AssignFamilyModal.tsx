@@ -52,11 +52,12 @@
  * `inert` and `ui/modalStack`'s Escape ordering. Do not hand-roll any of it.
  */
 import { Users } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
+import { displayTruncatedAge } from '../../utils/age'
 import { Modal } from '../ui/Modal'
-import { partyIdentityLabel, partySearchText } from './householdIdentity'
+import { childrenRunLabel, partyIdentityLabel, partySearchText } from './householdIdentity'
 import { NeedGlyphMark } from './NeedGlyph'
 import { resolveNeedGlyphs } from './needGlyphs'
 import { partyKey } from './partyKey'
@@ -201,12 +202,97 @@ function capacitySentence(
  * the ROW's overall verdict and duplicates nothing — capacity is the one
  * dimension that still contributes words, because no glyph carries it.
  */
+/**
+ * What a candidate row calls the party — THE CHILDREN, WITH THEIR AGES.
+ *
+ * `Isla (3) Nguyen`, the same run the family card's bold line prints, from
+ * `householdIdentity.childrenRun`. Owner ruling 2026-08-20, reversing the
+ * `partyIdentityLabel` (attending adults) reading this modal shipped with in
+ * #2506 and flagged in its body.
+ *
+ * ⚠️ THE RUN IS NOT COPIED, AND THAT IS WHY THE RULING WAS FREE. The original
+ * objection was real — matching the artifact looked like it meant a second
+ * implementation of `youngestFirst` + `dedupeChildNames` + the age formatter,
+ * inside the very change that exists to collapse duplicated rules. The answer
+ * was to move the derivation rather than to decline the ruling: it lives in
+ * `householdIdentity.ts` now and `FamilyCard`'s `ChildList` calls the same
+ * function. `MapUnitPopover`'s hand-reproduced `Whole building` chip is the
+ * measure of what a copy costs.
+ *
+ * `displayTruncatedAge` is the card's BOLD-line formatter, so the two lines
+ * of type agree to the character. The grey person-grain line's
+ * `displayCampMinderAge` is a different question and stays where it is.
+ *
+ * Falls back to `partyIdentityLabel` when the run is empty: a household with
+ * no children on file, and every person-grain adult-weekend party, which IS
+ * its own identity rather than a salutation over one.
+ */
+function candidateIdentity(party: RosterPartyRow): string {
+  return childrenRunLabel(party.children, displayTruncatedAge) || partyIdentityLabel(party)
+}
+
 function fitVerdict(candidate: PlacementCandidate): string {
   if (candidate.notes.length > 0) return candidate.notes.join(' · ')
   if (candidate.fit === 'fits') return 'fits'
   // "some rooms only" for a partial, "does not fit" for an unmet need. The
   // glyph says WHICH need; this says how the room answers it overall.
   return candidate.fit === 'partial' ? 'partial fit' : 'does not fit'
+}
+
+/**
+ * The verdict's ink — GREEN when it fits, RED when it does not (owner ruling
+ * 2026-08-20).
+ *
+ * ⚠️ IT WAS `text-muted-foreground` AT NORMAL WEIGHT, which is the same ink
+ * and weight as last year's cabin immediately to its left — so the row's
+ * CONCLUSION read as one more of the row's facts. The artifact draws it as
+ * `.fitok` / `.fitno`, 11px and bold, and colour is the whole of the
+ * difference between them.
+ *
+ * ★ `green`, NOT `forest`, AND THE CHOICE WAS MEASURED RATHER THAN ARGUED.
+ *
+ * `forest` is this board's other green and the obvious candidate — the
+ * Returning mark is `text-forest-700 dark:text-forest-300`. It was rejected
+ * on two grounds, in this order:
+ *
+ * 1. IT CANNOT SIGNAL IN LIGHT MODE. `forest-700` resolves to `#003917`
+ *    against a `--foreground` of `#0c3125` — a contrast ratio of **1.08:1**
+ *    between the verdict and the ordinary row text beside it (measured in
+ *    Chromium against this app's own tokens, not computed from the palette's
+ *    hex comments, which are stale). The ruling exists BECAUSE the verdict
+ *    was reading as one more of the row's facts; forest-700 would leave it
+ *    reading exactly that way in a different hue. `green-700` is `#008236`,
+ *    2.87:1 against the same text. `forest-600` and `-500` are 1.43 and 1.93
+ *    — no step of a palette built to sit UNDER dark-green text can carry a
+ *    signal ON it.
+ * 2. THE PAIR IT BELONGS TO IS ALREADY SEMANTIC. The other half of this
+ *    verdict is `red-800 dark:red-300`, the warn ink `NeedGlyph` owns, and
+ *    the card's First-time mark is `amber-700`. Status on this board is
+ *    Tailwind's semantic ramps; `forest` is the lodge's chrome — buttons,
+ *    headers, borders, the primary. Pairing a semantic red with a brand green
+ *    is the mismatch, not using the ramp the red already comes from.
+ *
+ * The artifact's own `--ret` is green-700/green-300, so this is also what it
+ * draws. That is corroboration rather than the reason: vocabulary §6 says the
+ * mock's colours are approximations of the app's scale, and §2 of the
+ * vocabulary is what closes the HUE set — for the four need glyphs, which
+ * this is not.
+ *
+ * ⚠️ Two greens now exist on the board, deliberately, and they answer
+ * different questions: `forest` says something about the HOUSEHOLD (it has
+ * been here before), `green` says something about THIS ROOM AND THIS PARTY.
+ * If they should be one, make Returning the semantic one — not this.
+ *
+ * TWO STATES, NOT THREE, and `partial fit` is therefore red. Two glyph states
+ * are ruled (§2) and `NeedGlyph` refuses a third word for the same reason; a
+ * third verdict colour here would re-open it from the other side. A capacity
+ * note is red too and cannot be otherwise: `candidateFit` writes one only
+ * when capacity is `unmet`, and `fit` is the worst of every dimension.
+ */
+function fitTone(candidate: PlacementCandidate): string {
+  return candidate.fit === 'fits'
+    ? 'text-green-700 dark:text-green-300'
+    : 'text-red-800 dark:text-red-300'
 }
 
 export function AssignFamilyModal({
@@ -221,6 +307,23 @@ export function AssignFamilyModal({
   onWriteIn,
   isSaving = false,
 }: AssignFamilyModalProps) {
+  /*
+   * ⚠️ THE SEARCH BOX IS FOCUSED THROUGH `ui/Modal`, NOT THROUGH `autoFocus`,
+   * and that is a fix rather than a style choice. Measured 2026-08-20 in a
+   * browser and reproduced in jsdom: `autoFocus` was applied by React during
+   * commit and then TAKEN BACK by `ui/Modal`'s own focus effect, which lands
+   * on `focusable[0]` — the Close button, because a custom header renders it
+   * above the body. The dialog whose doc says it "exists to be typed into"
+   * opened with focus on a button that swallows printable keys and CLOSES on
+   * Space or Enter.
+   *
+   * It also broke the restore this file's `anchor` comment claims: `autoFocus`
+   * had already moved `document.activeElement` inside the dialog before
+   * `ui/Modal` captured it, so closing restored focus to a detached input and
+   * it fell to `<body>` instead of to the Assign pill. Both halves are pinned
+   * in `Modal.test.tsx`.
+   */
+  const searchRef = useRef<HTMLInputElement>(null)
   const [query, setQuery] = useState('')
   /*
    * The note SURVIVES the flip, deliberately. "Backspacing back into a match
@@ -302,7 +405,7 @@ export function AssignFamilyModal({
    * own line rather than squeezing it.
    */
   const header = (
-    <div className="border-border flex flex-wrap items-baseline gap-x-2 gap-y-0.5 border-b px-6 py-4 pr-14">
+    <div className="border-border flex flex-wrap items-baseline gap-x-2 gap-y-0.5 border-b px-3.5 pt-3.5 pr-14 pb-1">
       <h2 className="min-w-0 truncate text-lg font-bold">{`Assign to ${unit.name}`}</h2>
       <p data-testid="assign-capacity" className="text-muted-foreground text-xs">
         {[capacitySentence(unit, units, occupants, spanWidth), ...amenityWords(unit)].join(' · ')}
@@ -311,7 +414,7 @@ export function AssignFamilyModal({
   )
 
   const footer = (
-    <div className="border-border text-muted-foreground flex items-center gap-3 border-t px-6 py-3 text-xs">
+    <div className="border-border text-muted-foreground flex items-center gap-2.5 border-t px-3.5 pt-1 pb-3.5 text-xs">
       {offersWriteIn ? (
         <>
           <span className="flex-1">↵ in a field saves · backspace to a match to go back</span>
@@ -355,10 +458,46 @@ export function AssignFamilyModal({
       // of honouring it. The artifact anchors the same way
       // (`.modalwrap{align-items:flex-start}`).
       anchor="top"
+      // The modal exists to be typed into: opening it and then asking for a
+      // click before a keystroke lands is the friction it removes. See
+      // `searchRef` for why this is a ref rather than the `autoFocus` it was.
+      initialFocusRef={searchRef}
       noPadding
-      size="lg"
+      // ⚠️ 520px EXACTLY, WHICH IS A RULED NUMBER (owner, 2026-08-20). It
+      // shipped at `size="lg"` — `max-w-2xl`, 672px — which was a default
+      // nobody chose and 152px wider than the artifact the row's five columns
+      // were laid out against (`.modalcard{max-width:520px}`).
+      //
+      // `size="md"` (`max-w-lg`, 512px) was the alternative and is four
+      // pixels off. Taken literally instead, because the width is the whole
+      // argument for AS2 superseding the "not a second surface" ruling and is
+      // the one dimension in this dialog that was measured rather than
+      // chosen — a row that truncates a name eight pixels earlier than the
+      // design it is being compared against is not the design. `ui/Modal`'s
+      // `maxWidthClassName` is opt-in and no other caller is touched.
+      maxWidthClassName="max-w-[520px]"
     >
-      <div className="flex flex-col gap-3 px-6 py-4">
+      {/* ⚠️ THE WHOLE VERTICAL RHYTHM IS THE ARTIFACT'S, AND IT IS RULED
+          (owner, 2026-08-20). It was `px-6 py-4 gap-3` against the artifact's
+          14px padding and 9px gap, with the dashed separator 12px below the
+          input and only 8px above the first row — so the line that divides
+          "what you typed" from "what that found" sat nearer the rows than the
+          box, and read as belonging to the list.
+          `.modalcard{padding:14px; gap:9px}` is what every number here comes
+          from, and the three sections split it:
+             card top → header text      14px   `pt-3.5`
+             header text → search box     9px   `pb-1` + 1px rule + `pt-1`
+             box → dashed separator       9px   this `gap-[9px]`
+             separator → first row        9px   the swap region's `pt-[9px]`
+             row → row                    6px   the list's `gap-[6px]`
+             last row → footer rule       9px   this `pb-[9px]`
+             footer rule → footer text    4px   the footer's `pt-1`
+             footer text → card bottom   14px   the footer's `pb-3.5`
+          The artifact has NO rule under its header, so its 9px there is
+          plain gap; `ui/Modal`'s header slot draws one on every dialog in the
+          app, so the 9px is split 4 + 1 + 4 around it and the total distance
+          is the artifact's exactly. */}
+      <div className="flex flex-col gap-[9px] px-3.5 pt-1 pb-[9px]">
         {/* THE ONE LIVE INPUT, and it is also the occupant name. It is never
             disabled by the flip and never remounted by it — it is rendered
             outside the swap region below precisely so React keeps the same
@@ -366,13 +505,9 @@ export function AssignFamilyModal({
             moment the last match disappears. */}
         <input
           type="search"
+          ref={searchRef}
           value={query}
           disabled={isSaving}
-          // The modal exists to be typed into: opening it and then asking for
-          // a click before a keystroke lands is the friction it removes. It is
-          // also inside `ui/Modal`'s focus trap, which restores focus to the
-          // pill on close.
-          autoFocus
           aria-label={
             placementLive
               ? `Place a family in ${unit.name}, or write in a name`
@@ -389,7 +524,11 @@ export function AssignFamilyModal({
                inside a form; the swallow is the feature. */
             if (event.key === 'Enter') event.preventDefault()
           }}
-          className="border-border bg-background text-foreground placeholder:text-muted-foreground/60 focus:border-primary/50 focus:ring-primary/10 w-full rounded-md border px-2 py-1.5 text-sm focus:ring-2 focus:outline-none"
+          // `px-1.5 py-1` is the artifact's `.pinput{padding:4px 6px}`; it
+          // was `px-2 py-1.5` (8px/6px). `rounded-md` is its 6px radius and
+          // `bg-background` its `--s-bg` — the PAGE colour on a `bg-card`
+          // dialog, which is the same ground the rows take (§3.6).
+          className="border-border bg-background text-foreground placeholder:text-muted-foreground/60 focus:border-primary/50 focus:ring-primary/10 w-full rounded-md border px-1.5 py-1 text-sm focus:ring-2 focus:outline-none"
         />
 
         {/* THE SWAP REGION — the only thing that changes when the last match
@@ -409,10 +548,14 @@ export function AssignFamilyModal({
             found" legible once the region no longer shrinks to fit. */}
         <div
           data-testid="assign-swap-region"
-          className="border-border h-80 overflow-y-auto border-t border-dashed pt-2"
+          className="border-border h-80 overflow-y-auto border-t border-dashed pt-[9px]"
         >
           {offersWriteIn ? (
-            <div data-testid="write-in-region" className="flex flex-col gap-3 py-1">
+            /* `gap-[6px]`, the swap region's own rhythm — this div stands
+               where the artifact's `.mswap` children stand. It was `gap-3`
+               with a stray `py-1` that put the sentence 4px below a
+               separator whose padding had already placed it. */
+            <div data-testid="write-in-region" className="flex flex-col gap-[6px]">
               {/* ⚠️ THE SENTENCE LIVES INSIDE THE FIXED-HEIGHT REGION, and the
                   artifact puts it OUTSIDE (`.mnote.flip`, above `.mswap`).
                   A deliberate divergence, and it was measured both ways: the
@@ -432,7 +575,8 @@ export function AssignFamilyModal({
                   that way too — so the note moves down by one field's height.
                   The swap region has a fixed height, so the dialog will not
                   move around it. */}
-              <label className="flex flex-col gap-1 text-xs font-medium">
+              {/* `gap-[3px]` is the artifact's `.mfield`. */}
+              <label className="flex flex-col gap-[3px] text-xs font-medium">
                 Note
                 <input
                   type="text"
@@ -475,7 +619,7 @@ export function AssignFamilyModal({
             <div
               role="listbox"
               aria-label={`Families to place in ${unit.name}`}
-              className="flex flex-col gap-1"
+              className="flex flex-col gap-[6px]"
             >
               {candidates.map((candidate) => {
                 const party = candidate.party
@@ -513,19 +657,26 @@ export function AssignFamilyModal({
                      * on screen. It is also what keeps a keyboard path open
                      * while `Enter` in the search box stays inert.
                      */
-                    className="border-border hover:bg-muted focus-visible:bg-muted flex w-full items-center gap-1.5 rounded-lg border px-2 py-1 text-left text-sm focus-visible:outline-none disabled:opacity-40"
+                    className="border-border bg-background hover:bg-muted focus-visible:bg-muted flex w-full items-center gap-1.5 rounded-lg border px-[7px] py-[5px] text-left text-[13px] focus-visible:outline-none disabled:opacity-40"
                   >
                     {/* The artifact's order, and it is the scan order: who they
                         are, how many, what they asked for, where they were,
                         how this room answers. */}
-                    <span className="text-foreground min-w-0 flex-1 truncate font-medium">
-                      {partyIdentityLabel(party)}
+                    {/* `font-semibold`, the artifact's `.cname{font-weight:600}` —
+                        it was `font-medium` (500). The row's own text is
+                        13px, so the name needs the weight to lead it. */}
+                    <span className="text-foreground min-w-0 flex-1 truncate font-semibold">
+                      {candidateIdentity(party)}
                     </span>
                     <span className="text-muted-foreground inline-flex flex-shrink-0 items-center gap-0.5 text-xs tabular-nums">
                       <Users className="h-3 w-3" />
                       {partyBeds(party)}
                     </span>
-                    <span className="flex flex-shrink-0 items-center gap-1">
+                    {/* `gap-[3px]` — the artifact's `.cglyphs{gap:3px}`. It
+                        was `gap-1` (4px), which is the CHIP row's gap on the
+                        family card; these sit inside a 32px row, not beside
+                        word chips. */}
+                    <span className="flex flex-shrink-0 items-center gap-[3px]">
                       {glyphs.map((glyph) => (
                         <NeedGlyphMark key={glyph.key} glyph={glyph} insideControl />
                       ))}
@@ -537,13 +688,11 @@ export function AssignFamilyModal({
                     )}
                     {/* Stated for every row — see `fitVerdict`. Capacity is the
                         only dimension that still spends words, because no glyph
-                        carries it. */}
+                        carries it. 11px and bold is the artifact's `.fitok` /
+                        `.fitno`; the colour is `fitTone`'s ruling. */}
                     <span
-                      className={`flex-shrink-0 text-xs whitespace-nowrap ${
-                        candidate.fit === 'fits'
-                          ? 'text-muted-foreground'
-                          : 'text-amber-700 dark:text-amber-400'
-                      }`}
+                      data-testid={`candidate-${partyKey(party)}-fit`}
+                      className={`flex-shrink-0 text-[11px] font-bold whitespace-nowrap ${fitTone(candidate)}`}
                     >
                       {fitVerdict(candidate)}
                     </span>

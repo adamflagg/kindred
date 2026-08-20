@@ -145,33 +145,121 @@ describe('AssignFamilyModal — the header states beds FREE (owner ruling 2026-0
   })
 })
 
+describe('AssignFamilyModal — it opens ready to be typed into', () => {
+  /*
+   * ⚠️ MEASURED DEFECT, FIXED 2026-08-20. The box carried React's `autoFocus`
+   * and never kept it: `ui/Modal`'s focus effect runs after commit and lands
+   * on `focusable[0]`, which is the CLOSE BUTTON — a custom header renders it
+   * above the body. So the dialog opened with focus on a control that
+   * swallows printable keys and closes on Space or Enter, and a staff member
+   * who opened it and typed got nothing.
+   *
+   * Found in a browser by comparing against the design artifact, then
+   * reproduced here. `ui/Modal`'s `initialFocusRef` is the fix and
+   * `Modal.test.tsx` pins the primitive; this pins that THIS dialog uses it.
+   */
+  it('puts the caret in the search box, not on Close', () => {
+    renderModal()
+    expect(searchBox()).toHaveFocus()
+  })
+
+  it('takes a keystroke without a click first', async () => {
+    const user = userEvent.setup()
+    renderModal()
+    await user.keyboard('Ngu')
+    expect(searchBox()).toHaveValue('Ngu')
+  })
+})
+
 describe('AssignFamilyModal — the candidate rows', () => {
   it('carries the identity, the bed count and last year’s cabin', () => {
     /*
-     * ⚠️ THE IDENTITY IS THE ATTENDING ADULTS, NOT THE CHILDREN — and this is
-     * the one place the implementation departs from the review mock, which
-     * draws `Isla (3) Nguyen`.
+     * ⚠️ THE IDENTITY IS THE CHILDREN WITH THEIR AGES — `Isla (3) Nguyen` —
+     * AND THAT REVERSES WHAT THIS TEST PINNED WHEN #2506 FIRST SHIPPED.
      *
-     * `partyIdentityLabel` is the repo's identity for a party in a LIST: the
-     * picker this modal replaces used it, `FloatingUnplacedBadge` sorts by it,
-     * and kindred#2084 made it the replacement for the CampMinder salutation
-     * across four surfaces. Matching the mock would mean a second
-     * implementation of the family card's children-run — `youngestFirst` plus
-     * `dedupeChildNames` plus the age formatter — in the very change that
-     * exists to collapse duplicated rules. `partySearchText` already covers
-     * both, so a staff member can find a household by a child's name either
-     * way.
+     * The original reading was `partyIdentityLabel`, the attending adults,
+     * and the reasoning was sound as far as it went: that label is the repo's
+     * identity for a party in a LIST (the picker this modal replaced used it,
+     * `FloatingUnplacedBadge` sorts by it, kindred#2084 made it the
+     * salutation's replacement across four surfaces), and matching the review
+     * artifact looked like it would mean a SECOND implementation of the family
+     * card's children-run in the very change that exists to collapse
+     * duplicated rules. It was flagged in the PR body rather than buried.
      *
-     * The vocabulary doc rules nothing here, so this is a deliberate
-     * divergence rather than a missed detail. If staff want the children, the
-     * fix is to lift the run into `householdIdentity.ts` and call it from both
-     * surfaces — never to copy it.
+     * The owner ruled for the children (2026-08-20). What made that free is
+     * the part the original reasoning treated as unavoidable: the run is not
+     * copied. `householdIdentity.childrenRun` now owns the derivation and BOTH
+     * `FamilyCard`'s `ChildList` and this row call it, so the card and the
+     * modal cannot drift — `MapUnitPopover`'s hand-reproduced `Whole building`
+     * chip is what a copy would have cost.
+     *
+     * `partySearchText` is unchanged and still covers adults and children
+     * alike, so a staff member can still find a household by either.
      */
     renderModal()
     const row = screen.getByTestId('candidate-household-102')
-    expect(row).toHaveTextContent('Mai Nguyen')
+    // ⚠️ `Isla Nguyen (3)`, and the review artifact draws `Isla (3) Nguyen`.
+    // The artifact lifts the surname off a household with ONE child;
+    // kindred#2180's rule does not — "a single child shares nothing with
+    // anybody" — and the shipped FAMILY CARD therefore prints the same
+    // `Isla Nguyen (3)`. The ruling is that this row shows what the card's
+    // bold line shows, so the card wins over the mock, exactly as vocabulary
+    // §8 says it must. The artifact's own family card diverges here too; that
+    // is a stage-1 observation, not something this row introduced.
+    expect(row).toHaveTextContent('Isla Nguyen (3)')
+    expect(row).not.toHaveTextContent('Mai Nguyen')
     expect(row).toHaveTextContent('2')
     expect(row).toHaveTextContent('Lakeside')
+  })
+
+  it('falls back to the attending adults for a household with no children', () => {
+    // Nobody to name otherwise, and a blank identity is worse than the older
+    // reading. `childrenRunLabel` returns `''` precisely so this branch can
+    // exist rather than each caller re-deriving "has children".
+    renderModal({
+      parties: [party({ household_cm_id: 111, children: [] })],
+    })
+    expect(screen.getByTestId('candidate-household-111')).toHaveTextContent('Emma Johnson')
+  })
+
+  it('names a person-grain adult-weekend guest by their own name', () => {
+    // An adult weekend's parties ARE their own identity — there is no
+    // household salutation over them and no children to run.
+    renderModal({
+      parties: [
+        {
+          grain: 'person',
+          person_cm_id: 501,
+          display_name: 'Liam Garcia',
+          sort_name: 'Garcia',
+          adults: [{ adult_number: 1, display_name: 'Liam Garcia', relationship: '' }],
+          children: [],
+          party_size: 1,
+          unit_code: '',
+          unit_name: '',
+        },
+      ],
+    })
+    expect(screen.getByTestId('candidate-person-501')).toHaveTextContent('Liam Garcia')
+  })
+
+  it('prints the SAME run the family card does, from one derivation', () => {
+    // The point of the ruling, and the thing a copy would break: youngest
+    // first, the shared surname lifted once, the age truncated to whole years.
+    renderModal({
+      parties: [
+        party({
+          household_cm_id: 112,
+          children: [
+            { person_cm_id: 1, display_name: 'Liam Johnson', last_name: 'Johnson', age: 8.7 },
+            { person_cm_id: 2, display_name: 'Ava Johnson', last_name: 'Johnson', age: 5.2 },
+          ],
+        }),
+      ],
+    })
+    expect(screen.getByTestId('candidate-household-112')).toHaveTextContent(
+      'Ava (5) · Liam (8) Johnson'
+    )
   })
 
   it('draws the need glyphs coloured against THIS room, not against a placement', () => {
@@ -214,6 +302,73 @@ describe('AssignFamilyModal — the candidate rows', () => {
     expect(screen.getByTestId('candidate-household-104')).toHaveTextContent(
       'Over capacity · needs 6, sleeps 2'
     )
+  })
+
+  /*
+   * ⚠️ THE FOUR ASSERTIONS BELOW ARE ABOUT PIXELS AND COLOUR, AND JSDOM HAS NO
+   * LAYOUT ENGINE — so they pin the CLASS, which is the deliverable, and the
+   * numbers behind them were measured in a real browser against the review
+   * artifact (recorded in the PR body). A test named for a layout property
+   * that asserts nothing about it is how a 133px jump survived this file once
+   * already; naming the limitation is the alternative.
+   */
+  it('states the fit verdict in green when it fits, and in bold', () => {
+    // Owner ruling 2026-08-20: the verdict goes GREEN / RED. It was
+    // `text-muted-foreground` at normal weight — the same ink as last year's
+    // cabin sitting beside it, so the row's conclusion read as another one of
+    // its facts.
+    //
+    // `green-700`, NOT the board's `forest` — and that is measured, not a
+    // preference. `forest-700` resolves to `#003917` against a `--foreground`
+    // of `#0c3125`: 1.08:1, so the verdict would still read as one of the
+    // row's facts, which is the exact defect the ruling names. `green-700` is
+    // 2.87:1 against the same text. It is also the ramp the other half of
+    // this verdict already comes from (`red-800`, `NeedGlyph.WARN_TONE`).
+    // See `fitTone`.
+    renderModal({ parties: [NGUYEN] })
+    const verdict = screen.getByTestId('candidate-household-102-fit')
+    expect(verdict).toHaveTextContent('fits')
+    expect(verdict.className).toContain('text-green-700')
+    expect(verdict.className).toContain('dark:text-green-300')
+    expect(verdict.className).toContain('font-bold')
+  })
+
+  it('states it in the SAME red the unmet glyph uses when it does not', () => {
+    // The warn ink `NeedGlyph` owns (`text-red-800 dark:text-red-300`), not a
+    // second red. The artifact's `--warn-fg` IS those two Tailwind steps.
+    renderModal({
+      unit: unit({ bathroom: 'shared' }),
+      parties: [party({ household_cm_id: 105, flags: { needs_private_bathroom: true } })],
+    })
+    const verdict = screen.getByTestId('candidate-household-105-fit')
+    expect(verdict).toHaveTextContent('does not fit')
+    expect(verdict.className).toContain('text-red-800')
+    expect(verdict.className).toContain('dark:text-red-300')
+  })
+
+  it('reds the capacity sentence too — a row with a note has never fitted', () => {
+    // `candidateFit` only writes a note when capacity is `unmet`, and `fit` is
+    // the worst of every dimension, so `notes.length > 0` implies
+    // `fit !== 'fits'`. Two verdict colours are ruled, not three.
+    renderModal({
+      unit: unit({ sleeps: 2 }),
+      occupants: 0,
+      parties: [party({ household_cm_id: 106, party_size: 6 })],
+    })
+    const verdict = screen.getByTestId('candidate-household-106-fit')
+    expect(verdict).toHaveTextContent('Over capacity')
+    expect(verdict.className).toContain('text-red-800')
+  })
+
+  it('shades the rows like the box above them, on the card’s own ground', () => {
+    // Owner ruling 2026-08-20 (§3.6): the artifact gives the search box AND
+    // the rows the same `--s-bg`, which is the PAGE colour sitting on a
+    // `--s-card` modal. In app terms that is `bg-background` on `bg-card` —
+    // the input already had it; the rows were transparent, so they read as
+    // outlines rather than as fields.
+    renderModal({ parties: [NGUYEN] })
+    expect(screen.getByTestId('candidate-household-102').className).toContain('bg-background')
+    expect(searchBox().className).toContain('bg-background')
   })
 
   it('NEVER hides a family, however badly it fits', () => {

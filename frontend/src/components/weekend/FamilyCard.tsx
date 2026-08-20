@@ -90,8 +90,8 @@ import { Tooltip } from '../ui/Tooltip'
 import { answersConflictDetail, SHARE_WORDING, shareWordingChip } from './boardLayout'
 import {
   attendingAdults as computeAttendingAdults,
+  childrenRun,
   dedupeAdultNames,
-  dedupeChildNames,
   partyHeadcount,
 } from './householdIdentity'
 import { NeedGlyphMark, WARN_TONE } from './NeedGlyph'
@@ -207,49 +207,23 @@ function Chip({
 }
 
 /**
- * Youngest-first display order for one party's children (kindred#2254).
- *
- * A COPY, never the input array sorted in place: `party.children` is the
- * frontend's own copy of the server's `_children_oldest_first` — the order
- * `lodging_roster_service.py` computes once and every surface prints in —
- * and `FamilyCardIdentity` reads it twice (this component is rendered for
- * both the bold and grey lines from the SAME `children` array). Sorting in
- * place on the first render would leave the second render, and any sibling
- * component still holding that reference, reading an order nobody asked it
- * to have.
- *
- * Unknown age (`null` — this field's already-converted form of the raw
- * `0.0` sentinel the API collapses before the wire, kindred#2088) is not a
- * fact about how young a child is, so it cannot take part in the
- * comparison at all. A comparator naive enough to do
- * `(a.age ?? 0) - (b.age ?? 0)` coerces it to 0 and sorts it FIRST under an
- * ascending youngest-first order — the exact opposite of the intent, and
- * wrong in a way that looks right. Unknown-age children go in their own
- * trailing bucket instead, in their original relative order (`Array.sort`
- * is stable, so ties within the known-age bucket keep theirs too) — the
- * same place the server's own descending sort already puts them, since its
- * raw-float sentinel sorts last there too.
- */
-function youngestFirst(children: readonly PartyChildRow[]): PartyChildRow[] {
-  const known: PartyChildRow[] = []
-  const unknown: PartyChildRow[] = []
-  for (const child of children) {
-    ;(child.age === null || child.age === undefined ? unknown : known).push(child)
-  }
-  known.sort((a, b) => (a.age as number) - (b.age as number))
-  return [...known, ...unknown]
-}
-
-/**
  * A party's children as one `Name (age) · Name (age)` run, youngest first.
  *
- * `FamilyCardIdentity` renders a child list TWICE — the household bold
- * identity line and the person-grain grey secondary line — and the two
- * differ only in which age formatter they call and what wraps them.
- * Everything else (the ordering, the key strategy, the separator, the
- * missing-age omission, the blank-name fallback) is one decision each, and
- * each was drifting toward being made in two places: the blank-name
- * fallback had to be hand-applied to both copies in kindred#2074. Shared
+ * ⚠️ THE DERIVATION ITSELF NOW LIVES IN `householdIdentity.ts`
+ * (`childrenRun`), and this component is only its markup. It moved there
+ * when the owner ruled 2026-08-20 that the Assign modal's candidate rows
+ * print the SAME identity (kindred#2072 §3.5) — two surfaces, one rule.
+ *
+ * The reasoning that put the derivation in one place is unchanged and still
+ * the point, so it is repeated at neither site and stated at `childrenRun`:
+ * the ordering, the unknown-age bucket, the omitted age, the blank-name
+ * fallback and the lifted surname were each drifting toward being decided
+ * twice. The blank-name fallback already HAD to be hand-applied to both
+ * copies once (kindred#2074).
+ *
+ * `FamilyCardIdentity` still renders a child list TWICE — the household bold
+ * identity line and the person-grain grey secondary line — and the two still
+ * differ only in which age formatter they call and what wraps them. Shared
  * for the same reason `FamilyCardPreview` shares
  * `FamilyCardIdentity`/`FamilyCardChips` (kindred#2222, formerly one
  * `FamilyCardBody`) — so the copies cannot drift apart (kindred#2153).
@@ -264,16 +238,6 @@ function youngestFirst(children: readonly PartyChildRow[]): PartyChildRow[] {
  * a large family: the OLDEST now vanish first, the reverse of before. That
  * is the deliberate trade the ordering makes, not an accident of it.
  *
- * A surname every child shares is lifted off the individual names and
- * printed ONCE, after the run — `Ava (5) · Noah (8) Johnson` (kindred#2180).
- * The derivation is `dedupeChildNames`, which reads the structured
- * `last_name` the API sends rather than splitting `display_name`: 4.7% of
- * 2026's rostered children have a surname containing a space and 10.6% a
- * hyphenated one, and both break under a token split. Nothing is lifted
- * unless every child shares it, so a two-surname household still prints in
- * full. Fed the ALREADY-SORTED order below, not the raw prop, so the names
- * returned line up index-for-index with what actually renders.
- *
  * @param formatAge - `displayTruncatedAge` on the bold line (whole years are
  *   the point of a similar-ages match), `displayCampMinderAge` on the grey one.
  */
@@ -284,24 +248,13 @@ function ChildList({
   children: PartyChildRow[]
   formatAge: (age: number) => string
 }) {
-  const ordered = youngestFirst(children)
-  const { names, sharedSurname } = dedupeChildNames(ordered)
+  const { segments, sharedSurname } = childrenRun(children, formatAge)
   return (
     <>
-      {ordered.map((child, index) => (
-        <Fragment key={String(child.person_cm_id ?? index)}>
+      {segments.map((segment, index) => (
+        <Fragment key={segment.key}>
           {index > 0 && ' · '}
-          {/* An age we do not have is omitted, never rendered as 0.
-              A blank name (no first/preferred/last name on file --
-              `_person_display_name` has no fallback the way
-              `_household_display_name` does) falls back rather than
-              leaving this segment, or the whole card when it's the
-              only child, with no accessible text at all. */}
-          <span>
-            {child.age === null || child.age === undefined
-              ? names[index] || 'Unnamed camper'
-              : `${names[index] || 'Unnamed camper'} (${formatAge(child.age)})`}
-          </span>
+          <span>{segment.text}</span>
         </Fragment>
       ))}
       {sharedSurname.length > 0 && ` ${sharedSurname}`}

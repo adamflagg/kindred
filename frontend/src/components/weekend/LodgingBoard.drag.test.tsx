@@ -337,6 +337,13 @@ describe('LodgingBoard — placing a family from the space itself (kindred#2080)
     display_name: 'Garcia',
     sort_name: 'Garcia',
     adults: [{ adult_number: 1, display_name: 'Liam Garcia', relationship: 'Father' }],
+    // ⚠️ ITS OWN CHILD, because the candidate row names a household by its
+    // CHILDREN now (owner ruling 2026-08-20, kindred#2072 §3.5). Inheriting
+    // the base helper's Johnson child left this fixture naming a Garcia adult
+    // over a Johnson camper, so the row read "Noah Johnson" on the Garcia
+    // household — a fixture that was internally inconsistent all along and
+    // that only the identity change made visible.
+    children: [{ person_cm_id: 9202, display_name: 'Mia Garcia', last_name: 'Garcia', age: 6 }],
   })
 
   function boardWithUnplaced(props: Partial<Parameters<typeof LodgingBoard>[0]> = {}) {
@@ -383,14 +390,17 @@ describe('LodgingBoard — placing a family from the space itself (kindred#2080)
     await user.click(pickerFor('Cedar 2'))
     const options = screen.getAllByRole('option')
     expect(options).toHaveLength(1)
-    expect(options[0]).toHaveTextContent('Liam Garcia')
+    // The row names the household by its children (§3.5); the assertion this
+    // test makes — that the PLACED household is absent and the unplaced one
+    // is present — is unchanged.
+    expect(options[0]).toHaveTextContent('Mia Garcia (6)')
   })
 
   it('writes the same intent the equivalent drop would', async () => {
     const user = userEvent.setup()
     boardWithUnplaced()
     await user.click(pickerFor('Cedar 2'))
-    await user.click(screen.getByRole('option', { name: /Liam Garcia/ }))
+    await user.click(screen.getByRole('option', { name: /Mia Garcia/ }))
     expect(move).toHaveBeenCalledTimes(1)
     expect(move.mock.calls[0]?.[0]).toEqual({
       kind: 'place',

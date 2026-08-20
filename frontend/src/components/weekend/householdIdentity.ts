@@ -372,3 +372,130 @@ export function dedupeAdultNames(adults: readonly PartyAdultRow[]): DedupedNameR
   }
   return dedupedRun(displayNames, first)
 }
+
+/**
+ * Youngest-first display order for one party's children (kindred#2254).
+ *
+ * A COPY, never the input array sorted in place: `party.children` is the
+ * frontend's own copy of the server's `_children_oldest_first` -- the order
+ * `lodging_roster_service.py` computes once and every surface prints in --
+ * and `FamilyCardIdentity` reads it twice (the bold line and the grey line
+ * render from the SAME `children` array). Sorting in place on the first
+ * render would leave the second render, and any sibling component still
+ * holding that reference, reading an order nobody asked it to have.
+ *
+ * Unknown age (`null` -- this field's already-converted form of the raw
+ * `0.0` sentinel the API collapses before the wire, kindred#2088) is not a
+ * fact about how young a child is, so it cannot take part in the comparison
+ * at all. A comparator naive enough to do `(a.age ?? 0) - (b.age ?? 0)`
+ * coerces it to 0 and sorts it FIRST under an ascending youngest-first order
+ * -- the exact opposite of the intent, and wrong in a way that looks right.
+ * Unknown-age children go in their own trailing bucket instead, in their
+ * original relative order (`Array.sort` is stable, so ties within the
+ * known-age bucket keep theirs too) -- the same place the server's own
+ * descending sort already puts them, since its raw-float sentinel sorts last
+ * there too.
+ *
+ * ⚠️ MOVED HERE FROM `FamilyCard.tsx` (kindred#2072 §3.5). It is half of the
+ * children-run below, and the run now has two callers.
+ */
+export function youngestFirst(children: readonly PartyChildRow[]): PartyChildRow[] {
+  const known: PartyChildRow[] = []
+  const unknown: PartyChildRow[] = []
+  for (const child of children) {
+    ;(child.age === null || child.age === undefined ? unknown : known).push(child)
+  }
+  known.sort((a, b) => (a.age as number) - (b.age as number))
+  return [...known, ...unknown]
+}
+
+/** One child's printed segment, plus a React key the card can render with. */
+export interface ChildRunSegment {
+  readonly key: string
+  readonly text: string
+}
+
+export interface ChildRun {
+  readonly segments: readonly ChildRunSegment[]
+  /** A surname every child shares, printed ONCE after the run. `''` if none. */
+  readonly sharedSurname: string
+}
+
+/**
+ * ★ A PARTY'S CHILDREN AS ONE RUN, AND THE DERIVATION LIVES HERE ONLY.
+ *
+ * `Ava (5) · Liam (8) Johnson` -- youngest first, the age omitted when it is
+ * not known, a blank name named rather than left empty, and a surname every
+ * child shares lifted off the individual names and printed once
+ * (kindred#2180).
+ *
+ * ⚠️ TWO SURFACES DRAW THIS, WHICH IS WHY IT IS NOT IN `FamilyCard.tsx`.
+ * The family card's bold identity line renders it as JSX (`ChildList`), and
+ * the Assign modal's candidate rows print it as text -- the owner ruled
+ * 2026-08-20 that the modal's row identity is the CHILDREN, reversing the
+ * `partyIdentityLabel` reading that PR #2506 shipped with and flagged.
+ *
+ * The reason the modal did NOT simply copy the run is the whole argument for
+ * this function: `MapUnitPopover` once hand-reproduced `FamilyCard`'s
+ * `Whole building` chip -- "same label, same tokens, same icon", with a
+ * comment admitting the copy -- and the two drifted. Every decision inside
+ * this run (the ordering, the unknown-age bucket, the omitted age, the
+ * blank-name fallback, the lifted surname) is made once, here.
+ *
+ * SEGMENTS rather than a string, because the card wants one element per
+ * child and the modal wants text. `childrenRunLabel` builds the text from
+ * these, so the two can never disagree about the separator either.
+ *
+ * @param formatAge `displayTruncatedAge` on the card's bold line and in the
+ *   modal (whole years are the point of a similar-ages match),
+ *   `displayCampMinderAge` on the card's grey person-grain line.
+ */
+export function childrenRun(
+  children: readonly PartyChildRow[] | null | undefined,
+  formatAge: (age: number) => string
+): ChildRun {
+  const ordered = youngestFirst(children ?? [])
+  // Fed the ALREADY-SORTED order, not the raw prop, so the names returned
+  // line up index-for-index with what actually renders.
+  const { names, sharedSurname } = dedupeChildNames(ordered)
+  const segments = ordered.map((child, index) => {
+    // A blank name (no first/preferred/last name on file --
+    // `_person_display_name` has no fallback the way `_household_display_name`
+    // does) falls back rather than leaving this segment, or the whole card
+    // when it is the only child, with no text at all.
+    //
+    // `||` AND NOT `??`, deliberately: the value being guarded is `''`, not
+    // `undefined`. `dedupeChildNames` returns `child.display_name ?? ''`, so a
+    // nameless child arrives as an empty string and `??` would let it through.
+    // Carried over unchanged from `FamilyCard`'s `ChildList`.
+    // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing
+    const name = names[index] || 'Unnamed camper'
+    return {
+      // The index is the fallback rather than the name: two nameless,
+      // id-less children in one household would otherwise collide on one key.
+      key: String(child.person_cm_id ?? index),
+      // An age we do not have is omitted, never rendered as 0.
+      text:
+        child.age === null || child.age === undefined ? name : `${name} (${formatAge(child.age)})`,
+    }
+  })
+  return { segments, sharedSurname }
+}
+
+/**
+ * The same run as plain text, for a surface that cannot render elements --
+ * the Assign modal's candidate row, which sits inside a truncating span.
+ *
+ * `''` for a party with no children, which is the signal a caller falls back
+ * on (`AssignFamilyModal` falls back to `partyIdentityLabel`, the identity a
+ * person-grain adult-weekend guest has).
+ */
+export function childrenRunLabel(
+  children: readonly PartyChildRow[] | null | undefined,
+  formatAge: (age: number) => string
+): string {
+  const { segments, sharedSurname } = childrenRun(children, formatAge)
+  if (segments.length === 0) return ''
+  const run = segments.map((segment) => segment.text).join(' · ')
+  return sharedSurname.length > 0 ? `${run} ${sharedSurname}` : run
+}
