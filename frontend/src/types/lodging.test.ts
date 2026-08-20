@@ -273,6 +273,10 @@ const _exhaustiveLodgingUnit: Required<LodgingUnitRow> = {
   // fourteen 2026 family-pool containers disagree with themselves on it.
   power_coverage: 'none',
   has_ac: false,
+  // The AC twin of `power_coverage`, resolved over the same leaf walk.
+  // DISPLAY ONLY -- air conditioning has no demand glyph, so this keeps the
+  // amenity strip honest on a merged house rather than grading a need.
+  ac_coverage: 'none',
   has_fridge: false,
   // NARROWS `has_fridge` and can never contradict it. Published beside its
   // parent (kindred#2224) because A SHARED FRIDGE IS A FRIDGE — the owner's

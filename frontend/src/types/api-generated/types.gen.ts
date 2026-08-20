@@ -2227,6 +2227,10 @@ export type LodgingUnitSummary = {
    */
   has_ac?: boolean
   /**
+   * Ac Coverage
+   */
+  ac_coverage?: 'all' | 'some' | 'none' | 'unknown'
+  /**
    * Has Fridge
    */
   has_fridge?: boolean

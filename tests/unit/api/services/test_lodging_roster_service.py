@@ -67,6 +67,7 @@ def _unit(
     parent_unit: str = "",
     shareability: str = "",
     has_power: bool = False,
+    has_ac: bool = False,
     has_fridge: bool = False,
     # NARROWS `has_fridge` and can never contradict it (owner ruling,
     # kindred#2224): a shared fridge IS a fridge. Zero of the 118 production
@@ -97,7 +98,7 @@ def _unit(
         bathroom_group=bathroom_group,
         near_bathhouse=False,
         has_power=has_power,
-        has_ac=False,
+        has_ac=has_ac,
         has_fridge=has_fridge,
         has_shared_fridge=has_shared_fridge,
         has_ramp=has_ramp,
@@ -3769,6 +3770,61 @@ class TestPartySizeIsABedCount:
 
         seen = {call.kwargs["session_start"] for call in build_parties.call_args_list}
         assert seen == {date(2026, 9, 4), date(2026, 10, 10)}
+
+
+class TestUnitAcCoverage:
+    """kindred#2502 -- `LodgingUnitSummary.ac_coverage`.
+
+    `has_ac` was the one amenity on the card with no resolver at all: it sat
+    in the schema between two fields that both have twins, and three surfaces
+    read it raw. Seven of the 15 production containers record `has_ac = 0`
+    with AC-bearing rooms, so merging a house hid an AC mark both its rooms
+    carry and splitting brought it back.
+
+    Display-only -- AC has no demand glyph, ruled deliberately on 0 of 184
+    housing narratives mentioning it. This is about the amenity strip telling
+    the truth, not about grading a need.
+    """
+
+    @pytest.mark.asyncio
+    async def test_a_container_inherits_ac_from_its_rooms(self) -> None:
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("c1", "lodge", "Lodge", is_container=True, has_ac=False),
+                _unit("u1", "lodge-1", "Lodge 1", sleeps=2, has_ac=True, parent_unit="c1"),
+                _unit("u2", "lodge-2", "Lodge 2", sleeps=2, has_ac=True, parent_unit="c1"),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        by_code = {u.code: u for u in roster.units}
+        assert by_code["lodge"].ac_coverage == "all"
+        assert by_code["lodge"].has_ac is False
+
+    @pytest.mark.asyncio
+    async def test_a_partly_cooled_container_reports_some(self) -> None:
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("c1", "lodge", "Lodge", is_container=True, has_ac=False),
+                _unit("u1", "lodge-1", "Lodge 1", sleeps=2, has_ac=True, parent_unit="c1"),
+                _unit("u2", "lodge-2", "Lodge 2", sleeps=2, has_ac=False, parent_unit="c1"),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert {u.code: u.ac_coverage for u in roster.units}["lodge"] == "some"
+
+    @pytest.mark.asyncio
+    async def test_a_leaf_answers_for_itself(self) -> None:
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[_unit("u1", "ridge-1", "Ridge 1", sleeps=4, has_ac=True)],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.units[0].ac_coverage == "all"
 
 
 class TestUnitBathroomResolution:

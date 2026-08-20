@@ -1163,6 +1163,22 @@ def _resolve_ramp_coverage(units: list[LodgingUnitSummary], index: _BathroomInde
     )
 
 
+def _resolve_ac_coverage(units: list[LodgingUnitSummary], index: _BathroomIndex) -> None:
+    """Fill in every unit's `ac_coverage` in place -- kindred#2502.
+
+    The fourth caller of `_resolve_amenity_coverage`, and the last amenity on
+    the card that had no resolver at all: `has_ac` sat in the schema between
+    two fields that both have twins, and three surfaces read it raw. Seven of
+    the 15 production containers record `has_ac = 0` with AC-bearing rooms.
+
+    Display only -- see the schema field. Every rule this walk applies is
+    `_resolve_power_coverage`'s, unchanged.
+    """
+    _resolve_amenity_coverage(
+        units, index, answer=lambda room: room.has_ac, grade=amenity_coverage, target="ac_coverage"
+    )
+
+
 def _resolve_bathroom(units: list[LodgingUnitSummary], index: _BathroomIndex) -> None:
     """Fill in every CONTAINER's `bathroom` from its leaves -- kindred#2502.
 
@@ -1505,6 +1521,7 @@ class LodgingRosterService:
         # The same walk, one dimension over (kindred#2438), and the third and
         # last read of it. Same path-only reasoning as above.
         _resolve_ramp_coverage(unit_summaries, unit_index)
+        _resolve_ac_coverage(unit_summaries, unit_index)
         _resolve_bathroom(unit_summaries, unit_index)
         # A SECOND PASS, and it has to be: a unit's cover can come from a row
         # on a unit built after it, so there is no order in which one pass over
