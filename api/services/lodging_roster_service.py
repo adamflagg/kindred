@@ -925,7 +925,7 @@ class _BathroomIndex(NamedTuple):
 
     units_by_code: dict[str, LodgingUnitSummary]
     # Immediate children only, keyed by the PARENT's code. Nesting (a
-    # container inside a container, e.g. Doctor's House under a larger
+    # container inside a container, e.g. an apartment under a larger
     # block) is walked at read time in `leaf_codes_under`, mirroring
     # `drawn_units`' own upward walk of the same `parent_code` relation.
     children_by_parent: dict[str, tuple[LodgingUnitSummary, ...]]
@@ -1015,8 +1015,10 @@ def _resolve_party_bathroom(unit_codes: list[str], index: _BathroomIndex) -> str
         if unit.is_container:
             leaves = index.leaf_codes_under(code)
             occupied |= leaves
-            leaf_groups = frozenset(index.units_by_code[leaf].bathroom_group for leaf in leaves)
-            inherited_bathroom, inherited_group = container_bathroom(leaf_groups)
+            leaf_bathrooms = frozenset(
+                (index.units_by_code[leaf].bathroom, index.units_by_code[leaf].bathroom_group) for leaf in leaves
+            )
+            inherited_bathroom, inherited_group = container_bathroom(leaf_bathrooms)
             if not bathroom:
                 bathroom, group = inherited_bathroom, inherited_group
         else:
@@ -1159,6 +1161,59 @@ def _resolve_ramp_coverage(units: list[LodgingUnitSummary], index: _BathroomInde
         grade=ramp_coverage,
         target="ramp_coverage",
     )
+
+
+def _resolve_bathroom(units: list[LodgingUnitSummary], index: _BathroomIndex) -> None:
+    """Fill in every CONTAINER's `bathroom` from its leaves -- kindred#2502.
+
+    The fourth twin of the three resolvers above, and the last amenity that
+    was still answered from the unit's own row. All 15 production containers
+    store `bathroom = "none"` (a building is not a room) while 13 of them
+    have at least one room that records one, so every whole-house card drew
+    no bathroom while both its rooms drew one the moment staff split it.
+
+    ⚠️ CONTAINERS ONLY, unlike the three above. A leaf's own row is already
+    the right answer and `_build_units` already computes it correctly --
+    `effective_bathroom` against a one-element slot leaves a `shared` leaf
+    `shared`. Overwriting leaves here would be a no-op at best and would
+    duplicate the one place that logic lives.
+
+    ⚠️ WHY A RESOLVER AND NOT SLOT-CODE THREADING. The party path answers
+    this correctly already (`_resolve_party_bathroom`), but only once a
+    placement exists -- so the same building graded unmet in the picker and
+    met once the family landed in it. Most containers are never placed into.
+    A resolver has no placement to read, which is the whole point: it answers
+    for an EMPTY building, which is when staff are choosing one.
+
+    The exclusivity upgrade is honest here rather than generous: booking a
+    whole container covers every room under it by construction, so if the
+    rooms' shared group has no members outside the container,
+    `effective_bathroom` is being handed a genuinely complete slot.
+    """
+    for unit in units:
+        if not unit.is_container:
+            continue
+        leaves = [
+            leaf
+            for code in sorted(index.leaf_codes_under(unit.code))
+            if (leaf := index.units_by_code.get(code)) is not None and leaf.is_active
+        ]
+        inherited, group = container_bathroom(frozenset((leaf.bathroom, leaf.bathroom_group) for leaf in leaves))
+        if inherited == "none":
+            # Nothing to inherit -- the container keeps exactly what its own
+            # registry row says, which is what it already holds. This is also
+            # the bathhouse case: rooms sharing a group that names somewhere
+            # they WALK to, with no bathroom in any of them.
+            continue
+        unit.bathroom = cast(
+            Any,
+            effective_bathroom(
+                inherited,
+                group,
+                index.group_members.get(group, frozenset()),
+                frozenset(leaf.code for leaf in leaves),
+            ),
+        )
 
 
 def _resolve_amenity_coverage[Answer](
@@ -1450,6 +1505,7 @@ class LodgingRosterService:
         # The same walk, one dimension over (kindred#2438), and the third and
         # last read of it. Same path-only reasoning as above.
         _resolve_ramp_coverage(unit_summaries, unit_index)
+        _resolve_bathroom(unit_summaries, unit_index)
         # A SECOND PASS, and it has to be: a unit's cover can come from a row
         # on a unit built after it, so there is no order in which one pass over
         # `_build_units` would see every own-row it needs.
@@ -1640,6 +1696,10 @@ class LodgingRosterService:
             # Same one-index-per-call rule `build_roster` follows -- see the
             # comment there and `_BathroomIndex`'s own docstring.
             unit_index = _BathroomIndex.build(unit_summaries)
+            # `build_roster` runs the amenity resolvers right here; this path
+            # ran none of them, so a container's bathroom stayed at its own
+            # blank row on the summary while the board resolved it.
+            _resolve_bathroom(unit_summaries, unit_index)
             parties = self._build_parties(
                 session_type=_s(session, "session_type"),
                 # THIS weekend's start. The six year-scoped fetches above are

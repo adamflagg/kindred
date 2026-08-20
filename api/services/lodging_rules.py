@@ -282,18 +282,17 @@ def ramp_coverage(values: Sequence[str | None]) -> str:
     return "none"
 
 
-def container_bathroom(leaf_bathroom_groups: frozenset[str]) -> tuple[str, str]:
+def container_bathroom(leaves: frozenset[tuple[str, str]]) -> tuple[str, str]:
     """A container's bathroom, inherited from its leaf descendants.
 
     Containers (buildings, apartments) store `bathroom = "none"` on the
     registry row itself -- the field describes a ROOM, and a building is
     not one. That is correct for the units inventory, which has no
     occupant to resolve the ambiguity for. It is wrong for a party that has
-    booked the WHOLE container: the health-center apartments are two
-    bedrooms over one shared bath, normally let whole, which is exactly the
-    case `effective_bathroom`'s exclusivity branch exists for -- except the
-    container's own "none" short-circuits that branch (line 108-109) before
-    it ever runs.
+    booked the WHOLE container: two bedrooms over one shared bath, normally
+    let whole, is exactly the case `effective_bathroom`'s exclusivity
+    branch exists for -- except the container's own "none" short-circuits
+    that branch before it ever runs.
 
     This resolves what "bathroom" and "bathroom_group" to FEED
     `effective_bathroom` on the container's behalf, rather than widening
@@ -302,24 +301,46 @@ def container_bathroom(leaf_bathroom_groups: frozenset[str]) -> tuple[str, str]:
     the inheritance a container needs is a fact about its children, computed
     here and handed in as an ordinary "shared" input.
 
+    ⚠️ THIS TAKES (bathroom, group) PAIRS. It took bare group ids until
+    kindred#2502, and identity alone is not enough to answer the question:
+    a group says which rooms share ONE bathroom, never that the bathroom is
+    inside any of them. One registry group names a BATHHOUSE its two rooms
+    walk to -- both record `bathroom = "none"` -- and on identity alone this
+    returned ("shared", group), which `effective_bathroom` then upgraded to
+    "private" for a whole-let. That is a satisfied verdict on an in-cabin
+    bathroom request that is asked for medical reasons, about two rooms with
+    no bathroom in them. A group is inheritable only when some leaf behind
+    it actually records one.
+
     Args:
-        leaf_bathroom_groups: the `bathroom_group` of every LEAF unit
-            directly or indirectly under the container ("" for a leaf with
-            no group).
+        leaves: the `(bathroom, bathroom_group)` pair of every LEAF unit
+            directly or indirectly under the container. `bathroom` is the
+            registry's own value ("", "none", "private", "shared") and
+            `bathroom_group` is "" for a leaf with no group.
 
     Returns:
         ("shared", group) when every leaf agrees on the same non-empty
-        group -- the children physically share one bathroom, so booking the
-        whole container definitionally covers that group. ("none", "")
-        when the leaves disagree, carry no group, or there are none at all:
-        nothing to inherit, so the container reports exactly what its own
-        registry row already says.
+        group AND at least one of them records a bathroom -- the children
+        physically share one bathroom, so booking the whole container
+        definitionally covers that group. ("none", "") otherwise: nothing
+        to inherit, so the container reports exactly what its own registry
+        row already says.
+
+        ⚠️ Leaves spanning two groups return ("none", "") even when every
+        one of them has a bathroom. That is a FALSE NEGATIVE and it is
+        deliberate: widening it redefines what "this building has a
+        bathroom" means, which is an owner ruling rather than a bug fix.
+        `test_leaves_split_across_groups_inherit_nothing` pins it.
     """
-    if len(leaf_bathroom_groups) == 1:
-        (group,) = leaf_bathroom_groups
-        if group:
-            return "shared", group
-    return "none", ""
+    groups = {group for _, group in leaves}
+    if len(groups) != 1:
+        return "none", ""
+    (group,) = groups
+    if not group:
+        return "none", ""
+    if not any(bathroom in ("private", "shared") for bathroom, _ in leaves):
+        return "none", ""
+    return "shared", group
 
 
 # ── Free-text bunk-request provenance (kindred#2330) ─────────────────────────

@@ -3771,6 +3771,147 @@ class TestPartySizeIsABedCount:
         assert seen == {date(2026, 9, 4), date(2026, 10, 10)}
 
 
+class TestUnitBathroomResolution:
+    """kindred#2502 -- `LodgingUnitSummary.bathroom`, resolved over LEAF
+    descendants rather than read off the container's own row.
+
+    The fourth twin of `power_coverage` / `fridge_coverage` / `ramp_coverage`,
+    and the last amenity that was still answered from the row itself. All 15
+    production containers store `bathroom = "none"` -- a building is not a
+    room -- while 13 of them have at least one room that records one, so the
+    unit card drew no bathroom on every whole-house card while both its
+    leaves drew one the moment staff split it.
+
+    ⚠️ THIS MUST ANSWER FOR AN UNOCCUPIED CONTAINER. The party path already
+    answers correctly via `_resolve_party_bathroom`, but only once something
+    is placed -- so the same building graded UNMET in the picker and MET once
+    the family landed in it. A resolver has no placement to read, which is
+    exactly why the fix is a resolver and not the slot-code threading the
+    issue body originally proposed.
+    """
+
+    @pytest.mark.asyncio
+    async def test_a_leaf_still_answers_for_itself(self) -> None:
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("u1", "ridge-1", "Ridge 1", sleeps=4, bathroom="private"),
+                _unit("u2", "ridge-2", "Ridge 2", sleeps=4, bathroom="none"),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        by_code = {u.code: u for u in roster.units}
+        assert by_code["ridge-1"].bathroom == "private"
+        assert by_code["ridge-2"].bathroom == "none"
+
+    @pytest.mark.asyncio
+    async def test_a_container_inherits_the_bathroom_its_rooms_share(self) -> None:
+        """The reported symptom: the building says none, both rooms say shared.
+
+        A whole-let covers the whole group by construction, so the container
+        resolves to the exclusive grade its rooms cannot claim alone.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("c1", "lodge", "Lodge", is_container=True, bathroom="none"),
+                _unit(
+                    "u1",
+                    "lodge-1",
+                    "Lodge 1",
+                    sleeps=2,
+                    bathroom="shared",
+                    bathroom_group="lodge-bath",
+                    parent_unit="c1",
+                ),
+                _unit(
+                    "u2",
+                    "lodge-2",
+                    "Lodge 2",
+                    sleeps=3,
+                    bathroom="shared",
+                    bathroom_group="lodge-bath",
+                    parent_unit="c1",
+                ),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        by_code = {u.code: u for u in roster.units}
+        assert by_code["lodge"].bathroom == "private"
+        assert by_code["lodge-1"].bathroom == "shared"
+        assert by_code["lodge-2"].bathroom == "shared"
+
+    @pytest.mark.asyncio
+    async def test_a_container_whose_rooms_walk_to_a_bathhouse_inherits_nothing(self) -> None:
+        """The false positive this resolver must not publish to a second
+        surface. Both rooms record no bathroom while sharing one group -- the
+        group names the bathhouse they walk to, not a bathroom in either
+        room."""
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("c1", "village", "Village", is_container=True, bathroom="none"),
+                _unit(
+                    "u1",
+                    "village-a",
+                    "Village A",
+                    sleeps=2,
+                    bathroom="none",
+                    bathroom_group="village-bathhouse",
+                    parent_unit="c1",
+                ),
+                _unit(
+                    "u2",
+                    "village-b",
+                    "Village B",
+                    sleeps=2,
+                    bathroom="none",
+                    bathroom_group="village-bathhouse",
+                    parent_unit="c1",
+                ),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert {u.code: u.bathroom for u in roster.units}["village"] == "none"
+
+    @pytest.mark.asyncio
+    async def test_it_resolves_through_an_intermediate_container(self) -> None:
+        """18 of 118 units are grandchildren, and some top-level containers
+        have no leaf children at all -- only container children. A one-level
+        walk answers "none" here."""
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("c0", "block", "Block", is_container=True, bathroom="none"),
+                _unit("c1", "block-wing", "Wing", is_container=True, bathroom="none", parent_unit="c0"),
+                _unit(
+                    "u1",
+                    "block-wing-1",
+                    "Wing 1",
+                    sleeps=2,
+                    bathroom="shared",
+                    bathroom_group="wing-bath",
+                    parent_unit="c1",
+                ),
+                _unit(
+                    "u2",
+                    "block-wing-2",
+                    "Wing 2",
+                    sleeps=2,
+                    bathroom="shared",
+                    bathroom_group="wing-bath",
+                    parent_unit="c1",
+                ),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert {u.code: u.bathroom for u in roster.units}["block"] == "private"
+
+
 class TestUnitPowerCoverage:
     """kindred#1912 -- `LodgingUnitSummary.power_coverage`, resolved over LEAF
     descendants rather than read off the row.
