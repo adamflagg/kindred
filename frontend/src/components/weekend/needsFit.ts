@@ -86,12 +86,30 @@ const HATCHED_NEEDS: readonly NeedKey[] = ['power', 'fridge', 'step_free']
  * scope above, nothing else. It used to carry a third copy of the
  * coverage-to-verdict mapping, which is how the roster and the board came to
  * disagree about whether a container had power.
+ *
+ * ⚠️ `'fits'` FOR AN UNKNOWN COVERAGE, WHICH IS NOT WHAT THE GLYPHS DO, and
+ * the difference is deliberate rather than a missed sweep. The owner ruled on
+ * 2026-08-20 that unconfirmed information must not read as met **on the
+ * glyphs** — a glyph reports what is known, and its full hue is itself a claim.
+ * The hatch is a different mark asking a different question: it is an
+ * INTERRUPTION over a cabin being dragged onto, so its bar is evidence of
+ * ABSENCE rather than absence of evidence.
+ *
+ * The number decides it. 102 of 118 cabins carry `ramp_coverage: 'unknown'`,
+ * because nobody has assessed them — which is what the three-value select
+ * exists to record. Measured across 2026's twelve weekends: reading `unknown`
+ * as unmet here takes a step-free household's hatched cabins from **32 of 944
+ * pairs to 848**, from 3.4% to 90%. A hatch that fires on nine cabins in ten
+ * has stopped saying anything. The same rule costs the glyphs three marks.
+ *
+ * See `needGlyphs.UnknownReading`, which carries the full argument. This is the
+ * only call site that passes anything but the default.
  */
 export function resolveNeedsFit(party: RosterPartyRow, unit: LodgingUnitRow): NeedsFit {
   let worst: NeedsFit = 'fits'
   for (const glyph of askedNeedGlyphs(party)) {
     if (!HATCHED_NEEDS.includes(glyph.key)) continue
-    worst = worseOf(needVerdict(glyph.key, glyph.coverage(party, unit, 'placed')), worst)
+    worst = worseOf(needVerdict(glyph.key, glyph.coverage(party, unit, 'placed'), 'fits'), worst)
   }
   return worst
 }

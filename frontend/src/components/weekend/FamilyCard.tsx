@@ -418,12 +418,34 @@ function FamilyCardIdentity({ party }: { party: RosterPartyRow }) {
                       halves of line 2 sit level again. It is also what the
                       review artifact does.
 
+                      ⚠️ SIZED AND ALIGNED TO THE CAPITAL BESIDE IT, NOT TO THE
+                      LINE BOX (owner, 2026-08-20). It was `h-3 w-3` —12px —
+                      hung from `align-text-bottom`, which is the DESCENDER
+                      line, not the baseline. Measured in Chromium against the
+                      real font: the lucide `user` glyph inks from y=2 to y=22
+                      of its 24 viewBox (circle top 7−4−1, shoulder bottom
+                      21+1), so that box put the head 0.75px BELOW the cap-top
+                      of the S it stands before and ran 2.75px BELOW the
+                      baseline. The owner read both off the screen before any
+                      of this was measured.
+
+                      `align-baseline` puts the box's bottom ON the baseline,
+                      which alone stops the ink dipping under the letters at
+                      any size. 9px is then the size whose ink top lands on the
+                      cap: +0.50px above it, against +1.42 at 10px and +2.33 at
+                      11px. The artifact's own mark is 11px at
+                      `vertical-align:-1px` and measures +1.33 / −0.17; the
+                      owner wanted the top ON the S, and this is nearer.
+
+                      The jitter above stays fixed: at 9px the box sits wholly
+                      inside a 16.5px line box, so it grows nothing.
+
                       AMBER, and specifically First-time's amber: one language
                       for "notice this household" across both marks (Sa). */}
                   {isSingleParent && (
                     <User
                       data-testid="family-card-single-parent"
-                      className="mr-0.5 inline h-3 w-3 align-text-bottom text-amber-700 dark:text-amber-300"
+                      className="mr-0.5 inline h-[9px] w-[9px] align-baseline text-amber-700 dark:text-amber-300"
                     />
                   )}
                   {adultNames.map((name, index) => (

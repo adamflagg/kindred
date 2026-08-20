@@ -204,32 +204,37 @@ export function partyAttention(
      * ANYTHING SHORT OF `fits` COUNTS AS UNMET HERE, and the roster is binary
      * on purpose: it has no third band to put a qualification in.
      *
-     * ⚠️ TWO VERDICTS MOVED WITH kindred#2072, NOT ONE. An earlier draft of
-     * this comment claimed "every case that used to flag still flags, except
-     * the fully-covered container the raw flag got wrong" — that was FALSE,
-     * and the review that caught it is the reason this paragraph is longer
-     * than it looks like it needs to be.
+     * ⚠️ ONE VERDICT MOVED WITH kindred#2072 AND STAYED MOVED; a second moved
+     * and was then MOVED BACK. Both are recorded because each was argued for
+     * on the record and a reader meeting only the outcome would re-argue them.
      *
-     *   POWER, and this is the fix: a container whose leaves all have power
-     *   reported "No power" off its own `has_power = 0` row. Twelve of the
-     *   fourteen 2026 family-pool containers. That case stops flagging, and
-     *   should.
+     *   POWER, and this is the fix that stands: a container whose leaves all
+     *   have power reported "No power" off its own `has_power = 0` row —
+     *   twelve of the fourteen 2026 family-pool containers. That case stops
+     *   flagging, and should. It is about reading the SERVER-RESOLVED
+     *   coverage instead of the raw row, and nothing since has touched it.
      *
-     *   BATHROOM, and this one is a real reclassification: `unknown` and an
-     *   absent `effective_bathroom` used to fail `=== 'private'` and flag;
-     *   they now grade `unknown → fits` like every other need and settle.
+     *   UNKNOWN, and this one went out and came back. #2072 made `unknown`
+     *   and an absent `effective_bathroom` grade `fits` and settle, where the
+     *   old `=== 'private'` rule failed them. The owner reversed it on
+     *   2026-08-20: *"unknown values should not equal fits, across all
+     *   surfaces on the glyphs, its unconfirmed information."* The argument
+     *   that lost — the absence of evidence is not evidence of absence — is
+     *   true and insufficient, because `settled` is a claim about an
+     *   unmeasured cabin exactly as `unmet` is, and this band has no third
+     *   option to retreat to.
      *
-     * The bathroom move is DELIBERATE and kept, on two grounds. It applies
-     * the same rule to all four needs — the absence of evidence is not
-     * evidence of absence — which is the whole point of consolidating the
-     * three tables. And its reach is zero: all 118 registry rows carry a
-     * valid `bathroom` and no placement holds an orphan code, so nothing on
-     * the board changes today. kindred#2502 (a container scored on its own
-     * blank row rather than its covered leaves) narrows the ways `unknown`
-     * can arise further still, on the unit side.
+     * ⚠️ THE `is_confirmed` GATE ABOVE IS UNTOUCHED BY THAT REVERSAL and does
+     * most of the work: an unconfirmed cabin never reaches this branch at all.
+     * What changed is the narrower case the gate does not cover — a cabin
+     * somebody HAS confirmed whose coverage the server still could not
+     * resolve. Measured across 2026's twelve weekends and 575 parties: no
+     * placed party's bathroom or power coverage is anything but `all` or
+     * `none`, so no section count moves today. kindred#2502 narrows the ways
+     * `unknown` can arise further still, on the unit side.
      *
-     * It is pinned below, so a future reader meets the decision rather than
-     * inferring it from behaviour.
+     * Both directions are pinned in `rosterAttention.test.ts`, so a future
+     * reader meets the decisions rather than inferring them from behaviour.
      */
     const unmet = asked.filter((key) => needVerdict(key, needCoverage(key, party, unit)) !== 'fits')
     if (unmet.length > 0) {

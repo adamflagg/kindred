@@ -254,6 +254,49 @@ describe('AssignFamilyModal — the geometry the owner ruled on 2026-08-20', () 
     expect(footer?.className).toContain('border-dashed')
   })
 
+  it('gives the identity a line of its own, and never lets it be squeezed', () => {
+    /*
+     * ⚠️ OPTION A, owner 2026-08-20, and it exists to close a MEASURED defect.
+     * At 520px the one-line row had four columns that refuse to shrink — the
+     * bed count, the glyph strip, last year's cabin and the fit verdict — and
+     * exactly one that yields: the family's name. On the worst case the board
+     * can produce (five children, four glyphs, a 26-character cabin, an
+     * over-capacity sentence) those four took 461px of a 476px track and the
+     * identity rendered as `G.` — 12.7px, two characters.
+     *
+     * Line 1 is the identity and the bed count and nothing else, so nothing
+     * can compete with it. The detail line carries the rest, and there the
+     * CABIN is the flexible one — the most advisory of the three and the only
+     * one still readable clipped.
+     */
+    renderModal({ parties: [NGUYEN] })
+    const row = screen.getByTestId('candidate-household-102')
+    const identityLine = row.firstElementChild?.firstElementChild
+    const detailLine = row.firstElementChild?.lastElementChild
+
+    // The name shares line 1 with the bed count only.
+    expect(identityLine?.children).toHaveLength(2)
+    expect(identityLine).toHaveTextContent('Isla Nguyen (3)')
+    // The verdict is on the detail line, not competing with the name.
+    expect(detailLine).toContainElement(screen.getByTestId('candidate-household-102-fit'))
+    expect(detailLine).toHaveTextContent('Lakeside')
+  })
+
+  it('drops the detail line entirely when there is nothing to put on it', () => {
+    /*
+     * A household with no glyphs and no last-year cabin would otherwise pay a
+     * whole line for one word. The row collapses back to a single line and the
+     * verdict rejoins the identity — which is also what keeps the common case
+     * from costing 20px more than it did before.
+     */
+    renderModal({
+      parties: [party({ household_cm_id: 120, flags: {}, last_year_cabin: '' })],
+    })
+    const row = screen.getByTestId('candidate-household-120')
+    expect(row.querySelector('[data-testid="candidate-detail-line"]')).toBeNull()
+    expect(row).toContainElement(screen.getByTestId('candidate-household-120-fit'))
+  })
+
   it('separates the rows by the artifact’s 6px, not the chip row’s 4px', () => {
     renderModal()
     expect(screen.getByRole('listbox').className).toContain('gap-[6px]')
@@ -267,7 +310,12 @@ describe('AssignFamilyModal — the geometry the owner ruled on 2026-08-20', () 
     renderModal({ parties: [NGUYEN] })
     const row = screen.getByTestId('candidate-household-102')
     expect(row.className).toContain('text-[13px]')
-    expect(row.firstElementChild?.className).toContain('font-semibold')
+    // The name is the first child of line 1, which is the first child of the
+    // two-line block — it stopped being the row's own first child when the
+    // detail line landed (option A).
+    expect(row.firstElementChild?.firstElementChild?.firstElementChild?.className).toContain(
+      'font-semibold'
+    )
   })
 
   it('gives the two text inputs one set of numbers, because the artifact does', () => {

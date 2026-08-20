@@ -165,30 +165,57 @@ describe('needVerdict — the truth table', () => {
   const TABLE: ReadonlyArray<[string, 'all' | 'some' | 'partial' | 'none' | 'unknown', string]> = [
     ['bathroom', 'all', 'fits'],
     ['bathroom', 'none', 'unmet'],
-    ['bathroom', 'unknown', 'fits'],
+    ['bathroom', 'unknown', 'unmet'],
     ['power', 'all', 'fits'],
     ['power', 'some', 'partial'],
     ['power', 'none', 'unmet'],
-    ['power', 'unknown', 'fits'],
+    ['power', 'unknown', 'unmet'],
     ['fridge', 'all', 'fits'],
     ['fridge', 'some', 'partial'],
     ['fridge', 'none', 'unmet'],
-    ['fridge', 'unknown', 'fits'],
+    ['fridge', 'unknown', 'unmet'],
     ['step_free', 'all', 'fits'],
     ['step_free', 'some', 'unmet'],
     ['step_free', 'partial', 'partial'],
     ['step_free', 'none', 'unmet'],
-    ['step_free', 'unknown', 'fits'],
+    ['step_free', 'unknown', 'unmet'],
   ]
 
   it.each(TABLE)('grades %s at %s coverage as %s', (key, coverage, expected) => {
     expect(needVerdict(key as never, coverage)).toBe(expected)
   })
 
-  it('reports fits for unknown, because absence of evidence is not evidence of absence', () => {
-    // An unconfirmed cabin's `has_power = false` means "nobody has said".
-    // Marking it would assert something about a space nobody has measured.
-    expect(needVerdict('power', 'unknown')).toBe('fits')
+  it('reports UNMET for unknown — unconfirmed information is not a met need', () => {
+    /*
+     * ⚠️ THIS REVERSES THE RULE THE RESOLVER SHIPPED WITH, and the old
+     * reasoning is kept here rather than deleted because it was not silly.
+     *
+     * It used to grade `unknown → fits`, on the argument that "the absence of
+     * evidence is not evidence of absence": an unconfirmed cabin's
+     * `has_power = false` means "nobody has said", so marking it would assert
+     * something about a space nobody has measured.
+     *
+     * What that argument missed is that `fits` is not silence — it is the
+     * glyph in its full hue, which asserts the cabin MEETS the need. Both
+     * verdicts make a claim; the question is only which claim is safer to make
+     * about a space nobody has measured. Owner ruling 2026-08-20, verbatim:
+     * *"unknown values should not equal fits, across all surfaces on the
+     * glyphs, its unconfirmed information."* It matches what the same owner
+     * said on 2026-08-19 — *"if something's unconfirmed, i'm always going to
+     * want to know."*
+     *
+     * Two states are ruled, not three (§2), so "not fits" is `unmet` and the
+     * glyph takes the warn treatment. The shape still says WHICH need it is.
+     *
+     * ⚠️ THE NO-CABIN CASE IS DIFFERENT AND IS NOT THIS. An unplaced party has
+     * no unit at all — there is nothing to be unconfirmed ABOUT — and
+     * `resolveNeedGlyphs` still reports `fits` there. See its own test below:
+     * a queue drawn red all the time says nothing at all.
+     */
+    expect(needVerdict('power', 'unknown')).toBe('unmet')
+    expect(needVerdict('bathroom', 'unknown')).toBe('unmet')
+    expect(needVerdict('fridge', 'unknown')).toBe('unmet')
+    expect(needVerdict('step_free', 'unknown')).toBe('unmet')
   })
 })
 
@@ -232,9 +259,14 @@ describe('resolveNeedGlyphs — what the card actually draws', () => {
   it('keeps a partial verdict out of the warn state', () => {
     // Two states are locked, not three: the hue (asked for) and warn (the
     // room has not got it). `partial` is a QUALIFICATION — "a ramp with a lip",
-    // "some rooms have power" — and the Assign modal's rows already grade it as
-    // advisory-muted rather than as a warning. It keeps its hue; the card's
-    // drag-time hatch is where degree is expressed.
+    // "some rooms have power" — not a warning, so it keeps its hue. Degree is
+    // expressed by the drag-time hatch, over the hatch period.
+    //
+    // ⚠️ This used to add "and the Assign modal's rows already grade it as
+    // advisory-muted", which was true of the deleted `PlaceFamilyPicker` and
+    // never of the modal. Since the 2026-08-20 verdict ruling the modal draws
+    // two inks only and prints `partial fit` as WORDS. Corrected rather than
+    // dropped, because the surviving reason above is the one that matters.
     const glyphs = resolveNeedGlyphs(
       party({ flags: { needs_power: true } }),
       unit({ power_coverage: 'some' })

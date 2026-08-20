@@ -95,17 +95,26 @@ describe('candidateFit', () => {
     expect(result.notes).toEqual([])
   })
 
-  it('says nothing when nobody has recorded the bathroom', () => {
-    // The absence of evidence is not evidence of absence — the same bar
-    // `needsFit`'s `unknown` coverage and `rosterAttention`'s `is_confirmed`
-    // gate already apply. Marking an unrecorded room would assert something
-    // about a space nobody has measured.
+  it('does NOT say a room fits when nobody has recorded its bathroom', () => {
+    /*
+     * ⚠️ REVERSED 2026-08-20. This used to expect `fits`, on the argument that
+     * the absence of evidence is not evidence of absence, so marking an
+     * unrecorded room would assert something about a space nobody has
+     * measured. True — but `fits` asserts something too, and on a candidate
+     * row it is the bolder of the two: a green verdict at the moment of
+     * placement, telling staff to go ahead. Owner ruling: *"unknown values
+     * should not equal fits, across all surfaces on the glyphs, its
+     * unconfirmed information."*
+     *
+     * `notes` stays empty, because notes are what NO GLYPH can say and the
+     * glyph carries this one (N2). The row's own verdict is what changes.
+     */
     const result = candidateFit(
       party({ flags: { needs_private_bathroom: true } }),
       unit({ bathroom: 'unknown' }),
       []
     )
-    expect(result.fit).toBe('fits')
+    expect(result.fit).toBe('unmet')
     expect(result.notes).toEqual([])
   })
 

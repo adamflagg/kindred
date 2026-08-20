@@ -648,6 +648,10 @@ export function AssignFamilyModal({
                 // considered, never against a placement this party does not
                 // have. See `needGlyphs.NeedReading`.
                 const glyphs = resolveNeedGlyphs(party, unit, 'prospective')
+                // The detail line earns its height only if it carries
+                // something. The verdict alone does not qualify — it moves
+                // back up to line 1 rather than holding a line open.
+                const hasDetail = glyphs.length > 0 || lastYearCabin.length > 0
                 return (
                   <button
                     key={partyKey(party)}
@@ -661,15 +665,35 @@ export function AssignFamilyModal({
                       choose(party)
                     }}
                     /*
-                     * ONE LINE, AND A DRAWN RECTANGLE — the artifact's `.crow`
-                     * (`display:flex; align-items:center; gap:6px; border:1px;
+                     * TWO LINES — OPTION A, owner 2026-08-20 — AND A DRAWN
+                     * RECTANGLE (the artifact's `.crow`: `border:1px;
                      * border-radius:8px; padding:5px 7px; background`).
                      *
-                     * It was two stacked lines with no border, so the rows ran
-                     * together as text and each cost 54px against the
-                     * artifact's 33px — about 5.9 rows visible in the scroller
-                     * where the artifact fits 9.7. A list you scan for one
-                     * family wants rows you can count.
+                     * ⚠️ THE SECOND LINE EXISTS TO STOP THE IDENTITY BEING
+                     * CRUSHED, and that was measured rather than feared. On one
+                     * line this row had FOUR columns that refuse to shrink —
+                     * the bed count, the glyph strip, last year's cabin
+                     * (`whitespace-nowrap`) and the fit verdict
+                     * (`whitespace-nowrap`) — and exactly one that yields, the
+                     * family's name. At 520px, on the worst case the board can
+                     * produce (five children, four glyphs, a 26-character cabin
+                     * name and an over-capacity sentence) the four took 461px
+                     * of a 476px track and the name rendered as `G.`: 12.7px,
+                     * two characters, on a staff-facing list whose whole job is
+                     * telling families apart.
+                     *
+                     * So line 1 is the identity and its headcount and nothing
+                     * else — nothing can compete with it — and the detail line
+                     * takes the rest. There the CABIN is the flexible column:
+                     * the most advisory of the three, and the only one that
+                     * still reads when clipped.
+                     *
+                     * It costs height, and the cost is real: ~53px against 32,
+                     * which is about 5.5 rows in the fixed region rather than
+                     * 8.6. Two things pay for it. The list is TYPED INTO —
+                     * the search box is how staff narrow it, not the scrollbar
+                     * — and taller rows fill a region whose fixed height
+                     * otherwise left visible empty ground under a short list.
                      *
                      * A REAL TAB STOP, unlike the inline picker's rows. There,
                      * ~82 mounted lists meant every row was a stop; here the
@@ -679,43 +703,68 @@ export function AssignFamilyModal({
                      */
                     className="border-border bg-background hover:bg-muted focus-visible:bg-muted flex w-full items-center gap-1.5 rounded-lg border px-[7px] py-[5px] text-left text-[13px] focus-visible:outline-none disabled:opacity-40"
                   >
-                    {/* The artifact's order, and it is the scan order: who they
-                        are, how many, what they asked for, where they were,
-                        how this room answers. */}
-                    {/* `font-semibold`, the artifact's `.cname{font-weight:600}` —
-                        it was `font-medium` (500). The row's own text is
-                        13px, so the name needs the weight to lead it. */}
-                    <span className="text-foreground min-w-0 flex-1 truncate font-semibold">
-                      {candidateIdentity(party)}
+                    <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                      {/* LINE 1 — who they are, and how many. */}
+                      <span className="flex min-w-0 items-center gap-1.5">
+                        {/* `font-semibold`, the artifact's
+                            `.cname{font-weight:600}`. The row's own text is
+                            13px, so the name needs the weight to lead it. */}
+                        <span className="text-foreground min-w-0 flex-1 truncate font-semibold">
+                          {candidateIdentity(party)}
+                        </span>
+                        <span className="text-muted-foreground inline-flex flex-shrink-0 items-center gap-0.5 text-xs tabular-nums">
+                          <Users className="h-3 w-3" />
+                          {partyBeds(party)}
+                        </span>
+                      </span>
+
+                      {/* LINE 2 — what they asked for, where they were, how
+                          this room answers. RENDERED ONLY WHEN IT CARRIES
+                          SOMETHING: a household with no glyphs and no cabin
+                          would otherwise pay a whole line for one word, and
+                          the common case must not cost more than it did
+                          before. When it is absent the verdict rejoins line 1
+                          below. */}
+                      {hasDetail ? (
+                        <span
+                          data-testid="candidate-detail-line"
+                          className="flex min-w-0 items-center gap-1.5"
+                        >
+                          {/* `gap-[3px]` — the artifact's `.cglyphs{gap:3px}`. */}
+                          <span className="flex flex-shrink-0 items-center gap-[3px]">
+                            {glyphs.map((glyph) => (
+                              <NeedGlyphMark key={glyph.key} glyph={glyph} insideControl />
+                            ))}
+                          </span>
+                          {/* THE COLUMN THAT YIELDS. `min-w-0 flex-1 truncate`
+                              rather than the `whitespace-nowrap` it carried on
+                              one line: a cabin name is the one thing here that
+                              still means something half-read. */}
+                          <span className="text-muted-foreground min-w-0 flex-1 truncate text-xs">
+                            {lastYearCabin}
+                          </span>
+                          <span
+                            data-testid={`candidate-${partyKey(party)}-fit`}
+                            className={`flex-shrink-0 text-[11px] font-bold whitespace-nowrap ${fitTone(candidate)}`}
+                          >
+                            {fitVerdict(candidate)}
+                          </span>
+                        </span>
+                      ) : null}
                     </span>
-                    <span className="text-muted-foreground inline-flex flex-shrink-0 items-center gap-0.5 text-xs tabular-nums">
-                      <Users className="h-3 w-3" />
-                      {partyBeds(party)}
-                    </span>
-                    {/* `gap-[3px]` — the artifact's `.cglyphs{gap:3px}`. It
-                        was `gap-1` (4px), which is the CHIP row's gap on the
-                        family card; these sit inside a 32px row, not beside
-                        word chips. */}
-                    <span className="flex flex-shrink-0 items-center gap-[3px]">
-                      {glyphs.map((glyph) => (
-                        <NeedGlyphMark key={glyph.key} glyph={glyph} insideControl />
-                      ))}
-                    </span>
-                    {lastYearCabin.length > 0 && (
-                      <span className="text-muted-foreground flex-shrink-0 text-xs whitespace-nowrap">
-                        {lastYearCabin}
+
+                    {/* The single-line fallback's verdict — see the detail
+                        line above. Stated for every row either way (see
+                        `fitVerdict`): capacity is the only dimension that
+                        still spends words, because no glyph carries it. */}
+                    {hasDetail ? null : (
+                      <span
+                        data-testid={`candidate-${partyKey(party)}-fit`}
+                        className={`flex-shrink-0 text-[11px] font-bold whitespace-nowrap ${fitTone(candidate)}`}
+                      >
+                        {fitVerdict(candidate)}
                       </span>
                     )}
-                    {/* Stated for every row — see `fitVerdict`. Capacity is the
-                        only dimension that still spends words, because no glyph
-                        carries it. 11px and bold is the artifact's `.fitok` /
-                        `.fitno`; the colour is `fitTone`'s ruling. */}
-                    <span
-                      data-testid={`candidate-${partyKey(party)}-fit`}
-                      className={`flex-shrink-0 text-[11px] font-bold whitespace-nowrap ${fitTone(candidate)}`}
-                    >
-                      {fitVerdict(candidate)}
-                    </span>
                   </button>
                 )
               })}

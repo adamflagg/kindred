@@ -1604,6 +1604,38 @@ describe('FamilyCard — single parent is a mark on line 2 (S2 + Sa)', () => {
     expect(adults.firstElementChild).toBe(mark)
   })
 
+  it('sits ON the baseline and is sized to the capital beside it', () => {
+    /*
+     * ⚠️ MEASURED AGAINST THE LETTER, NOT AGAINST THE LINE BOX (owner,
+     * 2026-08-20). The mark shipped as `h-3 w-3 align-text-bottom` — a 12px
+     * box hung from the DESCENDER line — and the owner read it off the screen
+     * exactly: *"in the worktree its head top of the icon is below the top of
+     * the S, and it extends lower than the text it is next to."*
+     *
+     * Confirmed in Chromium against the real font. The lucide `user` glyph
+     * inks from y=2 to y=22 of its 24 viewBox (circle top 7−4−1, shoulder
+     * bottom 21+1), so at 12px hung from text-bottom its ink began **0.75px
+     * BELOW** the cap-top of the S and ran **2.75px BELOW** the baseline.
+     *
+     * `align-baseline` puts the box's bottom ON the baseline, which alone
+     * guarantees the ink can never dip under the letters. 9px is then the size
+     * whose ink top lands on the cap: +0.50px above it, against +1.42 at 10px
+     * and +2.33 at 11px. The review artifact's own mark is 11px hung at
+     * `vertical-align:-1px`, which measures +1.33 / −0.17 — the owner called
+     * that close but wanted the top ON the S, and this is nearer.
+     *
+     * jsdom has no layout engine, so the classes are what is pinned here and
+     * the numbers above are what the browser said.
+     */
+    render(<FamilyCard party={party()} onOpen={vi.fn()} />)
+    const mark = screen.getByTestId('family-card-single-parent')
+    expect(mark.getAttribute('class')).toContain('align-baseline')
+    expect(mark.getAttribute('class')).toContain('h-[9px]')
+    expect(mark.getAttribute('class')).toContain('w-[9px]')
+    // The old hanging alignment is what put it under the text.
+    expect(mark.getAttribute('class')).not.toContain('align-text-bottom')
+  })
+
   it('is AMBER — First-time’s tone, so amber means "notice this household" on both', () => {
     /*
      * Sa. It left the chip row, where it borrowed the sharing chips' muted

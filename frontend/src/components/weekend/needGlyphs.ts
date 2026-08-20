@@ -86,6 +86,37 @@ export type NeedKey = 'bathroom' | 'power' | 'fridge' | 'step_free'
  */
 export type NeedReading = 'placed' | 'prospective'
 
+/**
+ * WHAT AN `unknown` COVERAGE MEANS FOR THE MARK BEING DRAWN, and the two marks
+ * genuinely ask different questions.
+ *
+ *   `'unmet'`  — the default, and every GLYPH. The glyph reports what is known
+ *                about the cabin, and `fits` is not silence: it is the mark in
+ *                its full hue, asserting the need is met. Owner ruling
+ *                2026-08-20 — *"unknown values should not equal fits, across
+ *                all surfaces on the glyphs, its unconfirmed information."*
+ *
+ *   `'fits'`   — the drag-time HATCH, and this is not a leftover. The hatch is
+ *                not a report, it is an INTERRUPTION: it darkens a cabin under
+ *                a card being dragged to say "not this one". Its bar is
+ *                therefore evidence of ABSENCE, not absence of evidence.
+ *
+ * ⚠️ THE NUMBER IS WHY, AND IT IS NOT CLOSE. 102 of 118 cabins carry
+ * `ramp_coverage: 'unknown'` — nobody has assessed them, which is exactly what
+ * the three-value select exists to record. Measured across 2026's twelve
+ * weekends: reading `unknown` as unmet in the hatch takes a step-free
+ * household's hatched cabins from **32 of 944 pairs to 848** — 3.4% to 90%. A
+ * hatch that fires on nine cabins in ten has stopped saying anything, which is
+ * the same failure as a queue drawn red all the time. The glyph, on the same
+ * data, moves THREE marks.
+ *
+ * This is one grading with two documented readings, not two tables. The
+ * coverage derivation is still single-sourced in `needCoverage`; only what an
+ * absent answer MEANS differs, and it differs at one call site with a reason
+ * written at both ends. `needsFit` is that call site.
+ */
+export type UnknownReading = Extract<NeedsFit, 'unmet' | 'fits'>
+
 export interface NeedGlyphSpec {
   readonly key: NeedKey
   /** The household's asked-for need. */
@@ -279,12 +310,46 @@ export function needCoverage(
 /**
  * How a coverage grade reads for one need.
  *
- * `unknown` reports `fits`, and that is the whole point of the fourth value:
- * the absence of evidence is not evidence of absence. An unconfirmed cabin's
- * `has_power = false` means "nobody has said", so marking it would assert
+ * ⚠️ `unknown` REPORTS `unmet`, AND THAT REVERSES WHAT THIS FUNCTION SHIPPED
+ * WITH (owner ruling 2026-08-20). The old rule was `unknown → fits`, argued as
+ * "the absence of evidence is not evidence of absence": an unconfirmed cabin's
+ * `has_power = false` means *nobody has said*, so marking it would assert
  * something about a space nobody has measured.
+ *
+ * The argument is kept because it is half right, and because seeing it is what
+ * stops it being re-adopted. What it missed: `fits` IS NOT SILENCE. It is the
+ * glyph in its full hue, and that asserts the cabin MEETS the need — a claim
+ * about an unmeasured space just as much as the warn treatment is. There is no
+ * neutral verdict to fall back on, because two glyph states are ruled and not
+ * three (§2). So the only real question is which claim is safer to make about a
+ * space nobody has measured, and the owner ruled, verbatim:
+ *
+ *   "unknown values should not equal fits, across all surfaces on the glyphs,
+ *    its unconfirmed information."
+ *
+ * It agrees with the same owner on 2026-08-19 — *"if something's unconfirmed,
+ * I'm always going to want to know"* — and it closes the asymmetry that made
+ * BATHROOM the only one of the four able to go red on an unconfirmed cabin:
+ * its supply is resolved server-side without the `is_confirmed` gate the other
+ * three pass through, so the others reported `unknown` and stayed silent while
+ * it spoke. Now all four speak.
+ *
+ * ⚠️ AN UNPLACED PARTY IS A DIFFERENT CASE AND IS NOT GRADED HERE. No unit
+ * means nothing to be unconfirmed ABOUT; `resolveNeedGlyphs` short-circuits to
+ * `fits` before this function is reached, because a queue drawn red all the
+ * time says nothing at all. Do not "make that consistent" with this.
+ *
+ * Measured before the change, across all twelve of 2026's weekends and 575
+ * parties: exactly THREE glyphs move, all of them `step_free` against a cabin
+ * whose `ramp_coverage` the server could not resolve. The roster's section
+ * counts do not move at all — `ROSTER_NEEDS` grades bathroom and power, and
+ * every placed party's coverage for those two is already `all` or `none`.
  */
-export function needVerdict(key: NeedKey, coverage: Coverage): NeedsFit {
+export function needVerdict(
+  key: NeedKey,
+  coverage: Coverage,
+  unknownIs: UnknownReading = 'unmet'
+): NeedsFit {
   if (coverage === 'none') return 'unmet'
   if (coverage === 'some') return needGlyph(key).someIs
   // The fifth grade, reachable only from `ramp_coverage`. It says the space
@@ -292,6 +357,7 @@ export function needVerdict(key: NeedKey, coverage: Coverage): NeedsFit {
   // "nothing here" in every reading of it, and softer than `some`, which is
   // about a building whose rooms disagree.
   if (coverage === 'partial') return 'partial'
+  if (coverage === 'unknown') return unknownIs
   return 'fits'
 }
 
@@ -302,12 +368,24 @@ export interface ResolvedNeedGlyph extends NeedGlyphSpec {
    * Whether the glyph takes the warn treatment.
    *
    * TWO STATES, NOT THREE, and that is ruled (§2): the hue means "asked for",
-   * warn means "the placed room has not got it". `partial` — "a ramp with a
-   * lip", "some rooms have power" — is a QUALIFICATION rather than a warning,
-   * and the Assign modal's candidate rows already grade it as advisory-muted
-   * against
-   * `unmet`'s amber. It keeps its hue; degree lives on the card's drag-time
-   * hatch, which grades it on the hatch PERIOD.
+   * warn means "the room has not got it". `partial` — "a ramp with a lip",
+   * "some rooms have power" — is a QUALIFICATION rather than a warning, so it
+   * keeps its hue. Degree lives on the drag-time hatch, which grades it over
+   * the hatch period.
+   *
+   * ⚠️ THE OLD REASON FOR THAT WAS WRONG AND IS CORRECTED HERE. This comment
+   * used to say `partial` may keep its hue because "the Assign modal's
+   * candidate rows already grade it as advisory-muted against `unmet`'s
+   * amber". That was true of the deleted `PlaceFamilyPicker`; the sentence was
+   * redirected at the Assign modal without being re-checked, and there the
+   * modal's amber was keyed on capacity, not on degree. Since the owner's
+   * 2026-08-20 verdict ruling the modal draws exactly two inks — green for
+   * `fits`, the warn red for everything else, `partial` included. So the modal
+   * distinguishes degree in WORDS (`partial fit` against `does not fit`) and
+   * never in colour, and it is not a reason to keep three states here.
+   *
+   * The real reason is unchanged and stands on its own: a qualification is not
+   * a warning, and the glyph has two states to spend.
    */
   readonly isUnmet: boolean
 }
