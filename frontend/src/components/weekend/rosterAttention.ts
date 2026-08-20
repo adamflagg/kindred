@@ -28,7 +28,7 @@
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
 import { partyHeadcount } from './householdIdentity'
 import { needCoverage, needGlyph, needVerdict } from './needGlyphs'
-import { coveredCodes, drawnUnits } from './unitLevel'
+import { coveredCodes, drawnUnits, representingCodes } from './unitLevel'
 
 /** Ordered most urgent first. The order of this array IS the section order. */
 export const ATTENTION_ORDER = ['required', 'unmet', 'unplaced', 'unverified', 'settled'] as const
@@ -84,23 +84,28 @@ export const ATTENTION_LABEL: Record<AttentionLevel, string> = {
 const ROSTER_NEEDS = ['bathroom', 'power'] as const
 
 /**
- * The roster's own wording for those two, which is NOT the glyph's label.
+ * The roster's own wording for those two, and it now MATCHES the glyph's
+ * label — kindred#2501.
  *
- * The glyph is called "Bathroom in unit", because that is the axis the
- * CampMinder question asks about (`weekend-card-vocabulary.md` §4). The RULE
- * still grades exclusivity until kindred#2501 lands, and these strings are
- * read on the roster row, the details panel and the map peek — surfaces that
- * report the verdict, not the ask. Saying "No bathroom in unit" about a cabin
- * with a shared bathroom in it would be false; saying "No private bathroom"
- * is exactly what was checked.
+ * These strings are read on the roster row, the details panel and the map peek
+ * — surfaces that report the verdict, not the ask — so they have to say what
+ * was actually checked. Until #2501 that was exclusivity, and "No private
+ * bathroom" was the honest word for it: saying "No bathroom in unit" about a
+ * cabin with a shared bathroom inside it would have been false.
  *
- * Both halves move to the glyph's vocabulary when #2501 flips the rule, and
- * not before. That is the same one-release contradiction the card accepts and
- * `needGlyphs.bathroomCoverage` documents.
+ * The rule moved (owner ruling 2026-08-20 — the glyph grades presence, not
+ * exclusivity), so the wording moves with it, and now saying "private" would
+ * be the false half: a household reported here has NO bathroom in the unit at
+ * all, shared or otherwise. Both halves move together, because the ask and the
+ * verdict have to name the same axis or the roster reads as two products.
+ *
+ * The underlying `needs_private_bathroom` field keeps its name; renaming it is
+ * a deliberate follow-up. `needGlyphs.bathroomCoverage` carries the ruling and
+ * what it costs.
  */
 const ROSTER_NEED_WORDING: Record<(typeof ROSTER_NEEDS)[number], { asked: string; unmet: string }> =
   {
-    bathroom: { asked: 'Private bathroom', unmet: 'No private bathroom' },
+    bathroom: { asked: 'Bathroom in unit', unmet: 'No bathroom in unit' },
     power: { asked: 'Power', unmet: 'No power' },
   }
 
@@ -125,44 +130,217 @@ export function partyBeds(party: RosterPartyRow): number {
 }
 
 /**
+ * The board's rule for which DRAWN card represents a named code: itself if it
+ * is drawn, else the nearest drawn ancestor (rolled up), else every drawn node
+ * beneath it (fanned down). `[]` when the board draws nothing for it at all.
+ *
+ * ⚠️ A SECOND COPY of `cardCodesFor`, the closure inside
+ * `boardLayout.indexPayload`, and the duplication is knowing rather than
+ * accidental: that one is not exported, and two implementations of "which card
+ * represents this placement" is the exact drift this function exists to close.
+ * So the pair is pinned against the board's OWN model rather than against a
+ * restatement of the rule — `rosterAttention.test.ts` builds a board from the
+ * same payload and asserts both land on the same card. Lifting the shared rule
+ * into `unitLevel.ts`, where `representingCodes` (the fan-down half) already
+ * lives, is the follow-up.
+ *
+ * The roll-up walk is deliberately NOT the "whole building" grain — see
+ * `cardCodesFor`'s own note and `unitLevel.buildingKey`. It stops at the
+ * nearest DRAWN ancestor, which flips with `is_combined`, and that is right
+ * here precisely because the question IS "which card is on screen".
+ */
+function representingCards(
+  named: LodgingUnitRow,
+  units: LodgingUnitRow[],
+  unitsByCode: ReadonlyMap<string, LodgingUnitRow>,
+  drawnByCode: ReadonlyMap<string, LodgingUnitRow>
+): LodgingUnitRow[] {
+  const own = drawnByCode.get(named.code)
+  if (own !== undefined) return [own]
+
+  let cursor = named
+  const seen = new Set<string>()
+  while ((cursor.parent_code ?? '') !== '' && !seen.has(cursor.code)) {
+    seen.add(cursor.code)
+    const parent = unitsByCode.get(cursor.parent_code ?? '')
+    if (parent === undefined) break
+    const drawnParent = drawnByCode.get(parent.code)
+    if (drawnParent !== undefined) return [drawnParent]
+    cursor = parent
+  }
+
+  return representingCodes(named, units, new Set(drawnByCode.keys()))
+    .map((code) => drawnByCode.get(code))
+    .filter((card): card is LodgingUnitRow => card !== undefined)
+}
+
+/*
+ * THE RESOLVED GRADES, ORDERED WORST FIRST, and the order is the whole content
+ * of the roll-up below — so it is worth saying why it is this one.
+ *
+ * It is a ladder of how much of the space provides the thing: nothing, nobody
+ * has looked, some rooms, a qualified answer, all of it. Ordered that way the
+ * fold is exactly `needVerdict`'s worst case over the cards — checked pair by
+ * pair, the fold's verdict is never softer than the loudest card's, including
+ * the two pairs that are not obvious: `unknown` beats `some` because an
+ * unmeasured room grades `unmet` while `some` may grade `partial`, and
+ * `unknown` beats `partial` for the same reason.
+ *
+ * ⚠️ THAT HOLDS FOR THE GLYPH READING, WHICH IS THE ONLY ONE THIS FEEDS. The
+ * drag-time hatch reads `unknown` as `fits` (`UnknownReading` in
+ * `needGlyphs.ts`), and under that reading a fold of `{unknown, some}` would
+ * be softer than `some` alone. The hatch grades a candidate cabin the party is
+ * not in, never a resolved placement, so it never sees one of these rows — if
+ * that ever changes, this ladder needs a second one beside it.
+ *
+ * `partial` is ramp-only and `shared`/`private` are bathroom-only, so the
+ * three vocabularies get three constants rather than one union that would
+ * type-check against fields it can never hold.
+ */
+const AMENITY_WORST_FIRST = ['none', 'unknown', 'some', 'all'] as const
+const RAMP_WORST_FIRST = ['none', 'unknown', 'some', 'partial', 'all'] as const
+const BATHROOM_WORST_FIRST = ['none', 'unknown', 'shared', 'private'] as const
+
+/** The worst grade present, treating an absent field as `absent`. */
+function worstGrade<T extends string>(
+  order: readonly T[],
+  absent: T,
+  values: ReadonlyArray<T | undefined>
+): T {
+  let rank = order.length - 1
+  for (const value of values) {
+    const index = order.indexOf(value ?? absent)
+    if (index >= 0 && index < rank) rank = index
+  }
+  return order[rank] ?? absent
+}
+
+/**
+ * One row standing for several cards, graded at the WORST of them.
+ *
+ * ⚠️ A GRADING VIEW, NOT A UNIT. Only the five resolved amenity fields are
+ * rolled up; `code`, `name`, `area_name`, `sleeps` and the raw `has_*` twins
+ * are the FIRST card's and describe that card alone. Nothing reads them off a
+ * resolved party unit today — `FamilyDetailsPanel` prints `area_name`, and
+ * every card of a multi-card placement is in one area often enough for that to
+ * be unremarkable — but a future caller wanting the placement's own identity
+ * must not take it from here.
+ *
+ * The alternative was to return the single worst card, and it is wrong for the
+ * case that motivates the whole thing: two rooms where one has power and no
+ * fridge and the other has a fridge and no power have no worse card between
+ * them, and picking either one hides a need the family will actually be short
+ * of.
+ */
+function worstCard(cards: readonly LodgingUnitRow[]): LodgingUnitRow | undefined {
+  const first = cards[0]
+  if (first === undefined || cards.length === 1) return first
+  return {
+    ...first,
+    bathroom: worstGrade(
+      BATHROOM_WORST_FIRST,
+      'unknown',
+      cards.map((card) => card.bathroom)
+    ),
+    power_coverage: worstGrade(
+      AMENITY_WORST_FIRST,
+      'unknown',
+      cards.map((card) => card.power_coverage)
+    ),
+    fridge_coverage: worstGrade(
+      AMENITY_WORST_FIRST,
+      'unknown',
+      cards.map((card) => card.fridge_coverage)
+    ),
+    ac_coverage: worstGrade(
+      AMENITY_WORST_FIRST,
+      'unknown',
+      cards.map((card) => card.ac_coverage)
+    ),
+    ramp_coverage: worstGrade(
+      RAMP_WORST_FIRST,
+      'unknown',
+      cards.map((card) => card.ramp_coverage)
+    ),
+  }
+}
+
+/**
  * The unit whose confirmed data backs this party's fit check, or undefined
  * when there is no confirmed evidence to read.
  *
- * An ordinary placement resolves off `unit_code`, same as always. A merged
- * slot's `unit_code` is "" BY DESIGN (kindred#1982) — `unitsByCode.get('')`
- * finds nothing, which is exactly how the roster row, family card, and
- * detail panel each lost every genuine multi-leaf merge to `unverified`
- * even after `party.effective_bathroom` started reporting `private` for
- * them. `unit_codes` (kindred#1940) carries every leaf the placement
- * covers, and each leaf's OWN `is_confirmed` is real staff signal. Trusting
- * the merge as evidence requires EVERY member to resolve AND be confirmed —
- * one unconfirmed room is still an absence of data, the same principle the
- * single-unit gate already enforces, not a looser one for having more
- * rooms.
+ * ⚠️ THE CARD THE BOARD DRAWS, which is what this used to get wrong. An
+ * ordinary placement resolves off `unit_code`, same as always. A merged slot's
+ * `unit_code` is "" BY DESIGN (kindred#1982) — `unitsByCode.get('')` finds
+ * nothing, which is how the roster row, family card, and detail panel each
+ * lost every genuine multi-leaf merge to `unverified` even after
+ * `party.effective_bathroom` started reporting `private` for them. `unit_codes`
+ * (kindred#1940) carries every leaf the placement covers, and this used to take
+ * `members[0]` off it: the first id in the `units` relation, i.e. whatever
+ * order the rows were stored in.
  *
- * The first resolved member stands in as the representative for the needs that
- * read a UNIT field — since kindred#2072 that is `power_coverage`, resolved by
- * the server over the unit's leaf descendants, rather than the raw `has_power`
- * this used to say. The bathroom need never looks at the unit at all — it
- * reads `party.effective_bathroom` — so which member gets picked never changes
- * that verdict; `is_confirmed` is what has to hold for every one of them.
+ * That made the grade a coin flip AND put it at odds with the other two
+ * surfaces that grade the same family. `LodgingUnitCard` grades its occupants
+ * against the card it drew, and `MapUnitPopover` calls `partyAttention` with
+ * the map's drawn unit — for a combined house, the container. Seven 2026
+ * placements resolved to a different unit here than on those two. No verdict
+ * differed on that data, but only by luck: every container and every leaf
+ * resolves `power_coverage: 'all'`, while two containers have leaves that
+ * disagree on `has_fridge`, so the container resolves `fridge_coverage: 'some'`
+ * where one leaf says `all` and the other `none`. Flipping two ids in the
+ * relation flipped the answer.
  *
- * The map surface (`MapUnitPopover`) does not call this: it already resolves
- * a real, defined per-leaf unit for a merged party (drawing it once per
- * room it occupies), so it never hit this gap.
+ * So the named codes are mapped onto the DRAWN cards representing them, by the
+ * board's own rule (`representingCards`). A merge under a combined house
+ * resolves to the house — one card, the server's roll-up over its leaves, the
+ * same row `LodgingUnitCard` and `MapUnitPopover` grade against. A named code
+ * the board draws no card for at all — a childless container — stands in for
+ * itself rather than reporting no evidence: the registry row is real, and
+ * `undefined` would make every need glyph on that party's off-board card read
+ * as MET.
+ *
+ * Where a placement spans SEVERAL cards, the answer is the worst of them
+ * (`worstCard`), not a member. A family whose need fails in one of its rooms
+ * has a problem, and surfacing the best room hides it.
+ *
+ * Trusting a multi-card placement as evidence still requires EVERY card to
+ * resolve AND be confirmed — one unconfirmed room is an absence of data, the
+ * same principle the single-unit gate enforces, not a looser one for having
+ * more rooms. A code with no row in the payload fails that outright. The
+ * single-card path returns the row as it always has and lets `partyAttention`
+ * apply its own `is_confirmed` gate.
+ *
+ * The bathroom need never looks at the unit in the placed reading — it reads
+ * `party.effective_bathroom` — so which card is picked never changes THAT
+ * verdict. The other three do read the unit, and now read the same one the
+ * board does.
  */
 export function resolvePartyUnit(
   party: RosterPartyRow,
   unitsByCode: Map<string, LodgingUnitRow>
 ): LodgingUnitRow | undefined {
   const singleCode = party.unit_code ?? ''
-  if (singleCode.length > 0) return unitsByCode.get(singleCode)
+  const named = singleCode.length > 0 ? [singleCode] : (party.unit_codes ?? [])
+  if (named.length === 0) return undefined
 
-  const codes = party.unit_codes ?? []
-  if (codes.length === 0) return undefined
-  const members = codes.map((code) => unitsByCode.get(code))
-  const allConfirmed = members.every((member) => member?.is_confirmed === true)
-  return allConfirmed ? members[0] : undefined
+  const units = [...unitsByCode.values()]
+  const drawnByCode = new Map(drawnUnits(units).map((unit) => [unit.code, unit]))
+
+  const cards: LodgingUnitRow[] = []
+  const seen = new Set<string>()
+  for (const code of named) {
+    const unit = unitsByCode.get(code)
+    if (unit === undefined) return undefined
+    const represented = representingCards(unit, units, unitsByCode, drawnByCode)
+    for (const card of represented.length > 0 ? represented : [unit]) {
+      if (seen.has(card.code)) continue
+      seen.add(card.code)
+      cards.push(card)
+    }
+  }
+
+  if (cards.length === 1) return cards[0]
+  return cards.every((card) => card.is_confirmed === true) ? worstCard(cards) : undefined
 }
 
 /**

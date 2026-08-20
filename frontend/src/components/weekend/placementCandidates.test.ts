@@ -71,14 +71,42 @@ describe('candidateFit', () => {
     expect(result.notes).toEqual([])
   })
 
-  it('marks a private-bathroom need against a shared bathroom', () => {
-    // The NOTE is struck (kindred#2072): the row draws a red bathroom glyph,
-    // and a sentence beside it repeating the fact is the "one fact twice" N2
-    // removed from the family card. The verdict it feeds is unchanged, and
-    // the verdict is what orders the list.
+  it('credits a SHARED bathroom — the row grades presence, not exclusivity', () => {
+    /*
+     * ⚠️ REVERSED 2026-08-20 (kindred#2501). This test used to assert `unmet`
+     * on exactly this fixture, and it was the picker's exclusivity pin. The
+     * SPECIFICATION changed, not the code: owner ruling — *"the glyph should
+     * not grade exclusivity, just 'do they have a bathroom (shared or
+     * private)'"*, and on this case itself *"sharing a bathroom for whatever
+     * reason still provides people a bathroom."*
+     *
+     * `'shared'` means a bathroom INSIDE the cabin that two parties split;
+     * walking to a bathhouse is not `'shared'`, it records as `'none'` and is
+     * pinned unmet by the test below. The picker had no separate rule to
+     * change — it grades through `needGlyphs.bathroomCoverage` since
+     * kindred#2072, so this row moved when that predicate did, which is the
+     * whole point of there being one grading.
+     */
     const result = candidateFit(
       party({ flags: { needs_private_bathroom: true } }),
       unit({ bathroom: 'shared' }),
+      []
+    )
+    expect(result.fit).toBe('fits')
+    expect(result.notes).toEqual([])
+  })
+
+  it('marks a bathroom need against a cabin with NO bathroom', () => {
+    // The negative arm the exclusivity pin above used to carry. A walk to a
+    // bathhouse records as `'none'`, and that is still an unmet need.
+    //
+    // The NOTE is struck (kindred#2072): the row draws a red bathroom glyph,
+    // and a sentence beside it repeating the fact is the "one fact twice" N2
+    // removed from the family card. The verdict it feeds is what orders the
+    // list, and that is what this pins.
+    const result = candidateFit(
+      party({ flags: { needs_private_bathroom: true } }),
+      unit({ bathroom: 'none' }),
       []
     )
     expect(result.fit).toBe('unmet')
@@ -207,9 +235,14 @@ describe('candidateFit', () => {
     // `unmet` (bathroom) beats `partial` (some rooms have power). The notes
     // that used to ride along are struck; what survives is the ordering rule,
     // which is what this test was really protecting.
+    //
+    // The unmet VEHICLE moved from `bathroom: 'shared'` to `'none'`
+    // (kindred#2501 made a shared bathroom meet the need). The intent —
+    // worst-of across dimensions — is untouched; it just needs a dimension
+    // that actually fails.
     const result = candidateFit(
       party({ flags: { needs_private_bathroom: true, needs_power: true } }),
-      unit({ bathroom: 'shared', power_coverage: 'some' }),
+      unit({ bathroom: 'none', power_coverage: 'some' }),
       []
     )
     expect(result.fit).toBe('unmet')
@@ -327,7 +360,9 @@ describe('placementCandidates', () => {
     ]
     const rows = placementCandidates(
       parties,
-      unit({ bathroom: 'shared', power_coverage: 'none' }),
+      // `bathroom: 'none'` — a cabin with no bathroom at all. Was `'shared'`,
+      // which stopped being an unmet vehicle at kindred#2501.
+      unit({ bathroom: 'none', power_coverage: 'none' }),
       []
     )
     expect(rows).toHaveLength(3)
@@ -344,7 +379,9 @@ describe('placementCandidates', () => {
     })
     const rows = placementCandidates(
       [unmet, partial, fitting],
-      unit({ bathroom: 'shared', power_coverage: 'some' }),
+      // `bathroom: 'none'` is what makes the third party unmet; `'shared'` no
+      // longer does (kindred#2501). The ordering rule under test is unchanged.
+      unit({ bathroom: 'none', power_coverage: 'some' }),
       []
     )
     expect(rows.map((row) => row.fit)).toEqual(['fits', 'partial', 'unmet'])
@@ -406,9 +443,20 @@ describe('candidateFit — one grading, and the notes the glyphs now carry (kind
   it('reads a candidate bathroom off the CABIN, never off a placement it does not have', () => {
     // Every party in this list is unplaced, so `effective_bathroom` is the
     // wrong question — it would annotate identically on every cabin.
-    const unplaced = party({ flags: { needs_private_bathroom: true }, effective_bathroom: 'none' })
-    expect(candidateFit(unplaced, unit({ bathroom: 'private' }), []).fit).toBe('fits')
-    expect(candidateFit(unplaced, unit({ bathroom: 'shared' }), []).fit).toBe('unmet')
+    //
+    // BOTH arms now disagree with the party's own field, which is what makes
+    // them discriminating: the old second arm paired `effective_bathroom:
+    // 'none'` with `bathroom: 'shared'` and, once kindred#2501 made `'shared'`
+    // meet the need, the two readings answered differently for the first time
+    // — so it started failing. Fixed by giving it a party whose PLACED reading
+    // would say `fits`, against a cabin that says `none`.
+    const wouldFail = party({ flags: { needs_private_bathroom: true }, effective_bathroom: 'none' })
+    const wouldPass = party({
+      flags: { needs_private_bathroom: true },
+      effective_bathroom: 'private',
+    })
+    expect(candidateFit(wouldFail, unit({ bathroom: 'private' }), []).fit).toBe('fits')
+    expect(candidateFit(wouldPass, unit({ bathroom: 'none' }), []).fit).toBe('unmet')
   })
 
   it('writes NO note for a need — the glyph beside it says the same thing', () => {
@@ -418,7 +466,11 @@ describe('candidateFit — one grading, and the notes the glyphs now carry (kind
     // the same glyphs, so the same rule applies to it.
     const result = candidateFit(
       party({ flags: { needs_private_bathroom: true, needs_power: true } }),
-      unit({ bathroom: 'shared', power_coverage: 'none' }),
+      // Both dimensions genuinely fail. This was passing on the power arm
+      // alone after kindred#2501 made `bathroom: 'shared'` MEET the need,
+      // which left the fixture's bathroom half saying nothing while the
+      // comment above claimed it did.
+      unit({ bathroom: 'none', power_coverage: 'none' }),
       []
     )
     expect(result.fit).toBe('unmet')

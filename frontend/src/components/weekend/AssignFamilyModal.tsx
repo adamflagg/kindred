@@ -119,25 +119,93 @@ export interface AssignFamilyModalProps {
 }
 
 /**
+ * Does the room OFFER this, on the evidence the server resolved?
+ *
+ * ONE PREDICATE FOR ALL FOUR AMENITIES, and it is `LodgingUnitCard`'s own:
+ * anything but `none` and `unknown` is a yes. Written once here so the header
+ * cannot answer one dimension differently from another — the four used to be
+ * four hand-written conditions over four differently-shaped raw fields, which
+ * is how one of them (`has_ramp`, a three-value select where `'no'` is TRUTHY)
+ * inverts under a boolean read.
+ *
+ * ⚠️ `unknown` IS ABSENT, AND THAT IS A CLAIM ABOUT CLAIMS. A word in this
+ * header asserts the room HAS the thing; there is no third, neutral state to
+ * fall back on, so the only question is which assertion is safer about a space
+ * nobody has measured. The owner ruled it for the glyphs on 2026-08-20 —
+ * *"unknown values should not equal fits, across all surfaces on the glyphs,
+ * its unconfirmed information"* — and this header is read in the same glance
+ * as those glyphs, against the same rooms. It takes the same reading.
+ *
+ * `undefined` is the Pydantic-default gotcha rather than a separate case: a
+ * field with a default renders optional in the generated types, so an absent
+ * coverage is simply an unstated one.
+ *
+ * `some` IS a yes, deliberately, and it is again the card's rule: the word
+ * says the building offers the thing SOMEWHERE. Whether it reaches a
+ * particular family is the need glyph's question, and `needGlyphs.someIs`
+ * grades that separately per need.
+ */
+function offers(value: string | undefined): boolean {
+  return value !== undefined && value !== 'none' && value !== 'unknown'
+}
+
+/**
  * What the room offers, in WORDS.
  *
  * The unit card spends its title row on icons because it has 280px; this has
  * the width to say them, and a staff member reading a candidate's glyphs
  * against the room should not have to decode two icon sets at once.
  *
+ * ⚠️ EVERY FIELD HERE IS THE SERVER-RESOLVED ONE, NEVER ITS RAW TWIN, AND THE
+ * RAW READ WAS A MEASURED DEFECT.
+ *
+ * This function read `unit.has_power` and `unit.has_ac` — the DRAWN row's own
+ * columns — while `resolveNeedGlyphs` twelve lines below graded the candidate
+ * rows off `power_coverage`. The modal is mounted from `LodgingUnitCard` with
+ * the drawn unit, so on a container the header omitted "power" while every
+ * candidate row under it drew a met plug: one dialog, two answers, and nothing
+ * anywhere saying which was meant.
+ *
+ * The raw flag is not merely a second opinion, it is the WRONG one on a
+ * container. Twelve of the fourteen 2026 family-pool containers record
+ * `has_power = 0` while every leaf beneath them has power, and 8 of the 15
+ * containers resolve a bathroom their own row calls `none`. `power_coverage`,
+ * `fridge_coverage`, `ac_coverage` and the in-place-resolved `bathroom` are
+ * the server's answers over the leaves (`amenity_coverage` /
+ * `container_bathroom` in `api/services/lodging_rules.py`). Do not "simplify"
+ * any of these back to the row's own column.
+ *
  * PRESENCE for the bathroom, matching the card's own mark (ruling 2): the
  * CampMinder question asks whether a bathroom can be reached without leaving
- * the cabin, never whether it is exclusive (vocabulary §4).
+ * the cabin, never whether it is exclusive (vocabulary §4). `shared` is
+ * therefore a yes, on the same axis kindred#2501 moved the glyph's rule onto.
+ *
+ * FRIDGE IS A WORD HERE AND HAS NO ICON ON THE CARD. It is one of the four
+ * ruled need dimensions, the candidate rows below draw a fridge glyph, and a
+ * header silent about it was silent about something the rows were speaking on
+ * — the same disagreement power had, one dimension over. `fridge_coverage`
+ * also carries the owner's 2026-08-15 ruling that a SHARED fridge IS a fridge,
+ * which no client-side read of `has_fridge` would reproduce.
+ *
+ * STEP-FREE IS DELIBERATELY ABSENT. `ramp_coverage` is the fourth need glyph,
+ * but 102 of 118 cabins have never been assessed, so the word would be missing
+ * from nine headers in ten and read as "no ramp" rather than as "nobody
+ * looked". The glyph can say that — it is only drawn for a household that
+ * ASKED — and this unconditional line cannot.
  */
 function amenityWords(unit: LodgingUnitRow): string[] {
-  const bathroom = unit.bathroom ?? 'unknown'
   // Power first, then bathroom — the review artifact's order
   // (`2 of 4 beds free · power · bathroom`). Arbitrary in isolation, so it
-  // follows the artifact rather than inventing a second convention.
+  // follows the artifact rather than inventing a second convention. The two
+  // the artifact does not name follow it, fridge before air conditioning:
+  // fridge is a need a family can ASK for, and air conditioning is the one
+  // amenity on this board with no demand counterpart at all (0 of 184 housing
+  // narratives mention it, against 11 for a fridge).
   return [
-    unit.has_power === true ? 'power' : null,
-    bathroom !== 'none' && bathroom !== 'unknown' ? 'bathroom' : null,
-    unit.has_ac === true ? 'air conditioning' : null,
+    offers(unit.power_coverage) ? 'power' : null,
+    offers(unit.bathroom) ? 'bathroom' : null,
+    offers(unit.fridge_coverage) ? 'fridge' : null,
+    offers(unit.ac_coverage) ? 'air conditioning' : null,
   ].filter((word): word is string => word !== null)
 }
 

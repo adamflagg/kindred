@@ -10,7 +10,9 @@ import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { RosterPartyRow } from '../../types/lodging'
+import { NEED_FILTER_OPTIONS } from './AccessibilityFlagList'
 import { HouseholdRosterTable } from './HouseholdRosterTable'
+import { NEED_GLYPHS } from './needGlyphs'
 
 vi.mock('../../hooks/usePermissions', () => ({
   usePermissions: () => ({
@@ -1014,6 +1016,34 @@ describe('HouseholdRosterTable — filters by housing need (kindred#2251)', () =
       has_infant: true,
     },
   })
+  const fridgeFamily = party({
+    display_name: 'Fridge Family',
+    household_cm_id: 2000014,
+    adults: [{ adult_number: 1, display_name: 'Fridge Parent', relationship: 'Parent' }],
+    flags: {
+      needs_private_bathroom: false,
+      needs_power: false,
+      needs_fridge: true,
+      needs_step_free: false,
+      needs_accommodation: false,
+      accommodation_is_mandatory: false,
+      has_infant: false,
+    },
+  })
+  const stepFreeFamily = party({
+    display_name: 'Step Free Family',
+    household_cm_id: 2000015,
+    adults: [{ adult_number: 1, display_name: 'Step Free Parent', relationship: 'Parent' }],
+    flags: {
+      needs_private_bathroom: false,
+      needs_power: false,
+      needs_fridge: false,
+      needs_step_free: true,
+      needs_accommodation: false,
+      accommodation_is_mandatory: false,
+      has_infant: false,
+    },
+  })
   const noNeedsFamily = party({
     display_name: 'No Needs Family',
     household_cm_id: 2000013,
@@ -1025,9 +1055,48 @@ describe('HouseholdRosterTable — filters by housing need (kindred#2251)', () =
       wrapper,
     })
     expect(screen.getByRole('button', { name: 'Accommodation' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Private bathroom' })).toBeInTheDocument()
+    // "Bathroom in unit", not "Private bathroom" -- the chip's word now comes
+    // from `NEED_GLYPHS`, and kindred#2501 moved the rule to presence.
+    expect(screen.getByRole('button', { name: 'Bathroom in unit' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Power' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Fridge' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Step-free' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Infant in party' })).toBeInTheDocument()
+  })
+
+  it('renders a chip for every NEED_FILTER_OPTIONS entry, so a fifth need needs no edit here', () => {
+    // The list is DERIVED from `NEED_GLYPHS` (see AccessibilityFlagList).
+    // Asserting against the constant rather than six literals is what makes a
+    // future fifth graded need surface on this toolbar automatically.
+    render(<HouseholdRosterTable year={2026} parties={[bathroomFamily, powerFamily]} />, {
+      wrapper,
+    })
+    for (const option of NEED_FILTER_OPTIONS) {
+      expect(screen.getByRole('button', { name: option.label })).toBeInTheDocument()
+    }
+    for (const glyph of NEED_GLYPHS) {
+      expect(screen.getByRole('button', { name: glyph.label })).toBeInTheDocument()
+    }
+  })
+
+  it('narrows the roster to the fridge need (kindred#2224)', async () => {
+    // Six 2026 households ask for a fridge; before this the roster had no way
+    // to find them at all.
+    render(
+      <HouseholdRosterTable year={2026} parties={[fridgeFamily, powerFamily, noNeedsFamily]} />,
+      { wrapper }
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Fridge' }))
+    expect(visibleRowNames()).toEqual(['Fridge Parent'])
+  })
+
+  it('narrows the roster to the step-free need (kindred#2438)', async () => {
+    render(
+      <HouseholdRosterTable year={2026} parties={[stepFreeFamily, powerFamily, noNeedsFamily]} />,
+      { wrapper }
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Step-free' }))
+    expect(visibleRowNames()).toEqual(['Step Free Parent'])
   })
 
   it('narrows the roster to parties matching the selected need', async () => {
@@ -1084,6 +1153,20 @@ describe('HouseholdRosterTable — filters by housing need (kindred#2251)', () =
     render(<HouseholdRosterTable year={2024} parties={[noNeedsFamily]} />, { wrapper })
     await userEvent.click(screen.getByRole('button', { name: 'Accommodation' }))
     expect(screen.queryByText(/2026 season/)).not.toBeInTheDocument()
+  })
+
+  it('does not warn for fridge or step-free either — they share accommodation\u2019s provenance', async () => {
+    // NOT a 2026-only column, unlike bathroom/power. Both are derived in the
+    // Go sync from the accommodation NARRATIVE (`accommodationExplainFieldNames`
+    // in `pocketbase/sync/family_camp_derived.go`), whose source fields existed
+    // in earlier seasons — which is the same reason `needs_accommodation` is
+    // excluded from `HISTORICAL_GAP_KEYS`. Adding the two new chips to the gap
+    // set would show a caveat that is false about them.
+    render(<HouseholdRosterTable year={2024} parties={[noNeedsFamily]} />, { wrapper })
+    await userEvent.click(screen.getByRole('button', { name: 'Fridge' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Step-free' }))
+    expect(screen.queryByText(/2026 season/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/missing data/i)).not.toBeInTheDocument()
   })
 
   it('warns that private-bathroom/power data does not exist before the 2026 season (kindred#2251 caveat)', async () => {

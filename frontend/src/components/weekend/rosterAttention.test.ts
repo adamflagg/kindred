@@ -23,6 +23,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
+import { buildBoard } from './boardLayout'
 import { partyHeadcount } from './householdIdentity'
 import {
   attentionSections,
@@ -110,12 +111,18 @@ describe('partyAttention — ranking', () => {
 
 describe('partyAttention — does the cabin provide what was asked for', () => {
   it('reports an unmet need when a CONFIRMED cabin lacks it', () => {
+    // ⚠️ THE FIXTURE MOVED WITH kindred#2501, not just the string. This case
+    // used to demonstrate "lacks it" with `shared`, which now MEETS the need
+    // — a shared bathroom is one two parties split INSIDE the cabin. The only
+    // value that still means "no bathroom in this unit" is `none`, which is
+    // also what a walk to a bathhouse records as, so that is what a test about
+    // lacking a bathroom must use.
     const a = partyAttention(
-      party({ flags: { needs_private_bathroom: true }, effective_bathroom: 'shared' }),
-      unit({ is_confirmed: true, bathroom: 'shared' })
+      party({ flags: { needs_private_bathroom: true }, effective_bathroom: 'none' }),
+      unit({ is_confirmed: true, bathroom: 'none' })
     )
     expect(a.level).toBe('unmet')
-    expect(a.reason).toBe('No private bathroom')
+    expect(a.reason).toBe('No bathroom in unit')
   })
 
   it('settles when a confirmed cabin provides everything asked for', () => {
@@ -138,7 +145,7 @@ describe('partyAttention — does the cabin provide what was asked for', () => {
       unit({ is_confirmed: true, bathroom: 'none', has_power: false })
     )
     expect(a.level).toBe('unmet')
-    expect(a.reason).toBe('No private bathroom · No power')
+    expect(a.reason).toBe('No bathroom in unit · No power')
   })
 
   /*
@@ -215,16 +222,34 @@ describe('partyAttention — does the cabin provide what was asked for', () => {
     expect(partyAttention(p, unit({ is_confirmed: true })).level).toBe('unmet')
   })
 
-  it('still flags a bathroom the server resolved as SHARED — until kindred#2501', () => {
-    // The rule itself has not moved: exclusivity is still what is graded, and
-    // loosening it to `!== 'none'` is kindred#2501, gated on reading the Adult
-    // form's wording. Only the unresolvable case changed.
+  /*
+   * ⚠️ THIS TEST NOW PINS THE OPPOSITE VERDICT — kindred#2501, and the
+   * SPECIFICATION changed rather than the implementation drifting.
+   *
+   * It used to assert that a bathroom the server resolved as SHARED left the
+   * household in the unmet band, because the flag is called
+   * `needs_private_bathroom` and exclusivity was what the roster graded. Owner
+   * ruling 2026-08-20: *"the glyph should not grade exclusivity, just 'do they
+   * have a bathroom (shared or private)'"* — and, on this case exactly,
+   * *"sharing a bathroom for whatever reason still provides people a
+   * bathroom."*
+   *
+   * `shared` is a bathroom INSIDE the cabin that two parties split; walking to
+   * a bathhouse records as `none`, not as `shared`. The CampMinder question
+   * behind the flag asks for *"a bathroom that doesn't require you to leave
+   * your cabin"*, which an in-cabin split bathroom answers.
+   *
+   * WHAT IT COSTS, ACCEPTED ON THE RECORD: the ~3–5 households a year who need
+   * exclusivity rather than proximity lose an automatic red mark and are found
+   * by reading the request instead. The underlying field keeps its name; the
+   * rename is a deliberate follow-up.
+   */
+  it('settles a bathroom the server resolved as SHARED — presence, not exclusivity', () => {
     const a = partyAttention(
       party({ flags: { needs_private_bathroom: true }, effective_bathroom: 'shared' }),
       unit({ is_confirmed: true })
     )
-    expect(a.level).toBe('unmet')
-    expect(a.reason).toBe('No private bathroom')
+    expect(a.level).toBe('settled')
   })
 
   it('flags a CONFIRMED cabin whose power nobody has resolved', () => {
@@ -334,9 +359,25 @@ describe('partyAttention — does the cabin provide what was asked for', () => {
     expect(a.level).toBe('settled')
   })
 
-  it('does not credit a strict subset of a bathroom_group', () => {
-    // Holding only one of the two rooms in the group never clears the
-    // exclusivity bar server-side, so `effective_bathroom` stays 'shared'.
+  it('credits a strict subset of a bathroom_group — the bathroom is still in the cabin', () => {
+    /*
+     * ⚠️ REVERSED BY kindred#2501, and this one is the clearest illustration
+     * of what the ruling actually changed.
+     *
+     * Holding only one of the two rooms in a bathroom group never clears the
+     * EXCLUSIVITY bar server-side, so `effective_bathroom` stays 'shared' —
+     * and this test used to assert that the roster therefore flagged the
+     * household. The server's resolution has not changed and neither has this
+     * fixture; what changed is what the roster ASKS of it. Presence, not
+     * exclusivity: the other room's family shares that bathroom, but it is
+     * still a bathroom this family reaches without leaving the cabin, which is
+     * what the CampMinder question asked about.
+     *
+     * The exclusivity case has not disappeared, it has stopped being
+     * automatic: the ~3–5 households a year who need a bathroom nobody else
+     * uses are found by reading the request. The owner accepted that trade on
+     * 2026-08-20.
+     */
     const a = partyAttention(
       party({
         flags: { needs_private_bathroom: true },
@@ -345,8 +386,7 @@ describe('partyAttention — does the cabin provide what was asked for', () => {
       }),
       unit({ bathroom: 'shared', is_confirmed: true })
     )
-    expect(a.level).toBe('unmet')
-    expect(a.reason).toBe('No private bathroom')
+    expect(a.level).toBe('settled')
   })
 
   it('never infers settled from a missing bathroom_group, even unconfirmed', () => {
@@ -466,6 +506,250 @@ describe('resolvePartyUnit', () => {
 
   it('returns undefined for an unplaced party (neither field set)', () => {
     expect(resolvePartyUnit(party({ unit_code: '', unit_codes: [] }), new Map())).toBeUndefined()
+  })
+
+  /*
+   * ⚠️ WHICH CARD GRADES THE PARTY — and until now the two grading paths
+   * answered differently for the same family.
+   *
+   * `LodgingUnitCard` grades its occupants against the card it DREW. This
+   * function returned `members[0]`: the first id in the `units` relation, i.e.
+   * whatever order the rows were stored in. Seven 2026 placements resolved to
+   * a different unit on the two paths. No verdict differed on that data only
+   * because every container and every leaf resolved `power_coverage: 'all'` —
+   * but two containers have leaves that disagree on `has_fridge`, so the
+   * container resolves `fridge_coverage: 'some'` while one leaf says `all` and
+   * the other says `none`. Which answer a family got depended on which room
+   * happened to be stored first. The tests below pin the rule instead: the
+   * card the board draws, and where a placement spans several cards, the WORST
+   * grade rather than an arbitrary member's.
+   */
+
+  it('resolves a merged placement to the CARD the board draws, not a member room', () => {
+    const combined = unit({
+      unit_id: 'c1',
+      code: 'block',
+      name: 'Block',
+      is_container: true,
+      is_combined: true,
+      // The server's roll-up over the two rooms below: they disagree, so the
+      // container reports `some`. A member room reports `all` or `none` and
+      // neither is the whole let's answer.
+      fridge_coverage: 'some',
+      power_coverage: 'all',
+    })
+    const roomOne = unit({
+      unit_id: 'c2',
+      code: 'block-1',
+      name: 'Block 1',
+      parent_code: 'block',
+      fridge_coverage: 'all',
+      power_coverage: 'all',
+    })
+    const roomTwo = unit({
+      unit_id: 'c3',
+      code: 'block-2',
+      name: 'Block 2',
+      parent_code: 'block',
+      fridge_coverage: 'none',
+      power_coverage: 'all',
+    })
+    const units = [combined, roomOne, roomTwo]
+    const resolved = resolvePartyUnit(
+      party({ unit_code: '', unit_codes: ['block-1', 'block-2'], is_merged_slot: true }),
+      new Map(units.map((row) => [row.code, row]))
+    )
+    expect(resolved).toBe(combined)
+    expect(resolved?.fridge_coverage).toBe('some')
+  })
+
+  it('agrees with the board about which card a merged placement is graded on', () => {
+    // The parity assertion, against the board's OWN model rather than a
+    // restatement of the rule: `buildBoard` decides which card a placement
+    // lands on, and this function must land on the same one. Two
+    // implementations of "which card represents this placement" is exactly
+    // how the two paths drifted apart in the first place.
+    const combined = unit({
+      unit_id: 'c1',
+      code: 'block',
+      name: 'Block',
+      is_container: true,
+      is_combined: true,
+      fridge_coverage: 'some',
+    })
+    const roomOne = unit({ unit_id: 'c2', code: 'block-1', name: 'Block 1', parent_code: 'block' })
+    const roomTwo = unit({ unit_id: 'c3', code: 'block-2', name: 'Block 2', parent_code: 'block' })
+    const units = [combined, roomOne, roomTwo]
+    const merged = party({
+      unit_code: '',
+      unit_codes: ['block-1', 'block-2'],
+      unit_name: 'Block 1 + Block 2',
+      is_merged_slot: true,
+    })
+
+    const slots = buildBoard([merged], units).areas.flatMap((area) =>
+      area.slots.filter((slot) => slot.parties.length > 0)
+    )
+    expect(slots).toHaveLength(1)
+    expect(resolvePartyUnit(merged, new Map(units.map((row) => [row.code, row])))).toBe(
+      slots[0]?.unit
+    )
+  })
+
+  it('rolls a room named on its own up to the combined card representing it', () => {
+    // Not merge-only. A placement can name ONE room while an ancestor is
+    // combined — the board draws the house, so the house is what grades the
+    // family, and returning the room grades them against a card nobody is
+    // looking at.
+    const combined = unit({
+      unit_id: 'c1',
+      code: 'block',
+      name: 'Block',
+      is_container: true,
+      is_combined: true,
+      power_coverage: 'some',
+    })
+    const roomOne = unit({
+      unit_id: 'c2',
+      code: 'block-1',
+      name: 'Block 1',
+      parent_code: 'block',
+      power_coverage: 'all',
+    })
+    const units = [combined, roomOne]
+    const resolved = resolvePartyUnit(
+      party({ unit_code: 'block-1' }),
+      new Map(units.map((row) => [row.code, row]))
+    )
+    expect(resolved).toBe(combined)
+  })
+
+  it('takes the WORST grade when a placement spans several cards', () => {
+    // Two freestanding cabins, no container above them, so the board draws
+    // two cards and there is no server-side roll-up to read. A family whose
+    // need fails in one of its rooms has a problem; surfacing the better room
+    // hides it.
+    const powered = unit({ unit_id: 'c1', code: 'cabin-1', name: 'Cabin 1', power_coverage: 'all' })
+    const dark = unit({ unit_id: 'c2', code: 'cabin-2', name: 'Cabin 2', power_coverage: 'none' })
+    const units = [powered, dark]
+    const spanning = party({
+      flags: { needs_power: true },
+      unit_code: '',
+      unit_codes: ['cabin-1', 'cabin-2'],
+      unit_name: 'Cabin 1 + Cabin 2',
+      is_merged_slot: true,
+    })
+    const resolved = resolvePartyUnit(spanning, new Map(units.map((row) => [row.code, row])))
+    expect(resolved?.power_coverage).toBe('none')
+    expect(partyAttention(spanning, resolved)).toEqual({ level: 'unmet', reason: 'No power' })
+  })
+
+  it('does not change its answer with the storage order of the units relation', () => {
+    // The coin-flip this replaces: `members[0]` read the order the `units`
+    // relation happened to be stored in, so swapping two ids flipped the
+    // verdict. Reversing the codes must be invisible.
+    const powered = unit({ unit_id: 'c1', code: 'cabin-1', name: 'Cabin 1', power_coverage: 'all' })
+    const dark = unit({ unit_id: 'c2', code: 'cabin-2', name: 'Cabin 2', power_coverage: 'none' })
+    const unitsByCode = new Map([powered, dark].map((row) => [row.code, row]))
+    const forwards = resolvePartyUnit(
+      party({ unit_code: '', unit_codes: ['cabin-1', 'cabin-2'], is_merged_slot: true }),
+      unitsByCode
+    )
+    const backwards = resolvePartyUnit(
+      party({ unit_code: '', unit_codes: ['cabin-2', 'cabin-1'], is_merged_slot: true }),
+      unitsByCode
+    )
+    expect(forwards?.power_coverage).toBe(backwards?.power_coverage)
+    expect(forwards?.power_coverage).toBe('none')
+  })
+
+  it('folds every resolved amenity, not only the two the roster grades', () => {
+    // The row is handed to `FamilyCard` and `FamilyDetailsPanel`, which draw
+    // all four need glyphs off it. Folding only `power_coverage` would leave
+    // the fridge and step-free glyphs reading the first card again.
+    const better = unit({
+      unit_id: 'c1',
+      code: 'cabin-1',
+      name: 'Cabin 1',
+      bathroom: 'private',
+      power_coverage: 'all',
+      fridge_coverage: 'all',
+      ramp_coverage: 'all',
+      ac_coverage: 'all',
+    })
+    const worse = unit({
+      unit_id: 'c2',
+      code: 'cabin-2',
+      name: 'Cabin 2',
+      bathroom: 'none',
+      power_coverage: 'some',
+      fridge_coverage: 'unknown',
+      ramp_coverage: 'partial',
+      ac_coverage: 'none',
+    })
+    const resolved = resolvePartyUnit(
+      party({ unit_code: '', unit_codes: ['cabin-1', 'cabin-2'], is_merged_slot: true }),
+      new Map([better, worse].map((row) => [row.code, row]))
+    )
+    expect(resolved?.bathroom).toBe('none')
+    expect(resolved?.power_coverage).toBe('some')
+    // `unknown` outranks `some`: nobody has measured the second cabin, and an
+    // unmeasured room a family sleeps in is the louder mark on the glyph.
+    expect(resolved?.fridge_coverage).toBe('unknown')
+    expect(resolved?.ramp_coverage).toBe('partial')
+    expect(resolved?.ac_coverage).toBe('none')
+  })
+
+  it('ranks the grades nothing < unmeasured < some rooms < qualified < all of it', () => {
+    // The ladder, pinned rung by rung, because the two non-obvious ones are
+    // exactly what a later reader would "simplify" away: `unknown` is WORSE
+    // than `some` AND worse than `partial`, since an unmeasured room grades
+    // `unmet` on the glyph while both of the others can grade `partial`.
+    // Without these three assertions the ordering can be permuted freely and
+    // every other test in this file still passes.
+    const fold = (
+      left: Partial<LodgingUnitRow>,
+      right: Partial<LodgingUnitRow>
+    ): LodgingUnitRow | undefined =>
+      resolvePartyUnit(
+        party({ unit_code: '', unit_codes: ['cabin-1', 'cabin-2'], is_merged_slot: true }),
+        new Map([
+          ['cabin-1', unit({ unit_id: 'c1', code: 'cabin-1', name: 'Cabin 1', ...left })],
+          ['cabin-2', unit({ unit_id: 'c2', code: 'cabin-2', name: 'Cabin 2', ...right })],
+        ])
+      )
+
+    expect(fold({ power_coverage: 'none' }, { power_coverage: 'unknown' })?.power_coverage).toBe(
+      'none'
+    )
+    expect(fold({ power_coverage: 'unknown' }, { power_coverage: 'some' })?.power_coverage).toBe(
+      'unknown'
+    )
+    expect(fold({ power_coverage: 'some' }, { power_coverage: 'all' })?.power_coverage).toBe('some')
+    expect(fold({ ramp_coverage: 'unknown' }, { ramp_coverage: 'partial' })?.ramp_coverage).toBe(
+      'unknown'
+    )
+    expect(fold({ ramp_coverage: 'partial' }, { ramp_coverage: 'all' })?.ramp_coverage).toBe(
+      'partial'
+    )
+    expect(fold({ bathroom: 'shared' }, { bathroom: 'private' })?.bathroom).toBe('shared')
+  })
+
+  it('still grades against a named container the board draws no card for', () => {
+    // A childless container: `drawnUnits` gives it no card and the board
+    // routes the party to `offBoard`, which then calls this function to grade
+    // its glyphs. The registry row is real evidence even when no card is
+    // drawn, so it stands in for itself rather than reporting no evidence at
+    // all — undefined would make every glyph read as MET.
+    const empty = unit({
+      unit_id: 'c1',
+      code: 'block',
+      name: 'Block',
+      is_container: true,
+      power_coverage: 'none',
+    })
+    const resolved = resolvePartyUnit(party({ unit_code: 'block' }), new Map([['block', empty]]))
+    expect(resolved).toBe(empty)
   })
 })
 

@@ -23,7 +23,7 @@
 import { Accessibility, Bath, Home, Plug, Refrigerator, Snowflake } from 'lucide-react'
 import { type ReactNode, useState } from 'react'
 
-import type { RosterPartyRow } from '../../types/lodging'
+import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
 import { Tooltip } from '../ui/Tooltip'
 import { namedAdults, partyIdentityLabel } from './householdIdentity'
 import { CONSENT_AMBER } from './mapColors'
@@ -101,21 +101,95 @@ function WholeBuildingBadge() {
 }
 
 /**
- * What the registry records about the room.
+ * Does the space OFFER this amenity anywhere?
+ *
+ * PRESENCE, which is the mark's whole claim — the same reading
+ * `LodgingUnitCard`'s title row takes for its plug. Whether the amenity reaches
+ * a PARTICULAR family is the need glyph's question, and `needGlyphs` grades
+ * `some` on its own per-need scale a few elements below this list.
+ *
+ * `?? 'unknown'` is the Pydantic-default gotcha rather than a guess: a field
+ * carrying a server-side default renders optional in the generated type.
+ */
+function offers(coverage: LodgingUnitRow['power_coverage']): boolean {
+  const value = coverage ?? 'unknown'
+  return value !== 'none' && value !== 'unknown'
+}
+
+/**
+ * What the registry records about the room — READ OFF THE RESOLVED FIELDS,
+ * never off the row's own amenity columns.
+ *
+ * ⚠️ THIS LIST USED TO READ SIX RAW COLUMNS AND ZERO RESOLVED ONES, WHICH IS
+ * WRONG HERE SPECIFICALLY BECAUSE `mapModel` BUILDS FROM `buildBoard`: a
+ * COMBINED CONTAINER is a map slot, and a container's own row is the one row
+ * whose amenity columns mean nothing. Measured over the five containers ever
+ * drawn combined in 2026 — three reported no power against
+ * `power_coverage: 'all'`, three no AC with AC-bearing rooms, one no fridge
+ * against `fridge_coverage: 'all'`, and all five no bathroom.
+ *
+ * The same component grades NEEDS off the resolved coverages, through
+ * `partyAttention`, so this list disagreed with the red unmet line printed two
+ * elements below it in the same card.
  *
  * Icons keep their `aria-label` — not for AT, but because it is the only handle
- * `MapUnitPopover.test.tsx` has to assert an amenity rendered (`getByLabelText`
- * at :219-222); the glyph itself carries no queryable text. Same icon grammar as
- * `LodgingUnitCard`, so an amenity reads the same on both surfaces.
+ * `MapUnitPopover.test.tsx` has to assert an amenity rendered
+ * (`getByLabelText`); the glyph itself carries no queryable text. The labels
+ * are `NEED_GLYPHS`' own words, so the mark and the glyph name one thing once.
  */
 function Amenities({ unit }: { unit: MapUnit['unit'] }): ReactNode {
   const items: Array<{ label: string; icon: typeof Bath }> = []
-  if (unit.bathroom === 'private') items.push({ label: 'Private bathroom', icon: Bath })
-  if (unit.bathroom === 'shared') items.push({ label: 'Shared bathroom', icon: Bath })
-  if (unit.has_power === true) items.push({ label: 'Power', icon: Plug })
-  if (unit.has_ac === true) items.push({ label: 'Air conditioning', icon: Snowflake })
-  if (unit.has_fridge === true) items.push({ label: 'Fridge', icon: Refrigerator })
-  if (unit.is_accessible === true) items.push({ label: 'Accessible', icon: Accessibility })
+  // ONE ITEM, ON THE IN-CABIN AXIS. The `Private bathroom` / `Shared bathroom`
+  // pair is retired (kindred#2501, owner ruling 2026-08-20): the CampMinder
+  // question behind the family's flag asks for *"a bathroom that doesn't
+  // require you to leave your cabin"*, so a shared bathroom answers it as
+  // fully as a private one and the kind is a distinction no staff member on
+  // this surface can act on. `shared` means a bathroom INSIDE the cabin that
+  // two parties split; walking to a bathhouse records as `none`.
+  //
+  // The field itself is now RESOLVED IN PLACE for a container — `_resolve_
+  // bathroom` fills it from the leaves, and 8 of the 15 production containers
+  // moved from `none` to `private` when it landed — so this reads the same
+  // property name it always did and gets a different, correct answer.
+  const bathroom = unit.bathroom ?? 'unknown'
+  if (bathroom !== 'none' && bathroom !== 'unknown')
+    items.push({ label: 'Bathroom in unit', icon: Bath })
+  if (offers(unit.power_coverage)) items.push({ label: 'Power', icon: Plug })
+  if (offers(unit.ac_coverage)) items.push({ label: 'Air conditioning', icon: Snowflake })
+  // `fridge_coverage`, which already carries the owner's 2026-08-15 ruling
+  // that a SHARED fridge IS a fridge (`_resolve_fridge_coverage` ORs
+  // `has_shared_fridge` in). Reading the raw pair here would put a second
+  // implementation of that ruling on the client.
+  if (offers(unit.fridge_coverage)) items.push({ label: 'Fridge', icon: Refrigerator })
+  /*
+   * STEP-FREE, AND IT IS THE ONE DIMENSION THAT NEEDS `all` RATHER THAN
+   * `offers`.
+   *
+   * That asymmetry is already ruled, in `needGlyphs`' `someIs`: a fridge one
+   * room over is still a fridge a family can use, and a ramp one room over is
+   * not. A building advertising two step-free rooms out of ten invites
+   * precisely the placement that lands in one of the other eight. `partial` —
+   * a ramp with a lip, the fifth grade only this dimension carries — is
+   * withheld too, because this list has one binary mark per dimension and no
+   * room for degree, so "Step-free" would state more than was recorded.
+   *
+   * ⚠️ NOT `is_accessible`, AND NOT THE RAW `has_ramp`. `has_ramp` is a
+   * three-value select where `''` means NOT ASSESSED (104 of 118 rows) and
+   * `'no'` is a TRUTHY STRING, so a boolean read renders "step-free" on the
+   * cabins staff assessed as explicitly having none.
+   *
+   * `is_accessible` is a genuine OPEN PRODUCT QUESTION and this change does not
+   * settle it: the two columns disagree — of the rows recording
+   * `has_ramp: 'yes'`, two are `is_accessible: true` and three are false — and
+   * which one staff mean by "accessible" needs an owner. What is not open is
+   * whether this list may keep reading it: it is a raw boolean with no
+   * resolver, so it carries the same container trap as every other raw column
+   * here. `ramp_coverage` is resolved over the leaves and is what the step-free
+   * NEED GLYPH on this same card already grades against, so it is the reading
+   * this surface can defend until the question is answered.
+   */
+  if ((unit.ramp_coverage ?? 'unknown') === 'all')
+    items.push({ label: 'Step-free', icon: Accessibility })
   if (items.length === 0) return null
 
   return (
@@ -178,7 +252,7 @@ interface DetailCardProps {
 }
 
 function DetailCard({ entry, hue, onOpenParty, wholeBuildingKeys }: DetailCardProps) {
-  const { unit, parties, consent, capacity } = entry
+  const { unit, parties, consent, capacity, spanWidth } = entry
   // `capacity`, NOT `unit.sleeps` (kindred#2183). They are the same number for
   // every ordinary room, and different for the one case this card could not
   // previously tell the truth about: a combined house's own `sleeps` is a
@@ -188,6 +262,23 @@ function DetailCard({ entry, hue, onOpenParty, wholeBuildingKeys }: DetailCardPr
   const capacityKnown = capacity !== null
   const badge = reservationBadge(unit)
   const bedsNeeded = parties.reduce((sum, party) => sum + partyBeds(party), 0)
+  /*
+   * THE AMBER IS A CLAIM, AND `spanWidth` IS WHAT WITHHOLDS IT — the same gate
+   * `LodgingUnitCard`'s `overCapacity` and `AssignFamilyModal`'s header take,
+   * mirrored here rather than left off. This card had no gate at all.
+   *
+   * Since kindred#2010 a party holding several rooms is drawn on EACH of them,
+   * so the same people are counted in full against each room's beds and no
+   * per-room split exists to divide them by — `party_size` is one number for
+   * the household. The FIGURE still stands, because over-stating reads as
+   * "look at this" where dropping the party would read as "room for more"; only
+   * the verdict is withheld, and a household legitimately spread across two
+   * rooms it needs is not over anything.
+   *
+   * ZERO parties span the 2026 registry after #2040, so nothing on screen moves
+   * today. This is a guard on a reachable state.
+   */
+  const overCapacity = capacityKnown && spanWidth === 0 && bedsNeeded > capacity
 
   // Only the ACTIONABLE levels. `unverified` is a live fallback for a cabin
   // nobody has confirmed yet, not the state of the whole registry — measured
@@ -244,7 +335,7 @@ function DetailCard({ entry, hue, onOpenParty, wholeBuildingKeys }: DetailCardPr
         {parties.length > 0 && capacityKnown && (
           <div className="flex justify-between gap-3">
             <dt className="text-muted-foreground">Beds</dt>
-            <dd className={bedsNeeded > capacity ? 'font-semibold text-amber-700' : ''}>
+            <dd className={overCapacity ? 'font-semibold text-amber-700' : ''}>
               {`${String(bedsNeeded)} of ${String(capacity)}`}
             </dd>
           </div>

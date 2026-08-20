@@ -125,22 +125,35 @@ describe('needCoverage — where each need reads its supply', () => {
   })
 
   /**
-   * ⚠️ THE ONE PLACE TWO RULINGS CONTRADICT, ACCEPTED FOR ONE RELEASE.
+   * ⚠️ THIS ASSERTION IS THE REVERSE OF THE ONE IT REPLACES — kindred#2501.
    *
-   * The unit card will draw its bathroom mark as PRESENCE
-   * (`bathroom != 'none'`) once stage 3 lands, because that is the axis the
-   * CampMinder question actually asks. This grading still says a SHARED
-   * bathroom does not satisfy the need, because that is what `rosterAttention`
-   * has always said and changing it is
-   * kindred#2501 — itself gated on reading the Adult form's wording, which
-   * supplies 19 of 66 flagged households and has never been audited.
+   * It used to pin `shared → none`: a shared bathroom did NOT satisfy the
+   * need, because the column is called `needs_private_bathroom` and that is
+   * what the product had always said. The SPECIFICATION changed — this is not
+   * the implementation drifting and the test being bent to follow it. Owner
+   * ruling 2026-08-20: *"the glyph should not grade exclusivity, just 'do they
+   * have a bathroom (shared or private)'"*, and on this case exactly,
+   * *"sharing a bathroom for whatever reason still provides people a
+   * bathroom."*
    *
-   * So a room can show "has a bathroom" while the family on it shows a red
-   * bathroom glyph. Owner ruling 2026-08-19: accept it, name it, and pin it —
-   * this test is the pin. When #2501 lands, THIS is the assertion that flips.
+   * `shared` is a bathroom INSIDE the cabin that two parties split. Walking to
+   * a bathhouse is not `shared`, it is `none`. The CampMinder question behind
+   * the flag asks for *"a bathroom that doesn't require you to leave your
+   * cabin"*, so an in-cabin split bathroom answers the question that was
+   * actually asked.
+   *
+   * WHAT IT COSTS, ACCEPTED ON THE RECORD: the ~3–5 households a year who need
+   * exclusivity rather than proximity lose an automatic red mark, and are
+   * found by reading the request instead. That was the trade the owner took.
+   *
+   * This also ENDS the one-release contradiction the previous comment named:
+   * the unit card draws its bathroom mark for `private` and `shared` alike, so
+   * a room showing "has a bathroom" no longer carries a family with a red
+   * bathroom glyph. Renaming `needs_private_bathroom` is a deliberate
+   * follow-up, not this change.
    */
-  it('still grades a shared bathroom as not satisfying the need — until kindred#2501', () => {
-    expect(needCoverage('bathroom', party({ effective_bathroom: 'shared' }), unit())).toBe('none')
+  it('grades a shared bathroom as MEETING the need — presence, not exclusivity', () => {
+    expect(needCoverage('bathroom', party({ effective_bathroom: 'shared' }), unit())).toBe('all')
   })
 
   it('reports unknown where the server could not resolve the bathroom', () => {
@@ -304,8 +317,13 @@ describe('needCoverage — the PROSPECTIVE reading', () => {
     expect(needCoverage('bathroom', unplaced, unit({ bathroom: 'private' }), 'prospective')).toBe(
       'all'
     )
+    // ⚠️ `shared → all` HERE TOO, and pinning it in both readings is the
+    // point rather than duplication. kindred#2501's body was written against
+    // the placed lane alone; flipping only that one would have left the modal
+    // calling a shared bathroom unmet while the card called it met — moving
+    // the contradiction instead of closing it.
     expect(needCoverage('bathroom', unplaced, unit({ bathroom: 'shared' }), 'prospective')).toBe(
-      'none'
+      'all'
     )
   })
 
