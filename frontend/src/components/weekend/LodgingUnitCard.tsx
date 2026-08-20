@@ -1195,6 +1195,11 @@ export function LodgingUnitCard({
           // states beds FREE against it, and two computations of one figure is
           // how the header and the card start disagreeing.
           occupants={occupants}
+          // The same figure the card withholds its own over-capacity claim on
+          // — see the modal's `spanWidth` doc. Passed rather than re-derived,
+          // so the two surfaces cannot answer "is this over capacity" two
+          // different ways.
+          spanWidth={spanWidth}
           isSaving={savingAvailability}
           onSelect={(party) => {
             onPlaceParty?.(unit, party)

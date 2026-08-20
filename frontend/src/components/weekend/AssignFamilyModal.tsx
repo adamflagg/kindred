@@ -60,7 +60,7 @@ import { partyIdentityLabel, partySearchText } from './householdIdentity'
 import { NeedGlyphMark } from './NeedGlyph'
 import { resolveNeedGlyphs } from './needGlyphs'
 import { partyKey } from './partyKey'
-import { placementCandidates } from './placementCandidates'
+import { placementCandidates, type PlacementCandidate } from './placementCandidates'
 import { effectiveSleeps, partyBeds } from './rosterAttention'
 
 export interface AssignFamilyModalProps {
@@ -82,6 +82,21 @@ export interface AssignFamilyModalProps {
   units?: LodgingUnitRow[]
   /** Beds already taken on this card — the card's own occupancy numerator. */
   occupants: number
+  /**
+   * How many cards this slot's placement is spread across, from
+   * `slotOccupancy`. `0` for an ordinary placement.
+   *
+   * ⚠️ IT EXISTS ONLY TO SUPPRESS AN OVER-CAPACITY CLAIM, mirroring the card
+   * exactly. A party holding several rooms is drawn on each of them (#2010),
+   * so the same people are counted on more than one card and the figure
+   * legitimately over-states — the card keeps the number and withholds the
+   * VERDICT (`overCapacity` gates on `spanWidth === 0`). Without the same gate
+   * here the header would say "Over capacity" about a household that is not
+   * over anything, while the card it was opened from says nothing. Measured at
+   * zero spanning parties after #2040, so this is a guard on a
+   * reachable-but-empty state — the kind that rots undetected.
+   */
+  spanWidth?: number
   onSelect: (party: RosterPartyRow) => void
   /**
    * Record a name that is not a registered family.
@@ -107,9 +122,12 @@ export interface AssignFamilyModalProps {
  */
 function amenityWords(unit: LodgingUnitRow): string[] {
   const bathroom = unit.bathroom ?? 'unknown'
+  // Power first, then bathroom — the review artifact's order
+  // (`2 of 4 beds free · power · bathroom`). Arbitrary in isolation, so it
+  // follows the artifact rather than inventing a second convention.
   return [
-    bathroom !== 'none' && bathroom !== 'unknown' ? 'bathroom' : null,
     unit.has_power === true ? 'power' : null,
+    bathroom !== 'none' && bathroom !== 'unknown' ? 'bathroom' : null,
     unit.has_ac === true ? 'air conditioning' : null,
   ].filter((word): word is string => word !== null)
 }
@@ -155,14 +173,40 @@ function amenityWords(unit: LodgingUnitRow): string[] {
 function capacitySentence(
   unit: LodgingUnitRow,
   units: LodgingUnitRow[],
-  occupants: number
+  occupants: number,
+  spanWidth: number
 ): string {
   const capacity = effectiveSleeps(unit, units)
   if (capacity === null) return 'Capacity not recorded'
-  if (occupants > capacity) {
+  // The card's own gate, mirrored — see `spanWidth`'s doc. A spanning
+  // placement keeps its figure and loses the claim.
+  if (occupants > capacity && spanWidth === 0) {
     return `Over capacity — ${String(occupants)} placed, sleeps ${String(capacity)}`
   }
-  return `${String(capacity - occupants)} of ${String(capacity)} beds free`
+  return `${String(Math.max(0, capacity - occupants))} of ${String(capacity)} beds free`
+}
+
+/**
+ * The row's fit verdict, and it is stated for EVERY candidate.
+ *
+ * ⚠️ IT USED TO BE BLANK ON THE ROWS THAT NEEDED IT MOST. The rule was
+ * "notes, else `fits`, else nothing", which meant a party whose cabin lacked
+ * its bathroom rendered an EMPTY verdict — less annotated than one that fits —
+ * while a `partial` row said nothing at all despite its glyph deliberately
+ * reading as met (§6). The tracked vocabulary doc promises this element ("…and
+ * a fit verdict"), so an empty one is a missing mark rather than a quiet one.
+ *
+ * This is NOT the per-need note that was struck. That note named the need
+ * ("No private bathroom") and duplicated the glyph beside it (N2). This names
+ * the ROW's overall verdict and duplicates nothing — capacity is the one
+ * dimension that still contributes words, because no glyph carries it.
+ */
+function fitVerdict(candidate: PlacementCandidate): string {
+  if (candidate.notes.length > 0) return candidate.notes.join(' · ')
+  if (candidate.fit === 'fits') return 'fits'
+  // "some rooms only" for a partial, "does not fit" for an unmet need. The
+  // glyph says WHICH need; this says how the room answers it overall.
+  return candidate.fit === 'partial' ? 'partial fit' : 'does not fit'
 }
 
 export function AssignFamilyModal({
@@ -172,6 +216,7 @@ export function AssignFamilyModal({
   parties,
   units = [],
   occupants,
+  spanWidth = 0,
   onSelect,
   onWriteIn,
   isSaving = false,
@@ -246,11 +291,21 @@ export function AssignFamilyModal({
    */
   const placementLive = parties.length > 0 || onWriteIn === undefined
 
+  /*
+   * ONE BASELINE ROW — title and sub together, the artifact's `.mhead`
+   * (`display:flex; align-items:baseline; gap:8px; flex-wrap:wrap`).
+   *
+   * They were stacked, which read as a title with a caption under it and put
+   * 79px of header above a list. On one line the cabin and what it offers are
+   * a single statement: "Assign to X · 2 of 4 beds free · power · bathroom".
+   * `flex-wrap` is the artifact's too — a long cabin name drops the sub to its
+   * own line rather than squeezing it.
+   */
   const header = (
-    <div className="border-border border-b px-6 py-4 pr-14">
-      <h2 className="truncate text-lg font-bold">{`Assign to ${unit.name}`}</h2>
-      <p data-testid="assign-capacity" className="text-muted-foreground mt-0.5 text-xs">
-        {[capacitySentence(unit, units, occupants), ...amenityWords(unit)].join(' · ')}
+    <div className="border-border flex flex-wrap items-baseline gap-x-2 gap-y-0.5 border-b px-6 py-4 pr-14">
+      <h2 className="min-w-0 truncate text-lg font-bold">{`Assign to ${unit.name}`}</h2>
+      <p data-testid="assign-capacity" className="text-muted-foreground text-xs">
+        {[capacitySentence(unit, units, occupants, spanWidth), ...amenityWords(unit)].join(' · ')}
       </p>
     </div>
   )
@@ -291,6 +346,15 @@ export function AssignFamilyModal({
       // measure — it names the dialog after the cabin it writes to, which is
       // also the only thing distinguishing one of these from another.
       ariaLabel={`Assign to ${unit.name}`}
+      // ⚠️ TOP-ANCHORED, and it is load-bearing. Centred, the dialog is laid
+      // out around a content-height card, so every change in the swap region
+      // re-centres the whole thing — measured at 133px of search-box travel
+      // across a three-character typeahead, and 28px on the keystroke that
+      // performs the flip. W3's ruling is that the panel does not jump under
+      // the cursor; this and the swap region's fixed height are the two halves
+      // of honouring it. The artifact anchors the same way
+      // (`.modalwrap{align-items:flex-start}`).
+      anchor="top"
       noPadding
       size="lg"
     >
@@ -329,19 +393,45 @@ export function AssignFamilyModal({
         />
 
         {/* THE SWAP REGION — the only thing that changes when the last match
-            goes. Its own scroller, so a long queue never moves the input or
-            the footer. */}
-        <div className="max-h-80 overflow-y-auto">
+            goes.
+
+            `h-80`, NOT `max-h-80`, and that is the fix for a measured defect
+            rather than a tidy-up. `ui/Modal` lays the dialog out around a card
+            whose height is its content's, so a shorter swap region re-centred
+            the WHOLE card: the search box moved 133px across a three-character
+            typeahead and 28px on the keystroke that performs the flip — the
+            exact jump W3 forbids. Anchoring the dialog (`anchor="top"`) fixes
+            the direction; a constant height fixes the amount, so the input does
+            not move at all.
+
+            The artifact's separator (`.mswap`'s `border-top: 1px dashed`) is
+            what makes the boundary between "what you typed" and "what that
+            found" legible once the region no longer shrinks to fit. */}
+        <div
+          data-testid="assign-swap-region"
+          className="border-border h-80 overflow-y-auto border-t border-dashed pt-2"
+        >
           {offersWriteIn ? (
             <div data-testid="write-in-region" className="flex flex-col gap-3 py-1">
-              <p className="text-muted-foreground text-sm">
+              {/* ⚠️ THE SENTENCE LIVES INSIDE THE FIXED-HEIGHT REGION, and the
+                  artifact puts it OUTSIDE (`.mnote.flip`, above `.mswap`).
+                  A deliberate divergence, and it was measured both ways: the
+                  artifact anchors its dialog but lets the card grow, so only
+                  its footer moves. W3 says header, input AND FOOTER stay put.
+                  Outside the region this one paragraph pushed the footer 32px
+                  on the flip; inside a region whose height is fixed it costs
+                  nothing, and all three measure 0px of travel. */}
+              <p className="text-sm font-medium text-amber-700 dark:text-amber-400">
                 {`No family matches “${trimmed}” — this will be written in.`}
               </p>
-              {/* kindred#2503's `People` field belongs HERE, beside the note.
+              {/* kindred#2503's `People` field belongs HERE, above the note.
                   It is not built: `lodging_write_ins` has `occupant_name` and
                   `note` and nowhere to put a count, and a field with no
                   destination is worse than an absent one. When #2503 lands it
-                  slots in beside `Note` without moving anything. */}
+                  STACKS above `Note` in this column — the artifact draws it
+                  that way too — so the note moves down by one field's height.
+                  The swap region has a fixed height, so the dialog will not
+                  move around it. */}
               <label className="flex flex-col gap-1 text-xs font-medium">
                 Note
                 <input
@@ -382,7 +472,11 @@ export function AssignFamilyModal({
               {`No parties match “${trimmed}”`}
             </p>
           ) : (
-            <div role="listbox" aria-label={`Families to place in ${unit.name}`}>
+            <div
+              role="listbox"
+              aria-label={`Families to place in ${unit.name}`}
+              className="flex flex-col gap-1"
+            >
               {candidates.map((candidate) => {
                 const party = candidate.party
                 const lastYearCabin = (party.last_year_cabin ?? '').trim()
@@ -402,58 +496,56 @@ export function AssignFamilyModal({
                     onClick={() => {
                       choose(party)
                     }}
-                    /* A REAL TAB STOP, unlike the inline picker's rows.
-                       There, ~82 mounted lists meant every row was a stop and
-                       Tabbing off a card walked staff through the whole queue;
-                       here the list is inside a focus-trapped dialog and is
-                       the only one on screen. It is also what keeps a keyboard
-                       path open while `Enter` in the search box stays inert. */
-                    className="hover:bg-muted focus-visible:bg-muted flex w-full flex-col gap-0.5 rounded-md px-2 py-2 text-left focus-visible:outline-none disabled:opacity-40"
+                    /*
+                     * ONE LINE, AND A DRAWN RECTANGLE — the artifact's `.crow`
+                     * (`display:flex; align-items:center; gap:6px; border:1px;
+                     * border-radius:8px; padding:5px 7px; background`).
+                     *
+                     * It was two stacked lines with no border, so the rows ran
+                     * together as text and each cost 54px against the
+                     * artifact's 33px — about 5.9 rows visible in the scroller
+                     * where the artifact fits 9.7. A list you scan for one
+                     * family wants rows you can count.
+                     *
+                     * A REAL TAB STOP, unlike the inline picker's rows. There,
+                     * ~82 mounted lists meant every row was a stop; here the
+                     * list is inside a focus-trapped dialog and is the only one
+                     * on screen. It is also what keeps a keyboard path open
+                     * while `Enter` in the search box stays inert.
+                     */
+                    className="border-border hover:bg-muted focus-visible:bg-muted flex w-full items-center gap-1.5 rounded-lg border px-2 py-1 text-left text-sm focus-visible:outline-none disabled:opacity-40"
                   >
-                    <span className="flex items-center gap-2">
-                      <span className="text-foreground min-w-0 flex-1 truncate text-sm font-medium">
-                        {partyIdentityLabel(party)}
-                      </span>
-                      <span className="text-muted-foreground inline-flex flex-shrink-0 items-center gap-0.5 text-xs tabular-nums">
-                        <Users className="h-3 w-3" />
-                        {partyBeds(party)}
-                      </span>
-                      {/* ⚠️ `insideControl` IS LOAD-BEARING HERE, not a style
-                          flag. This row IS a `<button>` that places the family,
-                          and a `ui/Tooltip` trigger is a `<button>` too — so
-                          the default mark nested one control inside another
-                          and a click on a glyph silently placed the family and
-                          closed the modal. `NeedGlyph.tsx` carries the full
-                          account and the rule it comes from (kindred#2222). */}
-                      <span className="flex flex-shrink-0 items-center gap-1">
-                        {glyphs.map((glyph) => (
-                          <NeedGlyphMark key={glyph.key} glyph={glyph} insideControl />
-                        ))}
-                      </span>
+                    {/* The artifact's order, and it is the scan order: who they
+                        are, how many, what they asked for, where they were,
+                        how this room answers. */}
+                    <span className="text-foreground min-w-0 flex-1 truncate font-medium">
+                      {partyIdentityLabel(party)}
                     </span>
-                    <span className="flex items-baseline gap-2">
-                      {/* What no glyph can say. A note repeating an unmet need
-                          would state one fact twice, which is the reason
-                          `No private bathroom` was struck from the family card
-                          (N2) — so `placementCandidates` emits capacity alone. */}
-                      <span
-                        className={`min-w-0 flex-1 truncate text-xs ${
-                          candidate.notes.length > 0
-                            ? 'text-amber-700 dark:text-amber-400'
-                            : 'text-muted-foreground'
-                        }`}
-                      >
-                        {candidate.notes.length > 0
-                          ? candidate.notes.join(' · ')
-                          : candidate.fit === 'fits'
-                            ? 'fits'
-                            : ''}
+                    <span className="text-muted-foreground inline-flex flex-shrink-0 items-center gap-0.5 text-xs tabular-nums">
+                      <Users className="h-3 w-3" />
+                      {partyBeds(party)}
+                    </span>
+                    <span className="flex flex-shrink-0 items-center gap-1">
+                      {glyphs.map((glyph) => (
+                        <NeedGlyphMark key={glyph.key} glyph={glyph} insideControl />
+                      ))}
+                    </span>
+                    {lastYearCabin.length > 0 && (
+                      <span className="text-muted-foreground flex-shrink-0 text-xs whitespace-nowrap">
+                        {lastYearCabin}
                       </span>
-                      {lastYearCabin.length > 0 && (
-                        <span className="text-muted-foreground flex-shrink-0 text-xs whitespace-nowrap">
-                          {lastYearCabin}
-                        </span>
-                      )}
+                    )}
+                    {/* Stated for every row — see `fitVerdict`. Capacity is the
+                        only dimension that still spends words, because no glyph
+                        carries it. */}
+                    <span
+                      className={`flex-shrink-0 text-xs whitespace-nowrap ${
+                        candidate.fit === 'fits'
+                          ? 'text-muted-foreground'
+                          : 'text-amber-700 dark:text-amber-400'
+                      }`}
+                    >
+                      {fitVerdict(candidate)}
                     </span>
                   </button>
                 )

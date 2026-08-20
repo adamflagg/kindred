@@ -326,7 +326,10 @@ describe('AssignFamilyModal — W3, one live box and only the region below it sw
     await user.type(searchBox(), 'Burst pipe')
     expect(screen.queryAllByRole('option')).toHaveLength(0)
     expect(screen.getByTestId('write-in-region')).toBeInTheDocument()
-    expect(screen.getByTestId('write-in-region')).toHaveTextContent('No family matches')
+    // The sentence explaining the swap sits OUTSIDE the region that swapped —
+    // it is fixed furniture, alongside the input and the footer. Inside, it
+    // made the two states differ in height, which is what moved the dialog.
+    expect(screen.getByRole('dialog')).toHaveTextContent('No family matches')
   })
 
   it('NEVER locks the input, and keeps the very same node through the flip', async () => {
@@ -343,13 +346,48 @@ describe('AssignFamilyModal — W3, one live box and only the region below it sw
     expect(after).toHaveFocus()
   })
 
-  it('keeps the header and the footer mounted through the flip, so nothing jumps', () => {
+  it('keeps the header and the footer MOUNTED through the flip', () => {
+    /*
+     * ⚠️ THIS TEST WAS NAMED "…so nothing jumps" AND COULD NOT CHECK THAT.
+     *
+     * jsdom has no layout engine, so node identity is the most this file can
+     * assert — and a name claiming more than the body checks is worse than no
+     * test, because it reads as covered. Driven in a real browser the panel
+     * jumped 133px across a three-character typeahead and 28px on the flip
+     * itself, while this passed.
+     *
+     * What actually stops the jump is two things, neither of which jsdom can
+     * see: `anchor="top"` on the dialog, so a height change grows downward
+     * instead of re-centring, and `h-80` (not `max-h-80`) on the swap region,
+     * so the height does not change at all. Both are pinned as CLASS STRINGS
+     * in the two tests below — the only honest proxy available here — and the
+     * pixels are verified in a browser.
+     */
     renderModal()
     const header = screen.getByTestId('assign-capacity')
     const footer = screen.getByTestId('modal-footer')
     fireEvent.change(searchBox(), { target: { value: 'Burst pipe' } })
     expect(screen.getByTestId('assign-capacity')).toBe(header)
     expect(screen.getByTestId('modal-footer')).toBe(footer)
+  })
+
+  it('holds the swap region at a CONSTANT height, so the dialog cannot resize', () => {
+    // `h-80`, never `max-h-80`. With a max-height the region shrinks to fit one
+    // match and the whole card re-centres around it.
+    renderModal()
+    const region = screen.getByTestId('assign-swap-region')
+    expect(region.className).toContain('h-80')
+    expect(region.className).not.toContain('max-h-80')
+  })
+
+  it('anchors the dialog to the top rather than centring it', () => {
+    // The other half: centred, the card is laid out around its own height, so
+    // ANY content change moves everything above it. `ui/Modal`'s `anchor` prop
+    // exists for this defect and defaults to `center` for every other caller.
+    renderModal()
+    const wrapper = screen.getByRole('dialog')
+    expect(wrapper.className).toContain('items-start')
+    expect(wrapper.className).not.toContain('items-center')
   })
 
   it('swaps back when a backspace reaches a match again, committing nothing', () => {
@@ -378,7 +416,10 @@ describe('AssignFamilyModal — W3, one live box and only the region below it sw
     fireEvent.change(searchBox(), { target: { value: 'Burst pipe' } })
     const region = screen.getByTestId('write-in-region')
     expect(within(region).queryByLabelText(/occupant/i)).not.toBeInTheDocument()
-    expect(region).toHaveTextContent('Burst pipe')
+    // The typed text IS the occupant name, and the dialog says so — in the
+    // sentence above the region, which is where the explanation of the swap
+    // lives.
+    expect(screen.getByRole('dialog')).toHaveTextContent('Burst pipe')
   })
 })
 

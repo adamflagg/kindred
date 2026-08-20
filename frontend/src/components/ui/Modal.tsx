@@ -32,6 +32,25 @@ interface ModalProps {
   // modal opens on top of a right-side slide-out panel — the panel area
   // stays unblurred and the modal centers in the remaining space.
   backdropInsetRight?: string
+  /**
+   * Where the dialog sits vertically. `center` (the default, and every
+   * existing caller's behaviour) or `top`.
+   *
+   * ⚠️ `top` EXISTS FOR A REAL DEFECT, not for taste. A centred dialog is
+   * laid out around a card whose height is its content's, so ANY change in
+   * that content re-centres the whole card — the header, the input and the
+   * footer all move. That is invisible on a dialog whose body is fixed, and
+   * disqualifying on one the staff member types into: `AssignFamilyModal`'s
+   * search box moved 133px across a three-character typeahead, and 28px on
+   * the single keystroke that swaps the region beneath it, which is precisely
+   * the jump its ruling exists to forbid ("the panel does not jump under the
+   * cursor").
+   *
+   * Anchoring to the top makes a content-height change grow downward only, so
+   * everything above it stays put. Opt-in, because a short confirmation
+   * dialog reads better centred and nothing else here has this problem.
+   */
+  anchor?: 'center' | 'top'
   // Set when the `header` slot paints a dark ground (the forest band the
   // sessions landing header uses). The close button defaults to
   // `text-muted-foreground`, which is a mid grey — legible on the card, poor
@@ -108,6 +127,7 @@ export function Modal({
   ariaLabelledBy,
   ariaLabel,
   backdropInsetRight,
+  anchor = 'center',
   headerOnDark = false,
 }: ModalProps) {
   const contentRef = useRef<HTMLDivElement>(null)
@@ -201,7 +221,12 @@ export function Modal({
   // (e.g. z-[60] CamperDetailsPanel). z-[100] keeps us above documented panels.
   return createPortal(
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center"
+      className={`fixed inset-0 z-[100] flex justify-center ${
+        // `pt-[10vh]` rather than a fixed offset: the dialog should sit in the
+        // upper third at any viewport height, and `items-start` alone would
+        // pin it to the very edge.
+        anchor === 'top' ? 'items-start overflow-y-auto py-[10vh]' : 'items-center'
+      }`}
       role="dialog"
       aria-modal="true"
       aria-labelledby={resolvedLabelledBy}
