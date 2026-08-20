@@ -105,6 +105,27 @@ interface ModalProps {
   // on forest-700. This is the close button's contrast only; it changes
   // nothing else, so existing callers keep exactly what they have.
   headerOnDark?: boolean
+  /**
+   * Where the floating close button sits in a custom header — `'top'`
+   * (`top-4`, the default and what every caller draws today) or `'center'`,
+   * vertically centred in the header band.
+   *
+   * ⚠️ IT EXISTS BECAUSE `top-4` IS A CONSTANT AND HEADER HEIGHT IS NOT.
+   * 16px + a 36px box needs 52px of header; a caller that tightens its own
+   * header makes this button hang past it. `AssignFamilyModal` took the
+   * kindred#2072 artifact's 14px inset, its header went to 47px, and the
+   * button's hover fill painted across the divider below it while its hit
+   * area covered the top edge of the search box (measured in Chromium,
+   * 2026-08-20; the later no-rule ruling reduced it to 1px). Centring in the
+   * band cannot come apart that way whatever the caller's header height is.
+   *
+   * DEFAULT UNCHANGED, deliberately. Centring would be right for any header,
+   * but the app's other custom-header dialogs were all drawn against `top-4`
+   * and moving them is its own review — and the standardisation the owner
+   * actually wants is the artifact's 18px in-flow mark, which is filed
+   * separately rather than smuggled in as a default change here.
+   */
+  closeAlign?: 'top' | 'center'
 }
 
 const sizeClasses = {
@@ -179,6 +200,7 @@ export function Modal({
   maxWidthClassName,
   initialFocusRef,
   headerOnDark = false,
+  closeAlign = 'top',
 }: ModalProps) {
   const contentRef = useRef<HTMLDivElement>(null)
   const previouslyFocusedRef = useRef<HTMLElement | null>(null)
@@ -325,7 +347,9 @@ export function Modal({
             {header}
             <button
               onClick={onClose}
-              className={`absolute top-4 right-4 z-20 rounded-lg p-2 transition-colors ${
+              className={`absolute ${
+                closeAlign === 'center' ? 'top-1/2 -translate-y-1/2' : 'top-4'
+              } right-4 z-20 rounded-lg p-2 transition-colors ${
                 headerOnDark
                   ? 'text-white/70 hover:bg-white/10 hover:text-white'
                   : 'text-muted-foreground hover:text-foreground hover:bg-black/10'

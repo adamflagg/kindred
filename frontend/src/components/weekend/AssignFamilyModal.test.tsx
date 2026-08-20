@@ -245,8 +245,44 @@ describe('AssignFamilyModal — the geometry the owner ruled on 2026-08-20', () 
     // 9px between the box and the separator, and again below the region.
     expect(body?.className).toContain('gap-[9px]')
     expect(body?.className).toContain('pb-[9px]')
-    expect(footer?.className).toContain('pt-1')
-    expect(footer?.className).toContain('pb-3.5')
+    expect(footer?.className).toContain('py-[9px]')
+  })
+
+  it('centres the footer hint between the dashed rule and the card’s bottom', () => {
+    /*
+     * ⚠️ THIS SUPERSEDES TWO OF §3.3'S OWN NUMBERS (owner ruling 2026-08-20,
+     * on looking at the built dialog): the artifact's `.mfoot{padding-top:4px}`
+     * plus the card's 14px bottom inset put the hint 4px under the rule and
+     * 14px above the card's edge, so the only line in that band sat hard
+     * against the rule and read, in the owner's words, "kinda just off".
+     *
+     * 9px and 9px is the same 34px band with the text in the middle of it, so
+     * the card's height does not move — this is an alignment ruling, not a
+     * spacing one, and the card's own 14px inset is untouched everywhere else.
+     */
+    renderModal()
+    const footer = screen.getByTestId('modal-footer').firstElementChild
+    expect(footer?.className).toContain('py-[9px]')
+    expect(footer?.className).not.toContain('pb-3.5')
+  })
+
+  it('centres its own close button in the header band', () => {
+    /*
+     * Owner ruling 2026-08-20, option A. `ui/Modal`'s `top-4` assumes a header
+     * at least 52px tall and this one is 51px, so the button hung 1px past its
+     * own ground — 5px before the header rule came out. The primitive's
+     * `closeAlign` opt-in is pinned in `Modal.test.tsx`; this pins that THIS
+     * dialog asks for it, because the geometry that made it necessary (the
+     * artifact's 14px inset) is this dialog's.
+     *
+     * Option B — the artifact's 18px circled mark in flow on the header row —
+     * is the one the owner preferred and is filed as its own issue, because
+     * it wants to land across every dialog at once rather than here alone.
+     */
+    renderModal()
+    const close = screen.getByRole('button', { name: /close/i })
+    expect(close.className).toContain('-translate-y-1/2')
+    expect(close.className).not.toContain('top-4')
   })
 
   it('puts NOTHING between the title and the search box but 9px of ground', () => {

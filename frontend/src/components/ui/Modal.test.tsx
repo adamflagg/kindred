@@ -231,6 +231,55 @@ describe('Modal', () => {
 
       expect(screen.getByRole('button', { name: /close/i })).toBeInTheDocument()
     })
+
+    it('floats the close button at the top by default, as every caller has it today', () => {
+      // `top-4` against a header slot whose height the caller owns. This is
+      // the default precisely BECAUSE it is what ~20 dialogs already draw;
+      // the opt-in below exists so one of them can differ without moving the
+      // rest.
+      render(
+        <Modal isOpen={true} onClose={() => {}} header={<div>Custom Header</div>}>
+          <p>Modal content</p>
+        </Modal>
+      )
+      expect(screen.getByRole('button', { name: /close/i }).className).toContain('top-4')
+    })
+
+    it('centres the close button in the header band when the caller asks it to', () => {
+      /*
+       * ⚠️ OPT-IN FOR A MEASURED OVERHANG (owner ruling 2026-08-20).
+       * `top-4` + a 36px box needs a header at least 52px tall, and it is a
+       * constant: a caller that tightens its header makes the button hang
+       * past it. `AssignFamilyModal` took the artifact's 14px inset and its
+       * header went to 47px, so the button ended 5px past the header's own
+       * ground — its hover fill painted across the divider that was there at
+       * the time, and its hit area covered the search box's top edge. The
+       * later no-rule ruling took the header to 51px and the overhang to 1px;
+       * this closes the last of it and, more to the point, stops the geometry
+       * depending on a header height nobody is holding still.
+       *
+       * OPT-IN rather than the new default: the wrapper is the header slot
+       * itself, so centring is right for any header — but the app's ~20 other
+       * custom-header dialogs were all drawn against `top-4`, and moving them
+       * is its own review. The 18px in-flow mark the design artifact draws is
+       * the standardisation the owner wants instead, and it is filed as its
+       * own issue rather than smuggled in here.
+       */
+      render(
+        <Modal
+          isOpen={true}
+          onClose={() => {}}
+          header={<div>Custom Header</div>}
+          closeAlign="center"
+        >
+          <p>Modal content</p>
+        </Modal>
+      )
+      const close = screen.getByRole('button', { name: /close/i })
+      expect(close.className).toContain('top-1/2')
+      expect(close.className).toContain('-translate-y-1/2')
+      expect(close.className).not.toContain('top-4')
+    })
   })
 
   describe('footer slot', () => {

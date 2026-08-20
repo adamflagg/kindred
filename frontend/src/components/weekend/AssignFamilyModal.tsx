@@ -455,7 +455,15 @@ export function AssignFamilyModal({
     // `border-dashed`, the artifact's `.mfoot{border-top:1px dashed}` — the
     // same ruled block that gives the swap region its dashed separator. Solid
     // here and dashed 200px above it made one dialog draw two grammars of rule.
-    <div className="border-border text-muted-foreground flex items-center gap-2.5 border-t border-dashed px-3.5 pt-1 pb-3.5 text-xs">
+    // ⚠️ `py-[9px]`, WHICH SUPERSEDES TWO OF §3.3's OWN NUMBERS (owner ruling
+    // 2026-08-20, on looking at the built dialog). The artifact's
+    // `.mfoot{padding-top:4px}` plus the card's 14px bottom inset put this one
+    // line 4px under the rule and 14px above the card's edge, so it sat hard
+    // against the rule instead of in the band — "kinda just off". 9 and 9 is
+    // the same 34px band with the line centred in it, so the card's height is
+    // unchanged and the 14px inset stands everywhere else. An alignment
+    // ruling, not a spacing one.
+    <div className="border-border text-muted-foreground flex items-center gap-2.5 border-t border-dashed px-3.5 py-[9px] text-xs">
       {offersWriteIn ? (
         <>
           <span className="flex-1">↵ in a field saves · backspace to a match to go back</span>
@@ -517,6 +525,17 @@ export function AssignFamilyModal({
       // design it is being compared against is not the design. `ui/Modal`'s
       // `maxWidthClassName` is opt-in and no other caller is touched.
       maxWidthClassName="max-w-[520px]"
+      // ⚠️ CENTRED IN THE HEADER BAND (owner ruling 2026-08-20, option A).
+      // `ui/Modal`'s default `top-4` assumes a header at least 52px tall —
+      // 16px plus a 36px box — and this header is 51px, so the button hung
+      // past its own ground: 5px while the header rule was still there, where
+      // its hover fill painted across the rule, and 1px after the rule came
+      // out. The opt-in leaves every other dialog on `top-4`.
+      //
+      // Option B — the artifact's 18px circled mark in flow on the header row
+      // — is the one the owner preferred, and is filed as its own issue
+      // because it should land on every dialog at once rather than here alone.
+      closeAlign="center"
       // ⚠️ THE CARD'S BORDER IS `ui/Modal`'s 1px, NOT the artifact's 2px, and
       // that is deliberate and unresolved rather than missed. §3.3's quoted
       // block carries `.modalcard{border:2px}`, but that ruling's subject is
@@ -537,8 +556,9 @@ export function AssignFamilyModal({
              separator → first row        9px   the swap region's `pt-[9px]`
              row → row                    6px   the list's `gap-[6px]`
              last row → footer rule       9px   this `pb-[9px]`
-             footer rule → footer text    4px   the footer's `pt-1`
-             footer text → card bottom   14px   the footer's `pb-3.5`
+             footer rule → footer text    9px   the footer's `py-[9px]`
+             footer text → card bottom    9px   the same, and see it for why
+                                                these two stopped being 4/14
           The artifact has NO rule under its header and NEITHER DOES THIS ONE
           any more (owner, 2026-08-20) — the 9px above is plain gap, carried by
           the header's own `pb-[9px]`, so this element adds nothing on top of
