@@ -536,11 +536,12 @@ export function AssignFamilyModal({
       // — is the one the owner preferred, and is filed as its own issue
       // because it should land on every dialog at once rather than here alone.
       closeAlign="center"
-      // ⚠️ THE CARD'S BORDER IS `ui/Modal`'s 1px, NOT the artifact's 2px, and
-      // that is deliberate and unresolved rather than missed. §3.3's quoted
-      // block carries `.modalcard{border:2px}`, but that ruling's subject is
-      // spacing; the weight is `ui/Modal`'s and changing it moves ~20 unrelated
-      // dialogs. Raised for the owner 2026-08-20 rather than decided here."
+      // ⚠️ THE CARD'S BORDER IS `ui/Modal`'s 1px, NOT the artifact's 2px, AND
+      // THAT IS NOW RULED (owner, 2026-08-20, having compared the two at 4×).
+      // §3.3's quoted block carries `.modalcard{border:2px}`, but that ruling's
+      // subject was spacing; the weight belongs to `ui/Modal` and changing it
+      // moves ~20 unrelated dialogs. The artifact's 2px is not the app's
+      // grammar, so it does not travel — do not "fix" this to match the mock.
     >
       {/* ⚠️ THE WHOLE VERTICAL RHYTHM IS THE ARTIFACT'S, AND IT IS RULED
           (owner, 2026-08-20). It was `px-6 py-4 gap-3` against the artifact's
