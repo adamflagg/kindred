@@ -950,7 +950,10 @@ export function LodgingUnitCard({
             of 184 housing narratives mention air conditioning, against 54 for
             a bathroom, 34 for CPAP power and 11 for a fridge — so the same
             scan that found the others found none of these. It stays because
-            staff place against it; it gets no glyph because nobody asks. */}
+            staff place against it; what it gets no glyph for is family DEMAND.
+            The `Snowflake` below is the UNIT's own amenity mark and still
+            draws on the title row — it is the paired demand glyph, the one
+            that would say a family asked for this, that nothing mints. */}
         {unit.has_ac === true && (
           <Snowflake
             data-testid="amenity-ac"

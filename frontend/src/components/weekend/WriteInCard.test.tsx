@@ -206,10 +206,12 @@ describe('the corner control that edits THIS write-in (kindred#2430)', () => {
   it('labels both boxes with the prompt\u2019s own placeholders', () => {
     // The note is EMPTY on every row predating kindred#2078 (1500000148
     // cleared each one it copied), so without a placeholder the second box is
-    // a blank unlabelled input under the name. Same strings the Assign
-    // modal's write-in form uses, so one control does not teach a different
-    // vocabulary from the other. (They came from
-    // `UnitAvailabilityControl`'s occupant prompt, which was cut in
+    // a blank unlabelled input under the name. What this shares with the
+    // Assign modal's write-in form is the SHAPE — a name box with an optional
+    // note under it — and not the strings: the modal opens on a picker rather
+    // than on a row that already names someone, so it words its own pair
+    // `Write in a name…` and `Optional — e.g. back Monday`. (These two came
+    // from `UnitAvailabilityControl`'s occupant prompt, which was cut in
     // kindred#2072 stage 3 — the strings outlived it.)
     render(<WriteInCard occupant={{ name: 'Liam Garcia', note: '' }} onEdit={() => undefined} />)
 
