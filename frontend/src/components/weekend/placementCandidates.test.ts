@@ -71,14 +71,18 @@ describe('candidateFit', () => {
     expect(result.notes).toEqual([])
   })
 
-  it('annotates a private-bathroom need against a shared bathroom', () => {
+  it('marks a private-bathroom need against a shared bathroom', () => {
+    // The NOTE is struck (kindred#2072): the row draws a red bathroom glyph,
+    // and a sentence beside it repeating the fact is the "one fact twice" N2
+    // removed from the family card. The verdict it feeds is unchanged, and
+    // the verdict is what orders the list.
     const result = candidateFit(
       party({ flags: { needs_private_bathroom: true } }),
       unit({ bathroom: 'shared' }),
       []
     )
     expect(result.fit).toBe('unmet')
-    expect(result.notes).toContain('No private bathroom')
+    expect(result.notes).toEqual([])
   })
 
   it('says nothing when the space HAS a private bathroom', () => {
@@ -112,7 +116,8 @@ describe('candidateFit', () => {
       []
     )
     expect(result.fit).toBe('unmet')
-    expect(result.notes).toContain('No power')
+    // Struck with the other per-need notes — the glyph carries it.
+    expect(result.notes).toEqual([])
   })
 
   it('softens a power need to partial when SOME rooms have power', () => {
@@ -122,7 +127,7 @@ describe('candidateFit', () => {
       []
     )
     expect(result.fit).toBe('partial')
-    expect(result.notes).toContain('Some rooms have power')
+    expect(result.notes).toEqual([])
   })
 
   it('reads power off the leaf-resolved coverage, never the container row own flag', () => {
@@ -183,14 +188,27 @@ describe('candidateFit', () => {
     expect(result.notes).toEqual([])
   })
 
-  it('takes the WORST verdict and keeps every note', () => {
+  it('takes the WORST verdict across every dimension', () => {
+    // `unmet` (bathroom) beats `partial` (some rooms have power). The notes
+    // that used to ride along are struck; what survives is the ordering rule,
+    // which is what this test was really protecting.
     const result = candidateFit(
       party({ flags: { needs_private_bathroom: true, needs_power: true } }),
       unit({ bathroom: 'shared', power_coverage: 'some' }),
       []
     )
     expect(result.fit).toBe('unmet')
-    expect(result.notes).toEqual(['No private bathroom', 'Some rooms have power'])
+    expect(result.notes).toEqual([])
+  })
+
+  it('still takes the worst when only CAPACITY fails, and keeps its note', () => {
+    const result = candidateFit(
+      party({ flags: { needs_power: true }, party_size: 6 }),
+      unit({ sleeps: 4, power_coverage: 'some' }),
+      []
+    )
+    expect(result.fit).toBe('unmet')
+    expect(result.notes).toEqual(['Over capacity · needs 6, sleeps 4'])
   })
 })
 
@@ -240,5 +258,72 @@ describe('placementCandidates', () => {
       []
     )
     expect(rows.map((row) => row.party.sort_name)).toEqual(['Garcia', 'Nguyen', 'Rodriguez'])
+  })
+})
+
+describe('candidateFit — one grading, and the notes the glyphs now carry (kindred#2072)', () => {
+  /*
+   * This module was the FOURTH table grading these needs, and the survey that
+   * planned kindred#2072 counted three. Its own doc had spotted the
+   * divergence and said so: fridge and step-free hatched the board mid-drag
+   * and annotated `fits` here.
+   *
+   * What it had right, and what `needGlyphs.ts` therefore had to learn rather
+   * than flatten: a CANDIDATE has no placement, so its bathroom must be read
+   * off the cabin being considered and never off `party.effective_bathroom`.
+   * That is the `prospective` reading.
+   */
+  it('grades all four ruled needs, not the two it used to', () => {
+    const result = candidateFit(
+      party({ flags: { needs_fridge: true } }),
+      unit({ fridge_coverage: 'none' }),
+      []
+    )
+    expect(result.fit).toBe('unmet')
+  })
+
+  it('grades step-free, and SOME rooms is worse than none for it', () => {
+    // The `is_accessible` shape: a building advertising two step-free rooms
+    // out of ten invites precisely the placement that lands in one of the
+    // other eight.
+    expect(
+      candidateFit(party({ flags: { needs_step_free: true } }), unit({ ramp_coverage: 'some' }), [])
+        .fit
+    ).toBe('unmet')
+    expect(
+      candidateFit(
+        party({ flags: { needs_step_free: true } }),
+        unit({ ramp_coverage: 'partial' }),
+        []
+      ).fit
+    ).toBe('partial')
+  })
+
+  it('reads a candidate bathroom off the CABIN, never off a placement it does not have', () => {
+    // Every party in this list is unplaced, so `effective_bathroom` is the
+    // wrong question — it would annotate identically on every cabin.
+    const unplaced = party({ flags: { needs_private_bathroom: true }, effective_bathroom: 'none' })
+    expect(candidateFit(unplaced, unit({ bathroom: 'private' }), []).fit).toBe('fits')
+    expect(candidateFit(unplaced, unit({ bathroom: 'shared' }), []).fit).toBe('unmet')
+  })
+
+  it('writes NO note for a need — the glyph beside it says the same thing', () => {
+    // N2: the glyph takes the warn fill when the room does not meet the need,
+    // and a note repeating it states one fact twice — the exact reason
+    // `No private bathroom` was struck from the family card. The row draws
+    // the same glyphs, so the same rule applies to it.
+    const result = candidateFit(
+      party({ flags: { needs_private_bathroom: true, needs_power: true } }),
+      unit({ bathroom: 'shared', power_coverage: 'none' }),
+      []
+    )
+    expect(result.fit).toBe('unmet')
+    expect(result.notes).toEqual([])
+  })
+
+  it('keeps the CAPACITY note, which no glyph carries', () => {
+    const result = candidateFit(party({ party_size: 6 }), unit({ sleeps: 4 }), [])
+    expect(result.fit).toBe('unmet')
+    expect(result.notes).toEqual(['Over capacity · needs 6, sleeps 4'])
   })
 })

@@ -94,7 +94,8 @@ import {
   dedupeChildNames,
   partyHeadcount,
 } from './householdIdentity'
-import { resolveNeedGlyphs, type ResolvedNeedGlyph } from './needGlyphs'
+import { NeedGlyphMark, WARN_TONE } from './NeedGlyph'
+import { resolveNeedGlyphs } from './needGlyphs'
 import { partyKey } from './partyKey'
 import { ATTENTION_LABEL, partyAttention } from './rosterAttention'
 
@@ -130,17 +131,6 @@ export interface FamilyCardProps {
 }
 
 /**
- * The warn treatment, named once because TWO shapes wear it.
- *
- * A word chip takes it as a fill; a need glyph takes it as fill, border AND
- * icon colour (N2). Those have to be the same red — the glyph replaced the
- * `No power` chip that used to sit beside it, and two reds for one meaning is
- * how a palette stops meaning anything. A complete literal, because Tailwind
- * scans raw source text.
- */
-const WARN_TONE = 'bg-red-100 text-red-800 dark:bg-red-950/50 dark:text-red-300'
-
-/**
  * ⚠️ THREE TONES WERE REMOVED WITH THEIR CHIPS (kindred#2072) AND MUST NOT
  * COME BACK AS DECORATION:
  *
@@ -153,6 +143,11 @@ const WARN_TONE = 'bg-red-100 text-red-800 dark:bg-red-950/50 dark:text-red-300'
  *                own copy in `MapUnitPopover`.
  *
  * A tone with no chip is an invitation to invent one.
+ *
+ * `warn` is imported rather than spelled out, because the GLYPH defines that
+ * ink and this merely borrows it: the glyph replaced the `No power` chip that
+ * used to sit beside it, and two reds for one meaning is how a palette stops
+ * meaning anything.
  */
 type ChipTone = 'warn' | 'share' | 'muted'
 
@@ -161,37 +156,6 @@ const CHIP_TONE: Record<ChipTone, string> = {
   share: 'bg-forest-100 text-forest-800 dark:bg-forest-950/50 dark:text-forest-300',
   muted: 'bg-muted text-muted-foreground',
 }
-
-/**
- * The unmet glyph: warn fill, warn BORDER, warn icon (N2).
- *
- * The border is what distinguishes it from a word chip wearing the same fill —
- * an icon-only mark is small, and a fill alone at 18px reads as a smudge. The
- * mock sets `border-color: var(--warn-fg)`, which is this `text-red-800` step
- * on the light side and `red-300` on the dark.
- */
-const GLYPH_UNMET = `${WARN_TONE} border-red-800 dark:border-red-300`
-
-/**
- * The icon-only chip is a GEOMETRY, not a seventh tone.
- *
- * Transparent ground, a 1px border in the card's own border token, and a
- * SQUARE 20×20 box — it composes with `GLYPH_UNMET` above for the unmet state
- * rather than being a variant of it. `rounded-lg` rather than the word chips'
- * `rounded-full`: a circle around a 12px glyph reads as a bullet, and the
- * shape difference is what says "this is a need, not a preference".
- *
- * ⚠️ 20px IS THE WORD CHIPS' OWN HEIGHT, and matching it is the point. This
- * was `p-0.5`, which is 18px — two pixels shorter than every chip it shares a
- * line with, which reads as a misalignment rather than as a smaller mark. The
- * review artifact reaches 20 with 3px of padding; `h-5 w-5` reaches it on
- * Tailwind's own scale, with `justify-center` doing what the padding did.
- *
- * It also closes a 2px overlap: `ui/Tooltip`'s invisible 24px hit target
- * overhung an 18px glyph by 3px a side against a 4px gap, so adjacent glyphs'
- * hit areas collided and the later one in the DOM won.
- */
-const GLYPH_BASE = 'inline-flex h-5 w-5 items-center justify-center rounded-lg border'
 
 function Chip({
   label,
@@ -240,45 +204,6 @@ function Chip({
     )
   }
   return <span className={chipClassName}>{content}</span>
-}
-
-/**
- * One need glyph — the whole point of kindred#2072.
- *
- * ICON-ONLY, and that is the ruling rather than a space saving: four needs
- * wearing four hues read as a gutter a staff member scans, where four word
- * chips wrapped the card and pushed the sharing chips onto a third line. The
- * SHAPE says which need it is, which is what makes losing the hue affordable
- * when the glyph goes to warn (N2).
- *
- * A REACHABLE tooltip, not a `title`: `title` fires on mouse hover and
- * nothing else (kindred#2177), and a mark with no words is unreadable without
- * one. Valid HTML here because the chip row is a SIBLING of the card's own
- * `<button>`, never its child (kindred#2222) — the same thing that let
- * "Answers disagree" grow a real trigger in kindred#2250.
- */
-function NeedGlyphMark({ glyph }: { glyph: ResolvedNeedGlyph }) {
-  const { Icon, label, hueClassName, isUnmet } = glyph
-  const sentence = isUnmet ? `${label} — the cabin does not meet it` : label
-  return (
-    <Tooltip
-      content={sentence}
-      // ★ NAMED, and this is a hard requirement of the change rather than an
-      // accessibility flourish. After kindred#2072 the strings "Private
-      // bathroom" and "Power" appear NOWHERE on this card — the glyph is the
-      // only carrier — so a trigger with no accessible name is a control that
-      // announces nothing and a `getByRole('button', { name })` query that
-      // cannot find it. `frontend/CLAUDE.md` puts it plainly inside the
-      // opt-out policy: "An icon-only button needs a name — give it one", and
-      // `ui/Tooltip`'s own `aria-label` doc scopes itself to exactly this case
-      // — a trigger whose visible content does not name it.
-      aria-label={sentence}
-      data-testid={`need-glyph-${glyph.key}`}
-      className={`${GLYPH_BASE} ${isUnmet ? GLYPH_UNMET : 'border-border bg-transparent'}`}
-    >
-      <Icon className={`h-3 w-3 ${isUnmet ? 'text-red-800 dark:text-red-300' : hueClassName}`} />
-    </Tooltip>
-  )
 }
 
 /**

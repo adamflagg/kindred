@@ -91,7 +91,7 @@ export function resolveNeedsFit(party: RosterPartyRow, unit: LodgingUnitRow): Ne
   let worst: NeedsFit = 'fits'
   for (const glyph of askedNeedGlyphs(party)) {
     if (!HATCHED_NEEDS.includes(glyph.key)) continue
-    worst = worseOf(needVerdict(glyph.key, glyph.coverage(party, unit)), worst)
+    worst = worseOf(needVerdict(glyph.key, glyph.coverage(party, unit, 'placed')), worst)
   }
   return worst
 }

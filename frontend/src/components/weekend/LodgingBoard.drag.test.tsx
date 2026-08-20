@@ -349,8 +349,11 @@ describe('LodgingBoard — placing a family from the space itself (kindred#2080)
     })
   }
 
+  // The Assign pill, which OPENS the modal — kindred#2072's AS2 replaced the
+  // inline combobox this used to reach for. The gate each test below asks
+  // about is unchanged; the control it asks through is not.
   function pickerFor(name: string) {
-    return screen.getByRole('combobox', { name: new RegExp(`place a family in ${name}`, 'i') })
+    return screen.getByRole('button', { name: new RegExp(`assign to ${name}`, 'i') })
   }
 
   it('mounts the control on every placeable space, occupied or not', () => {
@@ -361,17 +364,17 @@ describe('LodgingBoard — placing a family from the space itself (kindred#2080)
     // occupied card — a rule this change deletes, because the box is now the
     // only way to write somebody in and a partly-filled merged building was
     // left with no path at all.
-    expect(screen.getByRole('combobox', { name: /place a family in cedar 1/i })).toBeInTheDocument()
+    expect(pickerFor('Cedar 1')).toBeInTheDocument()
   })
 
   it('offers nothing without a scenario', () => {
     boardWithUnplaced({ scenario: '' })
-    expect(screen.queryByRole('combobox', { name: /place a family/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /assign to/i })).not.toBeInTheDocument()
   })
 
   it('offers nothing without the permission to place', () => {
     boardWithUnplaced({ canManage: false })
-    expect(screen.queryByRole('combobox', { name: /place a family/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /assign to/i })).not.toBeInTheDocument()
   })
 
   it('lists the UNPLACED parties, never one already in a cabin', async () => {

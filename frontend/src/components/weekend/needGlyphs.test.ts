@@ -230,7 +230,7 @@ describe('resolveNeedGlyphs — what the card actually draws', () => {
   it('keeps a partial verdict out of the warn state', () => {
     // Two states are locked, not three: the hue (asked for) and warn (the
     // room has not got it). `partial` is a QUALIFICATION — "a ramp with a lip",
-    // "some rooms have power" — and `PlaceFamilyPicker` already grades it as
+    // "some rooms have power" — and the Assign modal's rows already grade it as
     // advisory-muted rather than as a warning. It keeps its hue; the card's
     // drag-time hatch is where degree is expressed.
     const glyphs = resolveNeedGlyphs(
@@ -247,5 +247,62 @@ describe('resolveNeedGlyphs — what the card actually draws', () => {
       unit({ fridge_coverage: 'none' })
     )
     expect(unmet[0]?.isUnmet).toBe(true)
+  })
+})
+
+describe('needCoverage — the PROSPECTIVE reading', () => {
+  /*
+   * Two questions, one table.
+   *
+   *   PLACED      — "does the cabin they are in meet this need?"  The card.
+   *   PROSPECTIVE — "would this cabin meet it?"                   The modal.
+   *
+   * They differ for exactly one need, and the difference is not a bug that
+   * was consolidated away: `effective_bathroom` is the SERVER's verdict on
+   * the placement a party already holds, which is meaningless for a candidate
+   * that has none — every unplaced party would grade identically no matter
+   * which cabin was being considered. `placementCandidates.ts` had worked
+   * this out and kept its own table because of it; the reading is a parameter
+   * now instead.
+   */
+  it('grades a candidate bathroom off the CABIN, not the placement the party does not have', () => {
+    const unplaced = party({ effective_bathroom: 'none' })
+    expect(needCoverage('bathroom', unplaced, unit({ bathroom: 'private' }), 'prospective')).toBe(
+      'all'
+    )
+    expect(needCoverage('bathroom', unplaced, unit({ bathroom: 'shared' }), 'prospective')).toBe(
+      'none'
+    )
+  })
+
+  it('reports unknown for a cabin whose bathroom nobody has recorded', () => {
+    expect(needCoverage('bathroom', party(), unit({ bathroom: 'unknown' }), 'prospective')).toBe(
+      'unknown'
+    )
+    const noField = unit()
+    delete noField.bathroom
+    expect(needCoverage('bathroom', party(), noField, 'prospective')).toBe('unknown')
+  })
+
+  it('reads the other three identically in both readings — they were never party-scoped', () => {
+    const p = party({ effective_bathroom: 'private' })
+    const u = unit({ power_coverage: 'some', fridge_coverage: 'all', ramp_coverage: 'partial' })
+    for (const key of ['power', 'fridge', 'step_free'] as const) {
+      expect(needCoverage(key, p, u, 'prospective')).toBe(needCoverage(key, p, u, 'placed'))
+    }
+  })
+
+  it('defaults to the placed reading, so an unqualified call is the card’s', () => {
+    const placed = party({ effective_bathroom: 'private' })
+    expect(needCoverage('bathroom', placed, unit({ bathroom: 'none' }))).toBe('all')
+  })
+
+  it('draws a candidate’s glyphs against the cabin being considered', () => {
+    const glyphs = resolveNeedGlyphs(
+      party({ flags: { needs_private_bathroom: true }, effective_bathroom: 'none' }),
+      unit({ bathroom: 'private' }),
+      'prospective'
+    )
+    expect(glyphs.map((glyph) => glyph.isUnmet)).toEqual([false])
   })
 })

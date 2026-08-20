@@ -429,7 +429,8 @@ export function availabilityAction(unit: LodgingUnitRow): AvailabilityAction | n
   //
   // Creating a write-in moved into the card's own family box: type a name, and
   // if no registered family matches, that text becomes the write-in
-  // (`PlaceFamilyPicker`'s `onWriteIn`). The ruling's own framing:
+  // (`AssignFamilyModal`'s `onWriteIn`, `PlaceFamilyPicker`'s until AS2
+  // replaced the inline box with a modal). The ruling's own framing:
   //
   //   > "one fewer chip on the board on every tile, big win ... it removes two
   //   >  rectangular boxes coexisting and typeable when the write in is also

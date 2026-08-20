@@ -63,6 +63,29 @@ export type Coverage = AmenityCoverage | RampCoverage
 /** The four dimensions, and the set is CLOSED (§6). */
 export type NeedKey = 'bathroom' | 'power' | 'fridge' | 'step_free'
 
+/**
+ * WHICH QUESTION IS BEING ASKED. Two, and they are genuinely different.
+ *
+ *   `placed`      — "does the cabin they are IN meet this need?" The family
+ *                   card, the roster, the drag-time hatch.
+ *   `prospective` — "would THIS cabin meet it?" The Assign modal's candidate
+ *                   rows, where the party has no placement yet.
+ *
+ * Only the bathroom need reads them differently, and that difference is
+ * load-bearing rather than an inconsistency left behind: its placed supply is
+ * `party.effective_bathroom`, the SERVER's verdict across every code the
+ * placement covers — which is meaningless for a candidate that has no
+ * placement, since every unplaced party would then grade identically no
+ * matter which cabin was under consideration.
+ *
+ * `placementCandidates.ts` had reached that conclusion and kept a table of its
+ * own because of it — the fourth table, and the one the kindred#2072 survey
+ * did not count. It calls this instead now: one grading, parameterised by the
+ * question, rather than two implementations that agree until somebody edits
+ * one.
+ */
+export type NeedReading = 'placed' | 'prospective'
+
 export interface NeedGlyphSpec {
   readonly key: NeedKey
   /** The household's asked-for need. */
@@ -102,7 +125,7 @@ export interface NeedGlyphSpec {
    */
   readonly someIs: Exclude<NeedsFit, 'fits'>
   /** Where this need reads its supply. See each implementation for why. */
-  readonly coverage: (party: RosterPartyRow, unit: LodgingUnitRow) => Coverage
+  readonly coverage: (party: RosterPartyRow, unit: LodgingUnitRow, reading: NeedReading) => Coverage
 }
 
 /**
@@ -131,10 +154,17 @@ export interface NeedGlyphSpec {
  * When #2501 lands this becomes `'shared'` joining the `'private'` arm, and
  * `needGlyphs.test.ts` carries the assertion that flips.
  */
-function bathroomCoverage(party: RosterPartyRow): Coverage {
-  const effective = party.effective_bathroom
-  if (effective === 'private') return 'all'
-  if (effective === undefined || effective === 'unknown') return 'unknown'
+function bathroomCoverage(
+  party: RosterPartyRow,
+  unit: LodgingUnitRow,
+  reading: NeedReading
+): Coverage {
+  // The PROSPECTIVE half: the candidate cabin's own field, which is also what
+  // the unit card's amenity mark prints — so a row in the Assign modal can
+  // never contradict the card it was opened from.
+  const value = reading === 'prospective' ? (unit.bathroom ?? 'unknown') : party.effective_bathroom
+  if (value === 'private') return 'all'
+  if (value === undefined || value === 'unknown') return 'unknown'
   return 'none'
 }
 
@@ -159,7 +189,7 @@ export const NEED_GLYPHS: readonly NeedGlyphSpec[] = [
     // covered placement should be the mark staff look at, not the one they
     // do not.
     someIs: 'unmet',
-    coverage: (party) => bathroomCoverage(party),
+    coverage: bathroomCoverage,
   },
   {
     key: 'power',
@@ -223,9 +253,19 @@ export function needGlyph(key: NeedKey): NeedGlyphSpec {
   return spec
 }
 
-/** Where `key` reads its supply for this party in this cabin. */
-export function needCoverage(key: NeedKey, party: RosterPartyRow, unit: LodgingUnitRow): Coverage {
-  return needGlyph(key).coverage(party, unit)
+/**
+ * Where `key` reads its supply for this party in this cabin.
+ *
+ * `reading` defaults to `placed`, so an unqualified call is the card's
+ * question — the one every existing caller was asking.
+ */
+export function needCoverage(
+  key: NeedKey,
+  party: RosterPartyRow,
+  unit: LodgingUnitRow,
+  reading: NeedReading = 'placed'
+): Coverage {
+  return needGlyph(key).coverage(party, unit, reading)
 }
 
 /**
@@ -256,7 +296,8 @@ export interface ResolvedNeedGlyph extends NeedGlyphSpec {
    * TWO STATES, NOT THREE, and that is ruled (§2): the hue means "asked for",
    * warn means "the placed room has not got it". `partial` — "a ramp with a
    * lip", "some rooms have power" — is a QUALIFICATION rather than a warning,
-   * and `PlaceFamilyPicker` already grades it as advisory-muted against
+   * and the Assign modal's candidate rows already grade it as advisory-muted
+   * against
    * `unmet`'s amber. It keeps its hue; degree lives on the card's drag-time
    * hatch, which grades it on the hatch PERIOD.
    */
@@ -290,11 +331,12 @@ export function askedNeedGlyphs(party: RosterPartyRow): NeedGlyphSpec[] {
  */
 export function resolveNeedGlyphs(
   party: RosterPartyRow,
-  unit: LodgingUnitRow | undefined
+  unit: LodgingUnitRow | undefined,
+  reading: NeedReading = 'placed'
 ): ResolvedNeedGlyph[] {
   return askedNeedGlyphs(party).map((glyph) => {
     const verdict: NeedsFit =
-      unit === undefined ? 'fits' : needVerdict(glyph.key, glyph.coverage(party, unit))
+      unit === undefined ? 'fits' : needVerdict(glyph.key, glyph.coverage(party, unit, reading))
     return { ...glyph, verdict, isUnmet: verdict === 'unmet' }
   })
 }

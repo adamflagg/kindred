@@ -145,11 +145,13 @@ describe('LodgingBoard — the availability gate', () => {
     // it in.
     renderBoard({ scenario: '' })
 
-    // The BOX, since 2026-08-18 — the strip's "Write in" button is gone and
-    // creating a write-in is typing into the card's own control. Named for the
-    // write-in alone here, because with no scenario there is nothing to place.
+    // The Assign PILL since kindred#2072's AS2, and the inline box before it.
+    // Named for the write-in alone here, because with no scenario there is
+    // nothing to place — the control has always been careful not to name an
+    // action the staff member cannot take, and the modal behind it opens as a
+    // write-in box only.
     expect(
-      screen.getByRole('combobox', { name: /write in an occupant for cedar 1/i })
+      screen.getByRole('button', { name: /write in an occupant for cedar 1/i })
     ).toBeInTheDocument()
   })
 
@@ -196,10 +198,10 @@ describe('LodgingBoard — the control becomes a write', () => {
     const user = userEvent.setup()
     renderBoard()
 
-    await user.type(
-      screen.getByRole('combobox', { name: /place a family in cedar 2/i }),
-      'Emma Johnson{Enter}'
-    )
+    await user.click(screen.getByRole('button', { name: /assign to cedar 2/i }))
+    await user.type(screen.getByRole('searchbox'), 'Emma Johnson')
+    await user.type(screen.getByLabelText(/note/i), 'paper registration')
+    await user.click(screen.getByRole('button', { name: /^write in$/i }))
 
     expect(setAvailability).toHaveBeenCalledTimes(1)
     expect(setAvailability).toHaveBeenCalledWith({
@@ -207,11 +209,13 @@ describe('LodgingBoard — the control becomes a write', () => {
       unitName: 'Cedar 2',
       familyAvailable: false,
       occupantName: 'Emma Johnson',
-      // EMPTY, and that is the shape change. The strip collected an optional
-      // note beside the occupant; the box collects a name only, and a note is
-      // added afterwards by the pencil on the write-in's own card. One control
-      // asking one question, rather than two boxes on every tile.
-      reason: '',
+      // ★ THE NOTE IS CARRIED AGAIN, and this test's own name finally
+      // describes it. The strip collected an optional note beside the
+      // occupant; the inline box that replaced it collected a name ONLY and
+      // sent `reason: ''`, so recording WHY meant writing the occupant in and
+      // then editing it from the pencil on its own card. kindred#2072's modal
+      // has the width for the field, so the first write carries it.
+      reason: 'paper registration',
     })
   })
 
@@ -221,11 +225,12 @@ describe('LodgingBoard — the control becomes a write', () => {
     pendingUnitId = 'u1'
     renderBoard()
 
-    // The BOX carries the per-card gate now that the strip button is gone —
-    // and it matters more on a combobox, which invites a staff member to keep
-    // typing a second write-in against an unsettled first.
-    expect(screen.getByRole('combobox', { name: /place a family in cedar 1/i })).toBeDisabled()
-    expect(screen.getByRole('combobox', { name: /place a family in cedar 2/i })).toBeEnabled()
+    // The Assign PILL carries the per-card gate now that the strip button is
+    // gone. It matters as much on a pill as it did on the box: the write it
+    // starts is a modal away, and a second one submitted against an unsettled
+    // first is a duplicate nobody asked for.
+    expect(screen.getByRole('button', { name: /assign to cedar 1/i })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /assign to cedar 2/i })).toBeEnabled()
     await Promise.resolve()
   })
 })
