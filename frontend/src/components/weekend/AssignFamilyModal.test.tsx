@@ -951,6 +951,48 @@ describe('AssignFamilyModal — Enter saves from a FIELD, never from the search 
     expect(props.onWriteIn).toHaveBeenCalledWith({ occupantName: 'Burst pipe', note: '' })
   })
 
+  it('puts the Write in button INSIDE the swap region, under the field it commits', () => {
+    /*
+     * ⚠️ THE LAST OF THE JUMP, AND IT IS THE FOOTER'S OWN HEIGHT (owner ruling
+     * 2026-08-20, option C). Everything above the footer already travelled 0px
+     * — header, search box, swap region, and the footer's TOP edge — but the
+     * footer GREW when the button appeared inside it, 35px → 51px, so the
+     * card's bottom edge dropped 16px on the flip. Nobody had measured the
+     * bottom; the earlier "footer travel 0px" measured the top.
+     *
+     * Four fixes were mocked in a browser and this is the ruled one: the
+     * button leaves the footer for the write-in region, which has a FIXED
+     * height and is the one part of this dialog that is supposed to change.
+     * Card 456px in both modes, footer 35px in both, and nothing outside the
+     * swap region moves by a pixel — the strictest reading of W3 of the four.
+     *
+     * ⚠️ A DELIBERATE DIVERGENCE FROM THE ARTIFACT, which draws the button in
+     * the footer beside the hint. The artifact does not honour the no-jump
+     * ruling either — its card simply grows on the flip — so following it here
+     * would mean importing the defect. Do not "restore" it to the footer.
+     */
+    renderModal()
+    fireEvent.change(searchBox(), { target: { value: 'Burst pipe' } })
+    const region = screen.getByTestId('write-in-region')
+    const button = screen.getByRole('button', { name: /write in/i })
+    expect(region).toContainElement(button)
+    expect(screen.getByTestId('modal-footer')).not.toContainElement(button)
+  })
+
+  it('leaves the footer holding one line of hint in BOTH modes', () => {
+    // The other half of the ruling: the footer must not gain or lose anything
+    // on the flip, or the band's height moves with it. It carries exactly one
+    // element either way — the hint — and the browser measures 35px on both.
+    renderModal()
+    const footer = screen.getByTestId('modal-footer').firstElementChild
+    expect(footer?.children).toHaveLength(1)
+    expect(footer?.querySelector('button')).toBeNull()
+    fireEvent.change(searchBox(), { target: { value: 'Burst pipe' } })
+    expect(footer?.children).toHaveLength(1)
+    expect(footer?.querySelector('button')).toBeNull()
+    expect(footer).toHaveTextContent('in a field saves')
+  })
+
   it('trims the typed name — a trailing space is a typing artefact, not a name', () => {
     const { props } = renderModal()
     fireEvent.change(searchBox(), { target: { value: '  Burst pipe  ' } })

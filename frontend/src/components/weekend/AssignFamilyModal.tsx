@@ -464,25 +464,20 @@ export function AssignFamilyModal({
     // unchanged and the 14px inset stands everywhere else. An alignment
     // ruling, not a spacing one.
     <div className="border-border text-muted-foreground flex items-center gap-2.5 border-t border-dashed px-3.5 py-[9px] text-xs">
-      {offersWriteIn ? (
-        <>
-          <span className="flex-1">↵ in a field saves · backspace to a match to go back</span>
-          <button
-            type="button"
-            onClick={writeIn}
-            disabled={isSaving}
-            className="bg-primary text-primary-foreground rounded-md px-3 py-1.5 text-sm font-medium disabled:opacity-40"
-          >
-            Write in
-          </button>
-        </>
-      ) : (
-        <span className="flex-1">
-          {parties.length === 0
+      {/* ⚠️ ONE ELEMENT IN BOTH MODES, AND THAT IS THE POINT (owner ruling
+          2026-08-20, option C). The Write in button used to live HERE beside
+          the hint, which made this band 51px on the flip against 35px in list
+          mode — so the card's bottom edge dropped 16px while everything above
+          it correctly stayed put. The button now sits in the swap region, next
+          to the field it commits; this line is all the footer ever holds, so
+          there is nothing left that can change its height. */}
+      <span className="flex-1">
+        {offersWriteIn
+          ? '↵ in a field saves · backspace to a match to go back'
+          : parties.length === 0
             ? ''
             : `${String(candidates.length)} of ${String(parties.length)} · click a family, or keep typing`}
-        </span>
-      )}
+      </span>
     </div>
   )
 
@@ -671,6 +666,31 @@ export function AssignFamilyModal({
                   className="border-border bg-background text-foreground placeholder:text-muted-foreground/60 focus:border-primary/50 focus:ring-primary/10 rounded-md border px-1.5 py-1 text-sm font-normal focus:ring-2 focus:outline-none"
                 />
               </label>
+              {/* ⚠️ THE COMMIT LIVES HERE, NOT IN THE FOOTER (owner ruling
+                  2026-08-20, option C), and it is the last of the jump W3
+                  forbids. In the footer this button made that band 51px on the
+                  flip against 35px in list mode, so the card's bottom edge
+                  dropped 16px — everything ABOVE the footer already travelled
+                  0px, which is why nobody had caught it. This region's height
+                  is fixed, so a button inside it costs nothing and moves
+                  nothing.
+
+                  It also puts the action under the field it commits rather
+                  than 250px below it, past the region's empty ground. The
+                  design artifact draws it in the footer; that is a deliberate
+                  divergence, because the artifact's own card simply grows on
+                  the flip and following it here would import the defect.
+                  `AssignFamilyModal.test.tsx` pins both halves. */}
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={writeIn}
+                  disabled={isSaving}
+                  className="bg-primary text-primary-foreground rounded-md px-3 py-1.5 text-sm font-medium disabled:opacity-40"
+                >
+                  Write in
+                </button>
+              </div>
             </div>
           ) : parties.length === 0 ? (
             /* Nothing left to place. `FloatingUnplacedBadge` already says this
