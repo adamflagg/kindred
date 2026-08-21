@@ -6,8 +6,9 @@
 # It used to live in pb_migrations/, which is why this guard used to skip that
 # directory. It no longer does: with the data gone from the seed migrations,
 # that exclusion was a hole in precisely the place a future seed would land.
-# Prose in a migration is still fine — comments are dropped below — but a unit
-# list in a migration is now a failure, same as in any other source file.
+# Prose in a migration is not fine either, since kindred#2512: comments are
+# SCANNED, not dropped, so a unit name in a migration header fails exactly as a
+# unit list in a migration body does.
 #
 # SCOPE, honestly stated: this is a tripwire, not a proof. It greps for a
 # REPRESENTATIVE SAMPLE of distinctive unit strings (NEEDLES below) — not the
@@ -19,7 +20,7 @@ set -euo pipefail
 
 # Preflight BEFORE the first git call — checking for git after invoking it is
 # pointless, since the missing binary would already have exited 127.
-for cmd in git grep python3; do
+for cmd in git grep awk python3; do
   command -v "$cmd" >/dev/null 2>&1 || { echo "error: required command '$cmd' not found" >&2; exit 2; }
 done
 
@@ -93,26 +94,14 @@ done
 # name in test fixtures either" -- treat a future NEEDLES hit inside one as
 # worth a look, not an automatic pass.
 #
-# kindred#2367 narrows that blind spot for COMMENTS ONLY, and only under
+# kindred#2367 narrowed that blind spot for COMMENTS ONLY, and only under
 # frontend/src/**: catching needle terms in comments is strictly better than
 # catching them only in production code, and a repo-wide measurement found 14
 # comment hits across 6 files, split between frontend/src/** (3 hits, 2 files
-# -- both fixed at the source in this same change) and pocketbase/ Go test
-# files (11 hits, 4 files) that this branch has no reason to touch and did
-# not verify against sibling in-flight PRs. Narrowing to frontend/src/** ships
-# the improvement where it was already fully paid for and leaves the
-# pocketbase/ side for a future pass, rather than guessing at files another
-# issue may be mid-edit on. Fixture CODE in a frontend/src/** test file is
-# still exempt -- only its comment lines are newly in scope.
-# The trailing alternative must anchor to a full PATH SEGMENT: '(.*/)?tests?/'
-# rather than the bare '/tests?/' used previously. The bare form only fires
-# once something has already matched before the slash, so a file directly
-# under frontend/src/test/ (frontend/src/test/mockData.ts -- no '_test.' or
-# '.test.' in the name, and 'test/' immediately follows the 'frontend/src/'
-# prefix with no preceding '/') never matched, and fell through to OTHER_RAW's
-# blanket test-file exemption instead of this comment-only scan -- the exact
-# gap this pattern exists to close. Verified by TEST 13 in
-# test-verify-no-hardcoded-lodging.sh (kindred#2367 review).
+# -- both fixed at the source in that change) and pocketbase/ Go test files
+# (11 hits, 4 files) it had no reason to touch and did not verify against
+# sibling in-flight PRs.
+#
 # kindred#2512 completes the pass #2367 deferred. Comments are now scanned in
 # EVERY scan root, not only under frontend/src/**, so the split below is by
 # TEST-vs-NOT rather than by directory:
@@ -133,19 +122,51 @@ done
 # kindred#1909 found was two needle-matching literals in fixture code, and the
 # fix applied there was to scrub them at the source, not to narrow this filter.
 # That trade is unchanged; only comments moved.
-TEST_FILE_PATTERN='(.*/)?tests?/|(_test\.|\.test\.)'
+#
+# THE SPLIT IS DECIDED BY THE PATH, AND ONLY BY THE PATH (kindred#2512 review).
+# grep -In emits `path:lineno:text`. The first cut of this widening matched an
+# unanchored pattern against the WHOLE LINE, so a line's own CONTENT could
+# route its file into the test bucket and win the code-hit exemption:
+#
+#   api/svc.py:12:FIXTURE = "tests/<unit>.json"      -> silently exempted
+#   pocketbase/resolver.go:9:var P = "latest/<unit>" -> silently exempted
+#
+# ('latest/' contains 'test/'.) The pattern it replaced anchored both of its
+# alternatives to the path with '^', which is the property that got lost. awk
+# splits on ':' and tests $1, so nothing after the path can vote. TEST 14-16
+# pin all three shapes.
+#
+# 'tests?/' must additionally be a whole PATH SEGMENT: '^(.*/)?' can only match
+# a prefix ending in '/', so 'test/' has to start the path or follow a slash.
+# That keeps frontend/src/test/mockData.ts -- the repo's real shared
+# test-helper directory, with no '_test.' or '.test.' in its filename -- inside
+# the test bucket (TEST 13, kindred#2367 review) while pocketbase/latest/x.go
+# stays out of it.
+#
+# Written with '[.]' rather than '\.' on purpose: this pattern is handed to awk
+# through -v, and awk processes escape sequences in a -v assignment, so gawk
+# rewrites '\.' to a bare '.' (matching any character) and warns while doing it.
+TEST_FILE_PATTERN='^(.*/)?tests?/|_test[.]|[.]test[.]'
 HITS=""
 if [[ -n "$RAW" ]]; then
-  TEST_RAW=$(printf '%s\n' "$RAW" | grep -E "$TEST_FILE_PATTERN" || true)
-  OTHER_RAW=$(printf '%s\n' "$RAW" | grep -vE "$TEST_FILE_PATTERN" || true)
+  TEST_RAW=$(printf '%s\n' "$RAW" | awk -F: -v pat="$TEST_FILE_PATTERN" 'NF && $1 ~ pat')
+  OTHER_RAW=$(printf '%s\n' "$RAW" | awk -F: -v pat="$TEST_FILE_PATTERN" 'NF && $1 !~ pat')
 
   HITS=$(printf '%s\n' "$OTHER_RAW" \
     | grep -v 'frontend/src/data/cityGeo\.ts\|frontend/src/data/schoolGeo\.ts' || true)
 
+  # The `|| true` is scoped to grep with a brace group, NOT hung off the whole
+  # pipeline (kindred#2512 review). Under `set -euo pipefail` a grep -v that
+  # removes EVERY line exits 1, pipefail promotes that to the pipeline's status
+  # and `set -e` kills the guard mid-run: exit 1 with nothing printed at all.
+  # Reachable because this grep -v matches the path anywhere in the line,
+  # including inside a comment's own text. Hanging `|| true` off the end of the
+  # pipeline instead would also swallow a python3 crash, which must stay fatal.
+  # TEST 17 asserts the guard never exits 1 with an empty report.
   TEST_COMMENT_HITS=""
   if [[ -n "$TEST_RAW" ]]; then
     TEST_COMMENT_HITS=$(printf '%s\n' "$TEST_RAW" \
-      | grep -v 'frontend/src/data/cityGeo\.ts\|frontend/src/data/schoolGeo\.ts' \
+      | { grep -v 'frontend/src/data/cityGeo\.ts\|frontend/src/data/schoolGeo\.ts' || true; } \
       | python3 "$REPO_ROOT/scripts/dev/lib/drop_comment_hits.py" --only-comments)
   fi
 fi

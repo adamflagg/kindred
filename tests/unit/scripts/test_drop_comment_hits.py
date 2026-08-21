@@ -66,3 +66,101 @@ def test_code_immediately_after_jsx_comment_close_still_reports(tmp_path: Path) 
     lines = noncode_lines(path)
 
     assert 4 not in lines
+
+
+# --- kindred#2512 review: shell comments, and fail-open on "we learned nothing"
+#
+# The module promises fail-OPEN -- "a file that will not parse or read is
+# treated as ALL CODE, so its hits survive". Under `--only-comments`, which is
+# the only mode verify-no-hardcoded-lodging.sh still uses, "all code" means
+# "all DROPPED": fail-CLOSED, the exact opposite. Two live consequences, both
+# pinned below:
+#
+#   * the guard greps '*.sh', but every suffix outside {.py, C-style} returned
+#     an empty set, so a needle in a '#' comment in a test shell script was
+#     classified as code and exempted;
+#   * a .py file that will not tokenize lost its comment hits the same way.
+#
+# `noncode_lines` now returns None for "could not determine", and main() writes
+# such hits through in BOTH modes.
+
+
+def test_shell_comment_lines_are_noncode(tmp_path: Path) -> None:
+    """A '#' comment in a .sh file must be recognised as noncode."""
+    path = tmp_path / "probe.sh"
+    path.write_text(
+        "#!/usr/bin/env bash\n"
+        "# Explanatory prose naming ZzyzxPlaceholderUnit.\n"
+        "UNITS=(ZzyzxPlaceholderUnit)\n"
+        "  # indented comment\n"
+    )
+
+    assert noncode_lines(path) == {1, 2, 4}
+
+
+def test_shell_code_with_trailing_comment_still_reports(tmp_path: Path) -> None:
+    """`UNITS=(...)  # note` is code, matching the C-style whole-line rule.
+
+    A line only counts as noncode when there is nothing on it but comment, so a
+    needle sitting in the CODE half of a mixed line is never hidden by the
+    comment half.
+    """
+    path = tmp_path / "probe.sh"
+    path.write_text('UNITS="ZzyzxPlaceholderUnit"  # note\n')
+
+    assert noncode_lines(path) == set()
+
+
+def test_unparseable_python_is_unknown(tmp_path: Path) -> None:
+    """A .py file that will not tokenize returns None, not an empty set.
+
+    An empty set means "this file has no comment lines", which under
+    --only-comments discards every hit in it. None means "we learned nothing",
+    which keeps them.
+    """
+    path = tmp_path / "probe_test.py"
+    path.write_text("# Comment naming ZzyzxPlaceholderUnit.\nUNITS = (\n")
+
+    assert noncode_lines(path) is None
+
+
+def test_unreadable_path_is_unknown(tmp_path: Path) -> None:
+    """A path that cannot be read at all is unknown, so its hits survive."""
+    assert noncode_lines(tmp_path / "does_not_exist.py") is None
+
+
+def test_unhandled_suffix_is_unknown(tmp_path: Path) -> None:
+    """A suffix this module has no scanner for is unknown, not "all code"."""
+    path = tmp_path / "probe.rb"
+    path.write_text("# Comment naming ZzyzxPlaceholderUnit.\n")
+
+    assert noncode_lines(path) is None
+
+
+def _run_filter(stdin: str, *args: str) -> str:
+    import subprocess
+    import sys
+
+    module = Path(__file__).resolve().parents[3] / "scripts" / "dev" / "lib" / "drop_comment_hits.py"
+    return subprocess.run(
+        [sys.executable, str(module), *args],
+        input=stdin,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+
+
+def test_unknown_file_hits_survive_in_both_modes(tmp_path: Path) -> None:
+    """Fail-open means the hit is written through whichever way the filter points.
+
+    This is the assertion that makes the docstring's promise true under
+    --only-comments: a file we could not classify must not have its hits
+    silently swallowed by the mode that keeps comments.
+    """
+    path = tmp_path / "probe_test.py"
+    path.write_text("# Comment naming ZzyzxPlaceholderUnit.\nUNITS = (\n")
+    hit = f"{path}:1:# Comment naming ZzyzxPlaceholderUnit.\n"
+
+    assert _run_filter(hit) == hit
+    assert _run_filter(hit, "--only-comments") == hit

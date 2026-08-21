@@ -452,4 +452,235 @@ fi
 echo "PASS: a needle in a frontend/src/test/ file's comment is caught"
 
 echo
+echo "=== TEST 14: a needle in CODE in a NON-test file whose text contains 'tests/' must still fail ==="
+# kindred#2512 review. The test/not-test split is matched against grep's whole
+# `path:lineno:text` line, so before this was fixed a line's CONTENT could route
+# its own file into the test bucket -- where code hits are exempt -- and the
+# leak went unreported. The split now looks at the PATH FIELD ONLY.
+CONTENT_TESTS_PROBE="$REPO_ROOT/api/leak_probe_kindred2512_content.py"
+cleanup11() { rm -f "$CONTENT_TESTS_PROBE"; }
+trap 'cleanup11; cleanup10; cleanup9; cleanup8; cleanup7; cleanup6; cleanup5; cleanup4; cleanup3; cleanup' EXIT INT TERM
+echo 'FIXTURE = "tests/Tuolumne 1.json"' > "$CONTENT_TESTS_PROBE"
+set +e
+OUT=$("$GUARD_SCRIPT" 2>&1)
+rc=$?
+set -e
+rm -f "$CONTENT_TESTS_PROBE"
+if [[ $rc -eq 1 ]] && grep -q "api/leak_probe_kindred2512_content.py:1:" <<<"$OUT"; then
+  echo "PASS: a 'tests/' substring in the LINE does not exempt a non-test file"
+else
+  echo "FAIL: expected exit 1 naming the probe; a line's text routed its file into the test bucket, got $rc" >&2
+  echo "$OUT" >&2
+  exit 1
+fi
+
+echo
+echo "=== TEST 15: 'latest/' in a line's text must not exempt a non-test file ==="
+# The nastier half of TEST 14: 'latest/' CONTAINS 'test/', so the unanchored
+# pattern fired on an ordinary version-path string with no test file in sight.
+LATEST_PROBE="$REPO_ROOT/pocketbase/leak_probe_kindred2512_latest.go"
+cleanup12() { rm -f "$LATEST_PROBE"; }
+trap 'cleanup12; cleanup11; cleanup10; cleanup9; cleanup8; cleanup7; cleanup6; cleanup5; cleanup4; cleanup3; cleanup' EXIT INT TERM
+printf 'package pocketbase\n\nvar Path = "latest/Manzanita 3"\n' > "$LATEST_PROBE"
+set +e
+OUT=$("$GUARD_SCRIPT" 2>&1)
+rc=$?
+set -e
+rm -f "$LATEST_PROBE"
+if [[ $rc -eq 1 ]] && grep -q "pocketbase/leak_probe_kindred2512_latest.go:3:" <<<"$OUT"; then
+  echo "PASS: 'latest/' in a line's text does not exempt a non-test file"
+else
+  echo "FAIL: expected exit 1 naming the probe for a 'latest/' string, got $rc" >&2
+  echo "$OUT" >&2
+  exit 1
+fi
+
+echo
+echo "=== TEST 16: '_test.' inside a path-like STRING must not exempt a non-test file ==="
+# Covers the other alternative of the split pattern. The needle itself sits
+# inside the path-like literal here, which is how a fixture-path constant in
+# production code would actually look.
+STRPATH_PROBE="$REPO_ROOT/api/leak_probe_kindred2512_strpath.py"
+cleanup13() { rm -f "$STRPATH_PROBE"; }
+trap 'cleanup13; cleanup12; cleanup11; cleanup10; cleanup9; cleanup8; cleanup7; cleanup6; cleanup5; cleanup4; cleanup3; cleanup' EXIT INT TERM
+echo 'FIXTURE = "golden/Tuolumne_1_test.json"' > "$STRPATH_PROBE"
+set +e
+OUT=$("$GUARD_SCRIPT" 2>&1)
+rc=$?
+set -e
+rm -f "$STRPATH_PROBE"
+if [[ $rc -eq 1 ]] && grep -q "api/leak_probe_kindred2512_strpath.py:1:" <<<"$OUT"; then
+  echo "PASS: '_test.' inside a string literal does not exempt a non-test file"
+else
+  echo "FAIL: expected exit 1 naming the probe for a '_test.' string literal, got $rc" >&2
+  echo "$OUT" >&2
+  exit 1
+fi
+
+echo
+echo "=== TEST 17: the guard must never exit 1 with an empty report ==="
+# kindred#2512 review. Under `set -euo pipefail` the test-bucket pipeline had
+# no `|| true`: when its cityGeo/schoolGeo filter removed EVERY line of a
+# non-empty test bucket, grep exited 1, pipefail propagated it and `set -e`
+# killed the script mid-run -- exit 1 with nothing printed. A red guard with no
+# message is worse than a wrong green, because there is nothing to act on.
+# The scan root is narrowed so the planted comment is the only hit in the
+# bucket; that is what makes the filter empty it.
+SILENT_DIR="$REPO_ROOT/pocketbase/leak_probe_kindred2512_silent"
+SILENT_PROBE="$SILENT_DIR/probe_test.go"
+cleanup14() { rm -rf "$SILENT_DIR"; }
+trap 'cleanup14; cleanup13; cleanup12; cleanup11; cleanup10; cleanup9; cleanup8; cleanup7; cleanup6; cleanup5; cleanup4; cleanup3; cleanup' EXIT INT TERM
+mkdir -p "$SILENT_DIR"
+printf 'package probe\n\n// See frontend/src/data/cityGeo.ts for why Tuolumne 1 matches there.\n' > "$SILENT_PROBE"
+set +e
+OUT=$(LODGING_SCAN_ROOTS="pocketbase/leak_probe_kindred2512_silent/" "$GUARD_SCRIPT" 2>&1)
+rc=$?
+set -e
+rm -rf "$SILENT_DIR"
+if [[ $rc -eq 1 && -z "${OUT//[[:space:]]/}" ]]; then
+  echo "FAIL: the guard exited 1 and printed NOTHING -- a silent failure" >&2
+  exit 1
+fi
+if [[ $rc -ne 0 ]]; then
+  echo "FAIL: the only hit was filtered out, so the guard should report OK; got $rc" >&2
+  echo "$OUT" >&2
+  exit 1
+fi
+if ! grep -q 'verify-no-hardcoded-lodging: OK' <<<"$OUT"; then
+  echo "FAIL: expected the OK line, got: $OUT" >&2
+  exit 1
+fi
+echo "PASS: a filter that empties the test bucket does not kill the guard"
+
+echo
+echo "=== TEST 18: a needle in a '#' COMMENT inside a test .sh file must fail ==="
+# kindred#2512 review. The guard greps '*.sh', but drop_comment_hits.py knew
+# only .py and the C-style suffixes and returned "no comment lines" for
+# everything else -- so under --only-comments a shell comment was classified as
+# code and silently exempted. The PR's own rule table said a test file's
+# comment hits fail; for shell that was simply untrue.
+SH_TEST_PROBE="$REPO_ROOT/scripts/dev/leak_probe_kindred2512_test.sh"
+cleanup15() { rm -f "$SH_TEST_PROBE"; }
+trap 'cleanup15; cleanup14; cleanup13; cleanup12; cleanup11; cleanup10; cleanup9; cleanup8; cleanup7; cleanup6; cleanup5; cleanup4; cleanup3; cleanup' EXIT INT TERM
+printf '#!/usr/bin/env bash\n# Comment naming Tuolumne 1 to explain a fixture below.\n' > "$SH_TEST_PROBE"
+set +e
+OUT=$("$GUARD_SCRIPT" 2>&1)
+rc=$?
+set -e
+rm -f "$SH_TEST_PROBE"
+if [[ $rc -eq 1 ]] && grep -q "scripts/dev/leak_probe_kindred2512_test.sh:2:" <<<"$OUT"; then
+  echo "PASS: a needle in a shell comment inside a test .sh file is caught"
+else
+  echo "FAIL: expected exit 1 naming the .sh test-comment probe, got $rc" >&2
+  echo "$OUT" >&2
+  exit 1
+fi
+
+echo
+echo "=== TEST 19: a needle in fixture CODE inside a test .sh file must still exit 0 ==="
+# The mirror of TEST 18, and the reason TEST 18's fix had to teach the dropper
+# shell comments rather than just exempt .sh wholesale: fixture code in a test
+# file stays exempt in every language, shell included.
+SH_TEST_CODE_PROBE="$REPO_ROOT/scripts/dev/leak_probe_kindred2512_code_test.sh"
+cleanup16() { rm -f "$SH_TEST_CODE_PROBE"; }
+trap 'cleanup16; cleanup15; cleanup14; cleanup13; cleanup12; cleanup11; cleanup10; cleanup9; cleanup8; cleanup7; cleanup6; cleanup5; cleanup4; cleanup3; cleanup' EXIT INT TERM
+printf '#!/usr/bin/env bash\nUNITS="Manzanita 3"\n' > "$SH_TEST_CODE_PROBE"
+set +e
+OUT=$("$GUARD_SCRIPT" 2>&1)
+rc=$?
+set -e
+rm -f "$SH_TEST_CODE_PROBE"
+if [[ $rc -eq 0 ]]; then
+  echo "PASS: a needle as fixture code in a test .sh file is still exempt"
+else
+  echo "FAIL: expected exit 0 for a needle as .sh fixture code, got $rc" >&2
+  echo "$OUT" >&2
+  exit 1
+fi
+
+echo
+echo "=== TEST 20: a needle in a comment inside an UNPARSEABLE .py test file must fail ==="
+# kindred#2512 review. drop_comment_hits.py's docstring promises fail-OPEN --
+# "a file that will not parse or read is treated as ALL CODE, so its hits
+# survive" -- but under --only-comments "all code" means "all dropped", which
+# is fail-CLOSED. A tokenize failure therefore made a real comment leak
+# invisible. Unknown now means "keep the hit" in BOTH directions.
+BROKEN_PY_PROBE="$REPO_ROOT/api/leak_probe_kindred2512_broken_test.py"
+cleanup17() { rm -f "$BROKEN_PY_PROBE"; }
+trap 'cleanup17; cleanup16; cleanup15; cleanup14; cleanup13; cleanup12; cleanup11; cleanup10; cleanup9; cleanup8; cleanup7; cleanup6; cleanup5; cleanup4; cleanup3; cleanup' EXIT INT TERM
+printf '# Comment naming Manzanita to explain a fixture below.\nUNITS = (\n' > "$BROKEN_PY_PROBE"
+set +e
+OUT=$("$GUARD_SCRIPT" 2>&1)
+rc=$?
+set -e
+rm -f "$BROKEN_PY_PROBE"
+if [[ $rc -eq 1 ]] && grep -q "api/leak_probe_kindred2512_broken_test.py:1:" <<<"$OUT"; then
+  echo "PASS: an unparseable test file keeps its hits instead of swallowing them"
+else
+  echo "FAIL: expected exit 1 naming the unparseable .py probe, got $rc" >&2
+  echo "$OUT" >&2
+  exit 1
+fi
+
+echo
+echo "=== TEST 21: a needle on the closing line of a JSX comment in a TEST .tsx file must fail ==="
+# kindred#2512 review. TEST 7 plants the same shape in a NON-test file, which
+# since #2512 never reaches drop_comment_hits.py at all -- so TEST 7 passes
+# with the #2181 fused-brace logic deleted and cannot be the regression cover
+# for it. This probe can: a test file's hits DO go through the dropper, and
+# `*/}` on the closing line is exactly the shape the fusion exists to classify
+# as comment rather than leftover code. Verified by mutation -- with the two
+# `jsx and ...` branches disabled this probe reports exit 0 while TEST 7 still
+# reports exit 1.
+TSX_TEST_PROBE="$REPO_ROOT/frontend/src/leak_probe_kindred2512_jsx.test.tsx"
+cleanup18() { rm -f "$TSX_TEST_PROBE"; }
+trap 'cleanup18; cleanup17; cleanup16; cleanup15; cleanup14; cleanup13; cleanup12; cleanup11; cleanup10; cleanup9; cleanup8; cleanup7; cleanup6; cleanup5; cleanup4; cleanup3; cleanup' EXIT INT TERM
+cat > "$TSX_TEST_PROBE" <<'PROBE'
+export function Probe() {
+  return (
+    <div>
+      {/* The area, because the row it came from is now behind a
+          backdrop and "which Tioga is this" is the first question. */}
+      <span>hi</span>
+    </div>
+  );
+}
+PROBE
+set +e
+OUT=$("$GUARD_SCRIPT" 2>&1)
+rc=$?
+set -e
+rm -f "$TSX_TEST_PROBE"
+if [[ $rc -eq 1 ]] && grep -q "frontend/src/leak_probe_kindred2512_jsx.test.tsx:5:" <<<"$OUT"; then
+  echo "PASS: the JSX fused-brace classification is covered end-to-end"
+else
+  echo "FAIL: expected exit 1 naming line 5 of the JSX test probe, got $rc" >&2
+  echo "$OUT" >&2
+  exit 1
+fi
+
+echo
+echo "=== TEST 22: a LOWERCASE needle in a comment must fail ==="
+# kindred#2512 review. The raw scan was case-sensitive, so the lowercase unit
+# CODES the codebase actually uses in prose ("gt-<unit>", "<unit>-new-trailer")
+# sailed past a needle list written in title case. Seven such comment hits were
+# sitting in tracked source when this was found.
+LOWER_PROBE="$REPO_ROOT/api/leak_probe_kindred2512_lower.py"
+cleanup19() { rm -f "$LOWER_PROBE"; }
+trap 'cleanup19; cleanup18; cleanup17; cleanup16; cleanup15; cleanup14; cleanup13; cleanup12; cleanup11; cleanup10; cleanup9; cleanup8; cleanup7; cleanup6; cleanup5; cleanup4; cleanup3; cleanup' EXIT INT TERM
+echo '# comment naming manzanita in lowercase, deliberately.' > "$LOWER_PROBE"
+set +e
+OUT=$("$GUARD_SCRIPT" 2>&1)
+rc=$?
+set -e
+rm -f "$LOWER_PROBE"
+if [[ $rc -eq 1 ]] && grep -q "api/leak_probe_kindred2512_lower.py:1:" <<<"$OUT"; then
+  echo "PASS: a lowercase needle in a comment is caught"
+else
+  echo "FAIL: expected exit 1 naming the lowercase probe, got $rc" >&2
+  echo "$OUT" >&2
+  exit 1
+fi
+
+echo
 echo "All tests passed."
