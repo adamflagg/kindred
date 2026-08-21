@@ -204,7 +204,7 @@ export function HouseholdYearMembersModal({
   const headcount = adults.length + children.length
 
   const header = (
-    <div className="from-forest-700 via-forest-800 to-forest-900 bg-gradient-to-br p-4 pr-12 text-white">
+    <div className="from-forest-700 via-forest-800 to-forest-900 bg-gradient-to-br p-4 text-white">
       <h2 id={TITLE_ID} className="truncate text-lg font-bold">
         {familyLabel.length > 0 ? familyLabel : 'Household'}
       </h2>
