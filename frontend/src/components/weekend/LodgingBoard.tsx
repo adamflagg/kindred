@@ -487,10 +487,15 @@ export function LodgingBoard({
                         ) : (
                           <ChevronDown className="text-muted-foreground h-3.5 w-3.5 flex-shrink-0" />
                         )}
-                        {/* Area colour is a SECONDARY channel (§3.10). This dot
-                          and the card's top edge carry it; the heading below
-                          does the actual grouping, so nothing depends on
-                          telling violet from rose. */}
+                        {/* Area colour is a SECONDARY channel (§3.10), and this dot
+                          is now its ONLY carrier on the board — the card's top
+                          edge lost it on 2026-08-21, taking 73 always-on marks
+                          down to 8. The heading below does the actual
+                          grouping, so nothing depends on telling violet from
+                          rose, which is exactly why the card could give it up.
+                          The map still draws the hue per unit: it has no
+                          section headers, so position is its only other
+                          grouping and the pills genuinely need a key. */}
                         <span
                           className="h-2 w-2 flex-shrink-0 rounded-full"
                           style={{ backgroundColor: area.hue }}
@@ -523,7 +528,6 @@ export function LodgingBoard({
                             // the same `overlappingPartyKeys` the slot flag
                             // already ran with these units in `buildBoard`.
                             units={units}
-                            hue={area.hue}
                             canPlace={canPlace}
                             canSetAvailability={canSetAvailability}
                             // THIS card's unit, or ANY of the ones holding a

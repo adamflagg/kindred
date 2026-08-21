@@ -29,7 +29,8 @@
  * testable without rendering ~82 cards.
  */
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
-import { askedNeedGlyphs, needVerdict, type NeedKey } from './needGlyphs'
+import { partySize } from './boardLayout'
+import { askedNeedGlyphs, needVerdict } from './needGlyphs'
 
 /** Worst first. The order of this array IS the precedence. */
 const FIT_ORDER = ['unmet', 'partial', 'fits'] as const
@@ -53,69 +54,112 @@ export function worseOf(a: NeedsFit, b: NeedsFit): NeedsFit {
 }
 
 /**
- * WHICH needs the drag-time hatch grades — deliberately not all four.
+ * The drag-time state of one cabin, for one family in flight.
  *
- * The GRADING is one rule now, in `needGlyphs.ts`, and that is the
- * consolidation kindred#2072 asked for: for a given (need, party, cabin) every
- * surface must reach the same verdict. WHICH needs a surface reports is a
- * separate question, and each surface scopes it for its own reason — this list
- * is that reason, written down rather than implied.
+ * THREE VALUES, NOT TWO, and they are mutually exclusive by TYPE rather than
+ * by a rule somebody has to remember to apply. This mirrors
+ * `LodgingUnitCard`'s `ringState`, which is the board's established shape for
+ * "one winner among competing marks".
  *
- * `bathroom` is out, and it is the only one that had to be argued.
- *
- * Only 36 of 118 units answer the bathroom need, so a hatch that graded it
- * would fire on 82 cards the moment any of the 41 bathroom-asking households
- * on 2026's family weekends was picked up — at most 12 of them sit on any one
- * weekend, but every card is on screen for each. Both rescues are already IN
- * that figure and neither is enough: kindred#2501 moved the axis from
- * exclusivity to presence (6 of 118 → 28) and kindred#2502's
- * `_resolve_bathroom` gave 8 of the 15 containers the bathroom their rooms
- * record (28 → 36), taking the hatch from 112 cards to 82.
- *
- * "A mark that is always on is chrome staff learn to read past"
- * (`unitBadges.ts`, on the struck shared-space ring) — a board hatched almost
- * everywhere says nothing at all, which is the same reasoning
- * `resolveNeedsFit` already applies at rest.
- *
- * The bathroom need is NOT unreported. It draws a per-family glyph on the card
- * itself (kindred#2072), where it is one household's fact rather than a
- * board-wide wash, and `rosterAttention` grades it for the roster's own
- * sections.
+ * The previous `resolveNeedsFit` returned a single `NeedsFit`, and the board
+ * asked that one verdict to drive two marks pointing in opposite directions:
+ * a hatch, which must not fire on absence of evidence, and a positive match,
+ * which must not CLAIM on absence of evidence. No single reading of `unknown`
+ * can serve both, which is why the state is resolved here instead.
  */
-const HATCHED_NEEDS: readonly NeedKey[] = ['power', 'fridge', 'step_free']
+export type DragFitState = 'conflict' | 'match' | 'neutral'
 
 /**
- * How well `unit` meets `party`'s needs.
+ * A DISCRIMINATED UNION, so `severity` cannot be read on a state that has no
+ * severity and a conflict cannot carry `'fits'`. The exclusivity the design
+ * asks for is enforced by the type rather than by a rule a caller has to
+ * remember — which is the whole reason the three states were collapsed into
+ * one value.
  *
- * The verdict per need comes from `needGlyphs.needVerdict`, which is the ONE
- * grading — this function's own job is the combining rule (worst wins) and the
- * scope above, nothing else. It used to carry a third copy of the
- * coverage-to-verdict mapping, which is how the roster and the board came to
- * disagree about whether a container had power.
- *
- * ⚠️ `'fits'` FOR AN UNKNOWN COVERAGE, WHICH IS NOT WHAT THE GLYPHS DO, and
- * the difference is deliberate rather than a missed sweep. The owner ruled on
- * 2026-08-20 that unconfirmed information must not read as met **on the
- * glyphs** — a glyph reports what is known, and its full hue is itself a claim.
- * The hatch is a different mark asking a different question: it is an
- * INTERRUPTION over a cabin being dragged onto, so its bar is evidence of
- * ABSENCE rather than absence of evidence.
- *
- * The number decides it. 102 of 118 cabins carry `ramp_coverage: 'unknown'`,
- * because nobody has assessed them — which is what the three-value select
- * exists to record. Measured across 2026's twelve weekends: reading `unknown`
- * as unmet here takes a step-free household's hatched cabins from **32 of 944
- * pairs to 848**, from 3.4% to 90%. A hatch that fires on nine cabins in ten
- * has stopped saying anything. The same rule costs the glyphs three marks.
- *
- * See `needGlyphs.UnknownReading`, which carries the full argument. This is the
- * only call site that passes anything but the default.
+ * Severity is the hatch PERIOD and only the period (kindred#1912); grading
+ * NONE from SOME on a second channel is the collapse that ruling struck.
  */
-export function resolveNeedsFit(party: RosterPartyRow, unit: LodgingUnitRow): NeedsFit {
-  let worst: NeedsFit = 'fits'
-  for (const glyph of askedNeedGlyphs(party)) {
-    if (!HATCHED_NEEDS.includes(glyph.key)) continue
-    worst = worseOf(needVerdict(glyph.key, glyph.coverage(party, unit, 'placed'), 'fits'), worst)
+export type DragFit =
+  | { readonly state: 'conflict'; readonly severity: Exclude<NeedsFit, 'fits'> }
+  | { readonly state: 'match' | 'neutral'; readonly severity: 'fits' }
+
+/**
+ * What the card already knows about its own beds, passed in rather than
+ * re-derived.
+ *
+ * `known` is `effectiveSleeps(...) !== null`: a cabin nobody has measured.
+ * `free` is capacity minus placed occupants and MAY BE NEGATIVE on a card that
+ * is already over. The caller withholds this when `spanWidth > 0`, where the
+ * occupant count is an upper bound rather than a fact — see `slotOccupancy`.
+ */
+export interface DragCapacity {
+  readonly known: boolean
+  readonly free: number
+}
+
+const NEUTRAL: DragFit = { state: 'neutral', severity: 'fits' }
+
+/**
+ * Is this cabin a conflict, a match, or neither, for the family in flight?
+ *
+ * FOUR NEEDS, not three. The mark grades what the glyphs draw — the narrowed
+ * `HATCHED_NEEDS` that left `bathroom` out is gone, and with it the argument
+ * that a board hatched almost everywhere says nothing: that argument was about
+ * a mark that could only ever be negative, and half of this one is positive.
+ *
+ * THE PROSPECTIVE AXIS. Every need is graded as "would THIS cabin meet it?".
+ * Only `bathroom` reads the argument at all, and on the old `'placed'` reading
+ * it took `party.effective_bathroom` and ignored the target unit entirely —
+ * a board-wide constant, every card or none, which cannot mean anything
+ * per-card.
+ *
+ * THREE RULES, IN ORDER, and each is a decision with a number behind it:
+ *
+ * 1. A party that asks for NOTHING earns no match. Every cabin with room fits
+ *    it, so a mark saying so carries nothing, and the board does not leave its
+ *    resting state at all. 368 of 479 2026 registrations ask no housing need.
+ *
+ * 2. UNRECORDED COVERAGE MAKES NEITHER CLAIM. Not a conflict, because the
+ *    hatch is an interruption and its bar is evidence of absence; not a match,
+ *    because a positive mark is a claim and the 2026-08-20 ruling says
+ *    unconfirmed information must not read as met. `has_ramp` is the only
+ *    registry field that carries one, on 104 of 118 units — and kindred#2526
+ *    may remove the state entirely, at which point this branch stops being
+ *    reachable rather than stops being correct.
+ *
+ * 3. CAPACITY GATES THE MATCH AND NEVER CAUSES A CONFLICT. A full cabin is not
+ *    a bad cabin, it is a cabin with nothing left in it. Measured before it was
+ *    settled: letting capacity hatch took a six-person family asking NOTHING
+ *    from 0 marked cards to 45 of 73. Capacity already has a per-card carrier
+ *    in the N/M figure; the needs have none.
+ */
+export function resolveDragFit(
+  party: RosterPartyRow,
+  unit: LodgingUnitRow,
+  capacity: DragCapacity
+): DragFit {
+  const asked = askedNeedGlyphs(party)
+  if (asked.length === 0) return NEUTRAL
+
+  let worst: Exclude<NeedsFit, 'fits'> = 'partial'
+  let conflict = false
+  let unrecorded = false
+
+  for (const glyph of asked) {
+    const coverage = glyph.coverage(party, unit, 'prospective')
+    if (coverage === 'unknown') {
+      unrecorded = true
+      continue
+    }
+    const verdict = needVerdict(glyph.key, coverage)
+    if (verdict !== 'fits') {
+      worst = conflict ? (worseOf(verdict, worst) as Exclude<NeedsFit, 'fits'>) : verdict
+      conflict = true
+    }
   }
-  return worst
+
+  if (conflict) return { state: 'conflict', severity: worst }
+  if (unrecorded) return NEUTRAL
+  if (!capacity.known || capacity.free < partySize(party)) return NEUTRAL
+  return { state: 'match', severity: 'fits' }
 }

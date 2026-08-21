@@ -6,7 +6,7 @@
  *
  * Fictional data throughout.
  */
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -123,7 +123,7 @@ function slot(overrides: Partial<BoardSlot> = {}): BoardSlot {
 
 describe('LodgingUnitCard', () => {
   it('names the unit', () => {
-    render(<LodgingUnitCard slot={slot()} hue="hsl(160 45% 42%)" onOpenParty={vi.fn()} />)
+    render(<LodgingUnitCard slot={slot()} onOpenParty={vi.fn()} />)
     expect(screen.getByText('Cedar 1')).toBeInTheDocument()
   })
 
@@ -137,19 +137,13 @@ describe('LodgingUnitCard', () => {
      * the point of the second assertion: an empty unmeasured room reads
      * `0/—`, never `0/0`.
      */
-    render(
-      <LodgingUnitCard
-        slot={slot({ unit: unit({ sleeps: null }) })}
-        hue="hsl(160 45% 42%)"
-        onOpenParty={vi.fn()}
-      />
-    )
+    render(<LodgingUnitCard slot={slot({ unit: unit({ sleeps: null }) })} onOpenParty={vi.fn()} />)
     expect(screen.getByText('0/—')).toBeInTheDocument()
     expect(screen.queryByText('0/0')).not.toBeInTheDocument()
   })
 
   it('shows how many spaces the unit sleeps when it is known', () => {
-    render(<LodgingUnitCard slot={slot()} hue="hsl(160 45% 42%)" onOpenParty={vi.fn()} />)
+    render(<LodgingUnitCard slot={slot()} onOpenParty={vi.fn()} />)
     const occupancy = screen.getByTestId('unit-occupancy')
     fireEvent.focus(occupancy)
     expect(screen.getByRole('tooltip')).toHaveTextContent(/Sleeps 5/)
@@ -159,7 +153,7 @@ describe('LodgingUnitCard', () => {
     // kindred#2177. The occupancy figure is the smallest trigger on the board,
     // so the primitive's transparent 24px hit target does the tap-target work
     // — NOT a drawn box, which would collide with the dashed empty-room edge.
-    render(<LodgingUnitCard slot={slot()} hue="hsl(160 45% 42%)" onOpenParty={vi.fn()} />)
+    render(<LodgingUnitCard slot={slot()} onOpenParty={vi.fn()} />)
     const occupancy = screen.getByTestId('unit-occupancy')
     expect(occupancy.tagName).toBe('BUTTON')
     expect(occupancy).not.toHaveAttribute('title')
@@ -198,7 +192,6 @@ describe('LodgingUnitCard', () => {
               }),
             ],
           })}
-          hue="hsl(160 45% 42%)"
           onOpenParty={vi.fn()}
         />
       )
@@ -223,7 +216,6 @@ describe('LodgingUnitCard', () => {
               }),
             ],
           })}
-          hue="hsl(160 45% 42%)"
           onOpenParty={vi.fn()}
         />
       )
@@ -257,7 +249,6 @@ describe('LodgingUnitCard', () => {
               }),
             ],
           })}
-          hue="hsl(160 45% 42%)"
           onOpenParty={vi.fn()}
         />
       )
@@ -294,7 +285,6 @@ describe('LodgingUnitCard', () => {
               }),
             ],
           })}
-          hue="hsl(160 45% 42%)"
           onOpenParty={vi.fn()}
         />
       )
@@ -308,7 +298,7 @@ describe('LodgingUnitCard', () => {
 
   it('describes the unit NAME without turning it into a tooltip trigger', () => {
     // The occupancy `<span>` carried the tooltip, never the `<h3>` beside it.
-    render(<LodgingUnitCard slot={slot()} hue="hsl(160 45% 42%)" onOpenParty={vi.fn()} />)
+    render(<LodgingUnitCard slot={slot()} onOpenParty={vi.fn()} />)
     expect(screen.getByText('Cedar 1').tagName).toBe('H3')
   })
 
@@ -335,7 +325,6 @@ describe('LodgingUnitCard', () => {
     const { container } = render(
       <LodgingUnitCard
         slot={slot({ parties: [party(), party({ household_cm_id: 102, display_name: 'Garcia' })] })}
-        hue="hsl(160 45% 42%)"
         onOpenParty={vi.fn()}
       />
     )
@@ -355,7 +344,6 @@ describe('LodgingUnitCard', () => {
             reason: '1 family did not request sharing',
           },
         })}
-        hue="hsl(160 45% 42%)"
         onOpenParty={vi.fn()}
       />
     )
@@ -368,9 +356,7 @@ describe('LodgingUnitCard', () => {
     // "deactivated" and is retired in favour of `bg-primary/10` — `--primary`
     // IS the board's forest hue (index.css), just at resting-state strength
     // rather than the drop target's `bg-primary/5` accent.
-    const { container } = render(
-      <LodgingUnitCard slot={slot()} hue="hsl(160 45% 42%)" onOpenParty={vi.fn()} />
-    )
+    const { container } = render(<LodgingUnitCard slot={slot()} onOpenParty={vi.fn()} />)
     const card = container.querySelector('[data-unit-card]')
     expect(card).toHaveClass('bg-primary/10')
     expect(card).not.toHaveClass('bg-muted/25')
@@ -389,7 +375,6 @@ describe('LodgingUnitCard', () => {
         slot={slot({
           unit: unit({ inventory_class: 'staff_default', is_family_available: false }),
         })}
-        hue="hsl(160 45% 42%)"
         onOpenParty={vi.fn()}
       />
     )
@@ -397,14 +382,21 @@ describe('LodgingUnitCard', () => {
     expect(screen.queryByText('Staff')).not.toBeInTheDocument()
   })
 
-  it('carries the area hue on its top edge as a secondary channel', () => {
-    // §3.10 — eight hues is at the limit of distinguishability, so this is
-    // decoration over a layout that already groups by section header.
-    const { container } = render(
-      <LodgingUnitCard slot={slot()} hue="hsl(160 45% 42%)" onOpenParty={vi.fn()} />
-    )
+  it('carries no area hue — the card frame is a constant in every state', () => {
+    // REWRITTEN. This asserted the opposite until 2026-08-21, and §3.10's own
+    // comment is why the reversal is safe rather than a loss: "the section
+    // headers do the actual grouping and this degrades to decoration". Area
+    // identity had FOUR carriers on the board — the `<section>`, the heading,
+    // the header dot, and 73 card top-edges — and the card edge was the only
+    // one on every card, always on.
+    //
+    // Taking it off is what frees the card's frame. No state now touches
+    // `border-color`, `border-width` or the title, so every mark lives in
+    // `background-color` or `background-image` and the three drag states can
+    // share one channel without racing.
+    const { container } = render(<LodgingUnitCard slot={slot()} onOpenParty={vi.fn()} />)
     const card = container.querySelector('[data-unit-card]')
-    expect(card).toHaveStyle({ borderTopColor: 'hsl(160 45% 42%)' })
+    expect(card?.getAttribute('style')).toBeNull()
   })
 
   it('keys two adult-weekend individuals in one room apart', () => {
@@ -432,7 +424,6 @@ describe('LodgingUnitCard', () => {
             }),
           ],
         })}
-        hue="hsl(160 45% 42%)"
         onOpenParty={vi.fn()}
       />
     )
@@ -447,7 +438,6 @@ describe('LodgingUnitCard', () => {
     render(
       <LodgingUnitCard
         slot={slot({ unit: unit({ is_active: false }), parties: [party()] })}
-        hue="hsl(160 45% 42%)"
         onOpenParty={vi.fn()}
       />
     )
@@ -480,21 +470,14 @@ describe('LodgingUnitCard — a held unit refuses the drop outright (#2087)', ()
      */
     overDroppableId = unitDroppableId('cedar-1')
     const { container } = render(
-      <LodgingUnitCard
-        slot={slot({ unit: held })}
-        hue="hsl(160 45% 42%)"
-        canPlace
-        onOpenParty={vi.fn()}
-      />
+      <LodgingUnitCard slot={slot({ unit: held })} canPlace onOpenParty={vi.fn()} />
     )
     expect(card(container)).toHaveClass('border-primary')
   })
 
   it('keeps an ordinary unheld unit droppable enabled (regression guard)', () => {
     overDroppableId = unitDroppableId('cedar-1')
-    const { container } = render(
-      <LodgingUnitCard slot={slot()} hue="hsl(160 45% 42%)" canPlace onOpenParty={vi.fn()} />
-    )
+    const { container } = render(<LodgingUnitCard slot={slot()} canPlace onOpenParty={vi.fn()} />)
     expect(card(container)).toHaveClass('border-primary')
   })
 })
@@ -504,7 +487,6 @@ describe('LodgingUnitCard — the split control belongs to containers only', () 
     render(
       <LodgingUnitCard
         slot={slot({ unit: unit({ code: 'house', is_container: true, is_combined: true }) })}
-        hue="hsl(160 45% 42%)"
         canMerge
         onSplit={vi.fn()}
         onOpenParty={vi.fn()}
@@ -523,7 +505,6 @@ describe('LodgingUnitCard — the split control belongs to containers only', () 
     render(
       <LodgingUnitCard
         slot={slot({ unit: unit({ is_container: false, is_combined: true }) })}
-        hue="hsl(160 45% 42%)"
         canMerge
         onSplit={vi.fn()}
         onOpenParty={vi.fn()}
@@ -549,7 +530,6 @@ describe('LodgingUnitCard — the merge handle is reachable without a pointer', 
     render(
       <LodgingUnitCard
         slot={slot({ unit: room })}
-        hue="hsl(160 45% 42%)"
         canMerge
         onMerge={onMerge}
         onOpenParty={vi.fn()}
@@ -564,7 +544,6 @@ describe('LodgingUnitCard — the merge handle is reachable without a pointer', 
     render(
       <LodgingUnitCard
         slot={slot({ unit: room })}
-        hue="hsl(160 45% 42%)"
         canMerge
         savingMerge
         onMerge={vi.fn()}
@@ -610,7 +589,6 @@ describe('LodgingUnitCard — the per-party sharing chip follows ROOM overlap, n
             }),
           ],
         })}
-        hue="hsl(160 45% 42%)"
         onOpenParty={vi.fn()}
       />
     )
@@ -629,7 +607,6 @@ describe('LodgingUnitCard — the per-party sharing chip follows ROOM overlap, n
             declinedParty({ household_cm_id: 102, display_name: 'Beta', unit_code: 'r1' }),
           ],
         })}
-        hue="hsl(160 45% 42%)"
         onOpenParty={vi.fn()}
       />
     )
@@ -660,7 +637,6 @@ describe('LodgingUnitCard — the per-party sharing chip follows ROOM overlap, n
             }),
           ],
         })}
-        hue="hsl(160 45% 42%)"
         onOpenParty={vi.fn()}
       />
     )
@@ -689,7 +665,6 @@ describe('LodgingUnitCard — the per-party sharing chip follows ROOM overlap, n
           ],
         })}
         units={rooms}
-        hue="hsl(160 45% 42%)"
         onOpenParty={vi.fn()}
       />
     )
@@ -716,7 +691,6 @@ describe('LodgingUnitCard — the per-party sharing chip follows ROOM overlap, n
           ],
         })}
         units={rooms}
-        hue="hsl(160 45% 42%)"
         onOpenParty={vi.fn()}
       />
     )
@@ -734,7 +708,6 @@ describe('LodgingUnitCard — the per-party sharing chip follows ROOM overlap, n
             declinedParty({ household_cm_id: 102, display_name: 'Beta' }),
           ],
         })}
-        hue="hsl(160 45% 42%)"
         onOpenParty={vi.fn()}
       />
     )
@@ -789,7 +762,6 @@ describe('LodgingUnitCard — the whole-building mark is STRUCK from the card (k
           ],
         })}
         units={halvedHouseUnits}
-        hue="hsl(160 45% 42%)"
         onOpenParty={vi.fn()}
       />
     )
@@ -804,7 +776,6 @@ describe('LodgingUnitCard — the whole-building mark is STRUCK from the card (k
           parties: [party({ household_cm_id: 101, unit_code: 'up-r1', unit_codes: ['up-r1'] })],
         })}
         units={halvedHouseUnits}
-        hue="hsl(160 45% 42%)"
         onOpenParty={vi.fn()}
       />
     )
@@ -832,7 +803,6 @@ describe('LodgingUnitCard — the whole-building mark is STRUCK from the card (k
           ],
         })}
         units={halvedHouseUnits}
-        hue="hsl(160 45% 42%)"
         onOpenParty={vi.fn()}
       />
     )
@@ -850,7 +820,6 @@ describe('LodgingUnitCard — the whole-building mark is STRUCK from the card (k
  * tiers instead of four and must still resolve in the same order.
  */
 describe('LodgingUnitCard — no shared-space ring (#2179)', () => {
-  const hue = 'hsl(160 45% 42%)'
   const sharedParties = [party(), party({ household_cm_id: 102, display_name: 'Garcia' })]
   const declinedConsent = {
     declinedCount: 1,
@@ -869,7 +838,7 @@ describe('LodgingUnitCard — no shared-space ring (#2179)', () => {
     // The mark that used to live here. The card now says "two families" in
     // the chip below and in nothing else.
     const { container } = render(
-      <LodgingUnitCard slot={slot({ parties: sharedParties })} hue={hue} onOpenParty={vi.fn()} />
+      <LodgingUnitCard slot={slot({ parties: sharedParties })} onOpenParty={vi.fn()} />
     )
     expect(card(container).style.boxShadow).toBe('')
   })
@@ -881,20 +850,29 @@ describe('LodgingUnitCard — no shared-space ring (#2179)', () => {
     // the composed ring could never hand back.
     for (const parties of [[], [party()], sharedParties]) {
       const { container, unmount } = render(
-        <LodgingUnitCard slot={slot({ parties })} hue={hue} onOpenParty={vi.fn()} />
+        <LodgingUnitCard slot={slot({ parties })} onOpenParty={vi.fn()} />
       )
       expect(card(container).style.boxShadow).toBe('')
       unmount()
     }
   })
 
-  it('keeps the area hue on the top edge — that is not a ring', () => {
-    // Explicitly NOT struck. `borderTopColor` is §3.10's secondary channel,
-    // and the deletion above must not take it with it.
+  it('carries NO area hue, and no inline style at all', () => {
+    // REWRITTEN, not adapted. This test used to assert the opposite — that
+    // `borderTopColor` kept §3.10's secondary channel on the card — and it was
+    // right until the 2026-08-21 ruling took the area colour off the card
+    // entirely. The hue is not lost: the section header above each grid draws
+    // it as a dot, at 8 instances instead of 73, which is where the grouping
+    // actually happens (`boardLayout.ts` §3.10 says the headers do it and the
+    // per-card hue "degrades to decoration").
+    //
+    // Asserting the ABSENCE of an inline style rather than a specific border
+    // colour, because the point is that the card's frame is now a constant:
+    // no state touches `border-color`, `border-width` or the title.
     const { container } = render(
-      <LodgingUnitCard slot={slot({ parties: sharedParties })} hue={hue} onOpenParty={vi.fn()} />
+      <LodgingUnitCard slot={slot({ parties: sharedParties })} onOpenParty={vi.fn()} />
     )
-    expect(card(container)).toHaveStyle({ borderTopColor: hue })
+    expect(card(container).getAttribute('style')).toBeNull()
   })
 
   it('promotes the consent ring to ring-2', () => {
@@ -904,7 +882,6 @@ describe('LodgingUnitCard — no shared-space ring (#2179)', () => {
     const { container } = render(
       <LodgingUnitCard
         slot={slot({ parties: sharedParties, consent: declinedConsent })}
-        hue={hue}
         onOpenParty={vi.fn()}
       />
     )
@@ -919,7 +896,6 @@ describe('LodgingUnitCard — no shared-space ring (#2179)', () => {
     const { container } = render(
       <LodgingUnitCard
         slot={slot({ parties: sharedParties, consent: declinedConsent })}
-        hue={hue}
         onOpenParty={vi.fn()}
       />
     )
@@ -931,12 +907,7 @@ describe('LodgingUnitCard — no shared-space ring (#2179)', () => {
     // tiers silently reindex, so each one is re-pinned rather than assumed.
     overDroppableId = unitDroppableId('cedar-1')
     const { container } = render(
-      <LodgingUnitCard
-        slot={slot({ parties: sharedParties })}
-        hue={hue}
-        canPlace
-        onOpenParty={vi.fn()}
-      />
+      <LodgingUnitCard slot={slot({ parties: sharedParties })} canPlace onOpenParty={vi.fn()} />
     )
     expect(card(container)).toHaveClass('border-primary')
   })
@@ -947,7 +918,6 @@ describe('LodgingUnitCard — no shared-space ring (#2179)', () => {
     const { container } = render(
       <LodgingUnitCard
         slot={slot({ unit: room, parties: sharedParties })}
-        hue={hue}
         mergeSourceUnit={draggedSibling}
         onOpenParty={vi.fn()}
       />
@@ -958,7 +928,7 @@ describe('LodgingUnitCard — no shared-space ring (#2179)', () => {
   it('leaves a plain occupied card with no ring class at all', () => {
     // The bottom tier. `plain` has to stay reachable after the table shrinks.
     const { container } = render(
-      <LodgingUnitCard slot={slot({ parties: [party()] })} hue={hue} onOpenParty={vi.fn()} />
+      <LodgingUnitCard slot={slot({ parties: [party()] })} onOpenParty={vi.fn()} />
     )
     expect(card(container)).not.toHaveClass('border-amber-400')
     expect(card(container)).not.toHaveClass('border-primary')
@@ -975,7 +945,6 @@ describe('LodgingUnitCard — no shared-space ring (#2179)', () => {
     const { container } = render(
       <LodgingUnitCard
         slot={slot({ parties: sharedParties, consent: declinedConsent })}
-        hue={hue}
         canPlace
         onOpenParty={vi.fn()}
       />
@@ -996,7 +965,6 @@ describe('LodgingUnitCard — no shared-space ring (#2179)', () => {
     const { container } = render(
       <LodgingUnitCard
         slot={slot({ unit: room })}
-        hue={hue}
         mergeSourceUnit={validSibling}
         onOpenParty={vi.fn()}
       />
@@ -1015,7 +983,6 @@ describe('LodgingUnitCard — no shared-space ring (#2179)', () => {
     const { container } = render(
       <LodgingUnitCard
         slot={slot({ unit: room, parties: sharedParties, consent: declinedConsent })}
-        hue={hue}
         mergeSourceUnit={draggedSibling}
         onOpenParty={vi.fn()}
       />
@@ -1030,7 +997,6 @@ describe('LodgingUnitCard — no shared-space ring (#2179)', () => {
     const { container } = render(
       <LodgingUnitCard
         slot={slot({ unit: room })}
-        hue={hue}
         mergeSourceUnit={draggedSibling}
         onOpenParty={vi.fn()}
       />
@@ -1041,9 +1007,7 @@ describe('LodgingUnitCard — no shared-space ring (#2179)', () => {
 
   it('keeps the empty-room dashed cue visible under an active drop target', () => {
     overDroppableId = unitDroppableId('cedar-1')
-    const { container } = render(
-      <LodgingUnitCard slot={slot()} hue={hue} canPlace onOpenParty={vi.fn()} />
-    )
+    const { container } = render(<LodgingUnitCard slot={slot()} canPlace onOpenParty={vi.fn()} />)
     expect(card(container)).toHaveClass('border-primary')
     expect(card(container)).toHaveClass('border-dashed')
   })
@@ -1060,9 +1024,7 @@ describe('LodgingUnitCard — no shared-space ring (#2179)', () => {
     // it that mattered for a real, high-frequency gesture: hovering a family
     // drag over an empty room.
     overDroppableId = unitDroppableId('cedar-1')
-    const { container } = render(
-      <LodgingUnitCard slot={slot()} hue={hue} canPlace onOpenParty={vi.fn()} />
-    )
+    const { container } = render(<LodgingUnitCard slot={slot()} canPlace onOpenParty={vi.fn()} />)
     expect(card(container)).toHaveClass('bg-primary/5')
     expect(card(container)).not.toHaveClass('bg-primary/10')
     expect(card(container)).not.toHaveClass('bg-muted/25')
@@ -1106,21 +1068,25 @@ describe('LodgingUnitCard — the open-space title marker (#2093)', () => {
   // forest tint is a RESTING-STATE signal only, suppressed the instant this
   // card becomes an active drop target — and never spent on a held room,
   // which is empty but not open.
-  const hue = 'hsl(160 45% 42%)'
 
-  it('spends the forest tint on an open unit title — colour AND weight, not dimmed', () => {
-    render(<LodgingUnitCard slot={slot()} hue={hue} onOpenParty={vi.fn()} />)
-    const title = screen.getByText('Cedar 1')
-    expect(title).toHaveClass('text-primary')
-    expect(title).toHaveClass('font-bold')
-    expect(title).not.toHaveClass('text-foreground')
-    expect(title).not.toHaveClass('font-semibold')
-    expect(title).not.toHaveClass('text-muted-foreground')
-    expect(title).not.toHaveClass('opacity-40')
+  it('leaves an OPEN unit title identical to an occupied one — the wash carries it alone', () => {
+    // REWRITTEN. #2093 gave the open marker two halves, a forest wash and a
+    // bold primary title, coupled to one flag so they could not drift. The
+    // owner struck the title half on 2026-08-21: the wash carries the resting
+    // signal by itself.
+    //
+    // Asserted against an OCCUPIED card rather than against literal classes,
+    // because the invariant is sameness — no state touches the title, so a
+    // future mark that reaches for `color` or `font-weight` fails here.
+    render(<LodgingUnitCard slot={slot()} onOpenParty={vi.fn()} />)
+    const openTitle = screen.getByText('Cedar 1').className
+    cleanup()
+    render(<LodgingUnitCard slot={slot({ parties: [party()] })} onOpenParty={vi.fn()} />)
+    expect(screen.getByText('Cedar 1').className).toBe(openTitle)
   })
 
   it('leaves an occupied unit title in the plain foreground weight', () => {
-    render(<LodgingUnitCard slot={slot({ parties: [party()] })} hue={hue} onOpenParty={vi.fn()} />)
+    render(<LodgingUnitCard slot={slot({ parties: [party()] })} onOpenParty={vi.fn()} />)
     const title = screen.getByText('Cedar 1')
     expect(title).toHaveClass('text-foreground')
     expect(title).toHaveClass('font-semibold')
@@ -1134,7 +1100,7 @@ describe('LodgingUnitCard — the open-space title marker (#2093)', () => {
     // gets, sharing the identical `openMarkerActive` gate rather than a
     // second, independently-derived condition that could drift from it.
     overDroppableId = unitDroppableId('cedar-1')
-    render(<LodgingUnitCard slot={slot()} hue={hue} canPlace onOpenParty={vi.fn()} />)
+    render(<LodgingUnitCard slot={slot()} canPlace onOpenParty={vi.fn()} />)
     const title = screen.getByText('Cedar 1')
     expect(title).not.toHaveClass('text-primary')
     expect(title).not.toHaveClass('font-bold')
@@ -1171,7 +1137,6 @@ describe('LodgingUnitCard — the open-space title marker (#2093)', () => {
         slot={slot({
           unit: unit({ write_ins: [cover()], occupant_name: 'Emma Johnson' }),
         })}
-        hue={hue}
         canPlace
         onOpenParty={vi.fn()}
       />
@@ -1198,7 +1163,6 @@ describe('LodgingUnitCard — the open-space title marker (#2093)', () => {
     const { container } = render(
       <LodgingUnitCard
         slot={slot({ unit: unit({ write_ins: [cover({ occupant_name: '' })] }) })}
-        hue={hue}
         canPlace
         onOpenParty={vi.fn()}
       />
@@ -1221,7 +1185,6 @@ describe('LodgingUnitCard — the open-space title marker (#2093)', () => {
             reason: 'Overflow weekend',
           }),
         })}
-        hue={hue}
         canPlace
         onOpenParty={vi.fn()}
       />
@@ -1232,8 +1195,6 @@ describe('LodgingUnitCard — the open-space title marker (#2093)', () => {
 })
 
 describe('the write-in occupant card (kindred#2078)', () => {
-  const hue = 'hsl(160 45% 42%)'
-
   it('draws the occupant in the well, where the board prints occupancy', () => {
     // The name used to be a small italic muted line under the badge row while
     // the well below said "Drop families here" -- the room read as empty and
@@ -1247,7 +1208,6 @@ describe('the write-in occupant card (kindred#2078)', () => {
             is_family_available: false,
           }),
         })}
-        hue={hue}
         canPlace
         onOpenParty={vi.fn()}
       />
@@ -1270,7 +1230,6 @@ describe('the write-in occupant card (kindred#2078)', () => {
             is_family_available: false,
           }),
         })}
-        hue={hue}
         canSetAvailability
         onSetAvailability={vi.fn()}
         onOpenParty={vi.fn()}
@@ -1281,7 +1240,7 @@ describe('the write-in occupant card (kindred#2078)', () => {
   })
 
   it('does not draw an occupant card on an ordinary open room', () => {
-    render(<LodgingUnitCard slot={slot()} hue={hue} canPlace onOpenParty={vi.fn()} />)
+    render(<LodgingUnitCard slot={slot()} canPlace onOpenParty={vi.fn()} />)
 
     // The empty well draws NOTHING now — not an occupant card, and not the
     // struck invitation sentence either.
@@ -1303,7 +1262,6 @@ describe('the write-in occupant card (kindred#2078)', () => {
             is_family_available: false,
           }),
         })}
-        hue={hue}
         canPlace
         onOpenParty={vi.fn()}
       />
@@ -1380,7 +1338,6 @@ describe('LodgingUnitCard — summer’s type scale', () => {
             reason: 'One household declined sharing',
           },
         })}
-        hue="hsl(160 45% 42%)"
         canSetAvailability
         onSetAvailability={vi.fn()}
         canMerge
@@ -1396,14 +1353,12 @@ describe('LodgingUnitCard — summer’s type scale', () => {
 
   it('leaves no arbitrary pixel sizes on an empty slot either', () => {
     // The empty state is its own branch and carried its own `text-[11px]`.
-    const { container } = render(
-      <LodgingUnitCard slot={slot()} hue="hsl(160 45% 42%)" onOpenParty={vi.fn()} />
-    )
+    const { container } = render(<LodgingUnitCard slot={slot()} onOpenParty={vi.fn()} />)
     expect(arbitraryTextSizes(container)).toEqual([])
   })
 
   it('titles the unit at summer’s text-lg', () => {
-    render(<LodgingUnitCard slot={slot()} hue="hsl(160 45% 42%)" onOpenParty={vi.fn()} />)
+    render(<LodgingUnitCard slot={slot()} onOpenParty={vi.fn()} />)
     expect(screen.getByText('Cedar 1')).toHaveClass('text-lg')
   })
 
@@ -1419,14 +1374,14 @@ describe('LodgingUnitCard — summer’s type scale', () => {
      * Pinned as a ROLE rather than a tag name: the font comes from the element
      * being a heading, so that is the thing that must not regress.
      */
-    render(<LodgingUnitCard slot={slot()} hue="hsl(160 45% 42%)" onOpenParty={vi.fn()} />)
+    render(<LodgingUnitCard slot={slot()} onOpenParty={vi.fn()} />)
     expect(screen.getByRole('heading', { name: 'Cedar 1', level: 3 })).toBeInTheDocument()
   })
 
   it('sets the capacity figure at summer’s body size', () => {
     // Summer prints `{occupancy}/{capacity}` at `text-sm`. The figure is the
     // second thing read on the card; at 11px it read as a footnote.
-    render(<LodgingUnitCard slot={slot()} hue="hsl(160 45% 42%)" onOpenParty={vi.fn()} />)
+    render(<LodgingUnitCard slot={slot()} onOpenParty={vi.fn()} />)
     // Matched loosely: the title gained the occupancy count alongside the
     // capacity. What this test pins is the SIZE of that element, not its
     // wording — the wording has its own tests.
@@ -1445,7 +1400,6 @@ describe('LodgingUnitCard — summer’s type scale', () => {
             reason: 'One household declined sharing',
           },
         })}
-        hue="hsl(160 45% 42%)"
         onOpenParty={vi.fn()}
       />
     )
@@ -1466,7 +1420,6 @@ describe('LodgingUnitCard — summer’s type scale', () => {
           unit: unit({ is_active: false, is_confirmed: false }),
           parties: [party(), party({ household_cm_id: 102, display_name: 'Garcia' })],
         })}
-        hue="hsl(160 45% 42%)"
         onOpenParty={vi.fn()}
       />
     )
@@ -1491,18 +1444,14 @@ describe('LodgingUnitCard — how full the room is', () => {
    */
   it('says how many are in the room, not just what it sleeps', () => {
     render(
-      <LodgingUnitCard
-        slot={slot({ parties: [party({ party_size: 3 })] })}
-        hue="hsl(160 45% 42%)"
-        onOpenParty={vi.fn()}
-      />
+      <LodgingUnitCard slot={slot({ parties: [party({ party_size: 3 })] })} onOpenParty={vi.fn()} />
     )
     expect(screen.getByText('3/5')).toBeInTheDocument()
   })
 
   it('distinguishes an empty room from a full one', () => {
     // The whole point: before this, both rendered "5".
-    render(<LodgingUnitCard slot={slot()} hue="hsl(160 45% 42%)" onOpenParty={vi.fn()} />)
+    render(<LodgingUnitCard slot={slot()} onOpenParty={vi.fn()} />)
     expect(screen.getByText('0/5')).toBeInTheDocument()
   })
 
@@ -1510,7 +1459,6 @@ describe('LodgingUnitCard — how full the room is', () => {
     render(
       <LodgingUnitCard
         slot={slot({ unit: unit({ sleeps: 4 }), parties: [party({ party_size: 6 })] })}
-        hue="hsl(160 45% 42%)"
         onOpenParty={vi.fn()}
       />
     )
@@ -1524,11 +1472,7 @@ describe('LodgingUnitCard — how full the room is', () => {
 
   it('leaves a room within capacity unmarked', () => {
     render(
-      <LodgingUnitCard
-        slot={slot({ parties: [party({ party_size: 5 })] })}
-        hue="hsl(160 45% 42%)"
-        onOpenParty={vi.fn()}
-      />
+      <LodgingUnitCard slot={slot({ parties: [party({ party_size: 5 })] })} onOpenParty={vi.fn()} />
     )
     expect(screen.getByText('5/5')).not.toHaveClass('text-destructive')
     expect(screen.queryByText('Over capacity')).not.toBeInTheDocument()
@@ -1540,7 +1484,6 @@ describe('LodgingUnitCard — how full the room is', () => {
     render(
       <LodgingUnitCard
         slot={slot({ unit: unit({ sleeps: null }), parties: [party({ party_size: 9 })] })}
-        hue="hsl(160 45% 42%)"
         onOpenParty={vi.fn()}
       />
     )
@@ -1567,7 +1510,6 @@ describe('LodgingUnitCard — how full the room is', () => {
           parties: [party({ party_size: 6, unit_code: '', unit_codes: ['r1', 'r2'] })],
         })}
         units={[house, r1, r2]}
-        hue="hsl(160 45% 42%)"
         onOpenParty={vi.fn()}
       />
     )
@@ -1589,13 +1531,7 @@ describe('LodgingUnitCard — how full the room is', () => {
    */
 
   it('says nothing about spanning on an ordinary room', () => {
-    render(
-      <LodgingUnitCard
-        slot={slot({ parties: [party()] })}
-        hue="hsl(160 45% 42%)"
-        onOpenParty={vi.fn()}
-      />
-    )
+    render(<LodgingUnitCard slot={slot({ parties: [party()] })} onOpenParty={vi.fn()} />)
     expect(screen.queryByText(/Spans/)).not.toBeInTheDocument()
   })
 })
@@ -1622,9 +1558,7 @@ describe('LodgingUnitCard — the occupant well', () => {
   }
 
   it('gives an empty slot a well that grows with the row', () => {
-    const { container } = render(
-      <LodgingUnitCard slot={slot()} hue="hsl(160 45% 42%)" onOpenParty={vi.fn()} />
-    )
+    const { container } = render(<LodgingUnitCard slot={slot()} onOpenParty={vi.fn()} />)
     // B·2: the min-height is struck and `flex-1` is not. They were always two
     // decisions — the floor lifted an empty card toward the occupied median,
     // and `flex-1` is what makes the grid's stretch survivable at all.
@@ -1635,11 +1569,7 @@ describe('LodgingUnitCard — the occupant well', () => {
   it('gives an occupied slot the same well, so rows agree', () => {
     // Same element in both branches on purpose. Two wells drift.
     const { container } = render(
-      <LodgingUnitCard
-        slot={slot({ parties: [party()] })}
-        hue="hsl(160 45% 42%)"
-        onOpenParty={vi.fn()}
-      />
+      <LodgingUnitCard slot={slot({ parties: [party()] })} onOpenParty={vi.fn()} />
     )
     expect(well(container)).not.toHaveClass('min-h-[100px]')
     expect(well(container)).toHaveClass('flex-1')
@@ -1670,9 +1600,7 @@ describe('LodgingUnitCard — the occupant well', () => {
      * session nearly did. A dead class spreading by imitation is the
      * `forest-950` failure CLAUDE.md §4 cites (#1894).
      */
-    const { container } = render(
-      <LodgingUnitCard slot={slot()} hue="hsl(160 45% 42%)" onOpenParty={vi.fn()} />
-    )
+    const { container } = render(<LodgingUnitCard slot={slot()} onOpenParty={vi.fn()} />)
     expect(container.querySelector('[data-unit-card]')).not.toHaveClass('hover:shadow-lodge-lg')
     // The chrome that DOES carry the hover, so this test fails loudly if the
     // card ever stops being a `.card-lodge` rather than silently passing.
@@ -1695,9 +1623,7 @@ describe('LodgingUnitCard — the occupant well', () => {
      * party and the same rhythm is most of it. Measured at −148px across the
      * board, 8.3%, and about −15% of column height together with B·2.
      */
-    const { container } = render(
-      <LodgingUnitCard slot={slot()} hue="hsl(160 45% 42%)" onOpenParty={vi.fn()} />
-    )
+    const { container } = render(<LodgingUnitCard slot={slot()} onOpenParty={vi.fn()} />)
     const card = container.querySelector('[data-unit-card]')
     expect(card).toHaveClass('gap-2')
     expect(card).not.toHaveClass('gap-3')
@@ -1707,7 +1633,6 @@ describe('LodgingUnitCard — the occupant well', () => {
     const { container } = render(
       <LodgingUnitCard
         slot={slot({ parties: [party(), party({ household_cm_id: 102, display_name: 'Garcia' })] })}
-        hue="hsl(160 45% 42%)"
         onOpenParty={vi.fn()}
       />
     )
@@ -1743,7 +1668,6 @@ describe('LodgingUnitCard — shareability left the card (kindred#2026 → kindr
     render(
       <LodgingUnitCard
         slot={slot({ unit: unit({ shareability: 'shareable' }) })}
-        hue="hsl(160 45% 42%)"
         onOpenParty={vi.fn()}
       />
     )
@@ -1751,7 +1675,7 @@ describe('LodgingUnitCard — shareability left the card (kindred#2026 → kindr
   })
 
   it('says nothing on a one-family room either', () => {
-    render(<LodgingUnitCard slot={slot()} hue="hsl(160 45% 42%)" onOpenParty={vi.fn()} />)
+    render(<LodgingUnitCard slot={slot()} onOpenParty={vi.fn()} />)
     expect(screen.queryByText('Shared OK')).not.toBeInTheDocument()
     expect(screen.queryByText('Sharing unset')).not.toBeInTheDocument()
   })
@@ -1763,7 +1687,6 @@ describe('LodgingUnitCard — shareability left the card (kindred#2026 → kindr
           unit: unit({ is_container: true, is_combined: true, shareability: 'shareable' }),
           parties: [party(), party({ household_cm_id: 102, display_name: 'Garcia' })],
         })}
-        hue="hsl(160 45% 42%)"
         onOpenParty={vi.fn()}
       />
     )
@@ -1778,7 +1701,6 @@ describe('LodgingUnitCard — shareability left the card (kindred#2026 → kindr
     render(
       <LodgingUnitCard
         slot={slot({ unit: unit({ shareability: 'unknown', is_confirmed: true }) })}
-        hue="hsl(160 45% 42%)"
         onOpenParty={vi.fn()}
       />
     )
@@ -1802,7 +1724,6 @@ describe('LodgingUnitCard — the needs-misfit hatch (#1912)', () => {
    * able to appear at once mid-drag; a card dimmed for a fit miss reads as a
    * weaker refusal rather than as a different kind of statement.
    */
-  const hue = 'hsl(160 45% 42%)'
   /** Enough of the arbitrary property to identify the mark, whatever its period. */
   const HATCH = '[background-image:repeating-linear-gradient'
   const needsPower = party({ flags: { needs_power: true } })
@@ -1824,7 +1745,6 @@ describe('LodgingUnitCard — the needs-misfit hatch (#1912)', () => {
     const { container } = render(
       <LodgingUnitCard
         slot={slot({ unit: unit({ power_coverage: 'none' }) })}
-        hue={hue}
         onOpenParty={vi.fn()}
       />
     )
@@ -1836,7 +1756,6 @@ describe('LodgingUnitCard — the needs-misfit hatch (#1912)', () => {
     const { container } = render(
       <LodgingUnitCard
         slot={slot({ unit: unit({ power_coverage: 'none' }) })}
-        hue={hue}
         draggingParty={needsPower}
         onOpenParty={vi.fn()}
       />
@@ -1849,7 +1768,6 @@ describe('LodgingUnitCard — the needs-misfit hatch (#1912)', () => {
     const none = render(
       <LodgingUnitCard
         slot={slot({ unit: unit({ power_coverage: 'none' }) })}
-        hue={hue}
         draggingParty={needsPower}
         onOpenParty={vi.fn()}
       />
@@ -1857,7 +1775,6 @@ describe('LodgingUnitCard — the needs-misfit hatch (#1912)', () => {
     const some = render(
       <LodgingUnitCard
         slot={slot({ unit: unit({ power_coverage: 'some' }) })}
-        hue={hue}
         draggingParty={needsPower}
         onOpenParty={vi.fn()}
       />
@@ -1869,8 +1786,8 @@ describe('LodgingUnitCard — the needs-misfit hatch (#1912)', () => {
     expect(tight).not.toBe(wide)
     // Same ink, different spacing. If the two ever differ in their colour
     // stop, the grade has quietly moved onto a strength channel.
-    expect(tight).toContain('hsl(var(--foreground)_/_0.1)')
-    expect(wide).toContain('hsl(var(--foreground)_/_0.1)')
+    expect(tight).toContain('hsl(var(--foreground)_/_0.06)')
+    expect(wide).toContain('hsl(var(--foreground)_/_0.06)')
     expect(some.container.querySelector('[data-unit-card]')).toHaveAttribute(
       'data-needs-fit',
       'partial'
@@ -1881,7 +1798,6 @@ describe('LodgingUnitCard — the needs-misfit hatch (#1912)', () => {
     const { container } = render(
       <LodgingUnitCard
         slot={slot({ unit: unit({ power_coverage: 'none' }) })}
-        hue={hue}
         canPlace
         draggingParty={needsPower}
         onOpenParty={vi.fn()}
@@ -1897,7 +1813,6 @@ describe('LodgingUnitCard — the needs-misfit hatch (#1912)', () => {
     const { container } = render(
       <LodgingUnitCard
         slot={slot({ unit: unit({ power_coverage: 'all' }) })}
-        hue={hue}
         draggingParty={needsPower}
         onOpenParty={vi.fn()}
       />
@@ -1909,7 +1824,6 @@ describe('LodgingUnitCard — the needs-misfit hatch (#1912)', () => {
     const { container } = render(
       <LodgingUnitCard
         slot={slot({ unit: unit({ power_coverage: 'none' }) })}
-        hue={hue}
         draggingParty={party()}
         onOpenParty={vi.fn()}
       />
@@ -1923,7 +1837,6 @@ describe('LodgingUnitCard — the needs-misfit hatch (#1912)', () => {
     const { container } = render(
       <LodgingUnitCard
         slot={slot({ unit: unit({ has_power: false, power_coverage: 'all' }) })}
-        hue={hue}
         draggingParty={needsPower}
         onOpenParty={vi.fn()}
       />
@@ -1931,21 +1844,27 @@ describe('LodgingUnitCard — the needs-misfit hatch (#1912)', () => {
     expect(hatchClass(container)).toBe('')
   })
 
-  it('composes with the open-space forest tint rather than suppressing it', () => {
-    // ORTHOGONAL properties: #2093's tint is `background-color`, this is
-    // `background-image`. Both paint, at full strength — an empty space that
-    // does not meet the need is still an empty space. No suppression logic
-    // belongs between them, and adding any would be reaching into #2093's
-    // own gate.
+  it('SUPPRESSES the open-space forest tint — a conflict is not an invitation', () => {
+    // REWRITTEN, and it reverses. The old rule let the two compose because
+    // they sit on orthogonal properties: the tint is `background-color`, the
+    // hatch `background-image`. That was true and it was the wrong call — the
+    // card said "drop here" and "no" at once, and drawn at board scale the
+    // composite read as a dull, deactivated grey rather than a warning.
+    //
+    // The owner ruled on 2026-08-21 that the negative wins. A conflict now
+    // gains the hazard texture AND loses the invitation, which is two halves
+    // of one mark rather than two marks arguing. It is decided at
+    // `dragFit.state` — one enum, one winner — not by two CSS rules racing
+    // over a byte offset, which is the collapse `RING_CLASSES` exists to kill.
     const { container } = render(
       <LodgingUnitCard
         slot={slot({ unit: unit({ power_coverage: 'none' }) })}
-        hue={hue}
         draggingParty={needsPower}
         onOpenParty={vi.fn()}
       />
     )
-    expect(card(container)).toHaveClass('bg-primary/10')
+    expect(card(container)).not.toHaveClass('bg-primary/10')
+    expect(card(container)).not.toHaveClass('bg-primary/20')
     expect(hatchClass(container)).not.toBe('')
   })
 })
@@ -1967,7 +1886,6 @@ describe('LodgingUnitCard — placing a family from the space itself (kindred#20
    * land — against the control that exists now. The one that changed meaning
    * is called out where it sits.
    */
-  const HUE = 'hsl(160 45% 42%)'
   const unplaced = party({
     household_cm_id: 202,
     display_name: 'Garcia',
@@ -1984,7 +1902,6 @@ describe('LodgingUnitCard — placing a family from the space itself (kindred#20
     const view = render(
       <LodgingUnitCard
         slot={slot()}
-        hue={HUE}
         canPlace={true}
         unplacedParties={[unplaced]}
         onPlaceParty={onPlaceParty}
@@ -2163,9 +2080,7 @@ describe('LodgingUnitCard — no sr-only text of any kind (kindred#2348)', () =>
   })
 
   it('renders no sr-only node and no aria-live region at rest', () => {
-    const { container } = render(
-      <LodgingUnitCard slot={infantSlot} hue="hsl(160 45% 42%)" onOpenParty={vi.fn()} />
-    )
+    const { container } = render(<LodgingUnitCard slot={infantSlot} onOpenParty={vi.fn()} />)
     expect(container.querySelectorAll('.sr-only')).toHaveLength(0)
     expect(container.querySelectorAll('[aria-live]')).toHaveLength(0)
   })
@@ -2174,7 +2089,7 @@ describe('LodgingUnitCard — no sr-only text of any kind (kindred#2348)', () =>
     // The measured defect: find-in-page matched `infant` four times on the
     // Housing tab and highlighted nothing, because `ui/Tooltip` mirrored
     // every closed bubble's sentence into an `sr-only` span.
-    render(<LodgingUnitCard slot={infantSlot} hue="hsl(160 45% 42%)" onOpenParty={vi.fn()} />)
+    render(<LodgingUnitCard slot={infantSlot} onOpenParty={vi.fn()} />)
     expect(screen.queryByText(/exempt from the bed count/)).not.toBeInTheDocument()
     fireEvent.focus(screen.getByTestId('unit-occupancy'))
     expect(screen.getByRole('tooltip')).toHaveTextContent(
@@ -2184,7 +2099,6 @@ describe('LodgingUnitCard — no sr-only text of any kind (kindred#2348)', () =>
 })
 
 describe('LodgingUnitCard — the write-in chip, dropped in favour of the well (kindred#2252)', () => {
-  const HUE = 'hsl(160 45% 42%)'
   const WRITTEN_IN = unit({
     write_ins: [cover()],
     occupant_name: 'Emma Johnson',
@@ -2196,7 +2110,7 @@ describe('LodgingUnitCard — the write-in chip, dropped in favour of the well (
     // "Write-in" chip in the badge row, and the occupant's own name in the
     // `WriteInCard` drawn in the well below. The chip is gone from THIS card;
     // the well is untouched.
-    render(<LodgingUnitCard slot={slot({ unit: WRITTEN_IN })} hue={HUE} onOpenParty={vi.fn()} />)
+    render(<LodgingUnitCard slot={slot({ unit: WRITTEN_IN })} onOpenParty={vi.fn()} />)
 
     expect(screen.getByText('Emma Johnson')).toBeInTheDocument()
     expect(screen.queryByText('Write-in')).not.toBeInTheDocument()
@@ -2229,7 +2143,6 @@ describe('LodgingUnitCard — the write-in chip, dropped in favour of the well (
             family_available_override: true,
           }),
         })}
-        hue={HUE}
         onOpenParty={vi.fn()}
       />
     )
@@ -2250,11 +2163,8 @@ describe('LodgingUnitCard — T2: the amenities ride the TITLE row', () => {
    * the last one. The board lives in a 280–292px band, so it sits on the
    * cliff rather than past it.
    */
-  const HUE = 'hsl(160 45% 42%)'
   const renderUnit = (overrides: Partial<LodgingUnitRow>) =>
-    render(
-      <LodgingUnitCard slot={slot({ unit: unit(overrides) })} hue={HUE} onOpenParty={vi.fn()} />
-    )
+    render(<LodgingUnitCard slot={slot({ unit: unit(overrides) })} onOpenParty={vi.fn()} />)
 
   it('draws only what the room actually has', () => {
     const { container } = renderUnit({
@@ -2403,13 +2313,10 @@ describe('LodgingUnitCard — T2: the amenities ride the TITLE row', () => {
 })
 
 describe('LodgingUnitCard — the FOOTER row', () => {
-  const HUE = 'hsl(160 45% 42%)'
-
   it('carries Assign, Merge and Split together, below the well', () => {
     const { container } = render(
       <LodgingUnitCard
         slot={slot({ unit: unit({ parent_code: 'house', is_container: false }) })}
-        hue={HUE}
         canPlace={true}
         unplacedParties={[]}
         onPlaceParty={vi.fn()}
@@ -2431,7 +2338,6 @@ describe('LodgingUnitCard — the FOOTER row', () => {
     render(
       <LodgingUnitCard
         slot={slot({ unit: unit({ is_container: true, is_combined: true }) })}
-        hue={HUE}
         canMerge={true}
         onSplit={vi.fn()}
         onOpenParty={vi.fn()}
@@ -2445,7 +2351,7 @@ describe('LodgingUnitCard — the FOOTER row', () => {
   it('is absent entirely when the card offers no control at all', () => {
     // A read-only board. An empty footer would spend a row saying nothing —
     // the same reasoning the meta row now follows.
-    render(<LodgingUnitCard slot={slot()} hue={HUE} onOpenParty={vi.fn()} />)
+    render(<LodgingUnitCard slot={slot()} onOpenParty={vi.fn()} />)
     expect(screen.queryByTestId('unit-footer')).not.toBeInTheDocument()
   })
 })
@@ -2464,10 +2370,9 @@ describe('LodgingUnitCard — the meta row survives ONLY for what needs it (0a)'
    * confirmed — so every live card gets ruling 12's outcome, and both marks
    * keep a home for when kindred#2500 makes a new season start unconfirmed.
    */
-  const HUE = 'hsl(160 45% 42%)'
 
   it('draws NO meta row on an ordinary card', () => {
-    render(<LodgingUnitCard slot={slot()} hue={HUE} onOpenParty={vi.fn()} />)
+    render(<LodgingUnitCard slot={slot()} onOpenParty={vi.fn()} />)
     expect(screen.queryByTestId('unit-meta')).not.toBeInTheDocument()
   })
 
@@ -2475,7 +2380,6 @@ describe('LodgingUnitCard — the meta row survives ONLY for what needs it (0a)'
     render(
       <LodgingUnitCard
         slot={slot({ unit: unit({ is_active: false }), parties: [party()] })}
-        hue={HUE}
         onOpenParty={vi.fn()}
       />
     )
@@ -2484,11 +2388,7 @@ describe('LodgingUnitCard — the meta row survives ONLY for what needs it (0a)'
 
   it('draws it for a cabin nobody has checked this season', () => {
     render(
-      <LodgingUnitCard
-        slot={slot({ unit: unit({ is_confirmed: false }) })}
-        hue={HUE}
-        onOpenParty={vi.fn()}
-      />
+      <LodgingUnitCard slot={slot({ unit: unit({ is_confirmed: false }) })} onOpenParty={vi.fn()} />
     )
     expect(within(screen.getByTestId('unit-meta')).getByText('Reconfirm space')).toBeInTheDocument()
   })
@@ -2503,15 +2403,10 @@ describe('LodgingUnitCard — Reconfirm space is re-gated on is_confirmed (rulin
    * the moment kindred#2500 makes a new year start unconfirmed: every unit
    * flagged at season start, worked down as staff check them.
    */
-  const HUE = 'hsl(160 45% 42%)'
 
   it('fires on an unconfirmed cabin', () => {
     render(
-      <LodgingUnitCard
-        slot={slot({ unit: unit({ is_confirmed: false }) })}
-        hue={HUE}
-        onOpenParty={vi.fn()}
-      />
+      <LodgingUnitCard slot={slot({ unit: unit({ is_confirmed: false }) })} onOpenParty={vi.fn()} />
     )
     expect(screen.getByText('Reconfirm space')).toBeInTheDocument()
   })
@@ -2521,7 +2416,6 @@ describe('LodgingUnitCard — Reconfirm space is re-gated on is_confirmed (rulin
       const view = render(
         <LodgingUnitCard
           slot={slot({ unit: unit({ is_confirmed: true, shareability }) })}
-          hue={HUE}
           onOpenParty={vi.fn()}
         />
       )
@@ -2537,7 +2431,6 @@ describe('LodgingUnitCard — Reconfirm space is re-gated on is_confirmed (rulin
     render(
       <LodgingUnitCard
         slot={slot({ unit: unit({ is_confirmed: false, shareability: 'shareable' }) })}
-        hue={HUE}
         onOpenParty={vi.fn()}
       />
     )
@@ -2555,13 +2448,11 @@ describe('LodgingUnitCard — the marks kindred#2072 STRUCK from the unit card',
    * Every one of them survives on another surface where it still discriminates
    * (`MapUnitPopover`, the units admin table) — the split `Staff` already took.
    */
-  const HUE = 'hsl(160 45% 42%)'
 
   it('draws no "Over capacity" pill — the red figure absorbed it', () => {
     render(
       <LodgingUnitCard
         slot={slot({ unit: unit({ sleeps: 1 }), parties: [party({ party_size: 4 })] })}
-        hue={HUE}
         onOpenParty={vi.fn()}
       />
     )
@@ -2578,7 +2469,6 @@ describe('LodgingUnitCard — the marks kindred#2072 STRUCK from the unit card',
         slot={slot({
           parties: [party({ household_cm_id: 1 }), party({ household_cm_id: 2 })],
         })}
-        hue={HUE}
         onOpenParty={vi.fn()}
       />
     )
@@ -2589,7 +2479,6 @@ describe('LodgingUnitCard — the marks kindred#2072 STRUCK from the unit card',
     render(
       <LodgingUnitCard
         slot={slot({ unit: unit({ shareability: 'shareable' }) })}
-        hue={HUE}
         onOpenParty={vi.fn()}
       />
     )
@@ -2606,7 +2495,6 @@ describe('LodgingUnitCard — the marks kindred#2072 STRUCK from the unit card',
           unit: unit({ shareability: 'single_party' }),
           parties: [party({ household_cm_id: 1 }), party({ household_cm_id: 2 })],
         })}
-        hue={HUE}
         onOpenParty={vi.fn()}
       />
     )
@@ -2627,7 +2515,6 @@ describe('LodgingUnitCard — the marks kindred#2072 STRUCK from the unit card',
           unit({ unit_id: 'r1', code: 'up-r1', parent_code: 'upstairs' }),
           unit({ unit_id: 'r2', code: 'up-r2', parent_code: 'upstairs' }),
         ]}
-        hue={HUE}
         onOpenParty={vi.fn()}
       />
     )
@@ -2642,7 +2529,6 @@ describe('LodgingUnitCard — the marks kindred#2072 STRUCK from the unit card',
     render(
       <LodgingUnitCard
         slot={slot({ unit: unit({ is_container: true, is_combined: true }) })}
-        hue={HUE}
         onOpenParty={vi.fn()}
       />
     )
@@ -2658,7 +2544,6 @@ describe('LodgingUnitCard — the marks kindred#2072 STRUCK from the unit card',
         slot={slot({
           unit: unit({ inventory_class: 'staff_default', family_available_override: true }),
         })}
-        hue={HUE}
         canSetAvailability={true}
         onSetAvailability={vi.fn()}
         onOpenParty={vi.fn()}
@@ -2676,7 +2561,6 @@ describe('LodgingUnitCard — the marks kindred#2072 STRUCK from the unit card',
     render(
       <LodgingUnitCard
         slot={slot({ parties: [] })}
-        hue={HUE}
         canPlace={true}
         unplacedParties={[]}
         onPlaceParty={vi.fn()}
@@ -2689,7 +2573,7 @@ describe('LodgingUnitCard — the marks kindred#2072 STRUCK from the unit card',
 
   it('keeps the dashed border that now carries the empty state alone', () => {
     const { container } = render(
-      <LodgingUnitCard slot={slot({ parties: [] })} hue={HUE} onOpenParty={vi.fn()} />
+      <LodgingUnitCard slot={slot({ parties: [] })} onOpenParty={vi.fn()} />
     )
     expect(container.querySelector('[data-unit-card]')?.className).toContain('border-dashed')
   })
@@ -2701,14 +2585,13 @@ describe('LodgingUnitCard — B·1 and B·2, the card gets shorter', () => {
    * from the padding and gap (8.3%), and the well's `min-h-[100px]` on top of
    * it, for about −15% of column height.
    */
-  const HUE = 'hsl(160 45% 42%)'
 
   it('drops the well’s min-height', () => {
     // B·2. The min-height lifted an empty card off its 139px floor toward the
     // 188px occupied median; with the empty-state sentence gone there is
     // nothing left in an empty well to give height to, and 81% of live cards
     // are empty.
-    const { container } = render(<LodgingUnitCard slot={slot()} hue={HUE} onOpenParty={vi.fn()} />)
+    const { container } = render(<LodgingUnitCard slot={slot()} onOpenParty={vi.fn()} />)
     const well = container.querySelector('[data-testid="occupant-well"]')
     expect(well?.className).not.toContain('min-h-[100px]')
     // `flex-1` STAYS: it is what makes the grid's stretch survivable, and it
@@ -2722,7 +2605,7 @@ describe('LodgingUnitCard — B·1 and B·2, the card gets shorter', () => {
     // campers, so 16px of padding is a small fraction of a tall card, where
     // a lodging card holds nothing or one party and the same padding is most
     // of it.
-    const { container } = render(<LodgingUnitCard slot={slot()} hue={HUE} onOpenParty={vi.fn()} />)
+    const { container } = render(<LodgingUnitCard slot={slot()} onOpenParty={vi.fn()} />)
     const card = container.querySelector('[data-unit-card]')
     expect(card?.className).toContain('p-2.5')
     expect(card?.className).toContain('px-3')
@@ -2787,7 +2670,6 @@ describe('LodgingUnitCard — the denominator is the WHOLE space (owner ruling 2
       <LodgingUnitCard
         slot={slot({ unit: house, parties: [party({ party_size: 3, unit_code: 'gt-house' })] })}
         units={registry}
-        hue="hsl(160 45% 42%)"
         onOpenParty={vi.fn()}
       />
     )
@@ -2802,7 +2684,6 @@ describe('LodgingUnitCard — the denominator is the WHOLE space (owner ruling 2
       <LodgingUnitCard
         slot={slot({ unit: unit({ sleeps: 5 }), parties: [party({ party_size: 3 })] })}
         units={[unit({ sleeps: 5 })]}
-        hue="hsl(160 45% 42%)"
         onOpenParty={vi.fn()}
       />
     )
@@ -2823,7 +2704,6 @@ describe('LodgingUnitCard — the denominator is the WHOLE space (owner ruling 2
       <LodgingUnitCard
         slot={slot({ unit: house, parties: [party({ party_size: 3, unit_code: 'gt-house' })] })}
         units={[house, roomA, unmeasured]}
-        hue="hsl(160 45% 42%)"
         onOpenParty={vi.fn()}
       />
     )
@@ -2838,7 +2718,6 @@ describe('LodgingUnitCard — the denominator is the WHOLE space (owner ruling 2
       <LodgingUnitCard
         slot={slot({ unit: house, parties: [party({ party_size: 9, unit_code: 'gt-house' })] })}
         units={registry}
-        hue="hsl(160 45% 42%)"
         onOpenParty={vi.fn()}
       />
     )
@@ -2851,10 +2730,136 @@ describe('LodgingUnitCard — the denominator is the WHOLE space (owner ruling 2
       <LodgingUnitCard
         slot={slot({ unit: house, parties: [party({ party_size: 7, unit_code: 'gt-house' })] })}
         units={registry}
-        hue="hsl(160 45% 42%)"
         onOpenParty={vi.fn()}
       />
     )
     expect(screen.getByTestId('unit-occupancy')).not.toHaveClass('text-destructive')
+  })
+})
+
+/**
+ * The drag-time signal's two NEW marks (kindred#2528).
+ *
+ * The hatch above is the negative half and predates this. What is new is the
+ * positive half — a match, drawn as the resting wash at double strength — and
+ * the capacity figure turning red. Between them the card now answers "does
+ * this family go here?" in three states rather than two.
+ *
+ * Fictional data throughout.
+ */
+describe('LodgingUnitCard — the drag-time match and the capacity red', () => {
+  const needsPower = party({ flags: { needs_power: true }, party_size: 2 })
+  const asksNothing = party({ party_size: 6 })
+
+  function card(container: HTMLElement): HTMLElement {
+    const el = container.querySelector('[data-unit-card]')
+    if (!el) throw new Error('no card rendered')
+    return el as HTMLElement
+  }
+  const powered = (over: Partial<LodgingUnitRow> = {}) =>
+    unit({ power_coverage: 'all', has_power: true, sleeps: 6, ...over })
+
+  it('washes a matching cabin at double the resting strength', () => {
+    // The match is MORE OF THE GREEN THE BOARD ALREADY SPEAKS, not a new hue.
+    // #1912: the board's hues are committed, so a fifth meaning cannot have a
+    // fifth colour. 10% at rest, 20% for a match — one channel, one job.
+    const { container } = render(
+      <LodgingUnitCard
+        slot={slot({ unit: powered() })}
+        draggingParty={needsPower}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(card(container)).toHaveClass('bg-primary/20')
+    expect(card(container)).not.toHaveClass('bg-primary/10')
+  })
+
+  it('leaves an empty cabin at its resting 10% when there is nothing to say', () => {
+    // The third state. An empty cabin that neither conflicts nor matches is
+    // drawn EXACTLY as it was at rest, so a drag changes nothing it has
+    // nothing to say about. Here: powered, so no conflict; too small for the
+    // party, so no match.
+    const { container } = render(
+      <LodgingUnitCard
+        slot={slot({ unit: powered({ sleeps: 1 }) })}
+        draggingParty={needsPower}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(card(container)).toHaveClass('bg-primary/10')
+    expect(card(container)).not.toHaveClass('bg-primary/20')
+  })
+
+  it('never matches a cabin for a family that asked for nothing', () => {
+    // The withhold rule, at the card. 368 of 479 2026 registrations ask no
+    // housing need; the board must not light up for them.
+    const { container } = render(
+      <LodgingUnitCard
+        slot={slot({ unit: powered({ sleeps: 10 }) })}
+        draggingParty={party({ party_size: 2 })}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(card(container)).not.toHaveClass('bg-primary/20')
+    expect(card(container)).toHaveClass('bg-primary/10')
+  })
+
+  it('reddens the occupancy figure when the family will not fit', () => {
+    const { container } = render(
+      <LodgingUnitCard
+        slot={slot({ unit: powered({ sleeps: 2 }) })}
+        draggingParty={asksNothing}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(within(card(container)).getByText('0/2')).toHaveClass('text-destructive')
+  })
+
+  it('reddens for a family that asked for NOTHING, whose board is otherwise silent', () => {
+    // Deliberately not gated on the mode switch. A family with no requirements
+    // never moves the board out of its resting state, but "you will not fit
+    // here" is still true and is the only question they have.
+    const { container } = render(
+      <LodgingUnitCard
+        slot={slot({ unit: powered({ sleeps: 2 }) })}
+        draggingParty={asksNothing}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(card(container)).not.toHaveClass('bg-primary/20')
+    expect(within(card(container)).getByText('0/2')).toHaveClass('text-destructive')
+  })
+
+  it('keeps the figure at its OWN numbers — the party in flight is never added in', () => {
+    // The card goes on reporting who is actually placed. Adding the dragged
+    // party would make the figure a projection, and N/M has always described
+    // placed people.
+    const { container } = render(
+      <LodgingUnitCard
+        slot={slot({ unit: powered({ sleeps: 4 }), parties: [party({ party_size: 3 })] })}
+        draggingParty={asksNothing}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(within(card(container)).getByText('3/4')).toBeInTheDocument()
+  })
+
+  it('leaves the figure alone when nobody has measured the cabin', () => {
+    // The one thing the board does not know. Never claim from it.
+    const { container } = render(
+      <LodgingUnitCard
+        slot={slot({ unit: powered({ sleeps: null }) })}
+        draggingParty={asksNothing}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(within(card(container)).getByText('0/—')).not.toHaveClass('text-destructive')
+  })
+
+  it('does not redden at rest, when no family is in flight', () => {
+    const { container } = render(
+      <LodgingUnitCard slot={slot({ unit: powered({ sleeps: 2 }) })} onOpenParty={vi.fn()} />
+    )
+    expect(within(card(container)).getByText('0/2')).not.toHaveClass('text-destructive')
   })
 })

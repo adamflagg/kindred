@@ -15,7 +15,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
-import { resolveNeedsFit, worseOf } from './needsFit'
+import { resolveDragFit, worseOf } from './needsFit'
 
 function unit(overrides: Partial<LodgingUnitRow> = {}): LodgingUnitRow {
   return {
@@ -38,284 +38,12 @@ function party(overrides: Partial<RosterPartyRow> = {}): RosterPartyRow {
     grain: 'household',
     household_cm_id: 101,
     display_name: 'Johnson',
+    // A real size. Capacity now gates the match, so a party of nobody would
+    // fit everywhere and quietly hide every capacity assertion below.
+    party_size: 2,
     ...overrides,
   }
 }
-
-describe('resolveNeedsFit', () => {
-  it('marks nothing for a family that asked for nothing', () => {
-    expect(resolveNeedsFit(party(), unit({ power_coverage: 'none' }))).toBe('fits')
-  })
-
-  it('marks a space where no room meets the need as unmet', () => {
-    expect(
-      resolveNeedsFit(party({ flags: { needs_power: true } }), unit({ power_coverage: 'none' }))
-    ).toBe('unmet')
-  })
-
-  it('marks a space where only some rooms meet it as partial', () => {
-    expect(
-      resolveNeedsFit(party({ flags: { needs_power: true } }), unit({ power_coverage: 'some' }))
-    ).toBe('partial')
-  })
-
-  it('marks nothing when every room meets the need', () => {
-    expect(
-      resolveNeedsFit(party({ flags: { needs_power: true } }), unit({ power_coverage: 'all' }))
-    ).toBe('fits')
-  })
-
-  it('marks nothing when nobody has recorded the amenity', () => {
-    // `unknown` is the absence of evidence, and the mark STATES something
-    // about a space. "Nothing here has power" is not a claim an unconfirmed
-    // row supports — the same bar `rosterAttention` applies to the roster's
-    // own fit check.
-    expect(
-      resolveNeedsFit(party({ flags: { needs_power: true } }), unit({ power_coverage: 'unknown' }))
-    ).toBe('fits')
-  })
-
-  it('treats a payload with no coverage field at all as unrecorded', () => {
-    const bare = unit()
-    delete (bare as { power_coverage?: string }).power_coverage
-    expect(resolveNeedsFit(party({ flags: { needs_power: true } }), bare)).toBe('fits')
-  })
-
-  it('never reads the raw row — a building with no power but powered rooms fits', () => {
-    // The 12-of-14 trap: twelve of the fourteen 2026 family-pool containers
-    // record `has_power = 0` while every leaf beneath them has power. The
-    // server resolves that; this must not second-guess it off the raw flag.
-    expect(
-      resolveNeedsFit(
-        party({ flags: { needs_power: true } }),
-        unit({ has_power: false, power_coverage: 'all' })
-      )
-    ).toBe('fits')
-  })
-
-  it('ignores a need no dimension answers yet', () => {
-    // `needs_private_bathroom` is a real flag with no entry in the table, so
-    // it contributes nothing and the power verdict stands alone. This does
-    // NOT pin the combining rule — with one dimension the loop can only ever
-    // run once, so `worseOf` below is where that rule is actually pinned.
-    expect(
-      resolveNeedsFit(
-        party({ flags: { needs_power: true, needs_private_bathroom: true } }),
-        unit({ power_coverage: 'none' })
-      )
-    ).toBe('unmet')
-  })
-})
-
-describe('resolveNeedsFit — the fridge dimension (kindred#2224)', () => {
-  /*
-   * Dimension two, and the issue's own claim about dimension one: a second
-   * criterion is a further entry in `NEEDS_DIMENSIONS` and nothing else. It
-   * arrives with no new glyph, no new colour and no new chip — the card's
-   * visual treatment of needs belongs to kindred#2072.
-   *
-   * The demand it answers was invisible: `needs_accommodation` is a GATE
-   * question and the substance landed in free text nothing read. Six of the 42
-   * accommodation-gated 2026 households name a refrigerator, against 12 of 118
-   * units carrying one. 2026 is only 16% placed, so 6 is the SHAPE of the
-   * demand, not a rate.
-   */
-  it('marks a space where no room has a fridge as unmet', () => {
-    expect(
-      resolveNeedsFit(party({ flags: { needs_fridge: true } }), unit({ fridge_coverage: 'none' }))
-    ).toBe('unmet')
-  })
-
-  it('marks a space where only some rooms have one as partial', () => {
-    // Advisory-softer, the same reading power takes: a building where some
-    // rooms have a fridge is a real improvement on one where none do. This is
-    // NOT the `is_accessible` shape, where SOME is worse than NONE because it
-    // invites the placement that lands in one of the other rooms — the owner's
-    // 2026-08-15 ruling that a SHARED fridge satisfies the need is what
-    // settles that, since a fridge one room over is still a fridge.
-    expect(
-      resolveNeedsFit(party({ flags: { needs_fridge: true } }), unit({ fridge_coverage: 'some' }))
-    ).toBe('partial')
-  })
-
-  it('marks nothing when every room has one', () => {
-    expect(
-      resolveNeedsFit(party({ flags: { needs_fridge: true } }), unit({ fridge_coverage: 'all' }))
-    ).toBe('fits')
-  })
-
-  it('marks nothing when nobody has recorded the amenity', () => {
-    expect(
-      resolveNeedsFit(
-        party({ flags: { needs_fridge: true } }),
-        unit({ fridge_coverage: 'unknown' })
-      )
-    ).toBe('fits')
-  })
-
-  it('never reads the raw row — the shared-fridge ruling lives server-side', () => {
-    // A SHARED FRIDGE IS A FRIDGE (owner, 2026-08-15), and the OR that says so
-    // is in `_resolve_fridge_coverage`. Re-deriving it here off `has_fridge`
-    // would put a second implementation of one ruling on the client, where it
-    // could disagree.
-    expect(
-      resolveNeedsFit(
-        party({ flags: { needs_fridge: true } }),
-        unit({ has_fridge: false, has_shared_fridge: true, fridge_coverage: 'all' })
-      )
-    ).toBe('fits')
-  })
-
-  it('leaves a family that did not ask for one unmarked', () => {
-    expect(resolveNeedsFit(party(), unit({ fridge_coverage: 'none' }))).toBe('fits')
-  })
-
-  it('takes the WORSE of two dimensions, in either order', () => {
-    // With two real entries the loop can finally run twice, so this is the
-    // first assertion through `resolveNeedsFit` that can distinguish
-    // "worst wins" from "the last dimension wins".
-    const powerUnmet = unit({ power_coverage: 'none', fridge_coverage: 'all' })
-    const fridgeUnmet = unit({ power_coverage: 'all', fridge_coverage: 'none' })
-    const both = party({ flags: { needs_power: true, needs_fridge: true } })
-
-    expect(resolveNeedsFit(both, powerUnmet)).toBe('unmet')
-    expect(resolveNeedsFit(both, fridgeUnmet)).toBe('unmet')
-    expect(resolveNeedsFit(both, unit({ power_coverage: 'some', fridge_coverage: 'all' }))).toBe(
-      'partial'
-    )
-  })
-
-  it('keeps the two dimensions independent — one need never reads the other coverage', () => {
-    expect(
-      resolveNeedsFit(
-        party({ flags: { needs_power: true } }),
-        unit({ power_coverage: 'all', fridge_coverage: 'none' })
-      )
-    ).toBe('fits')
-    expect(
-      resolveNeedsFit(
-        party({ flags: { needs_fridge: true } }),
-        unit({ power_coverage: 'none', fridge_coverage: 'all' })
-      )
-    ).toBe('fits')
-  })
-})
-
-describe('resolveNeedsFit — the step-free dimension (kindred#2438)', () => {
-  /*
-   * Dimension three, and the first one whose supply column is NOT a boolean.
-   * `has_ramp` is a three-value select (`yes` / `no` / `partial`, blank = NOT
-   * ASSESSED, migration 1500000131), which is why `ramp_coverage` carries a
-   * fifth grade the other two do not.
-   *
-   * Measured on the 2026 snapshot, household grain, both housing narratives:
-   * 14 of the 86 households carrying any narrative describe a mobility or
-   * step-free need, against 6 naming a fridge — more than twice the signal that
-   * justified shipping the fridge dimension. Supply: 14 of 118 units carry a
-   * staff assessment (5 yes / 5 partial / 4 no), which a BOOLEAN read of the
-   * select reports as 0 of 118. 2026 is only 16% placed, so 14 is the SHAPE of
-   * the demand, not a rate.
-   */
-  it('marks a space where no room is step-free as unmet', () => {
-    expect(
-      resolveNeedsFit(party({ flags: { needs_step_free: true } }), unit({ ramp_coverage: 'none' }))
-    ).toBe('unmet')
-  })
-
-  it('marks a space where only SOME rooms are step-free as unmet, not partial', () => {
-    // ⚠️ NOT the fridge reading. This is the `is_accessible` reasoning the
-    // module doc already spells out: a building advertising two step-free
-    // rooms out of ten invites precisely the placement that lands in one of
-    // the other eight. A fridge one room over is still a fridge a family can
-    // use; a ramp one room over is not.
-    expect(
-      resolveNeedsFit(party({ flags: { needs_step_free: true } }), unit({ ramp_coverage: 'some' }))
-    ).toBe('unmet')
-  })
-
-  it('marks a space whose best room is a QUALIFIED ramp as partial', () => {
-    // The fifth grade, and the reason the supply column is a select. Three of
-    // the five production `partial` units carry the ramp qualifier in `notes`
-    // — "look at this one" is exactly what the softer hatch says.
-    expect(
-      resolveNeedsFit(
-        party({ flags: { needs_step_free: true } }),
-        unit({ ramp_coverage: 'partial' })
-      )
-    ).toBe('partial')
-  })
-
-  it('marks nothing when every room is step-free', () => {
-    expect(
-      resolveNeedsFit(party({ flags: { needs_step_free: true } }), unit({ ramp_coverage: 'all' }))
-    ).toBe('fits')
-  })
-
-  it('marks nothing when nobody has assessed the space', () => {
-    // 104 of 118 production units are blank. Marking them would assert "no
-    // ramp" about cabins nobody has looked at — the exact inversion the select
-    // exists to prevent, and the reason the server resolves `unknown`.
-    expect(
-      resolveNeedsFit(
-        party({ flags: { needs_step_free: true } }),
-        unit({ ramp_coverage: 'unknown' })
-      )
-    ).toBe('fits')
-  })
-
-  it('never reads the raw has_ramp — a truthy string would invert the mark', () => {
-    // `has_ramp` is a STRING, so `'no'` is TRUTHY. Any consumer filtering on
-    // truthiness renders "step-free" on the four cabins staff assessed as
-    // explicitly having NO ramp. The resolved field is the only safe read, and
-    // this pins that the dimension takes it.
-    expect(
-      resolveNeedsFit(
-        party({ flags: { needs_step_free: true } }),
-        unit({ has_ramp: 'no', ramp_coverage: 'all' })
-      )
-    ).toBe('fits')
-    expect(
-      resolveNeedsFit(
-        party({ flags: { needs_step_free: true } }),
-        unit({ has_ramp: 'yes', ramp_coverage: 'none' })
-      )
-    ).toBe('unmet')
-  })
-
-  it('leaves a family that did not ask unmarked', () => {
-    expect(resolveNeedsFit(party(), unit({ ramp_coverage: 'none' }))).toBe('fits')
-  })
-
-  it('keeps the three dimensions independent', () => {
-    expect(
-      resolveNeedsFit(
-        party({ flags: { needs_step_free: true } }),
-        unit({ power_coverage: 'none', fridge_coverage: 'none', ramp_coverage: 'all' })
-      )
-    ).toBe('fits')
-    expect(
-      resolveNeedsFit(
-        party({ flags: { needs_power: true } }),
-        unit({ power_coverage: 'all', ramp_coverage: 'none' })
-      )
-    ).toBe('fits')
-  })
-
-  it('takes the WORSE of a soft ramp verdict and a hard one', () => {
-    expect(
-      resolveNeedsFit(
-        party({ flags: { needs_power: true, needs_step_free: true } }),
-        unit({ power_coverage: 'none', ramp_coverage: 'partial' })
-      )
-    ).toBe('unmet')
-    expect(
-      resolveNeedsFit(
-        party({ flags: { needs_power: true, needs_step_free: true } }),
-        unit({ power_coverage: 'all', ramp_coverage: 'partial' })
-      )
-    ).toBe('partial')
-  })
-})
 
 describe('worseOf', () => {
   /*
@@ -345,5 +73,217 @@ describe('worseOf', () => {
     expect(worseOf('fits', 'fits')).toBe('fits')
     expect(worseOf('partial', 'partial')).toBe('partial')
     expect(worseOf('unmet', 'unmet')).toBe('unmet')
+  })
+})
+
+/**
+ * kindred#2528 — the drag-time signal's THREE-VALUED state.
+ *
+ * `resolveNeedsFit` answered one question ("how badly does this space miss?")
+ * and the board asked it to serve two marks pointing in opposite directions.
+ * `resolveDragFit` answers the whole question once: is this cabin a conflict,
+ * a match, or neither.
+ *
+ * These are NOT adapted from the tests above. The specification changed —
+ * `unknown` coverage used to read as `fits` and now makes no claim at all, and
+ * capacity has entered a grading that never saw it — so the old assertions
+ * pin an invariant that no longer holds. See CLAUDE.md §4 on rewriting rather
+ * than adapting a test when the spec moves.
+ *
+ * Fictional data throughout.
+ */
+describe('resolveDragFit — the three states', () => {
+  const roomy = { known: true, free: 6 } as const
+
+  it('is neutral for a family that asked for nothing, however good the cabin', () => {
+    // The withhold rule. Every empty cabin fits a family with no requirements,
+    // so a mark saying so carries nothing — and the board must not switch out
+    // of its resting state at all. 368 of 479 2026 registrations are this family.
+    expect(resolveDragFit(party(), unit({ power_coverage: 'all' }), roomy).state).toBe('neutral')
+  })
+
+  it('is a conflict when an asked need is unmet, and reports the severity', () => {
+    const fit = resolveDragFit(
+      party({ flags: { needs_power: true } }),
+      unit({ power_coverage: 'none' }),
+      roomy
+    )
+    expect(fit.state).toBe('conflict')
+    expect(fit.severity).toBe('unmet')
+  })
+
+  it('carries `partial` severity through, so the hatch can draw a sparser grade', () => {
+    const fit = resolveDragFit(
+      party({ flags: { needs_power: true } }),
+      unit({ power_coverage: 'some' }),
+      roomy
+    )
+    expect(fit.state).toBe('conflict')
+    expect(fit.severity).toBe('partial')
+  })
+
+  it('is a match when every asked need is met and the party fits the free beds', () => {
+    expect(
+      resolveDragFit(
+        party({ flags: { needs_power: true } }),
+        unit({ power_coverage: 'all' }),
+        roomy
+      ).state
+    ).toBe('match')
+  })
+
+  it('takes the WORSE severity across two failing needs, in either order', () => {
+    const both = { flags: { needs_power: true, needs_fridge: true } }
+    const a = resolveDragFit(
+      party(both),
+      unit({ power_coverage: 'some', fridge_coverage: 'none' }),
+      roomy
+    )
+    const b = resolveDragFit(
+      party(both),
+      unit({ power_coverage: 'none', fridge_coverage: 'some' }),
+      roomy
+    )
+    expect(a.severity).toBe('unmet')
+    expect(b.severity).toBe('unmet')
+  })
+})
+
+describe('resolveDragFit — capacity gates the match and never causes a conflict', () => {
+  it('withholds the match when the party does not fit, without hatching the card', () => {
+    // The owner ruling: a full cabin is not a bad cabin, it is a cabin with
+    // nothing left in it. Measured before it was settled — letting capacity
+    // hatch took a six-person family asking NOTHING to 45 of 73 cards.
+    const fit = resolveDragFit(
+      party({ flags: { needs_power: true } }),
+      unit({ power_coverage: 'all' }),
+      { known: true, free: 1 }
+    )
+    expect(fit.state).toBe('neutral')
+  })
+
+  it('withholds the match when capacity was never measured', () => {
+    const fit = resolveDragFit(
+      party({ flags: { needs_power: true } }),
+      unit({ power_coverage: 'all' }),
+      { known: false, free: 0 }
+    )
+    expect(fit.state).toBe('neutral')
+  })
+
+  it('still reports the conflict when the cabin both misses a need and has no room', () => {
+    const fit = resolveDragFit(
+      party({ flags: { needs_power: true } }),
+      unit({ power_coverage: 'none' }),
+      { known: true, free: 0 }
+    )
+    expect(fit.state).toBe('conflict')
+  })
+})
+
+describe('resolveDragFit — unrecorded coverage makes NEITHER claim', () => {
+  it('does not hatch a cabin nobody has assessed', () => {
+    // The hatch is an INTERRUPTION, so its bar is evidence of absence rather
+    // than absence of evidence. 104 of 118 units carry no step-free assessment.
+    expect(
+      resolveDragFit(
+        party({ flags: { needs_step_free: true } }),
+        unit({ ramp_coverage: 'unknown' }),
+        { known: true, free: 6 }
+      ).state
+    ).toBe('neutral')
+  })
+
+  it('does not MATCH a cabin nobody has assessed either', () => {
+    // The half this used to get wrong. A match is a positive claim, like a
+    // glyph's full hue, and the 2026-08-20 ruling says unconfirmed information
+    // must not read as met. Before this rule a step-free household saw 21
+    // matches on the design board, every one of them never assessed.
+    const fit = resolveDragFit(
+      party({ flags: { needs_step_free: true } }),
+      unit({ ramp_coverage: 'unknown' }),
+      { known: true, free: 6 }
+    )
+    expect(fit.state).not.toBe('match')
+    expect(fit.state).toBe('neutral')
+  })
+
+  it('lets a recorded need decide even when another asked need is unrecorded', () => {
+    const fit = resolveDragFit(
+      party({ flags: { needs_step_free: true, needs_power: true } }),
+      unit({ ramp_coverage: 'unknown', power_coverage: 'none' }),
+      { known: true, free: 6 }
+    )
+    expect(fit.state).toBe('conflict')
+  })
+
+  it('withholds the match when one asked need is recorded and another is not', () => {
+    const fit = resolveDragFit(
+      party({ flags: { needs_step_free: true, needs_power: true } }),
+      unit({ ramp_coverage: 'unknown', power_coverage: 'all' }),
+      { known: true, free: 6 }
+    )
+    expect(fit.state).toBe('neutral')
+  })
+})
+
+describe('resolveDragFit — bathroom is graded, on the prospective axis', () => {
+  it('grades bathroom, which the old hatch left out entirely', () => {
+    // `HATCHED_NEEDS` used to be power/fridge/step-free. The mark is aligning
+    // with the glyphs, which draw all four.
+    const fit = resolveDragFit(
+      party({ flags: { needs_private_bathroom: true } }),
+      unit({ bathroom: 'none' }),
+      { known: true, free: 6 }
+    )
+    expect(fit.state).toBe('conflict')
+  })
+
+  it('asks whether THIS cabin meets it, not what the party already has', () => {
+    // The axis change. On the `placed` reading bathroom reads
+    // `party.effective_bathroom` and ignores the target unit — every card or
+    // none, which cannot mean anything per card.
+    const asks = { flags: { needs_private_bathroom: true } }
+    const yes = resolveDragFit(
+      party({ ...asks, effective_bathroom: 'none' }),
+      unit({ bathroom: 'private' }),
+      { known: true, free: 6 }
+    )
+    const no = resolveDragFit(
+      party({ ...asks, effective_bathroom: 'private' }),
+      unit({ bathroom: 'none' }),
+      { known: true, free: 6 }
+    )
+    expect(yes.state).toBe('match')
+    expect(no.state).toBe('conflict')
+  })
+})
+
+describe('resolveDragFit — the resolved coverage is the only input', () => {
+  it('never reads the raw row — a building with no power but powered rooms is a match', () => {
+    // The 12-of-14 trap: twelve of the fourteen 2026 family-pool containers
+    // record `has_power = 0` while every leaf beneath them has power. The
+    // server resolves that; this must not second-guess it off the raw flag.
+    expect(
+      resolveDragFit(
+        party({ flags: { needs_power: true } }),
+        unit({ has_power: false, power_coverage: 'all' }),
+        { known: true, free: 6 }
+      ).state
+    ).toBe('match')
+  })
+
+  it('never reads the raw row — the shared-fridge ruling lives server-side', () => {
+    // A SHARED FRIDGE IS A FRIDGE (owner, 2026-08-15), and the OR that says so
+    // is in `_resolve_fridge_coverage`. Re-deriving it here off `has_fridge`
+    // would put a second implementation of one ruling on the client, where it
+    // could disagree.
+    expect(
+      resolveDragFit(
+        party({ flags: { needs_fridge: true } }),
+        unit({ has_fridge: false, has_shared_fridge: true, fridge_coverage: 'all' }),
+        { known: true, free: 6 }
+      ).state
+    ).toBe('match')
   })
 })

@@ -17,12 +17,12 @@ import { useState } from 'react'
 
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
 import { Tooltip } from '../ui/Tooltip'
-import { overlappingPartyKeys, slotOccupancy, type BoardSlot } from './boardLayout'
+import { overlappingPartyKeys, partySize, slotOccupancy, type BoardSlot } from './boardLayout'
 import { AssignFamilyModal } from './AssignFamilyModal'
 import { isValidMergeTarget, mergeDragId, unitDroppableId } from './dragPlacement'
 import { FamilyCard } from './FamilyCard'
 import { partyHeadcount } from './householdIdentity'
-import { resolveNeedsFit } from './needsFit'
+import { resolveDragFit, type DragFit } from './needsFit'
 import { resolveRingPrecedence } from './ringPrecedence'
 import { effectiveSleeps } from './rosterAttention'
 import { partyKey } from './partyKey'
@@ -120,9 +120,9 @@ const RING_CLASSES: Record<'dropTarget' | 'consentFlagged' | 'plain', string> = 
  */
 const NEEDS_HATCH_CLASSES: Record<'unmet' | 'partial', string> = {
   unmet:
-    '[background-image:repeating-linear-gradient(45deg,transparent_0_4px,hsl(var(--foreground)_/_0.1)_4px_5px)]',
+    '[background-image:repeating-linear-gradient(45deg,transparent_0_4px,hsl(var(--foreground)_/_0.06)_4px_7px)]',
   partial:
-    '[background-image:repeating-linear-gradient(45deg,transparent_0_10px,hsl(var(--foreground)_/_0.1)_10px_11px)]',
+    '[background-image:repeating-linear-gradient(45deg,transparent_0_12px,hsl(var(--foreground)_/_0.06)_12px_15px)]',
 }
 
 export interface LodgingUnitCardProps {
@@ -139,7 +139,6 @@ export interface LodgingUnitCardProps {
    */
   units?: LodgingUnitRow[]
   /** The area's colour — a SECONDARY channel (§3.10), never the only one. */
-  hue: string
   /** Placement is live: a scenario is selected and the user holds `bunking.manage`. */
   canPlace?: boolean
   /**
@@ -256,7 +255,6 @@ export interface LodgingUnitCardProps {
 export function LodgingUnitCard({
   slot,
   units = [],
-  hue,
   canPlace = false,
   canSetAvailability = false,
   savingAvailability = false,
@@ -676,7 +674,42 @@ export function LodgingUnitCard({
    * `pointer-events` — the drop is still accepted, exactly as the comment on
    * the party droppable above insists it must be.
    */
-  const needsFit = draggingParty === null ? 'fits' : resolveNeedsFit(draggingParty, unit)
+  /*
+   * THE DRAG-TIME STATE, resolved once.
+   *
+   * `known` is withheld when `spanWidth > 0`, exactly as `overCapacity` is:
+   * there the occupant count is an upper bound rather than a fact, and a
+   * positive claim must not be built on one. Withholding costs a match the
+   * board might have been entitled to draw, which is the safe direction.
+   */
+  const dragFit: DragFit =
+    draggingParty === null
+      ? { state: 'neutral', severity: 'fits' }
+      : resolveDragFit(draggingParty, unit, {
+          known: capacityKnown && spanWidth === 0,
+          free: capacityKnown ? capacity - occupants : 0,
+        })
+
+  /*
+   * The N/M figure in red mid-drag: no room for the family in hand. THE SAME
+   * treatment `overCapacity` already uses at rest, because it is the same
+   * statement — and the figure KEEPS ITS OWN NUMBERS. The party in flight is
+   * never added in, so the card goes on reporting who is actually placed.
+   *
+   * Every cabin without room, on every drag, with no exceptions — including
+   * cards already hatched for a requirement. Narrower scopes were considered
+   * and dropped on PREDICTABILITY (owner, 2026-08-21): a red that appears for
+   * some families and not others makes staff reverse-engineer the rule.
+   *
+   * Deliberately NOT gated on the party having asked for anything. A family
+   * with no requirements never moves the board out of its resting state, but
+   * "you will not fit here" is still true and is the only question they have.
+   */
+  const noRoomForDrag =
+    draggingParty !== null &&
+    capacityKnown &&
+    spanWidth === 0 &&
+    capacity - occupants < partySize(draggingParty)
 
   /*
    * kindred#2179's warning: a second party in a space classified for ONE.
@@ -783,29 +816,30 @@ export function LodgingUnitCard({
   const cardStateClassName = [
     RING_CLASSES[ringState],
     dashed ? 'border-dashed' : '',
-    openMarkerActive ? 'bg-primary/10' : '',
-    // Additive and UNGATED against everything above it — see
-    // `NEEDS_HATCH_CLASSES`. `background-image` competes with no other
-    // channel on this card, tint included.
-    needsFit === 'fits' ? '' : NEEDS_HATCH_CLASSES[needsFit],
+    // ONE CHANNEL, THREE STATES, mutually exclusive because `dragFit.state`
+    // is one enum rather than three rules racing over a byte offset. A
+    // conflict draws NO wash at all: losing the invitation is half the mark
+    // and gaining the hatch is the other half.
+    dragFit.state === 'match' ? 'bg-primary/20' : '',
+    openMarkerActive && dragFit.state === 'neutral' ? 'bg-primary/10' : '',
+    // `background-image`, which competes with no other channel on this card.
+    dragFit.state === 'conflict' ? NEEDS_HATCH_CLASSES[dragFit.severity] : '',
     dimmed ? 'pointer-events-none opacity-40' : '',
   ]
     .filter(Boolean)
     .join(' ')
 
-  // The title half of the same forest-tint signal (#2093) — additive for the
-  // identical reason `dashed` itself is (see that comment above): `color`
-  // and `font-weight` on this child `<h3>` don't compete with the parent's
-  // `border-color`/`box-shadow`/`background-color` channels, so this is a
-  // plain either/or on ONE property pair rather than a `RING_CLASSES` entry.
-  // Deliberately reuses `openMarkerActive` rather than bare `dashed`: the
-  // owner ruling frames the tint as ONE resting-state signal, and a title
-  // that stayed bold forest while the background wash had already stood down
-  // — for an active drop target, or for a room somebody is written into —
-  // would be the two halves of the same mark silently drifting apart.
-  const openTitleClassName = openMarkerActive
-    ? 'text-primary font-bold'
-    : 'text-foreground font-semibold'
+  /*
+   * NO STATE TOUCHES THE TITLE (owner, 2026-08-21).
+   *
+   * #2093 coupled the forest wash and a bold primary title to one flag so the
+   * two halves could not drift apart. The title half is simply gone — for the
+   * open marker and for the match alike — leaving the card's type at ONE
+   * weight and ONE colour in every state. `background-color` is the only
+   * channel the open marker speaks now, which is what lets the drag-time
+   * states share it without a race.
+   */
+  const titleClassName = 'text-foreground font-semibold'
 
   return (
     <div
@@ -819,15 +853,16 @@ export function LodgingUnitCard({
       // and the board registers Mouse and Touch sensors only, so there is no
       // keyboard drag for a screen reader to be mid-way through. The roster's
       // own `attentionSections` is where the same fact is stated in text.
-      {...(needsFit === 'fits' ? {} : { 'data-needs-fit': needsFit })}
+      {...(dragFit.state === 'conflict' ? { 'data-needs-fit': dragFit.severity } : {})}
       ref={setCardRef}
-      // The area's top edge, and NOTHING else — §3.10's secondary channel,
-      // which the #2179 deletion deliberately did not take with it. No
-      // `boxShadow` here any more: `.card-lodge`'s own elevation and its
+      // No inline style at all now. The area's top edge went with the
+      // 2026-08-21 ruling — §3.10's hue is carried by the section header dot,
+      // which is where the grouping actually happens, so the card's border is
+      // a constant in every state. No `boxShadow` here either: `.card-lodge`'s
+      // own elevation and its
       // `:hover` lift are both the `box-shadow` property, and an inline value
       // beats a stylesheet rule outright, so the struck ring was silently
       // flattening every shared card's hover.
-      style={{ borderTopColor: hue }}
       /*
        * `.card-lodge` is summer's card chrome, not a lookalike — the same
        * class `BunkCard` wears (CLAUDE.md §4, "Family Camp Models Summer").
@@ -888,7 +923,7 @@ export function LodgingUnitCard({
        * ~244px inner width can least afford, so the vertical tightening is the
        * aggressive half and the horizontal one is not.
        */
-      className={`card-lodge flex flex-col gap-2 border-t-[3px] p-2.5 px-3 ${cardStateClassName}`}
+      className={`card-lodge flex flex-col gap-2 p-2.5 px-3 ${cardStateClassName}`}
     >
       {/* THE TITLE ROW — T2, and the amenities ride it as a VARIABLE BLOCK.
           A fixed three-icon slot truncates six of the 73 drawn names at the
@@ -916,7 +951,7 @@ export function LodgingUnitCard({
             `min-w-0` is what lets `truncate` fire at all: a flex child's
             default `min-width: auto` refuses to shrink below its content, and
             the title now has icons beside it competing for the row. */}
-        <h3 className={`min-w-0 truncate text-lg ${openTitleClassName}`}>{unit.name}</h3>
+        <h3 className={`min-w-0 truncate text-lg ${titleClassName}`}>{unit.name}</h3>
         {/* PRESENCE, AND NEVER WHICH KIND (ruling 2). The meta row spelled
             this out as `Bath Private` / `Bath Shared`; the CampMinder question
             behind the family's flag asks for "a bathroom that doesn't require
@@ -1005,7 +1040,9 @@ export function LodgingUnitCard({
           content={occupancyTooltip}
           data-testid="unit-occupancy"
           className={`ml-auto text-sm tabular-nums ${
-            overCapacity ? 'text-destructive font-semibold' : 'text-muted-foreground'
+            overCapacity || noRoomForDrag
+              ? 'text-destructive font-semibold'
+              : 'text-muted-foreground'
           }`}
         >
           {/* An unmeasured room keeps the em dash as its DENOMINATOR. `0/0`
