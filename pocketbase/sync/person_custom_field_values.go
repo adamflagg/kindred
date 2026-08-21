@@ -16,6 +16,12 @@ import (
 // Service name constant - uses new table name
 const serviceNamePersonCustomValues = "person_custom_values"
 
+// serviceNamePersonCustomValuesFamilyCamp must match orchestrator.go's
+// RegisterService("person_custom_values_family_camp", ...) call for the bounded daily instance
+// (kindred#2489). logJobName uses it so the bounded pass's own logs are distinguishable from
+// the unrestricted sweep's (kindred#2491 Face D).
+const serviceNamePersonCustomValuesFamilyCamp = "person_custom_values_family_camp"
+
 // PersonCustomFieldValuesSync handles syncing custom field values for persons from CampMinder.
 // The unrestricted instance (Session=DefaultSession) is ON-DEMAND -- weekly cron + manual runs
 // only -- because a year-wide sweep is 1 API call per person. A second, FamilyCampBounded
@@ -55,6 +61,19 @@ func (s *PersonCustomFieldValuesSync) Name() string {
 	return serviceNamePersonCustomValues
 }
 
+// logJobName returns the registered job name this instance is actually running as: the bounded
+// family-camp name when FamilyCampBounded is set, the unrestricted name otherwise. Sync() uses
+// this (not the fixed Name()) for LogSyncStart and its cohort-size log line, so an operator
+// reading logs can tell the nightly bounded pass apart from the weekly unrestricted sweep --
+// before this both logged identically as "person_custom_values" even though they cover
+// different cohorts on different schedules (kindred#2491 Face D).
+func (s *PersonCustomFieldValuesSync) logJobName() string {
+	if s.FamilyCampBounded {
+		return serviceNamePersonCustomValuesFamilyCamp
+	}
+	return serviceNamePersonCustomValues
+}
+
 // SetDryRun implements the orchestrator's DryRunnable interface (kindred#2351). Declared
 // explicitly rather than inherited by embedding BaseSyncService -- see that field's doc
 // comment on BaseSyncService for why a promoted setter is not safe. Setting it also gates
@@ -72,9 +91,10 @@ func (s *PersonCustomFieldValuesSync) SetSession(session string) {
 // Sync performs the person custom field values sync
 func (s *PersonCustomFieldValuesSync) Sync(ctx context.Context) error {
 	year := s.Client.GetSeasonID()
+	jobName := s.logJobName()
 
 	// Start the sync process
-	s.LogSyncStart(serviceNamePersonCustomValues)
+	s.LogSyncStart(jobName)
 	s.Stats = Stats{}
 	s.SyncSuccessful = false
 
@@ -105,14 +125,16 @@ func (s *PersonCustomFieldValuesSync) Sync(ctx context.Context) error {
 
 	if len(personIDs) == 0 {
 		slog.Info("No persons to sync custom field values for",
+			"job", jobName,
 			"session", s.Session,
 			"year", year)
 		s.SyncSuccessful = true
-		s.LogSyncComplete("PersonCustomFieldValues")
+		s.LogSyncComplete(jobName)
 		return nil
 	}
 
 	slog.Info("Syncing custom field values for persons",
+		"job", jobName,
 		"count", len(personIDs),
 		"session", s.Session,
 		"year", year)
@@ -207,7 +229,7 @@ func (s *PersonCustomFieldValuesSync) Sync(ctx context.Context) error {
 		slog.Warn("WAL checkpoint failed", "error", err)
 	}
 
-	s.LogSyncComplete("PersonCustomFieldValues")
+	s.LogSyncComplete(jobName)
 	return nil
 }
 
