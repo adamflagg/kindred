@@ -1046,10 +1046,11 @@ func (s *FamilyCampDerivedSync) loadPersonCustomValues(
 // RECORDED, also separately from the merge (kindred#2275 Option B, owner
 // ruling 2026-08-17): what survives normalisation is written to the additive
 // attribute_conflicts column instead of vanishing -- see adultData.conflicts
-// and mergeFirstNonEmpty. Which answer wins is still first-non-empty over
-// load order for every attribute, and still preferEmail for email; the only
-// change is that the discarded answers are kept, keyed by column, so staff
-// can see that a slot was answered twice. What is NOT kept is a discarded
+// and mergeFirstNonEmpty. Which answer wins is still first-non-empty -- now
+// over the CampMinder-id order above, not load order -- for every attribute,
+// and still preferEmail for email; the only change from #2421 is that the
+// discarded answers are kept, keyed by column, so staff can see that a slot
+// was answered twice. What is NOT kept is a discarded
 // answer that differs from the winner only in case or whitespace -- see
 // sameAnswer, which gates the recording and nothing else.
 //
@@ -1152,11 +1153,11 @@ func (s *FamilyCampDerivedSync) processAdults(
 			adult.gender = adult.mergeFirstNonEmpty("gender", adult.gender, v.value)
 		case strings.Contains(v.fieldName, "DOB"):
 			// Normalised BEFORE the merge and before the comparison: see
-			// normalizeDateOfBirth. Which answer wins is still load order
-			// (unchanged); what normalisation buys is that two spellings of
-			// one birthday neither swap the stored value nor raise a
-			// conflict. 583 of the 1,124 diverging production groups are
-			// exactly that, and they must stay silent.
+			// normalizeDateOfBirth. Which sibling wins is the CampMinder-id
+			// sort above (kindred#2275), not load order; what normalisation
+			// buys is that two spellings of one birthday neither swap the
+			// stored value nor raise a conflict. 583 of the 1,124 diverging
+			// production groups are exactly that, and they must stay silent.
 			adult.dateOfBirth = adult.mergeFirstNonEmpty(
 				"date_of_birth", adult.dateOfBirth, normalizeDateOfBirth(v.value))
 		case strings.Contains(v.fieldName, "Relationship"):
