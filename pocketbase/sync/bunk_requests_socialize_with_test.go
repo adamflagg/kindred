@@ -3,8 +3,19 @@
 // field it mirrors (cm_id 85803), read via person_custom_values. The CSV column is
 // still parsed during the transition so a disagreement can be logged in production
 // (the issue's own build note: "compare the two ... confirm they agree, row for row,
-// before cutting over"), but the value actually written to original_bunk_requests now
-// comes from the custom field whenever one is present.
+// before cutting over").
+//
+// PR #2523 review (triage-attack): the first version of this file pinned "custom field
+// always wins, even on disagreement." That is unsafe -- socialize_with's sole consumer,
+// orchestrator.py's _parse_socialize_preference, exact-matches the value against exactly
+// two literal strings with no AI fallback, so an unverified custom-field value that
+// disagrees with the known-good CSV can silently drop out of the social graph on the
+// very first sync after deploy. The invariant is deliberately retired: on disagreement,
+// the already-live CSV value stays authoritative (still logged, so the two can be
+// diffed in production per the issue's own request); the custom field is only trusted
+// outright when there is no CSV value to compare it against -- the coverage-increase
+// population the issue's own numbers document (1,145 custom-field persons vs 1,134 CSV,
+// full overlap).
 package sync
 
 import (
@@ -80,10 +91,17 @@ func findSocializeWithOBR(t *testing.T, app core.App, personPBID string, year in
 // Verifying it would need captureSweepLogs, which swaps the process-global slog default
 // and so cannot run under t.Parallel() (sync/lodging are held to a package-wide
 // all-tests-parallel guard) -- and the exemption list that would allow an opt-out lives
-// in main_test_parallelism_test.go, outside this issue's file scope. The behavioral pin
-// below (custom field wins) covers the invariant that matters; the warning itself is
-// exercised by hand against production logs during rollout, per the issue's build note.
-func TestProcessRow_SocializeWith_PrefersCustomFieldValueOverCSV(t *testing.T) {
+// in main_test_parallelism_test.go, outside this issue's file scope. The behavioral pins
+// below cover the invariants that matter; the warning itself is exercised by hand against
+// production logs during rollout, per the issue's build note.
+//
+// TestProcessRow_SocializeWith_DisagreementKeepsCSV pins the retired invariant's
+// replacement (see the file-level comment): when the CSV and the custom field both carry
+// a non-empty value and they disagree, the CSV value -- already live, already verified
+// against production for the current sync year -- wins. The custom field does not get to
+// silently overwrite a working answer with one nothing has cross-checked against
+// orchestrator.py's exact-match parser.
+func TestProcessRow_SocializeWith_DisagreementKeepsCSV(t *testing.T) {
 	t.Parallel()
 	app := newBunkRequestsSocializeWithTestApp(t)
 
@@ -91,7 +109,41 @@ func TestProcessRow_SocializeWith_PrefersCustomFieldValueOverCSV(t *testing.T) {
 	const personPBID = "pb_person_1001"
 	const year = 2026
 
-	row, columnIndex := socializeWithCSVRow("1001", dropdownOlder+" (stale csv answer)")
+	csvValue := dropdownOlder + " (stale csv answer)"
+	row, columnIndex := socializeWithCSVRow("1001", csvValue)
+
+	s := &BunkRequestsSync{
+		BaseSyncService: BaseSyncService{App: app, Stats: Stats{}},
+		validPersonIDs:  map[int]string{personID: personPBID},
+		csvPersonIDs:    make(map[int]bool),
+		socializeWithByPerson: map[string]string{
+			personPBID: dropdownYounger,
+		},
+	}
+
+	if err := s.processRow(row, columnIndex, year); err != nil {
+		t.Fatalf("processRow: %v", err)
+	}
+
+	got := findSocializeWithOBR(t, app, personPBID, year)
+	if got != csvValue {
+		t.Errorf("socialize_with content = %q, want %q (CSV must win on disagreement)", got, csvValue)
+	}
+}
+
+// TestProcessRow_SocializeWith_UsesCustomFieldWhenCSVAbsent covers the coverage-increase
+// population the issue's own numbers document (1,145 custom-field persons vs 1,134 CSV,
+// full overlap): a person with no CSV answer at all still gets one, sourced from the
+// custom field, because there is nothing to disagree with.
+func TestProcessRow_SocializeWith_UsesCustomFieldWhenCSVAbsent(t *testing.T) {
+	t.Parallel()
+	app := newBunkRequestsSocializeWithTestApp(t)
+
+	const personID = 1005
+	const personPBID = "pb_person_1005"
+	const year = 2026
+
+	row, columnIndex := socializeWithCSVRow("1005", "")
 
 	s := &BunkRequestsSync{
 		BaseSyncService: BaseSyncService{App: app, Stats: Stats{}},
@@ -108,7 +160,8 @@ func TestProcessRow_SocializeWith_PrefersCustomFieldValueOverCSV(t *testing.T) {
 
 	got := findSocializeWithOBR(t, app, personPBID, year)
 	if got != dropdownYounger {
-		t.Errorf("socialize_with content = %q, want %q (custom field must win over CSV)", got, dropdownYounger)
+		t.Errorf("socialize_with content = %q, want %q (custom field is the only signal when CSV absent)",
+			got, dropdownYounger)
 	}
 }
 

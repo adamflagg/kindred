@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/pocketbase/pocketbase/core"
@@ -659,7 +660,12 @@ func loadPersonCustomFieldValuesByCMID(app core.App, fieldCMID, year int) (map[s
 	values := make(map[string]string, len(records))
 	for _, record := range records {
 		if personPBId := record.GetString("person"); personPBId != "" {
-			values[personPBId] = record.GetString("value")
+			// PR #2523 review: CampMinder's custom-field export is a different path
+			// than the CSV, whose column is already trimmed (getColumn's
+			// strings.TrimSpace). Trimming here too keeps a whitespace-only
+			// difference from reading as a real disagreement to callers that
+			// compare this value against the CSV (bunk_requests.go).
+			values[personPBId] = strings.TrimSpace(record.GetString("value"))
 		}
 	}
 	return values, nil

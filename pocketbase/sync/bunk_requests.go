@@ -40,10 +40,9 @@ type BunkRequestsSync struct {
 
 	// socializeWithByPerson maps person PB id -> the CampMinder custom field's raw
 	// value (cm_id 85803, "Ret Parent-Socialize with best") for the current sync year.
-	// kindred#2484: this is now the source of truth for the "socialize_with" field --
-	// the CSV column is still read in processRow (so a disagreement can be logged
-	// during the transition), but the value written to original_bunk_requests comes
-	// from here whenever a non-empty entry exists. A person absent from this map
+	// kindred#2484: processRow prefers this over the CSV column when the CSV has no
+	// value at all; when both are present and disagree, the CSV wins and the
+	// disagreement is logged (see processRow for why). A person absent from this map
 	// (custom field not yet synced for them) falls back to the CSV column unchanged.
 	socializeWithByPerson map[string]string
 }
@@ -259,20 +258,33 @@ func (s *BunkRequestsSync) processRow(row []string, columnIndex map[string]int, 
 		content := s.getColumn(row, columnIndex, csvColumn)
 
 		// kindred#2484: socialize_with's source of truth is the CampMinder custom
-		// field (cm_id 85803), not this CSV column, from here on. The column is still
-		// read above so a disagreement between the two can be logged during the
-		// transition -- the custom field wins when it carries a non-empty value; a
-		// person absent from the map, or present with an empty value (field synced
-		// but genuinely blank), falls back to the CSV content unchanged.
+		// field (cm_id 85803) whenever there is no CSV column to compare it against --
+		// the coverage-increase population the issue's own numbers document (1,145
+		// custom-field persons vs 1,134 CSV, full overlap). A person absent from the
+		// map, or present with an empty value (field synced but genuinely blank),
+		// falls back to the CSV content unchanged, same as before.
+		//
+		// PR #2523 review: when BOTH sources carry a non-empty value and they
+		// disagree, the CSV value wins, not the custom field. socialize_with's sole
+		// consumer, orchestrator.py's _parse_socialize_preference, exact-matches the
+		// value against exactly two literal strings with no AI fallback -- trusting an
+		// unverified custom-field value on disagreement risks silently dropping the
+		// request out of the social graph. The disagreement is still logged so the two
+		// can be diffed in production, per the issue's own build note ("verify the
+		// value shape matches before switching... before cutting over").
 		if fieldName == "socialize_with" {
 			if customValue, ok := s.socializeWithByPerson[personPBID]; ok && customValue != "" {
-				if content != "" && content != customValue {
-					slog.Warn("socialize_with: CSV and custom field values disagree, using custom field",
+				switch content {
+				case "":
+					content = customValue
+				case customValue:
+					// Agreement -- nothing to do.
+				default:
+					slog.Warn("socialize_with: CSV and custom field values disagree, keeping CSV value",
 						"person_cm_id", personID,
 						"csv_value", content,
 						"custom_field_value", customValue)
 				}
-				content = customValue
 			}
 		}
 
