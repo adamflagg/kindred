@@ -1013,7 +1013,27 @@ def _resolve_party_bathroom(unit_codes: list[str], index: _BathroomIndex) -> str
             # empty-`unit_codes` guard above already refuses to make.
             return "unknown"
         if unit.is_container:
-            leaves = index.leaf_codes_under(code)
+            # ACTIVE leaves only, exactly as `_resolve_bathroom` filters the
+            # same walk. THE TWO LANES MUST AGREE: this one answers for a
+            # container once a family is IN it, that one answers for the
+            # empty card staff are choosing from, and one field cannot mean
+            # two things across a single click. A retired room otherwise
+            # counted twice over here -- once to supply a bathroom nobody can
+            # be placed in, and again to complete the group
+            # `effective_bathroom`'s exclusivity branch checks, which is what
+            # turned a live room with no bathroom into a `private` verdict on
+            # a medical request.
+            #
+            # `index.group_members` stays UNFILTERED on both paths, and that
+            # is deliberate rather than an oversight: a group with a retired
+            # member is not fully covered by a whole-let of the live ones, so
+            # both lanes hold at "shared" rather than upgrading. Filter it in
+            # one place and they diverge again.
+            leaves = frozenset(
+                leaf_code
+                for leaf_code in index.leaf_codes_under(code)
+                if (leaf := index.units_by_code.get(leaf_code)) is not None and leaf.is_active
+            )
             occupied |= leaves
             leaf_bathrooms = frozenset(
                 (index.units_by_code[leaf].bathroom, index.units_by_code[leaf].bathroom_group) for leaf in leaves
@@ -1182,8 +1202,14 @@ def _resolve_ac_coverage(units: list[LodgingUnitSummary], index: _BathroomIndex)
 def _resolve_bathroom(units: list[LodgingUnitSummary], index: _BathroomIndex) -> None:
     """Fill in every CONTAINER's `bathroom` from its leaves -- kindred#2502.
 
-    The fourth twin of the three resolvers above, and the last amenity that
-    was still answered from the unit's own row. All 15 production containers
+    THE FIFTH IN-PLACE RESOLVER AND THE ONLY ONE THAT IS NOT A COVERAGE
+    GRADE. Power, fridge, step-free and AC all funnel through
+    `_resolve_amenity_coverage` and write a `*_coverage` field beside the raw
+    column; this one overwrites the column itself, because `bathroom` is a
+    four-value enum every surface already reads and giving it a parallel
+    `bathroom_coverage` would have left two fields to keep in step. So it is
+    the twin of those four in its walk and its `is_active` filter, and the
+    last amenity that was still answered from the unit's own row. All 15 production containers
     store `bathroom = "none"` (a building is not a room) while 13 of them
     have at least one room that records one, so every whole-house card drew
     no bathroom while both its rooms drew one the moment staff split it.
@@ -1240,7 +1266,15 @@ def _resolve_amenity_coverage[Answer](
     grade: Callable[[Sequence[Answer | None]], str],
     target: str,
 ) -> None:
-    """The one leaf walk all three resolvers above run.
+    """The one leaf walk all FOUR coverage resolvers above run.
+
+    Four, not three: `_resolve_ac_coverage` (kindred#2502) joined power,
+    fridge and step-free, and its own docstring already called itself the
+    fourth caller while this line still said three. `_resolve_bathroom` sits
+    above too and deliberately does NOT come through here -- it writes a
+    container's own `bathroom` rather than a coverage grade, and needs
+    `container_bathroom`'s group reasoning, which has no place in a walk
+    parameterised on one flag per room.
 
     Parameterised on WHICH flag a room answers with and WHICH field receives
     the verdict, so a second amenity is a call site rather than a second
@@ -1510,16 +1544,28 @@ class LodgingRosterService:
         # same `unit_summaries` for `_build_counts` was caught in review on
         # kindred#2041's PR.
         unit_index = _BathroomIndex.build(unit_summaries)
-        # Only on THIS path. `build_summary` builds its own units and index to
-        # get at the counts, but its `WeekendSummaryEntry` carries no `units`
-        # -- so resolving coverage there would be work no response can read.
+        # FIVE IN-PLACE RESOLVERS, AND `build_summary._entry` RUNS THE SAME
+        # FIVE.
+        #
+        # This comment said "only on THIS path" until kindred#2502, on the
+        # reasoning that `WeekendSummaryEntry` carries no `units` so resolving
+        # there would be work no response can read. That is no longer true of
+        # any of them: the identical five are wired into `_entry` now, because
+        # ONE orchestrator resolving and the other not is precisely how the
+        # bathroom gap survived unnoticed. See the note there for what they do
+        # and do not move on that path.
+        #
+        # Four of them walk the leaves and write a `*_coverage` grade
+        # (kindred#1912, #2224, #2438, #2502). The fifth is not a coverage
+        # grade at all: it overwrites a CONTAINER's own `bathroom` from its
+        # rooms. It repeats their leaf comprehension and their `is_active`
+        # filter rather than calling `_resolve_amenity_coverage`, because it
+        # needs `container_bathroom`'s group reasoning and that walk is
+        # parameterised on one flag per room. Nothing here depends on the
+        # ORDER of the five -- they are independent, and grouped because they
+        # are one thought.
         _resolve_power_coverage(unit_summaries, unit_index)
-        # The same walk, one amenity over (kindred#2224). Same path-only
-        # reasoning as above: `build_summary` carries no `units`, so resolving
-        # coverage there would be work no response can read.
         _resolve_fridge_coverage(unit_summaries, unit_index)
-        # The same walk, one dimension over (kindred#2438), and the third and
-        # last read of it. Same path-only reasoning as above.
         _resolve_ramp_coverage(unit_summaries, unit_index)
         _resolve_ac_coverage(unit_summaries, unit_index)
         _resolve_bathroom(unit_summaries, unit_index)
@@ -1527,11 +1573,20 @@ class LodgingRosterService:
         # on a unit built after it, so there is no order in which one pass over
         # `_build_units` would see every own-row it needs.
         #
-        # Only on THIS path, for the identical reason `_resolve_power_coverage`
-        # above is: `build_summary` builds its own units to get at the counts,
-        # but its `WeekendSummaryEntry` carries no `units`, so resolving covers
-        # there would be work no response can read -- once per weekend, across
-        # every weekend of the year, on every lander request.
+        # Only on THIS path, and since kindred#2502 it is the ONLY resolver
+        # here that is. `build_summary` builds its own units to get at the
+        # counts, but its `WeekendSummaryEntry` carries no `units`, so
+        # resolving covers there would be work no response can read -- once per
+        # weekend, across every weekend of the year, on every lander request.
+        # That argument survived for THIS function and not for the five above
+        # because a cover is read off `units` and nothing else; no count reads
+        # one.
+        #
+        # kindred#2503 is where that changes. If `is_family_available` ever
+        # reads the RESOLVED cover rather than the unit's own write-in row,
+        # `_build_counts` reads availability, and this call has to run on both
+        # paths or the lander and the board will disagree about which houses
+        # are free.
         _resolve_write_in_covers(unit_summaries, written_in_unit_ids(write_ins))
         housing_names = housing_names_task.result()
         parties = self._build_parties(
@@ -1719,11 +1774,33 @@ class LodgingRosterService:
             # coverage field stayed at its `"unknown"` default and a container's
             # bathroom stayed at its own blank row while the board resolved it.
             #
-            # Nothing `_build_counts` reads today is a coverage field, so four of
-            # these five change no number on this path right now. They are wired
-            # anyway, because the ASYMMETRY is the defect: one path resolving and
-            # the other not is exactly how the bathroom gap survived unnoticed,
-            # and the next reader of a coverage field here would inherit it.
+            # ALL FIVE MOVE NO NUMBER ON THIS PATH TODAY -- not four of them.
+            # An earlier draft of this comment left the fifth unexplained, and
+            # CodeRabbit read the gap the obvious way and asked for
+            # `_resolve_bathroom`'s call to be deleted as having no observable
+            # effect. The premise is right; the repair is not. Both halves,
+            # verified rather than asserted:
+            #
+            #   * `_build_counts` reads `is_active`, `inventory_class`,
+            #     `is_family_available`, `sleeps` and `is_confirmed`. It reads
+            #     no `*_coverage` field and no `bathroom`, and
+            #     `WeekendSummaryEntry` exposes nothing but `session` and
+            #     `counts`.
+            #   * `_resolve_bathroom` writes a CONTAINER's `bathroom`, and the
+            #     one function on this path that could read it back --
+            #     `_resolve_party_bathroom`, via `_build_parties` -- recomputes
+            #     a container's answer from its leaves instead of reading the
+            #     container's own field. So the overwrite is invisible there
+            #     too.
+            #
+            # They are wired anyway, and deleting the call is the wrong repair,
+            # because the ASYMMETRY is the defect rather than a consequence of
+            # it. One orchestrator resolving and the other not is exactly how
+            # the bathroom gap survived unnoticed, and the next reader of a
+            # coverage field here -- a count over `power_coverage`, a
+            # `WeekendSummaryEntry` that grows a units field -- would inherit
+            # the gap silently, holding a plausible-looking `"unknown"` rather
+            # than failing.
             _resolve_power_coverage(unit_summaries, unit_index)
             _resolve_fridge_coverage(unit_summaries, unit_index)
             _resolve_ramp_coverage(unit_summaries, unit_index)

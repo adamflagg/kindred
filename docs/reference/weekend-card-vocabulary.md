@@ -276,7 +276,21 @@ The roster therefore called twelve entirely-powered buildings unpowered while
 the board's own hatch called them fine. All three call the resolver now.
 
 WHICH needs a surface reports is still per-surface, and each scope is written
-down where it lives rather than implied: the drag hatch grades three (bathroom
-would hatch 112 of 118 cards, and still 90 under #2501's presence rule), the roster grades two
-(adding fridge and step-free moves parties between staff-facing section counts
-and needs its own ruling), and the card draws all four.
+down where it lives rather than implied: the drag hatch grades three, the roster
+grades two (adding fridge and step-free moves parties between staff-facing
+section counts and needs its own ruling), and the card draws all four.
+
+**Bathroom is the one excluded from the hatch on arithmetic, and the arithmetic
+moved twice on 2026-08-20** — re-derived against the production snapshot by
+running the shipped functions over all 118 units, not carried forward:
+
+| Rule the hatch would grade on                             | Units answering the need | Cards hatched |
+| --------------------------------------------------------- | ------------------------ | ------------- |
+| exclusivity, before container resolution _(pre-#2501)_    | 6                        | 112           |
+| presence, before container resolution                     | 28                       | 90            |
+| **presence, after `_resolve_bathroom` _(shipped today)_** | **36**                   | **82**        |
+
+#2502's `_resolve_bathroom` moves 8 of the 15 containers from `none` to a
+bathroom their rooms actually have, which is why the presence figure improved
+again after #2501 landed. 82 of 118 is still a wash, so the exclusion stands —
+but quote 82, not 90.

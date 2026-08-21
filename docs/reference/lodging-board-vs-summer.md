@@ -194,14 +194,17 @@ fit verdict. So the two boards now agree on the shape.
 
 They still disagree on FILTERING, deliberately: `BunkSwapModal` hides
 ineligible bunks via `isEligibleSwapTarget`, and this list hides nothing.
-`placementCandidates.ts` carries the arithmetic — 6 of 118 units have a private
-bathroom against **63 of 459 registrations** asking for one, so a list narrowed
-to "what fits" would be empty most of the time and staff would go back to
-dragging. (An earlier draft of this paragraph said "45 parties". That figure is
-real but belongs to `needsFit.ts`, which counts ROSTERED parties for the
+`placementCandidates.ts` carries the arithmetic — **36 of 118 units** answer the
+bathroom need against **66 of 479 registrations** asking for one, so a list
+narrowed to "what fits" would be empty most of the time and staff would go back
+to dragging. (An earlier draft of this paragraph said "45 parties". That figure
+is real but belongs to `needsFit.ts`, which counts ROSTERED parties for the
 drag-time hatch rather than raw registrations — a different population, and the
-mis-attribution is the defect rather than the number.) Summer's
-gender rule is a hard constraint; amenity fit here is explicitly advisory.
+mis-attribution is the defect rather than the number. It is **41** on the
+2026-08-20 snapshot.) The supply figure read **6 of 118** until that same day:
+kindred#2501 moved the need from exclusivity to presence and kindred#2502
+resolved 8 of the 15 containers over their rooms. Summer's gender rule is a hard
+constraint; amenity fit here is explicitly advisory.
 
 ⚠️ **`UnitAvailabilityControl` IS GONE, and this paragraph used to say it stays.**
 It read: _"`UnitAvailabilityControl` and the merge/split pills stay INLINE.

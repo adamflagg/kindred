@@ -63,10 +63,15 @@ export function worseOf(a: NeedsFit, b: NeedsFit): NeedsFit {
  *
  * `bathroom` is out, and it is the only one that had to be argued.
  *
- * Only 6 of 118 units carry a private bathroom, so a hatch that graded it
- * would fire on 112 cards the moment any of the 45 bathroom-asking parties was
- * picked up. kindred#2501 does not rescue it either: the loosened rule counts
- * 28 of 118, which still hatches 90. "A mark that is always on is chrome staff
+ * Only 36 of 118 units answer the bathroom need, so a hatch that graded it
+ * would fire on 82 cards the moment any of the 41 bathroom-asking households
+ * on 2026's family weekends was picked up — at most 12 of them sit on any one
+ * weekend, but every card is on screen for each. Both rescues are already IN
+ * that figure and neither is enough: kindred#2501 moved the axis from
+ * exclusivity to presence (6 of 118 → 28) and kindred#2502's
+ * `_resolve_bathroom` gave 8 of the 15 containers the bathroom their rooms
+ * record (28 → 36), taking the hatch from 112 cards to 82. "A mark that is
+ * always on is chrome staff
  * learn to read past" (`unitBadges.ts`, on the struck shared-space ring) — a
  * board hatched almost everywhere says nothing at all, which is the same
  * reasoning `resolveNeedsFit` already applies at rest.

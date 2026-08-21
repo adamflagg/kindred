@@ -223,10 +223,11 @@ export interface LodgingUnitCardProps {
   /**
    * Every UNPLACED party on the weekend — the picker's list (kindred#2080).
    *
-   * NEVER pre-filtered by fit, on the owner's ruling: 6 of 118 units carry a
-   * private bathroom against 63 parties asking for one, so a list narrowed to
-   * "what fits" would be empty most of the time. `placementCandidates`
-   * annotates and orders them instead.
+   * NEVER pre-filtered by fit, on the owner's ruling: 36 of 118 units answer
+   * the bathroom need against 66 of 479 registrations asking for one, so a
+   * list narrowed to "what fits" would be empty most of the time.
+   * `placementCandidates` annotates and orders them instead, and carries the
+   * arithmetic — including why the supply figure read 6 until 2026-08-20.
    */
   unplacedParties?: RosterPartyRow[]
   /**

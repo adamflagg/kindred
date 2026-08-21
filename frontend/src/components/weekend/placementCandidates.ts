@@ -6,11 +6,20 @@
  *
  * Owner ruling 2026-08-07, restated 2026-08-09, and it is the opposite of what
  * a "filtered picker" instinct suggests. The reason is arithmetic rather than
- * taste: of 118 production 2026 units, **6** carry a private bathroom and
- * **49 have no power**, while of 459 2026 registrations **63** ask for a
- * private bathroom and **47** ask for power. A list filtered to "what fits"
- * would be empty most of the time, which would make this new path WEAKER than
- * the drag it exists to shorten — staff would go back to dragging.
+ * taste: of 118 production 2026 units, **36** answer the bathroom need and
+ * **36 have no power at all**, while of 479 2026 registrations **66** ask for
+ * a bathroom in the unit and **48** ask for power. A list filtered to "what
+ * fits" would be empty most of the time, which would make this new path WEAKER
+ * than the drag it exists to shorten — staff would go back to dragging.
+ *
+ * ⚠️ THE SUPPLY FIGURE MOVED TWICE ON 2026-08-20 AND IS EASY TO QUOTE STALE.
+ * It read **6** while the need was graded on exclusivity; kindred#2501 moved
+ * the axis to presence (6 → 28) and kindred#2502's `_resolve_bathroom` then
+ * gave 8 of the 15 containers the bathroom their rooms record (28 → 36). The
+ * ruling survives the improvement — 36 of 118 still empties a filtered list —
+ * but the old number understates the supply by six times. The power figure is
+ * `power_coverage: 'none'`, which is what `needGlyphs` grades; 49 rows carry a
+ * raw `has_power = 0`, and that is the container trap, not the supply.
  *
  * So `placementCandidates` returns exactly as many rows as it is given, always.
  * The fit verdict is an ANNOTATION and a SORT KEY, never a gate. The refusals
@@ -43,7 +52,8 @@
  * drag-time hatch. Since kindred#2072 both read ONE grading, `needGlyphs.ts`,
  * so a (need, party, cabin) triple can no longer get two answers. What still
  * differs is SCOPE, and each scope is written down where it lives: the hatch
- * grades three needs (bathroom would hatch 112 of 118 cards on any pick-up),
+ * grades three needs (bathroom would hatch 82 of 118 cards on any pick-up —
+ * 112 before #2501 and #2502 moved the axis and resolved the containers),
  * this grades all four plus capacity.
  *
  * ⚠️ AND ONE READING, which is this module's own contribution to that

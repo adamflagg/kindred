@@ -2116,6 +2116,65 @@ class TestPartyEffectiveBathroom:
         assert roster.parties[0].effective_bathroom == "none"
 
     @pytest.mark.asyncio
+    async def test_a_retired_room_does_not_supply_the_placement_its_bathroom(self) -> None:
+        """THE TWO LANES MUST AGREE, and this is the shape that split them.
+
+        `_resolve_bathroom` (the empty-card lane) filters its leaf walk to
+        `is_active`, on `_resolve_power_coverage`'s rule -- nobody can be
+        placed in a retired room, so it does not answer for its building.
+        This lane walked the same tree UNFILTERED, so a decommissioned room
+        still spoke.
+
+        The container below has one live room with no bathroom and one
+        retired room that records a shared one, both in the same group. The
+        card therefore says "no bathroom", correctly. Without the filter the
+        placed party read `private` -- upgraded, because the retired room
+        counted twice over: once to supply a bathroom nobody can use, and
+        again to complete the group the exclusivity branch checks. Picker and
+        placement disagreeing on one field is the defect class this whole
+        change exists to close, so the two walks take the same filter.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_households={"hh_1": _household()},
+            fetch_attendees_for_session=[_child()],
+            fetch_units=[
+                _unit("u1", "annex", "The Annex", sleeps=4, is_container=True, default_combined=True),
+                _unit(
+                    "u2",
+                    "annex-1",
+                    "Annex 1",
+                    sleeps=2,
+                    bathroom="none",
+                    bathroom_group="annex-bath",
+                    parent_unit="u1",
+                ),
+                _unit(
+                    "u3",
+                    "annex-2",
+                    "Annex 2 (decommissioned)",
+                    sleeps=2,
+                    bathroom="shared",
+                    bathroom_group="annex-bath",
+                    is_active=False,
+                    parent_unit="u1",
+                ),
+            ],
+            fetch_assignments=[
+                _rec(
+                    household_cm_id=2000001,
+                    person_cm_id=0,
+                    units=["u1"],
+                    expand={"units": [_rec(id="u1", code="annex", name="The Annex")]},
+                ),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert {u.code: u.bathroom for u in roster.units}["annex"] == "none"
+        assert roster.parties[0].effective_bathroom == "none"
+
+    @pytest.mark.asyncio
     async def test_unplaced_party_is_unknown(self) -> None:
         repo = _repo(
             fetch_session=FAMILY_SESSION,
@@ -3831,8 +3890,12 @@ class TestUnitBathroomResolution:
     """kindred#2502 -- `LodgingUnitSummary.bathroom`, resolved over LEAF
     descendants rather than read off the container's own row.
 
-    The fourth twin of `power_coverage` / `fridge_coverage` / `ramp_coverage`,
-    and the last amenity that was still answered from the row itself. All 15
+    The fifth in-place resolver, beside `power_coverage`, `fridge_coverage`,
+    `ramp_coverage` and `ac_coverage` — and the last amenity that was still
+    answered from the row itself. It is the only one of the five that
+    overwrites the registry column rather than writing a `*_coverage` grade
+    beside it, because `bathroom` is a four-value enum every surface already
+    reads. All 15
     production containers store `bathroom = "none"` -- a building is not a
     room -- while 13 of them have at least one room that records one, so the
     unit card drew no bathroom on every whole-house card while both its
@@ -3966,6 +4029,86 @@ class TestUnitBathroomResolution:
         roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
 
         assert {u.code: u.bathroom for u in roster.units}["block"] == "private"
+
+    @pytest.mark.asyncio
+    async def test_a_deactivated_room_does_not_answer_for_the_building(self) -> None:
+        """The twin of `TestUnitPowerCoverage`'s test of the same name, and the
+        case this class had no coverage for while the power and fridge classes
+        both did.
+
+        Nobody can be placed in a retired room, so it cannot supply the
+        building's bathroom -- the same `is_active` filter `_effective_sleeps`
+        applies when totalling a combined container's rooms. The live room
+        below records none; only the retired one records a bathroom, so the
+        building has none to inherit.
+
+        `TestPartyEffectiveBathroom.test_a_retired_room_does_not_supply_the
+        _placement_its_bathroom` is the OTHER LANE on this identical registry,
+        and it read `private` until the filter went on both walks. The pair is
+        pinned on both sides now, because one field answering differently in
+        the picker and in the placement is the defect this whole change closes.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("c1", "annex", "The Annex", is_container=True, bathroom="none"),
+                _unit(
+                    "u1",
+                    "annex-1",
+                    "Annex 1",
+                    sleeps=2,
+                    bathroom="none",
+                    bathroom_group="annex-bath",
+                    parent_unit="c1",
+                ),
+                _unit(
+                    "u2",
+                    "annex-2",
+                    "Annex 2 (decommissioned)",
+                    sleeps=2,
+                    bathroom="shared",
+                    bathroom_group="annex-bath",
+                    is_active=False,
+                    parent_unit="c1",
+                ),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert {u.code: u.bathroom for u in roster.units}["annex"] == "none"
+
+    @pytest.mark.asyncio
+    async def test_a_building_with_no_active_room_left_keeps_its_own_row(self) -> None:
+        """The degenerate case, and it is ruled the OPPOSITE way to power.
+
+        `_resolve_power_coverage` refuses to answer here and reports `unknown`,
+        because a container's stored `has_power = 0` is not a claim anybody
+        made -- 13 of the 15 production containers carry it while their rooms
+        are powered. `bathroom` is different, and the difference is the whole
+        reason this resolver may fall back at all: a container's stored `none`
+        IS a deliberate registry convention, entered because a building is not
+        a room. So with nothing left to inherit, the row it already holds is
+        the honest answer rather than an absence of one.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("c1", "annex", "The Annex", is_container=True, bathroom="none"),
+                _unit(
+                    "u1",
+                    "annex-1",
+                    "Annex 1",
+                    sleeps=2,
+                    bathroom="shared",
+                    bathroom_group="annex-bath",
+                    is_active=False,
+                    parent_unit="c1",
+                ),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert {u.code: u.bathroom for u in roster.units}["annex"] == "none"
 
 
 class TestUnitPowerCoverage:

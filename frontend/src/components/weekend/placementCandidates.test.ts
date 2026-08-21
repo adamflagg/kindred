@@ -2,9 +2,9 @@
  * The picker's list: every unplaced party, annotated and ordered, never cut.
  *
  * The rule these tests pin is an owner ruling (2026-08-07, restated
- * 2026-08-09) and it is the OPPOSITE of the instinct: 6 of 118 units carry a
- * private bathroom against 63 parties asking for one, so a hide-filter would
- * empty the list. `placementCandidates` must therefore return exactly as many
+ * 2026-08-09) and it is the OPPOSITE of the instinct: 36 of 118 units answer
+ * the bathroom need against 66 of 479 registrations asking for one, so a
+ * hide-filter would empty the list. `placementCandidates` must therefore return exactly as many
  * rows as it was given, every time.
  *
  * Fictional data throughout.

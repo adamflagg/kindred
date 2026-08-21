@@ -844,10 +844,10 @@ describe('AssignFamilyModal — the candidate rows', () => {
   })
 
   it('NEVER hides a family, however badly it fits', () => {
-    // The ruling `placementCandidates` exists to carry: 6 of 118 units have a
-    // private bathroom against 45 parties asking for one, so a list narrowed
-    // to "what fits" would be empty most of the time and staff would go back
-    // to dragging.
+    // The ruling `placementCandidates` exists to carry: 36 of 118 units answer
+    // the bathroom need against 41 bathroom-asking households rostered across
+    // 2026's family weekends, so a list narrowed to "what fits" would be empty
+    // most of the time and staff would go back to dragging.
     renderModal({
       unit: unit({ bathroom: 'shared', power_coverage: 'none', sleeps: 1 }),
       parties: [party({ flags: { needs_private_bathroom: true, needs_power: true } }), NGUYEN],
