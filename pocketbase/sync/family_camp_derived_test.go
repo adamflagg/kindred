@@ -2155,37 +2155,34 @@ func TestRegistrationNeedsUpdateIgnoresTheUnknownSpelling(t *testing.T) {
 	}
 }
 
-// TestProcessAdultsPersonFieldsTakeTheFirstLoadedSibling pins the CURRENT,
-// arbitrary tie-break in processAdults' per-person merge, so that changing it
-// is a deliberate, visible break rather than a silent drift.
+// TestProcessAdultsMergeTiebreaksOnCampMinderID replaces
+// TestProcessAdultsPersonFieldsTakeTheFirstLoadedSibling, which deliberately
+// pinned the PRE-kindred#2275 behavior: the winner was whichever sibling's
+// person_custom_values row happened to carry the lower PocketBase record id.
+// That key is not durable -- the vendor sync's orphan sweep deletes and later
+// re-admits a row with a brand-new random id, so the SAME two siblings'
+// answers could pick a different winner on a later resync with no data
+// change at all.
 //
-// The person-partition fields (FC-P1/P2 First/Last Name, Email, Pronouns,
-// Gender, DOB, Relationship) describe the household's ADULTS, but CampMinder
-// stores them on every enrolled child's record. A household with two children
-// therefore supplies two copies, and when a form was filled twice they can
-// disagree. processAdults resolves that with "first non-empty wins" over a
-// slice that loadPersonCustomValues returns in person_custom_values record-id
-// order -- so the winner is whichever sibling's row happens to carry the lower
-// record id, which correlates with nothing about the answer.
+// Owner ruling 2026-08-19: "whatever sort we choose, must be repeatable, not
+// random", then "none of these are stable if an older child is edited
+// later?" -- adopted answer: first-wins, with a CampMinder-id tiebreak. A
+// person's own CampMinder id survives every resync, so processAdults now
+// sorts the person-values slice by personCMID (ascending) before merging --
+// mergeFirstNonEmpty itself is UNCHANGED; only the order fed into it moved.
+// The winner is the lowest-keyed sibling with a non-empty answer, full stop.
 //
-// Measured against the production snapshot for 2026, over the 382 rostered
-// family-camp households: 254 (household, field, adult) groups have siblings
-// that disagree, spread across 113 households, and resolving by CampMinder's
-// own last_updated instead would pick a different value in 130 of them. So
-// this is a live arbitrary choice, not a theoretical one -- but it is also a
-// small one: of the columns merged here, only relationship and the split name
-// pair reach the UI (the latter solely through the roster's `name or
-// first+last` coalesce, which fires for 5 of 382 households). gender,
-// date_of_birth, email and pronouns have zero readers anywhere.
+// This test pins that policy two ways a record-id tiebreak could not:
 //
-// PENDING, deliberately: which sibling should win is a product decision, and
-// it is kindred#2275's subject. It is NOT coupled to whether the columns are
-// kept -- kindred#1945 closed 2026-08-09 refusing deletion, so that half is
-// settled and A6 is unblocked. Do not "fix" this test by changing the merge
-// until kindred#2275 rules on the per-attribute policy.
-func TestProcessAdultsPersonFieldsTakeTheFirstLoadedSibling(t *testing.T) {
+//  1. Order-independence: every permutation of the two source rows produces
+//     the identical winner (the retired test asserted only one hard-coded
+//     order, matching whichever happened to load first).
+//  2. Recency-independence: the ruling was adopted specifically because a
+//     recency rule is NOT stable under a later edit to the losing sibling's
+//     answer. The fixture gives the losing sibling (cmid 5002, "Stepmother")
+//     the newer lastUpdated on purpose, and the winner must not follow it.
+func TestProcessAdultsMergeTiebreaksOnCampMinderID(t *testing.T) {
 	t.Parallel()
-	s := &FamilyCampDerivedSync{}
 
 	// A local constant rather than the literal twice: goconst counts repeated
 	// string literals across the package and this name is already used in
@@ -2195,39 +2192,87 @@ func TestProcessAdultsPersonFieldsTakeTheFirstLoadedSibling(t *testing.T) {
 	householdValues := []customValueEntry{
 		{householdPBID: "hh_1", fieldName: "Family Camp Adult 1", value: wantName},
 	}
-	// Both entries come from the same household via two different children.
-	// Order here is the order loadPersonCustomValues yields: ascending record
-	// id. The SECOND one is the more recently edited, which is exactly why the
-	// choice matters.
-	personValues := []customValueEntry{
+
+	// cmid 5001 (Mother) must win over cmid 5002 (Stepmother) regardless of
+	// which one loads first and regardless of which one was edited more
+	// recently.
+	base := []customValueEntry{
 		{
-			householdPBID: "hh_1",
-			fieldName:     "Family Camp-Relationship to 1",
-			value:         "Mother",
-			lastUpdated:   time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+			householdPBID: "hh_1", personPBID: "person_mother", personCMID: 5001,
+			fieldName:   "Family Camp-Relationship to 1",
+			value:       "Mother",
+			lastUpdated: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
 		},
 		{
-			householdPBID: "hh_1",
-			fieldName:     "Family Camp-Relationship to 1",
-			value:         "Stepmother",
-			lastUpdated:   time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC),
+			householdPBID: "hh_1", personPBID: "person_stepmother", personCMID: 5002,
+			fieldName:   "Family Camp-Relationship to 1",
+			value:       "Stepmother",
+			lastUpdated: time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC),
 		},
 	}
 
-	adults := s.processAdults(householdValues, personValues)
+	for _, personValues := range permutations(base) {
+		s := &FamilyCampDerivedSync{}
+		adults := s.processAdults(householdValues, personValues)
 
-	if len(adults) != 1 {
-		t.Fatalf("expected 1 merged adult, got %d", len(adults))
+		if len(adults) != 1 {
+			t.Fatalf("expected 1 merged adult, got %d (input order %+v)", len(adults), personValues)
+		}
+		if adults[0].name != wantName {
+			t.Errorf("household `name` is the column of record: got %q", adults[0].name)
+		}
+		if adults[0].relationship != "Mother" {
+			t.Errorf(
+				"lowest CampMinder id must win regardless of load order or recency: got %q, want %q "+
+					"(input order %+v)",
+				adults[0].relationship, "Mother", personValues,
+			)
+		}
 	}
-	if adults[0].name != wantName {
-		t.Errorf("household `name` is the column of record: got %q", adults[0].name)
+}
+
+// TestProcessAdultsCampMinderIDTiebreakAppliesToDateOfBirth is the headline
+// case: date_of_birth is the single largest loss in this file -- 1,159
+// answers discarded across all years, raw and unnormalised, re-measured
+// 2026-08-21 against pocketbase/pb_data/data-prod.db (drift of +8 from the
+// 1,151 last recorded 2026-08-19; counts here move with ongoing 2026
+// registration and are not a stable constant to cite blindly).
+// Confirms the same CampMinder-id tiebreak governs date_of_birth, normalised
+// before the merge exactly as processAdults already does, and stays
+// order-independent under every permutation of the source rows.
+func TestProcessAdultsCampMinderIDTiebreakAppliesToDateOfBirth(t *testing.T) {
+	t.Parallel()
+
+	// A name is required for the row to survive processAdults' admission
+	// filter (kindred#1946) -- a slot with only a DOB and no name anywhere is
+	// not admitted as an adult at all, which is orthogonal to what this test
+	// pins.
+	householdValues := []customValueEntry{
+		{householdPBID: "hh_1", fieldName: "Family Camp Adult 1", value: "Emma Johnson"},
 	}
-	if adults[0].relationship != "Mother" {
-		t.Errorf(
-			"first-loaded sibling wins today: got %q, want %q (if you changed the merge on purpose, "+
-				"update this test and kindred#1945 together)",
-			adults[0].relationship, "Mother",
-		)
+	base := []customValueEntry{
+		{
+			householdPBID: "hh_1", personPBID: "person_a", personCMID: 7001,
+			fieldName: "Family Camp DOB 1", value: "3/4/1980",
+		},
+		{
+			householdPBID: "hh_1", personPBID: "person_b", personCMID: 7002,
+			fieldName: "Family Camp DOB 1", value: "9/2/1979",
+		},
+	}
+
+	for _, personValues := range permutations(base) {
+		s := &FamilyCampDerivedSync{}
+		adults := s.processAdults(householdValues, personValues)
+
+		if len(adults) != 1 {
+			t.Fatalf("expected 1 merged adult, got %d (input order %+v)", len(adults), personValues)
+		}
+		const want = "1980-03-04" // normalizeDateOfBirth's canonical form for the lower cmid's answer
+		if adults[0].dateOfBirth != want {
+			t.Errorf("lowest CampMinder id must win regardless of load order: got %q, want %q (input order %+v)",
+				adults[0].dateOfBirth, want, personValues)
+		}
 	}
 }
 
