@@ -30,7 +30,7 @@ import { CONSENT_AMBER } from './mapColors'
 import type { MapUnit } from './mapModel'
 import { partyKey } from './partyKey'
 import { partyAttention, partyBeds } from './rosterAttention'
-import { reservationBadge, shareabilityBadge } from './unitBadges'
+import { reservationBadge, shareabilityBadge, writeInBadgeApplies } from './unitBadges'
 
 /**
  * The board's `border-amber-400`, reused rather than re-picked. A consent flag
@@ -260,7 +260,13 @@ function DetailCard({ entry, hue, onOpenParty, wholeBuildingKeys }: DetailCardPr
   // raw understates a four-room house as sleeping one. The map draws such a
   // house as a single mark, so this lone card is exactly where that lands.
   const capacityKnown = capacity !== null
-  const badge = reservationBadge(unit)
+  // kindred#2499, owner ruling: no "Write-in" chip on the map. Staff bunk on
+  // the BOARD; the map is for visibility and checks, so write-in occupancy is
+  // board business. Gated through `writeInBadgeApplies` — the same gate
+  // `LodgingUnitCard` has used since kindred#2252 — rather than by re-deriving
+  // it here, so the two surfaces cannot drift. Every OTHER arm of
+  // `reservationBadge` (`Building`, `Staff`, `Released`) is untouched.
+  const badge = writeInBadgeApplies(unit) ? null : reservationBadge(unit)
   const bedsNeeded = parties.reduce((sum, party) => sum + partyBeds(party), 0)
   /*
    * THE AMBER IS A CLAIM, AND `spanWidth` IS WHAT WITHHOLDS IT — the same gate
@@ -703,7 +709,9 @@ function FootprintGrid({
           // A held or deactivated room that said nothing here would be
           // indistinguishable from a bookable one.
           const notes: string[] = []
-          const cellBadge = reservationBadge(entry.unit)
+          // Same kindred#2499 gate as the header above. "Inactive" still
+          // reaches the title — that is a different fact from a write-in.
+          const cellBadge = writeInBadgeApplies(entry.unit) ? null : reservationBadge(entry.unit)
           if (cellBadge) notes.push(cellBadge.label)
           if (entry.unit.is_active === false) notes.push('Inactive')
           if (entry.consent) notes.push(CONSENT_PHRASE)

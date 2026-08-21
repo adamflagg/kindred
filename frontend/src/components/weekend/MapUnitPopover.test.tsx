@@ -197,7 +197,15 @@ describe('MapUnitPopover — one room', () => {
     expect(onOpenParty).toHaveBeenCalledWith(johnson)
   })
 
-  it('badges a written-into room, reusing the inventory and board wording', () => {
+  it('draws NO write-in chip on a written-into room, because bunking happens on the board', () => {
+    // ⛔ RETIRED 2026-08-21 by owner ruling on #2499. This asserted the
+    // OPPOSITE — that the map badges a written-into room — and it is rewritten
+    // rather than adapted, because the specification changed, not the code.
+    //
+    // Staff bunk on the BOARD; the map is for visibility and checks. Write-in
+    // occupancy is board business, so the map draws no "Write-in" chip. The
+    // map's two call sites now apply the same `writeInBadgeApplies` gate the
+    // unit card has used since kindred#2252, so the two surfaces agree.
     // `reservationBadge` is the shared source for this; a second copy is how
     // the three surfaces start disagreeing about what the word means. It
     // INHERITED kindred#2078's rename for free, which is the point — this
@@ -217,7 +225,7 @@ describe('MapUnitPopover — one room', () => {
         onOpenParty={vi.fn()}
       />
     )
-    expect(screen.getByText('Write-in')).toBeInTheDocument()
+    expect(screen.queryByText('Write-in')).not.toBeInTheDocument()
   })
 
   it('says a deactivated room is inactive', () => {
@@ -806,8 +814,11 @@ describe('MapUnitPopover — a cluster of rooms', () => {
       ),
     ]
     render(<MapUnitPopover units={house} hue={HUE} onOpenParty={vi.fn()} />)
-    expect(screen.getByTitle(/Cedar 2.*Write-in.*Inactive/i)).toBeInTheDocument()
-    expect(screen.queryByTitle(/Cedar 1.*Write-in/i)).not.toBeInTheDocument()
+    // Per #2499 the cell no longer carries "Write-in" — but it MUST still
+    // carry "Inactive", which is a different fact (the room is unbookable)
+    // and the half of this test that was never in question.
+    expect(screen.getByTitle(/Cedar 2.*Inactive/i)).toBeInTheDocument()
+    expect(screen.queryByTitle(/Write-in/i)).not.toBeInTheDocument()
   })
 
   it('says WHICH room in a cluster carries the consent flag', () => {
@@ -1215,7 +1226,15 @@ describe('MapUnitPopover — the whole-building marker, extended from the board 
     expect(garciaChip.textContent).not.toContain('Whole building')
   })
 
-  it('renders the whole-building badge and a write-in badge together, legibly', () => {
+  it('renders the whole-building badge alone, the write-in chip having been dropped', () => {
+    // ⛔ RETIRED 2026-08-21 by owner ruling on #2499. This asserted the
+    // OPPOSITE — that the map badges a written-into room — and it is rewritten
+    // rather than adapted, because the specification changed, not the code.
+    //
+    // Staff bunk on the BOARD; the map is for visibility and checks. Write-in
+    // occupancy is board business, so the map draws no "Write-in" chip. The
+    // map's two call sites now apply the same `writeInBadgeApplies` gate the
+    // unit card has used since kindred#2252, so the two surfaces agree.
     // #2078 added the write-in badge (via `reservationBadge`, unit-level, in
     // the DetailCard's status list) after this issue was filed. It is
     // orthogonal to `wholeBuildingKeys` (party-keyed) — a room can carry both
@@ -1239,10 +1258,11 @@ describe('MapUnitPopover — the whole-building marker, extended from the board 
         wholeBuildingKeys={new Set([partyKey(johnson)])}
       />
     )
-    const writeIn = screen.getByText('Write-in')
-    const wholeBuilding = screen.getByText('Whole building')
-    expect(writeIn).toBeInTheDocument()
-    expect(wholeBuilding).toBeInTheDocument()
-    expect(writeIn).not.toBe(wholeBuilding)
+    // The whole-building badge is untouched by #2499 and must survive; only
+    // the write-in chip goes. Asserting both keeps this test pinning the
+    // thing it was written for — that these are two independent signals —
+    // rather than silently narrowing to one.
+    expect(screen.getByText('Whole building')).toBeInTheDocument()
+    expect(screen.queryByText('Write-in')).not.toBeInTheDocument()
   })
 })
