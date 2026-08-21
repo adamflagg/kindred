@@ -135,7 +135,13 @@ const NEUTRAL: DragFit = { state: 'neutral', severity: 'fits' }
  *    hatch is an interruption and its bar is evidence of absence; not a match,
  *    because a positive mark is a claim and the 2026-08-20 ruling says
  *    unconfirmed information must not read as met. `has_ramp` is the only
- *    registry field that carries one, on 104 of 118 units — and kindred#2526
+ *    registry field that carries one: 104 of 118 units hold a blank raw
+ *    `has_ramp`, of which 102 are still `unknown` once `ramp_coverage` has
+ *    walked the leaves — a few blank containers have rooms that answer for
+ *    them. Quote 102 wherever the figure feeds the hatched-pairs arithmetic
+ *    (`weekend-card-vocabulary.md`), 104 for the raw assessment gap. This
+ *    reads the RESOLVED value, so 102 is the number that reaches here. And
+ *    kindred#2526
  *    may remove the state entirely, at which point this branch stops being
  *    reachable rather than stops being correct.
  *

@@ -185,7 +185,8 @@ describe('resolveDragFit — capacity gates the match and never causes a conflic
 describe('resolveDragFit — unrecorded coverage makes NEITHER claim', () => {
   it('does not hatch a cabin nobody has assessed', () => {
     // The hatch is an INTERRUPTION, so its bar is evidence of absence rather
-    // than absence of evidence. 104 of 118 units carry no step-free assessment.
+    // than absence of evidence. 102 of 118 units still read `unknown` once
+    // `ramp_coverage` has resolved (104 hold a blank raw `has_ramp`).
     expect(
       resolveDragFit(
         party({ flags: { needs_step_free: true } }),
