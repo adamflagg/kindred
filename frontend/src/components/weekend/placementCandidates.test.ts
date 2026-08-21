@@ -4,8 +4,8 @@
  * The rule these tests pin is an owner ruling (2026-08-07, restated
  * 2026-08-09) and it is the OPPOSITE of the instinct: 36 of 118 units answer
  * the bathroom need against 66 of 479 registrations asking for one, so a
- * hide-filter would empty the list. `placementCandidates` must therefore return exactly as many
- * rows as it was given, every time.
+ * hide-filter would empty the list. `placementCandidates` must therefore
+ * return exactly as many rows as it was given, every time.
  *
  * Fictional data throughout.
  */

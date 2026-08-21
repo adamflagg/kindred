@@ -70,11 +70,12 @@ export function worseOf(a: NeedsFit, b: NeedsFit): NeedsFit {
  * that figure and neither is enough: kindred#2501 moved the axis from
  * exclusivity to presence (6 of 118 → 28) and kindred#2502's
  * `_resolve_bathroom` gave 8 of the 15 containers the bathroom their rooms
- * record (28 → 36), taking the hatch from 112 cards to 82. "A mark that is
- * always on is chrome staff
- * learn to read past" (`unitBadges.ts`, on the struck shared-space ring) — a
- * board hatched almost everywhere says nothing at all, which is the same
- * reasoning `resolveNeedsFit` already applies at rest.
+ * record (28 → 36), taking the hatch from 112 cards to 82.
+ *
+ * "A mark that is always on is chrome staff learn to read past"
+ * (`unitBadges.ts`, on the struck shared-space ring) — a board hatched almost
+ * everywhere says nothing at all, which is the same reasoning
+ * `resolveNeedsFit` already applies at rest.
  *
  * The bathroom need is NOT unreported. It draws a per-family glyph on the card
  * itself (kindred#2072), where it is one household's fact rather than a

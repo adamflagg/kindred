@@ -1209,10 +1209,12 @@ def _resolve_bathroom(units: list[LodgingUnitSummary], index: _BathroomIndex) ->
     four-value enum every surface already reads and giving it a parallel
     `bathroom_coverage` would have left two fields to keep in step. So it is
     the twin of those four in its walk and its `is_active` filter, and the
-    last amenity that was still answered from the unit's own row. All 15 production containers
-    store `bathroom = "none"` (a building is not a room) while 13 of them
-    have at least one room that records one, so every whole-house card drew
-    no bathroom while both its rooms drew one the moment staff split it.
+    last amenity that was still answered from the unit's own row.
+
+    All 15 production containers store `bathroom = "none"` (a building is not
+    a room) while 13 of them have at least one room that records one, so every
+    whole-house card drew no bathroom while both its rooms drew one the moment
+    staff split it.
 
     ⚠️ CONTAINERS ONLY, unlike the three above. A leaf's own row is already
     the right answer and `_build_units` already computes it correctly --
