@@ -232,6 +232,29 @@ describe('Modal', () => {
       expect(screen.getByRole('button', { name: /close/i })).toBeInTheDocument()
     })
 
+    it('treats header={null} as "no custom header" — falls through to the floating mark, not a collapsed grid row', () => {
+      /*
+       * PostValidationResultsModal passes `header={null}` deliberately
+       * (alongside `footer={null}`) to get the same floating-button look as
+       * the no-header branch. `hasCustomHeader` is
+       * `header !== undefined && header !== null` specifically so this
+       * falls through rather than grid-stacking an empty header cell, which
+       * would collapse the row to the mark's own ~18px height. Nothing else
+       * in this suite renders `header={null}`, so a later "simplification"
+       * that drops the `&& header !== null` clause would regress that
+       * caller silently.
+       */
+      render(
+        <Modal isOpen={true} onClose={() => {}} header={null}>
+          <p>Modal content</p>
+        </Modal>
+      )
+      const close = screen.getByRole('button', { name: /close/i })
+      expect(close.parentElement?.className).toContain('absolute')
+      expect(close.parentElement?.className).toContain('top-4')
+      expect(close.parentElement?.className).not.toContain('grid')
+    })
+
     it('renders the close mark as the artifact’s 18px in-flow circle, not the old floated square', () => {
       /*
        * ⚠️ RETARGETED (kindred#2507). This used to pin `top-4` as the

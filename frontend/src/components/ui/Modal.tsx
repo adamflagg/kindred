@@ -114,6 +114,18 @@ const sizeClasses = {
   '2xl': 'max-w-6xl',
 } as const
 
+// The design artifact's close mark (kindred#2507's `.wbtn`): an 18x18
+// circled `×`, 1px border, transparent fill. Shared by all three
+// close-button branches below (custom header, simple title, no header) so
+// the app can only ever have one grammar for it — each branch layers its
+// own layout classes (grid-stacking, `ml-auto`, positioning) on top.
+const CLOSE_MARK_BASE_CLASSES =
+  'inline-flex h-[18px] w-[18px] flex-none items-center justify-center rounded-full border p-0 text-[11px] leading-none transition-colors'
+const CLOSE_MARK_LIGHT_CLASSES =
+  'border-border text-muted-foreground hover:bg-muted hover:text-foreground'
+const CLOSE_MARK_DARK_CLASSES =
+  'border-white/30 text-white/70 hover:border-white/50 hover:bg-white/10 hover:text-white'
+
 // Elements a keyboard user can Tab to inside the dialog. Modal content is
 // arbitrary (inputs, selects, textareas, links, buttons — not just buttons),
 // unlike the button-only queries in ConfirmActionPopover.tsx and
@@ -347,10 +359,8 @@ export function Modal({
             <div className="col-start-1 row-start-1 min-w-0">{header}</div>
             <button
               onClick={onClose}
-              className={`z-10 col-start-1 row-start-1 mr-4 ml-auto inline-flex h-[18px] w-[18px] flex-none items-center justify-center self-center rounded-full border p-0 text-[11px] leading-none transition-colors ${
-                headerOnDark
-                  ? 'border-white/30 text-white/70 hover:border-white/50 hover:bg-white/10 hover:text-white'
-                  : 'border-border text-muted-foreground hover:bg-muted hover:text-foreground'
+              className={`z-10 col-start-1 row-start-1 mr-4 ml-auto self-center ${CLOSE_MARK_BASE_CLASSES} ${
+                headerOnDark ? CLOSE_MARK_DARK_CLASSES : CLOSE_MARK_LIGHT_CLASSES
               }`}
               aria-label="Close modal"
             >
@@ -370,7 +380,7 @@ export function Modal({
             </h2>
             <button
               onClick={onClose}
-              className="border-border text-muted-foreground hover:bg-muted hover:text-foreground ml-auto inline-flex h-[18px] w-[18px] flex-none items-center justify-center rounded-full border p-0 text-[11px] leading-none transition-colors"
+              className={`ml-auto ${CLOSE_MARK_BASE_CLASSES} ${CLOSE_MARK_LIGHT_CLASSES}`}
               aria-label="Close modal"
             >
               ×
@@ -386,7 +396,7 @@ export function Modal({
           <div className="absolute top-4 right-4">
             <button
               onClick={onClose}
-              className="border-border text-muted-foreground hover:bg-muted hover:text-foreground inline-flex h-[18px] w-[18px] flex-none items-center justify-center rounded-full border p-0 text-[11px] leading-none transition-colors"
+              className={`${CLOSE_MARK_BASE_CLASSES} ${CLOSE_MARK_LIGHT_CLASSES}`}
               aria-label="Close modal"
             >
               ×
