@@ -20,7 +20,10 @@
  * Layout is the owner's 2026-08-17 ruling, a hybrid of two mockup options:
  * blocks start EXPANDED (nothing hidden behind a click, because a scanning
  * eye must not miss request text) and every block is COLLAPSIBLE (a staff
- * member facing the seven-entry household can fold them away).
+ * member facing the seven-entry household can fold them away). kindred#2476
+ * (owner ruling 2026-08-21) tunes this: `Share Bunk With` alone now starts
+ * COLLAPSED -- see the `describe('Share Bunk With starts collapsed...')`
+ * block below -- every other block keeps the EXPANDED default above.
  *
  * Shape it is built against, measured on the 2026 production snapshot over
  * the 382 households rostered into a family session: 270 carry any text, 142
