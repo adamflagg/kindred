@@ -3,13 +3,15 @@
  * Migration: lodging_unit_aliases
  *
  * Maps historical free-text cabin strings onto units. TEMPORAL, because renames
- * happened mid-history: "Golden Triangle - Doctor's House" (2022-24) became
- * "Golden Triangle - Wawona" (2025+), while "Health Center - Doctor's House"
- * (2022-24) became the bare "Doctor's House" (2025+).
+ * happened mid-history: one building was renamed outright between 2024 and
+ * 2025, and a second, which had shared its old name, lost its area prefix in
+ * the same season — so the identical free-text string means two different
+ * units depending on the year it was written in.
  *
  * member_units is MULTI-valued so one table covers both cases: a single member
  * resolves to an atomic room; 2+ members denote a merge (see lodging_merges),
- * which backfill materialises as a merge row. e.g. "Tenaya 1and2" -> {Tenaya 1, Tenaya 2}.
+ * which backfill materialises as a merge row: one free-text string naming two
+ * adjacent rooms resolves to both of their unit rows.
  */
 
 migrate((app) => {
@@ -24,8 +26,8 @@ migrate((app) => {
     updateRule: '@request.auth.is_admin = true',
     deleteRule: '@request.auth.is_admin = true',
     fields: [
-      // Verbatim as it appears in the CampMinder custom field, including any
-      // double spaces (e.g. "Health Center Downstairs  - Room A"). Do not trim.
+      // Verbatim as it appears in the CampMinder custom field, including the
+      // double space one seeded row genuinely carries. Do not trim.
       { type: "text", name: "alias_string", required: true, presentable: true, min: 1, max: 300, pattern: "" },
       {
         type: "relation", name: "member_units", required: true, presentable: false,

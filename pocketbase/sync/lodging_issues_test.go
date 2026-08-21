@@ -36,10 +36,10 @@ func TestIssueKindsMatchTheMigration(t *testing.T) {
 	}
 }
 
-// TestIssueRecorderCollapsesRepeats mirrors the real 2022 backfill: the cabin
-// string "River Side - R1" appears on five different households and has no alias
-// row. That is ONE thing for staff to fix, so it must be one queue item with an
-// occurrence count -- not five rows to wade through.
+// TestIssueRecorderCollapsesRepeats mirrors the real 2022 backfill: one cabin
+// string appeared on five different households and had no alias row. That is
+// ONE thing for staff to fix, so it must be one queue item with an occurrence
+// count -- not five rows to wade through.
 func TestIssueRecorderCollapsesRepeats(t *testing.T) {
 	t.Parallel()
 	app := newSyncTestApp(t)
@@ -193,7 +193,7 @@ func TestIssueRecorderFlushKeepsAnEarlierSuggestion(t *testing.T) {
 }
 
 // TestIssueRecorderHandlesApostrophes: real cabin strings contain apostrophes
-// ("Golden Triangle - Doctor's House", "Golden Triangle - Cloud's Rest"). A
+// (two area-prefixed building strings from the same area). A
 // filter built by string concatenation would be a syntax error here, which is
 // exactly the class of bug that made Plan 1's alias verifier unable to pass.
 func TestIssueRecorderHandlesApostrophes(t *testing.T) {

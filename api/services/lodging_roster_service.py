@@ -925,7 +925,7 @@ class _BathroomIndex(NamedTuple):
 
     units_by_code: dict[str, LodgingUnitSummary]
     # Immediate children only, keyed by the PARENT's code. Nesting (a
-    # container inside a container, e.g. Doctor's House under a larger
+    # container inside a container, e.g. an apartment under a larger
     # block) is walked at read time in `leaf_codes_under`, mirroring
     # `drawn_units`' own upward walk of the same `parent_code` relation.
     children_by_parent: dict[str, tuple[LodgingUnitSummary, ...]]
