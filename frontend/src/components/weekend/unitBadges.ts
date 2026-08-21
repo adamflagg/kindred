@@ -57,15 +57,22 @@ export interface UnitBadge {
 /**
  * Whether `reservationBadge` badges this unit "Write-in".
  *
- * ⚠️ NO LONGER EXPORTED, and that is a consequence of kindred#2072 rather
- * than a tidy-up. It was exported so `LodgingUnitCard` could suppress the chip
- * WITHOUT re-deriving this gate and drifting from it (kindred#2252): the
- * occupant already gets a `WriteInCard` in the well, so the chip beside it
- * repeated the same fact under a second name. That card now draws NO
- * reservation badge at all, so there is nothing left to suppress.
+ * ⚠️ EXPORTED AGAIN as of kindred#2499, for the reason it was exported the
+ * first time: a surface that suppresses the chip must not re-derive this gate
+ * and drift from it (kindred#2252).
  *
- * The two surfaces that still draw the chip — `MapUnitPopover`'s header and
- * its collapsed grid cell — call `reservationBadge` directly and always did.
+ * NO SURFACE DRAWS "Write-in" ANY MORE. `LodgingUnitCard` stopped because the
+ * `WriteInCard` in its well already names the occupant, so the chip repeated
+ * the same fact under a second name. `MapUnitPopover`'s header and its
+ * collapsed grid cell stopped by owner ruling on kindred#2499: staff bunk on
+ * the BOARD and the map is for visibility and checks, so write-in occupancy is
+ * board business and the map does not carry it.
+ *
+ * ⚠️ The arm therefore survives in `reservationBadge` unreachable-by-caller,
+ * and that is deliberate rather than dead code left lying. Deleting it is NOT
+ * equivalent: a write-in family room falls through to `null`, but a write-in
+ * COMBINED CONTAINER would fall through to `Building` — so removing the arm
+ * would silently re-badge those, on the board as well as the map.
  *
  * Both halves of the gate matter and are pinned in `unitBadges.test.ts`: the
  * `staff_default` exemption (a staff cabin written into for the weekend badges
@@ -73,7 +80,7 @@ export interface UnitBadge {
  * `family_available_override`, which since kindred#2382 answers the staff↔family
  * ROLE and names nobody).
  */
-function writeInBadgeApplies(unit: LodgingUnitRow): boolean {
+export function writeInBadgeApplies(unit: LodgingUnitRow): boolean {
   return unit.inventory_class !== 'staff_default' && hasWriteIn(unit)
 }
 

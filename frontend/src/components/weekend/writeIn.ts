@@ -142,6 +142,24 @@ export interface WriteInSource {
 }
 
 /**
+ * What to print for a write-in whose `occupant_name` is blank.
+ *
+ * SHARED, because two surfaces now draw the same occupant and a room that
+ * reads "Occupant not named" on the board and blank on the map is two
+ * different answers to one question. `WriteInCard` held this privately until
+ * kindred#2499 gave the map an occupant list of its own.
+ *
+ * Not the empty string and not "Unknown": the row asserts that somebody is in
+ * the room, and only their NAME is missing.
+ */
+export const UNNAMED_OCCUPANT = 'Occupant not named'
+
+/** The name to print for a write-in occupant, blank-safe. */
+export function writeInOccupantLabel(occupant: WriteInOccupant): string {
+  return occupant.name !== '' ? occupant.name : UNNAMED_OCCUPANT
+}
+
+/**
  * Every write-in closing this space for this weekend, in the server's order.
  *
  * "This space", not "this unit": a building's write-in closes its rooms and a
