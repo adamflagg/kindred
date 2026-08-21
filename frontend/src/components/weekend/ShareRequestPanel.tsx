@@ -30,8 +30,15 @@
  * Layout is the owner's 2026-08-17 ruling, a hybrid of two mockup options:
  * blocks start EXPANDED, because a scanning eye must not miss request text,
  * and each is COLLAPSIBLE, because 9 of 382 rostered 2026 households render
- * four blocks and one renders seven entries inside them. The expectation is
- * explicitly that this ships and gets tuned against real staff use.
+ * four blocks and one renders seven entries inside them. The expectation was
+ * explicitly that this would ship and get tuned against real staff use.
+ *
+ * kindred#2476 (owner ruling 2026-08-21) is that tuning: `Share Bunk With`
+ * now starts COLLAPSED — see `DEFAULT_FOLDED` below — while every other
+ * block keeps the 2026-08-17 default. It also moves to the LAST block
+ * server-side (`REQUEST_TEXT_SOURCES`, `api/services/lodging_rules.py`), by
+ * staff request rather than by volume: on 2026 family-camp households it is
+ * the second most populated of the six.
  *
  * Labels are the ORIGINAL CampMinder field names, verbatim, UNLESS THE OWNER
  * NAMED ONE. That was the 2026-08-17 ruling — "call them the original
@@ -145,6 +152,22 @@ export interface ShareRequestPanelProps {
   share: ShareRequest
 }
 
+/**
+ * Source fields that start FOLDED, kindred#2476 (owner ruling 2026-08-21).
+ * Every field not listed here keeps the 2026-08-17 default of starting
+ * expanded. `Share Bunk With` is the one exception, not a new baseline —
+ * do not fold anything else in here on your own judgement.
+ */
+const DEFAULT_FOLDED: ReadonlySet<string> = new Set(['Share Bunk With'])
+
+function isDefaultFolded(folded: ReadonlySet<string>): boolean {
+  if (folded.size !== DEFAULT_FOLDED.size) return false
+  for (const sourceField of folded) {
+    if (!DEFAULT_FOLDED.has(sourceField)) return false
+  }
+  return true
+}
+
 /** Blocks with nothing left to say after trimming render nothing at all. */
 function withText(blocks: RequestTextBlockRow[]): RequestTextBlockRow[] {
   return blocks
@@ -236,11 +259,18 @@ export function ShareRequestPanel({ share }: ShareRequestPanelProps) {
   // Effect would add a commit pass and paint the previous family's fold
   // first. `share` is referentially stable per party (`usePanelParty`
   // memoises it), so a parent re-render does not unfold anything.
-  const [folded, setFolded] = useState<ReadonlySet<string>>(() => new Set())
+  //
+  // `DEFAULT_FOLDED` is applied in BOTH the initial seed below AND the reset
+  // branch — that duplication is deliberate, not an oversight. A panel is
+  // never remounted between households (see above), so the reset branch is
+  // where every household after the first actually gets its starting fold;
+  // seeding only the `useState` initializer would open `Share Bunk With` the
+  // moment staff click the next family.
+  const [folded, setFolded] = useState<ReadonlySet<string>>(() => new Set(DEFAULT_FOLDED))
   const [foldedFor, setFoldedFor] = useState<ShareRequest>(share)
   if (foldedFor !== share) {
     setFoldedFor(share)
-    if (folded.size > 0) setFolded(new Set())
+    if (!isDefaultFolded(folded)) setFolded(new Set(DEFAULT_FOLDED))
   }
   const toggleFold = useCallback((sourceField: string) => {
     setFolded((current) => {

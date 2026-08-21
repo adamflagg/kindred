@@ -16,6 +16,12 @@ import (
 // Service name constant - uses new table name
 const serviceNameHouseholdCustomValues = "household_custom_values"
 
+// serviceNameHouseholdCustomValuesFamilyCamp must match orchestrator.go's
+// RegisterService("household_custom_values_family_camp", ...) call for the bounded daily
+// instance (kindred#2489). logJobName uses it so the bounded pass's own logs are
+// distinguishable from the unrestricted sweep's (kindred#2491 Face D).
+const serviceNameHouseholdCustomValuesFamilyCamp = "household_custom_values_family_camp"
+
 // HouseholdCustomFieldValuesSync handles syncing custom field values for households from
 // CampMinder. The unrestricted instance (Session=DefaultSession) is ON-DEMAND -- weekly cron +
 // manual runs only -- because a year-wide sweep is 1 API call per household. A second,
@@ -55,6 +61,15 @@ func (s *HouseholdCustomFieldValuesSync) Name() string {
 	return serviceNameHouseholdCustomValues
 }
 
+// logJobName is the household twin of PersonCustomFieldValuesSync.logJobName -- see that
+// method's comment for the full rationale (kindred#2491 Face D).
+func (s *HouseholdCustomFieldValuesSync) logJobName() string {
+	if s.FamilyCampBounded {
+		return serviceNameHouseholdCustomValuesFamilyCamp
+	}
+	return serviceNameHouseholdCustomValues
+}
+
 // SetDryRun implements the orchestrator's DryRunnable interface (kindred#2351). Declared
 // explicitly rather than inherited by embedding BaseSyncService -- see that field's doc
 // comment on BaseSyncService for why a promoted setter is not safe. Setting it also gates
@@ -72,9 +87,10 @@ func (s *HouseholdCustomFieldValuesSync) SetSession(session string) {
 // Sync performs the household custom field values sync
 func (s *HouseholdCustomFieldValuesSync) Sync(ctx context.Context) error {
 	year := s.Client.GetSeasonID()
+	jobName := s.logJobName()
 
 	// Start the sync process
-	s.LogSyncStart(serviceNameHouseholdCustomValues)
+	s.LogSyncStart(jobName)
 	s.Stats = Stats{}
 	s.SyncSuccessful = false
 
@@ -105,14 +121,16 @@ func (s *HouseholdCustomFieldValuesSync) Sync(ctx context.Context) error {
 
 	if len(householdIDs) == 0 {
 		slog.Info("No households to sync custom field values for",
+			"job", jobName,
 			"session", s.Session,
 			"year", year)
 		s.SyncSuccessful = true
-		s.LogSyncComplete("HouseholdCustomFieldValues")
+		s.LogSyncComplete(jobName)
 		return nil
 	}
 
 	slog.Info("Syncing custom field values for households",
+		"job", jobName,
 		"count", len(householdIDs),
 		"session", s.Session,
 		"year", year)
@@ -207,7 +225,7 @@ func (s *HouseholdCustomFieldValuesSync) Sync(ctx context.Context) error {
 		slog.Warn("WAL checkpoint failed", "error", err)
 	}
 
-	s.LogSyncComplete("HouseholdCustomFieldValues")
+	s.LogSyncComplete(jobName)
 	return nil
 }
 

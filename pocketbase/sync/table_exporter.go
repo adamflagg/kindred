@@ -53,6 +53,14 @@ var SyncJobToCollections = map[string][]string{
 	"person_custom_values":    {"person_custom_values"},
 	"household_custom_values": {"household_custom_values"},
 	"session_groups":          {"session_groups"},
+	// Bounded daily family-camp instances (kindred#2489) of the two jobs directly above --
+	// same collections, distinct registered name (kindred#2491: a mutual-exclusion guard,
+	// phase enumeration, and log label all had this identical gap for the same reason).
+	// GetChangedCollections iterates every completed job by its registered name, so without
+	// these the bounded pass's real writes were silently dropped from the export
+	// skip-optimization and the daily cron's fresh data never got exported.
+	"person_custom_values_family_camp":    {"person_custom_values"},
+	"household_custom_values_family_camp": {"household_custom_values"},
 	// Derived tables
 	"family_camp_derived": {"family_camp_adults", "family_camp_registrations", "family_camp_medical"},
 	// Assignment ingest. Present so the export-skip optimisation knows which

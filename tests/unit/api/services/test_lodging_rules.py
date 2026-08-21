@@ -324,36 +324,51 @@ class TestRampCoverage:
 
 
 class TestRequestTextSourceRegistry:
-    """The five free-text bunk-request source fields, and the two excluded ones.
+    """The six free-text bunk-request source fields, in the block order staff
+    put in front of the panel (kindred#2476, owner ruling 2026-08-21).
 
     kindred#2330. The registry is one ordered tuple rather than a map so the
     panel's block order is a property of the rule layer, not of whichever
     order PocketBase happened to page the rows back in.
 
-    Measured on `pocketbase/pb_data/data-prod.db`, denominator 382 households
-    rostered into one of 2026's eight family sessions (`status_id = 2`):
-    `COVID-19 Bunking Requests` 205, `Share Bunk With` 104, `Shared-request`
-    100, `BunkingNotes Notes` 28, `Internal Bunk Notes` 8.
+    Measured on `pocketbase/pb_data/data-prod.db`, denominator 479 households
+    rostered into a 2026 family-camp registration:
+    `COVID-19 Bunking Requests` 238, `Share Bunk With` 234, `Shared-request`
+    114, `BunkingNotes Notes` 111, `Internal Bunk Notes` 10.
     `FAM CAMP-Share Comments` is 0 for 2026 and is carried anyway -- it is one
     of the three fields the Go ingest already joins into `request_text`
     (2024-2025 only), so dropping it here would lose those years' text.
     """
 
-    def test_the_registry_is_the_ruled_five_plus_the_dormant_share_comments(self) -> None:
+    def test_the_registry_order_is_what_staff_asked_for(self) -> None:
+        """kindred#2476: `Share Bunk With` moves from position 2 to position 6
+        by owner ruling, NOT by measuring the columns. On 2026 family-camp
+        households it is the SECOND MOST POPULATED of the six blocks (234 of
+        479) -- ahead of `Shared-request` (114) and `FAM CAMP-Share Comments`
+        (0) -- yet staff put it last. The order is what staff asked for; it
+        must not be re-derived from volume (or from authorship -- see the
+        next test) by a later reader who measures the columns and "corrects"
+        it back."""
         assert [source.label for source in REQUEST_TEXT_SOURCES] == [
             "COVID-19 Bunking Requests",
-            "Share Bunk With",
             "Shared-request",
             "FAM CAMP-Share Comments",
             "BunkingNotes Notes",
             "Internal Bunk Notes",
+            "Share Bunk With",
         ]
 
-    def test_family_authored_blocks_sort_ahead_of_staff_authored_ones(self) -> None:
-        """An internal note must never read as a family's own ask, so the two
-        staff fields land at the bottom of the panel as well as in grey."""
+    def test_the_order_is_staff_specified_not_authorship_derived(self) -> None:
+        """kindred#2476 deliberately retires the older invariant that every
+        family-authored block sorts ahead of every staff-authored one --
+        `Share Bunk With` is family-authored and now sorts after both staff
+        notes. The OLD rationale was authorship (an internal note must never
+        read as a family's own ask); the ordering ruling replaces it with a
+        staff-specified order that is not derived from authorship, and must
+        not be re-derived from authorship by a later reader who notices this
+        no longer sorts family-before-staff."""
         authorship = [source.authorship for source in REQUEST_TEXT_SOURCES]
-        assert authorship == ["family", "family", "family", "family", "staff", "staff"]
+        assert authorship == ["family", "family", "family", "staff", "staff", "family"]
 
     def test_the_two_staff_authored_fields_are_the_bunking_csv_notes(self) -> None:
         """All 34 `BunkingNotes` values end in an inline staff signature and

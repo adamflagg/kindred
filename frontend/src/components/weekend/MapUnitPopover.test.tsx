@@ -197,7 +197,15 @@ describe('MapUnitPopover — one room', () => {
     expect(onOpenParty).toHaveBeenCalledWith(johnson)
   })
 
-  it('badges a written-into room, reusing the inventory and board wording', () => {
+  it('draws NO write-in chip on a written-into room, because bunking happens on the board', () => {
+    // ⛔ RETIRED 2026-08-21 by owner ruling on #2499. This asserted the
+    // OPPOSITE — that the map badges a written-into room — and it is rewritten
+    // rather than adapted, because the specification changed, not the code.
+    //
+    // Staff bunk on the BOARD; the map is for visibility and checks. Write-in
+    // occupancy is board business, so the map draws no "Write-in" chip. The
+    // map's two call sites now apply the same `writeInBadgeApplies` gate the
+    // unit card has used since kindred#2252, so the two surfaces agree.
     // `reservationBadge` is the shared source for this; a second copy is how
     // the three surfaces start disagreeing about what the word means. It
     // INHERITED kindred#2078's rename for free, which is the point — this
@@ -217,7 +225,7 @@ describe('MapUnitPopover — one room', () => {
         onOpenParty={vi.fn()}
       />
     )
-    expect(screen.getByText('Write-in')).toBeInTheDocument()
+    expect(screen.queryByText('Write-in')).not.toBeInTheDocument()
   })
 
   it('says a deactivated room is inactive', () => {
@@ -806,8 +814,67 @@ describe('MapUnitPopover — a cluster of rooms', () => {
       ),
     ]
     render(<MapUnitPopover units={house} hue={HUE} onOpenParty={vi.fn()} />)
-    expect(screen.getByTitle(/Cedar 2.*Write-in.*Inactive/i)).toBeInTheDocument()
-    expect(screen.queryByTitle(/Cedar 1.*Write-in/i)).not.toBeInTheDocument()
+    // Per #2499 the cell no longer carries the "Write-in" CHIP LABEL — but it
+    // must now NAME THE OCCUPANT instead, and must still carry "Inactive",
+    // which is a different fact (the room is unbookable) and the half of this
+    // test that was never in question.
+    expect(screen.getByTitle(/Cedar 2.*Emma Johnson.*Inactive/i)).toBeInTheDocument()
+    expect(screen.queryByTitle(/Write-in/i)).not.toBeInTheDocument()
+    // The cell must NOT call a room somebody sleeps in empty. Scoped to
+    // Cedar 2 — Cedar 1 carries no write-in and no party, so "empty" is the
+    // correct answer for it and must survive.
+    expect(screen.queryByTitle(/Cedar 2.*empty/i)).not.toBeInTheDocument()
+    expect(screen.getByTitle(/Cedar 1 — empty/i)).toBeInTheDocument()
+  })
+
+  it('names the occupant in a write-in-only cluster cell rather than calling it empty', () => {
+    // Regression caught by review of the first cut of kindred#2499: `DetailCard`
+    // and `ClusterSummary` were taught about write-in occupants and
+    // `FootprintGrid` was not, so its cell still built `label`/`who`/`base`
+    // from `entry.parties[0]` alone. A write-in-only room — the COMMON case,
+    // since most write-ins are non-rostered staff and carry no party — fell to
+    // the `${name} — empty` branch, directly beneath a summary now reporting
+    // that same room as taken. One popover, two contradictory answers.
+    const house = [
+      mapUnit(row({ unit_id: 'u1', code: 'cedar-1', name: 'Cedar 1' })),
+      mapUnit(
+        row({
+          unit_id: 'u2',
+          code: 'cedar-2',
+          name: 'Cedar 2',
+          write_ins: [
+            cover({
+              unit_id: 'u2',
+              unit_code: 'cedar-2',
+              unit_name: 'Cedar 2',
+              occupant_name: 'Liam Garcia',
+            }),
+          ],
+          is_family_available: false,
+        })
+      ),
+    ]
+    render(<MapUnitPopover units={house} hue={HUE} onOpenParty={vi.fn()} />)
+    expect(screen.getByText('2 · 1 taken, 1 open')).toBeInTheDocument()
+    expect(screen.getByTitle(/Cedar 2.*Liam Garcia/i)).toBeInTheDocument()
+    expect(screen.queryByTitle(/Cedar 2 — empty/i)).not.toBeInTheDocument()
+  })
+
+  it('keeps a write-in-only cell INERT — there is no party to open behind it', () => {
+    const onOpenParty = vi.fn()
+    const house = [
+      mapUnit(row({ unit_id: 'u1', code: 'cedar-1', name: 'Cedar 1' })),
+      mapUnit(
+        row({
+          unit_id: 'u2',
+          code: 'cedar-2',
+          name: 'Cedar 2',
+          write_ins: [cover({ unit_id: 'u2', unit_code: 'cedar-2', unit_name: 'Cedar 2' })],
+        })
+      ),
+    ]
+    render(<MapUnitPopover units={house} hue={HUE} onOpenParty={vi.fn()} />)
+    expect(onOpenParty).not.toHaveBeenCalled()
   })
 
   it('says WHICH room in a cluster carries the consent flag', () => {
@@ -1215,7 +1282,15 @@ describe('MapUnitPopover — the whole-building marker, extended from the board 
     expect(garciaChip.textContent).not.toContain('Whole building')
   })
 
-  it('renders the whole-building badge and a write-in badge together, legibly', () => {
+  it('renders the whole-building badge alone, the write-in chip having been dropped', () => {
+    // ⛔ RETIRED 2026-08-21 by owner ruling on #2499. This asserted the
+    // OPPOSITE — that the map badges a written-into room — and it is rewritten
+    // rather than adapted, because the specification changed, not the code.
+    //
+    // Staff bunk on the BOARD; the map is for visibility and checks. Write-in
+    // occupancy is board business, so the map draws no "Write-in" chip. The
+    // map's two call sites now apply the same `writeInBadgeApplies` gate the
+    // unit card has used since kindred#2252, so the two surfaces agree.
     // #2078 added the write-in badge (via `reservationBadge`, unit-level, in
     // the DetailCard's status list) after this issue was filed. It is
     // orthogonal to `wholeBuildingKeys` (party-keyed) — a room can carry both
@@ -1239,10 +1314,106 @@ describe('MapUnitPopover — the whole-building marker, extended from the board 
         wholeBuildingKeys={new Set([partyKey(johnson)])}
       />
     )
-    const writeIn = screen.getByText('Write-in')
-    const wholeBuilding = screen.getByText('Whole building')
-    expect(writeIn).toBeInTheDocument()
-    expect(wholeBuilding).toBeInTheDocument()
-    expect(writeIn).not.toBe(wholeBuilding)
+    // The whole-building badge is untouched by #2499 and must survive; only
+    // the write-in chip goes. Asserting both keeps this test pinning the
+    // thing it was written for — that these are two independent signals —
+    // rather than silently narrowing to one.
+    expect(screen.getByText('Whole building')).toBeInTheDocument()
+    expect(screen.queryByText('Write-in')).not.toBeInTheDocument()
+  })
+})
+
+/**
+ * kindred#2499, owner ruling: the map treats a write-in the way the BOARD
+ * does — as an occupant — rather than as a chip beside an otherwise empty
+ * room.
+ *
+ * The board settled this in kindred#2078: "the room read as EMPTY AND CLOSED
+ * when in truth it was FULL. This is the same fact, printed where the board
+ * prints occupancy." Its well stacks `WriteInCard` and `FamilyCard` together,
+ * because "a shared space is not a new KIND of card; it is a card with two
+ * occupants in it."
+ *
+ * The map's "Occupied by" row is its equivalent of that well, and it said
+ * `empty` for a room somebody is sleeping in. These pin the fix.
+ *
+ * The shared unit is `writeInEntries` — the tree-aware, server-ordered
+ * resolver the board already calls — NOT the presentation: the board draws
+ * cards, the map draws a compact list, and those grammars are deliberately
+ * different.
+ */
+describe('MapUnitPopover write-in occupants (kindred#2499)', () => {
+  it('names the write-in occupant instead of calling the room empty', () => {
+    render(
+      <MapUnitPopover
+        units={[mapUnit(row({ write_ins: [cover()], is_family_available: false }))]}
+        hue={HUE}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.getByText('Emma Johnson')).toBeInTheDocument()
+    expect(screen.queryByText('empty')).not.toBeInTheDocument()
+  })
+
+  it('lists a write-in and a placed family together, as one well of occupants', () => {
+    render(
+      <MapUnitPopover
+        units={[
+          mapUnit(row({ write_ins: [cover({ occupant_name: 'Liam Garcia' })] }), [party('Chen')]),
+        ]}
+        hue={HUE}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.getByText('Liam Garcia')).toBeInTheDocument()
+    expect(screen.getByText('Chen')).toBeInTheDocument()
+  })
+
+  it('says the occupant is not named rather than printing a blank', () => {
+    // Mirrors `WriteInCard`'s UNNAMED fallback, now shared from `writeIn.ts`
+    // so the two surfaces cannot word it differently.
+    render(
+      <MapUnitPopover
+        units={[mapUnit(row({ write_ins: [cover({ occupant_name: '' })] }))]}
+        hue={HUE}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.getByText('Occupant not named')).toBeInTheDocument()
+  })
+
+  it('does NOT make the occupant look clickable — there is no panel behind one', () => {
+    // `WriteInCard`'s ruling, carried across: "a card that looks interactive
+    // and is not is worse than plain text." A family opens its panel; a
+    // write-in has none.
+    const onOpenParty = vi.fn()
+    render(
+      <MapUnitPopover
+        units={[mapUnit(row({ write_ins: [cover()] }))]}
+        hue={HUE}
+        onOpenParty={onOpenParty}
+      />
+    )
+    expect(screen.getByText('Emma Johnson').closest('button')).toBeNull()
+  })
+
+  it('counts a written-into room as taken in the cluster summary, not open', () => {
+    // The count keyed on `parties.length`, and a write-in occupant is by
+    // definition NOT a rostered party — so a full room was reported open,
+    // contradicting kindred#2078 on the very surface that ruling was about.
+    const house = [
+      mapUnit(row({ unit_id: 'u1', code: 'cedar-1', name: 'Cedar 1' })),
+      mapUnit(
+        row({
+          unit_id: 'u2',
+          code: 'cedar-2',
+          name: 'Cedar 2',
+          write_ins: [cover({ unit_id: 'u2', unit_code: 'cedar-2', unit_name: 'Cedar 2' })],
+          is_family_available: false,
+        })
+      ),
+    ]
+    render(<MapUnitPopover units={house} hue={HUE} onOpenParty={vi.fn()} />)
+    expect(screen.getByText('2 · 1 taken, 1 open')).toBeInTheDocument()
   })
 })

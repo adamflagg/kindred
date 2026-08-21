@@ -20,7 +20,10 @@
  * Layout is the owner's 2026-08-17 ruling, a hybrid of two mockup options:
  * blocks start EXPANDED (nothing hidden behind a click, because a scanning
  * eye must not miss request text) and every block is COLLAPSIBLE (a staff
- * member facing the seven-entry household can fold them away).
+ * member facing the seven-entry household can fold them away). kindred#2476
+ * (owner ruling 2026-08-21) tunes this: `Share Bunk With` alone now starts
+ * COLLAPSED -- see the `describe('Share Bunk With starts collapsed...')`
+ * block below -- every other block keeps the EXPANDED default above.
  *
  * Shape it is built against, measured on the 2026 production snapshot over
  * the 382 households rostered into a family session: 270 carry any text, 142
@@ -348,7 +351,9 @@ describe('per-field split', () => {
           request_text: 'first; second',
           request_blocks: [
             block('Shared-request', [{ text: 'first' }]),
-            block('Share Bunk With', [{ text: 'second' }]),
+            // NOT `Share Bunk With` -- kindred#2476 starts it folded, and
+            // this test asserts both entries render.
+            block('FAM CAMP-Share Comments', [{ text: 'second' }]),
           ],
         })}
       />
@@ -365,7 +370,9 @@ describe('per-child split', () => {
       <ShareRequestPanel
         share={share({
           request_blocks: [
-            block('Share Bunk With', [
+            // NOT `Share Bunk With` -- kindred#2476 starts it folded, and
+            // this test asserts both entries render without a click.
+            block('FAM CAMP-Share Comments', [
               { text: 'With Olivia Chen', contributors: ['Emma Johnson'] },
               { text: 'With Riley Sam', contributors: ['Liam Johnson'] },
             ]),
@@ -435,7 +442,10 @@ describe('expanded by default, collapsible by click', () => {
         share={share({
           request_blocks: [
             block('COVID-19 Bunking Requests', [{ text: 'A quiet cabin, please' }]),
-            block('Share Bunk With', [{ text: 'Cabin with a fridge' }]),
+            // NOT `Share Bunk With` -- kindred#2476 starts it folded by
+            // default, which would make "leaves its neighbour open" true for
+            // the wrong reason. `Shared-request` keeps the old default.
+            block('Shared-request', [{ text: 'Cabin with a fridge' }]),
           ],
         })}
       />
@@ -466,6 +476,64 @@ describe('expanded by default, collapsible by click', () => {
 
     fireEvent.click(header)
     expect(screen.getByText('A cabin on the flat, please')).toBeInTheDocument()
+  })
+})
+
+describe('Share Bunk With starts collapsed; its siblings do not (kindred#2476)', () => {
+  // Owner ruling 2026-08-21, tuning the 2026-08-17 "blocks start EXPANDED"
+  // ruling: `Share Bunk With` alone starts folded. Every other block keeps
+  // the old default.
+  it('renders Share Bunk With folded on first paint while a sibling stays open', () => {
+    render(
+      <ShareRequestPanel
+        share={share({
+          request_blocks: [
+            block('COVID-19 Bunking Requests', [{ text: 'A quiet cabin, please' }]),
+            block('Share Bunk With', [{ text: 'Cabin with a fridge' }]),
+          ],
+        })}
+      />
+    )
+
+    expect(screen.getByText('A quiet cabin, please')).toBeInTheDocument()
+    expect(screen.queryByText('Cabin with a fridge')).not.toBeInTheDocument()
+    // The header stays, or there is nothing left to click to open it.
+    expect(screen.getByText('Share Bunk With')).toBeInTheDocument()
+  })
+
+  it('opens Share Bunk With on click, same as any other block', () => {
+    render(
+      <ShareRequestPanel
+        share={share({
+          request_blocks: [block('Share Bunk With', [{ text: 'Cabin with a fridge' }])],
+        })}
+      />
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Share Bunk With' }))
+    expect(screen.getByText('Cabin with a fridge')).toBeInTheDocument()
+  })
+
+  it('THE TRAP: a household switch re-collapses Share Bunk With rather than opening it', () => {
+    // Applying the collapsed default only to the initial `useState` seed is
+    // not enough -- the reset-on-household-change branch re-seeds `folded`
+    // too (the panel is never remounted between families; see the comment
+    // on that branch), and a bare `new Set()` there would open Share Bunk
+    // With for every household after the first, the moment staff click the
+    // next family.
+    const first = share({
+      request_blocks: [block('Share Bunk With', [{ text: "The first family's fridge ask" }])],
+    })
+    const second = share({
+      request_blocks: [block('Share Bunk With', [{ text: "The second family's fridge ask" }])],
+    })
+
+    const { rerender } = render(<ShareRequestPanel share={first} />)
+    expect(screen.queryByText("The first family's fridge ask")).not.toBeInTheDocument()
+
+    rerender(<ShareRequestPanel share={second} />)
+
+    expect(screen.queryByText("The second family's fridge ask")).not.toBeInTheDocument()
   })
 })
 
@@ -589,7 +657,11 @@ describe('the heaviest real household still fits a 416px panel', () => {
               { text: 'one', contributors: ['Emma Johnson'] },
               { text: 'two', contributors: ['Liam Johnson'] },
             ]),
-            block('Share Bunk With', [
+            // NOT `Share Bunk With` -- kindred#2476 starts that one folded
+            // by default, which would collapse two of the seven entries this
+            // test exists to prove all render. `FAM CAMP-Share Comments` is
+            // a real family field that keeps the old expanded-by-default.
+            block('FAM CAMP-Share Comments', [
               { text: 'three', contributors: ['Emma Johnson'] },
               { text: 'four', contributors: ['Liam Johnson'] },
             ]),

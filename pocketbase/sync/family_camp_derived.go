@@ -767,6 +767,50 @@ func (s *FamilyCampDerivedSync) loadPersonHouseholdMapping(ctx context.Context, 
 	return result, nil
 }
 
+// loadPersonCampMinderIDs builds a map of person PB ID -> CampMinder person
+// id, for the durable merge tiebreak kindred#2275 needs -- see
+// customValueEntry.personCMID's doc comment for why a PocketBase record id is
+// not safe to sort by.
+//
+// A second paged query over the same "persons" collection
+// loadPersonHouseholdMapping already reads. Kept separate rather than folded
+// into that function's return value because loadPersonHouseholdMapping is
+// called directly, with its current two-value signature, from test files
+// outside this one's scope (kindred#2275 touches only family_camp_derived.go
+// and its test file) -- widening it would be a breaking change this issue is
+// not chartered to make.
+func (s *FamilyCampDerivedSync) loadPersonCampMinderIDs(ctx context.Context, year int) (map[string]int, error) {
+	result := make(map[string]int)
+
+	filter := fmt.Sprintf("year = %d && household != ''", year)
+	page := 1
+	perPage := 500
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		default:
+		}
+
+		records, err := s.App.FindRecordsByFilter("persons", filter, sortByID, perPage, (page-1)*perPage)
+		if err != nil {
+			return nil, fmt.Errorf("querying persons page %d: %w", page, err)
+		}
+
+		for _, record := range records {
+			result[record.Id] = record.GetInt("cm_id")
+		}
+
+		if len(records) < perPage {
+			break
+		}
+		page++
+	}
+
+	return result, nil
+}
+
 // customValueEntry represents a loaded custom value
 type customValueEntry struct {
 	householdPBID string
@@ -787,6 +831,22 @@ type customValueEntry struct {
 	// Nothing may treat "" as an identity: several household values sharing the
 	// empty string are not one person, they are no person.
 	personPBID string
+	// personCMID is the answering person's CampMinder id -- kindred#2275's
+	// stable tiebreak for the first-non-empty-wins merges in processAdults.
+	//
+	// The PocketBase record id loadPersonCustomValues used to order by (and
+	// still orders its own paged query by, for the unrelated reason
+	// documented there) is arbitrary but NOT durable: the vendor sync's
+	// orphan sweep deletes and later re-admits a person_custom_values row
+	// with a brand-new random id, so the same two siblings' answers could
+	// pick a different merge winner on a later resync with no data change at
+	// all. A person's own CampMinder id survives every resync, so
+	// processAdults sorts by this field before merging instead. Owner ruling
+	// 2026-08-19: "whatever sort we choose, must be repeatable, not random."
+	//
+	// Zero (unpopulated) for a household-partition entry, which has no
+	// answering person to begin with -- see personPBID's comment.
+	personCMID int
 	// lastUpdated is CampMinder's own edit timestamp for this value. Spec 4.1
 	// resolves a form-vs-registration conflict by comparing these, not by field
 	// name precedence, so it has to survive the load.
@@ -854,6 +914,11 @@ func (s *FamilyCampDerivedSync) loadHouseholdCustomValues(
 func (s *FamilyCampDerivedSync) loadPersonCustomValues(
 	ctx context.Context, year int, fieldNameMap map[string]string, personToHousehold map[string]string,
 ) ([]customValueEntry, error) {
+	personCMID, err := s.loadPersonCampMinderIDs(ctx, year)
+	if err != nil {
+		return nil, fmt.Errorf("loading person CampMinder ids: %w", err)
+	}
+
 	var result []customValueEntry
 
 	filter := fmt.Sprintf("year = %d", year)
@@ -867,8 +932,11 @@ func (s *FamilyCampDerivedSync) loadPersonCustomValues(
 		default:
 		}
 
-		// Sorted by id, for the reason spelled out in loadHouseholdCustomValues:
-		// this is the read the request-layer precedence depends on.
+		// Sorted by id so paging is safe (no ORDER BY would let SQLite skip or
+		// repeat a row across pages -- same reasoning as
+		// loadHouseholdCustomValues). This is NOT the order processAdults'
+		// merge uses any more: see customValueEntry.personCMID and its sort in
+		// processAdults (kindred#2275).
 		records, err := s.App.FindRecordsByFilter("person_custom_values", filter, "id", perPage, (page-1)*perPage)
 		if err != nil {
 			return nil, fmt.Errorf("querying person custom values page %d: %w", page, err)
@@ -892,6 +960,7 @@ func (s *FamilyCampDerivedSync) loadPersonCustomValues(
 					fieldName:     fieldName,
 					value:         value,
 					personPBID:    personID,
+					personCMID:    personCMID[personID],
 					lastUpdated:   parsed,
 				})
 			}
@@ -929,31 +998,39 @@ func (s *FamilyCampDerivedSync) loadPersonCustomValues(
 //     would have erased every one of them.
 //
 // The person-partition loop below merges with "first non-empty wins" over a
-// slice loadPersonCustomValues returns in record-id order, so when two
-// enrolled siblings carry different answers the winner is whichever row has
-// the lower id -- which correlates with nothing. Measured over the 382
-// rostered 2026 households: 254 (household, field, adult) groups disagree
+// slice sorted by the answering person's CampMinder id (kindred#2275, owner
+// ruling 2026-08-19 -- see customValueEntry.personCMID), NOT the
+// person_custom_values record-id order loadPersonCustomValues' own paged
+// query happens to return. Measured over the 382 rostered 2026 households:
+// 254 (household, field, adult) groups have siblings that disagree, spread
 // across 113 households.
 //
-// RESOLVED for email only (owner ruling 2026-08-09, kindred#1945): when the
+// RESOLVED for email (owner ruling 2026-08-09, kindred#1945): when the
 // siblings' emails differ and are both non-empty, preferEmail breaks the tie
-// by well-formedness instead of load order -- see its doc comment. Email got
-// a rule because the harm is concrete and the rule is crisp: 5 stored adult
-// emails carry a domain typo in production, 4 of which have a correct
-// version on a sibling form that iteration order was discarding.
+// by well-formedness instead of the sibling ordering below -- see its doc
+// comment. Email got a rule because the harm is concrete and the rule is
+// crisp: 5 stored adult emails carry a domain typo in production, 4 of which
+// have a correct version on a sibling form. When validity does not
+// discriminate between the two (both well-formed, or both malformed),
+// preferEmail falls back to whichever answer this sort put first -- the same
+// CampMinder-id tiebreak as every other attribute, not a coin flip.
 //
-// STILL PENDING for every other merged field (first/last name, pronouns,
-// gender, date_of_birth, relationship): first-non-empty-wins over load order
-// stands, unchanged, because none of them has a validity notion as crisp as
-// "syntactically valid email" -- inventing one to feel consistent would be
-// guessing, not fixing. Which sibling should win there remains a product
-// decision. It is NOT coupled to whether the columns exist: kindred#1945
+// RESOLVED for every other merged field (first/last name, pronouns, gender,
+// date_of_birth, relationship_to_camper) -- owner ruling 2026-08-19,
+// kindred#2275: first-non-empty-wins STANDS, UNCHANGED as a policy; only the
+// order it runs over moved. The owner rejected both a recency rule ("none of
+// these are stable if an older child is edited later?") and a completeness
+// rule for the identical reason: either lets editing the LOSING sibling's
+// answer flip the winner. Sorting by the answering person's CampMinder id is
+// stable under exactly that edit, because the id identifying an existing
+// person never changes -- unlike a PocketBase record id, which the vendor
+// sync's orphan sweep can and does regenerate on a resync with no data
+// change. This is NOT a validity notion like preferEmail's, and does not
+// need to be one: the goal is REPEATABILITY, not picking the "better"
+// answer. It is NOT coupled to whether the columns exist: kindred#1945
 // closed 2026-08-09 refusing deletion ("No deletion of the gender /
 // date_of_birth / email / pronouns columns -- the 2026-08-07 hold stands"),
-// so column existence blocks nothing here. What #1945 left open is exactly
-// this per-attribute merge policy, and that is kindred#2275's subject.
-// Today's behavior for those fields is pinned by test instead of changed on
-// a guess.
+// so column existence blocked nothing here either.
 //
 // NORMALISED, separately from the merge (kindred#2275 phase D, owner ruling
 // 2026-08-16): date_of_birth and relationship_to_camper are rewritten into a
@@ -969,10 +1046,11 @@ func (s *FamilyCampDerivedSync) loadPersonCustomValues(
 // RECORDED, also separately from the merge (kindred#2275 Option B, owner
 // ruling 2026-08-17): what survives normalisation is written to the additive
 // attribute_conflicts column instead of vanishing -- see adultData.conflicts
-// and mergeFirstNonEmpty. Which answer wins is still first-non-empty over
-// load order for every attribute, and still preferEmail for email; the only
-// change is that the discarded answers are kept, keyed by column, so staff
-// can see that a slot was answered twice. What is NOT kept is a discarded
+// and mergeFirstNonEmpty. Which answer wins is still first-non-empty -- now
+// over the CampMinder-id order above, not load order -- for every attribute,
+// and still preferEmail for email; the only change from #2421 is that the
+// discarded answers are kept, keyed by column, so staff can see that a slot
+// was answered twice. What is NOT kept is a discarded
 // answer that differs from the winner only in case or whitespace -- see
 // sameAnswer, which gates the recording and nothing else.
 //
@@ -1015,8 +1093,17 @@ func (s *FamilyCampDerivedSync) processAdults(
 		adultMap[v.householdPBID][adultNum].name = v.value
 	}
 
-	// Process person values for adult details
-	for _, v := range personValues {
+	// Process person values for adult details. Sorted by the answering
+	// person's CampMinder id (ascending) before merging, NOT the load order
+	// loadPersonCustomValues returns them in -- kindred#2275. A local clone,
+	// not an in-place sort: personValues is also read by processRegistrations
+	// and processMedical in the same Sync() run, and neither of those needs
+	// (or should silently inherit) this ordering.
+	personValuesByCMID := slices.Clone(personValues)
+	slices.SortStableFunc(personValuesByCMID, func(a, b customValueEntry) int {
+		return a.personCMID - b.personCMID
+	})
+	for _, v := range personValuesByCMID {
 		adultNum := extractAdultNumberFromField(v.fieldName)
 		if adultNum == 0 || adultNum > 2 {
 			continue // Person fields only have Adult 1 and 2
@@ -1066,11 +1153,11 @@ func (s *FamilyCampDerivedSync) processAdults(
 			adult.gender = adult.mergeFirstNonEmpty("gender", adult.gender, v.value)
 		case strings.Contains(v.fieldName, "DOB"):
 			// Normalised BEFORE the merge and before the comparison: see
-			// normalizeDateOfBirth. Which answer wins is still load order
-			// (unchanged); what normalisation buys is that two spellings of
-			// one birthday neither swap the stored value nor raise a
-			// conflict. 583 of the 1,124 diverging production groups are
-			// exactly that, and they must stay silent.
+			// normalizeDateOfBirth. Which sibling wins is the CampMinder-id
+			// sort above (kindred#2275), not load order; what normalisation
+			// buys is that two spellings of one birthday neither swap the
+			// stored value nor raise a conflict. 583 of the 1,124 diverging
+			// production groups are exactly that, and they must stay silent.
 			adult.dateOfBirth = adult.mergeFirstNonEmpty(
 				"date_of_birth", adult.dateOfBirth, normalizeDateOfBirth(v.value))
 		case strings.Contains(v.fieldName, "Relationship"):

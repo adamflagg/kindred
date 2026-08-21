@@ -703,6 +703,55 @@ func (o *Orchestrator) IsRunning(syncType string) bool {
 	return exists && status.Status == statusRunning
 }
 
+// customValuesCollectionGroup maps each job that writes to a shared custom-values PocketBase
+// collection to a group key for that collection. The bounded daily family-camp jobs
+// ("person_custom_values_family_camp", "household_custom_values_family_camp" -- kindred#2489)
+// are registered under distinct service names but write the exact same person_custom_values /
+// household_custom_values collections as their unrestricted counterparts (the weekly sweep and
+// on-demand runs), so a mutual-exclusion check keyed on the literal job name does not see them
+// as the same writer. That gap is kindred#2491: the daily cron's bounded pass and the weekly
+// unrestricted sweep (or an operator's on-demand run) could interleave against the same
+// collection, racing a concurrent write against deleteOrphans's own read.
+//
+// person_custom_values and household_custom_values are deliberately in separate groups --
+// RunCustomValuesSync documents running them in parallel as safe because they write
+// independent collections via independent CampMinder endpoints, and this map must not widen
+// the lock across that boundary.
+var customValuesCollectionGroup = map[string]string{
+	"person_custom_values":                "person_custom_values",
+	"person_custom_values_family_camp":    "person_custom_values",
+	"household_custom_values":             "household_custom_values",
+	"household_custom_values_family_camp": "household_custom_values",
+}
+
+// customValuesGroupRunningLocked reports whether any currently running job shares syncType's
+// custom-values collection group (see customValuesCollectionGroup) -- including syncType
+// itself. For a syncType outside that map this is exactly the same check IsRunning(syncType)
+// makes. Callers must already hold o.mu (read or write lock) -- this function takes no lock of
+// its own so it can be composed into an existing check-and-mark critical section.
+func (o *Orchestrator) customValuesGroupRunningLocked(syncType string) bool {
+	group, tracked := customValuesCollectionGroup[syncType]
+	for name, status := range o.runningJobs {
+		if status.Status != statusRunning {
+			continue
+		}
+		if name == syncType || (tracked && customValuesCollectionGroup[name] == group) {
+			return true
+		}
+	}
+	return false
+}
+
+// IsCustomValuesCollectionRunning is the exported, self-locking form of
+// customValuesGroupRunningLocked for callers outside the orchestrator (api.go's on-demand
+// handlers) that need to check before starting a run rather than as part of one atomic
+// check-and-mark critical section.
+func (o *Orchestrator) IsCustomValuesCollectionRunning(syncType string) bool {
+	o.mu.RLock()
+	defer o.mu.RUnlock()
+	return o.customValuesGroupRunningLocked(syncType)
+}
+
 // GetRunningJobs returns all currently running jobs
 func (o *Orchestrator) GetRunningJobs() []string {
 	o.mu.RLock()
@@ -920,8 +969,15 @@ func (o *Orchestrator) runSingleSyncInternal(
 		status.Trigger, status.BatchID, status.Year = origin.trigger, origin.batchID, origin.year
 		o.mu.Unlock()
 	} else {
-		// No pre-marked status - check if something else is running
-		if o.IsRunning(syncType) {
+		// No pre-marked status - check if something else is running. Uses the collection-
+		// group-aware check (not the plain IsRunning(syncType)) so the daily cron's bounded
+		// family-camp pass and the weekly unrestricted sweep exclude each other even though
+		// they run under different registered names (kindred#2491 Face B) -- this is the path
+		// both getDailySyncJobs (via runSyncAndWait) and RunCustomValuesSync take.
+		o.mu.RLock()
+		blocked := o.customValuesGroupRunningLocked(syncType)
+		o.mu.RUnlock()
+		if blocked {
 			return "", fmt.Errorf("sync already in progress: %s", syncType)
 		}
 
@@ -1029,7 +1085,12 @@ func (o *Orchestrator) RunSingleSyncWithService(
 	parentCtx context.Context, syncType string, service Service, origin runOrigin,
 ) error {
 	o.mu.Lock()
-	if existing, exists := o.runningJobs[syncType]; exists && existing.Status == statusRunning {
+	// Collection-group-aware check (kindred#2491 Face A): a plain runningJobs[syncType] lookup
+	// missed that the bounded family-camp jobs write the same collection under a different
+	// registered name, so an operator's on-demand person_custom_values / household_custom_values
+	// run could start while the daily cron's bounded pass was still in flight. Checked under the
+	// same lock as the mark below, so the atomicity #1881/#2105 rely on is unchanged.
+	if o.customValuesGroupRunningLocked(syncType) {
 		o.mu.Unlock()
 		return fmt.Errorf("sync already in progress: %s", syncType)
 	}

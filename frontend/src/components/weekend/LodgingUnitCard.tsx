@@ -276,9 +276,10 @@ export function LodgingUnitCard({
   // the well's `WriteInCard` below said the same thing twice — the occupant's
   // own name, once as a slate "Write-in" chip and once spelled out in the
   // well — and the well is the one that actually names them, so the chip is
-  // redundant here. `reservationBadge` itself is untouched: `MapUnitPopover`'s
-  // header and its collapsed grid cell draw no `WriteInCard` of their own and
-  // still call it directly, so the chip is still the only signal there.
+  // redundant here. `MapUnitPopover` since dropped it too (kindred#2499, owner
+  // ruling: staff bunk on the board, the map is for visibility and checks), so
+  // NO surface draws "Write-in" now — see `writeInBadgeApplies` for why the arm
+  // nevertheless stays in `reservationBadge`.
   /*
    * ⚠️ `reservationBadge` IS NO LONGER READ HERE, and every one of its arms is
    * a ruling rather than an omission (vocabulary §3).
@@ -294,8 +295,10 @@ export function LodgingUnitCard({
    *
    * With all four gone the function draws NOTHING on a board card, so the
    * render site is deleted rather than left standing and quiet. The function
-   * itself is untouched: `MapUnitPopover`'s header and its collapsed grid cell
-   * still call it, and on that surface the marks still discriminate.
+   * itself is untouched, and `MapUnitPopover`'s header and its collapsed grid
+   * cell still call it — but for `Building`/`Staff`/`Released` ONLY.
+   * kindred#2499 gated `Write-in` off there too, so that arm now draws on no
+   * surface at all; the map names the occupant instead.
    */
   // On every unit this card can be a SLOT for, which includes a COMBINED
   // container and excludes a split one.

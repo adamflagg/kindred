@@ -1024,15 +1024,35 @@ export function buildBoard(parties: RosterPartyRow[], units: LodgingUnitRow[]): 
       slots: [],
       partyKeys: new Set<string>(),
     }
-    // Units are pushed in the PAYLOAD's order and never re-sorted here — the
-    // repository's own query already sorts `area.sort_order,name`, so a
-    // unit's position within its area stays alphabetical without this
-    // function touching it (owner ruling, kindred#2076: "intra unit remains
-    // alpha"). Only which AREA a unit's slot lands in, and where that area
-    // falls below, changes.
+    // Sorted explicitly below, NOT trusted from payload order: `drawnUnits`
+    // (unitLevel.ts) walks the registry tree breadth-first, so a unit's
+    // depth in the tree — not its name — decided its position here, and
+    // containers drew ahead of other buildings' rooms regardless of name
+    // (kindred#2514). Push in whatever order arrives; sort after the loop.
     bucket.slots.push({ unit, parties: slotParties, consent })
     for (const slotParty of slotParties) bucket.partyKeys.add(partyKey(slotParty))
     buckets.set(key, bucket)
+  }
+
+  // A unit's position WITHIN its area, sorted here rather than trusted from
+  // the payload (kindred#2514) — `(area_sort_order, name)`. Every unit in one
+  // bucket shares an area, so `area_sort_order` is already constant within
+  // it; this sorts by name in practice, and carries the area term only so a
+  // bucket's ordering rule reads the same as the areas' own below.
+  for (const bucket of buckets.values()) {
+    bucket.slots.sort((a, b) => {
+      const orderDiff = areaSortOrder(a.unit) - areaSortOrder(b.unit)
+      if (orderDiff !== 0) return orderDiff
+      // `numeric: true` so "Cedar 10" sorts after "Cedar 9", not ahead of
+      // "Cedar 2" — plain localeCompare treats the trailing number as a
+      // string and puts "1…" before "2…". Every production area's
+      // numbering is single-digit today, which is why a plain compare
+      // shipped unnoticed in review, but summer's equivalent sort
+      // (`BunkingBoardByArea.tsx`) already numeric-compares for exactly
+      // this reason, and the board must not regress it (review finding on
+      // kindred#2518).
+      return a.unit.name.localeCompare(b.unit.name, undefined, { numeric: true })
+    })
   }
 
   // Ordered by the Manage screen's area rank (kindred#2076) — the board
