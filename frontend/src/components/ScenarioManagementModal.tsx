@@ -114,10 +114,7 @@ export default function ScenarioManagementModal({
   }
 
   const headerContent = (
-    // No `pr-14` (kindred#2507): the close mark is an 18px circle
-    // grid-stacked over this header now, and "Manage Scenarios" is a fixed
-    // string that never reaches it.
-    <div className="border-border border-b p-6">
+    <div className="border-border border-b p-6 pr-14">
       <h2 className="font-display text-2xl font-bold">Manage Scenarios</h2>
     </div>
   )

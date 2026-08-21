@@ -1,3 +1,4 @@
+import { X } from 'lucide-react'
 import { useEffect, useRef } from 'react'
 import type { ReactNode, RefObject } from 'react'
 import { createPortal } from 'react-dom'
@@ -104,6 +105,37 @@ interface ModalProps {
   // on forest-700. This is the close button's contrast only; it changes
   // nothing else, so existing callers keep exactly what they have.
   headerOnDark?: boolean
+  /**
+   * Where the floating close button sits in a custom header — `'center'`
+   * (the default, vertically centred in the header band) or `'top'`
+   * (`top-4`, the old default, for a header that wants it).
+   *
+   * ⚠️ IT EXISTS BECAUSE `top-4` IS A CONSTANT AND HEADER HEIGHT IS NOT.
+   * 16px + a 36px box needs 52px of header; a caller that tightens its own
+   * header makes this button hang past it. `AssignFamilyModal` took the
+   * kindred#2072 artifact's 14px inset, its header went to 47px, and the
+   * button's hover fill painted across the divider below it while its hit
+   * area covered the top edge of the search box (measured in Chromium,
+   * 2026-08-20; the later no-rule ruling reduced it to 1px). Centring in the
+   * band cannot come apart that way whatever the caller's header height is.
+   *
+   * ★ DEFAULT FLIPPED 2026-08-21 (kindred#2507), and the flip is the point.
+   * This read "DEFAULT UNCHANGED, deliberately ... moving them is its own
+   * review". That review ran. Measured in Chromium against this component,
+   * with each caller's own header markup: Manage Scenarios 16/29 -> 22.5/22.5,
+   * Lodging Units 16/36 -> 26/26, Heads Up 16/22.5 -> 19.25/19.25, Assign
+   * Family 16/-1 (a 1px overhang) -> 7.5/7.5. Centring returns EQUAL gaps
+   * everywhere; `top-4` was visibly high at every one.
+   *
+   * The 18px in-flow mark this docstring called "the standardisation the
+   * owner actually wants" was built, shown to them, and REJECTED on sight.
+   * Centring the existing 36px control is what they chose instead.
+   *
+   * The other two branches never read this. `hasSimpleTitle` is already an
+   * `items-center` flex row, and the no-header branch has no band to centre
+   * in — both measured byte-identical at either setting.
+   */
+  closeAlign?: 'top' | 'center'
 }
 
 const sizeClasses = {
@@ -113,18 +145,6 @@ const sizeClasses = {
   xl: 'max-w-4xl',
   '2xl': 'max-w-6xl',
 } as const
-
-// The design artifact's close mark (kindred#2507's `.wbtn`): an 18x18
-// circled `×`, 1px border, transparent fill. Shared by all three
-// close-button branches below (custom header, simple title, no header) so
-// the app can only ever have one grammar for it — each branch layers its
-// own layout classes (grid-stacking, `ml-auto`, positioning) on top.
-const CLOSE_MARK_BASE_CLASSES =
-  'inline-flex h-[18px] w-[18px] flex-none items-center justify-center rounded-full border p-0 text-[11px] leading-none transition-colors'
-const CLOSE_MARK_LIGHT_CLASSES =
-  'border-border text-muted-foreground hover:bg-muted hover:text-foreground'
-const CLOSE_MARK_DARK_CLASSES =
-  'border-white/30 text-white/70 hover:border-white/50 hover:bg-white/10 hover:text-white'
 
 // Elements a keyboard user can Tab to inside the dialog. Modal content is
 // arbitrary (inputs, selects, textareas, links, buttons — not just buttons),
@@ -190,6 +210,7 @@ export function Modal({
   maxWidthClassName,
   initialFocusRef,
   headerOnDark = false,
+  closeAlign = 'center',
 }: ModalProps) {
   const contentRef = useRef<HTMLDivElement>(null)
   const previouslyFocusedRef = useRef<HTMLElement | null>(null)
@@ -279,13 +300,13 @@ export function Modal({
 
   if (!isOpen) return null
 
-  // Determine if we're using custom header or simple title mode.
-  // `header === null` (PostValidationResultsModal, which passes it
-  // explicitly alongside `footer={null}`) is treated the same as omitting
-  // the prop: it falls through to the floating-button branch below rather
-  // than rendering an empty header row, which would otherwise collapse to
-  // the close mark's own ~18px height instead of leaving the button to float
-  // over the body as it always has for that caller.
+  // Determine if we're using custom header or simple title mode
+  // `null` is NOT a custom header, and `header !== undefined` alone let it be
+  // one: `PostValidationResultsModal` passes `header={null}` and so rode this
+  // branch with a ZERO-HEIGHT band. `top-4` survived that by luck; centring on
+  // a 0px band computes `0 - 18 = -18px` and puts half the button above the
+  // panel's `overflow-hidden` edge, invisible and unclickable. The default
+  // flip is what makes this load-bearing, so it ships alongside it.
   const hasCustomHeader = header !== undefined && header !== null
   const hasSimpleTitle = !hasCustomHeader && title !== undefined
 
@@ -336,70 +357,51 @@ export function Modal({
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Custom header mode. The mark is grid-stacked on top of the header
-            slot — same cell, `header` first so the button paints over it —
-            rather than sharing a `flex-1` track beside it. A shared track
-            was the first attempt and it does not work for every caller: it
-            leaves the header's own box short of the row's true width, and
-            any header painting a full-bleed background (`headerOnDark`)
-            shows a bare strip of the card's own ground through the mark's
-            transparent fill where the gradient should still reach the
-            card's edge (measured, kindred#2507). Grid-stacking keeps the
-            header at its current 100%-width extent — the gradient still
-            meets the card's rounded corner exactly as it does today — and
-            lays the mark over it, which is what the floated button always
-            did. It is still a normal flow participant, not
-            `position: absolute`: `ml-auto` (the artifact's own
-            `.mhead .wbtn{margin-left:auto}`) pushes it to the row's end, and
-            `self-center` centres it on the header's OWN rendered height, so
-            it cannot hang past a header shorter than `top-4` assumed the way
-            the floated 36px box could. */}
+        {/* Custom header mode - header spans full width, close button floats on top */}
         {hasCustomHeader && (
-          <div className="grid grid-cols-1">
-            <div className="col-start-1 row-start-1 min-w-0">{header}</div>
+          <div className="relative">
+            {header}
             <button
               onClick={onClose}
-              className={`z-10 col-start-1 row-start-1 mr-4 ml-auto self-center ${CLOSE_MARK_BASE_CLASSES} ${
-                headerOnDark ? CLOSE_MARK_DARK_CLASSES : CLOSE_MARK_LIGHT_CLASSES
+              className={`absolute ${
+                closeAlign === 'center' ? 'top-1/2 -translate-y-1/2' : 'top-4'
+              } right-4 z-20 rounded-lg p-2 transition-colors ${
+                headerOnDark
+                  ? 'text-white/70 hover:bg-white/10 hover:text-white'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-black/10'
               }`}
               aria-label="Close modal"
             >
-              ×
+              <X className="h-5 w-5" />
             </button>
           </div>
         )}
 
-        {/* Simple title mode — title and mark are the row's only two flex
-            items, so `ml-auto` on the mark alone (no `justify-between`) is
-            the same push used above, just without the grid-stack: there is
-            no caller-painted background here to protect. */}
+        {/* Simple title mode */}
         {hasSimpleTitle && (
-          <div className="mb-4 flex items-center">
+          <div className="mb-4 flex items-center justify-between">
             <h2 id="modal-title" className="text-xl font-bold">
               {title}
             </h2>
             <button
               onClick={onClose}
-              className={`ml-auto ${CLOSE_MARK_BASE_CLASSES} ${CLOSE_MARK_LIGHT_CLASSES}`}
+              className="hover:bg-muted text-muted-foreground hover:text-foreground rounded-lg p-2 transition-colors"
               aria-label="Close modal"
             >
-              ×
+              <X className="h-5 w-5" />
             </button>
           </div>
         )}
 
-        {/* No title/header mode. There is no header row for the mark to be
-            in flow WITH — the whole card is the body — so it keeps the same
-            fixed corner it always has; only its shape changes to match the
-            other two branches. */}
+        {/* No title/header mode - floating close button */}
         {!hasCustomHeader && !hasSimpleTitle && (
           <div className="absolute top-4 right-4">
             <button
               onClick={onClose}
-              className={`${CLOSE_MARK_BASE_CLASSES} ${CLOSE_MARK_LIGHT_CLASSES}`}
+              className="hover:bg-muted text-muted-foreground hover:text-foreground rounded-lg p-2 transition-colors"
               aria-label="Close modal"
             >
-              ×
+              <X className="h-5 w-5" />
             </button>
           </div>
         )}

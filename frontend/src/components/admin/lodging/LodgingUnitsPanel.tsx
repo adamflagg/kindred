@@ -233,7 +233,7 @@ export function LodgingUnitsPanel() {
                white display title over a forest-200 subtitle. A staffer opening
                this from the units table should recognise it as the same product
                they run a summer session from. */
-            <div className="from-forest-700 to-forest-800 bg-gradient-to-r px-6 py-5 pr-[34px]">
+            <div className="from-forest-700 to-forest-800 bg-gradient-to-r px-6 py-5 pr-14">
               <div className="flex items-center gap-3">
                 <div className="rounded-lg bg-white/10 p-2">
                   <Home className="h-6 w-6 text-amber-400" />
@@ -242,16 +242,7 @@ export function LodgingUnitsPanel() {
                   {/* Named, and the id is threaded to Modal's ariaLabelledBy:
                       Modal only falls back to its own `modal-title` in SIMPLE
                       TITLE mode, so a custom header without this leaves the
-                      dialog with no accessible name at all.
-
-                      `pr-[34px]` on the gradient div above (kindred#2507),
-                      not the old `pr-14`: `ui/Modal`'s close mark is the
-                      artifact's 18px circle now, grid-stacked over this
-                      header rather than floated beside a 56px gutter, sitting
-                      `mr-4` (16px) in from the row's edge — 18 + 16 = 34px is
-                      its own footprint, kept (not dropped to zero) because a
-                      real unit name, unlike the other dialogs' fixed titles,
-                      can run long enough to reach it. */}
+                      dialog with no accessible name at all. */}
                   <h2
                     id="lodging-unit-dialog-title"
                     className="font-display text-xl font-bold text-white"

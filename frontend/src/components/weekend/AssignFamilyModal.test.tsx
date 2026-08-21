@@ -398,20 +398,26 @@ describe('AssignFamilyModal — the geometry the owner ruled on 2026-08-20', () 
     expect(footer?.className).not.toContain('pb-3.5')
   })
 
-  it('draws the standard 18px in-flow close mark, not its own centred opt-in', () => {
+  it('centres its own close button in the header band', () => {
     /*
-     * ⚠️ RETARGETED (kindred#2507). This used to pin `closeAlign="center"`
-     * (owner ruling 2026-08-20, option A) — this dialog's own interim fix for
-     * `top-4` hanging 1px past a 51px header. Option B, the artifact's 18px
-     * in-flow mark, is now `ui/Modal`'s only behaviour for every
-     * custom-header dialog, so `closeAlign` is gone from both the primitive
-     * and this caller — there is nothing left for this dialog to opt into.
+     * Owner ruling 2026-08-20, then kindred#2507 2026-08-21. The old `top-4`
+     * default assumed a header at least 52px tall and this one is 51px, so the
+     * button hung 1px past its own ground — 5px before the header rule came
+     * out. This dialog is where that geometry (the artifact's 14px inset) was
+     * first hit.
+     *
+     * ⚠️ THIS NO LONGER PINS AN OPT-IN. Centring is `ui/Modal`'s DEFAULT as of
+     * kindred#2507, so this dialog's `closeAlign="center"` is gone as
+     * redundant. The assertion stays exactly as it was and still passes,
+     * which is the point: it now pins that the DEFAULT gives this dialog what
+     * it used to have to ask for.
+     *
+     * The 18px in-flow mark once recorded here as the preferred option was
+     * built, shown to the owner, and rejected on sight.
      */
     renderModal()
     const close = screen.getByRole('button', { name: /close/i })
-    expect(close.className).toContain('h-[18px]')
-    expect(close.className).toContain('ml-auto')
-    expect(close.className).not.toContain('top-1/2')
+    expect(close.className).toContain('-translate-y-1/2')
     expect(close.className).not.toContain('top-4')
   })
 

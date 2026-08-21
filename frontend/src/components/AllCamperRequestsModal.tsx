@@ -265,7 +265,7 @@ export function AllCamperRequestsModal({
 
   const header = (
     <div
-      className="border-border/60 border-b pt-[22px] pb-[18px] pl-7"
+      className="border-border/60 border-b pt-[22px] pr-16 pb-[18px] pl-7"
       style={{
         backgroundImage:
           'radial-gradient(120% 160% at 0% 0%, color-mix(in oklch, var(--color-forest-50, oklch(97% 0.01 145)) 85%, transparent) 0%, transparent 60%)',
