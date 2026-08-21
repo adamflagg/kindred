@@ -112,6 +112,30 @@ export interface DragCapacity {
 const NEUTRAL: DragFit = { state: 'neutral', severity: 'fits' }
 
 /**
+ * Does this space have no room for this party?
+ *
+ * EXPORTED, and the single definition of the rule, because the board asks it
+ * twice for two different marks: `resolveDragFit` below gates the match on it,
+ * and `LodgingUnitCard` reddens the N/M figure with it. Those two used to be
+ * separate inline expressions in separate modules with nothing tying them
+ * together — they were edited in lockstep by hand once already (the write-in
+ * rule), and a silent divergence was one forgotten edit away. Neither the type
+ * checker nor any test would have caught it, because "the match wash and the
+ * red figure agree about the same cabin" was nobody's assertion.
+ *
+ * `known: false` yields FALSE, not true. A count that is not a fact cannot
+ * support the claim "you will not fit here" any more than it can support a
+ * match — the caller withholds `known` for an unmeasured cabin, a straddling
+ * party, and a wholesale write-in, and all three mean the same thing here:
+ * nothing to say.
+ *
+ * The boundary is `<`, so a party that exactly fills a cabin FITS.
+ */
+export function hasNoRoom(party: RosterPartyRow, capacity: DragCapacity): boolean {
+  return capacity.known && capacity.free < partySize(party)
+}
+
+/**
  * Is this cabin a conflict, a match, or neither, for the family in flight?
  *
  * FOUR NEEDS, not three. The mark grades what the glyphs draw — the narrowed
@@ -180,6 +204,6 @@ export function resolveDragFit(
 
   if (conflict) return { state: 'conflict', severity: worst }
   if (unrecorded) return NEUTRAL
-  if (!capacity.known || capacity.free < partySize(party)) return NEUTRAL
+  if (!capacity.known || hasNoRoom(party, capacity)) return NEUTRAL
   return { state: 'match', severity: 'fits' }
 }

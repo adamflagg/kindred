@@ -15,7 +15,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
-import { resolveDragFit, worseOf } from './needsFit'
+import { hasNoRoom, resolveDragFit, worseOf } from './needsFit'
 
 function unit(overrides: Partial<LodgingUnitRow> = {}): LodgingUnitRow {
   return {
@@ -299,5 +299,52 @@ describe('resolveDragFit — the resolved coverage is the only input', () => {
         { known: true, free: 6 }
       ).state
     ).toBe('match')
+  })
+})
+
+describe('hasNoRoom — the capacity predicate, single-sourced', () => {
+  /*
+   * Extracted because it was written TWICE: once inside `resolveDragFit` to
+   * gate the match, and once inline in `LodgingUnitCard` to redden the N/M
+   * figure. Nothing tied the two together, and they had already been edited in
+   * lockstep by hand once (the write-in rule) — a silent divergence was one
+   * forgotten edit away, and neither the type checker nor any test would have
+   * caught it.
+   */
+  const three = party({ party_size: 3 })
+
+  it('is false when the beds are not a fact — nothing to claim from', () => {
+    expect(hasNoRoom(three, { known: false, free: 0 })).toBe(false)
+    expect(hasNoRoom(three, { known: false, free: -5 })).toBe(false)
+  })
+
+  it('is true only when a known count falls short', () => {
+    expect(hasNoRoom(three, { known: true, free: 2 })).toBe(true)
+    expect(hasNoRoom(three, { known: true, free: 0 })).toBe(true)
+  })
+
+  it('treats a party that exactly fills the cabin as fitting', () => {
+    // The boundary, pinned. `free === size` is a fit, not a miss.
+    expect(hasNoRoom(three, { known: true, free: 3 })).toBe(false)
+  })
+
+  it('is true on a cabin already over capacity', () => {
+    expect(hasNoRoom(three, { known: true, free: -1 })).toBe(true)
+  })
+
+  it('agrees with resolveDragFit — the two marks can never contradict', () => {
+    // THE GUARD THAT WAS MISSING. If capacity says "no room" then the match
+    // must be withheld, for every combination of the inputs. A future edit to
+    // one site and not the other breaks this and nothing else.
+    const asksPower = party({ flags: { needs_power: true }, party_size: 3 })
+    const good = unit({ power_coverage: 'all' })
+    for (const known of [true, false]) {
+      for (const free of [-1, 0, 2, 3, 9]) {
+        const capacity = { known, free }
+        if (hasNoRoom(asksPower, capacity)) {
+          expect(resolveDragFit(asksPower, good, capacity).state).not.toBe('match')
+        }
+      }
+    }
   })
 })

@@ -22,7 +22,7 @@ import { AssignFamilyModal } from './AssignFamilyModal'
 import { isValidMergeTarget, mergeDragId, unitDroppableId } from './dragPlacement'
 import { FamilyCard } from './FamilyCard'
 import { partyHeadcount } from './householdIdentity'
-import { resolveDragFit, type DragFit } from './needsFit'
+import { hasNoRoom, resolveDragFit, type DragCapacity, type DragFit } from './needsFit'
 import { resolveRingPrecedence } from './ringPrecedence'
 import { effectiveSleeps } from './rosterAttention'
 import { partyKey } from './partyKey'
@@ -718,14 +718,21 @@ export function LodgingUnitCard({
    *
    * Withholding costs a match the board might have been entitled to draw,
    * which is the safe direction for a claim.
+   *
+   * Built ONCE, and both drag-time capacity marks read it: `resolveDragFit`
+   * gates the match on it, and `hasNoRoom` reddens the figure from it. They
+   * were separate inline expressions until the write-in rule had to be applied
+   * to both by hand.
    */
+  const dragCapacity: DragCapacity = {
+    known: capacityKnown && spanWidth === 0 && !writtenInto,
+    free: freeBeds,
+  }
+
   const dragFit: DragFit =
     draggingParty === null
       ? { state: 'neutral', severity: 'fits' }
-      : resolveDragFit(draggingParty, unit, {
-          known: capacityKnown && spanWidth === 0 && !writtenInto,
-          free: freeBeds,
-        })
+      : resolveDragFit(draggingParty, unit, dragCapacity)
 
   /*
    * The N/M figure in red mid-drag: no room for the family in hand. THE SAME
@@ -734,10 +741,9 @@ export function LodgingUnitCard({
    * never added in, so the card goes on reporting who is actually placed.
    *
    * Every cabin without room, on every drag — including cards already hatched
-   * for a requirement. The only cabins exempt are the ones whose free-bed
-   * count is not a fact: unmeasured capacity, a straddling party, and a
-   * wholesale write-in. Those are not exceptions to the rule so much as
-   * cabins the rule has nothing to say about. Narrower scopes were considered
+   * for a requirement. The cabins it stays off are the ones `dragCapacity`
+   * already declares unknowable above, so the exemption is stated once rather
+   * than restated here. Narrower scopes were considered
    * and dropped on PREDICTABILITY (owner, 2026-08-21): a red that appears for
    * some families and not others makes staff reverse-engineer the rule.
    *
@@ -745,12 +751,7 @@ export function LodgingUnitCard({
    * with no requirements never moves the board out of its resting state, but
    * "you will not fit here" is still true and is the only question they have.
    */
-  const noRoomForDrag =
-    draggingParty !== null &&
-    capacityKnown &&
-    spanWidth === 0 &&
-    !writtenInto &&
-    freeBeds < partySize(draggingParty)
+  const noRoomForDrag = draggingParty !== null && hasNoRoom(draggingParty, dragCapacity)
 
   /*
    * kindred#2179's warning: a second party in a space classified for ONE.
