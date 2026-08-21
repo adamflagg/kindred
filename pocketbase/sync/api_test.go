@@ -1995,3 +1995,200 @@ func TestNormalizeSession(t *testing.T) {
 		})
 	}
 }
+
+// =============================================================================
+// kindred#2491: the family-camp bounded custom-values jobs share collections with the
+// unbounded ones but not their lock, phase slot, or log label. Face A + Face C below.
+// =============================================================================
+
+// TestHandleCustomValuesSyncRejectsWhenFamilyCampBoundedGroupmateRunning pins Face A's
+// original report: handleCustomValuesSync's front guard used to check only the literal names
+// "person_custom_values" / "household_custom_values" via orchestrator.IsRunning, so it did not
+// see the bounded daily family-camp jobs (kindred#2489) as writers of the same collections and
+// would return 200 "Custom values sync triggered" while one was still in flight.
+func TestHandleCustomValuesSyncRejectsWhenFamilyCampBoundedGroupmateRunning(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name          string
+		boundedJob    string
+		registerBound func(o *Orchestrator)
+	}{
+		{
+			name:       "person bounded pass blocks the endpoint",
+			boundedJob: "person_custom_values_family_camp",
+			registerBound: func(o *Orchestrator) {
+				o.RegisterService("person_custom_values_family_camp",
+					&MockService{name: "person_custom_values_family_camp"})
+			},
+		},
+		{
+			name:       "household bounded pass blocks the endpoint",
+			boundedJob: "household_custom_values_family_camp",
+			registerBound: func(o *Orchestrator) {
+				o.RegisterService("household_custom_values_family_camp",
+					&MockService{name: "household_custom_values_family_camp"})
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			scheduler := NewScheduler(nil)
+			orchestrator := scheduler.GetOrchestrator()
+			tc.registerBound(orchestrator)
+
+			if err := orchestrator.MarkSyncRunning(tc.boundedJob); err != nil {
+				t.Fatalf("MarkSyncRunning(%q): %v", tc.boundedJob, err)
+			}
+
+			re := &core.RequestEvent{}
+			re.Request = httptest.NewRequest(http.MethodPost, "/", http.NoBody)
+			rec := httptest.NewRecorder()
+			re.Response = rec
+
+			if err := handleCustomValuesSync(re, scheduler); err != nil {
+				t.Fatalf("handler returned error: %v", err)
+			}
+
+			if rec.Code != http.StatusConflict {
+				t.Errorf("expected %d (already running), got %d: %s",
+					http.StatusConflict, rec.Code, rec.Body.String())
+			}
+		})
+	}
+}
+
+// TestHandleCustomValuesSyncAllowsRunWhenNothingRunning is the control case: with nothing
+// running (bounded or unrestricted), the endpoint must still succeed.
+func TestHandleCustomValuesSyncAllowsRunWhenNothingRunning(t *testing.T) {
+	t.Parallel()
+	scheduler := NewScheduler(nil)
+
+	re := &core.RequestEvent{}
+	re.Request = httptest.NewRequest(http.MethodPost, "/", http.NoBody)
+	rec := httptest.NewRecorder()
+	re.Response = rec
+
+	if err := handleCustomValuesSync(re, scheduler); err != nil {
+		t.Fatalf("handler returned error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected %d, got %d: %s", http.StatusOK, rec.Code, rec.Body.String())
+	}
+}
+
+// TestPhaseExecutionJobsExcludesFamilyCampBoundedForExpensivePhase pins Face C: an admin
+// running the "Custom Values" (PhaseExpensive) phase used to re-run the two bounded family-camp
+// jobs alongside the unrestricted ones, because GetJobsForPhase(PhaseExpensive) -- built from
+// syncJobMeta -- lists all four jobs. The bounded jobs are always covered by the daily cron
+// (getDailySyncJobs) minutes before an admin-triggered phase run would otherwise re-fetch the
+// identical family-camp cohort, burning ~11.5 min of rate-limited CampMinder quota for values
+// already fresh.
+//
+// GetJobsForPhase itself is deliberately left untouched (see TestSyncJobMeta_
+// FamilyCampBoundedJobsAreExpensivePhase in family_camp_daily_cadence_test.go, which pins the
+// two bounded jobs' classification as PhaseExpensive) -- phaseExecutionJobs filters the
+// *execution* list at the two call sites that actually run a phase (handleRunPhase,
+// processQueuedSyncs) without changing what GetJobsForPhase reports for phase metadata/UI.
+func TestPhaseExecutionJobsExcludesFamilyCampBoundedForExpensivePhase(t *testing.T) {
+	t.Parallel()
+
+	jobs := phaseExecutionJobs(PhaseExpensive)
+
+	for _, excluded := range []string{"person_custom_values_family_camp", "household_custom_values_family_camp"} {
+		for _, j := range jobs {
+			if j == excluded {
+				t.Errorf("phaseExecutionJobs(PhaseExpensive) = %v, must not include %q "+
+					"-- it is always covered by the daily cron", jobs, excluded)
+			}
+		}
+	}
+
+	for _, included := range []string{"person_custom_values", "household_custom_values"} {
+		found := false
+		for _, j := range jobs {
+			if j == included {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("phaseExecutionJobs(PhaseExpensive) = %v, missing %q", jobs, included)
+		}
+	}
+
+	// GetJobsForPhase itself must be untouched -- family_camp_daily_cadence_test.go's
+	// TestSyncJobMeta_FamilyCampBoundedJobsAreExpensivePhase pins that it still lists all four.
+	classified := GetJobsForPhase(PhaseExpensive)
+	if len(classified) != 4 {
+		t.Errorf("GetJobsForPhase(PhaseExpensive) = %v, expected phaseExecutionJobs to filter "+
+			"a copy, not mutate the underlying classification", classified)
+	}
+
+	// Every other phase must pass through unfiltered.
+	for _, phase := range GetAllPhases() {
+		if phase == PhaseExpensive {
+			continue
+		}
+		want := GetJobsForPhase(phase)
+		got := phaseExecutionJobs(phase)
+		if len(got) != len(want) {
+			t.Errorf("phaseExecutionJobs(%q) = %v, want unfiltered %v", phase, got, want)
+			continue
+		}
+		for i := range want {
+			if got[i] != want[i] {
+				t.Errorf("phaseExecutionJobs(%q)[%d] = %q, want %q", phase, i, got[i], want[i])
+			}
+		}
+	}
+}
+
+// TestHandleRunPhaseImmediateResponseExcludesFamilyCampBoundedJobs is the HTTP-level half of
+// Face C: the "jobs" field handleRunPhase echoes back (and actually iterates to run) for
+// ?phase=expensive must not list the two bounded family-camp jobs.
+func TestHandleRunPhaseImmediateResponseExcludesFamilyCampBoundedJobs(t *testing.T) {
+	t.Parallel()
+	scheduler := NewScheduler(nil)
+
+	re := &core.RequestEvent{}
+	re.Request = httptest.NewRequest(http.MethodPost, "/?year=2025&phase=expensive", http.NoBody)
+	rec := httptest.NewRecorder()
+	re.Response = rec
+
+	if err := handleRunPhase(re, scheduler); err != nil {
+		t.Fatalf("handler returned error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected %d, got %d: %s", http.StatusOK, rec.Code, rec.Body.String())
+	}
+
+	var body struct {
+		Jobs []string `json:"jobs"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+
+	for _, excluded := range []string{"person_custom_values_family_camp", "household_custom_values_family_camp"} {
+		for _, j := range body.Jobs {
+			if j == excluded {
+				t.Errorf("handleRunPhase(?phase=expensive) jobs = %v, must not include %q",
+					body.Jobs, excluded)
+			}
+		}
+	}
+	for _, included := range []string{"person_custom_values", "household_custom_values"} {
+		found := false
+		for _, j := range body.Jobs {
+			if j == included {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("handleRunPhase(?phase=expensive) jobs = %v, missing %q", body.Jobs, included)
+		}
+	}
+}

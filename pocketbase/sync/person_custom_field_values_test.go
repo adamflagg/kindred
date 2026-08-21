@@ -230,3 +230,32 @@ func TestPersonCustomFieldValuesTrackingMatchesOrphanLookup(t *testing.T) {
 		t.Errorf("yearScopedKey %q != orphanLookupKey %q", yearScopedKey, orphanLookupKey)
 	}
 }
+
+// TestPersonCustomFieldValuesSync_LogJobName pins kindred#2491 Face D: Sync() used to call
+// LogSyncStart(serviceNamePersonCustomValues) unconditionally, so the daily cron's bounded
+// family-camp pass (FamilyCampBounded=true) logged "Starting sync service=person_custom_values"
+// -- byte-identical to the weekly unrestricted sweep, even though the two cover different
+// cohorts on different schedules. logJobName must resolve to the bounded instance's own
+// registered name (orchestrator.go's "person_custom_values_family_camp") when FamilyCampBounded
+// is set, and leave the unrestricted instance's logging exactly as it was.
+func TestPersonCustomFieldValuesSync_LogJobName(t *testing.T) {
+	t.Parallel()
+
+	unbounded := &PersonCustomFieldValuesSync{}
+	if got, want := unbounded.logJobName(), serviceNamePersonCustomValues; got != want {
+		t.Errorf("logJobName() (unbounded) = %q, want %q", got, want)
+	}
+
+	bounded := &PersonCustomFieldValuesSync{FamilyCampBounded: true}
+	if got, want := bounded.logJobName(), "person_custom_values_family_camp"; got != want {
+		t.Errorf("logJobName() (FamilyCampBounded) = %q, want %q -- must match orchestrator.go's "+
+			"RegisterService(\"person_custom_values_family_camp\", ...) name so the log line "+
+			"identifies which instance ran", got, want)
+	}
+
+	// Name() itself must stay unchanged -- it is not the registered lock/log identity (see
+	// TestPersonCustomFieldValuesSync_Name), only logJobName's own return value should vary.
+	if got, want := bounded.Name(), serviceNamePersonCustomValues; got != want {
+		t.Errorf("Name() must stay %q regardless of FamilyCampBounded, got %q", want, got)
+	}
+}

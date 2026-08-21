@@ -4327,6 +4327,122 @@ func TestRunSingleSyncWithServiceConcurrentCallsExactlyOneWins(t *testing.T) {
 	}
 }
 
+// TestRunSingleSyncRejectsCustomValuesCollectionGroupConflict pins kindred#2491 Face B: the
+// bounded daily family-camp jobs ("person_custom_values_family_camp",
+// "household_custom_values_family_camp", added by kindred#2489) write the exact same
+// PocketBase collections as their unrestricted counterparts, but under a distinct registered
+// name -- so runSingleSyncInternal's old `IsRunning(syncType)` check (keyed on the literal
+// name) let the daily 3am cron's bounded pass and the weekly Sunday 4am unrestricted sweep run
+// concurrently against the same collection, racing deleteOrphans against a concurrent write.
+//
+// This exercises the path getDailySyncJobs / RunCustomValuesSync actually take --
+// runSyncAndWait -> runSingleSyncInternal -- via the public RunSingleSync wrapper.
+func TestRunSingleSyncRejectsCustomValuesCollectionGroupConflict(t *testing.T) {
+	t.Parallel()
+
+	markRunning := func(o *Orchestrator, syncType string) {
+		o.mu.Lock()
+		o.runningJobs[syncType] = &Status{Type: syncType, Status: statusRunning}
+		o.mu.Unlock()
+	}
+
+	t.Run("family-camp bounded blocks the unrestricted groupmate", func(t *testing.T) {
+		t.Parallel()
+		o := NewOrchestrator(nil)
+		o.RegisterService("person_custom_values", &MockService{name: "person_custom_values"})
+		markRunning(o, "person_custom_values_family_camp")
+
+		if err := o.RunSingleSync(context.Background(), "person_custom_values"); err == nil {
+			t.Error("expected person_custom_values to be rejected while its family-camp " +
+				"bounded groupmate is running -- they write the same collection")
+		}
+	})
+
+	t.Run("unrestricted blocks the family-camp bounded groupmate", func(t *testing.T) {
+		t.Parallel()
+		o := NewOrchestrator(nil)
+		o.RegisterService("household_custom_values_family_camp",
+			&MockService{name: "household_custom_values_family_camp"})
+		markRunning(o, "household_custom_values")
+
+		if err := o.RunSingleSync(context.Background(), "household_custom_values_family_camp"); err == nil {
+			t.Error("expected household_custom_values_family_camp to be rejected while the " +
+				"unrestricted household_custom_values is running")
+		}
+	})
+
+	t.Run("person and household groups do not cross-block", func(t *testing.T) {
+		t.Parallel()
+		o := NewOrchestrator(nil)
+		o.RegisterService("household_custom_values", &MockService{name: "household_custom_values"})
+		markRunning(o, "person_custom_values_family_camp")
+
+		// RunCustomValuesSync's doc comment says running person_custom_values and
+		// household_custom_values in parallel is safe because they write independent
+		// collections -- the group-scoped fix must not widen the lock across that boundary.
+		if err := o.RunSingleSync(context.Background(), "household_custom_values"); err != nil {
+			t.Errorf("household_custom_values must not be blocked by a running "+
+				"person_custom_values_family_camp -- different collection, got: %v", err)
+		}
+	})
+
+	t.Run("unrelated job names are unaffected", func(t *testing.T) {
+		t.Parallel()
+		o := NewOrchestrator(nil)
+		o.RegisterService("sessions", &MockService{name: "sessions"})
+		markRunning(o, "person_custom_values_family_camp")
+
+		if err := o.RunSingleSync(context.Background(), "sessions"); err != nil {
+			t.Errorf("an unrelated job must not be blocked by a running custom-values job, got: %v", err)
+		}
+	})
+}
+
+// TestRunSingleSyncWithServiceRejectsCustomValuesCollectionGroupConflict mirrors
+// TestRunSingleSyncWithServiceRejectsConcurrentRunForSameType but across the bounded/
+// unrestricted name split (kindred#2491 Face A for the two session-scoped handlers, which
+// route through RunSingleSyncWithService with request-scoped instances -- see #2105).
+func TestRunSingleSyncWithServiceRejectsCustomValuesCollectionGroupConflict(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		o := NewOrchestrator(nil)
+
+		bounded := &mockYearService{name: "person_custom_values_family_camp", delay: 100 * time.Millisecond}
+		if err := o.RunSingleSyncWithService(
+			context.Background(), "person_custom_values_family_camp", bounded, newBatch(triggerManual),
+		); err != nil {
+			t.Fatalf("starting the bounded pass should succeed, got: %v", err)
+		}
+
+		unrestricted := &mockYearService{name: "person_custom_values"}
+		err := o.RunSingleSyncWithService(
+			context.Background(), "person_custom_values", unrestricted, newBatch(triggerManual),
+		)
+		if err == nil {
+			t.Fatal("expected the unrestricted person_custom_values run to be rejected while " +
+				"the family-camp bounded pass is in flight")
+		}
+		if unrestricted.callCount.Load() != 0 {
+			t.Error("a rejected run must never execute Sync on its service instance")
+		}
+
+		// household_custom_values is a different collection group -- must still be free to run
+		// concurrently with the person-side bounded pass.
+		household := &mockYearService{name: "household_custom_values"}
+		if err := o.RunSingleSyncWithService(
+			context.Background(), "household_custom_values", household, newBatch(triggerManual),
+		); err != nil {
+			t.Errorf("household_custom_values must not be blocked by a running "+
+				"person_custom_values_family_camp, got: %v", err)
+		}
+
+		time.Sleep(200 * time.Millisecond)
+		if bounded.callCount.Load() != 1 {
+			t.Errorf("expected the bounded pass to have run exactly once, got %d", bounded.callCount.Load())
+		}
+	})
+}
+
 // TestCustomFieldValuesHandlersReserveBeforeMutatingSharedState pins the fix for #2105.
 //
 // Both on-demand custom-field-values handlers (person and household) used to fetch the

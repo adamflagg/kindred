@@ -228,3 +228,25 @@ func TestHouseholdCustomFieldValuesTrackingMatchesOrphanLookup(t *testing.T) {
 		t.Errorf("yearScopedKey %q != orphanLookupKey %q", yearScopedKey, orphanLookupKey)
 	}
 }
+
+// TestHouseholdCustomFieldValuesSync_LogJobName is the household twin of
+// TestPersonCustomFieldValuesSync_LogJobName -- see that test's comment for the full rationale
+// (kindred#2491 Face D).
+func TestHouseholdCustomFieldValuesSync_LogJobName(t *testing.T) {
+	t.Parallel()
+
+	unbounded := &HouseholdCustomFieldValuesSync{}
+	if got, want := unbounded.logJobName(), serviceNameHouseholdCustomValues; got != want {
+		t.Errorf("logJobName() (unbounded) = %q, want %q", got, want)
+	}
+
+	bounded := &HouseholdCustomFieldValuesSync{FamilyCampBounded: true}
+	if got, want := bounded.logJobName(), "household_custom_values_family_camp"; got != want {
+		t.Errorf("logJobName() (FamilyCampBounded) = %q, want %q -- must match orchestrator.go's "+
+			"RegisterService(\"household_custom_values_family_camp\", ...) name", got, want)
+	}
+
+	if got, want := bounded.Name(), serviceNameHouseholdCustomValues; got != want {
+		t.Errorf("Name() must stay %q regardless of FamilyCampBounded, got %q", want, got)
+	}
+}

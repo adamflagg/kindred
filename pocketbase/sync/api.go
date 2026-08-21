@@ -1242,7 +1242,7 @@ func processQueuedSyncs(orchestrator *Orchestrator) {
 	case "phase":
 		// Run all jobs in the phase sequentially
 		phase := Phase(qs.Service)
-		jobs := GetJobsForPhase(phase)
+		jobs := phaseExecutionJobs(phase)
 		slog.Info("Queued phase sync: Running jobs",
 			"phase", phase, "year", qs.Year, "jobs", jobs, "debug", qs.Debug)
 
@@ -1470,8 +1470,13 @@ func handleWeeklySync(e *core.RequestEvent, scheduler *Scheduler) error {
 func handleCustomValuesSync(e *core.RequestEvent, scheduler *Scheduler) error {
 	orchestrator := scheduler.GetOrchestrator()
 
-	// Check if custom values sync is already running
-	if orchestrator.IsRunning("person_custom_values") || orchestrator.IsRunning("household_custom_values") {
+	// Check if custom values sync is already running. Collection-group-aware (kindred#2491
+	// Face A): the daily cron's bounded family-camp jobs ("person_custom_values_family_camp",
+	// "household_custom_values_family_camp" -- kindred#2489) write these exact same
+	// collections under different registered names, so a check against only the two literal
+	// unrestricted names missed them.
+	if orchestrator.IsCustomValuesCollectionRunning("person_custom_values") ||
+		orchestrator.IsCustomValuesCollectionRunning("household_custom_values") {
 		return e.JSON(http.StatusConflict, map[string]any{
 			"error": "Custom values sync already in progress",
 		})
@@ -2144,6 +2149,39 @@ func handleHouseholdDemographicsSync(e *core.RequestEvent, scheduler *Scheduler)
 	})
 }
 
+// familyCampBoundedCustomValuesJobs names the two daily-cron-only custom-values instances
+// (kindred#2489) that phaseExecutionJobs excludes from an admin-triggered PhaseExpensive run.
+var familyCampBoundedCustomValuesJobs = map[string]bool{
+	"person_custom_values_family_camp":    true,
+	"household_custom_values_family_camp": true,
+}
+
+// phaseExecutionJobs returns the jobs actually run for phase -- the list handleRunPhase and
+// processQueuedSyncs iterate to start syncs, as opposed to GetJobsForPhase's classification
+// list (used for phase metadata/UI in handleGetPhases and pinned as including all four
+// custom-values jobs by family_camp_daily_cadence_test.go's TestSyncJobMeta_
+// FamilyCampBoundedJobsAreExpensivePhase).
+//
+// For PhaseExpensive specifically, it drops the two bounded family-camp jobs
+// (kindred#2489): they are always covered minutes earlier by the daily cron
+// (getDailySyncJobs), so an admin running the "Custom Values" phase on demand would otherwise
+// re-fetch the identical family-camp cohort a second time -- kindred#2491 Face C, measured at
+// ~11.5 min of rate-limited CampMinder quota burned for values already fresh. GetJobsForPhase
+// itself is left untouched; only the execution list is filtered.
+func phaseExecutionJobs(phase Phase) []string {
+	jobs := GetJobsForPhase(phase)
+	if phase != PhaseExpensive {
+		return jobs
+	}
+	filtered := make([]string, 0, len(jobs))
+	for _, j := range jobs {
+		if !familyCampBoundedCustomValuesJobs[j] {
+			filtered = append(filtered, j)
+		}
+	}
+	return filtered
+}
+
 // handleGetPhases returns list of available sync phases with metadata
 func handleGetPhases(e *core.RequestEvent) error {
 	phases := GetAllPhases()
@@ -2234,7 +2272,7 @@ func handleRunPhase(e *core.RequestEvent, scheduler *Scheduler) error {
 	}
 
 	// Get jobs for this phase
-	jobs := GetJobsForPhase(phase)
+	jobs := phaseExecutionJobs(phase)
 	if len(jobs) == 0 {
 		return e.JSON(http.StatusBadRequest, map[string]any{
 			"error": "No jobs found for phase: " + string(phase),
