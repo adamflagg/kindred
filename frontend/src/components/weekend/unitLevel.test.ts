@@ -168,8 +168,8 @@ describe('coveredCodes', () => {
 })
 
 // house -> {upstairs, downstairs} -> two rooms each. Mirrors the real halved
-// buildings (e.g. gt-tioga-upstairs/gt-tioga-downstairs, measured against
-// production) the grain ruling on #2008 is about: each half is independently
+// buildings (upstairs/downstairs pairs, measured against production) the
+// grain ruling on #2008 is about: each half is independently
 // lettable and carries its own bathroom_group, so it is a DIFFERENT building
 // from its sibling half under the IMMEDIATE-PARENT grain even though both
 // share one root.

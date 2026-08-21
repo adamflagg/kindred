@@ -4,7 +4,8 @@
  *
  * lodging_merges binds an explicit SET of atomic units into one bookable slot
  * for one weekend. Member sets rather than parent/child toggles because merges
- * are frequently partial: "Tenaya 1and2" merges 2 rooms of a 4-room building,
+ * are frequently partial: a single staff-written string routinely merges 2
+ * rooms of a 4-room building,
  * which a parent-activation model cannot express.
  *
  * Merges are created MID-ASSIGNMENT as a board action (select adjacent rooms,

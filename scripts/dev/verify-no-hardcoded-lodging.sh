@@ -6,8 +6,9 @@
 # It used to live in pb_migrations/, which is why this guard used to skip that
 # directory. It no longer does: with the data gone from the seed migrations,
 # that exclusion was a hole in precisely the place a future seed would land.
-# Prose in a migration is still fine — comments are dropped below — but a unit
-# list in a migration is now a failure, same as in any other source file.
+# Prose in a migration is not fine either, since kindred#2512: comments are
+# SCANNED, not dropped, so a unit name in a migration header fails exactly as a
+# unit list in a migration body does.
 #
 # SCOPE, honestly stated: this is a tripwire, not a proof. It greps for a
 # REPRESENTATIVE SAMPLE of distinctive unit strings (NEEDLES below) — not the
@@ -19,7 +20,7 @@ set -euo pipefail
 
 # Preflight BEFORE the first git call — checking for git after invoking it is
 # pointless, since the missing binary would already have exited 127.
-for cmd in git grep python3; do
+for cmd in git grep awk python3; do
   command -v "$cmd" >/dev/null 2>&1 || { echo "error: required command '$cmd' not found" >&2; exit 2; }
 done
 
@@ -31,7 +32,24 @@ cd "$REPO_ROOT"
 # "Cloud'?s Rest" matches both spellings on purpose: the canonical unit name is
 # "Clouds Rest" (1500000120) but every historical alias string is "Cloud's Rest"
 # with the apostrophe (1500000121), and a leak could copy either.
-NEEDLES="Ridge Yurt|Tawonga Village|Manzanita|Tuolumne|Cloud'?s Rest|Wawona|Half Dome|El Cap|Bayit|Tenaya|Tioga|Le Shack|Lofty|Kitty|Doctor's House"
+#
+# Matched CASE-INSENSITIVELY (the -i on the grep below), kindred#2512 review.
+# The list is written in title case, but the codebase names units in prose by
+# their lowercase CODE ("gt-<unit>", "<unit>-new-trailer"), so a title-case scan
+# read straight past them: seven such comment hits were sitting in tracked
+# source when this was measured, in a migration header, two frontend components
+# and three test files. Case-insensitivity adds 64 raw hits repo-wide, 63 of
+# them lowercase codes in test FIXTURE data (already exempt) and 1 an ordinary
+# English false positive, handled just below.
+#
+# "El Cap" is the one needle that is also an English fragment once case is
+# folded -- it matches inside "parallel capturers". \b fixes that and costs
+# nothing: the needle contains a space, so it never matched a camelCase
+# identifier anyway, and a real leak spells it at a word boundary. \b is
+# deliberately NOT applied to the whole list -- it would stop matching
+# camelCase identifiers such as a Go variable built from a unit name, which is
+# a leak shape this guard does catch today.
+NEEDLES="Ridge Yurt|Tawonga Village|Manzanita|Tuolumne|Cloud'?s Rest|Wawona|Half Dome|\bEl Cap|Bayit|Tenaya|Tioga|Le Shack|Lofty|Kitty|Doctor's House"
 
 # --include='*.js' matters: pocketbase/pb_hooks/ is application JavaScript and
 # pocketbase/pb_migrations/ is where the registry used to live, so both have to
@@ -42,6 +60,18 @@ NEEDLES="Ridge Yurt|Tawonga Village|Manzanita|Tuolumne|Cloud'?s Rest|Wawona|Half
 #                ordinary US place names
 # Scan roots, overridable ONLY so the test suite can point the guard at a
 # missing directory and assert it fails rather than reporting a clean scan.
+#
+# THESE FIVE ARE THE WHOLE SCOPE. Every rule stated below -- including the
+# code/comment table -- describes what happens INSIDE these roots and nowhere
+# else. The pytest tree at tests/ is NOT among them and never has been: it
+# carries 71 needle hits (80 case-insensitively) across three files under
+# tests/unit/api/services/, of which 4 sit in comments, and none of them has
+# ever been checked. One of those comments restates in prose the exact fact
+# kindred#2512 scrubbed out of api/services/lodging_rules.py, so the scrub
+# moved the sentence into an unscanned file rather than out of the repository.
+# Widening the roots changes what every future PR is measured against, so it
+# gets its own change: kindred#2515 carries the measurement and the
+# scrub-or-exempt decision.
 read -r -a SCAN_ROOTS <<<"${LODGING_SCAN_ROOTS:-pocketbase/ api/ bunking/ frontend/src/ scripts/}"
 
 # Capture grep's OWN status before the filter pipeline swallows it. grep exits
@@ -51,7 +81,7 @@ read -r -a SCAN_ROOTS <<<"${LODGING_SCAN_ROOTS:-pocketbase/ api/ bunking/ fronte
 # guard reporting clean on a scan that never happened. Flagged on this script
 # in kindred#1867 and asserted by TEST 6 in test-verify-no-hardcoded-lodging.sh.
 grep_status=0
-RAW=$(grep -rInE "$NEEDLES" \
+RAW=$(grep -rInEi "$NEEDLES" \
   --include='*.go' --include='*.py' --include='*.ts' --include='*.tsx' --include='*.js' --include='*.sh' \
   --exclude-dir=pb_public --exclude-dir=node_modules \
   "${SCAN_ROOTS[@]}" 2>&1) || grep_status=$?
@@ -93,62 +123,112 @@ done
 # name in test fixtures either" -- treat a future NEEDLES hit inside one as
 # worth a look, not an automatic pass.
 #
-# kindred#2367 narrows that blind spot for COMMENTS ONLY, and only under
+# kindred#2367 narrowed that blind spot for COMMENTS ONLY, and only under
 # frontend/src/**: catching needle terms in comments is strictly better than
 # catching them only in production code, and a repo-wide measurement found 14
 # comment hits across 6 files, split between frontend/src/** (3 hits, 2 files
-# -- both fixed at the source in this same change) and pocketbase/ Go test
-# files (11 hits, 4 files) that this branch has no reason to touch and did
-# not verify against sibling in-flight PRs. Narrowing to frontend/src/** ships
-# the improvement where it was already fully paid for and leaves the
-# pocketbase/ side for a future pass, rather than guessing at files another
-# issue may be mid-edit on. Fixture CODE in a frontend/src/** test file is
-# still exempt -- only its comment lines are newly in scope.
-# The trailing alternative must anchor to a full PATH SEGMENT: '(.*/)?tests?/'
-# rather than the bare '/tests?/' used previously. The bare form only fires
-# once something has already matched before the slash, so a file directly
-# under frontend/src/test/ (frontend/src/test/mockData.ts -- no '_test.' or
-# '.test.' in the name, and 'test/' immediately follows the 'frontend/src/'
-# prefix with no preceding '/') never matched, and fell through to OTHER_RAW's
-# blanket test-file exemption instead of this comment-only scan -- the exact
-# gap this pattern exists to close. Verified by TEST 13 in
-# test-verify-no-hardcoded-lodging.sh (kindred#2367 review).
-FRONTEND_TEST_PATTERN='^frontend/src/(.*/)?tests?/|^frontend/src/.*(_test\.|\.test\.)'
+# -- both fixed at the source in that change) and pocketbase/ Go test files
+# (11 hits, 4 files) it had no reason to touch and did not verify against
+# sibling in-flight PRs.
+#
+# kindred#2512 completes the pass #2367 deferred. Comments are now scanned in
+# EVERY scan root, not only under frontend/src/**, so the split below is by
+# TEST-vs-NOT rather than by directory:
+#
+#   not a test file -> code hits fail, comment hits fail
+#   a test file     -> code hits are exempt, comment hits fail
+#
+# ...for files under SCAN_ROOTS. See the note there: tests/ is outside them
+# (kindred#2515).
+#
+# The 18 comment hits this widening newly caught were scrubbed in the same
+# change (7 outside test files, including `effective_bathroom`'s own docstring
+# and three migration headers; 11 in pocketbase/ Go test comments). #2367 said
+# it was leaving the pocketbase/ side "for a future pass, rather than guessing
+# at files another issue may be mid-edit on" -- this is that pass.
+#
+# What is still exempt, and still deliberately: fixture CODE in a test file.
+# Real unit names as fixture DATA are legitimate there -- an alias resolver
+# test has to resolve the strings staff actually wrote -- and narrowing that
+# would fail the many lodging test files built on exactly that. The blind spot
+# kindred#1909 found was two needle-matching literals in fixture code, and the
+# fix applied there was to scrub them at the source, not to narrow this filter.
+# That trade is unchanged; only comments moved.
+#
+# THE SPLIT IS DECIDED BY THE PATH, AND ONLY BY THE PATH (kindred#2512 review).
+# grep -In emits `path:lineno:text`. The first cut of this widening matched an
+# unanchored pattern against the WHOLE LINE, so a line's own CONTENT could
+# route its file into the test bucket and win the code-hit exemption:
+#
+#   api/svc.py:12:FIXTURE = "tests/<unit>.json"      -> silently exempted
+#   pocketbase/resolver.go:9:var P = "latest/<unit>" -> silently exempted
+#
+# ('latest/' contains 'test/'.) The pattern it replaced anchored both of its
+# alternatives to the path with '^', which is the property that got lost. awk
+# splits on ':' and tests $1, so nothing after the path can vote. TEST 14-16
+# pin all three shapes.
+#
+# 'tests?/' must additionally be a whole PATH SEGMENT: '^(.*/)?' can only match
+# a prefix ending in '/', so 'test/' has to start the path or follow a slash.
+# That keeps frontend/src/test/mockData.ts -- the repo's real shared
+# test-helper directory, with no '_test.' or '.test.' in its filename -- inside
+# the test bucket (TEST 13, kindred#2367 review) while pocketbase/latest/x.go
+# stays out of it.
+#
+# Written with '[.]' rather than '\.' on purpose: this pattern is handed to awk
+# through -v, and awk processes escape sequences in a -v assignment, so gawk
+# rewrites '\.' to a bare '.' (matching any character) and warns while doing it.
+TEST_FILE_PATTERN='^(.*/)?tests?/|_test[.]|[.]test[.]'
 HITS=""
 if [[ -n "$RAW" ]]; then
-  FRONTEND_TEST_RAW=$(printf '%s\n' "$RAW" | grep -E "$FRONTEND_TEST_PATTERN" || true)
-  OTHER_RAW=$(printf '%s\n' "$RAW" | grep -vE "$FRONTEND_TEST_PATTERN" || true)
+  TEST_RAW=$(printf '%s\n' "$RAW" | awk -F: -v pat="$TEST_FILE_PATTERN" 'NF && $1 ~ pat')
+  OTHER_RAW=$(printf '%s\n' "$RAW" | awk -F: -v pat="$TEST_FILE_PATTERN" 'NF && $1 !~ pat')
 
   HITS=$(printf '%s\n' "$OTHER_RAW" \
-    | grep -v '_test\.\|\.test\.\|/tests\?/' \
     | grep -v 'frontend/src/data/cityGeo\.ts\|frontend/src/data/schoolGeo\.ts' || true)
 
-  FRONTEND_TEST_COMMENT_HITS=""
-  if [[ -n "$FRONTEND_TEST_RAW" ]]; then
-    FRONTEND_TEST_COMMENT_HITS=$(printf '%s\n' "$FRONTEND_TEST_RAW" \
+  # The `|| true` is scoped to grep with a brace group, NOT hung off the whole
+  # pipeline (kindred#2512 review). Under `set -euo pipefail` a grep -v that
+  # removes EVERY line exits 1, pipefail promotes that to the pipeline's status
+  # and `set -e` kills the guard mid-run: exit 1 with nothing printed at all.
+  # Reachable because this grep -v matches the path anywhere in the line,
+  # including inside a comment's own text. Hanging `|| true` off the end of the
+  # pipeline instead would also swallow a python3 crash, which must stay fatal.
+  # TEST 17 asserts the guard never exits 1 with an empty report.
+  TEST_COMMENT_HITS=""
+  if [[ -n "$TEST_RAW" ]]; then
+    TEST_COMMENT_HITS=$(printf '%s\n' "$TEST_RAW" \
+      | { grep -v 'frontend/src/data/cityGeo\.ts\|frontend/src/data/schoolGeo\.ts' || true; } \
       | python3 "$REPO_ROOT/scripts/dev/lib/drop_comment_hits.py" --only-comments)
   fi
 fi
 
-# Prose that names a unit to explain a rule is documentation, not the registry
-# living in code. Dropping comment and docstring hits is what makes this guard
-# green on a clean `main`: it failed on a docstring in lodging_rules.py, which
-# opened Phase C on a red that was not Phase C's (kindred#1891). A file that
-# cannot be parsed is treated as all code, so its hits survive.
-if [[ -n "$HITS" ]]; then
-  HITS=$(printf '%s\n' "$HITS" | python3 "$REPO_ROOT/scripts/dev/lib/drop_comment_hits.py")
-fi
+# ⚠️ COMMENTS ARE NO LONGER DROPPED (kindred#2512). This block used to run
+# every non-test hit back through drop_comment_hits.py, on the reasoning that
+# "prose naming a unit to explain a rule is documentation, not the registry
+# living in code" -- which is how a real unit name sat in an `api/` docstring
+# and in three migration headers while this guard reported OK.
+#
+# The reasoning was never wrong about intent, only about consequence: a
+# comment is source, it ships in the repo, and a public repo leaks it exactly
+# as a literal would. Prose can say what it needs to say without naming a
+# building -- all 18 hits this change caught were rewritten, not deleted, and
+# none lost its explanatory force.
+#
+# The historical objection (kindred#1891: it "failed on a docstring in
+# lodging_rules.py", reddening an unrelated phase) is spent -- that docstring
+# is one of the 18 now scrubbed.
 # cityGeo.ts / schoolGeo.ts are unrelated city/school geocoding lookup tables
 # (a different feature) that coincidentally contain place-name substrings
 # ("Manzanita, OR", "El Capitan, AZ", "Wawona, CA", "Tuolumne City, CA") — not
 # the lodging registry. Excluded to keep this guard meaningful.
 
-# FRONTEND_TEST_COMMENT_HITS is already comment-only (produced by
-# --only-comments above) -- append it here, AFTER the drop-comments step
-# above, not before: running it back through that filter would drop the very
-# comment hits it exists to report.
-if [[ -n "${FRONTEND_TEST_COMMENT_HITS:-}" ]]; then
-  HITS=$(printf '%s\n%s\n' "$HITS" "$FRONTEND_TEST_COMMENT_HITS" | sed '/^$/d')
+# TEST_COMMENT_HITS is already comment-only (produced by --only-comments
+# above) -- append it here, AFTER the drop-comments step above, not before:
+# running it back through that filter would drop the very comment hits it
+# exists to report.
+if [[ -n "${TEST_COMMENT_HITS:-}" ]]; then
+  HITS=$(printf '%s\n%s\n' "$HITS" "$TEST_COMMENT_HITS" | sed '/^$/d')
 fi
 
 if [[ -n "$HITS" ]]; then

@@ -453,10 +453,11 @@ interface ClusterNames {
  * in the header instead.
  *
  * Found in a browser, not by a test: a four-room house rendered every cell as
- * "Clouds Rest Ba…", "Clouds Rest La…", "Clouds Rest Loft", "Clouds Rest Si…" —
- * the shared prefix consumed the width and truncated away the only part that
- * told them apart. Stripping the common leading WORDS leaves "Back", "Landing",
- * "Loft", "Side", with "Clouds Rest" moved to the header.
+ * the building's two-word name followed by a truncated room word — "<House>
+ * Ba…", "<House> La…", "<House> Loft", "<House> Si…". The shared prefix
+ * consumed the width and truncated away the only part that told them apart.
+ * Stripping the common leading WORDS leaves "Back", "Landing", "Loft",
+ * "Side", with the building name moved to the header.
  *
  * Never strips a name to nothing: the walk stops while every name still has a
  * word left. Returns the names untouched, and an empty prefix, when they

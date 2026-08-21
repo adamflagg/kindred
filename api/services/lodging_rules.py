@@ -143,9 +143,10 @@ def effective_bathroom(
 ) -> str:
     """Spec §3.2.1 — private vs shared depends on the merge state.
 
-    Tioga 1 and Tioga 2 are each `shared`, because two families normally
-    split them. Merge both and the same bathroom becomes `private`, so
-    merging can itself be the accommodation for a medical bathroom request.
+    Two rooms sharing one bathroom are each `shared`, because two families
+    normally split them. Merge both and the same bathroom becomes `private`,
+    so merging can itself be the accommodation for a medical bathroom
+    request.
 
     Args:
         bathroom: the unit's own value ("", "none", "private", "shared").

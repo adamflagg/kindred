@@ -7,7 +7,8 @@
  * and fully editable in the Family Camp admin UI — no unit list lives in
  * source code. 1500000120 seeded it until the data moved out of this repo.
  *
- * lodging_units holds ATOMIC rooms. Merges (e.g. "Tenaya 1and2") are separate
+ * lodging_units holds ATOMIC rooms. Merges (a staff string naming two adjacent
+ * rooms at once) are separate
  * rows in lodging_merges, not parent activations, because merges are frequently
  * partial (2 of a 4-room building).
  *
@@ -81,7 +82,8 @@ migrate((app) => {
       { type: "bool", name: "is_confirmed", required: false, presentable: false },
       { type: "bool", name: "is_active", required: false, presentable: false },
       // true = a building/grouping row that must never be booked or counted
-      // toward capacity (e.g. gt-tenaya, the building containing gt-tenaya-1..4).
+      // toward capacity (e.g. a building row whose four numbered rooms are the
+      // bookable units).
       // false = an ordinary bookable room. PocketBase's default for an unset
       // bool is false, which is the safe default for units staff add later
       // through the admin UI.

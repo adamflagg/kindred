@@ -34,9 +34,19 @@ SCOPE, honestly stated, matching the guard this serves:
     source. The fusion only fires when `{`/`}` sit flush against `/*`/`*/`
     (no space), so `{ /* note */ x() }` -- real code around a comment -- is
     untouched.
-  * A file that will not parse or read is treated as ALL CODE, so its hits
-    survive. A guard that goes quiet because a file is malformed is worse than
-    one that reports a line you have to read.
+  * `.sh` files recognize a `#` comment, on the same whole-line rule the
+    C-style scanner uses: a line counts only when there is nothing on it but
+    comment. The guard greps `*.sh`, so without this a shell comment came back
+    classified as code -- which under `--only-comments` means EXEMPT, and the
+    rule table's "a test file -> comment hits fail" was simply untrue for
+    shell (kindred#2512 review).
+  * A file that cannot be read, will not parse, or has a suffix with no scanner
+    here yields None -- "we learned nothing" -- and main() writes its hits
+    through in BOTH modes. That is what fail-open has to mean once
+    `--only-comments` exists: under that flag "treat it as all code" would
+    DROP every hit rather than keep it, so the promise inverted itself exactly
+    where the guard relies on it. A guard that goes quiet because a file is
+    malformed is worse than one that reports a line you have to read.
 """
 
 from __future__ import annotations
@@ -52,9 +62,26 @@ C_STYLE_SUFFIXES = {".go", ".js", ".jsx", ".ts", ".tsx"}
 # .go/.js/.ts file's `{ /* note */ }` (a real block scoping a comment) never
 # gets the fused-brace treatment meant only for JSX's own comment syntax.
 JSX_SUFFIXES = {".jsx", ".tsx"}
+# Files whose comments start with `#`. Kept in step with the guard's own
+# --include list: every suffix it greps needs a scanner here, or that suffix's
+# comment hits are misclassified as code and exempted in test files.
+HASH_STYLE_SUFFIXES = {".sh"}
 
 
-def _python_noncode_lines(source: str) -> set[int]:
+def _hash_style_noncode_lines(source: str) -> set[int]:
+    """Line numbers whose only content is a `#` comment.
+
+    Deliberately not a shell parser. It marks a line non-code when its first
+    non-blank character is `#`, which is right for a comment line and right to
+    refuse for `UNITS=(...)  # note` -- a needle in the code half of a mixed
+    line must still report. The known imprecision is a heredoc body line that
+    begins with `#`; that direction over-reports under `--only-comments`, which
+    is the safe way to be wrong here.
+    """
+    return {lineno for lineno, line in enumerate(source.splitlines(), start=1) if line.lstrip().startswith("#")}
+
+
+def _python_noncode_lines(source: str) -> set[int] | None:
     """Line numbers occupied by a comment or a docstring."""
     noncode: set[int] = set()
 
@@ -69,12 +96,17 @@ def _python_noncode_lines(source: str) -> set[int]:
         # it for the repo's 3.14 target and rewrites a tuple into the
         # bare-comma form that older interpreters reject. Any tokenize failure
         # means the same thing anyway -- we learned nothing, so keep every hit.
-        return set()
+        return None
 
     try:
         tree = ast.parse(source)
     except SyntaxError:
-        return noncode
+        # Comments found by the tokenizer are real, but the docstring scan
+        # below never ran, so the classification is incomplete. Report unknown
+        # rather than a partial answer: an unfound docstring line would be
+        # dropped as "code" under --only-comments, which is the failure mode
+        # this whole return type exists to prevent.
+        return None
 
     for node in ast.walk(tree):
         if not isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -170,22 +202,30 @@ def _c_style_noncode_lines(source: str, *, jsx: bool = False) -> set[int]:
     return noncode
 
 
-def noncode_lines(path: Path) -> set[int]:
+def noncode_lines(path: Path) -> set[int] | None:
+    """Comment/docstring line numbers, or None when they cannot be determined.
+
+    None is not "no comments" -- it is "we learned nothing about this file",
+    and main() keeps every hit in such a file regardless of which way the
+    filter points.
+    """
     try:
         source = path.read_text(encoding="utf-8", errors="replace")
     except OSError:
-        return set()
+        return None
 
     if path.suffix == ".py":
         return _python_noncode_lines(source)
     if path.suffix in C_STYLE_SUFFIXES:
         return _c_style_noncode_lines(source, jsx=path.suffix in JSX_SUFFIXES)
-    return set()
+    if path.suffix in HASH_STYLE_SUFFIXES:
+        return _hash_style_noncode_lines(source)
+    return None
 
 
 def main() -> int:
     only_comments = "--only-comments" in sys.argv[1:]
-    cache: dict[str, set[int]] = {}
+    cache: dict[str, set[int] | None] = {}
     for raw in sys.stdin:
         hit = raw.rstrip("\n")
         if not hit:
@@ -200,7 +240,14 @@ def main() -> int:
         path, lineno = parts[0], int(parts[1])
         if path not in cache:
             cache[path] = noncode_lines(Path(path))
-        is_comment = lineno in cache[path]
+        classified = cache[path]
+        if classified is None:
+            # Fail open, in BOTH modes -- see the module docstring. Keeping the
+            # hit costs a line someone has to read; dropping it is how a real
+            # leak goes unreported because a file happened not to parse.
+            print(hit)
+            continue
+        is_comment = lineno in classified
         if is_comment == only_comments:
             print(hit)
     return 0

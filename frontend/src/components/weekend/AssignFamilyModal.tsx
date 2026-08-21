@@ -237,10 +237,10 @@ function amenityWords(unit: LodgingUnitRow): string[] {
  * combined containers the card says "capacity not recorded" while this header
  * says, correctly, how many beds the rooms beneath it hold:
  *
- *     gt-clouds-rest   own 0, 4 rooms, leaves sum 8
- *     gt-wawona        own 0, 2 rooms, leaves sum 7
- *     hc-downstairs    own 0, 2 rooms, leaves sum 5
- *     hc-doctors-house own 0, 2 rooms, leaves sum 5
+ *     container 1   own 0, 4 rooms, leaves sum 8
+ *     container 2   own 0, 2 rooms, leaves sum 7
+ *     container 3   own 0, 2 rooms, leaves sum 5
+ *     container 4   own 0, 2 rooms, leaves sum 5
  *
  * THIS surface is the correct one — `countUnmeasuredSpaces` and the map peek
  * already use `effectiveSleeps`, and the card is the only reader of the raw
