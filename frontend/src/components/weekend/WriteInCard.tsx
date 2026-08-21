@@ -105,13 +105,11 @@
 import { Pencil } from 'lucide-react'
 import { useState } from 'react'
 
-import { UNNAMED_OCCUPANT, type WriteInOccupant } from './writeIn'
+import { writeInOccupantLabel, type WriteInOccupant } from './writeIn'
 
 /** `FamilyCard`'s `CARD_FRAME`, verbatim. Pinned by this module's test. */
 export const WRITE_IN_FRAME =
   'group border-border flex w-full flex-col gap-1 rounded-xl border-2 p-2.5 text-left'
-
-/** What a card prints when the row named nobody. Also the removal's handle. */
 
 export interface WriteInCardProps {
   occupant: WriteInOccupant
@@ -148,7 +146,7 @@ export interface WriteInCardProps {
 
 export function WriteInCard({ occupant, onRemove, onEdit, isSaving = false }: WriteInCardProps) {
   const named = occupant.name !== ''
-  const label = named ? occupant.name : UNNAMED_OCCUPANT
+  const label = writeInOccupantLabel(occupant)
 
   // Local to this card, never lifted: the well can hold several of these and
   // each edits independently. Re-seeded from `occupant` every time the form

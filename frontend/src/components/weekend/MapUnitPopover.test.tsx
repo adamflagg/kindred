@@ -814,11 +814,67 @@ describe('MapUnitPopover — a cluster of rooms', () => {
       ),
     ]
     render(<MapUnitPopover units={house} hue={HUE} onOpenParty={vi.fn()} />)
-    // Per #2499 the cell no longer carries "Write-in" — but it MUST still
-    // carry "Inactive", which is a different fact (the room is unbookable)
-    // and the half of this test that was never in question.
-    expect(screen.getByTitle(/Cedar 2.*Inactive/i)).toBeInTheDocument()
+    // Per #2499 the cell no longer carries the "Write-in" CHIP LABEL — but it
+    // must now NAME THE OCCUPANT instead, and must still carry "Inactive",
+    // which is a different fact (the room is unbookable) and the half of this
+    // test that was never in question.
+    expect(screen.getByTitle(/Cedar 2.*Emma Johnson.*Inactive/i)).toBeInTheDocument()
     expect(screen.queryByTitle(/Write-in/i)).not.toBeInTheDocument()
+    // The cell must NOT call a room somebody sleeps in empty. Scoped to
+    // Cedar 2 — Cedar 1 carries no write-in and no party, so "empty" is the
+    // correct answer for it and must survive.
+    expect(screen.queryByTitle(/Cedar 2.*empty/i)).not.toBeInTheDocument()
+    expect(screen.getByTitle(/Cedar 1 — empty/i)).toBeInTheDocument()
+  })
+
+  it('names the occupant in a write-in-only cluster cell rather than calling it empty', () => {
+    // Regression caught by review of the first cut of kindred#2499: `DetailCard`
+    // and `ClusterSummary` were taught about write-in occupants and
+    // `FootprintGrid` was not, so its cell still built `label`/`who`/`base`
+    // from `entry.parties[0]` alone. A write-in-only room — the COMMON case,
+    // since most write-ins are non-rostered staff and carry no party — fell to
+    // the `${name} — empty` branch, directly beneath a summary now reporting
+    // that same room as taken. One popover, two contradictory answers.
+    const house = [
+      mapUnit(row({ unit_id: 'u1', code: 'cedar-1', name: 'Cedar 1' })),
+      mapUnit(
+        row({
+          unit_id: 'u2',
+          code: 'cedar-2',
+          name: 'Cedar 2',
+          write_ins: [
+            cover({
+              unit_id: 'u2',
+              unit_code: 'cedar-2',
+              unit_name: 'Cedar 2',
+              occupant_name: 'Liam Garcia',
+            }),
+          ],
+          is_family_available: false,
+        })
+      ),
+    ]
+    render(<MapUnitPopover units={house} hue={HUE} onOpenParty={vi.fn()} />)
+    expect(screen.getByText('2 · 1 taken, 1 open')).toBeInTheDocument()
+    expect(screen.getByTitle(/Cedar 2.*Liam Garcia/i)).toBeInTheDocument()
+    expect(screen.queryByTitle(/Cedar 2 — empty/i)).not.toBeInTheDocument()
+  })
+
+  it('keeps a write-in-only cell INERT — there is no party to open behind it', () => {
+    const onOpenParty = vi.fn()
+    const house = [
+      mapUnit(row({ unit_id: 'u1', code: 'cedar-1', name: 'Cedar 1' })),
+      mapUnit(
+        row({
+          unit_id: 'u2',
+          code: 'cedar-2',
+          name: 'Cedar 2',
+          write_ins: [cover({ unit_id: 'u2', unit_code: 'cedar-2', unit_name: 'Cedar 2' })],
+        })
+      ),
+    ]
+    render(<MapUnitPopover units={house} hue={HUE} onOpenParty={vi.fn()} />)
+    expect(onOpenParty).not.toHaveBeenCalled()
   })
 
   it('says WHICH room in a cluster carries the consent flag', () => {

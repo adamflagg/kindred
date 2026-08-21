@@ -295,8 +295,10 @@ export function LodgingUnitCard({
    *
    * With all four gone the function draws NOTHING on a board card, so the
    * render site is deleted rather than left standing and quiet. The function
-   * itself is untouched: `MapUnitPopover`'s header and its collapsed grid cell
-   * still call it, and on that surface the marks still discriminate.
+   * itself is untouched, and `MapUnitPopover`'s header and its collapsed grid
+   * cell still call it — but for `Building`/`Staff`/`Released` ONLY.
+   * kindred#2499 gated `Write-in` off there too, so that arm now draws on no
+   * surface at all; the map names the occupant instead.
    */
   // On every unit this card can be a SLOT for, which includes a COMBINED
   // container and excludes a split one.

@@ -551,11 +551,11 @@ interface SummaryFamily {
  *
  * Server order is preserved, as `writeInEntries` requires.
  */
-function summaryWriteIns(units: MapUnit[]): WriteInEntry[] {
+function summaryWriteIns(resolved: { writeIns: WriteInEntry[] }[]): WriteInEntry[] {
   const out: WriteInEntry[] = []
   const seen = new Set<string>()
-  for (const entry of units) {
-    for (const writeIn of writeInEntries(entry.unit)) {
+  for (const entry of resolved) {
+    for (const writeIn of entry.writeIns) {
       if (seen.has(writeIn.source.unitId)) continue
       seen.add(writeIn.source.unitId)
       out.push(writeIn)
@@ -618,10 +618,14 @@ function ClusterSummary({
   // kindred#2078 ruled against ("the room read as empty and closed when in
   // truth it was full"). It is a ROOM count, so an occupant with no known
   // party size still answers it; no figure is invented.
-  const taken = units.reduce(
-    (total, entry) =>
-      total +
-      (entry.parties.length > 0 || writeInEntries(entry.unit).length > 0 ? entry.roomCount : 0),
+  //
+  // Resolved ONCE per unit and shared by both readers: `taken` asks "does this
+  // unit carry any", the list below asks "which, deduped across the cluster".
+  // Two questions, one pass.
+  const resolved = units.map((entry) => ({ entry, writeIns: writeInEntries(entry.unit) }))
+  const taken = resolved.reduce(
+    (total, { entry, writeIns }) =>
+      total + (entry.parties.length > 0 || writeIns.length > 0 ? entry.roomCount : 0),
     0
   )
   // ONE unmeasured room leaves the building total unknown — a partial sum
@@ -638,7 +642,7 @@ function ClusterSummary({
   // counts its beds once per door, and can print more placed than the
   // building sleeps. One chip, one household, one bed total.
   const placed = families.reduce((total, { party }) => total + partyBeds(party), 0)
-  const writeIns = summaryWriteIns(units)
+  const writeIns = summaryWriteIns(resolved)
 
   return (
     <div className="flex min-w-[11rem] flex-col gap-1.5">
@@ -771,9 +775,25 @@ function FootprintGrid({
               ? `${partyIdentityLabel(first)} +${String(extra)}`
               : partyIdentityLabel(first)
             : shortName
+          // kindred#2499: a write-in is an occupant here too. This branch
+          // read `parties` alone, so a write-in-only room — the COMMON case,
+          // since most write-ins are non-rostered staff carrying no party —
+          // described itself as "empty" directly beneath a summary reporting
+          // it as taken. One popover, two contradictory answers.
+          //
+          // Only the DESCRIPTION changes. The visible `label` stays the room
+          // name and `first` still gates the filled style, so the cell remains
+          // the inert spatial picker it was — there is no party to open behind
+          // a write-in, and a cell that looked placeable would invite a click
+          // that goes nowhere.
+          const cellWriteIns = writeInEntries(entry.unit).map((writeIn) =>
+            writeInOccupantLabel(writeIn.occupant)
+          )
           const who = first
             ? entry.parties.map((party) => partyIdentityLabel(party)).join(', ')
-            : 'empty'
+            : cellWriteIns.length > 0
+              ? cellWriteIns.join(', ')
+              : 'empty'
           // Prefixed by the visible label so an accessible name built from it
           // still contains the label (WCAG 2.5.3). It used to be duplicated
           // into `title` as well, because a native tooltip is invisible to
@@ -788,7 +808,7 @@ function FootprintGrid({
           // border alone would be colour as the sole signal.
           const base = first
             ? `${label} — ${entry.unit.name}, ${who}`
-            : `${entry.unit.name} — empty`
+            : `${entry.unit.name} — ${who}`
           // The grid has no room for badges, so status rides in the tooltip.
           // A held or deactivated room that said nothing here would be
           // indistinguishable from a bookable one.
