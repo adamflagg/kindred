@@ -411,8 +411,12 @@ export default function PreValidationResultsModal({
   const summaryClass = 'cursor-pointer list-none [&::-webkit-details-marker]:hidden'
 
   const headerContent = (
+    // No `pr-14` (kindred#2507): `ui/Modal`'s close mark is now an 18px
+    // circle grid-stacked over this header rather than a 36px button floated
+    // beside a reserved gutter, and the title here ("Ready to Run!" / "Heads
+    // Up") is a fixed string, never long enough to reach it.
     <div
-      className={`flex items-center gap-3 py-4 pr-14 pl-5 ${
+      className={`flex items-center gap-3 py-4 pl-5 ${
         showSuccess
           ? 'from-forest-500/10 to-forest-400/5 bg-gradient-to-r'
           : 'bg-gradient-to-r from-amber-500/15 to-amber-400/5'

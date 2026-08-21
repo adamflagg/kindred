@@ -519,7 +519,14 @@ export function AssignFamilyModal({
    * undivided and carried entirely here, in `pb-[9px]`.
    */
   const header = (
-    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 px-3.5 pt-3.5 pr-14 pb-[9px]">
+    // `pr-[34px]`, NOT the old `pr-14` (kindred#2507): `ui/Modal`'s close mark
+    // is now the artifact's 18px circle, grid-stacked over this header rather
+    // than floated beside a reserved 56px gutter, and it sits `mr-4` (16px)
+    // in from the row's true edge — 18 + 16 = 34px is exactly the mark's own
+    // footprint, kept here (not dropped to zero) only because this h2
+    // truncates a real unit name rather than a fixed string, and the
+    // ellipsis has to land before the mark's own box, not under it.
+    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 px-3.5 pt-3.5 pr-[34px] pb-[9px]">
       <h2 className="min-w-0 truncate text-lg font-bold">{`Assign to ${unit.name}`}</h2>
       <p data-testid="assign-capacity" className="text-muted-foreground text-xs">
         {[capacitySentence(unit, units, occupants, spanWidth), ...amenityWords(unit)].join(' · ')}
@@ -596,17 +603,12 @@ export function AssignFamilyModal({
       // design it is being compared against is not the design. `ui/Modal`'s
       // `maxWidthClassName` is opt-in and no other caller is touched.
       maxWidthClassName="max-w-[520px]"
-      // ⚠️ CENTRED IN THE HEADER BAND (owner ruling 2026-08-20, option A).
-      // `ui/Modal`'s default `top-4` assumes a header at least 52px tall —
-      // 16px plus a 36px box — and this header is 51px, so the button hung
-      // past its own ground: 5px while the header rule was still there, where
-      // its hover fill painted across the rule, and 1px after the rule came
-      // out. The opt-in leaves every other dialog on `top-4`.
-      //
-      // Option B — the artifact's 18px circled mark in flow on the header row
-      // — is the one the owner preferred, and is filed as its own issue
-      // because it should land on every dialog at once rather than here alone.
-      closeAlign="center"
+      // The close mark itself — `closeAlign="center"` was this dialog's
+      // interim fix for the overhang `top-4` + a 36px box left on a 51px
+      // header (owner ruling 2026-08-20, option A). Option B, the artifact's
+      // 18px in-flow mark, is now `ui/Modal`'s only behaviour (kindred#2507),
+      // so `closeAlign` is gone — deleted from `ui/Modal` itself rather than
+      // left as a second, now-pointless mechanism behind it.
       // ⚠️ THE CARD'S BORDER IS `ui/Modal`'s 1px, NOT the artifact's 2px, AND
       // THAT IS NOW RULED (owner, 2026-08-20, having compared the two at 4×).
       // §3.3's quoted block carries `.modalcard{border:2px}`, but that ruling's

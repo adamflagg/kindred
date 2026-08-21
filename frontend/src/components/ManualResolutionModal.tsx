@@ -147,7 +147,10 @@ export default function ManualResolutionModal({
   }
 
   const headerContent = (
-    <div className="border-border flex-shrink-0 border-b p-6 pr-14">
+    // No `pr-14` (kindred#2507): the close mark is an 18px circle
+    // grid-stacked over this header now, and "Manual Resolution" is a fixed
+    // string that never reaches it.
+    <div className="border-border flex-shrink-0 border-b p-6">
       <div>
         <h2 className="flex items-center gap-2 text-xl font-semibold">
           <UserCheck className="h-5 w-5 text-blue-600" />

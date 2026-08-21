@@ -109,7 +109,10 @@ export default function CreateRequestModal({ sessionId, year, onClose }: CreateR
   }
 
   const headerContent = (
-    <div className="border-border border-b p-6 pr-14">
+    // No `pr-14` (kindred#2507): the close mark is an 18px circle
+    // grid-stacked over this header now, and "Create Request" is a fixed
+    // string that never reaches it.
+    <div className="border-border border-b p-6">
       <h2 className="font-display text-xl font-bold">Create Request</h2>
     </div>
   )

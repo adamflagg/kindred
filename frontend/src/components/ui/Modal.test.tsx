@@ -232,53 +232,69 @@ describe('Modal', () => {
       expect(screen.getByRole('button', { name: /close/i })).toBeInTheDocument()
     })
 
-    it('floats the close button at the top by default, as every caller has it today', () => {
-      // `top-4` against a header slot whose height the caller owns. This is
-      // the default precisely BECAUSE it is what ~20 dialogs already draw;
-      // the opt-in below exists so one of them can differ without moving the
-      // rest.
+    it('renders the close mark as the artifact’s 18px in-flow circle, not the old floated square', () => {
+      /*
+       * ⚠️ RETARGETED (kindred#2507). This used to pin `top-4` as the
+       * default — a 36px button floated at a fixed offset that assumed a
+       * header at least 52px tall, with a `closeAlign="center"` opt-in for
+       * the one dialog that hit the overhang. Both are gone: every
+       * custom-header dialog now draws the design artifact's `.wbtn` — an
+       * 18x18 circle pushed to the row's end via `margin-left: auto`
+       * (`.mhead .wbtn{margin-left:auto}`) — as the ONLY grammar, not a
+       * default plus an opt-in.
+       */
       render(
         <Modal isOpen={true} onClose={() => {}} header={<div>Custom Header</div>}>
           <p>Modal content</p>
         </Modal>
       )
-      expect(screen.getByRole('button', { name: /close/i }).className).toContain('top-4')
+      const close = screen.getByRole('button', { name: /close/i })
+      expect(close.className).toContain('h-[18px]')
+      expect(close.className).toContain('w-[18px]')
+      expect(close.className).toContain('rounded-full')
+      expect(close.className).toContain('ml-auto')
+      expect(close.className).not.toContain('absolute')
+      expect(close.className).not.toContain('top-4')
     })
 
-    it('centres the close button in the header band when the caller asks it to', () => {
+    it('keeps the header slot at its full painted width — a shared flex track was tried and rejected', () => {
       /*
-       * ⚠️ OPT-IN FOR A MEASURED OVERHANG (owner ruling 2026-08-20).
-       * `top-4` + a 36px box needs a header at least 52px tall, and it is a
-       * constant: a caller that tightens its header makes the button hang
-       * past it. `AssignFamilyModal` took the artifact's 14px inset and its
-       * header went to 47px, so the button ended 5px past the header's own
-       * ground — its hover fill painted across the divider that was there at
-       * the time, and its hit area covered the search box's top edge. The
-       * later no-rule ruling took the header to 51px and the overhang to 1px;
-       * this closes the last of it and, more to the point, stops the geometry
-       * depending on a header height nobody is holding still.
-       *
-       * OPT-IN rather than the new default: the wrapper is the header slot
-       * itself, so centring is right for any header — but the app's ~20 other
-       * custom-header dialogs were all drawn against `top-4`, and moving them
-       * is its own review. The 18px in-flow mark the design artifact draws is
-       * the standardisation the owner wants instead, and it is filed as its
-       * own issue rather than smuggled in here.
+       * A `flex-1` track for the mark leaves the header's own box short of
+       * the row's true width: any header painting a full-bleed background
+       * (`headerOnDark`) then shows a bare strip of the card's own ground
+       * through the mark's transparent fill, where the header's colour
+       * should still reach the card's edge (measured, kindred#2507).
+       * Grid-stacking — the mark and the header sharing one cell — keeps the
+       * header at 100% and lays the mark over it instead, which is what the
+       * floated button always did. This pins the container being a grid
+       * sharing ONE cell, not a flex row splitting the row into two tracks.
        */
       render(
-        <Modal
-          isOpen={true}
-          onClose={() => {}}
-          header={<div>Custom Header</div>}
-          closeAlign="center"
-        >
+        <Modal isOpen={true} onClose={() => {}} header={<div>Custom Header</div>}>
+          <p>Modal content</p>
+        </Modal>
+      )
+      const row = screen.getByRole('button', { name: /close/i }).parentElement
+      expect(row?.className).toContain('grid')
+      expect(row?.className).not.toContain('flex-1')
+    })
+
+    it('swaps the mark’s border and colour for a dark header, and nothing about its shape', () => {
+      // `headerOnDark` predates this issue and stays: a 1px `border-border`
+      // line is too low-contrast against a dark gradient, so the dark
+      // variant keeps its own translucent-white border and text — see the
+      // prop's own doc comment. Only the colour changes; the mark is still
+      // the same 18px circle.
+      render(
+        <Modal isOpen={true} onClose={() => {}} header={<div>Custom Header</div>} headerOnDark>
           <p>Modal content</p>
         </Modal>
       )
       const close = screen.getByRole('button', { name: /close/i })
-      expect(close.className).toContain('top-1/2')
-      expect(close.className).toContain('-translate-y-1/2')
-      expect(close.className).not.toContain('top-4')
+      expect(close.className).toContain('border-white/30')
+      expect(close.className).toContain('text-white/70')
+      expect(close.className).not.toContain('border-border')
+      expect(close.className).toContain('h-[18px]')
     })
   })
 
