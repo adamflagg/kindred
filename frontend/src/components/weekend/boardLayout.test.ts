@@ -1169,6 +1169,29 @@ describe('buildBoard — area grouping and colour', () => {
     expect(board.areas[0]?.slots.map((slot) => slot.unit.code)).toEqual(['ridge-1', 'ridge-2'])
   })
 
+  it('sorts a unit numbered past 9 numerically, not as a string (kindred#2518 review)', () => {
+    // Plain `localeCompare` treats the number as a string, so "Manzanita 10"
+    // sorts as if its first character were "1" and lands ahead of
+    // "Manzanita 2" — every production area's numbering is single-digit
+    // today, which is exactly why this was latent, but summer's equivalent
+    // sort (`BunkingBoardByArea.tsx`) already numeric-compares trailing
+    // digits so "B-2" precedes "B-10", and the board must not regress that
+    // the moment an area's numbering crosses into double digits.
+    const board = buildBoard(
+      [],
+      [
+        unit({ unit_id: 'u1', code: 'manzanita-10', name: 'Manzanita 10' }),
+        unit({ unit_id: 'u2', code: 'manzanita-9', name: 'Manzanita 9' }),
+        unit({ unit_id: 'u3', code: 'manzanita-2', name: 'Manzanita 2' }),
+      ]
+    )
+    expect(board.areas[0]?.slots.map((slot) => slot.unit.code)).toEqual([
+      'manzanita-2',
+      'manzanita-9',
+      'manzanita-10',
+    ])
+  })
+
   it('keeps two areas apart when they share a blank code but not a name', () => {
     // The API sends `area_code: ""` for anything it cannot resolve, so
     // bucketing on the code alone silently merges them.

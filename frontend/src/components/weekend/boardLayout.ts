@@ -1043,7 +1043,15 @@ export function buildBoard(parties: RosterPartyRow[], units: LodgingUnitRow[]): 
     bucket.slots.sort((a, b) => {
       const orderDiff = areaSortOrder(a.unit) - areaSortOrder(b.unit)
       if (orderDiff !== 0) return orderDiff
-      return a.unit.name.localeCompare(b.unit.name)
+      // `numeric: true` so "Manzanita 10" sorts after "Manzanita 9", not
+      // ahead of "Manzanita 2" — plain localeCompare treats the trailing
+      // number as a string and puts "1…" before "2…". Every production
+      // area's numbering is single-digit today, which is why a plain
+      // compare shipped unnoticed in review, but summer's equivalent sort
+      // (`BunkingBoardByArea.tsx`) already numeric-compares for exactly
+      // this reason, and the board must not regress it (review finding on
+      // kindred#2518).
+      return a.unit.name.localeCompare(b.unit.name, undefined, { numeric: true })
     })
   }
 
