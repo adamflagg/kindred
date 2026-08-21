@@ -98,12 +98,18 @@ const RING_CLASSES: Record<'dropTarget' | 'consentFlagged' | 'plain', string> = 
  * here meets the need", which is a different KIND of statement rather than a
  * weaker refusal, so it stays at full contrast: legible, droppable, flagged.
  *
- * Additive, never a `RING_CLASSES` entry, for the reason that table's own doc
- * gives: it exists only for channels that fight over one CSS property
- * (`border-color`, `box-shadow`). `background-image` competes with neither —
- * including with #2093's `bg-primary/10` open-space tint, which is
- * `background-color`. The two compose deliberately: a drag-state mark over a
- * resting-state marker, each still saying its own true thing.
+ * Still the only occupant of `background-image`, and still never a
+ * `RING_CLASSES` entry — that table exists for channels that fight over one
+ * CSS property, and nothing contends for this one.
+ *
+ * ⚠️ IT NO LONGER COMPOSES WITH THE FOREST TINT, and this comment used to say
+ * it did. The two sit on orthogonal properties, so they CAN co-render; the
+ * owner ruled on 2026-08-21 that they must not. A conflict draws the hatch
+ * and loses the wash — gaining the hazard and losing the invitation are two
+ * halves of one mark. Drawn at board scale the old composite read as a dull
+ * deactivated grey rather than a warning, which is the visual language #2093
+ * had just moved the open marker away from. The exclusion is enforced by
+ * `dragFit.state` being ONE enum, not by these two rules racing.
  *
  * Degree is the hatch PERIOD and only the period — same angle, same ink, same
  * alpha, tighter lines. Grading NONE from SOME on a second channel is exactly
@@ -654,20 +660,17 @@ export function LodgingUnitCard({
       : `Capacity not recorded · ${String(occupants)} placed${infantExemptionClause}`
 
   /*
-   * Whether this space meets the needs of the family in flight (#1912) —
-   * `'fits' | 'partial' | 'unmet'`, resolved by `needsFit.ts` against the
-   * SERVER's `power_coverage`, which is taken over the unit's leaf
-   * descendants rather than off its own row. Twelve of the fourteen 2026
-   * family-pool containers record `has_power = 0` while every leaf beneath
-   * them has power, so judging a building by the raw flag would mark twelve
+   * Where the family in flight stands against this space — one `DragFit`,
+   * resolved by `needsFit.ts` against the SERVER's resolved coverage rather
+   * than the unit's own row. Twelve of the fourteen 2026 family-pool
+   * containers record `has_power = 0` while every leaf beneath them has
+   * power, so judging a building by the raw flag would mark twelve
    * entirely-powered buildings unpowered. The TITLE ROW's own plug reads the
-   * same resolved field since kindred#2072's T2 — it used to render the raw
-   * flag, and promoting that to the most prominent row on the card is what
-   * made fixing it part of the same change.
+   * same resolved field since kindred#2072's T2.
    *
-   * `'fits'` at rest, and that is the state, not a fallback: with no family
-   * in flight there is nothing to be a misfit FOR, and a board hatched all
-   * the time says nothing at all.
+   * `'neutral'` at rest, and that is the state, not a fallback: with no
+   * family in flight there is nothing to be a misfit FOR and nothing to
+   * match, and a board marked all the time says nothing at all.
    *
    * ADVISORY. Nothing below this line touches `useDroppable`, `opacity` or
    * `pointer-events` — the drop is still accepted, exactly as the comment on
@@ -681,12 +684,47 @@ export function LodgingUnitCard({
    * positive claim must not be built on one. Withholding costs a match the
    * board might have been entitled to draw, which is the safe direction.
    */
+  /*
+   * Beds the family in flight already holds ON THIS CARD, added back before
+   * anything asks whether it fits.
+   *
+   * Moving a PLACED family between cabins is the board's core operation, so
+   * the dragged party is routinely an occupant of some card already. Counting
+   * its own beds against it makes its current cabin claim it will not fit
+   * somewhere it demonstrably does — and on a shared card it is worse, because
+   * the cabin it is being moved OUT of is exactly the one staff are looking at.
+   */
+  const dragOccupiesHere =
+    draggingParty !== null && slot.parties.some((p) => partyKey(p) === partyKey(draggingParty))
+  // `capacityKnown` is an aliased `!== null` check that TypeScript narrows
+  // through, which is why `capacity` needs no fallback inside it.
+  const freeBeds = capacityKnown
+    ? capacity - occupants + (dragOccupiesHere && draggingParty ? partySize(draggingParty) : 0)
+    : 0
+
+  /*
+   * `known` is withheld on THREE conditions, and the third is not obvious.
+   *
+   * `spanWidth > 0` — the occupant count is an upper bound, not a fact, so a
+   * positive claim must not be built on it (see `slotOccupancy`).
+   *
+   * `writtenInto` — `slotOccupancy` sums `partySize` over `slot.parties`, and
+   * a write-in is not a party (kindred#2439), so it contributes ZERO and the
+   * cabin reads as wholly free. This card already refuses to call such a room
+   * empty and already prints an em dash rather than a numerator, for the same
+   * reason: it has no count. Letting the match wash fire off that absent count
+   * would put the loudest positive mark on the card on the strength of the one
+   * number the card declines to assert.
+   *
+   * Withholding costs a match the board might have been entitled to draw,
+   * which is the safe direction for a claim.
+   */
   const dragFit: DragFit =
     draggingParty === null
       ? { state: 'neutral', severity: 'fits' }
       : resolveDragFit(draggingParty, unit, {
-          known: capacityKnown && spanWidth === 0,
-          free: capacityKnown ? capacity - occupants : 0,
+          known: capacityKnown && spanWidth === 0 && !writtenInto,
+          free: freeBeds,
         })
 
   /*
@@ -695,8 +733,11 @@ export function LodgingUnitCard({
    * statement — and the figure KEEPS ITS OWN NUMBERS. The party in flight is
    * never added in, so the card goes on reporting who is actually placed.
    *
-   * Every cabin without room, on every drag, with no exceptions — including
-   * cards already hatched for a requirement. Narrower scopes were considered
+   * Every cabin without room, on every drag — including cards already hatched
+   * for a requirement. The only cabins exempt are the ones whose free-bed
+   * count is not a fact: unmeasured capacity, a straddling party, and a
+   * wholesale write-in. Those are not exceptions to the rule so much as
+   * cabins the rule has nothing to say about. Narrower scopes were considered
    * and dropped on PREDICTABILITY (owner, 2026-08-21): a red that appears for
    * some families and not others makes staff reverse-engineer the rule.
    *
@@ -708,7 +749,8 @@ export function LodgingUnitCard({
     draggingParty !== null &&
     capacityKnown &&
     spanWidth === 0 &&
-    capacity - occupants < partySize(draggingParty)
+    !writtenInto &&
+    freeBeds < partySize(draggingParty)
 
   /*
    * kindred#2179's warning: a second party in a space classified for ONE.
@@ -884,7 +926,8 @@ export function LodgingUnitCard({
        * concatenating four; the dashed/dimmed fragments alongside it are
        * additive on purpose (see their own comments) and never race anything
        * in this table. The hue top edge USED TO BE a separate inline style
-       * that outranked all of it; it is gone (2026-08-21) and §3.10's channel
+       * that outranked all of it; it is gone (2026-08-21), so these borders
+       * now reach the top edge too and §3.10's channel lives
        * alive underneath whichever state wins.
        *
        * NO `hover:shadow-lodge-lg` HERE, though `BunkCard` carries one. That

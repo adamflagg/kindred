@@ -209,6 +209,18 @@ describe('resolveDragFit — unrecorded coverage makes NEITHER claim', () => {
     expect(fit.state).toBe('neutral')
   })
 
+  it('treats a payload with no coverage field at all as unrecorded', () => {
+    // The Pydantic-default gotcha, ported from the deleted `resolveNeedsFit`
+    // suite: the API can omit the key entirely, and `?? 'unknown'` is what
+    // catches it. Without this, a missing field would fall through to
+    // `needVerdict` and be graded as though somebody had recorded something.
+    const bare = unit()
+    delete (bare as Partial<LodgingUnitRow>).power_coverage
+    expect(
+      resolveDragFit(party({ flags: { needs_power: true } }), bare, { known: true, free: 6 }).state
+    ).toBe('neutral')
+  })
+
   it('lets a recorded need decide even when another asked need is unrecorded', () => {
     const fit = resolveDragFit(
       party({ flags: { needs_step_free: true, needs_power: true } }),

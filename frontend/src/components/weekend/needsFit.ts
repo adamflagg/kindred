@@ -16,10 +16,14 @@
  *        invalid merge target, and by that alone since kindred#2432 struck
  *        the written-into space's refusal (#2087/#2090). Not this.
  *   hatch (`background-image`, at FULL strength)= ADVISORY MISFIT. This.
- *   forest tint                                  = open and available, at rest
- *        only (#2093).
+ *   forest tint (`background-color`)             = open and available at rest
+ *        (#2093) — AND, since 2026-08-21, the drag-time match at double
+ *        strength. One channel, three exclusive states.
  *
- * So the mark this feeds changes `background-image` and nothing else. Putting
+ * So the marks this feeds are `background-image` for the negative and
+ * `background-color` for the positive; the module header used to say
+ * `background-image` and nothing else, which stopped being true when the
+ * mark grew a positive half. Putting
  * fit on opacity would have made it read as a weaker refusal rather than as a
  * different kind of statement, which is exactly the collapse the vocabulary
  * ruling exists to prevent.
@@ -68,21 +72,28 @@ export function worseOf(a: NeedsFit, b: NeedsFit): NeedsFit {
  * which must not CLAIM on absence of evidence. No single reading of `unknown`
  * can serve both, which is why the state is resolved here instead.
  */
-export type DragFitState = 'conflict' | 'match' | 'neutral'
+type DragFitState = 'conflict' | 'match' | 'neutral'
 
 /**
- * A DISCRIMINATED UNION, so `severity` cannot be read on a state that has no
- * severity and a conflict cannot carry `'fits'`. The exclusivity the design
+ * A DISCRIMINATED UNION, so a conflict cannot carry `'fits'` and a match
+ * cannot carry a severity that would draw a hatch. The exclusivity the design
  * asks for is enforced by the type rather than by a rule a caller has to
  * remember — which is the whole reason the three states were collapsed into
  * one value.
+ *
+ * `severity` is present on BOTH members deliberately, so `NEUTRAL` and the
+ * card's at-rest value can be plain literals; it is the VALUE that is
+ * constrained per member, not the key's presence.
  *
  * Severity is the hatch PERIOD and only the period (kindred#1912); grading
  * NONE from SOME on a second channel is the collapse that ruling struck.
  */
 export type DragFit =
-  | { readonly state: 'conflict'; readonly severity: Exclude<NeedsFit, 'fits'> }
-  | { readonly state: 'match' | 'neutral'; readonly severity: 'fits' }
+  | {
+      readonly state: Extract<DragFitState, 'conflict'>
+      readonly severity: Exclude<NeedsFit, 'fits'>
+    }
+  | { readonly state: Exclude<DragFitState, 'conflict'>; readonly severity: 'fits' }
 
 /**
  * What the card already knows about its own beds, passed in rather than
@@ -142,6 +153,8 @@ export function resolveDragFit(
   const asked = askedNeedGlyphs(party)
   if (asked.length === 0) return NEUTRAL
 
+  // `'partial'` is the softest non-`fits` grade, so it is the identity
+  // element for `worseOf` and the accumulator needs no first-pass special case.
   let worst: Exclude<NeedsFit, 'fits'> = 'partial'
   let conflict = false
   let unrecorded = false
@@ -154,7 +167,7 @@ export function resolveDragFit(
     }
     const verdict = needVerdict(glyph.key, coverage)
     if (verdict !== 'fits') {
-      worst = conflict ? (worseOf(verdict, worst) as Exclude<NeedsFit, 'fits'>) : verdict
+      worst = worseOf(verdict, worst) as Exclude<NeedsFit, 'fits'>
       conflict = true
     }
   }

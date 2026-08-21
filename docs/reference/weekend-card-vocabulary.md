@@ -172,7 +172,7 @@ resolved by an implementer without guessing.
 | Question                                                                                                                          | Ruling                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | --------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **An unresolvable coverage graded `fits`.** A cabin nobody has measured drew the glyph in full hue, which asserts the need is met | Owner, verbatim: _"unknown values should not equal fits, across all surfaces on the glyphs, its unconfirmed information."_ `needVerdict` reports `unmet`. The losing argument — the absence of evidence is not evidence of absence — is true and insufficient: `fits` is a claim too, and two glyph states are ruled, so there was never a neutral option. Measured: **3 glyphs move** across 2026's twelve weekends; **no roster section count moves** |
-| **The drag-time hatch reads the same rule and must not**                                                                          | Excluded, with the number. 102 of 118 cabins carry `ramp_coverage: unknown`, so reading it as unmet takes a step-free household's hatched cabins from **32 of 944 pairs to 848** — 3.4% to 90%, a hatch that has stopped discriminating. `needsFit` passes `needGlyphs.UnknownReading` explicitly; the coverage derivation is still single-sourced                                                                                                      |
+| **The drag-time hatch reads the same rule and must not**                                                                          | Excluded, with the number. 102 of 118 cabins carry `ramp_coverage: unknown`, so reading it as unmet takes a step-free household's hatched cabins from **32 of 944 pairs to 848** — 3.4% to 90%, a hatch that has stopped discriminating. ⚠️ superseded 2026-08-21 (kindred#2528): `resolveDragFit` intercepts `unknown` BEFORE `needVerdict` and passes no `unknownIs` at all, because unrecorded coverage must make NEITHER claim — no hatch (the bar is evidence of absence) and no match (a positive mark must not read unconfirmed as met). The 848/90% figure is why it still does not hatch. The coverage derivation is still single-sourced                                                                                                      |
 | **Returning wore `forest-700`, the same ink as the card's own text**                                                              | `green-700` / `green-300`. R3 takes the words away, so colour is the only thing separating Returning from First-time — and forest-700 measures **1.08 : 1** against `--foreground` where green-700 is 2.87 : 1. One semantic green on the board; `forest` stays the lodge's chrome                                                                                                                                                                      |
 
 ## 6. Policies with no line of code to sit on
@@ -276,11 +276,27 @@ The roster therefore called twelve entirely-powered buildings unpowered while
 the board's own hatch called them fine. All three call the resolver now.
 
 WHICH needs a surface reports is still per-surface, and each scope is written
-down where it lives rather than implied: the drag hatch grades three, the roster
-grades two (adding fridge and step-free moves parties between staff-facing
-section counts and needs its own ruling), and the card draws all four.
+down where it lives rather than implied: **the drag-time mark grades all four**
+(kindred#2528 — it graded three until 2026-08-21), the roster grades two (adding
+fridge and step-free moves parties between staff-facing section counts and needs
+its own ruling), and the card draws all four.
 
-**Bathroom is the one excluded from the hatch on arithmetic, and the arithmetic
+⚠️ **THE EXCLUSION BELOW WAS REVERSED ON 2026-08-21 (kindred#2528). Bathroom is
+graded.** The arithmetic in this section is still correct and is kept because it
+is the reasoning the reversal had to answer — do not re-narrow `resolveDragFit`
+from it. What changed is not the numbers but what the mark IS:
+
+- The 82-of-118 argument is about a mark that could only ever be NEGATIVE, where
+  firing on nine cabins in ten says nothing. Half the mark is now positive, and a
+  positive mark that skipped bathroom would call a cabin a MATCH for a household
+  whose bathroom need it never checked. That is a worse failure than a wash.
+- The mark now aligns with the glyphs, which have always drawn all four.
+- Bathroom moved to the PROSPECTIVE axis at the same time. On the `placed`
+  reading it took `party.effective_bathroom` and ignored the target unit, so it
+  was a board-wide constant — every card or none — which cannot mean anything
+  per card. The 82 figure is the prospective one and survives the move.
+
+**Bathroom was the one excluded from the hatch on arithmetic, and the arithmetic
 moved twice on 2026-08-20** — re-derived against the production snapshot by
 running the shipped functions over all 118 units, not carried forward:
 
@@ -292,5 +308,6 @@ running the shipped functions over all 118 units, not carried forward:
 
 #2502's `_resolve_bathroom` moves 8 of the 15 containers from `none` to a
 bathroom their rooms actually have, which is why the presence figure improved
-again after #2501 landed. 82 of 118 is still a wash, so the exclusion stands —
-but quote 82, not 90.
+again after #2501 landed. 82 of 118 is a wash on a purely negative mark, which
+is why the exclusion stood at the time — if you quote the figure, quote 82, not
+90. It no longer decides the scope; see the note above.

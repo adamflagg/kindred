@@ -163,8 +163,9 @@ different decision entirely (kindred#2072, B·1 and B·2).
 ramp is a percentage of a fixed capacity of 12 and has five distinguishable
 states. Family rooms average about five beds and plenty sleep two, where the same
 ramp is a binary wearing four colours — green on the first occupant, orange on
-the second. The card's border already carries the area hue (§3.10) and the amber
-consent edge, so a third channel would compete for one surface. What is kept is
+the second. (The border argument in the original ruling has partly lapsed — the
+area hue left the card in kindred#2528 — but the arithmetic one above has not,
+and it is what decided this.) What is kept is
 the figure and **one** emphasis state, for the only actionable case; two cards
 qualify on 2026 data.
 
@@ -388,19 +389,29 @@ tall because it holds 10–14 campers; a lodging unit holds nothing, one party, 
 occasionally two. `boardLayout.ts`'s header explains this. Do not make family
 cards summer-height.
 
-**The area hue stripe** (`border-t-[3px]` plus the section dot) is §3.10 and must
-survive any chrome change. It is an inline `borderTopColor`, so it outranks
-`.card-lodge`'s `border-border` and its `border-primary/50` hover. There is a
-test pinning it.
+**The area hue stripe came OFF the card on 2026-08-21** (kindred#2528). This
+paragraph used to say the opposite — that the stripe must survive any chrome
+change, and that a test pinned it. Both were true until the owner ruled;
+the test now asserts the card carries no inline style at all.
 
-Note the coupling: `boardLayout.ts` justifies the eight-hue ramp as decorative
-_because_ "the section headers do the actual grouping". **Sections and hue stand
-or fall together.** Removing the sections obliges you to delete the hue or
-re-justify it against §3.10.
+The reasoning is the coupling this paragraph already named. `boardLayout.ts`
+justifies the eight-hue ramp as decorative _because_ "the section headers do the
+actual grouping" — so the hue was never load-bearing on the card, and it was
+carried FOUR times over (the `<section>`, the heading, the header dot, and 73
+card top-edges). Only the card edge was on every card, always on. **The section
+dot is now its only carrier on the board**, at 8 instances instead of 73.
 
-**The card border is full.** Area hue on top, amber for consent all round. That
-is why over-capacity took a text colour rather than summer's
-`border-destructive/50`, and why any future state needs somewhere else to live.
+Sections and hue still stand or fall together: removing the sections obliges you
+to restore a per-unit carrier or re-justify the ramp against §3.10. The MAP
+keeps its per-unit hue, because it has no section headers.
+
+**The card border is no longer full.** It carried the area hue on top and amber
+for consent all round, which is why over-capacity took a text colour rather than
+summer's `border-destructive/50`. The area hue is gone (kindred#2528), so the top
+edge is free — but the text colour stays, and is now doing MORE work: the
+drag-time "no room for this family" mark reuses it deliberately, because it is
+the same statement as over-capacity rather than a second vocabulary for it.
+A future state may take the freed edge; do not assume the border is still full.
 The `Over capacity` chip that used to accompany that text colour is struck
 (kindred#2072): it stated at chip weight exactly what the red figure states in
 colour.

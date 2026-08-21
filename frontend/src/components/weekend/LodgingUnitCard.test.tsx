@@ -2877,6 +2877,56 @@ describe('LodgingUnitCard — the drag-time match and the capacity red', () => {
     expect(card(container)).not.toHaveClass('bg-primary/20')
   })
 
+  it('never matches a room somebody is written into', () => {
+    // `slotOccupancy` sums `partySize` over `slot.parties`, and a write-in is
+    // not a party — it contributes 0 (kindred#2439). So the free-bed count is
+    // the WHOLE cabin, and a match would be drawn on a room the very same card
+    // refuses to call empty: it withholds the resting tint because "a room
+    // somebody is already sleeping in is not empty", and it prints an em dash
+    // rather than a numerator because it has no count to print. Washing green
+    // at DOUBLE the withheld tint, off free beds derived from the count it
+    // just refused to assert, is the loudest possible version of that
+    // contradiction.
+    const { container } = render(
+      <LodgingUnitCard
+        slot={slot({ unit: powered({ sleeps: 5, write_ins: [cover()] }) })}
+        draggingParty={needsPower}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(card(container)).not.toHaveClass('bg-primary/20')
+  })
+
+  it('does not redden a room somebody is written into either', () => {
+    // The other half of the write-in rule. The figure already prints an em
+    // dash because there is no count; reddening it would assert "no room"
+    // from the very number the card refuses to state.
+    const { container } = render(
+      <LodgingUnitCard
+        slot={slot({ unit: powered({ sleeps: 2, write_ins: [cover()] }) })}
+        draggingParty={asksNothing}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(within(card(container)).getByText('—/2')).not.toHaveClass('text-destructive')
+  })
+
+  it('does not tell the family they will not fit in the cabin they are in', () => {
+    // Moving a PLACED family between cabins is the board's core operation, so
+    // the dragged party is routinely already an occupant of some card. Its own
+    // beds must not count against it there, or its current cabin reddens to
+    // say it will not fit somewhere it demonstrably does.
+    const staying = party({ party_size: 3 })
+    const { container } = render(
+      <LodgingUnitCard
+        slot={slot({ unit: powered({ sleeps: 3 }), parties: [staying] })}
+        draggingParty={staying}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(within(card(container)).getByText('3/3')).not.toHaveClass('text-destructive')
+  })
+
   it('does not redden at rest, when no family is in flight', () => {
     const { container } = render(
       <LodgingUnitCard slot={slot({ unit: powered({ sleeps: 2 }) })} onOpenParty={vi.fn()} />
