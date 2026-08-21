@@ -397,7 +397,11 @@ describe('buildBoard — which units get a card', () => {
       [unit(), staffUnit({ unit_id: 'u2', code: 'aspen-lodge', name: 'Aspen Lodge' })]
     )
     const slots = board.areas.flatMap((area) => area.slots)
-    expect(slots.map((slot) => slot.unit.code)).toEqual(['cedar-1', 'aspen-lodge'])
+    // Both fall in the same default area, so they now sort alphabetically by
+    // name (kindred#2514) — "Aspen Lodge" before "Cedar 1". The membership
+    // this test is actually about is unaffected: staff housing that still
+    // holds a party never disappears.
+    expect(slots.map((slot) => slot.unit.code)).toEqual(['aspen-lodge', 'cedar-1'])
     expect(board.offBoard).toHaveLength(0)
     expect(board.unplaced).toHaveLength(0)
   })
@@ -1127,13 +1131,19 @@ describe('buildBoard — area grouping and colour', () => {
     ])
   })
 
-  it('never reorders the units WITHIN an area — only the area order changes', () => {
-    // The payload already arrives unit-alphabetical within an area (the
-    // repository's own query sorts `area.sort_order,name`); `buildBoard`
-    // must not second-guess that order once an area's rank moves it. Here
-    // the two units are handed in already-alphabetical order inside an area
-    // that the rank reorder moves to the FRONT of the board, and they must
-    // stay in that same relative order.
+  it('sorts units WITHIN an area alphabetically, regardless of payload order (kindred#2514)', () => {
+    // REWRITE, not an adaptation — this test used to pin the opposite
+    // invariant ("never reorders ... the repository's own query already
+    // sorts"). That assumption was wrong: `drawnUnits` (unitLevel.ts) walks
+    // the registry tree BREADTH-FIRST, so a unit's depth in the tree — not
+    // its name — decides its position in the payload `buildBoard` receives.
+    // A root-level unit is emitted before any room nested under a container,
+    // whatever either is named, which is exactly what kindred#2514 reported
+    // ("containers should be alpha within categories, not containers
+    // first"). `buildBoard` must now sort explicitly rather than trust the
+    // payload's order. Here the units are handed in reverse-alphabetical —
+    // the shape a BFS walk produces when depth runs opposite to name — and
+    // must still come out alphabetical.
     const board = buildBoard(
       [],
       [
@@ -1141,22 +1151,45 @@ describe('buildBoard — area grouping and colour', () => {
           area_code: 'NR',
           area_name: 'North Ridge',
           area_sort_order: 1,
-          code: 'ridge-1',
-          name: 'Ridge 1',
+          code: 'ridge-2',
+          name: 'Ridge 2',
         }),
         unit({
           unit_id: 'u2',
           area_code: 'NR',
           area_name: 'North Ridge',
           area_sort_order: 1,
-          code: 'ridge-2',
-          name: 'Ridge 2',
+          code: 'ridge-1',
+          name: 'Ridge 1',
         }),
         unit({ unit_id: 'u3', area_code: 'CG', area_name: 'Cedar Grove', area_sort_order: 9 }),
       ]
     )
     expect(board.areas.map((area) => area.name)).toEqual(['North Ridge', 'Cedar Grove'])
     expect(board.areas[0]?.slots.map((slot) => slot.unit.code)).toEqual(['ridge-1', 'ridge-2'])
+  })
+
+  it('sorts a unit numbered past 9 numerically, not as a string (kindred#2518 review)', () => {
+    // Plain `localeCompare` treats the number as a string, so "Cedar 10"
+    // sorts as if its first character were "1" and lands ahead of
+    // "Cedar 2" — every production area's numbering is single-digit today,
+    // which is exactly why this was latent, but summer's equivalent sort
+    // (`BunkingBoardByArea.tsx`) already numeric-compares trailing digits so
+    // "B-2" precedes "B-10", and the board must not regress that the moment
+    // an area's numbering crosses into double digits.
+    const board = buildBoard(
+      [],
+      [
+        unit({ unit_id: 'u1', code: 'cedar-10', name: 'Cedar 10' }),
+        unit({ unit_id: 'u2', code: 'cedar-9', name: 'Cedar 9' }),
+        unit({ unit_id: 'u3', code: 'cedar-2', name: 'Cedar 2' }),
+      ]
+    )
+    expect(board.areas[0]?.slots.map((slot) => slot.unit.code)).toEqual([
+      'cedar-2',
+      'cedar-9',
+      'cedar-10',
+    ])
   })
 
   it('keeps two areas apart when they share a blank code but not a name', () => {
