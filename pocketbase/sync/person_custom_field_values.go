@@ -129,7 +129,7 @@ func (s *PersonCustomFieldValuesSync) Sync(ctx context.Context) error {
 			"session", s.Session,
 			"year", year)
 		s.SyncSuccessful = true
-		s.LogSyncComplete("PersonCustomFieldValues")
+		s.LogSyncComplete(jobName)
 		return nil
 	}
 
@@ -229,7 +229,7 @@ func (s *PersonCustomFieldValuesSync) Sync(ctx context.Context) error {
 		slog.Warn("WAL checkpoint failed", "error", err)
 	}
 
-	s.LogSyncComplete("PersonCustomFieldValues")
+	s.LogSyncComplete(jobName)
 	return nil
 }
 

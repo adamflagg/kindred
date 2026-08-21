@@ -3082,6 +3082,47 @@ func TestOrchestrator_GetChangedCollections(t *testing.T) {
 			t.Errorf("expected empty map for unknown sync type, got %d entries", len(changed))
 		}
 	})
+
+	// The bounded family-camp jobs (kindred#2489) write the exact same person_custom_values /
+	// household_custom_values collections as their unrestricted counterparts, but
+	// SyncJobToCollections (table_exporter.go) never gained entries for their registered names
+	// -- a code-review finding on kindred#2491 (the same "new job name unrecognized by an
+	// identity-keyed map" root cause this issue's own three faces are about, just a fourth
+	// consumer). Without this, GetChangedCollections() -- which iterates ALL of
+	// o.lastCompletedStatus, not just the current run's jobs -- silently drops the bounded
+	// pass's real changes, and the Sheets export skip-optimization skips exporting
+	// person_custom_values/household_custom_values even though the daily cron just wrote fresh
+	// data to them.
+	t.Run("bounded family-camp jobs map to the same collections as their unrestricted siblings", func(t *testing.T) {
+		o := NewOrchestrator(nil)
+
+		now := time.Now()
+		o.mu.Lock()
+		o.lastCompletedStatus["person_custom_values_family_camp"] = &Status{
+			Type:    "person_custom_values_family_camp",
+			Status:  statusCompleted,
+			EndTime: &now,
+			Summary: Stats{Created: 3, Updated: 1},
+		}
+		o.lastCompletedStatus["household_custom_values_family_camp"] = &Status{
+			Type:    "household_custom_values_family_camp",
+			Status:  statusCompleted,
+			EndTime: &now,
+			Summary: Stats{Created: 2},
+		}
+		o.mu.Unlock()
+
+		changed := o.GetChangedCollections()
+
+		if !changed["person_custom_values"] {
+			t.Error("expected person_custom_values to be in changed collections after the " +
+				"bounded family-camp pass completed with real changes")
+		}
+		if !changed["household_custom_values"] {
+			t.Error("expected household_custom_values to be in changed collections after the " +
+				"bounded family-camp pass completed with real changes")
+		}
+	})
 }
 
 // TestDailySyncDoesNotIncludeTransformPhase tests that daily sync excludes all transform jobs

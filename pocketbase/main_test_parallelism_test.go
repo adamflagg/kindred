@@ -111,6 +111,8 @@ var serialGroups = []struct {
 			"TestProcessAssignment_SaveFailure_IsInfraError",
 			"TestProcessEnrollment_MissingSessionID_IsRejected",
 			"TestProcessEnrollment_SaveFailure_IsInfraError",
+			"TestPersonCustomFieldValuesSync_CompletionLogUsesBoundedJobName",
+			"TestHouseholdCustomFieldValuesSync_CompletionLogUsesBoundedJobName",
 		},
 	},
 	{

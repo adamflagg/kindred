@@ -125,7 +125,7 @@ func (s *HouseholdCustomFieldValuesSync) Sync(ctx context.Context) error {
 			"session", s.Session,
 			"year", year)
 		s.SyncSuccessful = true
-		s.LogSyncComplete("HouseholdCustomFieldValues")
+		s.LogSyncComplete(jobName)
 		return nil
 	}
 
@@ -225,7 +225,7 @@ func (s *HouseholdCustomFieldValuesSync) Sync(ctx context.Context) error {
 		slog.Warn("WAL checkpoint failed", "error", err)
 	}
 
-	s.LogSyncComplete("HouseholdCustomFieldValues")
+	s.LogSyncComplete(jobName)
 	return nil
 }
 

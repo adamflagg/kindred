@@ -2,8 +2,14 @@
 package sync
 
 import (
+	"context"
 	"strings"
 	"testing"
+
+	"github.com/pocketbase/pocketbase/core"
+	pbtests "github.com/pocketbase/pocketbase/tests"
+
+	"github.com/camp/kindred/pocketbase/campminder"
 )
 
 const testFieldDefPBID = "pb_field_100"
@@ -248,5 +254,53 @@ func TestHouseholdCustomFieldValuesSync_LogJobName(t *testing.T) {
 
 	if got, want := bounded.Name(), serviceNameHouseholdCustomValues; got != want {
 		t.Errorf("Name() must stay %q regardless of FamilyCampBounded, got %q", want, got)
+	}
+}
+
+// TestHouseholdCustomFieldValuesSync_CompletionLogUsesBoundedJobName is the household twin of
+// TestPersonCustomFieldValuesSync_CompletionLogUsesBoundedJobName -- see that test's comment
+// for the full rationale (kindred#2491 Face D: Sync()'s two LogSyncComplete call sites still
+// hardcoded the literal "HouseholdCustomFieldValues" even after logJobName started feeding
+// LogSyncStart and the cohort log).
+func TestHouseholdCustomFieldValuesSync_CompletionLogUsesBoundedJobName(t *testing.T) {
+	// Not t.Parallel(): t.Setenv panics if the test may run in parallel, and captureSweepLogs
+	// swaps the process-global slog default for the test's duration.
+	app, err := pbtests.NewTestApp()
+	if err != nil {
+		t.Fatalf("NewTestApp: %v", err)
+	}
+	t.Cleanup(app.Cleanup)
+
+	col := core.NewBaseCollection("camp_sessions")
+	col.Fields.Add(&core.NumberField{Name: "year"})
+	col.Fields.Add(&core.TextField{Name: "session_type"})
+	col.Fields.Add(&core.NumberField{Name: "cm_id"})
+	if saveErr := app.Save(col); saveErr != nil {
+		t.Fatalf("create camp_sessions: %v", saveErr)
+	}
+
+	t.Setenv("CAMPMINDER_PRIMARY_KEY", "test-subscription-key")
+	client, err := campminder.NewClient(&campminder.Config{APIKey: "test-key", ClientID: "test-client", SeasonID: 2026})
+	if err != nil {
+		t.Fatalf("campminder.NewClient: %v", err)
+	}
+
+	s := NewHouseholdCustomFieldValuesSync(app, client)
+	s.FamilyCampBounded = true
+
+	logs := captureSweepLogs(t)
+
+	if syncErr := s.Sync(context.Background()); syncErr != nil {
+		t.Fatalf("Sync: %v", syncErr)
+	}
+
+	output := logs.String()
+	if !strings.Contains(output, "service=household_custom_values_family_camp") {
+		t.Errorf("completion log must carry the bounded instance's own job name "+
+			"(service=household_custom_values_family_camp), got:\n%s", output)
+	}
+	if strings.Contains(output, "service=HouseholdCustomFieldValues") {
+		t.Errorf("completion log must not use the old ambiguous literal "+
+			"service=HouseholdCustomFieldValues, got:\n%s", output)
 	}
 }
