@@ -373,11 +373,12 @@ class RequestTextSource(NamedTuple):
 
     `label` is the CampMinder field name VERBATIM, including the misnamed
     `COVID-19 Bunking Requests` -- the field that has plainly been repurposed
-    as the general bunking-request question and carries 205 of the 382
-    households rostered into a 2026 family session. Owner ruling 2026-08-17:
-    "call them the original fieldnames for now until staff can weigh in after
-    it's live". A display-names issue gets filed once they have. Do not
-    "improve" these strings.
+    as the general bunking-request question and carries 238 of the 479
+    households rostered into a 2026 family-camp registration (kindred#2476,
+    re-measured 2026-08-21). Owner ruling 2026-08-17: "call them the original
+    fieldnames for now until staff can weigh in after it's live". A
+    display-names issue gets filed once they have. Do not "improve" these
+    strings.
     """
 
     label: str
