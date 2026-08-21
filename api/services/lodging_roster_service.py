@@ -1713,9 +1713,21 @@ class LodgingRosterService:
             # Same one-index-per-call rule `build_roster` follows -- see the
             # comment there and `_BathroomIndex`'s own docstring.
             unit_index = _BathroomIndex.build(unit_summaries)
-            # `build_roster` runs the amenity resolvers right here; this path
-            # ran none of them, so a container's bathroom stayed at its own
-            # blank row on the summary while the board resolved it.
+            # ⚠️ THIS PATH RAN NONE OF THE AMENITY RESOLVERS UNTIL kindred#2502.
+            # `build_roster` runs all five right after building its index; this
+            # one built the index and went straight to `_build_counts`, so every
+            # coverage field stayed at its `"unknown"` default and a container's
+            # bathroom stayed at its own blank row while the board resolved it.
+            #
+            # Nothing `_build_counts` reads today is a coverage field, so four of
+            # these five change no number on this path right now. They are wired
+            # anyway, because the ASYMMETRY is the defect: one path resolving and
+            # the other not is exactly how the bathroom gap survived unnoticed,
+            # and the next reader of a coverage field here would inherit it.
+            _resolve_power_coverage(unit_summaries, unit_index)
+            _resolve_fridge_coverage(unit_summaries, unit_index)
+            _resolve_ramp_coverage(unit_summaries, unit_index)
+            _resolve_ac_coverage(unit_summaries, unit_index)
             _resolve_bathroom(unit_summaries, unit_index)
             parties = self._build_parties(
                 session_type=_s(session, "session_type"),

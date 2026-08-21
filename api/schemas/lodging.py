@@ -106,9 +106,11 @@ Shareability = Literal["unknown", "shareable", "single_party"]
 # How much of a slot carries one amenity, resolved over its LEAF descendants
 # (kindred#1912). Three grains rather than a bool because both boolean
 # policies fall out of it for free -- `OR == != "none"`, `AND == == "all"` --
-# and because what SOME means differs per criterion: for `is_accessible`, some
-# is worse than none, since a building advertising two step-free rooms out of
-# ten invites the placement that lands in one of the other eight.
+# and because what SOME means differs per criterion: for step-free, some is
+# worse than none, since a building advertising two step-free rooms out of ten
+# invites the placement that lands in one of the other eight. (That grain is
+# graded from `has_ramp`, NOT `is_accessible` -- this named the wrong column
+# until kindred#2502; the two are independent and disagree on five rows.)
 #
 # "unknown" is the absence of evidence, exactly as EffectiveBathroom and
 # Shareability spell their own. `has_power = False` on an unconfirmed row

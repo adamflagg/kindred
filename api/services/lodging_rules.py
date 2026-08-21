@@ -189,9 +189,17 @@ def amenity_coverage(values: Sequence[bool | None]) -> str:
     for free -- `OR == result != "none"`, `AND == result == "all"` -- so a
     per-criterion OR/AND policy map would be a strict subset of this that
     costs more to build. What the three grains MEAN differs per criterion
-    (for `is_accessible`, SOME is worse than NONE: a building advertising two
+    (for step-free, SOME is worse than NONE: a building advertising two
     step-free rooms out of ten invites the placement that lands in one of the
     other eight), and that nuance belongs to the renderer, not here.
+
+    ⚠️ THE STEP-FREE GRAIN IS GRADED FROM `has_ramp`, NOT `is_accessible`.
+    This paragraph named the wrong column until kindred#2502. They are
+    INDEPENDENT and they disagree: of the five rows with `has_ramp = 'yes'`,
+    two are `is_accessible` true and three are false, and the four explicit
+    `no`s plus five `partial`s are invisible to that flag entirely. Which of
+    the two a surface should show is an open product question (kindred#2327);
+    which one this machinery grades is not.
 
     This function does not walk anything. Resolving which rooms answer for a
     slot is the caller's job -- `_BathroomIndex.leaf_codes_under` in
