@@ -400,16 +400,20 @@ describe('AssignFamilyModal — the geometry the owner ruled on 2026-08-20', () 
 
   it('centres its own close button in the header band', () => {
     /*
-     * Owner ruling 2026-08-20, option A. `ui/Modal`'s `top-4` assumes a header
-     * at least 52px tall and this one is 51px, so the button hung 1px past its
-     * own ground — 5px before the header rule came out. The primitive's
-     * `closeAlign` opt-in is pinned in `Modal.test.tsx`; this pins that THIS
-     * dialog asks for it, because the geometry that made it necessary (the
-     * artifact's 14px inset) is this dialog's.
+     * Owner ruling 2026-08-20, then kindred#2507 2026-08-21. The old `top-4`
+     * default assumed a header at least 52px tall and this one is 51px, so the
+     * button hung 1px past its own ground — 5px before the header rule came
+     * out. This dialog is where that geometry (the artifact's 14px inset) was
+     * first hit.
      *
-     * Option B — the artifact's 18px circled mark in flow on the header row —
-     * is the one the owner preferred and is filed as its own issue, because
-     * it wants to land across every dialog at once rather than here alone.
+     * ⚠️ THIS NO LONGER PINS AN OPT-IN. Centring is `ui/Modal`'s DEFAULT as of
+     * kindred#2507, so this dialog's `closeAlign="center"` is gone as
+     * redundant. The assertion stays exactly as it was and still passes,
+     * which is the point: it now pins that the DEFAULT gives this dialog what
+     * it used to have to ask for.
+     *
+     * The 18px in-flow mark once recorded here as the preferred option was
+     * built, shown to the owner, and rejected on sight.
      */
     renderModal()
     const close = screen.getByRole('button', { name: /close/i })

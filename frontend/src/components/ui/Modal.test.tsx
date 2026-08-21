@@ -232,20 +232,76 @@ describe('Modal', () => {
       expect(screen.getByRole('button', { name: /close/i })).toBeInTheDocument()
     })
 
-    it('floats the close button at the top by default, as every caller has it today', () => {
-      // `top-4` against a header slot whose height the caller owns. This is
-      // the default precisely BECAUSE it is what ~20 dialogs already draw;
-      // the opt-in below exists so one of them can differ without moving the
-      // rest.
+    it('centres the close button in the header band by default', () => {
+      /*
+       * ★ DEFAULT FLIPPED, owner ruling 2026-08-21 (kindred#2507).
+       *
+       * This asserted the OPPOSITE — `top-4` by default — and is rewritten
+       * rather than adapted, because the specification changed, not the code.
+       *
+       * `top-4` is a CONSTANT and header height is not, so a top-anchored
+       * button assumes a header at least 52px tall (16px + a 36px box). The
+       * wrapper it positions against is the header slot itself, so centring
+       * cannot come apart whatever the caller's header height turns out to be.
+       *
+       * The reason it stayed opt-in until now — "the app's other dialogs were
+       * all drawn against `top-4` and moving them is its own review" — was
+       * discharged by that review. Measured in Chromium against the real
+       * component: Manage Scenarios 16/29 -> 22.5/22.5, Lodging Units 16/36 ->
+       * 26/26, Heads Up 16/22.5 -> 19.25/19.25. Centring returns EQUAL gaps at
+       * every custom-header dialog measured; `top-4` was visibly high at all
+       * of them.
+       */
       render(
         <Modal isOpen={true} onClose={() => {}} header={<div>Custom Header</div>}>
           <p>Modal content</p>
         </Modal>
       )
-      expect(screen.getByRole('button', { name: /close/i }).className).toContain('top-4')
+      const close = screen.getByRole('button', { name: /close/i })
+      expect(close.className).toContain('top-1/2')
+      expect(close.className).toContain('-translate-y-1/2')
+      expect(close.className).not.toContain('top-4')
     })
 
-    it('centres the close button in the header band when the caller asks it to', () => {
+    it('anchors it to the top when a caller opts out', () => {
+      // The prop survives the default flip precisely so a header that wants
+      // the old behaviour can still say so, rather than being re-litigated.
+      render(
+        <Modal isOpen={true} onClose={() => {}} header={<div>Custom Header</div>} closeAlign="top">
+          <p>Modal content</p>
+        </Modal>
+      )
+      const close = screen.getByRole('button', { name: /close/i })
+      expect(close.className).toContain('top-4')
+      expect(close.className).not.toContain('top-1/2')
+    })
+
+    it('does not treat header={null} as a custom header', () => {
+      /*
+       * `hasCustomHeader` was `header !== undefined`, and `null !== undefined`
+       * is TRUE — so `PostValidationResultsModal`, which passes `header={null}`,
+       * rode the custom-header branch with a ZERO-HEIGHT band.
+       *
+       * `top-4` survived that by luck. Centring on a 0px band computes
+       * `0 - 18 = -18px`, putting half the button above the panel's
+       * `overflow-hidden` edge: invisible and unclickable. The default flip is
+       * what makes this load-bearing, so it ships in the same change.
+       */
+      render(
+        <Modal isOpen={true} onClose={() => {}} header={null}>
+          <p>Modal content</p>
+        </Modal>
+      )
+      // Asserted on the BRANCH, not on `top-1/2`: that class is absent under
+      // the top anchor too, so it would pass against the very bug this pins.
+      // In the custom-header branch the button itself carries `absolute`; in
+      // the no-header branch its WRAPPER does and the button does not.
+      const close = screen.getByRole('button', { name: /close/i })
+      expect(close.className).not.toContain('absolute')
+      expect(close.className).not.toContain('top-1/2')
+    })
+
+    it('still honours an explicit closeAlign="center", now redundant with the default', () => {
       /*
        * ⚠️ OPT-IN FOR A MEASURED OVERHANG (owner ruling 2026-08-20).
        * `top-4` + a 36px box needs a header at least 52px tall, and it is a
@@ -258,12 +314,14 @@ describe('Modal', () => {
        * this closes the last of it and, more to the point, stops the geometry
        * depending on a header height nobody is holding still.
        *
-       * OPT-IN rather than the new default: the wrapper is the header slot
-       * itself, so centring is right for any header — but the app's ~20 other
-       * custom-header dialogs were all drawn against `top-4`, and moving them
-       * is its own review. The 18px in-flow mark the design artifact draws is
-       * the standardisation the owner wants instead, and it is filed as its
-       * own issue rather than smuggled in here.
+       * ⛔ SUPERSEDED 2026-08-21: this was OPT-IN because "moving the others
+       * is its own review". That review happened and centring won, so this is
+       * now the DEFAULT — kept here as a regression guard that an explicit
+       * `"center"` still resolves, since the prop outlives the flip.
+       *
+       * The 18px in-flow mark that was to be "the standardisation the owner
+       * wants" was shown to them and rejected on sight; centring the existing
+       * 36px control is what they chose instead.
        */
       render(
         <Modal

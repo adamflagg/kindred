@@ -106,9 +106,9 @@ interface ModalProps {
   // nothing else, so existing callers keep exactly what they have.
   headerOnDark?: boolean
   /**
-   * Where the floating close button sits in a custom header — `'top'`
-   * (`top-4`, the default and what every caller draws today) or `'center'`,
-   * vertically centred in the header band.
+   * Where the floating close button sits in a custom header — `'center'`
+   * (the default, vertically centred in the header band) or `'top'`
+   * (`top-4`, the old default, for a header that wants it).
    *
    * ⚠️ IT EXISTS BECAUSE `top-4` IS A CONSTANT AND HEADER HEIGHT IS NOT.
    * 16px + a 36px box needs 52px of header; a caller that tightens its own
@@ -119,11 +119,21 @@ interface ModalProps {
    * 2026-08-20; the later no-rule ruling reduced it to 1px). Centring in the
    * band cannot come apart that way whatever the caller's header height is.
    *
-   * DEFAULT UNCHANGED, deliberately. Centring would be right for any header,
-   * but the app's other custom-header dialogs were all drawn against `top-4`
-   * and moving them is its own review — and the standardisation the owner
-   * actually wants is the artifact's 18px in-flow mark, which is filed
-   * separately rather than smuggled in as a default change here.
+   * ★ DEFAULT FLIPPED 2026-08-21 (kindred#2507), and the flip is the point.
+   * This read "DEFAULT UNCHANGED, deliberately ... moving them is its own
+   * review". That review ran. Measured in Chromium against this component,
+   * with each caller's own header markup: Manage Scenarios 16/29 -> 22.5/22.5,
+   * Lodging Units 16/36 -> 26/26, Heads Up 16/22.5 -> 19.25/19.25, Assign
+   * Family 16/-1 (a 1px overhang) -> 7.5/7.5. Centring returns EQUAL gaps
+   * everywhere; `top-4` was visibly high at every one.
+   *
+   * The 18px in-flow mark this docstring called "the standardisation the
+   * owner actually wants" was built, shown to them, and REJECTED on sight.
+   * Centring the existing 36px control is what they chose instead.
+   *
+   * The other two branches never read this. `hasSimpleTitle` is already an
+   * `items-center` flex row, and the no-header branch has no band to centre
+   * in — both measured byte-identical at either setting.
    */
   closeAlign?: 'top' | 'center'
 }
@@ -200,7 +210,7 @@ export function Modal({
   maxWidthClassName,
   initialFocusRef,
   headerOnDark = false,
-  closeAlign = 'top',
+  closeAlign = 'center',
 }: ModalProps) {
   const contentRef = useRef<HTMLDivElement>(null)
   const previouslyFocusedRef = useRef<HTMLElement | null>(null)
@@ -291,7 +301,13 @@ export function Modal({
   if (!isOpen) return null
 
   // Determine if we're using custom header or simple title mode
-  const hasCustomHeader = header !== undefined
+  // `null` is NOT a custom header, and `header !== undefined` alone let it be
+  // one: `PostValidationResultsModal` passes `header={null}` and so rode this
+  // branch with a ZERO-HEIGHT band. `top-4` survived that by luck; centring on
+  // a 0px band computes `0 - 18 = -18px` and puts half the button above the
+  // panel's `overflow-hidden` edge, invisible and unclickable. The default
+  // flip is what makes this load-bearing, so it ships alongside it.
+  const hasCustomHeader = header !== undefined && header !== null
   const hasSimpleTitle = !hasCustomHeader && title !== undefined
 
   const resolvedLabelledBy = ariaLabelledBy ?? (hasSimpleTitle ? 'modal-title' : undefined)

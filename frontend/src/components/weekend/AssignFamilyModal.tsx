@@ -596,17 +596,12 @@ export function AssignFamilyModal({
       // design it is being compared against is not the design. `ui/Modal`'s
       // `maxWidthClassName` is opt-in and no other caller is touched.
       maxWidthClassName="max-w-[520px]"
-      // ⚠️ CENTRED IN THE HEADER BAND (owner ruling 2026-08-20, option A).
-      // `ui/Modal`'s default `top-4` assumes a header at least 52px tall —
-      // 16px plus a 36px box — and this header is 51px, so the button hung
-      // past its own ground: 5px while the header rule was still there, where
-      // its hover fill painted across the rule, and 1px after the rule came
-      // out. The opt-in leaves every other dialog on `top-4`.
-      //
-      // Option B — the artifact's 18px circled mark in flow on the header row
-      // — is the one the owner preferred, and is filed as its own issue
-      // because it should land on every dialog at once rather than here alone.
-      closeAlign="center"
+      // The close button is centred in the header band, and this dialog no
+      // longer has to ask: kindred#2507 made centring `ui/Modal`'s DEFAULT, so
+      // the `closeAlign="center"` that used to sit here is gone as redundant
+      // rather than as a change of mind. This header is 51px and the old
+      // `top-4` default assumed at least 52px, which is how the button came to
+      // hang 1px past its own ground here first.
       // ⚠️ THE CARD'S BORDER IS `ui/Modal`'s 1px, NOT the artifact's 2px, AND
       // THAT IS NOW RULED (owner, 2026-08-20, having compared the two at 4×).
       // §3.3's quoted block carries `.modalcard{border:2px}`, but that ruling's
