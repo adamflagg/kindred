@@ -22,7 +22,30 @@
  */
 import type { LodgingUnitRow } from '../../types/lodging'
 
+/**
+ * The parent index, cached against the ARRAY IDENTITY that produced it.
+ *
+ * `coveredCodes` below rebuilds this on every call, and the board calls
+ * `coveredCodes` a great deal: 472 times on the first render of a 73-card
+ * board and 352 times on every re-render, each one walking all ~118 units. The
+ * work is the same answer every time, because within one render pass every
+ * caller is handed the same `units` array.
+ *
+ * A `WeakMap` on that array is the whole fix — no call-site churn, no
+ * threading an index through five signatures, and it falls out of memory with
+ * the array when React Query replaces the roster.
+ *
+ * ⚠️ KEYED ON IDENTITY, NOT CONTENTS. A caller that MUTATES a `units` array in
+ * place would read a stale index. Nothing does: `units` reaches these helpers
+ * straight from the query cache, which this app treats as immutable, and
+ * `buildBoard` copies before it sorts.
+ */
+const childIndexByUnits = new WeakMap<LodgingUnitRow[], Map<string, LodgingUnitRow[]>>()
+
 function childrenByParent(units: LodgingUnitRow[]): Map<string, LodgingUnitRow[]> {
+  const cached = childIndexByUnits.get(units)
+  if (cached !== undefined) return cached
+
   const map = new Map<string, LodgingUnitRow[]>()
   for (const unit of units) {
     const parent = unit.parent_code ?? ''
@@ -31,6 +54,7 @@ function childrenByParent(units: LodgingUnitRow[]): Map<string, LodgingUnitRow[]
     if (bucket) bucket.push(unit)
     else map.set(parent, [unit])
   }
+  childIndexByUnits.set(units, map)
   return map
 }
 

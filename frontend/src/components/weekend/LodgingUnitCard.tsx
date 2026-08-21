@@ -13,7 +13,7 @@
  */
 import { useDraggable, useDroppable } from '@dnd-kit/core'
 import { Bath, Merge, Plug, Plus, Snowflake, Split } from 'lucide-react'
-import { useState } from 'react'
+import { memo, useCallback, useState } from 'react'
 
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
 import { Tooltip } from '../ui/Tooltip'
@@ -257,7 +257,22 @@ export interface LodgingUnitCardProps {
   onOpenParty: (party: RosterPartyRow) => void
 }
 
-export function LodgingUnitCard({
+interface DndBridge {
+  mergeAttributes: Record<string, unknown>
+  mergeListeners: Record<string, unknown> | undefined
+  setMergeDragRef: (n: HTMLElement | null) => void
+  isMergeOver: boolean
+  isUnitOver: boolean
+  setCardRef: (n: HTMLDivElement | null) => void
+}
+
+const LodgingUnitCardInner = memo(function LodgingUnitCardInner({
+  mergeAttributes,
+  mergeListeners,
+  setMergeDragRef,
+  isMergeOver,
+  isUnitOver,
+  setCardRef,
   slot,
   units = [],
   canPlace = false,
@@ -273,7 +288,7 @@ export function LodgingUnitCard({
   unplacedParties = [],
   onPlaceParty,
   onOpenParty,
-}: LodgingUnitCardProps) {
+}: LodgingUnitCardProps & DndBridge) {
   const { unit, parties, consent } = slot
   // Suppressed for a write-in ONLY on this card (kindred#2252). The chip and
   // the well's `WriteInCard` below said the same thing twice — the occupant's
@@ -437,25 +452,12 @@ export function LodgingUnitCard({
   const mergeDragActive = mergeSourceUnit !== null
   const isValidTarget = isValidMergeTarget(mergeSourceUnit, unit)
 
-  const {
-    attributes: mergeAttributes,
-    listeners: mergeListeners,
-    setNodeRef: setMergeDragRef,
-  } = useDraggable({
-    id: mergeDragId(unit.code),
-    disabled: !canMerge,
-  })
-
   // A SEPARATE droppable from the party target below, registered on the same
   // card: `resolveMergeDrop` requires BOTH ids to carry the `merge:` prefix,
   // so a party dropped here must land on `unitDroppableId`, never this one.
   // Disabled whenever this card is not a legal target for whatever is
   // currently being dragged — which is also "always" when no card drag is in
   // flight, since `isValidMergeTarget` refuses a `null` source.
-  const { setNodeRef: setMergeDropRef, isOver: isMergeOver } = useDroppable({
-    id: mergeDragId(unit.code),
-    disabled: !isValidTarget,
-  })
 
   // Every room accepts a drop while placement is live, including a full or
   // unsuitable one. The fit check is advisory by design: a misfit is surfaced
@@ -500,20 +502,11 @@ export function LodgingUnitCard({
   // room" — the em-dash occupancy figure and the open-space to-do tint — and
   // none of them is a refusal.
   const writtenInto = writeIns.length > 0
-  const { setNodeRef: setUnitDropRef, isOver: isUnitOver } = useDroppable({
-    id: unitDroppableId(unit.code),
-    disabled: !canPlace || mergeDragActive,
-  })
 
   // Whether THIS card's Assign modal is open. Per-card state rather than
   // board-level: the modal names one cabin and writes to one cabin, and
   // hoisting it would make every card re-render when any card opened one.
   const [assignOpen, setAssignOpen] = useState(false)
-
-  const setCardRef = (node: HTMLDivElement | null) => {
-    setUnitDropRef(node)
-    setMergeDropRef(node)
-  }
 
   /*
    * Which of the three mutually-exclusive RING states wins — see
@@ -1425,5 +1418,68 @@ export function LodgingUnitCard({
         />
       )}
     </div>
+  )
+})
+
+/**
+ * The dnd-kit subscription, and nothing else.
+ *
+ * `useDroppable`/`useDraggable` subscribe to dnd-kit's InternalContext, whose
+ * identity changes on every `over` transition — dnd-kit publishes through
+ * React context, which has no selective subscription, so every subscriber
+ * re-renders on every flip. With the hooks inside the card body that meant
+ * all ~73 card bodies re-rendered each time the pointer crossed a cabin
+ * boundary (measured: 47% of a drag's wall-clock spent in long tasks).
+ * Here the hooks live in a shell whose whole job is to read them; the body
+ * is `memo`'d, and on an `over` flip exactly TWO bodies re-render — the card
+ * gaining the ring and the card losing it. The shell still re-runs on every
+ * flip (the context subscription is the shell), which is the cheap part:
+ * a props spread and a memo bail.
+ *
+ * `FamilyCard` wears the same split, and the memo only holds while every
+ * prop is identity-stable — `useUnitMerge` learned that the hard way (see
+ * its `mutateAsync` dep), and the sensor options are module constants in
+ * `LodgingBoard` for the same reason.
+ */
+export function LodgingUnitCard(props: LodgingUnitCardProps) {
+  const { slot, canPlace = false, canMerge = false, mergeSourceUnit = null } = props
+  const unit = slot.unit
+  const isValidTarget = isValidMergeTarget(mergeSourceUnit, unit)
+  const mergeDragActive = mergeSourceUnit !== null
+
+  const {
+    attributes: mergeAttributes,
+    listeners: mergeListeners,
+    setNodeRef: setMergeDragRef,
+  } = useDraggable({ id: mergeDragId(unit.code), disabled: !canMerge })
+
+  const { setNodeRef: setMergeDropRef, isOver: isMergeOver } = useDroppable({
+    id: mergeDragId(unit.code),
+    disabled: !isValidTarget,
+  })
+
+  const { setNodeRef: setUnitDropRef, isOver: isUnitOver } = useDroppable({
+    id: unitDroppableId(unit.code),
+    disabled: !canPlace || mergeDragActive,
+  })
+
+  const setCardRef = useCallback(
+    (node: HTMLDivElement | null) => {
+      setUnitDropRef(node)
+      setMergeDropRef(node)
+    },
+    [setUnitDropRef, setMergeDropRef]
+  )
+
+  return (
+    <LodgingUnitCardInner
+      {...props}
+      mergeAttributes={mergeAttributes as unknown as Record<string, unknown>}
+      mergeListeners={mergeListeners as unknown as Record<string, unknown> | undefined}
+      setMergeDragRef={setMergeDragRef}
+      isMergeOver={isMergeOver}
+      isUnitOver={isUnitOver}
+      setCardRef={setCardRef}
+    />
   )
 }

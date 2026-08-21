@@ -33,8 +33,6 @@ import {
   DragOverlay,
   MouseSensor,
   TouchSensor,
-  pointerWithin,
-  rectIntersection,
   useSensor,
   useSensors,
   type DragEndEvent,
@@ -51,6 +49,7 @@ import { useUnitAvailability } from '../../hooks/useUnitAvailability'
 import { useUnitMerge } from '../../hooks/useUnitMerge'
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
 import { areaTokens, buildBoard } from './boardLayout'
+import { createBoardCollisionDetection } from './boardCollision'
 import {
   mergeDragUnit,
   resolveDrop,
@@ -100,6 +99,35 @@ export interface LodgingBoardProps {
  * most of the point of moving this out of `useState`.
  */
 const CLOSED_PARAM = 'closed'
+
+/*
+ * MODULE SCOPE, and that placement is load-bearing rather than tidiness.
+ *
+ * `useSensor` memoises on `[sensor, options]` and `useSensors` on the sensor
+ * array (@dnd-kit/core 6.3.1). An options object written inline is a new
+ * identity on every board render, so the memo misses, `activators` is rebuilt,
+ * and `useSyntheticListeners` hands EVERY draggable on the board a fresh
+ * `listeners` object. That is a prop change on every family card and every
+ * card's merge handle, which defeats their `memo` wholesale — measured at
+ * pick-up: 133 of 133 family-card bodies re-rendered for no reason.
+ */
+const MOUSE_ACTIVATION = { activationConstraint: { distance: 10 } }
+
+/*
+ * dnd-kit's auto-scroller defaults to a scrollBy every 5ms — 200 scroll
+ * events/second, each one re-entering DndContext's scroll listeners while the
+ * browser is also painting a ~5,500px board (the real 2026 boards are five
+ * viewports tall, so every cross-area placement rides the auto-scroller).
+ * Tripling the tick and the per-tick step keeps the same ~2,000px/s velocity
+ * at a third of the event rate.
+ *
+ * Measured on the production build, real Family Camp 2 data: dropped frames
+ * per 1,000px auto-scrolled went 3.4 → ~1.9, and script-per-pixel fell ~10%.
+ * A modest win, not a dramatic one — the remaining cost of the auto-scroll
+ * leg is the browser painting the board, not script.
+ */
+const AUTO_SCROLL = { interval: 15, acceleration: 30 }
+const TOUCH_ACTIVATION = { activationConstraint: { delay: 100, tolerance: 5 } }
 
 export function LodgingBoard({
   parties,
@@ -212,20 +240,24 @@ export function LodgingBoard({
     // The same activation constraints summer uses. The distance threshold is
     // what keeps a card that is also a button clickable: a plain click never
     // travels 10px, so it opens the details panel instead of starting a drag.
-    useSensor(MouseSensor, { activationConstraint: { distance: 10 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 100, tolerance: 5 } })
+    useSensor(MouseSensor, MOUSE_ACTIVATION),
+    useSensor(TouchSensor, TOUCH_ACTIVATION)
   )
 
   // Pointer-within first, falling back to rect intersection — summer's, and
   // for the same reason: without it a drop released over dead space snaps to
   // whichever cabin happens to be nearest, placing a family somewhere nobody
-  // chose.
-  const collisionDetection = (args: Parameters<typeof pointerWithin>[0]) => {
-    const pointerCollisions = pointerWithin(args)
-    return pointerCollisions.length > 0 ? pointerCollisions : rectIntersection(args)
-  }
+  // chose. The policy itself, and why it HOLDS the last cabin across a gutter,
+  // lives in `boardCollision.ts`.
+  //
+  // Memoised because it is STATEFUL — the held cabin is the state — so a fresh
+  // one per render would forget the hold on every board render and put the
+  // flapping back.
+  const collisionDetection = useMemo(() => createBoardCollisionDetection(), [])
 
   const handleDragStart = (event: DragStartEvent) => {
+    // One gesture must never inherit the previous gesture's held cabin.
+    collisionDetection.reset()
     const activeId = String(event.active.id)
     const mergeUnit = mergeDragUnit(activeId, units)
     if (mergeUnit !== null) {
@@ -239,6 +271,7 @@ export function LodgingBoard({
   }
 
   const handleDragEnd = (event: DragEndEvent) => {
+    collisionDetection.reset()
     setDragging(null)
     setDraggingMergeUnit(null)
 
@@ -290,6 +323,7 @@ export function LodgingBoard({
   // `useLockGroupDragDrop.tsx`'s `handleDragCancel` for the same shape on
   // summer's own drag gesture.
   const handleDragCancel = () => {
+    collisionDetection.reset()
     setDragging(null)
     setDraggingMergeUnit(null)
   }
@@ -418,6 +452,7 @@ export function LodgingBoard({
 
   return (
     <DndContext
+      autoScroll={AUTO_SCROLL}
       sensors={sensors}
       collisionDetection={collisionDetection}
       onDragStart={handleDragStart}
