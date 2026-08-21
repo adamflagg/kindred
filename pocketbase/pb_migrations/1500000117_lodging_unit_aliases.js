@@ -26,8 +26,8 @@ migrate((app) => {
     updateRule: '@request.auth.is_admin = true',
     deleteRule: '@request.auth.is_admin = true',
     fields: [
-      // Verbatim as it appears in the CampMinder custom field, including any
-      // double spaces (e.g. "Health Center Downstairs  - Room A"). Do not trim.
+      // Verbatim as it appears in the CampMinder custom field, including the
+      // double space one seeded row genuinely carries. Do not trim.
       { type: "text", name: "alias_string", required: true, presentable: true, min: 1, max: 300, pattern: "" },
       {
         type: "relation", name: "member_units", required: true, presentable: false,

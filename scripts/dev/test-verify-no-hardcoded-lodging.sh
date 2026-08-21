@@ -4,13 +4,19 @@
 # Verifies the guard actually catches a leak (exit 1, naming file:line) and
 # is quiet on a clean tree (exit 0).
 #
-# Probe filenames are chosen deliberately: they must NOT match `_test.`,
-# `.test.`, or `/tests?/`, because the guard itself excludes any hit whose
-# path matches those patterns (grep -v '_test\.\|\.test\.\|/tests\?/') --
-# meant to skip the guard's own test fixtures, not to be a loophole. A probe
-# planted with one of those names would report a false green regardless of
-# what it contains. This happened once already during review of kindred#1867,
-# which is exactly why this test exists (kindred#1869).
+# Probe filenames are chosen deliberately: a probe meant to test CODE hits
+# must NOT match `_test.`, `.test.` or a `tests?/` path segment, because the
+# guard exempts code hits in a test file (the exemption exists for fixture
+# data, not as a loophole). A code probe planted with one of those names would
+# report a false green regardless of what it contains. This happened once
+# already during review of kindred#1867, which is exactly why this test exists
+# (kindred#1869).
+#
+# COMMENT hits are a different matter since kindred#2512: they fail in a test
+# file too, so the probes that deliberately DO carry a test-shaped name
+# (TESTs 10, 12, 13, 18, 20, 21) plant comments and assert exit 1. The guard
+# decides which bucket a hit lands in from the PATH FIELD alone -- TESTs 14-16
+# pin that, after a first cut let a line's own text choose its bucket.
 
 set -euo pipefail
 
@@ -233,14 +239,20 @@ echo "=== TEST 7: a needle on the CLOSING line of a multi-line JSX comment MUST 
 # `{`/`}` scaffolding survived that strip as leftover "code", so this needle
 # never got dropped even though it sits in ordinary documentation prose.
 #
-# ⚠️ INVERTED IN kindred#2512, and the inversion makes this probe MORE
-# valuable, not redundant. Comments now fail everywhere, so the dropper no
-# longer decides whether a comment leaks -- but it still decides whether a
-# line is reported as a comment hit or a code hit, and this shape is the one
-# that has historically confused it. Asserting the needle is REPORTED keeps
-# the #2181 regression covered: a dropper that mis-parsed this line back into
-# "code" would still fail, but a dropper that lost the line entirely would
-# not, and only the assertion below tells those apart.
+# ⚠️ INVERTED IN kindred#2512, and the earlier rationale for the inversion was
+# wrong -- corrected in that PR's review after instrumenting the guard. Since
+# comments fail everywhere, a NON-test .tsx like this probe never reaches
+# drop_comment_hits.py at all: the hit is reported straight out of the
+# not-a-test bucket. So this test no longer covers the #2181 fused-brace
+# parsing in any way, and it passes with that logic deleted -- measured, not
+# assumed.
+#
+# What it does still prove is worth keeping: a needle sitting inside a
+# multi-line JSX comment in an ordinary frontend component is REPORTED, which
+# is the exact file shape and comment shape that carried a real unit name on
+# `main` until #2178. TEST 21 is the one that covers the fused-brace
+# classification, by planting the same shape in a TEST file so the hit has to
+# go through the dropper to be seen.
 TSX_PROBE="$REPO_ROOT/frontend/src/leak_probe_kindred2181.tsx"
 cleanup4() { rm -f "$TSX_PROBE"; }
 trap 'cleanup4; cleanup3; cleanup' EXIT INT TERM
@@ -418,15 +430,19 @@ fi
 
 echo
 echo "=== TEST 13: a needle in a COMMENT under frontend/src/test/ (shared test helpers, not *.test.ts) must exit 1 too ==="
-# FRONTEND_TEST_PATTERN is '^frontend/src/.*(_test\.|\.test\.|/tests?/)'. A
-# file directly under frontend/src/test/ -- the repo's real shared test-helper
-# directory (mockData.ts, mocks/, testUtils.tsx, test-helpers.ts) -- has no
-# '_test.' or '.test.' in its filename, so it can only match via '/tests?/'.
-# It does match that alternative ('/test/' is 'tests?' with the optional s
-# absent), which routes it into OTHER_RAW's blanket exemption instead of
-# FRONTEND_TEST_RAW's comment-only scan -- so a comment leak here sails
-# through exactly the same way test-file comments used to everywhere, the gap
-# kindred#2367 exists to close for frontend/src/**.
+# A file directly under frontend/src/test/ -- the repo's real shared
+# test-helper directory (mockData.ts, mocks/, testUtils.tsx, test-helpers.ts)
+# -- has no '_test.' or '.test.' in its filename, so the guard's split can only
+# recognise it as a test file through the 'tests?/' path-segment alternative
+# ('/test/' is 'tests?' with the optional s absent). kindred#2367 added that
+# alternative after a leak here fell through to the blanket code-hit exemption
+# instead of the comment scan.
+#
+# The variable names this comment used to cite (FRONTEND_TEST_PATTERN,
+# FRONTEND_TEST_RAW) went away with the frontend-only scoping in kindred#2512;
+# the property they existed for is now carried by TEST_FILE_PATTERN's
+# '^(.*/)?tests?/' alternative, and losing its '^' anchor is what TESTs 14-16
+# exist to catch.
 FE_TEST_DIR_PROBE="$REPO_ROOT/frontend/src/test/leak_probe_kindred2367_dir.ts"
 cleanup10() { rm -f "$FE_TEST_DIR_PROBE"; }
 trap 'cleanup10; cleanup9; cleanup8; cleanup7; cleanup6; cleanup5; cleanup4; cleanup3; cleanup' EXIT INT TERM

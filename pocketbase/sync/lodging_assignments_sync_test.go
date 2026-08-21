@@ -822,9 +822,9 @@ func TestLodgingAssignmentsSyncMergeLabelIgnoresMemberOrder(t *testing.T) {
 // dangling in member_units stays dangling in units" -- because filtering
 // against lodging_units would silently change what a placement points at.
 // AliasResolver.UnitCode returns the EMPTY STRING for an id it cannot map, so
-// a set holding one dangling id and one real one rendered as "+ridge-a":
-// unitLabel sorts the empty code first and joins it. The freshly resolved
-// label is "ridge-a", the two differ, and upsertAssignment's
+// a set holding one dangling id and one real one renders as "+" followed by
+// the real code: unitLabel sorts the empty code first and joins it. The
+// freshly resolved label is the bare code, the two differ, and upsertAssignment's
 // `oldLabel == in.NewUnitLabel` short-circuit therefore fails to fire -- so
 // writeHistory appends a row claiming the household moved out of a cabin whose
 // name is a leading "+".
@@ -1313,7 +1313,7 @@ func TestLodgingAssignmentsSyncDeletesOrphansViaEnvFallback(t *testing.T) {
 // the orphan sweep must write one too.
 func TestLodgingAssignmentsSyncWritesHistoryOnOrphanDelete(t *testing.T) {
 	t.Parallel()
-	// unit's own code, not a repeated "ridge-a" literal -- keeps the addUnit
+	// unit's own code, not a repeated string literal -- keeps the addUnit
 	// call and the history assertion below in step, and avoids adding a 3rd/4th
 	// hardcoded occurrence of the string across this file (goconst).
 	const unitCode = "ridge-a"

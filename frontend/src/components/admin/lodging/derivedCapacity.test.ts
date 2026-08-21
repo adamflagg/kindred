@@ -4,9 +4,9 @@
  * Every case here is measured against the production shapes in kindred#2079:
  * a two-level container over plain rooms, and the three-level grandparent
  * whose intermediate children are themselves containers with `sleeps = 0`
- * (`gt-tioga`, `gt-tenaya`, `hc-health-center`) — summing immediate children
- * gets that second shape wrong, refusing on exactly the whole-building
- * rollups most worth showing.
+ * (three of them in the registry) — summing immediate children gets that
+ * second shape wrong, refusing on exactly the whole-building rollups most
+ * worth showing.
  */
 import { describe, expect, it } from 'vitest'
 
@@ -56,9 +56,9 @@ describe('derivedWholeHouseSleeps', () => {
   })
 
   it('derives the full leaf total through a three-level grandparent whose intermediate children are unmeasured containers', () => {
-    // Mirrors gt-tioga: two container halves, each sleeps=0, each holding two
-    // measured leaves. Summing immediate children would see two zeros and
-    // refuse; the leaf walk must not.
+    // Mirrors a real halved building: two container halves, each sleeps=0, each
+    // holding two measured leaves. Summing immediate children would see two
+    // zeros and refuse; the leaf walk must not.
     const units = [
       unit({ id: 'gt-tioga', is_container: true }),
       unit({ id: 'gt-tioga-upstairs', parent_unit: 'gt-tioga', is_container: true, sleeps: 0 }),
@@ -72,8 +72,8 @@ describe('derivedWholeHouseSleeps', () => {
   })
 
   it('adds a non-zero own delta to Σ(leaves) rather than replacing it (the double-count guard)', () => {
-    // gt-clouds-rest: the one production container with a real own delta — a
-    // landing futon nothing else in the registry records.
+    // The one production container with a real own delta — a landing futon
+    // nothing else in the registry records.
     const units = [
       unit({ id: 'house', is_container: true }),
       unit({ id: 'room-1', parent_unit: 'house', sleeps: 4 }),

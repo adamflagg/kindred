@@ -82,7 +82,8 @@ migrate((app) => {
       { type: "bool", name: "is_confirmed", required: false, presentable: false },
       { type: "bool", name: "is_active", required: false, presentable: false },
       // true = a building/grouping row that must never be booked or counted
-      // toward capacity (e.g. gt-tenaya, the building containing gt-tenaya-1..4).
+      // toward capacity (e.g. a building row whose four numbered rooms are the
+      // bookable units).
       // false = an ordinary bookable room. PocketBase's default for an unset
       // bool is false, which is the safe default for units staff add later
       // through the admin UI.

@@ -32,7 +32,24 @@ cd "$REPO_ROOT"
 # "Cloud'?s Rest" matches both spellings on purpose: the canonical unit name is
 # "Clouds Rest" (1500000120) but every historical alias string is "Cloud's Rest"
 # with the apostrophe (1500000121), and a leak could copy either.
-NEEDLES="Ridge Yurt|Tawonga Village|Manzanita|Tuolumne|Cloud'?s Rest|Wawona|Half Dome|El Cap|Bayit|Tenaya|Tioga|Le Shack|Lofty|Kitty|Doctor's House"
+#
+# Matched CASE-INSENSITIVELY (the -i on the grep below), kindred#2512 review.
+# The list is written in title case, but the codebase names units in prose by
+# their lowercase CODE ("gt-<unit>", "<unit>-new-trailer"), so a title-case scan
+# read straight past them: seven such comment hits were sitting in tracked
+# source when this was measured, in a migration header, two frontend components
+# and three test files. Case-insensitivity adds 64 raw hits repo-wide, 63 of
+# them lowercase codes in test FIXTURE data (already exempt) and 1 an ordinary
+# English false positive, handled just below.
+#
+# "El Cap" is the one needle that is also an English fragment once case is
+# folded -- it matches inside "parallel capturers". \b fixes that and costs
+# nothing: the needle contains a space, so it never matched a camelCase
+# identifier anyway, and a real leak spells it at a word boundary. \b is
+# deliberately NOT applied to the whole list -- it would stop matching
+# camelCase identifiers such as a Go variable built from a unit name, which is
+# a leak shape this guard does catch today.
+NEEDLES="Ridge Yurt|Tawonga Village|Manzanita|Tuolumne|Cloud'?s Rest|Wawona|Half Dome|\bEl Cap|Bayit|Tenaya|Tioga|Le Shack|Lofty|Kitty|Doctor's House"
 
 # --include='*.js' matters: pocketbase/pb_hooks/ is application JavaScript and
 # pocketbase/pb_migrations/ is where the registry used to live, so both have to
@@ -43,6 +60,18 @@ NEEDLES="Ridge Yurt|Tawonga Village|Manzanita|Tuolumne|Cloud'?s Rest|Wawona|Half
 #                ordinary US place names
 # Scan roots, overridable ONLY so the test suite can point the guard at a
 # missing directory and assert it fails rather than reporting a clean scan.
+#
+# THESE FIVE ARE THE WHOLE SCOPE. Every rule stated below -- including the
+# code/comment table -- describes what happens INSIDE these roots and nowhere
+# else. The pytest tree at tests/ is NOT among them and never has been: it
+# carries 71 needle hits (80 case-insensitively) across three files under
+# tests/unit/api/services/, of which 4 sit in comments, and none of them has
+# ever been checked. One of those comments restates in prose the exact fact
+# kindred#2512 scrubbed out of api/services/lodging_rules.py, so the scrub
+# moved the sentence into an unscanned file rather than out of the repository.
+# Widening the roots changes what every future PR is measured against, so it
+# gets its own change: kindred#2515 carries the measurement and the
+# scrub-or-exempt decision.
 read -r -a SCAN_ROOTS <<<"${LODGING_SCAN_ROOTS:-pocketbase/ api/ bunking/ frontend/src/ scripts/}"
 
 # Capture grep's OWN status before the filter pipeline swallows it. grep exits
@@ -52,7 +81,7 @@ read -r -a SCAN_ROOTS <<<"${LODGING_SCAN_ROOTS:-pocketbase/ api/ bunking/ fronte
 # guard reporting clean on a scan that never happened. Flagged on this script
 # in kindred#1867 and asserted by TEST 6 in test-verify-no-hardcoded-lodging.sh.
 grep_status=0
-RAW=$(grep -rInE "$NEEDLES" \
+RAW=$(grep -rInEi "$NEEDLES" \
   --include='*.go' --include='*.py' --include='*.ts' --include='*.tsx' --include='*.js' --include='*.sh' \
   --exclude-dir=pb_public --exclude-dir=node_modules \
   "${SCAN_ROOTS[@]}" 2>&1) || grep_status=$?
@@ -108,6 +137,9 @@ done
 #
 #   not a test file -> code hits fail, comment hits fail
 #   a test file     -> code hits are exempt, comment hits fail
+#
+# ...for files under SCAN_ROOTS. See the note there: tests/ is outside them
+# (kindred#2515).
 #
 # The 18 comment hits this widening newly caught were scrubbed in the same
 # change (7 outside test files, including `effective_bathroom`'s own docstring

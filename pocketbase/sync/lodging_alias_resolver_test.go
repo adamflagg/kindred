@@ -9,9 +9,9 @@ import (
 // not NULL. 94 of the 100 seeded alias rows are unbounded, so a resolver that
 // reads 0 as a real lower bound resolves almost nothing.
 //
-// "ridge-a" gets one lodging_units row per tested year -- the registry itself
-// is year-scoped now (migration 1500000141), so a cabin that was never renamed
-// still has a distinct record, and id, every season. The alias's own window
+// The seeded cabin gets one lodging_units row per tested year -- the registry
+// itself is year-scoped now (migration 1500000141), so a cabin that was never
+// renamed still has a distinct record, and id, every season. The alias's own window
 // stays unbounded throughout: this test is about the ALIAS STRING resolving at
 // any year, not about one unit id surviving across years.
 func TestAliasResolverUnboundedWindows(t *testing.T) {
@@ -43,10 +43,11 @@ func TestAliasResolverUnboundedWindows(t *testing.T) {
 	}
 }
 
-// TestAliasResolverRespectsRenameWindows is the load-bearing case. Both
-// Two same-named buildings existed 2022-2024; the one in the first area was renamed
-// in 2025. Resolving either side into the other silently relocates a household
-// across camp, and nothing downstream would notice.
+// TestAliasResolverRespectsRenameWindows is the load-bearing case. Two
+// same-named buildings sat in different areas from 2022 to 2024, and the one
+// in the first area was renamed in 2025. Resolving either side into the other
+// silently relocates a household across camp, and nothing downstream would
+// notice.
 func TestAliasResolverRespectsRenameWindows(t *testing.T) {
 	t.Parallel()
 	app := newSyncTestApp(t)
@@ -65,7 +66,7 @@ func TestAliasResolverRespectsRenameWindows(t *testing.T) {
 		gtWawonaByYear[year] = addUnit(t, app, "gt-wawona", year)
 		hcDoctorsByYear[year] = addUnit(t, app, "hc-doctors-house", year)
 	}
-	// The 2025 split of the Golden Triangle house into two lettable rooms.
+	// The 2025 split of the first area's house into two lettable rooms.
 	// Never resolved directly here -- only named as members of an alias nothing
 	// in this test calls Resolve on -- so 2025 alone is enough.
 	gtFront := addUnit(t, app, "gt-wawona-front", 2025)
@@ -116,7 +117,7 @@ func TestAliasResolverRespectsRenameWindows(t *testing.T) {
 		t.Errorf("2024 HC Doctor's House (inclusive upper boundary): %+v", got)
 	}
 	// Out of window on the high side -- the string was retired, so it must NOT
-	// silently fall through to the Health Center row of the same shape. Both
+	// silently fall through to the other area's row of the same shape. Both
 	// buildings have a 2025 row, so only the window can refuse these.
 	if got := r.Resolve("Golden Triangle - Doctor's House", 2025); got.Resolved {
 		t.Errorf("2025 GT Doctor's House resolved to %v; the window ends at 2024", got.UnitCodes)
@@ -124,8 +125,8 @@ func TestAliasResolverRespectsRenameWindows(t *testing.T) {
 	if got := r.Resolve("Health Center - Doctor's House", 2025); got.Resolved {
 		t.Errorf("2025 HC Doctor's House resolved to %v; the window ends at 2024", got.UnitCodes)
 	}
-	// Out of window on the low side. hc-doctors-house has a 2024 row, so only
-	// the window can refuse this.
+	// Out of window on the low side. The second area's unit has a 2024 row, so
+	// only the window can refuse this.
 	if got := r.Resolve("Doctor's House", 2024); got.Resolved {
 		t.Errorf("2024 bare Doctor's House resolved to %v; the window starts at 2025", got.UnitCodes)
 	}
@@ -164,10 +165,11 @@ func TestAliasResolverMergeDenotingAlias(t *testing.T) {
 	}
 }
 
-// TestAliasResolverUnresolvedIsNotAnError: four strings observed 2022-2023 have
-// no alias row at all -- "Ridge 2", "River Side - R1", "River Side - R2",
-// an unknown cabin string. It must come back unresolved, with the raw string preserved,
-// and must not panic or error.
+// TestAliasResolverUnresolvedIsNotAnError: the four strings below were all
+// observed in 2022-2023 data and none of them has an alias row -- three are
+// free-text cabin spellings the seed never carried, the fourth is a numbered
+// room. Each must come back unresolved, with the raw string preserved, and
+// must not panic or error.
 func TestAliasResolverUnresolvedIsNotAnError(t *testing.T) {
 	t.Parallel()
 	app := newSyncTestApp(t)
@@ -193,7 +195,7 @@ func TestAliasResolverUnresolvedIsNotAnError(t *testing.T) {
 }
 
 // TestAliasResolverToleratesWhitespaceAndCase: the seed stores strings verbatim,
-// including the real double space in "Health Center Downstairs  - Room A", but
+// including the real double space one seeded alias string carries, but
 // CampMinder values are hand-entered. Lookup normalises case and outer
 // whitespace; inner spacing stays significant because the seed relies on it.
 func TestAliasResolverToleratesWhitespaceAndCase(t *testing.T) {

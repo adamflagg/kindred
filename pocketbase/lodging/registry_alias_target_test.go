@@ -14,8 +14,8 @@ import (
 // This class had no writer at all until it was found by hand on 2026-08-03:
 // A parenthesised trailer alias resolved to the numbered room sharing its
 // stem instead of the trailer's own unit, which left the trailer unreachable
-// and made that area
-// 7 a double-booking candidate -- one string, two rooms, no error anywhere.
+// and made the numbered room it collided with a double-booking candidate --
+// one string, two rooms, no error anywhere.
 //
 // Nothing existing can see it. verify-lodging-seed.sh asserts the database
 // matches the registry file field by field, and diff_lodging_registry.py
@@ -26,26 +26,26 @@ import (
 // every code named is a real unit.
 //
 // The invariant that does see it: an alias string that is EXACTLY some unit's
-// name must resolve to that unit. The parenthesised trailer alias is verbatim the
-// name of manzanita-new-trailer, so an alias spelling it and resolving
+// name must resolve to that unit. The parenthesised trailer alias is verbatim
+// the name of the trailer's own unit, so an alias spelling it and resolving
 // elsewhere is a misdirection rather than a synonym.
 //
 // A merge is not a violation. A 2+ member alias is a legitimate shorthand when
 // the unit it names is among its targets (the first room of a merged pair);
 // it is only wrong when the named unit is absent from its own alias.
 //
-// Nor is a container resolving to its own rooms. "Health Center Downstairs" and
-// "Forest Village 5" both name a container and resolve to its children, which
-// is what booking a whole building HAS to mean: the container is not bookable
-// itself, so the alias has to name the rooms it is made of. That is the same
-// whole-versus-split distinction a multi-room building turns on. Requiring the container
+// Nor is a container resolving to its own rooms. Two seeded aliases each name
+// a container and resolve to that container's children, which is what booking
+// a whole building HAS to mean: the container is not bookable itself, so the
+// alias has to name the rooms it is made of. That is the same whole-versus-
+// split distinction a multi-room building turns on. Requiring the container
 // to appear in its own member list would flag both of these real rows.
 //
 // Deliberately NOT a fuzzy check. It fires only on an exact name collision, so
-// a genuine synonym ("Teen Village 1" for forest-village-1, whose name is
-// different) is untouched. The alternative -- scoring how well an alias
-// resembles its target -- would re-derive its answers on data nobody is
-// looking at, which is what put the wrong code in the file to begin with.
+// a genuine synonym -- a CampMinder spelling that matches no unit's registry
+// name -- is untouched. The alternative, scoring how well an alias resembles
+// its target, would re-derive its answers on data nobody is looking at, which
+// is what put the wrong code in the file to begin with.
 
 type misdirectedAlias struct {
 	AliasString string
@@ -55,7 +55,7 @@ type misdirectedAlias struct {
 
 // aliasNameKey normalises the way the Go resolver's aliasLookupKey does: outer
 // whitespace and case only. Inner spacing stays significant, because one seeded
-// alias ("Health Center Downstairs  - Room A") genuinely carries a double space.
+// alias genuinely carries a double space.
 func aliasNameKey(s string) string { return strings.ToLower(strings.TrimSpace(s)) }
 
 func findMisdirectedAliases(units []registryUnit, aliases []registryAlias) []misdirectedAlias {
@@ -151,8 +151,9 @@ func TestFindMisdirectedAliasesAllowsACorrectlyTargetedAlias(t *testing.T) {
 
 func TestFindMisdirectedAliasesAllowsASynonymThatNamesNoUnit(t *testing.T) {
 	t.Parallel()
-	// "Teen Village 1" is the CampMinder spelling; the unit is "Forest Village
-	// 1". The string matches no unit name, so the check must stay silent.
+	// The alias below carries the CampMinder spelling and the unit carries the
+	// registry name; the two differ, so the string matches no unit name and the
+	// check must stay silent.
 	units := []registryUnit{{Code: "forest-village-1", Name: "Forest Village 1"}}
 	aliases := []registryAlias{
 		{AliasString: "Teen Village 1", MemberUnits: []string{"forest-village-1"}},
@@ -196,8 +197,8 @@ func TestFindMisdirectedAliasesFlagsAMergeThatExcludesTheUnitItNames(t *testing.
 
 func TestFindMisdirectedAliasesAllowsAContainerNamingItsOwnRooms(t *testing.T) {
 	t.Parallel()
-	// The real case: "Health Center Downstairs" is a container, so booking it
-	// has to mean booking the rooms inside it.
+	// The real case: the aliased unit below is a container, so booking it has to
+	// mean booking the rooms inside it.
 	units := []registryUnit{
 		{Code: "hc-downstairs", Name: "Health Center Downstairs", IsContainer: true},
 		{Code: "hc-downstairs-a", Name: "Room A", ParentUnit: "hc-downstairs"},

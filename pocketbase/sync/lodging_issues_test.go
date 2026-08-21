@@ -36,10 +36,10 @@ func TestIssueKindsMatchTheMigration(t *testing.T) {
 	}
 }
 
-// TestIssueRecorderCollapsesRepeats mirrors the real 2022 backfill: the cabin
-// string "River Side - R1" appears on five different households and has no alias
-// row. That is ONE thing for staff to fix, so it must be one queue item with an
-// occurrence count -- not five rows to wade through.
+// TestIssueRecorderCollapsesRepeats mirrors the real 2022 backfill: one cabin
+// string appeared on five different households and had no alias row. That is
+// ONE thing for staff to fix, so it must be one queue item with an occurrence
+// count -- not five rows to wade through.
 func TestIssueRecorderCollapsesRepeats(t *testing.T) {
 	t.Parallel()
 	app := newSyncTestApp(t)

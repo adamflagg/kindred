@@ -734,8 +734,8 @@ export function LodgingUnitCard({
    * survive the box becoming the ONLY way to write somebody in. The owner hit
    * it on a merged building:
    *
-   *   > "if i populate 3/4 of clouds rest, i cannot add a write in directly
-   *   >  to it"
+   *   > "if i populate 3/4 of [a merged building], i cannot add a write in
+   *   >  directly to it"
    *
    * — because the strip's "Write in" action refused an occupied card (#2090)
    * and this box was hidden by the same condition, so a partly-filled merged
