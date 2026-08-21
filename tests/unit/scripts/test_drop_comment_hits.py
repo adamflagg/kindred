@@ -42,6 +42,10 @@ def test_multiline_jsx_comment_is_recognized_as_noncode(tmp_path: Path) -> None:
 
     lines = noncode_lines(path)
 
+    # None means "could not classify this file", which for a well-formed .tsx
+    # would be a bug in its own right -- assert it before the set comparison so
+    # a regression there reads as itself rather than as a set mismatch.
+    assert lines is not None
     assert lines == {4, 5}, f"expected lines 4-5 (the full JSX comment) to be noncode, got {sorted(lines)}"
 
 
@@ -65,6 +69,7 @@ def test_code_immediately_after_jsx_comment_close_still_reports(tmp_path: Path) 
 
     lines = noncode_lines(path)
 
+    assert lines is not None
     assert 4 not in lines
 
 
