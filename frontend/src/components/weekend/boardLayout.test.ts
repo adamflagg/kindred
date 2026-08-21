@@ -1170,25 +1170,25 @@ describe('buildBoard — area grouping and colour', () => {
   })
 
   it('sorts a unit numbered past 9 numerically, not as a string (kindred#2518 review)', () => {
-    // Plain `localeCompare` treats the number as a string, so "Manzanita 10"
+    // Plain `localeCompare` treats the number as a string, so "Cedar 10"
     // sorts as if its first character were "1" and lands ahead of
-    // "Manzanita 2" — every production area's numbering is single-digit
-    // today, which is exactly why this was latent, but summer's equivalent
-    // sort (`BunkingBoardByArea.tsx`) already numeric-compares trailing
-    // digits so "B-2" precedes "B-10", and the board must not regress that
-    // the moment an area's numbering crosses into double digits.
+    // "Cedar 2" — every production area's numbering is single-digit today,
+    // which is exactly why this was latent, but summer's equivalent sort
+    // (`BunkingBoardByArea.tsx`) already numeric-compares trailing digits so
+    // "B-2" precedes "B-10", and the board must not regress that the moment
+    // an area's numbering crosses into double digits.
     const board = buildBoard(
       [],
       [
-        unit({ unit_id: 'u1', code: 'manzanita-10', name: 'Manzanita 10' }),
-        unit({ unit_id: 'u2', code: 'manzanita-9', name: 'Manzanita 9' }),
-        unit({ unit_id: 'u3', code: 'manzanita-2', name: 'Manzanita 2' }),
+        unit({ unit_id: 'u1', code: 'cedar-10', name: 'Cedar 10' }),
+        unit({ unit_id: 'u2', code: 'cedar-9', name: 'Cedar 9' }),
+        unit({ unit_id: 'u3', code: 'cedar-2', name: 'Cedar 2' }),
       ]
     )
     expect(board.areas[0]?.slots.map((slot) => slot.unit.code)).toEqual([
-      'manzanita-2',
-      'manzanita-9',
-      'manzanita-10',
+      'cedar-2',
+      'cedar-9',
+      'cedar-10',
     ])
   })
 
