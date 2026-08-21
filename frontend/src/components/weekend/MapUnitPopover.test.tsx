@@ -1266,3 +1266,98 @@ describe('MapUnitPopover — the whole-building marker, extended from the board 
     expect(screen.queryByText('Write-in')).not.toBeInTheDocument()
   })
 })
+
+/**
+ * kindred#2499, owner ruling: the map treats a write-in the way the BOARD
+ * does — as an occupant — rather than as a chip beside an otherwise empty
+ * room.
+ *
+ * The board settled this in kindred#2078: "the room read as EMPTY AND CLOSED
+ * when in truth it was FULL. This is the same fact, printed where the board
+ * prints occupancy." Its well stacks `WriteInCard` and `FamilyCard` together,
+ * because "a shared space is not a new KIND of card; it is a card with two
+ * occupants in it."
+ *
+ * The map's "Occupied by" row is its equivalent of that well, and it said
+ * `empty` for a room somebody is sleeping in. These pin the fix.
+ *
+ * The shared unit is `writeInEntries` — the tree-aware, server-ordered
+ * resolver the board already calls — NOT the presentation: the board draws
+ * cards, the map draws a compact list, and those grammars are deliberately
+ * different.
+ */
+describe('MapUnitPopover write-in occupants (kindred#2499)', () => {
+  it('names the write-in occupant instead of calling the room empty', () => {
+    render(
+      <MapUnitPopover
+        units={[mapUnit(row({ write_ins: [cover()], is_family_available: false }))]}
+        hue={HUE}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.getByText('Emma Johnson')).toBeInTheDocument()
+    expect(screen.queryByText('empty')).not.toBeInTheDocument()
+  })
+
+  it('lists a write-in and a placed family together, as one well of occupants', () => {
+    render(
+      <MapUnitPopover
+        units={[
+          mapUnit(row({ write_ins: [cover({ occupant_name: 'Liam Garcia' })] }), [party('Chen')]),
+        ]}
+        hue={HUE}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.getByText('Liam Garcia')).toBeInTheDocument()
+    expect(screen.getByText('Chen')).toBeInTheDocument()
+  })
+
+  it('says the occupant is not named rather than printing a blank', () => {
+    // Mirrors `WriteInCard`'s UNNAMED fallback, now shared from `writeIn.ts`
+    // so the two surfaces cannot word it differently.
+    render(
+      <MapUnitPopover
+        units={[mapUnit(row({ write_ins: [cover({ occupant_name: '' })] }))]}
+        hue={HUE}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.getByText('Occupant not named')).toBeInTheDocument()
+  })
+
+  it('does NOT make the occupant look clickable — there is no panel behind one', () => {
+    // `WriteInCard`'s ruling, carried across: "a card that looks interactive
+    // and is not is worse than plain text." A family opens its panel; a
+    // write-in has none.
+    const onOpenParty = vi.fn()
+    render(
+      <MapUnitPopover
+        units={[mapUnit(row({ write_ins: [cover()] }))]}
+        hue={HUE}
+        onOpenParty={onOpenParty}
+      />
+    )
+    expect(screen.getByText('Emma Johnson').closest('button')).toBeNull()
+  })
+
+  it('counts a written-into room as taken in the cluster summary, not open', () => {
+    // The count keyed on `parties.length`, and a write-in occupant is by
+    // definition NOT a rostered party — so a full room was reported open,
+    // contradicting kindred#2078 on the very surface that ruling was about.
+    const house = [
+      mapUnit(row({ unit_id: 'u1', code: 'cedar-1', name: 'Cedar 1' })),
+      mapUnit(
+        row({
+          unit_id: 'u2',
+          code: 'cedar-2',
+          name: 'Cedar 2',
+          write_ins: [cover({ unit_id: 'u2', unit_code: 'cedar-2', unit_name: 'Cedar 2' })],
+          is_family_available: false,
+        })
+      ),
+    ]
+    render(<MapUnitPopover units={house} hue={HUE} onOpenParty={vi.fn()} />)
+    expect(screen.getByText('2 · 1 taken, 1 open')).toBeInTheDocument()
+  })
+})

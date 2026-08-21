@@ -31,6 +31,7 @@ import type { MapUnit } from './mapModel'
 import { partyKey } from './partyKey'
 import { partyAttention, partyBeds } from './rosterAttention'
 import { reservationBadge, shareabilityBadge, writeInBadgeApplies } from './unitBadges'
+import { writeInEntries, writeInOccupantLabel, type WriteInEntry } from './writeIn'
 
 /**
  * The board's `border-amber-400`, reused rather than re-picked. A consent flag
@@ -226,6 +227,27 @@ function partyPeopleLabel(party: RosterPartyRow): string {
   return people.join(' · ')
 }
 
+/**
+ * Write-in occupants, drawn INERT.
+ *
+ * `WriteInCard`'s ruling, carried to this surface: no `useDraggable` and not a
+ * `<button>`, because "a card that looks interactive and is not is worse than
+ * plain text". A family opens its panel; there is no panel behind a write-in
+ * and nowhere to send the click. Ordered before the families to match the
+ * order the board's well already stacks them in.
+ */
+function writeInOccupants(entries: WriteInEntry[]): ReactNode {
+  return entries.map((entry) => (
+    <span
+      key={entry.source.unitId}
+      data-testid="map-popover-writein"
+      className="text-foreground text-right text-xs"
+    >
+      {writeInOccupantLabel(entry.occupant)}
+    </span>
+  ))
+}
+
 function occupantButtons(
   parties: RosterPartyRow[],
   onOpenParty: (party: RosterPartyRow) => void
@@ -260,13 +282,18 @@ function DetailCard({ entry, hue, onOpenParty, wholeBuildingKeys }: DetailCardPr
   // raw understates a four-room house as sleeping one. The map draws such a
   // house as a single mark, so this lone card is exactly where that lands.
   const capacityKnown = capacity !== null
-  // kindred#2499, owner ruling: no "Write-in" chip on the map. Staff bunk on
-  // the BOARD; the map is for visibility and checks, so write-in occupancy is
-  // board business. Gated through `writeInBadgeApplies` — the same gate
-  // `LodgingUnitCard` has used since kindred#2252 — rather than by re-deriving
-  // it here, so the two surfaces cannot drift. Every OTHER arm of
-  // `reservationBadge` (`Building`, `Staff`, `Released`) is untouched.
+  // No "Write-in" chip, for `LodgingUnitCard`'s reason (kindred#2252) rather
+  // than a new one: the occupant is NAMED in "Occupied by" below, so a chip
+  // beside it repeats the same fact under a second name. Gated through the
+  // shared `writeInBadgeApplies` rather than re-derived here, so the two
+  // surfaces cannot drift. Every OTHER arm of `reservationBadge` (`Building`,
+  // `Staff`, `Released`) is untouched.
   const badge = writeInBadgeApplies(unit) ? null : reservationBadge(unit)
+  // kindred#2499: a write-in is an OCCUPANT, exactly as it is on the board.
+  // `writeInEntries` is the board's own resolver — tree-aware (a building's
+  // row closes its rooms and vice versa) and ordered by the server — so the
+  // two surfaces answer "who is in this room" from one place.
+  const writeIns = writeInEntries(unit)
   const bedsNeeded = parties.reduce((sum, party) => sum + partyBeds(party), 0)
   /*
    * THE AMBER IS A CLAIM, AND `spanWidth` IS WHAT WITHHOLDS IT — the same gate
@@ -349,7 +376,14 @@ function DetailCard({ entry, hue, onOpenParty, wholeBuildingKeys }: DetailCardPr
         <div className="flex justify-between gap-3">
           <dt className="text-muted-foreground">Occupied by</dt>
           <dd className="flex flex-col items-end gap-0.5">
-            {parties.length > 0 ? occupantButtons(parties, onOpenParty) : <em>empty</em>}
+            {parties.length > 0 || writeIns.length > 0 ? (
+              <>
+                {writeInOccupants(writeIns)}
+                {occupantButtons(parties, onOpenParty)}
+              </>
+            ) : (
+              <em>empty</em>
+            )}
           </dd>
         </div>
       </dl>
@@ -506,6 +540,30 @@ interface SummaryFamily {
   flagged: boolean
 }
 
+/**
+ * Every write-in across the cluster, DEDUPED BY THE ROW THAT HOLDS IT.
+ *
+ * A building's row closes each of its rooms, so the same cover comes back
+ * once per drawn unit; listing it per room would name one occupant four
+ * times for one building. Keyed on `source.unitId` — the row — rather than
+ * the occupant's name, because two rooms can genuinely hold two different
+ * people who happen to share a name, and collapsing those would hide one.
+ *
+ * Server order is preserved, as `writeInEntries` requires.
+ */
+function summaryWriteIns(units: MapUnit[]): WriteInEntry[] {
+  const out: WriteInEntry[] = []
+  const seen = new Set<string>()
+  for (const entry of units) {
+    for (const writeIn of writeInEntries(entry.unit)) {
+      if (seen.has(writeIn.source.unitId)) continue
+      seen.add(writeIn.source.unitId)
+      out.push(writeIn)
+    }
+  }
+  return out
+}
+
 function summaryFamilies(units: MapUnit[]): SummaryFamily[] {
   const out: SummaryFamily[] = []
   const byKey = new Map<string, SummaryFamily>()
@@ -554,8 +612,16 @@ function ClusterSummary({
   const rooms = units.reduce((total, entry) => total + entry.roomCount, 0)
   // A drawn unit is taken as a WHOLE: a family holding a combined house holds
   // every room in it, which is what "combined" means.
+  // A write-in counts here, kindred#2499. This keyed on `parties.length`
+  // alone, and a write-in occupant is by definition NOT a rostered party — so
+  // a room somebody sleeps in was reported OPEN, which is the very thing
+  // kindred#2078 ruled against ("the room read as empty and closed when in
+  // truth it was full"). It is a ROOM count, so an occupant with no known
+  // party size still answers it; no figure is invented.
   const taken = units.reduce(
-    (total, entry) => total + (entry.parties.length > 0 ? entry.roomCount : 0),
+    (total, entry) =>
+      total +
+      (entry.parties.length > 0 || writeInEntries(entry.unit).length > 0 ? entry.roomCount : 0),
     0
   )
   // ONE unmeasured room leaves the building total unknown — a partial sum
@@ -572,6 +638,7 @@ function ClusterSummary({
   // counts its beds once per door, and can print more placed than the
   // building sleeps. One chip, one household, one bed total.
   const placed = families.reduce((total, { party }) => total + partyBeds(party), 0)
+  const writeIns = summaryWriteIns(units)
 
   return (
     <div className="flex min-w-[11rem] flex-col gap-1.5">
@@ -600,10 +667,27 @@ function ClusterSummary({
           name per line. */}
       <div className="flex flex-col gap-1">
         <span className="text-muted-foreground text-xs">Occupied by</span>
-        {families.length === 0 ? (
+        {families.length === 0 && writeIns.length === 0 ? (
           <em className="text-muted-foreground text-xs">empty</em>
         ) : (
           <ul className="flex flex-col gap-1">
+            {/* Ahead of the families, in the order the board's own well stacks
+                them. The frame is `FamilyCard`'s minus its behaviour — the
+                same trade `WriteInCard` makes on the board — so an occupant
+                reads as an occupant without reading as a button. */}
+            {writeIns.map((entry) => (
+              <li key={entry.source.unitId}>
+                <div
+                  data-testid="map-popover-writein"
+                  style={{ borderColor: hue }}
+                  className="bg-card flex w-full flex-col items-start gap-0.5 rounded-md border px-1.5 py-1 text-left"
+                >
+                  <span className="text-foreground text-[11px] font-semibold">
+                    {writeInOccupantLabel(entry.occupant)}
+                  </span>
+                </div>
+              </li>
+            ))}
             {families.map(({ party, flagged: notConsented }) => (
               <li key={partyKey(party)}>
                 <button

@@ -79,7 +79,7 @@
  *     that person, and each card's X — all of them pointed at the one
  *     building row — empties all the others too, with nothing on screen
  *     saying why.
- *   - Two rows whose occupants are named alike, or both unnamed (`UNNAMED`
+ *   - Two rows whose occupants are named alike, or both unnamed (`UNNAMED_OCCUPANT`
  *     below is a state a legacy row can be in), otherwise render as two
  *     identical cards. That is the same objection kindred#2431 above makes
  *     to truncating a name, one card over.
@@ -105,14 +105,13 @@
 import { Pencil } from 'lucide-react'
 import { useState } from 'react'
 
-import type { WriteInOccupant } from './writeIn'
+import { UNNAMED_OCCUPANT, type WriteInOccupant } from './writeIn'
 
 /** `FamilyCard`'s `CARD_FRAME`, verbatim. Pinned by this module's test. */
 export const WRITE_IN_FRAME =
   'group border-border flex w-full flex-col gap-1 rounded-xl border-2 p-2.5 text-left'
 
 /** What a card prints when the row named nobody. Also the removal's handle. */
-const UNNAMED = 'Occupant not named'
 
 export interface WriteInCardProps {
   occupant: WriteInOccupant
@@ -149,7 +148,7 @@ export interface WriteInCardProps {
 
 export function WriteInCard({ occupant, onRemove, onEdit, isSaving = false }: WriteInCardProps) {
   const named = occupant.name !== ''
-  const label = named ? occupant.name : UNNAMED
+  const label = named ? occupant.name : UNNAMED_OCCUPANT
 
   // Local to this card, never lifted: the well can hold several of these and
   // each edits independently. Re-seeded from `occupant` every time the form
