@@ -18,6 +18,23 @@ export function shouldKeepPanelsOpen(e: {
   const target = e.target as HTMLElement | null
   if (!target || typeof target.closest !== 'function') return false
 
+  // A target that is no longer in the document was removed by this very
+  // click's own handling, and every check below is `closest()`, which walks
+  // ancestors an orphan no longer has — so it would match nothing and the
+  // click would read as dead space.
+  //
+  // This is not a corner case: a toggle that swaps one icon component for
+  // another (`ChevronDown` -> `ChevronRight`) unmounts the clicked node
+  // rather than mutating it, and React flushes that re-render synchronously
+  // for a discrete event at its root-container listener — which sits below
+  // `document`, where the dead-space listener lives. Clicking the fold
+  // chevron in `ShareRequestPanel` therefore dismissed `FamilyDetailsPanel`
+  // (#2476) while clicking the label a few pixels right did not, because
+  // only the icon was replaced.
+  //
+  // Detachment means the app handled the click, so keep the panels open.
+  if (!target.isConnected) return true
+
   const isOnPanel = target.closest(
     '[data-panel="camper-details"], [data-panel="family-details"], [data-panel="lock-group"], [data-panel="lock-action-bar"], [data-panel="lock-group-picker"]'
   )

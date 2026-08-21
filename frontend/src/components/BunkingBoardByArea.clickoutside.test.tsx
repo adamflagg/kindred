@@ -36,6 +36,42 @@ describe('weekend lodging board click-outside predicate', () => {
     expect(shouldKeepPanelsOpen({ ctrlKey: false, metaKey: false, target: name })).toBe(true)
     card.remove()
   })
+  it('keeps the panel open when the click detached its own target, as the fold chevron does', () => {
+    // Regression for #2476, reported from the weekend board: clicking the fold
+    // chevron in `ShareRequestPanel` dismissed `FamilyDetailsPanel` instead of
+    // collapsing the block, while clicking the block's NAME — same `<button>`,
+    // a few pixels to the right — collapsed correctly. That reads like a
+    // geometry bug and is emphatically not one.
+    //
+    // `ChevronDown` and `ChevronRight` are DIFFERENT component types, so
+    // toggling unmounts one `<svg>` and mounts the other instead of mutating
+    // it in place. React flushes that re-render synchronously for a discrete
+    // event at its root-container listener, which sits BELOW `document` — so
+    // by the time the same native click reaches the dead-space listener on
+    // `document`, `event.target` is an orphan. `closest()` on an orphan walks
+    // a tree with no ancestors and matches NOTHING: not the `[data-panel]`
+    // wrapper, not the `<button>`. The predicate then reads a click on an
+    // interactive control inside a panel as dead space.
+    //
+    // Confirmed in a real browser (React 19): the chevron click reports
+    // `isConnected === false`, the label click `true`. jsdom cannot reproduce
+    // it, because Testing Library's `act()` defers the re-render until after
+    // the whole dispatch, leaving the node attached — which is why this is
+    // pinned here, on the predicate, rather than through the hook.
+    const panel = document.createElement('div')
+    panel.setAttribute('data-panel', 'family-details')
+    const button = document.createElement('button')
+    const chevron = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+    button.appendChild(chevron)
+    panel.appendChild(button)
+    document.body.appendChild(panel)
+
+    // What React does between the click and the document listener.
+    chevron.remove()
+
+    expect(shouldKeepPanelsOpen({ ctrlKey: false, metaKey: false, target: chevron })).toBe(true)
+    panel.remove()
+  })
 })
 
 describe('BunkingBoardByArea click-outside predicate', () => {
