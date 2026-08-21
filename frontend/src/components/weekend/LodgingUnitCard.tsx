@@ -138,7 +138,6 @@ export interface LodgingUnitCardProps {
    * no container is named, which is every leaf card.
    */
   units?: LodgingUnitRow[]
-  /** The area's colour — a SECONDARY channel (§3.10), never the only one. */
   /** Placement is live: a scenario is selected and the user holds `bunking.manage`. */
   canPlace?: boolean
   /**
@@ -820,7 +819,13 @@ export function LodgingUnitCard({
     // is one enum rather than three rules racing over a byte offset. A
     // conflict draws NO wash at all: losing the invitation is half the mark
     // and gaining the hatch is the other half.
-    dragFit.state === 'match' ? 'bg-primary/20' : '',
+    // `ringState !== 'dropTarget'` for the reason `openMarkerActive` carries
+    // the same guard: `RING_CLASSES.dropTarget` sets `bg-primary/5`, so a
+    // matching card under the cursor would put two `background-color`
+    // utilities in one class list and let the emitted stylesheet order decide
+    // — the byte-offset race that table exists to kill. The drop ring wins,
+    // because "you are here" outranks "this cabin is like this".
+    dragFit.state === 'match' && ringState !== 'dropTarget' ? 'bg-primary/20' : '',
     openMarkerActive && dragFit.state === 'neutral' ? 'bg-primary/10' : '',
     // `background-image`, which competes with no other channel on this card.
     dragFit.state === 'conflict' ? NEEDS_HATCH_CLASSES[dragFit.severity] : '',
@@ -878,8 +883,8 @@ export function LodgingUnitCard({
        * OTHER, which is exactly why `ringState` above picks one rather than
        * concatenating four; the dashed/dimmed fragments alongside it are
        * additive on purpose (see their own comments) and never race anything
-       * in this table. The hue top edge is a separate inline style and
-       * outranks all of it, which is what keeps §3.10's secondary channel
+       * in this table. The hue top edge USED TO BE a separate inline style
+       * that outranked all of it; it is gone (2026-08-21) and §3.10's channel
        * alive underneath whichever state wins.
        *
        * NO `hover:shadow-lodge-lg` HERE, though `BunkCard` carries one. That

@@ -2856,6 +2856,27 @@ describe('LodgingUnitCard — the drag-time match and the capacity red', () => {
     expect(within(card(container)).getByText('0/—')).not.toHaveClass('text-destructive')
   })
 
+  it('yields the wash to the drop ring on a matching cabin under the cursor', () => {
+    // BOTH set `background-color`. Without the guard a matching card that is
+    // also the active drop target puts `bg-primary/20` and `RING_CLASSES`'
+    // `bg-primary/5` in one class list and lets the emitted stylesheet order
+    // decide — the byte-offset race `RING_CLASSES` exists to kill, and the
+    // same reason `openMarkerActive` has always stood down for a drop target.
+    //
+    // The ring wins: "you are here" outranks "this cabin is like this".
+    overDroppableId = unitDroppableId('cedar-1')
+    const { container } = render(
+      <LodgingUnitCard
+        slot={slot({ unit: powered() })}
+        draggingParty={needsPower}
+        canPlace
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(card(container)).toHaveClass('bg-primary/5')
+    expect(card(container)).not.toHaveClass('bg-primary/20')
+  })
+
   it('does not redden at rest, when no family is in flight', () => {
     const { container } = render(
       <LodgingUnitCard slot={slot({ unit: powered({ sleeps: 2 }) })} onOpenParty={vi.fn()} />

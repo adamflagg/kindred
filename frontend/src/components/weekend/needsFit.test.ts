@@ -48,17 +48,18 @@ function party(overrides: Partial<RosterPartyRow> = {}): RosterPartyRow {
 describe('worseOf', () => {
   /*
    * The combining rule, tested directly rather than through
-   * `resolveNeedsFit`: a `resolveNeedsFit` assertion would pass just as
+   * `resolveDragFit`: a `resolveDragFit` assertion would pass just as
    * happily against a combiner that kept the LAST verdict rather than the
    * worst, and so would pin nothing.
    *
    * ⚠️ This used to say the reason was that `NEEDS_DIMENSIONS` holds ONE
    * entry. That symbol was deleted by kindred#2072, and the claim had already
    * been false since kindred#2224 added the fridge entry. The table is
-   * `needGlyphs.NEED_GLYPHS` now and carries four, of which
-   * `needsFit.HATCHED_NEEDS` grades three — so the direct test stays for the
-   * reason its twin in `needsFit.ts` gives: it is the one that still holds if
-   * the scope ever shrinks back to one.
+   * `needGlyphs.NEED_GLYPHS` now and carries four, and `resolveDragFit`
+   * grades all four — the `HATCHED_NEEDS` subset that once narrowed it to
+   * three is gone (kindred#2528). The direct test stays for the reason its
+   * twin in `needsFit.ts` gives: it is the one that still holds if the scope
+   * ever shrinks back to one.
    */
   it('keeps the worse verdict whichever side it arrives on', () => {
     expect(worseOf('unmet', 'fits')).toBe('unmet')

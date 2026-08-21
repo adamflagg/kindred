@@ -42,12 +42,13 @@ export type NeedsFit = (typeof FIT_ORDER)[number]
  *
  * Exported, and a named function rather than an inline comparison in the loop
  * below. It was written when the dimension table held exactly ONE entry, so the
- * loop could never run twice and no assertion made through `resolveNeedsFit`
+ * loop could never run twice and no assertion made through the resolver
  * could distinguish "worst wins" from "the last dimension wins" — the
  * combining rule would otherwise have shipped untested, so it was pinned
- * directly. That table is `needGlyphs.NEED_GLYPHS` now and carries four, of
- * which `HATCHED_NEEDS` below grades three; the direct test stays, because it
- * is the one that still holds if the scope ever shrinks back to one.
+ * directly. That table is `needGlyphs.NEED_GLYPHS` now and carries four, and
+ * `resolveDragFit` below grades all four — the `HATCHED_NEEDS` subset that
+ * once narrowed it to three is gone. The direct test stays, because it is the
+ * one that still holds if the scope ever shrinks back to one.
  */
 export function worseOf(a: NeedsFit, b: NeedsFit): NeedsFit {
   return FIT_ORDER.indexOf(a) <= FIT_ORDER.indexOf(b) ? a : b
