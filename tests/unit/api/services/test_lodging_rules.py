@@ -156,30 +156,71 @@ class TestEffectiveBathroom:
 class TestContainerBathroom:
     """kindred#2022's second gap. All 15 registry containers store
     bathroom = "none" on their own row -- a building is not a room -- which
-    short-circuits `effective_bathroom`'s exclusivity branch (line 108-109)
-    before it ever runs. A party that books the whole container (the
-    health-center apartments: two bedrooms over one shared bath, normally
-    let whole) needs the container's input substituted from its leaves
-    instead. This is that substitution, kept OUTSIDE `effective_bathroom`
-    itself -- that function stays the same four-argument pure test the
-    class above already pins, rather than growing a fifth argument to know
-    about children it has no way to walk.
+    short-circuits `effective_bathroom`'s exclusivity branch before it ever
+    runs. A party that books the whole container needs the container's input
+    substituted from its leaves instead. This is that substitution, kept
+    OUTSIDE `effective_bathroom` itself -- that function stays the same
+    four-argument pure test the class above already pins.
+
+    ⚠️ THIS TAKES THE LEAVES' (bathroom, group) PAIRS, NOT BARE GROUP IDS.
+    Grading on group identity alone cannot see whether any leaf actually HAS
+    a bathroom, and the registry contains one group whose members all record
+    "none" while sitting beside a bathhouse -- so identity-only grading
+    answered "private" for a whole-let of rooms with no bathroom in them,
+    on a need that is asked for medical reasons. The pairs are what close it.
     """
 
     def test_leaves_sharing_one_group_inherit_shared(self) -> None:
-        assert container_bathroom(frozenset({"hc-dh-bath"})) == ("shared", "hc-dh-bath")
+        assert container_bathroom(frozenset({("shared", "grp-a"), ("shared", "grp-a")})) == (
+            "shared",
+            "grp-a",
+        )
 
     def test_leaves_with_no_group_inherit_nothing(self) -> None:
-        assert container_bathroom(frozenset({""})) == ("none", "")
+        assert container_bathroom(frozenset({("shared", "")})) == ("none", "")
 
     def test_leaves_split_across_groups_inherit_nothing(self) -> None:
         """Ambiguous -- rooms that don't share one physical bathroom have no
         single answer, so the container reports exactly what its own
-        registry row already says."""
-        assert container_bathroom(frozenset({"group-a", "group-b"})) == ("none", "")
+        registry row already says.
+
+        ⚠️ This is a FALSE NEGATIVE that is deliberately preserved: four
+        registry buildings whose every room has a bathroom report "none"
+        because their rooms span two groups. Widening it is a redefinition
+        of what "this building has a bathroom" means and is gated on an
+        owner ruling, so it is pinned here rather than fixed silently.
+        """
+        assert container_bathroom(frozenset({("shared", "grp-a"), ("shared", "grp-b")})) == (
+            "none",
+            "",
+        )
 
     def test_no_leaves_inherit_nothing(self) -> None:
         assert container_bathroom(frozenset()) == ("none", "")
+
+    def test_leaves_agreeing_on_a_group_but_recording_no_bathroom_inherit_nothing(self) -> None:
+        """THE BATHHOUSE FALSE POSITIVE, and the reason this function takes
+        pairs.
+
+        A two-room building whose rooms both record `bathroom = "none"` while
+        sharing one non-empty group: the rooms walk to a bathhouse, and the
+        group names that bathhouse rather than a bathroom inside either room.
+        Grading on group identity alone returned ("shared", group), which
+        `effective_bathroom` then upgraded to "private" for a whole-let --
+        a GREEN verdict on a medical in-cabin bathroom request for two rooms
+        with no bathroom in them. A group is only inheritable when some leaf
+        behind it actually has a bathroom.
+        """
+        assert container_bathroom(frozenset({("none", "grp-bathhouse")})) == ("none", "")
+
+    def test_one_leaf_with_a_bathroom_carries_the_shared_group(self) -> None:
+        """The mixed case: not every room needs its own bathroom for the
+        group to be real -- one is enough, because the group is what they
+        physically share."""
+        assert container_bathroom(frozenset({("none", "grp-a"), ("shared", "grp-a")})) == (
+            "shared",
+            "grp-a",
+        )
 
 
 class TestAmenityCoverage:

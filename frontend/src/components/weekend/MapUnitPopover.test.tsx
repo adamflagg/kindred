@@ -41,6 +41,24 @@ function row(overrides: Partial<LodgingUnitRow> = {}): LodgingUnitRow {
     has_ac: false,
     has_fridge: false,
     is_accessible: false,
+    // ⚠️ THE RESOLVED COVERAGES DEFAULT TO `none`, AND THAT IS THE FIXTURE
+    // CHANGE THAT MATTERS. This helper used to set none of them, so every
+    // amenity assertion in this file was answered by the RAW columns beside
+    // them — which encoded "the map lists what the registry ROW says", the
+    // pre-kindred#1912 rule the unit card abandoned when it moved to
+    // `power_coverage`. A container's own row is `has_power: false` while
+    // every leaf beneath it is powered, so that rule draws no plug on twelve
+    // entirely-powered buildings.
+    //
+    // `none` rather than `unknown` so a test that wants a mark has to SAY so,
+    // matching `AssignFamilyModal.test.tsx`'s and `LodgingUnitCard.test.tsx`'s
+    // own unit helpers — three suites, one default, so a fixture copied
+    // between them keeps meaning the same thing.
+    power_coverage: 'none',
+    ac_coverage: 'none',
+    fridge_coverage: 'none',
+    has_ramp: '',
+    ramp_coverage: 'none',
     is_confirmed: false,
     is_active: true,
     is_container: false,
@@ -97,6 +115,10 @@ function mapUnit(unit: LodgingUnitRow, parties: RosterPartyRow[] = []): MapUnit 
     // container tests at the foot of this file.
     roomCount: 1,
     capacity: unit.sleeps ?? null,
+    // Nothing straddles: the ordinary case, and what `buildMapModel` computes
+    // for a party wholly inside the room it is drawn on. The spanning fixtures
+    // override it — see the over-capacity block below.
+    spanWidth: 0,
     x: 0.4,
     y: 0.5,
   }
@@ -222,20 +244,37 @@ describe('MapUnitPopover — one room', () => {
     expect(screen.getByText('Unconfirmed')).toBeInTheDocument()
   })
 
-  it('lists the amenities the registry records', () => {
+  it('lists the amenities the RESOLVED coverages report', () => {
+    // The five marks, on the fixture that separates them from the raw
+    // columns: every raw flag is false and every resolved coverage is `all`,
+    // which is exactly the shape a combined building takes on the wire.
     render(
       <MapUnitPopover
         units={[
-          mapUnit(row({ bathroom: 'private', has_power: true, has_ac: true, is_accessible: true })),
+          mapUnit(
+            row({
+              bathroom: 'private',
+              has_power: false,
+              power_coverage: 'all',
+              has_ac: false,
+              ac_coverage: 'all',
+              has_fridge: false,
+              fridge_coverage: 'all',
+              is_accessible: false,
+              has_ramp: '',
+              ramp_coverage: 'all',
+            })
+          ),
         ]}
         hue={HUE}
         onOpenParty={vi.fn()}
       />
     )
-    expect(screen.getByLabelText('Private bathroom')).toBeInTheDocument()
+    expect(screen.getByLabelText('Bathroom in unit')).toBeInTheDocument()
     expect(screen.getByLabelText('Power')).toBeInTheDocument()
     expect(screen.getByLabelText('Air conditioning')).toBeInTheDocument()
-    expect(screen.getByLabelText('Accessible')).toBeInTheDocument()
+    expect(screen.getByLabelText('Fridge')).toBeInTheDocument()
+    expect(screen.getByLabelText('Step-free')).toBeInTheDocument()
   })
 
   it('reports beds needed against the capacity', () => {
@@ -362,6 +401,232 @@ describe('MapUnitPopover — one room', () => {
     const messages = warn.mock.calls.map((call) => String(call[0])).join('\n')
     warn.mockRestore()
     expect(messages).not.toMatch(/same key/i)
+  })
+})
+
+/**
+ * THE AMENITY LIST READS WHAT THE SERVER RESOLVED, NEVER THE ROW'S OWN
+ * COLUMNS.
+ *
+ * `mapModel` builds from `buildBoard`, so a COMBINED CONTAINER is a map slot —
+ * and a container's own registry row is the one row whose amenity columns are
+ * meaningless. Measured over the five containers ever drawn combined in 2026:
+ * three report no power against `power_coverage: 'all'`, three report no AC
+ * with AC-bearing rooms, one reports no fridge against `fridge_coverage:
+ * 'all'`, and all five reported no bathroom before the resolver landed.
+ *
+ * The same component already graded NEEDS off the resolved fields, through
+ * `partyAttention`, so this list disagreed with the red line printed two
+ * elements below it in the same card.
+ */
+describe('MapUnitPopover — amenities, off the resolved coverages', () => {
+  it('counts a SHARED bathroom as a bathroom in the unit', () => {
+    // kindred#2501, owner ruling 2026-08-20: the axis is PRESENCE, not
+    // exclusivity — the CampMinder question behind the family's flag asks for
+    // "a bathroom that doesn't require you to leave your cabin". `shared` is a
+    // bathroom INSIDE the cabin that two parties split; walking to a bathhouse
+    // records as `none`. The retired `Private bathroom` / `Shared bathroom`
+    // pair said which kind, which is a distinction no staff member on this
+    // surface can act on.
+    render(
+      <MapUnitPopover
+        units={[mapUnit(row({ bathroom: 'shared' }))]}
+        hue={HUE}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.getByLabelText('Bathroom in unit')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Shared bathroom')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Private bathroom')).not.toBeInTheDocument()
+  })
+
+  it('reads the bathroom the SERVER resolved onto a container, not the container row', () => {
+    // `_resolve_bathroom` fills a container's own `bathroom` from its leaves,
+    // and 8 of the 15 production containers moved from `none` to `private`
+    // when it landed. Nothing here re-derives it; the field is already right.
+    render(
+      <MapUnitPopover
+        units={[mapUnit(row({ is_container: true, bathroom: 'private' }))]}
+        hue={HUE}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.getByLabelText('Bathroom in unit')).toBeInTheDocument()
+  })
+
+  it('draws the plug for a building whose rooms are powered but whose own row is not', () => {
+    render(
+      <MapUnitPopover
+        units={[mapUnit(row({ has_power: false, power_coverage: 'all' }))]}
+        hue={HUE}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.getByLabelText('Power')).toBeInTheDocument()
+  })
+
+  it('draws power and AC for a building where only SOME rooms have them', () => {
+    // PRESENCE, the same reading `LodgingUnitCard`'s title row takes: the mark
+    // says the building offers it somewhere. Whether it reaches a particular
+    // family is the need glyph's question, and that one grades `some` on its
+    // own scale.
+    render(
+      <MapUnitPopover
+        units={[mapUnit(row({ power_coverage: 'some', ac_coverage: 'some' }))]}
+        hue={HUE}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.getByLabelText('Power')).toBeInTheDocument()
+    expect(screen.getByLabelText('Air conditioning')).toBeInTheDocument()
+  })
+
+  it('counts a shared fridge as a fridge, because the server already did', () => {
+    // Owner ruling 2026-08-15: a SHARED fridge IS a fridge, which is why
+    // `_resolve_fridge_coverage` ORs `has_shared_fridge` in. Read the resolved
+    // field and this surface inherits the ruling instead of holding a second
+    // implementation of it — the fixture's raw `has_fridge` is false.
+    render(
+      <MapUnitPopover
+        units={[
+          mapUnit(row({ has_fridge: false, has_shared_fridge: true, fridge_coverage: 'all' })),
+        ]}
+        hue={HUE}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.getByLabelText('Fridge')).toBeInTheDocument()
+  })
+
+  it('draws no step-free mark on a cabin staff assessed as having NO ramp', () => {
+    // ⚠️ `has_ramp` IS A THREE-VALUE SELECT, SO `'no'` IS A TRUTHY STRING.
+    // Any consumer testing it for truthiness renders "step-free" on the very
+    // cabins staff assessed as explicitly having none — the exact inversion
+    // the select exists to prevent.
+    render(
+      <MapUnitPopover
+        units={[mapUnit(row({ has_ramp: 'no', ramp_coverage: 'none' }))]}
+        hue={HUE}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.queryByLabelText('Step-free')).not.toBeInTheDocument()
+  })
+
+  it('withholds the step-free mark when only SOME rooms are step-free', () => {
+    // NOT the power/fridge reading, and the asymmetry is already ruled in
+    // `needGlyphs`' `someIs`: a fridge one room over is still a fridge a
+    // family can use, and a ramp one room over is not. A building advertising
+    // two step-free rooms out of ten invites precisely the placement that
+    // lands in one of the other eight.
+    render(
+      <MapUnitPopover
+        units={[mapUnit(row({ ramp_coverage: 'some' }))]}
+        hue={HUE}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.queryByLabelText('Step-free')).not.toBeInTheDocument()
+  })
+
+  it('withholds it for a QUALIFIED ramp too, rather than overclaiming step-free', () => {
+    // `partial` is the fifth grade `ramp_coverage` carries and the other three
+    // dimensions cannot: a ramp with a lip. The list has one binary mark per
+    // dimension and no room for degree, so "Step-free" would state more than
+    // the registry recorded.
+    render(
+      <MapUnitPopover
+        units={[mapUnit(row({ ramp_coverage: 'partial' }))]}
+        hue={HUE}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.queryByLabelText('Step-free')).not.toBeInTheDocument()
+  })
+
+  it('does not take `is_accessible` as the step-free answer', () => {
+    /*
+     * ⚠️ AN OPEN PRODUCT QUESTION, DELIBERATELY NOT SETTLED HERE. `is_accessible`
+     * and `has_ramp` are two independent registry columns and they DISAGREE:
+     * of the production rows recording `has_ramp: 'yes'`, two are
+     * `is_accessible: true` and three are false. Which one staff mean by
+     * "accessible" needs an owner, not a guess from this file.
+     *
+     * What is NOT open is whether this list may keep reading `is_accessible`.
+     * It is a raw boolean on the row, so it carries the container trap every
+     * other raw column here carried, and it has no resolver. `ramp_coverage`
+     * is resolved over the leaves and is the field the step-free NEED GLYPH
+     * already grades against on this same card — so it is the one reading this
+     * surface can defend, and the one it takes until the question is answered.
+     */
+    render(
+      <MapUnitPopover
+        units={[mapUnit(row({ is_accessible: true, has_ramp: '', ramp_coverage: 'none' }))]}
+        hue={HUE}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.queryByLabelText('Step-free')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Accessible')).not.toBeInTheDocument()
+  })
+
+  it('says nothing at all about a space nobody has assessed', () => {
+    // `unknown` is not a soft yes. The list is an inclusion list, so silence
+    // is its way of declining to assert anything.
+    render(
+      <MapUnitPopover
+        units={[
+          mapUnit(
+            row({
+              bathroom: 'unknown',
+              power_coverage: 'unknown',
+              ac_coverage: 'unknown',
+              fridge_coverage: 'unknown',
+              ramp_coverage: 'unknown',
+            })
+          ),
+        ]}
+        hue={HUE}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.queryByLabelText('Bathroom in unit')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Power')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Air conditioning')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Fridge')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Step-free')).not.toBeInTheDocument()
+  })
+})
+
+/**
+ * THE OVER-CAPACITY COLOUR IS A CLAIM, AND A SPANNING PARTY WITHHOLDS IT.
+ *
+ * Since kindred#2010 a party holding several rooms is drawn on EACH of them,
+ * so the same six people appear on two marks and there is no per-room split to
+ * divide them by — `party_size` is one number for the household. Both board
+ * surfaces already gate on it (`LodgingUnitCard`'s `overCapacity`, the Assign
+ * modal's header); this popover asserted it with no gate at all.
+ *
+ * ZERO parties span in 2026's registry, so nothing is on screen today. This is
+ * the latent half, pinned before it is reachable rather than after.
+ */
+describe('MapUnitPopover — the over-capacity mark, gated as the board gates it', () => {
+  const OVERFULL = mapUnit(row({ sleeps: 2 }), [party('Johnson')])
+
+  it('colours a room the party wholly occupies and over-fills', () => {
+    render(<MapUnitPopover units={[OVERFULL]} hue={HUE} onOpenParty={vi.fn()} />)
+    expect(screen.getByText('3 of 2')).toHaveClass('text-amber-700')
+  })
+
+  it('withholds the colour from a party drawn on more rooms than this one', () => {
+    // Three people against this room's two beds is not a verdict anyone can
+    // support when the household also holds the room next door. The FIGURE
+    // still stands — over-stating reads as "look at this", where dropping the
+    // party would read as "room for more" — and only the claim is withheld.
+    render(
+      <MapUnitPopover units={[{ ...OVERFULL, spanWidth: 2 }]} hue={HUE} onOpenParty={vi.fn()} />
+    )
+    expect(screen.getByText('3 of 2')).not.toHaveClass('text-amber-700')
   })
 })
 

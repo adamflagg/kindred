@@ -358,6 +358,73 @@ describe('buildMapModel — what a drawn unit stands for (kindred#2183)', () => 
   })
 })
 
+/**
+ * kindred#2010's straddle marker, threaded to the map for the same reason
+ * `roomCount` and `capacity` are: `MapUnitPopover` is handed `MapUnit[]` and
+ * never the registry, so it cannot ask `slotOccupancy` the question itself.
+ *
+ * Without it the peek asserts over-capacity where BOTH board surfaces withhold
+ * it — `LodgingUnitCard`'s `overCapacity` and the Assign modal's header each
+ * gate on `spanWidth === 0`, and this popover had no gate at all.
+ */
+describe('buildMapModel — how wide a straddling party is (kindred#2010)', () => {
+  /** A house drawn SPLIT: the container is not combined, so its rooms are the marks. */
+  const HOUSE = unit({
+    unit_id: 'h0',
+    code: 'aspen-house',
+    name: 'Aspen House',
+    is_container: true,
+    sleeps: 7,
+  })
+  const R1 = unit({
+    unit_id: 'h1',
+    code: 'aspen-1',
+    name: 'Aspen 1',
+    parent_code: 'aspen-house',
+    sleeps: 3,
+  })
+  const R2 = unit({
+    unit_id: 'h2',
+    code: 'aspen-2',
+    name: 'Aspen 2',
+    parent_code: 'aspen-house',
+    sleeps: 3,
+  })
+
+  it('reports nothing spanning for a party wholly inside the room it is drawn on', () => {
+    // `unit_name` is what `indexPayload` reads to decide a party is PLACED at
+    // all — a party with only a `unit_code` lands in the unplaced queue and
+    // would pass this assertion by never reaching a slot.
+    const model = buildMapModel([party({ unit_code: 'cedar-1', unit_name: 'Cedar 1' })], [unit()])
+    expect(model.units[0]?.parties).toHaveLength(1)
+    expect(model.units[0]?.spanWidth).toBe(0)
+  })
+
+  it('reports how many rooms a straddling party holds, on every mark it is drawn on', () => {
+    // The household holds both halves and is drawn on each, so the same six
+    // people are counted twice over three beds apiece.
+    const model = buildMapModel(
+      [
+        party({
+          party_size: 6,
+          unit_code: '',
+          unit_codes: ['aspen-1', 'aspen-2'],
+          unit_name: 'Aspen 1',
+        }),
+      ],
+      [HOUSE, R1, R2]
+    )
+    expect(model.units.map((u) => u.unit.code)).toEqual(['aspen-1', 'aspen-2'])
+    expect(model.units.map((u) => u.parties.length)).toEqual([1, 1])
+    expect(model.units.map((u) => u.spanWidth)).toEqual([2, 2])
+  })
+
+  it('reports nothing spanning on an empty room', () => {
+    const model = buildMapModel([], [HOUSE, R1, R2])
+    expect(model.units.map((u) => u.spanWidth)).toEqual([0, 0])
+  })
+})
+
 describe('countMapUnits', () => {
   it('counts what the map draws, which is not the inventory count', () => {
     const units = [

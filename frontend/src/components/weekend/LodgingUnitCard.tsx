@@ -223,10 +223,11 @@ export interface LodgingUnitCardProps {
   /**
    * Every UNPLACED party on the weekend — the picker's list (kindred#2080).
    *
-   * NEVER pre-filtered by fit, on the owner's ruling: 6 of 118 units carry a
-   * private bathroom against 63 parties asking for one, so a list narrowed to
-   * "what fits" would be empty most of the time. `placementCandidates`
-   * annotates and orders them instead.
+   * NEVER pre-filtered by fit, on the owner's ruling: 36 of 118 units answer
+   * the bathroom need against 66 of 479 registrations asking for one, so a
+   * list narrowed to "what fits" would be empty most of the time.
+   * `placementCandidates` annotates and orders them instead, and carries the
+   * arithmetic — including why the supply figure read 6 until 2026-08-20.
    */
   unplacedParties?: RosterPartyRow[]
   /**
@@ -920,9 +921,15 @@ export function LodgingUnitCard({
             shared unit satisfies it as fully as a private one. Of the 6
             private units, 5 are staff housing no weekend has ever released —
             so the distinction is one no staff member on this board can act on.
-            Vocabulary §4 carries the full correction; kindred#2501 is the
-            matching fix to the family-side RULE, which still grades
-            exclusivity for one more release. */}
+            Vocabulary §4 carries the full correction.
+
+            ⚠️ THE ONE-RELEASE GAP THIS USED TO NAME IS CLOSED. It said
+            kindred#2501 was "the matching fix to the family-side RULE, which
+            still grades exclusivity for one more release" — #2501 has landed,
+            and `needGlyphs.bathroomCoverage` now maps `'shared'` and
+            `'private'` alike onto the met arm. This mark and the family glyph
+            read one axis. Only the COLUMN name (`needs_private_bathroom`)
+            still lags, which is a named follow-up. */}
         {unit.bathroom !== undefined && unit.bathroom !== 'none' && unit.bathroom !== 'unknown' && (
           <Bath
             data-testid="amenity-bathroom"
@@ -953,14 +960,34 @@ export function LodgingUnitCard({
             staff place against it; what it gets no glyph for is family DEMAND.
             The `Snowflake` below is the UNIT's own amenity mark and still
             draws on the title row — it is the paired demand glyph, the one
-            that would say a family asked for this, that nothing mints. */}
-        {unit.has_ac === true && (
-          <Snowflake
-            data-testid="amenity-ac"
-            aria-label="Air conditioning"
-            className="text-muted-foreground h-3.5 w-3.5 flex-shrink-0"
-          />
-        )}
+            that would say a family asked for this, that nothing mints.
+
+            ⚠️ `ac_coverage`, NEVER THE RAW `has_ac` — kindred#2502, and the
+            LAST of this row's three marks to move. The plug above it made the
+            same move at kindred#2072 for the same reason, and the server's own
+            count is the measurement: `_resolve_ac_coverage` records that SEVEN
+            of the 15 production containers carry `has_ac = 0` with AC-bearing
+            rooms, so the raw read drew no snowflake on seven buildings that
+            are air-conditioned throughout.
+
+            It was also a CONTRADICTION rather than only an omission. #2502
+            named three surfaces reading this field raw; `MapUnitPopover` and
+            `AssignFamilyModal` both moved, so the modal a staff member opens
+            FROM this card listed "air conditioning" while the card behind it
+            drew nothing — the same disagreement kindred#2501 closed on the
+            bathroom axis, one dimension over.
+
+            PRESENCE, so `some` draws it, exactly as the plug does: the mark
+            says the building offers AC somewhere. There is no need glyph to
+            disagree with that here, because AC has no demand side at all. */}
+        {(unit.ac_coverage ?? 'unknown') !== 'none' &&
+          (unit.ac_coverage ?? 'unknown') !== 'unknown' && (
+            <Snowflake
+              data-testid="amenity-ac"
+              aria-label="Air conditioning"
+              className="text-muted-foreground h-3.5 w-3.5 flex-shrink-0"
+            />
+          )}
         {/* The tooltip hangs on THIS figure, never on the `<h3>` above it
             (kindred#2177). It is also the smallest trigger on the board, which
             is why `ui/Tooltip` grows a transparent 24px hit target around

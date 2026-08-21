@@ -46,6 +46,14 @@ import { RosterExportButton } from './RosterExportButton'
  * databases carry one, so the banner copy below is scoped to the pre-2026
  * seasons this set already gates on rather than claiming the filter can
  * never match anything.
+ *
+ * ⚠️ `fridge` and `step_free` are OUT for `needs_accommodation`'s reason, not
+ * as an oversight. Both are derived in the Go sync from the accommodation
+ * NARRATIVE (`accommodationExplainFieldNames`, `family_camp_derived.go`),
+ * whose source fields existed in earlier seasons too — so they carry real, if
+ * sparse, historical signal and the caveat below would be false about them.
+ * They joined this toolbar when the chips started deriving from `NEED_GLYPHS`;
+ * the gap set did not grow with them.
  */
 const NEEDS_DATA_FIRST_YEAR = 2026
 const HISTORICAL_GAP_KEYS: ReadonlySet<NeedFilterKey> = new Set(['bathroom', 'power', 'infant'])
@@ -268,8 +276,8 @@ export function HouseholdRosterTable({
             </>
           ) : (
             <>
-              Private bathroom and power needs are only recorded starting the 2026 season. A result
-              for {year} reflects missing data, not that nobody needed one.
+              Bathroom and power needs are only recorded starting the 2026 season. A result for{' '}
+              {year} reflects missing data, not that nobody needed one.
             </>
           )}
         </p>

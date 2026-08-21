@@ -106,9 +106,11 @@ Shareability = Literal["unknown", "shareable", "single_party"]
 # How much of a slot carries one amenity, resolved over its LEAF descendants
 # (kindred#1912). Three grains rather than a bool because both boolean
 # policies fall out of it for free -- `OR == != "none"`, `AND == == "all"` --
-# and because what SOME means differs per criterion: for `is_accessible`, some
-# is worse than none, since a building advertising two step-free rooms out of
-# ten invites the placement that lands in one of the other eight.
+# and because what SOME means differs per criterion: for step-free, some is
+# worse than none, since a building advertising two step-free rooms out of ten
+# invites the placement that lands in one of the other eight. (That grain is
+# graded from `has_ramp`, NOT `is_accessible` -- this named the wrong column
+# until kindred#2502; the two are independent and disagree on five rows.)
 #
 # "unknown" is the absence of evidence, exactly as EffectiveBathroom and
 # Shareability spell their own. `has_power = False` on an unconfirmed row
@@ -238,6 +240,16 @@ class LodgingUnitSummary(BaseModel):
     # built without the resolution pass must not claim an unmet need.
     power_coverage: AmenityCoverage = "unknown"
     has_ac: bool = False
+    # The AC twin of `power_coverage`, resolved over the same leaf walk and
+    # defaulting to "unknown" for the same reason: a payload built without
+    # the resolution pass must not claim an absent amenity. Seven of the 15
+    # production containers record `has_ac = 0` with AC-bearing rooms, so
+    # merging a house hid a mark both its rooms carry.
+    #
+    # DISPLAY ONLY. Air conditioning has no demand glyph -- ruled on 0 of 184
+    # housing narratives mentioning it, against 54 for a bathroom -- so this
+    # exists to keep the amenity strip honest, not to grade a need.
+    ac_coverage: AmenityCoverage = "unknown"
     has_fridge: bool = False
     # NARROWS `has_fridge` -- it can never contradict its parent, so a consumer
     # reading only `has_fridge` stays correct (the registry's own contract,

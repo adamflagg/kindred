@@ -142,11 +142,143 @@ describe('AssignFamilyModal — the header states beds FREE (owner ruling 2026-0
   })
 
   it('names what the room offers, in words — there is width for them here', () => {
-    renderModal({ unit: unit({ bathroom: 'shared', has_power: true, has_ac: true }) })
+    /*
+     * ⚠️ THE FIXTURE FLIPPED FROM `has_power: true` TO `power_coverage: 'all'`,
+     * AND THAT FLIP IS THE WHOLE POINT OF THIS CHANGE.
+     *
+     * As written, this test set `power_coverage: 'none'` (the base fixture)
+     * AND `has_power: true`, then asserted the header printed "power" — so it
+     * ruled FOR the raw flag on the one pair the resolved field exists to
+     * arbitrate. That is not a stale string; it is the bug, pinned. The header
+     * read raw `has_power` / `has_ac` while the candidate rows twelve lines
+     * below graded `power_coverage`, so on a container the header omitted
+     * "power" while every row under it drew a met plug.
+     *
+     * THE SPECIFICATION IS THE RESOLVED FIELD, not this test's old fixture:
+     * `needGlyphs.ts` and `LodgingUnitCard.tsx` both already read the resolved
+     * coverage, and the reason is measured — twelve of the fourteen 2026
+     * family-pool containers record `has_power = 0` while every leaf beneath
+     * them has power. The raw flag is the wrong answer on twelve buildings.
+     *
+     * The fridge word is NEW. It is one of the four ruled need dimensions, the
+     * rows below draw a fridge glyph, and a header silent about it was silent
+     * about something the rows were speaking on.
+     */
+    renderModal({
+      unit: unit({
+        bathroom: 'shared',
+        power_coverage: 'all',
+        fridge_coverage: 'all',
+        ac_coverage: 'all',
+        // The raw twins say the opposite, and none of them is read.
+        has_power: false,
+        has_fridge: false,
+        has_ac: false,
+      }),
+    })
     const capacity = screen.getByTestId('assign-capacity')
     expect(capacity).toHaveTextContent('bathroom')
     expect(capacity).toHaveTextContent('power')
+    expect(capacity).toHaveTextContent('fridge')
     expect(capacity).toHaveTextContent('air conditioning')
+  })
+
+  it('never claims an amenity from the raw flag the resolved field arbitrates', () => {
+    // The exact pair the old fixture ruled the wrong way round. A row that
+    // records `has_power` on a container whose rooms have none is what
+    // `power_coverage` was added to overrule.
+    renderModal({ unit: unit({ has_power: true, has_ac: true, has_fridge: true }) })
+    const capacity = screen.getByTestId('assign-capacity').textContent
+    expect(capacity).not.toContain('power')
+    expect(capacity).not.toContain('fridge')
+    expect(capacity).not.toContain('air conditioning')
+  })
+
+  it('states a CONTAINER’s amenities, so the header cannot contradict its own rows', () => {
+    /*
+     * ⚠️ THE MEASURED DEFECT. The modal is mounted from `LodgingUnitCard` with
+     * the DRAWN unit, so on a combined house the header said nothing about
+     * power — the container's own `has_power` is 0 — while every candidate row
+     * below it drew a met plug off `power_coverage`. One dialog, two answers,
+     * twelve lines apart.
+     *
+     * Both halves are asserted together on purpose: this test fails if either
+     * surface moves away from the other.
+     */
+    const house = unit({
+      code: 'house',
+      is_container: true,
+      is_combined: true,
+      // The container row's OWN fields, exactly as production records them.
+      has_power: false,
+      has_ac: false,
+      // What the server resolved from the rooms beneath it.
+      power_coverage: 'all',
+      ac_coverage: 'all',
+      bathroom: 'private',
+    })
+    renderModal({
+      unit: house,
+      units: [house],
+      parties: [party({ household_cm_id: 107, flags: { needs_power: true } })],
+    })
+    const capacity = screen.getByTestId('assign-capacity')
+    expect(capacity).toHaveTextContent('power')
+    expect(capacity).toHaveTextContent('air conditioning')
+    expect(capacity).toHaveTextContent('bathroom')
+
+    const glyph = within(screen.getByTestId('candidate-household-107')).getByTestId(
+      'need-glyph-power'
+    )
+    expect(glyph.className).not.toContain('bg-red-100')
+  })
+
+  it('says a building offers power when only SOME of its rooms do', () => {
+    // The unit card's own predicate — presence, so `some` draws the plug: the
+    // mark says the building offers power somewhere. Whether it reaches a
+    // particular family is the need glyph's question, and that one grades
+    // `some` separately (`someIs`).
+    renderModal({ unit: unit({ power_coverage: 'some', fridge_coverage: 'some' }) })
+    const capacity = screen.getByTestId('assign-capacity')
+    expect(capacity).toHaveTextContent('power')
+    expect(capacity).toHaveTextContent('fridge')
+  })
+
+  it('claims nothing on absent evidence — `unknown` is not a yes', () => {
+    // Owner ruling 2026-08-20, on the glyphs: *"unknown values should not
+    // equal fits… its unconfirmed information."* The same reading here, for
+    // the same reason — a word in the header is a CLAIM about the room, and
+    // there is no third state to fall back on. 102 of 118 cabins carry an
+    // unassessed grade on at least one dimension.
+    renderModal({
+      unit: unit({
+        bathroom: 'unknown',
+        power_coverage: 'unknown',
+        fridge_coverage: 'unknown',
+        ac_coverage: 'unknown',
+      }),
+    })
+    // The capacity sentence and NOTHING else — no separator, no word.
+    expect(screen.getByTestId('assign-capacity').textContent).toBe('2 of 4 beds free')
+  })
+
+  it('claims nothing when the server sent no coverage at all', () => {
+    /*
+     * The Pydantic-default gotcha: a field with a default renders OPTIONAL in
+     * the generated types, so every coverage can arrive absent. Absent is
+     * unknown, and unknown is not a yes.
+     *
+     * The keys are DELETED rather than set to `undefined`, because
+     * `exactOptionalPropertyTypes` makes those two different things and only
+     * this one is what the wire produces. `ac_coverage` is never in the base
+     * fixture, so it is already absent here.
+     */
+    const noCoverage = unit()
+    delete noCoverage.bathroom
+    delete noCoverage.power_coverage
+    delete noCoverage.fridge_coverage
+    renderModal({ unit: noCoverage })
+    expect(screen.getByTestId('assign-capacity').textContent).toBe('2 of 4 beds free')
   })
 })
 
@@ -566,8 +698,14 @@ describe('AssignFamilyModal — the candidate rows', () => {
   })
 
   it('reddens a glyph the room cannot answer', () => {
+    // ⚠️ `'none'`, AND IT USED TO BE `'shared'`. The fixture was only ever a
+    // VEHICLE for "this room does not meet the need"; kindred#2501 made
+    // `'shared'` meet it (presence, not exclusivity), so the vehicle had to
+    // change or the test would be pinning the opposite of what it says. The
+    // room with no bathroom at all is the honest stand-in — a walk to a
+    // bathhouse records as `'none'`. The test's intent is unchanged.
     renderModal({
-      unit: unit({ bathroom: 'shared' }),
+      unit: unit({ bathroom: 'none' }),
       parties: [party({ household_cm_id: 103, flags: { needs_private_bathroom: true } })],
     })
     const glyph = within(screen.getByTestId('candidate-household-103')).getByTestId(
@@ -667,8 +805,10 @@ describe('AssignFamilyModal — the candidate rows', () => {
     // household no longer fits it — so the row would carry the CAPACITY note,
     // which is a different sentence in the same red and would leave this test
     // passing for the wrong reason.
+    // `bathroom: 'none'` — see the fixture note on "reddens a glyph the room
+    // cannot answer". `'shared'` stopped being an unmet room at kindred#2501.
     renderModal({
-      unit: unit({ bathroom: 'shared' }),
+      unit: unit({ bathroom: 'none' }),
       occupants: 0,
       parties: [party({ household_cm_id: 105, flags: { needs_private_bathroom: true } })],
     })
@@ -704,10 +844,10 @@ describe('AssignFamilyModal — the candidate rows', () => {
   })
 
   it('NEVER hides a family, however badly it fits', () => {
-    // The ruling `placementCandidates` exists to carry: 6 of 118 units have a
-    // private bathroom against 45 parties asking for one, so a list narrowed
-    // to "what fits" would be empty most of the time and staff would go back
-    // to dragging.
+    // The ruling `placementCandidates` exists to carry: 36 of 118 units answer
+    // the bathroom need against 41 bathroom-asking households rostered across
+    // 2026's family weekends, so a list narrowed to "what fits" would be empty
+    // most of the time and staff would go back to dragging.
     renderModal({
       unit: unit({ bathroom: 'shared', power_coverage: 'none', sleeps: 1 }),
       parties: [party({ flags: { needs_private_bathroom: true, needs_power: true } }), NGUYEN],
@@ -767,8 +907,10 @@ describe('AssignFamilyModal — the candidate rows', () => {
      * invalid HTML, its own focus stop, and a click that both pinned a tooltip
      * and wrote a placement.
      */
+    // `bathroom: 'none'` — see the fixture note on "reddens a glyph the room
+    // cannot answer". `'shared'` stopped being an unmet room at kindred#2501.
     const { props } = renderModal({
-      unit: unit({ bathroom: 'shared' }),
+      unit: unit({ bathroom: 'none' }),
       parties: [party({ household_cm_id: 103, flags: { needs_private_bathroom: true } })],
     })
     const row = screen.getByTestId('candidate-household-103')
@@ -780,8 +922,8 @@ describe('AssignFamilyModal — the candidate rows', () => {
     expect(glyph.tagName).not.toBe('BUTTON')
     // It still says what it is, to a pointer — which is the audience.
     expect(glyph).toHaveAttribute('title', 'Bathroom in unit — the cabin does not meet it')
-    // And it is still the graded mark, not a decoration: this cabin is shared,
-    // the household asked for a bathroom, so the glyph is in the warn state.
+    // And it is still the graded mark, not a decoration: this cabin has no
+    // bathroom, the household asked for one, so the glyph is in the warn state.
     expect(glyph.className).toContain('bg-red-100')
     expect(props.onSelect).not.toHaveBeenCalled()
   })

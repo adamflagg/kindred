@@ -1365,6 +1365,9 @@ describe('LodgingUnitCard — summer’s type scale', () => {
             bathroom: 'private',
             has_power: true,
             has_ac: true,
+            // The sweep is only as good as the DOM it renders; `ac_coverage`
+            // is what mounts the snowflake now (kindred#2502).
+            ac_coverage: 'all',
             parent_code: 'cedar-house',
             is_container: true,
             is_combined: true,
@@ -2271,12 +2274,69 @@ describe('LodgingUnitCard — T2: the amenities ride the TITLE row', () => {
     expect(container.querySelectorAll('[data-testid^="amenity-"]')).toHaveLength(0)
   })
 
+  /*
+   * ⚠️ THE AC MARK READS `ac_coverage`, NOT THE RAW `has_ac` — kindred#2502.
+   *
+   * The plug two lines above it moved to a resolved coverage field at
+   * kindred#2072, for a reason stated in the card itself: the raw flag drew no
+   * plug on twelve entirely-powered buildings. AC had no resolver at all until
+   * this branch added one, so it kept the raw read and kept the bug — and the
+   * server's own count is the measurement, not an analogy:
+   * `_resolve_ac_coverage` records that SEVEN of the 15 production containers
+   * carry `has_ac = 0` with AC-bearing rooms.
+   *
+   * kindred#2502 named THREE surfaces reading it raw. `MapUnitPopover` and
+   * `AssignFamilyModal` both moved to `ac_coverage`; this card is the third
+   * and was the one left behind, so the modal a staff member opens FROM this
+   * card printed "air conditioning" while the card itself drew no snowflake.
+   * That is the same contradiction kindred#2501 closed on the bathroom axis,
+   * one dimension over.
+   *
+   * `some` DRAWS THE MARK, which is the plug's rule and not a new one: the
+   * amenity mark says the building offers it somewhere, and whether it reaches
+   * a particular family is the need glyph's question. AC has no need glyph —
+   * 0 of 184 housing narratives mention it — so there is no demand side to
+   * contradict.
+   */
+  it('draws the snowflake for a BUILDING whose rooms have AC but whose own row does not', () => {
+    const { container } = renderUnit({
+      has_ac: false,
+      ac_coverage: 'all',
+      is_container: true,
+      is_combined: true,
+    })
+    expect(container.querySelector('[data-testid="amenity-ac"]')).not.toBeNull()
+  })
+
+  it('draws it when only SOME rooms have AC, as the plug does for power', () => {
+    const { container } = renderUnit({ has_ac: false, ac_coverage: 'some' })
+    expect(container.querySelector('[data-testid="amenity-ac"]')).not.toBeNull()
+  })
+
+  it('never claims AC from the raw flag the resolved field arbitrates', () => {
+    // The raw twin set to the OPPOSITE of the resolved answer, so the test
+    // proves which one is read rather than merely agreeing with both.
+    const { container } = renderUnit({ has_ac: true, ac_coverage: 'none' })
+    expect(container.querySelector('[data-testid="amenity-ac"]')).toBeNull()
+  })
+
+  it('says nothing about AC nobody has recorded', () => {
+    // `unknown` is "nobody has said", and the mark asserts presence — the same
+    // reading the bathroom and power marks beside it take.
+    const { container } = renderUnit({ has_ac: true, ac_coverage: 'unknown' })
+    expect(container.querySelector('[data-testid="amenity-ac"]')).toBeNull()
+  })
+
   it('keeps the title, the amenities and the occupancy figure on ONE row', () => {
     const { container } = renderUnit({
       bathroom: 'shared',
       has_power: true,
       power_coverage: 'all',
+      // `ac_coverage`, not the raw `has_ac`, since kindred#2502 — this was
+      // `has_ac: true` alone, which no longer draws the third icon this test
+      // counts. The VEHICLE changed; the one-row layout under test did not.
       has_ac: true,
+      ac_coverage: 'all',
     })
     const title = container.querySelector('[data-testid="unit-title-row"]')
     expect(title?.querySelector('h3')).not.toBeNull()

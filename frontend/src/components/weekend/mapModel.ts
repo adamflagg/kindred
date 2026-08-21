@@ -12,7 +12,7 @@
  * queue, because they ARE placed and saying otherwise is a lie about the data.
  */
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
-import { buildBoard, type ConsentFlag } from './boardLayout'
+import { buildBoard, slotOccupancy, type ConsentFlag } from './boardLayout'
 import { effectiveSleeps } from './rosterAttention'
 import { coveredCodes } from './unitLevel'
 
@@ -58,6 +58,25 @@ export interface MapUnit {
    * rather than reimplemented.
    */
   capacity: number | null
+  /**
+   * 0 when every party on this mark is wholly inside it; otherwise how many
+   * rooms the widest straddling party holds. `slotOccupancy`'s own field,
+   * carried through rather than re-derived — that doc is the full account.
+   *
+   * Threaded for the same reason `roomCount` and `capacity` are: the popover
+   * receives `MapUnit[]` and never the registry, so it cannot walk a party's
+   * leaves to ask the question itself. Without it the peek asserts over
+   * capacity where BOTH board surfaces withhold it — `LodgingUnitCard`'s
+   * `overCapacity` and `AssignFamilyModal`'s header each gate on
+   * `spanWidth === 0`, because a party drawn on two rooms is counted in full
+   * on each of them (kindred#2010) and no per-room split exists to divide it
+   * by.
+   *
+   * Measured at ZERO spanning parties on the 2026 registry after #2040, so
+   * this changes nothing on screen today. It is the guard on a reachable state,
+   * pinned before it is reached.
+   */
+  spanWidth: number
   /** Normalized 0-1 map coordinates. Projection to pixels is the viewport's job. */
   x: number
   y: number
@@ -181,6 +200,14 @@ export function buildMapModel(parties: RosterPartyRow[], units: LodgingUnitRow[]
         // would be one with no shape difference to excuse it — that helper
         // takes the same `LodgingUnitRow[]` this file has in hand.
         capacity: effectiveSleeps(slot.unit, units),
+        // `slotOccupancy`, IMPORTED for the same reason `effectiveSleeps` is:
+        // "is this party inside this card" is one predicate, and #2040 records
+        // what a second copy costs — the overlap rule was fixed at the slot
+        // level and came straight back one level down in `FamilyCard`. Only
+        // the `spanWidth` half is taken; the map's peek counts its own beds
+        // with `partyBeds`, which is the roster's number rather than the
+        // board's `partySize`.
+        spanWidth: slotOccupancy(slot, units).spanWidth,
         // Non-null by hasCoordinates above; narrowed for the type checker.
         x: slot.unit.map_x ?? 0,
         y: slot.unit.map_y ?? 0,

@@ -50,7 +50,7 @@ the home for _divergences_; this file is the home for _vocabulary_.
 | Mark                                                                                      | Where                             | Means                          | Why it is there                                                                                                                                                                                                                                                                                                                                                                                  | Ruled           |
 | ----------------------------------------------------------------------------------------- | --------------------------------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------- |
 | Need glyphs — bathroom · power · fridge · step-free                                       | chip row, **icon-only**           | what the household asked for   | the whole point of #2072. One grading for all four, in `needGlyphs.ts` — the three tables that used to grade them separately now call it                                                                                                                                                                                                                                                         | A3              |
-| — the bathroom glyph's label                                                              |                                   | `Bathroom in unit`             | not `Private bathroom`: the column's word, never the question's (§4). ⚠️ The **rule** still grades exclusivity until #2501, so for one release a room can show a bathroom while the family shows red                                                                                                                                                                                             | 2026-08-19      |
+| — the bathroom glyph's label                                                              |                                   | `Bathroom in unit`             | not `Private bathroom`: the column's word, never the question's (§4). ✅ **The rule now matches the word** — kindred#2501 landed 2026-08-20, so `bathroomCoverage` grades presence in both readings and the one-release contradiction this cell used to warn about is closed. Only the COLUMN name still lags                                                                                    | 2026-08-19      |
 | — hues                                                                                    |                                   | sky · purple · teal · orange   | **`text-sky-500 dark:text-sky-400`** and the same 500/400 step for purple, teal, orange. The artifact's hex values _stand in for_ those Tailwind steps — they are v3's, and this project ships v4, whose OKLCH ramps render `#00a6f4` / `#ad46ff` / `#00bba7` / `#ff6900`. The tokens are the definition (§6); do not hand-write hex                                                             | A3              |
 | — unmet state                                                                             |                                   | the placed room has not got it | the glyph takes the **warn** fill, border and icon colour. The shape still says which need it is, which is what makes losing the hue affordable                                                                                                                                                                                                                                                  | N2              |
 | — absent state                                                                            |                                   | not asked for                  | **omitted entirely, never dimmed**                                                                                                                                                                                                                                                                                                                                                               | absence rule    |
@@ -111,9 +111,28 @@ The word _private_ entered at the column name and propagated to the label.
 Private-vs-shared is an artefact of how containers and `bathroom_group`s were
 modelled, not a question anyone asked a family.
 
-Fixing the rule is **kindred#2501** (`satisfiedBy` → `effective_bathroom !==
-'none'`), gated on reading the Adult form's wording, which supplies 19 of 66
-flagged households and has never been audited.
+**Fixed 2026-08-20 by kindred#2501**, and the shipped rule is slightly
+narrower than the one planned here. This paragraph proposed `effective_bathroom
+!== 'none'`; what landed also excludes `'unknown'`, because the same day's glyph
+ruling settled that an unmeasured space must not read as met — _"unknown values
+should not equal fits, across all surfaces on the glyphs, its unconfirmed
+information."_ So the met arm is `'private' || 'shared'`, stated positively in
+`needGlyphs.bathroomCoverage`, and it applies to BOTH readings: the placed lane
+off `party.effective_bathroom` and the prospective lane off `unit.bathroom`.
+Flipping only the placed one — which is what #2501's body asked for — would have
+moved the contradiction into the Assign modal instead of closing it.
+
+What `'shared'` means is worth restating, because the word invites the wrong
+reading: a bathroom INSIDE the cabin that two parties split. Walking to a
+bathhouse is not `'shared'`; it records as `'none'` and is still unmet.
+
+The cost was accepted on the record rather than discovered: the ~3–5 households
+a year who need a bathroom nobody else uses lose an automatic red mark and are
+found by reading the request instead. The Adult form audit this was once gated
+on did not block the ruling.
+
+**Renaming `needs_private_bathroom` is the remaining follow-up.** The column is
+now the only place the word _private_ survives.
 
 ## 5. Open — silence here is not consent
 
@@ -127,11 +146,14 @@ Accommodation` label, the four sharing-intent chips (including whether the
   half of a pair breaks it. The card and that list therefore word one fact two
   ways today. **Put both in front of staff together**, since the label is
   explicitly not locked.
-- **The roster's own wording did not move either**, for a sharper reason: the
-  glyph is called _Bathroom in unit_ because that is the axis the form asks
-  about, but `rosterAttention` still grades exclusivity until #2501, and
-  "No bathroom in unit" would be a false sentence about a cabin with a shared
-  bathroom in it. Both halves move together when #2501 lands.
+- **The roster's wording moved with the rule, 2026-08-20 — CLOSED.** It was
+  held back for a sharper reason than the item above: the glyph is called
+  _Bathroom in unit_ because that is the axis the form asks about, but while
+  `rosterAttention` still graded exclusivity, "No bathroom in unit" would have
+  been a false sentence about a cabin with a shared bathroom in it. #2501 moved
+  the rule, so both halves of `ROSTER_NEED_WORDING` moved with it — `asked` to
+  `Bathroom in unit` and `unmet` to `No bathroom in unit`. Changing only
+  `unmet` would have left the exclusivity claim standing on the asked side.
 
 ## 5a. Answered 2026-08-19 — the four rulings the implementation needed
 
@@ -143,7 +165,7 @@ resolved by an implementer without guessing.
 | **The meta row is not empty.** Ruling 12 deletes it, but `Inactive`, `Building` and `Reconfirm space` survive T2 and the footer move | `Building` is **cut** (§3). The row **stays, rendering only when `Inactive` or `Reconfirm space` is present** — never, on today's data, so ruling 12's outcome holds on every live card while both marks keep a home for when #2500 makes `Reconfirm space` fire on all 118 units at season start. **Lands in stage 3** (§9) |
 | **The Assign modal's `People` field has no column.** `lodging_write_ins` holds `occupant_name` and `note` only                       | Land the modal **without the people count**, and scope kindred#2503 to add it — that issue body now owns the field explicitly                                                                                                                                                                                                |
 | **"Party size vs REMAINING beds" redefines a staff-facing number**                                                                   | Owner, verbatim: _"The modal states beds FREE because that is the question being asked at the point of placement — will this party fit in what is left. The card's N/M is unchanged and over-capacity still means placed exceeds capacity everywhere on the board."_                                                         |
-| **Rulings 2 and 4 contradict until #2501** — presence on the room, exclusivity on the family                                         | **Accept for one release**, named in the PR body with a comment at both sites. `needGlyphs.test.ts` carries the assertion that flips when #2501 lands                                                                                                                                                                        |
+| **Rulings 2 and 4 contradict until #2501** — presence on the room, exclusivity on the family                                         | **Accepted for one release**, named in the PR body with a comment at both sites. `needGlyphs.test.ts` carried the assertion that flips when #2501 lands. ✅ **Spent 2026-08-20**: #2501 landed, both rulings read presence, and that assertion has flipped. The release the contradiction was borrowed against is this one   |
 
 ## 5b. Answered 2026-08-20 — the glyph rulings the review produced
 
@@ -194,13 +216,13 @@ resolved by an implementer without guessing.
 
 ## 7. Deferred, with issues
 
-| Issue        | What                                                                                                                                                   |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| kindred#2499 | evaluate removing the `Write-in` badge from the map surfaces                                                                                           |
-| kindred#2500 | year roll-forward should create units **unconfirmed** — this is what makes _Reconfirm space_ fire at all                                               |
-| kindred#2501 | the bathroom fit rule, above                                                                                                                           |
-| kindred#2502 | `_build_units` scores a container's bathroom on its own blank row                                                                                      |
-| kindred#2503 | optional party size on a write-in, its effect on the occupancy numerator, **and the Assign modal's `People` field** — the modal ships without it (§5a) |
+| Issue            | What                                                                                                                                                                                                    |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| kindred#2499     | evaluate removing the `Write-in` badge from the map surfaces                                                                                                                                            |
+| kindred#2500     | year roll-forward should create units **unconfirmed** — this is what makes _Reconfirm space_ fire at all                                                                                                |
+| ~~kindred#2501~~ | **Landed 2026-08-20** — the bathroom fit rule, above. Presence in both readings                                                                                                                         |
+| ~~kindred#2502~~ | **Landed 2026-08-20** — a container now resolves `bathroom` from its leaves, and `ac_coverage` joins the three coverage twins. The card, the map peek and the Assign modal all read the resolved fields |
+| kindred#2503     | optional party size on a write-in, its effect on the occupancy numerator, **and the Assign modal's `People` field** — the modal ships without it (§5a)                                                  |
 
 ## 8. Where the deliberation lives, and which source wins
 
@@ -254,7 +276,21 @@ The roster therefore called twelve entirely-powered buildings unpowered while
 the board's own hatch called them fine. All three call the resolver now.
 
 WHICH needs a surface reports is still per-surface, and each scope is written
-down where it lives rather than implied: the drag hatch grades three (bathroom
-would hatch 112 of 118 cards and 90 even after #2501), the roster grades two
-(adding fridge and step-free moves parties between staff-facing section counts
-and needs its own ruling), and the card draws all four.
+down where it lives rather than implied: the drag hatch grades three, the roster
+grades two (adding fridge and step-free moves parties between staff-facing
+section counts and needs its own ruling), and the card draws all four.
+
+**Bathroom is the one excluded from the hatch on arithmetic, and the arithmetic
+moved twice on 2026-08-20** — re-derived against the production snapshot by
+running the shipped functions over all 118 units, not carried forward:
+
+| Rule the hatch would grade on                             | Units answering the need | Cards hatched |
+| --------------------------------------------------------- | ------------------------ | ------------- |
+| exclusivity, before container resolution _(pre-#2501)_    | 6                        | 112           |
+| presence, before container resolution                     | 28                       | 90            |
+| **presence, after `_resolve_bathroom` _(shipped today)_** | **36**                   | **82**        |
+
+#2502's `_resolve_bathroom` moves 8 of the 15 containers from `none` to a
+bathroom their rooms actually have, which is why the presence figure improved
+again after #2501 landed. 82 of 118 is still a wash, so the exclusion stands —
+but quote 82, not 90.

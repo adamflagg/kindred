@@ -128,8 +128,9 @@ export interface NeedGlyphSpec {
    * says "private"; the CampMinder question behind it never asks about
    * exclusivity — *"a bathroom that doesn't require you to leave your
    * cabin"* — so the label says the axis that was actually asked. See §4 of
-   * the vocabulary doc for the full correction, and `bathroomCoverage` below
-   * for why the RULE has not moved with the word yet.
+   * the vocabulary doc for the full correction. The RULE has now moved with
+   * the word (kindred#2501): `bathroomCoverage` grades presence, and only the
+   * column's name still lags, which is a named follow-up.
    */
   readonly label: string
   readonly Icon: LucideIcon
@@ -168,7 +169,7 @@ export interface NeedGlyphSpec {
 }
 
 /**
- * The bathroom need's supply, and the one that reads the PARTY.
+ * The bathroom need's supply, and the one that reads the PARTY when placed.
  *
  * `unit.bathroom` is one room's own field, and a merged slot's `unit_code` is
  * `""` BY DESIGN (kindred#1982) — so there is no single unit to read it off
@@ -177,21 +178,29 @@ export interface NeedGlyphSpec {
  * answer across every code the placement covers (`lodging_rules`,
  * kindred#2022), container inheritance included.
  *
- * ⚠️ THIS IS THE HALF OF THE RULING THAT HAS NOT LANDED, DELIBERATELY.
+ * ⚠️ THIS GRADES PRESENCE, NOT EXCLUSIVITY — kindred#2501, owner ruling
+ * 2026-08-20: *"the glyph should not grade exclusivity, just 'do they have a
+ * bathroom (shared or private)'"* and, on the shared case itself, *"sharing a
+ * bathroom for whatever reason still provides people a bathroom."*
  *
- * The unit card WILL draw its bathroom mark as PRESENCE — `bathroom != 'none'`,
- * the axis the form actually asks about — when kindred#2072's stage 3 lands;
- * today it still spells out `Private` / `Shared`. This grades a SHARED
- * bathroom as not meeting the need either way, because that is what the
- * product has always said
- * and changing it is kindred#2501 — itself gated on reading the Adult form's
- * wording, which supplies 19 of 66 flagged households and has never been
- * audited.
+ * So `'shared'` joins `'private'` in the met arm. It is worth being precise
+ * about what `'shared'` MEANS, because the word invites the wrong reading: it
+ * is a bathroom INSIDE the cabin that two parties split. Walking to a
+ * bathhouse is not `'shared'` — it records as `'none'`, and still reads as
+ * unmet. The CampMinder question behind the flag asks for *"a bathroom that
+ * doesn't require you to leave your cabin"*, so the axis was never
+ * exclusivity, and the column's name (`needs_private_bathroom`) is the thing
+ * that is wrong here. Renaming it is a deliberate follow-up, not this change.
  *
- * So for one release a room can show "has a bathroom" while the family on it
- * shows a red bathroom glyph. Owner ruling 2026-08-19: accept it and name it.
- * When #2501 lands this becomes `'shared'` joining the `'private'` arm, and
- * `needGlyphs.test.ts` carries the assertion that flips.
+ * WHAT IT COSTS, ACCEPTED ON THE RECORD: the ~3–5 households a year who need a
+ * bathroom nobody else uses lose an automatic red mark and are found by
+ * reading the request instead.
+ *
+ * This ENDS a one-release contradiction rather than creating one. The unit
+ * card draws its own bathroom mark for `private` and `shared` alike — its
+ * predicate is presence, neither `none` nor `unknown` — so until now a room
+ * could show "has a bathroom" while the family placed on it showed a red
+ * bathroom glyph, off the same field. One axis now, on both marks.
  */
 function bathroomCoverage(
   party: RosterPartyRow,
@@ -199,10 +208,16 @@ function bathroomCoverage(
   reading: NeedReading
 ): Coverage {
   // The PROSPECTIVE half: the candidate cabin's own field, which is also what
-  // the unit card's amenity mark prints — so a row in the Assign modal can
-  // never contradict the card it was opened from.
+  // the unit card's amenity mark prints.
+  //
+  // ⚠️ BOTH READINGS TAKE THE SAME PREDICATE BELOW, AND THAT IS LOAD-BEARING.
+  // This comment used to claim an Assign-modal row "can never contradict the
+  // card it was opened from" — it could and it did, because the card graded
+  // presence and this graded exclusivity. #2501's body was written against the
+  // placed lane alone for the same reason; flipping only that one would have
+  // moved the contradiction into the modal rather than closing it.
   const value = reading === 'prospective' ? (unit.bathroom ?? 'unknown') : party.effective_bathroom
-  if (value === 'private') return 'all'
+  if (value === 'private' || value === 'shared') return 'all'
   if (value === undefined || value === 'unknown') return 'unknown'
   return 'none'
 }
