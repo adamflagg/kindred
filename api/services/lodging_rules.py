@@ -373,25 +373,35 @@ class RequestTextSource(NamedTuple):
 
     `label` is the CampMinder field name VERBATIM, including the misnamed
     `COVID-19 Bunking Requests` -- the field that has plainly been repurposed
-    as the general bunking-request question and carries 205 of the 382
-    households rostered into a 2026 family session. Owner ruling 2026-08-17:
-    "call them the original fieldnames for now until staff can weigh in after
-    it's live". A display-names issue gets filed once they have. Do not
-    "improve" these strings.
+    as the general bunking-request question and carries 238 of the 479
+    households rostered into a 2026 family-camp registration (kindred#2476,
+    re-measured 2026-08-21). Owner ruling 2026-08-17: "call them the original
+    fieldnames for now until staff can weigh in after it's live". A
+    display-names issue gets filed once they have. Do not "improve" these
+    strings.
     """
 
     label: str
     authorship: RequestTextAuthorship
 
 
-# ORDERED, and the order is the panel's block order. Family-authored fields
-# first so a household's own ask leads, staff-authored notes last; within a
-# lane, by 2026 coverage, so the field staff read most often is at the top.
+# ORDERED, and the order is the panel's block order.
+#
+# kindred#2476, owner ruling 2026-08-21: this order is what STAFF ASKED FOR.
+# It is NOT derived from authorship or volume, and it must NOT be re-derived
+# from the data by a later reader. On 2026 family-camp households
+# `Share Bunk With` is the SECOND MOST POPULATED of the six blocks (234 of
+# 479) -- ahead of `Shared-request` (114) and `FAM CAMP-Share Comments` (0)
+# -- yet staff placed it last. The order used to be "family-authored fields
+# first, staff notes last, each lane sorted by 2026 coverage"; that rule no
+# longer holds (`Share Bunk With` is family-authored and sorts after both
+# staff notes) and must not be reinstated by "correcting" the order back to
+# match volume or authorship.
 #
 # Counts are rostered households on `pocketbase/pb_data/data-prod.db`,
-# denominator 382 (`status_id = 2`, 2026's eight family sessions):
-# COVID-19 Bunking Requests 205, Share Bunk With 104, Shared-request 100,
-# BunkingNotes Notes 28, Internal Bunk Notes 8.
+# denominator 479 (2026 family-camp registrations):
+# COVID-19 Bunking Requests 238, Share Bunk With 234, Shared-request 114,
+# BunkingNotes Notes 111, Internal Bunk Notes 10.
 #
 # `FAM CAMP-Share Comments` is 0 for 2026 and is carried anyway. It is one of
 # the three fields the Go ingest already joins into `request_text` (live
@@ -411,11 +421,11 @@ class RequestTextSource(NamedTuple):
 #   an immaterial source field.
 REQUEST_TEXT_SOURCES: tuple[RequestTextSource, ...] = (
     RequestTextSource("COVID-19 Bunking Requests", "family"),
-    RequestTextSource("Share Bunk With", "family"),
     RequestTextSource("Shared-request", "family"),
     RequestTextSource("FAM CAMP-Share Comments", "family"),
     RequestTextSource("BunkingNotes Notes", "staff"),
     RequestTextSource("Internal Bunk Notes", "staff"),
+    RequestTextSource("Share Bunk With", "family"),
 )
 
 # The family-camp lane: CampMinder custom-field ids, matching the three

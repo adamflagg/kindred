@@ -551,9 +551,11 @@ class ShareRequestSummary(BaseModel):
     # family-authored blocks and `request_text` are not gated. See
     # `_may_read_staff_notes` in api/routers/lodging.py.
     #
-    # Ordered by `REQUEST_TEXT_SOURCES` -- family-authored blocks first, staff
-    # notes last. A source field with no text produces NO block: kindred#2255's
-    # ruling for this same modal leaves no "nothing applicable" clutter behind.
+    # Ordered by `REQUEST_TEXT_SOURCES` -- a staff-specified order (kindred#2476,
+    # owner ruling 2026-08-21), NOT derived from authorship or volume. `Share
+    # Bunk With` is family-authored and sorts last, after both staff notes. A
+    # source field with no text produces NO block: kindred#2255's ruling for
+    # this same modal leaves no "nothing applicable" clutter behind.
     request_blocks: list[RequestTextBlock] = Field(default_factory=list)
 
     # What the board actually places on. `preference` above stays the raw
