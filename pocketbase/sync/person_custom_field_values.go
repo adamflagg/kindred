@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/pocketbase/pocketbase/core"
@@ -617,6 +618,57 @@ func (s *PersonCustomFieldValuesSync) deleteOrphans(year int, sweptOwners map[st
 				"custom_field_defs still holds these field definitions",
 		},
 	)
+}
+
+// cmIDSocializeWithBest is the CampMinder custom-field id for "Ret Parent-Socialize with
+// best" -- the summer bunking dropdown kindred#2484 reads directly from person_custom_values
+// instead of the manually uploaded bunk-requests CSV column ("RetParent-Socializewithbest").
+// The free-text companion field (cm_id 85804, "...Explain") is a deliberately separate,
+// out-of-scope decision per #2484 -- do not extend this constant to cover it.
+const cmIDSocializeWithBest = 85803
+
+// loadPersonCustomFieldValuesByCMID returns person PB id -> raw value for every
+// person_custom_values row in the given year whose field_definition matches the
+// custom_field_defs record carrying fieldCMID.
+//
+// custom_field_defs is the join target -- NOT person_tag_defs -- and getting that join
+// wrong returns zero rows with no error, which is why the cm_id lookup is isolated here
+// rather than inlined at each call site (kindred#2484).
+//
+// A field definition that has not synced yet (custom_field_defs has no matching row) is
+// reported as an empty map, not an error: callers that fall back to another source (e.g.
+// bunk_requests.go's CSV-to-custom-field swap) treat "nothing to switch to yet" as
+// normal, not fatal.
+func loadPersonCustomFieldValuesByCMID(app core.App, fieldCMID, year int) (map[string]string, error) {
+	defs, err := app.FindRecordsByFilter(
+		"custom_field_defs", fmt.Sprintf("cm_id = %d", fieldCMID), "", 1, 0, nil)
+	if err != nil {
+		return nil, fmt.Errorf("finding custom field definition %d: %w", fieldCMID, err)
+	}
+	if len(defs) == 0 {
+		return map[string]string{}, nil
+	}
+
+	records, err := app.FindRecordsByFilter(
+		"person_custom_values",
+		fmt.Sprintf("field_definition = '%s' && year = %d", defs[0].Id, year),
+		"", 0, 0, nil)
+	if err != nil {
+		return nil, fmt.Errorf("finding person_custom_values for field %d: %w", fieldCMID, err)
+	}
+
+	values := make(map[string]string, len(records))
+	for _, record := range records {
+		if personPBId := record.GetString("person"); personPBId != "" {
+			// PR #2523 review: CampMinder's custom-field export is a different path
+			// than the CSV, whose column is already trimmed (getColumn's
+			// strings.TrimSpace). Trimming here too keeps a whitespace-only
+			// difference from reading as a real disagreement to callers that
+			// compare this value against the CSV (bunk_requests.go).
+			values[personPBId] = strings.TrimSpace(record.GetString("value"))
+		}
+	}
+	return values, nil
 }
 
 // transformPersonCustomFieldValueToPB transforms CampMinder custom field value data to PocketBase format
