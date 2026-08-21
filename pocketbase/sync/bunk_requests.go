@@ -37,6 +37,15 @@ type BunkRequestsSync struct {
 	BaseSyncService
 	validPersonIDs map[int]string // Maps CampMinder person ID to PocketBase person ID
 	csvPersonIDs   map[int]bool   // Tracks all enrolled person IDs seen in the CSV
+
+	// socializeWithByPerson maps person PB id -> the CampMinder custom field's raw
+	// value (cm_id 85803, "Ret Parent-Socialize with best") for the current sync year.
+	// kindred#2484: this is now the source of truth for the "socialize_with" field --
+	// the CSV column is still read in processRow (so a disagreement can be logged
+	// during the transition), but the value written to original_bunk_requests comes
+	// from here whenever a non-empty entry exists. A person absent from this map
+	// (custom field not yet synced for them) falls back to the CSV column unchanged.
+	socializeWithByPerson map[string]string
 }
 
 // NewBunkRequestsSync creates a new sync service
@@ -124,6 +133,20 @@ func (s *BunkRequestsSync) RunSync(csvPath string, _ int) error {
 
 	// Get current year from config
 	currentYear := s.getCurrentYear()
+
+	// kindred#2484: preload the socialize_with custom field values once for this run,
+	// rather than per-row -- the field definition and every person's answer for the
+	// year are the same for every row processRow will see. A load failure (or the
+	// field definition not being synced yet) is not fatal to the CSV sync: it just
+	// means every row falls back to sourcing socialize_with from the CSV column, as
+	// it did before this issue.
+	socializeWithValues, err := loadPersonCustomFieldValuesByCMID(s.App, cmIDSocializeWithBest, currentYear)
+	if err != nil {
+		slog.Warn("Loading socialize_with custom field values failed, sourcing socialize_with from CSV only",
+			"error", err)
+		socializeWithValues = map[string]string{}
+	}
+	s.socializeWithByPerson = socializeWithValues
 
 	// Process rows
 	rowNumber := 1 // Start at 1 since we already read headers
@@ -234,6 +257,24 @@ func (s *BunkRequestsSync) processRow(row []string, columnIndex map[string]int, 
 	// Process each CSV field that maps to our field options
 	for csvColumn, fieldName := range csvFieldMap {
 		content := s.getColumn(row, columnIndex, csvColumn)
+
+		// kindred#2484: socialize_with's source of truth is the CampMinder custom
+		// field (cm_id 85803), not this CSV column, from here on. The column is still
+		// read above so a disagreement between the two can be logged during the
+		// transition -- the custom field wins when it carries a non-empty value; a
+		// person absent from the map, or present with an empty value (field synced
+		// but genuinely blank), falls back to the CSV content unchanged.
+		if fieldName == "socialize_with" {
+			if customValue, ok := s.socializeWithByPerson[personPBID]; ok && customValue != "" {
+				if content != "" && content != customValue {
+					slog.Warn("socialize_with: CSV and custom field values disagree, using custom field",
+						"person_cm_id", personID,
+						"csv_value", content,
+						"custom_field_value", customValue)
+				}
+				content = customValue
+			}
+		}
 
 		// Check if record exists for this person/year/field combination
 		existingRecords, err := s.App.FindRecordsByFilter(
