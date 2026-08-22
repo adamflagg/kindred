@@ -152,7 +152,7 @@ function mountNameCrossfade(
   ghost.textContent = outgoingName
   // The real title's classes minus `truncate`, and NO fixed width: the ghost
   // was sized to the INCOMING title's box, so an outgoing name wider than the
-  // incoming one ("Wawona Front" over "Wawona") ellipsized mid-crossfade
+  // incoming one ("Cedar Upstairs" over "Cedar") ellipsized mid-crossfade
   // (owner-reported). It lays out at its own width instead, capped at the
   // card's edge — clipped without an ellipsis in the rare overflow.
   ghost.className = title.className
