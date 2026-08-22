@@ -135,6 +135,112 @@ def is_family_available(inventory_class: str, override: bool | None, is_occupied
     return inventory_class != "staff_default"
 
 
+class WriteInLoad(NamedTuple):
+    """One write-in's claim on one card.
+
+    `capacity` is the capacity of the unit the ROW names, which is not the
+    card's own on a descendant cover: a written-into room inside a combined
+    house contributes the ROOM's beds. `None` there means nobody measured it.
+    """
+
+    relation: Literal["own", "ancestor", "descendant"]
+    party_size: int | None
+    capacity: int | None
+
+
+class WriteInDemand(NamedTuple):
+    """What the write-ins on one card take, and whether that is a fact.
+
+    `consumed` drives every bed statement. `sized` drives the card's NUMERATOR
+    alone, and excludes both the wholesale fallback and an ancestor's size --
+    see `write_in_demand`. `known` gates the drag-time marks kindred#2528
+    built: a count that is not a fact supports neither the red figure nor the
+    match wash.
+    """
+
+    consumed: int
+    sized: int
+    known: bool
+
+
+def write_in_demand(capacity: int | None, loads: Sequence[WriteInLoad]) -> WriteInDemand:
+    """How many beds the write-ins covering one card take.
+
+    ONE DEFINITION, MIRRORED ONCE, in `writeInDemand`
+    (`frontend/src/components/weekend/writeIn.ts`). The card's numerator, the
+    Assign modal's header, the map peek and the stats bar all descend from
+    this; two derivations would be two answers to "is there room here".
+
+    Each cover contributes its recorded size, or -- with none -- the whole
+    capacity of the unit it names, because a row with no count still asserts
+    somebody is in that space. That is the em dash's meaning written down as
+    arithmetic rather than a new rule.
+
+    AN ANCESTOR TAKES THE WHOLE CARD. The house was let whole and a room inside
+    it is not separately lettable. The alternative -- each room subtracting the
+    ancestor's size -- spends one party once per room, and would report a
+    seven-bed house holding four people as having five beds free.
+
+    AN ANCESTOR CONTRIBUTES NOTHING TO `sized`, even carrying a count. That
+    count is a fact about the house; printing it on both halves of a split
+    Wawona puts one two-person party on the screen twice.
+    """
+    if not loads:
+        return WriteInDemand(consumed=0, sized=0, known=True)
+    if capacity is None:
+        # Nothing to subtract from. `consumed` is meaningless here and callers
+        # must read `known` before using it; `free_family_beds` closes the unit
+        # instead of reporting a number.
+        return WriteInDemand(consumed=0, sized=0, known=False)
+
+    consumed = 0
+    sized = 0
+    known = True
+    for load in loads:
+        if load.relation == "ancestor":
+            # Whole-card, and a FACT -- unlike a wholesale guess about a room
+            # that may be shared. Nothing can exceed it, so stop.
+            return WriteInDemand(consumed=capacity, sized=sized, known=known)
+        if load.party_size is not None:
+            consumed += load.party_size
+            sized += load.party_size
+            continue
+        known = False
+        if load.capacity is None:
+            # An unbounded wholesale claim: somebody is in a space nobody
+            # measured, so nothing on this card is offerable.
+            return WriteInDemand(consumed=capacity, sized=sized, known=False)
+        consumed += load.capacity
+    return WriteInDemand(consumed=min(consumed, capacity), sized=sized, known=known)
+
+
+def free_family_beds(capacity: int | None, loads: Sequence[WriteInLoad]) -> int | None:
+    """Beds left on this card once its write-ins are paid for.
+
+    THREE RETURNS, and the middle one is load-bearing:
+
+    * `None`  -- no occupancy at all; the ROLE decides, unchanged. This mirrors
+                 `override: None` in `is_family_available` and does NOT mean
+                 "unmeasured".
+    * `0`     -- covered, and the remainder is not computable. An unmeasured
+                 cabin somebody is written into must CLOSE; falling through to
+                 the role there reports a cabin with a person in it as an open
+                 space.
+    * `n`     -- the remainder.
+
+    Placed families are NOT subtracted here. `beds_family_available` is paired
+    with `bedsNeeded` on the stats bar, and a placed family is counted in that
+    numerator; subtracting its beds too would count it on both sides. A
+    write-in is on nobody's roster and appears in neither, which is exactly why
+    its beds have to leave the denominator.
+    """
+    if not loads:
+        return None
+    if capacity is None:
+        return 0
+    return max(0, capacity - write_in_demand(capacity, loads).consumed)
+
+
 def effective_bathroom(
     bathroom: str,
     bathroom_group: str,
