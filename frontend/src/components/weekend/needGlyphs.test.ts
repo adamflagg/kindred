@@ -16,7 +16,14 @@
 import { describe, expect, it } from 'vitest'
 
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
-import { NEED_GLYPHS, needCoverage, needVerdict, resolveNeedGlyphs } from './needGlyphs'
+import {
+  NEED_GLYPHS,
+  needCoverage,
+  needExplainTexts,
+  needGlyph,
+  needVerdict,
+  resolveNeedGlyphs,
+} from './needGlyphs'
 
 function unit(overrides: Partial<LodgingUnitRow> = {}): LodgingUnitRow {
   return {
@@ -356,5 +363,72 @@ describe('needCoverage — the PROSPECTIVE reading', () => {
       'prospective'
     )
     expect(glyphs.map((glyph) => glyph.isUnmet)).toEqual([false])
+  })
+})
+
+describe('explainSources — which medical field(s) explain each need', () => {
+  /*
+   * The board card's glyph tooltip appends the family's own explain text for
+   * staff who hold `bunking.manage`. WHICH field explains WHICH need is
+   * vocabulary, so it is pinned here with the rest of the closed set, and it
+   * mirrors the Go sync's flag derivation rather than guessing by name:
+   * `needs_private_bathroom` is derived from `bathroom_explain`, `needs_power`
+   * from `cpap_info` (the power need IS the CPAP disclosure), `needs_fridge`
+   * keyword-matches `accommodation_explain`, and `needs_step_free`
+   * keyword-matches BOTH `accommodation_explain` and `bathroom_explain`.
+   */
+  it('maps each need to the field(s) its flag was derived from', () => {
+    expect(needGlyph('bathroom').explainSources).toEqual(['bathroom_explain'])
+    expect(needGlyph('power').explainSources).toEqual(['cpap_info'])
+    expect(needGlyph('fridge').explainSources).toEqual(['accommodation_explain'])
+    expect(needGlyph('step_free').explainSources).toEqual([
+      'accommodation_explain',
+      'bathroom_explain',
+    ])
+  })
+})
+
+describe('needExplainTexts — the explain paragraphs one glyph appends', () => {
+  it('returns the mapped texts in source order', () => {
+    const texts = needExplainTexts('step_free', {
+      accommodation_explain: 'A ground-floor room, please — Riley uses a walker.',
+      bathroom_explain: 'Cannot manage the path to the bathhouse at night.',
+    })
+    expect(texts).toEqual([
+      'A ground-floor room, please — Riley uses a walker.',
+      'Cannot manage the path to the bathhouse at night.',
+    ])
+  })
+
+  it('reads only its own source field, never a sibling need’s', () => {
+    const medical = {
+      cpap_info: 'Samuel uses a CPAP and needs an outlet by the bed.',
+      bathroom_explain: 'Cannot manage the path to the bathhouse at night.',
+    }
+    expect(needExplainTexts('power', medical)).toEqual([
+      'Samuel uses a CPAP and needs an outlet by the bed.',
+    ])
+    expect(needExplainTexts('bathroom', medical)).toEqual([
+      'Cannot manage the path to the bathhouse at night.',
+    ])
+    expect(needExplainTexts('fridge', medical)).toEqual([])
+  })
+
+  it('skips empty and whitespace-only fields — the label alone is the tooltip then', () => {
+    expect(
+      needExplainTexts('step_free', { accommodation_explain: '   ', bathroom_explain: '' })
+    ).toEqual([])
+    expect(
+      needExplainTexts('step_free', {
+        accommodation_explain: '',
+        bathroom_explain: 'Cannot manage stairs.',
+      })
+    ).toEqual(['Cannot manage stairs.'])
+  })
+
+  it('returns nothing while the payload has not arrived', () => {
+    // Loading and permission-denied both reach the tooltip as `undefined`;
+    // either way it shows exactly what it shows today.
+    expect(needExplainTexts('power', undefined)).toEqual([])
   })
 })

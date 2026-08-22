@@ -550,7 +550,17 @@ function FamilyCardChips({
         {/* Glyphs lead, in the closed set's own order, because they are the
             household's ASK and everything after them is context for it. */}
         {glyphs.map((glyph) => (
-          <NeedGlyphMark key={glyph.key} glyph={glyph} />
+          <NeedGlyphMark
+            key={glyph.key}
+            glyph={glyph}
+            // The household whose own words the tooltip may FETCH for a
+            // `bunking.manage` holder once opened — never text carried on the
+            // roster payload; see the prop's doc for the containment this
+            // respects. `|| null`, not `??`: RosterParty ids serialise as 0,
+            // never undefined, and /households/0/medical is not a request
+            // worth making — a person-grain party lands here too.
+            explainHouseholdCmId={isHousehold ? party.household_cm_id || null : null}
+          />
         ))}
 
         {/* The hardest stop on the board — a member cannot attend without the
