@@ -123,15 +123,24 @@ export interface WriteInCardProps {
    */
   onRemove?: () => void
   /**
-   * Save an edit to THIS write-in's occupant name and note — kindred#2430.
+   * Save an edit to THIS write-in's occupant name, note, and party size —
+   * kindred#2430, and kindred#2503 for the count.
    *
    * NO ID, for the same reason `onRemove` takes none: the card knows which
    * row it draws and the caller binds the target, so there is exactly one
    * place that has to agree about which of the well's rows this is. Omitted
    * for a reader who cannot edit, which hides the pencil rather than a
    * second permission flag here.
+   *
+   * `partySize` is ALWAYS a real answer, never a "didn't ask" placeholder:
+   * `null` when the People field is blank (wholesale, or untouched from a
+   * row that already had no count) and the row's own recorded count when
+   * the field was left alone. The caller — `LodgingUnitCard.tsx`'s `onEdit`
+   * handler — forwards this value verbatim rather than re-deriving it from
+   * the row, which is what makes "save without touching People" and "clear
+   * People to blank" distinguishable on the wire.
    */
-  onEdit?: (write: { occupantName: string; reason: string }) => void
+  onEdit?: (write: { occupantName: string; reason: string; partySize: number | null }) => void
   /**
    * True while a write this card's controls are waiting on is in flight.
    *
@@ -155,17 +164,71 @@ export function WriteInCard({ occupant, onRemove, onEdit, isSaving = false }: Wr
   const [isEditing, setIsEditing] = useState(false)
   const [draftName, setDraftName] = useState(occupant.name)
   const [draftNote, setDraftNote] = useState(occupant.note)
+  // Seeded as a STRING, matching `AssignFamilyModal`'s `people` state — empty
+  // when `occupant.partySize` is `null`, otherwise the count printed as text.
+  // See the parse gate below the form for why the state is the string the
+  // field displays rather than the number it means.
+  const [draftPeople, setDraftPeople] = useState(
+    occupant.partySize === null ? '' : String(occupant.partySize)
+  )
   const [wantsName, setWantsName] = useState(false)
 
   const openEdit = () => {
     setDraftName(occupant.name)
     setDraftNote(occupant.note)
+    setDraftPeople(occupant.partySize === null ? '' : String(occupant.partySize))
     setWantsName(false)
     setIsEditing(true)
   }
   const closeEdit = () => {
     setIsEditing(false)
     setWantsName(false)
+  }
+
+  // OPTIONAL, exactly as the Assign modal's write-in form (owner ruling
+  // 2026-08-21): blank is a complete answer meaning the write-in takes the
+  // room wholesale, and Save is not gated on it.
+  //
+  // ⚠️ `Number(...)`, NOT `Number.parseInt(...)` — Task 9 shipped `parseInt`
+  // in this same shape and it silently saved `1` for a typed `1.5` and `1`
+  // for `1e3`, both forbidden by the owner ruling that a value must save
+  // correctly or refuse, never save as something else. `Number('1.5')` is
+  // `1.5`, caught by `Number.isInteger` below; `Number('1e3')` is `1000`,
+  // read correctly rather than truncated to `1`.
+  const parsedPeople = Number(draftPeople)
+  const draftPartySize = draftPeople.trim() === '' ? null : parsedPeople
+  const peopleValid =
+    draftPartySize === null || (Number.isInteger(draftPartySize) && draftPartySize >= 1)
+
+  // Shared by the form's own `onSubmit` (Save, or Enter from Occupant/Note)
+  // and the People field's `onKeyDown` below. `fireEvent.keyDown` in jsdom
+  // does not trigger native implicit form submission the way a real Enter
+  // keypress does in a browser, so People needs an explicit call site rather
+  // than relying on the surrounding `<form>` — the same reason
+  // `AssignFamilyModal`'s own People field carries an explicit handler
+  // (weekend-card-vocabulary.md §6: Enter saves from a field).
+  const trySubmit = () => {
+    const trimmedName = draftName.trim()
+    // THE SAME GUARD THE ASSIGN MODAL'S WRITE-IN OFFER USES (`offersWriteIn`,
+    // which requires a non-empty trimmed name): a write-in that names nobody
+    // is a valid state a legacy row can already be in, but an edit that
+    // CLEARS a name is a staff member erasing who is in the room, which is
+    // worth a refusal rather than a silent write.
+    //
+    // It named `UnitAvailabilityControl`'s occupant prompt until that
+    // control was cut (kindred#2072 stage 3, vocabulary §3). The rule
+    // outlived the control; the modal is where it lives now.
+    if (trimmedName === '') {
+      setWantsName(true)
+      return
+    }
+    // A count that does not parse REFUSES the whole save, the same way an
+    // empty name does — never saved as something else (owner ruling
+    // 2026-08-21). Blank is not this: `peopleValid` is true for it by
+    // construction, since `draftPartySize` is already `null`.
+    if (!peopleValid) return
+    onEdit?.({ occupantName: trimmedName, reason: draftNote.trim(), partySize: draftPartySize })
+    closeEdit()
   }
 
   if (isEditing) {
@@ -175,23 +238,7 @@ export function WriteInCard({ occupant, onRemove, onEdit, isSaving = false }: Wr
           className="flex w-full flex-col gap-1"
           onSubmit={(event) => {
             event.preventDefault()
-            const trimmedName = draftName.trim()
-            // THE SAME GUARD THE ASSIGN MODAL'S WRITE-IN OFFER USES
-            // (`offersWriteIn`, which requires a non-empty trimmed name): a
-            // write-in that names nobody is a valid state a legacy row can
-            // already be in, but an edit that CLEARS a name is a staff member
-            // erasing who is in the room, which is worth a refusal rather
-            // than a silent write.
-            //
-            // It named `UnitAvailabilityControl`'s occupant prompt until that
-            // control was cut (kindred#2072 stage 3, vocabulary §3). The rule
-            // outlived the control; the modal is where it lives now.
-            if (trimmedName === '') {
-              setWantsName(true)
-              return
-            }
-            onEdit?.({ occupantName: trimmedName, reason: draftNote.trim() })
-            closeEdit()
+            trySubmit()
           }}
         >
           <input
@@ -214,6 +261,34 @@ export function WriteInCard({ occupant, onRemove, onEdit, isSaving = false }: Wr
               setWantsName(false)
             }}
             className="border-border bg-background text-foreground placeholder:text-muted-foreground/60 focus:border-primary/50 focus:ring-primary/10 w-full rounded-md border px-1.5 py-1 text-sm focus:ring-2 focus:outline-none aria-[invalid=true]:border-amber-500"
+          />
+          {/* kindred#2503's `People` field, STACKED above Note — the same
+              order the Assign modal's write-in form uses. OPTIONAL exactly as
+              there (owner ruling 2026-08-21): blank means the write-in takes
+              the room wholesale, and Save is not gated on it. */}
+          <input
+            type="number"
+            min={1}
+            step={1}
+            inputMode="numeric"
+            aria-label="People"
+            placeholder="How many"
+            value={draftPeople}
+            disabled={isSaving}
+            onChange={(event) => {
+              setDraftPeople(event.target.value)
+            }}
+            onKeyDown={(event) => {
+              // ↵ SAVES FROM A FIELD (weekend-card-vocabulary.md §6). Native
+              // form submission on Enter is not reliable under
+              // `fireEvent.keyDown` in jsdom, so this calls the same
+              // `trySubmit` the form's `onSubmit` calls, rather than relying
+              // on the surrounding `<form>` alone.
+              if (event.key !== 'Enter') return
+              event.preventDefault()
+              trySubmit()
+            }}
+            className="border-border bg-background text-foreground placeholder:text-muted-foreground/60 focus:border-primary/50 focus:ring-primary/10 w-full rounded-md border px-1.5 py-1 text-sm focus:ring-2 focus:outline-none"
           />
           <input
             type="text"

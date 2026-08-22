@@ -293,6 +293,9 @@ describe('the corner control that edits THIS write-in (kindred#2430)', () => {
     expect(onEdit).toHaveBeenCalledWith({
       occupantName: 'Liam Garcia-Reyes',
       reason: 'Back Monday',
+      // The row this test seeds carries no recorded count, so the untouched
+      // People field sends `null` — kindred#2503's edit form, task 10.
+      partySize: null,
     })
     expect(screen.queryByRole('textbox', { name: 'Occupant' })).not.toBeInTheDocument()
   })
@@ -347,6 +350,144 @@ describe('the corner control that edits THIS write-in (kindred#2430)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Edit write-in Liam Garcia' }))
 
     expect(screen.getByRole('textbox', { name: 'Occupant' })).toHaveValue('Liam Garcia')
+  })
+})
+
+describe("the pencil's People field, kindred#2503", () => {
+  /*
+   * ⚠️⚠️ THE DATA-LOSS GUARD. `set_availability`'s write-in upsert
+   * (`api/services/lodging_write_service.py:958-969`) includes `party_size`
+   * UNCONDITIONALLY on every write to a write-in row. Before this field
+   * existed, `LodgingUnitCard.tsx`'s `onEdit` handler forwarded
+   * `entry.occupant.partySize` — the row's already-recorded count — rather
+   * than `null`, specifically so that editing a name or note could never
+   * erase a headcount a staff member had already typed. This describe block
+   * pins the same invariant one layer down, at the field this card now owns:
+   * saving the form WITHOUT touching People must still send the recorded
+   * count, and only a deliberate clear may send `null`.
+   */
+  it("seeds from the row's recorded count", () => {
+    render(
+      <WriteInCard
+        occupant={{ name: 'Liam Garcia', note: '', partySize: 3 }}
+        onEdit={() => undefined}
+      />
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit write-in Liam Garcia' }))
+
+    expect(screen.getByLabelText('People')).toHaveValue(3)
+  })
+
+  it('is empty for a row with no recorded count', () => {
+    render(
+      <WriteInCard
+        occupant={{ name: 'Liam Garcia', note: '', partySize: null }}
+        onEdit={() => undefined}
+      />
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit write-in Liam Garcia' }))
+
+    expect(screen.getByLabelText('People')).toHaveValue(null)
+  })
+
+  it('saves the recorded count untouched — the data-loss guard', () => {
+    const onEdit = vi.fn()
+    render(
+      <WriteInCard occupant={{ name: 'Liam Garcia', note: '', partySize: 3 }} onEdit={onEdit} />
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit write-in Liam Garcia' }))
+    // NO CHANGE to People — the pencil is only touching the name/note in the
+    // common case this guards.
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    expect(onEdit).toHaveBeenCalledWith({
+      occupantName: 'Liam Garcia',
+      reason: '',
+      partySize: 3,
+    })
+  })
+
+  it('clears a recorded count back to wholesale, a real edit that sends `null`', () => {
+    const onEdit = vi.fn()
+    render(
+      <WriteInCard occupant={{ name: 'Liam Garcia', note: '', partySize: 3 }} onEdit={onEdit} />
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit write-in Liam Garcia' }))
+    fireEvent.change(screen.getByLabelText('People'), { target: { value: '' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    expect(onEdit).toHaveBeenCalledWith({
+      occupantName: 'Liam Garcia',
+      reason: '',
+      partySize: null,
+    })
+  })
+
+  it('refuses a typed 0, rather than saving it', () => {
+    const onEdit = vi.fn()
+    render(
+      <WriteInCard occupant={{ name: 'Liam Garcia', note: '', partySize: null }} onEdit={onEdit} />
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit write-in Liam Garcia' }))
+    fireEvent.change(screen.getByLabelText('People'), { target: { value: '0' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    expect(onEdit).not.toHaveBeenCalled()
+  })
+
+  it('refuses a fraction rather than silently truncating it (IMPORTANT C)', () => {
+    // `Number.parseInt('1.5', 10)` is `1` — a silent drop the owner ruling
+    // forbids. `Number('1.5')` is `1.5`, caught by `Number.isInteger`.
+    const onEdit = vi.fn()
+    render(
+      <WriteInCard occupant={{ name: 'Liam Garcia', note: '', partySize: null }} onEdit={onEdit} />
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit write-in Liam Garcia' }))
+    fireEvent.change(screen.getByLabelText('People'), { target: { value: '1.5' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    expect(onEdit).not.toHaveBeenCalled()
+  })
+
+  it('reads exponential notation as the number it names, not a truncated digit', () => {
+    // `Number.parseInt('1e3', 10)` is `1`. `Number('1e3')` is `1000`.
+    const onEdit = vi.fn()
+    render(
+      <WriteInCard occupant={{ name: 'Liam Garcia', note: '', partySize: null }} onEdit={onEdit} />
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit write-in Liam Garcia' }))
+    fireEvent.change(screen.getByLabelText('People'), { target: { value: '1e3' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    expect(onEdit).toHaveBeenCalledWith({
+      occupantName: 'Liam Garcia',
+      reason: '',
+      partySize: 1000,
+    })
+  })
+
+  it('saves on Enter from People, as it does from the other fields (weekend-card-vocabulary.md §6)', () => {
+    const onEdit = vi.fn()
+    render(
+      <WriteInCard occupant={{ name: 'Liam Garcia', note: '', partySize: null }} onEdit={onEdit} />
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit write-in Liam Garcia' }))
+    fireEvent.change(screen.getByLabelText('People'), { target: { value: '2' } })
+    fireEvent.keyDown(screen.getByLabelText('People'), { key: 'Enter' })
+
+    expect(onEdit).toHaveBeenCalledWith({
+      occupantName: 'Liam Garcia',
+      reason: '',
+      partySize: 2,
+    })
   })
 })
 

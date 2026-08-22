@@ -1288,21 +1288,33 @@ const LodgingUnitCardInner = memo(function LodgingUnitCardInner({
                   // (`_upsert_row(what='write-in', ...)`), so this write updates
                   // the existing row rather than creating a second one.
                   //
-                  // `partySize: entry.occupant.partySize` — the RECORDED size,
-                  // not `null`. `WriteInCard`'s pencil edits the occupant and
-                  // the note only (kindred#2503's edit form is a later task),
-                  // and `party_size` rides in every write-in upsert's payload
-                  // regardless of what the form asked about — sending `null`
-                  // here would silently erase a count a staff member had
-                  // already recorded, on every unrelated note edit.
-                  onEdit: (write: { occupantName: string; reason: string }) => {
+                  // `partySize: write.partySize` — FORWARDED FROM THE FORM,
+                  // kindred#2503's edit form (task 10), not re-derived from
+                  // `entry.occupant.partySize` as it was before this field
+                  // existed. `WriteInCard`'s pencil now seeds its own People
+                  // field from the row's recorded count and sends that value
+                  // back unchanged when the field is left alone, which is
+                  // what preserves the data-loss guard this comment used to
+                  // carry: `party_size` rides in every write-in upsert's
+                  // payload regardless of what else the form asked about, so
+                  // a save that sent `null` here would silently erase a count
+                  // a staff member had already recorded, on every unrelated
+                  // note edit. The guard now lives inside `WriteInCard.tsx`
+                  // itself — see its `onEdit` prop doc — and this call site's
+                  // job is only to forward what the form decided, not to
+                  // decide it again.
+                  onEdit: (write: {
+                    occupantName: string
+                    reason: string
+                    partySize: number | null
+                  }) => {
                     onSetAvailability({
                       unitId: entry.source.unitId,
                       unitName: entry.source.unitName,
                       familyAvailable: false,
                       occupantName: write.occupantName,
                       reason: write.reason,
-                      partySize: entry.occupant.partySize,
+                      partySize: write.partySize,
                     })
                   },
                 }
