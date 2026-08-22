@@ -871,7 +871,9 @@ def _resolve_write_in_covers(
 
 
 def _resolve_family_availability(
-    units: list[LodgingUnitSummary], capacity_by_code: dict[str, int | None]
+    units: list[LodgingUnitSummary],
+    capacity_by_code: dict[str, int | None],
+    write_in_unit_ids: frozenset[str],
 ) -> dict[str, int | None]:
     """Recompute `is_family_available` from the RESOLVED covers, in place.
 
@@ -900,6 +902,25 @@ def _resolve_family_availability(
     judged on its whole-house total and a written-into ROOM on the room's own
     beds; reading `unit.sleeps` here would judge all fifteen production
     containers at `sleeps = 0`.
+
+    ⚠️ `write_in_unit_ids` IS THE BLANK-CODE BACKSTOP, and it is why this takes
+    a third argument rather than reading covers alone. Everything above is
+    keyed by CODE, and `write_in_covers` deliberately drops a blank-coded unit
+    from both sides of its map -- "" is the key `parent_code == ""` uses for
+    "no parent", so one blank-coded row would otherwise hand its occupant to
+    every other blank-coded row. That guard is right. But it means a
+    blank-coded unit holding its OWN write-in row arrives here with no cover
+    and no capacity, resolves to `free is None` -- "no occupancy, ask the role"
+    -- and reports OPEN, which is the exact failure this resolver exists to
+    remove. `_build_units` used to close it by reading the row directly.
+
+    So a unit whose id is in the write-in source and which the walk gave no
+    cover resolves to 0, not None. It is the same 0 `free_family_beds` returns
+    for a covered cabin nobody has measured -- "covered, and the remainder is
+    not computable" -- which keeps availability derived from `free > 0` alone
+    rather than growing a second boolean path. Not live (0 of 118 production
+    units have a blank code, and no write-in points at one); reachable because
+    the admin UI can create one and the schema does not forbid it.
     """
     free_by_unit: dict[str, int | None] = {}
     for unit in units:
@@ -913,6 +934,10 @@ def _resolve_family_availability(
             for cover in unit.write_ins
         ]
         free = free_family_beds(capacity_by_code.get(unit.code), loads)
+        if free is None and unit.unit_id in write_in_unit_ids:
+            # A row the code-keyed walk could not represent -- see the
+            # docstring's blank-code paragraph. Covered, and unmeasurable.
+            free = 0
         free_by_unit[unit.unit_id] = free
         unit.is_family_available = is_family_available(unit.inventory_class, unit.family_available_override, free)
     return free_by_unit
@@ -1123,6 +1148,31 @@ def _effective_sleeps(unit: LodgingUnitSummary, unit_index: _BathroomIndex) -> i
     if unit.sleeps is None and not leaf_sleeps:
         return None
     return (unit.sleeps or 0) + sum(s for s in leaf_sleeps if s is not None)
+
+
+def _capacity_by_code(units: list[LodgingUnitSummary], unit_index: _BathroomIndex) -> dict[str, int | None]:
+    """Each unit's TRUE capacity, keyed by code, for both write-in resolvers.
+
+    A whole-house total on a combined container, `sleeps` unchanged on a leaf
+    (kindred#2041's delta rule). Keyed the same way `write_in_covers` keys
+    `by_code` internally -- a blank code is excluded here too, for the same
+    collision `by_code` guards against. `_effective_sleeps` is the SAME walk
+    `_build_counts` totals `beds_family_available` with, over the SAME
+    `unit_index`: two derivations of one unit's capacity are two things that
+    can disagree about one cabin, which is exactly what reading raw `u.sleeps`
+    did -- it published a combined container's own DELTA (0 on every
+    production container) as its cover's `unit_sleeps` instead of the whole
+    house.
+
+    A FUNCTION RATHER THAN TWO COMPREHENSIONS, and that is the point rather
+    than tidiness. `build_roster` and `build_summary._entry` are the two
+    orchestrators kindred#2503 exists to keep in step, and this map feeds the
+    write-in cover walk AND the availability resolution on both. Copy-pasted,
+    the symmetry is something a reviewer has to notice; extracted, it is
+    structural. `test_the_roster_and_the_summary_agree_about_which_houses_are_free`
+    is the backstop, not the mechanism.
+    """
+    return {u.code: _effective_sleeps(u, unit_index) for u in units if u.code}
 
 
 def _resolve_party_bathroom(unit_codes: list[str], index: _BathroomIndex) -> str:
@@ -1736,26 +1786,19 @@ class LodgingRosterService:
         # That is precisely what `_resolve_family_availability` below does, so
         # `build_summary._entry` now runs this pair too.
         #
-        # Each unit's TRUE capacity -- a whole-house total on a combined
-        # container, `sleeps` unchanged on a leaf (kindred#2041's delta rule)
-        # -- keyed by code the same way `write_in_covers` keys `by_code`
-        # internally (a blank code is excluded here too, for the same
-        # collision `by_code` guards against). `_effective_sleeps` is the
-        # SAME walk `_build_counts` totals `beds_family_available` with, over
-        # the SAME `unit_index` built above: two derivations of one unit's
-        # capacity are two things that can disagree about one cabin, which is
-        # exactly what reading raw `u.sleeps` here did -- it published a
-        # combined container's own DELTA (0 on every production container) as
-        # its cover's `unit_sleeps` instead of the whole house.
-        capacity_by_code: dict[str, int | None] = {
-            u.code: _effective_sleeps(u, unit_index) for u in unit_summaries if u.code
-        }
-        _resolve_write_in_covers(unit_summaries, written_in_unit_ids(write_ins), capacity_by_code)
+        # ONE capacity map and ONE id set, threaded to both write-in
+        # resolvers -- see `_capacity_by_code`, which is a function precisely
+        # so this pairing is identical in `build_summary._entry` by
+        # construction rather than by review.
+        capacity_by_code = _capacity_by_code(unit_summaries, unit_index)
+        write_in_ids = written_in_unit_ids(write_ins)
+        _resolve_write_in_covers(unit_summaries, write_in_ids, capacity_by_code)
         # SIXTH RESOLVER, AND `build_summary._entry` RUNS IT TOO -- it must, or
-        # the lander and the board disagree about which houses are free. One
-        # map, threaded to both write-in resolvers and then on to
-        # `_build_counts`, the same rule `_BathroomIndex` follows two blocks up.
-        free_beds_by_unit = _resolve_family_availability(unit_summaries, capacity_by_code)
+        # the lander and the board disagree about which houses are free. It
+        # takes the id set as well as the covers: a blank-coded unit is dropped
+        # from the code-keyed cover map on purpose, and the set is what still
+        # closes it. See the resolver's own blank-code paragraph.
+        free_beds_by_unit = _resolve_family_availability(unit_summaries, capacity_by_code, write_in_ids)
         housing_names = housing_names_task.result()
         parties = self._build_parties(
             session_type=session_type,
@@ -1982,15 +2025,14 @@ class LodgingRosterService:
             # the failure mode: the lander and the board disagreeing about
             # which houses are free.
             #
-            # ONE `capacity_by_code`, built the same way for the same reason:
-            # `_effective_sleeps` over the index above, so a combined house is
-            # judged on its whole-house total rather than on the delta its own
-            # row carries.
-            capacity_by_code: dict[str, int | None] = {
-                u.code: _effective_sleeps(u, unit_index) for u in unit_summaries if u.code
-            }
-            _resolve_write_in_covers(unit_summaries, written_in_unit_ids(write_ins_task.result()), capacity_by_code)
-            free_beds_by_unit = _resolve_family_availability(unit_summaries, capacity_by_code)
+            # ONE `capacity_by_code` and ONE id set, through the SAME
+            # `_capacity_by_code` helper `build_roster` calls -- extracted so
+            # the two orchestrators cannot drift on the map that feeds both
+            # write-in resolvers.
+            capacity_by_code = _capacity_by_code(unit_summaries, unit_index)
+            write_in_ids = written_in_unit_ids(write_ins_task.result())
+            _resolve_write_in_covers(unit_summaries, write_in_ids, capacity_by_code)
+            free_beds_by_unit = _resolve_family_availability(unit_summaries, capacity_by_code, write_in_ids)
             parties = self._build_parties(
                 session_type=_s(session, "session_type"),
                 # THIS weekend's start. The six year-scoped fetches above are
@@ -2361,9 +2403,13 @@ class LodgingRosterService:
             # with no role row is exactly that case -- the write-in says
             # nothing about the role, so neither does this.
             #
-            # Occupancy still OUTRANKS the role, but in the DERIVED answer
-            # rather than by overwriting the role on the wire: see
-            # `is_family_available` below and its rule in lodging_rules.py.
+            # Occupancy is folded into the DERIVED answer rather than
+            # overwriting the role on the wire -- but NOT here, and not by the
+            # call below, which passes `free=None` and is role-only since
+            # kindred#2503. `_resolve_family_availability` recomputes it from
+            # the resolved covers after the cover walk. Its rule is
+            # `is_family_available` in lodging_rules.py, where occupancy stopped
+            # being absolute: what closes a unit is having no beds left.
             #
             # BOTH ROWS AT ONCE IS REACHABLE, and stopped needing a race in PR
             # 4 of kindred#2382. `set_availability` still drops the fact it is
@@ -2917,18 +2963,20 @@ class LodgingRosterService:
         unit_index: _BathroomIndex,
         free_beds_by_unit: dict[str, int | None],
     ) -> RosterCounts:
-        # `free_beds_by_unit` is `_resolve_family_availability`'s return, keyed
-        # by unit_id: how many beds each card has left once the write-ins
-        # covering it are paid for. It arrives THREADED rather than re-derived
-        # for the reason that resolver's docstring gives -- two derivations of
-        # "how many beds are free" are two answers to the question the seam
-        # exists to make single.
+        # ⚠️ `free_beds_by_unit` IS DELIBERATELY UNREAD HERE. DO NOT DELETE IT.
+        # It is `_resolve_family_availability`'s return, keyed by unit_id: how
+        # many beds each card has left once the write-ins covering it are paid
+        # for. `beds_family_available` below still totals WHOLE units, which is
+        # the pre-kindred#2503 arithmetic; moving the bed sum onto the
+        # remainder is the NEXT step of kindred#2503, which consumes this
+        # parameter. Folding it in here would land two reversals in one commit.
         #
-        # NOT YET SUMMED. `beds_family_available` still totals whole units
-        # below, which is the pre-kindred#2503 arithmetic and deliberately
-        # unchanged here: moving the bed sum onto the remainder is its own
-        # decision with its own tests, and folding it into the signature change
-        # would land two reversals in one commit.
+        # Nothing mechanical guards it: `ruff.toml`'s `select` does not include
+        # `ARG`, so no linter will flag an unused argument and a human sweep is
+        # the only thing that would remove it. It arrives THREADED rather than
+        # re-derived for the reason that resolver's docstring gives -- two
+        # derivations of "how many beds are free" are two answers to the
+        # question the seam exists to make single.
         # The population the BOARD DRAWS, at each tree's resolved level -- not
         # "every non-container row". A combined container IS one space a
         # family can hold, and its rooms are not separately lettable, so

@@ -5562,8 +5562,9 @@ class TestFamilyAvailabilityIsResolvedOverTheTree:
         ]
         units = [house, *rooms]
         caps = _caps(units)
-        _resolve_write_in_covers(units, _written_ids("back", "laundry", "loft", "side"), caps)
-        free_by_unit = _resolve_family_availability(units, caps)
+        written = _written_ids("back", "laundry", "loft", "side")
+        _resolve_write_in_covers(units, written, caps)
+        free_by_unit = _resolve_family_availability(units, caps, written)
 
         assert house.is_family_available is False
         # The map the counts read, not a second derivation of the same sum.
@@ -5581,8 +5582,9 @@ class TestFamilyAvailabilityIsResolvedOverTheTree:
         ]
         units = [house, *rooms]
         caps = _caps(units)
-        _resolve_write_in_covers(units, _written_ids("back"), caps)
-        free_by_unit = _resolve_family_availability(units, caps)
+        written = _written_ids("back")
+        _resolve_write_in_covers(units, written, caps)
+        free_by_unit = _resolve_family_availability(units, caps, written)
 
         assert house.is_family_available is True
         # Five beds, three of them taken wholesale by an unsized room row.
@@ -5598,8 +5600,9 @@ class TestFamilyAvailabilityIsResolvedOverTheTree:
         ]
         units = [house, *rooms]
         caps = _caps(units)
-        _resolve_write_in_covers(units, _written_ids("house"), caps)
-        _resolve_family_availability(units, caps)
+        written = _written_ids("house")
+        _resolve_write_in_covers(units, written, caps)
+        _resolve_family_availability(units, caps, written)
 
         assert [r.is_family_available for r in rooms] == [False, False]
 
@@ -5611,11 +5614,69 @@ class TestFamilyAvailabilityIsResolvedOverTheTree:
         unit = _summary("ridge-a", sleeps=5, family_available_override=False, party_size=2)
         units = [unit]
         caps = _caps(units)
-        _resolve_write_in_covers(units, _written_ids("ridge-a"), caps)
-        free_by_unit = _resolve_family_availability(units, caps)
+        written = _written_ids("ridge-a")
+        _resolve_write_in_covers(units, written, caps)
+        free_by_unit = _resolve_family_availability(units, caps, written)
 
         assert free_by_unit[unit.unit_id] == 3
         assert unit.is_family_available is False
+
+    def test_a_blank_coded_unit_with_its_own_row_still_closes(self) -> None:
+        """THE CORNER THE MOVE TO CODES OPENED, and it is the bug this task
+        exists to remove, reintroduced one field over.
+
+        `write_in_covers` deliberately drops a blank-coded unit from BOTH sides
+        of its map -- "" is the key `parent_code == ""` uses for "no parent", so
+        one blank-coded row would otherwise hand its occupant to every other
+        blank-coded row. That guard is right and stays. But this resolver reads
+        covers and capacity BY CODE, so a blank-coded unit arrives here with
+        `write_ins == []` and no capacity, resolves to `free is None` -- "no
+        occupancy, ask the role" -- and reports OPEN. `_build_units` used to
+        read the row directly and close it.
+
+        Not live: 0 of 118 production units have a blank code and no write-in
+        points at one. It is reachable because the admin UI can create one and
+        the schema does not forbid it, which is the same reason this file
+        already carries two other blank-code tests.
+
+        Resolved to 0 rather than to a bare `False`, so availability stays
+        derived from `free > 0` alone: 0 is `free_family_beds`' documented
+        "covered, and the remainder is not computable", which is exactly what a
+        cover the walk could not represent leaves behind.
+        """
+        unit = _summary("", sleeps=5, occupant_name="Liam Garcia")
+        units = [unit]
+        written = _written_ids("")
+        caps = _caps(units)
+        _resolve_write_in_covers(units, written, caps)
+        free_by_unit = _resolve_family_availability(units, caps, written)
+
+        # The guard the walk cannot lift: no cover reached the card, and the
+        # row is still there.
+        assert unit.write_ins == []
+        assert free_by_unit[unit.unit_id] == 0
+        assert unit.is_family_available is False
+
+    @pytest.mark.asyncio
+    async def test_a_blank_coded_unit_is_not_counted_as_an_open_family_space(self) -> None:
+        """The same corner through the real orchestrator, where it is a NUMBER.
+
+        A blank-coded unit is drawn (`drawn_units` treats it as a root) and is
+        planning inventory, so a wrong answer here is not cosmetic: it lands in
+        `units_family_available` and puts its beds into
+        `beds_family_available`.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[_unit("u-blank", "", "Unnamed Cabin", sleeps=5)],
+            fetch_write_ins=[_rec(unit="u-blank", occupant_name="Liam Garcia", note="")],
+        )
+
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.units[0].is_family_available is False
+        assert roster.counts.units_family_available == 0
+        assert roster.counts.beds_family_available == 0
 
     @pytest.mark.asyncio
     async def test_the_roster_and_the_summary_agree_about_which_houses_are_free(self) -> None:

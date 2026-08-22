@@ -817,20 +817,48 @@ class LodgingWriteService:
         and that is the cost of the asymmetry rather than an oversight. Write
         somebody into a cabin on the live board, then release it from inside a
         scenario, and both rows exist: the live occupancy the scenario's drop
-        could not see, and the weekend-level role row it just wrote. Nothing
-        downstream is confused by it -- `is_family_available` folds both in and
-        occupancy wins, so the cabin reads closed on the live board -- and a
-        clear on either grain still removes the role row along with its own
-        occupancy. Narrowing the role drop instead would leave a release
-        standing under a write-in on the SAME board, which is worse.
+        could not see, and the weekend-level role row it just wrote.
+        `is_family_available` still folds both in and the live board still
+        reads the write-in, and a clear on either grain removes the role row
+        along with its own occupancy. Narrowing the role drop instead would
+        leave a release standing under a write-in on the SAME board, which is
+        worse.
+
+        WHAT THE LIVE BOARD THEN SHOWS DEPENDS ON THE COUNT, and this paragraph
+        claimed unconditionally that the cabin "reads closed" until
+        kindred#2503. Occupancy is no longer absolute: a write-in that leaves
+        beds free leaves the cabin OPEN to a family, by design (kindred#2432
+        made a written-into cabin take a family like any other). An unsized
+        write-in takes the space wholesale and still closes it. So the
+        surviving row is always VISIBLE on the live board -- it badges, it
+        names its occupant, and its beds leave the count -- which is the
+        property this asymmetry actually needs; "closed" was only ever the
+        wholesale case.
 
         ORDER: the new fact is written BEFORE the old one is dropped. There is
         no transaction across two PocketBase tables, and a failure between the
         steps has to leave the board saying something true. Write-then-drop
-        leaves both rows present for that window, and `_build_units` resolves
-        occupancy over role -- so a half-applied write-in still reads "somebody
-        is in it", the safe half. Drop-then-write would leave a window with
-        NEITHER fact, opening a cabin nobody meant to open.
+        leaves BOTH rows present for that window; drop-then-write would leave a
+        window with NEITHER fact, opening a cabin nobody meant to open. Both
+        rows present is the recoverable state, and that is what fixes the
+        order.
+
+        THE MECHANISM MOVED IN kindred#2503, AND THIS PARAGRAPH NAMED THE OLD
+        ONE. It used to read "`_build_units` resolves occupancy over role -- so
+        a half-applied write-in still reads 'somebody is in it', the safe
+        half." Two things about that are now wrong. `_build_units` no longer
+        resolves occupancy at all: it writes the ROLE-only answer and
+        `_resolve_family_availability` overwrites it from the resolved covers,
+        on both orchestrators. And "the safe half" was conditional even then --
+        a half-applied write-in carrying a COUNT smaller than the cabin leaves
+        beds free and the cabin stays open to a family, which is the deliberate
+        kindred#2432 behaviour rather than a regression.
+
+        The ordering argument survives all of that intact, because it never
+        depended on which answer the derivation returns. What it needs is that
+        the window contains the write-in ROW rather than nothing, so the fact
+        is still on the board and still recoverable by a retry. Do not
+        re-derive this order from a claim about what the cabin renders as.
 
         `family_available: null` DELETES rather than writing a value meaning
         "normal". There is no such value: the absence of a row is how "whatever
