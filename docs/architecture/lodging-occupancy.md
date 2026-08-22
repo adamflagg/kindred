@@ -183,7 +183,7 @@ rule: it blocks legitimate work and teaches staff to ignore warnings.
   remains the DERIVED answer and still folds both facts in — but kindred#2503
   is why the second half of that sentence no longer holds. Availability is
   `free > 0`, not "no write-in at all", and a number DOES move: Clouds Rest
-  (weekend 1309515) is a combined container whose four rooms are each written
+  (weekend 1000001) is a combined container whose four rooms are each written
   into, all four unsized, so each cover falls back to the capacity of the room
   it names — 3 + 1 + 2 + 2 = 8, exactly the card's own capacity — and `free`
   is 0. It closes on day one, with no `party_size` recorded at all; that is
