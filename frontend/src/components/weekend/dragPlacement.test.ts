@@ -511,13 +511,16 @@ describe('isValidMergeTarget', () => {
 
 describe('resolveMergeDrop', () => {
   it('promotes the shared parent when a room is dropped on its sibling', () => {
+    // `targetCode` is the DROP TARGET room — the card the handle landed ON,
+    // which is where staff are looking and therefore the anchor the
+    // merge-morph animation converges onto (kindred spec D26/D27).
     expect(
       resolveMergeDrop({
         activeId: mergeDragId('wing-r1'),
         overId: mergeDragId('wing-r2'),
         units: [WING, WING_R1, WING_R2],
       })
-    ).toEqual({ parentCode: 'wing', combined: true })
+    ).toEqual({ parentCode: 'wing', combined: true, targetCode: 'wing-r2' })
   })
 
   it('refuses a drop onto a NON-sibling — a room under a different parent', () => {

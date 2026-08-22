@@ -710,9 +710,8 @@ class TestFamilyCampParties:
                     wants_similar_ages=False,
                     arrival_eta="Friday around 4pm",
                     needs_accommodation=True,
-                    # Set by the ingest layer, not recomputed here. opt_out_vip
-                    # is deliberately absent from this fixture: reading it is
-                    # the kindred#1874 inversion.
+                    # Set by the ingest layer, not recomputed here -- the one
+                    # stored VIP signal (owner ruling 2026-08-22).
                     accommodation_is_mandatory=True,
                 )
             },

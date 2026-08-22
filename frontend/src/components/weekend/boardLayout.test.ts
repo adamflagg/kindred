@@ -1192,6 +1192,54 @@ describe('buildBoard — area grouping and colour', () => {
     ])
   })
 
+  it('pins a combined container to its resting position: sorted by its OWN name, after sibling rooms', () => {
+    // A deliberate pin of TODAY'S order, ahead of the merge/split animation
+    // work. A container named "Cedar Upstairs" covering Cedar 1 and Cedar 2
+    // draws AFTER siblings Cedar 3 and Cedar 4, because the sort compares
+    // the container's own name and digits collate before letters — so a
+    // merge does not land the combined card exactly where its rooms sat,
+    // and that displacement is ACCEPTED: alphabetical purity at rest wins,
+    // and transition continuity belongs to the animation, not the sort.
+    // A comparator that instead sorted a container by its first covered
+    // room was measured, shown to fix the displacement, and REJECTED on
+    // those grounds. The suite never before asserted a combined container's
+    // position relative to a sibling's rooms, which is why that comparator
+    // passed every test — this pin is what makes the next such change loud.
+    // If it goes red, the resting sort moved: that is a design decision to
+    // re-argue, not a side effect to accept.
+    const house = unit({
+      unit_id: 'u-up',
+      code: 'cedar-upstairs',
+      name: 'Cedar Upstairs',
+      is_container: true,
+      sleeps: 4,
+    })
+    const rooms = [
+      unit({ unit_id: 'u1', code: 'cedar-1', name: 'Cedar 1', parent_code: 'cedar-upstairs' }),
+      unit({ unit_id: 'u2', code: 'cedar-2', name: 'Cedar 2', parent_code: 'cedar-upstairs' }),
+    ]
+    const siblings = [
+      unit({ unit_id: 'u3', code: 'cedar-3', name: 'Cedar 3' }),
+      unit({ unit_id: 'u4', code: 'cedar-4', name: 'Cedar 4' }),
+    ]
+    // Payload order deliberately scrambled — position must come from the
+    // sort, never from emission order (kindred#2514).
+    const split = buildBoard([], [...siblings, house, ...rooms])
+    expect(split.areas[0]?.slots.map((slot) => slot.unit.code)).toEqual([
+      'cedar-1',
+      'cedar-2',
+      'cedar-3',
+      'cedar-4',
+    ])
+
+    const combined = buildBoard([], [...siblings, { ...house, is_combined: true }, ...rooms])
+    expect(combined.areas[0]?.slots.map((slot) => slot.unit.code)).toEqual([
+      'cedar-3',
+      'cedar-4',
+      'cedar-upstairs',
+    ])
+  })
+
   it('keeps two areas apart when they share a blank code but not a name', () => {
     // The API sends `area_code: ""` for anything it cannot resolve, so
     // bucketing on the code alone silently merges them.

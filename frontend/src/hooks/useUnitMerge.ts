@@ -26,10 +26,15 @@
  * `['weekend-roster']`, `['weekend-summary']` and `['weekend-sessions']` as
  * prefixes.
  *
- * And there is no optimistic layer, for the same reason: nothing moves under
- * the pointer. The card is replaced when the roster returns, and patching the
- * cache optimistically would have to patch every cached scenario of the
- * weekend.
+ * And there is no optimistic CACHE layer, because patching the cache
+ * optimistically would have to patch every cached scenario of the weekend.
+ * That refusal stands. What DOES exist since kindred#2537 is a VIEW overlay
+ * in `LodgingBoard` (`drawOverrides`): the board adjusts what it draws in
+ * the same commit as the gesture — the owner ruled the morph must play at
+ * the click, not after the write round-trip — while every cached scenario
+ * stays untouched and this hook still only writes and invalidates. The
+ * overlay reconciles against the refetched payload and reverts on a
+ * refused write; none of that lives here.
  */
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useCallback } from 'react'

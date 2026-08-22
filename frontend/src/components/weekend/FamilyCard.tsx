@@ -7,7 +7,7 @@
  * this is a new component rather than a branch inside the 849-line
  * `BunkingBoardByArea.tsx`.
  *
- * ## Three things stay OFF this card, each measured
+ * ## Four things stay OFF this card, each measured
  *
  * Recorded in `docs/reference/weekend-card-vocabulary.md` §3. That citation
  * used to read "spec §3.8", pointing at
@@ -25,8 +25,18 @@
  *   parties. A flag that is always on is not a flag — kindred#1889 agreed and
  *   deleted it; the narrative itself lives on `FamilyDetailsPanel`.
  * - **`needs_resolution`.** True for 44 of 62. Same reason.
+ * - **The `Needs Accommodation` chip, and any VIP-opt-out mark beside it.**
+ *   Staff ruling: the VIP answer is ONE stored signal (`accommodation_is_
+ *   mandatory`, its No pole — owner ruling 2026-08-22 retired the
+ *   `opt_out_vip` Yes-pole column), and it is a request the household made,
+ *   not a verdict about whether this card belongs in its slot — that
+ *   verdict is `rosterAttention`'s and stays exactly where it was, on the
+ *   roster tab's attention sections and the modal's Placement verdict. This
+ *   card no longer imports `partyAttention` or `ATTENTION_LABEL` at all.
+ *   `AccessibilityFlagList` on `FamilyDetailsPanel` renders the mandatory
+ *   row, the one place the answer is visible.
  *
- * `FamilyCard.test.tsx` pins all three as ABSENCES, because each is exactly
+ * `FamilyCard.test.tsx` pins all four as ABSENCES, because each is exactly
  * the kind of thing a later session adds back helpfully.
  *
  * What IS here: the children lead, bold, with truncated whole-year ages —
@@ -101,7 +111,6 @@ import {
 import { GLYPH_BASE, NeedGlyphMark, WARN_TONE } from './NeedGlyph'
 import { resolveNeedGlyphs } from './needGlyphs'
 import { partyKey } from './partyKey'
-import { ATTENTION_LABEL, partyAttention } from './rosterAttention'
 
 export interface FamilyCardProps {
   party: RosterPartyRow
@@ -528,7 +537,6 @@ function FamilyCardChips({
   sharedSlot: boolean
 }) {
   const isHousehold = party.grain === 'household'
-  const attention = partyAttention(party, unit)
   const proximity = party.share?.proximity ?? []
   // `similar_ages` ACCOMPANIES `with`; it never replaces it. One chip covering
   // both is what keeps 22 households from dropping out of a "wants to share"
@@ -592,17 +600,6 @@ function FamilyCardChips({
             <Baby className="h-3 w-3 text-pink-500 dark:text-pink-400" />
           </Tooltip>
         )}
-
-        {/* The hardest stop on the board — a member cannot attend without the
-            accommodation. Two households on 2026 data.
-
-            THE LABEL IS NOT LOCKED. It is one of the five marks parked for
-            staff input, along with the four sharing chips below and the unit
-            card's consent warning, so it lives in `ATTENTION_LABEL` where a
-            rename is one line. The two OTHER arms of `partyAttention` that
-            used to chip here — `unmet` ("No power") and `unverified` ("Fit not
-            verified") — are struck; see the tone block above. */}
-        {attention.level === 'required' && <Chip label={ATTENTION_LABEL.required} tone="warn" />}
 
         {/* Keyed off the RESOLVED verdict, not the registration gate. The gate
             is superseded wherever the Family Camp form answered, so a household

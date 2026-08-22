@@ -308,7 +308,6 @@ type registrationData struct {
 	goals               string
 	notes               string
 	needsAccommodation  bool
-	optOutVIP           bool
 
 	// Household-grain request layer (spec 4). shareCabinPreference and
 	// sharedCabinModesRaw above stay as the RAW profile values; these are the
@@ -1646,20 +1645,17 @@ func (s *FamilyCampDerivedSync) processRegistrations(
 		case "FAM Camp-Accommodation", "Housing Accommodation", "Housing Accomodation":
 			reg.needsAccommodation = reg.needsAccommodation || parseBoolFieldValue(v.value)
 		case fieldFamCampOptOutVIP, fieldAdultOptOut:
-			optedOut := parseBoolFieldValue(v.value)
-			// Accumulated with OR here and then RESOLVED against the blocker in
-			// the finalization pass below (kindred#1874). Both steps are needed:
-			// this one cannot see the rest of the household, so on its own it
-			// let one member's "Yes, please register regardless of cabin type"
-			// override another's "No, I am only able to attend with this
-			// accommodation in place" -- 3 households a year.
-			reg.optOutVIP = reg.optOutVIP || optedOut
-			// "Yes, please register regardless of cabin type" (90 values) means
-			// the family will come anyway, so the need is a warning. "No, I am
-			// only able to attend with this accommodation in place" (39) makes it
-			// a blocker. An UNANSWERED question must stay soft, which is why this
-			// keys off a non-empty value rather than off !optedOut alone.
-			if strings.TrimSpace(v.value) != "" && !optedOut {
+			// ONE stored boolean for the VIP answer (owner ruling 2026-08-22):
+			// accommodation_is_mandatory, its No pole -- "must have the
+			// accommodation or they cancel". "Yes, please register regardless
+			// of cabin type" carries no signal we store, and an UNANSWERED
+			// question must stay soft, which is why this keys off a non-empty
+			// value rather than off the parse alone (kindred#1874's polarity
+			// trap). A blocker anywhere in the household wins structurally: a
+			// plain OR over the No pole is order-independent, unlike the
+			// retired two-column encoding, which needed a finalization pass to
+			// stop one member's yes-flexible clobbering another's blocker.
+			if strings.TrimSpace(v.value) != "" && !parseBoolFieldValue(v.value) {
 				reg.accommodationIsMandatory = true
 			}
 		// Derived accessibility flags. The narrative behind each of these lives
@@ -1724,30 +1720,11 @@ func (s *FamilyCampDerivedSync) processRegistrations(
 		// been seen. Doing it inside the loop above is what made it first-wins.
 		s.applyRegistrationText(reg, textByHousehold[reg.householdPBID])
 
-		// A blocker anywhere in the household outranks another member's opt-out
-		// (kindred#1874). Resolving it here rather than in the switch is what
-		// makes it order-independent: the switch sees one member at a time and
-		// cannot know a later one will answer blocker, so a running OR gave a
-		// different answer depending on which member CampMinder returned first.
-		//
-		// The two columns are a three-state answer wearing two booleans, and
-		// this is what keeps them mutually exclusive:
-		//
-		//	accommodationIsMandatory  -> some member cannot attend without it
-		//	optOutVIP                 -> answered, and the family will come anyway
-		//	both false                -> nobody answered
-		//
-		// Collapsing toward the blocker is the fail-SAFE direction. The reverse
-		// reads as "this family will cope" when someone said they cannot attend.
-		if reg.accommodationIsMandatory {
-			reg.optOutVIP = false
-		}
-
 		// Only include if has some data
 		if reg.cabinAssignment != "" || reg.shareCabinPreference != "" ||
 			reg.sharedCabinModesRaw != "" || reg.arrivalETA != "" ||
 			reg.specialOccasions != "" || reg.goals != "" ||
-			reg.notes != "" || reg.needsAccommodation || reg.optOutVIP ||
+			reg.notes != "" || reg.needsAccommodation ||
 			reg.shareCabinGate != "" || reg.requestText != "" ||
 			reg.wantsNear || reg.wantsWith || reg.wantsSimilarAges ||
 			reg.needsPrivateBathroom || reg.needsPower || reg.hasInfant ||
@@ -2732,7 +2709,6 @@ func (s *FamilyCampDerivedSync) registrationNeedsUpdate(existing *core.Record, r
 		existing.GetString("goals") != reg.goals ||
 		existing.GetString("notes") != reg.notes ||
 		existing.GetBool("needs_accommodation") != reg.needsAccommodation ||
-		existing.GetBool("opt_out_vip") != reg.optOutVIP ||
 		existing.GetString("share_cabin_gate") != reg.shareCabinGate ||
 		existing.GetBool("wants_near") != reg.wantsNear ||
 		existing.GetBool("wants_with") != reg.wantsWith ||
@@ -2915,7 +2891,6 @@ func (s *FamilyCampDerivedSync) upsertRegistrations(
 				existingRecord.Set("goals", reg.goals)
 				existingRecord.Set("notes", reg.notes)
 				existingRecord.Set("needs_accommodation", reg.needsAccommodation)
-				existingRecord.Set("opt_out_vip", reg.optOutVIP)
 				setRegistrationRequestFields(existingRecord, reg)
 
 				if err := s.App.Save(existingRecord); err != nil {
@@ -2940,7 +2915,6 @@ func (s *FamilyCampDerivedSync) upsertRegistrations(
 			record.Set("goals", reg.goals)
 			record.Set("notes", reg.notes)
 			record.Set("needs_accommodation", reg.needsAccommodation)
-			record.Set("opt_out_vip", reg.optOutVIP)
 			setRegistrationRequestFields(record, reg)
 
 			if err := s.App.Save(record); err != nil {

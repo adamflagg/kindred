@@ -674,7 +674,6 @@ Family camp registration details per household.
 | `goals` | text | Goals for camp |
 | `notes` | text | Additional notes |
 | `needs_accommodation` | bool | Requires accommodation |
-| `opt_out_vip` | bool | Will attend regardless of cabin type. **Write-only** — its OR across household members is fail-unsafe, so never read it as a blocker gate; use `accommodation_is_mandatory` |
 
 Request layer (household grain, spec 4) — normalised and deduplicated from the raw columns above:
 

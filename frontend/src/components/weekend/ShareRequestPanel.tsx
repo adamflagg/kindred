@@ -153,12 +153,14 @@ export interface ShareRequestPanelProps {
 }
 
 /**
- * Source fields that start FOLDED, kindred#2476 (owner ruling 2026-08-21).
- * Every field not listed here keeps the 2026-08-17 default of starting
- * expanded. `Share Bunk With` is the one exception, not a new baseline —
- * do not fold anything else in here on your own judgement.
+ * Source fields that start FOLDED. `Share Bunk With` was the first,
+ * kindred#2476 (owner ruling 2026-08-21) / PR #2521. `Internal Bunk Notes`
+ * was added the same day by a follow-up staff ruling, mirroring that exact
+ * precedent. Every field not listed here keeps the 2026-08-17 default of
+ * starting expanded — do not fold anything else in here on your own
+ * judgement.
  */
-const DEFAULT_FOLDED: ReadonlySet<string> = new Set(['Share Bunk With'])
+const DEFAULT_FOLDED: ReadonlySet<string> = new Set(['Share Bunk With', 'Internal Bunk Notes'])
 
 function isDefaultFolded(folded: ReadonlySet<string>): boolean {
   if (folded.size !== DEFAULT_FOLDED.size) return false
