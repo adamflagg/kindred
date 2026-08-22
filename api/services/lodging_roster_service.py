@@ -224,9 +224,9 @@ def _consumes_a_bed(child: Any, session_start: date | None) -> bool:
 
     `persons.age == 0.0` is the documented unknown-age sentinel, and a bed is
     never removed on the strength of a sentinel -- not even when a birthdate
-    sits beside it saying newborn. Measured on 2026's rostered cohort exactly
-    one child is in that state, which is why the rule discounts 24 households
-    rather than 25.
+    sits beside it saying newborn. Re-measured 2026-08-21 (kindred#2212): zero
+    rostered 2026 children carry the sentinel, so the guard is currently
+    inert -- which is not the same as wrong, and it stays.
 
     The birthdate is already in hand: `fetch_attendees_for_session` expands
     `person`, so this costs no read.

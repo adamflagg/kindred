@@ -45,9 +45,8 @@ export interface AccessibilityFlagListProps {
  *
  * `NeedKey` is spliced in rather than restated, so the union cannot fall
  * behind `NEED_GLYPHS` without a type error. The two literals either side of
- * it are the only needs that are NOT graded against a cabin, and each is a
- * genuinely different kind of thing rather than a fifth glyph waiting to be
- * written:
+ * it are the only UNGRADED needs that are filterable; each is a genuinely
+ * different kind of thing rather than a fifth glyph waiting to be written:
  *
  *   `accommodation` — names no specific amenity, so no cabin field answers
  *                     it. `accommodation_is_mandatory` only changes a ROW's
@@ -55,9 +54,16 @@ export interface AccessibilityFlagListProps {
  *                     need MATCHES, since the filter asks "does this
  *                     household need one" and a staff member can already see
  *                     mandatory-vs-preferred once they open a row.
- *   `infant`        — derived from the household's ages rather than asked
- *                     for, so it informs which cabin suits them without being
- *                     an unfulfilled request.
+ *   `infant`        — the Adult-Infant FORM answer (`has_infant`), asked only
+ *                     on adult sessions — it is 0 across every family-weekend
+ *                     registration, so on family weekends this filter can
+ *                     never match.
+ *
+ * A THIRD ungraded fact renders a row below without a filter key:
+ * `has_child_under_two`, the birthdate-computed sibling of `infant`
+ * (staff ruling 2026-08-21). Its filter entry is deliberately deferred —
+ * kindred#2480 sequences the filter work after the share-icon round and
+ * rules that the under-2 filter must key on that computed flag.
  */
 export type NeedFilterKey = 'accommodation' | NeedKey | 'infant'
 

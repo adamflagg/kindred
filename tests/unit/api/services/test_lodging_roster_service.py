@@ -3847,8 +3847,8 @@ class TestPartySizeIsABedCount:
         """`persons.age == 0.0` is the UNKNOWN-AGE sentinel, and a bed is
         never removed on the strength of a sentinel. The birthdate here says
         one month old; the sentinel outranks it, and the party keeps the bed.
-        Measured on 2026: exactly one rostered child is in this state, which
-        is why the derived rule discounts 24 households and not 25.
+        Re-measured 2026-08-21 (kindred#2212): zero rostered 2026 children
+        carry the sentinel -- the guard is inert on today's data, not wrong.
         """
         party = await self._party(
             fetch_attendees_for_session=[_child(cm_id=2, age=0.0, birthdate="2026-08-01")],
