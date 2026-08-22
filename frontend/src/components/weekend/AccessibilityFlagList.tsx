@@ -136,7 +136,6 @@ export function AccessibilityFlagList({ flags }: AccessibilityFlagListProps) {
       tone: mandatory ? 'red' : 'neutral',
     })
   }
-  // The OTHER raw half of the accommodation/VIP pair (kindred#1874) --
   // Every graded need the household ASKED for, ungraded here.
   //
   // This row says what was requested; it deliberately does not say whether the
