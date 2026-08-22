@@ -191,6 +191,10 @@ export type AvailabilityWriteRequest = {
    * Reason
    */
   reason?: string
+  /**
+   * Party Size
+   */
+  party_size?: number | null
 }
 
 /**

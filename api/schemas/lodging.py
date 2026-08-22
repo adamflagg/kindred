@@ -1220,6 +1220,24 @@ class AvailabilityWriteRequest(BaseModel):
     # required half now, and the note is the "say why, so next week's staff
     # can act on it" affordance riding beside it.
     reason: str = Field("", max_length=500)
+    # HOW MANY PEOPLE the write-in is for (kindred#2503). OPTIONAL, here and at
+    # the control alike -- unlike `occupant_name` above, which is permissive
+    # here only because an ingest has no author to ask.
+    #
+    # Owner ruling 2026-08-21: most write-ins are non-rostered staff and staff
+    # will type nothing, so `None` is the COMMON answer and means the cabin is
+    # taken wholesale -- the em dash the card has always drawn, and the right
+    # outcome for a staff cabin nobody is counting beds against. The rarer
+    # paper registrations are what a number is for. Do not tighten this to
+    # required, and do not treat the None branch downstream as legacy.
+    #
+    # `ge=1` mirrors the column's `min: 1`. Zero is not "a write-in for
+    # nobody"; absence of a count is spelled `None`.
+    #
+    # THE OCCUPANCY HALF ONLY. A release (`family_available: true`) is the
+    # staff<->family role for the weekend, stored in `lodging_availability`,
+    # and names no occupant -- `set_availability` must not put a count on it.
+    party_size: int | None = Field(None, ge=1)
 
 
 class SlotMergeRequest(BaseModel):

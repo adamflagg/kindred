@@ -226,6 +226,10 @@ const _exhaustiveAvailabilityWriteRequest: Required<AvailabilityWriteRequest> = 
   // — the same split `reason` makes, for the same reason.
   occupant_name: 'Emma Johnson',
   reason: 'Kitchen lead, Fri–Sun',
+  // kindred#2503. OPTIONAL, here and at the control alike — most write-ins
+  // are non-rostered staff and `null` (the common case) takes the cabin
+  // wholesale. The occupancy half only; a release carries no count.
+  party_size: 2,
 }
 void _exhaustiveAvailabilityWriteRequest
 

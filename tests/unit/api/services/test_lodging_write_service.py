@@ -1368,6 +1368,46 @@ class TestTheAvailabilityWriteShape:
         data = repo.create_availability.call_args[0][0]
         assert data["family_available"] is True
 
+    @pytest.mark.asyncio
+    async def test_a_write_in_persists_its_party_size(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        """kindred#2503. The count rides the OCCUPANCY payload."""
+        await write_service.set_availability(_availability_request(party_size=2))
+
+        data = repo.create_write_in.call_args[0][0]
+        assert data["party_size"] == 2
+
+    @pytest.mark.asyncio
+    async def test_a_release_never_carries_a_count(self, write_service: LodgingWriteService, repo: MagicMock) -> None:
+        """`family_available: true` is the staff<->family ROLE for the weekend
+        and lives in `lodging_availability`, which names no occupant. A count
+        on it would be a headcount for nobody.
+        """
+        await write_service.set_availability(_availability_request(family_available=True, party_size=2))
+
+        assert "party_size" not in repo.create_availability.call_args[0][0]
+
+    @pytest.mark.asyncio
+    async def test_a_clear_sends_nothing(self, write_service: LodgingWriteService, repo: MagicMock) -> None:
+        """`family_available: null` DELETES the row; the delete path takes no
+        payload and is untouched by the count.
+        """
+        repo.find_write_in = AsyncMock(return_value=SimpleNamespace(id="write_in_1"))
+
+        await write_service.set_availability(_availability_request(family_available=None, party_size=None))
+
+        repo.delete_write_in.assert_awaited_once_with("write_in_1")
+
+    def test_zero_is_rejected_at_the_boundary(self) -> None:
+        """`min: 1` on the column and `ge=1` here. A write-in for nobody is not
+        a write-in; clearing the count is null.
+        """
+        with pytest.raises(ValidationError):
+            AvailabilityWriteRequest(
+                year=2026, session_cm_id=1000001, unit_id="u1", family_available=False, party_size=0
+            )
+
 
 class TestARefusedUpdateAnswersTheSameWayARefusedCreateDoes:
     """The create path is the RARE one, and it was the one guarded first.

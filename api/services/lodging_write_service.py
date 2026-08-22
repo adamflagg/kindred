@@ -958,10 +958,15 @@ class LodgingWriteService:
             record = await self._upsert_row(
                 what="write-in",
                 existing=existing_write_in,
-                # `scenario` rides on the OCCUPANCY payload only. The draft
-                # collection's relation is required; the live one has no such
-                # column, and the role payload above must never carry one.
-                data={**data, "scenario": request.scenario} if in_scenario else data,
+                data={
+                    **data,
+                    "party_size": request.party_size,
+                    # `scenario` rides on the OCCUPANCY payload only. The draft
+                    # collection's relation is required; the live one has no
+                    # such column, and the role payload above must never carry
+                    # one.
+                    **({"scenario": request.scenario} if in_scenario else {}),
+                },
                 find=find_occupancy,
                 create=create_occupancy,
                 update=update_occupancy,
