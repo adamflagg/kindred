@@ -372,13 +372,15 @@ describe('explainSources — which medical field(s) explain each need', () => {
    * staff who hold `bunking.manage`. WHICH field explains WHICH need is
    * vocabulary, so it is pinned here with the rest of the closed set, and it
    * mirrors the Go sync's flag derivation rather than guessing by name:
-   * `needs_private_bathroom` is derived from `bathroom_explain`, `needs_power`
-   * from `cpap_info` (the power need IS the CPAP disclosure), `needs_fridge`
+   * `needs_private_bathroom` is derived from `bathroom_explain` AND from
+   * bathroom-qualified CPAP answers (the 2025 combined question), whose
+   * narrative lands in `cpap_info` — so it reads both; `needs_power` reads
+   * `cpap_info` (the power need IS the CPAP disclosure), `needs_fridge`
    * keyword-matches `accommodation_explain`, and `needs_step_free`
    * keyword-matches BOTH `accommodation_explain` and `bathroom_explain`.
    */
   it('maps each need to the field(s) its flag was derived from', () => {
-    expect(needGlyph('bathroom').explainSources).toEqual(['bathroom_explain'])
+    expect(needGlyph('bathroom').explainSources).toEqual(['bathroom_explain', 'cpap_info'])
     expect(needGlyph('power').explainSources).toEqual(['cpap_info'])
     expect(needGlyph('fridge').explainSources).toEqual(['accommodation_explain'])
     expect(needGlyph('step_free').explainSources).toEqual([
@@ -400,7 +402,7 @@ describe('needExplainTexts — the explain paragraphs one glyph appends', () => 
     ])
   })
 
-  it('reads only its own source field, never a sibling need’s', () => {
+  it('reads only its own source fields, never a sibling need’s', () => {
     const medical = {
       cpap_info: 'Samuel uses a CPAP and needs an outlet by the bed.',
       bathroom_explain: 'Cannot manage the path to the bathhouse at night.',
@@ -408,9 +410,14 @@ describe('needExplainTexts — the explain paragraphs one glyph appends', () => 
     expect(needExplainTexts('power', medical)).toEqual([
       'Samuel uses a CPAP and needs an outlet by the bed.',
     ])
+    // Bathroom reads BOTH: its own explain first, then cpap_info, because the
+    // Go sync also raises needs_private_bathroom from bathroom-qualified CPAP
+    // answers (the 2025 combined question) whose narrative lands there.
     expect(needExplainTexts('bathroom', medical)).toEqual([
       'Cannot manage the path to the bathhouse at night.',
+      'Samuel uses a CPAP and needs an outlet by the bed.',
     ])
+    // Fridge reads neither of these — accommodation_explain is its only source.
     expect(needExplainTexts('fridge', medical)).toEqual([])
   })
 

@@ -244,7 +244,11 @@ export const NEED_GLYPHS: readonly NeedGlyphSpec[] = [
     // covered placement should be the mark staff look at, not the one they
     // do not.
     someIs: 'unmet',
-    explainSources: ['bathroom_explain'],
+    // `bathroom_explain` first — but the Go sync also raises this flag from
+    // bathroom-qualified CPAP answers (the 2025 combined question), whose
+    // narrative lands in `cpap_info`, so those households would otherwise
+    // show a label-only tooltip.
+    explainSources: ['bathroom_explain', 'cpap_info'],
     coverage: bathroomCoverage,
   },
   {
