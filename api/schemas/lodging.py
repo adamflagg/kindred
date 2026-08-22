@@ -631,6 +631,29 @@ class AccessibilityFlagSummary(BaseModel):
     # signal, not an accessibility need: it argues for privacy and quiet, so
     # it informs unit choice rather than gating it.
     has_infant: bool = False
+    # A child under TWO YEARS at session start (staff ruling, 2026-08-21).
+    #
+    # ⚠️ COMPUTED AT ROSTER BUILD TIME, and that is a DELIBERATE DIVERGENCE
+    # from the read-from-the-column contract every registration-derived flag
+    # above honours. `has_infant` above cannot serve the board it was added
+    # for: the CampMinder Adult-Infant question is only answered on adult
+    # sessions, so it is 0 across all 3,923 production
+    # `family_camp_registrations` rows -- dead by construction on exactly the
+    # family weekends where a baby changes what a unit has to provide. The
+    # children's real birthdates ARE in the roster build's hands
+    # (`_build_household_parties`), so this flag is derived there against the
+    # session's start date. `has_infant` stays as-is: raw form answer, its own
+    # provenance.
+    #
+    # 24 months, NOT the 18-month bed rule (`INFANT_BED_EXEMPT_MONTHS`) --
+    # "is there a baby or toddler in this party" is a different question from
+    # "does this child need a bed". FALSE-WHEN-UNKNOWN: a missing or
+    # unparseable birthdate, or an unreadable session start, contributes
+    # false, the OPPOSITE polarity from the bed rule's keep-the-bed fallback,
+    # because the icon asserts knowledge. Person-grain (adult-session)
+    # parties ride this default. See `_has_child_under_two` in
+    # `lodging_roster_service.py` for the rule itself.
+    has_child_under_two: bool = False
     # There is deliberately NO `has_medical_narrative` here (kindred#1889). It
     # was true for every household in every year measured, because these
     # questions store "No" as text and a non-empty answer set the flag. See

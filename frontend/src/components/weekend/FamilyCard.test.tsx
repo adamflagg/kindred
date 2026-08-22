@@ -1822,6 +1822,52 @@ describe('FamilyCard — Returning / First-time is a 20px icon, bottom right (R3
   })
 })
 
+describe('FamilyCard — the child-under-two mark (staff ruling, 2026-08-21)', () => {
+  // COMPUTED server-side from the children's birthdates against the session
+  // start — `has_infant` beside it is form-declared and 0 across all 3,923
+  // production family_camp_registrations rows on family weekends. The mark is
+  // UNGRADED, like Returning/First-time: it has no unit coverage side and no
+  // red/unmet state, so it is not a fifth NEED_GLYPHS entry.
+  it('draws the Baby mark when the server computed a child under two', () => {
+    render(<FamilyCard party={party({ flags: { has_child_under_two: true } })} onOpen={vi.fn()} />)
+    const mark = screen.getByTestId('family-card-under-two')
+    expect(mark.querySelector('svg')).toBeInTheDocument()
+  })
+
+  it('names itself in a tooltip, since the icon carries no words', () => {
+    render(<FamilyCard party={party({ flags: { has_child_under_two: true } })} onOpen={vi.fn()} />)
+    fireEvent.focus(screen.getByTestId('family-card-under-two'))
+    expect(screen.getByRole('tooltip')).toHaveTextContent('Child under 2')
+  })
+
+  it('draws nothing when the flag is false', () => {
+    render(<FamilyCard party={party({ flags: { has_child_under_two: false } })} onOpen={vi.fn()} />)
+    expect(screen.queryByTestId('family-card-under-two')).not.toBeInTheDocument()
+  })
+
+  it('draws nothing when the flags block is absent entirely', () => {
+    // A party with no flags block — the icon asserts knowledge, and absence
+    // of the block is absence of knowledge, not "no baby".
+    render(<FamilyCard party={party()} onOpen={vi.fn()} />)
+    expect(screen.queryByTestId('family-card-under-two')).not.toBeInTheDocument()
+  })
+
+  it('never goes red — it is not a graded need', () => {
+    // The mark reads no unit coverage: placed in a cabin or not, it keeps its
+    // own hue. `needVerdict` has no say here.
+    render(
+      <FamilyCard
+        party={party({ flags: { has_child_under_two: true } })}
+        unit={confirmedUnit()}
+        onOpen={vi.fn()}
+      />
+    )
+    const mark = screen.getByTestId('family-card-under-two')
+    expect(mark.className).not.toContain('red')
+    expect(mark.querySelector('svg')?.getAttribute('class')).not.toContain('red')
+  })
+})
+
 describe('FamilyCard — the mandatory-accommodation chip is renamed', () => {
   it('reads "Needs Accommodation"', () => {
     // Renamed under kindred#2072; the label is EXPLICITLY NOT LOCKED and is

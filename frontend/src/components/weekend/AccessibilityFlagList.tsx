@@ -157,6 +157,14 @@ export function AccessibilityFlagList({ flags }: AccessibilityFlagListProps) {
   if (flags.has_infant === true) {
     needs.push({ key: 'infant', label: 'Infant in party', icon: Baby, tone: 'neutral' })
   }
+  // The same kind of fact with different provenance (staff ruling,
+  // 2026-08-21): COMPUTED server-side from the children's birthdates, where
+  // `has_infant` above is a form answer -- one only adult sessions ever give,
+  // so on family weekends this row is the one that actually fires. Neutral
+  // tone for the same reason: suitability, not an unfulfilled request.
+  if (flags.has_child_under_two === true) {
+    needs.push({ key: 'under_two', label: 'Child under 2 in party', icon: Baby, tone: 'neutral' })
+  }
 
   if (needs.length === 0) return null
 

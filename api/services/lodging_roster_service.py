@@ -241,6 +241,44 @@ def _consumes_a_bed(child: Any, session_start: date | None) -> bool:
     return _completed_months(birthdate, session_start) >= INFANT_BED_EXEMPT_MONTHS
 
 
+# The board's baby/toddler mark (staff ruling, 2026-08-21): a child still
+# under TWO YEARS at session start. Deliberately NOT
+# `INFANT_BED_EXEMPT_MONTHS` -- that 18-month rule answers "does this child
+# need a bed", this answers "is there a baby or toddler in this party", and
+# coupling them would move a bed count whenever the icon's threshold is
+# re-ruled (or vice versa).
+UNDER_TWO_MONTHS = 24
+
+
+def _has_child_under_two(children: list[Any], session_start: date | None) -> bool:
+    """Whether ANY child is under 24 months at session start.
+
+    Computed from `persons.birthdate` against `camp_sessions.start_date`,
+    never from `persons.age` -- that column is CampMinder's `yy.mm` snapshot
+    and thresholding on it is forbidden (see `INFANT_BED_EXEMPT_MONTHS`'s doc
+    for the measured miscounts).
+
+    ⚠️ OPPOSITE POLARITY from `_consumes_a_bed` on every unknown, and on
+    purpose. The bed rule falls back toward KEEPING the bed, because
+    over-stating a party reads as "look at this" while under-stating it reads
+    as "room for more". This flag draws an ICON that asserts knowledge --
+    "there is a child under two here" -- so a missing or unparseable
+    birthdate, or an unreadable session start, contributes FALSE: an absent
+    mark reads as "nothing known", never as "no baby". The age == 0.0
+    unknown-sentinel guard is likewise not copied over -- it exists to stop a
+    bed being REMOVED on a sentinel's strength, and no bed rides on this.
+    """
+    if session_start is None:
+        return False
+    for child in children:
+        birthdate = _as_date(_s(child, "birthdate"))
+        if birthdate is None:
+            continue
+        if _completed_months(birthdate, session_start) < UNDER_TWO_MONTHS:
+            return True
+    return False
+
+
 def _adult_display_name(adult: Any) -> str:
     """A `family_camp_adults` row's name, coalesced.
 
@@ -2555,7 +2593,14 @@ class LodgingRosterService:
                         request_values.get(household_pb_id, []),
                         include_staff_notes=include_staff_notes,
                     ),
-                    flags=self._build_flags(registration),
+                    flags=self._build_flags(
+                        registration,
+                        # The one COMPUTED flag on the summary (staff ruling,
+                        # 2026-08-21) -- see `_has_child_under_two` and the
+                        # schema field for why it cannot be read from the
+                        # registration row like its siblings.
+                        has_child_under_two=_has_child_under_two(children, session_start),
+                    ),
                 )
             )
         parties.sort(key=lambda p: (p.sort_name.casefold(), p.display_name.casefold()))
@@ -2653,8 +2698,17 @@ class LodgingRosterService:
             answers_conflict=_b(registration, "share_answers_conflict"),
         )
 
-    def _build_flags(self, registration: Any) -> AccessibilityFlagSummary:
+    def _build_flags(self, registration: Any, *, has_child_under_two: bool = False) -> AccessibilityFlagSummary:
         """Read the derived flags. Do NOT re-derive them here.
+
+        ONE deliberate exception to that contract: `has_child_under_two` is
+        COMPUTED by the caller from the children's birthdates and passed in,
+        because its would-be column (`has_infant`) is answered only on adult
+        sessions and is 0 across every production family-weekend row -- the
+        full argument lives on the schema field. It is keyword-only so a
+        caller cannot pass it by accident, and it defaults False so a
+        registration with no children context honestly reports "nothing
+        known".
 
         No medical record reaches this method, and that is deliberate
         (kindred#1889). It used to take one to set `has_medical_narrative`
@@ -2695,8 +2749,12 @@ class LodgingRosterService:
         layer so every surface sees the correction.
         """
         if registration is None:
-            return AccessibilityFlagSummary()
+            # A household with no registration row still builds a party, and
+            # its children's birthdates are still real -- the computed flag
+            # survives where the column-read flags honestly default.
+            return AccessibilityFlagSummary(has_child_under_two=has_child_under_two)
         return AccessibilityFlagSummary(
+            has_child_under_two=has_child_under_two,
             needs_private_bathroom=_b(registration, "needs_private_bathroom"),
             needs_power=_b(registration, "needs_power"),
             needs_accommodation=_b(registration, "needs_accommodation"),

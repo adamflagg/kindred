@@ -31,6 +31,7 @@ import type {
   SlotMergeRequest,
 } from './api-generated'
 import type {
+  AccessibilityFlags,
   HouseholdJourney,
   HouseholdJourneyRow,
   LodgingUnitRow,
@@ -111,6 +112,30 @@ const _exhaustiveHouseholdJourney: Required<HouseholdJourney> = {
   years: [],
 }
 void _exhaustiveHouseholdJourney
+
+/**
+ * Every flag on the accessibility summary. `RosterParty`'s own fixture below
+ * writes a partial flags block (they are all optional on the wire), so it
+ * proves nothing about the flag set — this is the guard that a regen adding
+ * or dropping a flag stops the build here rather than silently changing what
+ * the board, the roster filter chips and the details panel can see.
+ *
+ * `has_child_under_two` is the one COMPUTED flag (staff ruling, 2026-08-21):
+ * derived at roster build time from the children's birthdates, because its
+ * form-declared sibling `has_infant` is answered only on adult sessions and
+ * is 0 across every production family-weekend row.
+ */
+const _exhaustiveAccessibilityFlags: Required<AccessibilityFlags> = {
+  needs_private_bathroom: false,
+  needs_power: false,
+  needs_accommodation: false,
+  needs_fridge: false,
+  needs_step_free: false,
+  accommodation_is_mandatory: false,
+  has_infant: false,
+  has_child_under_two: false,
+}
+void _exhaustiveAccessibilityFlags
 
 const _exhaustiveRosterParty: Required<RosterPartyRow> = {
   grain: 'household',

@@ -92,6 +92,10 @@ export type AccessibilityFlagSummary = {
    * Has Infant
    */
   has_infant?: boolean
+  /**
+   * Has Child Under Two
+   */
+  has_child_under_two?: boolean
 }
 
 /**
