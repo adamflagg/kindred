@@ -156,6 +156,11 @@ class WriteInDemand(NamedTuple):
     see `write_in_demand`. `known` gates the drag-time marks kindred#2528
     built: a count that is not a fact supports neither the red figure nor the
     match wash.
+
+    `sized` is deliberately UNCAPPED, unlike `consumed`. A hand-typed count
+    above the card's own beds is what drives kindred#2503's over-capacity red,
+    so the numerator has to carry the true recorded figure -- clipping it to
+    capacity would hide the very overage the card exists to show.
     """
 
     consumed: int
@@ -176,34 +181,56 @@ def write_in_demand(capacity: int | None, loads: Sequence[WriteInLoad]) -> Write
     somebody is in that space. That is the em dash's meaning written down as
     arithmetic rather than a new rule.
 
-    AN ANCESTOR TAKES THE WHOLE CARD. The house was let whole and a room inside
-    it is not separately lettable. The alternative -- each room subtracting the
+    `sized` IS COMPUTED FIRST, over every non-ancestor cover carrying a
+    recorded `party_size`, before either capacity guard below runs. It is a
+    count of people somebody actually wrote down, and no guard is allowed to
+    discard it: a cabin nobody has measured, holding a two-person write-in,
+    prints `2/-`, not `-/-`. Fix-round finding: the previous version zeroed
+    `sized` whenever `capacity` was `None`, even though `sized` never depended
+    on capacity to begin with.
+
+    AN ANCESTOR TAKES THE WHOLE CARD, decided by a PRE-PASS over `loads`
+    rather than inside the per-cover loop, so the answer cannot depend on
+    where in the list the ancestor sits. Fix-round finding: the previous
+    version returned whatever the loop had accumulated from covers seen
+    EARLIER in the list, so the same set of loads in a different order gave a
+    different `sized`. The house was let whole and a room inside it is not
+    separately lettable. The alternative -- each room subtracting the
     ancestor's size -- spends one party once per room, and would report a
     seven-bed house holding four people as having five beds free.
 
     AN ANCESTOR CONTRIBUTES NOTHING TO `sized`, even carrying a count. That
     count is a fact about the house; printing it on both halves of a split
     Wawona puts one two-person party on the screen twice.
+
+    AN ANCESTOR'S `known` IS `capacity is not None`, not unconditionally True:
+    an ancestor cover only tells you the whole card is taken, not how big the
+    card is, so a capacity nobody measured stays unknown even then.
     """
     if not loads:
         return WriteInDemand(consumed=0, sized=0, known=True)
+
+    # A fact about people, not about the card -- see the function docstring.
+    # Computed before either guard below so neither one can discard it.
+    sized = sum(load.party_size for load in loads if load.relation != "ancestor" and load.party_size is not None)
+
     if capacity is None:
         # Nothing to subtract from. `consumed` is meaningless here and callers
         # must read `known` before using it; `free_family_beds` closes the unit
-        # instead of reporting a number.
-        return WriteInDemand(consumed=0, sized=0, known=False)
+        # instead of reporting a number. `sized` survives regardless.
+        return WriteInDemand(consumed=0, sized=sized, known=False)
+
+    if any(load.relation == "ancestor" for load in loads):
+        # Whole-card, and order-independent by construction: a pre-pass, not
+        # a value the loop happens to have accumulated so far. `known` mirrors
+        # the capacity guard directly -- see the function docstring.
+        return WriteInDemand(consumed=capacity, sized=sized, known=capacity is not None)
 
     consumed = 0
-    sized = 0
     known = True
     for load in loads:
-        if load.relation == "ancestor":
-            # Whole-card, and a FACT -- unlike a wholesale guess about a room
-            # that may be shared. Nothing can exceed it, so stop.
-            return WriteInDemand(consumed=capacity, sized=sized, known=known)
         if load.party_size is not None:
             consumed += load.party_size
-            sized += load.party_size
             continue
         known = False
         if load.capacity is None:

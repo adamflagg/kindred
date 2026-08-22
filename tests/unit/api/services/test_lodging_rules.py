@@ -673,11 +673,38 @@ class TestWriteInDemand:
         """
         assert write_in_demand(4, [WriteInLoad("ancestor", 2, 7)]) == WriteInDemand(consumed=4, sized=0, known=True)
 
+    def test_an_ancestor_answers_the_same_regardless_of_load_order(self) -> None:
+        """Fix-round finding, reviewer-verified repro: the ancestor branch
+        used to return whatever the loop had accumulated from covers seen
+        EARLIER in the list. An unsized descendant before the ancestor set
+        `known = False` before the loop ever reached the ancestor's early
+        return; the same descendant placed AFTER the ancestor never got a
+        chance to run, so `known` stayed `True`. Same set of loads, two
+        different answers on the one field (`known`) that a hoisted `sized`
+        computation does not by itself make order-independent -- the ancestor
+        check has to be a pre-pass over `loads`, not a fact the per-cover loop
+        happens to preserve, so the order cannot matter."""
+        unsized_descendant = WriteInLoad("descendant", None, 3)
+        ancestor = WriteInLoad("ancestor", 2, 7)
+        forward = write_in_demand(4, [unsized_descendant, ancestor])
+        backward = write_in_demand(4, [ancestor, unsized_descendant])
+        assert forward == backward == WriteInDemand(consumed=4, sized=0, known=True)
+
+    def test_an_ancestor_on_an_unmeasured_card_is_not_known(self) -> None:
+        """An ancestor cover only tells you the whole card is taken, not how
+        big the card is -- a capacity nobody measured stays unknown even with
+        an ancestor cover asserting occupancy."""
+        assert write_in_demand(None, [WriteInLoad("ancestor", 2, 7)]).known is False
+
     def test_consumption_is_capped_at_the_card(self) -> None:
         """A hand-typed count above the cabin's beds is over capacity, which is
         a real state the card reddens -- but it cannot take MORE beds than
-        exist, or a container's arithmetic would go negative."""
-        assert write_in_demand(4, [WriteInLoad("own", 9, 4)]).consumed == 4
+        exist, or a container's arithmetic would go negative. `sized` is NOT
+        capped the same way: kindred#2503's over-capacity red needs the true
+        recorded count, so the numerator must show 9, not a clipped 4."""
+        demand = write_in_demand(4, [WriteInLoad("own", 9, 4)])
+        assert demand.consumed == 4
+        assert demand.sized == 9
 
     def test_an_unbounded_wholesale_claim_takes_everything(self) -> None:
         """An unsized cover on a unit nobody measured cannot be bounded, so
@@ -687,6 +714,13 @@ class TestWriteInDemand:
 
     def test_unknown_card_capacity_is_never_known(self) -> None:
         assert write_in_demand(None, [WriteInLoad("own", 2, None)]).known is False
+
+    def test_sized_survives_an_unknown_card_capacity(self) -> None:
+        """A human-recorded count is a fact whether or not the card itself is
+        measured. A cabin nobody has measured, holding a two-person write-in,
+        must print 2/-, not -/- -- no capacity guard may discard a count
+        somebody actually wrote down."""
+        assert write_in_demand(None, [WriteInLoad("own", 2, None)]).sized == 2
 
 
 class TestFreeFamilyBeds:
