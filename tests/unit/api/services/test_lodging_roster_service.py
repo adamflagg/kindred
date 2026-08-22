@@ -5505,7 +5505,7 @@ class TestWriteInsResolveFromTheirOwnTable:
             fetch_session=FAMILY_SESSION,
             fetch_units=[_unit("u1", "ridge-a", "Ridge A", sleeps=5)],
             fetch_availability=[],
-            fetch_write_ins=[_rec(unit="u1", occupant_name="Liam Garcia", note="Back Monday")],
+            fetch_write_ins=[_rec(unit="u1", occupant_name="Liam Garcia", note="Back Monday", party_size=2)],
         )
 
         roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
@@ -5523,6 +5523,40 @@ class TestWriteInsResolveFromTheirOwnTable:
         assert unit.write_ins != []
         assert unit.write_ins[0].unit_id == "u1"
         assert unit.write_ins[0].occupant_name == "Liam Garcia"
+        # The RAW-RECORD half of `_i_or_none`: the count travels off the
+        # write-in row, through `_build_units`, onto both the summary's own
+        # `party_size` and the cover it resolves to. `TestWriteInCovers`
+        # pins the `write_in_covers()` half of this with a typed double that
+        # already carries `party_size` -- this is the translation upstream of
+        # that, which nothing else exercises.
+        assert unit.party_size == 2
+        assert unit.write_ins[0].party_size == 2
+
+    @pytest.mark.asyncio
+    async def test_a_role_rows_party_size_never_reaches_the_summary(self) -> None:
+        """The mirror of the test above, and the one that catches
+        `source_row` sneaking into `_build_units`' `party_size=` read.
+
+        No writer ever puts a `party_size` on a `lodging_availability` row --
+        the column lives on `lodging_write_ins` alone -- but the fixture puts
+        one there anyway, because the only way to prove the read is pinned to
+        `write_in_row` specifically, and not to `source_row` (which falls back
+        to the ROLE row when there is no write-in), is to make the two rows
+        disagree. A role row names nobody, so a count read off it would be a
+        headcount for no one.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[_unit("u1", "le-shack", "Le Shack", sleeps=4, inventory_class="staff_default")],
+            fetch_availability=[
+                _rec(unit="u1", family_available=True, occupant_name="", note="Director away", party_size=7)
+            ],
+            fetch_write_ins=[],
+        )
+
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.units[0].party_size is None
 
     @pytest.mark.asyncio
     async def test_a_stale_availability_occupancy_row_no_longer_writes_anybody_in(self) -> None:
@@ -5750,6 +5784,39 @@ class TestWriteInsResolveFromTheirOwnTable:
         assert by_code["house-a"].write_ins[0].unit_id == "u1"
         assert by_code["house-a"].write_ins[0].occupant_name == "Liam Garcia"
         assert by_code["house-a"].write_ins[0].note == "Back Monday"
+
+    @pytest.mark.asyncio
+    async def test_a_combined_containers_cover_publishes_the_whole_house_total_not_its_own_delta(
+        self,
+    ) -> None:
+        """`unit_sleeps` on a cover sourced from a CONTAINER is the whole-house
+        total, never the container's own row -- kindred#2041's delta rule.
+
+        The house is written into directly (an OWN cover on `house`, an
+        ANCESTOR cover on each room), and its own `sleeps` is 0 -- real,
+        deliberate common space nobody measured, not "unknown" (its two rooms
+        supply the rest of the answer). `capacity_by_code` has to be built
+        from `_effective_sleeps`, the SAME walk `_build_counts` totals
+        `beds_family_available` with: reading the container's raw `sleeps`
+        instead publishes 3 + 2 = 5 beds as 0 (or unmeasured), which is what
+        this pins against.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("u1", "house", "House", is_container=True, default_combined=True, sleeps=0),
+                _unit("u2", "house-a", "House A", sleeps=3, parent_unit="u1"),
+                _unit("u3", "house-b", "House B", sleeps=2, parent_unit="u1"),
+            ],
+            fetch_write_ins=[_rec(unit="u1", occupant_name="Liam Garcia", note="")],
+        )
+
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        by_code = {u.code: u for u in roster.units}
+        assert by_code["house"].write_ins[0].unit_sleeps == 5
+        assert by_code["house-a"].write_ins[0].unit_sleeps == 5
+        assert by_code["house-b"].write_ins[0].unit_sleeps == 5
 
 
 class TestTheWireStopsSpellingAnOccupancyAsFamilyAvailableFalse:

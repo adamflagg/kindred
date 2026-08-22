@@ -948,14 +948,17 @@ class _BathroomIndex(NamedTuple):
     consumer -- the same "compute across all units, read per party" split
     `_build_units` already uses for `group_members`.
 
-    Two consumers share it: `_resolve_party_bathroom` (via `_build_parties`)
-    and, since kindred#2041, `_build_counts`'s `_effective_sleeps`, which
-    walks `leaf_codes_under` to total a combined container's rooms. Both
-    orchestrators (`build_roster`, `build_summary`'s per-weekend `_entry`)
-    build ONE instance right after `_build_units` and pass it to both --
-    building a second one from the same `units` list was caught in review on
-    kindred#2041's PR and is exactly the duplicate work this docstring
-    already warned against.
+    THREE consumers share it: `_resolve_party_bathroom` (via
+    `_build_parties`); `_effective_sleeps` (module level, walking
+    `leaf_codes_under` to total a combined container's rooms since
+    kindred#2041, and a standalone function rather than `_build_counts`'s own
+    closure since kindred#2503, because `write_in_covers`' `capacity_by_code`
+    needed it too); and that `capacity_by_code` build in `build_roster`
+    itself, the newest caller. Every orchestrator (`build_roster`,
+    `build_summary`'s per-weekend `_entry`) builds ONE instance right after
+    `_build_units` and passes it to all of them -- building a second one from
+    the same `units` list was caught in review on kindred#2041's PR and is
+    exactly the duplicate work this docstring already warned against.
     """
 
     units_by_code: dict[str, LodgingUnitSummary]
@@ -1007,6 +1010,69 @@ class _BathroomIndex(NamedTuple):
             else:
                 leaves.add(child.code)
         return frozenset(leaves)
+
+
+def _effective_sleeps(unit: LodgingUnitSummary, unit_index: _BathroomIndex) -> int | None:
+    # MIRRORED IN TWO PLACES, and both are named here on purpose -- the
+    # pairing being undocumented is what let the first two drift apart
+    # unnoticed, and a change here that is not made there puts disagreeing
+    # numbers on one screen:
+    #
+    #   1. `effectiveSleeps` in
+    #      `frontend/src/components/weekend/rosterAttention.ts`, which
+    #      `countUnmeasuredSpaces` reads to answer the same "has anyone
+    #      measured this?" question for the chip `WeekendStatsBar`
+    #      prints beside `beds_family_available`.
+    #   2. `derivedWholeHouseSleeps` in
+    #      `frontend/src/components/admin/lodging/derivedCapacity.ts`
+    #      (kindred#2079), the read-only whole-house figure shown beside
+    #      the container's delta field on the units admin form.
+    #
+    # THREE copies is one too many. (2) could not import (1): it is an
+    # unexported helper, and routing admin code through a `weekend/**`
+    # module adds a static import edge across two lazily-chunked route
+    # trees -- see `WeekendRosterPage.chunkGraph.test.ts`, the real
+    # `vite build` that guards it. The fix is a neutral leaf module both
+    # frontends import, not a cross-tree import. Until then: change one,
+    # change all three.
+    #
+    # MODULE LEVEL rather than `_build_counts`'s own closure (as it was
+    # kindred#2041-kindred#2503): `write_in_covers`' `capacity_by_code` is a
+    # THIRD caller now, built in `build_roster` from the same `unit_index`
+    # `_build_counts` receives, and it needs this walk before `_build_counts`
+    # ever runs. Reading raw `unit.sleeps` there instead published a
+    # combined container's own DELTA -- 0 on all 15 production containers --
+    # as its cover's `unit_sleeps`, which is not "unmeasured", it is "the
+    # wrong number": `write_in_demand` clamps `consumed` to it and reports a
+    # five-bed house as full.
+    if not unit.is_container:
+        return unit.sleeps
+    leaf_sleeps = [
+        leaf.sleeps
+        for code in unit_index.leaf_codes_under(unit.code)
+        if (leaf := unit_index.units_by_code.get(code)) is not None and leaf.is_active
+    ]
+    # ACTIVE leaves only, in both directions: a retired room adds no
+    # beds, and equally must not drag its whole house into "unknown".
+    #
+    # NOT additionally filtered by `_is_planning_inventory`, and that
+    # is deliberate rather than an oversight. Six active
+    # `staff_default` leaves sit under active containers in production
+    # (44 family_pool + 6 staff_default under 15 containers), and the
+    # SUM below has counted their beds since kindred#2041 -- a family
+    # holding the whole house holds that room too, which is what
+    # "combined" means. Gating the unknown on a narrower leaf set than
+    # the sum reads from would let a room's beds count while its
+    # missing measurement did not.
+    if any(s is None for s in leaf_sleeps):
+        return None
+    # The degenerate case. "Unset container reads as a delta of 0"
+    # holds only because its rooms supply the rest of the answer --
+    # with no rooms to supply it, 0 is not a delta over anything, it
+    # is the claim "this house sleeps nobody".
+    if unit.sleeps is None and not leaf_sleeps:
+        return None
+    return (unit.sleeps or 0) + sum(s for s in leaf_sleeps if s is not None)
 
 
 def _resolve_party_bathroom(unit_codes: list[str], index: _BathroomIndex) -> str:
@@ -1625,14 +1691,20 @@ class LodgingRosterService:
         # paths or the lander and the board will disagree about which houses
         # are free.
         #
-        # Each unit's OWN `sleeps`, keyed by code the same way `write_in_covers`
-        # keys `by_code` internally -- a blank code is excluded here too, for
-        # the same collision `by_code` guards against. This is not yet the
-        # whole-house total a combined container's cover should carry
-        # (kindred#2041's delta rule): that walk is `_build_counts`'s
-        # `_effective_sleeps`, and threading its real answer in here belongs to
-        # the task that hoists it, not this one.
-        capacity_by_code: dict[str, int | None] = {u.code: u.sleeps for u in unit_summaries if u.code}
+        # Each unit's TRUE capacity -- a whole-house total on a combined
+        # container, `sleeps` unchanged on a leaf (kindred#2041's delta rule)
+        # -- keyed by code the same way `write_in_covers` keys `by_code`
+        # internally (a blank code is excluded here too, for the same
+        # collision `by_code` guards against). `_effective_sleeps` is the
+        # SAME walk `_build_counts` totals `beds_family_available` with, over
+        # the SAME `unit_index` built above: two derivations of one unit's
+        # capacity are two things that can disagree about one cabin, which is
+        # exactly what reading raw `u.sleeps` here did -- it published a
+        # combined container's own DELTA (0 on every production container) as
+        # its cover's `unit_sleeps` instead of the whole house.
+        capacity_by_code: dict[str, int | None] = {
+            u.code: _effective_sleeps(u, unit_index) for u in unit_summaries if u.code
+        }
         _resolve_write_in_covers(unit_summaries, written_in_unit_ids(write_ins), capacity_by_code)
         housing_names = housing_names_task.result()
         parties = self._build_parties(
@@ -2811,59 +2883,7 @@ class LodgingRosterService:
         available = [u for u in bookable if u.is_family_available]
         assigned = sum(1 for p in parties if p.unit_code or p.unit_name)
 
-        def _effective_sleeps(unit: LodgingUnitSummary) -> int | None:
-            # MIRRORED IN TWO PLACES, and both are named here on purpose --
-            # the pairing being undocumented is what let the first two drift
-            # apart unnoticed, and a change here that is not made there puts
-            # disagreeing numbers on one screen:
-            #
-            #   1. `effectiveSleeps` in
-            #      `frontend/src/components/weekend/rosterAttention.ts`, which
-            #      `countUnmeasuredSpaces` reads to answer the same "has anyone
-            #      measured this?" question for the chip `WeekendStatsBar`
-            #      prints beside `beds_family_available`.
-            #   2. `derivedWholeHouseSleeps` in
-            #      `frontend/src/components/admin/lodging/derivedCapacity.ts`
-            #      (kindred#2079), the read-only whole-house figure shown beside
-            #      the container's delta field on the units admin form.
-            #
-            # THREE copies is one too many. (2) could not import (1): it is an
-            # unexported helper, and routing admin code through a `weekend/**`
-            # module adds a static import edge across two lazily-chunked route
-            # trees -- see `WeekendRosterPage.chunkGraph.test.ts`, the real
-            # `vite build` that guards it. The fix is a neutral leaf module both
-            # frontends import, not a cross-tree import. Until then: change one,
-            # change all three.
-            if not unit.is_container:
-                return unit.sleeps
-            leaf_sleeps = [
-                leaf.sleeps
-                for code in unit_index.leaf_codes_under(unit.code)
-                if (leaf := unit_index.units_by_code.get(code)) is not None and leaf.is_active
-            ]
-            # ACTIVE leaves only, in both directions: a retired room adds no
-            # beds, and equally must not drag its whole house into "unknown".
-            #
-            # NOT additionally filtered by `_is_planning_inventory`, and that
-            # is deliberate rather than an oversight. Six active
-            # `staff_default` leaves sit under active containers in production
-            # (44 family_pool + 6 staff_default under 15 containers), and the
-            # SUM below has counted their beds since kindred#2041 -- a family
-            # holding the whole house holds that room too, which is what
-            # "combined" means. Gating the unknown on a narrower leaf set than
-            # the sum reads from would let a room's beds count while its
-            # missing measurement did not.
-            if any(s is None for s in leaf_sleeps):
-                return None
-            # The degenerate case. "Unset container reads as a delta of 0"
-            # holds only because its rooms supply the rest of the answer --
-            # with no rooms to supply it, 0 is not a delta over anything, it
-            # is the claim "this house sleeps nobody".
-            if unit.sleeps is None and not leaf_sleeps:
-                return None
-            return (unit.sleeps or 0) + sum(s for s in leaf_sleeps if s is not None)
-
-        effective_sleeps = {u.unit_id: _effective_sleeps(u) for u in bookable}
+        effective_sleeps = {u.unit_id: _effective_sleeps(u, unit_index) for u in bookable}
 
         return RosterCounts(
             parties_total=len(parties),
