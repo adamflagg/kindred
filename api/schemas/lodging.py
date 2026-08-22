@@ -415,10 +415,17 @@ class LodgingUnitSummary(BaseModel):
     # the summary rather than re-fetching the row.
     party_size: int | None = None
     # CAN A FAMILY GO IN THIS SPACE -- the DERIVED answer, and the one every
-    # count on the stats bar goes through. Folds the two facts above together:
-    # the ROLE from `family_available_override`, and OCCUPANCY from this unit's
-    # own write-in row. Occupancy is absolute and closes the unit over a
-    # release, because a cabin somebody is sleeping in cannot take a family.
+    # count on the stats bar goes through. Folds two facts together: the ROLE
+    # from `family_available_override`, and how many beds are LEFT once every
+    # write-in in `write_ins` below is paid for.
+    #
+    # ⚠️ OCCUPANCY IS NOT ABSOLUTE, AND THIS COMMENT USED TO SAY IT WAS.
+    # kindred#2432 made a written-into cabin take a family like any other and
+    # took the drop refusal out of `dragPlacement.ts`; kindred#2503 stopped
+    # this field disagreeing with that board. A fifteen-bed cabin with two
+    # people written in is a space with thirteen beds. What closes a unit is
+    # having none left -- the same answer for a full cabin and for a write-in
+    # that takes a space wholesale, a different one for a shared space.
     #
     # Its rule is `is_family_available` in api/services/lodging_rules.py, and
     # that is the only place the two are combined.
@@ -447,11 +454,13 @@ class LodgingUnitSummary(BaseModel):
     # names no occupant and closes nothing, so inheriting it would silently
     # open every room beneath a released building.
     #
-    # ⚠️ `is_family_available` deliberately does NOT read this field: it folds
-    # in the unit's OWN occupancy row only, so an inherited write-in badges and
-    # blocks placement without moving the bed counts. That is the behaviour the
-    # counts have always had, and changing it is a counts decision rather than
-    # a side effect of the split.
+    # ⚠️ `is_family_available` READS THIS FIELD, and it did not until
+    # kindred#2503 -- it folded in the unit's OWN occupancy row alone, so a
+    # combined container whose write-ins live on its rooms drew the badge and
+    # listed all four occupants while the bar above it counted the whole house
+    # open with every bed free. `_resolve_family_availability` recomputes the
+    # flag from these RESOLVED covers, after the cover walk, on both
+    # orchestrators.
     write_ins: list[WriteInCover] = Field(default_factory=list)
     map_x: float | None = None
     map_y: float | None = None

@@ -57,9 +57,11 @@ from api.services.lodging_rules import (
     HousingNameResolver,
     RegistryUnit,
     UnitAlias,
+    WriteInLoad,
     amenity_coverage,
     container_bathroom,
     effective_bathroom,
+    free_family_beds,
     is_family_available,
     ramp_coverage,
     request_text_authorship,
@@ -866,6 +868,54 @@ def _resolve_write_in_covers(
     covers = write_in_covers(units, write_in_unit_ids, capacity_by_code)
     for unit in units:
         unit.write_ins = covers.get(unit.code, [])
+
+
+def _resolve_family_availability(
+    units: list[LodgingUnitSummary], capacity_by_code: dict[str, int | None]
+) -> dict[str, int | None]:
+    """Recompute `is_family_available` from the RESOLVED covers, in place.
+
+    RETURNS the free-bed map it had to compute anyway (unit_id -> free beds),
+    which `_build_counts` sums rather than deriving a second time. Two
+    derivations of "how many beds are free" are two answers to the question
+    this whole seam exists to make single -- and the second one would have to
+    rebuild the same capacity index over the same units to get there.
+
+    THE SIXTH RESOLVER, and the first one whose result a COUNT reads. The five
+    amenity resolvers write `*_coverage` fields that only `units` carries, so
+    running them on one orchestrator and not the other was invisible until
+    kindred#2502; this one moves `units_family_available`,
+    `beds_family_available` and the lander's per-weekend numbers, so an
+    asymmetry here is a page disagreeing with the page it links to.
+
+    MUST RUN AFTER `_resolve_write_in_covers`. `_build_units` cannot decide
+    availability, because a unit's cover can come from a row on a unit built
+    after it -- the same reason the cover walk is a second pass. What
+    `_build_units` writes is the ROLE-only answer, and this overwrites it.
+
+    Capacity arrives as `capacity_by_code`, built once by the orchestrator from
+    `_effective_sleeps` and threaded to the cover walk as well -- the same
+    build-once discipline `_BathroomIndex` follows, and for the same reason.
+    It is `_effective_sleeps` rather than `unit.sleeps` so a combined house is
+    judged on its whole-house total and a written-into ROOM on the room's own
+    beds; reading `unit.sleeps` here would judge all fifteen production
+    containers at `sleeps = 0`.
+    """
+    free_by_unit: dict[str, int | None] = {}
+    for unit in units:
+        loads = [
+            WriteInLoad(
+                relation=cover.relation,
+                party_size=cover.party_size,
+                # The capacity of the unit the ROW names, not this card's.
+                capacity=capacity_by_code.get(cover.unit_code),
+            )
+            for cover in unit.write_ins
+        ]
+        free = free_family_beds(capacity_by_code.get(unit.code), loads)
+        free_by_unit[unit.unit_id] = free
+        unit.is_family_available = is_family_available(unit.inventory_class, unit.family_available_override, free)
+    return free_by_unit
 
 
 def drawn_units(units: list[LodgingUnitSummary]) -> list[LodgingUnitSummary]:
@@ -1676,20 +1726,15 @@ class LodgingRosterService:
         # on a unit built after it, so there is no order in which one pass over
         # `_build_units` would see every own-row it needs.
         #
-        # Only on THIS path, and since kindred#2502 it is the ONLY resolver
-        # here that is. `build_summary` builds its own units to get at the
-        # counts, but its `WeekendSummaryEntry` carries no `units`, so
-        # resolving covers there would be work no response can read -- once per
-        # weekend, across every weekend of the year, on every lander request.
-        # That argument survived for THIS function and not for the five above
-        # because a cover is read off `units` and nothing else; no count reads
-        # one.
-        #
-        # kindred#2503 is where that changes. If `is_family_available` ever
-        # reads the RESOLVED cover rather than the unit's own write-in row,
-        # `_build_counts` reads availability, and this call has to run on both
-        # paths or the lander and the board will disagree about which houses
-        # are free.
+        # ON BOTH PATHS SINCE kindred#2503. The comment that used to stand here
+        # said this walk was the one resolver `build_summary` skipped, on the
+        # reasoning that a cover is read off `units` and no COUNT reads one --
+        # and it named exactly the condition that would end that: "if
+        # `is_family_available` ever reads the RESOLVED cover rather than the
+        # unit's own write-in row, this call has to run on both paths or the
+        # lander and the board will disagree about which houses are free."
+        # That is precisely what `_resolve_family_availability` below does, so
+        # `build_summary._entry` now runs this pair too.
         #
         # Each unit's TRUE capacity -- a whole-house total on a combined
         # container, `sleeps` unchanged on a leaf (kindred#2041's delta rule)
@@ -1706,6 +1751,11 @@ class LodgingRosterService:
             u.code: _effective_sleeps(u, unit_index) for u in unit_summaries if u.code
         }
         _resolve_write_in_covers(unit_summaries, written_in_unit_ids(write_ins), capacity_by_code)
+        # SIXTH RESOLVER, AND `build_summary._entry` RUNS IT TOO -- it must, or
+        # the lander and the board disagree about which houses are free. One
+        # map, threaded to both write-in resolvers and then on to
+        # `_build_counts`, the same rule `_BathroomIndex` follows two blocks up.
+        free_beds_by_unit = _resolve_family_availability(unit_summaries, capacity_by_code)
         housing_names = housing_names_task.result()
         parties = self._build_parties(
             session_type=session_type,
@@ -1731,7 +1781,7 @@ class LodgingRosterService:
             assignments=placements_task.result(),
             unit_index=unit_index,
         )
-        counts = self._build_counts(unit_summaries, parties, aliases_task.result(), unit_index)
+        counts = self._build_counts(unit_summaries, parties, aliases_task.result(), unit_index, free_beds_by_unit)
 
         return WeekendRosterResponse(
             year=year,
@@ -1924,6 +1974,23 @@ class LodgingRosterService:
             _resolve_ramp_coverage(unit_summaries, unit_index)
             _resolve_ac_coverage(unit_summaries, unit_index)
             _resolve_bathroom(unit_summaries, unit_index)
+            # THE SIXTH AND SEVENTH RESOLVERS, and unlike the five above they
+            # MOVE NUMBERS ON THIS PATH. `_build_counts` reads
+            # `is_family_available`, so the cover walk and the availability
+            # resolution have to run here exactly as `build_roster` runs them
+            # -- see the block there, whose comment predicted this and named
+            # the failure mode: the lander and the board disagreeing about
+            # which houses are free.
+            #
+            # ONE `capacity_by_code`, built the same way for the same reason:
+            # `_effective_sleeps` over the index above, so a combined house is
+            # judged on its whole-house total rather than on the delta its own
+            # row carries.
+            capacity_by_code: dict[str, int | None] = {
+                u.code: _effective_sleeps(u, unit_index) for u in unit_summaries if u.code
+            }
+            _resolve_write_in_covers(unit_summaries, written_in_unit_ids(write_ins_task.result()), capacity_by_code)
+            free_beds_by_unit = _resolve_family_availability(unit_summaries, capacity_by_code)
             parties = self._build_parties(
                 session_type=_s(session, "session_type"),
                 # THIS weekend's start. The six year-scoped fetches above are
@@ -1940,7 +2007,7 @@ class LodgingRosterService:
             )
             return WeekendSummaryEntry(
                 session=self._session_summary(session, statuses),
-                counts=self._build_counts(unit_summaries, parties, unresolved_aliases, unit_index),
+                counts=self._build_counts(unit_summaries, parties, unresolved_aliases, unit_index, free_beds_by_unit),
             )
 
         async with asyncio.TaskGroup() as tg:
@@ -2387,15 +2454,20 @@ class LodgingRosterService:
                     # for no one. `_i_or_none` is total over `None`, so the
                     # no-write-in case needs no separate guard.
                     party_size=_i_or_none(write_in_row, "party_size"),
-                    # THREE inputs, and the third is the split's whole point:
-                    # the ROLE from `lodging_availability`, and OCCUPANCY from
-                    # whichever write-in table this request resolved to. The
-                    # number staff read does not move -- what moved is that it
-                    # is now derived from two named facts instead of from one
-                    # boolean carrying both.
-                    is_family_available=is_family_available(
-                        inventory_class, override, is_occupied=write_in_row is not None
-                    ),
+                    # ROLE ONLY, ON PURPOSE, AND OVERWRITTEN BELOW.
+                    #
+                    # `free=None` is a deliberate spelling of "no occupancy
+                    # resolved yet", not an omission -- `is_family_available`
+                    # keeps the argument required precisely so this cannot be
+                    # spelled by forgetting it. `_resolve_family_availability`
+                    # recomputes every one of these after
+                    # `_resolve_write_in_covers` has walked the tree, on BOTH
+                    # orchestrators.
+                    #
+                    # It cannot be decided here: a unit's cover can come from a
+                    # row on a unit built AFTER it, which is the same reason
+                    # the cover walk is a second pass.
+                    is_family_available=is_family_available(inventory_class, override, free=None),
                     map_x=map_x,
                     map_y=map_y,
                 )
@@ -2843,7 +2915,20 @@ class LodgingRosterService:
         parties: list[RosterParty],
         unresolved_aliases: int,
         unit_index: _BathroomIndex,
+        free_beds_by_unit: dict[str, int | None],
     ) -> RosterCounts:
+        # `free_beds_by_unit` is `_resolve_family_availability`'s return, keyed
+        # by unit_id: how many beds each card has left once the write-ins
+        # covering it are paid for. It arrives THREADED rather than re-derived
+        # for the reason that resolver's docstring gives -- two derivations of
+        # "how many beds are free" are two answers to the question the seam
+        # exists to make single.
+        #
+        # NOT YET SUMMED. `beds_family_available` still totals whole units
+        # below, which is the pre-kindred#2503 arithmetic and deliberately
+        # unchanged here: moving the bed sum onto the remainder is its own
+        # decision with its own tests, and folding it into the signature change
+        # would land two reversals in one commit.
         # The population the BOARD DRAWS, at each tree's resolved level -- not
         # "every non-container row". A combined container IS one space a
         # family can hold, and its rooms are not separately lettable, so

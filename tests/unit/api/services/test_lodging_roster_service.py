@@ -37,6 +37,9 @@ from api.services.lodging_roster_service import (
     LodgingRosterService,
     SessionNotFoundError,
     _BathroomIndex,
+    _effective_sleeps,
+    _resolve_family_availability,
+    _resolve_write_in_covers,
     write_in_covers,
 )
 
@@ -112,6 +115,41 @@ def _unit(
         shareability=shareability,
         expand={"area": None if area_missing else _rec(code="RIDGE", name="Ridge Side", sort_order=area_sort_order)},
     )
+
+
+def _summary(code: str, **kwargs: Any) -> LodgingUnitSummary:
+    """A typed `LodgingUnitSummary` double, keyed off its registry code.
+
+    MODULE LEVEL, and shared: `TestWriteInCovers` owned this as a staticmethod
+    until kindred#2503 needed the same double from the availability resolver's
+    own class. One definition, two callers -- a copy is two fixtures free to
+    drift about what a unit looks like.
+
+    Named `_summary` rather than `_unit`, which is already taken above by the
+    RAW-RECORD fixture of an entirely different shape (a `SimpleNamespace`
+    standing in for a PocketBase row, not a parsed summary).
+
+    ACTIVE by default, unlike the schema, and that is not a convenience.
+    `_effective_sleeps` totals a combined container over its ACTIVE leaves
+    only, so a double left at the schema's `is_active = False` gives every
+    whole-house fixture a capacity of `None` -- "nobody measured this house" --
+    and the arithmetic under test never runs. A retired room is the exception
+    a test should have to ask for.
+    """
+    kwargs.setdefault("is_active", True)
+    return LodgingUnitSummary(unit_id=f"id-{code}", code=code, name=code.title(), **kwargs)
+
+
+def _written_ids(*codes: str) -> frozenset[str]:
+    """The `lodging_write_ins` rows, as the ids the walk is handed.
+
+    WHICH UNITS HOLD A WRITE-IN IS AN INPUT since kindred#2382, not a value
+    read off the summary. It used to be `family_available_override is
+    False`, which was the only spelling occupancy had while it shared one
+    boolean with the staff<->family role; the two are separate tables now,
+    so the walk is given the occupancy source directly.
+    """
+    return frozenset(f"id-{code}" for code in codes)
 
 
 def _repo(**overrides: Any) -> MagicMock:
@@ -5217,49 +5255,33 @@ class TestWriteInCovers:
     Fictional data throughout.
     """
 
-    @staticmethod
-    def _unit(code: str, **kwargs: Any) -> LodgingUnitSummary:
-        return LodgingUnitSummary(unit_id=f"id-{code}", code=code, name=code.title(), **kwargs)
-
-    @staticmethod
-    def _written(*codes: str) -> frozenset[str]:
-        """The `lodging_write_ins` rows, as the ids the walk is handed.
-
-        WHICH UNITS HOLD A WRITE-IN IS AN INPUT since kindred#2382, not a value
-        read off the summary. It used to be `family_available_override is
-        False`, which was the only spelling occupancy had while it shared one
-        boolean with the staff<->family role; the two are separate tables now,
-        so the walk is given the occupancy source directly.
-        """
-        return frozenset(f"id-{code}" for code in codes)
-
     def test_a_cover_says_which_direction_it_came_from(self) -> None:
         """The client cannot derive this. `writeInEntries` compares codes, which
         separates own from not-own but not an ANCESTOR from a DESCENDANT -- and
         the two consume a card differently (`write_in_demand`). A second
         client-side tree walk is a second thing that can disagree with this one.
         """
-        house = self._unit("house", is_container=True)
-        room = self._unit("room", parent_code="house")
-        other = self._unit("other", parent_code="house")
+        house = _summary("house", is_container=True)
+        room = _summary("room", parent_code="house")
+        other = _summary("other", parent_code="house")
         units = [house, room, other]
         caps = {"house": 5, "room": 3, "other": 2}
 
-        covers = write_in_covers(units, self._written("room"), caps)
+        covers = write_in_covers(units, _written_ids("room"), caps)
         assert covers["room"][0].relation == "own"
         assert covers["house"][0].relation == "descendant"
         assert covers.get("other", []) == []
 
-        covers = write_in_covers(units, self._written("house"), caps)
+        covers = write_in_covers(units, _written_ids("house"), caps)
         assert covers["house"][0].relation == "own"
         assert covers["room"][0].relation == "ancestor"
         assert covers["other"][0].relation == "ancestor"
 
     def test_a_cover_carries_the_row_s_party_size(self) -> None:
-        house = self._unit("house", is_container=True)
-        room = self._unit("room", parent_code="house", party_size=2)
+        house = _summary("house", is_container=True)
+        room = _summary("room", parent_code="house", party_size=2)
 
-        covers = write_in_covers([house, room], self._written("room"), {"house": 5, "room": 3})
+        covers = write_in_covers([house, room], _written_ids("room"), {"house": 5, "room": 3})
 
         assert covers["room"][0].party_size == 2
         assert covers["house"][0].party_size == 2
@@ -5268,10 +5290,10 @@ class TestWriteInCovers:
         """`0` would mean "a write-in for nobody". The column's `min: 1` forbids
         it and the arithmetic reads `None` as *occupies wholesale*, which is a
         different answer entirely."""
-        house = self._unit("house", is_container=True)
-        room = self._unit("room", parent_code="house")
+        house = _summary("house", is_container=True)
+        room = _summary("room", parent_code="house")
 
-        covers = write_in_covers([house, room], self._written("room"), {"house": 5, "room": 3})
+        covers = write_in_covers([house, room], _written_ids("room"), {"house": 5, "room": 3})
 
         assert covers["room"][0].party_size is None
 
@@ -5279,10 +5301,10 @@ class TestWriteInCovers:
         """`unit_sleeps` is the DESCENDANT's beds, not the card's. `MapUnitPopover`
         has no registry to look this up in -- its `units` prop is one cluster's
         members and says so -- which is why the server publishes it."""
-        house = self._unit("house", is_container=True)
-        room = self._unit("room", parent_code="house")
+        house = _summary("house", is_container=True)
+        room = _summary("room", parent_code="house")
 
-        covers = write_in_covers([house, room], self._written("room"), {"house": 5, "room": 3})
+        covers = write_in_covers([house, room], _written_ids("room"), {"house": 5, "room": 3})
 
         assert covers["house"][0].unit_sleeps == 3
         assert covers["room"][0].unit_sleeps == 3
@@ -5291,15 +5313,15 @@ class TestWriteInCovers:
         # The SPLIT case. Staff wrote into the whole house while it was merged,
         # then split it back to rooms: the row still names the house, which now
         # has no card at all.
-        house = self._unit(
+        house = _summary(
             "house",
             is_container=True,
             occupant_name="Liam Garcia",
             reason="Back Monday",
         )
-        room = self._unit("house-a", parent_code="house")
+        room = _summary("house-a", parent_code="house")
 
-        covers = write_in_covers([house, room], self._written("house"), {})
+        covers = write_in_covers([house, room], _written_ids("house"), {})
 
         assert covers["house-a"][0].unit_code == "house"
         assert covers["house-a"][0].occupant_name == "Liam Garcia"
@@ -5308,11 +5330,11 @@ class TestWriteInCovers:
     def test_a_building_surfaces_the_write_in_of_a_room_beneath_it(self) -> None:
         # The MERGE case, and the mirror of the one above: the row names a room
         # that stopped being drawn when staff merged the building over it.
-        house = self._unit("house", is_container=True, is_combined=True)
-        written_room = self._unit("house-a", parent_code="house", occupant_name="Liam Garcia")
-        other_room = self._unit("house-b", parent_code="house")
+        house = _summary("house", is_container=True, is_combined=True)
+        written_room = _summary("house-a", parent_code="house", occupant_name="Liam Garcia")
+        other_room = _summary("house-b", parent_code="house")
 
-        covers = write_in_covers([house, written_room, other_room], self._written("house-a"), {})
+        covers = write_in_covers([house, written_room, other_room], _written_ids("house-a"), {})
 
         assert covers["house"][0].unit_code == "house-a"
         assert covers["house"][0].occupant_name == "Liam Garcia"
@@ -5323,35 +5345,35 @@ class TestWriteInCovers:
         # off the board for no reason. It reaches B's BUILDING (above) without
         # reaching B, because each unit resolves from OWN rows only -- never
         # transitively through a cover it just computed for somebody else.
-        house = self._unit("house", is_container=True)
-        written_room = self._unit("house-a", parent_code="house", occupant_name="Liam Garcia")
-        other_room = self._unit("house-b", parent_code="house")
+        house = _summary("house", is_container=True)
+        written_room = _summary("house-a", parent_code="house", occupant_name="Liam Garcia")
+        other_room = _summary("house-b", parent_code="house")
 
-        covers = write_in_covers([house, written_room, other_room], self._written("house-a"), {})
+        covers = write_in_covers([house, written_room, other_room], _written_ids("house-a"), {})
 
         assert "house-b" not in covers
         assert covers["house"][0].unit_code == "house-a"
 
     def test_a_units_own_write_in_beats_an_inherited_one(self) -> None:
-        house = self._unit("house", is_container=True, occupant_name="Liam Garcia")
-        room = self._unit("house-a", parent_code="house", occupant_name="Ava Martinez")
+        house = _summary("house", is_container=True, occupant_name="Liam Garcia")
+        room = _summary("house-a", parent_code="house", occupant_name="Ava Martinez")
 
-        covers = write_in_covers([house, room], self._written("house", "house-a"), {})
+        covers = write_in_covers([house, room], _written_ids("house", "house-a"), {})
 
         assert covers["house-a"][0].unit_code == "house-a"
         assert covers["house-a"][0].occupant_name == "Ava Martinez"
 
     def test_the_nearest_ancestor_wins(self) -> None:
-        block = self._unit("block", is_container=True, occupant_name="Ava Martinez")
-        house = self._unit(
+        block = _summary("block", is_container=True, occupant_name="Ava Martinez")
+        house = _summary(
             "house",
             parent_code="block",
             is_container=True,
             occupant_name="Liam Garcia",
         )
-        room = self._unit("house-a", parent_code="house")
+        room = _summary("house-a", parent_code="house")
 
-        covers = write_in_covers([block, house, room], self._written("block", "house"), {})
+        covers = write_in_covers([block, house, room], _written_ids("block", "house"), {})
 
         assert covers["house-a"][0].unit_code == "house"
 
@@ -5362,10 +5384,10 @@ class TestWriteInCovers:
         # building. It lives in `lodging_availability` and never appears in the
         # occupancy set at all, which is what makes that structural rather than
         # a branch somebody can forget.
-        house = self._unit("house", is_container=True, inventory_class="staff_default", family_available_override=True)
-        room = self._unit("house-a", parent_code="house")
+        house = _summary("house", is_container=True, inventory_class="staff_default", family_available_override=True)
+        room = _summary("house-a", parent_code="house")
 
-        covers = write_in_covers([house, room], self._written(), {})
+        covers = write_in_covers([house, room], _written_ids(), {})
 
         assert covers == {}
 
@@ -5379,25 +5401,25 @@ class TestWriteInCovers:
         1500000162 leaves no such row behind and no writer creates another, so
         this is bad data meeting the rule, not a state the product can reach.
         """
-        house = self._unit("house", is_container=True, family_available_override=False)
-        room = self._unit("house-a", parent_code="house")
+        house = _summary("house", is_container=True, family_available_override=False)
+        room = _summary("house-a", parent_code="house")
 
-        assert write_in_covers([house, room], self._written(), {}) == {}
+        assert write_in_covers([house, room], _written_ids(), {}) == {}
 
     def test_a_unit_with_nothing_on_its_path_is_absent(self) -> None:
-        assert write_in_covers([self._unit("cedar-1")], self._written(), {}) == {}
+        assert write_in_covers([_summary("cedar-1")], _written_ids(), {}) == {}
 
     def test_a_parent_cycle_does_not_hang(self) -> None:
         # The server guards against writing one (#1899), but a cycle already in
         # the data must not spin the roster build.
-        a = self._unit("a", parent_code="b", is_container=True)
-        b = self._unit("b", parent_code="a", is_container=True)
+        a = _summary("a", parent_code="b", is_container=True)
+        b = _summary("b", parent_code="a", is_container=True)
 
         # Nobody is written in, so every cover the walks could return is the
         # product of the cycle rather than of a row -- an empty map is the only
         # right answer, and reaching it at all means both guards fired. Without
         # them this hangs rather than failing.
-        assert write_in_covers([a, b], self._written(), {}) == {}
+        assert write_in_covers([a, b], _written_ids(), {}) == {}
 
     def test_a_blank_coded_unit_never_lends_its_cover_to_another(self) -> None:
         # "" is the same key `parent_code == ""` uses for "no parent", which is
@@ -5407,20 +5429,20 @@ class TestWriteInCovers:
         #
         # A blank code is a valid if unfortunate registry value, so this is bad
         # data meeting a collision, not a state the schema forbids.
-        written = self._unit("", occupant_name="Liam Garcia")
+        written = _summary("", occupant_name="Liam Garcia")
         other = LodgingUnitSummary(unit_id="id-other", code="", name="Other")
 
-        assert write_in_covers([written, other], self._written(""), {}) == {}
+        assert write_in_covers([written, other], _written_ids(""), {}) == {}
 
     def test_several_written_rooms_are_all_returned_in_code_order(self) -> None:
         # A building over two written-into rooms carries BOTH, in `code` order
         # so two identical payloads never disagree about the sequence a card
         # draws them in. This used to return exactly one and drop the rest --
         # kindred#2381, the merge half of the parity bug.
-        house = self._unit("house", is_container=True, is_combined=True)
-        room_b = self._unit("house-b", parent_code="house", occupant_name="Ava Martinez")
-        room_a = self._unit("house-a", parent_code="house", occupant_name="Liam Garcia")
-        written = self._written("house-a", "house-b")
+        house = _summary("house", is_container=True, is_combined=True)
+        room_b = _summary("house-b", parent_code="house", occupant_name="Ava Martinez")
+        room_a = _summary("house-a", parent_code="house", occupant_name="Liam Garcia")
+        written = _written_ids("house-a", "house-b")
 
         for units in ([house, room_b, room_a], [house, room_a, room_b]):
             assert [cover.unit_code for cover in write_in_covers(units, written, {})["house"]] == [
@@ -5436,15 +5458,15 @@ class TestWriteInCovers:
         other three were invisible -- and each clear silently re-populated the
         card with the next one, which read as a failed click.
         """
-        house = self._unit("house", is_container=True, is_combined=True)
+        house = _summary("house", is_container=True, is_combined=True)
         rooms = [
-            self._unit("house-back", parent_code="house", occupant_name="Emma Johnson"),
-            self._unit("house-laundry", parent_code="house", occupant_name="Liam Garcia"),
-            self._unit("house-loft", parent_code="house", occupant_name="Olivia Martinez"),
-            self._unit("house-side", parent_code="house", occupant_name="Noah Chen"),
+            _summary("house-back", parent_code="house", occupant_name="Emma Johnson"),
+            _summary("house-laundry", parent_code="house", occupant_name="Liam Garcia"),
+            _summary("house-loft", parent_code="house", occupant_name="Olivia Martinez"),
+            _summary("house-side", parent_code="house", occupant_name="Noah Chen"),
         ]
 
-        covers = write_in_covers([house, *rooms], self._written(*(room.code for room in rooms)), {})
+        covers = write_in_covers([house, *rooms], _written_ids(*(room.code for room in rooms)), {})
 
         assert [cover.occupant_name for cover in covers["house"]] == [
             "Emma Johnson",
@@ -5462,14 +5484,176 @@ class TestWriteInCovers:
         # wing's space -- the wing's row speaks for it, and returning both to
         # the building would print the same space twice. "Collect all" is
         # per-branch nearest, not every descendant.
-        house = self._unit("house", is_container=True, is_combined=True)
-        wing = self._unit("house-a", parent_code="house", is_container=True, occupant_name="Emma Johnson")
-        bed = self._unit("house-a-1", parent_code="house-a", occupant_name="Liam Garcia")
-        other_wing = self._unit("house-b", parent_code="house", occupant_name="Olivia Martinez")
+        house = _summary("house", is_container=True, is_combined=True)
+        wing = _summary("house-a", parent_code="house", is_container=True, occupant_name="Emma Johnson")
+        bed = _summary("house-a-1", parent_code="house-a", occupant_name="Liam Garcia")
+        other_wing = _summary("house-b", parent_code="house", occupant_name="Olivia Martinez")
 
-        covers = write_in_covers([house, wing, bed, other_wing], self._written("house-a", "house-a-1", "house-b"), {})
+        covers = write_in_covers([house, wing, bed, other_wing], _written_ids("house-a", "house-a-1", "house-b"), {})
 
         assert [cover.unit_code for cover in covers["house"]] == ["house-a", "house-b"]
+
+
+def _clouds_rest_units() -> list[SimpleNamespace]:
+    """A combined container whose four rooms are the only measured space.
+
+    The production shape kindred#2503 was found on: `gt-clouds-rest` carries no
+    `sleeps` of its own (a container's own figure is a DELTA over its rooms),
+    its four rooms sleep 3 + 1 + 2 + 2, and it draws as ONE card because it is
+    combined. Fictional occupant names throughout; the registry codes are not
+    personal information.
+    """
+    return [
+        _unit("u-house", "gt-clouds-rest", "Clouds Rest", is_container=True, default_combined=True),
+        _unit("u-back", "gt-clouds-rest-back", "Clouds Rest Back", sleeps=3, parent_unit="u-house"),
+        _unit("u-laundry", "gt-clouds-rest-laundry", "Clouds Rest Laundry", sleeps=1, parent_unit="u-house"),
+        _unit("u-loft", "gt-clouds-rest-loft", "Clouds Rest Loft", sleeps=2, parent_unit="u-house"),
+        _unit("u-side", "gt-clouds-rest-side", "Clouds Rest Side", sleeps=2, parent_unit="u-house"),
+    ]
+
+
+def _caps(units: list[LodgingUnitSummary]) -> dict[str, int | None]:
+    """The capacity map the orchestrators build, built the same way.
+
+    `_effective_sleeps` over ONE `_BathroomIndex`, keyed by code and skipping
+    the blank one -- a copy of the two lines in `build_roster`, because a test
+    that derived capacity some other way would be testing a different map from
+    the one production threads into both write-in resolvers.
+    """
+    index = _BathroomIndex.build(units)
+    return {u.code: _effective_sleeps(u, index) for u in units if u.code}
+
+
+class TestFamilyAvailabilityIsResolvedOverTheTree:
+    """kindred#2503: what closes a card is having no beds left, resolved from
+    the COVERS rather than from the card's own write-in row.
+
+    `_build_units` could only ask "does THIS row have a write-in?", because the
+    cover walk that finds the write-ins elsewhere in the unit tree runs after
+    it. Nothing then recomputed the flag, so a combined container whose
+    write-ins live on its rooms drew the write-in badge and listed every
+    occupant while the bar directly above it counted the whole house as an open
+    space with every bed free.
+
+    THE OTHER HALF IS A REVERSAL. kindred#2432 made a written-into cabin take a
+    family like any other, and the drop refusal came out of `dragPlacement.ts`
+    with it -- so a fifteen-bed cabin with two people written in is a space with
+    thirteen beds, not a closed one. Availability is `free > 0` now, and a
+    recorded party size neither re-opens a unit nor closes one on its own.
+
+    Fictional data throughout.
+    """
+
+    def test_a_fully_covered_combined_house_is_not_a_family_space(self) -> None:
+        """gt-clouds-rest: a combined container whose four rooms each carry a
+        write-in and which carries none itself.
+
+        The card has always drawn the write-in badge and all four occupants --
+        the cover walk finds them. `_build_units` asked a narrower question
+        ("does THIS row have a write-in?"), so the same house was counted as an
+        open space with all eight beds free on the bar directly above that card.
+        """
+        house = _summary("house", is_container=True, is_combined=True, sleeps=None)
+        rooms = [
+            _summary("back", parent_code="house", sleeps=3),
+            _summary("laundry", parent_code="house", sleeps=1),
+            _summary("loft", parent_code="house", sleeps=2),
+            _summary("side", parent_code="house", sleeps=2),
+        ]
+        units = [house, *rooms]
+        caps = _caps(units)
+        _resolve_write_in_covers(units, _written_ids("back", "laundry", "loft", "side"), caps)
+        free_by_unit = _resolve_family_availability(units, caps)
+
+        assert house.is_family_available is False
+        # The map the counts read, not a second derivation of the same sum.
+        assert free_by_unit[house.unit_id] == 0
+
+    def test_one_covered_room_leaves_the_rest_of_the_house_available(self) -> None:
+        """Owner ruling 2026-08-20, verbatim: "if its entered at the room level,
+        it definitely is not unavailable for the rest of the house." The naive
+        fix ("any covered room closes the whole-house card") was proposed and
+        rejected."""
+        house = _summary("house", is_container=True, is_combined=True, sleeps=None)
+        rooms = [
+            _summary("back", parent_code="house", sleeps=3),
+            _summary("loft", parent_code="house", sleeps=2),
+        ]
+        units = [house, *rooms]
+        caps = _caps(units)
+        _resolve_write_in_covers(units, _written_ids("back"), caps)
+        free_by_unit = _resolve_family_availability(units, caps)
+
+        assert house.is_family_available is True
+        # Five beds, three of them taken wholesale by an unsized room row.
+        assert free_by_unit[house.unit_id] == 2
+
+    def test_a_write_in_on_a_container_closes_its_rooms_after_a_split(self) -> None:
+        """The ancestor direction. A room inside a house somebody has taken
+        whole is not separately lettable."""
+        house = _summary("house", is_container=True, is_combined=False, sleeps=None, party_size=2)
+        rooms = [
+            _summary("front", parent_code="house", sleeps=4),
+            _summary("back", parent_code="house", sleeps=3),
+        ]
+        units = [house, *rooms]
+        caps = _caps(units)
+        _resolve_write_in_covers(units, _written_ids("house"), caps)
+        _resolve_family_availability(units, caps)
+
+        assert [r.is_family_available for r in rooms] == [False, False]
+
+    def test_a_sized_write_in_never_reopens_a_role_closed_unit(self) -> None:
+        """A size answers "how many beds are left", never "is this family
+        inventory". Ridge A is closed by its ROLE row and holds a two-person
+        write-in in five beds: three beds are free and the cabin is still shut.
+        """
+        unit = _summary("ridge-a", sleeps=5, family_available_override=False, party_size=2)
+        units = [unit]
+        caps = _caps(units)
+        _resolve_write_in_covers(units, _written_ids("ridge-a"), caps)
+        free_by_unit = _resolve_family_availability(units, caps)
+
+        assert free_by_unit[unit.unit_id] == 3
+        assert unit.is_family_available is False
+
+    @pytest.mark.asyncio
+    async def test_the_roster_and_the_summary_agree_about_which_houses_are_free(self) -> None:
+        """THE REGRESSION THIS SEAM EXISTS TO PREVENT. Five amenity resolvers
+        ran on one orchestrator and not the other for three releases
+        (kindred#2502) and nobody noticed, because no COUNT read them. This one
+        does.
+
+        Build one weekend both ways and assert the counts match field for
+        field. The fixture is the failing production shape: a combined
+        container written into on all four of its rooms, which `build_roster`
+        resolves through the cover walk and `build_summary` would not have.
+        """
+        units = _clouds_rest_units()
+        write_ins = [
+            _rec(unit="u-back", occupant_name="Liam Garcia", note=""),
+            _rec(unit="u-laundry", occupant_name="Olivia Chen", note=""),
+            _rec(unit="u-loft", occupant_name="Riley Sam", note=""),
+            _rec(unit="u-side", occupant_name="Samuel Johnson", note=""),
+        ]
+        service = LodgingRosterService(
+            _repo(
+                fetch_weekend_sessions=[FAMILY_SESSION],
+                fetch_session=FAMILY_SESSION,
+                fetch_units=units,
+                fetch_write_ins=write_ins,
+            )
+        )
+
+        roster = await service.build_roster(2026, 1000001)
+        summary = await service.build_summary(2026)
+        entry = next(w for w in summary.weekends if w.session.session_cm_id == 1000001)
+
+        assert entry.counts == roster.counts
+        # A positive control: without it, two orchestrators that both counted
+        # the house as open would agree just as loudly.
+        assert roster.counts.units_family_available == 0
+        assert roster.counts.beds_family_available == 0
 
 
 class TestWriteInsResolveFromTheirOwnTable:
@@ -5493,13 +5677,21 @@ class TestWriteInsResolveFromTheirOwnTable:
     """
 
     @pytest.mark.asyncio
-    async def test_a_write_in_row_closes_the_unit_and_names_its_occupant(self) -> None:
+    async def test_a_write_in_row_names_its_occupant_and_pays_for_its_beds(self) -> None:
         """The whole read, on one unit, with availability holding nothing.
 
         The row that used to live in `lodging_availability` with
         `family_available = false` now lives here, and every field the card
-        reads still arrives: the unit is closed, the occupant is named, and the
-        note travels beside it under the API's `reason` name.
+        reads still arrives: the occupant is named, the count travels, and the
+        note travels beside them under the API's `reason` name.
+
+        THE CLOSURE ASSERTION REVERSED, and deliberately (kindred#2503).
+        kindred#2432 made a written-into cabin take a family like any other and
+        took the drop refusal out of `dragPlacement.ts`; a five-bed cabin with
+        two people written in is a space with three beds, and the bar has been
+        calling it zero ever since. The wholesale case -- a row with no count --
+        still closes the unit, and `test_a_write_in_outranks_a_release_on_the_same_unit`
+        below is the one that pins it.
         """
         repo = _repo(
             fetch_session=FAMILY_SESSION,
@@ -5519,7 +5711,9 @@ class TestWriteInsResolveFromTheirOwnTable:
         # is the number staff read; PR 4 removed the shim that had this field
         # answering both. See TestTheWireStopsSpellingAnOccupancyAsFamilyAvailableFalse.
         assert unit.family_available_override is None
-        assert unit.is_family_available is False
+        # Five beds, two of them written in: three are left, so the cabin is
+        # still a space a family can go in. See the docstring.
+        assert unit.is_family_available is True
         assert unit.write_ins != []
         assert unit.write_ins[0].unit_id == "u1"
         assert unit.write_ins[0].occupant_name == "Liam Garcia"

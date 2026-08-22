@@ -74,61 +74,63 @@ def unit_shareability(stored: str) -> str:
     return stored if stored in SHAREABILITY_VALUES else "unknown"
 
 
-def is_family_available(inventory_class: str, override: bool | None, is_occupied: bool) -> bool:
+def is_family_available(inventory_class: str, override: bool | None, free: int | None) -> bool:
     """Whether this unit can take a family this weekend, in exactly one place.
 
-    | base          | override | occupied | family-available     |
-    |---------------|----------|----------|----------------------|
-    | family_pool   | None     | no       | yes                  |
-    | family_pool   | None     | yes      | no  (written into)   |
-    | family_pool   | False    | no       | no  (closed by role) |
-    | staff_default | None     | no       | no                   |
-    | staff_default | True     | no       | yes (released)       |
-    | staff_default | True     | yes      | no  (written into)   |
+    | base          | override | free | family-available     |
+    |---------------|----------|------|----------------------|
+    | family_pool   | None     | None | yes                  |
+    | family_pool   | None     | 13   | yes (shared)         |
+    | family_pool   | None     | 0    | no  (fully taken)    |
+    | family_pool   | False    | None | no  (closed by role) |
+    | staff_default | None     | None | no                   |
+    | staff_default | True     | None | yes (released)       |
+    | staff_default | True     | 0    | no  (fully taken)    |
 
-    TWO FACTS, TWO QUESTIONS, and `is_occupied` is what kindred#2382 made
-    honest. `override` is the staff<->family ROLE -- is this unit family
-    inventory this weekend at all -- and `is_occupied` is whether somebody is
-    already in it. One boolean used to answer both, spelling an occupancy as
-    `override = False`, which is why `family_available_override` and this
-    function looked like the same fact. They are not, and the row that ends the
-    conflation is `is_occupied` reaching here from `lodging_write_ins` rather
-    than from the role column.
+    TWO FACTS, TWO QUESTIONS. `override` is the staff<->family ROLE -- is this
+    unit family inventory this weekend at all -- and `free` is how many beds
+    are left once the write-ins covering it are paid for
+    (`free_family_beds`). One boolean used to answer both, spelling an
+    occupancy as `override = False`; kindred#2382 split them.
 
-    OCCUPANCY IS ABSOLUTE. It closes the unit whatever the role says, including
-    over a `True` release -- a cabin somebody is sleeping in cannot take a
-    family, and no ordering of the two is worth a bed collision.
+    ⚠️ OCCUPANCY IS NOT ABSOLUTE, AND THIS PARAGRAPH USED TO SAY IT WAS.
+    kindred#2432 made a written-into cabin take a family like any other --
+    "mix and match: a family and a write-in may share a space in either order,
+    on a leaf or on a container" -- and the drop refusal
+    `if (hasWriteIn(unit)) return null` came out of `dragPlacement.ts` with it.
+    The old rule survived here for three releases and made the stats bar
+    disagree with the board above it: a fifteen-bed cabin with one person
+    written in was reported as zero spaces and zero beds while the board
+    accepted families into it. What closes a unit now is having no beds left,
+    which is the same answer for a full cabin and a wholesale write-in, and a
+    different one for a shared space.
+
+    `free is None` means NO OCCUPANCY, not "unmeasured" -- the same reading
+    `override: None` carries two lines above. `free_family_beds` returns 0, not
+    None, for a covered cabin nobody has measured.
 
     REQUIRED, never defaulted. A caller that has not thought about occupancy
-    must not be able to spell "no occupancy" by omission: this is the derivation
-    every count on the stats bar and the board's own open-tint go through, so
-    the failure mode of a forgotten argument is a written-into cabin reported
-    as open.
+    must not be able to spell "no occupancy" by omission: this is the
+    derivation every count on the stats bar and the board's own open-tint go
+    through, so the failure mode of a forgotten argument is a written-into
+    cabin reported as open.
 
     THE ROLE STILL HAS TWO LAYERS, NOT THREE. `lodging_availability` lost its
     scenario dimension in 1500000135 because the ROLE is a fact about the
-    WEEKEND rather than about the plan -- "we're moving staff to X for weekend Y" -- and that
-    reasoning survived the split intact. Occupancy did not: it IS scenario
-    scoped, which is why it arrives here already resolved to one scope rather
-    than being looked up.
+    WEEKEND rather than about the plan, and that reasoning survived the split
+    intact. Occupancy did not: it IS scenario scoped, which is why `free`
+    arrives here already resolved to one scope rather than being looked up.
 
-    The row STATES the outcome rather than implying it. An earlier design had
-    the row mean "the opposite of this unit's current default", which an
-    ordinary registry edit -- flipping a unit from family_pool to
-    staff_default -- would silently invert, turning a cabin closed for a burst
-    pipe into the one cabin RELEASED to families.
+    `None` and `False` are DIFFERENT answers on `override`: None means "no row,
+    so ask the role", False means "closed this weekend". Never collapse the two
+    with a falsy test.
 
-    `None` and `False` are DIFFERENT answers: None means "no row, so ask the
-    role", False means "closed this weekend". Never collapse the two with a
-    falsy test.
-
-    A unit created through the admin UI without an explicit
-    `inventory_class` stores "" and matches neither base row. We treat "" as
-    family_pool so the unit is at least visible, and the roster reports it
-    separately via RosterCounts.units_missing_allocation rather than hiding
-    the gap.
+    A unit created through the admin UI without an explicit `inventory_class`
+    stores "" and matches neither base row. We treat "" as family_pool so the
+    unit is at least visible, and the roster reports it separately via
+    RosterCounts.units_missing_allocation rather than hiding the gap.
     """
-    if is_occupied:
+    if free is not None and free <= 0:
         return False
     if override is not None:
         return override
@@ -203,9 +205,14 @@ def write_in_demand(capacity: int | None, loads: Sequence[WriteInLoad]) -> Write
     count is a fact about the house; printing it on both halves of a split
     Wawona puts one two-person party on the screen twice.
 
-    AN ANCESTOR'S `known` IS `capacity is not None`, not unconditionally True:
-    an ancestor cover only tells you the whole card is taken, not how big the
-    card is, so a capacity nobody measured stays unknown even then.
+    AN ANCESTOR ON A MEASURED CARD IS KNOWN, and the conditionality that used
+    to be spelled `known=capacity is not None` in that branch lives in the
+    `capacity is None` GUARD ABOVE IT rather than in the branch itself. An
+    ancestor cover only tells you the whole card is taken, not how big the card
+    is -- so a capacity nobody measured stays unknown -- but the guard has
+    already returned `known=False` by then, and the expression could never be
+    anything but True where it stood. The docstring implied a mechanism the
+    code did not have; the guard is the mechanism.
     """
     if not loads:
         return WriteInDemand(consumed=0, sized=0, known=True)
@@ -222,9 +229,11 @@ def write_in_demand(capacity: int | None, loads: Sequence[WriteInLoad]) -> Write
 
     if any(load.relation == "ancestor" for load in loads):
         # Whole-card, and order-independent by construction: a pre-pass, not
-        # a value the loop happens to have accumulated so far. `known` mirrors
-        # the capacity guard directly -- see the function docstring.
-        return WriteInDemand(consumed=capacity, sized=sized, known=capacity is not None)
+        # a value the loop happens to have accumulated so far. `known=True`
+        # unconditionally, because the guard above has already returned for
+        # every unmeasured card -- see the function docstring, which used to
+        # describe the conditionality as living in this expression.
+        return WriteInDemand(consumed=capacity, sized=sized, known=True)
 
     consumed = 0
     known = True

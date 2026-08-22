@@ -61,9 +61,10 @@ class TestIsFamilyAvailable:
 
     kindred#2382 then found that the surviving boolean was still carrying two
     unrelated facts -- the staff<->family ROLE and whether somebody is IN the
-    room -- and split them. `override` is the role; `is_occupied` is the
-    occupancy, read from `lodging_write_ins` rather than from the role column.
-    This function is where the two meet, and the only place they do.
+    room -- and split them. `override` is the role; `free` is how many beds are
+    left once the write-ins covering the unit are paid for, resolved by
+    `free_family_beds` from the occupancy source rather than from the role
+    column. This function is where the two meet, and the only place they do.
     """
 
     @pytest.mark.parametrize(
@@ -85,7 +86,7 @@ class TestIsFamilyAvailable:
     def test_the_override_wins_and_the_role_decides_without_one(
         self, inventory_class: str, override: bool | None, expected: bool
     ) -> None:
-        assert is_family_available(inventory_class, override, is_occupied=False) is expected
+        assert is_family_available(inventory_class, override, free=None) is expected
 
     def test_false_is_a_decision_and_not_an_absent_override(self) -> None:
         """`False` and `None` are different answers on a family_pool unit.
@@ -94,29 +95,41 @@ class TestIsFamilyAvailable:
         test (`if override:`), which would silently discard every closure.
         Absence means "ask the role"; False means "closed this weekend".
         """
-        assert is_family_available("family_pool", False, is_occupied=False) is False
-        assert is_family_available("family_pool", None, is_occupied=False) is True
+        assert is_family_available("family_pool", False, free=None) is False
+        assert is_family_available("family_pool", None, free=None) is True
 
     @pytest.mark.parametrize(
         ("inventory_class", "override"),
         [
             ("family_pool", None),
             ("family_pool", True),
-            ("staff_default", True),  # released AND written into -- occupancy wins
+            ("staff_default", True),  # released AND fully taken -- occupancy wins
             ("", None),
         ],
     )
-    def test_an_occupancy_closes_the_unit_whatever_the_role_says(
+    def test_no_free_beds_closes_the_unit_whatever_the_role_says(
         self, inventory_class: str, override: bool | None
     ) -> None:
-        """kindred#2382: somebody is in it, so no family can go in it.
+        assert is_family_available(inventory_class, override, free=0) is False
 
-        The role can say "this is family inventory" as loudly as it likes; a
-        cabin with an occupant cannot take a second party. Ordering it the other
-        way round is a bed collision, which is the failure write-ins exist to
-        prevent.
+    def test_a_write_in_smaller_than_the_cabin_leaves_it_available(self) -> None:
+        """THE REVERSAL, and it is deliberate. This function used to say
+        "OCCUPANCY IS ABSOLUTE"; kindred#2432 struck that by making a
+        written-into cabin take a family like any other, and the drop refusal
+        came out of `dragPlacement.ts` with it. The stats bar has disagreed
+        with the board it sits above ever since.
+
+        Ridge A sleeps 15. Two people written in leaves thirteen, and the board
+        will accept a family in them.
         """
-        assert is_family_available(inventory_class, override, is_occupied=True) is False
+        assert is_family_available("family_pool", None, free=13) is True
+
+    def test_none_free_means_no_occupancy_and_not_unmeasured(self) -> None:
+        """`None` mirrors `override: None` -- "there is no row, ask the role".
+        An unmeasured cabin that somebody IS written into resolves to 0 in
+        `free_family_beds`, never to None."""
+        assert is_family_available("family_pool", None, free=None) is True
+        assert is_family_available("staff_default", None, free=None) is False
 
 
 class TestEffectiveBathroom:
@@ -690,11 +703,25 @@ class TestWriteInDemand:
         backward = write_in_demand(4, [ancestor, unsized_descendant])
         assert forward == backward == WriteInDemand(consumed=4, sized=0, known=True)
 
-    def test_an_ancestor_on_an_unmeasured_card_is_not_known(self) -> None:
+    def test_an_unmeasured_card_is_not_known_even_with_an_ancestor_cover(self) -> None:
         """An ancestor cover only tells you the whole card is taken, not how
         big the card is -- a capacity nobody measured stays unknown even with
-        an ancestor cover asserting occupancy."""
+        an ancestor cover asserting occupancy.
+
+        NAMED FOR THE GUARD IT ACTUALLY PINS, which is the unmeasured-capacity
+        return above the ancestor branch, not the branch. It cannot be made to
+        bite on the branch: reaching the branch requires `capacity is not
+        None`, so the branch's `known` could never be False there, and its old
+        `known=capacity is not None` was dead-code-equivalent to True. The
+        behaviour under test is real and unchanged -- only the claim about
+        WHERE it is decided was wrong.
+        """
         assert write_in_demand(None, [WriteInLoad("ancestor", 2, 7)]).known is False
+
+    def test_an_ancestor_on_a_measured_card_is_known(self) -> None:
+        """The other side of the same guard, and the case the branch really
+        owns: capacity is a fact, so the whole-card claim is one too."""
+        assert write_in_demand(4, [WriteInLoad("ancestor", 2, 7)]).known is True
 
     def test_consumption_is_capped_at_the_card(self) -> None:
         """A hand-typed count above the cabin's beds is over capacity, which is
