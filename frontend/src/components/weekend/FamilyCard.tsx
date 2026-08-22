@@ -572,9 +572,19 @@ function FamilyCardChips({
             mark chose the hue with it). */}
         {party.flags?.has_child_under_two === true && (
           <Tooltip
-            content="Child under 2"
+            // The capacity note rides `has_bed_exempt_child`, which the server
+            // derives from the SAME `_consumes_a_bed` call that discounts
+            // party_size — so this sentence and the bed count can never
+            // disagree (staff ruling 2026-08-21, supersedes kindred#2212's
+            // inline per-child icon).
+            content={
+              party.flags.has_bed_exempt_child === true
+                ? 'Child under 2 — under 18 months at the session start, so they don’t count toward capacity'
+                : 'Child under 2'
+            }
             // Named for the same reason the need glyphs are: the icon is the
-            // only carrier, so the tooltip word is the accessible name too.
+            // only carrier. The accessible name stays the short form — it is
+            // a test handle, not a second sentence carrier.
             aria-label="Child under 2"
             data-testid="family-card-under-two"
             className={`${GLYPH_BASE} border-border bg-transparent`}

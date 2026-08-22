@@ -279,6 +279,21 @@ def _has_child_under_two(children: list[Any], session_start: date | None) -> boo
     return False
 
 
+def _has_bed_exempt_child(children: list[Any], session_start: date | None) -> bool:
+    """Whether ANY child is discounted from `party_size` by the bed rule.
+
+    Deliberately a thin any() over `_consumes_a_bed` itself -- one
+    calculation, shared with the bed count, so the baby mark's "doesn't count
+    toward capacity" note and `party_size` can never disagree (the kindred#2072
+    one-calculation intent). That reuse imports the bed rule's conservatism
+    wholesale: the unknown-age sentinel, a missing birthdate, or an unreadable
+    session start all KEEP the bed there, and a kept bed is never claimed
+    exempt here. Always a subset of `_has_child_under_two` (18 < 24, same
+    birthdate source, same session date).
+    """
+    return any(not _consumes_a_bed(child, session_start) for child in children)
+
+
 def _adult_display_name(adult: Any) -> str:
     """A `family_camp_adults` row's name, coalesced.
 
@@ -2600,6 +2615,7 @@ class LodgingRosterService:
                         # schema field for why it cannot be read from the
                         # registration row like its siblings.
                         has_child_under_two=_has_child_under_two(children, session_start),
+                        has_bed_exempt_child=_has_bed_exempt_child(children, session_start),
                     ),
                 )
             )
@@ -2698,7 +2714,13 @@ class LodgingRosterService:
             answers_conflict=_b(registration, "share_answers_conflict"),
         )
 
-    def _build_flags(self, registration: Any, *, has_child_under_two: bool = False) -> AccessibilityFlagSummary:
+    def _build_flags(
+        self,
+        registration: Any,
+        *,
+        has_child_under_two: bool = False,
+        has_bed_exempt_child: bool = False,
+    ) -> AccessibilityFlagSummary:
         """Read the derived flags. Do NOT re-derive them here.
 
         ONE deliberate exception to that contract: `has_child_under_two` is
@@ -2752,9 +2774,13 @@ class LodgingRosterService:
             # A household with no registration row still builds a party, and
             # its children's birthdates are still real -- the computed flag
             # survives where the column-read flags honestly default.
-            return AccessibilityFlagSummary(has_child_under_two=has_child_under_two)
+            return AccessibilityFlagSummary(
+                has_child_under_two=has_child_under_two,
+                has_bed_exempt_child=has_bed_exempt_child,
+            )
         return AccessibilityFlagSummary(
             has_child_under_two=has_child_under_two,
+            has_bed_exempt_child=has_bed_exempt_child,
             needs_private_bathroom=_b(registration, "needs_private_bathroom"),
             needs_power=_b(registration, "needs_power"),
             needs_accommodation=_b(registration, "needs_accommodation"),

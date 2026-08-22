@@ -654,6 +654,15 @@ class AccessibilityFlagSummary(BaseModel):
     # parties ride this default. See `_has_child_under_two` in
     # `lodging_roster_service.py` for the rule itself.
     has_child_under_two: bool = False
+    # The second computed flag, feeding the baby mark's capacity note (staff
+    # ruling 2026-08-21, superseding kindred#2212's inline icon): ANY child
+    # here is bed-exempt -- under the 18-month `_consumes_a_bed` rule at
+    # session start. Derived from the SAME call that discounts `party_size`,
+    # so this and the bed count can never disagree; it therefore inherits the
+    # bed rule's conservatism (sentinel age, missing birthdate, unreadable
+    # session start all KEEP the bed, and a kept bed is never claimed exempt).
+    # Always a subset of `has_child_under_two`.
+    has_bed_exempt_child: bool = False
     # There is deliberately NO `has_medical_narrative` here (kindred#1889). It
     # was true for every household in every year measured, because these
     # questions store "No" as text and a non-empty answer set the flag. See

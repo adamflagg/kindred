@@ -1840,6 +1840,33 @@ describe('FamilyCard — the child-under-two mark (staff ruling, 2026-08-21)', (
     expect(screen.getByRole('tooltip')).toHaveTextContent('Child under 2')
   })
 
+  it('adds the capacity note when a child is bed-exempt (staff ruling, supersedes kindred#2212)', () => {
+    // `has_bed_exempt_child` derives from the SAME `_consumes_a_bed` call
+    // that discounts party_size, so this sentence and the bed count cannot
+    // disagree: under 18 months at the session start, no bed consumed.
+    render(
+      <FamilyCard
+        party={party({ flags: { has_child_under_two: true, has_bed_exempt_child: true } })}
+        onOpen={vi.fn()}
+      />
+    )
+    fireEvent.focus(screen.getByTestId('family-card-under-two'))
+    expect(screen.getByRole('tooltip')).toHaveTextContent(
+      'Child under 2 — under 18 months at the session start, so they don’t count toward capacity'
+    )
+  })
+
+  it('keeps the plain label for a 18-23-month-old: under two, but they DO hold a bed', () => {
+    render(
+      <FamilyCard
+        party={party({ flags: { has_child_under_two: true, has_bed_exempt_child: false } })}
+        onOpen={vi.fn()}
+      />
+    )
+    fireEvent.focus(screen.getByTestId('family-card-under-two'))
+    expect(screen.getByRole('tooltip')).toHaveTextContent(/^Child under 2$/)
+  })
+
   it('draws nothing when the flag is false', () => {
     render(<FamilyCard party={party({ flags: { has_child_under_two: false } })} onOpen={vi.fn()} />)
     expect(screen.queryByTestId('family-card-under-two')).not.toBeInTheDocument()

@@ -96,6 +96,10 @@ export type AccessibilityFlagSummary = {
    * Has Child Under Two
    */
   has_child_under_two?: boolean
+  /**
+   * Has Bed Exempt Child
+   */
+  has_bed_exempt_child?: boolean
 }
 
 /**

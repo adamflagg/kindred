@@ -3023,6 +3023,81 @@ class TestChildUnderTwoFlag:
         assert roster.parties[0].flags.has_child_under_two is False
 
 
+class TestBedExemptChildFlag:
+    """`has_bed_exempt_child` feeds the baby mark's capacity note (staff
+    ruling, 2026-08-21, supersedes the kindred#2212 inline icon).
+
+    The flag MUST be derived from the same `_consumes_a_bed` call that
+    discounts `party_size` -- one calculation, so the tooltip's "doesn't
+    count toward capacity" and the bed count itself can never disagree.
+    That inherits the bed rule's conservatism wholesale: sentinel age,
+    missing birthdate, unreadable session start all KEEP the bed, and a
+    kept bed is never claimed exempt.
+    """
+
+    @pytest.mark.asyncio
+    async def test_a_17_month_old_is_bed_exempt(self) -> None:
+        # Born 2025-04-04: 17 completed months on 2026-09-04 -- under the
+        # 18-month bed rule, so exempt, and party_size already discounts them.
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_households={"hh_1": _household()},
+            fetch_attendees_for_session=[
+                _child(cm_id=1000001, first="Emma", last="Johnson", age=1, grade=0, birthdate="2025-04-04"),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.parties[0].flags.has_bed_exempt_child is True
+        assert roster.parties[0].flags.has_child_under_two is True
+
+    @pytest.mark.asyncio
+    async def test_a_19_month_old_is_under_two_but_not_bed_exempt(self) -> None:
+        # Born 2025-02-04: 19 completed months -- past the 18-month bed rule
+        # but under the 24-month mark. THE differential case: the icon draws,
+        # the capacity note must not.
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_households={"hh_1": _household()},
+            fetch_attendees_for_session=[
+                _child(cm_id=1000001, first="Emma", last="Johnson", age=1, grade=0, birthdate="2025-02-04"),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.parties[0].flags.has_bed_exempt_child is False
+        assert roster.parties[0].flags.has_child_under_two is True
+
+    @pytest.mark.asyncio
+    async def test_the_unknown_age_sentinel_is_never_claimed_exempt(self) -> None:
+        # Same fixture shape as the bed rule's sentinel test: age == 0.0 with
+        # a newborn birthdate beside it. `_consumes_a_bed` keeps the bed, so
+        # the tooltip must not claim the child doesn't count -- they do.
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_households={"hh_1": _household()},
+            fetch_attendees_for_session=[
+                _child(cm_id=1000001, first="Emma", last="Johnson", age=0.0, birthdate="2026-08-01"),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.parties[0].flags.has_bed_exempt_child is False
+
+    @pytest.mark.asyncio
+    async def test_a_missing_birthdate_is_never_claimed_exempt(self) -> None:
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_households={"hh_1": _household()},
+            fetch_attendees_for_session=[
+                _child(cm_id=1000001, first="Emma", last="Johnson", age=1, grade=0, birthdate=""),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.parties[0].flags.has_bed_exempt_child is False
+
+
 class TestBuildSummary:
     """The lander's batched read.
 
