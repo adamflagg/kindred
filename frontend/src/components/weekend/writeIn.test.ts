@@ -406,4 +406,18 @@ describe('writeInDemand', () => {
       known: false,
     })
   })
+
+  it('is never known on a card nobody measured, even with an ancestor cover', () => {
+    // Mirror of Python's `test_an_unmeasured_card_is_not_known_even_with_an_ancestor_cover`.
+    // An ancestor cover only tells you the whole card is taken, not how big
+    // the card is — so a capacity nobody measured stays unknown even here.
+    // This pins the GUARD ORDERING: the `capacity === null` guard has to run
+    // before the ancestor pre-pass, or this answers `known: true` instead —
+    // an ancestor cover asserting occupancy is not the same fact as a
+    // measured card, and only the capacity guard can tell them apart.
+    expect(
+      writeInDemand(null, [demandCover({ relation: 'ancestor', party_size: 2, unit_sleeps: 7 })])
+        .known
+    ).toBe(false)
+  })
 })
