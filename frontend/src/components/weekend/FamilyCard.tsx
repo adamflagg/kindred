@@ -597,7 +597,9 @@ function FamilyCardChips({
             data-testid="family-card-under-two"
             className={`${GLYPH_BASE} border-border bg-transparent`}
           >
-            <Baby className="h-3 w-3 text-pink-500 dark:text-pink-400" />
+            {/* 14px, one step up from the glyphs' 12px — at 12 the Baby face
+                reads as frowning (owner, 2026-08-22). Frame stays GLYPH_BASE. */}
+            <Baby className="h-3.5 w-3.5 text-pink-500 dark:text-pink-400" />
           </Tooltip>
         )}
 

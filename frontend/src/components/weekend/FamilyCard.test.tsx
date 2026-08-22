@@ -1909,6 +1909,21 @@ describe('FamilyCard — the child-under-two mark (staff ruling, 2026-08-21)', (
     expect(mark.className).not.toContain('red')
     expect(mark.querySelector('svg')?.getAttribute('class')).not.toContain('red')
   })
+
+  it('draws the Baby face a step larger than the need glyphs', () => {
+    // Owner feedback 2026-08-22: at the glyphs' 12px the Baby face reads as
+    // frowning. The face gets 14px (h-3.5) inside the same GLYPH_BASE frame —
+    // the frame stays 20px so the row still reads as one run.
+    render(
+      <FamilyCard
+        party={party({ flags: { has_child_under_two: true } })}
+        unit={confirmedUnit()}
+        onOpen={vi.fn()}
+      />
+    )
+    const icon = screen.getByTestId('family-card-under-two').querySelector('svg')
+    expect(icon?.getAttribute('class')).toContain('h-3.5 w-3.5')
+  })
 })
 
 // The "Needs Accommodation" rename (kindred#2072) this describe block used
