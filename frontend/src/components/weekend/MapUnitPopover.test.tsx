@@ -1092,7 +1092,7 @@ describe('MapUnitPopover — a container, master-detail (kindred#2183)', () => {
         })
       ),
     ]
-    render(<MapUnitPopover units={withWriteIn} hue={HUE} onOpenParty={vi.fn()} />)
+    render(<MapUnitPopover units={withWriteIn as MapUnit[]} hue={HUE} onOpenParty={vi.fn()} />)
     // Capacity unchanged at 9 (4 + 2 + 3); 6 rostered + 2 written-in = 8 placed.
     expect(screen.getByText('9 · 8 placed')).toBeInTheDocument()
   })
