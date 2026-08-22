@@ -21,9 +21,11 @@
  * blocks start EXPANDED (nothing hidden behind a click, because a scanning
  * eye must not miss request text) and every block is COLLAPSIBLE (a staff
  * member facing the seven-entry household can fold them away). kindred#2476
- * (owner ruling 2026-08-21) tunes this: `Share Bunk With` alone now starts
- * COLLAPSED -- see the `describe('Share Bunk With starts collapsed...')`
- * block below -- every other block keeps the EXPANDED default above.
+ * (owner ruling 2026-08-21) tunes this: `Share Bunk With` starts COLLAPSED --
+ * see the `describe('Share Bunk With and Internal Bunk Notes start
+ * collapsed...')` block below. A follow-up staff ruling (2026-08-21) adds
+ * `Internal Bunk Notes` to that same starts-collapsed set, mirroring the
+ * precedent -- every other block keeps the EXPANDED default above.
  *
  * Shape it is built against, measured on the 2026 production snapshot over
  * the 382 households rostered into a family session: 270 carry any text, 142
@@ -426,7 +428,11 @@ describe('expanded by default, collapsible by click', () => {
         share={share({
           request_blocks: [
             block('COVID-19 Bunking Requests', [{ text: 'A quiet cabin, please' }]),
-            block('Internal Bunk Notes', [{ text: 'Called the family Tuesday.' }], 'staff'),
+            // NOT `Internal Bunk Notes` -- the 2026-08-21 follow-up ruling
+            // starts it folded, and this test asserts both entries render
+            // without a click. `BunkingNotes Notes` is the other staff field
+            // and keeps the old expanded-by-default.
+            block('BunkingNotes Notes', [{ text: 'Called the family Tuesday.' }], 'staff'),
           ],
         })}
       />
@@ -479,10 +485,12 @@ describe('expanded by default, collapsible by click', () => {
   })
 })
 
-describe('Share Bunk With starts collapsed; its siblings do not (kindred#2476)', () => {
+describe('Share Bunk With and Internal Bunk Notes start collapsed; their siblings do not (kindred#2476, staff ruling 2026-08-21)', () => {
   // Owner ruling 2026-08-21, tuning the 2026-08-17 "blocks start EXPANDED"
-  // ruling: `Share Bunk With` alone starts folded. Every other block keeps
-  // the old default.
+  // ruling: `Share Bunk With` starts folded (kindred#2476 / PR #2521). A
+  // same-day follow-up staff ruling extends the identical treatment to
+  // `Internal Bunk Notes` -- both source fields now start folded, and every
+  // other block keeps the old default.
   it('renders Share Bunk With folded on first paint while a sibling stays open', () => {
     render(
       <ShareRequestPanel
@@ -535,6 +543,63 @@ describe('Share Bunk With starts collapsed; its siblings do not (kindred#2476)',
 
     expect(screen.queryByText("The second family's fridge ask")).not.toBeInTheDocument()
   })
+
+  it('renders Internal Bunk Notes folded on first paint while a sibling stays open', () => {
+    render(
+      <ShareRequestPanel
+        share={share({
+          request_blocks: [
+            block('COVID-19 Bunking Requests', [{ text: 'A quiet cabin, please' }]),
+            block('Internal Bunk Notes', [{ text: 'Watch the cabin split here.' }], 'staff'),
+          ],
+        })}
+      />
+    )
+
+    expect(screen.getByText('A quiet cabin, please')).toBeInTheDocument()
+    expect(screen.queryByText('Watch the cabin split here.')).not.toBeInTheDocument()
+    // The header stays, or there is nothing left to click to open it.
+    expect(screen.getByText('Internal Bunk Notes')).toBeInTheDocument()
+  })
+
+  it('opens Internal Bunk Notes on click, same as any other block', () => {
+    render(
+      <ShareRequestPanel
+        share={share({
+          request_blocks: [
+            block('Internal Bunk Notes', [{ text: 'Watch the cabin split here.' }], 'staff'),
+          ],
+        })}
+      />
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Internal Bunk Notes' }))
+    expect(screen.getByText('Watch the cabin split here.')).toBeInTheDocument()
+  })
+
+  it('THE TRAP: a household switch re-collapses Internal Bunk Notes rather than opening it', () => {
+    // Same trap as Share Bunk With above, pinned separately: the default has
+    // to be applied in the reset-on-household-change branch too, or Internal
+    // Bunk Notes re-opens for every household after the first, the moment
+    // staff click the next family.
+    const first = share({
+      request_blocks: [
+        block('Internal Bunk Notes', [{ text: "The first family's cabin-split note" }], 'staff'),
+      ],
+    })
+    const second = share({
+      request_blocks: [
+        block('Internal Bunk Notes', [{ text: "The second family's cabin-split note" }], 'staff'),
+      ],
+    })
+
+    const { rerender } = render(<ShareRequestPanel share={first} />)
+    expect(screen.queryByText("The first family's cabin-split note")).not.toBeInTheDocument()
+
+    rerender(<ShareRequestPanel share={second} />)
+
+    expect(screen.queryByText("The second family's cabin-split note")).not.toBeInTheDocument()
+  })
 })
 
 describe('one treatment, and the lane is data rather than colour', () => {
@@ -571,6 +636,10 @@ describe('one treatment, and the lane is data rather than colour', () => {
         })}
       />
     )
+    // Internal Bunk Notes starts folded (2026-08-21 staff ruling) -- open it
+    // explicitly so both staff-authored entries are on screen for this rail
+    // check, same as BunkingNotes Notes which still starts expanded.
+    fireEvent.click(screen.getByRole('button', { name: 'Internal Bunk Notes' }))
 
     for (const entry of screen.getAllByTestId('request-entry')) {
       expect(entry.className).toContain('border-amber-300')
