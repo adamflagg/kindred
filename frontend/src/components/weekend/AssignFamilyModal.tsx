@@ -458,9 +458,18 @@ export function AssignFamilyModal({
    * A typed value still has to parse. `''` is a complete answer and `'0'` is
    * not — saving a write-in the staff member believes carries a count,
    * without one, is worse than refusing the keystroke.
+   *
+   * ⚠️ `Number(...)`, NOT `Number.parseInt(...)` (IMPORTANT C). `parseInt`
+   * reads digits until the first character it cannot parse and silently
+   * drops the rest — `parseInt('1.5', 10)` is `1`, not a refusal, which is
+   * exactly the "silently dropped" outcome the owner ruling forbids: staff
+   * would believe they wrote in 1.5 and the row would carry 1. `Number(...)`
+   * parses the WHOLE string or fails outright — `Number('1.5')` is `1.5`,
+   * caught by `Number.isInteger` below, and `Number('1e3')` is `1000`, read
+   * correctly rather than truncated to `1`.
    */
   const [people, setPeople] = useState('')
-  const parsedPeople = Number.parseInt(people, 10)
+  const parsedPeople = Number(people)
   const partySize = people.trim() === '' ? null : parsedPeople
   const peopleValid = partySize === null || (Number.isInteger(partySize) && partySize >= 1)
 

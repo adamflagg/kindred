@@ -99,6 +99,20 @@ describe('useUnitAvailability', () => {
     })
   })
 
+  it('forwards a non-null party size, rather than hardcoding one', async () => {
+    // MAJOR B: `WRITE_IN`'s own `partySize: null` cannot distinguish
+    // FORWARDING `intent.partySize` from hardcoding `null` at this hop's
+    // `mutationFn` — both produce the same `null` on the wire. This is the
+    // one assertion in this file that would catch the hardcode.
+    const { result } = renderAvailability()
+
+    await act(async () => {
+      await result.current.setAvailability({ ...WRITE_IN, partySize: 3 })
+    })
+
+    expect(setUnitAvailability.mock.calls[0]?.[1]).toMatchObject({ partySize: 3 })
+  })
+
   it('sends the scenario it was opened on, so the write lands on that board', async () => {
     // kindred#2382 PR 4. A scenario's write-ins REPLACE the live ones on read
     // (PR 3), so an occupancy written to the live table from inside a scenario

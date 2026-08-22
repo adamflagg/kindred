@@ -201,6 +201,12 @@ describe('LodgingBoard — the control becomes a write', () => {
     await user.click(screen.getByRole('button', { name: /assign to cedar 2/i }))
     await user.type(screen.getByRole('searchbox'), 'Emma Johnson')
     await user.type(screen.getByLabelText(/note/i), 'paper registration')
+    // MAJOR B: a non-null count, typed through the real modal control,
+    // exercised all the way through `writeAvailability` — the glue hop the
+    // task-9 brief omitted. A `partySize: null` fixture here cannot tell a
+    // forwarded value from a hardcoded one; `null` is what a hardcode would
+    // produce too.
+    await user.type(screen.getByLabelText('People'), '3')
     await user.click(screen.getByRole('button', { name: /^write in$/i }))
 
     expect(setAvailability).toHaveBeenCalledTimes(1)
@@ -216,7 +222,7 @@ describe('LodgingBoard — the control becomes a write', () => {
       // then editing it from the pencil on its own card. kindred#2072's modal
       // has the width for the field, so the first write carries it.
       reason: 'paper registration',
-      partySize: null,
+      partySize: 3,
     })
   })
 

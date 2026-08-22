@@ -172,6 +172,42 @@ describe('AssignFamilyModal — the header states beds FREE (owner ruling 2026-0
     expect(screen.getByTestId('assign-capacity')).toHaveTextContent('2 of 4 beds free')
   })
 
+  it('still refuses on a PARTLY-counted card — one sized cover is not every cover', () => {
+    // NIT E. `writeInDemand`'s `known` is false whenever even one covering
+    // write-in lacks a recorded size, pinned at that function's own level in
+    // Task 7's tests — this pins it where the narrowing ruling actually
+    // lives: the header a staff member reads. A card with one counted write-in
+    // and one uncounted one is a LOWER bound, not a fact, and must still
+    // decline rather than print a number that undercounts the room.
+    renderModal({
+      unit: unit({
+        sleeps: 6,
+        write_ins: [
+          {
+            unit_id: 'u1',
+            unit_code: 'ridge-1',
+            unit_name: 'Ridge 1',
+            occupant_name: 'Liam Garcia',
+            note: '',
+            party_size: 2,
+          },
+          {
+            unit_id: 'u1',
+            unit_code: 'ridge-1',
+            unit_name: 'Ridge 1',
+            occupant_name: 'Emma Johnson',
+            note: '',
+          },
+        ],
+      }),
+      occupants: 0,
+    })
+    expect(screen.getByTestId('assign-capacity')).toHaveTextContent(
+      'Sleeps 6 · occupancy not counted (write-in)'
+    )
+    expect(screen.getByTestId('assign-capacity')).not.toHaveTextContent('beds free')
+  })
+
   it('says nothing it cannot support when nobody has measured the room', () => {
     renderModal({ unit: unit({ sleeps: null }), occupants: 0 })
     expect(screen.getByTestId('assign-capacity')).toHaveTextContent('Capacity not recorded')
@@ -1260,6 +1296,33 @@ describe('AssignFamilyModal — the People field, kindred#2503', () => {
     expect(screen.getByRole('button', { name: /write in/i })).toBeDisabled()
     fireEvent.click(screen.getByRole('button', { name: /write in/i }))
     expect(props.onWriteIn).not.toHaveBeenCalled()
+  })
+
+  it('refuses a fraction rather than silently truncating it (IMPORTANT C)', () => {
+    // `Number.parseInt('1.5', 10)` is `1` — the fraction dropped with no
+    // signal, which is precisely the "silently dropped" outcome the owner
+    // ruling forbids. `1.5` is a realistic mistype, and the field must
+    // refuse it rather than persist `1` as if that were what was typed.
+    const { props } = renderModal()
+    fireEvent.change(searchBox(), { target: { value: 'Burst pipe' } })
+    fireEvent.change(screen.getByLabelText('People'), { target: { value: '1.5' } })
+    expect(screen.getByRole('button', { name: /write in/i })).toBeDisabled()
+    fireEvent.click(screen.getByRole('button', { name: /write in/i }))
+    expect(props.onWriteIn).not.toHaveBeenCalled()
+  })
+
+  it('reads exponential notation as the number it names, not as a truncated digit', () => {
+    // `Number.parseInt('1e3', 10)` is `1` — wrong, not a refusal.
+    // `Number('1e3')` is `1000`, the value the string actually names.
+    const { props } = renderModal()
+    fireEvent.change(searchBox(), { target: { value: 'Burst pipe' } })
+    fireEvent.change(screen.getByLabelText('People'), { target: { value: '1e3' } })
+    fireEvent.click(screen.getByRole('button', { name: /write in/i }))
+    expect(props.onWriteIn).toHaveBeenCalledWith({
+      occupantName: 'Burst pipe',
+      note: '',
+      partySize: 1000,
+    })
   })
 
   it('saves on Enter from People, as it does from Note', () => {

@@ -2312,6 +2312,33 @@ describe('LodgingUnitCard — placing a family from the space itself (kindred#20
     })
   })
 
+  it("preserves the pencil-edited row's already-recorded party size, never dropping it", async () => {
+    // MAJOR A. `WriteInCard`'s edit form does not ask about party size yet
+    // (kindred#2503's own edit form is a later task), but
+    // `set_availability` upserts `party_size` on EVERY write-in write — an
+    // edit that sent `null` here would silently erase a count a staff
+    // member had already recorded. Mutation-checked: hardcoding
+    // `partySize: null` at the `onEdit` call site in `LodgingUnitCard.tsx`
+    // leaves this red.
+    const user = userEvent.setup()
+    const onSetAvailability = vi.fn()
+    renderCard({
+      canSetAvailability: true,
+      onSetAvailability,
+      slot: slot({ unit: unit({ write_ins: [cover({ party_size: 3 })] }) }),
+    })
+    await user.click(screen.getByRole('button', { name: 'Edit write-in Emma Johnson' }))
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    expect(onSetAvailability).toHaveBeenCalledWith({
+      unitId: 'u1',
+      unitName: 'Cedar 1',
+      familyAvailable: false,
+      occupantName: 'Emma Johnson',
+      reason: '',
+      partySize: 3,
+    })
+  })
+
   it('is PRESENT on a written-into space, so a second occupant can be added either way round', () => {
     /*
      * Inverted by kindred#2432. The control used to vanish here, mirroring
