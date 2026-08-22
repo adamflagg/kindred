@@ -309,7 +309,7 @@ export function WriteInCard({ occupant, onRemove, onEdit, isSaving = false }: Wr
           <div className="flex items-center gap-1.5">
             <button
               type="submit"
-              disabled={isSaving}
+              disabled={isSaving || !peopleValid}
               className="bg-primary text-primary-foreground rounded-md px-2 py-0.5 text-xs font-medium disabled:opacity-40"
             >
               Save

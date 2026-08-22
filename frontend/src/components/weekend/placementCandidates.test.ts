@@ -375,6 +375,86 @@ describe('capacityVerdict — the row grades the beds LEFT (owner ruling 2026-08
   })
 })
 
+describe('capacityVerdict — a sized write-in folds into the beds graded (fix-wave 2026-08-22)', () => {
+  /*
+   * `dragCapacity.known` (`LodgingUnitCard.tsx`) went PER-COVER at kindred#2503:
+   * a sized write-in now grades like any other occupant, and only an unknown
+   * one withholds the claim. `capacityVerdict`'s blanket `hasWriteIn` refusal
+   * stayed card-wide, so once any size was recorded the Assign modal's header
+   * ("3 of 5 beds free") disagreed with every candidate row beneath it, which
+   * kept right on refusing to grade. This closes that gap: `capacityVerdict`
+   * now reads the same `writeInDemand` the header and the card read, and
+   * declines only when it is not `known` — never on `hasWriteIn` alone.
+   */
+  it('still refuses an unsized cover — no fact to grade against', () => {
+    const unsized = unit({
+      sleeps: 5,
+      write_ins: [
+        {
+          unit_id: 'u1',
+          unit_code: 'cedar-1',
+          unit_name: 'Cedar 1',
+          occupant_name: 'Emma Johnson',
+          note: '',
+        },
+      ],
+    })
+    const result = candidateFit(party({ party_size: 2 }), unsized, [])
+    expect(result.fit).toBe('fits')
+    expect(result.notes).toEqual([])
+  })
+
+  it('grades a sized cover, and counts its beds against the room', () => {
+    const sized = unit({
+      sleeps: 5,
+      write_ins: [
+        {
+          unit_id: 'u1',
+          unit_code: 'cedar-1',
+          unit_name: 'Cedar 1',
+          occupant_name: 'Emma Johnson',
+          note: '',
+          party_size: 2,
+        },
+      ],
+    })
+    // 5 beds, 2 taken by the write-in, 3 left.
+    const fits = candidateFit(party({ party_size: 3 }), sized, [])
+    expect(fits.fit).toBe('fits')
+    expect(fits.notes).toEqual([])
+
+    const unmet = candidateFit(party({ party_size: 4 }), sized, [])
+    expect(unmet.fit).toBe('unmet')
+    expect(unmet.notes).toEqual(['Over capacity · needs 4, 3 free'])
+  })
+
+  it('refuses a partly-sized card — one unsized cover is enough to withhold the claim', () => {
+    const partlySized = unit({
+      sleeps: 6,
+      write_ins: [
+        {
+          unit_id: 'u1',
+          unit_code: 'cedar-1',
+          unit_name: 'Cedar 1',
+          occupant_name: 'Emma Johnson',
+          note: '',
+          party_size: 2,
+        },
+        {
+          unit_id: 'u1',
+          unit_code: 'cedar-1',
+          unit_name: 'Cedar 1',
+          occupant_name: 'Noah Smith',
+          note: '',
+        },
+      ],
+    })
+    const result = candidateFit(party({ party_size: 1 }), partlySized, [])
+    expect(result.fit).toBe('fits')
+    expect(result.notes).toEqual([])
+  })
+})
+
 describe('placementCandidates', () => {
   it('never drops a party, however badly it fits', () => {
     // The ruling, stated as arithmetic: filtering to "what fits" would leave

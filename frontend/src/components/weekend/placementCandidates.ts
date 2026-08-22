@@ -79,7 +79,7 @@ import { partyIdentityLabel } from './householdIdentity'
 import { resolveNeedGlyphs } from './needGlyphs'
 import { worseOf, type NeedsFit } from './needsFit'
 import { effectiveSleeps, partyBeds } from './rosterAttention'
-import { hasWriteIn } from './writeIn'
+import { coveringWriteIns, writeInDemand } from './writeIn'
 
 /** The picker's verdict for one party against one space. `needsFit`'s vocabulary. */
 export type CandidateFitLevel = NeedsFit
@@ -152,21 +152,25 @@ function capacityVerdict(
 ): DimensionVerdict {
   const capacity = effectiveSleeps(unit, units)
   if (capacity === null) return { fit: 'fits', note: null }
-  // A written-into room has an occupant no occupancy figure counts — a
-  // write-in is not a party (kindred#2439), so `occupied` reads the room as
-  // empty however it was derived. Every number this verdict could state is
-  // therefore false in one direction or the other, and the reading is the
-  // unmeasured-capacity one above: no count, no claim. This is the same rule
-  // the card's own drag marks apply (`dragCapacity.known` in
-  // `LodgingUnitCard`), reaching the third surface that asks "is there room"
-  // — the board's match/red, the card figure, and now this row — so a
-  // written-into cabin cannot read "fits" in the picker while the card it was
-  // opened from refuses to print a numerator at all.
-  if (hasWriteIn(unit)) return { fit: 'fits', note: null }
+  // A written-into room has an occupant `occupied` never counts — a write-in
+  // is not a party (kindred#2439) — so its beds have to come from
+  // `writeInDemand`, the SAME reading the card's own drag marks fold in
+  // (`writeInKnown` in `LodgingUnitCard`, since kindred#2503) and the Assign
+  // modal's header states as "N of M beds free". `known` is what decides
+  // whether there is a fact to grade against, not `hasWriteIn`: a fully- or
+  // partly-unsized cover still asserts an occupant nothing has counted, so
+  // this row falls back to the unmeasured-capacity reading above rather than
+  // claim a number it does not have. Once every cover on the card carries a
+  // recorded `party_size` (or an ancestor's whole-card claim), `consumed`
+  // folds into `occupied` exactly as a placed party's own beds already do —
+  // a written-into cabin is graded, not exempted, the moment its occupancy
+  // is a fact rather than a guess.
+  const { consumed, known } = writeInDemand(capacity, coveringWriteIns(unit))
+  if (!known) return { fit: 'fits', note: null }
   const beds = partyBeds(party)
   // `Math.max(0, …)` for the same reason the header does it: a room already
   // over its capacity has nothing left, never a negative number of beds.
-  const free = Math.max(0, capacity - occupied)
+  const free = Math.max(0, capacity - occupied - consumed)
   if (beds <= free) return { fit: 'fits', note: null }
   return {
     fit: 'unmet',

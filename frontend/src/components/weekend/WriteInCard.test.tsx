@@ -489,6 +489,46 @@ describe("the pencil's People field, kindred#2503", () => {
       partySize: 2,
     })
   })
+
+  it('disables Save while People holds an invalid count, matching the Assign modal’s gate', () => {
+    // `AssignFamilyModal.tsx`'s own write-in offer is
+    // `disabled={isSaving || !peopleValid}`. This card's Save used to be
+    // `disabled={isSaving}` alone — narrower than it looked, since Save is
+    // `type="submit"` in a real `<form>` and the field's own `min=1 step=1`
+    // blocks a click with a native bubble. The genuinely silent path is
+    // Enter inside the field, pinned separately below.
+    render(
+      <WriteInCard
+        occupant={{ name: 'Liam Garcia', note: '', partySize: null }}
+        onEdit={() => undefined}
+      />
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit write-in Liam Garcia' }))
+    fireEvent.change(screen.getByLabelText('People'), { target: { value: '0' } })
+
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
+  })
+
+  it('refuses Enter from an invalid People field exactly as Save does — no signal, but no save', () => {
+    // Native form submission never fires here: `fireEvent.keyDown` in jsdom
+    // does not trigger implicit submission, so this exercises the field's
+    // own `onKeyDown` — `preventDefault()` then `trySubmit()` — which is the
+    // path a disabled Save button does nothing to protect on its own.
+    // `trySubmit`'s existing `!peopleValid` guard is what actually stops the
+    // write; this pins it at the one call site the Save-button gate above
+    // cannot reach.
+    const onEdit = vi.fn()
+    render(
+      <WriteInCard occupant={{ name: 'Liam Garcia', note: '', partySize: null }} onEdit={onEdit} />
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit write-in Liam Garcia' }))
+    fireEvent.change(screen.getByLabelText('People'), { target: { value: '0' } })
+    fireEvent.keyDown(screen.getByLabelText('People'), { key: 'Enter' })
+
+    expect(onEdit).not.toHaveBeenCalled()
+  })
 })
 
 describe('the "Written in at …" footer', () => {

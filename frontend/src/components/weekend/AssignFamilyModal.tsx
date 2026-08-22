@@ -274,13 +274,16 @@ function capacitySentence(
   // ⚠️ THE REFUSAL NARROWS, IT DOES NOT DISAPPEAR (kindred#2503). A
   // written-into room used to have NO occupancy figure at all — `occupants`
   // never counts a write-in (kindred#2439), so a free-bed number here would
-  // be one the card itself refused to print (it shows an em dash). Candidate
-  // rows below still DECLINE to grade against ANY write-in card
-  // (`capacityVerdict`'s own gate, unchanged by this), but the header can now
-  // say more: `writeInDemand` supplies a real headcount wherever every cover
-  // on this card recorded a `party_size`, so the refusal applies only to the
-  // case that still has none — `known` is false. A partly-counted card is a
-  // lower bound (`writeInDemand`'s own doc), and this header states facts.
+  // be one the card itself refused to print (it shows an em dash).
+  // `writeInDemand` supplies a real headcount wherever every cover on this
+  // card recorded a `party_size`, so the refusal applies only to the case
+  // that still has none — `known` is false. A partly-counted card is a lower
+  // bound (`writeInDemand`'s own doc), and this header states facts.
+  // Candidate rows below now read the SAME `writeInDemand` and grade a
+  // written-into card exactly this way (`capacityVerdict`, fix-wave
+  // 2026-08-22) — the two used to disagree the moment any size was recorded,
+  // this header stating a real remainder while every row beneath it still
+  // declined to grade against it.
   const { consumed, known } = writeInDemand(capacity, coveringWriteIns(unit))
   if (!known && hasWriteIn(unit)) {
     return `Sleeps ${String(capacity)} · occupancy not counted (write-in)`
