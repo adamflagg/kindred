@@ -682,25 +682,34 @@ function ClusterSummary({
   // counts its beds once per door, and can print more placed than the
   // building sleeps. One chip, one household, one bed total.
   //
-  // PLUS every room's write-in `sized` count (kindred#2540), mirroring
-  // `DetailCard`'s own `bedsNeeded + writeInSized` exactly rather than a
-  // second derivation of it. `summaryWriteIns` below dedupes write-ins for
-  // the NAME LIST only, one entry per unit id that carries a row — it was
-  // never folded into this arithmetic, so a cluster containing a sized
-  // write-in reported "0 placed" at the building level while `DetailCard`
-  // reported the true count for that same room one click in. Summed PER
-  // UNIT, not over the deduped list, because unlike a shared family a
-  // write-in's count is a fact about ITS OWN room and every room's cover has
-  // to contribute. `sized`, never `consumed`: `consumed` folds in the
-  // wholesale fallback and an ancestor's whole-card claim and is capped at
-  // that room's own capacity — see `writeInDemand`'s doc for why the two
-  // numbers must not collapse into one.
-  const writeInSized = resolved.reduce(
-    (total, { entry }) => total + writeInDemand(entry.capacity, coveringWriteIns(entry.unit)).sized,
+  // PLUS every DISTINCT write-in ROW's recorded count (kindred#2540, and its
+  // CodeRabbit follow-up), mirroring `DetailCard`'s own
+  // `bedsNeeded + writeInSized` for a room that carries no ancestor cover.
+  //
+  // The first cut of this summed `writeInDemand(...).sized` PER UNIT — right
+  // for a room's own card, where `sized` deliberately excludes an ancestor
+  // cover (an ancestor's count is a fact about the HOUSE, not the room, so
+  // printing it on both halves of a split house would spend one party twice
+  // on one screen). But this is the house-level aggregate that ancestor
+  // number belongs to, and `drawnUnits` guarantees a house written in whole
+  // and then split draws its ROOMS, never itself — so every room in the
+  // cluster inherits the SAME ancestor row, and summing the per-room,
+  // ancestor-excluding `sized` reported zero for a house that has some.
+  //
+  // The fix: dedupe by the cover's own `unit_id` (`WriteInSource.unitId`,
+  // published once per row no matter how many rooms resolve it) BEFORE
+  // summing, reusing `writeIns` below — the same identity `summaryWriteIns`
+  // already established for the "Occupied by" name list, computed once and
+  // shared rather than re-derived. `drawnUnits` also guarantees a cluster
+  // never holds both a container and its own rooms, so on every own/
+  // descendant cover this reduces to the same figure the old per-unit sum
+  // produced; only the ancestor case changes.
+  const writeIns = summaryWriteIns(resolved)
+  const writeInSized = writeIns.reduce(
+    (total, { occupant }) => total + (occupant.partySize ?? 0),
     0
   )
   const placed = families.reduce((total, { party }) => total + partyBeds(party), 0) + writeInSized
-  const writeIns = summaryWriteIns(resolved)
 
   return (
     <div className="flex min-w-[11rem] flex-col gap-1.5">

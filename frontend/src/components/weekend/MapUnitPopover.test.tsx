@@ -1097,6 +1097,105 @@ describe('MapUnitPopover — a container, master-detail (kindred#2183)', () => {
     expect(screen.getByText('9 · 8 placed')).toBeInTheDocument()
   })
 
+  it('counts an ancestor write-in once across every room it resolves onto', () => {
+    // CodeRabbit's second review of kindred#2540. `sized` deliberately EXCLUDES
+    // ancestor covers per `DetailCard` — an ancestor's count is a fact about
+    // the house, not the room, so printing it on both halves of a split house
+    // would spend one party twice on one screen. That rule is right for a
+    // single card, but a CLUSTER is the house-level aggregate the ancestor
+    // number belongs to. A house written in whole and then split draws its
+    // ROOMS, not itself (`drawnUnits`); every room inherits the SAME ancestor
+    // row, so the old per-room `sized` sum reported zero — not the true count
+    // — for a house that has some. The fix dedupes by the cover's own
+    // `unit_id` (`WriteInSource.unitId`, published once per row no matter how
+    // many rooms resolve it) before summing — the same identity
+    // `summaryWriteIns` already uses for the "Occupied by" name list.
+    const ancestor = cover({
+      unit_id: 'cedar-house',
+      unit_code: 'cedar-house',
+      unit_name: 'Cedar House',
+      occupant_name: 'Overnight Staff',
+      relation: 'ancestor',
+      party_size: 5,
+      unit_sleeps: 7,
+    })
+    const split = [
+      mapUnit(
+        row({
+          unit_id: 'u1',
+          code: 'cedar-back',
+          name: 'Cedar Lodge Back',
+          sleeps: 4,
+          write_ins: [ancestor],
+        })
+      ),
+      mapUnit(
+        row({
+          unit_id: 'u2',
+          code: 'cedar-loft',
+          name: 'Cedar Lodge Loft',
+          sleeps: 3,
+          write_ins: [ancestor],
+        })
+      ),
+    ]
+    render(<MapUnitPopover units={split} hue={HUE} onOpenParty={vi.fn()} />)
+    // Capacity 4 + 3 = 7. Placed: the ONE ancestor row's `party_size` (5) —
+    // not 0 (per-room `sized` drops ancestors) and not 10 (double-counted
+    // once per room it resolves onto).
+    expect(screen.getByText('7 · 5 placed')).toBeInTheDocument()
+  })
+
+  it('counts an ancestor cover and a room’s own cover separately in one cluster', () => {
+    // The mixed case: deduping by row identity must not collapse two
+    // DIFFERENT rows into one, nor drop the own-cover figure the pre-existing
+    // sum already got right (kindred#2540's original fix, guarded above).
+    const ancestor = cover({
+      unit_id: 'cedar-house',
+      unit_code: 'cedar-house',
+      unit_name: 'Cedar House',
+      occupant_name: 'Overnight Staff',
+      relation: 'ancestor',
+      party_size: 5,
+      unit_sleeps: 7,
+    })
+    const own = cover({
+      unit_id: 'z1',
+      unit_code: 'birch-1',
+      unit_name: 'Birch 1',
+      occupant_name: 'Weekend Staff',
+      party_size: 2,
+    })
+    const mixed = [
+      mapUnit(
+        row({
+          unit_id: 'u1',
+          code: 'cedar-back',
+          name: 'Cedar Lodge Back',
+          sleeps: 4,
+          write_ins: [ancestor],
+        })
+      ),
+      mapUnit(
+        row({
+          unit_id: 'u2',
+          code: 'cedar-loft',
+          name: 'Cedar Lodge Loft',
+          sleeps: 3,
+          write_ins: [ancestor],
+        })
+      ),
+      mapUnit(
+        row({ unit_id: 'z1', code: 'birch-1', name: 'Birch 1', sleeps: 2, write_ins: [own] })
+      ),
+    ]
+    render(<MapUnitPopover units={mixed} hue={HUE} onOpenParty={vi.fn()} />)
+    // Capacity 4 + 3 + 2 = 9. Placed: the ancestor row once (5) plus the
+    // separate own row (2) = 7 — not 12 (the ancestor double-counted) and not
+    // 5 (the own cover dropped by the dedupe).
+    expect(screen.getByText('9 · 7 placed')).toBeInTheDocument()
+  })
+
   it('refuses a building total when one of its rooms is unmeasured', () => {
     const partial = [HOUSE[0], mapUnit(row({ unit_id: 'u9', code: 'cedar-x', sleeps: null }))]
     render(<MapUnitPopover units={partial as MapUnit[]} hue={HUE} onOpenParty={vi.fn()} />)
