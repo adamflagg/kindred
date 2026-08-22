@@ -884,6 +884,42 @@ describe('Modal', () => {
   })
 
   describe('transition (spec 1c: fade+scale 200/150, Transition + appear)', () => {
+    it('routes pointer events through the wrapper and blocks nothing once dead (2530 review finding 1)', () => {
+      // THE pattern: the fixed inset-0 wrapper is pointer-events-none ALWAYS,
+      // and the backdrop + panel re-enable with pointer-events-auto. Without
+      // this, the dying overlay swallowed clicks for the leave duration —
+      // D12's accepted trade was "background interactive" (click-through),
+      // and a swallowing overlay is the opposite of that trade.
+      render(
+        <Modal isOpen={true} onClose={() => {}} title="Hit test">
+          <p>Modal content</p>
+        </Modal>
+      )
+      expect(screen.getByRole('dialog').className).toContain('pointer-events-none')
+      expect(screen.getByTestId('modal-backdrop').className).toContain('pointer-events-auto')
+      expect(screen.getByTestId('modal-content').className).toContain('pointer-events-auto')
+    })
+
+    it('turns pointer events OFF on backdrop and panel for the leave', () => {
+      // While the exit fade plays, clicks must reach the page beneath — the
+      // background was un-inerted on the isOpen flip (D12), and the leave
+      // classes are what stop the dying elements intercepting.
+      const { rerender } = render(
+        <Modal isOpen={true} onClose={() => {}} title="Leave hit test">
+          <p>Modal content</p>
+        </Modal>
+      )
+      rerender(
+        <Modal isOpen={false} onClose={() => {}} title="Leave hit test">
+          <p>Modal content</p>
+        </Modal>
+      )
+      // Still painted on this frame (the linger test below pins that), and
+      // already non-interactive.
+      expect(screen.getByTestId('modal-backdrop').className).toContain('pointer-events-none')
+      expect(screen.getByTestId('modal-content').className).toContain('pointer-events-none')
+    })
+
     it('keeps the dialog painted through the exit and removes it after', async () => {
       // THE pin for the exit animation. Today `if (!isOpen) return null`
       // removes every dialog in the same frame; under <Transition> the DOM

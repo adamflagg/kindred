@@ -313,7 +313,7 @@ export function Modal({
     // `getFocusable` — the Tab trap needs it in the cycle — the skip lives
     // only in this initial pick.
     const focusable = getFocusable(container).filter((el) => !el.hasAttribute('data-modal-close'))
-    ;(initialFocusRef?.current ?? focusable[0] ?? container)?.focus()
+    ;(initialFocusRef?.current ?? focusable[0] ?? container).focus()
   }
 
   // Determine if we're using custom header or simple title mode
@@ -337,8 +337,15 @@ export function Modal({
     // initially-true `show` — no animation and no initial focus for the
     // majority of dialogs. The mount-open focus tests fail if it is removed.
     <Transition show={isOpen} appear>
+      {/* pointer-events-none on the WRAPPER, always — the backdrop and panel
+          re-enable themselves below, and drop it again in their leave classes.
+          This is what makes D12's accepted trade real: during the exit fade
+          the background is un-inerted AND reachable. Without it, this
+          full-viewport div swallowed every click for the leave duration —
+          measured on the stacked confirm in ScenarioManagementModal (2530
+          review finding 1). */}
       <div
-        className={`fixed inset-0 z-[100] flex justify-center ${
+        className={`pointer-events-none fixed inset-0 z-[100] flex justify-center ${
           // `pt-[10vh]` rather than a fixed offset: the dialog should sit in the
           // upper third at any viewport height, and `items-start` alone would
           // pin it to the very edge.
@@ -355,7 +362,12 @@ export function Modal({
         <TransitionChild
           as="div"
           data-testid="modal-backdrop"
-          className="absolute inset-0 backdrop-blur"
+          // Keyed on isOpen, not on Headless UI's leave classes: the component
+          // re-renders synchronously on the flip while <Transition> keeps the
+          // DOM for the fade, so this goes inert the same frame the background
+          // is un-inerted — no one-frame gap where a dying overlay still
+          // swallows the click that closed it (2530 review finding 1).
+          className={`${isOpen ? 'pointer-events-auto' : 'pointer-events-none'} absolute inset-0 backdrop-blur`}
           style={{ backgroundColor: 'rgba(17, 26, 22, 0.42)' }}
           onClick={onClose}
           aria-hidden="true"
@@ -387,7 +399,7 @@ export function Modal({
           // -1: not a natural Tab stop, only a JS-focus fallback for the rare
           // dialog with no focusable content of its own.
           tabIndex={-1}
-          className={`bg-card relative overflow-hidden rounded-2xl ${
+          className={`bg-card ${isOpen ? 'pointer-events-auto' : 'pointer-events-none'} relative overflow-hidden rounded-2xl ${
             // A dark header slot paints its own chrome to the card's edge, and a
             // light 1px ring around it reads as a white outline against the
             // colour rather than as an edge. Bordered stays the default.

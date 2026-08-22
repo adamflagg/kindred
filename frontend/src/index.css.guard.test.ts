@@ -62,14 +62,12 @@ describe('index.css — motion groundwork (spec 1a/1b, 2026-08-21)', () => {
     // background-color + opacity, which kindred#2528's drag-signal wash
     // (`bg-primary/20`) and dim (`opacity-40`) animate through on this very
     // class. Dropping either of those two turns a shipping fade into a snap.
-    const rule = css.match(/\.card-lodge\s*{([\s\S]*?)\n  }/)?.[1] ?? ''
+    const rule = css.match(/\.card-lodge\s*{([\s\S]*?)\n {2}}/)?.[1] ?? ''
     // Strip comments first — the declaration is what must not say `all`;
     // the comment above it explains WHY and names the phrase.
     const declarations = rule.replace(/\/\*[\s\S]*?\*\//g, '')
     expect(declarations).not.toContain('transition-all')
-    expect(declarations).toContain(
-      'transition-[border-color,box-shadow,background-color,opacity]'
-    )
+    expect(declarations).toContain('transition-[border-color,box-shadow,background-color,opacity]')
   })
 
   it('carries no dead motion CSS (1b sweep)', () => {
@@ -93,6 +91,14 @@ describe('index.css — motion groundwork (spec 1a/1b, 2026-08-21)', () => {
     expect(css).not.toMatch(/prefers-reduced-motion/)
   })
 
+  it('drops listbox pointer events for the leave (2530 review finding 1)', () => {
+    // Same hazard as the modal: a dropdown fading out at absolute z-50 kept
+    // swallowing clicks for 150ms. data-leave is stamped by Headless UI only
+    // while the leave transition runs.
+    const rule = css.match(/\.listbox-options\s*{([\s\S]*?)\n {2}}/)?.[1] ?? ''
+    expect(rule).toContain('data-leave:pointer-events-none')
+  })
+
   it('keeps the live animations the sweep must not touch (D5 fence)', () => {
     // The sparkle ships unchanged (D5), and pulse-glow is referenced by five
     // .tsx files. If this fails, the sweep took a live rule with the dead.
@@ -102,4 +108,3 @@ describe('index.css — motion groundwork (spec 1a/1b, 2026-08-21)', () => {
     expect(css).toMatch(/\.pending-lock-glow(?![\w-])/)
   })
 })
-

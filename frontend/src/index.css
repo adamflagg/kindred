@@ -602,7 +602,10 @@
        menu snaps while every other menu glides. */
     @apply origin-top transition duration-200 ease-out;
     @apply data-closed:-translate-y-1 data-closed:opacity-0;
-    @apply data-leave:duration-150 data-leave:ease-in;
+    /* pointer-events off for the leave: a dying menu at absolute z-50 must
+       not swallow the click that dismissed it — same hazard, same fix as
+       ui/Modal's leave classes (2530 review finding 1). */
+    @apply data-leave:pointer-events-none data-leave:duration-150 data-leave:ease-in;
   }
 
   .listbox-option {
@@ -1037,7 +1040,6 @@
   .dark .toast-progress {
     @apply bg-forest-400;
   }
-
 }
 
 /* Lodge shadows — @utility (not @layer utilities) so variants like

@@ -11,7 +11,7 @@
  *   Lat/lng input fields for adding coordinates to an existing canonical.
  */
 
-import { useState, useCallback, useMemo } from 'react'
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
 import { Search, Plus, MapPin } from 'lucide-react'
 import { Modal } from '../../ui/Modal'
 import { useAllCanonicals, useCreateOverride } from '../../../hooks/useGeoData'
@@ -39,6 +39,22 @@ export function ResolveDialog({
 
   // Shared state
   const [showCreateForm, setShowCreateForm] = useState(false)
+  // Mid-dialog focus, owned HERE and not by ui/Modal: a branch switch mounts
+  // its inputs while `isOpen` never changes, so Modal's beforeEnter focus
+  // cannot re-fire. The inputs' `autoFocus` used to cover this and was
+  // deleted (it broke focus RESTORATION when it fired at open — see
+  // ui/Modal's `initialFocusRef` doc). Skipping the first run keeps open-time
+  // focus with Modal, where the opener capture ordering is load-bearing.
+  const searchInputRef = useRef<HTMLInputElement>(null)
+  const createNameRef = useRef<HTMLInputElement>(null)
+  const skipBranchFocusRef = useRef(true)
+  useEffect(() => {
+    if (skipBranchFocusRef.current) {
+      skipBranchFocusRef.current = false
+      return
+    }
+    ;(showCreateForm ? createNameRef : searchInputRef).current?.focus()
+  }, [showCreateForm])
 
   // Mode A state
   const [searchQuery, setSearchQuery] = useState('')
@@ -199,6 +215,7 @@ export function ResolveDialog({
           <div className="relative">
             <Search className="text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
             <input
+              ref={searchInputRef}
               type="text"
               value={searchQuery}
               onChange={(e) => {
@@ -207,9 +224,9 @@ export function ResolveDialog({
               }}
               placeholder="Search existing entries..."
               className="bg-muted/50 border-border focus:ring-forest-500 w-full rounded-lg border py-2 pr-4 pl-10 text-sm focus:ring-2 focus:outline-none"
-              // Deliberate: this dialog's entire purpose is searching for a canonical to
-              // resolve the gap into, so taking focus on open lets the user start typing
-              // immediately.
+              // Open-time focus lands here via ui/Modal (first focusable in the
+              // body); the "Back" return path lands here via the branch-switch
+              // effect above.
             />
           </div>
 
@@ -316,14 +333,15 @@ export function ResolveDialog({
               Name
             </label>
             <input
+              ref={createNameRef}
               id="canonical-name"
               type="text"
               value={newCanonicalName}
               onChange={(e) => setNewCanonicalName(e.target.value)}
               className="bg-muted/50 border-border focus:ring-forest-500 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 focus:outline-none"
-              // Deliberate: this form only appears once the user has chosen "Create new",
-              // so taking focus on the Name field lets them start typing immediately
-              // instead of re-clicking into it.
+              // This form only appears once the user has chosen "Create new";
+              // the branch-switch effect above puts the caret here so they can
+              // start typing immediately instead of re-clicking into it.
             />
           </div>
 

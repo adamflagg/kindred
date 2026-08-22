@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { ResolveDialog } from '../ResolveDialog'
@@ -121,6 +121,31 @@ describe('ResolveDialog — Mode A (non-canonical)', () => {
     expect(screen.getByLabelText(/name/i)).toBeInTheDocument()
     expect(screen.getByLabelText(/city/i)).toBeInTheDocument()
     expect(screen.getByLabelText(/state/i)).toBeInTheDocument()
+  })
+
+  it('focuses the Name field when switching TO the create form (2530 review finding 2)', async () => {
+    // A branch switch is a mid-dialog mount: `isOpen` never changes, so
+    // Modal's beforeEnter focus never re-fires. This used to work through the
+    // input's `autoFocus`, which D20 deleted for its open-time harm — the
+    // caller now owns mid-dialog focus, and this pins it.
+    render(<ResolveDialog {...defaultProps} />)
+    const user = userEvent.setup()
+
+    await user.click(screen.getByRole('button', { name: /create new/i }))
+
+    await waitFor(() => expect(screen.getByLabelText(/name/i)).toHaveFocus())
+  })
+
+  it('focuses the search box when switching BACK from the create form', async () => {
+    render(<ResolveDialog {...defaultProps} />)
+    const user = userEvent.setup()
+
+    await user.click(screen.getByRole('button', { name: /create new/i }))
+    await user.click(screen.getByRole('button', { name: /back/i }))
+
+    await waitFor(() =>
+      expect(screen.getByPlaceholderText(/search existing entries/i)).toHaveFocus()
+    )
   })
 
   it('name field pre-fills with gapName in create-new mode', async () => {

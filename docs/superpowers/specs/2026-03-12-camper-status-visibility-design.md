@@ -59,8 +59,10 @@ These frontend filters MUST remain `status = "enrolled"` — they serve bunking/
 |---|---|---|
 | `components/CreateRequestModal.tsx` | 40 | Bunk requests only valid for enrolled campers |
 | `components/EditableRequestTarget.tsx` | 150 | Request target lookup — only enrolled are assignable |
-| `components/ManualResolutionModal.tsx` | 51 | Manual request resolution — only enrolled are valid |
 | `components/SessionList.tsx` | 486 | Session camper counts — should reflect enrolled count |
+
+> `ManualResolutionModal.tsx` was also on this list; the component was deleted (unreferenced dead
+> code) in kindred#2530, so its row is removed rather than left pointing at nothing.
 
 **All backend/API filters remain unchanged.** The Python backend has `status = "enrolled"` or `is_active = 1 && status_id = 2` filters across solver, validation, metrics, geo, velocity, cancellation, waitlist, and session availability services. These are entirely out of scope — only frontend filters are affected by this feature.
 
