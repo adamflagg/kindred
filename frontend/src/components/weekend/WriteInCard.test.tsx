@@ -13,13 +13,17 @@ import { WriteInCard, WRITE_IN_FRAME } from './WriteInCard'
 
 describe('WriteInCard', () => {
   it('prints the occupant as a NAME, in the position the board uses for placed families', () => {
-    render(<WriteInCard occupant={{ name: 'Emma Johnson', note: '' }} />)
+    render(<WriteInCard occupant={{ name: 'Emma Johnson', note: '', partySize: null }} />)
 
     expect(screen.getByText('Emma Johnson')).toBeInTheDocument()
   })
 
   it('carries the note INSIDE the card, describing the occupant rather than the room', () => {
-    render(<WriteInCard occupant={{ name: 'Emma Johnson', note: 'Kitchen lead, Fri–Sun' }} />)
+    render(
+      <WriteInCard
+        occupant={{ name: 'Emma Johnson', note: 'Kitchen lead, Fri–Sun', partySize: null }}
+      />
+    )
 
     expect(screen.getByText('Kitchen lead, Fri–Sun')).toBeInTheDocument()
   })
@@ -28,7 +32,7 @@ describe('WriteInCard', () => {
     // Reachable from a row written before 1500000148 with an empty note, or
     // through the permissive write schema. The room is still closed, so an
     // EMPTY card would read as an open room the board refuses drops on.
-    render(<WriteInCard occupant={{ name: '', note: '' }} />)
+    render(<WriteInCard occupant={{ name: '', note: '', partySize: null }} />)
 
     expect(screen.getByText('Occupant not named')).toBeInTheDocument()
   })
@@ -36,7 +40,9 @@ describe('WriteInCard', () => {
   it('renders no note row at all when there is none', () => {
     // The note ships EMPTY on every historical row by construction, so this is
     // the common case rather than the edge one.
-    const { container } = render(<WriteInCard occupant={{ name: 'Liam Garcia', note: '' }} />)
+    const { container } = render(
+      <WriteInCard occupant={{ name: 'Liam Garcia', note: '', partySize: null }} />
+    )
 
     expect(container.textContent).toBe('Liam Garcia')
   })
@@ -46,7 +52,9 @@ describe('WriteInCard', () => {
     // to find PLACED parties. A write-in is an occupant, not a placement: a
     // card carrying the attribute would be counted as a family in a room no
     // family is in.
-    const { container } = render(<WriteInCard occupant={{ name: 'Emma Johnson', note: '' }} />)
+    const { container } = render(
+      <WriteInCard occupant={{ name: 'Emma Johnson', note: '', partySize: null }} />
+    )
 
     expect(container.querySelector('[data-family-card]')).toBeNull()
   })
@@ -56,7 +64,9 @@ describe('WriteInCard', () => {
     // draggable. There is no panel behind a write-in and nowhere to drag it —
     // a card that looks interactive and is not is worse than plain text. The
     // corner control below is a real button; the card body stays inert.
-    const { container } = render(<WriteInCard occupant={{ name: 'Emma Johnson', note: '' }} />)
+    const { container } = render(
+      <WriteInCard occupant={{ name: 'Emma Johnson', note: '', partySize: null }} />
+    )
 
     expect(screen.queryByRole('button')).not.toBeInTheDocument()
     expect(container.querySelector('[draggable="true"]')).toBeNull()
@@ -66,7 +76,9 @@ describe('WriteInCard', () => {
     // Owner ruling, 2026-08-18: WRAP, following the #2253 precedent — a
     // truncated name is not a shorter name, it is a different one, and two
     // write-ins sharing a prefix would render identically.
-    render(<WriteInCard occupant={{ name: 'Alexandra Vandenberg-Okonkwo', note: '' }} />)
+    render(
+      <WriteInCard occupant={{ name: 'Alexandra Vandenberg-Okonkwo', note: '', partySize: null }} />
+    )
 
     const nameSpan = screen.getByText('Alexandra Vandenberg-Okonkwo')
     expect(nameSpan.className).not.toMatch(/\btruncate\b/)
@@ -105,19 +117,26 @@ describe('the corner control that removes THIS write-in', () => {
   it('is absent when the reader cannot remove anything', () => {
     // No `bunking.manage`, and therefore no handler. A control that does
     // nothing is worse than no control.
-    render(<WriteInCard occupant={{ name: 'Liam Garcia', note: '' }} />)
+    render(<WriteInCard occupant={{ name: 'Liam Garcia', note: '', partySize: null }} />)
 
     expect(screen.queryByRole('button')).not.toBeInTheDocument()
   })
 
   it('names the occupant it would remove, so four of them are four questions', () => {
-    render(<WriteInCard occupant={{ name: 'Liam Garcia', note: '' }} onRemove={() => undefined} />)
+    render(
+      <WriteInCard
+        occupant={{ name: 'Liam Garcia', note: '', partySize: null }}
+        onRemove={() => undefined}
+      />
+    )
 
     expect(screen.getByRole('button', { name: 'Remove write-in Liam Garcia' })).toBeInTheDocument()
   })
 
   it('still offers a removal for a write-in nobody named', () => {
-    render(<WriteInCard occupant={{ name: '', note: '' }} onRemove={() => undefined} />)
+    render(
+      <WriteInCard occupant={{ name: '', note: '', partySize: null }} onRemove={() => undefined} />
+    )
 
     expect(
       screen.getByRole('button', { name: 'Remove write-in Occupant not named' })
@@ -129,7 +148,12 @@ describe('the corner control that removes THIS write-in', () => {
     // an id up from here would be a second place that has to agree about
     // which of the four rows this card is.
     const onRemove = vi.fn()
-    render(<WriteInCard occupant={{ name: 'Liam Garcia', note: '' }} onRemove={onRemove} />)
+    render(
+      <WriteInCard
+        occupant={{ name: 'Liam Garcia', note: '', partySize: null }}
+        onRemove={onRemove}
+      />
+    )
 
     fireEvent.click(screen.getByRole('button', { name: 'Remove write-in Liam Garcia' }))
 
@@ -141,7 +165,7 @@ describe('the corner control that removes THIS write-in', () => {
     // pencil too, since both controls write the same row.
     render(
       <WriteInCard
-        occupant={{ name: 'Liam Garcia', note: '' }}
+        occupant={{ name: 'Liam Garcia', note: '', partySize: null }}
         onRemove={() => undefined}
         onEdit={() => undefined}
         isSaving
@@ -172,7 +196,7 @@ describe('the corner control that edits THIS write-in (kindred#2430)', () => {
    * for.
    */
   it('is absent when the reader cannot edit', () => {
-    render(<WriteInCard occupant={{ name: 'Liam Garcia', note: '' }} />)
+    render(<WriteInCard occupant={{ name: 'Liam Garcia', note: '', partySize: null }} />)
 
     expect(screen.queryByRole('button', { name: /edit write-in/i })).not.toBeInTheDocument()
   })
@@ -180,7 +204,7 @@ describe('the corner control that edits THIS write-in (kindred#2430)', () => {
   it('renders beside the X with no hover-only class — ALWAYS visible', () => {
     render(
       <WriteInCard
-        occupant={{ name: 'Liam Garcia', note: '' }}
+        occupant={{ name: 'Liam Garcia', note: '', partySize: null }}
         onRemove={() => undefined}
         onEdit={() => undefined}
       />
@@ -196,7 +220,9 @@ describe('the corner control that edits THIS write-in (kindred#2430)', () => {
   })
 
   it('still offers an edit for a write-in nobody named', () => {
-    render(<WriteInCard occupant={{ name: '', note: '' }} onEdit={() => undefined} />)
+    render(
+      <WriteInCard occupant={{ name: '', note: '', partySize: null }} onEdit={() => undefined} />
+    )
 
     expect(
       screen.getByRole('button', { name: 'Edit write-in Occupant not named' })
@@ -213,7 +239,12 @@ describe('the corner control that edits THIS write-in (kindred#2430)', () => {
     // `Write in a name…` and `Optional — e.g. back Monday`. (These two came
     // from `UnitAvailabilityControl`'s occupant prompt, which was cut in
     // kindred#2072 stage 3 — the strings outlived it.)
-    render(<WriteInCard occupant={{ name: 'Liam Garcia', note: '' }} onEdit={() => undefined} />)
+    render(
+      <WriteInCard
+        occupant={{ name: 'Liam Garcia', note: '', partySize: null }}
+        onEdit={() => undefined}
+      />
+    )
 
     fireEvent.click(screen.getByRole('button', { name: 'Edit write-in Liam Garcia' }))
 
@@ -230,7 +261,7 @@ describe('the corner control that edits THIS write-in (kindred#2430)', () => {
   it('opens an inline form pre-filled with the occupant and note already on the row', () => {
     render(
       <WriteInCard
-        occupant={{ name: 'Liam Garcia', note: 'Kitchen lead, Fri–Sun' }}
+        occupant={{ name: 'Liam Garcia', note: 'Kitchen lead, Fri–Sun', partySize: null }}
         onEdit={() => undefined}
       />
     )
@@ -245,7 +276,9 @@ describe('the corner control that edits THIS write-in (kindred#2430)', () => {
 
   it('calls back once with the trimmed occupant and note, and closes the form', () => {
     const onEdit = vi.fn()
-    render(<WriteInCard occupant={{ name: 'Liam Garcia', note: '' }} onEdit={onEdit} />)
+    render(
+      <WriteInCard occupant={{ name: 'Liam Garcia', note: '', partySize: null }} onEdit={onEdit} />
+    )
 
     fireEvent.click(screen.getByRole('button', { name: 'Edit write-in Liam Garcia' }))
     fireEvent.change(screen.getByRole('textbox', { name: 'Occupant' }), {
@@ -266,7 +299,9 @@ describe('the corner control that edits THIS write-in (kindred#2430)', () => {
 
   it('refuses an empty occupant name, the same guard the write-in prompt uses', () => {
     const onEdit = vi.fn()
-    render(<WriteInCard occupant={{ name: 'Liam Garcia', note: '' }} onEdit={onEdit} />)
+    render(
+      <WriteInCard occupant={{ name: 'Liam Garcia', note: '', partySize: null }} onEdit={onEdit} />
+    )
 
     fireEvent.click(screen.getByRole('button', { name: 'Edit write-in Liam Garcia' }))
     fireEvent.change(screen.getByRole('textbox', { name: 'Occupant' }), { target: { value: '  ' } })
@@ -278,7 +313,9 @@ describe('the corner control that edits THIS write-in (kindred#2430)', () => {
 
   it('lets Cancel close the form without writing anything', () => {
     const onEdit = vi.fn()
-    render(<WriteInCard occupant={{ name: 'Liam Garcia', note: '' }} onEdit={onEdit} />)
+    render(
+      <WriteInCard occupant={{ name: 'Liam Garcia', note: '', partySize: null }} onEdit={onEdit} />
+    )
 
     fireEvent.click(screen.getByRole('button', { name: 'Edit write-in Liam Garcia' }))
     fireEvent.change(screen.getByRole('textbox', { name: 'Occupant' }), {
@@ -294,7 +331,12 @@ describe('the corner control that edits THIS write-in (kindred#2430)', () => {
   })
 
   it('re-opens pre-filled from the CURRENT row, not a stale draft left over from a cancelled edit', () => {
-    render(<WriteInCard occupant={{ name: 'Liam Garcia', note: '' }} onEdit={() => undefined} />)
+    render(
+      <WriteInCard
+        occupant={{ name: 'Liam Garcia', note: '', partySize: null }}
+        onEdit={() => undefined}
+      />
+    )
 
     fireEvent.click(screen.getByRole('button', { name: 'Edit write-in Liam Garcia' }))
     fireEvent.change(screen.getByRole('textbox', { name: 'Occupant' }), {
@@ -328,7 +370,12 @@ describe('the "Written in at …" footer', () => {
    * half-built version of it.
    */
   it('is not printed, on an inherited row or any other', () => {
-    render(<WriteInCard occupant={{ name: 'Liam Garcia', note: '' }} onRemove={() => undefined} />)
+    render(
+      <WriteInCard
+        occupant={{ name: 'Liam Garcia', note: '', partySize: null }}
+        onRemove={() => undefined}
+      />
+    )
 
     expect(screen.queryByText(/written in at/i)).not.toBeInTheDocument()
   })

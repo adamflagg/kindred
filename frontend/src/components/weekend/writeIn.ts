@@ -106,6 +106,17 @@ export interface WriteInOccupant {
    * rather than a bug.
    */
   note: string
+  /**
+   * How many people the row is for, or `null` when nobody recorded a count.
+   *
+   * `null` means *occupies wholesale* — never "zero people" — and it is the
+   * PERMANENT common case, not a legacy or transitional one: most write-ins
+   * are non-rostered staff, and staff will type nothing. `writeInDemand`
+   * (below) is the one place that reading turns into arithmetic; this field
+   * exists so `WriteInCard`'s pencil (a later task) can seed an edit form
+   * from a recorded size instead of starting blank every time.
+   */
+  partySize: number | null
 }
 
 /**
@@ -185,6 +196,7 @@ export function writeInEntries(unit: LodgingUnitRow): WriteInEntry[] {
       occupant: {
         name: (cover.occupant_name ?? '').trim(),
         note: (cover.note ?? '').trim(),
+        partySize: cover.party_size ?? null,
       },
       source: {
         unitId: cover.unit_id ?? '',
@@ -232,7 +244,109 @@ export function hasWriteIn(unit: LodgingUnitRow): boolean {
  * returns, and a unit with neither a cover nor a role row is simply open. The
  * `?? []` is for the FIELD being absent from an older payload, not for a unit
  * the walk declined to answer for.
+ *
+ * EXPORTED so the board, the Assign modal and the map peek each hand THEIR
+ * covers to `writeInDemand` rather than re-deriving "which write-ins cover
+ * this unit" on their own — the same drift `hasWriteIn`'s doc warns about.
+ * Round 2 of kindred#2528's scan already caught one site hand-rolling
+ * `writeInEntries(unit).length > 0` where `hasWriteIn(unit)` existed; this is
+ * that lesson applied before a second site can repeat it.
  */
-function coveringWriteIns(unit: LodgingUnitRow): WriteInCoverRow[] {
+export function coveringWriteIns(unit: LodgingUnitRow): WriteInCoverRow[] {
   return unit.write_ins ?? []
+}
+
+/**
+ * What the write-ins covering this card take from it.
+ *
+ * ⚠️ THE MIRROR of `write_in_demand` in `api/services/lodging_rules.py`. Keep
+ * the two in step — the card's numerator, the Assign modal's header and the
+ * map peek read this one, while `is_family_available` and
+ * `beds_family_available` read the other, and the pair sits on one screen.
+ * The same pairing discipline `effectiveSleeps` documents for
+ * `_effective_sleeps`.
+ *
+ * It takes a CAPACITY and COVERS, not a unit and the registry, because
+ * `MapUnitPopover` never receives the full registry — its own `units` prop is
+ * documented as "only a cluster's members… cannot answer the question
+ * alone". Each cover now publishes its own `unit_sleeps` (the effective
+ * capacity of the unit the row NAMES), which is what makes that possible.
+ *
+ * TWO SUMS, and collapsing them is the mistake this shape exists to stop:
+ *
+ * `sized` is what the NUMERATOR prints — recorded counts from the card's own
+ * row and from written-into rooms beneath it, and nothing else. Never a
+ * wholesale fallback, which would put a headcount nobody recorded on the
+ * card; never an ancestor's count, which is a fact about the house rather
+ * than about this room. It is a PRE-PASS over every non-ancestor cover
+ * carrying a recorded `party_size`, computed before either guard below runs
+ * and never depending on `capacity` — a cabin nobody has measured, holding a
+ * two-person write-in, still prints `2/-`, not `-/-`. `sized` is also
+ * deliberately UNCAPPED, unlike `consumed`: a hand-typed count above the
+ * card's own beds is what drives kindred#2503's over-capacity red, so the
+ * numerator has to carry the true recorded figure.
+ *
+ * `consumed` is what the BEDS arithmetic pays — the same recorded counts plus
+ * the wholesale fallback plus an ancestor's whole-card claim.
+ *
+ * `known` asks whether `consumed` is a FACT, and gates kindred#2528's two
+ * drag-time capacity marks. A recorded size is a fact; an ancestor taking the
+ * whole card is a fact (the house is let whole); a wholesale guess about a
+ * room that may be shared is not.
+ *
+ * AN ANCESTOR TAKES THE WHOLE CARD, decided by a PRE-PASS over `covers`
+ * rather than inside the per-cover loop, so the answer cannot depend on where
+ * in the list the ancestor sits. The house was let whole and a room inside it
+ * is not separately lettable — the alternative, each room subtracting the
+ * ancestor's size, spends one party once per room and would report a
+ * seven-bed house holding four people as having five beds free.
+ */
+export function writeInDemand(
+  capacity: number | null,
+  covers: WriteInCoverRow[]
+): { consumed: number; sized: number; known: boolean } {
+  if (covers.length === 0) return { consumed: 0, sized: 0, known: true }
+
+  // A fact about people, not about the card — see the doc above. Computed
+  // before either guard so neither one can discard it.
+  const sized = covers.reduce((total, c) => {
+    const relation = c.relation ?? 'own'
+    if (relation === 'ancestor' || c.party_size == null) return total
+    return total + c.party_size
+  }, 0)
+
+  if (capacity === null) {
+    // Nothing to subtract from. `consumed` is meaningless here and callers
+    // must read `known` before using it. `sized` survives regardless.
+    return { consumed: 0, sized, known: false }
+  }
+
+  if (covers.some((c) => (c.relation ?? 'own') === 'ancestor')) {
+    // Whole-card, and order-independent by construction: a pre-pass, not a
+    // value the loop happens to have accumulated so far. `known=true`
+    // unconditionally, because the guard above has already returned for
+    // every unmeasured card.
+    return { consumed: capacity, sized, known: true }
+  }
+
+  let consumed = 0
+  let known = true
+  for (const c of covers) {
+    if (c.party_size != null) {
+      consumed += c.party_size
+      continue
+    }
+    known = false
+    // The cover's OWN unit's beds, published by the server (`unit_sleeps`)
+    // rather than looked up here — the map popover has no registry to look
+    // it up in.
+    const sourceCapacity = c.unit_sleeps ?? null
+    if (sourceCapacity === null) {
+      // An unbounded wholesale claim: somebody is in a space nobody
+      // measured, so nothing on this card is offerable.
+      return { consumed: capacity, sized, known: false }
+    }
+    consumed += sourceCapacity
+  }
+  return { consumed: Math.min(consumed, capacity), sized, known }
 }
