@@ -1417,3 +1417,88 @@ describe('MapUnitPopover write-in occupants (kindred#2499)', () => {
     expect(screen.getByText('2 · 1 taken, 1 open')).toBeInTheDocument()
   })
 })
+
+/**
+ * A write-in's optional `party_size` (kindred#2503) reaching the map peek —
+ * the last surface in the plan. `writeInDemand`'s own doc in `writeIn.ts`
+ * carries the arithmetic; these pin the three things Task 11 changes: the
+ * figure's numerator, `overCapacity`'s threshold, and the gate that used to
+ * hide the figure entirely on a write-in-only room.
+ *
+ * Both the figure and `overCapacity` read `writeInDemand`'s `sized` —
+ * mirroring `LodgingUnitCard`'s own `occupants + writeInPeople` exactly
+ * (`writeInPeople` IS `sized` there too) — never `consumed`, which folds in
+ * a wholesale fallback and an ancestor's whole-card claim and is capped at
+ * capacity. That distinction has already caused one real finding in this
+ * plan; the last test below pins it here too.
+ */
+describe('MapUnitPopover write-in party size in the peek figure (kindred#2503)', () => {
+  it('counts written-in people in the peek figure', () => {
+    // bedsNeeded (3, from `party('Johnson')`) + sized (2, the cover's own
+    // recorded count).
+    render(
+      <MapUnitPopover
+        units={[
+          mapUnit(row({ sleeps: 15, write_ins: [cover({ party_size: 2 })] }), [party('Johnson')]),
+        ]}
+        hue={HUE}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.getByText('5 of 15')).toBeInTheDocument()
+  })
+
+  it('draws a figure for a cabin holding only write-ins', () => {
+    // The gate used to be `parties.length > 0`, so since kindred#2525 the peek
+    // listed the write-in occupant by name and then printed no number at all
+    // beside them — a room the peek stayed silent about how full it was.
+    render(
+      <MapUnitPopover
+        units={[mapUnit(row({ sleeps: 15, write_ins: [cover({ party_size: 2 })] }))]}
+        hue={HUE}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.getByText('2 of 15')).toBeInTheDocument()
+  })
+
+  it('prints no figure for a cabin holding only an UNSIZED write-in — the day-one guard', () => {
+    // Every production write-in row is unsized today, so `sized` is 0 and the
+    // widened gate `(parties.length > 0 || sized > 0) && capacityKnown` must
+    // reduce to exactly the old gate's answer: no parties, no recorded size,
+    // no figure. Regress this and every occupied-but-unsized cabin in
+    // production starts printing "0 of N".
+    render(
+      <MapUnitPopover
+        units={[mapUnit(row({ sleeps: 15, write_ins: [cover()] }))]}
+        hue={HUE}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.queryByText('Beds')).not.toBeInTheDocument()
+    expect(screen.queryByText(/of 15/)).not.toBeInTheDocument()
+    // The occupant still gets listed — this task changes only the figure.
+    expect(screen.getByText('Emma Johnson')).toBeInTheDocument()
+  })
+
+  it('reddens on the same UNCAPPED sized figure it prints, not the capped `consumed`', () => {
+    // No placed party (bedsNeeded=0), capacity 3, one write-in with a
+    // hand-typed count of 5 — well above the room's own beds. `sized` is
+    // deliberately uncapped (`writeInDemand`'s doc), so the figure prints the
+    // true "5 of 3" rather than clamping to capacity, exactly as
+    // `LodgingUnitCard`'s own `overCapacity` reads `occupants + writeInPeople`
+    // (kindred#2503) rather than the separately-capped `consumed`. Printing
+    // "5 of 3" without reddening would be the self-contradiction spec §6.2
+    // forbids: had this card instead been wired to the capped `consumed`
+    // (`Math.min(5, 3) = 3`), `0 + 3 = 3` is not greater than capacity 3 and
+    // this would never redden.
+    render(
+      <MapUnitPopover
+        units={[mapUnit(row({ sleeps: 3, write_ins: [cover({ party_size: 5 })] }))]}
+        hue={HUE}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.getByText('5 of 3')).toHaveClass('text-amber-700')
+  })
+})
