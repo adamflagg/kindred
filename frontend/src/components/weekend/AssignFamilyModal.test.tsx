@@ -20,7 +20,7 @@
  *
  * Fictional data throughout.
  */
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -295,9 +295,11 @@ describe('AssignFamilyModal — it opens ready to be typed into', () => {
    * reproduced here. `ui/Modal`'s `initialFocusRef` is the fix and
    * `Modal.test.tsx` pins the primitive; this pins that THIS dialog uses it.
    */
-  it('puts the caret in the search box, not on Close', () => {
+  it('puts the caret in the search box, not on Close', async () => {
+    // Awaited since spec 1c: initial focus moves in <Transition>'s
+    // beforeEnter, a microtask after commit.
     renderModal()
-    expect(searchBox()).toHaveFocus()
+    await waitFor(() => expect(searchBox()).toHaveFocus())
   })
 
   it('gives focus back to whatever opened it', async () => {
@@ -327,8 +329,10 @@ describe('AssignFamilyModal — it opens ready to be typed into', () => {
       onWriteIn: vi.fn(),
     }
     const { rerender } = render(<AssignFamilyModal {...props} />)
-    expect(searchBox()).toHaveFocus()
+    await waitFor(() => expect(searchBox()).toHaveFocus())
 
+    // The restore itself stays SYNCHRONOUS — D12 keeps release + restore in
+    // the [isOpen] effect cleanup, which React runs on this rerender.
     rerender(<AssignFamilyModal {...props} isOpen={false} />)
     expect(document.activeElement).toBe(opener)
     opener.remove()

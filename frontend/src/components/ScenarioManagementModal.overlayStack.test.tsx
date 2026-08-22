@@ -13,7 +13,7 @@
  * separate file that renders the real children instead.
  */
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
@@ -81,7 +81,10 @@ describe('ScenarioManagementModal — the confirm dialog (:271) on top of the ou
 
     fireEvent.keyDown(document, { key: 'Escape' })
 
-    expect(screen.queryByText('Clear Assignments?')).not.toBeInTheDocument()
+    // Awaited since spec 1c — the confirm's DOM outlives close by Modal's
+    // exit fade. Its overlay TOKEN releases synchronously on the flip (D12),
+    // which is what the second test below leans on.
+    await waitFor(() => expect(screen.queryByText('Clear Assignments?')).not.toBeInTheDocument())
     expect(onClose).not.toHaveBeenCalled()
   })
 
@@ -91,8 +94,11 @@ describe('ScenarioManagementModal — the confirm dialog (:271) on top of the ou
     await userEvent.click(screen.getByRole('button', { name: /clear assignments/i }))
 
     fireEvent.keyDown(document, { key: 'Escape' })
-    expect(screen.queryByText('Clear Assignments?')).not.toBeInTheDocument()
+    await waitFor(() => expect(screen.queryByText('Clear Assignments?')).not.toBeInTheDocument())
 
+    // The second Escape routes to the OUTER modal even if it lands while the
+    // confirm is still fading: the confirm's token released on the isOpen
+    // flip (D12), so the outer is already the top overlay for its handler.
     fireEvent.keyDown(document, { key: 'Escape' })
 
     expect(onClose).toHaveBeenCalledTimes(1)

@@ -138,7 +138,7 @@ export default function SessionHeader({
                     </span>
                     <ChevronDown className="text-muted-foreground h-4 w-4 flex-shrink-0" />
                   </ListboxButton>
-                  <ListboxOptions className="listbox-options w-auto min-w-[160px]">
+                  <ListboxOptions transition className="listbox-options w-auto min-w-[160px]">
                     <ListboxOption value="production" className="listbox-option py-1.5">
                       CampMinder
                     </ListboxOption>

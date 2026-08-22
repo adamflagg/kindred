@@ -10,8 +10,8 @@
  *
  * Filtering:
  *  - status = "enrolled" (matches useSessionCamperPersons / SessionList /
- *    ManualResolutionModal / pocketbaseDataFetchers — predominant frontend
- *    convention). Excludes the current camper.
+ *    pocketbaseDataFetchers — predominant frontend convention). Excludes the
+ *    current camper.
  *  - When session_type !== 'ag' AND self has a known gender, restricts cohort
  *    matches to same gender as self (non-AG bunks are gender-segregated, so
  *    opposite-gender campers are not valid bunkmates). When self has no

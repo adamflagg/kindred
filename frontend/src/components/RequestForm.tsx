@@ -100,7 +100,7 @@ export default function RequestForm({ campers, constraint, onSubmit, onCancel }:
               </span>
               <ChevronDown className="text-muted-foreground h-4 w-4" />
             </ListboxButton>
-            <ListboxOptions className="listbox-options w-full">
+            <ListboxOptions transition className="listbox-options w-full">
               <ListboxOption value="pair_together" className="listbox-option">
                 Pair Together
               </ListboxOption>
@@ -176,7 +176,7 @@ export default function RequestForm({ campers, constraint, onSubmit, onCancel }:
                 </span>
                 <ChevronDown className="text-muted-foreground h-4 w-4" />
               </ListboxButton>
-              <ListboxOptions className="listbox-options w-full">
+              <ListboxOptions transition className="listbox-options w-full">
                 <ListboxOption value="similar" className="listbox-option">
                   Similar Age
                 </ListboxOption>

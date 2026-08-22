@@ -1,3 +1,4 @@
+import { Transition, TransitionChild } from '@headlessui/react'
 import { X } from 'lucide-react'
 import { useEffect, useRef } from 'react'
 import type { ReactNode, RefObject } from 'react'
@@ -92,11 +93,13 @@ interface ModalProps {
    * both reliable and leaves `document.activeElement` outside the dialog for
    * the capture above to read correctly.
    *
-   * ⚠️ FIVE OTHER DIALOGS STILL DECLARE `autoFocus` on a field and still lose
-   * it the same way: `ManualResolutionModal`, `MergeDialog`, `ResolveDialog`,
-   * `ScenarioEditModal`, `NewScenarioModal`. They are untouched here because
-   * each is a separate surface with its own review; this is the primitive
-   * they should move to.
+   * The `autoFocus` attributes that used to live in `MergeDialog`,
+   * `ResolveDialog`, `ScenarioEditModal` and `NewScenarioModal` were deleted
+   * alongside this change (D20): each target was verified to be the first
+   * focusable in its dialog body, so the skip-Close fallback lands on the
+   * same element anyway — and deleting them is what fixed their focus
+   * RESTORATION, per defect 2 above. Reach for this prop only when the
+   * element to focus is NOT the first focusable in the body.
    */
   initialFocusRef?: RefObject<HTMLElement | null>
   // Set when the `header` slot paints a dark ground (the forest band the
@@ -278,16 +281,14 @@ export function Modal({
     const token = acquireOverlayToken()
     overlayTokenRef.current = token
 
-    const container = contentRef.current
-    const focusable = container ? getFocusable(container) : []
-    // `initialFocusRef` wins — see its prop doc for the two measured defects
-    // it exists to close. Unchanged for every caller that passes none.
-    ;(initialFocusRef?.current ?? focusable[0] ?? container)?.focus()
-    // eslint asks for `initialFocusRef` in the deps below and it is there, not
-    // suppressed: a ref object from `useRef` is stable, so the effect does not
-    // re-run for any caller that follows the prop's contract. A caller passing
-    // an unstable object would re-run it, which is balanced (the cleanup
-    // releases exactly what the body acquires) but pointless — pass a ref.
+    // The focus MOVE is not here any more — see `handleBeforeEnter` below.
+    // Under <Transition> the panel node does not exist on the commit where
+    // `isOpen` flips true, so `contentRef.current` is null at exactly this
+    // moment and a focus call here would focus NOTHING, in every dialog —
+    // invisible until someone tabs (measured 2026-08-21; the toggle tests in
+    // Modal.test.tsx pin it). What stays here is what must precede the move:
+    // `previouslyFocusedRef` captures the OPENER above, and `beforeEnter`
+    // always fires after this effect body, so restoration keeps working.
 
     return () => {
       releaseBackgroundInert()
@@ -296,9 +297,24 @@ export function Modal({
       previouslyFocusedRef.current?.focus()
       previouslyFocusedRef.current = null
     }
-  }, [isOpen, initialFocusRef])
+  }, [isOpen])
 
-  if (!isOpen) return null
+  // Initial focus, once the panel node actually exists. `beforeEnter` fires
+  // after the [isOpen] effect above (capture first, move second) and before
+  // the enter transition starts — `afterEnter` would be too late: a fully
+  // visible dialog, unfocused.
+  const handleBeforeEnter = () => {
+    const container = contentRef.current
+    if (container === null) return
+    // The dialog's own Close button never takes initial focus (D14). In a
+    // custom-header dialog Close is rendered above the body, so a bare
+    // `focusable[0]` put 20 of 22 fallback dialogs on the one control where
+    // Space or Enter SHUTS the dialog just opened. Close stays in
+    // `getFocusable` — the Tab trap needs it in the cycle — the skip lives
+    // only in this initial pick.
+    const focusable = getFocusable(container).filter((el) => !el.hasAttribute('data-modal-close'))
+    ;(initialFocusRef?.current ?? focusable[0] ?? container)?.focus()
+  }
 
   // Determine if we're using custom header or simple title mode
   // `null` is NOT a custom header, and `header !== undefined` alone let it be
@@ -315,110 +331,140 @@ export function Modal({
   // Portal to document.body so the modal escapes any parent stacking context
   // (e.g. z-[60] CamperDetailsPanel). z-[100] keeps us above documented panels.
   return createPortal(
-    <div
-      className={`fixed inset-0 z-[100] flex justify-center ${
-        // `pt-[10vh]` rather than a fixed offset: the dialog should sit in the
-        // upper third at any viewport height, and `items-start` alone would
-        // pin it to the very edge.
-        anchor === 'top' ? 'items-start overflow-y-auto py-[10vh]' : 'items-center'
-      }`}
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby={resolvedLabelledBy}
-      aria-label={!resolvedLabelledBy ? ariaLabel : undefined}
-      style={backdropInsetRight ? { right: backdropInsetRight } : undefined}
-    >
-      {/* Backdrop — fills the (already-inset) dialog wrapper via inset-0,
-          so the wrapper's right offset is the single source of truth. */}
+    // `appear` is load-bearing, not decoration: 15 of 24 dialogs MOUNT
+    // already open (their parents gate rendering), and without `appear`
+    // Headless UI skips the enter transition AND its `beforeEnter` on an
+    // initially-true `show` — no animation and no initial focus for the
+    // majority of dialogs. The mount-open focus tests fail if it is removed.
+    <Transition show={isOpen} appear>
       <div
-        data-testid="modal-backdrop"
-        className="absolute inset-0 backdrop-blur"
-        style={{ backgroundColor: 'rgba(17, 26, 22, 0.42)' }}
-        onClick={onClose}
-        aria-hidden="true"
-      />
-
-      {/* Modal content */}
-      <div
-        ref={contentRef}
-        data-testid="modal-content"
-        // -1: not a natural Tab stop, only a JS-focus fallback for the rare
-        // dialog with no focusable content of its own.
-        tabIndex={-1}
-        className={`bg-card relative overflow-hidden rounded-2xl ${
-          // A dark header slot paints its own chrome to the card's edge, and a
-          // light 1px ring around it reads as a white outline against the
-          // colour rather than as an edge. Bordered stays the default.
-          headerOnDark ? '' : 'border-border border'
-        } ${noPadding ? '' : 'p-6'} ${maxWidthClassName ?? sizeClasses[size]} mx-4 w-full`}
-        style={{
-          boxShadow:
-            '0 24px 60px -24px rgba(7, 20, 14, 0.35), 0 8px 24px -12px rgba(7, 20, 14, 0.18)',
-        }}
-        onClick={(e) => e.stopPropagation()}
+        className={`fixed inset-0 z-[100] flex justify-center ${
+          // `pt-[10vh]` rather than a fixed offset: the dialog should sit in the
+          // upper third at any viewport height, and `items-start` alone would
+          // pin it to the very edge.
+          anchor === 'top' ? 'items-start overflow-y-auto py-[10vh]' : 'items-center'
+        }`}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={resolvedLabelledBy}
+        aria-label={!resolvedLabelledBy ? ariaLabel : undefined}
+        style={backdropInsetRight ? { right: backdropInsetRight } : undefined}
       >
-        {/* Custom header mode - header spans full width, close button floats on top */}
-        {hasCustomHeader && (
-          <div className="relative">
-            {header}
-            <button
-              onClick={onClose}
-              className={`absolute ${
-                closeAlign === 'center' ? 'top-1/2 -translate-y-1/2' : 'top-4'
-              } right-4 z-20 rounded-lg p-2 transition-colors ${
-                headerOnDark
-                  ? 'text-white/70 hover:bg-white/10 hover:text-white'
-                  : 'text-muted-foreground hover:text-foreground hover:bg-black/10'
-              }`}
-              aria-label="Close modal"
-            >
-              <X className="h-5 w-5" />
-            </button>
-          </div>
-        )}
+        {/* Backdrop — fills the (already-inset) dialog wrapper via inset-0,
+          so the wrapper's right offset is the single source of truth. */}
+        <TransitionChild
+          as="div"
+          data-testid="modal-backdrop"
+          className="absolute inset-0 backdrop-blur"
+          style={{ backgroundColor: 'rgba(17, 26, 22, 0.42)' }}
+          onClick={onClose}
+          aria-hidden="true"
+          enter="transition-opacity duration-200 ease-out"
+          enterFrom="opacity-0"
+          enterTo="opacity-100"
+          leave="transition-opacity duration-150 ease-in"
+          leaveFrom="opacity-100"
+          leaveTo="opacity-0"
+        />
 
-        {/* Simple title mode */}
-        {hasSimpleTitle && (
-          <div className="mb-4 flex items-center justify-between">
-            <h2 id="modal-title" className="text-xl font-bold">
-              {title}
-            </h2>
-            <button
-              onClick={onClose}
-              className="hover:bg-muted text-muted-foreground hover:text-foreground rounded-lg p-2 transition-colors"
-              aria-label="Close modal"
-            >
-              <X className="h-5 w-5" />
-            </button>
-          </div>
-        )}
+        {/* Modal content. `as="div"` + our ref: TransitionChild IS the panel
+          div — verified: no extra node, className MERGED with the enter/leave
+          classes rather than replaced, ref forwarded via useSyncRefs. Any
+          refactor extracting this into a function component must forward
+          both `ref` and `className` or Headless UI throws and the symptom is
+          a BLANK PAGE, not a broken animation. */}
+        <TransitionChild
+          as="div"
+          ref={contentRef}
+          beforeEnter={handleBeforeEnter}
+          enter="transition duration-200 ease-out"
+          enterFrom="opacity-0 scale-[0.96]"
+          enterTo="opacity-100 scale-100"
+          leave="transition duration-150 ease-in"
+          leaveFrom="opacity-100 scale-100"
+          leaveTo="opacity-0 scale-[0.96]"
+          data-testid="modal-content"
+          // -1: not a natural Tab stop, only a JS-focus fallback for the rare
+          // dialog with no focusable content of its own.
+          tabIndex={-1}
+          className={`bg-card relative overflow-hidden rounded-2xl ${
+            // A dark header slot paints its own chrome to the card's edge, and a
+            // light 1px ring around it reads as a white outline against the
+            // colour rather than as an edge. Bordered stays the default.
+            headerOnDark ? '' : 'border-border border'
+          } ${noPadding ? '' : 'p-6'} ${maxWidthClassName ?? sizeClasses[size]} mx-4 w-full`}
+          style={{
+            boxShadow:
+              '0 24px 60px -24px rgba(7, 20, 14, 0.35), 0 8px 24px -12px rgba(7, 20, 14, 0.18)',
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* Custom header mode - header spans full width, close button floats on top */}
+          {hasCustomHeader && (
+            <div className="relative">
+              {header}
+              <button
+                onClick={onClose}
+                className={`absolute ${
+                  closeAlign === 'center' ? 'top-1/2 -translate-y-1/2' : 'top-4'
+                } right-4 z-20 rounded-lg p-2 transition-colors ${
+                  headerOnDark
+                    ? 'text-white/70 hover:bg-white/10 hover:text-white'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-black/10'
+                }`}
+                data-modal-close
+                aria-label="Close modal"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+          )}
 
-        {/* No title/header mode - floating close button */}
-        {!hasCustomHeader && !hasSimpleTitle && (
-          <div className="absolute top-4 right-4">
-            <button
-              onClick={onClose}
-              className="hover:bg-muted text-muted-foreground hover:text-foreground rounded-lg p-2 transition-colors"
-              aria-label="Close modal"
-            >
-              <X className="h-5 w-5" />
-            </button>
-          </div>
-        )}
+          {/* Simple title mode */}
+          {hasSimpleTitle && (
+            <div className="mb-4 flex items-center justify-between">
+              <h2 id="modal-title" className="text-xl font-bold">
+                {title}
+              </h2>
+              <button
+                onClick={onClose}
+                className="hover:bg-muted text-muted-foreground hover:text-foreground rounded-lg p-2 transition-colors"
+                data-modal-close
+                aria-label="Close modal"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+          )}
 
-        {/* Content area - optionally scrollable */}
-        {scrollable ? (
-          <div data-testid="modal-body" className="max-h-[calc(90vh-200px)] overflow-y-auto">
-            {children}
-          </div>
-        ) : (
-          children
-        )}
+          {/* No title/header mode - floating close button */}
+          {!hasCustomHeader && !hasSimpleTitle && (
+            <div className="absolute top-4 right-4">
+              <button
+                onClick={onClose}
+                className="hover:bg-muted text-muted-foreground hover:text-foreground rounded-lg p-2 transition-colors"
+                data-modal-close
+                aria-label="Close modal"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+          )}
 
-        {/* Footer */}
-        {footer && <div data-testid="modal-footer">{footer}</div>}
+          {/* Content area - optionally scrollable */}
+          {scrollable ? (
+            <div data-testid="modal-body" className="max-h-[calc(90vh-200px)] overflow-y-auto">
+              {children}
+            </div>
+          ) : (
+            children
+          )}
+
+          {/* Footer */}
+          {footer && <div data-testid="modal-footer">{footer}</div>}
+        </TransitionChild>
       </div>
-    </div>,
+    </Transition>,
     document.body
   )
 }

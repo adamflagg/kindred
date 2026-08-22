@@ -6,7 +6,7 @@
  * corresponding entry in the legend. This test fails if someone adds a new
  * indicator without updating the legend.
  */
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect } from 'vitest'
 import { BunkingLegendButton, WeekendLegendButton } from './BunkingLegend'
@@ -136,7 +136,8 @@ describe('BunkingLegend', () => {
 
       fireEvent.keyDown(document, { key: 'Escape' })
 
-      expect(screen.queryByText('Visual Guide')).not.toBeInTheDocument()
+      // Awaited since spec 1c: the dialog outlives close by Modal's exit fade.
+      await waitFor(() => expect(screen.queryByText('Visual Guide')).not.toBeInTheDocument())
     })
 
     it('renders via a portal into document.body, not the trigger container', async () => {
@@ -239,7 +240,8 @@ describe('WeekendLegendButton', () => {
     render(<WeekendLegendButton />)
     await userEvent.click(screen.getByRole('button', { name: /show visual guide/i }))
     await userEvent.click(screen.getByRole('button', { name: /got it/i }))
-    expect(screen.queryByText('Visual Guide')).not.toBeInTheDocument()
+    // Awaited since spec 1c: the dialog outlives close by Modal's exit fade.
+    await waitFor(() => expect(screen.queryByText('Visual Guide')).not.toBeInTheDocument())
   })
 
   it('closes on Escape (kindred#2156)', async () => {
@@ -249,7 +251,8 @@ describe('WeekendLegendButton', () => {
 
     fireEvent.keyDown(document, { key: 'Escape' })
 
-    expect(screen.queryByText('Visual Guide')).not.toBeInTheDocument()
+    // Awaited since spec 1c: the dialog outlives close by Modal's exit fade.
+    await waitFor(() => expect(screen.queryByText('Visual Guide')).not.toBeInTheDocument())
   })
 
   it('renders via a portal into document.body, not the trigger container (kindred#2156)', async () => {

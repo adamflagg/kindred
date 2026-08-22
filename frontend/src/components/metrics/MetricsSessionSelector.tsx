@@ -121,7 +121,7 @@ export function MetricsSessionSelector() {
             <span className="flex-1 truncate text-left">{displayName}</span>
             <ChevronDown className="text-muted-foreground h-4 w-4 flex-shrink-0" />
           </ListboxButton>
-          <ListboxOptions className="listbox-options w-auto min-w-[180px]">
+          <ListboxOptions transition className="listbox-options w-auto min-w-[180px]">
             {/* Type groupings */}
             <ListboxOption value={ALL_SESSIONS_VALUE} className="listbox-option">
               At Camp

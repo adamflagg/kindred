@@ -437,7 +437,16 @@
   .card-lodge {
     @apply bg-card relative rounded-2xl;
     @apply border-border border-2;
-    @apply transition-all duration-300 ease-out;
+    /* NOT transition-all (spec 1a): `all` covered transform and geometry, so
+       any future card movement — auto-animate, a FLIP, a grid reflow — fought
+       a competing 300ms transition (the smear). This list keeps every fade
+       that ships today: border-color + box-shadow are the :hover lift below,
+       and background-color + opacity are what kindred#2528's drag-signal wash
+       (bg-primary/20) and dim (opacity-40) animate through on this class.
+       Consumers that add their own `transition-all` utility (BunkCard,
+       ParseIntentCard, ProgramLandingPage) override this per-element and are
+       unaffected either way. */
+    @apply transition-[border-color,box-shadow,background-color,opacity] duration-300 ease-out;
     box-shadow:
       0 1px 2px hsl(var(--shadow-color) / 0.06),
       0 4px 16px hsl(var(--shadow-color) / 0.08);
@@ -585,6 +594,15 @@
     @apply border-border rounded-xl border;
     @apply py-1 shadow-lg;
     @apply focus:outline-none;
+    /* Fade + drop (D7, spec 1d): closed state sits 4px up at opacity 0; the
+       RESTING state declares no transform, which is what keeps the text
+       sharp. 200ms ease-out in, 150ms ease-in out (D11). Headless UI stamps
+       the data attributes only when the call site passes the `transition`
+       prop on <ListboxOptions> — all 14 do; a new Listbox must too, or its
+       menu snaps while every other menu glides. */
+    @apply origin-top transition duration-200 ease-out;
+    @apply data-closed:-translate-y-1 data-closed:opacity-0;
+    @apply data-leave:duration-150 data-leave:ease-in;
   }
 
   .listbox-option {
@@ -843,15 +861,6 @@
     }
   }
 
-  @keyframes shimmer {
-    0% {
-      transform: translateX(-100%);
-    }
-    100% {
-      transform: translateX(400%);
-    }
-  }
-
   /* Synchronized pending lock group glow - all elements pulse together */
   .pending-lock-glow {
     animation: pulse-glow 2s ease-in-out infinite;
@@ -903,19 +912,6 @@
   /* Legacy animate-in/out for compatibility */
   .animate-in {
     animation: slideUp 0.3s ease-out;
-  }
-
-  .animate-out {
-    animation: fadeOut 0.2s ease-in;
-  }
-
-  @keyframes fadeOut {
-    from {
-      opacity: 1;
-    }
-    to {
-      opacity: 0;
-    }
   }
 
   /* ============================================
@@ -1042,36 +1038,6 @@
     @apply bg-forest-400;
   }
 
-  /* Toast enter/exit animations */
-  @keyframes toastSlideIn {
-    from {
-      opacity: 0;
-      transform: translateY(-24px) scale(0.96);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0) scale(1);
-    }
-  }
-
-  @keyframes toastSlideOut {
-    from {
-      opacity: 1;
-      transform: translateY(0) scale(1);
-    }
-    to {
-      opacity: 0;
-      transform: translateY(-16px) scale(0.96);
-    }
-  }
-
-  .toast-enter {
-    animation: toastSlideIn 0.35s cubic-bezier(0.21, 1.02, 0.73, 1) forwards;
-  }
-
-  .toast-exit {
-    animation: toastSlideOut 0.25s ease-in forwards;
-  }
 }
 
 /* Lodge shadows — @utility (not @layer utilities) so variants like
@@ -1298,10 +1264,4 @@
 .sparkle-material {
   animation: sparkle-anim 1.6s ease-in-out infinite;
   transform-origin: center center;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .sparkle-material {
-    animation: none;
-  }
 }

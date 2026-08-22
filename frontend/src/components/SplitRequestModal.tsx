@@ -224,7 +224,10 @@ export default function SplitRequestModal({
 
   const canSplit = selectedSources.size > 0 && !splitMutation.isPending
 
-  if (!isOpen) return null
+  // The old `if (!isOpen) return null` was DEAD code — RequestReviewPanel
+  // gates this component's mount, so when mounted, isOpen is always true.
+  // Deleted (spec 1c tier 1); see MergeRequestsModal for why keeping it
+  // would defeat kindred#2529's parent conversion.
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Split Request" size="lg">

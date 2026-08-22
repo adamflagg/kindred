@@ -253,7 +253,11 @@ export function AllCamperRequestsModal({
     return counts
   }, [requests])
 
-  if (!isOpen) return null
+  // No `if (!isOpen) return null` here any more (spec 1c tier 1): both
+  // parents keep this component mounted and every query above is already
+  // `enabled: isOpen`-gated, so the guard's only effect was to unmount
+  // `ui/Modal` in the same frame as close — killing the exit fade. Modal
+  // itself handles `isOpen` via <Transition>.
 
   const nonAge = requests.filter((r) => r.request_type !== 'age_preference')
   const agePref = requests.find((r) => r.request_type === 'age_preference')

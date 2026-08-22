@@ -210,7 +210,6 @@ export function ResolveDialog({
               // Deliberate: this dialog's entire purpose is searching for a canonical to
               // resolve the gap into, so taking focus on open lets the user start typing
               // immediately.
-              autoFocus
             />
           </div>
 
@@ -325,7 +324,6 @@ export function ResolveDialog({
               // Deliberate: this form only appears once the user has chosen "Create new",
               // so taking focus on the Name field lets them start typing immediately
               // instead of re-clicking into it.
-              autoFocus
             />
           </div>
 
