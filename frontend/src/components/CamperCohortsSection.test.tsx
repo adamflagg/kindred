@@ -9,30 +9,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '../test/testUtils'
 import { CamperCohortsSection } from './CamperCohortsSection'
-import type { CamperCohorts, CohortEntry } from '../hooks/useCamperCohorts'
-
-// Helper: build a CohortEntry with empty attendees array (cohort attendees
-// are tested separately in useCamperCohorts.test.ts).
-function entry(label: string, count: number): CohortEntry {
-  return { label, count, attendees: [] }
-}
-
-// Helper: build a CamperCohorts fixture with default sessionType / allGenders.
-function cohorts(parts: {
-  school?: CohortEntry | null
-  congregation?: CohortEntry | null
-  city?: CohortEntry | null
-  sessionType?: string
-  allGenders?: boolean
-}): CamperCohorts {
-  return {
-    school: parts.school ?? null,
-    congregation: parts.congregation ?? null,
-    city: parts.city ?? null,
-    sessionType: parts.sessionType ?? 'main',
-    allGenders: parts.allGenders ?? false,
-  }
-}
+import {
+  cohortEntry as entry,
+  cohortsFixture as cohorts,
+  matchedAttendee,
+} from '../test/cohortFixtures'
 
 // Mock the hooks — test the component in isolation
 const mockUseCamperCohorts = vi.fn()
@@ -286,18 +267,6 @@ describe('CamperCohortsSection', () => {
   })
 
   describe('drilldown click behavior', () => {
-    function matchedAttendee(personCmId: number, firstName: string) {
-      return {
-        attendeeId: `a${personCmId}`,
-        personCmId,
-        firstName,
-        lastName: 'Garcia',
-        preferredName: null,
-        grade: 7,
-        gender: 'M',
-      }
-    }
-
     it('clicking a cohort row opens the drilldown modal scoped to that label', async () => {
       mockUseCamperCohorts.mockReturnValue({
         cohorts: cohorts({
@@ -354,6 +323,37 @@ describe('CamperCohortsSection', () => {
 
       fireEvent.click(await screen.findByRole('button', { name: /Also from Springfield/ }))
       expect(await screen.findByText(/Same city: Springfield/)).toBeInTheDocument()
+    })
+
+    it('keeps the drilldown painted through the exit fade after close (kindred#2529)', async () => {
+      // The exit-fade pin. `onClose` used to null `openKind`, which unmounted
+      // the modal in the same frame — the Transition #2530 gave Modal never got
+      // to play its 150ms leave. The parent now keeps the cohort snapshot and
+      // drives a separate open flag, so the DOM must outlive the close, then go.
+      mockUseCamperCohorts.mockReturnValue({
+        cohorts: cohorts({
+          school: {
+            label: 'Riverside Elementary',
+            count: 1,
+            attendees: [matchedAttendee(1000002, 'Liam')],
+          },
+        }),
+        isLoading: false,
+      })
+
+      render(<CamperCohortsSection {...defaultProps} />)
+
+      fireEvent.click(await screen.findByRole('button', { name: /Also from Riverside Elementary/ }))
+      expect(await screen.findByText(/Same school: Riverside Elementary/)).toBeInTheDocument()
+
+      fireEvent.click(screen.getByRole('button', { name: /close/i }))
+      // Still painted on the frame the close fires...
+      expect(screen.getByText(/Same school: Riverside Elementary/)).toBeInTheDocument()
+      // ...and gone once the leave completes (jsdom runs it on its own frame
+      // scheduling — never the declared 150ms; do not assert time).
+      await waitFor(() => {
+        expect(screen.queryByText(/Same school: Riverside Elementary/)).not.toBeInTheDocument()
+      })
     })
 
     it('passes requestRelations from useCohortRequestRelations into the modal', async () => {

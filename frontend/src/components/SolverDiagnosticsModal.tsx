@@ -9,6 +9,8 @@ import { ErrorBoundary } from './ErrorBoundary'
 interface Props {
   isOpen: boolean
   onClose: () => void
+  /** Forwarded to Modal — fires when the leave completes; SessionView uses it to release the retained diagnostics payload (kindred#2529). */
+  afterLeave?: () => void
   diagnostics: SolverDiagnostics
   sessionCmId: number | null
   year: number
@@ -24,6 +26,7 @@ function compactDetail(detail: Record<string, unknown> | null | undefined): stri
 export default function SolverDiagnosticsModal({
   isOpen,
   onClose,
+  afterLeave,
   diagnostics,
   sessionCmId,
   year,
@@ -55,6 +58,7 @@ export default function SolverDiagnosticsModal({
     <Modal
       isOpen={isOpen}
       onClose={onClose}
+      {...(afterLeave !== undefined && { afterLeave })}
       header={header}
       size="2xl"
       scrollable

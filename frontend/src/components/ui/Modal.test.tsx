@@ -943,6 +943,56 @@ describe('Modal', () => {
       await waitFor(() => expect(screen.queryByTestId('modal-content')).not.toBeInTheDocument())
     })
 
+    it('fires afterLeave once, only after the leave completes', async () => {
+      // The retained-snapshot parents (kindred#2529) release their data in
+      // afterLeave — if it fired on the close frame instead of after the
+      // fade, the dialog would blank mid-leave, the exact bug the retention
+      // exists to prevent.
+      const afterLeave = vi.fn()
+      const { rerender } = render(
+        <Modal isOpen={true} onClose={() => {}} afterLeave={afterLeave} title="AL">
+          <p>Modal content</p>
+        </Modal>
+      )
+      rerender(
+        <Modal isOpen={false} onClose={() => {}} afterLeave={afterLeave} title="AL">
+          <p>Modal content</p>
+        </Modal>
+      )
+      // Not on the frame isOpen flips — the DOM is still painted.
+      expect(afterLeave).not.toHaveBeenCalled()
+      await waitFor(() => expect(afterLeave).toHaveBeenCalledTimes(1))
+      // ...and by then the DOM is gone, so releasing data cannot blank it.
+      expect(screen.queryByTestId('modal-content')).not.toBeInTheDocument()
+    })
+
+    it('does NOT fire afterLeave when a reopen interrupts the leave', async () => {
+      // The other half of the contract LodgingUnitsPanel's snapshot drop
+      // rests on: an interrupted leave means the dialog is open again and
+      // still needs its data, so the release must not fire. (jsdom completes
+      // an uninterrupted leave in well under 100ms — the linger test above —
+      // so the settle below is long enough to catch a wrongly-fired release.)
+      const afterLeave = vi.fn()
+      const { rerender } = render(
+        <Modal isOpen={true} onClose={() => {}} afterLeave={afterLeave} title="AL2">
+          <p>Modal content</p>
+        </Modal>
+      )
+      rerender(
+        <Modal isOpen={false} onClose={() => {}} afterLeave={afterLeave} title="AL2">
+          <p>Modal content</p>
+        </Modal>
+      )
+      rerender(
+        <Modal isOpen={true} onClose={() => {}} afterLeave={afterLeave} title="AL2">
+          <p>Modal content</p>
+        </Modal>
+      )
+      await new Promise((resolve) => setTimeout(resolve, 120))
+      expect(afterLeave).not.toHaveBeenCalled()
+      expect(screen.getByTestId('modal-content')).toBeInTheDocument()
+    })
+
     it('moves focus inside the dialog when opened by TOGGLING isOpen on a mounted Modal', async () => {
       // The Q12 regression pin, and the single test shape this 7,254-test
       // suite lacked: every prior rerender() in this file goes open->closed,

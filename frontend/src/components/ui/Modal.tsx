@@ -16,6 +16,12 @@ import {
 interface ModalProps {
   isOpen: boolean
   onClose: () => void
+  /**
+   * Fires when the leave transition COMPLETES (not when it is interrupted by
+   * a reopen). For parents holding a retained snapshot (kindred#2529) this is
+   * the moment the data can be safely dropped — the DOM is already gone.
+   */
+  afterLeave?: () => void
   title?: string
   header?: ReactNode // Custom header content (overrides title)
   footer?: ReactNode // Footer content
@@ -199,6 +205,7 @@ function getFocusable(container: HTMLElement): HTMLElement[] {
 export function Modal({
   isOpen,
   onClose,
+  afterLeave,
   title,
   header,
   footer,
@@ -336,7 +343,7 @@ export function Modal({
     // Headless UI skips the enter transition AND its `beforeEnter` on an
     // initially-true `show` — no animation and no initial focus for the
     // majority of dialogs. The mount-open focus tests fail if it is removed.
-    <Transition show={isOpen} appear>
+    <Transition show={isOpen} appear {...(afterLeave !== undefined && { afterLeave })}>
       {/* pointer-events-none on the WRAPPER, always — the backdrop and panel
           re-enable themselves below, and drop it again in their leave classes.
           This is what makes D12's accepted trade real: during the exit fade

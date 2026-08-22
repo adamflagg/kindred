@@ -31,6 +31,27 @@ describe('SessionUploadChangesModal', () => {
     mock([])
     render(
       <SessionUploadChangesModal
+        isOpen
+        runId="r1"
+        sessionCmIds={[1000001]}
+        sessionName="Session 2"
+        onClose={() => {}}
+      />,
+      { wrapper }
+    )
+    await Promise.resolve()
+    expect(fetchSessionUploadChanges).not.toHaveBeenCalled()
+  })
+
+  it('does not fetch while mounted-closed (kindred#2529 always-mounted conversion)', async () => {
+    // The chip now renders this dialog permanently and drives isOpen, so the
+    // exit fade can play. The query must therefore gate on isOpen — without
+    // that, every session chip on the page fetches its upload changes on
+    // mount whether the dialog was ever opened.
+    mock([])
+    render(
+      <SessionUploadChangesModal
+        isOpen={false}
         runId="r1"
         sessionCmIds={[1000001]}
         sessionName="Session 2"
@@ -65,6 +86,7 @@ describe('SessionUploadChangesModal', () => {
     ])
     render(
       <SessionUploadChangesModal
+        isOpen
         runId="r1"
         sessionCmIds={[1]}
         sessionName="Session 2"
@@ -82,6 +104,7 @@ describe('SessionUploadChangesModal', () => {
     mock([])
     render(
       <SessionUploadChangesModal
+        isOpen
         runId="r1"
         sessionCmIds={[1]}
         sessionName="Session 2"

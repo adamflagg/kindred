@@ -42,7 +42,25 @@ import { groupUnitsByArea, type UnitSort } from './unitSort'
 export function LodgingUnitsPanel() {
   const queryClient = useQueryClient()
   const { currentYear } = useCurrentYear()
+  // `editing` is a RETAINED SNAPSHOT, not the open flag (kindred#2529): the
+  // editor dialog must stay mounted through Modal's 150ms leave transition
+  // after close, so closing clears only `editorOpen` and the last-edited
+  // record keeps the header renderable through the fade. The form itself
+  // lives inside Modal's children, which <Transition> unmounts once the
+  // leave completes — so no per-field reset is needed here.
   const [editing, setEditing] = useState<LodgingUnitRecord | 'new' | null>(null)
+  const [editorOpen, setEditorOpen] = useState(false)
+  // Bumped on EVERY open and used as the form's key, so each open remounts a
+  // fresh form even when the previous leave was interrupted by the reopen —
+  // an interrupted leave never unmounts the children, and a reused instance
+  // surfaced the abandoned draft for the next Save to write (#2539 scan).
+  const [editorNonce, setEditorNonce] = useState(0)
+
+  const openEditor = (unit: LodgingUnitRecord | 'new') => {
+    setEditing(unit)
+    setEditorOpen(true)
+    setEditorNonce((n) => n + 1)
+  }
   const [areasOpen, setAreasOpen] = useState(false)
   const [sort, setSort] = useState<UnitSort>({ field: 'name', desc: false })
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -65,36 +83,30 @@ export function LodgingUnitsPanel() {
   const areasQuery = useLodgingAreas()
 
   /**
-   * Move FOCUS to the editor whenever it opens — including switching straight
-   * from editing one unit to another, since the form never unmounts in between
-   * (see the `key` below).
+   * Move FOCUS into the editor form in the cases Modal cannot cover. Modal's
+   * own `beforeEnter` handles the plain open (it fires on every false→true
+   * flip of `editorOpen`, `appear` included), so this effect exists for the
+   * two paths that flip no open state:
+   *
+   * 1. `areasQuery.isSuccess` resolving AFTER the dialog opened — until the
+   *    areas resolve, the dialog holds the "Loading areas…" paragraph and
+   *    there is nothing to focus; when the real form mounts, this pulls
+   *    focus off the trigger behind the backdrop.
+   * 2. A record switch while the dialog is already open — `openEditor` bumps
+   *    `editorNonce`, the form remounts under its nonce key, and this
+   *    refocuses it (the just-clicked Edit row button holds focus otherwise).
    *
    * This used to scroll as well, because the editor mounted above a 93-row
-   * table and opening it otherwise produced no visible change below the fold —
-   * and the natural response, clicking Edit again or on a different row, is
-   * exactly how a stale-record write went unnoticed. The dialog solves that
-   * outright: it is unmissable without moving anything, so the staffer keeps
-   * their place in the list. Only the focus half is still needed, and the
-   * shared Modal does not set initial focus itself.
-   *
-   * `areasQuery.isSuccess` IS A DEPENDENCY, not a stray one — and it is why
-   * this effect sits BELOW the query rather than up with the other state. The
-   * form is gated on that flag: until the areas resolve, the dialog holds the
-   * "Loading areas…" paragraph and there is nothing to focus. Opening the
-   * editor during a slow areas fetch therefore runs this effect against an
-   * empty dialog, and keyed on `[editing]` alone it would never re-run once
-   * the real form mounts — leaving focus on the trigger behind the backdrop,
-   * which for an aria-modal dialog strands a keyboard or screen-reader user
-   * outside it entirely. Only the success branch renders anything focusable
-   * (the error branch is a message paragraph), so this one flag covers it.
+   * table; the dialog made the scroll half obsolete and the shared Modal now
+   * owns open-focus, so what remains is exactly the two cases above.
    */
   useEffect(() => {
-    if (editing === null) return
+    if (!editorOpen) return
     formRef.current?.querySelector<HTMLElement>('input, select, textarea')?.focus()
-  }, [editing, areasQuery.isSuccess])
+  }, [editorOpen, editorNonce, areasQuery.isSuccess])
 
   const refresh = () => {
-    setEditing(null)
+    setEditorOpen(false)
     setSelected(new Set())
     invalidateLodgingRegistryQueries(queryClient)
   }
@@ -181,7 +193,7 @@ export function LodgingUnitsPanel() {
           <button
             type="button"
             onClick={() => {
-              setEditing('new')
+              openEditor('new')
             }}
             className={BUTTON_PRIMARY}
           >
@@ -223,8 +235,16 @@ export function LodgingUnitsPanel() {
           two-column grid that `lg` would collapse. */}
       {editing !== null && (
         <Modal
-          isOpen
+          isOpen={editorOpen}
           onClose={() => {
+            setEditorOpen(false)
+          }}
+          // Drop the retained snapshot once the fade has actually finished —
+          // the gate goes false, the whole subtree unmounts, and the panel
+          // stops re-evaluating the header JSX on every subsequent render.
+          // An interrupted leave never fires this, which is correct: the
+          // dialog is open again and still needs its data.
+          afterLeave={() => {
             setEditing(null)
           }}
           header={
@@ -280,12 +300,15 @@ export function LodgingUnitsPanel() {
                 opened against an empty area list can only end in a server
                 rejection the staffer reads as their own mistake. */}
             {areasQuery.isSuccess ? (
-              /* Keyed on the record so React remounts rather than reusing the
-                 same instance — otherwise the form's useState initialisers
-                 never re-run when `unit` changes, and a submit after switching
-                 records writes the PREVIOUS unit's fields to the new one. */
+              /* Keyed on the per-open nonce so React remounts rather than
+                 reusing the same instance. The nonce covers BOTH hazards: a
+                 record switch while open (the useState initialisers never
+                 re-run when `unit` changes, so a submit after switching would
+                 write the previous unit's fields), and a reopen that
+                 interrupts the exit fade (the leave never unmounted the form,
+                 so the abandoned draft survived — #2539 scan finding 1). */
               <LodgingUnitForm
-                key={editing === 'new' ? 'new' : editing.id}
+                key={editorNonce}
                 areas={areasQuery.items}
                 units={unitsQuery.items}
                 unit={editing === 'new' ? undefined : editing}
@@ -299,7 +322,7 @@ export function LodgingUnitsPanel() {
                   invalidateLodgingRegistryQueries(queryClient)
                 }}
                 onCancel={() => {
-                  setEditing(null)
+                  setEditorOpen(false)
                 }}
               />
             ) : (
@@ -360,7 +383,7 @@ export function LodgingUnitsPanel() {
                     onToggleSelect={(unitId) => {
                       setSelected((s) => toggleIn(s, unitId))
                     }}
-                    onEdit={setEditing}
+                    onEdit={openEditor}
                     onConfirm={(unit) => void handleConfirm([unit.id])}
                     onDeactivate={(unit) => void handleDeactivate(unit)}
                   />
