@@ -150,10 +150,19 @@ function mountNameCrossfade(
   // the body sans for the whole crossfade (owner-reported).
   const ghost = document.createElement('h3')
   ghost.textContent = outgoingName
+  // The real title's classes minus `truncate`, and NO fixed width: the ghost
+  // was sized to the INCOMING title's box, so an outgoing name wider than the
+  // incoming one ("Wawona Front" over "Wawona") ellipsized mid-crossfade
+  // (owner-reported). It lays out at its own width instead, capped at the
+  // card's edge — clipped without an ellipsis in the rare overflow.
   ghost.className = title.className
-  ghost.style.cssText = `position:absolute;left:${String(titleRect.left - cardRect.left)}px;top:${String(
+    .split(' ')
+    .filter((cls) => cls !== 'truncate')
+    .join(' ')
+  const left = titleRect.left - cardRect.left
+  ghost.style.cssText = `position:absolute;left:${String(left)}px;top:${String(
     titleRect.top - cardRect.top
-  )}px;width:${String(titleRect.width)}px;margin:0;pointer-events:none;`
+  )}px;max-width:${String(cardRect.width - left - 8)}px;margin:0;white-space:nowrap;overflow:hidden;pointer-events:none;`
   // `.card-lodge` is position:relative, so the ghost rides the transform.
   card.appendChild(ghost)
   return {
