@@ -90,6 +90,13 @@ export function useWeekendSummary(year: number) {
  */
 export function useWeekendRoster(year: number, sessionCmId: number | null, scenario: string) {
   const { fetchWithAuth } = useApiWithAuth()
+  // NOTE for the board's merge/split morph (`BoardMorphBoundary`): since the
+  // click-time view overlay (kindred#2537), the ANIMATING commit is driven
+  // by LodgingBoard's own setState at the gesture, not by this query — the
+  // hard dependency on synchronous commits lives on `overrideDrawLevel`.
+  // This query is the morph's FALLBACK path (a hinted swap arriving with no
+  // overlay) and confirms/prunes the overlay; wrapping it in startTransition
+  // or useDeferredValue would delay that reconciliation, not break the morph.
   return useQuery<WeekendRoster>({
     queryKey: queryKeys.weekendRoster(year, sessionCmId ?? 0, scenario),
     enabled: year > 0 && sessionCmId !== null,
