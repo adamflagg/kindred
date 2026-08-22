@@ -57,7 +57,7 @@ export function TitleSwitcher({
             {label}
             <ChevronDown className="text-muted-foreground h-4 w-4" />
           </ListboxButton>
-          <ListboxOptions className={`listbox-options w-auto ${optionsClassName}`}>
+          <ListboxOptions transition className={`listbox-options w-auto ${optionsClassName}`}>
             {options.map((option) => (
               <ListboxOption
                 key={option.value}

@@ -163,7 +163,11 @@ export default function MergeRequestsModal({
     mergeMutation.mutate()
   }
 
-  if (!isOpen) return null
+  // The old `if (!isOpen) return null` was DEAD code — RequestReviewPanel
+  // gates this component's mount, so when mounted, isOpen is always true.
+  // Deleted (spec 1c tier 1) because it would silently defeat kindred#2529's
+  // parent conversion: a parent that keeps this mounted to let the exit
+  // fade play would find the guard unmounting Modal anyway.
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Merge Requests" size="lg">

@@ -1,4 +1,4 @@
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { useRef } from 'react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { Modal } from './Modal'
@@ -468,7 +468,11 @@ describe('Modal', () => {
   })
 
   describe('focus management', () => {
-    it('moves focus inside the dialog when it opens', () => {
+    it('moves focus inside the dialog when it opens', async () => {
+      // Async since 1c: focus moves in TransitionChild's beforeEnter (a
+      // microtask after commit), not in the [isOpen] effect. This test also
+      // pins `appear` — without it, beforeEnter never fires on a dialog that
+      // MOUNTS already open, which is 15 of the 24 callers.
       render(
         <Modal isOpen={true} onClose={() => {}} title="Focus Test">
           <input placeholder="First field" />
@@ -476,7 +480,7 @@ describe('Modal', () => {
       )
 
       const dialog = screen.getByRole('dialog')
-      expect(dialog.contains(document.activeElement)).toBe(true)
+      await waitFor(() => expect(dialog.contains(document.activeElement)).toBe(true))
     })
 
     /**
@@ -501,7 +505,7 @@ describe('Modal', () => {
      * `initialFocusRef` closes both. Nothing changes for a dialog that passes
      * none, which the second test pins.
      */
-    it('focuses initialFocusRef rather than the Close button', () => {
+    it('focuses initialFocusRef rather than the Close button', async () => {
       function Harness() {
         const ref = useRef<HTMLInputElement>(null)
         return (
@@ -517,19 +521,31 @@ describe('Modal', () => {
         )
       }
       render(<Harness />)
-      expect(document.activeElement).toBe(screen.getByPlaceholderText('Search field'))
+      await waitFor(() =>
+        expect(document.activeElement).toBe(screen.getByPlaceholderText('Search field'))
+      )
     })
 
-    it('still lands on the first focusable element when no initialFocusRef is given', () => {
+    it('lands on the first focusable element that is NOT the Close button when no initialFocusRef is given (D14)', async () => {
+      // REWRITE, not an adaptation — this test used to pin the opposite
+      // behaviour (focus landing on Close). That was measured wrong on
+      // 2026-08-21: in a custom-header dialog Close is rendered above the
+      // body, so 20 of 22 fallback dialogs opened with focus on the one
+      // control where Space or Enter SHUTS the dialog. Initial focus now
+      // skips the dialog's own Close button; Close stays in the Tab cycle
+      // (see the cycling test below), because the skip lives in the initial
+      // pick, never in getFocusable.
       render(
         <Modal isOpen={true} onClose={() => {}} header={<h2>Custom header</h2>} ariaLabel="Plain">
           <input placeholder="Untouched field" />
         </Modal>
       )
-      expect(document.activeElement).toBe(screen.getByRole('button', { name: /close/i }))
+      await waitFor(() =>
+        expect(document.activeElement).toBe(screen.getByPlaceholderText('Untouched field'))
+      )
     })
 
-    it('restores focus to the opener even when a field was focused on open', () => {
+    it('restores focus to the opener even when a field was focused on open', async () => {
       // The second half of the defect. With `autoFocus` this restored to the
       // dialog's own detached input and focus fell to `<body>`.
       const trigger = document.createElement('button')
@@ -551,13 +567,17 @@ describe('Modal', () => {
         )
       }
       const { rerender } = render(<Harness open={true} />)
-      expect(document.activeElement).toBe(screen.getByPlaceholderText('Search field'))
+      await waitFor(() =>
+        expect(document.activeElement).toBe(screen.getByPlaceholderText('Search field'))
+      )
+      // The restore itself stays SYNCHRONOUS — D12 keeps release + restore in
+      // the [isOpen] effect cleanup, which React runs on this rerender.
       rerender(<Harness open={false} />)
       expect(document.activeElement).toBe(trigger)
       trigger.remove()
     })
 
-    it('restores focus to the previously focused element when the dialog closes', () => {
+    it('restores focus to the previously focused element when the dialog closes', async () => {
       const trigger = document.createElement('button')
       trigger.textContent = 'Open modal'
       document.body.appendChild(trigger)
@@ -569,7 +589,7 @@ describe('Modal', () => {
           <p>Modal content</p>
         </Modal>
       )
-      expect(document.activeElement).not.toBe(trigger)
+      await waitFor(() => expect(document.activeElement).not.toBe(trigger))
 
       rerender(
         <Modal isOpen={false} onClose={() => {}}>
@@ -616,7 +636,7 @@ describe('Modal', () => {
       expect(document.activeElement).toBe(saveButton)
     })
 
-    it('cycles through every focusable element type, not just buttons', () => {
+    it('cycles through every focusable element type, not just buttons', async () => {
       render(
         <Modal isOpen={true} onClose={() => {}} title="All Fields">
           <input placeholder="Text field" />
@@ -628,12 +648,14 @@ describe('Modal', () => {
         </Modal>
       )
 
-      // DOM order: close button, input, select, textarea, link.
+      // DOM order: close button, input, select, textarea, link. Initial
+      // focus SKIPS the dialog's own Close button (D14) and lands on the
+      // first content control — but Close stays in the Tab cycle below,
+      // because the skip lives in the initial pick, never in getFocusable.
       const closeButton = screen.getByRole('button', { name: /close/i })
-      expect(document.activeElement).toBe(closeButton)
-
-      fireEvent.keyDown(document, { key: 'Tab' })
-      expect(document.activeElement).toBe(screen.getByPlaceholderText('Text field'))
+      await waitFor(() =>
+        expect(document.activeElement).toBe(screen.getByPlaceholderText('Text field'))
+      )
 
       fireEvent.keyDown(document, { key: 'Tab' })
       expect(document.activeElement?.tagName).toBe('SELECT')
@@ -644,9 +666,13 @@ describe('Modal', () => {
       fireEvent.keyDown(document, { key: 'Tab' })
       expect(document.activeElement).toBe(screen.getByRole('link', { name: 'Link' }))
 
-      // Wraps back to the close button after the last focusable element.
+      // Wraps past the last focusable element back to the CLOSE BUTTON —
+      // proof the skip did not remove it from the trap.
       fireEvent.keyDown(document, { key: 'Tab' })
       expect(document.activeElement).toBe(closeButton)
+
+      fireEvent.keyDown(document, { key: 'Tab' })
+      expect(document.activeElement).toBe(screen.getByPlaceholderText('Text field'))
     })
 
     it('leaves focus alone on Tab when it is outside the dialog content, so a nested portal (e.g. ConfirmActionPopover rendered as a Modal child, as in AllCamperRequestsModal) keeps its own trap', () => {
@@ -854,6 +880,116 @@ describe('Modal', () => {
       fireEvent.keyDown(document, { key: 'Escape' })
 
       expect(onClose).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  describe('transition (spec 1c: fade+scale 200/150, Transition + appear)', () => {
+    it('routes pointer events through the wrapper and blocks nothing once dead (2530 review finding 1)', () => {
+      // THE pattern: the fixed inset-0 wrapper is pointer-events-none ALWAYS,
+      // and the backdrop + panel re-enable with pointer-events-auto. Without
+      // this, the dying overlay swallowed clicks for the leave duration —
+      // D12's accepted trade was "background interactive" (click-through),
+      // and a swallowing overlay is the opposite of that trade.
+      render(
+        <Modal isOpen={true} onClose={() => {}} title="Hit test">
+          <p>Modal content</p>
+        </Modal>
+      )
+      expect(screen.getByRole('dialog').className).toContain('pointer-events-none')
+      expect(screen.getByTestId('modal-backdrop').className).toContain('pointer-events-auto')
+      expect(screen.getByTestId('modal-content').className).toContain('pointer-events-auto')
+    })
+
+    it('turns pointer events OFF on backdrop and panel for the leave', () => {
+      // While the exit fade plays, clicks must reach the page beneath — the
+      // background was un-inerted on the isOpen flip (D12), and the leave
+      // classes are what stop the dying elements intercepting.
+      const { rerender } = render(
+        <Modal isOpen={true} onClose={() => {}} title="Leave hit test">
+          <p>Modal content</p>
+        </Modal>
+      )
+      rerender(
+        <Modal isOpen={false} onClose={() => {}} title="Leave hit test">
+          <p>Modal content</p>
+        </Modal>
+      )
+      // Still painted on this frame (the linger test below pins that), and
+      // already non-interactive.
+      expect(screen.getByTestId('modal-backdrop').className).toContain('pointer-events-none')
+      expect(screen.getByTestId('modal-content').className).toContain('pointer-events-none')
+    })
+
+    it('keeps the dialog painted through the exit and removes it after', async () => {
+      // THE pin for the exit animation. Today `if (!isOpen) return null`
+      // removes every dialog in the same frame; under <Transition> the DOM
+      // must outlive isOpen by the leave duration, then go.
+      const { rerender } = render(
+        <Modal isOpen={true} onClose={() => {}} title="Linger">
+          <p>Modal content</p>
+        </Modal>
+      )
+      expect(screen.getByTestId('modal-content')).toBeInTheDocument()
+
+      rerender(
+        <Modal isOpen={false} onClose={() => {}} title="Linger">
+          <p>Modal content</p>
+        </Modal>
+      )
+      // Still painted on the frame isOpen flips false...
+      expect(screen.getByTestId('modal-content')).toBeInTheDocument()
+      // ...and gone once the leave completes (jsdom runs it on its own frame
+      // scheduling, ~35-60ms — never the declared 150ms; do not assert time).
+      await waitFor(() => expect(screen.queryByTestId('modal-content')).not.toBeInTheDocument())
+    })
+
+    it('moves focus inside the dialog when opened by TOGGLING isOpen on a mounted Modal', async () => {
+      // The Q12 regression pin, and the single test shape this 7,254-test
+      // suite lacked: every prior rerender() in this file goes open->closed,
+      // never closed->open. Under <Transition> the panel node does not exist
+      // on the commit where isOpen flips true, so a focus effect reading
+      // contentRef there focuses NOTHING — invisible until someone tabs.
+      // beforeEnter is what closes it; this test fails if that moves or if
+      // `appear` is dropped from a code path this shape exercises.
+      const { rerender } = render(
+        <Modal isOpen={false} onClose={() => {}} title="Toggle">
+          <input placeholder="First field" />
+        </Modal>
+      )
+      rerender(
+        <Modal isOpen={true} onClose={() => {}} title="Toggle">
+          <input placeholder="First field" />
+        </Modal>
+      )
+      await waitFor(() => {
+        const dialog = screen.getByRole('dialog')
+        expect(dialog.contains(document.activeElement)).toBe(true)
+      })
+    })
+
+    it('honours initialFocusRef on a toggle open, not only on a mount open', async () => {
+      // The ref target lives in the same not-yet-mounted subtree as every
+      // other focusable, so initialFocusRef callers share the Q12 failure
+      // mode — "1 of 24 is safe" was measured false (2026-08-21 probe).
+      function Harness({ open }: { open: boolean }) {
+        const ref = useRef<HTMLInputElement>(null)
+        return (
+          <Modal
+            isOpen={open}
+            onClose={() => {}}
+            header={<h2>Custom header</h2>}
+            ariaLabel="Toggle"
+            initialFocusRef={ref}
+          >
+            <input ref={ref} placeholder="Search field" />
+          </Modal>
+        )
+      }
+      const { rerender } = render(<Harness open={false} />)
+      rerender(<Harness open={true} />)
+      await waitFor(() =>
+        expect(document.activeElement).toBe(screen.getByPlaceholderText('Search field'))
+      )
     })
   })
 })

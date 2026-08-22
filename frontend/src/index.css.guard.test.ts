@@ -52,3 +52,59 @@ describe('index.css — lodge-shadow utilities (#2027)', () => {
     })
   })
 })
+
+describe('index.css — motion groundwork (spec 1a/1b, 2026-08-21)', () => {
+  it('narrows .card-lodge to the properties that actually animate — never transition-all (1a)', () => {
+    // `transition-all` covered `transform` and geometry, so ANY future card
+    // movement (auto-animate, a FLIP, a grid reflow) fought a competing
+    // 300ms transition — the smear. The narrowed list keeps every fade that
+    // ships today: border-color + box-shadow (the :hover lift), and
+    // background-color + opacity, which kindred#2528's drag-signal wash
+    // (`bg-primary/20`) and dim (`opacity-40`) animate through on this very
+    // class. Dropping either of those two turns a shipping fade into a snap.
+    const rule = css.match(/\.card-lodge\s*{([\s\S]*?)\n {2}}/)?.[1] ?? ''
+    // Strip comments first — the declaration is what must not say `all`;
+    // the comment above it explains WHY and names the phrase.
+    const declarations = rule.replace(/\/\*[\s\S]*?\*\//g, '')
+    expect(declarations).not.toContain('transition-all')
+    expect(declarations).toContain('transition-[border-color,box-shadow,background-color,opacity]')
+  })
+
+  it('carries no dead motion CSS (1b sweep)', () => {
+    // Each of these had zero references in any .tsx (audited 2026-08-21):
+    // .animate-out + fadeOut, the react-hot-toast leftovers (the library
+    // animates itself), and the orphaned shimmer keyframes.
+    expect(css).not.toMatch(/@keyframes fadeOut/)
+    expect(css).not.toMatch(/\.animate-out(?![\w-])/)
+    expect(css).not.toMatch(/\.toast-enter(?![\w-])/)
+    expect(css).not.toMatch(/\.toast-exit(?![\w-])/)
+    expect(css).not.toMatch(/@keyframes toastSlideIn/)
+    expect(css).not.toMatch(/@keyframes toastSlideOut/)
+    expect(css).not.toMatch(/@keyframes shimmer/)
+  })
+
+  it('has no prefers-reduced-motion block (D2/D10 — reduced motion is out of scope by policy)', () => {
+    // The one block that existed guarded only .sparkle-material — orphaned
+    // and inconsistent with the app's deliberate zero-reduced-motion policy
+    // (CLAUDE.md §4 accessibility). If that policy ever changes, remove this
+    // assertion in the same PR that adds real reduced-motion support.
+    expect(css).not.toMatch(/prefers-reduced-motion/)
+  })
+
+  it('drops listbox pointer events for the leave (2530 review finding 1)', () => {
+    // Same hazard as the modal: a dropdown fading out at absolute z-50 kept
+    // swallowing clicks for 150ms. data-leave is stamped by Headless UI only
+    // while the leave transition runs.
+    const rule = css.match(/\.listbox-options\s*{([\s\S]*?)\n {2}}/)?.[1] ?? ''
+    expect(rule).toContain('data-leave:pointer-events-none')
+  })
+
+  it('keeps the live animations the sweep must not touch (D5 fence)', () => {
+    // The sparkle ships unchanged (D5), and pulse-glow is referenced by five
+    // .tsx files. If this fails, the sweep took a live rule with the dead.
+    expect(css).toMatch(/@keyframes sparkle-anim/)
+    expect(css).toMatch(/\.sparkle-material(?![\w-])/)
+    expect(css).toMatch(/@keyframes pulse-glow/)
+    expect(css).toMatch(/\.pending-lock-glow(?![\w-])/)
+  })
+})

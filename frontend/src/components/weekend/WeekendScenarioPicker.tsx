@@ -75,7 +75,7 @@ export function WeekendScenarioPicker({
               <span className="flex-1 truncate text-left">{active?.name ?? 'CampMinder'}</span>
               <ChevronDown className="text-muted-foreground h-4 w-4 flex-shrink-0" />
             </ListboxButton>
-            <ListboxOptions className="listbox-options w-auto min-w-[180px]">
+            <ListboxOptions transition className="listbox-options w-auto min-w-[180px]">
               <ListboxOption value="production" className="listbox-option py-1.5">
                 CampMinder
               </ListboxOption>

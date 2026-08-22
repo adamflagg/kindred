@@ -60,7 +60,6 @@ export default function ScenarioEditModal({ scenario, onClose, onSave }: Scenari
             onChange={(e) => setName(e.target.value)}
             placeholder="e.g., Option A - Mixed Age Groups"
             className="bg-background border-input focus:ring-primary w-full rounded-lg border px-4 py-2 focus:ring-2 focus:outline-none"
-            autoFocus
           />
         </div>
 

@@ -30,7 +30,7 @@ export default function YearSelector() {
               <span>{currentYear}</span>
               <ChevronDown className="text-muted-foreground h-4 w-4" />
             </ListboxButton>
-            <ListboxOptions className="listbox-options w-auto min-w-[80px]">
+            <ListboxOptions transition className="listbox-options w-auto min-w-[80px]">
               {availableYears.map((year) => (
                 <ListboxOption key={year} value={year} className="listbox-option py-1.5">
                   {year}

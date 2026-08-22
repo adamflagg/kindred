@@ -849,7 +849,7 @@ export default function ScenarioComparisonPage() {
                     </span>
                     <ChevronDown className="text-muted-foreground h-5 w-5 flex-shrink-0" />
                   </ListboxButton>
-                  <ListboxOptions className="listbox-options w-full">
+                  <ListboxOptions transition className="listbox-options w-full">
                     <ListboxOption
                       value="production"
                       className="listbox-option border-2 border-dashed border-amber-400 bg-amber-50/40 font-semibold dark:bg-amber-900/20"
@@ -900,7 +900,7 @@ export default function ScenarioComparisonPage() {
                     </span>
                     <ChevronDown className="text-muted-foreground h-5 w-5 flex-shrink-0" />
                   </ListboxButton>
-                  <ListboxOptions className="listbox-options w-full">
+                  <ListboxOptions transition className="listbox-options w-full">
                     <ListboxOption
                       value="production"
                       disabled={leftScenarioId === 'production'}

@@ -423,7 +423,7 @@ export default function AllCampersView() {
                   </span>
                   <ChevronDown className="text-muted-foreground h-4 w-4 flex-shrink-0" />
                 </ListboxButton>
-                <ListboxOptions className="listbox-options w-auto min-w-[180px]">
+                <ListboxOptions transition className="listbox-options w-auto min-w-[180px]">
                   {/* Type groupings */}
                   <ListboxOption value={FILTER_ALL} className="listbox-option py-1.5">
                     All Summer
@@ -515,7 +515,7 @@ export default function AllCampersView() {
                   <span>{filterSexLabel(filterSex)}</span>
                   <ChevronDown className="text-muted-foreground h-4 w-4" />
                 </ListboxButton>
-                <ListboxOptions className="listbox-options w-auto min-w-[100px]">
+                <ListboxOptions transition className="listbox-options w-auto min-w-[100px]">
                   <ListboxOption value="all" className="listbox-option py-1.5">
                     All
                   </ListboxOption>
@@ -541,7 +541,7 @@ export default function AllCampersView() {
                   </span>
                   <ChevronDown className="text-muted-foreground h-4 w-4 flex-shrink-0" />
                 </ListboxButton>
-                <ListboxOptions className="listbox-options w-auto min-w-[140px]">
+                <ListboxOptions transition className="listbox-options w-auto min-w-[140px]">
                   <ListboxOption value="all" className="listbox-option py-1.5">
                     All Bunks
                   </ListboxOption>
