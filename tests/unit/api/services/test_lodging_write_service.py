@@ -1379,6 +1379,23 @@ class TestTheAvailabilityWriteShape:
         assert data["party_size"] == 2
 
     @pytest.mark.asyncio
+    async def test_a_cleared_count_reaches_the_payload_as_none(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        """`None` is the COMMON case (owner ruling): the write-in occupies the
+        room wholesale. It must reach the payload as an explicit key, not be
+        silently omitted -- `update_write_in` forwards this dict straight to
+        PocketBase with no `exclude_none` beneath it, so omission and an
+        explicit `None` differ on an UPDATE: omission would leave a
+        previously-set count standing instead of clearing it.
+        """
+        await write_service.set_availability(_availability_request(party_size=None))
+
+        data = repo.create_write_in.call_args[0][0]
+        assert "party_size" in data
+        assert data["party_size"] is None
+
+    @pytest.mark.asyncio
     async def test_a_release_never_carries_a_count(self, write_service: LodgingWriteService, repo: MagicMock) -> None:
         """`family_available: true` is the staff<->family ROLE for the weekend
         and lives in `lodging_availability`, which names no occupant. A count
@@ -2136,6 +2153,20 @@ class TestAWriteInInsideAScenarioIsWrittenToTheDraftTable:
         repo.create_draft_write_in.assert_not_called()
         data = repo.create_write_in.call_args[0][0]
         assert "scenario" not in data
+
+    @pytest.mark.asyncio
+    async def test_a_draft_write_in_carries_both_its_count_and_its_scenario(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        """kindred#2503. `party_size` and `scenario` are two independent keys
+        merged into the same dict by two independent conditionals -- this
+        pins that neither one crowds out the other on the draft grain.
+        """
+        await write_service.set_availability(_availability_request(scenario="scn_1", party_size=3))
+
+        data = repo.create_draft_write_in.call_args[0][0]
+        assert data["party_size"] == 3
+        assert data["scenario"] == "scn_1"
 
     @pytest.mark.asyncio
     async def test_the_draft_lookup_is_keyed_on_the_scenario(
