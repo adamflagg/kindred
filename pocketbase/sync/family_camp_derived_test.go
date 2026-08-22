@@ -1657,8 +1657,13 @@ func TestProcessRegistrationsBoolFieldsOrAcrossPersons(t *testing.T) {
 	// accommodation_is_mandatory, the answer's No pole. "Yes, please register
 	// regardless" carries no signal we store, so a household whose only
 	// answers are yes-flexible writes NO registration row at all. The
-	// both-field-names property is witnessed by the blocker test below, which
-	// feeds the No pole through both names.
+	// both-field-names property has two witnesses: the order-varied blocker
+	// test (TestProcessRegistrationsOptOutLosesToABlockerInTheSameHousehold)
+	// feeds the No pole through "Adult-Opt Out" in one order and
+	// "FAM CAMP-Opt Out VIP" in the other, and
+	// TestProcessRegistrationsMandatoryOnlyHouseholdSurvives sends its only
+	// blocker through "Adult-Opt Out". Dropping either field name from the
+	// switch arm fails the suite.
 	t.Run("yes-flexible answers alone store nothing", func(t *testing.T) {
 		regs := s.processRegistrations(nil, []customValueEntry{
 			{
