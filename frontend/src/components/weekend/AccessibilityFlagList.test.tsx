@@ -78,7 +78,6 @@ function flags(overrides: Partial<AccessibilityFlags> = {}): AccessibilityFlags 
     needs_step_free: false,
     needs_accommodation: false,
     accommodation_is_mandatory: false,
-    opt_out_vip: false,
     has_infant: false,
     ...overrides,
   }
@@ -147,48 +146,6 @@ describe('derived flags', () => {
   it('renders nothing when no flag is set', () => {
     const { container } = render(<AccessibilityFlagList flags={flags()} />)
     expect(container.textContent).toBe('')
-  })
-
-  describe('the VIP opt-out answer (staff ruling: off the board, onto this panel)', () => {
-    // The other half of the accommodation/VIP pair `accommodation_is_mandatory`
-    // reads above (kindred#1874): `opt_out_vip=true` is the household's raw
-    // answer that it will attend regardless of cabin type. The two columns
-    // are never derived from one another, so this row is gated on its own
-    // flag, not on `accommodation_is_mandatory` being false.
-    it('renders the flexible-on-cabin-type row when opt_out_vip is true', () => {
-      render(<AccessibilityFlagList flags={flags({ opt_out_vip: true })} />)
-      expect(
-        screen.getByText('Flexible on cabin type — will attend regardless')
-      ).toBeInTheDocument()
-    })
-
-    it('renders nothing for an explicit opt_out_vip: false', () => {
-      const { container } = render(<AccessibilityFlagList flags={flags({ opt_out_vip: false })} />)
-      expect(container.textContent).toBe('')
-    })
-
-    it('renders nothing when opt_out_vip is unanswered (absent from the payload)', () => {
-      const unanswered = flags()
-      delete (unanswered as Partial<AccessibilityFlags>).opt_out_vip
-      const { container } = render(<AccessibilityFlagList flags={unanswered} />)
-      expect(container.textContent).toBe('')
-    })
-
-    it('is not gated on accommodation_is_mandatory — the two columns are independent', () => {
-      render(
-        <AccessibilityFlagList
-          flags={flags({
-            opt_out_vip: true,
-            needs_accommodation: true,
-            accommodation_is_mandatory: false,
-          })}
-        />
-      )
-      expect(screen.getByText('Accommodation requested')).toBeInTheDocument()
-      expect(
-        screen.getByText('Flexible on cabin type — will attend regardless')
-      ).toBeInTheDocument()
-    })
   })
 })
 

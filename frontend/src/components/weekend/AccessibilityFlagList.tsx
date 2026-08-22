@@ -137,21 +137,6 @@ export function AccessibilityFlagList({ flags }: AccessibilityFlagListProps) {
     })
   }
   // The OTHER raw half of the accommodation/VIP pair (kindred#1874) --
-  // `accommodation_is_mandatory` above is the blocker, this is the household
-  // saying it isn't one. Gated on its OWN flag, never on `mandatory` being
-  // false: the two columns are independent and never derived from one
-  // another, so a household that never answered gets neither row. Staff
-  // ruling moved this off the board card entirely (`FamilyCard.tsx`'s chip
-  // row struck `Needs Accommodation`) and onto this panel, which is now the
-  // one place either raw answer is visible.
-  if (flags.opt_out_vip === true) {
-    needs.push({
-      key: 'opt_out_vip',
-      label: 'Flexible on cabin type — will attend regardless',
-      icon: Accessibility,
-      tone: 'neutral',
-    })
-  }
   // Every graded need the household ASKED for, ungraded here.
   //
   // This row says what was requested; it deliberately does not say whether the

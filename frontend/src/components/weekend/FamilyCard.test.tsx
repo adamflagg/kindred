@@ -1610,25 +1610,23 @@ describe('FamilyCard — the marks kindred#2072 STRUCK', () => {
   it('draws no "Needs Accommodation" chip — staff ruling moved the accommodation/VIP signal off the board', () => {
     // Not a kindred#2072 cut like the rest of this block — a later staff
     // ruling: the board answers "does this family go here?" (kindred#2528),
-    // and the accommodation/VIP answer is a staff-facing REQUEST, not a
-    // placement verdict. `party.flags` carries both raw halves of the pair
-    // (`accommodation_is_mandatory` / `opt_out_vip`, kindred#1874) either
-    // way — this only pins that the card no longer chips either one.
-    // `AccessibilityFlagList.test.tsx` covers the row that replaced it on
-    // `FamilyDetailsPanel`, and `rosterAttention`/`partyAttention` still grade
-    // `'required'` for the roster tab's own sections and the modal's
+    // and the VIP answer is a staff-facing REQUEST, not a placement verdict.
+    // One stored signal since the 2026-08-22 owner ruling:
+    // `accommodation_is_mandatory` — this pins that the card does not chip
+    // it. `AccessibilityFlagList` renders the mandatory row on
+    // `FamilyDetailsPanel`, and `rosterAttention`/`partyAttention` still
+    // grade `'required'` for the roster tab's own sections and the modal's
     // Placement verdict — untouched here.
     render(
       <FamilyCard
         party={party({
-          flags: { needs_accommodation: true, accommodation_is_mandatory: true, opt_out_vip: true },
+          flags: { needs_accommodation: true, accommodation_is_mandatory: true },
         })}
         onOpen={vi.fn()}
       />
     )
     expect(screen.queryByText('Needs Accommodation')).not.toBeInTheDocument()
     expect(screen.queryByText(/VIP/i)).not.toBeInTheDocument()
-    expect(screen.queryByText(/Flexible on cabin type/)).not.toBeInTheDocument()
   })
 })
 

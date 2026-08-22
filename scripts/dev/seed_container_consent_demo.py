@@ -379,9 +379,9 @@ def seed(conn: sqlite3.Connection, scene: Scene, year: int, session_cm_id: int, 
             "wants_similar_ages, request_text, request_source_field, request_last_updated, "
             "arrival_eta, cabin_assignment, goals, notes, special_occasions, needs_accommodation, "
             "needs_private_bathroom, needs_power, accommodation_is_mandatory, has_infant, "
-            "opt_out_vip, created, updated) "
+            "created, updated) "
             "VALUES (?, ?, ?, 'declined', 'form', 0, '', '', '', 0, 0, 0, '', '', '', "
-            "'', '', '', '', '', 0, 0, 0, 0, 0, 0, ?, ?)",
+            "'', '', '', '', '', 0, 0, 0, 0, 0, ?, ?)",
             (demo_id("fr", index + 1), household_id, year, stamp, stamp),
         )
 

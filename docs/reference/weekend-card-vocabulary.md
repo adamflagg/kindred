@@ -79,7 +79,7 @@ down. Pinned negatively in `LodgingUnitCard.test.tsx` / `FamilyCard.test.tsx`.
 | Private-vs-shared bathroom on the unit card              | the form never asked about exclusivity — see §4                                                                                                                                                                                                                                                                  |
 | `Building` (the unit card's copy)                        | ruled cut 2026-08-19. The `reservationBadge` arm survives for `MapUnitPopover`'s header and its collapsed grid cell; the card stops calling it, so a board card draws none of that function's four labels. **Lands in stage 3** (§9) — the card still draws `Building` until then                                |
 | Earlier cuts, still struck                               | `Whole building` · `N families` · `Shared OK` · `Over capacity` pill. **`Whole building` had never been landed** and was still on the card in code; it went with the glyph row. It survives on the MAP, the same split `Staff` takes                                                                             |
-| `Needs Accommodation`                                     | **staff ruling, 2026-08-21**, resolving the "pending staff" row above rather than settling its wording: the accommodation/VIP signal (the raw `accommodation_is_mandatory` / `opt_out_vip` pair, kindred#1874 — see §5 below) is a request the household made, not a verdict about whether the card belongs in its slot. That verdict stays exactly where it was — `rosterAttention`'s `'required'` level still drives the roster tab's attention sections and the modal's Placement verdict; only the card-level chip and its import of `partyAttention`/`ATTENTION_LABEL` are gone. `AccessibilityFlagList` on `FamilyDetailsPanel` is now the one place either raw answer is visible, rendering BOTH states: the existing `Accommodation required`/`requested` pair plus a new row for `opt_out_vip`. Pinned in `FamilyCard.test.tsx`'s "the marks kindred#2072 STRUCK" |
+| `Needs Accommodation`                                     | **staff ruling, 2026-08-21**, resolving the "pending staff" row above rather than settling its wording: the accommodation/VIP signal (`accommodation_is_mandatory` — the answer's one stored boolean since the 2026-08-22 owner ruling retired the `opt_out_vip` Yes-pole column, kindred#1874 — see §5 below) is a request the household made, not a verdict about whether the card belongs in its slot. That verdict stays exactly where it was — `rosterAttention`'s `'required'` level still drives the roster tab's attention sections and the modal's Placement verdict; only the card-level chip and its import of `partyAttention`/`ATTENTION_LABEL` are gone. `AccessibilityFlagList` on `FamilyDetailsPanel` is now the one place the answer is visible, via the existing `Accommodation required`/`requested` rows. Pinned in `FamilyCard.test.tsx`'s "the marks kindred#2072 STRUCK" |
 
 ### Older absences on the family card, still absent
 
@@ -144,8 +144,7 @@ now the only place the word _private_ survives.
   (§3) rather than kept and relabelled, so the pair on `AccessibilityFlagList`
   — `Accommodation required` / `Accommodation requested`, keyed on
   `accommodation_is_mandatory` — never had a card-level rename to disagree
-  with. That pair is unchanged; a new `opt_out_vip` row joined it on the same
-  panel.
+  with. That pair is unchanged.
 - **The roster's wording moved with the rule, 2026-08-20 — CLOSED.** It was
   held back for a sharper reason than the item above: the glyph is called
   _Bathroom in unit_ because that is the axis the form asks about, but while

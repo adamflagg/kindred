@@ -26,15 +26,15 @@
  *   deleted it; the narrative itself lives on `FamilyDetailsPanel`.
  * - **`needs_resolution`.** True for 44 of 62. Same reason.
  * - **The `Needs Accommodation` chip, and any VIP-opt-out mark beside it.**
- *   Staff ruling: the accommodation/VIP signal (the raw `accommodation_is_
- *   mandatory` / `opt_out_vip` pair, kindred#1874) is a request the household
- *   made, not a verdict about whether this card belongs in its slot — that
+ *   Staff ruling: the VIP answer is ONE stored signal (`accommodation_is_
+ *   mandatory`, its No pole — owner ruling 2026-08-22 retired the
+ *   `opt_out_vip` Yes-pole column), and it is a request the household made,
+ *   not a verdict about whether this card belongs in its slot — that
  *   verdict is `rosterAttention`'s and stays exactly where it was, on the
  *   roster tab's attention sections and the modal's Placement verdict. This
  *   card no longer imports `partyAttention` or `ATTENTION_LABEL` at all.
- *   `AccessibilityFlagList` on `FamilyDetailsPanel` is the one place either
- *   raw answer is visible now, and it renders BOTH states — the existing
- *   mandatory row plus a new flexible-on-cabin-type row for `opt_out_vip`.
+ *   `AccessibilityFlagList` on `FamilyDetailsPanel` renders the mandatory
+ *   row, the one place the answer is visible.
  *
  * `FamilyCard.test.tsx` pins all four as ABSENCES, because each is exactly
  * the kind of thing a later session adds back helpfully.

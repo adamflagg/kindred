@@ -2687,9 +2687,9 @@ class LodgingRosterService:
           related"* -- narrative presence reads those as power (kindred#1875).
         * `needs_private_bathroom` came from `FAM CAMP-bathroom` alone, so it
           missed `Adult-Bathroom` and those same 75 bathroom answers.
-        * `accommodation_is_mandatory` came from `not opt_out_vip`, which is
-          OR'd across household members and inverts on conflict
-          (kindred#1874).
+        * `accommodation_is_mandatory` came from `not opt_out_vip` (a since-
+          retired Yes-pole column), which was OR'd across household members
+          and inverted on conflict (kindred#1874).
 
         One writer, one reader. If a flag looks wrong, fix it in the ingest
         layer so every surface sees the correction.
@@ -2701,13 +2701,6 @@ class LodgingRosterService:
             needs_power=_b(registration, "needs_power"),
             needs_accommodation=_b(registration, "needs_accommodation"),
             accommodation_is_mandatory=_b(registration, "accommodation_is_mandatory"),
-            # The other half of the pair above. Read verbatim for the same
-            # reason: OR'd across household members in the ingest layer, so
-            # recomputing it here from `accommodation_is_mandatory` would
-            # invert on conflict (kindred#1874). Staff ruling moved this
-            # signal off the board card and onto the family panel -- see
-            # `AccessibilityFlagSummary.opt_out_vip`.
-            opt_out_vip=_b(registration, "opt_out_vip"),
             has_infant=_b(registration, "has_infant"),
             # kindred#2224. Read from the column for the same reason the five
             # above are: the derivation runs over RAW per-person narrative

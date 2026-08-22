@@ -710,9 +710,8 @@ class TestFamilyCampParties:
                     wants_similar_ages=False,
                     arrival_eta="Friday around 4pm",
                     needs_accommodation=True,
-                    # Set by the ingest layer, not recomputed here. opt_out_vip
-                    # is deliberately absent from this fixture: reading it is
-                    # the kindred#1874 inversion.
+                    # Set by the ingest layer, not recomputed here -- the one
+                    # stored VIP signal (owner ruling 2026-08-22).
                     accommodation_is_mandatory=True,
                 )
             },
@@ -2829,56 +2828,6 @@ class TestMedicalFlagsAndNarrative:
         roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
 
         assert roster.parties[0].flags.needs_step_free is True
-
-    @pytest.mark.asyncio
-    async def test_opt_out_vip_surfaces_verbatim_when_true(self) -> None:
-        """Staff ruling: the accommodation/VIP pair moves off the board card
-        and onto the family details modal. `opt_out_vip=True` is the other
-        half of the pair `accommodation_is_mandatory` reads above (kindred#1874)
-        -- the household answered "Yes, please register regardless of cabin
-        type" on `FAM CAMP-Opt Out VIP`. Read from the column, never derived,
-        for the same inversion risk `accommodation_is_mandatory` warns about."""
-        repo = _repo(
-            fetch_session=FAMILY_SESSION,
-            fetch_households={"hh_1": _household(title="The Chen Family")},
-            fetch_attendees_for_session=[_child(cm_id=1000001, first="Olivia", last="Chen", age=10, grade=5)],
-            fetch_family_camp_registrations={"hh_1": _rec(opt_out_vip=True)},
-        )
-        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
-
-        assert roster.parties[0].flags.opt_out_vip is True
-
-    @pytest.mark.asyncio
-    async def test_opt_out_vip_surfaces_verbatim_when_false(self) -> None:
-        """An explicit False -- the household answered "No, I am only able to
-        attend with this accommodation" -- is distinct from never having
-        answered at all, and both must read False verbatim, never inferred
-        from `accommodation_is_mandatory`."""
-        repo = _repo(
-            fetch_session=FAMILY_SESSION,
-            fetch_households={"hh_1": _household(title="The Chen Family")},
-            fetch_attendees_for_session=[_child(cm_id=1000001, first="Olivia", last="Chen", age=10, grade=5)],
-            fetch_family_camp_registrations={"hh_1": _rec(opt_out_vip=False)},
-        )
-        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
-
-        assert roster.parties[0].flags.opt_out_vip is False
-
-    @pytest.mark.asyncio
-    async def test_opt_out_vip_defaults_false_when_column_missing(self) -> None:
-        """A registration fixture that never set the column -- what a summary
-        built before it existed looks like. `_b` defaults a missing attribute
-        to False, the same as every other derived flag, and this is the
-        unanswered state of the three-state pair."""
-        repo = _repo(
-            fetch_session=FAMILY_SESSION,
-            fetch_households={"hh_1": _household(title="The Chen Family")},
-            fetch_attendees_for_session=[_child(cm_id=1000001, first="Olivia", last="Chen", age=10, grade=5)],
-            fetch_family_camp_registrations={"hh_1": _rec()},
-        )
-        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
-
-        assert roster.parties[0].flags.opt_out_vip is False
 
     @pytest.mark.asyncio
     async def test_has_infant_reaches_the_roster(self) -> None:

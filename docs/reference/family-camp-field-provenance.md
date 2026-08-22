@@ -191,14 +191,15 @@ Two corrections that have both bitten already:
 >   *"No, I am only able to attend with this accommodation in place"*. **Gated on the
 >   ACCOMMODATION boolean (274057)**, not the bathroom one.
 >
->   **This ONE answer becomes TWO PocketBase columns, and they are poles, not independent
->   facts** (`family_camp_derived.go`'s 256927 switch arm + the kindred#1874 finalization):
->   answered *Yes* → `opt_out_vip = true` (the need is a warning — they'll come anyway);
->   answered *No* → `accommodation_is_mandatory = true` (a blocker); unanswered → both false
->   (soft). They are mutually exclusive by construction — when siblings conflict, the
->   blocker wins and `opt_out_vip` is cleared (fail-safe, ~3 households/year). Reading
->   either column as a field of its own, rather than as one pole of this answer, is the
->   misread this paragraph exists to prevent.
+>   **This answer is ONE stored boolean — `accommodation_is_mandatory`, its No pole**
+>   (owner ruling 2026-08-22): answered *No* → true (a blocker — "must have the
+>   accommodation or they cancel"); answered *Yes* or unanswered → false (soft). A blocker
+>   anywhere in the household wins structurally, since only the No pole is OR'd.
+>   *History, so nobody re-derives it:* the original derived-tables work (#91) also stored
+>   the Yes pole as `opt_out_vip`; #1878 added the explicit blocker column after
+>   kindred#1874 showed that reading the Yes pole's OR as a blocker inverts a sibling's
+>   "cannot attend" into "will cope" (~3 households/year), and the vestigial Yes-pole
+>   column was retired by the same PR that first tried to surface it (#2535).
 >
 > **4. The share gate's three options, verbatim** — `FAM CAMP-Share Cabins` (240877) is a
 > pick-one radio, not the four-checkbox `FAM CAMP-Shared Cabin` (263379):
