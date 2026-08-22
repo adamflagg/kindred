@@ -3025,6 +3025,19 @@ class LodgingRosterService:
             # FREE beds, not whole cabins. `free[...]` is None on the uncovered
             # majority (no occupancy at all), where the whole capacity is the
             # right answer -- see `free_family_beds`'s three returns.
+            #
+            # The `0` arm of that contract cannot currently arrive HERE: `available`
+            # is already filtered to `u.is_family_available`, and
+            # `_resolve_family_availability` closes a unit (excludes it from
+            # `available`) whenever its own `free` came back `0` -- both read the
+            # same `free` from the same loop. So `f is not None` is live only for
+            # positive remainders on this call site today; the `0` branch is
+            # unreachable dead code for now, kept for CONTRACT FIDELITY with
+            # `free_family_beds` rather than as live defence. It stops being
+            # unreachable the moment anything sums over a wider set than
+            # `available` -- e.g. a future total across ALL bookable units rather
+            # than only the open ones -- so removing the guard would be removing a
+            # correctness fix that just has no test today.
             beds_family_available=sum(
                 f if (f := free_beds_by_unit.get(u.unit_id)) is not None else s
                 for u in available

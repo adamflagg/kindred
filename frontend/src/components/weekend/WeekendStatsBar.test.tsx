@@ -91,9 +91,20 @@ describe('WeekendStatsBar', () => {
     // Struck 2026-08-21 (kindred#2503). Its tooltip said write-ins were
     // "excluded from family spaces", which stopped being true the moment a
     // sized write-in left the cabin available. The owner ruled the chip is not
-    // wanted rather than reworded. `units_staff_housing`'s chip beside it is
-    // untouched -- staff housing is a different fact with a different remedy,
-    // which is why the two were split in the first place.
+    // wanted rather than reworded.
+    //
+    // This only pins what it can: the rendered bar carries no "write-ins"
+    // text, and `units_staff_housing`'s chip beside it -- a different fact
+    // with a different remedy, which is why the two were split in the first
+    // place -- is untouched. It does NOT prove restoring the deleted chip
+    // code would fail here: this fixture no longer sets `units_reserved`, so
+    // a reintroduced `counts.units_reserved ?? 0` would read `0` and stay
+    // silent. The real guard against that regression is the generated type:
+    // `units_reserved` is gone from `types.gen.ts` (RosterCounts, the type
+    // `RosterCountSummary` aliases) entirely, so restoring the chip's
+    // `counts.units_reserved` read is a compile error under `tsc --noEmit`
+    // -- caught in both pre-push and CI -- not a silent regression a unit
+    // test would need to catch instead.
     render(
       <WeekendStatsBar
         counts={counts({ units_staff_housing: 3 })}
