@@ -33,14 +33,17 @@ export default function SessionLastUploadChip({ sessionCmId, agSessionCmIds, ses
           </span>
         )}
       </button>
-      {open && (
-        <SessionUploadChangesModal
-          runId={runId}
-          sessionCmIds={cmIds}
-          sessionName={sessionName}
-          onClose={() => setOpen(false)}
-        />
-      )}
+      {/* Always mounted once session+runId resolve (kindred#2529): the old
+          `{open && ...}` gate unmounted the dialog on the frame the close
+          fired, so Modal's exit fade never played. The dialog's query gates
+          on isOpen, so mounted-closed it fetches nothing. */}
+      <SessionUploadChangesModal
+        isOpen={open}
+        runId={runId}
+        sessionCmIds={cmIds}
+        sessionName={sessionName}
+        onClose={() => setOpen(false)}
+      />
     </>
   )
 }

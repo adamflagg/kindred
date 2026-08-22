@@ -535,24 +535,67 @@ describe('LodgingUnitsPanel — the editor opens in a modal', () => {
   })
 
   it('closes on Cancel, returning to the list', async () => {
+    // REWRITE for kindred#2529, not an adaptation: this test used to assert
+    // the dialog was gone synchronously, which pinned the pre-#2530 vanish.
+    // The dialog now outlives the close by Modal's leave transition, so gone
+    // is an eventually — the linger itself is pinned by the exit-fade test
+    // below.
     const user = userEvent.setup()
     await renderPanel()
 
     await user.click(screen.getByRole('button', { name: 'Edit Cabin A' }))
     await user.click(screen.getByRole('button', { name: 'Cancel' }))
 
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
     expect(screen.getByText('Cabin A')).toBeInTheDocument()
   })
 
+  it('keeps the editor painted through the exit fade after Cancel (kindred#2529)', async () => {
+    // The exit-fade pin. `{editing !== null && <Modal>}` used to unmount the
+    // dialog in the same frame Cancel fired; `editing` is now a retained
+    // snapshot and a separate flag drives isOpen, so the DOM must outlive
+    // the close, then go.
+    const user = userEvent.setup()
+    await renderPanel()
+
+    await user.click(screen.getByRole('button', { name: 'Edit Cabin A' }))
+    expect(screen.getByLabelText('Name')).toHaveValue('Cabin A')
+
+    await user.click(screen.getByRole('button', { name: 'Cancel' }))
+    // Still painted on the frame the close fires...
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    // ...and gone once the leave completes.
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  })
+
+  it('moves focus into the form when the SAME unit is reopened after a close (kindred#2529)', async () => {
+    // With `editing` retained across the close, the focus effect can no
+    // longer key on `editing` changing — reopening the same unit leaves it
+    // unchanged. The effect keys on the open flag's rising edge instead;
+    // this fails if that wiring regresses to the old dependency.
+    const user = userEvent.setup()
+    await renderPanel()
+
+    await user.click(screen.getByRole('button', { name: 'Edit Cabin A' }))
+    await waitFor(() => expect(screen.getByLabelText('Name')).toHaveFocus())
+
+    await user.click(screen.getByRole('button', { name: 'Cancel' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+
+    await user.click(screen.getByRole('button', { name: 'Edit Cabin A' }))
+    await waitFor(() => expect(screen.getByLabelText('Name')).toHaveFocus())
+  })
+
   it('closes on Escape', async () => {
+    // REWRITE for kindred#2529 — same synchronous-gone assertion as Cancel
+    // above; see that test's comment.
     const user = userEvent.setup()
     await renderPanel()
 
     await user.click(screen.getByRole('button', { name: 'Edit Cabin A' }))
     await user.keyboard('{Escape}')
 
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
   })
 })
 

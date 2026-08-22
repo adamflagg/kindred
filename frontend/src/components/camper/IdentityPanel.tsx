@@ -56,7 +56,17 @@ export function IdentityPanel({
 }: IdentityPanelProps) {
   const [isExpanded, setIsExpanded] = useState(defaultExpanded)
   const viewingYear = useYear()
+  // `openKind` is a RETAINED SNAPSHOT, not the open flag (kindred#2529) —
+  // same shape as CamperCohortsSection: closing clears only `drillOpen`, so
+  // the drill-down stays mounted (and its content stays renderable) through
+  // Modal's 150ms leave transition instead of vanishing in one frame.
   const [openKind, setOpenKind] = useState<CohortKind | null>(null)
+  const [drillOpen, setDrillOpen] = useState(false)
+
+  const openCohort = (kind: CohortKind) => {
+    setOpenKind(kind)
+    setDrillOpen(true)
+  }
 
   const personCmId = cohortContext?.personCmId ?? null
   const sessionCmId = cohortContext?.sessionCmId ?? 0
@@ -151,7 +161,7 @@ export function IdentityPanel({
               subValue={`${formatGradeOrdinal(camper.grade)} Grade`}
               cohortKind="school"
               cohortCount={cohortContext ? (cohorts?.school?.count ?? 0) : 0}
-              onOpenCohort={() => setOpenKind('school')}
+              onOpenCohort={() => openCohort('school')}
             />
             <CohortField
               icon={MapPin}
@@ -159,7 +169,7 @@ export function IdentityPanel({
               value={location ?? 'Not specified'}
               cohortKind="city"
               cohortCount={cohortContext ? (cohorts?.city?.count ?? 0) : 0}
-              onOpenCohort={() => setOpenKind('city')}
+              onOpenCohort={() => openCohort('city')}
             />
             <CohortField
               icon={Building2}
@@ -167,7 +177,7 @@ export function IdentityPanel({
               value={congregation ?? 'Not provided'}
               cohortKind="congregation"
               cohortCount={cohortContext ? (cohorts?.congregation?.count ?? 0) : 0}
-              onOpenCohort={() => setOpenKind('congregation')}
+              onOpenCohort={() => openCohort('congregation')}
             />
           </div>
         </div>
@@ -175,7 +185,7 @@ export function IdentityPanel({
 
       {openKind && openEntry && cohorts && cohortContext && (
         <CohortDrillDownModal
-          open
+          open={drillOpen}
           kind={openKind}
           label={openEntry.label}
           selfDisplayName={cohortContext.selfDisplayName}
@@ -184,7 +194,7 @@ export function IdentityPanel({
           requestRelations={relations}
           bunkByPerson={bunkByPerson}
           reserveSidePanel={false}
-          onClose={() => setOpenKind(null)}
+          onClose={() => setDrillOpen(false)}
         />
       )}
     </div>

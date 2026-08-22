@@ -9,6 +9,8 @@ import {
 import { queryKeys } from '../../utils/queryKeys'
 
 interface Props {
+  /** Always-mounted by the chip (kindred#2529) so the exit fade can play. */
+  isOpen: boolean
   runId: string
   sessionCmIds: number[]
   sessionName: string
@@ -23,6 +25,7 @@ function isReview(r: UploadChangeRow): boolean {
 }
 
 export default function SessionUploadChangesModal({
+  isOpen,
   runId,
   sessionCmIds,
   sessionName,
@@ -37,7 +40,10 @@ export default function SessionUploadChangesModal({
   } = useQuery({
     queryKey: queryKeys.sessionUploadChanges(runId, sessionCmIds),
     queryFn: () => fetchSessionUploadChanges(runId, sessionCmIds, fetchWithAuth),
-    enabled: !isAuthLoading,
+    // isOpen gates the fetch because this dialog is now mounted for the whole
+    // life of its chip (kindred#2529) — without it, every session chip on the
+    // page would fetch its upload changes on mount, opened or not.
+    enabled: isOpen && !isAuthLoading,
   })
 
   const byCamper = new Map<number, { name: string; rows: UploadChangeRow[] }>()
@@ -57,7 +63,13 @@ export default function SessionUploadChangesModal({
   const isEmpty = !isLoading && !isError && groups.length === 0
 
   return (
-    <Modal isOpen onClose={onClose} title={`What's new — ${sessionName}`} size="md" scrollable>
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title={`What's new — ${sessionName}`}
+      size="md"
+      scrollable
+    >
       {isLoading && (
         <div className="text-muted-foreground flex items-center justify-center gap-2 py-12">
           <Loader2 className="h-4 w-4 animate-spin" />

@@ -356,6 +356,37 @@ describe('CamperCohortsSection', () => {
       expect(await screen.findByText(/Same city: Springfield/)).toBeInTheDocument()
     })
 
+    it('keeps the drilldown painted through the exit fade after close (kindred#2529)', async () => {
+      // The exit-fade pin. `onClose` used to null `openKind`, which unmounted
+      // the modal in the same frame — the Transition #2530 gave Modal never got
+      // to play its 150ms leave. The parent now keeps the cohort snapshot and
+      // drives a separate open flag, so the DOM must outlive the close, then go.
+      mockUseCamperCohorts.mockReturnValue({
+        cohorts: cohorts({
+          school: {
+            label: 'Riverside Elementary',
+            count: 1,
+            attendees: [matchedAttendee(1000002, 'Liam')],
+          },
+        }),
+        isLoading: false,
+      })
+
+      render(<CamperCohortsSection {...defaultProps} />)
+
+      fireEvent.click(await screen.findByRole('button', { name: /Also from Riverside Elementary/ }))
+      expect(await screen.findByText(/Same school: Riverside Elementary/)).toBeInTheDocument()
+
+      fireEvent.click(screen.getByRole('button', { name: /close/i }))
+      // Still painted on the frame the close fires...
+      expect(screen.getByText(/Same school: Riverside Elementary/)).toBeInTheDocument()
+      // ...and gone once the leave completes (jsdom runs it on its own frame
+      // scheduling — never the declared 150ms; do not assert time).
+      await waitFor(() => {
+        expect(screen.queryByText(/Same school: Riverside Elementary/)).not.toBeInTheDocument()
+      })
+    })
+
     it('passes requestRelations from useCohortRequestRelations into the modal', async () => {
       const relations = new Map<number, Rel>([[1000002, { type: 'bunk_with', mutual: false }]])
       mockUseCohortRequestRelations.mockReturnValue({ relations, isLoading: false })

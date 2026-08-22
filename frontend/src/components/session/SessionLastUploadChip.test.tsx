@@ -1,9 +1,13 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, it, expect, vi } from 'vitest'
 
 vi.mock('../../hooks/session/useLastUploadSummary', () => ({ useLastUploadSummary: vi.fn() }))
 vi.mock('./SessionUploadChangesModal', () => ({
-  default: () => <div data-testid="changes-modal" />,
+  // Exposes isOpen so the always-mounted pin below can see the chip's wiring
+  // without rendering the real dialog (which would need a QueryClient).
+  default: ({ isOpen }: { isOpen: boolean }) => (
+    <div data-testid="changes-modal" data-open={String(isOpen)} />
+  ),
 }))
 import { useLastUploadSummary } from '../../hooks/session/useLastUploadSummary'
 import SessionLastUploadChip from './SessionLastUploadChip'
@@ -47,6 +51,26 @@ describe('SessionLastUploadChip', () => {
     render(<SessionLastUploadChip sessionCmId={1} agSessionCmIds={[]} sessionName="Session 2" />)
     expect(screen.getByText(/14 new/)).toBeInTheDocument()
     expect(screen.queryByText(/review/i)).not.toBeInTheDocument()
+  })
+
+  it('mounts the modal closed and drives isOpen from the chip (kindred#2529)', () => {
+    // The chip used to gate the dialog with `{open && ...}`, unmounting it in
+    // the same frame the close fired — Modal's 150ms exit fade never played.
+    // The dialog is now always rendered (once session+runId resolve) and the
+    // chip drives its isOpen prop.
+    set({
+      runId: 'r1',
+      finishedAt: 't',
+      global: null,
+      session: { total: 14, autoMatched: 14, needReview: 0 },
+    })
+    render(<SessionLastUploadChip sessionCmId={1} agSessionCmIds={[]} sessionName="Session 2" />)
+
+    const stub = screen.getByTestId('changes-modal')
+    expect(stub).toHaveAttribute('data-open', 'false')
+
+    fireEvent.click(screen.getByRole('button', { name: /view last upload changes/i }))
+    expect(screen.getByTestId('changes-modal')).toHaveAttribute('data-open', 'true')
   })
 
   it('shows review segment when needReview>0', () => {

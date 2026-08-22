@@ -524,13 +524,19 @@ export default function SessionView() {
       {/* Solver Progress Modal */}
       <SolverProgressModal state={solverProgress.state} onClose={solverProgress.close} />
 
-      {/* #1638 — Solver Diagnostics Modal (infeasibility review) */}
+      {/* #1638 — Solver Diagnostics Modal (infeasibility review). The
+          `diagnostics &&` gate is a retained-snapshot latch (kindred#2529):
+          null until the first reviewable solve, then kept across closes so
+          the mounted dialog can play Modal's 150ms exit fade — nulling the
+          payload here would blank and unmount it on the same frame the close
+          fires. Each reviewable run overwrites the payload, and the modal
+          renders its own empty-state fallback, so retaining the last one is
+          safe. Pinned by SessionView.diagnostics.guard.test.ts. */}
       {diagnostics && (
         <SolverDiagnosticsModal
           isOpen={showDiagnostics}
           onClose={() => {
             setShowDiagnostics(false)
-            setDiagnostics(null)
           }}
           diagnostics={diagnostics}
           sessionCmId={session.cm_id}

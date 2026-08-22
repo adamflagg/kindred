@@ -42,7 +42,19 @@ import { groupUnitsByArea, type UnitSort } from './unitSort'
 export function LodgingUnitsPanel() {
   const queryClient = useQueryClient()
   const { currentYear } = useCurrentYear()
+  // `editing` is a RETAINED SNAPSHOT, not the open flag (kindred#2529): the
+  // editor dialog must stay mounted through Modal's 150ms leave transition
+  // after close, so closing clears only `editorOpen` and the last-edited
+  // record keeps the header renderable through the fade. The form itself
+  // lives inside Modal's children, which <Transition> unmounts once the
+  // leave completes — so no per-field reset is needed here.
   const [editing, setEditing] = useState<LodgingUnitRecord | 'new' | null>(null)
+  const [editorOpen, setEditorOpen] = useState(false)
+
+  const openEditor = (unit: LodgingUnitRecord | 'new') => {
+    setEditing(unit)
+    setEditorOpen(true)
+  }
   const [areasOpen, setAreasOpen] = useState(false)
   const [sort, setSort] = useState<UnitSort>({ field: 'name', desc: false })
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -89,12 +101,12 @@ export function LodgingUnitsPanel() {
    * (the error branch is a message paragraph), so this one flag covers it.
    */
   useEffect(() => {
-    if (editing === null) return
+    if (!editorOpen) return
     formRef.current?.querySelector<HTMLElement>('input, select, textarea')?.focus()
-  }, [editing, areasQuery.isSuccess])
+  }, [editorOpen, editing, areasQuery.isSuccess])
 
   const refresh = () => {
-    setEditing(null)
+    setEditorOpen(false)
     setSelected(new Set())
     invalidateLodgingRegistryQueries(queryClient)
   }
@@ -181,7 +193,7 @@ export function LodgingUnitsPanel() {
           <button
             type="button"
             onClick={() => {
-              setEditing('new')
+              openEditor('new')
             }}
             className={BUTTON_PRIMARY}
           >
@@ -223,9 +235,9 @@ export function LodgingUnitsPanel() {
           two-column grid that `lg` would collapse. */}
       {editing !== null && (
         <Modal
-          isOpen
+          isOpen={editorOpen}
           onClose={() => {
-            setEditing(null)
+            setEditorOpen(false)
           }}
           header={
             /* The forest band from the sessions landing header, same tokens and
@@ -299,7 +311,7 @@ export function LodgingUnitsPanel() {
                   invalidateLodgingRegistryQueries(queryClient)
                 }}
                 onCancel={() => {
-                  setEditing(null)
+                  setEditorOpen(false)
                 }}
               />
             ) : (
@@ -360,7 +372,7 @@ export function LodgingUnitsPanel() {
                     onToggleSelect={(unitId) => {
                       setSelected((s) => toggleIn(s, unitId))
                     }}
-                    onEdit={setEditing}
+                    onEdit={openEditor}
                     onConfirm={(unit) => void handleConfirm([unit.id])}
                     onDeactivate={(unit) => void handleDeactivate(unit)}
                   />

@@ -36,7 +36,14 @@ export function CamperCohortsSection({
 }: CamperCohortsSectionProps) {
   const { cohorts, isLoading } = useCamperCohorts(personCmId, sessionCmId, year)
   const { relations } = useCohortRequestRelations(personCmId, sessionCmId, year)
+  // `openKind` is a RETAINED SNAPSHOT, not the open flag (kindred#2529): the
+  // drill-down must stay mounted through Modal's 150ms leave transition after
+  // close, so closing clears only `drillOpen` and the last-viewed cohort keeps
+  // the content renderable through the fade. The modal is hookless, so a
+  // mounted-closed instance does no work — Modal's <Transition> unmounts its
+  // children while closed.
   const [openKind, setOpenKind] = useState<CohortKind | null>(null)
+  const [drillOpen, setDrillOpen] = useState(false)
 
   // Union of every cohort's matched person ids — feeds the bunk lookup so
   // switching between school/congregation/city tabs reuses the same query.
@@ -71,7 +78,10 @@ export function CamperCohortsSection({
             <button
               key={row.kind}
               type="button"
-              onClick={() => setOpenKind(row.kind)}
+              onClick={() => {
+                setOpenKind(row.kind)
+                setDrillOpen(true)
+              }}
               className="text-muted-foreground hover:bg-muted/50 hover:text-foreground flex w-full items-center gap-1.5 rounded px-1 py-0.5 text-left text-xs transition-colors"
               data-testid="cohort-row"
               data-cohort-kind={row.kind}
@@ -93,7 +103,7 @@ export function CamperCohortsSection({
 
       {openKind && openEntry && (
         <CohortDrillDownModal
-          open
+          open={drillOpen}
           kind={openKind}
           label={openEntry.label}
           selfDisplayName={selfDisplayName}
@@ -101,7 +111,7 @@ export function CamperCohortsSection({
           attendees={openEntry.attendees}
           requestRelations={relations}
           bunkByPerson={bunkByPerson}
-          onClose={() => setOpenKind(null)}
+          onClose={() => setDrillOpen(false)}
         />
       )}
     </section>
