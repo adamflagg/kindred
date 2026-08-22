@@ -31,7 +31,12 @@ import { NEUTRAL, hasNoRoom, resolveDragFit, type DragCapacity, type DragFit } f
 import { resolveRingPrecedence } from './ringPrecedence'
 import { effectiveSleeps } from './rosterAttention'
 import { partyKey } from './partyKey'
-import { writeInEntries, type UnitAvailabilityWrite } from './writeIn'
+import {
+  coveringWriteIns,
+  writeInDemand,
+  writeInEntries,
+  type UnitAvailabilityWrite,
+} from './writeIn'
 import { WriteInCard } from './WriteInCard'
 
 /**
@@ -413,10 +418,37 @@ const LodgingUnitCardInner = memo(function LodgingUnitCardInner({
    * rooms it needs is not over anything.
    */
   const { occupants, spanWidth } = slotOccupancy(slot, units)
+
+  /*
+   * What the write-ins covering THIS card take from it (kindred#2503) —
+   * `writeInDemand`'s own doc in `writeIn.ts` carries the full arithmetic;
+   * this card is one of its readers, not a second copy of the rule.
+   *
+   * `writeInDemandKnown` is NOT the same question as `writeInKnown` used by
+   * `dragCapacity` below. `writeInDemand` answers "is write-in CONSUMPTION a
+   * fact", and that is vacuously true when nothing covers this card at all —
+   * it says nothing about whether THIS card's own capacity has ever been
+   * measured. `writeInDemand(null, [])` still answers `known: true`, so
+   * `writeInKnown` folds `capacityKnown` back in explicitly rather than
+   * trusting `writeInDemandKnown` alone — see `dragCapacity`'s comment.
+   */
+  const {
+    consumed: writeInConsumed,
+    sized: writeInPeople,
+    known: writeInDemandKnown,
+  } = writeInDemand(capacity, coveringWriteIns(unit))
+  const writeInKnown = capacityKnown && writeInDemandKnown
+
   // `capacity` rather than `capacity ?? 0`: TypeScript narrows it through
   // `capacityKnown`, which is an aliased `!== null` check, so the fallback is
   // unreachable and eslint's type-aware rule says so.
-  const overCapacity = capacityKnown && spanWidth === 0 && occupants > capacity
+  //
+  // Compared against `occupants + writeInPeople`, not `occupants` alone,
+  // since kindred#2503: `sized` (`writeInPeople`) is deliberately UNCAPPED
+  // (`writeInDemand`'s doc) precisely so a hand-typed write-in count above
+  // the room's own beds drives this same red figure, the way an over-full
+  // placement always has.
+  const overCapacity = capacityKnown && spanWidth === 0 && occupants + writeInPeople > capacity
   // The "N families" count chip below: a true statement about the CARD
   // regardless of which rooms anyone actually holds, so it stays keyed on
   // the card's whole party count.
@@ -586,25 +618,33 @@ const LodgingUnitCardInner = memo(function LodgingUnitCardInner({
   const openMarkerActive = dashed && !writtenInto && ringState !== 'dropTarget'
 
   /*
-   * The corner figure, and the sentence behind it (kindred#2078).
+   * The corner figure, and the sentence behind it (kindred#2078, kindred#2503).
    *
-   * A write-in with nobody else in the room reports the em dash rather than a
-   * count: it occupies wholesale and has no party size, so any digit here
-   * would assert something nobody recorded. A card carrying BOTH a write-in and
-   * a placement keeps the placement count — that is a real number about real
-   * people, and the card should not go quiet about them.
+   * A write-in with nobody else in the room AND no recorded size reports the
+   * em dash rather than a count: it occupies wholesale, so any digit here
+   * would assert something nobody recorded. A card carrying a placement, a
+   * sized write-in, or both prints the real total — `occupants +
+   * writeInPeople` — because that states people the board actually knows
+   * about.
    *
-   * ⚠️ THAT SECOND CASE IS ROUTINE SINCE kindred#2432 and was a legacy-row
-   * curiosity before it, and the number it prints UNDERSTATES a shared space:
-   * `lodging_write_ins` carries `occupant_name` and `note` and no count, so the
-   * write-in's own party contributes nothing here and the free-bed figure reads
-   * high. Filed as kindred#2439 (optional write-in headcount) and ruled an
-   * optional investigation rather than a blocker — an understated count on a
-   * space staff can share beats a space they could not share at all. Do not
-   * "fix" it by guessing a headcount here.
+   * ⚠️ kindred#2439 (optional write-in headcount) IS CLOSED BY THIS. It used
+   * to be true that the write-in's own party could never contribute here at
+   * all — `lodging_write_ins` carried `occupant_name` and `note` and no
+   * count — which is what made the routine "write-in plus a placement" case
+   * (since kindred#2432) understate a shared space. kindred#2503 gave the row
+   * a `party_size`, so the write-in's own party contributes here whenever
+   * somebody recorded it, and contributes NOTHING when nobody did — which is
+   * the state every one of the 24 production rows is in today, so nothing on
+   * the board moves on day one.
+   *
+   * `writeInPeople` is `writeInDemand`'s `sized`, never `consumed`: the
+   * numerator states RECORDED people only. Never the wholesale fallback (a
+   * headcount nobody wrote down — exactly what the em dash exists to
+   * refuse), and never an ancestor's count (a fact about the house; printing
+   * it on both halves of a split house would spend one party twice).
    */
-  const wholesaleWriteIn = writtenInto && occupants === 0
-  const occupancyFigure = wholesaleWriteIn ? '—' : String(occupants)
+  const wholesaleWriteIn = writtenInto && occupants + writeInPeople === 0
+  const occupancyFigure = wholesaleWriteIn ? '—' : String(occupants + writeInPeople)
 
   /*
    * kindred#2212 stage 1: why headcount and bed count can disagree.
@@ -628,6 +668,12 @@ const LodgingUnitCardInner = memo(function LodgingUnitCardInner({
    * When `party_size` is unreported (0/null), `partySize` already falls back
    * to `partyHeadcount` for that party, so it contributes nothing to the
    * difference here either -- no separate guard needed.
+   *
+   * STILL `occupants`, never `occupants + writeInPeople` (kindred#2503).
+   * `totalHeadcount` sums only `slot.parties` — a write-in is not a party and
+   * is never in it — so subtracting the write-in-inclusive total here would
+   * charge a written-in person's own recorded size against itself as a
+   * phantom infant exemption.
    */
   const totalHeadcount = slot.parties.reduce((sum, p) => sum + partyHeadcount(p), 0)
   const exemptedInfants = wholesaleWriteIn ? 0 : totalHeadcount - occupants
@@ -638,13 +684,20 @@ const LodgingUnitCardInner = memo(function LodgingUnitCardInner({
         } exempt from the bed count`
       : ''
 
+  // The sized variant of the ordinary sentence (kindred#2503): a write-in
+  // with a recorded count is not wholesale any more — the branch above only
+  // fires at a total of zero — so it needs its own words rather than
+  // borrowing "occupies the whole room", which would be false the moment the
+  // room has beds left over. Empty (and the sentence unchanged) whenever
+  // nobody recorded a write-in size, which is every card today.
+  const writeInClause = writeInPeople > 0 ? ` · ${String(writeInPeople)} written in` : ''
   const occupancyTooltip = wholesaleWriteIn
     ? capacityKnown
       ? `Written in — occupies the whole room · sleeps ${String(capacity)}`
       : 'Written in — occupies the whole room · capacity not recorded'
     : capacityKnown
-      ? `Sleeps ${String(capacity)} · ${String(occupants)} placed${infantExemptionClause}`
-      : `Capacity not recorded · ${String(occupants)} placed${infantExemptionClause}`
+      ? `Sleeps ${String(capacity)} · ${String(occupants)} placed${writeInClause}${infantExemptionClause}`
+      : `Capacity not recorded · ${String(occupants)} placed${writeInClause}${infantExemptionClause}`
 
   /*
    * Beds the family in flight already holds ON THIS CARD, added back before
@@ -660,26 +713,48 @@ const LodgingUnitCardInner = memo(function LodgingUnitCardInner({
     draggingParty !== null && slot.parties.some((p) => partyKey(p) === partyKey(draggingParty))
   // `capacityKnown` is an aliased `!== null` check that TypeScript narrows
   // through, which is why `capacity` needs no fallback inside it.
+  //
+  // `writeInConsumed` joins `occupants` here (kindred#2503): a write-in's
+  // beds are gone from this card whether or not a family is placed beside
+  // it, and free beds have to pay for them the same way they pay for a
+  // placed party's beds.
   const freeBeds = capacityKnown
-    ? capacity - occupants + (dragOccupiesHere && draggingParty ? partySize(draggingParty) : 0)
+    ? capacity -
+      occupants -
+      writeInConsumed +
+      (dragOccupiesHere && draggingParty ? partySize(draggingParty) : 0)
     : 0
 
   /*
-   * `known` is withheld on THREE conditions, and the third is not obvious.
+   * `known` is withheld on TWO conditions now, not three (kindred#2503).
    *
    * `spanWidth > 0` — the occupant count is an upper bound, not a fact, so a
    * positive claim must not be built on it (see `slotOccupancy`).
    *
-   * `writtenInto` — `slotOccupancy` sums `partySize` over `slot.parties`, and
-   * a write-in is not a party (kindred#2439), so it contributes ZERO and the
-   * cabin reads as wholly free. This card already refuses to call such a room
-   * empty and already prints an em dash rather than a numerator, for the same
-   * reason: it has no count. Letting the match wash fire off that absent count
-   * would put the loudest positive mark on the card on the strength of the one
-   * number the card declines to assert.
+   * `writeInKnown` replaces the old blanket `!writtenInto`. ⚠️ THAT GATE USED
+   * TO SAY A WRITE-IN CONTRIBUTES ZERO, SO THE CABIN READS AS WHOLLY FREE —
+   * that premise is no longer true: `lodging_write_ins` now carries a
+   * `party_size`, and `writeInDemand` (`writeIn.ts`) turns a recorded size
+   * into real bed arithmetic instead of a blanket refusal.
    *
-   * Withholding costs a match the board might have been entitled to draw,
-   * which is the safe direction for a claim.
+   * What survives is the underlying rule, applied per-cover instead of
+   * card-wide: a count that is not a fact supports neither the red figure
+   * nor the match wash. `writeInKnown` is true only once EVERY cover on this
+   * card is a fact — a recorded size, or an ancestor's whole-card claim (the
+   * house was let whole, so a room inside it genuinely has no room of its
+   * own to offer) — and stays false for a wholesale guess about a room that
+   * may still be shared, or for a card where even ONE cover among several is
+   * still unsized: a partly-sized card is a LOWER bound, not a fact, exactly
+   * as a fully-unsized one always was. Withholding costs a match the board
+   * might have been entitled to draw, which is the safe direction for a
+   * claim.
+   *
+   * `writeInKnown` is `capacityKnown && writeInDemandKnown`, not
+   * `writeInDemandKnown` alone — see the comment where it is built, above
+   * `overCapacity`: `writeInDemand`'s own `known` is vacuously true whenever
+   * nothing covers this card, independent of whether THIS card's capacity
+   * has ever been measured, so `capacityKnown` has to be folded back in
+   * explicitly rather than assumed.
    *
    * Built ONCE, and both drag-time capacity marks read it: `resolveDragFit`
    * gates the match on it, and `hasNoRoom` reddens the figure from it. They
@@ -687,7 +762,7 @@ const LodgingUnitCardInner = memo(function LodgingUnitCardInner({
    * to both by hand.
    */
   const dragCapacity: DragCapacity = {
-    known: capacityKnown && spanWidth === 0 && !writtenInto,
+    known: writeInKnown && spanWidth === 0,
     free: freeBeds,
   }
 

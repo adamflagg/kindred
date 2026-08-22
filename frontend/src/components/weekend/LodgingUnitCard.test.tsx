@@ -1557,6 +1557,253 @@ describe('LodgingUnitCard — how full the room is', () => {
     render(<LodgingUnitCard slot={slot({ parties: [party()] })} onOpenParty={vi.fn()} />)
     expect(screen.queryByText(/Spans/)).not.toBeInTheDocument()
   })
+
+  it('marks a room over capacity once its recorded write-in pushes past sleeps (kindred#2503)', () => {
+    // `sized` is deliberately UNCAPPED (`writeInDemand`'s doc) precisely so a
+    // hand-typed write-in count above the room's own beds drives this same
+    // red figure — the numerator has to carry the true recorded figure or the
+    // over-capacity red never fires for it.
+    render(
+      <LodgingUnitCard
+        slot={slot({
+          unit: unit({ sleeps: 3, write_ins: [cover({ party_size: 2 })] }),
+          parties: [party({ party_size: 2 })],
+        })}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.getByTestId('unit-occupancy')).toHaveTextContent('4/3')
+    expect(screen.getByTestId('unit-occupancy')).toHaveClass('text-destructive')
+  })
+})
+
+/**
+ * The corner figure's numerator counts write-in people somebody actually
+ * recorded (kindred#2503), and the two drag-time marks (kindred#2528) follow
+ * the same fact.
+ *
+ * THE NO-DAY-ONE-MOVEMENT GUARD is the first test below. Every one of the 24
+ * production write-in rows is unsized, so `sized` is 0 everywhere today and
+ * every expression in this file has to reduce to exactly what it computed
+ * before this task. If that test reds, the wholesale fallback — or an
+ * ancestor's count — has leaked into the numerator.
+ */
+describe('LodgingUnitCard — the write-in numerator counts recorded people (kindred#2503)', () => {
+  it('still draws an em dash when the only write-in on the card has no recorded size', () => {
+    render(
+      <LodgingUnitCard
+        slot={slot({ unit: unit({ write_ins: [cover({ party_size: null })] }) })}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.getByTestId('unit-occupancy')).toHaveTextContent('—/5')
+  })
+
+  it('prints the recorded size as the numerator', () => {
+    render(
+      <LodgingUnitCard
+        slot={slot({ unit: unit({ write_ins: [cover({ party_size: 2 })] }) })}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.getByTestId('unit-occupancy')).toHaveTextContent('2/5')
+  })
+
+  it('adds a write-in’s recorded people to a placed family’s count', () => {
+    render(
+      <LodgingUnitCard
+        slot={slot({
+          unit: unit({ sleeps: 15, write_ins: [cover({ party_size: 2 })] }),
+          parties: [party({ party_size: 4 })],
+        })}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.getByTestId('unit-occupancy')).toHaveTextContent('6/15')
+  })
+
+  it('sums a descendant cover alongside the room’s own recorded size', () => {
+    render(
+      <LodgingUnitCard
+        slot={slot({
+          unit: unit({
+            sleeps: 8,
+            write_ins: [
+              cover({ party_size: 1 }),
+              cover({
+                unit_id: 'u4',
+                unit_code: 'cedar-4',
+                unit_name: 'Cedar 4',
+                relation: 'descendant',
+                party_size: 3,
+              }),
+            ],
+          }),
+        })}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.getByTestId('unit-occupancy')).toHaveTextContent('4/8')
+  })
+
+  it('excludes an ancestor cover’s size — it is a fact about the house, not this room', () => {
+    // Printing the house's count on this room too would spend one party twice
+    // across a split house (Wawona).
+    render(
+      <LodgingUnitCard
+        slot={slot({
+          unit: unit({
+            write_ins: [cover({ relation: 'ancestor', party_size: 4, unit_sleeps: 7 })],
+          }),
+        })}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.getByTestId('unit-occupancy')).toHaveTextContent('—/5')
+  })
+
+  it('mentions the recorded write-in count in the tooltip alongside placed families', () => {
+    render(
+      <LodgingUnitCard
+        slot={slot({
+          unit: unit({ sleeps: 15, write_ins: [cover({ party_size: 2 })] }),
+          parties: [party({ party_size: 4 })],
+        })}
+        onOpenParty={vi.fn()}
+      />
+    )
+    const occupancy = screen.getByTestId('unit-occupancy')
+    fireEvent.focus(occupancy)
+    expect(screen.getByRole('tooltip')).toHaveTextContent('Sleeps 15 · 4 placed · 2 written in')
+  })
+
+  it('leaves the wholesale tooltip sentence alone when nobody recorded a size', () => {
+    render(
+      <LodgingUnitCard
+        slot={slot({ unit: unit({ write_ins: [cover({ party_size: null })] }) })}
+        onOpenParty={vi.fn()}
+      />
+    )
+    const occupancy = screen.getByTestId('unit-occupancy')
+    fireEvent.focus(occupancy)
+    expect(screen.getByRole('tooltip')).toHaveTextContent(
+      'Written in — occupies the whole room · sleeps 5'
+    )
+  })
+
+  it('keeps the infant exemption keyed to placed occupants, not the write-in-inclusive total', () => {
+    // `totalHeadcount` sums only `slot.parties` (kindred#2212) — a write-in is
+    // not a party and is never in it, so the exemption must not be computed
+    // against `occupants + sized` or a written-in person would be double
+    // counted as a phantom infant exemption.
+    render(
+      <LodgingUnitCard
+        slot={slot({
+          unit: unit({ sleeps: 15, write_ins: [cover({ party_size: 2 })] }),
+          parties: [
+            party({
+              adults: [{ adult_number: 1, display_name: 'Emma Johnson', relationship: 'Mother' }],
+              children: [
+                { person_cm_id: 9001, display_name: 'Noah Johnson', age: 8, grade: 3 },
+                { person_cm_id: 9002, display_name: 'Ivy Johnson', age: 0.11, grade: 0 },
+              ],
+              party_size: 2,
+            }),
+          ],
+        })}
+        onOpenParty={vi.fn()}
+      />
+    )
+    const occupancy = screen.getByTestId('unit-occupancy')
+    fireEvent.focus(occupancy)
+    expect(screen.getByRole('tooltip')).toHaveTextContent(
+      'Sleeps 15 · 2 placed · 2 written in · an infant is exempt from the bed count'
+    )
+  })
+})
+
+describe('LodgingUnitCard — drag-time capacity follows the write-in count (kindred#2503, kindred#2528)', () => {
+  it('withholds the drag-time capacity claim while any cover on the card is unsized', () => {
+    // A partly-sized card is a LOWER bound, not a fact — kindred#2528's rule
+    // that a count which is not a fact supports neither the red figure nor
+    // the match wash is unchanged by sizing some but not all of the covers.
+    render(
+      <LodgingUnitCard
+        slot={slot({
+          unit: unit({
+            sleeps: 8,
+            write_ins: [
+              cover({ party_size: 2 }),
+              cover({ unit_id: 'u5', party_size: null, unit_sleeps: 3 }),
+            ],
+          }),
+        })}
+        draggingParty={party({ party_size: 1 })}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.getByTestId('unit-occupancy')).not.toHaveClass('text-destructive')
+  })
+
+  it('reddens the figure once a sized write-in leaves too few beds for the family in flight', () => {
+    render(
+      <LodgingUnitCard
+        slot={slot({ unit: unit({ sleeps: 4, write_ins: [cover({ party_size: 2 })] }) })}
+        draggingParty={party({ party_size: 3 })}
+        onOpenParty={vi.fn()}
+      />
+    )
+    // 4 beds, 2 already recorded as written in, 2 free — the 3-person family
+    // in flight does not fit.
+    expect(screen.getByTestId('unit-occupancy')).toHaveClass('text-destructive')
+  })
+
+  it('treats an ancestor cover as a KNOWN whole-card claim, even though it is unreachable in production today', () => {
+    // Unreachable because an ancestor cover requires a written-into container
+    // that is not itself combined, and the snapshot's only written-into
+    // container is combined — but the rule must hold in isolation: an
+    // ancestor's whole-card claim IS a fact (the house is let whole), so
+    // `known` does not wait on any other cover being sized.
+    render(
+      <LodgingUnitCard
+        slot={slot({
+          unit: unit({
+            sleeps: 4,
+            write_ins: [cover({ relation: 'ancestor', party_size: 4, unit_sleeps: 4 })],
+          }),
+        })}
+        draggingParty={party({ party_size: 1 })}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.getByTestId('unit-occupancy')).toHaveClass('text-destructive')
+  })
+
+  it('still withholds the claim on a written-into room nobody has measured', () => {
+    render(
+      <LodgingUnitCard
+        slot={slot({ unit: unit({ sleeps: null, write_ins: [cover({ party_size: 2 })] }) })}
+        draggingParty={party({ party_size: 1 })}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.getByTestId('unit-occupancy')).not.toHaveClass('text-destructive')
+  })
+
+  it('still withholds the claim on an unmeasured room with no write-in at all', () => {
+    // THE REGRESSION THIS TASK RISKS MOST: `writeInDemand([])`'s own `known`
+    // is vacuously true with no covers, independent of capacity. Folding it
+    // into `dragCapacity.known` without ALSO gating on `capacityKnown` would
+    // read an unmeasured, uncovered room as a known zero free beds.
+    render(
+      <LodgingUnitCard
+        slot={slot({ unit: unit({ sleeps: null }) })}
+        draggingParty={party({ party_size: 1 })}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.getByTestId('unit-occupancy')).not.toHaveClass('text-destructive')
+  })
 })
 
 describe('LodgingUnitCard — the occupant well', () => {
