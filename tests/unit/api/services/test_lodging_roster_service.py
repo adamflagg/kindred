@@ -6047,8 +6047,10 @@ class TestWriteInsResolveFromTheirOwnTable:
         `beds_family_available` are the numbers staff read.
 
         They are derived from `is_family_available`, which is derived from
-        `family_available_override` -- so a write-in that stopped spelling
-        itself there would silently return a closed cabin to the open count and
+        `free` -- `family_available_override` has answered the staff<->family
+        role alone since kindred#2382, and a write-in reaches this count
+        through `free` instead. So a write-in that stopped spelling itself
+        into `free` would silently return a closed cabin to the open count and
         to `beds_family_available`. This write-in carries no `party_size`, so
         it occupies wholesale (the schema's documented `None` state) rather
         than freeing any beds.

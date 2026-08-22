@@ -7331,7 +7331,7 @@ export type WeeklyDataPoint = {
 /**
  * WriteInCover
  *
- * The write-in that closes a space, wherever in the tree it was recorded.
+ * The write-in that covers a space, wherever in the tree it was recorded.
  *
  * A write-in names ONE unit, but it is a fact about a physical space, and a
  * building's space contains its rooms'. The board draws whichever level the

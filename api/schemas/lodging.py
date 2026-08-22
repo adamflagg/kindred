@@ -176,7 +176,7 @@ class WeekendSessionListResponse(BaseModel):
 
 
 class WriteInCover(BaseModel):
-    """The write-in that closes a space, wherever in the tree it was recorded.
+    """The write-in that covers a space, wherever in the tree it was recorded.
 
     A write-in names ONE unit, but it is a fact about a physical space, and a
     building's space contains its rooms'. The board draws whichever level the
@@ -430,7 +430,7 @@ class LodgingUnitSummary(BaseModel):
     # Its rule is `is_family_available` in api/services/lodging_rules.py, and
     # that is the only place the two are combined.
     is_family_available: bool = False
-    # EVERY write-in that closes this space, resolved through the unit tree --
+    # EVERY write-in that covers this space, resolved through the unit tree --
     # this unit's own row, else the nearest ancestor's, else the nearest
     # written-into descendant on each branch beneath it. Empty means no
     # write-in covers it.
