@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Loader2 } from 'lucide-react'
 import Modal from '../ui/Modal'
@@ -41,24 +42,29 @@ export default function SessionUploadChangesModal({
     queryKey: queryKeys.sessionUploadChanges(runId, sessionCmIds),
     queryFn: () => fetchSessionUploadChanges(runId, sessionCmIds, fetchWithAuth),
     // isOpen gates the fetch because this dialog is now mounted for the whole
-    // life of its chip (kindred#2529) — without it, every session chip on the
-    // page would fetch its upload changes on mount, opened or not.
+    // life of its chip (kindred#2529) — without it, the chip's page would
+    // fetch upload changes on mount whether the dialog was ever opened.
     enabled: isOpen && !isAuthLoading,
   })
 
-  const byCamper = new Map<number, { name: string; rows: UploadChangeRow[] }>()
-  for (const r of rows) {
-    const g = byCamper.get(r.requester_cm_id) ?? { name: r.requester_name, rows: [] }
-    g.rows.push(r)
-    byCamper.set(r.requester_cm_id, g)
-  }
-  const groups = [...byCamper.entries()]
-    .map(([cmId, g]) => ({ cmId, ...g }))
-    .sort((a, b) => {
-      const ar = a.rows.some(isReview) ? 0 : 1
-      const br = b.rows.some(isReview) ? 0 : 1
-      return ar - br
-    })
+  // Memoized because this component is now mounted for the life of its chip
+  // (kindred#2529) — without it the grouping re-ran on every parent render,
+  // closed or not (frontend/CLAUDE.md, "Derived values in page components").
+  const groups = useMemo(() => {
+    const byCamper = new Map<number, { name: string; rows: UploadChangeRow[] }>()
+    for (const r of rows) {
+      const g = byCamper.get(r.requester_cm_id) ?? { name: r.requester_name, rows: [] }
+      g.rows.push(r)
+      byCamper.set(r.requester_cm_id, g)
+    }
+    return [...byCamper.entries()]
+      .map(([cmId, g]) => ({ cmId, ...g }))
+      .sort((a, b) => {
+        const ar = a.rows.some(isReview) ? 0 : 1
+        const br = b.rows.some(isReview) ? 0 : 1
+        return ar - br
+      })
+  }, [rows])
 
   const isEmpty = !isLoading && !isError && groups.length === 0
 

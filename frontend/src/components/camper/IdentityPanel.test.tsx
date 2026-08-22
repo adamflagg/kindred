@@ -15,6 +15,7 @@ import type { ReactNode } from 'react'
 import { CurrentYearContext, type CurrentYearContextType } from '../../hooks/useCurrentYear'
 import { IdentityPanel } from './IdentityPanel'
 import type { Camper } from '../../types/app-types'
+import { cohortsFixture, matchedAttendee } from '../../test/cohortFixtures'
 
 const mockUseCamperCohorts = vi.fn()
 vi.mock('../../hooks/useCamperCohorts', () => ({
@@ -72,27 +73,13 @@ const cohortContext = {
 describe('IdentityPanel cohort drill-down exit fade (kindred#2529)', () => {
   it('keeps the drilldown painted through the exit fade after close', async () => {
     mockUseCamperCohorts.mockReturnValue({
-      cohorts: {
+      cohorts: cohortsFixture({
         school: {
           label: 'Riverside Elementary',
           count: 1,
-          attendees: [
-            {
-              attendeeId: 'a2',
-              personCmId: 1000002,
-              firstName: 'Liam',
-              lastName: 'Garcia',
-              preferredName: null,
-              grade: 6,
-              gender: 'M',
-            },
-          ],
+          attendees: [matchedAttendee(1000002, 'Liam')],
         },
-        congregation: null,
-        city: null,
-        sessionType: 'main',
-        allGenders: false,
-      },
+      }),
       isLoading: false,
     })
 

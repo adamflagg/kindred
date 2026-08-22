@@ -9,30 +9,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '../test/testUtils'
 import { CamperCohortsSection } from './CamperCohortsSection'
-import type { CamperCohorts, CohortEntry } from '../hooks/useCamperCohorts'
-
-// Helper: build a CohortEntry with empty attendees array (cohort attendees
-// are tested separately in useCamperCohorts.test.ts).
-function entry(label: string, count: number): CohortEntry {
-  return { label, count, attendees: [] }
-}
-
-// Helper: build a CamperCohorts fixture with default sessionType / allGenders.
-function cohorts(parts: {
-  school?: CohortEntry | null
-  congregation?: CohortEntry | null
-  city?: CohortEntry | null
-  sessionType?: string
-  allGenders?: boolean
-}): CamperCohorts {
-  return {
-    school: parts.school ?? null,
-    congregation: parts.congregation ?? null,
-    city: parts.city ?? null,
-    sessionType: parts.sessionType ?? 'main',
-    allGenders: parts.allGenders ?? false,
-  }
-}
+import {
+  cohortEntry as entry,
+  cohortsFixture as cohorts,
+  matchedAttendee,
+} from '../test/cohortFixtures'
 
 // Mock the hooks — test the component in isolation
 const mockUseCamperCohorts = vi.fn()
@@ -286,18 +267,6 @@ describe('CamperCohortsSection', () => {
   })
 
   describe('drilldown click behavior', () => {
-    function matchedAttendee(personCmId: number, firstName: string) {
-      return {
-        attendeeId: `a${personCmId}`,
-        personCmId,
-        firstName,
-        lastName: 'Garcia',
-        preferredName: null,
-        grade: 7,
-        gender: 'M',
-      }
-    }
-
     it('clicking a cohort row opens the drilldown modal scoped to that label', async () => {
       mockUseCamperCohorts.mockReturnValue({
         cohorts: cohorts({

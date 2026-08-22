@@ -73,6 +73,34 @@ describe('SessionLastUploadChip', () => {
     expect(screen.getByTestId('changes-modal')).toHaveAttribute('data-open', 'true')
   })
 
+  it('does not re-pop the dialog when the upload summary transiently disappears (kindred#2529)', () => {
+    // `open` used to survive the `if (!session || !runId) return null` branch,
+    // so a transient summary loss (refetch gap, weekend switch) left it true —
+    // and when data returned, the always-mounted dialog re-opened itself with
+    // no click, via Modal's `appear`. The chip now corrects `open` at render
+    // time on that branch.
+    const good = {
+      runId: 'r1',
+      finishedAt: 't',
+      global: null,
+      session: { total: 14, autoMatched: 14, needReview: 0 },
+    }
+    set(good)
+    const { rerender, container } = render(
+      <SessionLastUploadChip sessionCmId={1} agSessionCmIds={[]} sessionName="Session 2" />
+    )
+    fireEvent.click(screen.getByRole('button', { name: /view last upload changes/i }))
+    expect(screen.getByTestId('changes-modal')).toHaveAttribute('data-open', 'true')
+
+    set({ ...good, session: null })
+    rerender(<SessionLastUploadChip sessionCmId={1} agSessionCmIds={[]} sessionName="Session 2" />)
+    expect(container).toBeEmptyDOMElement()
+
+    set(good)
+    rerender(<SessionLastUploadChip sessionCmId={1} agSessionCmIds={[]} sessionName="Session 2" />)
+    expect(screen.getByTestId('changes-modal')).toHaveAttribute('data-open', 'false')
+  })
+
   it('shows review segment when needReview>0', () => {
     set({
       runId: 'r1',

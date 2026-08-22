@@ -22,16 +22,23 @@ import { describe, expect, it } from 'vitest'
 const src = readFileSync(resolve(__dirname, './SessionView.tsx'), 'utf-8')
 
 describe('SessionView solver-diagnostics close path (kindred#2529)', () => {
-  // The render block from the modal's JSX tag to the end of its props.
-  const start = src.indexOf('<SolverDiagnosticsModal')
-  const block = src.slice(start, src.indexOf('/>', start))
+  // The render block: from the retained-snapshot gate through the modal's
+  // self-closing tag. Anchoring on the gate rather than the tag makes the
+  // latch assertion below part of the extraction itself.
+  const gate = src.indexOf('{diagnostics && (')
+  const start = src.indexOf('<SolverDiagnosticsModal', gate)
+  const block = gate === -1 || start === -1 ? '' : src.slice(gate, src.indexOf('/>', start))
 
-  it('still renders the diagnostics modal (anchor for the assertions below)', () => {
-    expect(start).toBeGreaterThan(-1)
+  it('keeps the retained-snapshot latch — the modal renders only behind {diagnostics && …}', () => {
+    // The latch IS the mechanism: null until the first reviewable solve,
+    // then kept across closes so the mounted dialog can play the exit fade.
+    expect(gate).toBeGreaterThan(-1)
+    expect(start).toBeGreaterThan(gate)
     expect(block).toContain('setShowDiagnostics(false)')
   })
 
   it('does NOT null the diagnostics payload on close — the exit fade needs it', () => {
+    expect(block.length).toBeGreaterThan(0)
     expect(block).not.toContain('setDiagnostics(null)')
   })
 })

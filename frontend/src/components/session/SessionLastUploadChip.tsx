@@ -13,7 +13,14 @@ export default function SessionLastUploadChip({ sessionCmId, agSessionCmIds, ses
   const { runId, session } = useLastUploadSummary(sessionCmId, agSessionCmIds)
   const [open, setOpen] = useState(false)
 
-  if (!session || !runId) return null
+  // Render-time correction, same pattern as WeekendRosterPage's party latch:
+  // when the summary transiently disappears (refetch gap), this early return
+  // unmounts the always-mounted dialog below — and a latched `open` would
+  // make it re-open itself via Modal's `appear` the moment data returns.
+  if (!session || !runId) {
+    if (open) setOpen(false)
+    return null
+  }
 
   const cmIds = [sessionCmId, ...agSessionCmIds].filter((k): k is number => typeof k === 'number')
 

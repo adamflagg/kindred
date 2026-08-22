@@ -568,31 +568,37 @@ describe('LodgingUnitsPanel — the editor opens in a modal', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
   })
 
-  it('moves focus into the form when the SAME unit is reopened after a close (kindred#2529)', async () => {
-    // With `editing` retained across the close, the focus effect can no
-    // longer key on `editing` changing — reopening the same unit leaves it
-    // unchanged. The effect keys on the open flag's rising edge instead;
-    // this fails if that wiring regresses to the old dependency.
+  it('reopening WITHIN the exit fade shows a fresh form, not the abandoned draft (kindred#2529)', async () => {
+    // The #2539 scan's blocking finding: an interrupted leave never unmounts
+    // the form, and with an unchanged key React reuses the instance — so a
+    // Cancel followed by a fast reopen surfaced the abandoned draft, and the
+    // next Save would have written it. That is the exact stale-write hazard
+    // this dialog's own docstring says it exists to close. The form's key is
+    // now a nonce bumped on every open, so every open remounts fresh.
     const user = userEvent.setup()
     await renderPanel()
 
     await user.click(screen.getByRole('button', { name: 'Edit Cabin A' }))
-    await waitFor(() => expect(screen.getByLabelText('Name')).toHaveFocus())
+    const name = screen.getByLabelText('Name')
+    await user.clear(name)
+    await user.type(name, 'STALE DRAFT')
 
     await user.click(screen.getByRole('button', { name: 'Cancel' }))
-    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
-
+    // Reopen before the leave completes — no waitFor between close and open.
     await user.click(screen.getByRole('button', { name: 'Edit Cabin A' }))
-    await waitFor(() => expect(screen.getByLabelText('Name')).toHaveFocus())
+    expect(screen.getByLabelText('Name')).toHaveValue('Cabin A')
   })
 
   it('closes on Escape', async () => {
     // REWRITE for kindred#2529 — same synchronous-gone assertion as Cancel
-    // above; see that test's comment.
+    // above; see that test's comment. The open-precondition below is what
+    // keeps the final waitFor from passing vacuously against a dialog that
+    // never opened (#2539 scan finding 3).
     const user = userEvent.setup()
     await renderPanel()
 
     await user.click(screen.getByRole('button', { name: 'Edit Cabin A' }))
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
     await user.keyboard('{Escape}')
 
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())

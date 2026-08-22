@@ -50,10 +50,16 @@ export function LodgingUnitsPanel() {
   // leave completes — so no per-field reset is needed here.
   const [editing, setEditing] = useState<LodgingUnitRecord | 'new' | null>(null)
   const [editorOpen, setEditorOpen] = useState(false)
+  // Bumped on EVERY open and used as the form's key, so each open remounts a
+  // fresh form even when the previous leave was interrupted by the reopen —
+  // an interrupted leave never unmounts the children, and a reused instance
+  // surfaced the abandoned draft for the next Save to write (#2539 scan).
+  const [editorNonce, setEditorNonce] = useState(0)
 
   const openEditor = (unit: LodgingUnitRecord | 'new') => {
     setEditing(unit)
     setEditorOpen(true)
+    setEditorNonce((n) => n + 1)
   }
   const [areasOpen, setAreasOpen] = useState(false)
   const [sort, setSort] = useState<UnitSort>({ field: 'name', desc: false })
@@ -103,7 +109,7 @@ export function LodgingUnitsPanel() {
   useEffect(() => {
     if (!editorOpen) return
     formRef.current?.querySelector<HTMLElement>('input, select, textarea')?.focus()
-  }, [editorOpen, editing, areasQuery.isSuccess])
+  }, [editorOpen, editorNonce, areasQuery.isSuccess])
 
   const refresh = () => {
     setEditorOpen(false)
@@ -239,6 +245,14 @@ export function LodgingUnitsPanel() {
           onClose={() => {
             setEditorOpen(false)
           }}
+          // Drop the retained snapshot once the fade has actually finished —
+          // the gate goes false, the whole subtree unmounts, and the panel
+          // stops re-evaluating the header JSX on every subsequent render.
+          // An interrupted leave never fires this, which is correct: the
+          // dialog is open again and still needs its data.
+          afterLeave={() => {
+            setEditing(null)
+          }}
           header={
             /* The forest band from the sessions landing header, same tokens and
                same shape: dark gradient, amber glyph in a translucent chip,
@@ -292,12 +306,15 @@ export function LodgingUnitsPanel() {
                 opened against an empty area list can only end in a server
                 rejection the staffer reads as their own mistake. */}
             {areasQuery.isSuccess ? (
-              /* Keyed on the record so React remounts rather than reusing the
-                 same instance — otherwise the form's useState initialisers
-                 never re-run when `unit` changes, and a submit after switching
-                 records writes the PREVIOUS unit's fields to the new one. */
+              /* Keyed on the per-open nonce so React remounts rather than
+                 reusing the same instance. The nonce covers BOTH hazards: a
+                 record switch while open (the useState initialisers never
+                 re-run when `unit` changes, so a submit after switching would
+                 write the previous unit's fields), and a reopen that
+                 interrupts the exit fade (the leave never unmounted the form,
+                 so the abandoned draft survived — #2539 scan finding 1). */
               <LodgingUnitForm
-                key={editing === 'new' ? 'new' : editing.id}
+                key={editorNonce}
                 areas={areasQuery.items}
                 units={unitsQuery.items}
                 unit={editing === 'new' ? undefined : editing}
