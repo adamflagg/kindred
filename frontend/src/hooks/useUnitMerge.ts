@@ -90,10 +90,12 @@ export function useUnitMerge({ year, sessionCmId, scenario }: UseUnitMergeOption
     // `mutateAsync`, NOT `mutation` — the whole result object is a new
     // identity on every render, which made `setCombined` unstable, and with it
     // the board's `onSplit`/`onMerge`. That is a prop change on all ~73 unit
-    // cards on every board render, defeating their `memo` (measured: 73 of 73
-    // card bodies re-rendered on drag start for no reason). Both sibling
-    // hooks — `useUnitAvailability` and `useLodgingPlacement` — already depend
-    // on `mutateAsync`; this one was the outlier.
+    // cards on EVERY board render, defeating their `memo` on renders where
+    // nothing about them changed. (Drag start itself legitimately re-renders
+    // every card — `draggingParty` is a real prop change there; the bug's cost
+    // was every OTHER render paying the same price.) Both sibling hooks —
+    // `useUnitAvailability` and `useLodgingPlacement` — already depend on
+    // `mutateAsync`; this one was the outlier.
     [mutateAsync, sessionCmId]
   )
 

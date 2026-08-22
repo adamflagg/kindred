@@ -54,7 +54,7 @@ export type NeedsFit = (typeof FIT_ORDER)[number]
  * once narrowed it to three is gone. The direct test stays, because it is the
  * one that still holds if the scope ever shrinks back to one.
  */
-export function worseOf(a: NeedsFit, b: NeedsFit): NeedsFit {
+export function worseOf<T extends NeedsFit>(a: T, b: T): T {
   return FIT_ORDER.indexOf(a) <= FIT_ORDER.indexOf(b) ? a : b
 }
 
@@ -109,7 +109,14 @@ export interface DragCapacity {
   readonly free: number
 }
 
-const NEUTRAL: DragFit = { state: 'neutral', severity: 'fits' }
+/**
+ * Exported for the ONE caller with a legitimate at-rest value —
+ * `LodgingUnitCard` with no family in flight. Hand-rolling the literal there
+ * would be the one place the three-state shape is still written by hand, in a
+ * module that exists to stop that; and a shared constant is also a stable
+ * identity, where a fresh object per card per render defeats memo equality.
+ */
+export const NEUTRAL: DragFit = { state: 'neutral', severity: 'fits' }
 
 /**
  * Does this space have no room for this party?
@@ -142,6 +149,14 @@ export function hasNoRoom(party: RosterPartyRow, capacity: DragCapacity): boolea
  * `HATCHED_NEEDS` that left `bathroom` out is gone, and with it the argument
  * that a board hatched almost everywhere says nothing: that argument was about
  * a mark that could only ever be negative, and half of this one is positive.
+ *
+ * REAFFIRMED by the owner, 2026-08-21, with the production number on the
+ * table: bathroom has no blank values in the registry (90 of 118 spaces are
+ * `none`), so a bathroom-asking family hatches most of the board at once —
+ * and that is the point: "all four booleans must match — the hatch fires on a
+ * family that requests anything." An asymmetric reading (bathroom gates the
+ * match but never hatches) was put to the owner in the same review and
+ * REJECTED; do not reintroduce it as a tidy-up.
  *
  * THE PROSPECTIVE AXIS. Every need is graded as "would THIS cabin meet it?".
  * Only `bathroom` reads the argument at all, and on the old `'placed'` reading
@@ -197,7 +212,7 @@ export function resolveDragFit(
     }
     const verdict = needVerdict(glyph.key, coverage)
     if (verdict !== 'fits') {
-      worst = worseOf(verdict, worst) as Exclude<NeedsFit, 'fits'>
+      worst = worseOf(verdict, worst)
       conflict = true
     }
   }

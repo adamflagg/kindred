@@ -11,7 +11,12 @@
  * renders as an em dash: the API already maps PocketBase's stored 0 to null,
  * and "sleeps 0" would be a lie about a cabin nobody has measured.
  */
-import { useDraggable, useDroppable } from '@dnd-kit/core'
+import {
+  useDraggable,
+  useDroppable,
+  type DraggableAttributes,
+  type DraggableSyntheticListeners,
+} from '@dnd-kit/core'
 import { Bath, Merge, Plug, Plus, Snowflake, Split } from 'lucide-react'
 import { memo, useCallback, useState } from 'react'
 
@@ -22,7 +27,7 @@ import { AssignFamilyModal } from './AssignFamilyModal'
 import { isValidMergeTarget, mergeDragId, unitDroppableId } from './dragPlacement'
 import { FamilyCard } from './FamilyCard'
 import { partyHeadcount } from './householdIdentity'
-import { hasNoRoom, resolveDragFit, type DragCapacity, type DragFit } from './needsFit'
+import { NEUTRAL, hasNoRoom, resolveDragFit, type DragCapacity, type DragFit } from './needsFit'
 import { resolveRingPrecedence } from './ringPrecedence'
 import { effectiveSleeps } from './rosterAttention'
 import { partyKey } from './partyKey'
@@ -257,18 +262,35 @@ export interface LodgingUnitCardProps {
   onOpenParty: (party: RosterPartyRow) => void
 }
 
+/**
+ * What the shell hands the memo'd body: the dnd-kit hook results, plus the
+ * two merge-gate facts derived from them. dnd-kit's OWN types, not
+ * `Record<string, unknown>` — erased, `mergeAttributes` and `mergeListeners`
+ * become the same structural type and swapping them at the call site would
+ * type-check, which is exactly the mistake the handle's comment warns about.
+ */
 interface DndBridge {
-  mergeAttributes: Record<string, unknown>
-  mergeListeners: Record<string, unknown> | undefined
+  mergeAttributes: DraggableAttributes
+  mergeListeners: DraggableSyntheticListeners
   setMergeDragRef: (n: HTMLElement | null) => void
   isMergeOver: boolean
   isUnitOver: boolean
   setCardRef: (n: HTMLDivElement | null) => void
+  /**
+   * Derived in the SHELL, which already needs both to gate the droppables,
+   * and ridden down here rather than re-derived from `mergeSourceUnit` —
+   * two derivations 1,000 lines apart is how a card ends up dimmed and
+   * unclickable while still an enabled drop target, or the reverse.
+   */
+  mergeDragActive: boolean
+  isValidTarget: boolean
 }
 
 const LodgingUnitCardInner = memo(function LodgingUnitCardInner({
   mergeAttributes,
   mergeListeners,
+  mergeDragActive,
+  isValidTarget,
   setMergeDragRef,
   isMergeOver,
   isUnitOver,
@@ -280,7 +302,10 @@ const LodgingUnitCardInner = memo(function LodgingUnitCardInner({
   savingAvailability = false,
   onSetAvailability,
   canMerge = false,
-  mergeSourceUnit = null,
+  // NOT destructured here: `mergeSourceUnit` is the SHELL's input — the body
+  // receives the two facts derived from it (`mergeDragActive`,
+  // `isValidTarget`) through the bridge instead, so there is exactly one
+  // derivation.
   draggingParty = null,
   onSplit,
   onMerge,
@@ -449,38 +474,7 @@ const LodgingUnitCardInner = memo(function LodgingUnitCardInner({
    */
   const showSplitControl =
     canMerge && unit.is_container === true && unit.is_combined === true && onSplit !== undefined
-  const mergeDragActive = mergeSourceUnit !== null
-  const isValidTarget = isValidMergeTarget(mergeSourceUnit, unit)
 
-  // A SEPARATE droppable from the party target below, registered on the same
-  // card: `resolveMergeDrop` requires BOTH ids to carry the `merge:` prefix,
-  // so a party dropped here must land on `unitDroppableId`, never this one.
-  // Disabled whenever this card is not a legal target for whatever is
-  // currently being dragged — which is also "always" when no card drag is in
-  // flight, since `isValidMergeTarget` refuses a `null` source.
-
-  // Every room accepts a drop while placement is live, including a full or
-  // unsuitable one. The fit check is advisory by design: a misfit is surfaced
-  // on the board's hatch channel (#1912), never refused at the door, so
-  // refusing here would turn an advisory signal into a hard block. This once
-  // read "every cabin is unconfirmed until staff walk the property" — no longer
-  // true, 118 of 118 confirmed in the production snapshot of 2026-08-06 — but
-  // the rule never depended on it.
-  //
-  // Disabled for every card while a MERGE drag is in flight: without this, a
-  // card being dragged onto a sibling would sit over two overlapping,
-  // simultaneously-enabled droppables — this one and the merge droppable
-  // above — and which one dnd-kit resolves `over` to would be a tie decided
-  // by hook registration order, not by which gesture is actually in flight.
-  //
-  // NOT disabled on a WRITTEN-INTO unit any more — kindred#2432, owner ruling
-  // 2026-08-18: *"we should be able to add families to any write in space, or
-  // add a write in to a family space — regardless of which came first."* This
-  // read `|| held` until then, the AFFORDANCE half of #2090's refusal, whose
-  // enforcing half lived in `resolveDrop`. Both went in the same change, and
-  // they have to: leaving this one would keep the card from ever reporting
-  // `isOver`, so a drop the resolver now accepts could never be aimed at it.
-  //
   // Read through `writeInEntries` rather than as an inline
   // `family_available_override === false`, which is what this was until
   // kindred#2078. Three consumers on this card shared that expression under
@@ -653,31 +647,6 @@ const LodgingUnitCardInner = memo(function LodgingUnitCardInner({
       : `Capacity not recorded · ${String(occupants)} placed${infantExemptionClause}`
 
   /*
-   * Where the family in flight stands against this space — one `DragFit`,
-   * resolved by `needsFit.ts` against the SERVER's resolved coverage rather
-   * than the unit's own row. Twelve of the fourteen 2026 family-pool
-   * containers record `has_power = 0` while every leaf beneath them has
-   * power, so judging a building by the raw flag would mark twelve
-   * entirely-powered buildings unpowered. The TITLE ROW's own plug reads the
-   * same resolved field since kindred#2072's T2.
-   *
-   * `'neutral'` at rest, and that is the state, not a fallback: with no
-   * family in flight there is nothing to be a misfit FOR and nothing to
-   * match, and a board marked all the time says nothing at all.
-   *
-   * ADVISORY. Nothing below this line touches `useDroppable`, `opacity` or
-   * `pointer-events` — the drop is still accepted, exactly as the comment on
-   * the party droppable above insists it must be.
-   */
-  /*
-   * THE DRAG-TIME STATE, resolved once.
-   *
-   * `known` is withheld when `spanWidth > 0`, exactly as `overCapacity` is:
-   * there the occupant count is an upper bound rather than a fact, and a
-   * positive claim must not be built on one. Withholding costs a match the
-   * board might have been entitled to draw, which is the safe direction.
-   */
-  /*
    * Beds the family in flight already holds ON THIS CARD, added back before
    * anything asks whether it fits.
    *
@@ -722,10 +691,25 @@ const LodgingUnitCardInner = memo(function LodgingUnitCardInner({
     free: freeBeds,
   }
 
+  /*
+   * Where the family in flight stands against this space — one `DragFit`,
+   * resolved by `needsFit.ts` against the SERVER's resolved coverage rather
+   * than the unit's own row. Twelve of the fourteen 2026 family-pool
+   * containers record `has_power = 0` while every leaf beneath them has
+   * power, so judging a building by the raw flag would mark twelve
+   * entirely-powered buildings unpowered. The TITLE ROW's own plug reads the
+   * same resolved field since kindred#2072's T2.
+   *
+   * `NEUTRAL` at rest, and that is the state, not a fallback: with no family
+   * in flight there is nothing to be a misfit FOR and nothing to match, and a
+   * board marked all the time says nothing at all.
+   *
+   * ADVISORY. Nothing below this line touches `useDroppable`, `opacity` or
+   * `pointer-events` — the drop is still accepted, exactly as the comment on
+   * the party droppable in the shell insists it must be.
+   */
   const dragFit: DragFit =
-    draggingParty === null
-      ? { state: 'neutral', severity: 'fits' }
-      : resolveDragFit(draggingParty, unit, dragCapacity)
+    draggingParty === null ? NEUTRAL : resolveDragFit(draggingParty, unit, dragCapacity)
 
   /*
    * The N/M figure in red mid-drag: no room for the family in hand. THE SAME
@@ -921,8 +905,8 @@ const LodgingUnitCardInner = memo(function LodgingUnitCardInner({
        * additive on purpose (see their own comments) and never race anything
        * in this table. The hue top edge USED TO BE a separate inline style
        * that outranked all of it; it is gone (2026-08-21), so these borders
-       * now reach the top edge too and §3.10's channel lives
-       * alive underneath whichever state wins.
+       * now reach the top edge too. §3.10's channel did not move underneath —
+       * it left the card entirely, for the section header's dot.
        *
        * NO `hover:shadow-lodge-lg` HERE, though `BunkCard` carries one. That
        * class is inert: `.shadow-lodge-*` are hand-written rules in `@layer
@@ -1453,11 +1437,40 @@ export function LodgingUnitCard(props: LodgingUnitCardProps) {
     setNodeRef: setMergeDragRef,
   } = useDraggable({ id: mergeDragId(unit.code), disabled: !canMerge })
 
+  // A SEPARATE droppable from the party target below, registered on the same
+  // card: `resolveMergeDrop` requires BOTH ids to carry the `merge:` prefix,
+  // so a party dropped here must land on `unitDroppableId`, never this one.
+  // Disabled whenever this card is not a legal target for whatever is
+  // currently being dragged — which is also "always" when no card drag is in
+  // flight, since `isValidMergeTarget` refuses a `null` source.
+
   const { setNodeRef: setMergeDropRef, isOver: isMergeOver } = useDroppable({
     id: mergeDragId(unit.code),
     disabled: !isValidTarget,
   })
 
+  // Every room accepts a drop while placement is live, including a full or
+  // unsuitable one. The fit check is advisory by design: a misfit is surfaced
+  // on the board's hatch channel (#1912), never refused at the door, so
+  // refusing here would turn an advisory signal into a hard block. This once
+  // read "every cabin is unconfirmed until staff walk the property" — no longer
+  // true, 118 of 118 confirmed in the production snapshot of 2026-08-06 — but
+  // the rule never depended on it.
+  //
+  // Disabled for every card while a MERGE drag is in flight: without this, a
+  // card being dragged onto a sibling would sit over two overlapping,
+  // simultaneously-enabled droppables — this one and the merge droppable
+  // above — and which one dnd-kit resolves `over` to would be a tie decided
+  // by hook registration order, not by which gesture is actually in flight.
+  //
+  // NOT disabled on a WRITTEN-INTO unit any more — kindred#2432, owner ruling
+  // 2026-08-18: *"we should be able to add families to any write in space, or
+  // add a write in to a family space — regardless of which came first."* This
+  // read `|| held` until then, the AFFORDANCE half of #2090's refusal, whose
+  // enforcing half lived in `resolveDrop`. Both went in the same change, and
+  // they have to: leaving this one would keep the card from ever reporting
+  // `isOver`, so a drop the resolver now accepts could never be aimed at it.
+  //
   const { setNodeRef: setUnitDropRef, isOver: isUnitOver } = useDroppable({
     id: unitDroppableId(unit.code),
     disabled: !canPlace || mergeDragActive,
@@ -1474,12 +1487,14 @@ export function LodgingUnitCard(props: LodgingUnitCardProps) {
   return (
     <LodgingUnitCardInner
       {...props}
-      mergeAttributes={mergeAttributes as unknown as Record<string, unknown>}
-      mergeListeners={mergeListeners as unknown as Record<string, unknown> | undefined}
+      mergeAttributes={mergeAttributes}
+      mergeListeners={mergeListeners}
       setMergeDragRef={setMergeDragRef}
       isMergeOver={isMergeOver}
       isUnitOver={isUnitOver}
       setCardRef={setCardRef}
+      mergeDragActive={mergeDragActive}
+      isValidTarget={isValidTarget}
     />
   )
 }

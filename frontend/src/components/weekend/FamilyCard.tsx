@@ -80,7 +80,11 @@
  * parties: a person-grain party (an adult weekend guest) IS the identity, so
  * its `display_name` stays.
  */
-import { useDraggable } from '@dnd-kit/core'
+import {
+  useDraggable,
+  type DraggableAttributes,
+  type DraggableSyntheticListeners,
+} from '@dnd-kit/core'
 import { Repeat, Star, User, Users } from 'lucide-react'
 import { Fragment, memo } from 'react'
 
@@ -676,9 +680,16 @@ function FamilyCardChips({
 const CARD_FRAME =
   'group border-border flex w-full flex-col gap-1 rounded-xl border-2 p-2.5 text-left'
 
+/**
+ * The dnd-kit hook results the shell hands the memo'd body — dnd-kit's OWN
+ * types, not `Record<string, unknown>`: erased, `attributes` and `listeners`
+ * collapse into one structural type, and swapping them at the call site —
+ * exactly the mistake the conditional spread below exists to prevent — would
+ * type-check.
+ */
 interface FamilyDnd {
-  attributes: Record<string, unknown>
-  listeners: Record<string, unknown> | undefined
+  attributes: DraggableAttributes
+  listeners: DraggableSyntheticListeners
   setNodeRef: (n: HTMLElement | null) => void
   isDragging: boolean
 }
@@ -771,8 +782,8 @@ export function FamilyCard(props: FamilyCardProps) {
   return (
     <FamilyCardInner
       {...props}
-      attributes={attributes as unknown as Record<string, unknown>}
-      listeners={listeners as unknown as Record<string, unknown> | undefined}
+      attributes={attributes}
+      listeners={listeners}
       setNodeRef={setNodeRef}
       isDragging={isDragging}
     />

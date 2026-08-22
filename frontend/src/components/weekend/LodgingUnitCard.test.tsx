@@ -25,12 +25,35 @@ import { LodgingUnitCard } from './LodgingUnitCard'
  */
 let overDroppableId: string | null = null
 
+// `setNodeRef` is ONE stable fn, not a fresh `vi.fn()` per call — the real
+// hook's setNodeRef is `useCallback([])`-stable, and a per-render fake defeats
+// the shell's own `useCallback` and with it the body memo the shell exists
+// for, making the memo test below pass vacuously.
+const stableSetNodeRef = vi.fn()
+
+/**
+ * Counts BODY renders: `slotOccupancy` is called exactly once per
+ * `LodgingUnitCardInner` render and by nothing else in this tree, so its call
+ * count is the body's render count — which is how the memo tests below can
+ * see a bail-out without exporting the inner component.
+ */
+const bodyRenders = vi.hoisted(() => ({ count: 0 }))
+vi.mock('./boardLayout', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./boardLayout')>()
+  return {
+    ...actual,
+    slotOccupancy: (...args: Parameters<typeof actual.slotOccupancy>) => {
+      bodyRenders.count += 1
+      return actual.slotOccupancy(...args)
+    },
+  }
+})
 vi.mock('@dnd-kit/core', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@dnd-kit/core')>()
   return {
     ...actual,
     useDroppable: (args: { id: string; disabled?: boolean }) => ({
-      setNodeRef: vi.fn(),
+      setNodeRef: stableSetNodeRef,
       isOver: args.disabled !== true && args.id === overDroppableId,
     }),
   }
@@ -2804,17 +2827,6 @@ describe('LodgingUnitCard — the drag-time match and the capacity red', () => {
     expect(card(container)).toHaveClass('bg-primary/10')
   })
 
-  it('reddens the occupancy figure when the family will not fit', () => {
-    const { container } = render(
-      <LodgingUnitCard
-        slot={slot({ unit: powered({ sleeps: 2 }) })}
-        draggingParty={asksNothing}
-        onOpenParty={vi.fn()}
-      />
-    )
-    expect(within(card(container)).getByText('0/2')).toHaveClass('text-destructive')
-  })
-
   it('reddens for a family that asked for NOTHING, whose board is otherwise silent', () => {
     // Deliberately not gated on the mode switch. A family with no requirements
     // never moves the board out of its resting state, but "you will not fit
@@ -2897,6 +2909,45 @@ describe('LodgingUnitCard — the drag-time match and the capacity red', () => {
     expect(card(container)).not.toHaveClass('bg-primary/20')
   })
 
+  it('never matches a card whose party straddles beyond it', () => {
+    // The third leg of `dragCapacity.known`, pinned separately because
+    // mutation-testing found it was the only one that could be deleted with
+    // the suite still green. A straddling placement makes the card's occupant
+    // count an UPPER BOUND, not a fact (`slotOccupancy`), and a positive
+    // claim must not be built on one — even with beds apparently to spare.
+    const straddler = party({
+      party_size: 2,
+      unit_code: 'cedar-1',
+      unit_codes: ['cedar-1', 'elsewhere-9'],
+    })
+    const { container } = render(
+      <LodgingUnitCard
+        slot={slot({ unit: powered({ sleeps: 20 }), parties: [straddler] })}
+        draggingParty={needsPower}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(card(container)).not.toHaveClass('bg-primary/20')
+  })
+
+  it('does not redden a card whose party straddles beyond it, either', () => {
+    // Same bound, negative direction: "you will not fit" asserted from an
+    // occupant count that is not a fact would be as false as the match.
+    const straddler = party({
+      party_size: 2,
+      unit_code: 'cedar-1',
+      unit_codes: ['cedar-1', 'elsewhere-9'],
+    })
+    const { container } = render(
+      <LodgingUnitCard
+        slot={slot({ unit: powered({ sleeps: 2 }), parties: [straddler] })}
+        draggingParty={asksNothing}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(within(card(container)).getByText(/\/2$/)).not.toHaveClass('text-destructive')
+  })
+
   it('does not redden a room somebody is written into either', () => {
     // The other half of the write-in rule. The figure already prints an em
     // dash because there is no count; reddening it would assert "no room"
@@ -2932,5 +2983,33 @@ describe('LodgingUnitCard — the drag-time match and the capacity red', () => {
       <LodgingUnitCard slot={slot({ unit: powered({ sleeps: 2 }) })} onOpenParty={vi.fn()} />
     )
     expect(within(card(container)).getByText('0/2')).not.toHaveClass('text-destructive')
+  })
+})
+
+describe('LodgingUnitCard — the shell/body split actually bails (perf)', () => {
+  /*
+   * The whole point of the shell is that dnd-kit's context churn re-renders
+   * the SHELL on every `over` flip while the memo'd body stands still. The
+   * split has already been silently defeated twice — inline `useSensor`
+   * options and `useUnitMerge`'s unstable `setCombined`, each a fresh prop
+   * identity on every render — and 7,000+ tests stayed green both times,
+   * because nothing asserted the bail-out itself. These do. The control case
+   * proves the counter can see a real re-render, so a pass is not vacuous.
+   */
+  it('a re-render with identical props does not re-run the body', () => {
+    const theSlot = slot()
+    const onOpenParty = vi.fn()
+    const view = render(<LodgingUnitCard slot={theSlot} onOpenParty={onOpenParty} />)
+    const before = bodyRenders.count
+    view.rerender(<LodgingUnitCard slot={theSlot} onOpenParty={onOpenParty} />)
+    expect(bodyRenders.count).toBe(before)
+  })
+
+  it('control: a changed prop identity DOES re-run the body', () => {
+    const theSlot = slot()
+    const view = render(<LodgingUnitCard slot={theSlot} onOpenParty={vi.fn()} />)
+    const before = bodyRenders.count
+    view.rerender(<LodgingUnitCard slot={theSlot} onOpenParty={vi.fn()} />)
+    expect(bodyRenders.count).toBeGreaterThan(before)
   })
 })

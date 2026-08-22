@@ -14,7 +14,7 @@
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
 import { buildBoard, slotOccupancy, type ConsentFlag } from './boardLayout'
 import { effectiveSleeps } from './rosterAttention'
-import { coveredCodes } from './unitLevel'
+import { coveredCodes, indexUnitsByCode } from './unitLevel'
 
 /** Why the map cannot draw a party the board can. */
 export type OffMapReason =
@@ -162,7 +162,7 @@ function offMapReason(party: RosterPartyRow): OffMapReason {
  */
 function unitRoomCount(unit: LodgingUnitRow, units: LodgingUnitRow[]): number {
   if (unit.is_container !== true) return 1
-  const byCode = new Map(units.map((row) => [row.code, row]))
+  const byCode = indexUnitsByCode(units)
   const active = coveredCodes(unit, units).filter(
     (code) => byCode.get(code)?.is_active !== false
   ).length

@@ -192,6 +192,32 @@ describe('candidateFit', () => {
     expect(result.notes).toContain('Over capacity · needs 6, 4 free')
   })
 
+  it('says nothing about a room somebody is written into', () => {
+    // A write-in is not a party (kindred#2439), so it contributes nothing to
+    // any occupancy figure a caller could thread in — the free-bed count on a
+    // written-into room is the WHOLE cabin, a number the card itself refuses
+    // to assert (it prints an em dash). The row must not claim "fits" off
+    // that number, nor "does not fit" off its equally-false complement: no
+    // count, no claim, exactly the unmeasured-capacity reading above.
+    const writtenInto = unit({
+      write_ins: [
+        {
+          unit_id: 'u1',
+          unit_code: 'cedar-1',
+          unit_name: 'Cedar 1',
+          occupant_name: 'Emma Johnson',
+          note: '',
+        },
+      ],
+    })
+    const small = candidateFit(party({ party_size: 2 }), writtenInto, [])
+    expect(small.fit).toBe('fits')
+    expect(small.notes).toEqual([])
+    const large = candidateFit(party({ party_size: 6 }), writtenInto, [])
+    expect(large.fit).toBe('fits')
+    expect(large.notes).toEqual([])
+  })
+
   it('says nothing about capacity nobody has recorded', () => {
     const result = candidateFit(party({ party_size: 6 }), unit({ sleeps: null }), [])
     expect(result.fit).toBe('fits')

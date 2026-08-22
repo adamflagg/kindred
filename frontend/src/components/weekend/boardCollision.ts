@@ -38,6 +38,8 @@
  */
 import { pointerWithin, rectIntersection } from '@dnd-kit/core'
 
+import { UNPLACED_DROPPABLE_ID } from './dragPlacement'
+
 type CollisionArgs = Parameters<typeof pointerWithin>[0]
 type Collisions = ReturnType<typeof pointerWithin>
 
@@ -60,7 +62,17 @@ export function createBoardCollisionDetection(
   const detect = ((args: CollisionArgs): Collisions => {
     const pointerCollisions = algorithms.pointerWithin(args)
     if (pointerCollisions.length > 0) {
-      heldId = String(pointerCollisions[0]?.id ?? '')
+      const id = String(pointerCollisions[0]?.id ?? '')
+      // NEVER hold the floating unplaced queue. It is the one droppable that
+      // is not a cabin on the grid — a fixed overlay hovering ABOVE the cards
+      // — so its rect keeps intersecting the drag long after the pointer has
+      // moved on. Held, it would suppress every cabin under it and turn a
+      // gutter release into an UNPLACE. Crossing it also ends whatever cabin
+      // hold was in force, for the same reason the fallback branch below
+      // does: the pointer has demonstrably left that cabin. Any future
+      // floating droppable must join this exclusion — the rule is "hold
+      // cabins", and this is the list of things that are not cabins.
+      heldId = id === UNPLACED_DROPPABLE_ID ? null : id
       return pointerCollisions
     }
 
@@ -71,7 +83,16 @@ export function createBoardCollisionDetection(
     // returning the held one alone is the same answer with no ambiguity about
     // ordering.
     const held = rectCollisions.find((collision) => String(collision.id) === heldId)
-    return held === undefined ? rectCollisions : [held]
+    if (held === undefined) {
+      // The held cabin no longer intersects: the drag has genuinely left it,
+      // and the hold ENDS HERE rather than lying dormant. Kept, it would
+      // resurrect later in the same gesture — the ~200px overlay sliding back
+      // across the old cabin while the pointer sits in a gutter somewhere
+      // else would return that cabin alone and steal the drop.
+      heldId = null
+      return rectCollisions
+    }
+    return [held]
   }) as BoardCollisionDetection
 
   detect.reset = () => {

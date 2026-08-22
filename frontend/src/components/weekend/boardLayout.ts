@@ -56,6 +56,7 @@ import {
   buildingsSpanned,
   coveredCodes,
   drawnUnits,
+  indexUnitsByCode,
   representingCodes,
   wholeBuildingHeld,
 } from './unitLevel'
@@ -209,7 +210,7 @@ export interface SlotOccupancy {
  * because the second copy had not been told.
  */
 export function slotOccupancy(slot: BoardSlot, units: LodgingUnitRow[]): SlotOccupancy {
-  const unitsByCode = new Map(units.map((unit) => [unit.code, unit]))
+  const unitsByCode = indexUnitsByCode(units)
   const covered = new Set(coveredCodes(slot.unit, units))
   let occupants = 0
   let spanWidth = 0
@@ -650,7 +651,7 @@ export function overlappingPartyKeys(
   parties: RosterPartyRow[],
   units: LodgingUnitRow[]
 ): Set<string> {
-  const unitsByCode = new Map(units.map((unit) => [unit.code, unit]))
+  const unitsByCode = indexUnitsByCode(units)
 
   // Expanded ONCE, then used for both the grouping and the overlap. Two
   // separate expansions is how the guard and the thing it guards drifted apart
@@ -730,7 +731,7 @@ export function wholeBuildingHolders(
   parties: RosterPartyRow[],
   units: LodgingUnitRow[]
 ): Set<string> {
-  const unitsByCode = new Map(units.map((unit) => [unit.code, unit]))
+  const unitsByCode = indexUnitsByCode(units)
   const holders = new Set<string>()
   for (const party of parties) {
     const leaves = occupiedLeafCodes(party, units, unitsByCode)
@@ -915,7 +916,7 @@ function isPlanningInventory(unit: LodgingUnitRow): boolean {
 }
 
 function indexPayload(parties: RosterPartyRow[], units: LodgingUnitRow[]) {
-  const unitsByCode = new Map(units.map((unit) => [unit.code, unit]))
+  const unitsByCode = indexUnitsByCode(units)
 
   // Which units get a card, at each tree's resolved level. Replaces the old
   // "every non-container leaf" rule: a combined container IS a card now, and

@@ -39,7 +39,7 @@ import {
   type DragStartEvent,
 } from '@dnd-kit/core'
 import { ChevronDown, ChevronRight, Info, TriangleAlert } from 'lucide-react'
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router'
 
 import { useDismissOnDeadSpace } from '../../hooks/useDismissOnDeadSpace'
@@ -49,6 +49,7 @@ import { useUnitAvailability } from '../../hooks/useUnitAvailability'
 import { useUnitMerge } from '../../hooks/useUnitMerge'
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
 import { areaTokens, buildBoard } from './boardLayout'
+import { indexUnitsByCode } from './unitLevel'
 import { createBoardCollisionDetection } from './boardCollision'
 import {
   mergeDragUnit,
@@ -234,7 +235,9 @@ export function LodgingBoard({
   // Memoised because `mergeUnit` closes over it: rebuilt each render, it would
   // give that callback a new identity every time and defeat the point of the
   // `useCallback`. Cheap either way at ~120 units, but the lint rule is right.
-  const unitsByCode = useMemo(() => new Map(units.map((unit) => [unit.code, unit])), [units])
+  // The shared WeakMap-cached index (`unitLevel`), not a local `useMemo` copy
+  // of the same map — one instance per `units` array, everywhere.
+  const unitsByCode = indexUnitsByCode(units)
 
   const sensors = useSensors(
     // The same activation constraints summer uses. The distance threshold is
@@ -250,10 +253,16 @@ export function LodgingBoard({
   // chose. The policy itself, and why it HOLDS the last cabin across a gutter,
   // lives in `boardCollision.ts`.
   //
-  // Memoised because it is STATEFUL — the held cabin is the state — so a fresh
-  // one per render would forget the hold on every board render and put the
-  // flapping back.
-  const collisionDetection = useMemo(() => createBoardCollisionDetection(), [])
+  // A REF, not `useMemo`, because the detector is STATEFUL — the held cabin
+  // is the state. `useMemo` is documented as a cache React may discard, and a
+  // discard mid-gesture would silently lose the hold and put the flapping
+  // back with nothing to notice it. A ref is the primitive that actually
+  // promises one instance for the component's lifetime.
+  const collisionDetectionRef = useRef<ReturnType<typeof createBoardCollisionDetection> | null>(
+    null
+  )
+  collisionDetectionRef.current ??= createBoardCollisionDetection()
+  const collisionDetection = collisionDetectionRef.current
 
   const handleDragStart = (event: DragStartEvent) => {
     // One gesture must never inherit the previous gesture's held cabin.
@@ -319,7 +328,8 @@ export function LodgingBoard({
   // party droppable stays disabled board-wide (`LodgingUnitCard`'s
   // `mergeDragActive` gate) and every non-sibling card sits dimmed and
   // unclickable (`pointer-events-none`) until staff happen to start another
-  // drag. Same two resets as `handleDragEnd`'s first two lines — see
+  // drag. The same resets `handleDragEnd` opens with — the collision hold and
+  // both drag states — see
   // `useLockGroupDragDrop.tsx`'s `handleDragCancel` for the same shape on
   // summer's own drag gesture.
   const handleDragCancel = () => {
