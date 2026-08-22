@@ -670,6 +670,17 @@ class LodgingWriteService:
                         # `_build_units` remain the only two places the two
                         # names meet.
                         "note": str(getattr(row, "note", "") or ""),
+                        # kindred#2540. A dropped `party_size` is not a
+                        # smaller row -- it is a DIFFERENT one: `null` means
+                        # the write-in takes its room WHOLESALE, so an
+                        # unsized copy of a sized write-in silently widens "2
+                        # of 5 beds" into "the whole cabin" and a scenario
+                        # reports a room closed the live board shows as
+                        # partly open. `getattr` default is `None`, which is
+                        # correct here for the same reason it is correct on
+                        # `set_availability`'s payload: a write-in with no
+                        # recorded count IS the wholesale case, not an error.
+                        "party_size": getattr(row, "party_size", None),
                     }
                 )
             except ClientResponseError as exc:

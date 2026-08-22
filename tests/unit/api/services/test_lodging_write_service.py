@@ -845,6 +845,23 @@ class TestCopyFromMirrorAlsoCopiesWriteIns:
         assert data["year"] == 2026
 
     @pytest.mark.asyncio
+    async def test_a_sized_write_ins_party_size_travels_into_the_scenario(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        """kindred#2540. A dropped `party_size` is not a smaller row -- it is a
+        DIFFERENT one: a null party size means the write-in takes its room
+        WHOLESALE, so a seed that silently clears a recorded count of 2
+        widens it into "the whole cabin" and a scenario reports a room closed
+        that the live board shows as partly open.
+        """
+        repo.fetch_write_ins = AsyncMock(return_value=[_write_in_row(party_size=2)])
+
+        await write_service.copy_from_mirror(PlacementCopyRequest(year=2026, session_cm_id=1000001, scenario="scn_1"))
+
+        data = repo.create_draft_write_in.call_args[0][0]
+        assert data["party_size"] == 2
+
+    @pytest.mark.asyncio
     async def test_every_live_write_in_is_copied_not_only_the_first(
         self, write_service: LodgingWriteService, repo: MagicMock
     ) -> None:
@@ -956,6 +973,23 @@ class TestCopyScenarioToScenarioAlsoCopiesWriteIns:
         assert data["session"] == "sess_1"
         assert data["session_cm_id"] == 1000001
         assert data["year"] == 2026
+
+    @pytest.mark.asyncio
+    async def test_a_sized_write_ins_party_size_travels_between_scenarios(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        """kindred#2540, asserted on this seed path too -- one helper serves
+        both seeds, so this is the assertion that catches a later change
+        fixing only the mirror path it was looking at.
+        """
+        repo.fetch_draft_write_ins = AsyncMock(return_value=[_write_in_row(party_size=2)])
+
+        await write_service.copy_scenario_to_scenario(
+            year=2026, session_cm_id=1000001, from_scenario="scn_source", to_scenario="scn_dest"
+        )
+
+        data = repo.create_draft_write_in.call_args[0][0]
+        assert data["party_size"] == 2
 
     @pytest.mark.asyncio
     async def test_the_live_board_is_not_the_source_here(
@@ -1392,6 +1426,29 @@ class TestTheAvailabilityWriteShape:
         await write_service.set_availability(_availability_request(party_size=None))
 
         data = repo.create_write_in.call_args[0][0]
+        assert "party_size" in data
+        assert data["party_size"] is None
+
+    @pytest.mark.asyncio
+    async def test_a_cleared_count_reaches_an_existing_rows_update_payload_as_none(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        """kindred#2540. The docstring above argues about clearing a count on
+        an EXISTING row -- the case where an erasure would actually happen,
+        since `update_write_in` forwards the dict straight to PocketBase with
+        no `exclude_none` beneath it -- but its own assertion only ever
+        exercised CREATE, because no existing record was mocked. This is the
+        UPDATE half: with `find_write_in` returning a row, clearing the count
+        must still reach `update_write_in`'s payload as an explicit `None`,
+        not an omitted key that would leave a previously-set count standing.
+        """
+        repo.find_write_in = AsyncMock(return_value=SimpleNamespace(id="write_in_1"))
+
+        await write_service.set_availability(_availability_request(party_size=None))
+
+        repo.create_write_in.assert_not_called()
+        record_id, data = repo.update_write_in.call_args[0]
+        assert record_id == "write_in_1"
         assert "party_size" in data
         assert data["party_size"] is None
 
