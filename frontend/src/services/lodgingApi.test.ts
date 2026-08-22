@@ -218,6 +218,7 @@ describe('setUnitAvailability', () => {
       familyAvailable: false,
       occupantName: 'Emma Johnson',
       reason: 'Kitchen lead, Fri–Sun',
+      partySize: null,
     })
 
     const [url, options] = mockFetch.mock.calls[0] as [string, RequestInit]
@@ -230,7 +231,10 @@ describe('setUnitAvailability', () => {
     //
     // `occupant_name` travels under the column's own name (kindred#2078);
     // only `reason` is renamed on the wire, and only because 1500000135 reused
-    // a `note` column that already existed.
+    // a `note` column that already existed. `party_size` is `null` here for
+    // the same reason — a key dropped is indistinguishable from a key nobody
+    // set, and `null` is a real, common answer (kindred#2503), not a missing
+    // one.
     expect(JSON.parse(options.body as string)).toEqual({
       year: 2026,
       session_cm_id: 1000001,
@@ -239,8 +243,24 @@ describe('setUnitAvailability', () => {
       family_available: false,
       occupant_name: 'Emma Johnson',
       reason: 'Kitchen lead, Fri–Sun',
+      party_size: null,
     })
     expect(result).toEqual({ record_id: 'r1', deleted: false })
+  })
+
+  it('sends the recorded party size, never dropping it on the way to the wire', async () => {
+    const mockFetch = vi.fn().mockResolvedValue(okResponse({ record_id: 'r1', deleted: false }))
+
+    await setUnitAvailability(mockFetch, {
+      ...WEEKEND,
+      familyAvailable: false,
+      occupantName: 'Emma Johnson',
+      reason: '',
+      partySize: 3,
+    })
+
+    const body = JSON.parse((mockFetch.mock.calls[0] as [string, RequestInit])[1].body as string)
+    expect(body.party_size).toBe(3)
   })
 
   it('sends the scenario staff are looking at, so the write lands on that board', async () => {
@@ -256,6 +276,7 @@ describe('setUnitAvailability', () => {
       familyAvailable: false,
       occupantName: 'Emma Johnson',
       reason: '',
+      partySize: null,
     })
 
     const body = JSON.parse((mockFetch.mock.calls[0] as [string, RequestInit])[1].body as string)
@@ -276,6 +297,7 @@ describe('setUnitAvailability', () => {
       familyAvailable: false,
       occupantName: 'Emma Johnson',
       reason: '',
+      partySize: null,
     })
 
     const body = JSON.parse((mockFetch.mock.calls[0] as [string, RequestInit])[1].body as string)
@@ -295,6 +317,7 @@ describe('setUnitAvailability', () => {
       familyAvailable: null,
       occupantName: '',
       reason: '',
+      partySize: null,
     })
 
     const body = JSON.parse((mockFetch.mock.calls[0] as [string, RequestInit])[1].body as string)
@@ -318,6 +341,7 @@ describe('setUnitAvailability', () => {
         familyAvailable: true,
         occupantName: '',
         reason: 'Overflow',
+        partySize: null,
       })
     ).rejects.toMatchObject({ status: 403, message: 'Permission required: bunking.manage' })
   })

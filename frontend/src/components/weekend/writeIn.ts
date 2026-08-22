@@ -87,6 +87,25 @@ export interface UnitAvailabilityWrite {
   occupantName: string
   /** The write-in's optional note. `''` on a clear. */
   reason: string
+  /**
+   * How many people the write-in is for (kindred#2503). `null` is a REAL
+   * value — "nobody recorded a count" — never a missing one, matching
+   * `WriteInOccupant.partySize` above: most write-ins are non-rostered staff
+   * and staff will type nothing, so `null` is the common case and stays that
+   * way, not a legacy branch on its way out.
+   *
+   * THREE PRODUCERS, three different answers. The Assign modal's `People`
+   * field sends what staff typed, or `null` when they typed nothing. The
+   * X (`onRemove`) sends `null` unconditionally — harmless, because
+   * `family_available: null` deletes the row before `set_availability` ever
+   * reaches the party-size upsert. The pencil (`onEdit`) sends the size the
+   * row ALREADY carries: its own form does not touch this field yet
+   * (kindred#2503 is a later task there), and `party_size` rides in every
+   * write-in upsert's payload — an edit that sent `null` here would silently
+   * erase a count a staff member had already recorded, on a form that never
+   * asked about it.
+   */
+  partySize: number | null
 }
 
 export interface WriteInOccupant {

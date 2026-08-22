@@ -216,6 +216,7 @@ describe('LodgingBoard — the control becomes a write', () => {
       // then editing it from the pencil on its own card. kindred#2072's modal
       // has the width for the field, so the first write carries it.
       reason: 'paper registration',
+      partySize: null,
     })
   })
 
@@ -264,6 +265,7 @@ describe('LodgingBoard — removing a write-in this card inherited', () => {
       familyAvailable: null,
       occupantName: '',
       reason: '',
+      partySize: null,
     })
   })
 

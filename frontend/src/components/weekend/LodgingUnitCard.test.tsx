@@ -2287,6 +2287,28 @@ describe('LodgingUnitCard — placing a family from the space itself (kindred#20
       familyAvailable: false,
       occupantName: 'Burst pipe',
       reason: 'back Monday',
+      partySize: null,
+    })
+  })
+
+  it('sends the People count typed in the modal, through the same write', async () => {
+    // kindred#2503, thread-through check: the modal's own unit tests pin the
+    // parsing rule; this is the one hop that would silently drop the field on
+    // its way to `onSetAvailability` if a caller forgot to forward it.
+    const user = userEvent.setup()
+    const onSetAvailability = vi.fn()
+    renderCard({ canSetAvailability: true, onSetAvailability })
+    await user.click(assignPill())
+    await user.type(screen.getByRole('searchbox'), 'Burst pipe')
+    await user.type(screen.getByLabelText('People'), '2')
+    await user.click(screen.getByRole('button', { name: /^write in$/i }))
+    expect(onSetAvailability).toHaveBeenCalledWith({
+      unitId: 'u1',
+      unitName: 'Cedar 1',
+      familyAvailable: false,
+      occupantName: 'Burst pipe',
+      reason: '',
+      partySize: 2,
     })
   })
 

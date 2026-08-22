@@ -147,6 +147,31 @@ describe('AssignFamilyModal — the header states beds FREE (owner ruling 2026-0
     expect(screen.getByTestId('assign-capacity')).not.toHaveTextContent('beds free')
   })
 
+  it('states the real remainder once every write-in is counted (kindred#2503)', () => {
+    // ⚠️ THE REFUSAL NARROWS, IT DOES NOT DISAPPEAR. The test above pins the
+    // case that still has no count; this one pins the case that now has one.
+    // `writeInDemand`'s `sized` count folds into the header's own arithmetic
+    // via `consumed`, so a fully-counted card states a real lower bound
+    // instead of declining the question outright.
+    renderModal({
+      unit: unit({
+        sleeps: 4,
+        write_ins: [
+          {
+            unit_id: 'u1',
+            unit_code: 'ridge-1',
+            unit_name: 'Ridge 1',
+            occupant_name: 'Liam Garcia',
+            note: '',
+            party_size: 2,
+          },
+        ],
+      }),
+      occupants: 0,
+    })
+    expect(screen.getByTestId('assign-capacity')).toHaveTextContent('2 of 4 beds free')
+  })
+
   it('says nothing it cannot support when nobody has measured the room', () => {
     renderModal({ unit: unit({ sleeps: null }), occupants: 0 })
     expect(screen.getByTestId('assign-capacity')).toHaveTextContent('Capacity not recorded')
@@ -1118,6 +1143,7 @@ describe('AssignFamilyModal — Enter saves from a FIELD, never from the search 
     expect(props.onWriteIn).toHaveBeenCalledWith({
       occupantName: 'Burst pipe',
       note: 'back Monday',
+      partySize: null,
     })
   })
 
@@ -1125,7 +1151,11 @@ describe('AssignFamilyModal — Enter saves from a FIELD, never from the search 
     const { props } = renderModal()
     fireEvent.change(searchBox(), { target: { value: 'Burst pipe' } })
     fireEvent.click(screen.getByRole('button', { name: /write in/i }))
-    expect(props.onWriteIn).toHaveBeenCalledWith({ occupantName: 'Burst pipe', note: '' })
+    expect(props.onWriteIn).toHaveBeenCalledWith({
+      occupantName: 'Burst pipe',
+      note: '',
+      partySize: null,
+    })
   })
 
   it('puts the Write in button INSIDE the swap region, under the field it commits', () => {
@@ -1174,21 +1204,86 @@ describe('AssignFamilyModal — Enter saves from a FIELD, never from the search 
     const { props } = renderModal()
     fireEvent.change(searchBox(), { target: { value: '  Burst pipe  ' } })
     fireEvent.click(screen.getByRole('button', { name: /write in/i }))
-    expect(props.onWriteIn).toHaveBeenCalledWith({ occupantName: 'Burst pipe', note: '' })
+    expect(props.onWriteIn).toHaveBeenCalledWith({
+      occupantName: 'Burst pipe',
+      note: '',
+      partySize: null,
+    })
   })
 })
 
-describe('AssignFamilyModal — the People field is kindred#2503 and is NOT built', () => {
-  it('offers no people count, because there is nowhere to store one', () => {
-    // Owner ruling 2026-08-19: land the modal without it rather than build a
-    // control with no destination. `lodging_write_ins` carries `occupant_name`
-    // and `note` and nothing else. The layout reserves the slot; the field
-    // arrives with kindred#2503.
+describe('AssignFamilyModal — the People field, kindred#2503', () => {
+  it('sits above Note, in the slot the layout reserved for it', () => {
     renderModal()
     fireEvent.change(searchBox(), { target: { value: 'Burst pipe' } })
     const region = screen.getByTestId('write-in-region')
-    expect(within(region).queryByLabelText(/people/i)).not.toBeInTheDocument()
-    expect(within(region).queryByRole('spinbutton')).not.toBeInTheDocument()
+    // `querySelectorAll` walks in document order, so this is a direct read of
+    // which field the region draws first.
+    const labels = Array.from(region.querySelectorAll('label')).map((el) => el.textContent)
+    expect(labels).toEqual(['People', 'Note'])
+  })
+
+  it('writes somebody in with no people count at all', () => {
+    // OPTIONAL, owner ruling 2026-08-21. Most write-ins are non-rostered staff
+    // and staff will type nothing; blank means the cabin is taken wholesale,
+    // which is the right answer for that population. Requiring a number would
+    // tax every staff write-in to buy precision only paper registrations need.
+    const { props } = renderModal()
+    fireEvent.change(searchBox(), { target: { value: 'Burst pipe' } })
+    fireEvent.click(screen.getByRole('button', { name: /write in/i }))
+    expect(props.onWriteIn).toHaveBeenCalledWith({
+      occupantName: 'Burst pipe',
+      note: '',
+      partySize: null,
+    })
+  })
+
+  it('sends a typed count', () => {
+    const { props } = renderModal()
+    fireEvent.change(searchBox(), { target: { value: 'Burst pipe' } })
+    fireEvent.change(screen.getByLabelText('People'), { target: { value: '2' } })
+    fireEvent.click(screen.getByRole('button', { name: /write in/i }))
+    expect(props.onWriteIn).toHaveBeenCalledWith({
+      occupantName: 'Burst pipe',
+      note: '',
+      partySize: 2,
+    })
+  })
+
+  it('refuses to save a count it cannot read, rather than dropping it', () => {
+    // Blank is a complete answer; `0` is not. Saving a write-in the staff
+    // member believes carries a count, silently without one, is worse than
+    // refusing the keystroke.
+    const { props } = renderModal()
+    fireEvent.change(searchBox(), { target: { value: 'Burst pipe' } })
+    fireEvent.change(screen.getByLabelText('People'), { target: { value: '0' } })
+    expect(screen.getByRole('button', { name: /write in/i })).toBeDisabled()
+    fireEvent.click(screen.getByRole('button', { name: /write in/i }))
+    expect(props.onWriteIn).not.toHaveBeenCalled()
+  })
+
+  it('saves on Enter from People, as it does from Note', () => {
+    // weekend-card-vocabulary.md §6, locked: Enter saves from a FIELD, never
+    // from the search box. Adding a field adds a save site, never an
+    // exception.
+    const { props } = renderModal()
+    fireEvent.change(searchBox(), { target: { value: 'Burst pipe' } })
+    const people = screen.getByLabelText('People')
+    fireEvent.change(people, { target: { value: '2' } })
+    fireEvent.keyDown(people, { key: 'Enter' })
+    expect(props.onWriteIn).toHaveBeenCalledWith({
+      occupantName: 'Burst pipe',
+      note: '',
+      partySize: 2,
+    })
+  })
+
+  it('still does nothing on Enter in the search box, even with a count already typed', () => {
+    const { props } = renderModal()
+    fireEvent.change(searchBox(), { target: { value: 'Burst pipe' } })
+    fireEvent.change(screen.getByLabelText('People'), { target: { value: '2' } })
+    fireEvent.keyDown(searchBox(), { key: 'Enter' })
+    expect(props.onWriteIn).not.toHaveBeenCalled()
   })
 })
 

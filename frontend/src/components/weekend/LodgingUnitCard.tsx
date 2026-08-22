@@ -1266,6 +1266,10 @@ const LodgingUnitCardInner = memo(function LodgingUnitCardInner({
             // `familyAvailable: null` DELETES, and the occupant and reason are
             // empty because a removal asserts nothing — the same write the
             // strip's clear sent, now pointed at a row the reader can see.
+            // `partySize: null` alongside them is harmless rather than
+            // meaningful: a delete never reaches `set_availability`'s
+            // party-size upsert (`family_available is None` returns before
+            // it), so this value is never read.
             {...(canSetAvailability && onSetAvailability !== undefined
               ? {
                   onRemove: () => {
@@ -1275,6 +1279,7 @@ const LodgingUnitCardInner = memo(function LodgingUnitCardInner({
                       familyAvailable: null,
                       occupantName: '',
                       reason: '',
+                      partySize: null,
                     })
                   },
                   // BOUND TO THIS ROW for the same reason `onRemove` is — kindred#2430.
@@ -1282,6 +1287,14 @@ const LodgingUnitCardInner = memo(function LodgingUnitCardInner({
                   // `null`: `set_availability` upserts a write-in
                   // (`_upsert_row(what='write-in', ...)`), so this write updates
                   // the existing row rather than creating a second one.
+                  //
+                  // `partySize: entry.occupant.partySize` — the RECORDED size,
+                  // not `null`. `WriteInCard`'s pencil edits the occupant and
+                  // the note only (kindred#2503's edit form is a later task),
+                  // and `party_size` rides in every write-in upsert's payload
+                  // regardless of what the form asked about — sending `null`
+                  // here would silently erase a count a staff member had
+                  // already recorded, on every unrelated note edit.
                   onEdit: (write: { occupantName: string; reason: string }) => {
                     onSetAvailability({
                       unitId: entry.source.unitId,
@@ -1289,6 +1302,7 @@ const LodgingUnitCardInner = memo(function LodgingUnitCardInner({
                       familyAvailable: false,
                       occupantName: write.occupantName,
                       reason: write.reason,
+                      partySize: entry.occupant.partySize,
                     })
                   },
                 }
@@ -1464,13 +1478,22 @@ const LodgingUnitCardInner = memo(function LodgingUnitCardInner({
                 // staff member wanting to record WHY had to write the occupant
                 // in and then edit it from the pencil on its own card. The
                 // modal has room for the field, so the first write carries it.
-                onWriteIn: (write: { occupantName: string; note: string }) => {
+                //
+                // `partySize` rides straight through (kindred#2503) — `null`
+                // is the modal's own common case, not a gap this call site
+                // has to fill in.
+                onWriteIn: (write: {
+                  occupantName: string
+                  note: string
+                  partySize: number | null
+                }) => {
                   onSetAvailability({
                     unitId: unit.unit_id,
                     unitName: unit.name,
                     familyAvailable: false,
                     occupantName: write.occupantName,
                     reason: write.note,
+                    partySize: write.partySize,
                   })
                 },
               }

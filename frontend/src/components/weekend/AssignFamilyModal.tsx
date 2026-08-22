@@ -51,10 +51,24 @@
  *   keystroke that commits lives in a field the staff member moved to on
  *   purpose. The list rows are real buttons, so a keyboard still has a path.
  *
- * The `People` field W3 draws is kindred#2503 and is NOT BUILT: `lodging_write_ins`
- * carries `occupant_name` and `note` and nothing else, and a control with no
- * destination is worse than an absent one (owner ruling, 2026-08-19). The
- * layout leaves it room.
+ * The `People` field W3 draws is kindred#2503, and it IS BUILT, in the slot
+ * the layout always reserved for it: it stacks above `Note` in the write-in
+ * region, so the note that used to sit first now sits second — the same shift
+ * the reserved-slot comment promised before the destination existed.
+ *
+ * It is OPTIONAL, unlike the occupant name beside it (owner ruling
+ * 2026-08-21): *"staff doesn't want the integer field mandatory on input
+ * since most will be staff, and she isn't concerned about staff housing
+ * hitting quantity limits, and the paper write-ins are fewer."* Blank is a
+ * COMPLETE answer meaning the write-in takes the room wholesale, not a
+ * missing one — most write-ins are non-rostered staff who will type nothing,
+ * and requiring a number would tax every one of them to buy precision only
+ * the rarer paper registrations need. A TYPED value still has to parse,
+ * though: `0` and anything non-numeric disable `Write in` rather than being
+ * silently dropped, because saving a write-in the staff member believes
+ * carries a count, without one, is worse than refusing the keystroke.
+ * `Enter` saves from it exactly as it does from `Note` below — adding a field
+ * adds a save site, never an exception to that ruling.
  *
  * Built on `ui/Modal`, which owns the portal, the focus trap, the background
  * `inert` and `ui/modalStack`'s Escape ordering. Do not hand-roll any of it.
@@ -71,7 +85,7 @@ import { resolveNeedGlyphs } from './needGlyphs'
 import { partyKey } from './partyKey'
 import { placementCandidates, type PlacementCandidate } from './placementCandidates'
 import { effectiveSleeps, partyBeds } from './rosterAttention'
-import { hasWriteIn } from './writeIn'
+import { coveringWriteIns, hasWriteIn, writeInDemand } from './writeIn'
 
 export interface AssignFamilyModalProps {
   isOpen: boolean
@@ -114,7 +128,8 @@ export interface AssignFamilyModalProps {
    * Optional, and the offer is absent when it is: a caller with no write path
    * must not be shown an affordance it cannot honour.
    */
-  onWriteIn?: ((write: { occupantName: string; note: string }) => void) | undefined
+  onWriteIn?:
+    ((write: { occupantName: string; note: string; partySize: number | null }) => void) | undefined
   /** True while a write THIS card started is in flight. */
   isSaving?: boolean
 }
@@ -256,19 +271,29 @@ function capacitySentence(
 ): string {
   const capacity = effectiveSleeps(unit, units)
   if (capacity === null) return 'Capacity not recorded'
-  // A written-into room has an occupant no `occupants` figure counts (a
-  // write-in is not a party — kindred#2439), so a free-bed number here would
-  // be one the card itself refuses to print (it shows an em dash) and one the
-  // candidate rows below DECLINE to grade against (`capacityVerdict`'s own
-  // write-in gate). The header states what it knows — the capacity — and
-  // stops there, or the modal disagrees with itself about the same cabin.
-  if (hasWriteIn(unit)) return `Sleeps ${String(capacity)} · occupancy not counted (write-in)`
-  // The card's own gate, mirrored — see `spanWidth`'s doc. A spanning
-  // placement keeps its figure and loses the claim.
-  if (occupants > capacity && spanWidth === 0) {
-    return `Over capacity — ${String(occupants)} placed, sleeps ${String(capacity)}`
+  // ⚠️ THE REFUSAL NARROWS, IT DOES NOT DISAPPEAR (kindred#2503). A
+  // written-into room used to have NO occupancy figure at all — `occupants`
+  // never counts a write-in (kindred#2439), so a free-bed number here would
+  // be one the card itself refused to print (it shows an em dash). Candidate
+  // rows below still DECLINE to grade against ANY write-in card
+  // (`capacityVerdict`'s own gate, unchanged by this), but the header can now
+  // say more: `writeInDemand` supplies a real headcount wherever every cover
+  // on this card recorded a `party_size`, so the refusal applies only to the
+  // case that still has none — `known` is false. A partly-counted card is a
+  // lower bound (`writeInDemand`'s own doc), and this header states facts.
+  const { consumed, known } = writeInDemand(capacity, coveringWriteIns(unit))
+  if (!known && hasWriteIn(unit)) {
+    return `Sleeps ${String(capacity)} · occupancy not counted (write-in)`
   }
-  return `${String(Math.max(0, capacity - occupants))} of ${String(capacity)} beds free`
+  // The card's own gate, mirrored — see `spanWidth`'s doc. A spanning
+  // placement keeps its figure and loses the claim. `consumed` folds the
+  // write-in headcount into `taken` exactly the way `occupants` already did
+  // on its own — `consumed` is `0` whenever there is nothing to count.
+  const taken = occupants + consumed
+  if (taken > capacity && spanWidth === 0) {
+    return `Over capacity — ${String(taken)} placed, sleeps ${String(capacity)}`
+  }
+  return `${String(Math.max(0, capacity - taken))} of ${String(capacity)} beds free`
 }
 
 /**
@@ -424,6 +449,20 @@ export function AssignFamilyModal({
    * nothing.
    */
   const [note, setNote] = useState('')
+  /*
+   * OPTIONAL, unlike the occupant name beside it (owner ruling 2026-08-21).
+   * Most write-ins are non-rostered staff and staff will type nothing here;
+   * blank means the cabin is taken wholesale, which is the correct answer for
+   * that population rather than a missing one.
+   *
+   * A typed value still has to parse. `''` is a complete answer and `'0'` is
+   * not — saving a write-in the staff member believes carries a count,
+   * without one, is worse than refusing the keystroke.
+   */
+  const [people, setPeople] = useState('')
+  const parsedPeople = Number.parseInt(people, 10)
+  const partySize = people.trim() === '' ? null : parsedPeople
+  const peopleValid = partySize === null || (Number.isInteger(partySize) && partySize >= 1)
 
   const trimmed = query.trim()
   const needle = trimmed.toLowerCase()
@@ -474,19 +513,22 @@ export function AssignFamilyModal({
     onSelect(party)
     setQuery('')
     setNote('')
+    setPeople('')
     onClose()
   }
 
   const writeIn = () => {
-    // The single guard is enough, and the redundant `onWriteIn === undefined`
-    // that used to sit beside it is gone: `offersWriteIn` is a `const` whose
-    // definition includes that check, so TypeScript narrows through it.
-    if (!offersWriteIn) return
+    // TWO guards now: `offersWriteIn` (unchanged — the caller can write one, a
+    // name was typed, and no family still matches) and `peopleValid`, which
+    // blocks only an UNPARSEABLE count, never a blank one. Blank means
+    // `partySize === null`, and `peopleValid` is true for it by construction.
+    if (!offersWriteIn || !peopleValid) return
     // The TRIMMED text, which is what the offer shows. Staff type into a search
     // box and a trailing space is a typing artefact, not a name.
-    onWriteIn({ occupantName: trimmed, note: note.trim() })
+    onWriteIn({ occupantName: trimmed, note: note.trim(), partySize })
     setQuery('')
     setNote('')
+    setPeople('')
     onClose()
   }
 
@@ -711,15 +753,37 @@ export function AssignFamilyModal({
               <p className="text-sm font-medium text-amber-700 dark:text-amber-400">
                 {`No family matches “${trimmed}” — this will be written in.`}
               </p>
-              {/* kindred#2503's `People` field belongs HERE, above the note.
-                  It is not built: `lodging_write_ins` has `occupant_name` and
-                  `note` and nowhere to put a count, and a field with no
-                  destination is worse than an absent one. When #2503 lands it
-                  STACKS above `Note` in this column — the artifact draws it
-                  that way too — so the note moves down by one field's height.
-                  The swap region has a fixed height, so the dialog will not
-                  move around it. */}
-              {/* `gap-[3px]` is the artifact's `.mfield`. */}
+              {/* kindred#2503's `People` field, STACKED above `Note` — the
+                  artifact draws it that way too, and the region's height is
+                  fixed, so the note moving down by one field's height costs
+                  the dialog nothing. */}
+              {/* `gap-[3px]` is the artifact's `.mfield`, matching `Note`. */}
+              <label className="flex flex-col gap-[3px] text-xs font-medium">
+                People
+                <input
+                  type="number"
+                  min={1}
+                  step={1}
+                  inputMode="numeric"
+                  value={people}
+                  disabled={isSaving}
+                  placeholder="How many"
+                  onChange={(event) => {
+                    setPeople(event.target.value)
+                  }}
+                  onKeyDown={(event) => {
+                    // ↵ SAVES FROM A FIELD — the same half of the ruling
+                    // `Note` below carries. Adding a field adds a save site,
+                    // never an exception to the keybinding rule
+                    // (weekend-card-vocabulary.md §6).
+                    if (event.key !== 'Enter') return
+                    event.preventDefault()
+                    writeIn()
+                  }}
+                  // The SAME `.pinput` as `Note` and the search box above.
+                  className="border-border bg-background text-foreground placeholder:text-muted-foreground/60 focus:border-primary/50 focus:ring-primary/10 rounded-md border px-1.5 py-1 text-sm font-normal focus:ring-2 focus:outline-none"
+                />
+              </label>
               <label className="flex flex-col gap-[3px] text-xs font-medium">
                 Note
                 <input
@@ -764,7 +828,7 @@ export function AssignFamilyModal({
                 <button
                   type="button"
                   onClick={writeIn}
-                  disabled={isSaving}
+                  disabled={isSaving || !peopleValid}
                   className="bg-primary text-primary-foreground rounded-md px-3 py-1.5 text-sm font-medium disabled:opacity-40"
                 >
                   Write in

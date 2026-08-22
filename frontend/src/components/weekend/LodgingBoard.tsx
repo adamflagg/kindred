@@ -421,6 +421,11 @@ export function LodgingBoard({
         familyAvailable: write.familyAvailable,
         occupantName: write.occupantName,
         reason: write.reason,
+        // Straight through (kindred#2503) — `UnitAvailabilityWrite` and
+        // `AvailabilityIntent` carry the same three answers this fact can be
+        // (a typed count, a preserved one, or `null`), and this glue is not
+        // the place to collapse them.
+        partySize: write.partySize,
       }).catch(() => undefined)
     },
     [setAvailability]

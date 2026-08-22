@@ -47,6 +47,7 @@ const WRITE_IN = {
   familyAvailable: false as boolean | null,
   occupantName: 'Emma Johnson',
   reason: '',
+  partySize: null as number | null,
 }
 
 let client: QueryClient
@@ -94,6 +95,7 @@ describe('useUnitAvailability', () => {
       familyAvailable: false,
       occupantName: 'Emma Johnson',
       reason: '',
+      partySize: null,
     })
   })
 
