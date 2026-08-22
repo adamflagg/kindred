@@ -1599,6 +1599,26 @@ describe('LodgingUnitCard — the write-in numerator counts recorded people (kin
     expect(screen.getByTestId('unit-occupancy')).toHaveTextContent('—/5')
   })
 
+  it('still prints only the placed count when an unsized write-in shares the card with a placed family', () => {
+    // The routine case since kindred#2432 (the card's own comment says so):
+    // an unsized write-in beside a placed family. `sized` is 0 here, so the
+    // numerator must be exactly `occupants` (2), never `consumed` — a
+    // `sized`/`consumed` swap in the numerator is invisible on the two tests
+    // above (one short-circuits to the em dash, the other has sized ===
+    // consumed) and only shows up here, where an unsized own cover falls
+    // back to its own capacity for `consumed` while `sized` stays 0.
+    render(
+      <LodgingUnitCard
+        slot={slot({
+          unit: unit({ write_ins: [cover({ party_size: null })] }),
+          parties: [party({ party_size: 2 })],
+        })}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.getByTestId('unit-occupancy')).toHaveTextContent('2/5')
+  })
+
   it('prints the recorded size as the numerator', () => {
     render(
       <LodgingUnitCard
@@ -1649,17 +1669,27 @@ describe('LodgingUnitCard — the write-in numerator counts recorded people (kin
   it('excludes an ancestor cover’s size — it is a fact about the house, not this room', () => {
     // Printing the house's count on this room too would spend one party twice
     // across a split house (Wawona).
+    //
+    // A PLACED FAMILY IS REQUIRED HERE, not an empty card: with zero placed
+    // occupants `wholesaleWriteIn` is true and the numerator short-circuits to
+    // the em dash before the ancestor exclusion is ever evaluated, which is
+    // exactly how a `sized`/`consumed` swap in the numerator survived this
+    // test unnoticed. With a placed family present, `wholesaleWriteIn` is
+    // false and the assertion can only pass if the numerator is built from
+    // `sized` (which excludes the ancestor's 4) and not `consumed` (which
+    // would include it).
     render(
       <LodgingUnitCard
         slot={slot({
           unit: unit({
             write_ins: [cover({ relation: 'ancestor', party_size: 4, unit_sleeps: 7 })],
           }),
+          parties: [party({ party_size: 2 })],
         })}
         onOpenParty={vi.fn()}
       />
     )
-    expect(screen.getByTestId('unit-occupancy')).toHaveTextContent('—/5')
+    expect(screen.getByTestId('unit-occupancy')).toHaveTextContent('2/5')
   })
 
   it('mentions the recorded write-in count in the tooltip alongside placed families', () => {
