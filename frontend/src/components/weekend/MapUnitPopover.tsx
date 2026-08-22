@@ -681,7 +681,25 @@ function ClusterSummary({
   // which is what stops the second room rendering empty — so the flat list
   // counts its beds once per door, and can print more placed than the
   // building sleeps. One chip, one household, one bed total.
-  const placed = families.reduce((total, { party }) => total + partyBeds(party), 0)
+  //
+  // PLUS every room's write-in `sized` count (kindred#2540), mirroring
+  // `DetailCard`'s own `bedsNeeded + writeInSized` exactly rather than a
+  // second derivation of it. `summaryWriteIns` below dedupes write-ins for
+  // the NAME LIST only, one entry per unit id that carries a row — it was
+  // never folded into this arithmetic, so a cluster containing a sized
+  // write-in reported "0 placed" at the building level while `DetailCard`
+  // reported the true count for that same room one click in. Summed PER
+  // UNIT, not over the deduped list, because unlike a shared family a
+  // write-in's count is a fact about ITS OWN room and every room's cover has
+  // to contribute. `sized`, never `consumed`: `consumed` folds in the
+  // wholesale fallback and an ancestor's whole-card claim and is capped at
+  // that room's own capacity — see `writeInDemand`'s doc for why the two
+  // numbers must not collapse into one.
+  const writeInSized = resolved.reduce(
+    (total, { entry }) => total + writeInDemand(entry.capacity, coveringWriteIns(entry.unit)).sized,
+    0
+  )
+  const placed = families.reduce((total, { party }) => total + partyBeds(party), 0) + writeInSized
   const writeIns = summaryWriteIns(resolved)
 
   return (

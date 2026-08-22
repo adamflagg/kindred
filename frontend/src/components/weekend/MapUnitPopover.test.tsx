@@ -1063,6 +1063,40 @@ describe('MapUnitPopover — a container, master-detail (kindred#2183)', () => {
     expect(screen.getByText('5 · 3 placed')).toBeInTheDocument()
   })
 
+  it('folds a written-in room’s recorded count into the building’s placed figure', () => {
+    // kindred#2540. `summaryWriteIns` already carries the sized counts, but
+    // only for the "Occupied by" name list — the beds arithmetic above it
+    // summed `families` alone, so a cluster containing a sized write-in
+    // reported "0 placed" at the building level while `DetailCard` reports
+    // the true count for that same room once staff drill in. One popover
+    // contradicting itself, which is the defect class this whole surface
+    // exists to remove. Reads `sized`, never `consumed` — see
+    // `writeInDemand`'s own doc for why the two must not collapse.
+    const withWriteIn = [
+      HOUSE[0],
+      HOUSE[1],
+      mapUnit(
+        row({
+          unit_id: 'u3',
+          code: 'cedar-side',
+          name: 'Cedar Lodge Side',
+          sleeps: 3,
+          write_ins: [
+            cover({
+              unit_id: 'u3',
+              unit_code: 'cedar-side',
+              unit_name: 'Cedar Lodge Side',
+              party_size: 2,
+            }),
+          ],
+        })
+      ),
+    ]
+    render(<MapUnitPopover units={withWriteIn} hue={HUE} onOpenParty={vi.fn()} />)
+    // Capacity unchanged at 9 (4 + 2 + 3); 6 rostered + 2 written-in = 8 placed.
+    expect(screen.getByText('9 · 8 placed')).toBeInTheDocument()
+  })
+
   it('refuses a building total when one of its rooms is unmeasured', () => {
     const partial = [HOUSE[0], mapUnit(row({ unit_id: 'u9', code: 'cedar-x', sleeps: null }))]
     render(<MapUnitPopover units={partial as MapUnit[]} hue={HUE} onOpenParty={vi.fn()} />)
