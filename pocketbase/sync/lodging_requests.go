@@ -214,8 +214,8 @@ func DeriveShareEligibility(
 	// sibling answer. winsGate resolves the gate by newest-wins with no
 	// fail-safe direction, which is right for a display column and wrong for a
 	// consent verdict: measured on 2026, 4 households would otherwise fall back
-	// to `open` off a sibling's recorded no_share. Same shape as the household
-	// blocker that clears opt_out_vip in family_camp_derived.
+	// to `open` off a sibling's recorded no_share. Same fail-safe shape as
+	// accommodation_is_mandatory's blocker-wins OR in family_camp_derived.
 	//
 	// Deliberately NOT applied when the form answered -- the form is
 	// authoritative, and letting an old sibling gate override it would invert

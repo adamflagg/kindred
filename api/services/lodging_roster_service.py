@@ -2687,9 +2687,9 @@ class LodgingRosterService:
           related"* -- narrative presence reads those as power (kindred#1875).
         * `needs_private_bathroom` came from `FAM CAMP-bathroom` alone, so it
           missed `Adult-Bathroom` and those same 75 bathroom answers.
-        * `accommodation_is_mandatory` came from `not opt_out_vip`, which is
-          OR'd across household members and inverts on conflict
-          (kindred#1874).
+        * `accommodation_is_mandatory` came from `not opt_out_vip` (a since-
+          retired Yes-pole column), which was OR'd across household members
+          and inverted on conflict (kindred#1874).
 
         One writer, one reader. If a flag looks wrong, fix it in the ingest
         layer so every surface sees the correction.

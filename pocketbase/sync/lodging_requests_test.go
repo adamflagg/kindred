@@ -621,7 +621,7 @@ func TestDeriveShareEligibilityConflictTracksTheVerdict(t *testing.T) {
 // newest yes_share over a sibling no_share, and 4 of those have no form answer
 // -- so they would fall back to `open`, off a recorded no_share.
 //
-// Same fail-safe shape the household blocker uses for opt_out_vip: a decline
+// Same fail-safe shape accommodation_is_mandatory's blocker-wins OR uses: a decline
 // anywhere in the household outranks a later permissive answer. Deliberately
 // scoped to the FALLBACK only -- when the authoritative form answered, it wins,
 // which is the whole precedence rule.

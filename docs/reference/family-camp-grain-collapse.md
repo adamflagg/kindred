@@ -32,7 +32,7 @@ sort (`:369`), which is `#2260`'s summer-path defect and a different file.
 empty on all 3,459 rows for 2017-2025 and populated on all 464 for 2026 — only 2026 has
 been through a current `family_camp_derived` run. Same for `needs_power`,
 `needs_private_bathroom`, `share_cabin_gate`, `request_text`, `wants_*`,
-`accommodation_is_mandatory`, `opt_out_vip`. **2025 currently reads as a year with no
+`accommodation_is_mandatory` (and `opt_out_vip`, since retired — owner ruling 2026-08-22). **2025 currently reads as a year with no
 accommodation needs at all.** Any baseline drawn from it is wrong, and a re-derive is a
 prerequisite for measuring anything historical.
 
@@ -92,7 +92,7 @@ replaced; the rest of this section is unchanged and still current.
 | B1 | `needs_private_bathroom` | 274056 / 274053 | **OR — correct** (`:980-981`) |
 | B2 | `has_infant` | 257248 | **OR — correct** (`:988-995`) |
 | B3 | `needs_accommodation` | 223999 / 274057 / 274055 | **OR — correct** (`:959-960`) |
-| B4 | `opt_out_vip` + `accommodation_is_mandatory` | 256927 / 256935 | **OR plus an order-independent blocker override** (`:961-977` + `:1008-1025`). The best-designed site on this path and the model for what a conflict rule should look like |
+| B4 | `accommodation_is_mandatory` (`opt_out_vip` retired, owner ruling 2026-08-22 — the No pole alone is stored, blocker-wins by construction) | 256927 / 256935 | **OR plus an order-independent blocker override** (historical shape) (`:961-977` + `:1008-1025`). The best-designed site on this path and the model for what a conflict rule should look like |
 | B5 | `needs_power` + bathroom arm | 256582 / 171577 / 256933 | OR of two independently-tested needs via `classifyCPAPAnswer`, `:982-987` — correct |
 
 ### `CollapseToHouseholdGrain` — `lodging_requests.go:291-390`

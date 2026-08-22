@@ -617,12 +617,18 @@ class AccessibilityFlagSummary(BaseModel):
     # "No, I am only able to attend with this accommodation" makes it a
     # blocker.
     #
-    # READ FROM THE COLUMN. Do not recompute this as
-    # `needs_accommodation and not opt_out_vip` -- kindred#1874: opt_out_vip
-    # is OR'd across household members, so one member's "register regardless"
-    # overrides another's "only able to attend with this in place" and the
-    # blocker silently becomes a warning. The ingest layer writes the honest
-    # value into accommodation_is_mandatory instead.
+    # READ FROM THE COLUMN. This is the ONE stored VIP signal (owner ruling
+    # 2026-08-22): the answer's No pole. "Yes, please register regardless of
+    # cabin type" and an unanswered question both read false -- the retired
+    # `opt_out_vip` column stored the Yes pole and taught kindred#1874's
+    # lesson: an OR over the flexible pole inverts a sibling's blocker into a
+    # warning, the fail-UNSAFE direction. The ingest layer ORs the No pole
+    # only, which is blocker-wins by construction.
+    #
+    # Staff ruling: this signal is the family panel's, not the board card's
+    # -- `FamilyCard.tsx`'s chip row struck `Needs Accommodation`, and
+    # `AccessibilityFlagList` on `FamilyDetailsPanel` renders the mandatory
+    # row.
     accommodation_is_mandatory: bool = False
     # True when any adult in the household is bringing an infant
     # (`Adult-Infant`). Asked because of nursing -- Women's and Men's Weekend
