@@ -5233,6 +5233,60 @@ class TestWriteInCovers:
         """
         return frozenset(f"id-{code}" for code in codes)
 
+    def test_a_cover_says_which_direction_it_came_from(self) -> None:
+        """The client cannot derive this. `writeInEntries` compares codes, which
+        separates own from not-own but not an ANCESTOR from a DESCENDANT -- and
+        the two consume a card differently (`write_in_demand`). A second
+        client-side tree walk is a second thing that can disagree with this one.
+        """
+        house = self._unit("house", is_container=True)
+        room = self._unit("room", parent_code="house")
+        other = self._unit("other", parent_code="house")
+        units = [house, room, other]
+        caps = {"house": 5, "room": 3, "other": 2}
+
+        covers = write_in_covers(units, self._written("room"), caps)
+        assert covers["room"][0].relation == "own"
+        assert covers["house"][0].relation == "descendant"
+        assert covers.get("other", []) == []
+
+        covers = write_in_covers(units, self._written("house"), caps)
+        assert covers["house"][0].relation == "own"
+        assert covers["room"][0].relation == "ancestor"
+        assert covers["other"][0].relation == "ancestor"
+
+    def test_a_cover_carries_the_row_s_party_size(self) -> None:
+        house = self._unit("house", is_container=True)
+        room = self._unit("room", parent_code="house", party_size=2)
+
+        covers = write_in_covers([house, room], self._written("room"), {"house": 5, "room": 3})
+
+        assert covers["room"][0].party_size == 2
+        assert covers["house"][0].party_size == 2
+
+    def test_an_unsized_row_carries_none_not_zero(self) -> None:
+        """`0` would mean "a write-in for nobody". The column's `min: 1` forbids
+        it and the arithmetic reads `None` as *occupies wholesale*, which is a
+        different answer entirely."""
+        house = self._unit("house", is_container=True)
+        room = self._unit("room", parent_code="house")
+
+        covers = write_in_covers([house, room], self._written("room"), {"house": 5, "room": 3})
+
+        assert covers["room"][0].party_size is None
+
+    def test_a_cover_carries_the_capacity_of_the_unit_it_names(self) -> None:
+        """`unit_sleeps` is the DESCENDANT's beds, not the card's. `MapUnitPopover`
+        has no registry to look this up in -- its `units` prop is one cluster's
+        members and says so -- which is why the server publishes it."""
+        house = self._unit("house", is_container=True)
+        room = self._unit("room", parent_code="house")
+
+        covers = write_in_covers([house, room], self._written("room"), {"house": 5, "room": 3})
+
+        assert covers["house"][0].unit_sleeps == 3
+        assert covers["room"][0].unit_sleeps == 3
+
     def test_a_room_inherits_the_write_in_of_the_building_above_it(self) -> None:
         # The SPLIT case. Staff wrote into the whole house while it was merged,
         # then split it back to rooms: the row still names the house, which now
@@ -5245,7 +5299,7 @@ class TestWriteInCovers:
         )
         room = self._unit("house-a", parent_code="house")
 
-        covers = write_in_covers([house, room], self._written("house"))
+        covers = write_in_covers([house, room], self._written("house"), {})
 
         assert covers["house-a"][0].unit_code == "house"
         assert covers["house-a"][0].occupant_name == "Liam Garcia"
@@ -5258,7 +5312,7 @@ class TestWriteInCovers:
         written_room = self._unit("house-a", parent_code="house", occupant_name="Liam Garcia")
         other_room = self._unit("house-b", parent_code="house")
 
-        covers = write_in_covers([house, written_room, other_room], self._written("house-a"))
+        covers = write_in_covers([house, written_room, other_room], self._written("house-a"), {})
 
         assert covers["house"][0].unit_code == "house-a"
         assert covers["house"][0].occupant_name == "Liam Garcia"
@@ -5273,7 +5327,7 @@ class TestWriteInCovers:
         written_room = self._unit("house-a", parent_code="house", occupant_name="Liam Garcia")
         other_room = self._unit("house-b", parent_code="house")
 
-        covers = write_in_covers([house, written_room, other_room], self._written("house-a"))
+        covers = write_in_covers([house, written_room, other_room], self._written("house-a"), {})
 
         assert "house-b" not in covers
         assert covers["house"][0].unit_code == "house-a"
@@ -5282,7 +5336,7 @@ class TestWriteInCovers:
         house = self._unit("house", is_container=True, occupant_name="Liam Garcia")
         room = self._unit("house-a", parent_code="house", occupant_name="Ava Martinez")
 
-        covers = write_in_covers([house, room], self._written("house", "house-a"))
+        covers = write_in_covers([house, room], self._written("house", "house-a"), {})
 
         assert covers["house-a"][0].unit_code == "house-a"
         assert covers["house-a"][0].occupant_name == "Ava Martinez"
@@ -5297,7 +5351,7 @@ class TestWriteInCovers:
         )
         room = self._unit("house-a", parent_code="house")
 
-        covers = write_in_covers([block, house, room], self._written("block", "house"))
+        covers = write_in_covers([block, house, room], self._written("block", "house"), {})
 
         assert covers["house-a"][0].unit_code == "house"
 
@@ -5311,7 +5365,7 @@ class TestWriteInCovers:
         house = self._unit("house", is_container=True, inventory_class="staff_default", family_available_override=True)
         room = self._unit("house-a", parent_code="house")
 
-        covers = write_in_covers([house, room], self._written())
+        covers = write_in_covers([house, room], self._written(), {})
 
         assert covers == {}
 
@@ -5328,10 +5382,10 @@ class TestWriteInCovers:
         house = self._unit("house", is_container=True, family_available_override=False)
         room = self._unit("house-a", parent_code="house")
 
-        assert write_in_covers([house, room], self._written()) == {}
+        assert write_in_covers([house, room], self._written(), {}) == {}
 
     def test_a_unit_with_nothing_on_its_path_is_absent(self) -> None:
-        assert write_in_covers([self._unit("cedar-1")], self._written()) == {}
+        assert write_in_covers([self._unit("cedar-1")], self._written(), {}) == {}
 
     def test_a_parent_cycle_does_not_hang(self) -> None:
         # The server guards against writing one (#1899), but a cycle already in
@@ -5343,7 +5397,7 @@ class TestWriteInCovers:
         # product of the cycle rather than of a row -- an empty map is the only
         # right answer, and reaching it at all means both guards fired. Without
         # them this hangs rather than failing.
-        assert write_in_covers([a, b], self._written()) == {}
+        assert write_in_covers([a, b], self._written(), {}) == {}
 
     def test_a_blank_coded_unit_never_lends_its_cover_to_another(self) -> None:
         # "" is the same key `parent_code == ""` uses for "no parent", which is
@@ -5356,7 +5410,7 @@ class TestWriteInCovers:
         written = self._unit("", occupant_name="Liam Garcia")
         other = LodgingUnitSummary(unit_id="id-other", code="", name="Other")
 
-        assert write_in_covers([written, other], self._written("")) == {}
+        assert write_in_covers([written, other], self._written(""), {}) == {}
 
     def test_several_written_rooms_are_all_returned_in_code_order(self) -> None:
         # A building over two written-into rooms carries BOTH, in `code` order
@@ -5369,7 +5423,7 @@ class TestWriteInCovers:
         written = self._written("house-a", "house-b")
 
         for units in ([house, room_b, room_a], [house, room_a, room_b]):
-            assert [cover.unit_code for cover in write_in_covers(units, written)["house"]] == [
+            assert [cover.unit_code for cover in write_in_covers(units, written, {})["house"]] == [
                 "house-a",
                 "house-b",
             ]
@@ -5390,7 +5444,7 @@ class TestWriteInCovers:
             self._unit("house-side", parent_code="house", occupant_name="Noah Chen"),
         ]
 
-        covers = write_in_covers([house, *rooms], self._written(*(room.code for room in rooms)))
+        covers = write_in_covers([house, *rooms], self._written(*(room.code for room in rooms)), {})
 
         assert [cover.occupant_name for cover in covers["house"]] == [
             "Emma Johnson",
@@ -5413,7 +5467,7 @@ class TestWriteInCovers:
         bed = self._unit("house-a-1", parent_code="house-a", occupant_name="Liam Garcia")
         other_wing = self._unit("house-b", parent_code="house", occupant_name="Olivia Martinez")
 
-        covers = write_in_covers([house, wing, bed, other_wing], self._written("house-a", "house-a-1", "house-b"))
+        covers = write_in_covers([house, wing, bed, other_wing], self._written("house-a", "house-a-1", "house-b"), {})
 
         assert [cover.unit_code for cover in covers["house"]] == ["house-a", "house-b"]
 

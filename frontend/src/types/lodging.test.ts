@@ -306,6 +306,10 @@ const _exhaustiveLodgingUnit: Required<LodgingUnitRow> = {
   family_available_override: null,
   occupant_name: '',
   reason: '',
+  // The unit's OWN write-in row's count, read the way `occupant_name` and
+  // `reason` are. `null` is *occupies wholesale*, never "zero people" -- the
+  // column's `min: 1` forbids zero.
+  party_size: null,
   is_family_available: true,
   // The write-in COVERING this space, resolved through the unit tree by the
   // server — this unit's own row, else its nearest ancestor's, else its

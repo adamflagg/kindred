@@ -205,6 +205,33 @@ class WriteInCover(BaseModel):
     unit_name: str = ""
     occupant_name: str = ""
     note: str = ""
+    # How many people the row is for, or None when nobody recorded a count.
+    #
+    # `None` is *occupies wholesale* -- never "zero people" -- the column's
+    # `min: 1` forbids zero, and the em dash the card has always drawn is
+    # exactly this state. `write_in_demand` (api/services/lodging_rules.py) is
+    # the one place that reading turns into arithmetic.
+    party_size: int | None = None
+    # WHICH DIRECTION this cover reached the unit from, resolved by
+    # `write_in_covers` at the moment it walks the tree.
+    #
+    # PUBLISHED rather than left to the client, and that is the point: an
+    # ancestor and a descendant take a card's beds differently (an ancestor
+    # takes the whole card; a descendant takes its own room's), and
+    # `writeInEntries` can only tell own from not-own by comparing codes. A
+    # second walk on the client is a second answer to "who is in this space".
+    relation: Literal["own", "ancestor", "descendant"] = "own"
+    # The EFFECTIVE capacity of the unit the row NAMES -- a whole-house total
+    # on a container, `sleeps` on a leaf, None when nobody measured it.
+    #
+    # PUBLISHED because a descendant cover consumes ITS OWN room's beds, and
+    # the one surface that has to know cannot look it up: `MapUnitPopover`
+    # never receives the full registry -- its own `units` prop is documented as
+    # "only a cluster's members… cannot answer the question alone". Threading
+    # the registry in was rejected there deliberately. The server already
+    # computes this while resolving availability, so publishing it removes a
+    # client-side registry walk rather than adding a field for its own sake.
+    unit_sleeps: int | None = None
 
 
 class LodgingUnitSummary(BaseModel):
@@ -383,6 +410,10 @@ class LodgingUnitSummary(BaseModel):
     # `occupant_name` back -- the note is PROSPECTIVE, for write-ins recorded
     # from 1500000148 onward.
     reason: str = ""
+    # The unit's OWN write-in row's count, read the way `occupant_name` and
+    # `reason` are and for the same reason: `write_in_covers` reads it back off
+    # the summary rather than re-fetching the row.
+    party_size: int | None = None
     # CAN A FAMILY GO IN THIS SPACE -- the DERIVED answer, and the one every
     # count on the stats bar goes through. Folds the two facts above together:
     # the ROLE from `family_available_override`, and OCCUPANCY from this unit's

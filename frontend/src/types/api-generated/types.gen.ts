@@ -2295,6 +2295,10 @@ export type LodgingUnitSummary = {
    */
   reason?: string
   /**
+   * Party Size
+   */
+  party_size?: number | null
+  /**
    * Is Family Available
    */
   is_family_available?: boolean
@@ -7368,6 +7372,18 @@ export type WriteInCover = {
    * Note
    */
   note?: string
+  /**
+   * Party Size
+   */
+  party_size?: number | null
+  /**
+   * Relation
+   */
+  relation?: 'own' | 'ancestor' | 'descendant'
+  /**
+   * Unit Sleeps
+   */
+  unit_sleeps?: number | null
 }
 
 /**

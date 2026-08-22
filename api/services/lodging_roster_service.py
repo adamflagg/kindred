@@ -18,7 +18,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Callable, Mapping, Sequence
 from datetime import date
-from typing import TYPE_CHECKING, Any, NamedTuple, cast
+from typing import TYPE_CHECKING, Any, Literal, NamedTuple, cast
 
 from api.constants.lodging import INFANT_BED_EXEMPT_MONTHS, is_attending_adult_name
 from api.schemas.lodging import (
@@ -136,6 +136,26 @@ def _i(record: Any, field: str, default: int = 0) -> int:
         return int(value)
     except TypeError, ValueError:
         return default
+
+
+def _i_or_none(record: Any, field: str) -> int | None:
+    """An integer column, or None when it was never set.
+
+    PocketBase declares number columns `NUMERIC DEFAULT 0 NOT NULL`, so an
+    unset value stores 0 and never NULL -- the same trap `unit_capacity`
+    documents for `sleeps` in `lodging_rules.py`. `_i` above is right for a
+    column whose zero is a real quantity; this one is for a column where 0 can
+    only mean "nobody filled it in".
+
+    `party_size` is the second kind, and the distinction is load-bearing rather
+    than stylistic: the column's `min: 1` makes zero unwritable through the
+    API, and 0 read back as a party of nobody would consume no beds, where an
+    unset count means the write-in takes the room WHOLESALE. Those are opposite
+    answers.
+    """
+    if record is None:
+        return None
+    return _i(record, field) or None
 
 
 def _ramp_assessment(value: str) -> RampAssessment:
@@ -683,7 +703,9 @@ def written_in_unit_ids(write_ins: list[Any]) -> frozenset[str]:
 
 
 def write_in_covers(
-    units: list[LodgingUnitSummary], write_in_unit_ids: frozenset[str]
+    units: list[LodgingUnitSummary],
+    write_in_unit_ids: frozenset[str],
+    capacity_by_code: dict[str, int | None],
 ) -> dict[str, list[WriteInCover]]:
     """Which write-ins close each unit's space, keyed by unit code.
 
@@ -803,9 +825,15 @@ def write_in_covers(
             continue
         if _is_written_in(unit):
             sources = [unit]
+            relation: Literal["own", "ancestor", "descendant"] = "own"
         else:
             ancestor = _nearest_ancestor(unit)
-            sources = [ancestor] if ancestor is not None else _written_in_descendants(unit)
+            if ancestor is not None:
+                sources = [ancestor]
+                relation = "ancestor"
+            else:
+                sources = _written_in_descendants(unit)
+                relation = "descendant"
         if not sources:
             continue
         covers[unit.code] = [
@@ -815,20 +843,27 @@ def write_in_covers(
                 unit_name=source.name,
                 occupant_name=source.occupant_name,
                 note=source.reason,
+                party_size=source.party_size,
+                relation=relation,
+                unit_sleeps=capacity_by_code.get(source.code),
             )
             for source in sources
         ]
     return covers
 
 
-def _resolve_write_in_covers(units: list[LodgingUnitSummary], write_in_unit_ids: frozenset[str]) -> None:
+def _resolve_write_in_covers(
+    units: list[LodgingUnitSummary],
+    write_in_unit_ids: frozenset[str],
+    capacity_by_code: dict[str, int | None],
+) -> None:
     """Attach each unit's resolved write-in cover, in place.
 
     The mutating counterpart to `write_in_covers`, mirroring
     `_resolve_power_coverage`: the pure function is what the tests reason
     about, and this is the one line the response path calls.
     """
-    covers = write_in_covers(units, write_in_unit_ids)
+    covers = write_in_covers(units, write_in_unit_ids, capacity_by_code)
     for unit in units:
         unit.write_ins = covers.get(unit.code, [])
 
@@ -1589,7 +1624,16 @@ class LodgingRosterService:
         # `_build_counts` reads availability, and this call has to run on both
         # paths or the lander and the board will disagree about which houses
         # are free.
-        _resolve_write_in_covers(unit_summaries, written_in_unit_ids(write_ins))
+        #
+        # Each unit's OWN `sleeps`, keyed by code the same way `write_in_covers`
+        # keys `by_code` internally -- a blank code is excluded here too, for
+        # the same collision `by_code` guards against. This is not yet the
+        # whole-house total a combined container's cover should carry
+        # (kindred#2041's delta rule): that walk is `_build_counts`'s
+        # `_effective_sleeps`, and threading its real answer in here belongs to
+        # the task that hoists it, not this one.
+        capacity_by_code: dict[str, int | None] = {u.code: u.sleeps for u in unit_summaries if u.code}
+        _resolve_write_in_covers(unit_summaries, written_in_unit_ids(write_ins), capacity_by_code)
         housing_names = housing_names_task.result()
         parties = self._build_parties(
             session_type=session_type,
@@ -2265,6 +2309,12 @@ class LodgingRosterService:
                     # blank is not one of the three answers the decision has.
                     occupant_name=_s(source_row, "occupant_name"),
                     reason=_s(source_row, "note"),
+                    # Off the WRITE-IN row only, NEVER `source_row`. That falls
+                    # back to the role row when there is no write-in, and a role
+                    # row names nobody, so a count on it would be a headcount
+                    # for no one. `_i_or_none` is total over `None`, so the
+                    # no-write-in case needs no separate guard.
+                    party_size=_i_or_none(write_in_row, "party_size"),
                     # THREE inputs, and the third is the split's whole point:
                     # the ROLE from `lodging_availability`, and OCCUPANCY from
                     # whichever write-in table this request resolved to. The
