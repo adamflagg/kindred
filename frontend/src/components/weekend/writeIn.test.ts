@@ -350,7 +350,7 @@ describe('writeInDemand', () => {
   })
 
   it('lets an ancestor take the whole card without printing its size', () => {
-    // Wawona written into whole, then split. Printing 2 on both rooms would
+    // A house written into whole, then split. Printing 2 on both rooms would
     // spend one two-person party twice on one screen.
     expect(
       writeInDemand(4, [demandCover({ relation: 'ancestor', party_size: 2, unit_sleeps: 7 })])

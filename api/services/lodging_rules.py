@@ -203,7 +203,7 @@ def write_in_demand(capacity: int | None, loads: Sequence[WriteInLoad]) -> Write
 
     AN ANCESTOR CONTRIBUTES NOTHING TO `sized`, even carrying a count. That
     count is a fact about the house; printing it on both halves of a split
-    Wawona puts one two-person party on the screen twice.
+    a split house puts one two-person party on the screen twice.
 
     AN ANCESTOR ON A MEASURED CARD IS KNOWN, and the conditionality that used
     to be spelled `known=capacity is not None` in that branch lives in the

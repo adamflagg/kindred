@@ -1668,7 +1668,7 @@ describe('LodgingUnitCard — the write-in numerator counts recorded people (kin
 
   it('excludes an ancestor cover’s size — it is a fact about the house, not this room', () => {
     // Printing the house's count on this room too would spend one party twice
-    // across a split house (Wawona).
+    // across a split house.
     //
     // A PLACED FAMILY IS REQUIRED HERE, not an empty card: with zero placed
     // occupants `wholesaleWriteIn` is true and the numerator short-circuits to
