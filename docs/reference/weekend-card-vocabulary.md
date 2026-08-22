@@ -58,7 +58,6 @@ the home for _divergences_; this file is the home for _vocabulary_.
 | Single parent                                                                             | **line 2**, before the adult name | exactly one attending adult    | left the chip row, where it borrowed the sharing chips' muted grammar and read as a preference. **Amber** — the same tone _First-time_ uses, so amber means _notice this household_ across both marks                                                                                                                                                                                            | S2 + Sa         |
 | Returning / First-time                                                                    | bottom-right                      | prior Family Camp attendance   | a **20px icon**, no text label — 16px until 2026-08-20, when it measured 5.33px below the glyph chips' top edge and 1.33px above their bottom, reading smaller and lower than the asks it shares a row with; 20px matches the chips and costs no height (§5b). Returning is `green-700`/`green-300` — the semantic ramp, not `forest`, which measured 1.08 : 1 against the card's own text (§5b) | R3 · 2026-08-20 |
 | Last year's cabin                                                                         | line 2, right-anchored            | where they slept last season   | drawn when known, and **nothing at all when not** — no em dash, no placeholder. See §6                                                                                                                                                                                                                                                                                                           | 2026-08-20      |
-| `Needs Accommodation`                                                                     | chip row                          | `accommodation_is_mandatory`   | the hardest stop on the board. Renamed from _Accommodation required_; **the label is explicitly not locked**                                                                                                                                                                                                                                                                                     | pending staff   |
 | `Near another family` · `Wants to share` · `Did not request sharing` · `Answers disagree` | chip row                          | sharing intent                 | four chips from one object                                                                                                                                                                                                                                                                                                                                                                       | pending staff   |
 
 ## 3. STRUCK — do not reintroduce
@@ -80,6 +79,7 @@ down. Pinned negatively in `LodgingUnitCard.test.tsx` / `FamilyCard.test.tsx`.
 | Private-vs-shared bathroom on the unit card              | the form never asked about exclusivity — see §4                                                                                                                                                                                                                                                                  |
 | `Building` (the unit card's copy)                        | ruled cut 2026-08-19. The `reservationBadge` arm survives for `MapUnitPopover`'s header and its collapsed grid cell; the card stops calling it, so a board card draws none of that function's four labels. **Lands in stage 3** (§9) — the card still draws `Building` until then                                |
 | Earlier cuts, still struck                               | `Whole building` · `N families` · `Shared OK` · `Over capacity` pill. **`Whole building` had never been landed** and was still on the card in code; it went with the glyph row. It survives on the MAP, the same split `Staff` takes                                                                             |
+| `Needs Accommodation`                                     | **staff ruling, 2026-08-21**, resolving the "pending staff" row above rather than settling its wording: the accommodation/VIP signal (the raw `accommodation_is_mandatory` / `opt_out_vip` pair, kindred#1874 — see §5 below) is a request the household made, not a verdict about whether the card belongs in its slot. That verdict stays exactly where it was — `rosterAttention`'s `'required'` level still drives the roster tab's attention sections and the modal's Placement verdict; only the card-level chip and its import of `partyAttention`/`ATTENTION_LABEL` are gone. `AccessibilityFlagList` on `FamilyDetailsPanel` is now the one place either raw answer is visible, rendering BOTH states: the existing `Accommodation required`/`requested` pair plus a new row for `opt_out_vip`. Pinned in `FamilyCard.test.tsx`'s "the marks kindred#2072 STRUCK" |
 
 ### Older absences on the family card, still absent
 
@@ -136,16 +136,16 @@ now the only place the word _private_ survives.
 
 ## 5. Open — silence here is not consent
 
-- **Pending staff input**, unchanged until they weigh in: the `Needs
-Accommodation` label, the four sharing-intent chips (including whether the
-  cluster consolidates), the consent warning, `Inactive`.
-- **The `Needs Accommodation` rename did not reach `AccessibilityFlagList`**,
-  and that is deliberate rather than missed. The details panel's housing-needs
-  list carries a PAIR — `Accommodation required` / `Accommodation requested` —
-  keyed on the same `accommodation_is_mandatory` the chip reads, and renaming
-  half of a pair breaks it. The card and that list therefore word one fact two
-  ways today. **Put both in front of staff together**, since the label is
-  explicitly not locked.
+- **Pending staff input**, unchanged until they weigh in: the four
+  sharing-intent chips (including whether the cluster consolidates), the
+  consent warning, `Inactive`.
+- **`Needs Accommodation` — RESOLVED 2026-08-21, off the card, not renamed.**
+  The wording question this bullet used to raise is moot: the chip is struck
+  (§3) rather than kept and relabelled, so the pair on `AccessibilityFlagList`
+  — `Accommodation required` / `Accommodation requested`, keyed on
+  `accommodation_is_mandatory` — never had a card-level rename to disagree
+  with. That pair is unchanged; a new `opt_out_vip` row joined it on the same
+  panel.
 - **The roster's wording moved with the rule, 2026-08-20 — CLOSED.** It was
   held back for a sharper reason than the item above: the glyph is called
   _Bathroom in unit_ because that is the axis the form asks about, but while

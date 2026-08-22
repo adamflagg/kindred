@@ -2701,6 +2701,13 @@ class LodgingRosterService:
             needs_power=_b(registration, "needs_power"),
             needs_accommodation=_b(registration, "needs_accommodation"),
             accommodation_is_mandatory=_b(registration, "accommodation_is_mandatory"),
+            # The other half of the pair above. Read verbatim for the same
+            # reason: OR'd across household members in the ingest layer, so
+            # recomputing it here from `accommodation_is_mandatory` would
+            # invert on conflict (kindred#1874). Staff ruling moved this
+            # signal off the board card and onto the family panel -- see
+            # `AccessibilityFlagSummary.opt_out_vip`.
+            opt_out_vip=_b(registration, "opt_out_vip"),
             has_infant=_b(registration, "has_infant"),
             # kindred#2224. Read from the column for the same reason the five
             # above are: the derivation runs over RAW per-person narrative

@@ -624,6 +624,29 @@ class AccessibilityFlagSummary(BaseModel):
     # blocker silently becomes a warning. The ingest layer writes the honest
     # value into accommodation_is_mandatory instead.
     accommodation_is_mandatory: bool = False
+    # The OTHER half of the pair above, and read from the column on the same
+    # terms: `FAM CAMP-Opt Out VIP` (CampMinder 256927) = "Yes, please
+    # register regardless of cabin type" means the household will attend
+    # either way. The pair encodes THREE states, never two:
+    #
+    #   opt_out_vip=true              -> will attend regardless of cabin type
+    #   accommodation_is_mandatory=true -> only able to attend WITH it
+    #   both false                    -> unanswered
+    #
+    # Staff ruling: this raw answer is the family panel's signal, not the
+    # board card's. The board draws neither half of this pair
+    # any more -- `FamilyCard.tsx`'s chip row struck `Needs Accommodation` --
+    # while `AccessibilityFlagList` on `FamilyDetailsPanel` renders BOTH
+    # states: the existing mandatory row when `accommodation_is_mandatory` is
+    # true, and a new flexible row when this is true.
+    #
+    # NEVER RECOMPUTE. Same trap `accommodation_is_mandatory`'s comment names
+    # (kindred#1874): `opt_out_vip` is OR'd across household members in the
+    # ingest layer, so deriving `not opt_out_vip` here would let one member's
+    # "register regardless" answer silently override another member's "only
+    # able to attend with this accommodation" blocker. Read the column
+    # verbatim, exactly like every other flag in this class.
+    opt_out_vip: bool = False
     # True when any adult in the household is bringing an infant
     # (`Adult-Infant`). Asked because of nursing -- Women's and Men's Weekend
     # share one form, and "I'm attending Men's Weekend" is how a male

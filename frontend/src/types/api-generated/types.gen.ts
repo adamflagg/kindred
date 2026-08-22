@@ -89,6 +89,10 @@ export type AccessibilityFlagSummary = {
    */
   accommodation_is_mandatory?: boolean
   /**
+   * Opt Out Vip
+   */
+  opt_out_vip?: boolean
+  /**
    * Has Infant
    */
   has_infant?: boolean

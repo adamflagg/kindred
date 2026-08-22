@@ -414,16 +414,10 @@ describe('FamilyCard — what it shows', () => {
   // absence as words is pinned in "the marks kindred#2072 STRUCK". Deleted
   // rather than softened — a test that still passed with either shape on the
   // card would defend neither.
-
-  it('marks a mandatory accommodation, which outranks placement', () => {
-    render(
-      <FamilyCard
-        party={party({ flags: { needs_accommodation: true, accommodation_is_mandatory: true } })}
-        onOpen={vi.fn()}
-      />
-    )
-    expect(screen.getByText('Needs Accommodation')).toBeInTheDocument()
-  })
+  //
+  // The mandatory-accommodation chip this test used to assert here is struck
+  // too now, on the same terms — see "the marks kindred#2072 STRUCK" for the
+  // absence, pinned under the staff ruling that moved it off the board.
 
   it('marks a returning household', () => {
     render(<FamilyCard party={party({ is_returning: true })} onOpen={vi.fn()} />)
@@ -1612,6 +1606,30 @@ describe('FamilyCard — the marks kindred#2072 STRUCK', () => {
     render(<FamilyCard party={party()} onOpen={vi.fn()} />)
     expect(screen.queryByText('Single parent')).not.toBeInTheDocument()
   })
+
+  it('draws no "Needs Accommodation" chip — staff ruling moved the accommodation/VIP signal off the board', () => {
+    // Not a kindred#2072 cut like the rest of this block — a later staff
+    // ruling: the board answers "does this family go here?" (kindred#2528),
+    // and the accommodation/VIP answer is a staff-facing REQUEST, not a
+    // placement verdict. `party.flags` carries both raw halves of the pair
+    // (`accommodation_is_mandatory` / `opt_out_vip`, kindred#1874) either
+    // way — this only pins that the card no longer chips either one.
+    // `AccessibilityFlagList.test.tsx` covers the row that replaced it on
+    // `FamilyDetailsPanel`, and `rosterAttention`/`partyAttention` still grade
+    // `'required'` for the roster tab's own sections and the modal's
+    // Placement verdict — untouched here.
+    render(
+      <FamilyCard
+        party={party({
+          flags: { needs_accommodation: true, accommodation_is_mandatory: true, opt_out_vip: true },
+        })}
+        onOpen={vi.fn()}
+      />
+    )
+    expect(screen.queryByText('Needs Accommodation')).not.toBeInTheDocument()
+    expect(screen.queryByText(/VIP/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Flexible on cabin type/)).not.toBeInTheDocument()
+  })
 })
 
 describe('FamilyCard — single parent is a mark on line 2 (S2 + Sa)', () => {
@@ -1822,17 +1840,13 @@ describe('FamilyCard — Returning / First-time is a 20px icon, bottom right (R3
   })
 })
 
-describe('FamilyCard — the mandatory-accommodation chip is renamed', () => {
-  it('reads "Needs Accommodation"', () => {
-    // Renamed under kindred#2072; the label is EXPLICITLY NOT LOCKED and is
-    // one of the five marks parked for staff input.
-    render(
-      <FamilyCard party={party({ flags: { accommodation_is_mandatory: true } })} onOpen={vi.fn()} />
-    )
-    expect(screen.getByText('Needs Accommodation')).toBeInTheDocument()
-    expect(screen.queryByText('Accommodation required')).not.toBeInTheDocument()
-  })
-})
+// The "Needs Accommodation" rename (kindred#2072) this describe block used
+// to pin is moot: the staff ruling that followed struck the chip from the
+// card entirely rather than settling its wording. See "the marks
+// kindred#2072 STRUCK" for the absence and `AccessibilityFlagList.test.tsx`
+// for the two labels — "Accommodation required" / "Accommodation
+// requested" — that still carry the wording question, unchanged, on the
+// panel this signal moved to.
 
 describe('FamilyCard — the shell/body split actually bails (perf)', () => {
   /*

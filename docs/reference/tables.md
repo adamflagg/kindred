@@ -674,7 +674,7 @@ Family camp registration details per household.
 | `goals` | text | Goals for camp |
 | `notes` | text | Additional notes |
 | `needs_accommodation` | bool | Requires accommodation |
-| `opt_out_vip` | bool | Will attend regardless of cabin type. **Write-only** — its OR across household members is fail-unsafe, so never read it as a blocker gate; use `accommodation_is_mandatory` |
+| `opt_out_vip` | bool | Will attend regardless of cabin type. Its OR across household members is fail-unsafe, so never read it as a blocker gate — that is `accommodation_is_mandatory`'s job. `AccessibilityFlagSummary.opt_out_vip` (`api/schemas/lodging.py`) reads it verbatim as its own signal instead: the household's raw "I'll attend regardless" answer, rendered on `FamilyDetailsPanel` |
 
 Request layer (household grain, spec 4) — normalised and deduplicated from the raw columns above:
 
