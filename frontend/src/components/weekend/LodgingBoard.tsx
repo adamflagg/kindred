@@ -133,14 +133,85 @@ const MOUSE_ACTIVATION = { activationConstraint: { distance: 10 } }
 const AUTO_SCROLL = { interval: 15, acceleration: 30 }
 const TOUCH_ACTIVATION = { activationConstraint: { delay: 100, tolerance: 5 } }
 
+/**
+ * Drop overlay entries the payload now agrees with. Returns the SAME map
+ * when nothing confirmed, so the render-time adjustment above it never
+ * loops.
+ */
+function pruneConfirmedOverrides(
+  overrides: ReadonlyMap<string, boolean>,
+  units: readonly LodgingUnitRow[]
+): ReadonlyMap<string, boolean> {
+  if (overrides.size === 0) return overrides
+  let next: Map<string, boolean> | null = null
+  for (const unit of units) {
+    const wanted = overrides.get(unit.unit_id)
+    if (wanted !== undefined && unit.is_combined === wanted) {
+      next ??= new Map(overrides)
+      next.delete(unit.unit_id)
+    }
+  }
+  return next ?? overrides
+}
+
 export function LodgingBoard({
   parties,
-  units,
+  units: serverUnits,
   year,
   scenario = '',
   sessionCmId = 0,
   canManage = false,
 }: LodgingBoardProps) {
+  // ── The swap happens AT the gesture, not at the refetch (owner ruling,
+  // kindred#2537: no perceptible delay between the click and the morph).
+  //
+  // A VIEW overlay, deliberately not a cache write: `useUnitMerge`'s
+  // documented refusal of an optimistic cache layer is about patching every
+  // cached scenario of the weekend, and this map patches none of them — it
+  // adjusts only what THIS board draws, in this render. Keyed by unit_id,
+  // holding the draw level the gesture asked for; an entry lives until the
+  // payload agrees (pruned during render, below) or the write is refused
+  // (cleared in the gesture's catch).
+  const [drawOverrides, setDrawOverrides] = useState<ReadonlyMap<string, boolean>>(
+    () => new Map<string, boolean>()
+  )
+
+  // Prune confirmed entries DURING render, not in an effect — an effect
+  // commits one frame where overlay and payload both apply, and this file's
+  // house pattern for state that mirrors props is render-time adjustment
+  // (same as `usePanelParty`'s correction). Same-reference return when
+  // nothing confirmed keeps this loop-free.
+  const pruned = pruneConfirmedOverrides(drawOverrides, serverUnits)
+  if (pruned !== drawOverrides) setDrawOverrides(pruned)
+
+  const units = useMemo(() => {
+    if (drawOverrides.size === 0) return serverUnits
+    return serverUnits.map((unit) => {
+      const combined = drawOverrides.get(unit.unit_id)
+      return combined === undefined || unit.is_combined === combined
+        ? unit
+        : { ...unit, is_combined: combined }
+    })
+  }, [serverUnits, drawOverrides])
+
+  /** Arm the overlay for one gesture; the morph hint rides along with it. */
+  const overrideDrawLevel = useCallback((unitId: string, combined: boolean) => {
+    setDrawOverrides((prev) => {
+      const next = new Map(prev)
+      next.set(unitId, combined)
+      return next
+    })
+  }, [])
+
+  /** The write was refused — put the board back the way the server has it. */
+  const revertDrawOverride = useCallback((unitId: string) => {
+    setDrawOverrides((prev) => {
+      if (!prev.has(unitId)) return prev
+      const next = new Map(prev)
+      next.delete(unitId)
+      return next
+    })
+  }, [])
   // Memoised for the sake of `tokens` below, which depends on `board.areas`:
   // rebuilt every render, that array is a fresh identity each time and the
   // dependency never matches, so the memo reads as though it caches while
@@ -315,9 +386,14 @@ export function LodgingBoard({
       // empty id.
       if (parentUnit !== undefined) {
         // Announce the gesture to the morph planner: the building forms
-        // ONTO the drop-target card, where staff are looking.
+        // ONTO the drop-target card, where staff are looking. The overlay
+        // swaps the draw level in this same commit, so the morph plays NOW
+        // rather than after the write round-trip (kindred#2537 ruling).
         setBoardMorphHint(merge.targetCode)
-        void setCombined(parentUnit.unit_id, parentUnit.name, merge.combined).catch(() => undefined)
+        overrideDrawLevel(parentUnit.unit_id, merge.combined)
+        void setCombined(parentUnit.unit_id, parentUnit.name, merge.combined).catch(() =>
+          revertDrawOverride(parentUnit.unit_id)
+        )
       }
       return
     }
@@ -352,11 +428,15 @@ export function LodgingBoard({
 
   const splitUnit = useCallback(
     (unit: LodgingUnitRow) => {
-      // The container card is the split's anchor: its rooms fly OUT of it.
+      // The container card is the split's anchor: its rooms fly OUT of it,
+      // starting this commit (the overlay), not at the refetch.
       setBoardMorphHint(unit.code)
-      void setCombined(unit.unit_id, unit.name, false).catch(() => undefined)
+      overrideDrawLevel(unit.unit_id, false)
+      void setCombined(unit.unit_id, unit.name, false).catch(() => {
+        revertDrawOverride(unit.unit_id)
+      })
     },
-    [setCombined]
+    [setCombined, overrideDrawLevel, revertDrawOverride]
   )
 
   // The ACTIVATION path for the merge the drag gesture makes, so the handle
@@ -372,11 +452,15 @@ export function LodgingBoard({
       const parentUnit = unitsByCode.get(unit.parent_code ?? '')
       if (parentUnit === undefined) return
       // The chip's own card anchors the merge, exactly as the drag's drop
-      // target does — the building forms onto the card staff acted on.
+      // target does — the building forms onto the card staff acted on,
+      // starting this commit (the overlay), not at the refetch.
       setBoardMorphHint(unit.code)
-      void setCombined(parentUnit.unit_id, parentUnit.name, true).catch(() => undefined)
+      overrideDrawLevel(parentUnit.unit_id, true)
+      void setCombined(parentUnit.unit_id, parentUnit.name, true).catch(() => {
+        revertDrawOverride(parentUnit.unit_id)
+      })
     },
-    [setCombined, unitsByCode]
+    [setCombined, unitsByCode, overrideDrawLevel, revertDrawOverride]
   )
 
   /*

@@ -428,3 +428,91 @@ describe('LodgingBoard — merging without a pointer, and while a write is in fl
     expect(screen.getByTestId('merge-handle-o1')).not.toBeDisabled()
   })
 })
+
+describe('LodgingBoard — the swap happens AT the gesture, not at the refetch (kindred#2537)', () => {
+  // The owner's ruling: no perceptible delay between the click and the
+  // morph. The board applies the draw level to its OWN render immediately —
+  // a view overlay, not a cache write: every cached scenario stays
+  // untouched, which is the reason `useUnitMerge` refuses an optimistic
+  // cache layer, and that refusal stands.
+  const card = (code: string) => document.querySelector(`[data-unit-code="${code}"]`)
+
+  it('draws the merged container the moment a merge drop lands — no refetch needed', () => {
+    renderBoard({ units: wingUnits() })
+    expect(card('wing')).toBeNull()
+    act(() => {
+      drop(mergeDragId('r1'), mergeDragId('r2'))
+    })
+    expect(card('wing')).not.toBeNull()
+    expect(card('r1')).toBeNull()
+    expect(card('r2')).toBeNull()
+  })
+
+  it('draws the rooms the moment the split control is clicked', async () => {
+    const user = userEvent.setup()
+    renderBoard({ units: wingUnits({ is_combined: true }) })
+    expect(card('r1')).toBeNull()
+    await user.click(screen.getByRole('button', { name: /split the wing/i }))
+    expect(card('r1')).not.toBeNull()
+    expect(card('r2')).not.toBeNull()
+    expect(card('wing')).toBeNull()
+  })
+
+  it('reverts the swap when the write is REFUSED — the board must not keep showing a merge the server rejected', async () => {
+    setCombined.mockImplementationOnce(() => Promise.reject(new Error('boom')))
+    renderBoard({ units: wingUnits() })
+    await act(async () => {
+      drop(mergeDragId('r1'), mergeDragId('r2'))
+      // let the rejected write settle; the hook owns the toast, the board
+      // owns putting the rooms back
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(card('wing')).toBeNull()
+    expect(card('r1')).not.toBeNull()
+  })
+
+  it('hands the overlay off to the payload once the server confirms, so a LATER server-side split still draws', () => {
+    const { rerender } = render(
+      <LodgingBoard
+        parties={[]}
+        units={wingUnits()}
+        year={2026}
+        sessionCmId={1000001}
+        scenario={SCENARIO}
+        canManage={true}
+      />,
+      { wrapper }
+    )
+    act(() => {
+      drop(mergeDragId('r1'), mergeDragId('r2'))
+    })
+    expect(card('wing')).not.toBeNull()
+    // The refetch lands, agreeing with the overlay: exactly one wing card.
+    rerender(
+      <LodgingBoard
+        parties={[]}
+        units={wingUnits({ is_combined: true })}
+        year={2026}
+        sessionCmId={1000001}
+        scenario={SCENARIO}
+        canManage={true}
+      />
+    )
+    expect(document.querySelectorAll('[data-unit-code="wing"]')).toHaveLength(1)
+    // A later payload splits it again (another client, another scenario
+    // action). A sticky overlay would pin the merged view forever.
+    rerender(
+      <LodgingBoard
+        parties={[]}
+        units={wingUnits()}
+        year={2026}
+        sessionCmId={1000001}
+        scenario={SCENARIO}
+        canManage={true}
+      />
+    )
+    expect(card('wing')).toBeNull()
+    expect(card('r1')).not.toBeNull()
+  })
+})
