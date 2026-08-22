@@ -147,20 +147,27 @@ describe('BoardMorphBoundary', () => {
     expect(runner.play).not.toHaveBeenCalled()
   })
 
-  it('survives a hinted swap with the REAL runner in jsdom — no crash, no residue', () => {
-    // This is the pin the ~30 existing board tests rely on: they rerender
-    // changed payloads through the real (unmocked) boundary, and the default
-    // runner must decline in an environment with no layout.
+  it('survives a hinted swap with the REAL runner in jsdom — the 0-width guard declines', () => {
+    // BOTH leaver cards are in the DOM, so capture gets past its
+    // missing-element bail and reaches the width guard — which is the branch
+    // this test exists to pin (review finding: with only one card rendered,
+    // the guard could be deleted and this still passed). The hinted board
+    // tests that click through real write sites ride the same guard.
     const { rerender } = render(
       <BoardMorphBoundary slotCodes={SPLIT} unitsByCode={REGISTRY}>
-        <div data-unit-code="cedar-1" />
+        <div>
+          <div data-unit-code="cedar-1" />
+          <div data-unit-code="cedar-2" />
+        </div>
       </BoardMorphBoundary>
     )
     setBoardMorphHint('cedar-2')
     expect(() =>
       rerender(
         <BoardMorphBoundary slotCodes={MERGED} unitsByCode={REGISTRY}>
-          <div data-unit-code="cedar-upstairs" />
+          <div>
+            <div data-unit-code="cedar-upstairs" />
+          </div>
         </BoardMorphBoundary>
       )
     ).not.toThrow()

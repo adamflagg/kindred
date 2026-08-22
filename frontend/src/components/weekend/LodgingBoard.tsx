@@ -51,7 +51,6 @@ import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
 import { areaTokens, buildBoard } from './boardLayout'
 import { setBoardMorphHint } from './boardMorph'
 import { BoardMorphBoundary } from './BoardMorphBoundary'
-import { BoardMorphTuner } from './BoardMorphTuner'
 import { indexUnitsByCode } from './unitLevel'
 import { createBoardCollisionDetection } from './boardCollision'
 import {
@@ -134,19 +133,25 @@ const AUTO_SCROLL = { interval: 15, acceleration: 30 }
 const TOUCH_ACTIVATION = { activationConstraint: { delay: 100, tolerance: 5 } }
 
 /**
+ * One gesture's draw level plus the token that identifies WHICH gesture
+ * wrote it — `revertDrawOverride`'s still-ours check.
+ */
+type DrawOverrideMap = ReadonlyMap<string, { combined: boolean; token: number }>
+
+/**
  * Drop overlay entries the payload now agrees with. Returns the SAME map
  * when nothing confirmed, so the render-time adjustment above it never
  * loops.
  */
 function pruneConfirmedOverrides(
-  overrides: ReadonlyMap<string, boolean>,
+  overrides: DrawOverrideMap,
   units: readonly LodgingUnitRow[]
-): ReadonlyMap<string, boolean> {
+): DrawOverrideMap {
   if (overrides.size === 0) return overrides
-  let next: Map<string, boolean> | null = null
+  let next: Map<string, { combined: boolean; token: number }> | null = null
   for (const unit of units) {
     const wanted = overrides.get(unit.unit_id)
-    if (wanted !== undefined && unit.is_combined === wanted) {
+    if (wanted !== undefined && unit.is_combined === wanted.combined) {
       next ??= new Map(overrides)
       next.delete(unit.unit_id)
     }
@@ -172,9 +177,23 @@ export function LodgingBoard({
   // holding the draw level the gesture asked for; an entry lives until the
   // payload agrees (pruned during render, below) or the write is refused
   // (cleared in the gesture's catch).
-  const [drawOverrides, setDrawOverrides] = useState<ReadonlyMap<string, boolean>>(
-    () => new Map<string, boolean>()
+  const [drawOverrides, setDrawOverrides] = useState<DrawOverrideMap>(() => new Map())
+
+  // ⚠️ The overlay must not outlive its weekend or scenario: `unit_id` is
+  // context-agnostic (one registry row per unit) while `is_combined` is per
+  // weekend+scenario, and the board re-renders rather than remounting on a
+  // switch — so an in-flight override from weekend A would paint weekend B's
+  // identical unit as merged, forever (B's payload never agrees, so the
+  // prune never fires). Same render-time reset pattern as `lastSessionCmId`
+  // below.
+  const [lastOverrideContext, setLastOverrideContext] = useState(
+    `${String(sessionCmId)}:${scenario}`
   )
+  const overrideContext = `${String(sessionCmId)}:${scenario}`
+  if (overrideContext !== lastOverrideContext) {
+    setLastOverrideContext(overrideContext)
+    if (drawOverrides.size > 0) setDrawOverrides(new Map())
+  }
 
   // Prune confirmed entries DURING render, not in an effect — an effect
   // commits one frame where overlay and payload both apply, and this file's
@@ -187,26 +206,40 @@ export function LodgingBoard({
   const units = useMemo(() => {
     if (drawOverrides.size === 0) return serverUnits
     return serverUnits.map((unit) => {
-      const combined = drawOverrides.get(unit.unit_id)
-      return combined === undefined || unit.is_combined === combined
+      const override = drawOverrides.get(unit.unit_id)
+      return override === undefined || unit.is_combined === override.combined
         ? unit
-        : { ...unit, is_combined: combined }
+        : { ...unit, is_combined: override.combined }
     })
   }, [serverUnits, drawOverrides])
 
   /** Arm the overlay for one gesture; the morph hint rides along with it. */
-  const overrideDrawLevel = useCallback((unitId: string, combined: boolean) => {
+  const overrideTokenRef = useRef(0)
+  // ⚠️ The morph's synchronous-commit dependency lives HERE, not on the
+  // roster query: `BoardMorphBoundary` measures the outgoing cards in
+  // getSnapshotBeforeUpdate of the commit THIS setState produces. Wrapping
+  // this update in startTransition/useDeferredValue would split the
+  // snapshot from the commit it measures and the morph would hard-cut.
+  const overrideDrawLevel = useCallback((unitId: string, combined: boolean): number => {
+    const token = ++overrideTokenRef.current
     setDrawOverrides((prev) => {
       const next = new Map(prev)
-      next.set(unitId, combined)
+      next.set(unitId, { combined, token })
       return next
     })
+    return token
   }, [])
 
-  /** The write was refused — put the board back the way the server has it. */
-  const revertDrawOverride = useCallback((unitId: string) => {
+  /**
+   * The write was refused — put the board back the way the server has it,
+   * but ONLY if this gesture's override is still the one on screen. Nothing
+   * serializes mutations (`useLodgingPlacement` documents the identical
+   * race): a second gesture on the same unit replaces the entry, and a
+   * stale failure deleting it wholesale would erase the newer gesture too.
+   */
+  const revertDrawOverride = useCallback((unitId: string, token: number) => {
     setDrawOverrides((prev) => {
-      if (!prev.has(unitId)) return prev
+      if (prev.get(unitId)?.token !== token) return prev
       const next = new Map(prev)
       next.delete(unitId)
       return next
@@ -390,10 +423,10 @@ export function LodgingBoard({
         // swaps the draw level in this same commit, so the morph plays NOW
         // rather than after the write round-trip (kindred#2537 ruling).
         setBoardMorphHint(merge.targetCode)
-        overrideDrawLevel(parentUnit.unit_id, merge.combined)
-        void setCombined(parentUnit.unit_id, parentUnit.name, merge.combined).catch(() =>
-          revertDrawOverride(parentUnit.unit_id)
-        )
+        const token = overrideDrawLevel(parentUnit.unit_id, merge.combined)
+        void setCombined(parentUnit.unit_id, parentUnit.name, merge.combined).catch(() => {
+          revertDrawOverride(parentUnit.unit_id, token)
+        })
       }
       return
     }
@@ -431,9 +464,9 @@ export function LodgingBoard({
       // The container card is the split's anchor: its rooms fly OUT of it,
       // starting this commit (the overlay), not at the refetch.
       setBoardMorphHint(unit.code)
-      overrideDrawLevel(unit.unit_id, false)
+      const token = overrideDrawLevel(unit.unit_id, false)
       void setCombined(unit.unit_id, unit.name, false).catch(() => {
-        revertDrawOverride(unit.unit_id)
+        revertDrawOverride(unit.unit_id, token)
       })
     },
     [setCombined, overrideDrawLevel, revertDrawOverride]
@@ -455,9 +488,9 @@ export function LodgingBoard({
       // target does — the building forms onto the card staff acted on,
       // starting this commit (the overlay), not at the refetch.
       setBoardMorphHint(unit.code)
-      overrideDrawLevel(parentUnit.unit_id, true)
+      const token = overrideDrawLevel(parentUnit.unit_id, true)
       void setCombined(parentUnit.unit_id, parentUnit.name, true).catch(() => {
-        revertDrawOverride(parentUnit.unit_id)
+        revertDrawOverride(parentUnit.unit_id, token)
       })
     },
     [setCombined, unitsByCode, overrideDrawLevel, revertDrawOverride]
@@ -574,9 +607,6 @@ export function LodgingBoard({
           cards for a container (or back) and plays the merge/split morph.
           See its doc for why siblinghood is equivalent to wrapping. */}
       <BoardMorphBoundary slotCodes={slotCodes} unitsByCode={unitsByCode} />
-      {/* vitest runs DEV=true; the MODE guard keeps the tuner's <select>
-          options out of every board test's role queries. */}
-      {import.meta.env.DEV && import.meta.env.MODE !== 'test' && <BoardMorphTuner />}
       <div className="flex flex-col gap-3">
         {/* The mode chip that used to lead this row moved to the header badge,
             where summer keeps it. The row itself is now conditional: left

@@ -2,15 +2,18 @@
  * The one legitimate bridge between React's commit and the merge/split
  * morph. A CLASS component on purpose: `getSnapshotBeforeUpdate` is the
  * only React hook that runs after render but BEFORE the DOM mutates —
- * the vanishing room cards are still mounted and measurable there, which
- * is what makes capture-at-refetch-arrival possible without an optimistic
- * cache layer (`useUnitMerge`'s documented refusal stands untouched).
- * `componentDidUpdate` then plays the morph after mutation, before paint.
+ * the vanishing room cards are still mounted and measurable there.
  *
- * The snapshot capture depends on React Query v5 delivering roster updates
- * synchronously (useSyncExternalStore). Wrapping the roster query in
- * startTransition/useDeferredValue would split the snapshot from the
- * mutation it measures — see the sentinel note at `useWeekendRoster`.
+ * The commit it usually rides is the GESTURE's own: since the click-time
+ * view overlay (kindred#2537), `LodgingBoard`'s `overrideDrawLevel`
+ * swaps the drawn level synchronously at the click, and that setState is
+ * what moves `slotCodes` — so the capture's synchronous-commit dependency
+ * attaches THERE (wrapping it in startTransition would split the snapshot
+ * from the commit it measures). The roster refetch is the FALLBACK
+ * animating commit — a hinted swap arriving with no overlay — and the
+ * reconciler of the overlay afterwards. `componentDidUpdate` plays the
+ * morph after mutation, before paint. No optimistic cache layer anywhere:
+ * `useUnitMerge`'s documented refusal stands untouched.
  *
  * Renders its children untouched — no wrapper element, no layout effect.
  */

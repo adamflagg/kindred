@@ -194,10 +194,12 @@ let active: { tl: gsap.core.Timeline; cleanup: () => void } | null = null
 function finishActive(): void {
   if (active === null) return
   const finished = active
-  // Null FIRST: progress(1) fires onComplete synchronously, and onComplete
-  // also cleans up — it must not re-enter through `active`.
+  // Null FIRST so nothing re-enters through `active`; suppressEvents=true
+  // so progress(1) does NOT fire onComplete — cleanup runs exactly once,
+  // here (review finding: without it, both onComplete and this line ran
+  // cleanup — idempotent today, a trap for any non-idempotent addition).
   active = null
-  finished.tl.progress(1).kill()
+  finished.tl.progress(1, true).kill()
   finished.cleanup()
 }
 
