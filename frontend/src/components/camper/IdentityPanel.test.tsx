@@ -9,9 +9,8 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { BrowserRouter } from 'react-router'
 import type { ReactNode } from 'react'
+import { createWrapper } from '../../test/testUtils'
 import { CurrentYearContext, type CurrentYearContextType } from '../../hooks/useCurrentYear'
 import { IdentityPanel } from './IdentityPanel'
 import type { Camper } from '../../types/app-types'
@@ -36,19 +35,21 @@ const YEAR_CONTEXT: CurrentYearContextType = {
   isYearReady: true,
 }
 
-let client: QueryClient
+// Compose over testUtils' shared wrapper (QueryClient + Router) rather than
+// hand-rolling both — the year context is the only layer this file adds.
+// `createWrapper()` is called once per TEST, not inside the wrapper body,
+// so a re-render does not rebuild the QueryClient underneath assertions.
+let Base: ReturnType<typeof createWrapper>
 beforeEach(() => {
-  client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  Base = createWrapper()
   vi.clearAllMocks()
 })
 
 function wrapper({ children }: { children: ReactNode }) {
   return (
-    <QueryClientProvider client={client}>
-      <BrowserRouter>
-        <CurrentYearContext.Provider value={YEAR_CONTEXT}>{children}</CurrentYearContext.Provider>
-      </BrowserRouter>
-    </QueryClientProvider>
+    <Base>
+      <CurrentYearContext.Provider value={YEAR_CONTEXT}>{children}</CurrentYearContext.Provider>
+    </Base>
   )
 }
 

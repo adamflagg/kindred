@@ -39,9 +39,10 @@ export function CamperCohortsSection({
   // `openKind` is a RETAINED SNAPSHOT, not the open flag (kindred#2529): the
   // drill-down must stay mounted through Modal's 150ms leave transition after
   // close, so closing clears only `drillOpen` and the last-viewed cohort keeps
-  // the content renderable through the fade. The modal is hookless and renders
-  // no DOM while closed (Modal's <Transition> unmounts its children) — its
-  // element tree still evaluates on each parent render, which is cheap here.
+  // the content renderable through the fade. afterLeave then releases the
+  // snapshot — the modal is hookless, but its element tree (an attendees.map)
+  // would otherwise re-evaluate on every parent render forever after the
+  // first open, only to be discarded by the closed <Transition>.
   const [openKind, setOpenKind] = useState<CohortKind | null>(null)
   const [drillOpen, setDrillOpen] = useState(false)
 
@@ -112,6 +113,7 @@ export function CamperCohortsSection({
           requestRelations={relations}
           bunkByPerson={bunkByPerson}
           onClose={() => setDrillOpen(false)}
+          afterLeave={() => setOpenKind(null)}
         />
       )}
     </section>

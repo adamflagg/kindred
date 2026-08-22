@@ -583,10 +583,32 @@ describe('LodgingUnitsPanel — the editor opens in a modal', () => {
     await user.clear(name)
     await user.type(name, 'STALE DRAFT')
 
+    const dialogBefore = screen.getByRole('dialog')
     await user.click(screen.getByRole('button', { name: 'Cancel' }))
     // Reopen before the leave completes — no waitFor between close and open.
     await user.click(screen.getByRole('button', { name: 'Edit Cabin A' }))
+    // Same element = the leave really was interrupted, which is the case
+    // this test exists for. Without this, a timing change that let the
+    // leave complete would unmount + freshly remount the subtree and the
+    // value assertion below would pass vacuously (#2539 scan round 2).
+    expect(screen.getByRole('dialog')).toBe(dialogBefore)
     expect(screen.getByLabelText('Name')).toHaveValue('Cabin A')
+  })
+
+  it('moves focus back into the form when switching records while the editor is open (kindred#2529)', async () => {
+    // Pins editorNonce in the focus effect's deps. A record switch while the
+    // dialog is already open flips no open state, so Modal's beforeEnter
+    // never re-fires — the nonce bump is the only thing that pulls focus off
+    // the just-clicked Edit button and back into the remounted form.
+    const user = userEvent.setup()
+    await renderPanel()
+
+    await user.click(screen.getByRole('button', { name: 'Edit Cabin A' }))
+    await waitFor(() => expect(screen.getByLabelText('Name')).toHaveFocus())
+
+    await user.click(screen.getByRole('button', { name: 'Edit North Lodge' }))
+    expect(screen.getByLabelText('Name')).toHaveValue('North Lodge')
+    await waitFor(() => expect(screen.getByLabelText('Name')).toHaveFocus())
   })
 
   it('closes on Escape', async () => {

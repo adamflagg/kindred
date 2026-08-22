@@ -83,28 +83,22 @@ export function LodgingUnitsPanel() {
   const areasQuery = useLodgingAreas()
 
   /**
-   * Move FOCUS to the editor whenever it opens — including switching straight
-   * from editing one unit to another, since the form never unmounts in between
-   * (see the `key` below).
+   * Move FOCUS into the editor form in the cases Modal cannot cover. Modal's
+   * own `beforeEnter` handles the plain open (it fires on every false→true
+   * flip of `editorOpen`, `appear` included), so this effect exists for the
+   * two paths that flip no open state:
+   *
+   * 1. `areasQuery.isSuccess` resolving AFTER the dialog opened — until the
+   *    areas resolve, the dialog holds the "Loading areas…" paragraph and
+   *    there is nothing to focus; when the real form mounts, this pulls
+   *    focus off the trigger behind the backdrop.
+   * 2. A record switch while the dialog is already open — `openEditor` bumps
+   *    `editorNonce`, the form remounts under its nonce key, and this
+   *    refocuses it (the just-clicked Edit row button holds focus otherwise).
    *
    * This used to scroll as well, because the editor mounted above a 93-row
-   * table and opening it otherwise produced no visible change below the fold —
-   * and the natural response, clicking Edit again or on a different row, is
-   * exactly how a stale-record write went unnoticed. The dialog solves that
-   * outright: it is unmissable without moving anything, so the staffer keeps
-   * their place in the list. Only the focus half is still needed, and the
-   * shared Modal does not set initial focus itself.
-   *
-   * `areasQuery.isSuccess` IS A DEPENDENCY, not a stray one — and it is why
-   * this effect sits BELOW the query rather than up with the other state. The
-   * form is gated on that flag: until the areas resolve, the dialog holds the
-   * "Loading areas…" paragraph and there is nothing to focus. Opening the
-   * editor during a slow areas fetch therefore runs this effect against an
-   * empty dialog, and keyed on `[editing]` alone it would never re-run once
-   * the real form mounts — leaving focus on the trigger behind the backdrop,
-   * which for an aria-modal dialog strands a keyboard or screen-reader user
-   * outside it entirely. Only the success branch renders anything focusable
-   * (the error branch is a message paragraph), so this one flag covers it.
+   * table; the dialog made the scroll half obsolete and the shared Modal now
+   * owns open-focus, so what remains is exactly the two cases above.
    */
   useEffect(() => {
     if (!editorOpen) return

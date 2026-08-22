@@ -34,11 +34,7 @@ export default function SessionUploadChangesModal({
 }: Props) {
   const { fetchWithAuth, isAuthLoading } = useApiWithAuth()
 
-  const {
-    data: rows = [],
-    isLoading,
-    isError,
-  } = useQuery({
+  const { data, isLoading, isError } = useQuery({
     queryKey: queryKeys.sessionUploadChanges(runId, sessionCmIds),
     queryFn: () => fetchSessionUploadChanges(runId, sessionCmIds, fetchWithAuth),
     // isOpen gates the fetch because this dialog is now mounted for the whole
@@ -50,7 +46,12 @@ export default function SessionUploadChangesModal({
   // Memoized because this component is now mounted for the life of its chip
   // (kindred#2529) — without it the grouping re-ran on every parent render,
   // closed or not (frontend/CLAUDE.md, "Derived values in page components").
+  // The `?? []` lives INSIDE the memo: a `data: rows = []` default mints a
+  // fresh array on every undefined render — the whole mounted-closed
+  // lifetime — and defeats the dependency (#2539 scan round 2, and the same
+  // trap frontend/CLAUDE.md documents).
   const groups = useMemo(() => {
+    const rows = data ?? []
     const byCamper = new Map<number, { name: string; rows: UploadChangeRow[] }>()
     for (const r of rows) {
       const g = byCamper.get(r.requester_cm_id) ?? { name: r.requester_name, rows: [] }
@@ -64,7 +65,7 @@ export default function SessionUploadChangesModal({
         const br = b.rows.some(isReview) ? 0 : 1
         return ar - br
       })
-  }, [rows])
+  }, [data])
 
   const isEmpty = !isLoading && !isError && groups.length === 0
 

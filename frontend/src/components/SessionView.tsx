@@ -526,17 +526,23 @@ export default function SessionView() {
 
       {/* #1638 — Solver Diagnostics Modal (infeasibility review). The
           `diagnostics &&` gate is a retained-snapshot latch (kindred#2529):
-          null until the first reviewable solve, then kept across closes so
-          the mounted dialog can play Modal's 150ms exit fade — nulling the
-          payload here would blank and unmount it on the same frame the close
-          fires. Each reviewable run overwrites the payload, and the modal
-          renders its own empty-state fallback, so retaining the last one is
-          safe. Pinned by SessionView.diagnostics.guard.test.ts. */}
+          null until the first reviewable solve, then kept through the close
+          so the mounted dialog can play Modal's 150ms exit fade — nulling
+          the payload in onClose would blank and unmount it on the same frame
+          the close fires. afterLeave releases it once the fade has actually
+          completed, so the panel does not keep re-rendering the full report
+          on every render forever after (and re-arming the latch is safe:
+          setShowDiagnostics(true) has exactly one call site, which always
+          sets a fresh payload first). Pinned both ways by
+          SessionView.diagnostics.guard.test.ts. */}
       {diagnostics && (
         <SolverDiagnosticsModal
           isOpen={showDiagnostics}
           onClose={() => {
             setShowDiagnostics(false)
+          }}
+          afterLeave={() => {
+            setDiagnostics(null)
           }}
           diagnostics={diagnostics}
           sessionCmId={session.cm_id}

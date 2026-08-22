@@ -59,7 +59,8 @@ export function IdentityPanel({
   // `openKind` is a RETAINED SNAPSHOT, not the open flag (kindred#2529) —
   // same shape as CamperCohortsSection: closing clears only `drillOpen`, so
   // the drill-down stays mounted (and its content stays renderable) through
-  // Modal's 150ms leave transition instead of vanishing in one frame.
+  // Modal's 150ms leave transition, and afterLeave releases the snapshot
+  // once the fade completes so the element tree stops re-evaluating.
   const [openKind, setOpenKind] = useState<CohortKind | null>(null)
   const [drillOpen, setDrillOpen] = useState(false)
 
@@ -195,6 +196,7 @@ export function IdentityPanel({
           bunkByPerson={bunkByPerson}
           reserveSidePanel={false}
           onClose={() => setDrillOpen(false)}
+          afterLeave={() => setOpenKind(null)}
         />
       )}
     </div>
