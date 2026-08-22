@@ -25,7 +25,7 @@ export function BoardMorphTuner() {
   const [stagger, setStagger] = useState(boardMorphConfig.stagger)
   if (!import.meta.env.DEV) return null
   return (
-    <div className="border-border bg-card fixed right-3 bottom-3 z-40 flex flex-col gap-2 rounded-xl border p-3 text-xs shadow-lg">
+    <div className="border-border bg-card fixed right-3 bottom-36 z-40 flex flex-col gap-2 rounded-xl border p-3 text-xs shadow-lg">
       <span className="font-semibold">Morph tuner (dev only)</span>
       <label className="flex items-center justify-between gap-2">
         duration {duration.toFixed(2)}s
