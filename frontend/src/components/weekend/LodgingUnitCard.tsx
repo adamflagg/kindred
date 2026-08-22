@@ -704,9 +704,10 @@ const LodgingUnitCardInner = memo(function LodgingUnitCardInner({
    * in flight there is nothing to be a misfit FOR and nothing to match, and a
    * board marked all the time says nothing at all.
    *
-   * ADVISORY. Nothing below this line touches `useDroppable`, `opacity` or
-   * `pointer-events` — the drop is still accepted, exactly as the comment on
-   * the party droppable in the shell insists it must be.
+   * ADVISORY. Nothing this value feeds touches `useDroppable`, `opacity` or
+   * `pointer-events` — the shell's droppables never read it, so the drop is
+   * still accepted, exactly as the comment on the party droppable in the
+   * shell insists it must be.
    */
   const dragFit: DragFit =
     draggingParty === null ? NEUTRAL : resolveDragFit(draggingParty, unit, dragCapacity)

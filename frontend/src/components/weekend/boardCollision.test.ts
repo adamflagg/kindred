@@ -91,6 +91,45 @@ describe('createBoardCollisionDetection', () => {
     ])
   })
 
+  it('a cabin-first gutter frame TARGETS the cabin after crossing the queue', () => {
+    // The drop target is `collisions[0]`. The queue-first frames above cannot
+    // tell a correct implementation from one that returns the queue alone —
+    // `over` is the queue either way. This frame stages the cabin sorting
+    // FIRST, where a lingering queue hold would flip the target from cabin to
+    // queue: the difference between placing the family and UNPLACING it.
+    const detect = detector()
+    detect(stage([UNPLACED_DROPPABLE_ID], [UNPLACED_DROPPABLE_ID, CEDAR]))
+    const result = ids(detect(stage([], [CEDAR, UNPLACED_DROPPABLE_ID])))
+    expect(result[0]).toBe(CEDAR)
+  })
+
+  it('the queue releases the hold even when a cabin sorts ahead of it', () => {
+    // `pointerWithin` ranks by corner distance, so a card under the queue's
+    // large expanded panel can sort ahead of `weekend-unplaced`. The pointer
+    // is inside the queue either way, and the release must key on the
+    // queue's PRESENCE among the pointer hits, not on it winning first place.
+    const detect = detector()
+    detect(stage([CEDAR], [CEDAR]))
+    detect(stage([WILLOW, UNPLACED_DROPPABLE_ID], [WILLOW, UNPLACED_DROPPABLE_ID, CEDAR]))
+    expect(ids(detect(stage([], [UNPLACED_DROPPABLE_ID, CEDAR, WILLOW])))).toEqual([
+      UNPLACED_DROPPABLE_ID,
+      CEDAR,
+      WILLOW,
+    ])
+  })
+
+  it('an EMPTY frame does not end the hold', () => {
+    // A frame with no usable rects at all — the drag rect over whitespace
+    // past the last section, or a transient re-measure — proves nothing
+    // about the held cabin. Only a frame that produced rects WITHOUT the
+    // held cabin shows the drag has genuinely left it; clearing on emptiness
+    // re-admits the flapping for the rest of the gesture.
+    const detect = detector()
+    detect(stage([CEDAR], [CEDAR]))
+    detect(stage([], []))
+    expect(ids(detect(stage([], [WILLOW, CEDAR])))).toEqual([CEDAR])
+  })
+
   it('falls back to rect intersection once the held cabin no longer intersects', () => {
     const detect = detector()
     detect(stage([CEDAR], [CEDAR]))

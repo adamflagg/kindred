@@ -62,7 +62,6 @@ export function createBoardCollisionDetection(
   const detect = ((args: CollisionArgs): Collisions => {
     const pointerCollisions = algorithms.pointerWithin(args)
     if (pointerCollisions.length > 0) {
-      const id = String(pointerCollisions[0]?.id ?? '')
       // NEVER hold the floating unplaced queue. It is the one droppable that
       // is not a cabin on the grid — a fixed overlay hovering ABOVE the cards
       // — so its rect keeps intersecting the drag long after the pointer has
@@ -72,7 +71,16 @@ export function createBoardCollisionDetection(
       // does: the pointer has demonstrably left that cabin. Any future
       // floating droppable must join this exclusion — the rule is "hold
       // cabins", and this is the list of things that are not cabins.
-      heldId = id === UNPLACED_DROPPABLE_ID ? null : id
+      //
+      // `some`, not `[0]`: `pointerWithin` ranks by corner distance, so a
+      // card beneath the queue's large expanded panel can sort AHEAD of it
+      // while the pointer is inside the queue all the same. The release keys
+      // on the queue's presence among the hits, not on it winning first
+      // place.
+      const overQueue = pointerCollisions.some(
+        (collision) => String(collision.id) === UNPLACED_DROPPABLE_ID
+      )
+      heldId = overQueue ? null : String(pointerCollisions[0]?.id ?? '')
       return pointerCollisions
     }
 
@@ -89,7 +97,12 @@ export function createBoardCollisionDetection(
       // resurrect later in the same gesture — the ~200px overlay sliding back
       // across the old cabin while the pointer sits in a gutter somewhere
       // else would return that cabin alone and steal the drop.
-      heldId = null
+      //
+      // Only a frame that PRODUCED rects proves that, though. An empty frame
+      // — the drag rect over whitespace past the last section, a transient
+      // re-measure — says nothing about the held cabin, and clearing on it
+      // would re-admit the flapping for the rest of the gesture.
+      if (rectCollisions.length > 0) heldId = null
       return rectCollisions
     }
     return [held]

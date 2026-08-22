@@ -120,6 +120,33 @@ describe('AssignFamilyModal — the header states beds FREE (owner ruling 2026-0
     expect(screen.getByTestId('assign-capacity')).toHaveTextContent('2 of 4 beds free')
   })
 
+  it('states no free-bed count for a room somebody is written into', () => {
+    // The rows below this header refuse a capacity claim on a written-into
+    // room (a write-in is not a party, so every occupancy figure reads it as
+    // empty — `capacityVerdict`). A header asserting "N of M beds free" over
+    // rows that decline the same arithmetic is the modal disagreeing with
+    // itself about the same cabin.
+    renderModal({
+      unit: unit({
+        sleeps: 4,
+        write_ins: [
+          {
+            unit_id: 'u1',
+            unit_code: 'ridge-1',
+            unit_name: 'Ridge 1',
+            occupant_name: 'Emma Johnson',
+            note: '',
+          },
+        ],
+      }),
+      occupants: 0,
+    })
+    expect(screen.getByTestId('assign-capacity')).toHaveTextContent(
+      'Sleeps 4 · occupancy not counted (write-in)'
+    )
+    expect(screen.getByTestId('assign-capacity')).not.toHaveTextContent('beds free')
+  })
+
   it('says nothing it cannot support when nobody has measured the room', () => {
     renderModal({ unit: unit({ sleeps: null }), occupants: 0 })
     expect(screen.getByTestId('assign-capacity')).toHaveTextContent('Capacity not recorded')

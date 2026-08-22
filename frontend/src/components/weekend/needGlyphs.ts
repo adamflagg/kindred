@@ -86,27 +86,6 @@ export type NeedKey = 'bathroom' | 'power' | 'fridge' | 'step_free'
  */
 export type NeedReading = 'placed' | 'prospective'
 
-/**
- * WHAT AN `unknown` COVERAGE MEANS: not met — `fits` is not silence, it is
- * the mark in its full hue asserting the need is met, and the owner ruling of
- * 2026-08-20 (*"unknown values should not equal fits, across all surfaces on
- * the glyphs, its unconfirmed information"*) forbids unconfirmed information
- * reading that way.
- *
- * ONE READING NOW, where there used to be a parameter. `UnknownReading` let
- * the drag-time hatch read `unknown` as `'fits'` instead, because the hatch
- * is an interruption whose bar is evidence of absence — and the number behind
- * that was not close: 102 of 118 cabins carry `ramp_coverage: 'unknown'`, so
- * reading it as unmet took a step-free household's hatched cabins from 32 of
- * 944 pairs to 848. That escape moved into the resolver itself on 2026-08-21:
- * `resolveDragFit` intercepts `unknown` BEFORE grading (its rule 2 —
- * unrecorded coverage makes neither claim, conflict nor match), so no caller
- * asks this table about `unknown` with hatch semantics any more, and the
- * parameter came out rather than sitting reachable-but-never-passed. The
- * reasoning is kept because it is the answer to "why doesn't the hatch just
- * grade unknown like the glyphs do" — it still doesn't, one layer up.
- */
-
 export interface NeedGlyphSpec {
   readonly key: NeedKey
   /** The household's asked-for need. */
@@ -349,6 +328,20 @@ export function needCoverage(
  * whose `ramp_coverage` the server could not resolve. The roster's section
  * counts do not move at all — `ROSTER_NEEDS` grades bathroom and power, and
  * every placed party's coverage for those two is already `all` or `none`.
+ *
+ * ONE READING OF `unknown` NOW, where there used to be a parameter.
+ * `UnknownReading` let the drag-time hatch read `unknown` as `'fits'`
+ * instead, because the hatch is an interruption whose bar is evidence of
+ * absence — and the number behind that was not close: 102 of 118 cabins carry
+ * `ramp_coverage: 'unknown'`, so reading it as unmet took a step-free
+ * household's hatched cabins from 32 of 944 pairs to 848. That escape moved
+ * into the resolver itself on 2026-08-21: `resolveDragFit` intercepts
+ * `unknown` BEFORE grading (its rule 2 — unrecorded coverage makes neither
+ * claim), so no caller asks this table about `unknown` with hatch semantics
+ * any more, and the parameter came out rather than sitting
+ * reachable-but-never-passed. The reasoning is kept because it answers "why
+ * doesn't the hatch just grade unknown like the glyphs do" — it still
+ * doesn't, one layer up.
  */
 export function needVerdict(key: NeedKey, coverage: Coverage): NeedsFit {
   if (coverage === 'none') return 'unmet'

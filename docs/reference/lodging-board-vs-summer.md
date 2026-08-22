@@ -64,7 +64,7 @@ empty string and proves nothing — pin **classes** in vitest and measure
 | ---------- | ------------------------ | ---------------------------- | ------------------ |
 | Base class | `.card-lodge`            | `.card-lodge`                | done               |
 | Radius     | `rounded-2xl` (16px)     | same                         | done               |
-| Border     | `border-2 border-border` | same, + `border-t-[3px]` hue | done               |
+| Border     | `border-2 border-border` | same (no per-unit hue — §6)  | done               |
 | Shadow     | two-layer lodge          | same                         | done               |
 | Padding    | `p-4` (16px)             | `p-2.5 px-3`                 | **divergent — §6** |
 | Row rhythm | `mb-3` (12px)            | `gap-2` (8px)                | **divergent — §6** |
@@ -170,8 +170,9 @@ the figure and **one** emphasis state, for the only actionable case; two cards
 qualify on 2026 data.
 
 Consequently the over-capacity emphasis is `text-destructive` on the figure and
-nothing else, **not** summer's border treatment. See §6 on why the border is
-full. (This paragraph used to end "plus a chip". kindred#2072 stage 3 struck the
+nothing else, **not** summer's border treatment. See §6 — the border is no
+longer full (kindred#2528 struck the hue top edge), but only the arithmetic
+argument here ever depended on the figure, and that stands. (This paragraph used to end "plus a chip". kindred#2072 stage 3 struck the
 `Over capacity` pill — it stated at chip weight exactly what the figure states
 in colour, on the two cards a weekend that qualify. `LodgingUnitCard.test.tsx`
 pins its absence.)

@@ -79,7 +79,7 @@ import { partyIdentityLabel } from './householdIdentity'
 import { resolveNeedGlyphs } from './needGlyphs'
 import { worseOf, type NeedsFit } from './needsFit'
 import { effectiveSleeps, partyBeds } from './rosterAttention'
-import { writeInEntries } from './writeIn'
+import { hasWriteIn } from './writeIn'
 
 /** The picker's verdict for one party against one space. `needsFit`'s vocabulary. */
 export type CandidateFitLevel = NeedsFit
@@ -162,7 +162,7 @@ function capacityVerdict(
   // — the board's match/red, the card figure, and now this row — so a
   // written-into cabin cannot read "fits" in the picker while the card it was
   // opened from refuses to print a numerator at all.
-  if (writeInEntries(unit).length > 0) return { fit: 'fits', note: null }
+  if (hasWriteIn(unit)) return { fit: 'fits', note: null }
   const beds = partyBeds(party)
   // `Math.max(0, …)` for the same reason the header does it: a room already
   // over its capacity has nothing left, never a negative number of beds.

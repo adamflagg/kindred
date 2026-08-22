@@ -232,11 +232,11 @@ export function LodgingBoard({
     scenario,
   })
 
-  // Memoised because `mergeUnit` closes over it: rebuilt each render, it would
-  // give that callback a new identity every time and defeat the point of the
-  // `useCallback`. Cheap either way at ~120 units, but the lint rule is right.
   // The shared WeakMap-cached index (`unitLevel`), not a local `useMemo` copy
-  // of the same map — one instance per `units` array, everywhere.
+  // of the same map — one instance per `units` array, everywhere. `mergeUnit`
+  // closes over it and lists it as a `useCallback` dep, and the cache is what
+  // keeps that identity stable across renders (at least as stable as the
+  // `useMemo` this replaced).
   const unitsByCode = indexUnitsByCode(units)
 
   const sensors = useSensors(
