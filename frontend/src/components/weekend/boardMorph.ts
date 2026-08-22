@@ -129,3 +129,34 @@ export function planBoardMorph(
 
   return null
 }
+
+/** The minimal rect shape both DOMRect and a plain literal satisfy. */
+export interface MorphRect {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+/**
+ * Which candidate sits closest (centre-to-centre) to `target`. The split
+ * morph uses this to decide which NEW room card inherits the container's
+ * name for the crossfade — the one occupying (nearest to) the container's
+ * old slot is the card staff read as "the same card, renamed".
+ */
+export function nearestRectIndex(target: MorphRect, rects: readonly MorphRect[]): number {
+  const cx = target.x + target.width / 2
+  const cy = target.y + target.height / 2
+  let best = -1
+  let bestDist = Number.POSITIVE_INFINITY
+  rects.forEach((rect, i) => {
+    const dx = rect.x + rect.width / 2 - cx
+    const dy = rect.y + rect.height / 2 - cy
+    const dist = dx * dx + dy * dy
+    if (dist < bestDist) {
+      bestDist = dist
+      best = i
+    }
+  })
+  return best
+}

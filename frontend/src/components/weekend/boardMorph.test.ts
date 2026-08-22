@@ -17,6 +17,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import type { LodgingUnitRow } from '../../types/lodging'
 import {
   clearBoardMorphHint,
+  nearestRectIndex,
   peekBoardMorphHint,
   planBoardMorph,
   setBoardMorphHint,
@@ -187,5 +188,23 @@ describe('the hint store', () => {
     setBoardMorphHint('cedar-2', 1_000)
     expect(peekBoardMorphHint(15_500)).toBe('cedar-2')
     expect(peekBoardMorphHint(16_500)).toBeNull()
+  })
+})
+
+describe('nearestRectIndex — which split card inherits the name morph', () => {
+  it("picks the card whose centre is closest to the container's old rect", () => {
+    const target = { x: 100, y: 100, width: 200, height: 100 }
+    const rects = [
+      { x: 400, y: 100, width: 200, height: 100 }, // 300 away
+      { x: 110, y: 110, width: 200, height: 100 }, // ~14 away — the winner
+      { x: 100, y: 400, width: 200, height: 100 }, // 300 away
+    ]
+    expect(nearestRectIndex(target, rects)).toBe(1)
+  })
+
+  it('returns 0 for a single candidate and -1 for none', () => {
+    const target = { x: 0, y: 0, width: 10, height: 10 }
+    expect(nearestRectIndex(target, [{ x: 900, y: 900, width: 10, height: 10 }])).toBe(0)
+    expect(nearestRectIndex(target, [])).toBe(-1)
   })
 })

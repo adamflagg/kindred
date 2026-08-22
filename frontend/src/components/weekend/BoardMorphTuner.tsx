@@ -23,6 +23,7 @@ export function BoardMorphTuner() {
   const [duration, setDuration] = useState(boardMorphConfig.duration)
   const [ease, setEase] = useState(boardMorphConfig.ease)
   const [stagger, setStagger] = useState(boardMorphConfig.stagger)
+  const [nameEffect, setNameEffect] = useState(boardMorphConfig.nameEffect)
   if (!import.meta.env.DEV) return null
   return (
     <div className="border-border bg-card fixed right-3 bottom-36 z-40 flex flex-col gap-2 rounded-xl border p-3 text-xs shadow-lg">
@@ -72,6 +73,17 @@ export function BoardMorphTuner() {
             setStagger(next)
           }}
         />
+      </label>
+      <label className="flex items-center gap-2">
+        <input
+          type="checkbox"
+          checked={nameEffect}
+          onChange={(e) => {
+            boardMorphConfig.nameEffect = e.target.checked
+            setNameEffect(e.target.checked)
+          }}
+        />
+        name crossfade
       </label>
     </div>
   )

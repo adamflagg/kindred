@@ -35,7 +35,7 @@
 import gsap from 'gsap'
 import { Flip } from 'gsap/Flip'
 
-import type { BoardMorphOp } from './boardMorph'
+import { type BoardMorphOp, nearestRectIndex } from './boardMorph'
 
 gsap.registerPlugin(Flip)
 
@@ -44,12 +44,18 @@ gsap.registerPlugin(Flip)
  * Defaults are the prototype settings the engine was ruled on.
  */
 export const boardMorphConfig = {
-  /** Seconds. */
+  /** Seconds. Owner-tuned on the live board (D26 gate session). */
   duration: 0.8,
   /** GSAP ease name for the convergence flights. */
   ease: 'back.out(1.4)',
-  /** Seconds between successive clone departures. */
-  stagger: 0.07,
+  /** Seconds between successive clone departures. Owner-tuned: 0.05. */
+  stagger: 0.05,
+  /**
+   * Crossfade the outgoing name into the incoming one on the surviving
+   * card — the anchor card's title would otherwise hard-cut the instant
+   * the container mounts, while its rect is still mid-morph.
+   */
+  nameEffect: true,
 }
 
 export interface BoardMorphSnapshot {
@@ -59,6 +65,11 @@ export interface BoardMorphSnapshot {
   clones: HTMLElement[]
   /** Split only: the container's pre-commit rect, for the fly-out origin. */
   containerRect: DOMRect | null
+  /**
+   * The title leaving the board — the anchor room's on a merge, the
+   * container's on a split — crossfaded into the surviving card's title.
+   */
+  outgoingName: string | null
 }
 
 export interface BoardMorphRunner {
@@ -117,6 +128,53 @@ function cloneCard(el: HTMLElement): HTMLElement {
   return clone
 }
 
+const titleOf = (card: HTMLElement): HTMLElement | null => card.querySelector('h3')
+
+/**
+ * Crossfade `outgoingName` into `card`'s own title: a lookalike span sits
+ * over the real h3 (inside the card, so it rides the Flip transform) and
+ * dissolves out as the real title dissolves in. Returns the pieces the
+ * timeline animates plus the undo, or null when the card has no title.
+ */
+function mountNameCrossfade(
+  card: HTMLElement,
+  outgoingName: string
+): { title: HTMLElement; ghost: HTMLElement; undo: () => void } | null {
+  const title = titleOf(card)
+  if (title === null) return null
+  const cardRect = card.getBoundingClientRect()
+  const titleRect = title.getBoundingClientRect()
+  const ghost = document.createElement('span')
+  ghost.textContent = outgoingName
+  ghost.className = title.className
+  ghost.style.cssText = `position:absolute;left:${String(titleRect.left - cardRect.left)}px;top:${String(
+    titleRect.top - cardRect.top
+  )}px;width:${String(titleRect.width)}px;pointer-events:none;`
+  // `.card-lodge` is position:relative, so the ghost rides the transform.
+  card.appendChild(ghost)
+  return {
+    title,
+    ghost,
+    undo: () => {
+      ghost.remove()
+      gsap.set(title, { clearProps: 'opacity,filter' })
+    },
+  }
+}
+
+/** The shared crossfade tween pair, positioned inside the morph. */
+function addNameCrossfade(
+  tl: gsap.core.Timeline,
+  parts: { title: HTMLElement; ghost: HTMLElement },
+  duration: number
+): void {
+  const at = duration * 0.25
+  const dur = duration * 0.55
+  gsap.set(parts.title, { opacity: 0, filter: 'blur(5px)' })
+  tl.to(parts.ghost, { opacity: 0, filter: 'blur(5px)', duration: dur, ease: 'power2.in' }, at)
+  tl.to(parts.title, { opacity: 1, filter: 'blur(0px)', duration: dur, ease: 'power2.out' }, at)
+}
+
 let active: { tl: gsap.core.Timeline; cleanup: () => void } | null = null
 
 /** Jump the in-flight morph to its end state and clean it up. */
@@ -156,6 +214,11 @@ function capture(op: BoardMorphOp): BoardMorphSnapshot | null {
   }
   const state = Flip.getState(allCards())
   const containerRect = op.type === 'split' ? first.getBoundingClientRect() : null
+  // Merge: the anchor room's title crossfades into the container's. Split:
+  // the container's title crossfades into whichever room lands nearest its
+  // old slot. Read now — this element unmounts in the coming commit.
+  const outgoingEl = op.type === 'merge' ? cardByCode(op.anchorCode) : first
+  const outgoingName = outgoingEl === null ? null : (titleOf(outgoingEl)?.textContent ?? null)
   // Merge: the anchor card BECOMES the container (id swap in play) — clone
   // only the other leavers. Split: the container dissolves as a ghost.
   const cloneSources =
@@ -165,7 +228,7 @@ function capture(op: BoardMorphOp): BoardMorphSnapshot | null {
     const el = cardByCode(code)
     if (el !== null) clones.push(cloneCard(el))
   }
-  return { op, state, clones, containerRect }
+  return { op, state, clones, containerRect, outgoingName }
 }
 
 function play(snapshot: BoardMorphSnapshot): void {
@@ -182,11 +245,16 @@ function play(snapshot: BoardMorphSnapshot): void {
     // visibly forms out of the card staff acted on.
     containerEl.dataset['flipId'] = op.anchorCode
     containerEl.style.transition = 'none'
+    const nameParts =
+      boardMorphConfig.nameEffect && snapshot.outgoingName !== null
+        ? mountNameCrossfade(containerEl, snapshot.outgoingName)
+        : null
     const cleanup = (): void => {
       for (const clone of clones) clone.remove()
       containerEl.dataset['flipId'] = op.containerCode
       containerEl.style.transition = ''
       gsap.set(containerEl, { clearProps: 'transform,opacity' })
+      nameParts?.undo()
     }
     const tl = gsap.timeline({
       onComplete: () => {
@@ -195,6 +263,7 @@ function play(snapshot: BoardMorphSnapshot): void {
       },
     })
     tl.add(Flip.from(state, { targets: allCards(), duration: D, ease: 'power3.inOut' }), 0)
+    if (nameParts !== null) addNameCrossfade(tl, nameParts, D)
     clones.forEach((clone, i) => {
       const at = 0.04 + i * stagger
       gsap.set(clone, { opacity: 0.9 })
@@ -212,12 +281,27 @@ function play(snapshot: BoardMorphSnapshot): void {
   const enters = op.enterCodes.map(cardByCode).filter((el): el is HTMLElement => el !== null)
   const enterSet = new Set<HTMLElement>(enters)
   const survivors = allCards().filter((el) => !enterSet.has(el))
+  // The room landing nearest the container's old slot reads as "the same
+  // card, renamed" — it inherits the reverse name crossfade.
+  const heirIndex =
+    containerRect === null
+      ? -1
+      : nearestRectIndex(
+          containerRect,
+          enters.map((el) => el.getBoundingClientRect())
+        )
+  const heir = heirIndex === -1 ? undefined : enters[heirIndex]
+  const nameParts =
+    boardMorphConfig.nameEffect && snapshot.outgoingName !== null && heir !== undefined
+      ? mountNameCrossfade(heir, snapshot.outgoingName)
+      : null
   const cleanup = (): void => {
     for (const clone of clones) clone.remove()
     for (const el of enters) {
       el.style.transition = ''
     }
     gsap.set(enters, { clearProps: 'transform,opacity' })
+    nameParts?.undo()
   }
   const tl = gsap.timeline({
     onComplete: () => {
@@ -226,6 +310,7 @@ function play(snapshot: BoardMorphSnapshot): void {
     },
   })
   tl.add(Flip.from(state, { targets: survivors, duration: D, ease: 'power3.inOut' }), 0)
+  if (nameParts !== null) addNameCrossfade(tl, nameParts, D)
   enters.forEach((el, i) => {
     el.style.transition = 'none'
     if (containerRect !== null) fitToRect(el, containerRect)
