@@ -191,6 +191,15 @@ Two corrections that have both bitten already:
 >   *"No, I am only able to attend with this accommodation in place"*. **Gated on the
 >   ACCOMMODATION boolean (274057)**, not the bathroom one.
 >
+>   **This ONE answer becomes TWO PocketBase columns, and they are poles, not independent
+>   facts** (`family_camp_derived.go`'s 256927 switch arm + the kindred#1874 finalization):
+>   answered *Yes* → `opt_out_vip = true` (the need is a warning — they'll come anyway);
+>   answered *No* → `accommodation_is_mandatory = true` (a blocker); unanswered → both false
+>   (soft). They are mutually exclusive by construction — when siblings conflict, the
+>   blocker wins and `opt_out_vip` is cleared (fail-safe, ~3 households/year). Reading
+>   either column as a field of its own, rather than as one pole of this answer, is the
+>   misread this paragraph exists to prevent.
+>
 > **4. The share gate's three options, verbatim** — `FAM CAMP-Share Cabins` (240877) is a
 > pick-one radio, not the four-checkbox `FAM CAMP-Shared Cabin` (263379):
 > - *"Yes, I would like to share a large camper cabin with a family that I request or with a
