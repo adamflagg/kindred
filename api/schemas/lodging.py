@@ -809,24 +809,30 @@ class RosterCounts(BaseModel):
     # draw their own card, are not counted a second time.
     units_total: int = 0
     units_family_available: int = 0
-    # Planning inventory held back from families this session -- a burst pipe,
-    # a caretaker in residence. Does NOT include permanent staff housing,
-    # which was never bookable and so cannot be "held back"; that is
-    # units_staff_housing.
-    units_reserved: int = 0
     # Permanent full-time staff housing: 21 of the registry's 102 leaf units,
     # occupied by staff who are not enrolled per session and never appear on a
     # roster. Outside the planning inventory entirely, so NOT a subset of
-    # units_total -- that distinction is what units_reserved used to get
-    # wrong, reporting 21 cabins as "held back" that were never inventory.
+    # units_total -- a held-back FAMILY cabin (a burst pipe, a caretaker in
+    # residence) is still counted there and against units_family_available,
+    # because it was never staff housing and remains inventory. The two are
+    # different facts with different remedies, which is why staff housing
+    # gets its own count rather than folding into "not available".
     #
     # Counted rather than dropped silently: units_total shrinking by 21 with
     # nothing on the surface explaining it reads as data loss to a staff
     # member who knows how many cabins the property has.
     units_staff_housing: int = 0
-    # Sum of `sleeps` over family-available bookable units with a KNOWN
-    # sleeps value. Units with unknown capacity are excluded and reported
-    # separately, so the number never overstates what is placeable.
+    # Sum of FREE beds (kindred#2503 Task 5) over family-available bookable
+    # units with a known capacity -- not whole cabins. A written-into cabin
+    # with beds left contributes only its remainder; an uncovered cabin
+    # contributes its whole `sleeps`, which is still the common case. Units
+    # with unknown capacity are excluded and reported separately, so the
+    # number never overstates what is placeable.
+    #
+    # Placed families are still NOT subtracted: this bar's numerator
+    # (`bedsNeeded`) already counts them, so subtracting here too would count
+    # a placed family on both sides. A write-in is on nobody's roster and
+    # appears in neither, so its beds must leave the denominator instead.
     beds_family_available: int = 0
     units_capacity_unknown: int = 0
     units_unconfirmed: int = 0

@@ -5237,10 +5237,6 @@ export type RosterCounts = {
    */
   units_family_available?: number
   /**
-   * Units Reserved
-   */
-  units_reserved?: number
-  /**
    * Units Staff Housing
    */
   units_staff_housing?: number

@@ -40,7 +40,6 @@ export function WeekendStatsBar({ counts, bedsNeeded, spacesUnmeasured }: Weeken
   const partiesUnassigned = counts.parties_unassigned ?? 0
   const spaces = counts.units_family_available ?? 0
   const unitsTotal = counts.units_total ?? 0
-  const unitsReserved = counts.units_reserved ?? 0
   const unitsStaffHousing = counts.units_staff_housing ?? 0
   const beds = counts.beds_family_available ?? 0
   const spare = spaces - partiesTotal
@@ -99,27 +98,24 @@ export function WeekendStatsBar({ counts, bedsNeeded, spacesUnmeasured }: Weeken
           <span className="text-muted-foreground tabular-nums">
             ({spare < 0 ? `${String(Math.abs(spare))} short` : `${String(spare)} spare`})
           </span>
-          {/* Write-ins and staff housing are DIFFERENT facts with different
+          {/* Write-ins and staff housing were DIFFERENT facts with different
               remedies, and were one number until `units_staff_housing` split
-              them. A written-into cabin is inventory that comes back next
+              them out: a written-into cabin is inventory that comes back next
               weekend — somebody the system does not know about is sleeping in
-              it, most often non-rostered weekend staff. A staff cabin never
-              comes back: it houses full-time staff who are not enrolled per
-              session, and was never part of the weekend's inventory to begin
-              with.
+              it, most often non-rostered weekend staff — while a staff cabin
+              never comes back, since it houses full-time staff who are not
+              enrolled per session and was never part of the weekend's
+              inventory to begin with.
 
-              "held" until kindred#2078. The count is unchanged — it is still
-              `units_reserved` — but the word was the one thing on this bar
-              that described the opposite of what staff use the control for. */}
-          {unitsReserved > 0 && (
-            <Tooltip
-              content="Written in for this weekend, excluded from family spaces"
-              aria-label={`${String(unitsReserved)} write-ins`}
-              className="text-muted-foreground"
-            >
-              · {unitsReserved} write-ins
-            </Tooltip>
-          )}
+              The write-ins chip that used to sit beside this one was struck
+              2026-08-21 (kindred#2503): its tooltip said a write-in was
+              "excluded from family spaces", which stopped being true the
+              moment a sized write-in left the cabin available with beds free
+              (Task 4). The owner ruled the chip is not wanted rather than
+              reworded. Staff housing keeps its own count regardless — it was
+              never inventory, so it needs a different remedy than "release
+              it", and that distinction did not depend on the write-ins
+              chip's wording. */}
           {unitsStaffHousing > 0 && (
             <Tooltip
               content="Permanent staff housing, never part of the weekend's inventory"

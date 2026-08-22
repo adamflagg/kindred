@@ -18,7 +18,6 @@ function counts(overrides: Partial<RosterCountSummary> = {}): RosterCountSummary
     parties_unassigned: 6,
     units_total: 82,
     units_family_available: 79,
-    units_reserved: 3,
     beds_family_available: 389,
     units_capacity_unknown: 5,
     units_unconfirmed: 0,
@@ -88,29 +87,26 @@ describe('WeekendStatsBar', () => {
     expect(screen.getByText('(1 unmeasured space)')).toBeInTheDocument()
   })
 
-  it('notes written-into cabins as excluded from the space count', () => {
-    // "held" until kindred#2078. Staff never used the control to reserve an
-    // empty room -- they used it to write in an occupant -- so the old word
-    // described the opposite of what the number counts.
-    render(<WeekendStatsBar counts={counts()} bedsNeeded={223} spacesUnmeasured={0} />)
-    expect(screen.getByText('· 3 write-ins')).toBeInTheDocument()
+  it('does not draw a write-ins chip', () => {
+    // Struck 2026-08-21 (kindred#2503). Its tooltip said write-ins were
+    // "excluded from family spaces", which stopped being true the moment a
+    // sized write-in left the cabin available. The owner ruled the chip is not
+    // wanted rather than reworded. `units_staff_housing`'s chip beside it is
+    // untouched -- staff housing is a different fact with a different remedy,
+    // which is why the two were split in the first place.
+    render(
+      <WeekendStatsBar
+        counts={counts({ units_staff_housing: 3 })}
+        bedsNeeded={0}
+        spacesUnmeasured={0}
+      />
+    )
+    expect(screen.queryByText(/write-ins/)).not.toBeInTheDocument()
+    expect(screen.getByLabelText('3 staff cabins')).toBeInTheDocument()
   })
 
-  it('does not describe written-into cabins as staff housing', () => {
-    // The two were one number until units_staff_housing split them, and the
-    // tooltip still said "Held for staff". They are different facts with
-    // different remedies: a written-into cabin comes back next weekend, a
-    // staff cabin never does.
-    render(<WeekendStatsBar counts={counts()} bedsNeeded={223} spacesUnmeasured={0} />)
-    const writeIns = screen.getByRole('button', { name: '3 write-ins' })
-    fireEvent.focus(writeIns)
-    const tooltip = screen.getByRole('tooltip')
-    expect(tooltip).toHaveTextContent(/excluded from family spaces/i)
-    expect(tooltip).not.toHaveTextContent(/staff/i)
-  })
-
-  it('puts the spaces, write-in and staff notes on tooltips keyboard and touch can reach', () => {
-    // kindred#2177: all three were bare `title` attributes on a `<span>`.
+  it('puts the spaces and staff notes on tooltips keyboard and touch can reach', () => {
+    // kindred#2177: both were bare `title` attributes on a `<span>`.
     render(
       <WeekendStatsBar
         counts={counts({ units_staff_housing: 21 })}
@@ -118,11 +114,11 @@ describe('WeekendStatsBar', () => {
         spacesUnmeasured={0}
       />
     )
-    // Each figure names its own unit. Making these tab stops turned three
-    // bare numerals into three buttons called "79", "3" and "21" — the word
-    // that says what is counted lives in a sibling `<span>` the accessible
-    // name cannot see. The visible text is kept INSIDE each label so the
-    // name still contains it (WCAG 2.5.3).
+    // Each figure names its own unit. Making these tab stops turned two
+    // bare numerals into two buttons called "79" and "21" — the word that
+    // says what is counted lives in a sibling `<span>` the accessible name
+    // cannot see. The visible text is kept INSIDE each label so the name
+    // still contains it (WCAG 2.5.3).
     const spaces = screen.getByRole('button', { name: '79 spaces' })
     expect(spaces).not.toHaveAttribute('title')
     fireEvent.focus(spaces)

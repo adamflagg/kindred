@@ -650,7 +650,8 @@ def _is_planning_inventory(unit: LodgingUnitSummary) -> bool:
     the cabin staff just released would make the release capability useless.
 
     The converse is deliberately NOT symmetric: a family cabin held back this
-    weekend is still inventory and is reported by `units_reserved`. Permanent
+    weekend is still inventory, so it stays in `units_total` and counts
+    against `units_family_available` rather than dropping out. Permanent
     staff housing was never inventory, so it cannot be "held back".
     """
     return unit.inventory_class != "staff_default" or unit.is_family_available
@@ -2963,20 +2964,16 @@ class LodgingRosterService:
         unit_index: _BathroomIndex,
         free_beds_by_unit: dict[str, int | None],
     ) -> RosterCounts:
-        # ⚠️ `free_beds_by_unit` IS DELIBERATELY UNREAD HERE. DO NOT DELETE IT.
-        # It is `_resolve_family_availability`'s return, keyed by unit_id: how
-        # many beds each card has left once the write-ins covering it are paid
-        # for. `beds_family_available` below still totals WHOLE units, which is
-        # the pre-kindred#2503 arithmetic; moving the bed sum onto the
-        # remainder is the NEXT step of kindred#2503, which consumes this
-        # parameter. Folding it in here would land two reversals in one commit.
-        #
-        # Nothing mechanical guards it: `ruff.toml`'s `select` does not include
-        # `ARG`, so no linter will flag an unused argument and a human sweep is
-        # the only thing that would remove it. It arrives THREADED rather than
-        # re-derived for the reason that resolver's docstring gives -- two
+        # `free_beds_by_unit` is `_resolve_family_availability`'s return, keyed
+        # by unit_id: how many beds each card has left once the write-ins
+        # covering it are paid for. `beds_family_available` below sums THAT --
+        # free beds, not whole cabins (kindred#2503 Task 5) -- rather than
+        # re-deriving it, for the reason that resolver's docstring gives: two
         # derivations of "how many beds are free" are two answers to the
-        # question the seam exists to make single.
+        # question the seam exists to make single. Re-deriving here would also
+        # need its own capacity index over ALL units, since a descendant
+        # cover's capacity belongs to a room that is not in `bookable` (a room
+        # under a combined container does not draw).
         # The population the BOARD DRAWS, at each tree's resolved level -- not
         # "every non-container row". A combined container IS one space a
         # family can hold, and its rooms are not separately lettable, so
@@ -3024,9 +3021,15 @@ class LodgingRosterService:
             parties_unassigned=len(parties) - assigned,
             units_total=len(bookable),
             units_family_available=len(available),
-            units_reserved=len(bookable) - len(available),
             units_staff_housing=len(staff_housing),
-            beds_family_available=sum(s for u in available if (s := effective_sleeps[u.unit_id]) is not None),
+            # FREE beds, not whole cabins. `free[...]` is None on the uncovered
+            # majority (no occupancy at all), where the whole capacity is the
+            # right answer -- see `free_family_beds`'s three returns.
+            beds_family_available=sum(
+                f if (f := free_beds_by_unit.get(u.unit_id)) is not None else s
+                for u in available
+                if (s := effective_sleeps[u.unit_id]) is not None
+            ),
             units_capacity_unknown=sum(1 for u in bookable if effective_sleeps[u.unit_id] is None),
             # Over `bookable`, NOT a separate PocketBase count. The old query
             # filtered is_confirmed/is_container/is_active with no inventory
