@@ -49,6 +49,9 @@ import { useUnitAvailability } from '../../hooks/useUnitAvailability'
 import { useUnitMerge } from '../../hooks/useUnitMerge'
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
 import { areaTokens, buildBoard } from './boardLayout'
+import { setBoardMorphHint } from './boardMorph'
+import { BoardMorphBoundary } from './BoardMorphBoundary'
+import { BoardMorphTuner } from './BoardMorphTuner'
 import { indexUnitsByCode } from './unitLevel'
 import { createBoardCollisionDetection } from './boardCollision'
 import {
@@ -143,6 +146,12 @@ export function LodgingBoard({
   // dependency never matches, so the memo reads as though it caches while
   // re-running `areaTokens` on every keystroke elsewhere in the tree.
   const board = useMemo(() => buildBoard(parties, units), [parties, units])
+  // The drawn cards' identity, in render order — what `BoardMorphBoundary`
+  // diffs to recognise the one commit that swaps rooms for a container.
+  const slotCodes = useMemo(
+    () => board.areas.flatMap((area) => area.slots.map((slot) => slot.unit.code)),
+    [board]
+  )
   const [searchParams, setSearchParams] = useSearchParams()
   /*
    * Which areas are collapsed, read from the query string rather than held in
@@ -305,6 +314,9 @@ export function LodgingBoard({
       // but a lookup that fails silently is safer than one that writes an
       // empty id.
       if (parentUnit !== undefined) {
+        // Announce the gesture to the morph planner: the building forms
+        // ONTO the drop-target card, where staff are looking.
+        setBoardMorphHint(merge.targetCode)
         void setCombined(parentUnit.unit_id, parentUnit.name, merge.combined).catch(() => undefined)
       }
       return
@@ -340,6 +352,8 @@ export function LodgingBoard({
 
   const splitUnit = useCallback(
     (unit: LodgingUnitRow) => {
+      // The container card is the split's anchor: its rooms fly OUT of it.
+      setBoardMorphHint(unit.code)
       void setCombined(unit.unit_id, unit.name, false).catch(() => undefined)
     },
     [setCombined]
@@ -357,6 +371,9 @@ export function LodgingBoard({
     (unit: LodgingUnitRow) => {
       const parentUnit = unitsByCode.get(unit.parent_code ?? '')
       if (parentUnit === undefined) return
+      // The chip's own card anchors the merge, exactly as the drag's drop
+      // target does — the building forms onto the card staff acted on.
+      setBoardMorphHint(unit.code)
       void setCombined(parentUnit.unit_id, parentUnit.name, true).catch(() => undefined)
     },
     [setCombined, unitsByCode]
@@ -469,6 +486,13 @@ export function LodgingBoard({
       onDragEnd={handleDragEnd}
       onDragCancel={handleDragCancel}
     >
+      {/* Childless observer: recognises the one commit that swaps room
+          cards for a container (or back) and plays the merge/split morph.
+          See its doc for why siblinghood is equivalent to wrapping. */}
+      <BoardMorphBoundary slotCodes={slotCodes} unitsByCode={unitsByCode} />
+      {/* vitest runs DEV=true; the MODE guard keeps the tuner's <select>
+          options out of every board test's role queries. */}
+      {import.meta.env.DEV && import.meta.env.MODE !== 'test' && <BoardMorphTuner />}
       <div className="flex flex-col gap-3">
         {/* The mode chip that used to lead this row moved to the header badge,
             where summer keeps it. The row itself is now conditional: left

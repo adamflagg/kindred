@@ -90,6 +90,12 @@ export function useWeekendSummary(year: number) {
  */
 export function useWeekendRoster(year: number, sessionCmId: number | null, scenario: string) {
   const { fetchWithAuth } = useApiWithAuth()
+  // SENTINEL: the board's merge/split morph (`BoardMorphBoundary`) measures
+  // the outgoing cards in getSnapshotBeforeUpdate, which relies on this
+  // query's updates committing SYNCHRONOUSLY (React Query v5 delivers via
+  // useSyncExternalStore). Wrapping this read in startTransition or
+  // useDeferredValue would split the snapshot from the commit it measures —
+  // the morph would capture nothing and merges would hard-cut again.
   return useQuery<WeekendRoster>({
     queryKey: queryKeys.weekendRoster(year, sessionCmId ?? 0, scenario),
     enabled: year > 0 && sessionCmId !== null,

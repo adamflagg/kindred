@@ -124,6 +124,13 @@ export function isValidMergeTarget(
 export interface MergeIntent {
   parentCode: string
   combined: true
+  /**
+   * The DROP TARGET room — the card the merge handle landed on, where staff
+   * are looking. The merge-morph animation anchors its convergence there
+   * (`boardMorph.ts`), which is what makes the building appear to form ONTO
+   * the card they acted on rather than at an arbitrary sibling.
+   */
+  targetCode: string
 }
 
 export interface ResolveMergeDropArgs {
@@ -146,7 +153,7 @@ export function resolveMergeDrop({
   const source = mergeDragUnit(activeId, units)
   const target = mergeDragUnit(overId, units)
   if (source === null || target === null || !isValidMergeTarget(source, target)) return null
-  return { parentCode: source.parent_code ?? '', combined: true }
+  return { parentCode: source.parent_code ?? '', combined: true, targetCode: target.code }
 }
 
 export type PlacementIntent =
