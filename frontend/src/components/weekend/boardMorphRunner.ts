@@ -144,12 +144,16 @@ function mountNameCrossfade(
   if (title === null) return null
   const cardRect = card.getBoundingClientRect()
   const titleRect = title.getBoundingClientRect()
-  const ghost = document.createElement('span')
+  // An <h3>, not a <span> — the title's display face comes from index.css's
+  // `h1, h2, h3` ELEMENT rule (Fraunces, tracking, ss01/ss02), which the
+  // copied classes do not carry. A span ghost renders the outgoing name in
+  // the body sans for the whole crossfade (owner-reported).
+  const ghost = document.createElement('h3')
   ghost.textContent = outgoingName
   ghost.className = title.className
   ghost.style.cssText = `position:absolute;left:${String(titleRect.left - cardRect.left)}px;top:${String(
     titleRect.top - cardRect.top
-  )}px;width:${String(titleRect.width)}px;pointer-events:none;`
+  )}px;width:${String(titleRect.width)}px;margin:0;pointer-events:none;`
   // `.card-lodge` is position:relative, so the ghost rides the transform.
   card.appendChild(ghost)
   return {
