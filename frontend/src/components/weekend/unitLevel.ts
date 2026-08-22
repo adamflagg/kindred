@@ -22,7 +22,48 @@
  */
 import type { LodgingUnitRow } from '../../types/lodging'
 
+/**
+ * The parent index, cached against the ARRAY IDENTITY that produced it.
+ *
+ * `coveredCodes` below rebuilds this on every call, and the board calls
+ * `coveredCodes` a great deal: 472 times on the first render of a 73-card
+ * board and 352 times on every re-render, each one walking all ~118 units. The
+ * work is the same answer every time, because within one render pass every
+ * caller is handed the same `units` array.
+ *
+ * A `WeakMap` on that array is the whole fix — no call-site churn, no
+ * threading an index through five signatures, and it falls out of memory with
+ * the array when React Query replaces the roster.
+ *
+ * ⚠️ KEYED ON IDENTITY, NOT CONTENTS. A caller that MUTATES a `units` array in
+ * place would read a stale index. Nothing does: `units` reaches these helpers
+ * straight from the query cache, which this app treats as immutable, and
+ * `buildBoard` copies before it sorts. The RETURNED maps are shared for the
+ * same reason — every caller for one `units` array gets the same instance, so
+ * mutating one would corrupt every other reader. Read them, never write them.
+ */
+const childIndexByUnits = new WeakMap<LodgingUnitRow[], Map<string, LodgingUnitRow[]>>()
+const codeIndexByUnits = new WeakMap<LodgingUnitRow[], Map<string, LodgingUnitRow>>()
+
+/**
+ * The roster's units indexed by code — the same cache discipline as
+ * `childrenByParent` above, and here for the same measured reason: this map
+ * was being rebuilt inline at ELEVEN call sites across the board helpers,
+ * two of them (`slotOccupancy`, `overlappingPartyKeys`) once per card per
+ * render — ~17,000 Map insertions per board render for identical answers.
+ */
+export function indexUnitsByCode(units: LodgingUnitRow[]): Map<string, LodgingUnitRow> {
+  const cached = codeIndexByUnits.get(units)
+  if (cached !== undefined) return cached
+  const map = new Map(units.map((unit) => [unit.code, unit]))
+  codeIndexByUnits.set(units, map)
+  return map
+}
+
 function childrenByParent(units: LodgingUnitRow[]): Map<string, LodgingUnitRow[]> {
+  const cached = childIndexByUnits.get(units)
+  if (cached !== undefined) return cached
+
   const map = new Map<string, LodgingUnitRow[]>()
   for (const unit of units) {
     const parent = unit.parent_code ?? ''
@@ -31,6 +72,7 @@ function childrenByParent(units: LodgingUnitRow[]): Map<string, LodgingUnitRow[]
     if (bucket) bucket.push(unit)
     else map.set(parent, [unit])
   }
+  childIndexByUnits.set(units, map)
   return map
 }
 
@@ -151,7 +193,7 @@ export function buildingKey(
  * this" is exactly how the two numbers would start disagreeing.
  */
 export function buildingGroups(units: LodgingUnitRow[]): Map<string, string[]> {
-  const unitsByCode = new Map(units.map((unit) => [unit.code, unit]))
+  const unitsByCode = indexUnitsByCode(units)
   const groups = new Map<string, string[]>()
   for (const unit of units) {
     if (unit.is_container === true) continue
@@ -213,7 +255,7 @@ export function wholeBuildingHeld(
   occupiedLeaves: ReadonlySet<string>,
   units: LodgingUnitRow[]
 ): boolean {
-  const unitsByCode = new Map(units.map((unit) => [unit.code, unit]))
+  const unitsByCode = indexUnitsByCode(units)
   const groups = buildingGroups(units)
   const touchedKeys = new Set<string>()
   for (const leaf of occupiedLeaves) {
@@ -230,7 +272,7 @@ export function wholeBuildingHeld(
 /** The units that get a card, at the level each tree resolves to. */
 export function drawnUnits(units: LodgingUnitRow[]): LodgingUnitRow[] {
   const children = childrenByParent(units)
-  const byCode = new Map(units.map((unit) => [unit.code, unit]))
+  const byCode = indexUnitsByCode(units)
   const roots = units.filter((unit) => {
     const parent = unit.parent_code ?? ''
     return parent === '' || !byCode.has(parent)

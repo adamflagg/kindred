@@ -80,9 +80,13 @@
  * parties: a person-grain party (an adult weekend guest) IS the identity, so
  * its `display_name` stays.
  */
-import { useDraggable } from '@dnd-kit/core'
+import {
+  useDraggable,
+  type DraggableAttributes,
+  type DraggableSyntheticListeners,
+} from '@dnd-kit/core'
 import { Repeat, Star, User, Users } from 'lucide-react'
-import { Fragment } from 'react'
+import { Fragment, memo } from 'react'
 
 import type { LodgingUnitRow, PartyChildRow, RosterPartyRow } from '../../types/lodging'
 import { displayCampMinderAge, displayTruncatedAge } from '../../utils/age'
@@ -676,25 +680,32 @@ function FamilyCardChips({
 const CARD_FRAME =
   'group border-border flex w-full flex-col gap-1 rounded-xl border-2 p-2.5 text-left'
 
-export function FamilyCard({
+/**
+ * The dnd-kit hook results the shell hands the memo'd body — dnd-kit's OWN
+ * types, not `Record<string, unknown>`: erased, `attributes` and `listeners`
+ * collapse into one structural type, and swapping them at the call site —
+ * exactly the mistake the conditional spread below exists to prevent — would
+ * type-check.
+ */
+interface FamilyDnd {
+  attributes: DraggableAttributes
+  listeners: DraggableSyntheticListeners
+  setNodeRef: (n: HTMLElement | null) => void
+  isDragging: boolean
+}
+
+const FamilyCardInner = memo(function FamilyCardInner({
   party,
   unit,
   sharedSlot = false,
   inQueue = false,
   isDraggable = false,
   onOpen,
-}: FamilyCardProps) {
-  // `disabled` does NOT prevent registration — dnd-kit registers the node in
-  // `draggableNodes` unconditionally and `disabled` only nulls the listeners
-  // (verified in @dnd-kit/core 6.3.1). What gates the interaction is the
-  // conditional spread below, which four tests pin. `disabled` is kept for
-  // the `aria-disabled` it sets and as a second refusal to hand back
-  // listeners.
-  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
-    id: partyKey(party),
-    disabled: !isDraggable,
-  })
-
+  attributes,
+  listeners,
+  setNodeRef,
+  isDragging,
+}: FamilyCardProps & FamilyDnd) {
   return (
     // NOT a `<button>` (kindred#2222) — a `<div>` frame, so the chip row
     // below can host a real interactive trigger (kindred#2250) as a SIBLING
@@ -744,6 +755,38 @@ export function FamilyCard({
       </button>
       <FamilyCardChips party={party} unit={unit} sharedSlot={sharedSlot} />
     </div>
+  )
+})
+
+/**
+ * PERF: the dnd-kit subscription, and nothing else.
+ *
+ * `useDraggable` subscribes to dnd-kit's InternalContext, whose identity
+ * changes on every `over` transition — so with the hook inside the card body
+ * every family card on the board re-rendered each time the pointer crossed a
+ * cabin boundary. Measured on a 73-card board holding 133 placed families:
+ * 1,636 body renders across one sweep. Here the hook lives in a shell whose
+ * only job is to read it, and the body is `memo`'d.
+ */
+export function FamilyCard(props: FamilyCardProps) {
+  // `disabled` does NOT prevent registration — dnd-kit registers the node in
+  // `draggableNodes` unconditionally and `disabled` only nulls the listeners
+  // (verified in @dnd-kit/core 6.3.1). What gates the interaction is the
+  // conditional spread in the body, which four tests pin. `disabled` is kept
+  // for the `aria-disabled` it sets and as a second refusal to hand back
+  // listeners.
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: partyKey(props.party),
+    disabled: props.isDraggable !== true,
+  })
+  return (
+    <FamilyCardInner
+      {...props}
+      attributes={attributes}
+      listeners={listeners}
+      setNodeRef={setNodeRef}
+      isDragging={isDragging}
+    />
   )
 }
 

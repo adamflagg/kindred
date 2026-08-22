@@ -28,7 +28,7 @@
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
 import { partyHeadcount } from './householdIdentity'
 import { needCoverage, needGlyph, needVerdict } from './needGlyphs'
-import { coveredCodes, drawnUnits, representingCodes } from './unitLevel'
+import { coveredCodes, drawnUnits, indexUnitsByCode, representingCodes } from './unitLevel'
 
 /** Ordered most urgent first. The order of this array IS the section order. */
 export const ATTENTION_ORDER = ['required', 'unmet', 'unplaced', 'unverified', 'settled'] as const
@@ -186,12 +186,13 @@ function representingCards(
  * unmeasured room grades `unmet` while `some` may grade `partial`, and
  * `unknown` beats `partial` for the same reason.
  *
- * ⚠️ THAT HOLDS FOR THE GLYPH READING, WHICH IS THE ONLY ONE THIS FEEDS. The
- * drag-time hatch reads `unknown` as `fits` (`UnknownReading` in
- * `needGlyphs.ts`), and under that reading a fold of `{unknown, some}` would
- * be softer than `some` alone. The hatch grades a candidate cabin the party is
- * not in, never a resolved placement, so it never sees one of these rows — if
- * that ever changes, this ladder needs a second one beside it.
+ * ⚠️ THAT HOLDS FOR THE GLYPH READING, WHICH IS THE ONLY ONE `needVerdict`
+ * HAS since 2026-08-21. The drag-time state no longer reads `unknown` at all
+ * — `resolveDragFit` intercepts it before grading (unrecorded coverage makes
+ * neither claim), so the old hatch-side `unknown → fits` reading, under which
+ * a fold of `{unknown, some}` would have been softer than `some` alone, is
+ * gone along with its `UnknownReading` parameter. If a drag-time reading of
+ * `unknown` ever returns, this ladder needs a second one beside it.
  *
  * `partial` is ramp-only and `shared`/`private` are bathroom-only, so the
  * three vocabularies get three constants rather than one union that would
@@ -468,10 +469,12 @@ export function attentionSections(
   }))
 }
 
-/** Index the roster's units by code so each row can find its own cabin. */
-export function indexUnitsByCode(units: LodgingUnitRow[]): Map<string, LodgingUnitRow> {
-  return new Map(units.map((unit) => [unit.code, unit]))
-}
+/**
+ * Index the roster's units by code so each row can find its own cabin.
+ * The implementation moved to `unitLevel` when it grew a WeakMap cache; this
+ * re-export keeps the import surface its callers already use.
+ */
+export { indexUnitsByCode } from './unitLevel'
 
 /**
  * Family spaces whose capacity nobody has recorded.
@@ -548,7 +551,7 @@ export function effectiveSleeps(unit: LodgingUnitRow, units: LodgingUnitRow[]): 
   const own = unit.sleeps ?? null
   if (unit.is_container !== true) return own
 
-  const byCode = new Map(units.map((row) => [row.code, row]))
+  const byCode = indexUnitsByCode(units)
   const leaves = coveredCodes(unit, units)
     .map((code) => byCode.get(code))
     .filter((leaf): leaf is LodgingUnitRow => leaf !== undefined && leaf.is_active !== false)

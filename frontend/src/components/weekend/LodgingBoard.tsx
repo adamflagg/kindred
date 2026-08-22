@@ -33,15 +33,13 @@ import {
   DragOverlay,
   MouseSensor,
   TouchSensor,
-  pointerWithin,
-  rectIntersection,
   useSensor,
   useSensors,
   type DragEndEvent,
   type DragStartEvent,
 } from '@dnd-kit/core'
 import { ChevronDown, ChevronRight, Info, TriangleAlert } from 'lucide-react'
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router'
 
 import { useDismissOnDeadSpace } from '../../hooks/useDismissOnDeadSpace'
@@ -51,6 +49,8 @@ import { useUnitAvailability } from '../../hooks/useUnitAvailability'
 import { useUnitMerge } from '../../hooks/useUnitMerge'
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
 import { areaTokens, buildBoard } from './boardLayout'
+import { indexUnitsByCode } from './unitLevel'
+import { createBoardCollisionDetection } from './boardCollision'
 import {
   mergeDragUnit,
   resolveDrop,
@@ -100,6 +100,35 @@ export interface LodgingBoardProps {
  * most of the point of moving this out of `useState`.
  */
 const CLOSED_PARAM = 'closed'
+
+/*
+ * MODULE SCOPE, and that placement is load-bearing rather than tidiness.
+ *
+ * `useSensor` memoises on `[sensor, options]` and `useSensors` on the sensor
+ * array (@dnd-kit/core 6.3.1). An options object written inline is a new
+ * identity on every board render, so the memo misses, `activators` is rebuilt,
+ * and `useSyntheticListeners` hands EVERY draggable on the board a fresh
+ * `listeners` object. That is a prop change on every family card and every
+ * card's merge handle, which defeats their `memo` wholesale — measured at
+ * pick-up: 133 of 133 family-card bodies re-rendered for no reason.
+ */
+const MOUSE_ACTIVATION = { activationConstraint: { distance: 10 } }
+
+/*
+ * dnd-kit's auto-scroller defaults to a scrollBy every 5ms — 200 scroll
+ * events/second, each one re-entering DndContext's scroll listeners while the
+ * browser is also painting a ~5,500px board (the real 2026 boards are five
+ * viewports tall, so every cross-area placement rides the auto-scroller).
+ * Tripling the tick and the per-tick step keeps the same ~2,000px/s velocity
+ * at a third of the event rate.
+ *
+ * Measured on the production build, real Family Camp 2 data: dropped frames
+ * per 1,000px auto-scrolled went 3.4 → ~1.9, and script-per-pixel fell ~10%.
+ * A modest win, not a dramatic one — the remaining cost of the auto-scroll
+ * leg is the browser painting the board, not script.
+ */
+const AUTO_SCROLL = { interval: 15, acceleration: 30 }
+const TOUCH_ACTIVATION = { activationConstraint: { delay: 100, tolerance: 5 } }
 
 export function LodgingBoard({
   parties,
@@ -203,29 +232,41 @@ export function LodgingBoard({
     scenario,
   })
 
-  // Memoised because `mergeUnit` closes over it: rebuilt each render, it would
-  // give that callback a new identity every time and defeat the point of the
-  // `useCallback`. Cheap either way at ~120 units, but the lint rule is right.
-  const unitsByCode = useMemo(() => new Map(units.map((unit) => [unit.code, unit])), [units])
+  // The shared WeakMap-cached index (`unitLevel`), not a local `useMemo` copy
+  // of the same map — one instance per `units` array, everywhere. `mergeUnit`
+  // closes over it and lists it as a `useCallback` dep, and the cache is what
+  // keeps that identity stable across renders (at least as stable as the
+  // `useMemo` this replaced).
+  const unitsByCode = indexUnitsByCode(units)
 
   const sensors = useSensors(
     // The same activation constraints summer uses. The distance threshold is
     // what keeps a card that is also a button clickable: a plain click never
     // travels 10px, so it opens the details panel instead of starting a drag.
-    useSensor(MouseSensor, { activationConstraint: { distance: 10 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 100, tolerance: 5 } })
+    useSensor(MouseSensor, MOUSE_ACTIVATION),
+    useSensor(TouchSensor, TOUCH_ACTIVATION)
   )
 
   // Pointer-within first, falling back to rect intersection — summer's, and
   // for the same reason: without it a drop released over dead space snaps to
   // whichever cabin happens to be nearest, placing a family somewhere nobody
-  // chose.
-  const collisionDetection = (args: Parameters<typeof pointerWithin>[0]) => {
-    const pointerCollisions = pointerWithin(args)
-    return pointerCollisions.length > 0 ? pointerCollisions : rectIntersection(args)
-  }
+  // chose. The policy itself, and why it HOLDS the last cabin across a gutter,
+  // lives in `boardCollision.ts`.
+  //
+  // A REF, not `useMemo`, because the detector is STATEFUL — the held cabin
+  // is the state. `useMemo` is documented as a cache React may discard, and a
+  // discard mid-gesture would silently lose the hold and put the flapping
+  // back with nothing to notice it. A ref is the primitive that actually
+  // promises one instance for the component's lifetime.
+  const collisionDetectionRef = useRef<ReturnType<typeof createBoardCollisionDetection> | null>(
+    null
+  )
+  collisionDetectionRef.current ??= createBoardCollisionDetection()
+  const collisionDetection = collisionDetectionRef.current
 
   const handleDragStart = (event: DragStartEvent) => {
+    // One gesture must never inherit the previous gesture's held cabin.
+    collisionDetection.reset()
     const activeId = String(event.active.id)
     const mergeUnit = mergeDragUnit(activeId, units)
     if (mergeUnit !== null) {
@@ -239,6 +280,7 @@ export function LodgingBoard({
   }
 
   const handleDragEnd = (event: DragEndEvent) => {
+    collisionDetection.reset()
     setDragging(null)
     setDraggingMergeUnit(null)
 
@@ -286,10 +328,12 @@ export function LodgingBoard({
   // party droppable stays disabled board-wide (`LodgingUnitCard`'s
   // `mergeDragActive` gate) and every non-sibling card sits dimmed and
   // unclickable (`pointer-events-none`) until staff happen to start another
-  // drag. Same two resets as `handleDragEnd`'s first two lines — see
+  // drag. The same resets `handleDragEnd` opens with — the collision hold and
+  // both drag states — see
   // `useLockGroupDragDrop.tsx`'s `handleDragCancel` for the same shape on
   // summer's own drag gesture.
   const handleDragCancel = () => {
+    collisionDetection.reset()
     setDragging(null)
     setDraggingMergeUnit(null)
   }
@@ -418,6 +462,7 @@ export function LodgingBoard({
 
   return (
     <DndContext
+      autoScroll={AUTO_SCROLL}
       sensors={sensors}
       collisionDetection={collisionDetection}
       onDragStart={handleDragStart}
@@ -487,10 +532,15 @@ export function LodgingBoard({
                         ) : (
                           <ChevronDown className="text-muted-foreground h-3.5 w-3.5 flex-shrink-0" />
                         )}
-                        {/* Area colour is a SECONDARY channel (§3.10). This dot
-                          and the card's top edge carry it; the heading below
-                          does the actual grouping, so nothing depends on
-                          telling violet from rose. */}
+                        {/* Area colour is a SECONDARY channel (§3.10), and this dot
+                          is now its ONLY carrier on the board — the card's top
+                          edge lost it on 2026-08-21, taking 73 always-on marks
+                          down to 8. The heading below does the actual
+                          grouping, so nothing depends on telling violet from
+                          rose, which is exactly why the card could give it up.
+                          The map still draws the hue per unit: it has no
+                          section headers, so position is its only other
+                          grouping and the pills genuinely need a key. */}
                         <span
                           className="h-2 w-2 flex-shrink-0 rounded-full"
                           style={{ backgroundColor: area.hue }}
@@ -523,7 +573,6 @@ export function LodgingBoard({
                             // the same `overlappingPartyKeys` the slot flag
                             // already ran with these units in `buildBoard`.
                             units={units}
-                            hue={area.hue}
                             canPlace={canPlace}
                             canSetAvailability={canSetAvailability}
                             // THIS card's unit, or ANY of the ones holding a

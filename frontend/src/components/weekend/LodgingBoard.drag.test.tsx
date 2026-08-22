@@ -64,8 +64,24 @@ vi.mock('../../hooks/useUnitMerge', () => ({
 
 /** The last `onDragEnd` the board handed to DndContext. */
 let onDragEnd: ((event: unknown) => void) | undefined
+/** Its `onDragCancel` sibling — Escape, resize, tab-hide mid-drag. */
+let onDragCancel: (() => void) | undefined
 /** Its `onDragStart` sibling — the half the needs-misfit hatch (#1912) rides on. */
 let onDragStart: ((event: unknown) => void) | undefined
+
+// The collision policy is STATEFUL (it holds the last cabin the pointer was
+// inside), so the board must clear it at every gesture boundary — one gesture
+// inheriting the previous gesture's hold is a wrong drop target waiting for a
+// gutter release. jsdom can't drive the real detector (no rects), so the
+// wiring is pinned by spying on `reset` instead.
+const collisionReset = vi.fn()
+vi.mock('./boardCollision', () => ({
+  createBoardCollisionDetection: () => {
+    const detect = () => []
+    detect.reset = collisionReset
+    return detect
+  },
+}))
 
 vi.mock('@dnd-kit/core', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@dnd-kit/core')>()
@@ -75,13 +91,16 @@ vi.mock('@dnd-kit/core', async (importOriginal) => {
       children,
       onDragEnd: handler,
       onDragStart: startHandler,
+      onDragCancel: cancelHandler,
     }: {
       children: ReactNode
       onDragEnd: (e: unknown) => void
       onDragStart: (e: unknown) => void
+      onDragCancel: () => void
     }) => {
       onDragEnd = handler
       onDragStart = startHandler
+      onDragCancel = cancelHandler
       return <div data-testid="dnd-context">{children}</div>
     },
   }
@@ -93,6 +112,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   onDragEnd = undefined
   onDragStart = undefined
+  onDragCancel = undefined
   placementOptions = []
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
 })
@@ -411,5 +431,39 @@ describe('LodgingBoard — placing a family from the space itself (kindred#2080)
       unitCode: 'cedar-2',
       unitName: 'Cedar 2',
     })
+  })
+})
+
+describe('LodgingBoard — the collision hold is cleared at every gesture boundary', () => {
+  /*
+   * The detector holds the last cabin the pointer was inside
+   * (`boardCollision.ts`), and the board owns clearing it — a hold that
+   * survives into the NEXT gesture would make the drop ring open on a cabin
+   * from the previous drag. Three boundaries, because dnd-kit fires
+   * `onDragCancel` INSTEAD of `onDragEnd` on Escape, a resize, or a tab hide.
+   */
+  it('resets on drag start, so no gesture inherits the previous hold', () => {
+    renderBoard()
+    collisionReset.mockClear()
+    startDrag('household-101')
+    expect(collisionReset).toHaveBeenCalled()
+  })
+
+  it('resets on drag end', () => {
+    renderBoard()
+    collisionReset.mockClear()
+    drop('household-101', null)
+    expect(collisionReset).toHaveBeenCalled()
+  })
+
+  it('resets on drag cancel — the boundary that never reaches onDragEnd', () => {
+    renderBoard()
+    if (!onDragCancel) throw new Error('the board never registered a drag-cancel handler')
+    collisionReset.mockClear()
+    const cancel = onDragCancel
+    act(() => {
+      cancel()
+    })
+    expect(collisionReset).toHaveBeenCalled()
   })
 })

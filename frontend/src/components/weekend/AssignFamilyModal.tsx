@@ -71,6 +71,7 @@ import { resolveNeedGlyphs } from './needGlyphs'
 import { partyKey } from './partyKey'
 import { placementCandidates, type PlacementCandidate } from './placementCandidates'
 import { effectiveSleeps, partyBeds } from './rosterAttention'
+import { hasWriteIn } from './writeIn'
 
 export interface AssignFamilyModalProps {
   isOpen: boolean
@@ -255,6 +256,13 @@ function capacitySentence(
 ): string {
   const capacity = effectiveSleeps(unit, units)
   if (capacity === null) return 'Capacity not recorded'
+  // A written-into room has an occupant no `occupants` figure counts (a
+  // write-in is not a party — kindred#2439), so a free-bed number here would
+  // be one the card itself refuses to print (it shows an em dash) and one the
+  // candidate rows below DECLINE to grade against (`capacityVerdict`'s own
+  // write-in gate). The header states what it knows — the capacity — and
+  // stops there, or the modal disagrees with itself about the same cabin.
+  if (hasWriteIn(unit)) return `Sleeps ${String(capacity)} · occupancy not counted (write-in)`
   // The card's own gate, mirrored — see `spanWidth`'s doc. A spanning
   // placement keeps its figure and loses the claim.
   if (occupants > capacity && spanWidth === 0) {

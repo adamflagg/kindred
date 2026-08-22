@@ -86,37 +86,6 @@ export type NeedKey = 'bathroom' | 'power' | 'fridge' | 'step_free'
  */
 export type NeedReading = 'placed' | 'prospective'
 
-/**
- * WHAT AN `unknown` COVERAGE MEANS FOR THE MARK BEING DRAWN, and the two marks
- * genuinely ask different questions.
- *
- *   `'unmet'`  — the default, and every GLYPH. The glyph reports what is known
- *                about the cabin, and `fits` is not silence: it is the mark in
- *                its full hue, asserting the need is met. Owner ruling
- *                2026-08-20 — *"unknown values should not equal fits, across
- *                all surfaces on the glyphs, its unconfirmed information."*
- *
- *   `'fits'`   — the drag-time HATCH, and this is not a leftover. The hatch is
- *                not a report, it is an INTERRUPTION: it darkens a cabin under
- *                a card being dragged to say "not this one". Its bar is
- *                therefore evidence of ABSENCE, not absence of evidence.
- *
- * ⚠️ THE NUMBER IS WHY, AND IT IS NOT CLOSE. 102 of 118 cabins carry
- * `ramp_coverage: 'unknown'` — nobody has assessed them, which is exactly what
- * the three-value select exists to record. Measured across 2026's twelve
- * weekends: reading `unknown` as unmet in the hatch takes a step-free
- * household's hatched cabins from **32 of 944 pairs to 848** — 3.4% to 90%. A
- * hatch that fires on nine cabins in ten has stopped saying anything, which is
- * the same failure as a queue drawn red all the time. The glyph, on the same
- * data, moves THREE marks.
- *
- * This is one grading with two documented readings, not two tables. The
- * coverage derivation is still single-sourced in `needCoverage`; only what an
- * absent answer MEANS differs, and it differs at one call site with a reason
- * written at both ends. `needsFit` is that call site.
- */
-export type UnknownReading = Extract<NeedsFit, 'unmet' | 'fits'>
-
 export interface NeedGlyphSpec {
   readonly key: NeedKey
   /** The household's asked-for need. */
@@ -359,12 +328,22 @@ export function needCoverage(
  * whose `ramp_coverage` the server could not resolve. The roster's section
  * counts do not move at all — `ROSTER_NEEDS` grades bathroom and power, and
  * every placed party's coverage for those two is already `all` or `none`.
+ *
+ * ONE READING OF `unknown` NOW, where there used to be a parameter.
+ * `UnknownReading` let the drag-time hatch read `unknown` as `'fits'`
+ * instead, because the hatch is an interruption whose bar is evidence of
+ * absence — and the number behind that was not close: 102 of 118 cabins carry
+ * `ramp_coverage: 'unknown'`, so reading it as unmet took a step-free
+ * household's hatched cabins from 32 of 944 pairs to 848. That escape moved
+ * into the resolver itself on 2026-08-21: `resolveDragFit` intercepts
+ * `unknown` BEFORE grading (its rule 2 — unrecorded coverage makes neither
+ * claim), so no caller asks this table about `unknown` with hatch semantics
+ * any more, and the parameter came out rather than sitting
+ * reachable-but-never-passed. The reasoning is kept because it answers "why
+ * doesn't the hatch just grade unknown like the glyphs do" — it still
+ * doesn't, one layer up.
  */
-export function needVerdict(
-  key: NeedKey,
-  coverage: Coverage,
-  unknownIs: UnknownReading = 'unmet'
-): NeedsFit {
+export function needVerdict(key: NeedKey, coverage: Coverage): NeedsFit {
   if (coverage === 'none') return 'unmet'
   if (coverage === 'some') return needGlyph(key).someIs
   // The fifth grade, reachable only from `ramp_coverage`. It says the space
@@ -372,7 +351,7 @@ export function needVerdict(
   // "nothing here" in every reading of it, and softer than `some`, which is
   // about a building whose rooms disagree.
   if (coverage === 'partial') return 'partial'
-  if (coverage === 'unknown') return unknownIs
+  if (coverage === 'unknown') return 'unmet'
   return 'fits'
 }
 

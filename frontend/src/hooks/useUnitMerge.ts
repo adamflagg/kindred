@@ -76,6 +76,8 @@ export function useUnitMerge({ year, sessionCmId, scenario }: UseUnitMergeOption
     },
   })
 
+  const { mutateAsync } = mutation
+
   const setCombined = useCallback(
     async (unitId: string, unitName: string, combined: boolean) => {
       // ONE condition, not three, and not `scenario === ''` — see the file
@@ -83,9 +85,18 @@ export function useUnitMerge({ year, sessionCmId, scenario }: UseUnitMergeOption
       // `session_cm_id` `gt=0`, and the board defaults it to 0 for the tests
       // that do not exercise writes.
       if (sessionCmId <= 0) return
-      await mutation.mutateAsync({ unitId, unitName, combined })
+      await mutateAsync({ unitId, unitName, combined })
     },
-    [mutation, sessionCmId]
+    // `mutateAsync`, NOT `mutation` — the whole result object is a new
+    // identity on every render, which made `setCombined` unstable, and with it
+    // the board's `onSplit`/`onMerge`. That is a prop change on all ~73 unit
+    // cards on EVERY board render, defeating their `memo` on renders where
+    // nothing about them changed. (Drag start itself legitimately re-renders
+    // every card — `draggingParty` is a real prop change there; the bug's cost
+    // was every OTHER render paying the same price.) Both sibling hooks —
+    // `useUnitAvailability` and `useLodgingPlacement` — already depend on
+    // `mutateAsync`; this one was the outlier.
+    [mutateAsync, sessionCmId]
   )
 
   return {

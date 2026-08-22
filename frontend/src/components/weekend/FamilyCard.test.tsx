@@ -37,6 +37,24 @@ import { FamilyCard, FamilyCardPreview } from './FamilyCard'
 // `role`/`tabIndex` are hard-coded, not context-derived), so this exists only
 // to render the same tree the real board renders, not to make the
 // assertions below possible.
+/**
+ * Counts BODY renders: `resolveNeedGlyphs` runs once per `FamilyCardChips`
+ * render, and the chips render exactly when the memo'd body does — so its
+ * call count is the body's render count, visible without exporting the inner
+ * component. See the matching harness in `LodgingUnitCard.test.tsx`.
+ */
+const bodyRenders = vi.hoisted(() => ({ count: 0 }))
+vi.mock('./needGlyphs', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./needGlyphs')>()
+  return {
+    ...actual,
+    resolveNeedGlyphs: (...args: Parameters<typeof actual.resolveNeedGlyphs>) => {
+      bodyRenders.count += 1
+      return actual.resolveNeedGlyphs(...args)
+    },
+  }
+})
+
 vi.mock('@dnd-kit/core', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@dnd-kit/core')>()
   return {
@@ -1813,5 +1831,30 @@ describe('FamilyCard — the mandatory-accommodation chip is renamed', () => {
     )
     expect(screen.getByText('Needs Accommodation')).toBeInTheDocument()
     expect(screen.queryByText('Accommodation required')).not.toBeInTheDocument()
+  })
+})
+
+describe('FamilyCard — the shell/body split actually bails (perf)', () => {
+  /*
+   * 133 placed family cards re-rendered 1,636 times in one measured drag
+   * sweep before the split; the memo is what stops that, and it only holds
+   * while every prop keeps its identity. The control case proves the counter
+   * can see a real re-render, so a pass is not vacuous.
+   */
+  it('a re-render with identical props does not re-run the body', () => {
+    const theParty = party()
+    const onOpen = vi.fn()
+    const view = render(<FamilyCard party={theParty} onOpen={onOpen} />)
+    const before = bodyRenders.count
+    view.rerender(<FamilyCard party={theParty} onOpen={onOpen} />)
+    expect(bodyRenders.count).toBe(before)
+  })
+
+  it('control: a changed prop identity DOES re-run the body', () => {
+    const theParty = party()
+    const view = render(<FamilyCard party={theParty} onOpen={vi.fn()} />)
+    const before = bodyRenders.count
+    view.rerender(<FamilyCard party={theParty} onOpen={vi.fn()} />)
+    expect(bodyRenders.count).toBeGreaterThan(before)
   })
 })

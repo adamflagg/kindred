@@ -184,3 +184,22 @@ describe('useUnitMerge', () => {
     expect(toastError).toHaveBeenCalledWith(expect.stringContaining('split'))
   })
 })
+
+describe('useUnitMerge — setCombined is identity-stable across renders', () => {
+  it('returns the same function on a re-render that changes nothing', () => {
+    /*
+     * The board hands `setCombined` (as `onSplit`/`onMerge`) to every one of
+     * ~73 memo'd unit cards. This hook once depended on the whole `mutation`
+     * object — a fresh identity from TanStack Query on every render — which
+     * silently defeated all 73 memos on every board render. The dep is
+     * `mutateAsync` now, like both sibling hooks; this pins it there.
+     */
+    const { result, rerender } = renderHook(
+      () => useUnitMerge({ year: YEAR, sessionCmId: SESSION, scenario: DRAFT }),
+      { wrapper }
+    )
+    const first = result.current.setCombined
+    rerender()
+    expect(result.current.setCombined).toBe(first)
+  })
+})
