@@ -5264,7 +5264,7 @@ class TestWriteInCovers:
         room = _summary("room", parent_code="house")
         other = _summary("other", parent_code="house")
         units = [house, room, other]
-        caps = {"house": 5, "room": 3, "other": 2}
+        caps: dict[str, int | None] = {"house": 5, "room": 3, "other": 2}
 
         covers = write_in_covers(units, _written_ids("room"), caps)
         assert covers["room"][0].relation == "own"
