@@ -1032,7 +1032,7 @@ describe('MapUnitPopover — a container, master-detail (kindred#2183)', () => {
   it('totals the building’s beds and says how many are spoken for', () => {
     render(<MapUnitPopover units={HOUSE} hue={HUE} onOpenParty={vi.fn()} />)
     // 4 + 2 + 3 beds; both parties report `party_size: 3`.
-    expect(screen.getByText('9 · 6 placed')).toBeInTheDocument()
+    expect(screen.getByText('6 of 9')).toBeInTheDocument()
   })
 
   it('counts a family holding two rooms once, not once per room', () => {
@@ -1060,7 +1060,7 @@ describe('MapUnitPopover — a container, master-detail (kindred#2183)', () => {
     render(<MapUnitPopover units={spread} hue={HUE} onOpenParty={vi.fn()} />)
     expect(screen.getAllByTestId('map-popover-family')).toHaveLength(1)
     // 2 + 3 beds; ONE household of 3, however many doors it is behind.
-    expect(screen.getByText('5 · 3 placed')).toBeInTheDocument()
+    expect(screen.getByText('3 of 5')).toBeInTheDocument()
   })
 
   it('folds a written-in room’s recorded count into the building’s placed figure', () => {
@@ -1094,7 +1094,7 @@ describe('MapUnitPopover — a container, master-detail (kindred#2183)', () => {
     ]
     render(<MapUnitPopover units={withWriteIn as MapUnit[]} hue={HUE} onOpenParty={vi.fn()} />)
     // Capacity unchanged at 9 (4 + 2 + 3); 6 rostered + 2 written-in = 8 placed.
-    expect(screen.getByText('9 · 8 placed')).toBeInTheDocument()
+    expect(screen.getByText('8 of 9')).toBeInTheDocument()
   })
 
   it('counts an ancestor write-in once across every room it resolves onto', () => {
@@ -1143,7 +1143,7 @@ describe('MapUnitPopover — a container, master-detail (kindred#2183)', () => {
     // Capacity 4 + 3 = 7. Placed: the ONE ancestor row's `party_size` (5) —
     // not 0 (per-room `sized` drops ancestors) and not 10 (double-counted
     // once per room it resolves onto).
-    expect(screen.getByText('7 · 5 placed')).toBeInTheDocument()
+    expect(screen.getByText('5 of 7')).toBeInTheDocument()
   })
 
   it('counts an ancestor cover and a room’s own cover separately in one cluster', () => {
@@ -1193,7 +1193,7 @@ describe('MapUnitPopover — a container, master-detail (kindred#2183)', () => {
     // Capacity 4 + 3 + 2 = 9. Placed: the ancestor row once (5) plus the
     // separate own row (2) = 7 — not 12 (the ancestor double-counted) and not
     // 5 (the own cover dropped by the dedupe).
-    expect(screen.getByText('9 · 7 placed')).toBeInTheDocument()
+    expect(screen.getByText('7 of 9')).toBeInTheDocument()
   })
 
   it('refuses a building total when one of its rooms is unmeasured', () => {

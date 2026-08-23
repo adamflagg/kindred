@@ -722,13 +722,17 @@ function ClusterSummary({
           <dd>{`${String(rooms)} · ${String(taken)} taken, ${String(rooms - taken)} open`}</dd>
         </div>
         <div className="flex justify-between gap-3">
-          <dt className="text-muted-foreground">Sleeps</dt>
+          {/* "Beds", not "Sleeps"/"placed" (kindred#2540 fix-round CHEAP 9).
+              `placed` folds in a write-in's recorded count (`writeInSized`
+              above), and the "Occupied by" list beneath draws that occupant
+              as a write-in chip rather than a family -- "N placed" claimed a
+              family placement for a figure that is not always one.
+              `DetailCard`'s own combined figure is labelled `Beds` and reads
+              `X of Y` for exactly this reason; this matches it rather than
+              inventing a third phrasing. */}
+          <dt className="text-muted-foreground">Beds</dt>
           <dd>
-            {capacity === null ? (
-              <em>unknown</em>
-            ) : (
-              `${String(capacity)} · ${String(placed)} placed`
-            )}
+            {capacity === null ? <em>unknown</em> : `${String(placed)} of ${String(capacity)}`}
           </dd>
         </div>
       </dl>
