@@ -532,39 +532,13 @@ describe('LodgingBoard — the consent flag', () => {
     expect(screen.getByText('1 family did not request sharing')).toBeInTheDocument()
   })
 
-  it('summarises the flag count at the top of the board', () => {
+  // The board-level "N shared cabins need a look" stinger and its
+  // accompanying consent-rule paragraph were struck (kindred, 2026-08-23):
+  // the per-slot flag below is what staff actually act on, and the banner
+  // summarised a count nothing else on the board reads.
+  it('renders no board-level flag banner or consent-rule text', () => {
     sharedBoard()
-    expect(screen.getByText(/1 shared cabin needs a look/i)).toBeInTheDocument()
-  })
-
-  it('says nothing when there is nothing to flag', () => {
-    render(<LodgingBoard parties={[]} units={[unit()]} year={2026} />, { wrapper })
     expect(screen.queryByText(/needs a look/i)).not.toBeInTheDocument()
-  })
-
-  // HANDOFF §4 defers two consent questions to the drag PR — does a named
-  // partner count as mutual, and does silence count as consent — with the
-  // instruction to SAY ON THE SURFACE what the board flags on. The code had
-  // already answered both (`named` does not flag, `unknown` does); what was
-  // missing was staff being able to read the rule anywhere. Once staff can
-  // create a shared cabin by dragging, an unexplained amber flag is a rule
-  // they have to reverse-engineer from behaviour.
-  it('states the rule it flags on, so an amber cabin is not a mystery', () => {
-    sharedBoard()
-    const rule = screen.getByTestId('consent-rule')
-    // Silence is NOT consent — the household is chased for the form, not
-    // moved. Matched without the apostrophe on purpose: the copy uses a
-    // typographic ’, and pinning punctuation makes the test fail on a
-    // rewording that changes nothing about the rule.
-    expect(rule).toHaveTextContent(/answered the cabin form/i)
-    // A named partner is not verified mutual: that needs request names
-    // resolved to households (spec §7.3, unbuilt), so staff judge from the
-    // panel rather than the board refusing.
-    expect(rule).toHaveTextContent(/not checked for mutual/i)
-  })
-
-  it('does not lecture when no cabin is flagged', () => {
-    render(<LodgingBoard parties={[]} units={[unit()]} year={2026} />, { wrapper })
     expect(screen.queryByTestId('consent-rule')).not.toBeInTheDocument()
   })
 })
