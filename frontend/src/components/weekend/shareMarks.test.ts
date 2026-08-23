@@ -456,7 +456,12 @@ describe('rule 9 — icons (lucide, LOCKED)', () => {
 // ── Rule 10 ──────────────────────────────────────────────────────────────────
 
 describe('rule 10 — aria-labels (test handles per the a11y policy, not accessibility)', () => {
-  it('anchor aria-label is "Share: " plus the rule-3 label fallback, even when a raw sentence is present', () => {
+  // Controller ruling 2026-08-22: the aria-label composition is
+  // `Share: ${CHIP label}` — SharePreferenceChip's own wording, NOT rule 3's
+  // tooltip fallback. The two coincide for yes/maybe/no; only `unanswered`
+  // differs (`'Not answered'` here vs. the tooltip's self-explanatory
+  // `'Share question not answered'`, asserted separately in rule 3 above).
+  it('anchor aria-label is "Share: " plus the CHIP label, even when a raw tooltip sentence is present', () => {
     const a = resolveShareAnchor(
       party({ share: { preference: 'yes_share', preference_raw: 'Yes, I would like to share…' } })
     )
@@ -470,9 +475,10 @@ describe('rule 10 — aria-labels (test handles per the a11y policy, not accessi
     const a = resolveShareAnchor(party({ share: { preference: 'no_share' } }))
     expect(a?.ariaLabel).toBe('Share: Will not share')
   })
-  it('anchor aria-label for unanswered', () => {
+  it('anchor aria-label for unanswered matches SharePreferenceChip CHIP wording, not the tooltip fallback', () => {
     const a = resolveShareAnchor(party({ share: { preference: 'unknown' } }))
-    expect(a?.ariaLabel).toBe('Share: Share question not answered')
+    expect(a?.ariaLabel).toBe('Share: Not answered')
+    expect(a?.tooltip).toBe('Share question not answered')
   })
   it('mark aria-labels are the bare shorthand, regardless of tooltip text', () => {
     const share = {

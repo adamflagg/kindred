@@ -55,17 +55,28 @@
  * with `wants_with_named` still unbackfilled under-renders the WITH mark
  * until that run, which is expected and not a bug in this module.
  *
- * ## Anchor label wording — kept in step with `SharePreferenceChip`
+ * ## Anchor wording — TWO maps, split by purpose (controller ruling 2026-08-22)
  *
- * Three of the four fallback labels below (`Open to sharing` / `Only if
- * mutual` / `Will not share`) are copied verbatim from `SharePreferenceChip`'s
- * `CHIP` map, so the same answer reads with the same words wherever it
- * appears. The fourth deliberately does NOT match: the chip's `'Not
- * answered'` reads fine sitting inside a labelled panel, but the anchor's
- * dotted mark is a lone hover target with no neighbouring caption, so its
- * fallback spells out what is missing — `'Share question not answered'`. If
- * `SharePreferenceChip`'s wording changes, re-check this map by hand; it is
- * not derived from it.
+ * The anchor's tooltip fallback and its aria-label are NOT the same text, and
+ * that is deliberate rather than an oversight to converge:
+ *
+ *   - `ANCHOR_TOOLTIP_FALLBACK` is the self-explanatory bubble text shown when
+ *     `preference_raw` is blank. The dotted `unanswered` mark is a lone hover
+ *     target with no neighbouring caption, so its fallback spells out what is
+ *     missing — `'Share question not answered'` — rather than reusing the
+ *     terser chip word, which would read as cut off in isolation.
+ *   - `ANCHOR_ARIA_LABEL` is the test-query handle (`frontend/CLAUDE.md`'s a11y
+ *     policy: an `aria-label` exists only when a test needs one, never for
+ *     assistive tech). It is copied VERBATIM from `SharePreferenceChip`'s
+ *     `CHIP` map for all four states, `'Not answered'` included, so the same
+ *     answer reads with the same word wherever a test queries it by role/name
+ *     — and so it matches Task 4's rendering contract exactly. If
+ *     `SharePreferenceChip`'s wording changes, re-check this map by hand; it
+ *     is not derived from it.
+ *
+ * Three of the four values happen to coincide (`Open to sharing` / `Only if
+ * mutual` / `Will not share`) — only `unanswered` diverges between the two
+ * maps, which is why splitting them beats keeping one map with a special case.
  */
 import { HeartHandshake, Milestone, UsersRound, type LucideIcon } from 'lucide-react'
 
@@ -124,14 +135,28 @@ const ANCHOR_STATE: Record<SharePreferenceValue, ShareAnchorState> = {
 }
 
 /**
- * The tooltip/aria-label fallback text, by state — see the header comment for
- * why the `unanswered` entry deliberately does not match `SharePreferenceChip`.
+ * The tooltip fallback text, by state, used when `preference_raw` is blank.
+ * See the header comment for why `unanswered` is self-explanatory rather than
+ * matching `SharePreferenceChip`'s terser chip word.
  */
-const ANCHOR_LABEL: Record<ShareAnchorState, string> = {
+const ANCHOR_TOOLTIP_FALLBACK: Record<ShareAnchorState, string> = {
   yes: 'Open to sharing',
   maybe: 'Only if mutual',
   no: 'Will not share',
   unanswered: 'Share question not answered',
+}
+
+/**
+ * The aria-label text, by state — copied verbatim from `SharePreferenceChip`'s
+ * `CHIP` map (see the header comment). This is the map rule 10's
+ * `` `Share: ${label}` `` composition reads, and it is NOT
+ * `ANCHOR_TOOLTIP_FALLBACK`: only the `unanswered` entry differs between them.
+ */
+const ANCHOR_ARIA_LABEL: Record<ShareAnchorState, string> = {
+  yes: 'Open to sharing',
+  maybe: 'Only if mutual',
+  no: 'Will not share',
+  unanswered: 'Not answered',
 }
 
 /**
@@ -212,10 +237,10 @@ export function resolveShareAnchor(party: RosterPartyRow): ShareAnchorSpec | nul
 
   const preference = party.share?.preference ?? 'unknown'
   const state = Object.hasOwn(ANCHOR_STATE, preference) ? ANCHOR_STATE[preference] : 'unanswered'
-  const label = ANCHOR_LABEL[state]
+  const tooltipFallback = ANCHOR_TOOLTIP_FALLBACK[state]
 
   const raw = party.share?.preference_raw
-  let tooltip = raw !== undefined && raw.trim().length > 0 ? raw : label
+  let tooltip = raw !== undefined && raw.trim().length > 0 ? raw : tooltipFallback
 
   // The Shared-request (274133) append is hard-gated to yes/maybe — a value
   // showing up for no/unanswered would be drift in the data, not a case to
@@ -231,7 +256,7 @@ export function resolveShareAnchor(party: RosterPartyRow): ShareAnchorSpec | nul
     state,
     className: ANCHOR_CLASS[state],
     tooltip,
-    ariaLabel: `Share: ${label}`,
+    ariaLabel: `Share: ${ANCHOR_ARIA_LABEL[state]}`,
   }
 }
 
