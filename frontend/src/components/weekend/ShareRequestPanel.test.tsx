@@ -246,11 +246,14 @@ describe('per-field split', () => {
     expect(screen.queryByText('BunkingNotes Notes')).not.toBeInTheDocument()
   })
 
-  it('renders `COVID-19 Bunking Requests` as `Reg Form Bunk Notes`', () => {
-    // Owner review 2026-08-17, second pass. The field is misnamed at source:
-    // it carries 205 rostered 2026 households of ordinary bunking requests
-    // and nothing whatever to do with COVID. Staff meet these answers on the
-    // registration form, so that is what the panel calls them.
+  it('renders `COVID-19 Bunking Requests` as `Fam Info Form Bunk Notes`', () => {
+    // Owner rulings 2026-08-17 (friendly names) + 2026-08-23 (corrected
+    // attribution). The field is misnamed at source — nothing to do with
+    // COVID — and it is the FAMILY CAMP INFORMATION form's names box
+    // (provenance doc §3 row 2, staff-read; write timestamps sit a median
+    // 0.0d from the shared-cabin multi's across 252 people). The 2026-08-17
+    // pass labeled it "Reg Form" from the sound of the name; that was the
+    // swap kindred#2544's owner field report caught.
     render(
       <ShareRequestPanel
         share={share({
@@ -259,18 +262,20 @@ describe('per-field split', () => {
       />
     )
 
-    expect(screen.getByText('Reg Form Bunk Notes')).toBeInTheDocument()
+    expect(screen.getByText('Fam Info Form Bunk Notes')).toBeInTheDocument()
     expect(screen.queryByText('COVID-19 Bunking Requests')).not.toBeInTheDocument()
   })
 
-  it('renders `Shared-request` as `Fam Info Form Bunk Notes`', () => {
-    // Owner review 2026-08-17, second pass. `Shared-request` (cm_id 274133)
-    // is the CURRENT 2026 family-information-form field, 112 rostered
-    // households. It is NOT `FAM CAMP-Share Comments` (cm_id 240598), the
-    // older lookalike with 171 values in 2025, 112 in 2024 and ZERO in 2026,
-    // which keeps its verbatim name. Renaming the wrong one of the pair
-    // would leave the field staff actually read still called
-    // `Shared-request`.
+  it('renders `Shared-request` as `Reg Form Bunk Notes`', () => {
+    // Owner rulings 2026-08-17 (friendly names) + 2026-08-23 (corrected
+    // attribution). `Shared-request` (cm_id 274133) is the REGISTRATION-time
+    // comments box, gated on the radio: its writes land a median 0.00d from
+    // the radio's (93 of 94 people closer to the radio than to the
+    // information form's multi, which sits a median 181d away). Its name
+    // misleads exactly the way `COVID-19 Bunking Requests` does — the
+    // 2026-08-17 pass labeled it "Fam Info Form" from the sound of it. It
+    // is still NOT `FAM CAMP-Share Comments` (cm_id 240598), the retired
+    // lookalike (zero 2026 values), which keeps its verbatim name.
     render(
       <ShareRequestPanel
         share={share({
@@ -279,7 +284,7 @@ describe('per-field split', () => {
       />
     )
 
-    expect(screen.getByText('Fam Info Form Bunk Notes')).toBeInTheDocument()
+    expect(screen.getByText('Reg Form Bunk Notes')).toBeInTheDocument()
     expect(screen.queryByText('Shared-request')).not.toBeInTheDocument()
   })
 
@@ -459,12 +464,12 @@ describe('expanded by default, collapsible by click', () => {
 
     // The button's accessible name is the DISPLAY label, so the query moves
     // with the relabel while `data-source-field` does not.
-    fireEvent.click(screen.getByRole('button', { name: /Reg Form Bunk Notes/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Fam Info Form Bunk Notes/ }))
 
     expect(screen.queryByText('A quiet cabin, please')).not.toBeInTheDocument()
     expect(screen.getByText('Cabin with a fridge')).toBeInTheDocument()
     // The header itself stays, or there is nothing left to click to reopen.
-    expect(screen.getByText('Reg Form Bunk Notes')).toBeInTheDocument()
+    expect(screen.getByText('Fam Info Form Bunk Notes')).toBeInTheDocument()
   })
 
   it('reopens a folded block on a second click', () => {
@@ -475,7 +480,7 @@ describe('expanded by default, collapsible by click', () => {
         })}
       />
     )
-    const header = screen.getByRole('button', { name: /Fam Info Form Bunk Notes/ })
+    const header = screen.getByRole('button', { name: /Reg Form Bunk Notes/ })
 
     fireEvent.click(header)
     expect(screen.queryByText('A cabin on the flat, please')).not.toBeInTheDocument()
@@ -798,7 +803,7 @@ describe('a fold belongs to the household it was made on', () => {
     })
 
     const { rerender } = render(<ShareRequestPanel share={first} />)
-    fireEvent.click(screen.getByRole('button', { name: /Reg Form Bunk Notes/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Fam Info Form Bunk Notes/ }))
     expect(screen.queryByText("The first family's ask")).not.toBeInTheDocument()
 
     rerender(<ShareRequestPanel share={second} />)
@@ -815,7 +820,7 @@ describe('a fold belongs to the household it was made on', () => {
     })
 
     const { rerender } = render(<ShareRequestPanel share={only} />)
-    fireEvent.click(screen.getByRole('button', { name: /Fam Info Form Bunk Notes/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Reg Form Bunk Notes/ }))
     rerender(<ShareRequestPanel share={only} />)
 
     expect(screen.queryByText('A cabin on the flat, please')).not.toBeInTheDocument()

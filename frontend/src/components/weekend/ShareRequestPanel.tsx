@@ -131,21 +131,27 @@ const REQUEST_RAIL =
  * fields are better named by the FORM staff meet them on than by whatever
  * CampMinder happened to call the column.
  *
- * ⚠️ `Shared-request` (cm_id 274133) is the CURRENT family-camp form field —
- * 112 rostered 2026 households — and is NOT its lookalike `FAM CAMP-Share
- * Comments` (cm_id 240598), which has 171 values in 2025, 112 in 2024 and
- * ZERO in 2026. Only the live one is renamed; renaming the retired one would
- * leave the field staff actually read still called `Shared-request`.
+ * ⚠️ THE FORM ATTRIBUTION WAS SHIPPED BACKWARDS AND CORRECTED 2026-08-23
+ * (owner ruling, an owner field report on kindred#2544). Both source names
+ * mislead: `COVID-19 Bunking Requests` (cm_id 206286) is the FAMILY CAMP
+ * INFORMATION form's names box — provenance doc §3 row 2, staff-read, and
+ * its writes land a median 0.0d from the shared-cabin multi's across 252
+ * people — while `Shared-request` (cm_id 274133) is the REGISTRATION-time
+ * comments box gated on the radio: 93 of 94 people wrote it in the radio's
+ * sitting (median 0.00d), a median 181d before the information form. The
+ * 2026-08-17 naming pass attributed each by the sound of its name, which is
+ * exactly the trap the provenance doc warns these two fields set.
  *
- * The other three fields stay verbatim, and the rule for the next reader is
- * **verbatim unless the owner named it** — `Internal Bunk Notes`, `Share Bunk
- * With` and `FAM CAMP-Share Comments` were not named, and silence is not a
+ * `Shared-request` is still NOT its lookalike `FAM CAMP-Share Comments`
+ * (cm_id 240598) — 171 values in 2025, ZERO in 2026 — which keeps its
+ * verbatim name. The other three fields stay verbatim, and the rule for the
+ * next reader is **verbatim unless the owner named it**; silence is not a
  * rename. Do not "improve" a label here on your own judgement.
  */
 const DISPLAY_LABELS: Readonly<Record<string, string>> = {
   'BunkingNotes Notes': 'Bunking Notes',
-  'COVID-19 Bunking Requests': 'Reg Form Bunk Notes',
-  'Shared-request': 'Fam Info Form Bunk Notes',
+  'COVID-19 Bunking Requests': 'Fam Info Form Bunk Notes',
+  'Shared-request': 'Reg Form Bunk Notes',
 }
 
 export interface ShareRequestPanelProps {

@@ -137,6 +137,27 @@ The form opens with the shared-cabin question.
 | 7 | `Family Camp-CPAP` | Is anyone in your family bringing a CPAP machine to Camp? | Yes / No |
 | 8 | `Family Medical-CPAP Explain` | If yes, please explain: | Free text, gated on #7 = Yes |
 
+### Which form writes each free-text box — MEASURED, 2026-08-23
+
+The two general-purpose request boxes both carry misleading names, and on 2026-08-17 they
+were friendly-labeled backwards from the sound of those names ("Reg Form Bunk Notes" on
+206286, "Fam Info Form" on 274133 — caught via a family whose two answers read on the
+wrong surfaces, corrected on kindred#2544). Write timestamps settle the attribution, and
+they agree with this file's §3/§3b placement:
+
+- **`Shared-request` (274133) is REGISTRATION-time.** Of 94 people (2026) holding the
+  radio, the multi and 274133: **93 wrote 274133 in the radio's sitting** (median gap
+  0.00d) and a median **181 days** before the multi. It is the registration form's
+  *"or can note your request(s) below in the comments"* box, rendered only on radio
+  Yes/Maybe — which is also why it never rendered on the §3b confirmation PDF.
+- **`COVID-19 Bunking Requests` (206286) is INFORMATION-form-time.** Its writes land a
+  median **0.0d** from the multi's across 252 people. It is the *"please include names
+  below"* box under the shared-cabin checkboxes, exactly where §3 row 2 places it.
+
+Anything mapping either field to a form label must match this — the friendly labels in
+`ShareRequestPanel.tsx`'s `DISPLAY_LABELS`, the board's share-mark tooltips, and any
+future surface.
+
 ### `COVID-19 Bunking Requests` is not conditional, and the name is misleading
 
 Two corrections that have both bitten already:
