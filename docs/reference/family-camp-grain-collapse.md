@@ -108,12 +108,18 @@ The only site with a written-down, reviewed policy.
 
 ### `processMedical` — `family_camp_derived.go:1146-1159`, then `:1161-1262`
 
-| # | Column | Line | Rule |
-|---|---|---|---|
-| M0 | *the flatten itself* | `:1155-1157` | first-wins across **every** field name, before any per-field logic. **This one site is behind M1-M8** |
-| M1 | `cpap_info` | `:1179-1192` | first-wins, **plus a `break` at `:1183`** keeping the older camper generation (171577) over the newer (256582). Adult-CPAP (256933) is correctly additive |
-| M2-M5 | `physician_info`, `special_needs_info`, `allergy_info`, `dietary_info` | `:1194-1232` | each concatenates a **gate token with a narrative**, chosen independently by M0 — so the two halves can come from different people |
-| M6-M8 | `additional_info`, `bathroom_explain`, `accommodation_explain` | `:1234-1253` | first-wins |
+⚠️ **M0-M5 are FIXED. The Rule column below is the pre-2026-08-19 inventory, and its line
+anchors are pre-#2450 too — locate `processMedical`, `medicalAnswers` and `gateVerdict` by
+name, never by these numbers.** kindred#2255 (#2450, 2026-08-19) replaced the flatten;
+kindred#2542 (2026-08-22) split the gates into their own columns. The **Now** column says
+what each site does today.
+
+| # | Column | Line | Rule (pre-#2450) | Now |
+|---|---|---|---|---|
+| M0 | *the flatten itself* | `:1155-1157` | first-wins across **every** field name, before any per-field logic. **This one site is behind M1-M8** | `medicalAnswers` keeps every distinct answer per field, in canonical order — no winner |
+| M1 | `cpap_info` | `:1179-1192` | first-wins, **plus a `break` at `:1183`** keeping the older camper generation (171577) over the newer (256582). Adult-CPAP (256933) is correctly additive | the `break` is gone; the three CPAP fields OR into `cpap_gate`, and `cpap_info` holds only `Family Medical-CPAP Explain` |
+| M2-M5 | `physician_info`, `special_needs_info`, `allergy_info`, `dietary_info` | `:1194-1232` | each concatenates a **gate token with a narrative**, chosen independently by M0 — so the two halves can come from different people | no concatenation: the gate is an OR into `*_gate`, the narrative column holds the explain field's distinct answers alone |
+| M6-M8 | `additional_info`, `bathroom_explain`, `accommodation_explain` | `:1234-1253` | first-wins | dedup-and-join through `medicalAnswers` (#2450); no gate half to unpick |
 
 ---
 
@@ -202,7 +208,7 @@ decision).
 | Issue | Sites | Status against the tree |
 |---|---|---|
 | `#2257` | tracking | Says "20 sites, three mechanisms". The catalogue finds **26 sites**; 20 lossy is right |
-| `#2255` | M0 + the M1 `break` | Anchors correct. Reproduced: 330 rows reading `"No; <narrative>"` (243 with 2+ answerers); 703 household-years hold both camper CPAP generations, **70 disagreeing** |
+| `#2255` | M0 + the M1 `break` | **SHIPPED in two parts — #2450 (2026-08-19) replaced the flatten and the `break`; kindred#2542 (2026-08-22) gave the five gates their own three-state columns.** Anchors were correct. Reproduced: 330 rows reading `"No; <narrative>"` (243 with 2+ answerers); 703 household-years hold both camper CPAP generations, **70 disagreeing** |
 | `#2274` | R1-R6 | **SHIPPED 2026-08-13** (dedup-and-join, plus kindred#2276's occasion detail routed into R4). **Every cell had been reproduced exactly:** Trans ETA 420/428/121 · Goals 240/247/0 · Anything else 73/75/29 · Share Cabins 30/30/24 · Shared Cabin 16/16/16 · Special occasions 14/14/5. Its one wrong anchor — "the person loop at `:757`" — was corrected in the body before implementation; cite the **person loop inside `processRegistrations`** by name rather than by line, since it has moved three times in a week |
 | `#2275` | A1-A7 | **Reproduced exactly:** DOB 1,124 colliding / **1,151 lost** · first name 791/801 · gender 511/513 · relationship 315/323 · email 326 colliding. Its latent-collision warning is real and confirmed: `FAM CAMP Adult 1/2 Gender-Other` (240871/240872) and `FAM Camp Adult 1/2-Pronouns other` (241040/241042) would funnel into the `gender`/`pronouns` arms and carry zero values in every year |
 | `#2269` | C4 | Not a data-loss site — C1's collapse is correct; the review flag is what is missing. Correctly scoped |
@@ -250,13 +256,15 @@ every site above. Both `#2255` and `#2275` name it.
    other; read them as contradictory only if you assume there is one JSON-or-columns decision
    to make, and there is not. `#2275` closes here.
 
-   **`#2255` does not wait for step 2 or this step.** Like `#2274`, it ships its fix directly
-   against the existing collapse function rather than through the per-answer dual-write table
-   this step's ordering implies: it makes each medical gate column nullable (three states —
-   answered Yes, answered No, never reached that question block, since families reach
-   different question blocks rather than uniformly declining) and binds each gate to its
-   explain as one non-selecting collapse in `processMedical` — the same "bind the pair, never
-   select" rule `#2274` applied to `processRegistrations`. **`#2274` did not wait for step 2
+   **`#2255` did not wait for step 2 or this step, and is now SHIPPED.** Like `#2274`, it
+   shipped its fix directly against the existing collapse function rather than through the
+   per-answer dual-write table this step's ordering implies. #2450 (2026-08-19) replaced the
+   flatten with `medicalAnswers`, a non-selecting collapse over every field — the same "bind
+   the pair, never select" rule `#2274` applied to `processRegistrations`. kindred#2542
+   (2026-08-22) finished it: each medical gate now has its own nullable column (three states —
+   answered `"yes"`, answered `"no"`, and `""` for never reaching that question block, since
+   families reach different question blocks rather than uniformly declining), collapsed by OR
+   in `gateVerdict`, and the narrative column beside it holds the family's own words alone. **`#2274` did not wait for step 2
    either** — it closed 2026-08-13 by adding the dedup-and-join directly to
    `processRegistrations`, since its six columns are plain free text with no gate/narrative
    split to unpick. Step 0 shipped with it: `customValueEntry` now carries `personPBID`.
