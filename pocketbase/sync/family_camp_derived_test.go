@@ -4170,3 +4170,57 @@ func TestMedicalGateColumnsExistInASchemaMigration(t *testing.T) {
 		}
 	}
 }
+
+func TestGateVerdictOrsAcrossAnswerers(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name  string
+		parts []string
+		want  string
+	}{
+		{"nobody answered", nil, ""},
+		{"every answer empty", []string{"", "   "}, ""},
+		{"single no", []string{"No"}, "no"},
+		{"single yes", []string{"Yes"}, "yes"},
+		{"one yes among denials wins", []string{"No", "Yes", "No"}, "yes"},
+		{"denials only stay no", []string{"No", "No"}, "no"},
+		{"a CPAP option sentence is affirmative",
+			[]string{"No", "Yes, outlet needed for CPAP machine"}, "yes"},
+		{"the bathroom option sentence is affirmative too",
+			[]string{"Yes, bathroom or other housing accommodation for a medical " +
+				"(not CPAP related) or accessibility-related reason needed"}, "yes"},
+		{"case and whitespace do not matter", []string{" nO ", "  "}, "no"},
+		{"an answer outside the vocabulary is not an answer",
+			[]string{"Vegetarian"}, ""},
+		{"an unrecognized answer never becomes a denial",
+			[]string{"Vegetarian", "No"}, "no"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := gateVerdict("Family Medical-Allergies", tt.parts); got != tt.want {
+				t.Errorf("gateVerdict(%q) = %q, want %q", tt.parts, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestGateVerdictIsOrderIndependent is the probe kindred#2255 prescribes instead
+// of a flakiness test. The old collapse picked a winner by load order, so the
+// only honest assertion is that permuting the input changes nothing -- and it
+// must not pin WHICH answerer wins, because none does.
+func TestGateVerdictIsOrderIndependent(t *testing.T) {
+	t.Parallel()
+	permutations := [][]string{
+		{"No", "Yes", "No"},
+		{"No", "No", "Yes"},
+		{"Yes", "No", "No"},
+	}
+	want := gateVerdict("Family Camp-Physician", permutations[0])
+	for _, parts := range permutations[1:] {
+		if got := gateVerdict("Family Camp-Physician", parts); got != want {
+			t.Errorf("gateVerdict(%q) = %q, want %q -- permuting the answers must "+
+				"not change the verdict", parts, got, want)
+		}
+	}
+}

@@ -2062,6 +2062,83 @@ var medicalGateFields = map[string]struct{}{
 // gateAnswerYes is the affirmative token those gates store.
 const gateAnswerYes = "Yes"
 
+// The three states a family-camp medical gate can be in. The third is the whole
+// reason the column is a select and not a bool: families reach different
+// question blocks, so "answered No" and "never asked" are different facts. In
+// 2026, 430 of 900 households answered the allergy gate No and 224 never
+// answered it at all; for the physician gate it is 284 and 589. A bool would
+// collapse those into one false.
+const (
+	gateVerdictUnanswered = ""
+	gateVerdictNo         = "no"
+	gateVerdictYes        = "yes"
+)
+
+// gateDenials is the negative pole of the gate vocabulary -- the mirror of the
+// affirmative set parseBoolFieldValue accepts.
+var gateDenials = map[string]struct{}{
+	"no": {}, "false": {}, "0": {}, "n": {},
+}
+
+// gateVerdict collapses every household member's answer to one gate question
+// into the household's answer, by OR.
+//
+// This is the same total aggregation processRegistrations applies to the
+// housing flags, and it is the only collapse rule on this path that never picks
+// a winner: `personValues` carries one entry per person per field and
+// CampMinder asks these questions on a per-CAMPER form, so a household with two
+// enrolled children answers each question twice. It is therefore
+// order-independent, which is what docs/reference/family-camp-field-provenance.md
+// section 4's binding rule requires -- a gate and its explain must collapse as a
+// pair, and after this neither half selects a winner.
+//
+// The vocabulary is closed. Across all 35,895 stored answers to the seven gate
+// fields, every one is either a leading-token "Yes" or a member of gateDenials;
+// the four pure Yes/No gates hold 2 distinct values each, 3 characters at the
+// longest, across 30,283 answers. That measurement is what licenses collapsing
+// them to a single verdict rather than keeping every distinct answer the way the
+// narrative columns do.
+//
+// An answer outside that vocabulary is NOT stored anywhere -- it contributes no
+// verdict and does not reach the narrative column. `medicalAnswers.parts` used
+// to let one fall through into the narrative join; that valve was retired by
+// owner ruling (2026-08-22) once the gate stopped sharing the column. The
+// warning below is what replaced it, and is the only way a CampMinder
+// vocabulary change would now surface. It carries the field name and a COUNT
+// and never the answer: these are answers on a medical form, and the same
+// never-log contract joinMedicalColumn states covers them.
+func gateVerdict(fieldName string, parts []string) string {
+	verdict := gateVerdictUnanswered
+	unrecognized := 0
+
+	for _, part := range parts {
+		trimmed := strings.TrimSpace(part)
+		if trimmed == "" {
+			continue
+		}
+		if parseBoolFieldValue(trimmed) {
+			verdict = gateVerdictYes
+			continue
+		}
+		if _, denied := gateDenials[strings.ToLower(trimmed)]; denied {
+			// Never downgrades a Yes already seen: the OR is the point.
+			if verdict == gateVerdictUnanswered {
+				verdict = gateVerdictNo
+			}
+			continue
+		}
+		unrecognized++
+	}
+
+	if unrecognized > 0 {
+		slog.Warn("Family camp medical gate answer outside the Yes/No vocabulary",
+			"field", fieldName, "count", unrecognized,
+			"hint", "the answer is not stored; check the CampMinder field's options")
+	}
+
+	return verdict
+}
+
 // medicalAnswers holds one household's family-camp medical answers: every
 // distinct answer given to each field, in canonical order, across everyone who
 // answered it.
