@@ -24,7 +24,7 @@ import SolverProgressModal, { useSolverProgress } from './SolverProgressModal'
 import SolverDiagnosticsModal from './SolverDiagnosticsModal'
 import type { SolverDiagnostics } from '../services/solver'
 import { resolveYields, hasReviewableDiagnostics } from '../utils/solverDiagnostics'
-import { useRetainedDialog } from '../hooks/useRetainedDialog'
+
 import { isValidTab, type ValidTab, sessionNameToUrl } from '../utils/sessionUtils'
 import BunkingBoardByArea from './BunkingBoardByArea'
 import RequestReviewPanel from './RequestReviewPanel'
@@ -44,6 +44,7 @@ import { DEFAULT_BUNK_CAPACITY } from '../utils/capacityConstants'
 import { BunkRequestProvider } from '../providers/BunkRequestProvider'
 import { CamperHistoryProvider } from '../providers/CamperHistoryProvider'
 import { useLockGroupContext } from '../contexts/LockGroupContext'
+import { useRetainedDialog } from '../hooks/useRetainedDialog'
 
 export default function SessionView() {
   const { sessionId, '*': tabPath } = useParams<{
@@ -83,7 +84,17 @@ export default function SessionView() {
     useSessionHierarchy({ sessionId, tabPath: tabPath ?? '' })
 
   // UI state
-  const [showNewScenarioModal, setShowNewScenarioModal] = useState(false)
+  // kindred#2538: always-mounted so ui/Modal's 150ms leave can play. <void>
+  // because this dialog retains no snapshot -- it takes no data prop the gate
+  // depends on -- but it still wants the per-open nonce that remounts the form
+  // fresh. A void type parameter may be omitted at the call site, so open()
+  // reads naturally.
+  // <true> rather than <void>: this dialog retains no payload, but eslint's
+  // @typescript-eslint/no-invalid-void-type bans a void type argument, and
+  // tsc alone does not -- kindred#2549's review flagged that the hook cannot
+  // express the no-snapshot variant, and this is the shape of that gap. The
+  // literal is inert; only isOpen and nonce are read.
+  const newScenarioDialog = useRetainedDialog<true>()
   const [showScenarioManagementModal, setShowScenarioManagementModal] = useState(false)
   const [showClearDialog, setShowClearDialog] = useState(false)
   const [selectedBunkArea, setSelectedBunkArea] = useState<BunkArea>('all')
@@ -385,7 +396,7 @@ export default function SessionView() {
         lockedCount={lockedCount}
         unlockedCount={unlockedCount}
         onShowClearDialog={() => setShowClearDialog(true)}
-        onShowNewScenarioModal={() => setShowNewScenarioModal(true)}
+        onShowNewScenarioModal={() => newScenarioDialog.open(true)}
         onShowScenarioManagement={() => setShowScenarioManagementModal(true)}
         onSelectScenario={selectScenario}
         canManage={canManage}
@@ -511,12 +522,16 @@ export default function SessionView() {
       </div>
 
       {/* New Scenario Modal (manage permission required) */}
-      {canManage && showNewScenarioModal && (
+      {/* `canManage` stays a MOUNT gate -- it is a permission, not an open
+          flag, and a user without it should not carry the dialog at all. */}
+      {canManage && (
         <NewScenarioModal
+          isOpen={newScenarioDialog.isOpen}
+          nonce={newScenarioDialog.nonce}
           sessionId={session.cm_id}
-          onClose={() => setShowNewScenarioModal(false)}
+          onClose={() => newScenarioDialog.close()}
           onScenarioCreated={(scenario) => {
-            setShowNewScenarioModal(false)
+            newScenarioDialog.close()
             toast.success(`Created scenario: ${scenario.name}`)
           }}
         />

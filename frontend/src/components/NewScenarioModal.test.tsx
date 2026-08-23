@@ -186,3 +186,123 @@ describe('onScenarioCreated', () => {
     await waitFor(() => expect(screen.getByText(/Failed to notify/i)).toBeInTheDocument())
   })
 })
+
+/**
+ * kindred#2538 tier 2b — this dialog is now ALWAYS MOUNTED so it can play
+ * ui/Modal's 150ms exit fade, and that changes two things a conditional mount
+ * used to handle for free.
+ *
+ * 1. It must still be in the DOM immediately after close. A parent that
+ *    unmounts it on the close frame gives the fade no time to run.
+ * 2. Every useState now survives close -> reopen. The reset is driven by a
+ *    per-open `nonce` keying the dialog CONTENT (kindred#2541's
+ *    useRetainedDialog), which remounts it fresh and re-runs the initializers
+ *    against CURRENT props. That last part is why a nonce and not a
+ *    reset-effect: `copyFrom`'s initial value is DERIVED from the
+ *    canCopyFromProduction prop, so a static re-initializer would reinstate a
+ *    stale default.
+ */
+describe('NewScenarioModal — always-mounted exit fade (kindred#2538)', () => {
+  it('stays mounted when isOpen goes false, so the exit fade can play', () => {
+    const { rerender } = render(
+      <NewScenarioModal
+        sessionId={1000001}
+        onClose={vi.fn()}
+        onScenarioCreated={vi.fn()}
+        isOpen={true}
+      />
+    )
+    expect(screen.getByText('Create New Scenario')).toBeInTheDocument()
+
+    rerender(
+      <NewScenarioModal
+        sessionId={1000001}
+        onClose={vi.fn()}
+        onScenarioCreated={vi.fn()}
+        isOpen={false}
+      />
+    )
+
+    // Still in the DOM on the close frame. Headless UI's Transition removes it
+    // 150ms later; asserting absence here would be asserting the bug.
+    expect(screen.getByText('Create New Scenario')).toBeInTheDocument()
+  })
+
+  it('reopening resets the typed name rather than showing the previous draft', async () => {
+    const user = userEvent.setup()
+    const { rerender } = render(
+      <NewScenarioModal
+        sessionId={1000001}
+        onClose={vi.fn()}
+        onScenarioCreated={vi.fn()}
+        isOpen={true}
+        nonce={1}
+      />
+    )
+
+    await user.type(screen.getByLabelText(/Scenario Name/i), 'Draft that should not survive')
+    expect(screen.getByLabelText(/Scenario Name/i)).toHaveValue('Draft that should not survive')
+
+    rerender(
+      <NewScenarioModal
+        sessionId={1000001}
+        onClose={vi.fn()}
+        onScenarioCreated={vi.fn()}
+        isOpen={false}
+        nonce={1}
+      />
+    )
+    rerender(
+      <NewScenarioModal
+        sessionId={1000001}
+        onClose={vi.fn()}
+        onScenarioCreated={vi.fn()}
+        isOpen={true}
+        nonce={2}
+      />
+    )
+
+    expect(screen.getByLabelText(/Scenario Name/i)).toHaveValue('')
+  })
+
+  it('re-derives copyFrom from the CURRENT prop on reopen, not the mount-time one', () => {
+    const { rerender } = render(
+      <NewScenarioModal
+        sessionId={1000001}
+        onClose={vi.fn()}
+        onScenarioCreated={vi.fn()}
+        isOpen={true}
+        nonce={1}
+        canCopyFromProduction={true}
+      />
+    )
+    expect(screen.getByLabelText(/Copy from CampMinder/i)).toBeChecked()
+
+    rerender(
+      <NewScenarioModal
+        sessionId={1000001}
+        onClose={vi.fn()}
+        onScenarioCreated={vi.fn()}
+        isOpen={false}
+        nonce={1}
+        canCopyFromProduction={true}
+      />
+    )
+    rerender(
+      <NewScenarioModal
+        sessionId={1000001}
+        onClose={vi.fn()}
+        onScenarioCreated={vi.fn()}
+        isOpen={true}
+        nonce={2}
+        canCopyFromProduction={false}
+      />
+    )
+
+    // The option is gone, so a surviving 'production' selection would leave NO
+    // radio checked and quietly run a copy nobody chose — the exact failure the
+    // component's own initializer comment warns about.
+    expect(screen.queryByLabelText(/Copy from CampMinder/i)).not.toBeInTheDocument()
+    expect(screen.getByLabelText(/Start with empty bunks/i)).toBeChecked()
+  })
+})

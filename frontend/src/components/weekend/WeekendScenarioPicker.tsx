@@ -26,6 +26,7 @@ import ModeBadge from '../ModeBadge'
 import NewScenarioModal from '../NewScenarioModal'
 import ScenarioManagementModal from '../ScenarioManagementModal'
 import { useScenario } from '../../hooks/useScenario'
+import { useRetainedDialog } from '../../hooks/useRetainedDialog'
 
 /** The one deliberate wording divergence from summer (CLAUDE.md §4). */
 const EMPTY_LABEL = 'Start with an empty plan'
@@ -45,7 +46,15 @@ export function WeekendScenarioPicker({
   scenario,
 }: WeekendScenarioPickerProps) {
   const { currentScenario, scenarios, selectScenario, isLoading } = useScenario()
-  const [showNewModal, setShowNewModal] = useState(false)
+  // kindred#2538: always-mounted so ui/Modal's 150ms leave can play. See
+  // SessionView's twin for why <void> -- no snapshot to retain, but the
+  // per-open nonce still remounts the form fresh.
+  // <true> rather than <void>: this dialog retains no payload, but eslint's
+  // @typescript-eslint/no-invalid-void-type bans a void type argument, and
+  // tsc alone does not -- kindred#2549's review flagged that the hook cannot
+  // express the no-snapshot variant, and this is the shape of that gap. The
+  // literal is inert; only isOpen and nonce are read.
+  const newDialog = useRetainedDialog<true>()
   const [showManageModal, setShowManageModal] = useState(false)
 
   // Read from the SCOPED value, not from `currentScenario` directly: a
@@ -54,7 +63,7 @@ export function WeekendScenarioPicker({
 
   const handleChange = (value: string) => {
     if (value === 'new') {
-      setShowNewModal(true)
+      newDialog.open(true)
       return
     }
     selectScenario(value === 'production' ? null : value)
@@ -123,31 +132,33 @@ export function WeekendScenarioPicker({
         />
       )}
 
-      {showNewModal && (
-        <NewScenarioModal
-          sessionId={sessionCmId}
-          emptyLabel={EMPTY_LABEL}
-          onClose={() => {
-            setShowNewModal(false)
-          }}
-          onScenarioCreated={(created) => {
-            // The create call already did the copy server-side (kindred#2021)
-            // — nothing left to do here but close and report, matching
-            // summer's own "+ New Scenario" flow (SessionView.tsx).
-            setShowNewModal(false)
-            // copy_skipped names a mirror/source row whose party or unit no
-            // longer resolves — surfaced so staff don't discover fewer
-            // families than expected with no explanation. Undefined for a
-            // blank creation and always for summer (its copy loop doesn't
-            // count skips), so only a truthy count changes the wording.
-            toast.success(
-              created.copy_skipped
-                ? `Created scenario: ${created.name}. Skipped ${String(created.copy_skipped)} — the family or cabin no longer resolves.`
-                : `Created scenario: ${created.name}`
-            )
-          }}
-        />
-      )}
+      {/* Unconditional: kindred#2538 keeps this mounted so the exit fade can
+          play, with `isOpen` driving it instead of the mount. */}
+      <NewScenarioModal
+        isOpen={newDialog.isOpen}
+        nonce={newDialog.nonce}
+        sessionId={sessionCmId}
+        emptyLabel={EMPTY_LABEL}
+        onClose={() => {
+          newDialog.close()
+        }}
+        onScenarioCreated={(created) => {
+          // The create call already did the copy server-side (kindred#2021)
+          // — nothing left to do here but close and report, matching
+          // summer's own "+ New Scenario" flow (SessionView.tsx).
+          newDialog.close()
+          // copy_skipped names a mirror/source row whose party or unit no
+          // longer resolves — surfaced so staff don't discover fewer
+          // families than expected with no explanation. Undefined for a
+          // blank creation and always for summer (its copy loop doesn't
+          // count skips), so only a truthy count changes the wording.
+          toast.success(
+            created.copy_skipped
+              ? `Created scenario: ${created.name}. Skipped ${String(created.copy_skipped)} — the family or cabin no longer resolves.`
+              : `Created scenario: ${created.name}`
+          )
+        }}
+      />
     </>
   )
 }
