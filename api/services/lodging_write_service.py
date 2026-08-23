@@ -1487,10 +1487,27 @@ class LodgingWriteService:
         call documents, and the same reason a dict-literal omission would
         silently drop a wholesale-occupancy write-in into an unsized one.
 
-        `unpushed_at` is stamped only once the reverting writes have
-        actually run, so a crash before this line leaves the ledger row
-        still claiming "not yet unpushed" -- recoverable by retrying --
-        rather than a row that says it was reverted when it was not.
+        TWO PHASES, DELETES BEFORE CREATES -- NOT `changes` ITERATION ORDER
+        (fix, kindred#2477, found by Task 10's live-PocketBase acceptance
+        pass against real unique indexes). `execute_push` stores `changes`
+        as `[removes..., adds...]`; a single pass over that list in stored
+        order therefore recreates every removed row BEFORE it deletes any
+        added row. For a conflict decided "take scenario" -- the ordinary
+        case for a resolved conflict, not an edge case -- the push's remove
+        and add name the SAME unit, so the stray still-live pushed row is
+        sitting on `idx_lodging_write_in_unique` (unit, session_cm_id, year)
+        at the exact moment the recreate tries to claim it: a
+        `ClientResponseError` the mocked repository in this file's own tests
+        cannot produce, because a `MagicMock` enforces no unique index. Two
+        explicit passes -- every `add` deleted first, only then every
+        `remove` recreated -- guarantee the unit is vacated before anything
+        tries to occupy it again, independent of whatever order `changes`
+        happens to store its two kinds in.
+
+        `unpushed_at` is stamped only once BOTH phases have actually run, so
+        a crash before this line leaves the ledger row still claiming "not
+        yet unpushed" -- recoverable by retrying -- rather than a row that
+        says it was reverted when it was not.
         """
         event = await self.repository.find_push_event(push_id)
         if event is None:
@@ -1517,11 +1534,18 @@ class LodgingWriteService:
 
         session_pb_id = await self._resolve_session_pb_id(year, session_cm_id)
         deleted = restored = 0
+        # PHASE 1: every delete, before any create -- see the method
+        # docstring. Vacates every unit the push occupied before phase 2
+        # tries to recreate a row on any of them.
         for c in changes:
             if c["action"] == "add":
                 await self.repository.delete_write_in(by_tuple[change_tuple(c)])
                 deleted += 1
-            else:
+        # PHASE 2: every create, only now that phase 1 has freed whichever
+        # units a "take scenario" conflict shares between its remove and its
+        # add.
+        for c in changes:
+            if c["action"] != "add":
                 await self.repository.create_write_in(
                     {
                         "year": year,

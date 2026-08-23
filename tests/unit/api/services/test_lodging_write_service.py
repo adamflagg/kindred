@@ -2628,3 +2628,145 @@ class TestUnpush:
         repo = _repo(find_push_event=None)
         with pytest.raises(PushNotFoundError):
             await LodgingWriteService(repo).unpush("push_missing", 2026, 1309001)
+
+
+class _StatefulWriteInRepo:
+    """A minimal STATEFUL fake standing in for PocketBase's own
+    `idx_lodging_write_in_unique` on `lodging_write_ins` (unit,
+    session_cm_id, year) -- kindred#2477 fix round, found by Task 10's
+    live-PocketBase acceptance pass.
+
+    The `MagicMock`-based `_repo()` helper this file otherwise uses
+    enforces no such index, so it cannot reproduce a real
+    `ClientResponseError` collision. This fake keeps an actual dict of
+    "live" rows and refuses a `create_write_in` that would put two rows on
+    the same (unit, session_cm_id, year) -- exactly what PocketBase itself
+    refuses -- so a stored-order replay that recreates before it deletes
+    hits the same 400 in this test that it hit against the real database.
+    """
+
+    def __init__(self, push_event: SimpleNamespace, units: list[Any], write_ins: dict[str, SimpleNamespace]) -> None:
+        self._push_event = push_event
+        self._units = units
+        self._store: dict[str, SimpleNamespace] = dict(write_ins)
+        self._next_id = 0
+        self.delete_write_in_calls: list[str] = []
+        self.create_write_in_calls: list[dict[str, Any]] = []
+
+    async def find_push_event(self, record_id: str) -> SimpleNamespace | None:
+        return self._push_event if record_id == self._push_event.id else None
+
+    async def update_push_event(self, record_id: str, data: dict[str, Any]) -> SimpleNamespace:
+        self._push_event.unpushed_at = data.get("unpushed_at", self._push_event.unpushed_at)
+        return self._push_event
+
+    async def fetch_session(self, year: int, session_cm_id: int) -> SimpleNamespace:
+        return SimpleNamespace(id="sess_1")
+
+    async def fetch_units(self, year: int) -> list[Any]:
+        return self._units
+
+    async def fetch_write_ins(self, year: int, session_cm_id: int) -> list[SimpleNamespace]:
+        return list(self._store.values())
+
+    async def delete_write_in(self, record_id: str) -> None:
+        self.delete_write_in_calls.append(record_id)
+        for key, row in list(self._store.items()):
+            if row.id == record_id:
+                del self._store[key]
+                return
+        raise ClientResponseError("missing", status=404, data={}, url="", is_abort=False, original_error=None)
+
+    async def create_write_in(self, data: dict[str, Any]) -> SimpleNamespace:
+        self.create_write_in_calls.append(data)
+        # The real index: (unit, session_cm_id, year). A row still occupying
+        # this unit refuses the create exactly as PocketBase's own index
+        # does -- the collision this test exists to reproduce.
+        for row in self._store.values():
+            if (row.unit, row.session_cm_id, row.year) == (data["unit"], data["session_cm_id"], data["year"]):
+                raise ClientResponseError(
+                    "validation_not_unique", status=400, data={}, url="", is_abort=False, original_error=None
+                )
+        self._next_id += 1
+        record_id = f"wi_recreated_{self._next_id}"
+        row = SimpleNamespace(
+            id=record_id,
+            unit=data["unit"],
+            occupant_name=data["occupant_name"],
+            note=data["note"],
+            party_size=data["party_size"],
+            session_cm_id=data["session_cm_id"],
+            year=data["year"],
+        )
+        self._store[record_id] = row
+        return row
+
+
+class TestUnpushDeletesTheAddsBeforeItRecreatesTheRemoves:
+    """kindred#2477 fix round (2026-08-23 controller ruling, from Task 10's
+    live-PocketBase acceptance pass). `execute_push` stores `changes` as
+    `[removes..., adds...]`; replaying that list in STORED order recreates
+    every removed row before deleting any added one. For a conflict resolved
+    "take scenario" -- the ordinary case, not an edge case -- the remove and
+    the add name the SAME unit, so the recreate collides with the
+    not-yet-deleted pushed row on `idx_lodging_write_in_unique` (unit,
+    session_cm_id, year). Fixed by splitting the apply loop into two passes:
+    every delete first, then every create.
+    """
+
+    def _build_repo(self) -> _StatefulWriteInRepo:
+        # The push this replays: a conflict on unit "uc" resolved "take
+        # scenario" -- G. Whitfield (live) removed, H. Osei (scenario) added,
+        # both on the same unit. `execute_push` stores removes before adds.
+        push_event = _ledger(
+            [
+                {
+                    "action": "remove",
+                    "unit": "uc",
+                    "unit_code": "cedar-9",
+                    "occupant_name": "G. Whitfield",
+                    "note": "",
+                    "party_size": None,
+                },
+                {
+                    "action": "add",
+                    "unit": "uc",
+                    "unit_code": "cedar-9",
+                    "occupant_name": "H. Osei",
+                    "note": "",
+                    "party_size": 2,
+                },
+            ]
+        )
+        # The pushed state: H. Osei is the row currently live on "uc" -- the
+        # row the push created and this unpush must delete before anything
+        # else can occupy "uc" again.
+        pushed_row = SimpleNamespace(
+            id="wi_pushed",
+            unit="uc",
+            occupant_name="H. Osei",
+            note="",
+            party_size=2,
+            session_cm_id=1309001,
+            year=2026,
+        )
+        return _StatefulWriteInRepo(
+            push_event=push_event, units=[_u("uc", "cedar-9")], write_ins={"wi_pushed": pushed_row}
+        )
+
+    @pytest.mark.asyncio
+    async def test_a_replace_on_a_shared_unit_round_trips(self) -> None:
+        repo = self._build_repo()
+        svc = LodgingWriteService(repo)  # type: ignore[arg-type]
+
+        out = await svc.unpush("push_1", 2026, 1309001)
+
+        assert (out.deleted, out.restored) == (1, 1)
+        assert repo.delete_write_in_calls == ["wi_pushed"]
+        assert len(repo.create_write_in_calls) == 1
+        assert repo.create_write_in_calls[0]["occupant_name"] == "G. Whitfield"
+        # The unit ends up occupied by the RESTORED row, not both / neither.
+        assert len(repo._store) == 1
+        restored_row = next(iter(repo._store.values()))
+        assert restored_row.occupant_name == "G. Whitfield"
+        assert restored_row.unit == "uc"
