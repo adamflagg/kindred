@@ -25,6 +25,16 @@ migrate((app) => {
     type: "bool", name: "wants_with_named", required: false, presentable: false
   }));
 
+  // NO in-migration backfill, in either direction, and that is deliberate.
+  // Copying the old wants_with into wants_with_named would poison the new
+  // column with the OR it exists to remove (every similar-age-only household
+  // would read as NAMED). Both columns are derived-from-raw: the family-camp
+  // transform re-run (2025 + 2026) is the backfill going up, and the same
+  // re-run repopulates wants_with after a rollback — the identical recovery
+  // path 1500000169's opt_out_vip drop shipped with. Until the re-run,
+  // wants_with_named reads false and the roster's derived 'with' under-reports;
+  // the stored share_eligibility column is untouched, so placement verdicts
+  // never regress in the window.
   regs.fields.removeByName("wants_with");
 
   app.save(regs);
