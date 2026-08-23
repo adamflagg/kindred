@@ -2828,7 +2828,7 @@ type medicalColumnValue struct {
 
 // medicalColumnValues lists every family_camp_medical column setMedicalFields
 // writes, next to med's current value for it. Both setMedicalFields and
-// medicalNeedsUpdate walk this ONE list rather than each naming the same 13
+// medicalNeedsUpdate walk this ONE list rather than each naming the same 14
 // columns by hand -- so, unlike setRegistrationRequestFields' comparison
 // sibling registrationNeedsUpdate (which stays a hand-written list because it
 // mixes bools with a normalisation step, NormalizeShareEligibility, that has
@@ -2836,6 +2836,20 @@ type medicalColumnValue struct {
 // and the change-detection path in one edit. What makes a shared list
 // workable here and not there: every field on medicalData is a plain string,
 // with no normalisation applied between the struct and the column.
+//
+// The registration comparison is also only PARTLY solved, which the sentence
+// above should not be read as denying: setRegistrationRequestFields covers
+// about 17 of the 25 columns registrationNeedsUpdate compares, and the other
+// eight are still hand-copied into both branches of upsertRegistrations.
+// Seven of those eight are plain strings and would meet the criterion stated
+// here. Tracked separately; it is a registration change, not a medical one.
+//
+// ONE LIST FUSES TWO QUESTIONS -- "is this column written?" and "does a
+// change to it make the row dirty?" -- and today those sets are identical for
+// every medical column. A future column where they should DIVERGE (a
+// write-only stamp, or a value deliberately outside change detection) must
+// not simply be appended: it would make every row compare dirty on every run,
+// which is the kindred#2384 shape. Split the list before adding one.
 func medicalColumnValues(med *medicalData) []medicalColumnValue {
 	return []medicalColumnValue{
 		{"cpap_info", med.cpapInfo},
