@@ -484,6 +484,14 @@ export const queryKeys = {
    */
   weekendRoster: (year: number, sessionCmId: number, scenario: string) =>
     ['weekend-roster', year, sessionCmId, scenario] as const,
+  /**
+   * The write-in push comparison (kindred#2477): a scenario's write-ins
+   * against the live board, for one weekend. `scenario` is required for the
+   * same reason `weekendRoster` requires it — there is no meaningful "push
+   * preview" for the mirror itself, only for a draft compared against it.
+   */
+  pushPreview: (year: number, sessionCmId: number, scenario: string) =>
+    ['push-preview', year, sessionCmId, scenario] as const,
   // Prefixes for invalidation. The lodging admin panels edit registry rows
   // that feed the roster, but know neither the year nor the weekend, so they
   // cannot build a full key — see `invalidateLodgingRegistryQueries`.

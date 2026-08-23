@@ -34,9 +34,24 @@ export type FetchWithAuth = (url: string, options?: RequestInit) => Promise<Resp
  * is free to reword.
  */
 export class LodgingApiError extends ApiError {
-  constructor(message: string, status: number) {
+  /**
+   * The parsed `detail` field verbatim, when it was a JSON object rather
+   * than a plain string.
+   *
+   * `toApiError`'s generic reading only keeps `detail` when it's a STRING —
+   * `.message` already carries that case. The push/unpush 409s (below)
+   * disagree on purpose: FastAPI sends `{reason: "stale", report:
+   * PushPreview}`, `{reason: "already_unpushed"}` or `{reason: "drift",
+   * buildings: string[]}`, objects the UI branches on (kindred#2477 Task 10).
+   * This is where those survive the trip through `toPushError` instead of
+   * being discarded in favour of a bare "HTTP 409".
+   */
+  readonly detail: PushErrorDetail | undefined
+
+  constructor(message: string, status: number, detail: PushErrorDetail | undefined = undefined) {
     super(message, status)
     this.name = 'LodgingApiError'
+    this.detail = detail
   }
 }
 
@@ -47,6 +62,47 @@ export class LodgingApiError extends ApiError {
  */
 async function toError(response: Response, fallback: string): Promise<LodgingApiError> {
   return toApiError(response, fallback, LodgingApiError)
+}
+
+/**
+ * A `detail` body the push/unpush endpoints can send on a 409 — never prose,
+ * always a reason the UI branches on (kindred#2477 Task 10).
+ */
+export type PushErrorDetail =
+  | { reason: 'stale'; report: PushPreview }
+  | { reason: 'already_unpushed' }
+  | { reason: 'drift'; buildings: string[] }
+
+/**
+ * Like `toError`, but keeps an OBJECT-shaped `detail` rather than discarding
+ * it.
+ *
+ * `toApiError` (shared with every other domain client) only surfaces
+ * `detail` when it's a string, because that's the only shape FastAPI's
+ * `HTTPException` sends elsewhere in this file. The push endpoints' 409s are
+ * the exception to that: `execute_push` and `unpush` raise structured
+ * `detail` objects on purpose, and a caller (Task 10) needs the parsed
+ * `report`/`buildings` back, not just a status code.
+ */
+async function toPushError(response: Response, fallback: string): Promise<LodgingApiError> {
+  let body: unknown
+  try {
+    body = await response.json()
+  } catch {
+    body = undefined
+  }
+  const rawDetail = body && typeof body === 'object' && 'detail' in body ? body.detail : undefined
+  if (typeof rawDetail === 'string' && rawDetail.length > 0) {
+    return new LodgingApiError(rawDetail, response.status)
+  }
+  if (rawDetail && typeof rawDetail === 'object') {
+    return new LodgingApiError(
+      `${fallback} (HTTP ${String(response.status)})`,
+      response.status,
+      rawDetail as PushErrorDetail
+    )
+  }
+  return new LodgingApiError(`${fallback} (HTTP ${String(response.status)})`, response.status)
 }
 
 /** List every family-camp and adult-weekend session for a year. */
@@ -323,4 +379,169 @@ export async function fetchHouseholdMedical(
   )
   if (!response.ok) throw await toError(response, 'Failed to load medical details')
   return response.json() as Promise<HouseholdMedical>
+}
+
+/**
+ * One classified write-in row, as `preview_push` reports it (kindred#2477).
+ *
+ * Declared here rather than aliased from `types.gen.ts`'s `PushRowPayload`:
+ * every field on the generated type carries a Pydantic default and so comes
+ * through as optional (`note?: string`, `party_size?: number | null`,
+ * `sleeps?: number | null` — see the GOTCHA note atop `types/lodging.ts`),
+ * but the server always populates all four, and Tasks 8/10 build report
+ * tiles straight off `buildings[].live`/`.draft` rows without re-deriving
+ * that guarantee at every read site. This mirrors how `PlacementWriteBase`
+ * and `AvailabilityWrite` above are hand-declared rather than pulled from
+ * the generated request types.
+ */
+export interface PushRowPayload {
+  unit_id: string
+  unit_code: string
+  unit_name: string
+  occupant_name: string
+  note: string
+  /**
+   * How many people this write-in occupies wholesale. `null` is a REAL
+   * value — nobody recorded a count — never a missing one, the same
+   * semantics `AvailabilityWrite.partySize` carries above (kindred#2503,
+   * #2540). The server's `PushRow.tuple_key()` treats a live `null` against
+   * a draft row that recorded a count as a genuine difference, not noise to
+   * coerce away — so this stays `number | null` rather than defaulting to 0
+   * on either side of the wire.
+   */
+  party_size: number | null
+  /**
+   * The unit's capacity, carried for display only. `tuple_key()` (the
+   * server's match key) does not include it, so two rows differing only in
+   * `sleeps` still count as the same row.
+   */
+  sleeps: number | null
+}
+
+/**
+ * One building's live-vs-draft write-ins, and the RULED verdict for it
+ * (kindred#2477).
+ *
+ * `cls` is `classify_push`'s own word, computed server-side and PUBLISHED
+ * rather than re-derived — inside a scenario the client never reads
+ * `lodging_write_ins` at all, so it has nothing to diff against and no TS
+ * mirror of the classifier exists on purpose.
+ */
+export interface PushBuildingReport {
+  key: string
+  label: string
+  cls: 'add' | 'match' | 'conflict' | 'remove'
+  live: PushRowPayload[]
+  draft: PushRowPayload[]
+}
+
+/**
+ * The report half of kindred#2477's write-in push queue.
+ *
+ * `digest` fingerprints `buildings` and is not a fact about the request — it
+ * is a fact about what this preview SAW. `executeWriteInPush` echoes it back
+ * unchanged; a mismatch means the live board or the scenario moved between
+ * the preview and the push, and the server refuses with a fresh report
+ * rather than applying decisions made against one that is no longer true.
+ */
+export interface PushPreview {
+  year: number
+  session_cm_id: number
+  scenario: string
+  digest: string
+  buildings: PushBuildingReport[]
+}
+
+/**
+ * What `executeWriteInPush` actually did.
+ *
+ * `push_id` is the `lodging_write_in_pushes` row's id — the ledger entry
+ * `unpushWriteIns` will replay — and is `""` on a no-op, when nothing needed
+ * to move and no ledger row was written at all.
+ */
+export interface PushResult {
+  push_id: string
+  added: number
+  removed: number
+  replaced: number
+  kept: number
+  matched: number
+  no_op: boolean
+}
+
+/**
+ * Compare a scenario's write-ins against the live board (kindred#2477).
+ *
+ * Read-only: reviewing what a push would do is part of the same staff
+ * workflow the push itself is, and writes nothing on its own.
+ */
+export async function fetchPushPreview(
+  fetchWithAuth: FetchWithAuth,
+  { year, sessionCmId, scenario }: { year: number; sessionCmId: number; scenario: string }
+): Promise<PushPreview> {
+  const response = await fetchWithAuth(
+    `${API_BASE}/push/preview?year=${String(year)}&session_cm_id=${String(sessionCmId)}&scenario=${encodeURIComponent(scenario)}`
+  )
+  if (!response.ok) throw await toPushError(response, 'Failed to load the push preview')
+  return response.json() as Promise<PushPreview>
+}
+
+/**
+ * Apply a scenario's write-ins onto the live board (kindred#2477).
+ *
+ * `digest` must be the exact value `fetchPushPreview` returned — the server
+ * re-classifies before touching anything and refuses with a fresh report if
+ * it disagrees. `decisions` names a verdict only for buildings that need
+ * one (`conflict` or `remove`); a missing decision on a building that needs
+ * one refuses the whole push rather than defaulting to `keep`.
+ */
+export async function executeWriteInPush(
+  fetchWithAuth: FetchWithAuth,
+  {
+    year,
+    sessionCmId,
+    scenario,
+    digest,
+    decisions,
+  }: {
+    year: number
+    sessionCmId: number
+    scenario: string
+    digest: string
+    decisions: Record<string, 'live' | 'scenario' | 'keep' | 'remove'>
+  }
+): Promise<PushResult> {
+  const response = await fetchWithAuth(`${API_BASE}/push`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      year,
+      session_cm_id: sessionCmId,
+      scenario,
+      digest,
+      decisions,
+    }),
+  })
+  if (!response.ok) throw await toPushError(response, 'Failed to push write-ins')
+  return response.json() as Promise<PushResult>
+}
+
+/**
+ * Revert one push as a unit (kindred#2477 Task 5) — deleting what the push
+ * added and recreating what it removed.
+ *
+ * A drift check refuses the whole unpush (409, `reason: 'drift'`) unless
+ * the live board still matches the push's own after-state; a push already
+ * reverted refuses with `reason: 'already_unpushed'`.
+ */
+export async function unpushWriteIns(
+  fetchWithAuth: FetchWithAuth,
+  { pushId, year, sessionCmId }: { pushId: string; year: number; sessionCmId: number }
+): Promise<{ push_id: string; restored: number; deleted: number }> {
+  const response = await fetchWithAuth(
+    `${API_BASE}/push/${pushId}/unpush?year=${String(year)}&session_cm_id=${String(sessionCmId)}`,
+    { method: 'POST' }
+  )
+  if (!response.ok) throw await toPushError(response, 'Failed to unpush the write-ins')
+  return response.json() as Promise<{ push_id: string; restored: number; deleted: number }>
 }

@@ -9,7 +9,9 @@
 import { describe, expect, it, vi } from 'vitest'
 
 import {
+  executeWriteInPush,
   fetchHouseholdMedical,
+  fetchPushPreview,
   fetchWeekendRoster,
   fetchWeekendSessions,
   fetchWeekendSummary,
@@ -17,6 +19,7 @@ import {
   setSlotMerge,
   setUnitAvailability,
   unplaceParty,
+  unpushWriteIns,
 } from './lodgingApi'
 
 function okResponse(body: unknown): Response {
@@ -418,5 +421,234 @@ describe('fetchHouseholdMedical', () => {
     })
 
     await expect(fetchHouseholdMedical(mockFetch, 2026, 2000001)).rejects.toThrow(/bunking\.manage/)
+  })
+})
+
+describe('fetchPushPreview', () => {
+  it('GETs the preview with year, session_cm_id and an encoded scenario', async () => {
+    const mockFetch = vi.fn().mockResolvedValue(
+      okResponse({
+        year: 2026,
+        session_cm_id: 1000001,
+        scenario: 'scn7x2k9qw3mnbv',
+        digest: 'd'.repeat(64),
+        buildings: [],
+      })
+    )
+
+    const result = await fetchPushPreview(mockFetch, {
+      year: 2026,
+      sessionCmId: 1000001,
+      scenario: 'scn7x2k9qw3mnbv',
+    })
+
+    expect(mockFetch).toHaveBeenCalledTimes(1)
+    const [url] = mockFetch.mock.calls[0] as [string]
+    expect(url).toBe(
+      '/api/lodging/push/preview?year=2026&session_cm_id=1000001&scenario=scn7x2k9qw3mnbv'
+    )
+    expect(result.digest).toBe('d'.repeat(64))
+  })
+
+  it('encodes a scenario id with characters that need escaping', async () => {
+    const mockFetch = vi.fn().mockResolvedValue(
+      okResponse({
+        year: 2026,
+        session_cm_id: 1000001,
+        scenario: 'scn a/b',
+        digest: 'd'.repeat(64),
+        buildings: [],
+      })
+    )
+
+    await fetchPushPreview(mockFetch, { year: 2026, sessionCmId: 1000001, scenario: 'scn a/b' })
+
+    const [url] = mockFetch.mock.calls[0] as [string]
+    expect(url).toBe(
+      '/api/lodging/push/preview?year=2026&session_cm_id=1000001&scenario=scn%20a%2Fb'
+    )
+  })
+
+  it('surfaces the FastAPI detail on a plain failure', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 404,
+      json: async () => ({
+        detail: 'No family or adult session with CampMinder id 9999999 in 2026',
+      }),
+    })
+
+    await expect(
+      fetchPushPreview(mockFetch, { year: 2026, sessionCmId: 9999999, scenario: 'scn1' })
+    ).rejects.toThrow(/No family or adult session with CampMinder id 9999999/)
+  })
+})
+
+describe('executeWriteInPush', () => {
+  const BASE = {
+    year: 2026,
+    sessionCmId: 1000001,
+    scenario: 'scn7x2k9qw3mnbv',
+    digest: 'd'.repeat(64),
+  }
+
+  it('POSTs year, session_cm_id, scenario, digest and decisions verbatim', async () => {
+    const mockFetch = vi.fn().mockResolvedValue(
+      okResponse({
+        push_id: 'pu1',
+        added: 1,
+        removed: 0,
+        replaced: 1,
+        kept: 0,
+        matched: 3,
+        no_op: false,
+      })
+    )
+
+    const result = await executeWriteInPush(mockFetch, {
+      ...BASE,
+      decisions: { 'cedar-9': 'scenario', 'aspen-5': 'remove' },
+    })
+
+    const [url, options] = mockFetch.mock.calls[0] as [string, RequestInit]
+    expect(url).toBe('/api/lodging/push')
+    expect(options.method).toBe('POST')
+    expect(JSON.parse(options.body as string)).toEqual({
+      year: 2026,
+      session_cm_id: 1000001,
+      scenario: 'scn7x2k9qw3mnbv',
+      digest: 'd'.repeat(64),
+      decisions: { 'cedar-9': 'scenario', 'aspen-5': 'remove' },
+    })
+    expect(result).toEqual({
+      push_id: 'pu1',
+      added: 1,
+      removed: 0,
+      replaced: 1,
+      kept: 0,
+      matched: 3,
+      no_op: false,
+    })
+  })
+
+  it('sends an empty decisions object rather than omitting it, when nothing needs one', async () => {
+    // A `conflict`/`remove` building needs a decision; `add`/`match` never do.
+    // Omitting the key on a push with no decisions would be indistinguishable
+    // from a caller that forgot the field entirely — sending `{}` explicitly
+    // is what tells the server "reviewed, nothing to decide" rather than
+    // "the client didn't populate this".
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValue(
+        okResponse({
+          push_id: '',
+          added: 0,
+          removed: 0,
+          replaced: 0,
+          kept: 1,
+          matched: 0,
+          no_op: true,
+        })
+      )
+
+    await executeWriteInPush(mockFetch, { ...BASE, decisions: {} })
+
+    const body = JSON.parse((mockFetch.mock.calls[0] as [string, RequestInit])[1].body as string)
+    expect(body).toHaveProperty('decisions')
+    expect(body.decisions).toEqual({})
+  })
+
+  it('exposes the parsed stale report on a 409, not just a bare status', async () => {
+    // `execute_push` refuses with a FRESH report the moment its own digest
+    // check disagrees. The UI (Task 10) replaces its cached preview with
+    // `error.detail.report` — losing the object here would mean it can only
+    // say "409" and never show what actually changed.
+    const staleReport = {
+      year: 2026,
+      session_cm_id: 1000001,
+      scenario: 'scn7x2k9qw3mnbv',
+      digest: 'e'.repeat(64),
+      buildings: [],
+    }
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 409,
+      json: async () => ({ detail: { reason: 'stale', report: staleReport } }),
+    })
+
+    await expect(executeWriteInPush(mockFetch, { ...BASE, decisions: {} })).rejects.toMatchObject({
+      status: 409,
+      detail: { reason: 'stale', report: staleReport },
+    })
+  })
+
+  it('surfaces a 422 as the plain string FastAPI validation sends', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 422,
+      json: async () => ({ detail: 'scenario must not be blank' }),
+    })
+
+    await expect(
+      executeWriteInPush(mockFetch, { ...BASE, scenario: '', decisions: {} })
+    ).rejects.toMatchObject({ status: 422, message: 'scenario must not be blank' })
+  })
+})
+
+describe('unpushWriteIns', () => {
+  it('POSTs to the unpush endpoint with year and session_cm_id as query params', async () => {
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValue(okResponse({ push_id: 'pu1', restored: 1, deleted: 2 }))
+
+    const result = await unpushWriteIns(mockFetch, {
+      pushId: 'pu1',
+      year: 2026,
+      sessionCmId: 1000001,
+    })
+
+    const [url, options] = mockFetch.mock.calls[0] as [string, RequestInit]
+    expect(url).toBe('/api/lodging/push/pu1/unpush?year=2026&session_cm_id=1000001')
+    expect(options.method).toBe('POST')
+    expect(result).toEqual({ push_id: 'pu1', restored: 1, deleted: 2 })
+  })
+
+  it('exposes the already_unpushed reason on a 409, with no report to carry', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 409,
+      json: async () => ({ detail: { reason: 'already_unpushed' } }),
+    })
+
+    await expect(
+      unpushWriteIns(mockFetch, { pushId: 'pu1', year: 2026, sessionCmId: 1000001 })
+    ).rejects.toMatchObject({ status: 409, detail: { reason: 'already_unpushed' } })
+  })
+
+  it('exposes the drifted building names on a 409-drift', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 409,
+      json: async () => ({ detail: { reason: 'drift', buildings: ['Cedar 9', 'Aspen 5'] } }),
+    })
+
+    await expect(
+      unpushWriteIns(mockFetch, { pushId: 'pu1', year: 2026, sessionCmId: 1000001 })
+    ).rejects.toMatchObject({
+      status: 409,
+      detail: { reason: 'drift', buildings: ['Cedar 9', 'Aspen 5'] },
+    })
+  })
+
+  it('surfaces a 404 for an unknown push id', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 404,
+      json: async () => ({ detail: 'push pu404 not found' }),
+    })
+
+    await expect(
+      unpushWriteIns(mockFetch, { pushId: 'pu404', year: 2026, sessionCmId: 1000001 })
+    ).rejects.toThrow(/push pu404 not found/)
   })
 })
