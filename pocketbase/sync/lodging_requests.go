@@ -112,14 +112,25 @@ func NormalizeShareGate(raw string) string {
 // similarAges is a REFINEMENT of with, not a third axis. Its option sentence
 // begins "Share a cabin WITH", so it is a co-housing request too -- what differs
 // is that the partner is unnamed, which makes these the households staff can
-// pair with each other. It therefore sets BOTH flags, and anything reading
-// wants_with alone still sees the household. Observed on 22 households across
-// 2025-2026.
-func ParseSharedCabinModes(raw string) (near, with, similarAges bool) {
+// pair with each other. It therefore sets the with superset, and anything
+// reading with alone still sees the household. Observed on 22 households
+// across 2025-2026.
+//
+// withNamed records the named-family option SPECIFICALLY -- for the board's
+// per-tick icons (owner ruling 2026-08-22: the checkbox ticks are stored as
+// truly separate answers) -- and is NOT consulted by DeriveShareEligibility,
+// which reads the with superset instead. The similarly-aged option does not
+// set it: that option names no partner.
+func ParseSharedCabinModes(raw string) (near, with, withNamed, similarAges bool) {
 	for _, option := range strings.Split(raw, "|") {
 		upper := strings.ToUpper(option)
 		near = near || strings.Contains(upper, "NEAR")
 		with = with || strings.Contains(upper, "WITH")
+		// The named option is the only one carrying both words: NEAR has
+		// "specific" without "WITH"; the similar option has "WITH" without
+		// "specific".
+		withNamed = withNamed || (strings.Contains(upper, "WITH") &&
+			strings.Contains(upper, "SPECIFIC"))
 		// CampMinder's live text is unhyphenated; the hyphenated spelling is
 		// accepted so a staff edit in CampMinder cannot silently zero the flag.
 		optionHasSimilarAges := strings.Contains(upper, "SIMILARLY AGED") ||
@@ -129,12 +140,12 @@ func ParseSharedCabinModes(raw string) (near, with, similarAges bool) {
 		// sentence does contain "WITH", so this is redundant today -- but the
 		// hyphen guard on the line above exists precisely because staff edit
 		// these sentences, and an edit to "w/" would otherwise produce
-		// wants_similar_ages without wants_with: a state this function's
-		// doc comment, HouseholdRequest, family_camp_derived.go, migration
-		// 1500000127 and the Python schema all declare impossible.
+		// wants_similar_ages without the with superset: a state this
+		// function's doc comment, HouseholdRequest, family_camp_derived.go,
+		// migration 1500000127 and the Python schema all declare impossible.
 		with = with || optionHasSimilarAges
 	}
-	return near, with, similarAges
+	return near, with, withNamed, similarAges
 }
 
 // DeriveShareEligibility resolves the two share questions into the one verdict
@@ -276,8 +287,14 @@ type HouseholdRequest struct {
 	HouseholdKey string
 	Gate         string
 	WantsNear    bool
-	WantsWith    bool
-	// WantsSimilarAges implies WantsWith -- see ParseSharedCabinModes.
+	// WantsWithNamed is the named-family tick ALONE, for the board's per-tick
+	// icons -- owner ruling 2026-08-22 split the OR-collapsed wants_with
+	// column into truly separate stored answers. The eligibility superset
+	// (named OR similar-ages) is derived at the point DeriveShareEligibility
+	// is called below, not stored here.
+	WantsWithNamed bool
+	// WantsSimilarAges does NOT imply WantsWithNamed -- see
+	// ParseSharedCabinModes. It still implies the WITH superset.
 	WantsSimilarAges bool
 	RequestText      string
 	SourceField      string
@@ -390,9 +407,12 @@ func CollapseToHouseholdGrain(values []PersonRequestValue) map[string]*Household
 			}
 			if v.FieldName == fieldSharedCabinForm {
 				a.formAnswered = true
-				near, with, similarAges := ParseSharedCabinModes(value)
+				near, _, withNamed, similarAges := ParseSharedCabinModes(value)
+				// Only the un-ORed ticks are stored -- the with superset is
+				// re-derived below, at the eligibility call, from
+				// WantsWithNamed || WantsSimilarAges.
 				a.req.WantsNear = a.req.WantsNear || near
-				a.req.WantsWith = a.req.WantsWith || with
+				a.req.WantsWithNamed = a.req.WantsWithNamed || withNamed
 				a.req.WantsSimilarAges = a.req.WantsSimilarAges || similarAges
 				if a.req.SourceField == "" {
 					a.req.SourceField = v.FieldName
@@ -416,10 +436,29 @@ func CollapseToHouseholdGrain(values []PersonRequestValue) map[string]*Household
 		// 2025, 5 in 2026). ParseSharedCabinModes ORs them, so one child's
 		// real request survives another's "No requests" -- which is the
 		// correct reading and the reason most such combinations exist.
+		//
+		// wants_with is no longer stored; the eligibility superset is
+		// derived here from WantsWithNamed || WantsSimilarAges rather than
+		// from ParseSharedCabinModes' own bare `with` return. On every
+		// option sentence that exists in 2025/2026 data the two are equal,
+		// so the truth table is unchanged in practice: similar -> open
+		// before with is consulted, named -> named, neither -> declined.
+		//
+		// That equality is a fact about the live vocabulary, not a
+		// structural guarantee -- it is an accepted narrowing. withNamed
+		// requires BOTH "WITH" and "SPECIFIC" (see ParseSharedCabinModes
+		// above); the bare `with` this replaced required only "WITH". A
+		// hypothetically reworded named option that kept "WITH" but
+		// dropped "specific" would have parsed to eligibility named before
+		// this change, and parses to declined now. Same hazard class as
+		// the hyphen guard on similarAges above and NormalizeShareGate's
+		// "shar" guard -- staff reword these option sentences -- but this
+		// one is accepted rather than defended against.
+		// TestParseSharedCabinModesNamedWith pins the trade.
 		a.req.ShareEligibility, a.req.ShareEligibilitySource, a.req.ShareAnswersConflict =
 			DeriveShareEligibility(
-				a.req.Gate, a.formAnswered, a.req.WantsWith, a.req.WantsSimilarAges,
-				a.sawDeclineGate, a.sawYesGate)
+				a.req.Gate, a.formAnswered, a.req.WantsWithNamed || a.req.WantsSimilarAges,
+				a.req.WantsSimilarAges, a.sawDeclineGate, a.sawYesGate)
 		out[hh] = a.req
 	}
 	return out

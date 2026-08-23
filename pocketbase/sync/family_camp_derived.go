@@ -301,7 +301,8 @@ type registrationData struct {
 	shareCabinPreference string
 	// Renamed from sharedCabinWith by Task 16's migration. It never held "who
 	// they want to share with" -- it holds the pipe-delimited NEAR/WITH
-	// multi-select verbatim. wantsNear / wantsWith below are the parsed form.
+	// multi-select verbatim. wantsNear / wantsWithNamed below are the parsed
+	// form.
 	sharedCabinModesRaw string
 	arrivalETA          string
 	specialOccasions    string
@@ -314,10 +315,10 @@ type registrationData struct {
 	// normalised, deduplicated versions the board reads.
 	shareCabinGate string
 	wantsNear      bool
-	wantsWith      bool
-	// wantsSimilarAges implies wantsWith: the option it comes from is itself a
-	// "Share a cabin WITH" answer whose partner is unnamed, which is what makes
-	// these households the staff-matchable pool.
+	// wantsWithNamed is the named-family tick ALONE (owner ruling 2026-08-22:
+	// the checkbox ticks are stored as truly separate answers). It does NOT
+	// imply wantsSimilarAges, nor the reverse -- see ParseSharedCabinModes.
+	wantsWithNamed     bool
 	wantsSimilarAges   bool
 	requestText        string
 	requestSourceField string
@@ -1739,7 +1740,7 @@ func (s *FamilyCampDerivedSync) processRegistrations(
 			reg.specialOccasions != "" || reg.goals != "" ||
 			reg.notes != "" || reg.needsAccommodation ||
 			reg.shareCabinGate != "" || reg.requestText != "" ||
-			reg.wantsNear || reg.wantsWith || reg.wantsSimilarAges ||
+			reg.wantsNear || reg.wantsWithNamed || reg.wantsSimilarAges ||
 			reg.needsPrivateBathroom || reg.needsPower || reg.hasInfant ||
 			// Same reason as accommodationIsMandatory below: a household whose
 			// only parseable answer is the narrative-derived need would be the
@@ -2012,7 +2013,7 @@ func (s *FamilyCampDerivedSync) applyHouseholdRequests(
 		}
 		reg.shareCabinGate = req.Gate
 		reg.wantsNear = req.WantsNear
-		reg.wantsWith = req.WantsWith
+		reg.wantsWithNamed = req.WantsWithNamed
 		reg.wantsSimilarAges = req.WantsSimilarAges
 		reg.requestText = req.RequestText
 		reg.requestSourceField = req.SourceField
@@ -2758,7 +2759,7 @@ func (s *FamilyCampDerivedSync) registrationNeedsUpdate(existing *core.Record, r
 		existing.GetBool("needs_accommodation") != reg.needsAccommodation ||
 		existing.GetString("share_cabin_gate") != reg.shareCabinGate ||
 		existing.GetBool("wants_near") != reg.wantsNear ||
-		existing.GetBool("wants_with") != reg.wantsWith ||
+		existing.GetBool("wants_with_named") != reg.wantsWithNamed ||
 		existing.GetBool("wants_similar_ages") != reg.wantsSimilarAges ||
 		existing.GetString("request_text") != reg.requestText ||
 		existing.GetString("request_source_field") != reg.requestSourceField ||
@@ -2783,7 +2784,7 @@ func setRegistrationRequestFields(record *core.Record, reg *registrationData) {
 	record.Set(enrollmentStatusColumn, reg.enrollmentStatus)
 	record.Set("share_cabin_gate", reg.shareCabinGate)
 	record.Set("wants_near", reg.wantsNear)
-	record.Set("wants_with", reg.wantsWith)
+	record.Set("wants_with_named", reg.wantsWithNamed)
 	record.Set("wants_similar_ages", reg.wantsSimilarAges)
 	record.Set("request_text", reg.requestText)
 	record.Set("request_source_field", reg.requestSourceField)

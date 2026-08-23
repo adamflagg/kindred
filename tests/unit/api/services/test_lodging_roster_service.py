@@ -744,7 +744,7 @@ class TestFamilyCampParties:
                     share_cabin_gate="maybe_mutual",
                     share_cabin_preference="Maybe, if a specific family we know",
                     wants_near=True,
-                    wants_with=False,
+                    wants_with_named=False,
                     wants_similar_ages=False,
                     arrival_eta="Friday around 4pm",
                     needs_accommodation=True,
@@ -769,13 +769,16 @@ class TestFamilyCampParties:
         """similar_ages is a refinement of WITH: an unnamed partner.
 
         Anything filtering on "with" must still see these households, so both
-        kinds are emitted.
+        kinds are emitted. wants_with_named is deliberately left unset here
+        (owner ruling 2026-08-22: the ticks are truly separate stored answers,
+        and a similar-ages-only household never sets it) -- proving the
+        "with" proximity kind still appears off wants_similar_ages alone.
         """
         repo = _repo(
             fetch_session=FAMILY_SESSION,
             fetch_households={"hh_1": _household()},
             fetch_attendees_for_session=[_child()],
-            fetch_family_camp_registrations={"hh_1": _rec(wants_near=False, wants_with=True, wants_similar_ages=True)},
+            fetch_family_camp_registrations={"hh_1": _rec(wants_near=False, wants_similar_ages=True)},
         )
         roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
 
@@ -808,6 +811,31 @@ class TestFamilyCampParties:
         assert party.share.preference == "unknown"
         assert party.share.proximity == []
         assert party.flags.needs_private_bathroom is False
+
+
+class TestShareWantsWithNamed:
+    """wants_with_named is read verbatim off the registration row — never derived."""
+
+    def _share_for(self, registration: Any) -> Any:
+        service = LodgingRosterService(repository=MagicMock())
+        return service._build_share(registration)
+
+    def test_named_tick_surfaces_and_derives_with_proximity(self) -> None:
+        share = self._share_for(_rec(wants_with_named=True))
+        assert share.wants_with_named is True
+        assert "with" in share.proximity  # superset derived, not stored
+
+    def test_similar_only_keeps_the_with_superset_but_not_the_named_flag(self) -> None:
+        # The similar-age tick: proximity 'with' still present (public semantics
+        # unchanged — similar_ages accompanies with), named flag false.
+        share = self._share_for(_rec(wants_similar_ages=True, wants_with_named=False))
+        assert share.wants_with_named is False
+        assert share.proximity == ["with", "similar_ages"]
+
+    def test_missing_columns_default_false_and_empty(self) -> None:
+        share = self._share_for(_rec())
+        assert share.wants_with_named is False
+        assert "with" not in share.proximity
 
 
 class TestFreshHouseholdOutrunsTheCache:
@@ -3466,7 +3494,7 @@ class TestShareEligibility:
             fetch_family_camp_registrations={
                 "hh_1": _rec(
                     share_cabin_gate="no_share",
-                    wants_with=True,
+                    wants_with_named=True,
                     share_eligibility="named",
                     share_eligibility_source="form",
                     share_answers_conflict=True,

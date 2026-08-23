@@ -7,8 +7,8 @@ never re-implemented differently in the repository, the service, and React.
 Scope note — what is deliberately NOT here. The share gate, the NEAR/WITH
 modes and the free-text request are derived by the Go ingest into typed
 columns on `family_camp_registrations` (`share_cabin_gate`, `wants_near`,
-`wants_with`, `wants_similar_ages`, `request_text`), and this surface READS
-those columns rather than re-parsing the raw answers. Re-deriving them in
+`wants_with_named`, `wants_similar_ages`, `request_text`), and this surface
+READS those columns rather than re-parsing the raw answers. Re-deriving them in
 Python would fork two documented fixes that only exist on the Go side:
 
 - ``NormalizeShareGate`` requires the sentence to contain "shar" before it
@@ -579,9 +579,16 @@ class RequestTextSource(NamedTuple):
 #   is NOT free text: it has exactly two distinct values in 2026, both 40
 #   characters, and `frontend/src/utils/requestBucket.ts` already classes it
 #   an immaterial source field.
+# Owner ruling 2026-08-23, after the form-label correction on this same PR:
+# the REGISTRATION-form box renders first. `Shared-request` (274133) is the
+# registration-time comments box — its writes land in the radio's sitting,
+# 93/94 people, a median 181d before the Information form — and `COVID-19
+# Bunking Requests` (206286) is the Information form's names box. The prior
+# order only LOOKED reg-first because the friendly labels were attributed
+# backwards.
 REQUEST_TEXT_SOURCES: tuple[RequestTextSource, ...] = (
-    RequestTextSource("COVID-19 Bunking Requests", "family"),
     RequestTextSource("Shared-request", "family"),
+    RequestTextSource("COVID-19 Bunking Requests", "family"),
     RequestTextSource("FAM CAMP-Share Comments", "family"),
     RequestTextSource("BunkingNotes Notes", "staff"),
     RequestTextSource("Internal Bunk Notes", "staff"),

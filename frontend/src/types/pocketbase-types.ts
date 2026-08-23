@@ -742,7 +742,7 @@ export type FamilyCampRegistrationsRecord = {
   updated: IsoAutoDateString
   wants_near?: boolean
   wants_similar_ages?: boolean
-  wants_with?: boolean
+  wants_with_named?: boolean
   year: number
 }
 

@@ -3017,12 +3017,15 @@ class LodgingRosterService:
         # Stable order, and similar_ages always follows the "with" it refines
         # rather than replacing it -- anything filtering on "with" must still
         # match these households.
+        wants_with_named = _b(registration, "wants_with_named")
+        wants_similar = _b(registration, "wants_similar_ages")
         proximity: list[ProximityKind] = []
         if _b(registration, "wants_near"):
             proximity.append("near")
-        if _b(registration, "wants_with"):
+        # 'with' is the co-housing superset -- was a stored OR, now derived (2026-08-22).
+        if wants_with_named or wants_similar:
             proximity.append("with")
-        if _b(registration, "wants_similar_ages"):
+        if wants_similar:
             proximity.append("similar_ages")
 
         request_text = _s(registration, "request_text")
@@ -3048,6 +3051,7 @@ class LodgingRosterService:
             preference=preference,
             preference_raw=_s(registration, "share_cabin_preference"),
             proximity=proximity,
+            wants_with_named=wants_with_named,
             request_text=request_text,
             # Slice 1 resolves no names, so any free text is outstanding work.
             # BLOCKS COUNT AS TEXT (kindred#2330): 32 rostered 2026 households

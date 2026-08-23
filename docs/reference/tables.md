@@ -681,7 +681,8 @@ Request layer (household grain, spec 4) — normalised and deduplicated from the
 |-------|------|-------------|
 | `share_cabin_gate` | select | `no_share` / `maybe_mutual` / `yes_share` |
 | `wants_near` | bool | Wants proximity — satisfied by map distance |
-| `wants_with` | bool | Wants co-housing — satisfied by sharing a slot |
+| `wants_with_named` | bool | Wants co-housing with a NAMED family — satisfied by sharing a slot. Does not imply `wants_similar_ages`, nor the reverse; the eligibility superset (named OR similar-ages) is derived at read time |
+| `wants_similar_ages` | bool | Wants co-housing with a similar-aged family the staff can match — the un-named co-housing tick, stored independently of `wants_with_named`; the other input to the derived superset |
 | `request_text` | text | Deduplicated free-text request, household grain |
 | `request_source_field` | text | Which source field the gate came from |
 | `request_last_updated` | date | When the request last changed; resolves form-vs-registration precedence |

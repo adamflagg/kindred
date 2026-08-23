@@ -6038,6 +6038,12 @@ export type ShareRequestSummary = {
    */
   proximity?: Array<'near' | 'with' | 'similar_ages'>
   /**
+   * Wants With Named
+   *
+   * The WITH-a-named-family checkbox specifically, read verbatim from family_camp_registrations.wants_with_named (owner ruling 2026-08-22: the ticks are stored un-ORed). `proximity`'s 'with' remains the co-housing SUPERSET — derived here as named OR similar_ages, so its public semantics are unchanged. The board's HeartHandshake icon keys on this flag alone.
+   */
+  wants_with_named?: boolean
+  /**
    * Request Text
    */
   request_text?: string

@@ -79,7 +79,7 @@ func TestCollapseNoRequestsDoesNotVetoTheGate(t *testing.T) {
 			if got[hhA].SourceField != fieldShareCabinsRegistration {
 				t.Errorf("SourceField = %q, want the registration gate", got[hhA].SourceField)
 			}
-			if got[hhA].WantsNear || got[hhA].WantsWith {
+			if got[hhA].WantsNear || got[hhA].WantsWithNamed || got[hhA].WantsSimilarAges {
 				t.Error(`"No requests" must not set a mode either`)
 			}
 		})
@@ -108,8 +108,8 @@ func TestCollapseSiblingDisagreementSurvivesANoRequestsSibling(t *testing.T) {
 		{HouseholdKey: hhA, FieldName: fieldSharedCabinForm, Value: "No requests", LastUpdated: ts},
 	})
 
-	if !got[hhA].WantsWith {
-		t.Error("WantsWith = false; a sibling's real request must survive another sibling's \"No requests\"")
+	if !got[hhA].WantsWithNamed {
+		t.Error("WantsWithNamed = false; a sibling's real request must survive another sibling's \"No requests\"")
 	}
 	if got[hhA].ShareEligibility != shareEligibilityNamed {
 		t.Errorf("ShareEligibility = %q, want %q -- the real request must still resolve to a verdict",
@@ -152,6 +152,13 @@ func TestCollapseDoesNotStampUnrelatedFields(t *testing.T) {
 // TestParseSharedCabinModes: the field is pipe-delimited multi-select and NEAR
 // and WITH are different edge types. Note the sixth case: "No requests"
 // co-occurs with a real request in six rows, so it must not veto.
+//
+// wantWithNamed pins the fourth return value added when the OR-collapsed
+// wants_with column split into truly separate stored ticks (owner ruling
+// 2026-08-22): it is true only for an OPTION that carries both "WITH" and
+// "SPECIFIC" -- the named-family sentence -- never for two different options
+// that happen to supply the two words between them (see the pipe-joined
+// withOpen+near case below).
 func TestParseSharedCabinModes(t *testing.T) {
 	t.Parallel()
 	const near = "House my family NEAR a specific family that I know (please include names below)"
@@ -162,45 +169,99 @@ func TestParseSharedCabinModes(t *testing.T) {
 	const none = "No requests"
 
 	cases := []struct {
-		raw                             string
-		wantNear, wantWith, wantSimilar bool
+		raw                                            string
+		wantNear, wantWith, wantWithNamed, wantSimilar bool
 	}{
-		{near, true, false, false},
-		{with, false, true, false},
+		{near, true, false, false, false},
+		{with, false, true, true, false},
 		// The similarly-aged option is a REFINEMENT of WITH, not a third axis:
 		// its sentence literally begins "Share a cabin WITH", so it is a
 		// co-housing request whose partner is simply unnamed. It therefore sets
-		// both -- anything consuming wants_with must still see this household.
-		{withOpen, false, true, true},
-		{none, false, false, false},
-		{with + "|" + near, true, true, false},
-		{near + "|" + none, true, false, false},
-		{"", false, false, false},
+		// the with superset -- anything consuming it must still see this
+		// household -- but NOT withNamed, since the option carries no
+		// "specific" partner.
+		{withOpen, false, true, false, true},
+		{none, false, false, false, false},
+		{with + "|" + near, true, true, true, false},
+		{near + "|" + none, true, false, false, false},
+		{"", false, false, false, false},
 		// One option naming both edge types. No observed 2025 option does this,
 		// so it is a guard rather than a live case -- but the two needs are
 		// independent for the same reason classifyCPAPAnswer's are, and an
 		// ordered switch silently drops whichever loses.
-		{"Share a cabin WITH or house my family NEAR a specific family", true, true, false},
+		{"Share a cabin WITH or house my family NEAR a specific family", true, true, true, false},
 		// CampMinder's live text is unhyphenated ("similarly aged kid(s)"), but
 		// staff edit these sentences. Both spellings are accepted so a hyphen
 		// added in CampMinder does not silently zero the flag.
-		{"Share a cabin WITH a family with similarly-aged kids", false, true, true},
+		{"Share a cabin WITH a family with similarly-aged kids", false, true, false, true},
 		// The invariant, isolated: no literal WITH anywhere in the sentence.
 		// Every other similarly-aged case above also contains "WITH", so they
 		// pass through the WITH substring match and prove nothing about
 		// similarAges implying with. A staff rewrite to "w/" is all it takes
-		// to reach this shape, and wants_similar_ages without wants_with is a
-		// state five comments in this codebase declare impossible.
-		{"Share a cabin w/ a family whose kids are similarly aged", false, true, true},
-		// All three at once, across the pipe.
-		{withOpen + "|" + near, true, true, true},
+		// to reach this shape, and wants_similar_ages without the with
+		// superset is a state five comments in this codebase declare
+		// impossible.
+		{"Share a cabin w/ a family whose kids are similarly aged", false, true, false, true},
+		// All three at once, across the pipe. withOpen alone has no "specific"
+		// and near alone has no "WITH", so even though the COMBINED raw string
+		// contains both words, withNamed stays false: the check is per-option,
+		// not per-string, because these are two different requests, not one
+		// named one.
+		{withOpen + "|" + near, true, true, false, true},
 	}
 	for _, tc := range cases {
-		gotNear, gotWith, gotSimilar := ParseSharedCabinModes(tc.raw)
-		if gotNear != tc.wantNear || gotWith != tc.wantWith || gotSimilar != tc.wantSimilar {
-			t.Errorf("ParseSharedCabinModes(%.50q) = (%v, %v, %v), want (%v, %v, %v)",
-				tc.raw, gotNear, gotWith, gotSimilar, tc.wantNear, tc.wantWith, tc.wantSimilar)
+		gotNear, gotWith, gotWithNamed, gotSimilar := ParseSharedCabinModes(tc.raw)
+		if gotNear != tc.wantNear || gotWith != tc.wantWith ||
+			gotWithNamed != tc.wantWithNamed || gotSimilar != tc.wantSimilar {
+			t.Errorf("ParseSharedCabinModes(%.50q) = (%v, %v, %v, %v), want (%v, %v, %v, %v)",
+				tc.raw, gotNear, gotWith, gotWithNamed, gotSimilar,
+				tc.wantNear, tc.wantWith, tc.wantWithNamed, tc.wantSimilar)
 		}
+	}
+}
+
+// TestParseSharedCabinModesNamedWith pins the split itself (owner ruling
+// 2026-08-22): the named-family tick and the similar-ages tick are truly
+// separate stored answers now, not one OR-collapsed wants_with column. `with`
+// documents the in-memory superset contract; the only production caller
+// (CollapseToHouseholdGrain, lodging_requests.go) discards this parse's
+// `with` return and re-derives it from WantsWithNamed || WantsSimilarAges, so
+// `with` here is exercised by tests only.
+func TestParseSharedCabinModesNamedWith(t *testing.T) {
+	t.Parallel()
+	named := "Share a cabin WITH a specific family that I know (please include names below and " +
+		"ensure that the request is mutual)"
+	similar := "Share a cabin WITH a family with similarly aged kid(s) that I can meet at Camp (we will make this happen!)"
+	near := "House my family NEAR a specific family that I know (please include names below)"
+
+	// The named tick alone: withNamed AND with.
+	_, with, withNamed, similarAges := ParseSharedCabinModes(named)
+	if !with || !withNamed || similarAges {
+		t.Fatalf("named option: with=%v withNamed=%v similarAges=%v", with, withNamed, similarAges)
+	}
+	// The similar tick alone: with (the documented OR) but NOT withNamed.
+	_, with, withNamed, similarAges = ParseSharedCabinModes(similar)
+	if !with || withNamed || !similarAges {
+		t.Fatalf("similar option: with=%v withNamed=%v similarAges=%v", with, withNamed, similarAges)
+	}
+	// NEAR contains "specific" but not "WITH": no share flags at all.
+	nearFlag, with, withNamed, _ := ParseSharedCabinModes(near)
+	if !nearFlag || with || withNamed {
+		t.Fatalf("near option: near=%v with=%v withNamed=%v", nearFlag, with, withNamed)
+	}
+	// Both ticks, pipe-joined: everything true.
+	_, with, withNamed, similarAges = ParseSharedCabinModes(named + "|" + similar)
+	if !with || !withNamed || !similarAges {
+		t.Fatalf("both options: with=%v withNamed=%v similarAges=%v", with, withNamed, similarAges)
+	}
+	// The accepted narrowing, pinned: a reworded named option that keeps
+	// "WITH" but drops "specific" still counts as the with SUPERSET, but no
+	// longer as the NAMED tick -- eligibility for such a household would read
+	// declined rather than named. Live 2025/2026 vocabulary never hits this;
+	// if staff reword the option, this is the test that names the trade.
+	_, with, withNamed, _ = ParseSharedCabinModes("Share a cabin WITH a family I know (names below)")
+	if !with || withNamed {
+		t.Fatalf("reworded named option: with=%v withNamed=%v", with, withNamed)
 	}
 }
 
@@ -224,8 +285,15 @@ func TestCollapseCarriesSimilarAgesToHouseholdGrain(t *testing.T) {
 	if !got[hhA].WantsSimilarAges {
 		t.Error("WantsSimilarAges = false; the open-invitation option was dropped by the collapse")
 	}
-	if !got[hhA].WantsWith {
-		t.Error("WantsWith = false; the similarly-aged option is still a WITH request")
+	if got[hhA].WantsWithNamed {
+		t.Error("WantsWithNamed = true; the similarly-aged option names no partner")
+	}
+	// The similarly-aged option is still a WITH request -- it is a pin on the
+	// SUPERSET's behavior, which now surfaces only through the derived
+	// eligibility verdict rather than a stored WantsWith field.
+	if got[hhA].ShareEligibility != shareEligibilityOpen {
+		t.Errorf("ShareEligibility = %q, want %q -- the similarly-aged option is still a WITH request",
+			got[hhA].ShareEligibility, shareEligibilityOpen)
 	}
 }
 
@@ -315,8 +383,8 @@ func TestCollapsePrefersMoreRecentGate(t *testing.T) {
 	}
 	// The modes still come from the multi-select field; they are a different
 	// question, not a competing answer to the same one.
-	if !got[hhA].WantsWith {
-		t.Error("WantsWith lost; the mode field is not in competition with the gate field")
+	if !got[hhA].WantsWithNamed {
+		t.Error("WantsWithNamed lost; the mode field is not in competition with the gate field")
 	}
 }
 

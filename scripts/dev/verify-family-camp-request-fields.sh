@@ -17,7 +17,7 @@ has_field() {
 # All ten columns 1500000126 adds. request_last_updated was missing from this
 # list, so the one column spec 4.1's precedence logic reads was the one the gate
 # could not have caught going away.
-for f in share_cabin_gate wants_near wants_with request_text request_source_field \
+for f in share_cabin_gate wants_near wants_with_named request_text request_source_field \
          request_last_updated needs_private_bathroom needs_power \
          accommodation_is_mandatory has_infant \
          needs_fridge needs_step_free; do

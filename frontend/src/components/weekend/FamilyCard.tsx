@@ -55,10 +55,12 @@
  *
  * Now: the four ruled needs — bathroom, power, fridge, step-free — as
  * icon-only chips in a closed hue set, red-filled when the room does not meet
- * them (N2); the sharing intentions still as words, because they are the
- * marks staff have not yet ruled on; the single-parent mark moved UP to line 2
- * where it describes the adult beside it (S2 + Sa); and Returning/First-time
- * as one 16px icon pinned bottom-right (R3).
+ * them (N2); the sharing intentions as icon marks too (2026-08-22 ruling,
+ * `ShareMarks` — the always-on anchor and the checkbox cluster, LEADING the
+ * row ahead of the need glyphs, because who can bunk together is the board's
+ * first question); the single-parent mark moved UP to line 2 where it
+ * describes the adult beside it (S2 + Sa); and Returning/First-time as one
+ * 16px icon pinned bottom-right (R3).
  *
  * A need the household did not ask for is OMITTED, never dimmed. Every mark,
  * every cut and the reason for each is in
@@ -111,6 +113,7 @@ import {
 import { GLYPH_BASE, NeedGlyphMark, WARN_TONE } from './NeedGlyph'
 import { resolveNeedGlyphs } from './needGlyphs'
 import { partyKey } from './partyKey'
+import { ShareMarks } from './ShareMarks'
 
 export interface FamilyCardProps {
   party: RosterPartyRow
@@ -144,8 +147,9 @@ export interface FamilyCardProps {
 }
 
 /**
- * ⚠️ THREE TONES WERE REMOVED WITH THEIR CHIPS (kindred#2072) AND MUST NOT
- * COME BACK AS DECORATION:
+ * ⚠️ FIVE TONES WERE REMOVED WITH THEIR CHIPS AND MUST NOT COME BACK AS
+ * DECORATION (kindred#2072 struck the first three; the 2026-08-22 ruling
+ * struck the last two):
  *
  *   `need`     — the amber fill of `Private bathroom` / `Power`. Those two
  *                chips ARE the need glyphs now.
@@ -154,6 +158,9 @@ export interface FamilyCardProps {
  *   `building` — the indigo `Whole building` chip, an earlier cut that had
  *                never been landed. It survives on the MAP, which keeps its
  *                own copy in `MapUnitPopover`.
+ *   `share`    — the green `Wants to share` word chip. `ShareMarks`' cluster
+ *                draws its own icon for this now, leading the row.
+ *   `muted`    — the grey `Near another family` word chip. Same replacement.
  *
  * A tone with no chip is an invitation to invent one.
  *
@@ -162,12 +169,10 @@ export interface FamilyCardProps {
  * used to sit beside it, and two reds for one meaning is how a palette stops
  * meaning anything.
  */
-type ChipTone = 'warn' | 'share' | 'muted'
+type ChipTone = 'warn'
 
 const CHIP_TONE: Record<ChipTone, string> = {
   warn: WARN_TONE,
-  share: 'bg-forest-100 text-forest-800 dark:bg-forest-950/50 dark:text-forest-300',
-  muted: 'bg-muted text-muted-foreground',
 }
 
 function Chip({
@@ -537,12 +542,6 @@ function FamilyCardChips({
   sharedSlot: boolean
 }) {
   const isHousehold = party.grain === 'household'
-  const proximity = party.share?.proximity ?? []
-  // `similar_ages` ACCOMPANIES `with`; it never replaces it. One chip covering
-  // both is what keeps 22 households from dropping out of a "wants to share"
-  // view — a chip showing one *or* the other loses them.
-  const wantsToShare = proximity.includes('with') || proximity.includes('similar_ages')
-  const wantsNear = proximity.includes('near')
   const conflictDetail = answersConflictDetail(party.share)
   // The four ruled needs, graded once, in `needGlyphs.ts`. A need the
   // household did not ask for is ABSENT from this array — never dimmed (§6).
@@ -555,8 +554,16 @@ function FamilyCardChips({
        on the last chip line rather than floating beside the first. */
     <span className="flex flex-nowrap items-end gap-1">
       <span className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
-        {/* Glyphs lead, in the closed set's own order, because they are the
-            household's ASK and everything after them is context for it. */}
+        {/* Share marks lead the row — who can bunk together is the board's
+            FIRST question, and the household's own housing needs are context
+            for placing it once that question is answered. The anchor (the
+            radio, always on) draws before the cluster (the checkboxes, zero
+            to three), both ahead of the need glyphs, which follow in the
+            closed set's own order (2026-08-22 ruling; struck the two
+            `wantsToShare`/`wantsNear` word chips that used to sit at the END
+            of this row — see `docs/reference/weekend-card-vocabulary.md`
+            §2/§3). */}
+        <ShareMarks party={party} />
         {glyphs.map((glyph) => (
           <NeedGlyphMark key={glyph.key} glyph={glyph} />
         ))}
@@ -627,10 +634,6 @@ function FamilyCardChips({
             title={conflictDetail}
           />
         )}
-        {wantsToShare && <Chip label="Wants to share" tone="share" />}
-        {/* NEAR and WITH are different requests: NEAR is satisfied by map
-            distance between units, WITH by putting both in one room. */}
-        {wantsNear && <Chip label="Near another family" tone="muted" />}
       </span>
 
       {/* R3 — a 16px ICON, no text label, pinned bottom-right.

@@ -1706,9 +1706,9 @@ func TestProcessRegistrationsParsesGateAndModes(t *testing.T) {
 	if regs[0].shareCabinGate != gateMaybeMutual {
 		t.Errorf("shareCabinGate = %q, want %q", regs[0].shareCabinGate, gateMaybeMutual)
 	}
-	if !regs[0].wantsNear || !regs[0].wantsWith {
-		t.Errorf("wantsNear=%v wantsWith=%v; 24 households ask for both",
-			regs[0].wantsNear, regs[0].wantsWith)
+	if !regs[0].wantsNear || !regs[0].wantsWithNamed {
+		t.Errorf("wantsNear=%v wantsWithNamed=%v; 24 households ask for both",
+			regs[0].wantsNear, regs[0].wantsWithNamed)
 	}
 }
 
