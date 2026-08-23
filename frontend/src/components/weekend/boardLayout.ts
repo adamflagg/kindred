@@ -521,7 +521,6 @@ export interface BoardModel {
   unplaced: RosterPartyRow[]
   /** Placed, but on something the board cannot draw a card for. */
   offBoard: RosterPartyRow[]
-  flaggedCount: number
 }
 
 /**
@@ -1012,11 +1011,9 @@ export function buildBoard(parties: RosterPartyRow[], units: LodgingUnitRow[]): 
     string,
     { name: string; sortOrder: number; slots: BoardSlot[]; partyKeys: Set<string> }
   >()
-  let flaggedCount = 0
   for (const unit of drawn) {
     const slotParties = partiesByCode.get(unit.code) ?? []
     const consent = consentFlag(slotParties, units)
-    if (consent) flaggedCount += 1
 
     const key = areaKey(unit)
     const bucket = buckets.get(key) ?? {
@@ -1089,7 +1086,7 @@ export function buildBoard(parties: RosterPartyRow[], units: LodgingUnitRow[]): 
     }
   })
 
-  return { areas, unplaced, offBoard, flaggedCount }
+  return { areas, unplaced, offBoard }
 }
 
 /**

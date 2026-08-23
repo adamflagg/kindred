@@ -640,7 +640,8 @@ describe('buildBoard — a party across several rooms', () => {
   it('does not flag a family alone in its own rooms as a shared cabin', () => {
     // `consentFlag` needs two parties in one slot. One family across two rooms
     // is one party in each, and nothing to ask staff about.
-    expect(buildBoard([merged()], twoRooms).flaggedCount).toBe(0)
+    const board = buildBoard([merged()], twoRooms)
+    expect(board.areas[0]?.slots.every((slot) => slot.consent === null)).toBe(true)
   })
 
   it('loses nobody, and counts each party once however many rooms it holds', () => {
@@ -774,7 +775,6 @@ describe('buildBoard — consent flagging on ELIGIBILITY, not the gate', () => {
       [unit()]
     )
     expect(board.areas[0]?.slots[0]?.consent).toBeNull()
-    expect(board.flaggedCount).toBe(0)
   })
 
   it('does not flag a party who declined and got a room to itself', () => {
@@ -854,11 +854,6 @@ describe('buildBoard — consent flagging on ELIGIBILITY, not the gate', () => {
     // more from maybe_mutual. The board read them as permissive.
     const slot = shared(['declined', 'open'], 'yes_share').areas[0]?.slots[0]
     expect(slot?.consent?.declinedCount).toBe(1)
-  })
-
-  it('reports how many slots are flagged across the whole board', () => {
-    expect(shared(['declined', 'open']).flaggedCount).toBe(1)
-    expect(shared(['open', 'open']).flaggedCount).toBe(0)
   })
 })
 
@@ -1466,7 +1461,6 @@ describe('buildBoard — consent flag follows leaf overlap, not the card (task-1
     expect(board.areas[0]?.slots[0]?.unit.code).toBe('house')
     expect(board.areas[0]?.slots[0]?.parties).toHaveLength(2)
     expect(board.areas[0]?.slots[0]?.consent).toBeNull()
-    expect(board.flaggedCount).toBe(0)
   })
 
   it('flags two households the merge rolled onto one card from the SAME room', () => {
@@ -1478,7 +1472,6 @@ describe('buildBoard — consent flag follows leaf overlap, not the card (task-1
       combinedHouse
     )
     expect(board.areas[0]?.slots[0]?.consent).not.toBeNull()
-    expect(board.flaggedCount).toBe(1)
   })
 
   it('flags a CONTAINER-named household against one named a room beneath it, split', () => {
@@ -1505,7 +1498,8 @@ describe('buildBoard — consent flag follows leaf overlap, not the card (task-1
     expect(shared?.consent).not.toBeNull()
     // `r2` holds only the fanned-down container party, so it is nobody's
     // share: one slot flagged, not two.
-    expect(board.flaggedCount).toBe(1)
+    const r2 = board.areas[0]?.slots.find((slot) => slot.unit.code === 'r2')
+    expect(r2?.consent).toBeNull()
   })
 
   it('flags a CONTAINER-named household against one named a room beneath it, combined', () => {
@@ -1523,7 +1517,6 @@ describe('buildBoard — consent flag follows leaf overlap, not the card (task-1
     expect(board.areas[0]?.slots[0]?.unit.code).toBe('house')
     expect(board.areas[0]?.slots[0]?.parties).toHaveLength(2)
     expect(board.areas[0]?.slots[0]?.consent).not.toBeNull()
-    expect(board.flaggedCount).toBe(1)
   })
 
   it('flags a multi-room party whose rooms overlap a single-room party', () => {
@@ -1590,7 +1583,6 @@ describe('buildBoard — consent flag follows leaf overlap, not the card (task-1
       [unit()]
     )
     expect(board.areas[0]?.slots[0]?.consent).not.toBeNull()
-    expect(board.flaggedCount).toBe(1)
   })
 })
 
@@ -1706,9 +1698,9 @@ describe('overlappingPartyKeys — a two-unit alias is ambiguous, not a confirme
 
   // Through `buildBoard`, the real entry point the board renders from --
   // `overlappingPartyKeys` is not what staff see. `consentFlag` reads its
-  // output and `flaggedCount` sums the result, so the amber ring is what the
-  // guard actually silences; a test only on the helper would pass even if the
-  // wiring above it stopped reading the guarded value.
+  // output, so the amber ring is what the guard actually silences; a test
+  // only on the helper would pass even if the wiring above it stopped
+  // reading the guarded value.
   function aliasBoard(householdCount: number) {
     const parties = Array.from({ length: householdCount }, (_, index) =>
       party({
@@ -1741,7 +1733,6 @@ describe('overlappingPartyKeys — a two-unit alias is ambiguous, not a confirme
 
   it('raises no amber flag on the BOARD for two households on one two-unit alias', () => {
     const board = aliasBoard(2)
-    expect(board.flaggedCount).toBe(0)
     expect(board.areas.flatMap((area) => area.slots).map((slot) => slot.consent)).toEqual([
       null,
       null,
@@ -1749,7 +1740,10 @@ describe('overlappingPartyKeys — a two-unit alias is ambiguous, not a confirme
   })
 
   it('still raises the board flag once a third household claims the same two units', () => {
-    expect(aliasBoard(3).flaggedCount).toBeGreaterThan(0)
+    const board = aliasBoard(3)
+    expect(board.areas.flatMap((area) => area.slots).some((slot) => slot.consent !== null)).toBe(
+      true
+    )
   })
 })
 
@@ -1858,11 +1852,13 @@ describe('overlappingPartyKeys — a CONTAINER is ambiguous on the same terms as
 
   it('raises no amber flag on the BOARD for two households on one two-room container', () => {
     const board = containerBoard(2)
-    expect(board.flaggedCount).toBe(0)
     expect(board.areas.flatMap((area) => area.slots).map((slot) => slot.consent)).toEqual([null])
   })
 
   it('still raises the board flag once a third household is named at the same container', () => {
-    expect(containerBoard(3).flaggedCount).toBeGreaterThan(0)
+    const board = containerBoard(3)
+    expect(board.areas.flatMap((area) => area.slots).some((slot) => slot.consent !== null)).toBe(
+      true
+    )
   })
 })
