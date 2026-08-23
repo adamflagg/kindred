@@ -890,6 +890,24 @@ def _b(record: Any, field: str) -> bool:
     return bool(getattr(record, field, False))
 
 
+def _tuple_key_sort_key(t: tuple[str, str, str, int | None]) -> tuple[str, str, str, bool, int]:
+    """A TOTAL order for `PushRow.tuple_key()`, where the last element is
+    `int | None`.
+
+    Plain `sorted()` on the 4-tuple works right up until two rows on the same
+    side of one building share `(unit_id, occupant, note)` and differ only in
+    `party_size`, one of them `None` -- Python's tuple comparison only reaches
+    the fourth element once the first three already tie, and then refuses
+    `int < NoneType`. `sorted([('u1','N','',None), ('u1','N','',5)])` is the
+    two-line repro that found this. `None` sorts before every recorded count
+    here (`False < True`); that placement is arbitrary but STABLE, which is
+    all either caller needs -- the multiset-equality check in `classify_push`
+    and the canonicalisation in `push_digest` both only ask "is this ordering
+    the same every time", never "which one is smaller"."""
+    unit_id, occupant, note, party_size = t
+    return (unit_id, occupant, note, party_size is not None, party_size or 0)
+
+
 @dataclass(frozen=True)
 class PushRow:
     unit_id: str
@@ -959,7 +977,9 @@ def classify_push(live: Sequence[PushRow], draft: Sequence[PushRow], units: Sequ
             cls = "add"
         elif lrows and not drows:
             cls = "remove"
-        elif sorted(r.tuple_key() for r in lrows) == sorted(r.tuple_key() for r in drows):
+        elif sorted((r.tuple_key() for r in lrows), key=_tuple_key_sort_key) == sorted(
+            (r.tuple_key() for r in drows), key=_tuple_key_sort_key
+        ):
             cls = "match"
         else:
             cls = "conflict"
@@ -972,7 +992,12 @@ def push_digest(buildings: Sequence[PushBuilding]) -> str:
     a mismatch at push time means the board or scenario moved mid-review and
     the push refuses with a fresh report rather than applying stale decisions."""
     canonical = [
-        (b.key, b.cls, sorted(r.tuple_key() for r in b.live), sorted(r.tuple_key() for r in b.draft))
+        (
+            b.key,
+            b.cls,
+            sorted((r.tuple_key() for r in b.live), key=_tuple_key_sort_key),
+            sorted((r.tuple_key() for r in b.draft), key=_tuple_key_sort_key),
+        )
         for b in sorted(buildings, key=lambda b: b.key)
     ]
     return hashlib.sha256(json.dumps(canonical, default=str).encode()).hexdigest()

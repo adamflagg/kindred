@@ -885,12 +885,42 @@ class TestClassifyPush:
         out2 = classify_push([], live, self.UNITS)
         assert [b.cls for b in out2] == ["add"]
 
+    def test_none_vs_int_party_size_with_shared_prefix_does_not_crash(self):
+        """kindred#2477 fix-round: two same-side rows on one building sharing
+        (unit_id, occupant, note) but differing only in party_size -- one
+        None, one recorded -- crashed the multiset comparison. Plain
+        `sorted()` over `tuple_key()` reaches the fourth element only when
+        the first three already tie, and Python 3 refuses `int < NoneType`
+        there. Repro: `sorted([('u1','N','',None), ('u1','N','',5)])`."""
+        live = [
+            _push_row("uc", "cedar-9", "Same Name", ppl=None),
+            _push_row("uc", "cedar-9", "Same Name", ppl=5),
+        ]
+        draft = [_push_row("uc", "cedar-9", "Same Name", ppl=5)]
+        out = classify_push(live, draft, self.UNITS)
+        assert [b.cls for b in out] == ["conflict"]
+        assert push_digest(out)  # must not raise either
+
 
 class TestPushDigest:
     def test_stable_across_row_order(self):
-        u = [_push_unit("uc", "cedar-9")]
-        a = classify_push([_push_row("uc", "cedar-9", "A")], [_push_row("uc", "cedar-9", "B")], u)
-        b = classify_push([_push_row("uc", "cedar-9", "A")], [_push_row("uc", "cedar-9", "B")], u)
+        # 2+ rows per side, sharing one building, including the mixed
+        # None/int party_size shape that exercises the new sort key.
+        units = [
+            _push_unit("uh", "big-house", container=True),
+            _push_unit("u1", "room-1", parent="uh"),
+            _push_unit("u2", "room-2", parent="uh"),
+        ]
+        live = [
+            _push_row("u1", "room-1", "A", ppl=None),
+            _push_row("u2", "room-2", "B", ppl=5),
+        ]
+        draft = [
+            _push_row("u1", "room-1", "A", ppl=2),
+            _push_row("u2", "room-2", "C", ppl=None),
+        ]
+        a = classify_push(live, draft, units)
+        b = classify_push(list(reversed(live)), list(reversed(draft)), units)
         assert push_digest(a) == push_digest(b)
 
     def test_changes_when_a_tuple_changes(self):
