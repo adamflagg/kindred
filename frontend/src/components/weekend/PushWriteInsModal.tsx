@@ -1,17 +1,18 @@
 /**
- * The write-in push queue's modal shell, report screen, and decision deck
- * (kindred#2477 Tasks 8/9). Entry is the board's own "Push write-ins"
- * toolbar button (`LodgingBoard.tsx`).
+ * The write-in push queue's modal shell, report screen, decision deck, and
+ * push/unpush execution (kindred#2477 Tasks 8/9/10). Entry is the board's
+ * own "Push write-ins" toolbar button (`LodgingBoard.tsx`).
  *
  * ## The report vs. the deck vs. done
  *
- * Three stages, one component: `'report'` (this file, the four class
- * tiles), `'deck'` (this file wires `PushDecisionDeck.tsx` — one card per
- * building that needs a verdict), and `'done'` (Task 10 — what the push
- * actually did). Kept in ONE component rather than three, because the stages
- * share the same preview fetch and the same `decisions` record building up
- * across them, and splitting that state across sibling components would need
- * to thread it back up through props for no reader this modal has today.
+ * Four stages tracked by `PushStage`, one component: `'report'` (this file,
+ * the four class tiles), `'deck'` (this file wires `PushDecisionDeck.tsx` —
+ * one card per building that needs a verdict), and `'done'` (what the push,
+ * and then the unpush, actually did — Task 10). Kept in ONE component rather
+ * than several, because the stages share the same preview fetch and the same
+ * `decisions` record building up across them, and splitting that state
+ * across sibling components would need to thread it back up through props
+ * for no reader this modal has today.
  *
  * `decisions: Record<string, Decision>` is keyed on `PushBuildingReport.key`
  * and carries a verdict ONLY for a building the report classed `conflict` or
@@ -25,27 +26,49 @@
  *
  * `useQuery` carries no staleness tuning beyond `refetchOnMount: 'always'`.
  * `PushPreview.digest` is what makes freshness explicit — `executeWriteInPush`
- * (Task 10) echoes it back and the server refuses a push made against a
- * report the live board or the scenario has since moved past, so there is no
+ * echoes it back and the server refuses a push made against a report the
+ * live board or the scenario has since moved past, so there is no
  * correctness reason to guard this read with a short `staleTime` the way
  * `userDataOptions` would. Every OPEN re-asks instead: reviewing a push is a
  * "look right before you act" screen, not a background list.
+ *
+ * ## 409 stale is not an error
+ *
+ * `executeWriteInPush`'s 409 `{reason: 'stale', report}` means the board or
+ * the scenario moved between the preview fetch and the push click — a normal
+ * thing to hit, not a fault. The fresh report replaces the cached preview
+ * (`queryClient.setQueryData`, keeping this component and `useQuery` as the
+ * single source of the rendered report rather than a second copy in local
+ * state), decisions are dropped since they were made against buildings that
+ * may no longer exist in the same shape, and the modal returns to `'report'`
+ * with a one-line explanation. No toast — a toast reads as "something broke".
+ *
+ * ## Unpush lives only on the success screen (v1, ruled)
+ *
+ * There is no Unpush entry point anywhere else in this modal or on the
+ * board. `pushResult.push_id` is the only handle Unpush needs, and it only
+ * exists once a push has actually run in this session.
  */
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import toast from 'react-hot-toast'
 
 import { useApiWithAuth } from '../../hooks/useApiWithAuth'
 import {
+  executeWriteInPush,
   fetchPushPreview,
+  LodgingApiError,
+  unpushWriteIns,
   type PushBuildingReport,
   type PushPreview,
+  type PushResult,
 } from '../../services/lodgingApi'
-import { queryKeys } from '../../utils/queryKeys'
+import { invalidateLodgingRegistryQueries, queryKeys } from '../../utils/queryKeys'
 import { QueryGuard } from '../QueryGuard'
 import { Modal } from '../ui/Modal'
 import { PushDecisionDeck } from './PushDecisionDeck'
 
-/** Which screen the modal is showing. Task 9 builds `'deck'`, Task 10 `'done'`. */
+/** Which screen the modal is showing. */
 export type PushStage = 'report' | 'deck' | 'done'
 
 /**
@@ -122,10 +145,12 @@ function ReportScreen({
   preview,
   onReview,
   onPush,
+  isPushing,
 }: {
   preview: PushPreview
   onReview: () => void
   onPush: () => void
+  isPushing: boolean
 }) {
   if (preview.buildings.length === 0) {
     return (
@@ -166,10 +191,118 @@ function ReportScreen({
             {`Review ${String(decisionCount)} decision${decisionCount === 1 ? '' : 's'} →`}
           </button>
         ) : (
-          <button type="button" className="btn-primary" onClick={onPush}>
-            {`Push ${String(pushCount)} write-in${pushCount === 1 ? '' : 's'}`}
+          <button
+            type="button"
+            className="btn-primary disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={isPushing}
+            onClick={onPush}
+          >
+            {isPushing
+              ? 'Pushing…'
+              : `Push ${String(pushCount)} write-in${pushCount === 1 ? '' : 's'}`}
           </button>
         )}
+      </div>
+    </div>
+  )
+}
+
+type ResultField = 'added' | 'removed' | 'replaced' | 'kept' | 'matched'
+
+/** Reuses the report tiles' semantic colors — added~add, removed~remove,
+ * replaced~conflict (a replace IS a resolved conflict), kept/matched share
+ * the report's neutral "nothing to decide" look. */
+const RESULT_TILE_META: Record<ResultField, { label: string; className: string }> = {
+  added: { label: 'Added', className: TILE_META.add.className },
+  removed: { label: 'Removed', className: TILE_META.remove.className },
+  replaced: { label: 'Replaced', className: TILE_META.conflict.className },
+  kept: { label: 'Kept', className: TILE_META.match.className },
+  matched: { label: 'Matched', className: TILE_META.match.className },
+}
+
+const RESULT_FIELDS: ReadonlyArray<ResultField> = [
+  'added',
+  'removed',
+  'replaced',
+  'kept',
+  'matched',
+]
+
+function ResultTile({ field, value }: { field: ResultField; value: number }) {
+  const meta = RESULT_TILE_META[field]
+  return (
+    <div className={`flex flex-col gap-1 rounded-2xl border-2 p-3 ${meta.className}`}>
+      <span className="text-xs font-bold tracking-wider uppercase opacity-80">{meta.label}</span>
+      <span className="text-xl font-bold tabular-nums">{value}</span>
+    </div>
+  )
+}
+
+function PushSuccessScreen({
+  result,
+  onUnpush,
+  isUnpushing,
+  driftBuildings,
+}: {
+  result: PushResult
+  onUnpush: () => void
+  isUnpushing: boolean
+  driftBuildings: readonly string[] | null
+}) {
+  if (result.no_op) {
+    return (
+      <p className="text-muted-foreground text-sm">
+        Nothing to push — every write-in already matches.
+      </p>
+    )
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+        {RESULT_FIELDS.map((field) => (
+          <ResultTile key={field} field={field} value={result[field]} />
+        ))}
+      </div>
+      <p className="text-muted-foreground text-xs">
+        One event: the push records its adds and removes together, so Unpush deletes what it added
+        and restores what it removed.
+      </p>
+      {driftBuildings !== null && (
+        <p className="text-sm text-red-700 dark:text-red-300">
+          {`These changed since the push — resolve on the board: ${driftBuildings.join(', ')}`}
+        </p>
+      )}
+      <div className="flex justify-end">
+        <button
+          type="button"
+          className="btn-secondary disabled:cursor-not-allowed disabled:opacity-50"
+          disabled={isUnpushing}
+          onClick={onUnpush}
+        >
+          {isUnpushing ? 'Unpushing…' : 'Unpush'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function UnpushSuccessScreen({
+  result,
+  onBackToReport,
+}: {
+  result: { restored: number; deleted: number }
+  onBackToReport: () => void
+}) {
+  return (
+    <div className="flex flex-col gap-4">
+      <p className="text-sm">
+        {`Unpushed — restored ${String(result.restored)}, deleted ${String(result.deleted)}.`}
+      </p>
+      <div className="flex justify-end">
+        <button type="button" className="btn-secondary" onClick={onBackToReport}>
+          Back to report
+        </button>
       </div>
     </div>
   )
@@ -183,11 +316,18 @@ export function PushWriteInsModal({
   onClose,
 }: PushWriteInsModalProps) {
   const { fetchWithAuth } = useApiWithAuth()
+  const queryClient = useQueryClient()
 
   const [stage, setStage] = useState<PushStage>('report')
-  // Task 9's deck is the only writer; Task 8 only declares the shape and
-  // resets it below.
   const [decisions, setDecisions] = useState<Record<string, Decision>>({})
+  const [pushResult, setPushResult] = useState<PushResult | null>(null)
+  const [unpushResult, setUnpushResult] = useState<{ restored: number; deleted: number } | null>(
+    null
+  )
+  const [driftBuildings, setDriftBuildings] = useState<readonly string[] | null>(null)
+  // Set only by the 409-stale recovery path below; cleared on every open and
+  // every push attempt, so it never survives to describe a LATER report.
+  const [staleNotice, setStaleNotice] = useState(false)
 
   // Render-time reset, the same idiom `LodgingBoard`'s own `lastSessionCmId`
   // uses: the modal stays mounted across opens (`ui/Modal`'s exit fade needs
@@ -200,11 +340,16 @@ export function PushWriteInsModal({
     if (isOpen) {
       setStage('report')
       setDecisions({})
+      setPushResult(null)
+      setUnpushResult(null)
+      setDriftBuildings(null)
+      setStaleNotice(false)
     }
   }
 
+  const previewKey = queryKeys.pushPreview(year, sessionCmId, scenario)
   const query = useQuery<PushPreview>({
-    queryKey: queryKeys.pushPreview(year, sessionCmId, scenario),
+    queryKey: previewKey,
     queryFn: () => fetchPushPreview(fetchWithAuth, { year, sessionCmId, scenario }),
     enabled: isOpen,
     // No staleTime tuning beyond this — see the module doc's "digest, not a
@@ -212,12 +357,66 @@ export function PushWriteInsModal({
     refetchOnMount: 'always',
   })
 
-  // Task 10 wires the real `executeWriteInPush` call here, keyed off
-  // `preview.digest`. Task 8 ships the report screen and the button that
-  // reaches it; nothing writes yet.
-  const handlePush = () => {
-    setStage('done')
-  }
+  const pushMutation = useMutation<
+    PushResult,
+    Error,
+    { digest: string; decisions: Record<string, Decision> }
+  >({
+    mutationFn: (vars) =>
+      executeWriteInPush(fetchWithAuth, {
+        year,
+        sessionCmId,
+        scenario,
+        digest: vars.digest,
+        decisions: vars.decisions,
+      }),
+    onSuccess: (result) => {
+      setPushResult(result)
+      setUnpushResult(null)
+      setDriftBuildings(null)
+      setStage('done')
+      invalidateLodgingRegistryQueries(queryClient)
+    },
+    onError: (error) => {
+      // See the module doc's "409 stale is not an error" section.
+      if (
+        error instanceof LodgingApiError &&
+        error.detail !== undefined &&
+        error.detail.reason === 'stale'
+      ) {
+        queryClient.setQueryData(previewKey, error.detail.report)
+        setDecisions({})
+        setStage('report')
+        setStaleNotice(true)
+        return
+      }
+      toast.error(error.message)
+    },
+  })
+
+  const unpushMutation = useMutation<
+    { push_id: string; restored: number; deleted: number },
+    Error,
+    string
+  >({
+    mutationFn: (pushId) => unpushWriteIns(fetchWithAuth, { pushId, year, sessionCmId }),
+    onSuccess: (result) => {
+      setUnpushResult({ restored: result.restored, deleted: result.deleted })
+      setDriftBuildings(null)
+      invalidateLodgingRegistryQueries(queryClient)
+    },
+    onError: (error) => {
+      if (
+        error instanceof LodgingApiError &&
+        error.detail !== undefined &&
+        error.detail.reason === 'drift'
+      ) {
+        setDriftBuildings(error.detail.buildings)
+        return
+      }
+      toast.error(error.message)
+    },
+  })
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Push write-ins" size="2xl">
@@ -229,15 +428,28 @@ export function PushWriteInsModal({
         emptyMessage="This scenario's write-ins already match the live board. Nothing to push."
       >
         {(preview) => {
+          const handlePush = () => {
+            setStaleNotice(false)
+            pushMutation.mutate({ digest: preview.digest, decisions })
+          }
+
           if (stage === 'report') {
             return (
-              <ReportScreen
-                preview={preview}
-                onReview={() => {
-                  setStage('deck')
-                }}
-                onPush={handlePush}
-              />
+              <div className="flex flex-col gap-3">
+                {staleNotice && (
+                  <p className="rounded-xl border-2 border-amber-200 bg-amber-50 p-2 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-200">
+                    The board changed while you were reviewing — here&rsquo;s the fresh comparison.
+                  </p>
+                )}
+                <ReportScreen
+                  preview={preview}
+                  onReview={() => {
+                    setStage('deck')
+                  }}
+                  onPush={handlePush}
+                  isPushing={pushMutation.isPending}
+                />
+              </div>
             )
           }
           if (stage === 'deck') {
@@ -257,16 +469,37 @@ export function PushWriteInsModal({
                   setDecisions((prev) => ({ ...prev, [key]: decision }))
                 }}
                 onPush={handlePush}
-                pushDisabled={deckBuildings.length > decidedCount}
+                pushDisabled={deckBuildings.length > decidedCount || pushMutation.isPending}
               />
             )
           }
-          // Task 10 replaces this with what the push actually did
-          // (`PushResult`).
+
+          // stage === 'done'
+          if (unpushResult !== null) {
+            return (
+              <UnpushSuccessScreen
+                result={unpushResult}
+                onBackToReport={() => {
+                  setPushResult(null)
+                  setUnpushResult(null)
+                  setDriftBuildings(null)
+                  setStage('report')
+                  void query.refetch()
+                }}
+              />
+            )
+          }
+          if (pushResult === null) return null
           return (
-            <div data-testid="push-done-placeholder" className="text-muted-foreground text-sm">
-              Push complete.
-            </div>
+            <PushSuccessScreen
+              result={pushResult}
+              driftBuildings={driftBuildings}
+              isUnpushing={unpushMutation.isPending}
+              onUnpush={() => {
+                if (pushResult.push_id === '') return
+                unpushMutation.mutate(pushResult.push_id)
+              }}
+            />
           )
         }}
       </QueryGuard>

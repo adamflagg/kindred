@@ -1,19 +1,32 @@
 /**
- * The push write-ins modal's shell and report screen (kindred#2477 Task 8).
+ * The push write-ins modal's shell, report screen, and push/unpush
+ * execution (kindred#2477 Tasks 8/10).
  *
- * The deck (stage 'deck', Task 9) and the actual push mutation (Task 10) are
- * NOT exercised here — this file only pins the report screen's four class
- * tiles and the two CTAs that follow from them (`Review N decisions` when
- * there is something to decide, a direct `Push M write-ins` when there is
- * not).
+ * The deck (stage 'deck', Task 9) is not exercised here. This file pins the
+ * report screen's four class tiles and CTAs (Task 8's original describe
+ * block, unchanged below) plus Task 10's push mutation, 409-stale recovery,
+ * and the success screen's Unpush.
+ *
+ * `executeWriteInPush`/`unpushWriteIns` are spied via a partial `vi.mock` of
+ * `services/lodgingApi` (real `fetchPushPreview`, `LodgingApiError`, etc. —
+ * only the two write calls are replaced), and
+ * `invalidateLodgingRegistryQueries` the same way via `utils/queryKeys`, so
+ * the invalidation assertion is a real spy on the real helper the module
+ * doc says to use rather than a hand-rolled key list.
  *
  * Fictional data throughout.
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { PushPreview, PushRowPayload } from '../../services/lodgingApi'
+import {
+  LodgingApiError,
+  type PushPreview,
+  type PushResult,
+  type PushRowPayload,
+} from '../../services/lodgingApi'
 import { PushWriteInsModal } from './PushWriteInsModal'
 
 const mockFetchWithAuth = vi.fn()
@@ -24,6 +37,29 @@ vi.mock('../../hooks/useApiWithAuth', () => ({
     isAuthLoading: false,
   }),
 }))
+
+vi.mock('react-hot-toast', () => ({ default: { success: vi.fn(), error: vi.fn() } }))
+
+const mockExecuteWriteInPush = vi.fn()
+const mockUnpushWriteIns = vi.fn()
+vi.mock('../../services/lodgingApi', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../services/lodgingApi')>()
+  return {
+    ...actual,
+    executeWriteInPush: (...args: unknown[]) => mockExecuteWriteInPush(...args) as unknown,
+    unpushWriteIns: (...args: unknown[]) => mockUnpushWriteIns(...args) as unknown,
+  }
+})
+
+const mockInvalidateLodgingRegistryQueries = vi.fn()
+vi.mock('../../utils/queryKeys', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../utils/queryKeys')>()
+  return {
+    ...actual,
+    invalidateLodgingRegistryQueries: (...args: unknown[]) =>
+      mockInvalidateLodgingRegistryQueries(...args),
+  }
+})
 
 function ok(body: unknown) {
   return { ok: true, status: 200, json: () => Promise.resolve(body) }
@@ -101,7 +137,28 @@ function renderModal(preview: PushPreview) {
 
 beforeEach(() => {
   mockFetchWithAuth.mockReset()
+  mockExecuteWriteInPush.mockReset()
+  mockUnpushWriteIns.mockReset()
+  mockInvalidateLodgingRegistryQueries.mockReset()
 })
+
+/** A decision-free preview — one `add` building, straight to a push button
+ * with no deck detour — so the push-execution tests below aren't also
+ * exercising the deck (Task 9's file covers that). */
+const ADD_ONLY_PREVIEW: PushPreview = {
+  ...PREVIEW,
+  buildings: PREVIEW.buildings.filter((b) => b.cls === 'add'),
+}
+
+const PUSH_RESULT: PushResult = {
+  push_id: 'push_123',
+  added: 1,
+  removed: 0,
+  replaced: 0,
+  kept: 0,
+  matched: 0,
+  no_op: false,
+}
 
 describe('PushWriteInsModal — report screen', () => {
   it('report shows the four class counts and queues only decisions', async () => {
@@ -117,5 +174,86 @@ describe('PushWriteInsModal — report screen', () => {
 
     expect(await screen.findByRole('button', { name: /push 1 write-in/i })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /review/i })).not.toBeInTheDocument()
+  })
+})
+
+describe('PushWriteInsModal — push execution (Task 10)', () => {
+  it('push sends digest + decisions and invalidates on success', async () => {
+    const user = userEvent.setup()
+    mockExecuteWriteInPush.mockResolvedValue(PUSH_RESULT)
+    renderModal(ADD_ONLY_PREVIEW)
+
+    await user.click(await screen.findByRole('button', { name: /push 1 write-in/i }))
+
+    await waitFor(() => {
+      expect(mockExecuteWriteInPush).toHaveBeenCalledTimes(1)
+    })
+    expect(mockExecuteWriteInPush).toHaveBeenCalledWith(mockFetchWithAuth, {
+      year: 2026,
+      sessionCmId: 1309001,
+      scenario: 'scn_1',
+      digest: ADD_ONLY_PREVIEW.digest,
+      decisions: {},
+    })
+    // Success screen — the applied summary.
+    expect(await screen.findByText('Added')).toBeInTheDocument()
+    expect(mockInvalidateLodgingRegistryQueries).toHaveBeenCalledTimes(1)
+  })
+
+  it('a no-op push result renders the matches-already message, not a summary grid', async () => {
+    const user = userEvent.setup()
+    mockExecuteWriteInPush.mockResolvedValue({ ...PUSH_RESULT, push_id: '', added: 0, no_op: true })
+    renderModal(ADD_ONLY_PREVIEW)
+
+    await user.click(await screen.findByRole('button', { name: /push 1 write-in/i }))
+
+    expect(
+      await screen.findByText(/nothing to push.*every write-in already matches/i)
+    ).toBeInTheDocument()
+    expect(screen.queryByText('Added')).not.toBeInTheDocument()
+  })
+
+  it('a 409 stale response re-renders the report, not an error toast', async () => {
+    const user = userEvent.setup()
+    const toastModule = await import('react-hot-toast')
+    const FRESH_PREVIEW: PushPreview = { ...PREVIEW, digest: 'f'.repeat(64) }
+    mockExecuteWriteInPush.mockRejectedValue(
+      new LodgingApiError('Failed to push write-ins (HTTP 409)', 409, {
+        reason: 'stale',
+        report: FRESH_PREVIEW,
+      })
+    )
+    renderModal(ADD_ONLY_PREVIEW)
+
+    await user.click(await screen.findByRole('button', { name: /push 1 write-in/i }))
+
+    // FRESH_PREVIEW carries the full 4-building set (2 decisions needed),
+    // unlike ADD_ONLY_PREVIEW's single add-only building — so the CTA
+    // flipping from "Push 1 write-in" to "Review 2 decisions" is what proves
+    // the rendered report came from the fresh report, not the stale one.
+    expect(await screen.findByRole('button', { name: /review 2 decisions/i })).toBeInTheDocument()
+    expect(screen.getByText(/the board changed while you were reviewing/i)).toBeInTheDocument()
+    expect(toastModule.default.error).not.toHaveBeenCalled()
+  })
+
+  it('success screen offers Unpush and it invalidates too', async () => {
+    const user = userEvent.setup()
+    mockExecuteWriteInPush.mockResolvedValue(PUSH_RESULT)
+    mockUnpushWriteIns.mockResolvedValue({ push_id: PUSH_RESULT.push_id, restored: 1, deleted: 0 })
+    renderModal(ADD_ONLY_PREVIEW)
+
+    await user.click(await screen.findByRole('button', { name: /push 1 write-in/i }))
+    await user.click(await screen.findByRole('button', { name: /unpush/i }))
+
+    await waitFor(() => {
+      expect(mockUnpushWriteIns).toHaveBeenCalledTimes(1)
+    })
+    expect(mockUnpushWriteIns).toHaveBeenCalledWith(mockFetchWithAuth, {
+      pushId: PUSH_RESULT.push_id,
+      year: 2026,
+      sessionCmId: 1309001,
+    })
+    expect(await screen.findByText(/restored 1, deleted 0/i)).toBeInTheDocument()
+    expect(mockInvalidateLodgingRegistryQueries).toHaveBeenCalledTimes(2)
   })
 })

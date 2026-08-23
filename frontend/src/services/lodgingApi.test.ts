@@ -537,19 +537,17 @@ describe('executeWriteInPush', () => {
     // from a caller that forgot the field entirely — sending `{}` explicitly
     // is what tells the server "reviewed, nothing to decide" rather than
     // "the client didn't populate this".
-    const mockFetch = vi
-      .fn()
-      .mockResolvedValue(
-        okResponse({
-          push_id: '',
-          added: 0,
-          removed: 0,
-          replaced: 0,
-          kept: 1,
-          matched: 0,
-          no_op: true,
-        })
-      )
+    const mockFetch = vi.fn().mockResolvedValue(
+      okResponse({
+        push_id: '',
+        added: 0,
+        removed: 0,
+        replaced: 0,
+        kept: 1,
+        matched: 0,
+        no_op: true,
+      })
+    )
 
     await executeWriteInPush(mockFetch, { ...BASE, decisions: {} })
 
