@@ -42,6 +42,15 @@ vi.mock('../../hooks/useUnitMerge', () => ({
   useUnitMerge: () => ({ setCombined: vi.fn(), pendingUnitId: null }),
 }))
 
+// The board now also mounts `PushWriteInsModal` (kindred#2477 Task 8), which
+// calls the real `useApiWithAuth` directly rather than through a wrapped
+// hook. Mocked here for the same reason `useUnitAvailability`/`useUnitMerge`
+// are above: this tree carries no AuthProvider, and the push queue itself is
+// pinned in `PushWriteInsModal.test.tsx` and `LodgingBoard.pushEntry.test.tsx`.
+vi.mock('../../hooks/useApiWithAuth', () => ({
+  useApiWithAuth: () => ({ fetchWithAuth: vi.fn(), isAuthenticated: true, isAuthLoading: false }),
+}))
+
 const setAvailability = vi.fn((_intent: unknown) => Promise.resolve())
 let availabilityOptions: unknown[] = []
 let pendingUnitId = ''

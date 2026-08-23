@@ -38,7 +38,7 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from '@dnd-kit/core'
-import { ChevronDown, ChevronRight, Info } from 'lucide-react'
+import { ChevronDown, ChevronRight, Info, Send, TriangleAlert } from 'lucide-react'
 import { useCallback, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router'
 
@@ -64,9 +64,10 @@ import { FamilyDetailsPanel } from './FamilyDetailsPanel'
 import { FloatingUnplacedBadge } from './FloatingUnplacedBadge'
 import { LodgingUnitCard } from './LodgingUnitCard'
 import { partyKey } from './partyKey'
+import { PushWriteInsModal } from './PushWriteInsModal'
 import { resolvePartyUnit } from './rosterAttention'
 import type { UnitAvailabilityWrite } from './writeIn'
-import { writeInEntries } from './writeIn'
+import { coveringWriteIns, writeInEntries } from './writeIn'
 
 export interface LodgingBoardProps {
   parties: RosterPartyRow[]
@@ -256,6 +257,29 @@ export function LodgingBoard({
     () => board.areas.flatMap((area) => area.slots.map((slot) => slot.unit.code)),
     [board]
   )
+  // The "Push write-ins" toolbar button's badge (kindred#2477 Task 8):
+  // board-wide count of write-in rows a push would compare.
+  //
+  // Summed over DRAWN cards only (`board.areas`, the same set `slotCodes`
+  // above reads), not the raw `units` array — a write-in surfaces on every
+  // unit its space resolves through: `own` on the unit holding the row,
+  // `descendant` on a merged ancestor drawing in its rooms' write-ins,
+  // `ancestor` on a split descendant drawing in its building's write-in. Only
+  // ONE of those levels is ever drawn at a time (`drawnUnits`), so summing
+  // `own` + `descendant` while excluding `ancestor` is what keeps one
+  // underlying row from being counted twice depending on which direction the
+  // tree happens to be walked from.
+  const pushableWriteInCount = useMemo(() => {
+    let count = 0
+    for (const area of board.areas) {
+      for (const slot of area.slots) {
+        for (const cover of coveringWriteIns(slot.unit)) {
+          if ((cover.relation ?? 'own') !== 'ancestor') count += 1
+        }
+      }
+    }
+    return count
+  }, [board])
   const [searchParams, setSearchParams] = useSearchParams()
   /*
    * Which areas are collapsed, read from the query string rather than held in
@@ -280,6 +304,8 @@ export function LodgingBoard({
   const [dragging, setDragging] = useState<RosterPartyRow | null>(null)
   /** The card currently being dragged BY ITS MERGE HANDLE, for grey-out. */
   const [draggingMergeUnit, setDraggingMergeUnit] = useState<LodgingUnitRow | null>(null)
+  /** Whether the write-in push queue's modal is open (kindred#2477 Task 8). */
+  const [pushModalOpen, setPushModalOpen] = useState(false)
 
   // THREE conditions, not two. `sessionCmId` is in there because every write
   // names a weekend, and the prop defaults to 0 for the thirty tests that do
@@ -613,6 +639,75 @@ export function LodgingBoard({
           See its doc for why siblinghood is equivalent to wrapping. */}
       <BoardMorphBoundary slotCodes={slotCodes} unitsByCode={unitsByCode} />
       <div className="flex flex-col gap-3">
+        {/* The write-in push queue's entry point (kindred#2477 Task 8) — a
+            scenario to compare against the live board, AND the permission to
+            act on it. ABSENT rather than disabled outside that: `opacity-40`
+            is this board's vocabulary for a refusal (CLAUDE.md §4), and an
+            affordance with nothing behind it on the mirror or for a
+            read-only viewer is not a refusal to badge that way. */}
+        {scenario !== '' && canManage && (
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={() => {
+                setPushModalOpen(true)
+              }}
+              className="btn-secondary flex items-center gap-1.5"
+            >
+              <Send className="h-4 w-4" />
+              Push write-ins
+              <span className="bg-primary text-primary-foreground rounded-full px-2 py-0.5 text-xs font-semibold tabular-nums">
+                {pushableWriteInCount}
+              </span>
+            </button>
+            <PushWriteInsModal
+              year={year}
+              sessionCmId={sessionCmId}
+              scenario={scenario}
+              isOpen={pushModalOpen}
+              onClose={() => {
+                setPushModalOpen(false)
+              }}
+            />
+          </div>
+        )}
+
+        {/* The mode chip that used to lead this row moved to the header badge,
+            where summer keeps it. The row itself is now conditional: left
+            unconditional it renders empty and still spends the parent's gap. */}
+        {board.flaggedCount > 0 && (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800 dark:bg-amber-950/50 dark:text-amber-300">
+              <TriangleAlert className="h-3.5 w-3.5 flex-shrink-0" />
+              {board.flaggedCount === 1
+                ? '1 shared cabin needs a look'
+                : `${String(board.flaggedCount)} shared cabins need a look`}
+            </span>
+          </div>
+        )}
+
+        {/* The rule behind the amber, stated where the amber is.
+
+            HANDOFF §4 deferred two consent questions to this PR: does a NAMED
+            partner satisfy "mutual", and does a blank share gate count as
+            consent? The code had already answered both — `named` does not
+            flag, silence does — and this is the half that was missing. Once
+            staff can create a shared cabin by dragging, a flag whose rule is
+            invisible is one they have to infer from behaviour, and inferring
+            it wrongly in the permissive direction is the failure this whole
+            surface exists to prevent.
+
+            Rendered only alongside a flag, so it is an explanation rather
+            than a lecture on a clean board. */}
+        {board.flaggedCount > 0 && (
+          <p data-testid="consent-rule" className="text-muted-foreground text-xs">
+            A shared cabin is flagged when someone in it did not request sharing, hasn&rsquo;t
+            answered the cabin form, or gave two answers that disagree. A named partner is{' '}
+            <strong className="font-semibold">not checked for mutual agreement</strong> — open the
+            family to see who they asked for.
+          </p>
+        )}
+
         <div className="card-lodge overflow-hidden">
           <div className="flex flex-col gap-5 p-3">
             {board.areas.length === 0 ? (

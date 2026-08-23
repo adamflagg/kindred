@@ -56,6 +56,15 @@ vi.mock('../../hooks/useUnitMerge', () => ({
   },
 }))
 
+// The board now also mounts `PushWriteInsModal` (kindred#2477 Task 8), which
+// calls the real `useApiWithAuth` directly rather than through a wrapped
+// hook. Mocked here for the same reason the hooks above are: this tree
+// carries no AuthProvider, and the push queue itself is pinned in
+// `PushWriteInsModal.test.tsx` and `LodgingBoard.pushEntry.test.tsx`.
+vi.mock('../../hooks/useApiWithAuth', () => ({
+  useApiWithAuth: () => ({ fetchWithAuth: vi.fn(), isAuthenticated: true, isAuthLoading: false }),
+}))
+
 /** The last `onDragEnd`/`onDragStart`/`onDragCancel` the board handed to DndContext. */
 let onDragEnd: ((event: unknown) => void) | undefined
 let onDragStart: ((event: unknown) => void) | undefined

@@ -62,6 +62,14 @@ vi.mock('../../hooks/useUnitMerge', () => ({
   useUnitMerge: () => ({ setCombined: vi.fn(), pendingUnitId: null }),
 }))
 
+// Same reason again: the board now also mounts `PushWriteInsModal`
+// (kindred#2477 Task 8), which calls the real `useApiWithAuth` directly
+// rather than through a wrapped hook. The push queue itself is pinned in
+// `PushWriteInsModal.test.tsx` and `LodgingBoard.pushEntry.test.tsx`.
+vi.mock('../../hooks/useApiWithAuth', () => ({
+  useApiWithAuth: () => ({ fetchWithAuth: vi.fn(), isAuthenticated: true, isAuthLoading: false }),
+}))
+
 /** The last `onDragEnd` the board handed to DndContext. */
 let onDragEnd: ((event: unknown) => void) | undefined
 /** Its `onDragCancel` sibling — Escape, resize, tab-hide mid-drag. */
