@@ -119,8 +119,8 @@ class TestIsFamilyAvailable:
         came out of `dragPlacement.ts` with it. The stats bar has disagreed
         with the board it sits above ever since.
 
-        Ridge A sleeps 15. Two people written in leaves thirteen, and the board
-        will accept a family in them.
+        A fifteen-bed cabin. Two people written in leaves thirteen, and the
+        board will accept a family in them.
         """
         assert is_family_available("family_pool", None, free=13) is True
 
@@ -143,7 +143,8 @@ class TestEffectiveBathroom:
         assert effective_bathroom("private", "", frozenset(), frozenset({"hc-upstairs-5"})) == "private"
 
     def test_full_group_merge_upgrades_shared_to_private(self) -> None:
-        """merge{Tioga 1, Tioga 2} covers the whole gt-tioga-12 group."""
+        """Merging both members of a two-room bathroom group upgrades the
+        group's shared bathroom to private."""
         assert (
             effective_bathroom(
                 "shared",
@@ -155,7 +156,8 @@ class TestEffectiveBathroom:
         )
 
     def test_partial_group_merge_stays_shared(self) -> None:
-        """merge{Upstairs 1, Upstairs 2} leaves 3 members of hc-upstairs-hall out."""
+        """Merging two of a five-room bathroom group's members leaves the
+        other three out, so the group stays shared."""
         assert (
             effective_bathroom(
                 "shared",
@@ -657,8 +659,8 @@ class TestWriteInDemand:
         assert write_in_demand(15, loads) == WriteInDemand(consumed=15, sized=0, known=False)
 
     def test_descendants_consume_their_own_capacity_not_the_card_s(self) -> None:
-        """gt-clouds-rest: a combined house whose four rooms are each written
-        into. Each room contributes ITS beds, not the house's."""
+        """A combined house whose four rooms are each written into. Each room
+        contributes ITS beds, not the house's."""
         loads = [
             WriteInLoad("descendant", None, 3),
             WriteInLoad("descendant", None, 1),
@@ -681,7 +683,7 @@ class TestWriteInDemand:
         assert write_in_demand(8, loads) == WriteInDemand(consumed=7, sized=2, known=False)
 
     def test_an_ancestor_takes_the_whole_card_and_contributes_no_sized_people(self) -> None:
-        """Wawona written into whole, then split. Each room is inside a house
+        """A house written into whole, then split. Each room is inside a house
         somebody has taken, so neither is separately lettable -- but the
         house's size is a fact about the HOUSE, and printing it on both rooms
         would spend one two-person party twice on one screen.
@@ -773,7 +775,7 @@ class TestFreeFamilyBeds:
         assert free_family_beds(None, [WriteInLoad("own", 2, None)]) == 0
 
     def test_a_sized_write_in_leaves_the_remainder(self) -> None:
-        """Ridge A sleeps 15; two people written in leaves thirteen. Since
+        """A fifteen-bed cabin; two people written in leaves thirteen. Since
         kindred#2432 the board will accept a family there, so the bar must
         agree with it."""
         assert free_family_beds(15, [WriteInLoad("own", 2, 15)]) == 13

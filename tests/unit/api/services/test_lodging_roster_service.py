@@ -82,8 +82,9 @@ def _unit(
     # exists to undo -- so the fixture default is the blank string, exactly as
     # 104 of the 118 production rows are.
     has_ramp: str = "",
-    # False builds the default RIDGE area (honouring `area_sort_order`); True
-    # resolves the expanded `area` relation to None -- the missing-area case.
+    # False builds the fixture's default area (honouring `area_sort_order`);
+    # True resolves the expanded `area` relation to None -- the missing-area
+    # case.
     area_missing: bool = False,
     area_sort_order: int = 1,
 ) -> SimpleNamespace:
@@ -1539,9 +1540,10 @@ class TestCountsFollowTheDrawLevel:
 
     @pytest.mark.asyncio
     async def test_a_combined_container_with_no_own_figure_still_totals_its_measured_rooms(self) -> None:
-        """The inverse of the Doctor's House case: no common-space furniture
-        was ever recorded for this house, and that is a real zero, not a
-        missing measurement (kindred#2041) -- 14 of 15 production containers
+        """The inverse of the case where a container's own figure already
+        includes measured common-space furniture: none was ever recorded for
+        this house, and that is a real zero, not a missing measurement
+        (kindred#2041) -- 14 of 15 production containers
         are in exactly this state. The card drawn still totals what its
         rooms report: 0 + 2 + 2 = 4, and the total is KNOWN.
         """
@@ -1922,7 +1924,7 @@ class TestSlotMergeTiers:
     async def test_full_bathroom_group_merge_is_not_assumed_for_a_lone_unit(self) -> None:
         """A unit is evaluated as its own one-element slot in slice 1.
 
-        Tioga 1 alone does not get the whole group's bathroom, so it stays
+        One room alone does not get the whole group's bathroom, so it stays
         shared. Only merging every member of the group upgrades it.
         """
         repo = _repo(
@@ -2103,7 +2105,7 @@ class TestPartyEffectiveBathroom:
     @pytest.mark.asyncio
     async def test_whole_container_let_covering_its_bathroom_group_is_private(self) -> None:
         """A party placed on the CONTAINER id alone -- staff booked the whole
-        Doctor's House rather than naming its two bedrooms. The container's
+        container rather than naming its two bedrooms. The container's
         own row is bathroom="none" (a building is not a room), so without
         inheritance from its leaves this reads as no bathroom at all -- the
         "container whole-let" gap #2022's re-measurement widened the issue
@@ -2760,8 +2762,9 @@ class TestScenarioResolution:
         by_code = {u.code: u for u in scoped.units}
         assert by_code["ridge-a"].family_available_override is False
         assert by_code["ridge-a"].reason == "Burst pipe"
-        # No row for ridge-b: absence means "ask the unit's role", which is not
-        # the same answer as a stored False and must not be flattened into one.
+        # No row for the second unit: absence means "ask the unit's role", which
+        # is not the same answer as a stored False and must not be flattened
+        # into one.
         assert by_code["ridge-b"].family_available_override is None
 
 
@@ -4492,7 +4495,8 @@ class TestUnitPowerCoverage:
 
     @pytest.mark.asyncio
     async def test_it_resolves_to_leaves_at_any_depth_never_direct_children(self) -> None:
-        """The `hc-health-center` shape, which is why one level is not enough.
+        """The three-level container shape below, which is why one level is not
+        enough.
 
         The building's two direct children are themselves containers recording
         no power, and every leaf beneath THEM has power. A one-level walk
@@ -5927,7 +5931,7 @@ class TestWriteInCovers:
 def _clouds_rest_units() -> list[SimpleNamespace]:
     """A combined container whose four rooms are the only measured space.
 
-    The production shape kindred#2503 was found on: `gt-clouds-rest` carries no
+    The production shape kindred#2503 was found on: the container carries no
     `sleeps` of its own (a container's own figure is a DELTA over its rooms),
     its four rooms sleep 3 + 1 + 2 + 2, and it draws as ONE card because it is
     combined. Fictional occupant names throughout; the registry codes are not
@@ -5975,7 +5979,7 @@ class TestFamilyAvailabilityIsResolvedOverTheTree:
     """
 
     def test_a_fully_covered_combined_house_is_not_a_family_space(self) -> None:
-        """gt-clouds-rest: a combined container whose four rooms each carry a
+        """The house built below: a combined container whose four rooms each carry a
         write-in and which carries none itself.
 
         The card has always drawn the write-in badge and all four occupants --
@@ -6082,7 +6086,7 @@ class TestFamilyAvailabilityIsResolvedOverTheTree:
 
     def test_a_sized_write_in_never_reopens_a_role_closed_unit(self) -> None:
         """A size answers "how many beds are left", never "is this family
-        inventory". Ridge A is closed by its ROLE row and holds a two-person
+        inventory". The cabin is closed by its ROLE row and holds a two-person
         write-in in five beds: three beds are free and the cabin is still shut.
         """
         unit = _summary("ridge-a", sleeps=5, family_available_override=False, party_size=2)
@@ -6490,7 +6494,7 @@ class TestWriteInsResolveFromTheirOwnTable:
 
         counts = summary.weekends[0].counts
         assert counts.units_family_available == 1
-        # The written-into cabin's five beds are NOT on offer; only Ridge B's.
+        # The written-into cabin's five beds are NOT on offer; only the other unit's.
         assert counts.beds_family_available == 4
         assert counts == roster.counts
 
@@ -6951,7 +6955,7 @@ class TestAScenariosWriteInsReplaceTheLiveOnes:
 
         counts = summary.weekends[0].counts
         assert counts.units_family_available == 1
-        # The written-into cabin's five beds are NOT on offer; only Ridge B's.
+        # The written-into cabin's five beds are NOT on offer; only the other unit's.
         assert counts.beds_family_available == 4
         assert counts == roster.counts
 

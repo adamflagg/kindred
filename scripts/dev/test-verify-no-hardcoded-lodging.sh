@@ -31,7 +31,7 @@ fi
 REPO_ROOT=$(git rev-parse --show-toplevel)
 
 # Probe paths deliberately avoid the guard's own test-file exclusions (see
-# header above) and sit directly under two of the four scanned trees
+# header above) and sit directly under two of the six scanned trees
 # (pocketbase/pb_hooks -- application JS -- and api -- Python).
 JS_PROBE="$REPO_ROOT/pocketbase/pb_hooks/leak_probe_kindred1869.js"
 PY_PROBE="$REPO_ROOT/api/leak_probe_kindred1869.py"
@@ -694,6 +694,71 @@ if [[ $rc -eq 1 ]] && grep -q "api/leak_probe_kindred2512_lower.py:1:" <<<"$OUT"
   echo "PASS: a lowercase needle in a comment is caught"
 else
   echo "FAIL: expected exit 1 naming the lowercase probe, got $rc" >&2
+  echo "$OUT" >&2
+  exit 1
+fi
+
+echo
+echo "=== TEST 23: a needle in a COMMENT under tests/ must fail (kindred#2515) ==="
+# kindred#2515: SCAN_ROOTS never included tests/, so nothing under the pytest
+# tree was ever checked, in either column -- 17 real comment hits across two
+# files sat there while this guard reported OK. This asserts the widening: a
+# comment probe under tests/ must be caught with NO env override, the same way
+# TEST 8 asserts scripts/ is a default root rather than an opt-in one.
+TESTS_DIR_COMMENT_PROBE="$REPO_ROOT/tests/leak_probe_kindred2515.py"
+cleanup20() { rm -f "$TESTS_DIR_COMMENT_PROBE"; }
+trap 'cleanup20; cleanup19; cleanup18; cleanup17; cleanup16; cleanup15; cleanup14; cleanup13; cleanup12; cleanup11; cleanup10; cleanup9; cleanup8; cleanup7; cleanup6; cleanup5; cleanup4; cleanup3; cleanup' EXIT INT TERM
+echo '# Regression comment naming Manzanita to explain a fixture below.' > "$TESTS_DIR_COMMENT_PROBE"
+set +e
+OUT=$("$GUARD_SCRIPT" 2>&1)
+rc=$?
+set -e
+rm -f "$TESTS_DIR_COMMENT_PROBE"
+if [[ $rc -eq 1 ]] && grep -q "tests/leak_probe_kindred2515.py:1:" <<<"$OUT"; then
+  echo "PASS: a needle in a tests/ comment is caught with no env override"
+else
+  echo "FAIL: expected exit 1 naming the tests/ comment probe, got $rc" >&2
+  echo "$OUT" >&2
+  exit 1
+fi
+
+echo
+echo "=== TEST 24: under tests/, a COMMENT needle fails while FIXTURE CODE stays exempt ==="
+# The mirror of TEST 23, and why kindred#2515 chose Option A over exempting
+# tests/ wholesale: the existing test-file rule (TEST 11, TEST 19 for other
+# roots) applies here unchanged -- a real unit name as fixture DATA is
+# legitimate under tests/ exactly as it is under frontend/src/** or
+# pocketbase/, so widening SCAN_ROOTS must not also start failing fixtures.
+TESTS_DIR_CODE_PROBE="$REPO_ROOT/tests/leak_probe_kindred2515_code.py"
+cleanup21() { rm -f "$TESTS_DIR_CODE_PROBE"; }
+trap 'cleanup21; cleanup20; cleanup19; cleanup18; cleanup17; cleanup16; cleanup15; cleanup14; cleanup13; cleanup12; cleanup11; cleanup10; cleanup9; cleanup8; cleanup7; cleanup6; cleanup5; cleanup4; cleanup3; cleanup' EXIT INT TERM
+# ONE probe carrying BOTH columns, not two probes carrying one each. An exit-0
+# assertion over a code-only probe is an absence proof: it passes identically
+# when tests/ is not scanned at all, so on its own it cannot tell "fixture code
+# is exempt" from "this file was never read". Pairing the two columns in a
+# single file forces the guard to exit 1 -- proving the file WAS scanned -- and
+# then asserting the report names only the comment line proves the code line
+# was seen and deliberately exempted. TEST 23 pins the same directory is
+# scanned; this pins the split within it.
+cat > "$TESTS_DIR_CODE_PROBE" <<'PROBE'
+UNIT = "Manzanita 3"
+# Manzanita 3
+PROBE
+set +e
+OUT=$("$GUARD_SCRIPT" 2>&1)
+rc=$?
+set -e
+rm -f "$TESTS_DIR_CODE_PROBE"
+if [[ $rc -ne 1 ]]; then
+  echo "FAIL: expected exit 1 (the comment line must fail) for the mixed probe under tests/, got $rc" >&2
+  echo "$OUT" >&2
+  exit 1
+fi
+probe_lines=$(echo "$OUT" | grep -c "leak_probe_kindred2515_code.py" || true)
+if [[ $probe_lines -eq 1 ]] && echo "$OUT" | grep -q "leak_probe_kindred2515_code.py:2"; then
+  echo "PASS: under tests/, the comment line fails and the fixture-code line stays exempt"
+else
+  echo "FAIL: expected exactly one reported line, the COMMENT at :2; got $probe_lines line(s)" >&2
   echo "$OUT" >&2
   exit 1
 fi
