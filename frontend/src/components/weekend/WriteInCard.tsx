@@ -103,9 +103,9 @@
  * row updates it rather than duplicating it.
  */
 import { Pencil } from 'lucide-react'
-import { useRef, useState } from 'react'
+import { useState } from 'react'
 
-import { writeInOccupantLabel, type WriteInOccupant } from './writeIn'
+import { PARTY_SIZE_CHOICES, writeInOccupantLabel, type WriteInOccupant } from './writeIn'
 
 /** `FamilyCard`'s `CARD_FRAME`, verbatim. Pinned by this module's test. */
 export const WRITE_IN_FRAME =
@@ -166,49 +166,17 @@ export function WriteInCard({ occupant, onRemove, onEdit, isSaving = false }: Wr
   const [draftNote, setDraftNote] = useState(occupant.note)
   // Seeded as a STRING, matching `AssignFamilyModal`'s `people` state — empty
   // when `occupant.partySize` is `null`, otherwise the count printed as text.
-  // See the parse gate below the form for why the state is the string the
-  // field displays rather than the number it means.
+  // A STRING because that is what a `<select>` value is, and `''` is the blank
+  // option; `draftPartySize` below turns it back into the number it means.
   const [draftPeople, setDraftPeople] = useState(
     occupant.partySize === null ? '' : String(occupant.partySize)
   )
-  /*
-   * kindred#2540 fix-round BLOCKER 4, mirroring `AssignFamilyModal`'s own
-   * `peopleBadInput` exactly — the two forms must behave identically.
-   * `<input type="number">` sanitises unparseable text to `''` before this
-   * component ever sees it, so typing `abc` makes `draftPeople === ''` —
-   * indistinguishable, by the string alone, from a field genuinely left
-   * blank. `validity.badInput` is the one signal that survives the
-   * sanitisation: true for text the field could not parse, false for a
-   * field that is simply empty. Read at the point of the event, not derived
-   * from the current string.
-   *
-   * ⚠️ THIS STATE ALONE DOES NOT CLOSE THE BUG (validation-fix review,
-   * finding "half-closed" — mirrored from `AssignFamilyModal.tsx`, and the
-   * two must keep agreeing). `setPeopleBadInput` fires only from `onChange`,
-   * and React suppresses `onChange` whenever the DOM value string does not
-   * change — a number input's `.value` IDL is `''` for ANY unparseable text.
-   * Every production write-in row is unsized, so a pencil edit opens with a
-   * blank People field on every reachable row: typing bad input straight
-   * into it never fires `onChange` at all, this state never updates, and
-   * Save reads `peopleValid` as true on a value that was never accepted.
-   *
-   * It still does useful work — disabling Save the instant a REAL value
-   * change (a prior good count going bad) is caught, and pinned by the two
-   * tests below that predate this comment — so it stays, as Save's
-   * best-effort UI signal. `trySubmit`, below, is what actually enforces the
-   * rule: it re-reads `validity.badInput` fresh off `peopleFieldRef` at the
-   * moment of a real submit attempt, live DOM state rather than anything
-   * `onChange` had to have told it about.
-   */
-  const [peopleBadInput, setPeopleBadInput] = useState(false)
-  const peopleFieldRef = useRef<HTMLInputElement>(null)
   const [wantsName, setWantsName] = useState(false)
 
   const openEdit = () => {
     setDraftName(occupant.name)
     setDraftNote(occupant.note)
     setDraftPeople(occupant.partySize === null ? '' : String(occupant.partySize))
-    setPeopleBadInput(false)
     setWantsName(false)
     setIsEditing(true)
   }
@@ -221,17 +189,14 @@ export function WriteInCard({ occupant, onRemove, onEdit, isSaving = false }: Wr
   // 2026-08-21): blank is a complete answer meaning the write-in takes the
   // room wholesale, and Save is not gated on it.
   //
-  // ⚠️ `Number(...)`, NOT `Number.parseInt(...)` — Task 9 shipped `parseInt`
-  // in this same shape and it silently saved `1` for a typed `1.5` and `1`
-  // for `1e3`, both forbidden by the owner ruling that a value must save
-  // correctly or refuse, never save as something else. `Number('1.5')` is
-  // `1.5`, caught by `Number.isInteger` below; `Number('1e3')` is `1000`,
-  // read correctly rather than truncated to `1`.
-  const parsedPeople = Number(draftPeople)
-  const draftPartySize = draftPeople.trim() === '' ? null : parsedPeople
-  const peopleCountValid =
-    draftPartySize === null || (Number.isInteger(draftPartySize) && draftPartySize >= 1)
-  const peopleValid = !peopleBadInput && peopleCountValid
+  // TOTAL, with no parse to fail (owner ruling 2026-08-23). `draftPeople` is a
+  // `<select>` value, so it is either `''` or one of `PARTY_SIZE_CHOICES`
+  // rendered by `String(...)` -- `Number(...)` cannot return `NaN` here, and
+  // the `Number.isInteger` / `>= 1` / `validity.badInput` checks that used to
+  // stand around it are gone WITH the number input rather than relaxed
+  // against it. See `PARTY_SIZE_CHOICES` in `writeIn.ts` for why the control
+  // changed and what it makes unreachable.
+  const draftPartySize = draftPeople === '' ? null : Number(draftPeople)
 
   // Shared by the form's own `onSubmit` (Save, or Enter from Occupant/Note)
   // and the People field's `onKeyDown` below. `fireEvent.keyDown` in jsdom
@@ -255,20 +220,6 @@ export function WriteInCard({ occupant, onRemove, onEdit, isSaving = false }: Wr
       setWantsName(true)
       return
     }
-    // A count that does not parse REFUSES the whole save, the same way an
-    // empty name does — never saved as something else (owner ruling
-    // 2026-08-21). Blank is not this: `peopleCountValid` is true for it by
-    // construction, since `draftPartySize` is already `null`.
-    //
-    // ⚠️ THE LIVE RE-READ, NOT `peopleBadInput`, IS WHAT MAKES THIS CORRECT —
-    // see the state's own doc above, and `AssignFamilyModal.tsx`'s `writeIn`,
-    // which this mirrors exactly. `peopleBadInput` can be stale in EITHER
-    // direction: never set (an already-blank field, bad input typed), or
-    // stuck set (bad input, then cleared back to blank without the string
-    // ever changing). Reading `validity.badInput` here, at the moment of an
-    // actual submit attempt, answers what the field holds RIGHT NOW.
-    const badInputNow = peopleFieldRef.current?.validity.badInput ?? false
-    if (badInputNow || !peopleCountValid) return
     onEdit?.({ occupantName: trimmedName, reason: draftNote.trim(), partySize: draftPartySize })
     closeEdit()
   }
@@ -304,50 +255,57 @@ export function WriteInCard({ occupant, onRemove, onEdit, isSaving = false }: Wr
             }}
             className="border-border bg-background text-foreground placeholder:text-muted-foreground/60 focus:border-primary/50 focus:ring-primary/10 w-full rounded-md border px-1.5 py-1 text-sm focus:ring-2 focus:outline-none aria-[invalid=true]:border-amber-500"
           />
-          {/* kindred#2503's `People` field, STACKED above Note — the same
-              order the Assign modal's write-in form uses. OPTIONAL exactly as
-              there (owner ruling 2026-08-21): blank means the write-in takes
-              the room wholesale, and Save is not gated on it. */}
-          <input
-            type="number"
-            ref={peopleFieldRef}
-            min={1}
-            step={1}
-            inputMode="numeric"
-            aria-label="People"
-            placeholder="How many"
-            value={draftPeople}
-            disabled={isSaving}
-            onChange={(event) => {
-              setDraftPeople(event.target.value)
-              // See the `peopleBadInput` docstring above the state
-              // declaration -- this is the only point the real signal exists
-              // at.
-              setPeopleBadInput(event.target.validity.badInput)
-            }}
-            onKeyDown={(event) => {
-              // ↵ SAVES FROM A FIELD (weekend-card-vocabulary.md §6). Native
-              // form submission on Enter is not reliable under
-              // `fireEvent.keyDown` in jsdom, so this calls the same
-              // `trySubmit` the form's `onSubmit` calls, rather than relying
-              // on the surrounding `<form>` alone.
-              if (event.key !== 'Enter') return
-              event.preventDefault()
-              trySubmit()
-            }}
-            className="border-border bg-background text-foreground placeholder:text-muted-foreground/60 focus:border-primary/50 focus:ring-primary/10 w-full rounded-md border px-1.5 py-1 text-sm focus:ring-2 focus:outline-none"
-          />
-          <input
-            type="text"
-            aria-label="Note (optional)"
-            placeholder="Note (optional) — back Monday…"
-            value={draftNote}
-            maxLength={500}
-            onChange={(event) => {
-              setDraftNote(event.target.value)
-            }}
-            className="border-border bg-background text-foreground placeholder:text-muted-foreground/60 focus:border-primary/50 focus:ring-primary/10 w-full rounded-md border px-1.5 py-1 text-sm focus:ring-2 focus:outline-none"
-          />
+          {/* ONE ROW, People then Note (owner ruling 2026-08-23), mirroring
+              `AssignFamilyModal`'s write-in form exactly -- same control, same
+              order, same list. OPTIONAL exactly as there (owner ruling
+              2026-08-21): blank means the write-in takes the room wholesale,
+              and Save is not gated on it.
+
+              NO VISIBLE LABELS, unlike the modal: this form is a compact card
+              in a board slot, and the two controls carry `aria-label` as test
+              handles the way the occupant field above them already does
+              (frontend/CLAUDE.md -- that is test infrastructure here, not an
+              accessibility affordance). The select's blank option reads as the
+              same em dash the card draws for an unsized write-in. */}
+          <div data-testid="write-in-edit-fields" className="flex items-center gap-1.5">
+            <select
+              aria-label="People"
+              value={draftPeople}
+              disabled={isSaving}
+              onChange={(event) => {
+                setDraftPeople(event.target.value)
+              }}
+              onKeyDown={(event) => {
+                // ↵ SAVES FROM A FIELD (weekend-card-vocabulary.md §6). Native
+                // form submission on Enter is not reliable under
+                // `fireEvent.keyDown` in jsdom, so this calls the same
+                // `trySubmit` the form's `onSubmit` calls, rather than relying
+                // on the surrounding `<form>` alone.
+                if (event.key !== 'Enter') return
+                event.preventDefault()
+                trySubmit()
+              }}
+              className="border-border bg-background text-foreground focus:border-primary/50 focus:ring-primary/10 w-[4.25rem] shrink-0 rounded-md border px-1.5 py-1 text-sm focus:ring-2 focus:outline-none"
+            >
+              <option value="">—</option>
+              {PARTY_SIZE_CHOICES.map((count) => (
+                <option key={count} value={String(count)}>
+                  {count}
+                </option>
+              ))}
+            </select>
+            <input
+              type="text"
+              aria-label="Note (optional)"
+              placeholder="Note (optional) — back Monday…"
+              value={draftNote}
+              maxLength={500}
+              onChange={(event) => {
+                setDraftNote(event.target.value)
+              }}
+              className="border-border bg-background text-foreground placeholder:text-muted-foreground/60 focus:border-primary/50 focus:ring-primary/10 min-w-0 flex-1 rounded-md border px-1.5 py-1 text-sm focus:ring-2 focus:outline-none"
+            />
+          </div>
           {wantsName && draftName.trim() === '' && (
             <span className="text-xs font-medium text-amber-700 dark:text-amber-400">
               Say who is in it, so next week’s staff know who to ask.
@@ -356,7 +314,7 @@ export function WriteInCard({ occupant, onRemove, onEdit, isSaving = false }: Wr
           <div className="flex items-center gap-1.5">
             <button
               type="submit"
-              disabled={isSaving || !peopleValid}
+              disabled={isSaving}
               className="bg-primary text-primary-foreground rounded-md px-2 py-0.5 text-xs font-medium disabled:opacity-40"
             >
               Save

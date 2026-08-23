@@ -382,3 +382,34 @@ export function writeInDemand(
   }
   return { consumed: Math.min(consumed, capacity), sized, known }
 }
+
+/**
+ * The counts the `People` control offers — blank, then these.
+ *
+ * ONE LIST, TWO SURFACES: the Assign modal's write-in form and `WriteInCard`'s
+ * pencil both import it, for the same reason `writeInDemand` is imported rather
+ * than re-derived. Two lists are two answers to "what can a write-in be for".
+ *
+ * ⚠️ A CONTROL THAT CANNOT EXPRESS A BAD VALUE, replacing one that had to
+ * refuse them (owner ruling 2026-08-23). `<input type="number">` sanitises
+ * anything unparseable to `''` before React sees it, making `abc`
+ * indistinguishable from an untouched field; the only surviving signal,
+ * `validity.badInput`, reaches nothing because React suppresses `onChange`
+ * whenever the value string does not change — which is every keystroke into an
+ * already-blank field, and blank is how the control opens. A `<select>` cannot
+ * emit a value that is not an option, so `0`, fractions, exponent notation and
+ * unparseable text are not refused: they cannot be expressed.
+ *
+ * BOUND 20, NOT THE UNIT'S CAPACITY, and both halves are deliberate.
+ * Measured against the registry: the largest unit sleeps 19, so 20 covers
+ * every real cabin; and 15 of 118 units record no capacity at all, so a
+ * capacity-derived list would collapse to blank-only on exactly the units
+ * where writing a headcount down matters most.
+ *
+ * It also keeps OVER-CAPACITY reachable, which is an acceptance criterion of
+ * kindred#2503 rather than an oversight: six people written into a four-bed
+ * room is what the card's red figure exists to show, and `sized` is left
+ * uncapped through the whole rule so it can. A list stopping at the room's own
+ * capacity would make that state unenterable and quietly retire the red.
+ */
+export const PARTY_SIZE_CHOICES: readonly number[] = Array.from({ length: 20 }, (_, i) => i + 1)

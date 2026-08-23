@@ -1049,7 +1049,13 @@ describe('AssignFamilyModal — W3, one live box and only the region below it sw
     const user = userEvent.setup()
     renderModal()
     await user.type(searchBox(), 'Burst pipe')
-    expect(screen.queryAllByRole('option')).toHaveLength(0)
+    // THE LISTBOX IS GONE, asserted directly rather than as "no `option`
+    // roles anywhere" (kindred#2540). The People control is a native
+    // `<select>` since 2026-08-23 and its `<option>` elements carry the same
+    // implicit role as the candidate rows, so a document-wide `option` count
+    // now answers a different question than this test is asking. The listbox
+    // is the candidate list itself, which is the thing that swapped away.
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
     expect(screen.getByTestId('write-in-region')).toBeInTheDocument()
     // The sentence explaining the swap sits OUTSIDE the region that swapped —
     // it is fixed furniture, alongside the input and the footer. Inside, it
@@ -1249,14 +1255,63 @@ describe('AssignFamilyModal — Enter saves from a FIELD, never from the search 
 })
 
 describe('AssignFamilyModal — the People field, kindred#2503', () => {
-  it('sits above Note, in the slot the layout reserved for it', () => {
+  /**
+   * ⚠️ A SELECT, NOT A NUMBER INPUT (owner ruling 2026-08-23), and the change
+   * is what makes a whole class of bug unreachable rather than guarded.
+   *
+   * `<input type="number">` sanitises anything it cannot parse to `''` BEFORE
+   * React sees it, so `abc` and "nobody typed anything" are the same string.
+   * The only signal that survived was `validity.badInput`, and React suppresses
+   * `onChange` whenever the value string does not change — which is every
+   * keystroke into an already-blank field, the field's own starting state. The
+   * button read valid, the click did nothing, and the staff member saw typed
+   * text sitting in a field that would not save.
+   *
+   * A select cannot emit a value that is not one of its options. `0`,
+   * fractions, `1e3` and unparseable text are not refused — they cannot be
+   * expressed. The tests that pinned each refusal are gone with the mechanism
+   * they described; what replaces them is the options list below, which is the
+   * single fact all of those cases now follow from.
+   */
+  it('draws People and Note on ONE row, People first', () => {
     renderModal()
     fireEvent.change(searchBox(), { target: { value: 'Burst pipe' } })
-    const region = screen.getByTestId('write-in-region')
+    const row = screen.getByTestId('write-in-fields')
+    // ONE ROW is the structural claim: both labels are children of the SAME
+    // flex container, which is what puts them on a line. Read that way rather
+    // than off computed style -- jsdom does not apply Tailwind, so
+    // `getComputedStyle(row).display` would answer `block` however the page
+    // actually renders.
+    const labels = Array.from(row.querySelectorAll('label'))
+    expect(labels).toHaveLength(2)
+    expect(row.className).toContain('flex')
     // `querySelectorAll` walks in document order, so this is a direct read of
-    // which field the region draws first.
-    const labels = Array.from(region.querySelectorAll('label')).map((el) => el.textContent)
-    expect(labels).toEqual(['People', 'Note'])
+    // which field the row draws first. Matched by the CONTROL each label owns,
+    // not by `textContent` -- the People label wraps a `<select>`, so its text
+    // content is the word followed by all 21 option labels.
+    expect(labels[0]).toContainElement(screen.getByLabelText('People'))
+    expect(labels[1]).toContainElement(screen.getByLabelText('Note'))
+  })
+
+  it('offers a blank and the integers 1 to 20, and nothing else', () => {
+    // THE BOUND IS 20 (owner ruling 2026-08-23) and it is not derived from the
+    // unit's capacity, deliberately. Two reasons, both measured against the
+    // registry: the largest unit sleeps 19, so 20 covers every real cabin; and
+    // 15 of 118 units record no capacity at all, so a capacity-derived list
+    // would collapse to blank-only on exactly the units where writing a
+    // headcount down matters most.
+    //
+    // IT ALSO KEEPS OVER-CAPACITY REACHABLE, which is an acceptance criterion
+    // of kindred#2503 rather than an accident: six people written into a
+    // four-bed room is what the card's red figure exists to show. A list
+    // stopping at the room's own capacity would make that state unenterable
+    // and quietly retire the red.
+    renderModal()
+    fireEvent.change(searchBox(), { target: { value: 'Burst pipe' } })
+    const options = Array.from(screen.getByLabelText('People').querySelectorAll('option')).map(
+      (el) => (el as HTMLOptionElement).value
+    )
+    expect(options).toEqual(['', ...Array.from({ length: 20 }, (_, i) => String(i + 1))])
   })
 
   it('writes somebody in with no people count at all', () => {
@@ -1264,8 +1319,12 @@ describe('AssignFamilyModal — the People field, kindred#2503', () => {
     // and staff will type nothing; blank means the cabin is taken wholesale,
     // which is the right answer for that population. Requiring a number would
     // tax every staff write-in to buy precision only paper registrations need.
+    //
+    // BLANK IS THE FIRST OPTION AND THE DEFAULT, so this is also a test that
+    // the select opens on it rather than on `1`.
     const { props } = renderModal()
     fireEvent.change(searchBox(), { target: { value: 'Burst pipe' } })
+    expect(screen.getByLabelText('People')).toHaveValue('')
     fireEvent.click(screen.getByRole('button', { name: /write in/i }))
     expect(props.onWriteIn).toHaveBeenCalledWith({
       occupantName: 'Burst pipe',
@@ -1274,7 +1333,7 @@ describe('AssignFamilyModal — the People field, kindred#2503', () => {
     })
   })
 
-  it('sends a typed count', () => {
+  it('sends a chosen count', () => {
     const { props } = renderModal()
     fireEvent.change(searchBox(), { target: { value: 'Burst pipe' } })
     fireEvent.change(screen.getByLabelText('People'), { target: { value: '2' } })
@@ -1286,49 +1345,22 @@ describe('AssignFamilyModal — the People field, kindred#2503', () => {
     })
   })
 
-  it('refuses to save a count it cannot read, rather than dropping it', () => {
-    // Blank is a complete answer; `0` is not. Saving a write-in the staff
-    // member believes carries a count, silently without one, is worse than
-    // refusing the keystroke.
-    const { props } = renderModal()
+  it('never disables the commit on account of the People field', () => {
+    // THE GATE COLLAPSED TO `isSaving` and this pins that it stays collapsed.
+    // A select cannot hold an invalid value, so a People-shaped disable would
+    // be dead code — and a dead disable is how the pre-select build ended up
+    // with a button that looked enabled and did nothing.
+    renderModal()
     fireEvent.change(searchBox(), { target: { value: 'Burst pipe' } })
-    fireEvent.change(screen.getByLabelText('People'), { target: { value: '0' } })
-    expect(screen.getByRole('button', { name: /write in/i })).toBeDisabled()
-    fireEvent.click(screen.getByRole('button', { name: /write in/i }))
-    expect(props.onWriteIn).not.toHaveBeenCalled()
-  })
-
-  it('refuses a fraction rather than silently truncating it (IMPORTANT C)', () => {
-    // `Number.parseInt('1.5', 10)` is `1` — the fraction dropped with no
-    // signal, which is precisely the "silently dropped" outcome the owner
-    // ruling forbids. `1.5` is a realistic mistype, and the field must
-    // refuse it rather than persist `1` as if that were what was typed.
-    const { props } = renderModal()
-    fireEvent.change(searchBox(), { target: { value: 'Burst pipe' } })
-    fireEvent.change(screen.getByLabelText('People'), { target: { value: '1.5' } })
-    expect(screen.getByRole('button', { name: /write in/i })).toBeDisabled()
-    fireEvent.click(screen.getByRole('button', { name: /write in/i }))
-    expect(props.onWriteIn).not.toHaveBeenCalled()
-  })
-
-  it('reads exponential notation as the number it names, not as a truncated digit', () => {
-    // `Number.parseInt('1e3', 10)` is `1` — wrong, not a refusal.
-    // `Number('1e3')` is `1000`, the value the string actually names.
-    const { props } = renderModal()
-    fireEvent.change(searchBox(), { target: { value: 'Burst pipe' } })
-    fireEvent.change(screen.getByLabelText('People'), { target: { value: '1e3' } })
-    fireEvent.click(screen.getByRole('button', { name: /write in/i }))
-    expect(props.onWriteIn).toHaveBeenCalledWith({
-      occupantName: 'Burst pipe',
-      note: '',
-      partySize: 1000,
-    })
+    expect(screen.getByRole('button', { name: /write in/i })).toBeEnabled()
+    fireEvent.change(screen.getByLabelText('People'), { target: { value: '20' } })
+    expect(screen.getByRole('button', { name: /write in/i })).toBeEnabled()
   })
 
   it('saves on Enter from People, as it does from Note', () => {
     // weekend-card-vocabulary.md §6, locked: Enter saves from a FIELD, never
-    // from the search box. Adding a field adds a save site, never an
-    // exception.
+    // from the search box. Changing the control's type does not change which
+    // half of that rule it carries.
     const { props } = renderModal()
     fireEvent.change(searchBox(), { target: { value: 'Burst pipe' } })
     const people = screen.getByLabelText('People')
@@ -1341,7 +1373,7 @@ describe('AssignFamilyModal — the People field, kindred#2503', () => {
     })
   })
 
-  it('still does nothing on Enter in the search box, even with a count already typed', () => {
+  it('still does nothing on Enter in the search box, even with a count already chosen', () => {
     const { props } = renderModal()
     fireEvent.change(searchBox(), { target: { value: 'Burst pipe' } })
     fireEvent.change(screen.getByLabelText('People'), { target: { value: '2' } })
@@ -1349,120 +1381,18 @@ describe('AssignFamilyModal — the People field, kindred#2503', () => {
     expect(props.onWriteIn).not.toHaveBeenCalled()
   })
 
-  it('refuses to save when the field sanitised away unparseable text, even though it now reads blank (kindred#2540 fix-round BLOCKER 4)', () => {
-    // `<input type="number">` sanitises `abc` to `''`, so `people === ''`
-    // reads exactly like a genuinely blank field -- which is VALID (owner
-    // ruling 2026-08-21: blank means wholesale). Without `validity.badInput`
-    // the button re-enables and a value the staff member believes they typed
-    // saves as something else (an unsized write-in) instead of refusing.
-    //
-    // jsdom does not implement per-keystroke `badInput` tracking for number
-    // inputs (verified against this exact component: neither
-    // `fireEvent.change` nor `userEvent.type` ever sets it), so this
-    // overrides the read-only `validity` accessor for one dispatch -- the
-    // only way to get the real signal a browser sends onto the event this
-    // handler actually receives, rather than asserting on React state alone.
+  it('clears the chosen count after a write-in, so the next one opens blank', () => {
     const { props } = renderModal()
     fireEvent.change(searchBox(), { target: { value: 'Burst pipe' } })
-    const people = screen.getByLabelText('People')
-    // A real edit, not the untouched, still-blank field a `''` dispatch on
-    // its own would be indistinguishable from.
-    fireEvent.change(people, { target: { value: '2' } })
-
-    const original = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'validity')
-    Object.defineProperty(window.HTMLInputElement.prototype, 'validity', {
-      configurable: true,
-      get: () => ({ badInput: true }) as ValidityState,
-    })
-    try {
-      fireEvent.change(people, { target: { value: '' } })
-    } finally {
-      if (original) Object.defineProperty(window.HTMLInputElement.prototype, 'validity', original)
-    }
-
-    expect(screen.getByRole('button', { name: /write in/i })).toBeDisabled()
+    fireEvent.change(screen.getByLabelText('People'), { target: { value: '3' } })
     fireEvent.click(screen.getByRole('button', { name: /write in/i }))
-    expect(props.onWriteIn).not.toHaveBeenCalled()
-  })
-
-  it('refuses bad input typed straight into an ALREADY-BLANK field, where the string never changes (kindred#2540 validation-fix, Q1)', () => {
-    // The People field opens blank on every mount (`useState('')`), and every
-    // production write-in row is unsized -- so this is the field's EVERYDAY
-    // entry point, not a corner case. `<input type="number">` sanitises
-    // unparseable text to `''`, indistinguishable by the string alone from a
-    // field nobody touched. Because the string never changes, React's own
-    // dedup (`getInstIfValueChanged` -> `updateValueIfChanged`) never invokes
-    // `onChange` at all: `peopleBadInput`, set ONLY inside `onChange`, never
-    // gets the signal, `peopleValid` reads true by default, and the button
-    // stays enabled on a value the staff member believes they typed.
-    const { props } = renderModal()
-    fireEvent.change(searchBox(), { target: { value: 'Burst pipe' } })
-    const people = screen.getByLabelText('People')
-    expect(people).toHaveValue(null) // genuinely untouched, not a prior edit
-
-    const original = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'validity')
-    Object.defineProperty(window.HTMLInputElement.prototype, 'validity', {
-      configurable: true,
-      get: () => ({ badInput: true }) as ValidityState,
-    })
-    try {
-      // The SAME string the field already holds -- no change, exactly as a
-      // real browser's sanitisation leaves an already-blank field.
-      fireEvent.change(people, { target: { value: '' } })
-      fireEvent.click(screen.getByRole('button', { name: /write in/i }))
-    } finally {
-      if (original) Object.defineProperty(window.HTMLInputElement.prototype, 'validity', original)
-    }
-
-    expect(props.onWriteIn).not.toHaveBeenCalled()
-  })
-
-  it('accepts blank again once a caught bad edit is cleared back to genuinely blank (kindred#2540 validation-fix, Q2)', () => {
-    // The mirror image of the case above. A real bad edit (from `'2'`) is
-    // caught correctly via `onChange`, exactly like "refuses to save when the
-    // field sanitised away unparseable text" two cases up. Backspacing
-    // FURTHER, past that point, to a genuinely blank field is -- again -- a
-    // `'' -> ''` no-op that fires no `onChange`, so an implementation that
-    // only reads state captured at `onChange` time leaves `true` stuck
-    // forever. Blank is a COMPLETE answer (wholesale) and must always be
-    // accepted, so this exercises the one path a stuck-disabled button does
-    // not block: Enter inside the field itself, which calls `writeIn`
-    // directly.
-    const { props } = renderModal()
-    fireEvent.change(searchBox(), { target: { value: 'Burst pipe' } })
-    const people = screen.getByLabelText('People')
-    fireEvent.change(people, { target: { value: '2' } })
-
-    const original = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'validity')
-    Object.defineProperty(window.HTMLInputElement.prototype, 'validity', {
-      configurable: true,
-      get: () => ({ badInput: true }) as ValidityState,
-    })
-    try {
-      fireEvent.change(people, { target: { value: '' } }) // caught, as above
-    } finally {
-      if (original) Object.defineProperty(window.HTMLInputElement.prototype, 'validity', original)
-    }
-    expect(screen.getByRole('button', { name: /write in/i })).toBeDisabled()
-
-    Object.defineProperty(window.HTMLInputElement.prototype, 'validity', {
-      configurable: true,
-      get: () => ({ badInput: false }) as ValidityState,
-    })
-    try {
-      // Same string, `'' -> ''`, no change -- the field is now genuinely
-      // blank and no `onChange` fires to say so.
-      fireEvent.change(people, { target: { value: '' } })
-      fireEvent.keyDown(people, { key: 'Enter' })
-    } finally {
-      if (original) Object.defineProperty(window.HTMLInputElement.prototype, 'validity', original)
-    }
-
     expect(props.onWriteIn).toHaveBeenCalledWith({
       occupantName: 'Burst pipe',
       note: '',
-      partySize: null,
+      partySize: 3,
     })
+    fireEvent.change(searchBox(), { target: { value: 'Caretaker' } })
+    expect(screen.getByLabelText('People')).toHaveValue('')
   })
 })
 

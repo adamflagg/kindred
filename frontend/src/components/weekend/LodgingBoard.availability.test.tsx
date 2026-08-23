@@ -206,7 +206,9 @@ describe('LodgingBoard — the control becomes a write', () => {
     // task-9 brief omitted. A `partySize: null` fixture here cannot tell a
     // forwarded value from a hardcoded one; `null` is what a hardcode would
     // produce too.
-    await user.type(screen.getByLabelText('People'), '3')
+    // `selectOptions`, not `type` — People is a `<select>` since 2026-08-23
+    // (kindred#2540) and `user.type` does not drive one.
+    await user.selectOptions(screen.getByLabelText('People'), '3')
     await user.click(screen.getByRole('button', { name: /^write in$/i }))
 
     expect(setAvailability).toHaveBeenCalledTimes(1)

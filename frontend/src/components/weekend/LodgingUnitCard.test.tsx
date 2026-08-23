@@ -2300,7 +2300,9 @@ describe('LodgingUnitCard — placing a family from the space itself (kindred#20
     renderCard({ canSetAvailability: true, onSetAvailability })
     await user.click(assignPill())
     await user.type(screen.getByRole('searchbox'), 'Burst pipe')
-    await user.type(screen.getByLabelText('People'), '2')
+    // `selectOptions`, not `type` — People is a `<select>` since 2026-08-23
+    // (kindred#2540) and `user.type` does not drive one.
+    await user.selectOptions(screen.getByLabelText('People'), '2')
     await user.click(screen.getByRole('button', { name: /^write in$/i }))
     expect(onSetAvailability).toHaveBeenCalledWith({
       unitId: 'u1',

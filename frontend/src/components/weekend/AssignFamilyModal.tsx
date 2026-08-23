@@ -85,7 +85,7 @@ import { resolveNeedGlyphs } from './needGlyphs'
 import { partyKey } from './partyKey'
 import { placementCandidates, type PlacementCandidate } from './placementCandidates'
 import { effectiveSleeps, partyBeds } from './rosterAttention'
-import { coveringWriteIns, hasWriteIn, writeInDemand } from './writeIn'
+import { PARTY_SIZE_CHOICES, coveringWriteIns, hasWriteIn, writeInDemand } from './writeIn'
 
 export interface AssignFamilyModalProps {
   isOpen: boolean
@@ -471,66 +471,29 @@ export function AssignFamilyModal({
   const [note, setNote] = useState('')
   /*
    * OPTIONAL, unlike the occupant name beside it (owner ruling 2026-08-21).
-   * Most write-ins are non-rostered staff and staff will type nothing here;
+   * Most write-ins are non-rostered staff and staff will choose nothing here;
    * blank means the cabin is taken wholesale, which is the correct answer for
-   * that population rather than a missing one.
+   * that population rather than a missing one. It is the FIRST option and the
+   * default, so the control opens on it.
    *
-   * A typed value still has to parse. `''` is a complete answer and `'0'` is
-   * not — saving a write-in the staff member believes carries a count,
-   * without one, is worse than refusing the keystroke.
+   * A STRING, because that is what a `<select>` value is. `''` is the blank
+   * option and every other value is one of `PARTY_SIZE_CHOICES` rendered by
+   * `String(...)`, so `Number(...)` below is total over anything this state
+   * can hold — there is no parse to fail.
    *
-   * ⚠️ `Number(...)`, NOT `Number.parseInt(...)` (IMPORTANT C). `parseInt`
-   * reads digits until the first character it cannot parse and silently
-   * drops the rest — `parseInt('1.5', 10)` is `1`, not a refusal, which is
-   * exactly the "silently dropped" outcome the owner ruling forbids: staff
-   * would believe they wrote in 1.5 and the row would carry 1. `Number(...)`
-   * parses the WHOLE string or fails outright — `Number('1.5')` is `1.5`,
-   * caught by `Number.isInteger` below, and `Number('1e3')` is `1000`, read
-   * correctly rather than truncated to `1`.
+   * ⚠️ THERE IS NOTHING TO VALIDATE HERE ANY MORE, and the absence is the
+   * point (owner ruling 2026-08-23). This used to be an `<input
+   * type="number">` guarded by a `peopleBadInput` state, a `peopleFieldRef`,
+   * a `peopleCountValid` check and a live `validity.badInput` re-read at
+   * submit — four mechanisms to catch text the control should never have
+   * accepted. `PARTY_SIZE_CHOICES`'s own doc carries why that never fully
+   * worked. A select cannot express `0`, a fraction, `1e3` or `abc`, so all
+   * four are gone rather than fixed. Do not reintroduce a People-shaped
+   * disable on the commit: it would be dead code, and a dead disable is
+   * exactly what left the old button looking enabled while doing nothing.
    */
   const [people, setPeople] = useState('')
-  /*
-   * kindred#2540 fix-round BLOCKER 4. `<input type="number">` SANITISES
-   * unparseable text to `''` before this component ever sees it, so typing
-   * `abc` makes `people === ''` — indistinguishable, by the string alone,
-   * from a field nobody touched. `''` is a valid, complete answer (wholesale);
-   * sanitised-away text is not, and treating them the same lets a value the
-   * staff member believes they entered save as something else, which is
-   * exactly what the owner ruling above forbids.
-   *
-   * `validity.badInput` is the ONE signal that survives the sanitisation:
-   * `true` when the user typed something the field could not parse, `false`
-   * for a field that is genuinely, simply blank. Read at the point of the
-   * event, because it describes what THIS keystroke did, not a property of
-   * the current string.
-   *
-   * ⚠️ THIS STATE ALONE DOES NOT CLOSE THE BUG (validation-fix review,
-   * finding "half-closed"). `setPeopleBadInput` fires only from `onChange`,
-   * and React suppresses `onChange` whenever the DOM value string does not
-   * change (`getInstIfValueChanged` → `updateValueIfChanged`) — and a number
-   * input's `.value` IDL is `''` for ANY unparseable text, on an
-   * already-blank field exactly as on a genuinely blank one. The field opens
-   * blank on every mount and every production write-in row is unsized, so
-   * "already blank" is the field's EVERYDAY starting point, not a corner
-   * case: typing bad input straight into it never fires `onChange` at all,
-   * this state never updates, and the button reads `peopleValid` as true on
-   * a value that was never actually accepted.
-   *
-   * It still does useful work — it is what disables the button the instant a
-   * REAL value change (a prior good count going bad) is caught, and what the
-   * two tests below it that predate this comment pin — so it stays, as the
-   * button's best-effort UI signal. `writeIn`, below, is what actually
-   * enforces the rule: it re-reads `validity.badInput` fresh off
-   * `peopleFieldRef` at the moment of a real submit attempt, which is live
-   * DOM state rather than anything `onChange` had to have told it about, and
-   * is unaffected by whether this state is stale in either direction.
-   */
-  const [peopleBadInput, setPeopleBadInput] = useState(false)
-  const peopleFieldRef = useRef<HTMLInputElement>(null)
-  const parsedPeople = Number(people)
-  const partySize = people.trim() === '' ? null : parsedPeople
-  const peopleCountValid = partySize === null || (Number.isInteger(partySize) && partySize >= 1)
-  const peopleValid = !peopleBadInput && peopleCountValid
+  const partySize = people === '' ? null : Number(people)
 
   const trimmed = query.trim()
   const needle = trimmed.toLowerCase()
@@ -582,38 +545,21 @@ export function AssignFamilyModal({
     setQuery('')
     setNote('')
     setPeople('')
-    setPeopleBadInput(false)
     onClose()
   }
 
   const writeIn = () => {
-    // THREE guards now: `offersWriteIn` (unchanged — the caller can write
-    // one, a name was typed, and no family still matches), `peopleCountValid`
-    // (blocks only an UNPARSEABLE count, never a blank one — blank means
-    // `partySize === null`, and `peopleCountValid` is true for it by
-    // construction), and a FRESH, live re-read of `validity.badInput` off the
-    // field itself.
-    //
-    // ⚠️ THE LIVE RE-READ, NOT `peopleBadInput`, IS WHAT MAKES THIS CORRECT
-    // (validation-fix review, finding "half-closed"). `peopleBadInput` can be
-    // stale in EITHER direction, because it is only ever written from
-    // `onChange`, which React suppresses whenever the DOM value string does
-    // not change — see the state's own doc above. Reading `validity.badInput`
-    // here, at the moment of an actual submit attempt, answers the true
-    // question ("does the field the staff member is looking at right now
-    // hold something it could not parse?") instead of trusting a flag that
-    // may never have been set (an already-blank field, bad input typed) or
-    // may be stuck set from an edit that has since been corrected (bad input,
-    // then cleared back to blank without the string ever changing).
-    const badInputNow = peopleFieldRef.current?.validity.badInput ?? false
-    if (!offersWriteIn || badInputNow || !peopleCountValid) return
+    // ONE guard, unchanged in meaning: the caller can write one, a name was
+    // typed, and no family still matches. The two count guards that stood
+    // beside it (`peopleCountValid` and a live `validity.badInput` re-read)
+    // are gone with the number input -- see the `people` state's doc.
+    if (!offersWriteIn) return
     // The TRIMMED text, which is what the offer shows. Staff type into a search
     // box and a trailing space is a typing artefact, not a name.
     onWriteIn({ occupantName: trimmed, note: note.trim(), partySize })
     setQuery('')
     setNote('')
     setPeople('')
-    setPeopleBadInput(false)
     onClose()
   }
 
@@ -838,67 +784,78 @@ export function AssignFamilyModal({
               <p className="text-sm font-medium text-amber-700 dark:text-amber-400">
                 {`No family matches “${trimmed}” — this will be written in.`}
               </p>
-              {/* kindred#2503's `People` field, STACKED above `Note` — the
-                  artifact draws it that way too, and the region's height is
-                  fixed, so the note moving down by one field's height costs
-                  the dialog nothing. */}
-              {/* `gap-[3px]` is the artifact's `.mfield`, matching `Note`. */}
-              <label className="flex flex-col gap-[3px] text-xs font-medium">
-                People
-                <input
-                  type="number"
-                  ref={peopleFieldRef}
-                  min={1}
-                  step={1}
-                  inputMode="numeric"
-                  value={people}
-                  disabled={isSaving}
-                  placeholder="How many"
-                  onChange={(event) => {
-                    setPeople(event.target.value)
-                    // See the `peopleBadInput` docstring above the state
-                    // declaration — this is the only point the real signal
-                    // exists at.
-                    setPeopleBadInput(event.target.validity.badInput)
-                  }}
-                  onKeyDown={(event) => {
-                    // ↵ SAVES FROM A FIELD — the same half of the ruling
-                    // `Note` below carries. Adding a field adds a save site,
-                    // never an exception to the keybinding rule
-                    // (weekend-card-vocabulary.md §6).
-                    if (event.key !== 'Enter') return
-                    event.preventDefault()
-                    writeIn()
-                  }}
-                  // The SAME `.pinput` as `Note` and the search box above.
-                  className="border-border bg-background text-foreground placeholder:text-muted-foreground/60 focus:border-primary/50 focus:ring-primary/10 rounded-md border px-1.5 py-1 text-sm font-normal focus:ring-2 focus:outline-none"
-                />
-              </label>
-              <label className="flex flex-col gap-[3px] text-xs font-medium">
-                Note
-                <input
-                  type="text"
-                  value={note}
-                  disabled={isSaving}
-                  placeholder="Optional — e.g. back Monday"
-                  onChange={(event) => {
-                    setNote(event.target.value)
-                  }}
-                  onKeyDown={(event) => {
-                    // ↵ SAVES FROM A FIELD. This is the other half of the
-                    // ruling above, and the half that makes it usable.
-                    if (event.key !== 'Enter') return
-                    event.preventDefault()
-                    writeIn()
-                  }}
-                  // The SAME `.pinput` as the search box above — one class in
-                  // the artifact, so one set of numbers here. It kept the
-                  // pre-ruling `px-2 py-1.5` when §3.3 was applied, which left
-                  // the two inputs 4px different in height with both on screen
-                  // at once.
-                  className="border-border bg-background text-foreground placeholder:text-muted-foreground/60 focus:border-primary/50 focus:ring-primary/10 rounded-md border px-1.5 py-1 text-sm font-normal focus:ring-2 focus:outline-none"
-                />
-              </label>
+              {/* ONE ROW, People then Note (owner ruling 2026-08-23). They
+                  were stacked; a select needs ~5.5rem and the note wants the
+                  rest, so the pair costs one field's height instead of two.
+                  The region's height is FIXED (W3, no jump), so what this
+                  actually buys is empty ground below rather than a shorter
+                  dialog -- nothing above or below it moves either way.
+
+                  `items-end` so the two controls sit on a common baseline
+                  despite `People`'s narrower label; `gap-2` matches the
+                  artifact's field rhythm. */}
+              <div data-testid="write-in-fields" className="flex items-end gap-2">
+                {/* `gap-[3px]` is the artifact's `.mfield`, matching `Note`. */}
+                <label className="flex w-[5.5rem] shrink-0 flex-col gap-[3px] text-xs font-medium">
+                  People
+                  <select
+                    value={people}
+                    disabled={isSaving}
+                    onChange={(event) => {
+                      setPeople(event.target.value)
+                    }}
+                    onKeyDown={(event) => {
+                      // ↵ SAVES FROM A FIELD -- the same half of the ruling
+                      // `Note` beside it carries. A select is still a field;
+                      // changing the control's type does not change which
+                      // half of the keybinding rule it takes
+                      // (weekend-card-vocabulary.md §6).
+                      if (event.key !== 'Enter') return
+                      event.preventDefault()
+                      writeIn()
+                    }}
+                    // The SAME `.pinput` as `Note` and the search box above,
+                    // minus the placeholder colour a select has no use for.
+                    className="border-border bg-background text-foreground focus:border-primary/50 focus:ring-primary/10 rounded-md border px-1.5 py-1 text-sm font-normal focus:ring-2 focus:outline-none"
+                  >
+                    {/* BLANK FIRST AND DEFAULT -- wholesale, the common case
+                        (owner ruling 2026-08-21). The em dash is the same
+                        glyph the card draws for an unsized write-in, so the
+                        control and the card say the absence the same way. */}
+                    <option value="">—</option>
+                    {PARTY_SIZE_CHOICES.map((count) => (
+                      <option key={count} value={String(count)}>
+                        {count}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="flex min-w-0 flex-1 flex-col gap-[3px] text-xs font-medium">
+                  Note
+                  <input
+                    type="text"
+                    value={note}
+                    disabled={isSaving}
+                    placeholder="Optional — e.g. back Monday"
+                    onChange={(event) => {
+                      setNote(event.target.value)
+                    }}
+                    onKeyDown={(event) => {
+                      // ↵ SAVES FROM A FIELD. This is the other half of the
+                      // ruling above, and the half that makes it usable.
+                      if (event.key !== 'Enter') return
+                      event.preventDefault()
+                      writeIn()
+                    }}
+                    // The SAME `.pinput` as the search box above — one class in
+                    // the artifact, so one set of numbers here. It kept the
+                    // pre-ruling `px-2 py-1.5` when §3.3 was applied, which left
+                    // the two inputs 4px different in height with both on screen
+                    // at once.
+                    className="border-border bg-background text-foreground placeholder:text-muted-foreground/60 focus:border-primary/50 focus:ring-primary/10 rounded-md border px-1.5 py-1 text-sm font-normal focus:ring-2 focus:outline-none"
+                  />
+                </label>
+              </div>
               {/* ⚠️ THE COMMIT LIVES HERE, NOT IN THE FOOTER (owner ruling
                   2026-08-20, option C), and it is the last of the jump W3
                   forbids. In the footer this button made that band 51px on the
@@ -918,7 +875,7 @@ export function AssignFamilyModal({
                 <button
                   type="button"
                   onClick={writeIn}
-                  disabled={isSaving || !peopleValid}
+                  disabled={isSaving}
                   className="bg-primary text-primary-foreground rounded-md px-3 py-1.5 text-sm font-medium disabled:opacity-40"
                 >
                   Write in

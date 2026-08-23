@@ -356,7 +356,7 @@ describe('the corner control that edits THIS write-in (kindred#2430)', () => {
 describe("the pencil's People field, kindred#2503", () => {
   /*
    * ⚠️⚠️ THE DATA-LOSS GUARD. `set_availability`'s write-in upsert
-   * (`api/services/lodging_write_service.py:958-969`) includes `party_size`
+   * (`api/services/lodging_write_service.py`) includes `party_size`
    * UNCONDITIONALLY on every write to a write-in row. Before this field
    * existed, `LodgingUnitCard.tsx`'s `onEdit` handler forwarded
    * `entry.occupant.partySize` — the row's already-recorded count — rather
@@ -365,6 +365,15 @@ describe("the pencil's People field, kindred#2503", () => {
    * pins the same invariant one layer down, at the field this card now owns:
    * saving the form WITHOUT touching People must still send the recorded
    * count, and only a deliberate clear may send `null`.
+   *
+   * ⚠️ A SELECT SINCE 2026-08-23, mirroring `AssignFamilyModal` exactly —
+   * same control, same `PARTY_SIZE_CHOICES`, same blank-first default. The
+   * number input it replaces could not distinguish `abc` from an untouched
+   * field, because it sanitises unparseable text to `''` before React sees
+   * it; `PARTY_SIZE_CHOICES`'s own doc in `writeIn.ts` carries the full
+   * account. The tests that pinned each refusal (`0`, `1.5`, `1e3`, and the
+   * three `validity.badInput` cases) are gone with the mechanism they
+   * described — a select cannot express any of them.
    */
   it("seeds from the row's recorded count", () => {
     render(
@@ -376,10 +385,10 @@ describe("the pencil's People field, kindred#2503", () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Edit write-in Liam Garcia' }))
 
-    expect(screen.getByLabelText('People')).toHaveValue(3)
+    expect(screen.getByLabelText('People')).toHaveValue('3')
   })
 
-  it('is empty for a row with no recorded count', () => {
+  it('is blank for a row with no recorded count', () => {
     render(
       <WriteInCard
         occupant={{ name: 'Liam Garcia', note: '', partySize: null }}
@@ -389,7 +398,48 @@ describe("the pencil's People field, kindred#2503", () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Edit write-in Liam Garcia' }))
 
-    expect(screen.getByLabelText('People')).toHaveValue(null)
+    expect(screen.getByLabelText('People')).toHaveValue('')
+  })
+
+  it('offers the same blank-and-1-to-20 list the Assign modal does', () => {
+    // ONE LIST, imported from `writeIn.ts` by both surfaces. Two lists would
+    // be two answers to "what can a write-in be for", and the drift would be
+    // invisible until a staff member met both controls on one screen.
+    render(
+      <WriteInCard
+        occupant={{ name: 'Liam Garcia', note: '', partySize: null }}
+        onEdit={() => undefined}
+      />
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit write-in Liam Garcia' }))
+
+    const options = Array.from(screen.getByLabelText('People').querySelectorAll('option')).map(
+      (el) => (el as HTMLOptionElement).value
+    )
+    expect(options).toEqual(['', ...Array.from({ length: 20 }, (_, i) => String(i + 1))])
+  })
+
+  it('draws People and Note on ONE row, People first', () => {
+    render(
+      <WriteInCard
+        occupant={{ name: 'Liam Garcia', note: '', partySize: null }}
+        onEdit={() => undefined}
+      />
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit write-in Liam Garcia' }))
+
+    // ONE ROW is the structural claim: both controls are children of the SAME
+    // flex container. Read that way rather than off computed style — jsdom
+    // does not apply Tailwind, so `getComputedStyle` would answer `block`
+    // however the page actually renders.
+    const row = screen.getByTestId('write-in-edit-fields')
+    expect(row.className).toContain('flex')
+    expect(row).toContainElement(screen.getByLabelText('People'))
+    expect(row).toContainElement(screen.getByLabelText('Note (optional)'))
+    const controls = Array.from(row.querySelectorAll('select, input'))
+    expect(controls[0]).toBe(screen.getByLabelText('People'))
   })
 
   it('saves the recorded count untouched — the data-loss guard', () => {
@@ -427,50 +477,36 @@ describe("the pencil's People field, kindred#2503", () => {
     })
   })
 
-  it('refuses a typed 0, rather than saving it', () => {
+  it('records a count on a row that had none', () => {
     const onEdit = vi.fn()
     render(
       <WriteInCard occupant={{ name: 'Liam Garcia', note: '', partySize: null }} onEdit={onEdit} />
     )
 
     fireEvent.click(screen.getByRole('button', { name: 'Edit write-in Liam Garcia' }))
-    fireEvent.change(screen.getByLabelText('People'), { target: { value: '0' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
-
-    expect(onEdit).not.toHaveBeenCalled()
-  })
-
-  it('refuses a fraction rather than silently truncating it (IMPORTANT C)', () => {
-    // `Number.parseInt('1.5', 10)` is `1` — a silent drop the owner ruling
-    // forbids. `Number('1.5')` is `1.5`, caught by `Number.isInteger`.
-    const onEdit = vi.fn()
-    render(
-      <WriteInCard occupant={{ name: 'Liam Garcia', note: '', partySize: null }} onEdit={onEdit} />
-    )
-
-    fireEvent.click(screen.getByRole('button', { name: 'Edit write-in Liam Garcia' }))
-    fireEvent.change(screen.getByLabelText('People'), { target: { value: '1.5' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
-
-    expect(onEdit).not.toHaveBeenCalled()
-  })
-
-  it('reads exponential notation as the number it names, not a truncated digit', () => {
-    // `Number.parseInt('1e3', 10)` is `1`. `Number('1e3')` is `1000`.
-    const onEdit = vi.fn()
-    render(
-      <WriteInCard occupant={{ name: 'Liam Garcia', note: '', partySize: null }} onEdit={onEdit} />
-    )
-
-    fireEvent.click(screen.getByRole('button', { name: 'Edit write-in Liam Garcia' }))
-    fireEvent.change(screen.getByLabelText('People'), { target: { value: '1e3' } })
+    fireEvent.change(screen.getByLabelText('People'), { target: { value: '4' } })
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
 
     expect(onEdit).toHaveBeenCalledWith({
       occupantName: 'Liam Garcia',
       reason: '',
-      partySize: 1000,
+      partySize: 4,
     })
+  })
+
+  it('never disables Save on account of the People field', () => {
+    // THE GATE COLLAPSED TO `isSaving` and the name check, matching the Assign
+    // modal. A select cannot hold an invalid value, so a People-shaped disable
+    // would be dead code — and a dead disable is how the pre-select build
+    // ended up with a control that looked live and did nothing.
+    render(
+      <WriteInCard occupant={{ name: 'Liam Garcia', note: '', partySize: null }} onEdit={vi.fn()} />
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit write-in Liam Garcia' }))
+    expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled()
+    fireEvent.change(screen.getByLabelText('People'), { target: { value: '20' } })
+    expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled()
   })
 
   it('saves on Enter from People, as it does from the other fields (weekend-card-vocabulary.md §6)', () => {
@@ -487,172 +523,6 @@ describe("the pencil's People field, kindred#2503", () => {
       occupantName: 'Liam Garcia',
       reason: '',
       partySize: 2,
-    })
-  })
-
-  it('disables Save while People holds an invalid count, matching the Assign modal’s gate', () => {
-    // `AssignFamilyModal.tsx`'s own write-in offer is
-    // `disabled={isSaving || !peopleValid}`. This card's Save used to be
-    // `disabled={isSaving}` alone — narrower than it looked, since Save is
-    // `type="submit"` in a real `<form>` and the field's own `min=1 step=1`
-    // blocks a click with a native bubble. The genuinely silent path is
-    // Enter inside the field, pinned separately below.
-    render(
-      <WriteInCard
-        occupant={{ name: 'Liam Garcia', note: '', partySize: null }}
-        onEdit={() => undefined}
-      />
-    )
-
-    fireEvent.click(screen.getByRole('button', { name: 'Edit write-in Liam Garcia' }))
-    fireEvent.change(screen.getByLabelText('People'), { target: { value: '0' } })
-
-    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
-  })
-
-  it('refuses Enter from an invalid People field exactly as Save does — no signal, but no save', () => {
-    // Native form submission never fires here: `fireEvent.keyDown` in jsdom
-    // does not trigger implicit submission, so this exercises the field's
-    // own `onKeyDown` — `preventDefault()` then `trySubmit()` — which is the
-    // path a disabled Save button does nothing to protect on its own.
-    // `trySubmit`'s existing `!peopleValid` guard is what actually stops the
-    // write; this pins it at the one call site the Save-button gate above
-    // cannot reach.
-    const onEdit = vi.fn()
-    render(
-      <WriteInCard occupant={{ name: 'Liam Garcia', note: '', partySize: null }} onEdit={onEdit} />
-    )
-
-    fireEvent.click(screen.getByRole('button', { name: 'Edit write-in Liam Garcia' }))
-    fireEvent.change(screen.getByLabelText('People'), { target: { value: '0' } })
-    fireEvent.keyDown(screen.getByLabelText('People'), { key: 'Enter' })
-
-    expect(onEdit).not.toHaveBeenCalled()
-  })
-
-  it('refuses to save when the field sanitised away unparseable text, even though it now reads blank (kindred#2540 fix-round BLOCKER 4)', () => {
-    // `<input type="number">` sanitises `abc` to `''`, so `people === ''`
-    // reads exactly like a genuinely blank field -- which is VALID (owner
-    // ruling 2026-08-21: blank means wholesale). Without `validity.badInput`
-    // the button re-enables and a value the staff member believes they typed
-    // saves as something else (an unsized write-in) instead of refusing.
-    //
-    // jsdom does not implement per-keystroke `badInput` tracking for number
-    // inputs (verified against this exact component: neither
-    // `fireEvent.change` nor `userEvent.type` ever sets it), so this
-    // overrides the read-only `validity` accessor for one dispatch -- the
-    // only way to get the real signal a browser sends onto the event this
-    // handler actually receives, rather than asserting on React state alone.
-    const onEdit = vi.fn()
-    render(
-      <WriteInCard occupant={{ name: 'Liam Garcia', note: '', partySize: 3 }} onEdit={onEdit} />
-    )
-
-    fireEvent.click(screen.getByRole('button', { name: 'Edit write-in Liam Garcia' }))
-    const people = screen.getByLabelText('People')
-
-    const original = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'validity')
-    Object.defineProperty(window.HTMLInputElement.prototype, 'validity', {
-      configurable: true,
-      get: () => ({ badInput: true }) as ValidityState,
-    })
-    try {
-      // The field already reads `3` (seeded from `occupant.partySize`), so
-      // this is a real edit -- not the untouched, still-blank field a `''`
-      // dispatch would be indistinguishable from.
-      fireEvent.change(people, { target: { value: '' } })
-    } finally {
-      if (original) Object.defineProperty(window.HTMLInputElement.prototype, 'validity', original)
-    }
-
-    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
-    expect(onEdit).not.toHaveBeenCalled()
-  })
-
-  it('refuses bad input typed straight into an ALREADY-BLANK field, where the string never changes (kindred#2540 validation-fix, Q1)', () => {
-    // Every production write-in row is unsized, so every pencil edit opens
-    // with a blank People field -- this is the field's EVERYDAY entry point,
-    // not a corner case. `<input type="number">` sanitises unparseable text
-    // to `''`, indistinguishable by the string alone from a field nobody
-    // touched. Because the string never changes, React's own dedup
-    // (`getInstIfValueChanged` -> `updateValueIfChanged`) never invokes
-    // `onChange` at all: `peopleBadInput`, set ONLY inside `onChange`, never
-    // gets the signal, and the Save button stays enabled on a value the
-    // staff member believes they typed.
-    const onEdit = vi.fn()
-    render(
-      <WriteInCard occupant={{ name: 'Liam Garcia', note: '', partySize: null }} onEdit={onEdit} />
-    )
-
-    fireEvent.click(screen.getByRole('button', { name: 'Edit write-in Liam Garcia' }))
-    const people = screen.getByLabelText('People')
-    expect(people).toHaveValue(null) // genuinely untouched, not a prior edit
-
-    const original = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'validity')
-    Object.defineProperty(window.HTMLInputElement.prototype, 'validity', {
-      configurable: true,
-      get: () => ({ badInput: true }) as ValidityState,
-    })
-    try {
-      // The SAME string the field already holds -- no change, exactly as a
-      // real browser's sanitisation leaves an already-blank field.
-      fireEvent.change(people, { target: { value: '' } })
-      fireEvent.click(screen.getByRole('button', { name: 'Save' }))
-    } finally {
-      if (original) Object.defineProperty(window.HTMLInputElement.prototype, 'validity', original)
-    }
-
-    expect(onEdit).not.toHaveBeenCalled()
-  })
-
-  it('accepts blank again once a caught bad edit is cleared back to genuinely blank (kindred#2540 validation-fix, Q2)', () => {
-    // The mirror image of the case above. A real bad edit (from the seeded
-    // `3`) is caught correctly via `onChange`, exactly like "refuses to save
-    // when the field sanitised away unparseable text" above. Backspacing
-    // FURTHER, past that point, to a genuinely blank field is -- again -- a
-    // `'' -> ''` no-op that fires no `onChange`, so an implementation that
-    // only reads state captured at `onChange` time leaves `true` stuck
-    // forever. Blank is a COMPLETE answer (wholesale) and must always be
-    // accepted, so this exercises the one path a stuck-disabled Save does not
-    // block: Enter inside the field itself, which calls `trySubmit` directly.
-    const onEdit = vi.fn()
-    render(
-      <WriteInCard occupant={{ name: 'Liam Garcia', note: '', partySize: 3 }} onEdit={onEdit} />
-    )
-
-    fireEvent.click(screen.getByRole('button', { name: 'Edit write-in Liam Garcia' }))
-    const people = screen.getByLabelText('People')
-
-    const original = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'validity')
-    Object.defineProperty(window.HTMLInputElement.prototype, 'validity', {
-      configurable: true,
-      get: () => ({ badInput: true }) as ValidityState,
-    })
-    try {
-      fireEvent.change(people, { target: { value: '' } }) // caught, as above
-    } finally {
-      if (original) Object.defineProperty(window.HTMLInputElement.prototype, 'validity', original)
-    }
-    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
-
-    Object.defineProperty(window.HTMLInputElement.prototype, 'validity', {
-      configurable: true,
-      get: () => ({ badInput: false }) as ValidityState,
-    })
-    try {
-      // Same string, `'' -> ''`, no change -- the field is now genuinely
-      // blank and no `onChange` fires to say so.
-      fireEvent.change(people, { target: { value: '' } })
-      fireEvent.keyDown(people, { key: 'Enter' })
-    } finally {
-      if (original) Object.defineProperty(window.HTMLInputElement.prototype, 'validity', original)
-    }
-
-    expect(onEdit).toHaveBeenCalledWith({
-      occupantName: 'Liam Garcia',
-      reason: '',
-      partySize: null,
     })
   })
 })
