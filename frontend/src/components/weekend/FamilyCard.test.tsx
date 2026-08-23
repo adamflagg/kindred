@@ -565,7 +565,13 @@ describe('FamilyCard — what it shows', () => {
         onOpen={vi.fn()}
       />
     )
-    expect(screen.getByText('Wants to share')).toBeInTheDocument()
+    // Retargeted off the struck `Wants to share` word chip onto a surviving
+    // chip in the same fixture (kindred#2072/#2521 pattern; struck
+    // 2026-08-22 — see "the marks kindred#2072 STRUCK"). This assertion only
+    // ever proved the fixture rendered enough of the share block for the
+    // button-nesting sweep below to be meaningful; it never depended on
+    // which chip did that.
+    expect(screen.getByText('Answers disagree')).toBeInTheDocument()
     const roleButtons = within(container).getAllByRole('button')
     expect(roleButtons.length).toBeGreaterThan(0)
     for (const outer of roleButtons) {
@@ -605,41 +611,29 @@ describe('FamilyCard — what it shows', () => {
     expect(screen.queryByText('Answers disagree')).not.toBeInTheDocument()
   })
 
-  it('shows a share request as one chip covering both `with` and `similar_ages`', () => {
-    // `similar_ages` ACCOMPANIES `with`; a chip showing one or the other drops
-    // 22 households out of any "wants to share" view.
-    render(
-      <FamilyCard
-        party={party({
-          share: {
-            preference: 'yes_share',
-            proximity: ['with', 'similar_ages'],
-            request_text: '',
-            needs_resolution: false,
-          },
-        })}
-        onOpen={vi.fn()}
-      />
-    )
-    expect(screen.getByText('Wants to share')).toBeInTheDocument()
+  // Same grain guard, for the always-on anchor `ShareMarks` mounts
+  // (`resolveShareAnchor`'s rule 1): a person-grain party has no share
+  // question to answer, so it must not draw the dotted "unanswered" mark
+  // for a question it was never asked. `ShareMarks.test.tsx` pins this at
+  // the component's own level; this pins it through the card that mounts it.
+  it('renders no share anchor for an adult weekend guest (person grain)', () => {
+    render(<FamilyCard party={party({ grain: 'person' })} onOpen={vi.fn()} />)
+    expect(screen.queryByRole('button', { name: /^Share: / })).not.toBeInTheDocument()
   })
 
-  it('shows a similar-ages request even without an explicit `with`', () => {
-    render(
-      <FamilyCard
-        party={party({
-          share: {
-            preference: 'yes_share',
-            proximity: ['similar_ages'],
-            request_text: '',
-            needs_resolution: false,
-          },
-        })}
-        onOpen={vi.fn()}
-      />
-    )
-    expect(screen.getByText('Wants to share')).toBeInTheDocument()
-  })
+  // The two tests this replaced ("shows a share request as one chip covering
+  // both `with` and `similar_ages`" / "shows a similar-ages request even
+  // without an explicit `with`") pinned the OLD collapsed-chip behaviour —
+  // `wantsToShare`'s OR of the two proximity kinds into one "Wants to share"
+  // chip. That behaviour is gone, not moved: the 2026-08-22 ruling replaced
+  // it with `ShareMarks`' cluster, which draws each ticked box as its own
+  // icon with no OR/dominance (a dominance rule was proposed and explicitly
+  // REVERSED by the owner the same day — `shareMarks.ts`'s header comment).
+  // The underlying grading is tested where it now lives: `shareMarks.test.ts`
+  // (the pure truth table) and `ShareMarks.test.tsx` (the rendered marks).
+  // The struck chips' absence is pinned below in "the marks kindred#2072
+  // STRUCK"; the replacement marks' presence is pinned in "the share marks
+  // (2026-08-22 ruling)".
 
   describe('single-parent flag (kindred#2254 half 2)', () => {
     /*
@@ -871,10 +865,15 @@ describe('FamilyCardPreview — the drag overlay', () => {
     // `onOpen` to call.
     expect(screen.getByTestId('family-card-name').closest('button')).toBeNull()
     // It DOES carry the chip row's own tooltip triggers, because it shares
-    // `FamilyCardChips` rather than copying it — R3's history mark here. That
-    // is the sharing working, not a leak: this used to assert "no button at
-    // all", which only held while no chip had a tooltip.
-    expect(screen.getAllByRole('button')).toEqual([screen.getByTestId('family-card-history')])
+    // `FamilyCardChips` rather than copying it — the always-on share anchor
+    // (2026-08-22, `ShareMarks`) and R3's history mark here. That is the
+    // sharing working, not a leak: this used to assert "no button at all",
+    // which only held while no chip had a tooltip, then "exactly one button"
+    // (R3 alone), which only held before the anchor became always-on.
+    expect(screen.getAllByRole('button')).toEqual([
+      screen.getByRole('button', { name: 'Share: Not answered' }),
+      screen.getByTestId('family-card-history'),
+    ])
   })
 
   it('shows the same children and truncated ages the real card does', () => {
@@ -991,24 +990,32 @@ describe('FamilyCard — summer’s type scale', () => {
   })
 
   it('sets chips at summer’s meta size', () => {
-    // Retargeted off the struck `Power` NEED chip onto a surviving word chip
-    // (kindred#2072). The size rule is unchanged; only the chip that carried
-    // the assertion went.
+    // Retargeted TWICE now. First off the struck `Power` NEED chip onto the
+    // `Near another family` word chip (kindred#2072). That word chip is
+    // itself struck now (2026-08-22 — see "the marks kindred#2072 STRUCK"),
+    // replaced by `ShareMarks`' icon cluster, which carries no `text-xs`
+    // chip class at all — so this retarget lands on `Did not request
+    // sharing` instead (kindred#2072/#2521 pattern). The size rule is
+    // unchanged; only the chip that carried the assertion keeps moving.
     render(
       <FamilyCard
         party={party({
           share: {
-            preference: 'yes_share',
-            proximity: ['near'],
+            preference: 'no_share',
+            proximity: [],
             request_text: '',
             needs_resolution: false,
+            eligibility: 'declined',
+            eligibility_source: 'form',
+            answers_conflict: false,
           },
         })}
+        sharedSlot={true}
         unit={confirmedUnit()}
         onOpen={vi.fn()}
       />
     )
-    expect(screen.getByText('Near another family')).toHaveClass('text-xs')
+    expect(screen.getByText('Did not request sharing')).toHaveClass('text-xs')
   })
 
   it('sets the need glyph at the chip row’s own icon size, in a chip-height box', () => {
@@ -1627,6 +1634,91 @@ describe('FamilyCard — the marks kindred#2072 STRUCK', () => {
     )
     expect(screen.queryByText('Needs Accommodation')).not.toBeInTheDocument()
     expect(screen.queryByText(/VIP/i)).not.toBeInTheDocument()
+  })
+
+  it('draws no "Wants to share" chip — replaced by the share-mark cluster (staff ruling, 2026-08-22)', () => {
+    // spec §5 replaced the two proximity word chips with `ShareMarks`'
+    // cluster icons. This pins the WORD's absence; the underlying grading
+    // (which proximity kinds render a mark, and which flag the WITH icon
+    // actually keys on) is tested in `shareMarks.test.ts` and
+    // `ShareMarks.test.tsx`, not re-tested here.
+    render(
+      <FamilyCard
+        party={party({
+          share: { preference: 'yes_share', proximity: ['with', 'similar_ages'] },
+        })}
+        onOpen={vi.fn()}
+      />
+    )
+    expect(screen.queryByText('Wants to share')).not.toBeInTheDocument()
+  })
+
+  it('draws no "Near another family" chip — same 2026-08-22 replacement', () => {
+    render(
+      <FamilyCard
+        party={party({ share: { preference: 'yes_share', proximity: ['near'] } })}
+        onOpen={vi.fn()}
+      />
+    )
+    expect(screen.queryByText('Near another family')).not.toBeInTheDocument()
+  })
+})
+
+describe('FamilyCard — the share marks (2026-08-22 ruling replaces the word chips)', () => {
+  /*
+   * `ShareMarks` (Task 4) owns the rendering; `shareMarks.ts` (Task 3) owns
+   * the vocabulary and grading. This describe pins only the INTEGRATION —
+   * that `FamilyCardChips` actually mounts it, first, ahead of the need
+   * glyphs — not the mark-by-mark truth table those two files already cover.
+   */
+  it('renders the "Share with family" cluster trigger for a WITH-named tick', () => {
+    render(
+      <FamilyCard
+        party={party({
+          share: { preference: 'yes_share', proximity: ['with'], wants_with_named: true },
+        })}
+        onOpen={vi.fn()}
+      />
+    )
+    expect(screen.getByRole('button', { name: 'Share with family' })).toBeInTheDocument()
+  })
+
+  it('renders the "Near family" cluster trigger for a NEAR tick', () => {
+    render(
+      <FamilyCard
+        party={party({ share: { preference: 'yes_share', proximity: ['near'] } })}
+        onOpen={vi.fn()}
+      />
+    )
+    expect(screen.getByRole('button', { name: 'Near family' })).toBeInTheDocument()
+  })
+
+  it('renders the always-on "Share: …" anchor on every household card, requests or not', () => {
+    // The default fixture carries no `share` block at all — `unanswered`,
+    // same as `ShareMarks.test.tsx`'s own "unanswered household" case — and
+    // the anchor still draws, because it answers a DIFFERENT question
+    // (the radio) than the cluster (the checkboxes) does.
+    render(<FamilyCard party={party()} onOpen={vi.fn()} />)
+    expect(screen.getByRole('button', { name: 'Share: Not answered' })).toBeInTheDocument()
+  })
+
+  it('draws the anchor before the first need glyph, in DOM order', () => {
+    // The row order is part of the vocabulary (weekend-card-vocabulary.md
+    // §2): share marks lead because who-can-bunk-together is the board's
+    // first question, and the need glyphs follow as context for it.
+    render(
+      <FamilyCard
+        party={party({
+          flags: { needs_power: true },
+          share: { preference: 'yes_share' },
+        })}
+        unit={confirmedUnit({ power_coverage: 'all' })}
+        onOpen={vi.fn()}
+      />
+    )
+    const anchor = screen.getByRole('button', { name: 'Share: Open to sharing' })
+    const glyph = screen.getByTestId('need-glyph-power')
+    expect(anchor.compareDocumentPosition(glyph) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 })
 
