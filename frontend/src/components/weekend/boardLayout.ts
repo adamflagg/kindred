@@ -120,7 +120,7 @@ function occupiedLeafCodes(
  *
  * Beds, not bodies, since #1925 and #2046: the server drops blank and
  * placeholder `family_camp_adults` slots from the count, and discounts a
- * child under 18 months at session start. For the 24 households with an
+ * child under 18 months at session start. For the 26 households with an
  * infant this figure is deliberately one lower than the names printed beside
  * it — `slotOccupancy`, `partyBeds` and `bedsNeeded` all want beds, and the
  * card's own names-chip is #2152's to split out.

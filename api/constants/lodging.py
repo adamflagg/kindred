@@ -25,7 +25,7 @@ two token lists drift.
 # never exceeds `.11`, so the obvious-looking `age < 1.5` reads as "under 24
 # months" and discounts precisely the 19-23 month olds this ruling protects.
 # Measured on 2026's 382 rostered households: `age < 1.5` discounts 44
-# children, `age < 1.06` discounts 28, the derived rule discounts 24.
+# children, `age < 1.06` discounts 28, the derived rule discounts 26.
 INFANT_BED_EXEMPT_MONTHS = 18
 
 # kindred#1925. `family_camp_adults` is a five-slot scrape, and a registrant

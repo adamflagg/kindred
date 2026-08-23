@@ -541,7 +541,7 @@ def _party_child(child: Any, *, as_of: date | None = None, session_cm_ids: Seque
         # DO NOT threshold the infant discount on this field, here or
         # client-side (kindred#2046). yy.mm means months never exceed `.11`, so
         # `age < 1.5` is really "under 24 months" -- 44 children on 2026's
-        # rostered cohort against the derived rule's 24. `_consumes_a_bed`
+        # rostered cohort against the derived rule's 26. `_consumes_a_bed`
         # reads `birthdate` instead.
         age=age,
         grade=_i(child, "grade") or None,
@@ -2610,10 +2610,11 @@ class LodgingRosterService:
                     ),
                     flags=self._build_flags(
                         registration,
-                        # The one COMPUTED flag on the summary (staff ruling,
-                        # 2026-08-21) -- see `_has_child_under_two` and the
-                        # schema field for why it cannot be read from the
-                        # registration row like its siblings.
+                        # The two COMPUTED flags on the summary (staff ruling,
+                        # 2026-08-21) -- see `_has_child_under_two`,
+                        # `_has_bed_exempt_child` and their schema fields for
+                        # why neither can be read from the registration row
+                        # like their siblings.
                         has_child_under_two=_has_child_under_two(children, session_start),
                         has_bed_exempt_child=_has_bed_exempt_child(children, session_start),
                     ),
@@ -2723,12 +2724,15 @@ class LodgingRosterService:
     ) -> AccessibilityFlagSummary:
         """Read the derived flags. Do NOT re-derive them here.
 
-        ONE deliberate exception to that contract: `has_child_under_two` is
-        COMPUTED by the caller from the children's birthdates and passed in,
-        because its would-be column (`has_infant`) is answered only on adult
-        sessions and is 0 across every production family-weekend row -- the
-        full argument lives on the schema field. It is keyword-only so a
-        caller cannot pass it by accident, and it defaults False so a
+        TWO deliberate exceptions to that contract, both COMPUTED by the
+        caller from the children's birthdates and passed in keyword-only:
+        `has_child_under_two`, because its would-be column (`has_infant`) is
+        answered only on adult sessions and is 0 across every production
+        family-weekend row -- the full argument lives on the schema field --
+        and `has_bed_exempt_child`, which must come from the same
+        `_consumes_a_bed` call that discounts `party_size` so the capacity
+        tooltip and the bed count can never disagree. Both are keyword-only
+        so a caller cannot pass them by accident, and both default False so a
         registration with no children context honestly reports "nothing
         known".
 

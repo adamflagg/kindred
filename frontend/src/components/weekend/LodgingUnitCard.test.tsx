@@ -250,13 +250,13 @@ describe('LodgingUnitCard', () => {
       expect(screen.queryByText(/exempt/)).not.toBeInTheDocument()
     })
 
-    it('does not mistake the 0.0 unknown-age sentinel for an infant (the 24-vs-25 case)', () => {
-      // kindred#2212: one child in the real 2026 cohort carries `age: 0.0`,
-      // CampMinder's UNKNOWN-AGE sentinel, not a newborn's age. The server
-      // never discounts that child's bed on the strength of the sentinel, so
-      // headcount and recorded beds AGREE for this household and the
-      // exemption clause must not fire -- this is exactly why the measured
-      // population is 24 affected households, not 25.
+    it('does not mistake the 0.0 unknown-age sentinel for an infant', () => {
+      // kindred#2212: `age: 0.0` is CampMinder's UNKNOWN-AGE sentinel, not a
+      // newborn's age. The server never discounts a bed on the sentinel's
+      // strength, so headcount and recorded beds AGREE for this household and
+      // the exemption clause must not fire. (Re-measured 2026-08-22: zero
+      // rostered 2026 children carry the sentinel and the derived rule
+      // discounts 26 households -- the guard pins the RULE, not the cohort.)
       render(
         <LodgingUnitCard
           slot={slot({

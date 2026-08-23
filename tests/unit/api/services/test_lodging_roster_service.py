@@ -3790,7 +3790,7 @@ class TestPartySizeIsABedCount:
       `persons.age`.
 
     Because the chip is now beds rather than names, the card deliberately
-    shows one fewer than the people it prints for the 24 households with an
+    shows one fewer than the people it prints for the 26 households with an
     infant. That two-numbers split is kindred#2152's, not this layer's: the
     payload keeps every adult row it always did, placeholders included, and
     only the COUNT changes here.
