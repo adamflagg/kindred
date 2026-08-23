@@ -865,17 +865,30 @@ def write_in_covers(
                 note=source.reason,
                 party_size=source.party_size,
                 relation=relation,
-                # 0, not the raw lookup, when the SOURCE is retired
-                # (kindred#2540 fix-round FINDING 5). `_effective_sleeps`
-                # filters `is_active` only inside a container's sum over its
-                # leaves -- a leaf looked up directly by code still returns
-                # its raw `sleeps` unfiltered, which is right for every other
-                # caller of `capacity_by_code` but wrong here: a retired
-                # unit's beds were never counted toward its container's own
-                # capacity, so its cover must not consume any either. The
-                # cover itself is NOT dropped -- the write-in still names the
-                # room -- only the beds it claims are zeroed.
-                unit_sleeps=(capacity_by_code.get(source.code) if source.is_active else 0),
+                # 0, not the raw lookup, when the SOURCE is retired AND the
+                # cover is not the unit's OWN row (kindred#2540 fix-round
+                # FINDING 5, narrowed by the validation-fix review's Fix 2).
+                # `_effective_sleeps` filters `is_active` only inside a
+                # CONTAINER's sum over its leaves -- a leaf looked up directly
+                # by code still returns its raw `sleeps` unfiltered, which is
+                # right for every other caller of `capacity_by_code` but wrong
+                # for an ANCESTOR or DESCENDANT cover: a retired unit's beds
+                # were never counted toward its container's own capacity, so
+                # its cover must not consume any either. The cover itself is
+                # NOT dropped -- the write-in still names the room -- only
+                # the beds it claims are zeroed.
+                #
+                # ⚠️ `relation == "own"` IS EXEMPT, and applying the same
+                # clamp there was the review's finding. The unit's OWN
+                # capacity card still reads its own raw `sleeps` -- there is
+                # no container summing it away, because the unit IS the
+                # container being asked about. Zeroing an own cover's claim
+                # does not correct anything: it RE-OPENS the room --
+                # `unit_sleeps=0` -> `consumed=0` -> the retired unit reads as
+                # having free beds it does not have. Latent today (the
+                # snapshot has all 118 units active) but reachable wherever an
+                # inactive unit still draws -- the map popover does.
+                unit_sleeps=(capacity_by_code.get(source.code) if source.is_active or relation == "own" else 0),
             )
             for source, relation in pairs
         ]

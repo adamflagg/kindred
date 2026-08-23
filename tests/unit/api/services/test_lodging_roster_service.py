@@ -5332,6 +5332,27 @@ class TestWriteInCovers:
         assert covers["house"][0].unit_sleeps == 0
         assert covers["house"][0].unit_code == "house-a"
 
+    def test_a_retired_units_own_cover_still_reads_its_own_raw_capacity(self) -> None:
+        """kindred#2540 validation-fix (Fix 2). FINDING 5's clamp above is
+        right for a DESCENDANT (or ANCESTOR) cover -- a retired room's beds
+        were never counted toward its container's summed capacity, so its
+        cover must not claim any either. Applied to the unit's OWN cover it
+        is WRONG: that card's capacity is still its own raw `sleeps`, with no
+        container summing it away, so zeroing the claim there does not
+        correct anything -- it RE-OPENS the room. A retired unit's own
+        unsized write-in must still consume its own beds and close it.
+        """
+        retired_leaf = _summary("cedar-1", is_active=False)
+
+        covers = write_in_covers(
+            [retired_leaf],
+            _written_ids("cedar-1"),
+            {"cedar-1": 6},
+        )
+
+        assert covers["cedar-1"][0].relation == "own"
+        assert covers["cedar-1"][0].unit_sleeps == 6
+
     def test_a_room_inherits_the_write_in_of_the_building_above_it(self) -> None:
         # The SPLIT case. Staff wrote into the whole house while it was merged,
         # then split it back to rooms: the row still names the house, which now
