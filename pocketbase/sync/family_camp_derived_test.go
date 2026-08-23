@@ -4111,3 +4111,62 @@ func TestProcessMedicalBathroomExplainUsesTheSharedRoutingList(t *testing.T) {
 		}
 	}
 }
+
+// TestMedicalGateColumnsExistInASchemaMigration guards the failure mode that has
+// no symptom: record.Set() on a PocketBase column that does not exist is a
+// silent no-op, so a gate whose migration was never written simply never
+// persists, with nothing in the logs and nothing in the tests to notice.
+//
+// Ranges over gateColumns (lodging_medical_narrative_test.go, same package)
+// rather than a list of its own -- two identical lists in this package is
+// exactly the drift shape TestMedicalColumnLimitsMatchTheSchema above already
+// guards against for medicalColumnLimits.
+func TestMedicalGateColumnsExistInASchemaMigration(t *testing.T) {
+	t.Parallel()
+
+	paths, err := filepath.Glob("../pb_migrations/*.js")
+	if err != nil {
+		t.Fatalf("globbing migrations: %v", err)
+	}
+	if len(paths) == 0 {
+		t.Fatal("no migrations found -- this test would pass vacuously")
+	}
+
+	declared := make(map[string]string, len(gateColumns))
+	for _, path := range paths {
+		source, err := os.ReadFile(path) //nolint:gosec // fixed repo-relative glob
+		if err != nil {
+			t.Fatalf("reading %s: %v", path, err)
+		}
+		text := string(source)
+		if !strings.Contains(text, "family_camp_medical") {
+			continue
+		}
+		for _, column := range gateColumns {
+			if strings.Contains(text, `name: "`+column+`"`) {
+				declared[column] = filepath.Base(path)
+			}
+		}
+	}
+
+	for _, column := range gateColumns {
+		path, ok := declared[column]
+		if !ok {
+			t.Errorf("family_camp_medical.%s is written by processMedical but no "+
+				"migration creates it -- record.Set() would silently no-op", column)
+			continue
+		}
+		source, err := os.ReadFile(filepath.Join("../pb_migrations", path)) //nolint:gosec // from the glob above
+		if err != nil {
+			t.Fatalf("re-reading %s: %v", path, err)
+		}
+		text := string(source)
+		if !strings.Contains(text, `"select"`) {
+			t.Errorf("%s declares %s but no select field -- the gate must be a "+
+				"three-state select, not a bool", path, column)
+		}
+		if !strings.Contains(text, `values: ["yes", "no"]`) {
+			t.Errorf(`%s declares %s without values: ["yes", "no"]`, path, column)
+		}
+	}
+}

@@ -26,6 +26,20 @@ var narrativeColumns = []string{
 	"physician_info",
 }
 
+// gateColumns are the structured gate answers that sit beside the narrative
+// columns above (kindred#2542). They are not narrative -- each is one of "yes",
+// "no" or "" -- but they are answers to the same medical questions on the same
+// admin-gated collection, so they get the same export ban. A separate list
+// rather than an entry in narrativeColumns because kindred#2409 spent a PR
+// making that vocabulary mean what it says.
+var gateColumns = []string{
+	"allergy_gate",
+	"dietary_gate",
+	"special_needs_gate",
+	"physician_gate",
+	"cpap_gate",
+}
+
 // KNOWN EXPOSURE, deliberately not fixed here. person_custom_values and
 // household_custom_values ARE exported to Google Sheets, with First Name, Last
 // Name, Field Name and the raw Value, so the medical narrative already reaches
