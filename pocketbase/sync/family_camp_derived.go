@@ -2123,6 +2123,32 @@ func gateVerdict(fieldName string, parts []string) string {
 	return verdict
 }
 
+// orGateVerdicts unions per-field gate verdicts by the same rule gateVerdict
+// itself uses to union per-person answers within one field: yes beats no
+// beats unanswered, order-independent.
+//
+// It exists for CPAP, the one gate spread across three CampMinder fields
+// (fieldFamilyCampCPAP, fieldFamCampCPAP, fieldAdultCPAP -- one question asked
+// in three generations). Calling gateVerdict once per field, then ORing the
+// results, keeps its "field" warning naming the actual field whose vocabulary
+// moved -- the promise gateVerdict's doc comment makes -- instead of the
+// single literal "CPAP" label a combined call would have to invent. The union
+// itself changes nothing observable: yes/no/unanswered is order-independent
+// whether it is computed over one combined answer list or three separate
+// ones, so processMedical's cpap_gate is identical either way.
+func orGateVerdicts(verdicts ...string) string {
+	verdict := gateVerdictUnanswered
+	for _, v := range verdicts {
+		if v == gateVerdictYes {
+			return gateVerdictYes
+		}
+		if v == gateVerdictNo {
+			verdict = gateVerdictNo
+		}
+	}
+	return verdict
+}
+
 // medicalAnswers holds one household's family-camp medical answers: every
 // distinct answer given to each field, in canonical order, across everyone who
 // answered it.
@@ -2232,11 +2258,17 @@ func (s *FamilyCampDerivedSync) processMedical(personValues []customValueEntry) 
 		// disclosed a need so that "No; Yes, outlet needed for CPAP machine"
 		// could not be rendered. No gate answer reaches this column at all now,
 		// so there is nothing left for it to contradict.
-		cpapGateAnswers := make([]string, 0, 3)
-		for _, key := range []string{fieldFamilyCampCPAP, fieldFamCampCPAP, fieldAdultCPAP} {
-			cpapGateAnswers = append(cpapGateAnswers, fields.parts(key)...)
-		}
-		med.cpapGate = gateVerdict("CPAP", cpapGateAnswers)
+		//
+		// One gateVerdict call per field, ORed by orGateVerdicts, rather than one
+		// combined call over all three fields' answers -- so a vocabulary warning
+		// names the actual CampMinder field that drifted (Family Camp-CPAP, FAM
+		// CAMP-CPAP or Adult-CPAP) instead of the aggregate label "CPAP". The
+		// verdict itself is unchanged either way: see orGateVerdicts' doc comment.
+		med.cpapGate = orGateVerdicts(
+			gateVerdict(fieldFamilyCampCPAP, fields.parts(fieldFamilyCampCPAP)),
+			gateVerdict(fieldFamCampCPAP, fields.parts(fieldFamCampCPAP)),
+			gateVerdict(fieldAdultCPAP, fields.parts(fieldAdultCPAP)),
+		)
 		med.cpapInfo = s.joinMedicalColumn(householdID, "cpap_info",
 			fields.parts("Family Medical-CPAP Explain"))
 
