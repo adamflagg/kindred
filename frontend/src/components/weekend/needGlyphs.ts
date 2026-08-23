@@ -31,7 +31,12 @@
  */
 import { Accessibility, Bath, Plug, Refrigerator, type LucideIcon } from 'lucide-react'
 
-import type { AccessibilityFlags, LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
+import type {
+  AccessibilityFlags,
+  HouseholdMedical,
+  LodgingUnitRow,
+  RosterPartyRow,
+} from '../../types/lodging'
 import type { NeedsFit } from './needsFit'
 
 /**
@@ -62,6 +67,21 @@ export type Coverage = AmenityCoverage | RampCoverage
 
 /** The four dimensions, and the set is CLOSED (§6). */
 export type NeedKey = 'bathroom' | 'power' | 'fridge' | 'step_free'
+
+/**
+ * The three narrative fields a glyph can explain itself from, tied to the
+ * GENERATED payload type so an API rename becomes a type error here rather
+ * than a silently label-only tooltip.
+ *
+ * These are `HouseholdMedicalResponse` fields, and that response is served by
+ * ONE endpoint gated on `bunking.manage` — the containment
+ * `test_lodging_medical_narrative_containment.py` pins. This type maps needs
+ * to that endpoint's fields; nothing here puts the text on the roster.
+ */
+export type NeedExplainSource = keyof Pick<
+  HouseholdMedical,
+  'bathroom_explain' | 'cpap_info' | 'accommodation_explain'
+>
 
 /**
  * WHICH QUESTION IS BEING ASKED. Two, and they are genuinely different.
@@ -133,6 +153,18 @@ export interface NeedGlyphSpec {
    * placement that lands in one of the other eight.
    */
   readonly someIs: Exclude<NeedsFit, 'fits'>
+  /**
+   * The medical field(s) this need's flag was DERIVED from — the Go sync's
+   * own sources, not a guess by name: `needs_power` exists because a family
+   * wrote something in `cpap_info`, `needs_private_bathroom` because they
+   * wrote `bathroom_explain`, `needs_fridge` keyword-matches
+   * `accommodation_explain`, and `needs_step_free` keyword-matches BOTH
+   * `accommodation_explain` and `bathroom_explain` (both listed, in the
+   * order shown). The glyph tooltip appends these texts for a
+   * `bunking.manage` holder, fetched through the gated medical endpoint —
+   * see `needExplainTexts`.
+   */
+  readonly explainSources: readonly NeedExplainSource[]
   /** Where this need reads its supply. See each implementation for why. */
   readonly coverage: (party: RosterPartyRow, unit: LodgingUnitRow, reading: NeedReading) => Coverage
 }
@@ -212,6 +244,7 @@ export const NEED_GLYPHS: readonly NeedGlyphSpec[] = [
     // covered placement should be the mark staff look at, not the one they
     // do not.
     someIs: 'unmet',
+    explainSources: ['bathroom_explain'],
     coverage: bathroomCoverage,
   },
   {
@@ -221,6 +254,10 @@ export const NEED_GLYPHS: readonly NeedGlyphSpec[] = [
     Icon: Plug,
     hueClassName: 'text-purple-500 dark:text-purple-400',
     someIs: 'partial',
+    // `cpap_info`, and that is not a mismatch: the power need IS the CPAP
+    // disclosure. The Go sync derives `needs_power` from a family having
+    // written this field, so it is where their own words live.
+    explainSources: ['cpap_info'],
     // `power_coverage`, never the raw `has_power`. Twelve of the fourteen 2026
     // family-pool containers record `has_power = 0` while every leaf beneath
     // them has power, so the raw flag marks twelve entirely-powered buildings
@@ -240,6 +277,7 @@ export const NEED_GLYPHS: readonly NeedGlyphSpec[] = [
     // step-free shape — the shared-fridge ruling is what rules that out, since
     // a fridge one room over is still a fridge a family can use.
     someIs: 'partial',
+    explainSources: ['accommodation_explain'],
     // `fridge_coverage`, never `has_fridge` — the same container trap the
     // power entry spells out, AND the place the owner's 2026-08-15 ruling
     // lives: a SHARED fridge IS a fridge, so `_resolve_fridge_coverage` ORs
@@ -258,6 +296,15 @@ export const NEED_GLYPHS: readonly NeedGlyphSpec[] = [
     // shared-fridge ruling's logic in reverse: a fridge one room over is still
     // a fridge a family can use, and a ramp one room over is not.
     someIs: 'unmet',
+    // BOTH keyword sources, so a step-free tooltip shows whichever the family
+    // actually wrote — a walker disclosure lands in `bathroom_explain` as
+    // often as in `accommodation_explain`.
+    // The accommodation narrative ALONE, matching the Go derivation exactly.
+    // Both used to include the bathroom narrative; the 2026-08-23 owner ruling
+    // removed it from the pair together, because a household whose only
+    // narrative is a bathroom explanation was drawing two glyphs that quoted
+    // the same paragraph. The bathroom narrative belongs to the bathroom glyph.
+    explainSources: ['accommodation_explain'],
     // `ramp_coverage`, never the raw `has_ramp` — and here that is not only the
     // container trap. `has_ramp` is a STRING, so `'no'` is TRUTHY: any consumer
     // testing it for truthiness renders "step-free" on the four cabins staff
@@ -289,6 +336,24 @@ export function needCoverage(
   reading: NeedReading = 'placed'
 ): Coverage {
   return needGlyph(key).coverage(party, unit, reading)
+}
+
+/**
+ * The explain paragraph(s) one glyph appends for a `bunking.manage` holder,
+ * in `explainSources` order, empty and whitespace-only fields skipped.
+ *
+ * `undefined` covers loading, a 403 and a person-grain party alike — the
+ * tooltip then shows exactly what it shows today, the label being its own
+ * placeholder (staff ruling: no spinner in a bubble).
+ */
+export function needExplainTexts(
+  key: NeedKey,
+  medical: Partial<Pick<HouseholdMedical, NeedExplainSource>> | undefined
+): string[] {
+  if (medical === undefined) return []
+  return needGlyph(key)
+    .explainSources.map((field) => (medical[field] ?? '').trim())
+    .filter((text) => text.length > 0)
 }
 
 /**

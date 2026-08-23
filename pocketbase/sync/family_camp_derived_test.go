@@ -4030,18 +4030,58 @@ func TestProcessRegistrationsDerivesNeedsStepFreeFromTheAccommodationNarrative(t
 	}
 }
 
-// ⚠️ THE ROUTING TRAP. needs_fridge reads the accommodation narrative ALONE,
-// and copying that routing verbatim loses more than a third of this signal: on
-// the 2026 snapshot 5 of the 14 mobility households narrate ONLY through the
-// bathroom field and 3 through both, against 0 of the 6 fridge households. It makes
-// sense -- a family explaining why they need a private bathroom is often
-// explaining that someone cannot walk to the shared one.
-func TestProcessRegistrationsDerivesNeedsStepFreeFromTheBathroomNarrative(t *testing.T) {
+// ⚠️ REVERSED BY OWNER RULING 2026-08-23. This test previously asserted the
+// OPPOSITE -- that the bathroom narrative DOES route into needsStepFree -- on
+// the reasoning that a family explaining why they need a private bathroom is
+// often explaining that someone cannot walk to the shared one. That reasoning
+// is still true about the SENTENCES; what changed is the ruling about the
+// BOARD, and it is a spec change, not a test bent to fit the code.
+//
+// The cost of the old route was a duplicate mark. A household whose only
+// narrative is a bathroom explanation raised BOTH needs_private_bathroom and
+// needs_step_free, drawing two glyphs whose tooltips then showed the SAME
+// paragraph -- one family answer rendered as two independent needs. Owner, on
+// seeing it: "we should only be scanning over accommodation, not bathroom
+// narratives, else we can surface up dupes."
+//
+// Re-measured on the 2026 snapshot before reversing, and the signal loss is
+// zero: of 14 step-free households, 11 narrate through the accommodation field
+// and keep their glyph unchanged; the other 3 narrate ONLY through the bathroom
+// field, and ALL 3 are already needs_private_bathroom, so they keep a bathroom
+// glyph carrying the very same words. 2025: 4 step-free households, none
+// bathroom-only. Nobody loses a mark or a sentence -- the duplicate collapses
+// onto the answer the family actually gave.
+//
+// (The superseded comment cited 5 of 14 rather than 3; that figure predates the
+// kindred#2542 narrative split and is not what the current data shows.)
+//
+// needs_fridge already read the accommodation narrative alone, so the two
+// routes are now identical rather than deliberately different.
+func TestProcessRegistrationsDoesNotDeriveNeedsStepFreeFromTheBathroomNarrative(t *testing.T) {
 	t.Parallel()
 
 	// Both partitions of the bathroom narrative: "Housing-Bathroom" is the
 	// Camper key (cm_id 274059) and "Bathroom-Yes" the Adult twin (274054).
 	for _, name := range []string{"Housing-Bathroom", "Bathroom-Yes"} {
+		s := NewFamilyCampDerivedSync(nil)
+		regs := s.processRegistrations(nil, []customValueEntry{
+			{householdPBID: "hh_garcia", fieldName: name,
+				value: "Grandmother uses crutches and cannot manage the steps to the bathhouse"},
+		})
+		if len(regs) == 1 && regs[0].needsStepFree {
+			t.Errorf("field %q routed into needsStepFree; the bathroom narrative "+
+				"must no longer raise the step-free need (owner ruling 2026-08-23)", name)
+		}
+	}
+}
+
+// The accommodation narrative REMAINS the step-free route. Pinned beside the
+// reversal above so a reader sees both halves at once: the reversal narrowed
+// which fields are scanned, and did not touch what the scan looks for.
+func TestProcessRegistrationsStillDerivesNeedsStepFreeFromTheAccommodationNarrative(t *testing.T) {
+	t.Parallel()
+
+	for _, name := range []string{"Housing Accommodation-Yes", "Accommodation-Explain"} {
 		s := NewFamilyCampDerivedSync(nil)
 		regs := s.processRegistrations(nil, []customValueEntry{
 			{householdPBID: "hh_garcia", fieldName: name,
@@ -4137,17 +4177,33 @@ func TestMentionsStepFreeVocabulary(t *testing.T) {
 	}
 }
 
-// ⚠️ THE GATE TRAP. 3 of the 14 2026 mobility households are NOT
-// accommodation-gated, so needs_step_free has to join the has-some-data guard
-// that decides whether a registration row is written at all -- otherwise those
-// three rows are dropped before they are stored, and the flag is invisible for
-// exactly the households nothing else records.
+// ⚠️ THE GATE TRAP -- now a DEFENSIVE pin rather than a measured one, and the
+// difference is recorded so nobody re-derives the old number.
+//
+// This guard exists because needs_step_free can be the ONLY thing a household
+// row carries, and the has-some-data check decides whether a registration row
+// is written at all; without step-free in that check the row is dropped before
+// it is stored and the flag is invisible.
+//
+// The comment here used to justify it with "3 of the 14 2026 mobility
+// households are NOT accommodation-gated". That was true while the bathroom
+// narrative also raised the flag -- and those 3 were precisely the
+// bathroom-only households. After the 2026-08-23 owner ruling narrowed the
+// route to the accommodation narrative alone, the measured count is **0 of 11**:
+// every remaining step-free household is accommodation-gated.
+//
+// The guard stays because the two fields are independent custom values. A
+// household can hold the accommodation EXPLAIN (274058) while the accommodation
+// GATE (274057) is blank or unparseable, and that household's row must still
+// survive. Zero occurrences today is not zero occurrences by construction.
 func TestProcessRegistrationsStepFreeOnlyHouseholdSurvives(t *testing.T) {
 	t.Parallel()
 	s := NewFamilyCampDerivedSync(nil)
 
+	// The accommodation EXPLAIN field, which raises the flag without setting
+	// the gate -- the gate is a different cm_id and is not present here.
 	regs := s.processRegistrations(nil, []customValueEntry{
-		{householdPBID: "hh_lee", fieldName: "Housing-Bathroom",
+		{householdPBID: "hh_lee", fieldName: "Housing Accommodation-Yes",
 			value: "cannot walk far from the parking area"},
 	})
 	if len(regs) != 1 {
@@ -4170,7 +4226,7 @@ func TestProcessRegistrationsNeverStoresTheMobilityNarrative(t *testing.T) {
 
 	const narrative = "Grandmother has late-stage neuropathy and cannot walk on gravel"
 	regs := s.processRegistrations(nil, []customValueEntry{
-		{householdPBID: "hh_lee", fieldName: "Housing-Bathroom", value: narrative},
+		{householdPBID: "hh_lee", fieldName: "Housing Accommodation-Yes", value: narrative},
 	})
 	if len(regs) != 1 {
 		t.Fatalf("registrations = %d, want 1", len(regs))

@@ -565,7 +565,17 @@ function FamilyCardChips({
             §2/§3). */}
         <ShareMarks party={party} />
         {glyphs.map((glyph) => (
-          <NeedGlyphMark key={glyph.key} glyph={glyph} />
+          <NeedGlyphMark
+            key={glyph.key}
+            glyph={glyph}
+            // The household whose own words the tooltip may FETCH for a
+            // `bunking.manage` holder once opened — never text carried on the
+            // roster payload; see the prop's doc for the containment this
+            // respects. `|| null`, not `??`: RosterParty ids serialise as 0,
+            // never undefined, and /households/0/medical is not a request
+            // worth making — a person-grain party lands here too.
+            explainHouseholdCmId={isHousehold ? party.household_cm_id || null : null}
+          />
         ))}
 
         {/* The child-under-two mark (staff ruling, 2026-08-21). COMPUTED

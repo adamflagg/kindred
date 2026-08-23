@@ -63,6 +63,22 @@ vi.mock('@dnd-kit/core', async (importOriginal) => {
   }
 })
 
+/**
+ * Opening a need-glyph tooltip mounts a permission probe (the lazy
+ * explain-text fetch — `NeedGlyph.test.tsx` is that feature's spec). This
+ * file renders cards with no AuthProvider, so the probe reads a mocked
+ * no-permission answer and the label tooltips pinned below stay exactly as
+ * they were: the mock IS the "user without bunking.manage" case.
+ */
+vi.mock('../../hooks/usePermissions', () => ({
+  usePermissions: () => ({
+    permissions: [],
+    isAdmin: false,
+    hasPermission: () => false,
+    hasAnyPermission: () => false,
+  }),
+}))
+
 function party(overrides: Partial<RosterPartyRow> = {}): RosterPartyRow {
   return {
     grain: 'household',

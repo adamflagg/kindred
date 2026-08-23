@@ -79,8 +79,13 @@ import { createPortal } from 'react-dom'
 import { acquireOverlayToken, isTopOverlay, releaseOverlayToken } from './modalStack'
 
 export interface TooltipProps {
-  /** The sentence the bubble carries when opened by hover, focus, or tap. */
-  content: string
+  /**
+   * What the bubble carries when opened by hover, focus, or tap — usually a
+   * sentence, occasionally a node (the need glyphs append the family's
+   * explain paragraphs under their label). Still never a control: the bubble
+   * is `role="tooltip"` and nothing inside it can take focus.
+   */
+  content: ReactNode
   /** The visible trigger content — a chip label, a count, a room name. */
   children: ReactNode
   /** Classes for the trigger itself: it replaces the `<span>` that used to carry `title`. */
@@ -114,6 +119,16 @@ export interface TooltipProps {
    * focusable button and Tab still opens the bubble.
    */
   pinOnClick?: boolean
+  /**
+   * Reports open/close TRANSITIONS of the bubble, once each — the
+   * lazy-content affordance. The need glyphs mount a permission-gated fetch
+   * on the first `true` and drop what it brought on `false`, which is what
+   * keeps ~82 cards from fetching a medical payload nobody asked to read.
+   * Not called at mount: a closed bubble is not a transition. Hover and
+   * focus arriving together are ONE open — a consumer mounting work on
+   * `true` must not see it remount for the same bubble.
+   */
+  onOpenChange?: ((open: boolean) => void) | undefined
 }
 
 /**
@@ -142,6 +157,7 @@ export function Tooltip({
   'data-testid': testId,
   onActivate,
   pinOnClick = true,
+  onOpenChange,
 }: TooltipProps) {
   const triggerRef = useRef<HTMLButtonElement>(null)
   const bubbleRef = useRef<HTMLDivElement>(null)
@@ -168,6 +184,21 @@ export function Tooltip({
   const [dismissed, setDismissed] = useState(false)
 
   const open = !dismissed && (hovering || focused || pinned)
+
+  // The transition report, via refs rather than effect deps: the callback's
+  // identity must not matter (a caller passing an inline closure would
+  // otherwise re-fire the effect every render), and only a CHANGE of `open`
+  // is a transition — mount with a closed bubble says nothing.
+  const onOpenChangeRef = useRef(onOpenChange)
+  useEffect(() => {
+    onOpenChangeRef.current = onOpenChange
+  }, [onOpenChange])
+  const reportedOpenRef = useRef(false)
+  useEffect(() => {
+    if (reportedOpenRef.current === open) return
+    reportedOpenRef.current = open
+    onOpenChangeRef.current?.(open)
+  }, [open])
 
   const [coords, setCoords] = useState<{ top: number; left: number }>({ top: 0, left: 0 })
 

@@ -507,3 +507,49 @@ describe('Tooltip — a trigger the sentence already names', () => {
     expect(screen.getByRole('tooltip')).toHaveTextContent(SENTENCE)
   })
 })
+
+describe('Tooltip — onOpenChange, the lazy-content affordance', () => {
+  /*
+   * The need-glyph tooltips fetch their explain text ONLY once a staff member
+   * actually opens the bubble — never on card render, because ~82 cards
+   * eagerly fetching a permission-gated medical payload is exactly the
+   * speculative read `useHouseholdMedical`'s `enabled` flag exists to prevent.
+   * So the primitive reports open/close TRANSITIONS, and a caller mounts its
+   * fetch on the first `true` it hears.
+   */
+  it('says nothing at mount — a closed bubble is not a transition', () => {
+    const onOpenChange = vi.fn()
+    renderChip({ onOpenChange })
+    expect(onOpenChange).not.toHaveBeenCalled()
+  })
+
+  it('reports the bubble opening on focus and closing on blur', () => {
+    const onOpenChange = vi.fn()
+    renderChip({ onOpenChange })
+    fireEvent.focus(trigger())
+    expect(onOpenChange).toHaveBeenCalledTimes(1)
+    expect(onOpenChange).toHaveBeenLastCalledWith(true)
+    fireEvent.blur(trigger())
+    expect(onOpenChange).toHaveBeenCalledTimes(2)
+    expect(onOpenChange).toHaveBeenLastCalledWith(false)
+  })
+
+  it('reports a pointer-opened bubble the same way', () => {
+    const onOpenChange = vi.fn()
+    renderChip({ onOpenChange })
+    fireEvent.pointerEnter(trigger())
+    expect(onOpenChange).toHaveBeenLastCalledWith(true)
+    fireEvent.pointerLeave(trigger())
+    expect(onOpenChange).toHaveBeenLastCalledWith(false)
+  })
+
+  it('reports each open once, not once per render of an open bubble', () => {
+    // The consumer mounts a fetch on `true`; a repeat `true` for the same
+    // open would remount it. Hover + focus together are ONE open.
+    const onOpenChange = vi.fn()
+    renderChip({ onOpenChange })
+    fireEvent.pointerEnter(trigger())
+    fireEvent.focus(trigger())
+    expect(onOpenChange).toHaveBeenCalledTimes(1)
+  })
+})

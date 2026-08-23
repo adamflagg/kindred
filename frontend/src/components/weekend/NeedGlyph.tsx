@@ -17,8 +17,14 @@
  * grading; this holds the markup. A rule with a truth table is testable
  * without rendering ~82 cards, which is why the two are not one file.
  */
+import { useCallback, useEffect, useMemo, useState } from 'react'
+
+import { Permission } from '../../constants/permissions'
+import { useYear } from '../../hooks/useCurrentYear'
+import { usePermissions } from '../../hooks/usePermissions'
+import { useHouseholdMedical } from '../../hooks/useWeekendRoster'
 import { Tooltip } from '../ui/Tooltip'
-import type { ResolvedNeedGlyph } from './needGlyphs'
+import { needExplainTexts, type NeedKey, type ResolvedNeedGlyph } from './needGlyphs'
 
 /**
  * The warn ink, owned here because the GLYPH is what defines it (N2) and a
@@ -103,10 +109,22 @@ export const GLYPH_BASE = 'inline-flex h-5 w-5 items-center justify-center round
  * a third colour would be. `partial` — "a ramp with a lip", "some rooms have
  * power" — reads as met; degree lives on the card's drag-time hatch, which
  * grades it on the hatch period.
+ *
+ * ## The tooltip may carry the family's OWN WORDS, fetched — never carried
+ *
+ * For a `bunking.manage` holder the card's tooltip appends the explain text
+ * the glyph's flag was derived from (`explainSources` in `needGlyphs.ts`),
+ * fetched through the gated medical endpoint ONLY once the bubble is open —
+ * see `explainHouseholdCmId`'s doc and `NeedGlyphExplainProbe` for the
+ * containment and timing rules. The `insideControl` span takes no part in
+ * this: a native `title` is set once at render and cannot load anything, and
+ * eagerly fetching medical text for every candidate row in the Assign modal
+ * is precisely the speculative read the lazy path exists to avoid.
  */
 export function NeedGlyphMark({
   glyph,
   insideControl = false,
+  explainHouseholdCmId = null,
 }: {
   glyph: ResolvedNeedGlyph
   /**
@@ -114,6 +132,25 @@ export function NeedGlyphMark({
    * itself. See the nesting hazard in this module's doc.
    */
   insideControl?: boolean
+  /**
+   * The household whose OWN WORDS the tooltip may append under the label,
+   * for a `bunking.manage` holder — the family's `bathroom_explain` /
+   * `cpap_info` / `accommodation_explain`, the very fields the glyph's flag
+   * was derived from (`needGlyphs.explainSources`).
+   *
+   * ⚠️ THE TEXT IS FETCHED, NEVER CARRIED. `HouseholdMedicalResponse` is
+   * deliberately fenced OUT of the roster payload (the medical-narrative
+   * containment test and its Go parity list); this prop is only the ID to
+   * fetch it BY, and the fetch happens through the same gated
+   * `useHouseholdMedical` the details panel uses — mounted only while the
+   * bubble is open, so nothing is requested for a card nobody asked about
+   * and nothing sits in the cache once the bubble closes (`gcTime: 0`).
+   *
+   * `null`/`0` — a person-grain party, or a caller with no household —
+   * means today's label tooltip, no fetch, no permission read. Meaningless
+   * with `insideControl`, whose native `title` cannot load anything.
+   */
+  explainHouseholdCmId?: number | null
 }) {
   const { Icon, label, hueClassName, isUnmet } = glyph
   const sentence = isUnmet ? `${label} — the cabin does not meet it` : label
@@ -121,6 +158,21 @@ export function NeedGlyphMark({
     <Icon className={`h-3 w-3 ${isUnmet ? 'text-red-800 dark:text-red-300' : hueClassName}`} />
   )
   const className = `${GLYPH_BASE} ${isUnmet ? GLYPH_UNMET : 'border-border bg-transparent'}`
+
+  // The lazy-explain state. Hooks before the `insideControl` return, per the
+  // rules of hooks; they cost nothing there because `canExplain` is false and
+  // the probe below never mounts.
+  const canExplain = !insideControl && (explainHouseholdCmId ?? 0) > 0
+  const [bubbleOpen, setBubbleOpen] = useState(false)
+  const [explainTexts, setExplainTexts] = useState<readonly string[]>([])
+  const handleOpenChange = useCallback((open: boolean) => {
+    setBubbleOpen(open)
+    // Closing DROPS what the probe brought: the probe unmounts (taking the
+    // cached payload with it — `gcTime: 0`), and a paragraph held here would
+    // outlive that on a mark that sits on the board for hours. The next open
+    // refetches; until it lands, the label is the placeholder.
+    if (!open) setExplainTexts([])
+  }, [])
 
   if (insideControl) {
     return (
@@ -130,23 +182,111 @@ export function NeedGlyphMark({
     )
   }
 
+  const content =
+    explainTexts.length === 0 ? (
+      sentence
+    ) : (
+      <>
+        <div>{sentence}</div>
+        {explainTexts.map((text, index) => (
+          // Index keys, deliberately: two sources can legitimately carry
+          // identical text, and the list is rebuilt whole on every change.
+          <p key={index} className="text-muted-foreground mt-1 whitespace-pre-wrap">
+            {text}
+          </p>
+        ))}
+      </>
+    )
+
   return (
-    <Tooltip
-      content={sentence}
-      // ★ NAMED, and this is a hard requirement of the change rather than an
-      // accessibility flourish. After kindred#2072 the strings "Private
-      // bathroom" and "Power" appear NOWHERE on the family card — the glyph is
-      // the only carrier — so a trigger with no accessible name is a control
-      // that announces nothing and a `getByRole('button', { name })` query
-      // that cannot find it. `frontend/CLAUDE.md` puts it plainly inside the
-      // opt-out policy: "An icon-only button needs a name — give it one", and
-      // `ui/Tooltip`'s own `aria-label` doc scopes itself to exactly this case
-      // — a trigger whose visible content does not name it.
-      aria-label={sentence}
-      data-testid={`need-glyph-${glyph.key}`}
-      className={className}
-    >
-      {icon}
-    </Tooltip>
+    <>
+      {canExplain && bubbleOpen && (
+        <NeedGlyphExplainProbe
+          needKey={glyph.key}
+          householdCmId={explainHouseholdCmId as number}
+          onTexts={setExplainTexts}
+        />
+      )}
+      <Tooltip
+        content={content}
+        onOpenChange={canExplain ? handleOpenChange : undefined}
+        // ★ NAMED, and this is a hard requirement of the change rather than an
+        // accessibility flourish. After kindred#2072 the strings "Private
+        // bathroom" and "Power" appear NOWHERE on the family card — the glyph is
+        // the only carrier — so a trigger with no accessible name is a control
+        // that announces nothing and a `getByRole('button', { name })` query
+        // that cannot find it. `frontend/CLAUDE.md` puts it plainly inside the
+        // opt-out policy: "An icon-only button needs a name — give it one", and
+        // `ui/Tooltip`'s own `aria-label` doc scopes itself to exactly this case
+        // — a trigger whose visible content does not name it.
+        //
+        // The SENTENCE stays the whole name when the explain paragraphs load:
+        // the name is what identifies the control, and a medical narrative in
+        // every `getByRole` dump would be kindred#2348's find-in-page leak
+        // reborn one layer up.
+        aria-label={sentence}
+        data-testid={`need-glyph-${glyph.key}`}
+        className={className}
+      >
+        {icon}
+      </Tooltip>
+    </>
   )
+}
+
+/**
+ * MOUNTED ONLY WHILE THE BUBBLE IS OPEN, and that timing is the whole design:
+ *
+ *   - card render is not interaction, so ~82 cards mount nothing and fetch
+ *     nothing — the speculative read `useHouseholdMedical`'s `enabled` flag
+ *     exists to prevent;
+ *   - a user without `bunking.manage` returns before the fetch component
+ *     exists, so there is no disabled query either — no medical request is
+ *     made, or even prepared, on behalf of someone who cannot have the
+ *     answer (`MedicalNarrative`'s rule, one panel further out);
+ *   - closing the bubble unmounts the query, and `useHouseholdMedical`'s
+ *     `staleTime: 0, gcTime: 0` — the documented privacy divergence — then
+ *     drops the payload from the cache at once. The narrative lives exactly
+ *     as long as somebody is looking at it.
+ *
+ * Split in two because hooks cannot be conditional: this half reads the
+ * permission and returns before its child's `useHouseholdMedical` ever
+ * mounts for a non-holder.
+ */
+function NeedGlyphExplainProbe({
+  needKey,
+  householdCmId,
+  onTexts,
+}: {
+  needKey: NeedKey
+  householdCmId: number
+  onTexts: (texts: readonly string[]) => void
+}) {
+  const { hasPermission } = usePermissions()
+  if (!hasPermission(Permission.BUNKING_MANAGE)) return null
+  return <NeedGlyphExplainFetch needKey={needKey} householdCmId={householdCmId} onTexts={onTexts} />
+}
+
+/** The gated fetch itself — see `NeedGlyphExplainProbe` for when this exists. */
+function NeedGlyphExplainFetch({
+  needKey,
+  householdCmId,
+  onTexts,
+}: {
+  needKey: NeedKey
+  householdCmId: number
+  onTexts: (texts: readonly string[]) => void
+}) {
+  const year = useYear()
+  // `year > 0`: `CurrentYearContext` reports the literal 0 until the backend
+  // supplies the configured year — the same guard every useWeekendRoster
+  // hook carries. Errors (a 403 that arrives anyway, `retry: false`) leave
+  // `data` undefined, which reads as "no explain": the label-only tooltip,
+  // never an error state in a bubble.
+  const { data } = useHouseholdMedical(year, householdCmId, year > 0)
+  const texts = useMemo(() => needExplainTexts(needKey, data), [needKey, data])
+  useEffect(() => {
+    onTexts(texts)
+  }, [texts, onTexts])
+  return null
 }
