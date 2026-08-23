@@ -181,10 +181,12 @@ function ReportScreen({
   // and are never counted here, matching the "shown for audit, never queued"
   // rule above.
   const decisionCount = byClass.conflict.length + byClass.remove.length
-  // What a push with NO decisions to make would actually write — every
-  // building's draft rows, add and match alike (a match still gets written,
-  // it simply reports as `matched` rather than `added` in `PushResult`).
-  const pushCount = preview.buildings.reduce((total, building) => total + building.draft.length, 0)
+  // What a push with NO decisions to make would actually write. `add`-class
+  // draft rows only: `execute_push`'s `match` branch writes NOTHING — it
+  // only increments `matched` in the result, never extends `adds` or
+  // `removes` — and matches are the common case, not the exception, so
+  // summing every building's draft rows overcounted almost every push.
+  const pushCount = byClass.add.reduce((total, building) => total + building.draft.length, 0)
 
   return (
     <div className="flex flex-col gap-4">
@@ -430,7 +432,17 @@ export function PushWriteInsModal({
   })
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Push write-ins" size="2xl">
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title="Push write-ins"
+      size="2xl"
+      // spec §7: the three stages (report, deck, done) change content
+      // height — exactly the defect `anchor="top"` exists for (`ui/Modal`'s
+      // own doc). Centred, a height change re-centres the whole card and
+      // everything above the changed region moves with it.
+      anchor="top"
+    >
       <QueryGuard<PushPreview>
         isLoading={query.isPending}
         error={query.error}

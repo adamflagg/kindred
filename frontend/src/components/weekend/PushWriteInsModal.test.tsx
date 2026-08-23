@@ -201,6 +201,39 @@ describe('PushWriteInsModal — report screen', () => {
     expect(screen.queryByRole('button', { name: /review/i })).not.toBeInTheDocument()
   })
 
+  // kindred#2477 final review, Important #6: `execute_push`'s `match` branch
+  // only increments `matched` -- it extends neither `adds` nor `removes`, so
+  // a match writes NOTHING. The CTA count must reflect that: only an `add`
+  // building's draft rows are ever written by a decision-free push. Fixture:
+  // one `add` building with TWO draft rows plus one `match` building with
+  // one draft row -- summing everyone's draft (the old bug) reads "3"; only
+  // counting `add` reads "2".
+  it('the push CTA counts only add-class rows, not matches', async () => {
+    const preview: PushPreview = {
+      ...PREVIEW,
+      buildings: [
+        {
+          key: 'yurt-5',
+          label: 'Yurt 5',
+          cls: 'add',
+          live: [],
+          draft: [row('yurt-5', 'Kitchen crew'), row('yurt-5', 'Second write-in')],
+        },
+        {
+          key: 'fern-1',
+          label: 'Fern 1',
+          cls: 'match',
+          live: [row('fern-1', 'E. Sandoval')],
+          draft: [row('fern-1', 'E. Sandoval')],
+        },
+      ],
+    }
+    renderModal(preview)
+
+    expect(await screen.findByRole('button', { name: /push 2 write-ins/i })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /push 3 write-ins/i })).not.toBeInTheDocument()
+  })
+
   // kindred#2477 final review, Important #3: the modal STAYS MOUNTED across
   // opens (LodgingBoard renders it unconditionally, gated only by `isOpen`),
   // so `refetchOnMount: 'always'` never re-fires on reopen — there is no new
@@ -327,5 +360,21 @@ describe('PushWriteInsModal — push execution (Task 10)', () => {
     })
     expect(await screen.findByText(/restored 1, deleted 0/i)).toBeInTheDocument()
     expect(mockInvalidateLodgingRegistryQueries).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('PushWriteInsModal — dialog anchoring (kindred#2477 final review, Important #7)', () => {
+  // spec §7 called for `anchor="top"` — this modal's three stages (report,
+  // deck, done) change content height exactly the way `ui/Modal`'s own doc
+  // describes as the defect `anchor="top"` exists to prevent: centred, a
+  // height change re-centres the whole card and everything above the changed
+  // region moves too. `AssignFamilyModal.test.tsx`'s
+  // "anchors the dialog to the top" test is the pattern this mirrors.
+  it('anchors the dialog to the top rather than centring it', async () => {
+    renderModal(PREVIEW)
+    await screen.findByText('Will add')
+    const wrapper = screen.getByRole('dialog')
+    expect(wrapper.className).toContain('items-start')
+    expect(wrapper.className).not.toContain('items-center')
   })
 })
