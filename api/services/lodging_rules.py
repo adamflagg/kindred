@@ -419,9 +419,16 @@ class RequestTextSource(NamedTuple):
 #   is NOT free text: it has exactly two distinct values in 2026, both 40
 #   characters, and `frontend/src/utils/requestBucket.ts` already classes it
 #   an immaterial source field.
+# Owner ruling 2026-08-23, after the form-label correction on this same PR:
+# the REGISTRATION-form box renders first. `Shared-request` (274133) is the
+# registration-time comments box — its writes land in the radio's sitting,
+# 93/94 people, a median 181d before the Information form — and `COVID-19
+# Bunking Requests` (206286) is the Information form's names box. The prior
+# order only LOOKED reg-first because the friendly labels were attributed
+# backwards.
 REQUEST_TEXT_SOURCES: tuple[RequestTextSource, ...] = (
-    RequestTextSource("COVID-19 Bunking Requests", "family"),
     RequestTextSource("Shared-request", "family"),
+    RequestTextSource("COVID-19 Bunking Requests", "family"),
     RequestTextSource("FAM CAMP-Share Comments", "family"),
     RequestTextSource("BunkingNotes Notes", "staff"),
     RequestTextSource("Internal Bunk Notes", "staff"),

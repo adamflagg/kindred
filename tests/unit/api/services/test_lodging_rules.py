@@ -349,9 +349,14 @@ class TestRequestTextSourceRegistry:
         must not be re-derived from volume (or from authorship -- see the
         next test) by a later reader who measures the columns and "corrects"
         it back."""
+        # Owner ruling 2026-08-23, after the form-label correction: the
+        # REGISTRATION-form box (`Shared-request`, written in the radio's
+        # sitting) renders FIRST, ahead of the Information form's names box
+        # (`COVID-19 Bunking Requests`). Under the earlier backwards labels
+        # the old order merely LOOKED reg-first; this pin makes it real.
         assert [source.label for source in REQUEST_TEXT_SOURCES] == [
-            "COVID-19 Bunking Requests",
             "Shared-request",
+            "COVID-19 Bunking Requests",
             "FAM CAMP-Share Comments",
             "BunkingNotes Notes",
             "Internal Bunk Notes",
