@@ -676,10 +676,37 @@ class LodgingWriteService:
                         # unsized copy of a sized write-in silently widens "2
                         # of 5 beds" into "the whole cabin" and a scenario
                         # reports a room closed the live board shows as
-                        # partly open. `getattr` default is `None`, which is
-                        # correct here for the same reason it is correct on
-                        # `set_availability`'s payload: a write-in with no
-                        # recorded count IS the wholesale case, not an error.
+                        # partly open.
+                        #
+                        # ⚠️ THE `None` DEFAULT NEVER ACTUALLY FIRES on a real
+                        # row, and it is worth being honest about that rather
+                        # than reading it as the reason this is correct. PB
+                        # declares `party_size` `NUMERIC DEFAULT 0 NOT NULL`
+                        # and `fetch_write_ins`/`fetch_draft_write_ins` apply
+                        # no field filter, so `row.party_size` is ALWAYS
+                        # present and reads `0`, never absent, for an unsized
+                        # write-in -- `getattr`'s default is dead code here,
+                        # not the mechanism. What actually makes this correct
+                        # is the round trip: PocketBase's own `NumberField`
+                        # validator short-circuits on a `0` value BEFORE it
+                        # ever checks `Min` (`core/field_number.go`,
+                        # `if val == 0 { ...; return nil }`), so `min: 1`
+                        # never fires here -- a DIFFERENT, stricter gate from
+                        # `AvailabilityWriteRequest`'s own `ge=1` in
+                        # `api/schemas/lodging.py`, which rejects a literal 0
+                        # before it ever reaches PocketBase and is what
+                        # `_i_or_none`'s docstring means by "unwritable
+                        # through the API" -- that is the FastAPI path
+                        # (`set_availability`), not this one. `_i_or_none`
+                        # (`lodging_roster_service.py`) then maps `0` back to
+                        # `None` on read, same as it always did.
+                        #
+                        # NOT rewritten to call `_i_or_none` here, deliberately
+                        # -- that helper answers "is this column genuinely
+                        # set", the READ-side question; this line's job is a
+                        # verbatim table-to-table COPY of whatever the source
+                        # row already carries, and `0` copied to `0` already
+                        # round-trips to the right answer without asking it.
                         "party_size": getattr(row, "party_size", None),
                     }
                 )
