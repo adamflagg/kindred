@@ -8,11 +8,12 @@
  * Each row is a button that opens CohortDrillDownModal listing the matched
  * campers (already gender-scoped + same-session by useCamperCohorts).
  */
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { Users } from 'lucide-react'
 import { useCamperCohorts } from '../hooks/useCamperCohorts'
 import { useCohortBunkAssignments } from '../hooks/useCohortBunkAssignments'
 import { useCohortRequestRelations } from '../hooks/useCohortRequestRelations'
+import { useRetainedDialog } from '../hooks/useRetainedDialog'
 import { CohortDrillDownModal, type CohortKind } from './CohortDrillDownModal'
 
 const KINDS: CohortKind[] = ['school', 'congregation', 'city']
@@ -36,15 +37,27 @@ export function CamperCohortsSection({
 }: CamperCohortsSectionProps) {
   const { cohorts, isLoading } = useCamperCohorts(personCmId, sessionCmId, year)
   const { relations } = useCohortRequestRelations(personCmId, sessionCmId, year)
-  // `openKind` is a RETAINED SNAPSHOT, not the open flag (kindred#2529): the
+  // The retained-snapshot pattern, now one hook (kindred#2541): the
   // drill-down must stay mounted through Modal's 150ms leave transition after
-  // close, so closing clears only `drillOpen` and the last-viewed cohort keeps
-  // the content renderable through the fade. afterLeave then releases the
-  // snapshot — the modal is hookless, but its element tree (an attendees.map)
-  // would otherwise re-evaluate on every parent render forever after the
-  // first open, only to be discarded by the closed <Transition>.
-  const [openKind, setOpenKind] = useState<CohortKind | null>(null)
-  const [drillOpen, setDrillOpen] = useState(false)
+  // close, so `close()` clears only the open flag and the last-viewed cohort
+  // keeps the content renderable through the fade. `afterLeave` then releases
+  // the snapshot — the modal is hookless, but its element tree (an
+  // attendees.map) would otherwise re-evaluate on every parent render forever
+  // after the first open, only to be discarded by the closed <Transition>.
+  //
+  // NO `resetWhen`: this section `return null`s while `useCamperCohorts`
+  // reloads, so a refetch blip unmounts the dialog and the latched flag
+  // re-opens it when the data returns. Long-standing behaviour, ruled
+  // 2026-08-22 not to patch ad hoc — closing a drill-down a staffer is
+  // reading, on an ordinary blip, is the worse failure. See the hook's
+  // docstring for the two answers.
+  //
+  // `drill.nonce` is deliberately NOT used here. It keys the dialog's
+  // CONTENT, and this dialog's content is a whole component that renders its
+  // own <Modal> — keying it would remount the fading chrome. There is no
+  // state inside it to reset either.
+  const drill = useRetainedDialog<CohortKind>()
+  const openKind = drill.data
 
   // Union of every cohort's matched person ids — feeds the bunk lookup so
   // switching between school/congregation/city tabs reuses the same query.
@@ -79,10 +92,7 @@ export function CamperCohortsSection({
             <button
               key={row.kind}
               type="button"
-              onClick={() => {
-                setOpenKind(row.kind)
-                setDrillOpen(true)
-              }}
+              onClick={() => drill.open(row.kind)}
               className="text-muted-foreground hover:bg-muted/50 hover:text-foreground flex w-full items-center gap-1.5 rounded px-1 py-0.5 text-left text-xs transition-colors"
               data-testid="cohort-row"
               data-cohort-kind={row.kind}
@@ -104,7 +114,7 @@ export function CamperCohortsSection({
 
       {openKind && openEntry && (
         <CohortDrillDownModal
-          open={drillOpen}
+          open={drill.isOpen}
           kind={openKind}
           label={openEntry.label}
           selfDisplayName={selfDisplayName}
@@ -112,8 +122,8 @@ export function CamperCohortsSection({
           attendees={openEntry.attendees}
           requestRelations={relations}
           bunkByPerson={bunkByPerson}
-          onClose={() => setDrillOpen(false)}
-          afterLeave={() => setOpenKind(null)}
+          onClose={drill.close}
+          afterLeave={drill.afterLeave}
         />
       )}
     </section>

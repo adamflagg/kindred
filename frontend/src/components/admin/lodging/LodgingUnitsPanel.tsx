@@ -26,6 +26,7 @@ import { Link } from 'react-router'
 import { useCurrentYear } from '../../../hooks/useCurrentYear'
 import { useLodgingAreas } from '../../../hooks/useLodgingAreas'
 import { useLodgingUnits } from '../../../hooks/useLodgingUnits'
+import { useRetainedDialog } from '../../../hooks/useRetainedDialog'
 import { confirmLodgingUnits, deactivateLodgingUnit } from '../../../services/lodgingCrud'
 import type { LodgingUnitRecord } from '../../../types/lodging'
 import { invalidateLodgingRegistryQueries } from '../../../utils/queryKeys'
@@ -42,25 +43,15 @@ import { groupUnitsByArea, type UnitSort } from './unitSort'
 export function LodgingUnitsPanel() {
   const queryClient = useQueryClient()
   const { currentYear } = useCurrentYear()
-  // `editing` is a RETAINED SNAPSHOT, not the open flag (kindred#2529): the
-  // editor dialog must stay mounted through Modal's 150ms leave transition
-  // after close, so closing clears only `editorOpen` and the last-edited
-  // record keeps the header renderable through the fade. The form itself
-  // lives inside Modal's children, which <Transition> unmounts once the
-  // leave completes — so no per-field reset is needed here.
-  const [editing, setEditing] = useState<LodgingUnitRecord | 'new' | null>(null)
-  const [editorOpen, setEditorOpen] = useState(false)
-  // Bumped on EVERY open and used as the form's key, so each open remounts a
-  // fresh form even when the previous leave was interrupted by the reopen —
-  // an interrupted leave never unmounts the children, and a reused instance
-  // surfaced the abandoned draft for the next Save to write (#2539 scan).
-  const [editorNonce, setEditorNonce] = useState(0)
-
-  const openEditor = (unit: LodgingUnitRecord | 'new') => {
-    setEditing(unit)
-    setEditorOpen(true)
-    setEditorNonce((n) => n + 1)
-  }
+  // The retained-snapshot pattern, one hook (kindred#2541), and this is the
+  // site that needs all three of its parts: `editor.data` keeps the
+  // last-edited record so the dialog's header stays renderable through
+  // Modal's 150ms leave transition, `editor.isOpen` drives the fade, and
+  // `editor.nonce` keys the FORM (see the render below) so every open
+  // remounts it fresh. No `resetWhen` — the units list going briefly empty
+  // must not close an editor mid-edit.
+  const editor = useRetainedDialog<LodgingUnitRecord | 'new'>()
+  const editing = editor.data
   const [areasOpen, setAreasOpen] = useState(false)
   const [sort, setSort] = useState<UnitSort>({ field: 'name', desc: false })
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -85,15 +76,15 @@ export function LodgingUnitsPanel() {
   /**
    * Move FOCUS into the editor form in the cases Modal cannot cover. Modal's
    * own `beforeEnter` handles the plain open (it fires on every false→true
-   * flip of `editorOpen`, `appear` included), so this effect exists for the
-   * two paths that flip no open state:
+   * flip of `editor.isOpen`, `appear` included), so this effect exists for
+   * the two paths that flip no open state:
    *
    * 1. `areasQuery.isSuccess` resolving AFTER the dialog opened — until the
    *    areas resolve, the dialog holds the "Loading areas…" paragraph and
    *    there is nothing to focus; when the real form mounts, this pulls
    *    focus off the trigger behind the backdrop.
-   * 2. A record switch while the dialog is already open — `openEditor` bumps
-   *    `editorNonce`, the form remounts under its nonce key, and this
+   * 2. A record switch while the dialog is already open — `editor.open`
+   *    bumps `editor.nonce`, the form remounts under its nonce key, and this
    *    refocuses it (the just-clicked Edit row button holds focus otherwise).
    *
    * This used to scroll as well, because the editor mounted above a 93-row
@@ -101,12 +92,12 @@ export function LodgingUnitsPanel() {
    * owns open-focus, so what remains is exactly the two cases above.
    */
   useEffect(() => {
-    if (!editorOpen) return
+    if (!editor.isOpen) return
     formRef.current?.querySelector<HTMLElement>('input, select, textarea')?.focus()
-  }, [editorOpen, editorNonce, areasQuery.isSuccess])
+  }, [editor.isOpen, editor.nonce, areasQuery.isSuccess])
 
   const refresh = () => {
-    setEditorOpen(false)
+    editor.close()
     setSelected(new Set())
     invalidateLodgingRegistryQueries(queryClient)
   }
@@ -193,7 +184,7 @@ export function LodgingUnitsPanel() {
           <button
             type="button"
             onClick={() => {
-              openEditor('new')
+              editor.open('new')
             }}
             className={BUTTON_PRIMARY}
           >
@@ -235,18 +226,14 @@ export function LodgingUnitsPanel() {
           two-column grid that `lg` would collapse. */}
       {editing !== null && (
         <Modal
-          isOpen={editorOpen}
-          onClose={() => {
-            setEditorOpen(false)
-          }}
+          isOpen={editor.isOpen}
+          onClose={editor.close}
           // Drop the retained snapshot once the fade has actually finished —
           // the gate goes false, the whole subtree unmounts, and the panel
           // stops re-evaluating the header JSX on every subsequent render.
           // An interrupted leave never fires this, which is correct: the
           // dialog is open again and still needs its data.
-          afterLeave={() => {
-            setEditing(null)
-          }}
+          afterLeave={editor.afterLeave}
           header={
             /* The forest band from the sessions landing header, same tokens and
                same shape: dark gradient, amber glyph in a translucent chip,
@@ -308,7 +295,7 @@ export function LodgingUnitsPanel() {
                  interrupts the exit fade (the leave never unmounted the form,
                  so the abandoned draft survived — #2539 scan finding 1). */
               <LodgingUnitForm
-                key={editorNonce}
+                key={editor.nonce}
                 areas={areasQuery.items}
                 units={unitsQuery.items}
                 unit={editing === 'new' ? undefined : editing}
@@ -321,9 +308,7 @@ export function LodgingUnitsPanel() {
                 onPositionSaved={() => {
                   invalidateLodgingRegistryQueries(queryClient)
                 }}
-                onCancel={() => {
-                  setEditorOpen(false)
-                }}
+                onCancel={editor.close}
               />
             ) : (
               <p className="text-muted-foreground text-sm">
@@ -383,7 +368,7 @@ export function LodgingUnitsPanel() {
                     onToggleSelect={(unitId) => {
                       setSelected((s) => toggleIn(s, unitId))
                     }}
-                    onEdit={openEditor}
+                    onEdit={editor.open}
                     onConfirm={(unit) => void handleConfirm([unit.id])}
                     onDeactivate={(unit) => void handleDeactivate(unit)}
                   />

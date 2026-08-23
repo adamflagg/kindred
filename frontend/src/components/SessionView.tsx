@@ -24,6 +24,7 @@ import SolverProgressModal, { useSolverProgress } from './SolverProgressModal'
 import SolverDiagnosticsModal from './SolverDiagnosticsModal'
 import type { SolverDiagnostics } from '../services/solver'
 import { resolveYields, hasReviewableDiagnostics } from '../utils/solverDiagnostics'
+import { useRetainedDialog } from '../hooks/useRetainedDialog'
 import { isValidTab, type ValidTab, sessionNameToUrl } from '../utils/sessionUtils'
 import BunkingBoardByArea from './BunkingBoardByArea'
 import RequestReviewPanel from './RequestReviewPanel'
@@ -94,9 +95,25 @@ export default function SessionView() {
   // `constraint.cabin_capacity.standard` from the config table.
   const defaultBunkCapacity = DEFAULT_BUNK_CAPACITY
 
-  // #1638 — diagnostics modal state
-  const [diagnostics, setDiagnostics] = useState<SolverDiagnostics | null>(null)
-  const [showDiagnostics, setShowDiagnostics] = useState(false)
+  // #1638 — diagnostics modal state, on the shared retained-snapshot hook
+  // (kindred#2541). The payload has to outlive the close for Modal's 150ms
+  // exit fade to have anything to paint; `close()` cannot drop it and
+  // `afterLeave` releases it once the fade completes. No `resetWhen`: the
+  // payload is a solver RESULT, not a query the parent can lose.
+  //
+  // DESTRUCTURED, unlike the other three sites, because this one feeds a
+  // `useCallback` dep list: the hook's returned container is a fresh object
+  // each render, and `react-hooks/exhaustive-deps` demands the whole receiver
+  // when a method is CALLED off it — so `diagnosticsDialog.open` in the deps
+  // below would have had to become `diagnosticsDialog`, rebuilding `runSolver`
+  // on every open and close. The members themselves are stable.
+  const {
+    data: diagnostics,
+    isOpen: diagnosticsOpen,
+    open: openDiagnostics,
+    close: closeDiagnostics,
+    afterLeave: releaseDiagnostics,
+  } = useRetainedDialog<SolverDiagnostics>()
 
   // Solver progress modal
   const solverProgress = useSolverProgress()
@@ -219,15 +236,14 @@ export default function SessionView() {
       } else if (hasReviewableDiagnostics(result.diagnostics)) {
         // #1638 — persistent review surface replaces the transient red box.
         solverProgress.close()
-        setDiagnostics(result.diagnostics ?? null)
-        setShowDiagnostics(true)
+        openDiagnostics(result.diagnostics)
       } else {
         // Generic failure (no diagnostics, e.g. transport/PB error) — keep the
         // existing inline error box.
         solverProgress.fail(result.errorMessage ?? 'Optimization failed')
       }
     },
-    [solverProgress, runSolverInternal, currentScenario?.name, camperNameById]
+    [solverProgress, runSolverInternal, currentScenario?.name, camperNameById, openDiagnostics]
   )
 
   // Reset selected area if All-Gender is selected but no longer available (render-time check)
@@ -525,25 +541,22 @@ export default function SessionView() {
       <SolverProgressModal state={solverProgress.state} onClose={solverProgress.close} />
 
       {/* #1638 — Solver Diagnostics Modal (infeasibility review). The
-          `diagnostics &&` gate is a retained-snapshot latch (kindred#2529):
-          null until the first reviewable solve, then kept through the close
-          so the mounted dialog can play Modal's 150ms exit fade — nulling
-          the payload in onClose would blank and unmount it on the same frame
-          the close fires. afterLeave releases it once the fade has actually
-          completed, so the panel does not keep re-rendering the full report
-          on every render forever after (and re-arming the latch is safe:
-          setShowDiagnostics(true) has exactly one call site, which always
-          sets a fresh payload first). Pinned both ways by
-          SessionView.diagnostics.guard.test.ts. */}
+          `diagnostics &&` gate is the retained-snapshot latch
+          (kindred#2529, now useRetainedDialog per kindred#2541): null until
+          the first reviewable solve, then kept through the close so the
+          mounted dialog can play Modal's 150ms exit fade — nulling the
+          payload on close would blank and unmount it on the same frame the
+          close fires, which is the bug the hook makes unrepresentable
+          (`close()` touches the open flag only). `afterLeave` releases it
+          once the fade has actually completed, so the panel does not keep
+          re-rendering the full report on every render forever after, and
+          re-arming the latch is safe: `open()` always sets a fresh payload.
+          Pinned by SessionView.diagnostics.guard.test.ts. */}
       {diagnostics && (
         <SolverDiagnosticsModal
-          isOpen={showDiagnostics}
-          onClose={() => {
-            setShowDiagnostics(false)
-          }}
-          afterLeave={() => {
-            setDiagnostics(null)
-          }}
+          isOpen={diagnosticsOpen}
+          onClose={closeDiagnostics}
+          afterLeave={releaseDiagnostics}
           diagnostics={diagnostics}
           sessionCmId={session.cm_id}
           year={currentYear}

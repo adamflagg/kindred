@@ -15,8 +15,15 @@ export function resolveYields(
   }))
 }
 
-/** #1638 — does this diagnostics payload have anything worth opening the modal for? */
-export function hasReviewableDiagnostics(d: SolverDiagnostics | undefined): boolean {
+/**
+ * #1638 — does this diagnostics payload have anything worth opening the modal for?
+ *
+ * A TYPE PREDICATE, because `undefined` can never be reviewable: the caller
+ * that opens the dialog on a `true` result has to hand it a payload, and
+ * narrowing here is what saves it from a `?? null` that would silently gate
+ * the dialog off (kindred#2541).
+ */
+export function hasReviewableDiagnostics(d: SolverDiagnostics | undefined): d is SolverDiagnostics {
   if (!d) return false
   return (
     Boolean(d.infeasibilityCause) ||
