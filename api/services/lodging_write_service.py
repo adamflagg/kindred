@@ -49,6 +49,7 @@ from pocketbase.client import ClientResponseError  # type: ignore[attr-defined]
 from api.schemas.lodging import (
     AvailabilityWriteRequest,
     LodgingCopyResponse,
+    LodgingUnitSummary,
     LodgingWriteResponse,
     PlacementCopyRequest,
     PlacementDeleteRequest,
@@ -61,8 +62,14 @@ from api.schemas.lodging import (
     SlotMergeRequest,
     UnpushResponse,
 )
-from api.services.lodging_roster_service import SessionNotFoundError, placement_grain, resolved_units
-from api.services.lodging_rules import PushBuilding, PushRow, classify_push, push_digest
+from api.services.lodging_roster_service import (
+    SessionNotFoundError,
+    _BathroomIndex,
+    _capacity_by_code,
+    placement_grain,
+    resolved_units,
+)
+from api.services.lodging_rules import PushBuilding, PushRow, classify_push, push_digest, unit_capacity
 from api.utils.pb_error import pb_error_to_http
 from bunking.logging_config import get_logger
 
@@ -1198,7 +1205,50 @@ class LodgingWriteService:
                     raise pb_error_to_http(retry_exc) from retry_exc
         return LodgingWriteResponse(record_id=str(getattr(record, "id", "")))
 
-    def _push_rows(self, rows: list[Any], units_by_id: dict[str, Any]) -> list[PushRow]:
+    def _capacity_by_unit_id(self, units: list[Any]) -> dict[str, int | None]:
+        """Each unit's TRUE (effective) capacity, keyed by id -- the same
+        figure `write_in_covers` publishes as `unit_sleeps` (kindred#2477
+        final review, Important #4).
+
+        A leaf's raw `sleeps` column IS its capacity, but a combined
+        container's own `sleeps` is a DELTA over its rooms (kindred#2041's
+        ruling) and reads 0 on every production container -- reading it
+        directly, as `_push_rows` used to, published that delta as a
+        write-in's bed count instead of the whole-house total. Reuses
+        `lodging_roster_service`'s `_capacity_by_code`/`_effective_sleeps`
+        walk rather than re-deriving it: that walk is already the one place
+        this computation lives, and importing it here creates no cycle --
+        this module already imports `SessionNotFoundError`/`placement_grain`/
+        `resolved_units` from `lodging_roster_service`, which does not import
+        back from this module.
+
+        Builds a MINIMAL `LodgingUnitSummary` per raw unit -- just the fields
+        `_effective_sleeps`'s walk actually reads (code, parent_code, sleeps,
+        is_container, is_active) -- rather than routing through
+        `_build_units`, which additionally needs availability/write-in/merge
+        rows this method has no reason to fetch.
+        """
+        code_by_id = {str(getattr(u, "id", "") or ""): str(getattr(u, "code", "") or "") for u in units}
+        summaries = [
+            LodgingUnitSummary(
+                unit_id=str(getattr(u, "id", "") or ""),
+                code=str(getattr(u, "code", "") or ""),
+                name=str(getattr(u, "name", "") or ""),
+                sleeps=unit_capacity(int(getattr(u, "sleeps", 0) or 0)),
+                is_container=bool(getattr(u, "is_container", False)),
+                is_active=bool(getattr(u, "is_active", False)),
+                parent_code=code_by_id.get(str(getattr(u, "parent_unit", "") or ""), ""),
+            )
+            for u in units
+            if str(getattr(u, "code", "") or "")
+        ]
+        unit_index = _BathroomIndex.build(summaries)
+        capacity_by_code = _capacity_by_code(summaries, unit_index)
+        return {str(getattr(u, "id", "") or ""): capacity_by_code.get(str(getattr(u, "code", "") or "")) for u in units}
+
+    def _push_rows(
+        self, rows: list[Any], units_by_id: dict[str, Any], capacity_by_unit_id: dict[str, int | None]
+    ) -> list[PushRow]:
         """One occupancy read (live or draft) turned into `PushRow`s.
 
         `unit_code` / `unit_name` fall back to the raw `unit` relation id when
@@ -1207,6 +1257,10 @@ class LodgingWriteService:
         row cannot be grouped under still renders as SOMETHING rather than
         vanishing from the report. `classify_push`'s own `key_for` makes the
         identical fallback for grouping.
+
+        `sleeps` reads `capacity_by_unit_id` (the EFFECTIVE capacity --
+        `_capacity_by_unit_id`'s docstring), never `unit.sleeps` directly --
+        that raw column is a combined container's DELTA, not its capacity.
         """
         out: list[PushRow] = []
         for row in rows:
@@ -1220,7 +1274,7 @@ class LodgingWriteService:
                     occupant_name=str(getattr(row, "occupant_name", "") or ""),
                     note=str(getattr(row, "note", "") or ""),
                     party_size=getattr(row, "party_size", None),
-                    sleeps=getattr(unit, "sleeps", None) if unit is not None else None,
+                    sleeps=capacity_by_unit_id.get(unit_id),
                 )
             )
         return out
@@ -1236,8 +1290,15 @@ class LodgingWriteService:
             raise ValueError("push preview requires a scenario -- the live board cannot push onto itself")
         units = await self.repository.fetch_units(year)
         units_by_id = {str(getattr(u, "id", "") or ""): u for u in units}
-        live = self._push_rows(await self.repository.fetch_write_ins(year, session_cm_id), units_by_id)
-        draft = self._push_rows(await self.repository.fetch_draft_write_ins(year, session_cm_id, scenario), units_by_id)
+        capacity_by_unit_id = self._capacity_by_unit_id(units)
+        live = self._push_rows(
+            await self.repository.fetch_write_ins(year, session_cm_id), units_by_id, capacity_by_unit_id
+        )
+        draft = self._push_rows(
+            await self.repository.fetch_draft_write_ins(year, session_cm_id, scenario),
+            units_by_id,
+            capacity_by_unit_id,
+        )
         buildings = classify_push(live, draft, units)
         return PushPreviewResponse(
             year=year,
@@ -1273,8 +1334,9 @@ class LodgingWriteService:
         """
         units = await self.repository.fetch_units(year)
         units_by_id = {str(getattr(u, "id", "") or ""): u for u in units}
+        capacity_by_unit_id = self._capacity_by_unit_id(units)
         raw = await self.repository.fetch_write_ins(year, session_cm_id)
-        return list(zip(raw, self._push_rows(raw, units_by_id), strict=True))
+        return list(zip(raw, self._push_rows(raw, units_by_id, capacity_by_unit_id), strict=True))
 
     async def execute_push(self, request: PushExecuteRequest, pushed_by: str) -> PushExecuteResponse:
         """Apply a scenario's write-ins onto the live board (kindred#2477).

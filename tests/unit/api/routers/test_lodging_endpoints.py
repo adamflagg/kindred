@@ -708,7 +708,16 @@ def _write_client(user: AuthUser, mock_pb: MagicMock) -> TestClient:
     # ledger row, not yet unpushed, so unpush's generic run is a trivial
     # replay of nothing rather than a 404 (no row) or a 409 (already
     # unpushed) that no other row in this table would produce.
-    mock_pb.collection.return_value.get_one.return_value = _rec(id="push_1", changes=[], unpushed_at="")
+    #
+    # year/session_cm_id MUST match the table row's own query params
+    # (2026/1000001) -- `unpush` now refuses a push id whose ledger row names
+    # a DIFFERENT weekend (kindred#2477 final review, Important #5) with the
+    # same PushNotFoundError -> 404 a missing row produces, and a bare
+    # MagicMock's auto-vivified `.year`/`.session_cm_id` never equal the real
+    # ints, which read as exactly that mismatch.
+    mock_pb.collection.return_value.get_one.return_value = _rec(
+        id="push_1", year=2026, session_cm_id=1000001, changes=[], unpushed_at=""
+    )
     return TestClient(_build_app(user, mock_pb))
 
 

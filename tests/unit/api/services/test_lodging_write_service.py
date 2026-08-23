@@ -2359,10 +2359,22 @@ def _wi(unit: str, occ: str, note: str = "", ppl: int | None = None, id: str = "
 
 
 def _u(
-    id: str, code: str, name: str | None = None, container: bool = False, parent: str = "", sleeps: int = 4
+    id: str,
+    code: str,
+    name: str | None = None,
+    container: bool = False,
+    parent: str = "",
+    sleeps: int = 4,
+    active: bool = True,
 ) -> SimpleNamespace:
     return SimpleNamespace(
-        id=id, code=code, name=name or code, is_container=container, parent_unit=parent, sleeps=sleeps
+        id=id,
+        code=code,
+        name=name or code,
+        is_container=container,
+        parent_unit=parent,
+        sleeps=sleeps,
+        is_active=active,
     )
 
 
@@ -2384,8 +2396,42 @@ class TestPreviewPush:
         assert out.buildings[0].key == "big-house"
         assert out.digest
         assert len(out.digest) == 64
-        # sleeps resolved from the NAMED unit's own row, never summed
-        assert out.buildings[0].draft[0].sleeps == 4
+        # kindred#2477 final review, Important #4: the container's OWN
+        # `sleeps` (4, kindred#2041's delta) plus its one active leaf room's
+        # `sleeps` (4) -- the roster's effective whole-house capacity, the
+        # same figure `write_in_covers` publishes, not the raw column alone.
+        # `test_a_combined_containers_sleeps_is_the_effective_capacity_...`
+        # below pins this with deliberately non-coincidental numbers.
+        assert out.buildings[0].draft[0].sleeps == 8
+
+    @pytest.mark.asyncio
+    async def test_a_combined_containers_sleeps_is_the_effective_capacity_not_the_raw_delta(self) -> None:
+        """kindred#2477 final review, Important #4. A combined container's
+        OWN `sleeps` column is a DELTA over its rooms (kindred#2041's
+        ruling) and reads 0 on every production container --
+        `write_in_covers` publishes the WHOLE-HOUSE total instead (the
+        effective-capacity walk `_capacity_by_code`/`_effective_sleeps` in
+        `lodging_roster_service` do), and this preview must publish the same
+        figure a push review is comparing bed counts against, not the raw
+        column.
+
+        Numbers are deliberately NON-coincidental: the container's own delta
+        is 0, and the two rooms carry 3 and 5 -- distinct from each other and
+        from the buggy answer (0), so a regression back to reading the raw
+        column reads 0 rather than accidentally matching the right answer.
+        """
+        repo = _repo(
+            fetch_units=[
+                _u("uh", "big-house", container=True, sleeps=0),
+                _u("u1", "room-1", parent="uh", sleeps=3),
+                _u("u2", "room-2", parent="uh", sleeps=5),
+            ],
+            fetch_write_ins=[_wi("u1", "R. Okafor", id="wi_1")],
+            fetch_draft_write_ins=[_wi("uh", "Woodson family", ppl=6, id="wd_1")],
+        )
+        svc = LodgingWriteService(repo)
+        out = await svc.preview_push(2026, 1309001, "scn_1")
+        assert out.buildings[0].draft[0].sleeps == 8  # 0 (delta) + 3 + 5, not the raw 0
 
     @pytest.mark.asyncio
     async def test_scenario_is_required(self) -> None:
