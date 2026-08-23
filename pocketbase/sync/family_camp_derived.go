@@ -2796,6 +2796,11 @@ func (s *FamilyCampDerivedSync) medicalNeedsUpdate(existing *core.Record, med *m
 		existing.GetString("additional_info") != med.additionalInfo ||
 		existing.GetString("bathroom_explain") != med.bathroomExplain ||
 		existing.GetString("accommodation_explain") != med.accommodationExplain ||
+		existing.GetString("allergy_gate") != med.allergyGate ||
+		existing.GetString("dietary_gate") != med.dietaryGate ||
+		existing.GetString("special_needs_gate") != med.specialNeedsGate ||
+		existing.GetString("physician_gate") != med.physicianGate ||
+		existing.GetString("cpap_gate") != med.cpapGate ||
 		existing.GetString(enrollmentStatusColumn) != med.enrollmentStatus
 }
 
@@ -2975,6 +2980,11 @@ func (s *FamilyCampDerivedSync) upsertMedical(
 				existingRecord.Set("additional_info", med.additionalInfo)
 				existingRecord.Set("bathroom_explain", med.bathroomExplain)
 				existingRecord.Set("accommodation_explain", med.accommodationExplain)
+				existingRecord.Set("allergy_gate", med.allergyGate)
+				existingRecord.Set("dietary_gate", med.dietaryGate)
+				existingRecord.Set("special_needs_gate", med.specialNeedsGate)
+				existingRecord.Set("physician_gate", med.physicianGate)
+				existingRecord.Set("cpap_gate", med.cpapGate)
 				existingRecord.Set(enrollmentStatusColumn, med.enrollmentStatus)
 
 				if err := s.App.Save(existingRecord); err != nil {
@@ -2999,6 +3009,11 @@ func (s *FamilyCampDerivedSync) upsertMedical(
 			record.Set("additional_info", med.additionalInfo)
 			record.Set("bathroom_explain", med.bathroomExplain)
 			record.Set("accommodation_explain", med.accommodationExplain)
+			record.Set("allergy_gate", med.allergyGate)
+			record.Set("dietary_gate", med.dietaryGate)
+			record.Set("special_needs_gate", med.specialNeedsGate)
+			record.Set("physician_gate", med.physicianGate)
+			record.Set("cpap_gate", med.cpapGate)
 			record.Set(enrollmentStatusColumn, med.enrollmentStatus)
 
 			if err := s.App.Save(record); err != nil {
