@@ -45,9 +45,8 @@ export interface AccessibilityFlagListProps {
  *
  * `NeedKey` is spliced in rather than restated, so the union cannot fall
  * behind `NEED_GLYPHS` without a type error. The two literals either side of
- * it are the only needs that are NOT graded against a cabin, and each is a
- * genuinely different kind of thing rather than a fifth glyph waiting to be
- * written:
+ * it are the only UNGRADED needs that are filterable; each is a genuinely
+ * different kind of thing rather than a fifth glyph waiting to be written:
  *
  *   `accommodation` — names no specific amenity, so no cabin field answers
  *                     it. `accommodation_is_mandatory` only changes a ROW's
@@ -55,9 +54,16 @@ export interface AccessibilityFlagListProps {
  *                     need MATCHES, since the filter asks "does this
  *                     household need one" and a staff member can already see
  *                     mandatory-vs-preferred once they open a row.
- *   `infant`        — derived from the household's ages rather than asked
- *                     for, so it informs which cabin suits them without being
- *                     an unfulfilled request.
+ *   `infant`        — the Adult-Infant FORM answer (`has_infant`), asked only
+ *                     on adult sessions — it is 0 across every family-weekend
+ *                     registration, so on family weekends this filter can
+ *                     never match.
+ *
+ * A THIRD ungraded fact renders a row below without a filter key:
+ * `has_child_under_two`, the birthdate-computed sibling of `infant`
+ * (staff ruling 2026-08-21). Its filter entry is deliberately deferred —
+ * kindred#2480 sequences the filter work after the share-icon round and
+ * rules that the under-2 filter must key on that computed flag.
  */
 export type NeedFilterKey = 'accommodation' | NeedKey | 'infant'
 
@@ -156,6 +162,14 @@ export function AccessibilityFlagList({ flags }: AccessibilityFlagListProps) {
   // (crib space, bathroom proximity, who shares a wall) rather than gating it.
   if (flags.has_infant === true) {
     needs.push({ key: 'infant', label: 'Infant in party', icon: Baby, tone: 'neutral' })
+  }
+  // The same kind of fact with different provenance (staff ruling,
+  // 2026-08-21): COMPUTED server-side from the children's birthdates, where
+  // `has_infant` above is a form answer -- one only adult sessions ever give,
+  // so on family weekends this row is the one that actually fires. Neutral
+  // tone for the same reason: suitability, not an unfulfilled request.
+  if (flags.has_child_under_two === true) {
+    needs.push({ key: 'under_two', label: 'Child under 2 in party', icon: Baby, tone: 'neutral' })
   }
 
   if (needs.length === 0) return null

@@ -2868,6 +2868,235 @@ class TestMedicalFlagsAndNarrative:
         assert result.cpap_info == ""
 
 
+class TestChildUnderTwoFlag:
+    """The COMPUTED baby/toddler mark (staff ruling, 2026-08-21).
+
+    `has_infant` beside it is form-declared (CampMinder Adult-Infant) and is
+    dead-by-construction on family weekends -- 0 across all 3,923 production
+    `family_camp_registrations` rows, because the source question is only
+    answered on adult sessions. So this flag is computed at roster build time
+    from the children's real birthdates instead, against the session's start
+    date.
+
+    TWO deliberate distinctions from the 18-month bed rule beside it
+    (`_consumes_a_bed`):
+
+      * TWENTY-FOUR months, not 18 -- "is there a baby or toddler in this
+        party" is a different question from "does this child need a bed".
+      * OPPOSITE POLARITY on the unknowns. The bed rule falls back toward
+        KEEPING the bed; this icon ASSERTS knowledge, so a missing or
+        unparseable birthdate, or an unreadable session start, contributes
+        FALSE. An absent mark reads as "nothing known", never as "no baby".
+
+    Birthdates are computed relative to FAMILY_SESSION's start_date
+    (2026-09-04), never to today -- `persons.age` is a snapshot and is
+    forbidden as a threshold input.
+    """
+
+    @pytest.mark.asyncio
+    async def test_a_child_23_months_at_session_start_sets_the_flag(self) -> None:
+        # Born 2024-10-04: exactly 23 completed months on 2026-09-04. The
+        # older sibling beside them proves ANY-child semantics.
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_households={"hh_1": _household()},
+            fetch_attendees_for_session=[
+                _child(cm_id=1000001, first="Emma", last="Johnson", age=9, birthdate="2017-05-01"),
+                _child(cm_id=1000002, first="Liam", last="Johnson", age=1, grade=0, birthdate="2024-10-04"),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.parties[0].flags.has_child_under_two is True
+
+    @pytest.mark.asyncio
+    async def test_exactly_24_months_at_session_start_is_not_under_two(self) -> None:
+        # Born 2024-09-04: the second birthday-in-months lands ON the session
+        # start, so the child is two and the mark does not draw. The boundary
+        # is `< 24`, matching the bed rule's `>=` shape at its own threshold.
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_households={"hh_1": _household()},
+            fetch_attendees_for_session=[
+                _child(cm_id=1000001, first="Emma", last="Johnson", age=2, grade=0, birthdate="2024-09-04"),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.parties[0].flags.has_child_under_two is False
+
+    @pytest.mark.asyncio
+    async def test_a_missing_birthdate_contributes_false(self) -> None:
+        # OPPOSITE of the bed rule's fallback: no birthdate keeps the BED, but
+        # it never draws the ICON -- the mark asserts knowledge we lack.
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_households={"hh_1": _household()},
+            fetch_attendees_for_session=[
+                _child(cm_id=1000001, first="Emma", last="Johnson", age=1, grade=0, birthdate=""),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.parties[0].flags.has_child_under_two is False
+
+    @pytest.mark.asyncio
+    async def test_an_unparseable_birthdate_contributes_false(self) -> None:
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_households={"hh_1": _household()},
+            fetch_attendees_for_session=[
+                _child(cm_id=1000001, first="Emma", last="Johnson", age=1, grade=0, birthdate="not-a-date"),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.parties[0].flags.has_child_under_two is False
+
+    @pytest.mark.asyncio
+    async def test_adults_and_older_children_never_set_the_flag(self) -> None:
+        # A full household -- two adults, one school-age child -- and nothing
+        # under two. Adults have no birthdate column at all in
+        # `family_camp_adults`; only the CHILDREN are read.
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_households={"hh_1": _household()},
+            fetch_attendees_for_session=[
+                _child(cm_id=1000001, first="Emma", last="Johnson", age=9, birthdate="2017-05-01"),
+            ],
+            fetch_family_camp_adults={"hh_1": [_adult(1, "Olivia Johnson"), _adult(2, "Samuel Johnson")]},
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.parties[0].flags.has_child_under_two is False
+
+    @pytest.mark.asyncio
+    async def test_a_person_grain_party_is_false(self) -> None:
+        # Adult weekends enrol individuals; there are no children to read, so
+        # the flag rides the Pydantic default and never computes.
+        attendee = _rec(
+            person_id=1000004,
+            expand={
+                "person": _rec(
+                    cm_id=1000004,
+                    first_name="Olivia",
+                    last_name="Chen",
+                    preferred_name="",
+                    age=41,
+                    grade=None,
+                    household="hh_9",
+                )
+            },
+        )
+        repo = _repo(fetch_session=ADULT_SESSION, fetch_attendees_for_session=[attendee])
+
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000002)
+
+        assert roster.parties[0].grain == "person"
+        assert roster.parties[0].flags.has_child_under_two is False
+
+    @pytest.mark.asyncio
+    async def test_a_missing_session_start_date_contributes_false(self) -> None:
+        # The same broken-weekend path that switches the bed discount off --
+        # but where THAT rule keeps every bed, THIS one draws no icon: with no
+        # session date there is no "at session start" to assert.
+        undated = _rec(
+            id="sess_1",
+            cm_id=1000001,
+            name="Family Camp 1",
+            session_type="family",
+            year=2026,
+            start_date="",
+            end_date="2026-09-07",
+            sort_order=1,
+        )
+        repo = _repo(
+            fetch_session=undated,
+            fetch_households={"hh_1": _household()},
+            fetch_attendees_for_session=[
+                _child(cm_id=1000001, first="Emma", last="Johnson", age=1, grade=0, birthdate="2026-07-01"),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.parties[0].flags.has_child_under_two is False
+
+
+class TestBedExemptChildFlag:
+    """`has_bed_exempt_child` feeds the baby mark's capacity note (staff
+    ruling, 2026-08-21, supersedes the kindred#2212 inline icon).
+
+    The flag MUST be derived from the same `_consumes_a_bed` call that
+    discounts `party_size` -- one calculation, so the tooltip's "doesn't
+    count toward capacity" and the bed count itself can never disagree.
+    That inherits the bed rule's conservatism wholesale: sentinel age,
+    missing birthdate, unreadable session start all KEEP the bed, and a
+    kept bed is never claimed exempt.
+    """
+
+    @pytest.mark.asyncio
+    async def test_a_17_month_old_is_bed_exempt(self) -> None:
+        # Born 2025-04-04: 17 completed months on 2026-09-04 -- under the
+        # 18-month bed rule, so exempt, and party_size already discounts them.
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_households={"hh_1": _household()},
+            fetch_attendees_for_session=[
+                _child(cm_id=1000001, first="Emma", last="Johnson", age=1, grade=0, birthdate="2025-04-04"),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.parties[0].flags.has_bed_exempt_child is True
+        assert roster.parties[0].flags.has_child_under_two is True
+
+    @pytest.mark.asyncio
+    async def test_a_19_month_old_is_under_two_but_not_bed_exempt(self) -> None:
+        # Born 2025-02-04: 19 completed months -- past the 18-month bed rule
+        # but under the 24-month mark. THE differential case: the icon draws,
+        # the capacity note must not.
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_households={"hh_1": _household()},
+            fetch_attendees_for_session=[
+                _child(cm_id=1000001, first="Emma", last="Johnson", age=1, grade=0, birthdate="2025-02-04"),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.parties[0].flags.has_bed_exempt_child is False
+        assert roster.parties[0].flags.has_child_under_two is True
+
+    @pytest.mark.asyncio
+    async def test_the_unknown_age_sentinel_is_never_claimed_exempt(self) -> None:
+        # Same fixture shape as the bed rule's sentinel test: age == 0.0 with
+        # a newborn birthdate beside it. `_consumes_a_bed` keeps the bed, so
+        # the tooltip must not claim the child doesn't count -- they do.
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_households={"hh_1": _household()},
+            fetch_attendees_for_session=[
+                _child(cm_id=1000001, first="Emma", last="Johnson", age=0.0, birthdate="2026-08-01"),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.parties[0].flags.has_bed_exempt_child is False
+
+    @pytest.mark.asyncio
+    async def test_a_missing_birthdate_is_never_claimed_exempt(self) -> None:
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_households={"hh_1": _household()},
+            fetch_attendees_for_session=[
+                _child(cm_id=1000001, first="Emma", last="Johnson", age=1, grade=0, birthdate=""),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.parties[0].flags.has_bed_exempt_child is False
+
+
 class TestBuildSummary:
     """The lander's batched read.
 
@@ -3561,7 +3790,7 @@ class TestPartySizeIsABedCount:
       `persons.age`.
 
     Because the chip is now beds rather than names, the card deliberately
-    shows one fewer than the people it prints for the 24 households with an
+    shows one fewer than the people it prints for the 26 households with an
     infant. That two-numbers split is kindred#2152's, not this layer's: the
     payload keeps every adult row it always did, placeholders included, and
     only the COUNT changes here.
@@ -3692,8 +3921,8 @@ class TestPartySizeIsABedCount:
         """`persons.age == 0.0` is the UNKNOWN-AGE sentinel, and a bed is
         never removed on the strength of a sentinel. The birthdate here says
         one month old; the sentinel outranks it, and the party keeps the bed.
-        Measured on 2026: exactly one rostered child is in this state, which
-        is why the derived rule discounts 24 households and not 25.
+        Re-measured 2026-08-21 (kindred#2212): zero rostered 2026 children
+        carry the sentinel -- the guard is inert on today's data, not wrong.
         """
         party = await self._party(
             fetch_attendees_for_session=[_child(cm_id=2, age=0.0, birthdate="2026-08-01")],

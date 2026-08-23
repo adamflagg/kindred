@@ -1838,6 +1838,94 @@ describe('FamilyCard — Returning / First-time is a 20px icon, bottom right (R3
   })
 })
 
+describe('FamilyCard — the child-under-two mark (staff ruling, 2026-08-21)', () => {
+  // COMPUTED server-side from the children's birthdates against the session
+  // start — `has_infant` beside it is form-declared and 0 across all 3,923
+  // production family_camp_registrations rows on family weekends. The mark is
+  // UNGRADED, like Returning/First-time: it has no unit coverage side and no
+  // red/unmet state, so it is not a fifth NEED_GLYPHS entry.
+  it('draws the Baby mark when the server computed a child under two', () => {
+    render(<FamilyCard party={party({ flags: { has_child_under_two: true } })} onOpen={vi.fn()} />)
+    const mark = screen.getByTestId('family-card-under-two')
+    expect(mark.querySelector('svg')).toBeInTheDocument()
+  })
+
+  it('names itself in a tooltip, since the icon carries no words', () => {
+    render(<FamilyCard party={party({ flags: { has_child_under_two: true } })} onOpen={vi.fn()} />)
+    fireEvent.focus(screen.getByTestId('family-card-under-two'))
+    expect(screen.getByRole('tooltip')).toHaveTextContent('Child under 2')
+  })
+
+  it('adds the capacity note when a child is bed-exempt (staff ruling, supersedes kindred#2212)', () => {
+    // `has_bed_exempt_child` derives from the SAME `_consumes_a_bed` call
+    // that discounts party_size, so this sentence and the bed count cannot
+    // disagree: under 18 months at the session start, no bed consumed.
+    render(
+      <FamilyCard
+        party={party({ flags: { has_child_under_two: true, has_bed_exempt_child: true } })}
+        onOpen={vi.fn()}
+      />
+    )
+    fireEvent.focus(screen.getByTestId('family-card-under-two'))
+    expect(screen.getByRole('tooltip')).toHaveTextContent(
+      'Child under 2 — under 18 months at the session start, so they don’t count toward capacity'
+    )
+  })
+
+  it('keeps the plain label for a 18-23-month-old: under two, but they DO hold a bed', () => {
+    render(
+      <FamilyCard
+        party={party({ flags: { has_child_under_two: true, has_bed_exempt_child: false } })}
+        onOpen={vi.fn()}
+      />
+    )
+    fireEvent.focus(screen.getByTestId('family-card-under-two'))
+    expect(screen.getByRole('tooltip')).toHaveTextContent(/^Child under 2$/)
+  })
+
+  it('draws nothing when the flag is false', () => {
+    render(<FamilyCard party={party({ flags: { has_child_under_two: false } })} onOpen={vi.fn()} />)
+    expect(screen.queryByTestId('family-card-under-two')).not.toBeInTheDocument()
+  })
+
+  it('draws nothing when the flags block is absent entirely', () => {
+    // A party with no flags block — the icon asserts knowledge, and absence
+    // of the block is absence of knowledge, not "no baby".
+    render(<FamilyCard party={party()} onOpen={vi.fn()} />)
+    expect(screen.queryByTestId('family-card-under-two')).not.toBeInTheDocument()
+  })
+
+  it('never goes red — it is not a graded need', () => {
+    // The mark reads no unit coverage: placed in a cabin or not, it keeps its
+    // own hue. `needVerdict` has no say here.
+    render(
+      <FamilyCard
+        party={party({ flags: { has_child_under_two: true } })}
+        unit={confirmedUnit()}
+        onOpen={vi.fn()}
+      />
+    )
+    const mark = screen.getByTestId('family-card-under-two')
+    expect(mark.className).not.toContain('red')
+    expect(mark.querySelector('svg')?.getAttribute('class')).not.toContain('red')
+  })
+
+  it('draws the Baby face a step larger than the need glyphs', () => {
+    // Owner feedback 2026-08-22: at the glyphs' 12px the Baby face reads as
+    // frowning. The face gets 14px (h-3.5) inside the same GLYPH_BASE frame —
+    // the frame stays 20px so the row still reads as one run.
+    render(
+      <FamilyCard
+        party={party({ flags: { has_child_under_two: true } })}
+        unit={confirmedUnit()}
+        onOpen={vi.fn()}
+      />
+    )
+    const icon = screen.getByTestId('family-card-under-two').querySelector('svg')
+    expect(icon?.getAttribute('class')).toContain('h-3.5 w-3.5')
+  })
+})
+
 // The "Needs Accommodation" rename (kindred#2072) this describe block used
 // to pin is moot: the staff ruling that followed struck the chip from the
 // card entirely rather than settling its wording. See "the marks

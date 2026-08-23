@@ -123,7 +123,7 @@ def test_infant_bed_exemption_is_eighteen_months_hardcoded() -> None:
     fractional part never exceeds `.11`, so `age < 1.5` reads as "under 24
     months" and discounts every 19-23 month old the ruling says must keep a
     bed. Measured on 2026's rostered cohort, the naive form discounts 44
-    children where the derived rule discounts 24.
+    children where the derived rule discounts 26.
     """
     assert INFANT_BED_EXEMPT_MONTHS == 18
 

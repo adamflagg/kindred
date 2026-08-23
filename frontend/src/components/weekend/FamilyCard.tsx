@@ -95,7 +95,7 @@ import {
   type DraggableAttributes,
   type DraggableSyntheticListeners,
 } from '@dnd-kit/core'
-import { Repeat, Star, User, Users } from 'lucide-react'
+import { Baby, Repeat, Star, User, Users } from 'lucide-react'
 import { Fragment, memo } from 'react'
 
 import type { LodgingUnitRow, PartyChildRow, RosterPartyRow } from '../../types/lodging'
@@ -108,7 +108,7 @@ import {
   dedupeAdultNames,
   partyHeadcount,
 } from './householdIdentity'
-import { NeedGlyphMark, WARN_TONE } from './NeedGlyph'
+import { GLYPH_BASE, NeedGlyphMark, WARN_TONE } from './NeedGlyph'
 import { resolveNeedGlyphs } from './needGlyphs'
 import { partyKey } from './partyKey'
 
@@ -560,6 +560,48 @@ function FamilyCardChips({
         {glyphs.map((glyph) => (
           <NeedGlyphMark key={glyph.key} glyph={glyph} />
         ))}
+
+        {/* The child-under-two mark (staff ruling, 2026-08-21). COMPUTED
+            server-side from the children's birthdates against the session
+            start — `has_infant` is form-declared and 0 across all 3,923
+            production family_camp_registrations rows on family weekends, so
+            the column could never draw this. False means "nothing known",
+            never "no baby": a missing birthdate or session date keeps the
+            mark off, the opposite polarity from the bed discount's
+            keep-the-bed fallback.
+
+            UNGRADED, like Returning/First-time — a baby is a fact about the
+            PARTY, not an ask a cabin can meet or miss, so it is deliberately
+            NOT a fifth NEED_GLYPHS entry: no coverage read, no red state,
+            ever. It borrows the glyphs' GLYPH_BASE geometry so the row reads
+            as one run, and takes its own hue — pink, the 500/400 step the
+            four glyph hues use, outside their closed set because this is not
+            a need (§6's closure is about needs; the ruling that added this
+            mark chose the hue with it). */}
+        {party.flags?.has_child_under_two === true && (
+          <Tooltip
+            // The capacity note rides `has_bed_exempt_child`, which the server
+            // derives from the SAME `_consumes_a_bed` call that discounts
+            // party_size — so this sentence and the bed count can never
+            // disagree (staff ruling 2026-08-21, supersedes kindred#2212's
+            // inline per-child icon).
+            content={
+              party.flags.has_bed_exempt_child === true
+                ? 'Child under 2 — under 18 months at the session start, so they don’t count toward capacity'
+                : 'Child under 2'
+            }
+            // Named for the same reason the need glyphs are: the icon is the
+            // only carrier. The accessible name stays the short form — it is
+            // a test handle, not a second sentence carrier.
+            aria-label="Child under 2"
+            data-testid="family-card-under-two"
+            className={`${GLYPH_BASE} border-border bg-transparent`}
+          >
+            {/* 14px, one step up from the glyphs' 12px — at 12 the Baby face
+                reads as frowning (owner, 2026-08-22). Frame stays GLYPH_BASE. */}
+            <Baby className="h-3.5 w-3.5 text-pink-500 dark:text-pink-400" />
+          </Tooltip>
+        )}
 
         {/* Keyed off the RESOLVED verdict, not the registration gate. The gate
             is superseded wherever the Family Camp form answered, so a household

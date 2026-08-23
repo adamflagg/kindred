@@ -224,9 +224,9 @@ def _consumes_a_bed(child: Any, session_start: date | None) -> bool:
 
     `persons.age == 0.0` is the documented unknown-age sentinel, and a bed is
     never removed on the strength of a sentinel -- not even when a birthdate
-    sits beside it saying newborn. Measured on 2026's rostered cohort exactly
-    one child is in that state, which is why the rule discounts 24 households
-    rather than 25.
+    sits beside it saying newborn. Re-measured 2026-08-21 (kindred#2212): zero
+    rostered 2026 children carry the sentinel, so the guard is currently
+    inert -- which is not the same as wrong, and it stays.
 
     The birthdate is already in hand: `fetch_attendees_for_session` expands
     `person`, so this costs no read.
@@ -239,6 +239,59 @@ def _consumes_a_bed(child: Any, session_start: date | None) -> bool:
     if (_f(child, "age") or 0.0) == 0.0:
         return True
     return _completed_months(birthdate, session_start) >= INFANT_BED_EXEMPT_MONTHS
+
+
+# The board's baby/toddler mark (staff ruling, 2026-08-21): a child still
+# under TWO YEARS at session start. Deliberately NOT
+# `INFANT_BED_EXEMPT_MONTHS` -- that 18-month rule answers "does this child
+# need a bed", this answers "is there a baby or toddler in this party", and
+# coupling them would move a bed count whenever the icon's threshold is
+# re-ruled (or vice versa).
+UNDER_TWO_MONTHS = 24
+
+
+def _has_child_under_two(children: list[Any], session_start: date | None) -> bool:
+    """Whether ANY child is under 24 months at session start.
+
+    Computed from `persons.birthdate` against `camp_sessions.start_date`,
+    never from `persons.age` -- that column is CampMinder's `yy.mm` snapshot
+    and thresholding on it is forbidden (see `INFANT_BED_EXEMPT_MONTHS`'s doc
+    for the measured miscounts).
+
+    ⚠️ OPPOSITE POLARITY from `_consumes_a_bed` on every unknown, and on
+    purpose. The bed rule falls back toward KEEPING the bed, because
+    over-stating a party reads as "look at this" while under-stating it reads
+    as "room for more". This flag draws an ICON that asserts knowledge --
+    "there is a child under two here" -- so a missing or unparseable
+    birthdate, or an unreadable session start, contributes FALSE: an absent
+    mark reads as "nothing known", never as "no baby". The age == 0.0
+    unknown-sentinel guard is likewise not copied over -- it exists to stop a
+    bed being REMOVED on a sentinel's strength, and no bed rides on this.
+    """
+    if session_start is None:
+        return False
+    for child in children:
+        birthdate = _as_date(_s(child, "birthdate"))
+        if birthdate is None:
+            continue
+        if _completed_months(birthdate, session_start) < UNDER_TWO_MONTHS:
+            return True
+    return False
+
+
+def _has_bed_exempt_child(children: list[Any], session_start: date | None) -> bool:
+    """Whether ANY child is discounted from `party_size` by the bed rule.
+
+    Deliberately a thin any() over `_consumes_a_bed` itself -- one
+    calculation, shared with the bed count, so the baby mark's "doesn't count
+    toward capacity" note and `party_size` can never disagree (the kindred#2072
+    one-calculation intent). That reuse imports the bed rule's conservatism
+    wholesale: the unknown-age sentinel, a missing birthdate, or an unreadable
+    session start all KEEP the bed there, and a kept bed is never claimed
+    exempt here. Always a subset of `_has_child_under_two` (18 < 24, same
+    birthdate source, same session date).
+    """
+    return any(not _consumes_a_bed(child, session_start) for child in children)
 
 
 def _adult_display_name(adult: Any) -> str:
@@ -488,7 +541,7 @@ def _party_child(child: Any, *, as_of: date | None = None, session_cm_ids: Seque
         # DO NOT threshold the infant discount on this field, here or
         # client-side (kindred#2046). yy.mm means months never exceed `.11`, so
         # `age < 1.5` is really "under 24 months" -- 44 children on 2026's
-        # rostered cohort against the derived rule's 24. `_consumes_a_bed`
+        # rostered cohort against the derived rule's 26. `_consumes_a_bed`
         # reads `birthdate` instead.
         age=age,
         grade=_i(child, "grade") or None,
@@ -2555,7 +2608,16 @@ class LodgingRosterService:
                         request_values.get(household_pb_id, []),
                         include_staff_notes=include_staff_notes,
                     ),
-                    flags=self._build_flags(registration),
+                    flags=self._build_flags(
+                        registration,
+                        # The two COMPUTED flags on the summary (staff ruling,
+                        # 2026-08-21) -- see `_has_child_under_two`,
+                        # `_has_bed_exempt_child` and their schema fields for
+                        # why neither can be read from the registration row
+                        # like their siblings.
+                        has_child_under_two=_has_child_under_two(children, session_start),
+                        has_bed_exempt_child=_has_bed_exempt_child(children, session_start),
+                    ),
                 )
             )
         parties.sort(key=lambda p: (p.sort_name.casefold(), p.display_name.casefold()))
@@ -2653,8 +2715,26 @@ class LodgingRosterService:
             answers_conflict=_b(registration, "share_answers_conflict"),
         )
 
-    def _build_flags(self, registration: Any) -> AccessibilityFlagSummary:
+    def _build_flags(
+        self,
+        registration: Any,
+        *,
+        has_child_under_two: bool = False,
+        has_bed_exempt_child: bool = False,
+    ) -> AccessibilityFlagSummary:
         """Read the derived flags. Do NOT re-derive them here.
+
+        TWO deliberate exceptions to that contract, both COMPUTED by the
+        caller from the children's birthdates and passed in keyword-only:
+        `has_child_under_two`, because its would-be column (`has_infant`) is
+        answered only on adult sessions and is 0 across every production
+        family-weekend row -- the full argument lives on the schema field --
+        and `has_bed_exempt_child`, which must come from the same
+        `_consumes_a_bed` call that discounts `party_size` so the capacity
+        tooltip and the bed count can never disagree. Both are keyword-only
+        so a caller cannot pass them by accident, and both default False so a
+        registration with no children context honestly reports "nothing
+        known".
 
         No medical record reaches this method, and that is deliberate
         (kindred#1889). It used to take one to set `has_medical_narrative`
@@ -2695,8 +2775,16 @@ class LodgingRosterService:
         layer so every surface sees the correction.
         """
         if registration is None:
-            return AccessibilityFlagSummary()
+            # A household with no registration row still builds a party, and
+            # its children's birthdates are still real -- the computed flag
+            # survives where the column-read flags honestly default.
+            return AccessibilityFlagSummary(
+                has_child_under_two=has_child_under_two,
+                has_bed_exempt_child=has_bed_exempt_child,
+            )
         return AccessibilityFlagSummary(
+            has_child_under_two=has_child_under_two,
+            has_bed_exempt_child=has_bed_exempt_child,
             needs_private_bathroom=_b(registration, "needs_private_bathroom"),
             needs_power=_b(registration, "needs_power"),
             needs_accommodation=_b(registration, "needs_accommodation"),

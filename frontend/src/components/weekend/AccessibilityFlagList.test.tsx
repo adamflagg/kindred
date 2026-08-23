@@ -79,6 +79,7 @@ function flags(overrides: Partial<AccessibilityFlags> = {}): AccessibilityFlags 
     needs_accommodation: false,
     accommodation_is_mandatory: false,
     has_infant: false,
+    has_child_under_two: false,
     ...overrides,
   }
 }
@@ -127,6 +128,24 @@ describe('derived flags', () => {
     expect(screen.getByText('Infant in party')).toBeInTheDocument()
   })
 
+  it('renders the computed child-under-two flag (staff ruling, 2026-08-21)', () => {
+    // COMPUTED server-side from the children's birthdates, unlike every row
+    // above — `has_infant` is form-declared and dead on family weekends
+    // (0 across all 3,923 production family_camp_registrations rows).
+    render(<AccessibilityFlagList flags={flags({ has_child_under_two: true })} />)
+    expect(screen.getByText('Child under 2 in party')).toBeInTheDocument()
+  })
+
+  it('treats the infant and under-two rows as independent facts', () => {
+    // Different provenance: one is a form answer, one is computed. Neither
+    // implies the other, and each renders without the other.
+    render(
+      <AccessibilityFlagList flags={flags({ has_child_under_two: true, has_infant: false })} />
+    )
+    expect(screen.getByText('Child under 2 in party')).toBeInTheDocument()
+    expect(screen.queryByText('Infant in party')).not.toBeInTheDocument()
+  })
+
   it('distinguishes a mandatory accommodation from a preference', () => {
     const { rerender } = render(
       <AccessibilityFlagList
@@ -171,9 +190,11 @@ describe('one place a need is named — derived from NEED_GLYPHS', () => {
 
   it('offers exactly one filter option per graded need, in the glyph order, plus the two ungraded extras', () => {
     // `accommodation` names no amenity (no cabin field answers it) and
-    // `infant` is derived from ages rather than asked for, so neither is a
-    // graded need and neither can be derived from NEED_GLYPHS. They are the
-    // ONLY two allowed to be spelled out here.
+    // `infant` is the Adult-Infant form answer, so neither is a graded need
+    // and neither can be derived from NEED_GLYPHS. They are the ONLY two
+    // ungraded FILTER keys — the component also renders a third ungraded
+    // fact, `has_child_under_two`, whose filter entry is deliberately
+    // deferred to kindred#2480 (it must key on the computed flag there).
     expect(NEED_FILTER_OPTIONS.map((option) => option.key)).toEqual([
       'accommodation',
       ...NEED_GLYPHS.map((glyph) => glyph.key),
