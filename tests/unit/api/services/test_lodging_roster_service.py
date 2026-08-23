@@ -775,6 +775,31 @@ class TestFamilyCampParties:
         assert party.flags.needs_private_bathroom is False
 
 
+class TestShareWantsWithNamed:
+    """wants_with_named is read verbatim off the registration row — never derived."""
+
+    def _share_for(self, registration: Any) -> Any:
+        service = LodgingRosterService(repository=MagicMock())
+        return service._build_share(registration)
+
+    def test_named_tick_surfaces_and_derives_with_proximity(self) -> None:
+        share = self._share_for(_rec(wants_with_named=True))
+        assert share.wants_with_named is True
+        assert "with" in share.proximity  # superset derived, not stored
+
+    def test_similar_only_keeps_the_with_superset_but_not_the_named_flag(self) -> None:
+        # The similar-age tick: proximity 'with' still present (public semantics
+        # unchanged — similar_ages accompanies with), named flag false.
+        share = self._share_for(_rec(wants_similar_ages=True, wants_with_named=False))
+        assert share.wants_with_named is False
+        assert share.proximity == ["with", "similar_ages"]
+
+    def test_missing_columns_default_false_and_empty(self) -> None:
+        share = self._share_for(_rec())
+        assert share.wants_with_named is False
+        assert "with" not in share.proximity
+
+
 class TestFreshHouseholdOutrunsTheCache:
     """kindred#2143: households is cached for up to 15 minutes (kindred#1963)
     but attendees is always fetched fresh, in the SAME TaskGroup. A household

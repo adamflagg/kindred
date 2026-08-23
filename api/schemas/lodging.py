@@ -524,6 +524,17 @@ class ShareRequestSummary(BaseModel):
     # The verbatim CampMinder answer, so staff can see what was actually said.
     preference_raw: str = ""
     proximity: list[ProximityKind] = Field(default_factory=list)
+    wants_with_named: bool = Field(
+        default=False,
+        description=(
+            "The WITH-a-named-family checkbox specifically, read verbatim from "
+            "family_camp_registrations.wants_with_named (owner ruling 2026-08-22: "
+            "the ticks are stored un-ORed). `proximity`'s 'with' remains the "
+            "co-housing SUPERSET — derived here as named OR similar_ages, so its "
+            "public semantics are unchanged. The board's HeartHandshake icon keys "
+            "on this flag alone."
+        ),
+    )
     # Household-grain free text, already deduplicated across siblings and joined
     # across the three request source fields by the ingest. One string, not a
     # list: the join is lossy to reverse, since a request may itself contain the
