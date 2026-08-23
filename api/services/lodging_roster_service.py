@@ -2671,10 +2671,18 @@ class LodgingRosterService:
         # Stable order, and similar_ages always follows the "with" it refines
         # rather than replacing it -- anything filtering on "with" must still
         # match these households.
+        #
+        # wants_with was dropped (owner ruling 2026-08-22, kindred Task 1):
+        # the checkbox ticks are now stored as truly separate answers --
+        # wants_with_named (the named-family tick alone) and
+        # wants_similar_ages -- and the superset this "with" proximity kind
+        # represents is derived at read time, here, rather than stored. Task 2
+        # surfaces wants_with_named as its own field; this is the minimal read
+        # that keeps the union correct until then.
         proximity: list[ProximityKind] = []
         if _b(registration, "wants_near"):
             proximity.append("near")
-        if _b(registration, "wants_with"):
+        if _b(registration, "wants_with_named") or _b(registration, "wants_similar_ages"):
             proximity.append("with")
         if _b(registration, "wants_similar_ages"):
             proximity.append("similar_ages")

@@ -706,7 +706,7 @@ class TestFamilyCampParties:
                     share_cabin_gate="maybe_mutual",
                     share_cabin_preference="Maybe, if a specific family we know",
                     wants_near=True,
-                    wants_with=False,
+                    wants_with_named=False,
                     wants_similar_ages=False,
                     arrival_eta="Friday around 4pm",
                     needs_accommodation=True,
@@ -731,13 +731,16 @@ class TestFamilyCampParties:
         """similar_ages is a refinement of WITH: an unnamed partner.
 
         Anything filtering on "with" must still see these households, so both
-        kinds are emitted.
+        kinds are emitted. wants_with_named is deliberately left unset here
+        (owner ruling 2026-08-22: the ticks are truly separate stored answers,
+        and a similar-ages-only household never sets it) -- proving the
+        "with" proximity kind still appears off wants_similar_ages alone.
         """
         repo = _repo(
             fetch_session=FAMILY_SESSION,
             fetch_households={"hh_1": _household()},
             fetch_attendees_for_session=[_child()],
-            fetch_family_camp_registrations={"hh_1": _rec(wants_near=False, wants_with=True, wants_similar_ages=True)},
+            fetch_family_camp_registrations={"hh_1": _rec(wants_near=False, wants_similar_ages=True)},
         )
         roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
 
@@ -3392,7 +3395,7 @@ class TestShareEligibility:
             fetch_family_camp_registrations={
                 "hh_1": _rec(
                     share_cabin_gate="no_share",
-                    wants_with=True,
+                    wants_with_named=True,
                     share_eligibility="named",
                     share_eligibility_source="form",
                     share_answers_conflict=True,

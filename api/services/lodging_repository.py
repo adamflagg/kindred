@@ -844,7 +844,8 @@ class LodgingRepository:
         """Registration answers keyed by household PB id.
 
         Carries the ingest-derived request layer -- share_cabin_gate,
-        wants_near / wants_with / wants_similar_ages, request_text -- and the
+        wants_near / wants_with_named / wants_similar_ages, request_text --
+        and the
         six narrative-free housing flags -- needs_private_bathroom,
         needs_power, needs_accommodation, has_infant, needs_fridge since
         kindred#2224, and needs_step_free since kindred#2438. Read those
