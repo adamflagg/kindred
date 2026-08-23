@@ -171,12 +171,25 @@ export function WriteInCard({ occupant, onRemove, onEdit, isSaving = false }: Wr
   const [draftPeople, setDraftPeople] = useState(
     occupant.partySize === null ? '' : String(occupant.partySize)
   )
+  /*
+   * kindred#2540 fix-round BLOCKER 4, mirroring `AssignFamilyModal`'s own
+   * `peopleBadInput` exactly — the two forms must behave identically.
+   * `<input type="number">` sanitises unparseable text to `''` before this
+   * component ever sees it, so typing `abc` makes `draftPeople === ''` —
+   * indistinguishable, by the string alone, from a field genuinely left
+   * blank. `validity.badInput` is the one signal that survives the
+   * sanitisation: true for text the field could not parse, false for a
+   * field that is simply empty. Read at the point of the event, not derived
+   * from the current string.
+   */
+  const [peopleBadInput, setPeopleBadInput] = useState(false)
   const [wantsName, setWantsName] = useState(false)
 
   const openEdit = () => {
     setDraftName(occupant.name)
     setDraftNote(occupant.note)
     setDraftPeople(occupant.partySize === null ? '' : String(occupant.partySize))
+    setPeopleBadInput(false)
     setWantsName(false)
     setIsEditing(true)
   }
@@ -198,7 +211,8 @@ export function WriteInCard({ occupant, onRemove, onEdit, isSaving = false }: Wr
   const parsedPeople = Number(draftPeople)
   const draftPartySize = draftPeople.trim() === '' ? null : parsedPeople
   const peopleValid =
-    draftPartySize === null || (Number.isInteger(draftPartySize) && draftPartySize >= 1)
+    !peopleBadInput &&
+    (draftPartySize === null || (Number.isInteger(draftPartySize) && draftPartySize >= 1))
 
   // Shared by the form's own `onSubmit` (Save, or Enter from Occupant/Note)
   // and the People field's `onKeyDown` below. `fireEvent.keyDown` in jsdom
@@ -277,6 +291,10 @@ export function WriteInCard({ occupant, onRemove, onEdit, isSaving = false }: Wr
             disabled={isSaving}
             onChange={(event) => {
               setDraftPeople(event.target.value)
+              // See the `peopleBadInput` docstring above the state
+              // declaration -- this is the only point the real signal exists
+              // at.
+              setPeopleBadInput(event.target.validity.badInput)
             }}
             onKeyDown={(event) => {
               // ↵ SAVES FROM A FIELD (weekend-card-vocabulary.md §6). Native

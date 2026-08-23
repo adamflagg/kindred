@@ -243,25 +243,18 @@ function amenityWords(unit: LodgingUnitRow): string[] {
  * has counted", never "sleeps nobody", and says so rather than printing a
  * number it does not have — the same refusal the card's em dash makes.
  *
- * ⚠️ THE UNIT CARD DOES NOT AGREE WITH THIS YET, AND THAT IS A KNOWN,
- * DELIBERATE ONE-RELEASE DIVERGENCE (owner ruling 2026-08-20, option A: the
- * card is stage 3's file, so it is fixed there).
- *
- * The card's denominator is the RAW `unit.sleeps`. Measured against the
- * production snapshot, **all 15 containers record `sleeps = 0`**, which the API
- * maps to `null` and the card renders as an em dash — so on each of the four
- * combined containers the card says "capacity not recorded" while this header
- * says, correctly, how many beds the rooms beneath it hold:
- *
- *     container 1   own 0, 4 rooms, leaves sum 8
- *     container 2   own 0, 2 rooms, leaves sum 7
- *     container 3   own 0, 2 rooms, leaves sum 5
- *     container 4   own 0, 2 rooms, leaves sum 5
- *
- * THIS surface is the correct one — `countUnmeasuredSpaces` and the map peek
- * already use `effectiveSleeps`, and the card is the only reader of the raw
- * value left. Do not "resolve" the disagreement by making this one read
- * `unit.sleeps`. Raised by CodeRabbit on PR #2506.
+ * ⚠️ THE DENOMINATOR DISAGREEMENT BELOW IS HISTORY, NOT A LIVE WARNING
+ * (kindred#2540 fix-round CHEAP 14). It used to say the unit card read the
+ * RAW `unit.sleeps` while this header read `effectiveSleeps`, and forbade
+ * "resolving" that by touching this file — a real, deliberate one-release
+ * divergence at the time (owner ruling 2026-08-20, option A). #2508 shipped
+ * the card's own move to `effectiveSleeps` (`LodgingUnitCard.tsx`, its own
+ * "denominator of total possible sleeps" comment), so the two surfaces have
+ * shared a denominator source since before this PR. The paragraph is kept
+ * for the historical record and because the FRAMING difference above —
+ * beds free here, `N/M` on the card — is still current and still deliberate;
+ * only the denominator-SOURCE disagreement it used to also describe is gone.
+ * Raised by CodeRabbit on PR #2506.
  */
 function capacitySentence(
   unit: LodgingUnitRow,
@@ -284,6 +277,30 @@ function capacitySentence(
   // 2026-08-22) — the two used to disagree the moment any size was recorded,
   // this header stating a real remainder while every row beneath it still
   // declined to grade against it.
+  // ⚠️ `consumed`, NOT `sized` — DELIBERATE, and the same reviewer who
+  // flagged it agreed once the reasoning was in front of them (kindred#2540
+  // fix-round FINDING 7, declined by the owner 2026-08-22). The card
+  // (`LodgingUnitCard.tsx`) and the map peek (`MapUnitPopover.tsx`) both grade
+  // against `sized`, so a 4-bed room with one write-in of 6 and no families
+  // shows red `6` on the card and amber `6 of 4` on the map, while this
+  // header — reading `consumed` — says plain "0 of 4 beds free". The figure
+  // `6` never appears here and `Over capacity` below never fires for it, even
+  // though that branch exists and does fire for placed families.
+  //
+  // Owner ruling, verbatim: "the modal can stay calm — '0 free' is clear
+  // enough." This header is the placement moment, and the ruling above (BEDS
+  // FREE, not the card's figure) has always framed it as answering "will this
+  // party fit in what is left" — "0 of 4 beds free" answers that truthfully
+  // on its own, without needing the overage spelled out.
+  //
+  // The split is BY ROLE, not by surface, and that is the clause that matters:
+  // `consumed` is capped at capacity because it answers "how many beds are
+  // left", and a remainder cannot go negative. `sized` is deliberately
+  // UNCAPPED (`writeInDemand`'s own doc) because it answers "is this over,
+  // and by how much" — the question the card's red exists to show. Two
+  // different questions, not two copies of one answer that drifted. Do NOT
+  // "harmonise" this to `sized` — that is precisely the change the owner
+  // declined.
   const { consumed, known } = writeInDemand(capacity, coveringWriteIns(unit))
   if (!known && hasWriteIn(unit)) {
     return `Sleeps ${String(capacity)} · occupancy not counted (write-in)`
@@ -472,9 +489,26 @@ export function AssignFamilyModal({
    * correctly rather than truncated to `1`.
    */
   const [people, setPeople] = useState('')
+  /*
+   * kindred#2540 fix-round BLOCKER 4. `<input type="number">` SANITISES
+   * unparseable text to `''` before this component ever sees it, so typing
+   * `abc` makes `people === ''` — indistinguishable, by the string alone,
+   * from a field nobody touched. `''` is a valid, complete answer (wholesale);
+   * sanitised-away text is not, and treating them the same lets a value the
+   * staff member believes they entered save as something else, which is
+   * exactly what the owner ruling above forbids.
+   *
+   * `validity.badInput` is the ONE signal that survives the sanitisation:
+   * `true` when the user typed something the field could not parse, `false`
+   * for a field that is genuinely, simply blank. Read at the point of the
+   * event, because it describes what THIS keystroke did, not a property of
+   * the current string.
+   */
+  const [peopleBadInput, setPeopleBadInput] = useState(false)
   const parsedPeople = Number(people)
   const partySize = people.trim() === '' ? null : parsedPeople
-  const peopleValid = partySize === null || (Number.isInteger(partySize) && partySize >= 1)
+  const peopleValid =
+    !peopleBadInput && (partySize === null || (Number.isInteger(partySize) && partySize >= 1))
 
   const trimmed = query.trim()
   const needle = trimmed.toLowerCase()
@@ -526,6 +560,7 @@ export function AssignFamilyModal({
     setQuery('')
     setNote('')
     setPeople('')
+    setPeopleBadInput(false)
     onClose()
   }
 
@@ -541,6 +576,7 @@ export function AssignFamilyModal({
     setQuery('')
     setNote('')
     setPeople('')
+    setPeopleBadInput(false)
     onClose()
   }
 
@@ -782,6 +818,10 @@ export function AssignFamilyModal({
                   placeholder="How many"
                   onChange={(event) => {
                     setPeople(event.target.value)
+                    // See the `peopleBadInput` docstring above the state
+                    // declaration — this is the only point the real signal
+                    // exists at.
+                    setPeopleBadInput(event.target.validity.badInput)
                   }}
                   onKeyDown={(event) => {
                     // ↵ SAVES FROM A FIELD — the same half of the ruling

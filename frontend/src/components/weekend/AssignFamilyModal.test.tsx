@@ -1348,6 +1348,42 @@ describe('AssignFamilyModal — the People field, kindred#2503', () => {
     fireEvent.keyDown(searchBox(), { key: 'Enter' })
     expect(props.onWriteIn).not.toHaveBeenCalled()
   })
+
+  it('refuses to save when the field sanitised away unparseable text, even though it now reads blank (kindred#2540 fix-round BLOCKER 4)', () => {
+    // `<input type="number">` sanitises `abc` to `''`, so `people === ''`
+    // reads exactly like a genuinely blank field -- which is VALID (owner
+    // ruling 2026-08-21: blank means wholesale). Without `validity.badInput`
+    // the button re-enables and a value the staff member believes they typed
+    // saves as something else (an unsized write-in) instead of refusing.
+    //
+    // jsdom does not implement per-keystroke `badInput` tracking for number
+    // inputs (verified against this exact component: neither
+    // `fireEvent.change` nor `userEvent.type` ever sets it), so this
+    // overrides the read-only `validity` accessor for one dispatch -- the
+    // only way to get the real signal a browser sends onto the event this
+    // handler actually receives, rather than asserting on React state alone.
+    const { props } = renderModal()
+    fireEvent.change(searchBox(), { target: { value: 'Burst pipe' } })
+    const people = screen.getByLabelText('People')
+    // A real edit, not the untouched, still-blank field a `''` dispatch on
+    // its own would be indistinguishable from.
+    fireEvent.change(people, { target: { value: '2' } })
+
+    const original = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'validity')
+    Object.defineProperty(window.HTMLInputElement.prototype, 'validity', {
+      configurable: true,
+      get: () => ({ badInput: true }) as ValidityState,
+    })
+    try {
+      fireEvent.change(people, { target: { value: '' } })
+    } finally {
+      if (original) Object.defineProperty(window.HTMLInputElement.prototype, 'validity', original)
+    }
+
+    expect(screen.getByRole('button', { name: /write in/i })).toBeDisabled()
+    fireEvent.click(screen.getByRole('button', { name: /write in/i }))
+    expect(props.onWriteIn).not.toHaveBeenCalled()
+  })
 })
 
 describe('AssignFamilyModal — what it refuses to offer', () => {
