@@ -487,13 +487,16 @@ export { indexUnitsByCode } from './unitLevel'
  *
  * They are still not the same question, which is why this survives. This one
  * asks about spaces a family could be put in RIGHT NOW, so it filters on
- * `is_family_available` and drops a cabin somebody has been written into this
- * weekend. `units_capacity_unknown` asks about the planning inventory, which
- * includes that cabin because it returns next weekend. They diverge the moment
- * anything is written into — and things are: the write-in table DOES hold rows
- * in production (all 21, moved out of `lodging_availability` by 1500000162),
- * which the old claim here ("has never held a row") got wrong. It was measured
- * against a development database and never re-checked.
+ * `is_family_available`, which reads `free > 0` (kindred#2503, and
+ * kindred#2540's party-size arithmetic behind it) rather than "no write-in at
+ * all" — a written-into cabin with beds left over stays counted here exactly
+ * as it stays counted on the board. `units_capacity_unknown` asks about the
+ * planning inventory, which includes that cabin regardless, because it
+ * returns next weekend. The two diverge only when a write-in has actually
+ * CLOSED the space (`free <= 0`, or an unmeasured wholesale claim), not merely
+ * when one is recorded — and closed spaces are reachable: the write-in table
+ * holds rows in production (24 published as of the 2026 snapshot, moved out
+ * of `lodging_availability` by 1500000162).
  *
  * It sits beside the BED count on the stats bar, and beds there are
  * `beds_family_available`, so the available-only reading is the one that

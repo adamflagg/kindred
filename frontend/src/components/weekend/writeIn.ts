@@ -94,16 +94,29 @@ export interface UnitAvailabilityWrite {
    * and staff will type nothing, so `null` is the common case and stays that
    * way, not a legacy branch on its way out.
    *
-   * THREE PRODUCERS, three different answers. The Assign modal's `People`
+   * FOUR PRODUCERS, not three (kindred#2540 fix-round CHEAP 6 — this
+   * paragraph used to say three and describe a form that, by the time this
+   * PR landed, already touched the field). The Assign modal's `People`
    * field sends what staff typed, or `null` when they typed nothing. The
    * X (`onRemove`) sends `null` unconditionally — harmless, because
    * `family_available: null` deletes the row before `set_availability` ever
-   * reaches the party-size upsert. The pencil (`onEdit`) sends the size the
-   * row ALREADY carries: its own form does not touch this field yet
-   * (kindred#2503 is a later task there), and `party_size` rides in every
-   * write-in upsert's payload — an edit that sent `null` here would silently
-   * erase a count a staff member had already recorded, on a form that never
-   * asked about it.
+   * reaches the party-size upsert. The pencil (`onEdit`) sends whatever its
+   * OWN `People` field currently holds: seeded from the row's recorded count
+   * when the pencil opens, and staff's own edit if they changed it —
+   * `WriteInCard.tsx`'s `onEdit` prop doc and `LodgingUnitCard.tsx`'s call
+   * site both spell out the forward. `party_size` rides in every write-in
+   * upsert's payload regardless of what else the form asked about, so a save
+   * that sent `null` here on an unrelated note edit would silently erase a
+   * count a staff member had already recorded — the data-loss guard the
+   * pencil's own form now carries.
+   *
+   * THE FOURTH never touches this TypeScript type at all:
+   * `_seed_write_ins` (`api/services/lodging_write_service.py`) copies one
+   * weekend's write-ins into a scenario server-side, row for row, and
+   * carries `party_size` along unchanged for the identical reason this
+   * guard exists here — a dropped count is not a smaller row, it is a
+   * DIFFERENT one, and an unsized copy of a sized write-in would silently
+   * widen "2 of 5 beds" into "the whole cabin".
    */
   partySize: number | null
 }
