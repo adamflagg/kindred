@@ -19,6 +19,7 @@
 import { render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { Permission } from '../../constants/permissions'
 import { MedicalNarrative } from './MedicalNarrative'
 
 const isAdmin = { value: false }
@@ -53,6 +54,12 @@ beforeEach(() => {
   medicalResult.value = { data: undefined, isLoading: false, error: null }
   useHouseholdMedical.mockClear()
 })
+
+/** Grants `bunking.manage` and renders the narrative for a fixed household. */
+function renderWithPermission() {
+  permissions.value = new Set([Permission.BUNKING_MANAGE])
+  return render(<MedicalNarrative householdCmId={1} year={2026} />)
+}
 
 describe('the permission gate', () => {
   it('renders nothing for a user without bunking.manage', () => {
@@ -165,5 +172,70 @@ describe('the narrative itself', () => {
     render(<MedicalNarrative householdCmId={2000001} year={2026} />)
 
     expect(screen.getByText('Forbidden: bunking.manage required')).toBeInTheDocument()
+  })
+})
+
+describe('the gate pill', () => {
+  it('renders a pill for an answered gate and the family text below it', () => {
+    medicalResult.value = {
+      data: { allergy_gate: 'yes', allergy_info: 'carries an epinephrine auto-injector' },
+      isLoading: false,
+      error: null,
+    }
+    renderWithPermission()
+
+    expect(screen.getByText('Allergies')).toBeInTheDocument()
+    expect(screen.getByText('Yes')).toBeInTheDocument()
+    expect(screen.getByText('carries an epinephrine auto-injector')).toBeInTheDocument()
+  })
+
+  it('renders the pill with no paragraph when the family wrote nothing', () => {
+    medicalResult.value = {
+      data: { allergy_gate: 'no', allergy_info: '' },
+      isLoading: false,
+      error: null,
+    }
+    renderWithPermission()
+
+    expect(screen.getByText('Allergies')).toBeInTheDocument()
+    expect(screen.getByText('No')).toBeInTheDocument()
+  })
+
+  it('renders nothing for a gate the household never answered', () => {
+    medicalResult.value = {
+      data: { allergy_gate: 'unknown', allergy_info: '' },
+      isLoading: false,
+      error: null,
+    }
+    renderWithPermission()
+
+    // 375 of 900 households in 2026 answer some gates and not others. An
+    // unanswered gate is not a denial and must not render as one.
+    expect(screen.queryByText('Allergies')).not.toBeInTheDocument()
+  })
+
+  it('renders a narrative that has no gate at all', () => {
+    medicalResult.value = {
+      data: { additional_info: 'gluten free kitchen requested' },
+      isLoading: false,
+      error: null,
+    }
+    renderWithPermission()
+
+    expect(screen.getByText('Additional')).toBeInTheDocument()
+    expect(screen.getByText('gluten free kitchen requested')).toBeInTheDocument()
+    expect(screen.queryByText('Yes')).not.toBeInTheDocument()
+    expect(screen.queryByText('No')).not.toBeInTheDocument()
+  })
+
+  it('renders no block at all when every gate is unanswered and every column blank', () => {
+    medicalResult.value = {
+      data: { allergy_gate: 'unknown', allergy_info: '', additional_info: '' },
+      isLoading: false,
+      error: null,
+    }
+    const { container } = renderWithPermission()
+
+    expect(container).toBeEmptyDOMElement()
   })
 })
