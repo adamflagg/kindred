@@ -1968,3 +1968,18 @@ class TestUnpushEndpoint:
 
         assert response.status_code == 409
         assert response.json()["detail"] == {"reason": "drift", "buildings": ["Cabin A", "Cabin B"]}
+
+    def test_an_unknown_weekend_is_404_not_500(self, mock_pb: MagicMock) -> None:
+        """`unpush` resolves the weekend AFTER the push-found / not-already-
+        unpushed / no-drift checks pass (`_resolve_session_pb_id`, called
+        just before the reverting writes) -- a year/session pair that no
+        longer names a weekend must still map to the router's one named 404,
+        not escape uncaught into the global handler's 500."""
+        app = _build_app(_manage_user(), mock_pb)
+        with patch("api.routers.lodging.LodgingWriteService") as service_cls:
+            service_cls.return_value.unpush = AsyncMock(side_effect=SessionNotFoundError("no weekend 9999999"))
+            with patch("api.routers.lodging.pb", mock_pb):
+                response = TestClient(app).post(self._url(), params={**self.PARAMS, "session_cm_id": 9999999})
+
+        assert response.status_code == 404
+        assert "9999999" in response.json()["detail"]

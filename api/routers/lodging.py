@@ -431,6 +431,8 @@ async def unpush(
         raise HTTPException(status_code=409, detail={"reason": "already_unpushed"}) from exc
     except UnpushDriftError as exc:
         raise HTTPException(status_code=409, detail={"reason": "drift", "buildings": exc.buildings}) from exc
+    except SessionNotFoundError as exc:
+        raise _weekend_404(year, session_cm_id) from exc
 
 
 @router.put("/merge", response_model=LodgingWriteResponse)
