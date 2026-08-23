@@ -4334,6 +4334,197 @@ export type PromptUpdateResponse = {
 }
 
 /**
+ * PushBuildingReport
+ *
+ * One building's live-vs-draft write-ins, and the RULED verdict for it.
+ *
+ * `cls` is `classify_push`'s own word (`api/services/lodging_rules.py`),
+ * computed server-side and PUBLISHED rather than re-derived: inside a
+ * scenario the client never reads `lodging_write_ins` at all -- the roster
+ * replaces those rows with the draft twin -- so it has nothing to diff
+ * against and no TS mirror of the classifier exists on purpose.
+ */
+export type PushBuildingReport = {
+  /**
+   * Key
+   */
+  key: string
+  /**
+   * Label
+   */
+  label: string
+  /**
+   * Cls
+   */
+  cls: 'add' | 'match' | 'conflict' | 'remove'
+  /**
+   * Live
+   */
+  live?: Array<PushRowPayload>
+  /**
+   * Draft
+   */
+  draft?: Array<PushRowPayload>
+}
+
+/**
+ * PushExecuteRequest
+ *
+ * Apply a scenario's write-ins onto the live board (kindred#2477).
+ *
+ * `digest` is `PushPreviewResponse.digest`, ECHOED BACK unchanged --
+ * `execute_push` refuses with a fresh report the moment it disagrees, which
+ * means the board or the scenario moved between the review and this call.
+ *
+ * `decisions` names a verdict ONLY for the buildings that need one: a
+ * `conflict` chooses `"scenario"` (replace the live rows) or `"keep"` (leave
+ * the live board as it is); a `remove` chooses `"remove"` or `"keep"`. An
+ * `add` or a `match` building needs no entry -- there is nothing to decide.
+ * The RULED block rule (owner, 2026-08-22) is that a missing decision on a
+ * building that needs one refuses the whole push rather than defaulting to
+ * `"keep"`; see `PushDecisionsIncompleteError`.
+ */
+export type PushExecuteRequest = {
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * Session Cm Id
+   */
+  session_cm_id: number
+  /**
+   * Scenario
+   */
+  scenario: string
+  /**
+   * Digest
+   */
+  digest: string
+  /**
+   * Decisions
+   */
+  decisions?: {
+    [key: string]: 'live' | 'scenario' | 'keep' | 'remove'
+  }
+}
+
+/**
+ * PushExecuteResponse
+ *
+ * What the push actually did.
+ *
+ * `push_id` is the `lodging_write_in_pushes` row's id -- the ledger entry
+ * Unpush will replay -- and is `""` on a no-op, when nothing needed to move
+ * and no ledger row was written at all.
+ */
+export type PushExecuteResponse = {
+  /**
+   * Push Id
+   */
+  push_id?: string
+  /**
+   * Added
+   */
+  added?: number
+  /**
+   * Removed
+   */
+  removed?: number
+  /**
+   * Replaced
+   */
+  replaced?: number
+  /**
+   * Kept
+   */
+  kept?: number
+  /**
+   * Matched
+   */
+  matched?: number
+  /**
+   * No Op
+   */
+  no_op?: boolean
+}
+
+/**
+ * PushPreviewResponse
+ *
+ * The report half of kindred#2477's write-in push queue.
+ *
+ * `digest` fingerprints `buildings` (`push_digest`), and it is not a fact
+ * about the request -- it is a fact about what this preview SAW. The client
+ * echoes it back unchanged when it actually pushes; a mismatch means the
+ * live board or the scenario moved between the preview and the push, and
+ * the push refuses with a fresh report rather than applying decisions made
+ * against one that is no longer true.
+ */
+export type PushPreviewResponse = {
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * Session Cm Id
+   */
+  session_cm_id: number
+  /**
+   * Scenario
+   */
+  scenario: string
+  /**
+   * Digest
+   */
+  digest: string
+  /**
+   * Buildings
+   */
+  buildings?: Array<PushBuildingReport>
+}
+
+/**
+ * PushRowPayload
+ *
+ * One classified write-in row, as `preview_push` reports it (kindred#2477).
+ *
+ * A wire rendering of `lodging_rules.PushRow`, field-for-field -- the row's
+ * MEANING lives on that frozen dataclass and this is not a second opinion of
+ * it, only the shape that crosses the API boundary.
+ */
+export type PushRowPayload = {
+  /**
+   * Unit Id
+   */
+  unit_id: string
+  /**
+   * Unit Code
+   */
+  unit_code: string
+  /**
+   * Unit Name
+   */
+  unit_name: string
+  /**
+   * Occupant Name
+   */
+  occupant_name: string
+  /**
+   * Note
+   */
+  note?: string
+  /**
+   * Party Size
+   */
+  party_size?: number | null
+  /**
+   * Sleeps
+   */
+  sleeps?: number | null
+}
+
+/**
  * RegistrationMetricsResponse
  *
  * Response model for registration metrics endpoint.
@@ -6703,6 +6894,31 @@ export type TimeBucket = {
    * Percentage of total
    */
   percentage: number
+}
+
+/**
+ * UnpushResponse
+ *
+ * What `unpush` actually did (kindred#2477 Task 5).
+ *
+ * `restored` is how many removed rows came back; `deleted` is how many
+ * added rows were taken back off the live board -- the mirror image of
+ * `PushExecuteResponse.added` / `.removed`, one field per direction the
+ * ledger's `changes` replay moves a row.
+ */
+export type UnpushResponse = {
+  /**
+   * Push Id
+   */
+  push_id?: string
+  /**
+   * Restored
+   */
+  restored?: number
+  /**
+   * Deleted
+   */
+  deleted?: number
 }
 
 /**
@@ -10677,6 +10893,124 @@ export type SetAvailabilityApiLodgingAvailabilityPutResponses = {
 
 export type SetAvailabilityApiLodgingAvailabilityPutResponse =
   SetAvailabilityApiLodgingAvailabilityPutResponses[keyof SetAvailabilityApiLodgingAvailabilityPutResponses]
+
+export type GetPushPreviewApiLodgingPushPreviewGetData = {
+  body?: never
+  path?: never
+  query: {
+    /**
+     * Year
+     *
+     * Year of the weekend
+     */
+    year: number
+    /**
+     * Session Cm Id
+     *
+     * CampMinder id of the weekend session
+     */
+    session_cm_id: number
+    /**
+     * Scenario
+     *
+     * Scenario whose write-ins are compared against the live board
+     */
+    scenario: string
+  }
+  url: '/api/lodging/push/preview'
+}
+
+export type GetPushPreviewApiLodgingPushPreviewGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type GetPushPreviewApiLodgingPushPreviewGetError =
+  GetPushPreviewApiLodgingPushPreviewGetErrors[keyof GetPushPreviewApiLodgingPushPreviewGetErrors]
+
+export type GetPushPreviewApiLodgingPushPreviewGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: PushPreviewResponse
+}
+
+export type GetPushPreviewApiLodgingPushPreviewGetResponse =
+  GetPushPreviewApiLodgingPushPreviewGetResponses[keyof GetPushPreviewApiLodgingPushPreviewGetResponses]
+
+export type ExecutePushApiLodgingPushPostData = {
+  body: PushExecuteRequest
+  path?: never
+  query?: never
+  url: '/api/lodging/push'
+}
+
+export type ExecutePushApiLodgingPushPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type ExecutePushApiLodgingPushPostError =
+  ExecutePushApiLodgingPushPostErrors[keyof ExecutePushApiLodgingPushPostErrors]
+
+export type ExecutePushApiLodgingPushPostResponses = {
+  /**
+   * Successful Response
+   */
+  200: PushExecuteResponse
+}
+
+export type ExecutePushApiLodgingPushPostResponse =
+  ExecutePushApiLodgingPushPostResponses[keyof ExecutePushApiLodgingPushPostResponses]
+
+export type UnpushApiLodgingPushPushIdUnpushPostData = {
+  body?: never
+  path: {
+    /**
+     * Push Id
+     */
+    push_id: string
+  }
+  query: {
+    /**
+     * Year
+     *
+     * Year of the weekend
+     */
+    year: number
+    /**
+     * Session Cm Id
+     *
+     * CampMinder id of the weekend session
+     */
+    session_cm_id: number
+  }
+  url: '/api/lodging/push/{push_id}/unpush'
+}
+
+export type UnpushApiLodgingPushPushIdUnpushPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type UnpushApiLodgingPushPushIdUnpushPostError =
+  UnpushApiLodgingPushPushIdUnpushPostErrors[keyof UnpushApiLodgingPushPushIdUnpushPostErrors]
+
+export type UnpushApiLodgingPushPushIdUnpushPostResponses = {
+  /**
+   * Successful Response
+   */
+  200: UnpushResponse
+}
+
+export type UnpushApiLodgingPushPushIdUnpushPostResponse =
+  UnpushApiLodgingPushPushIdUnpushPostResponses[keyof UnpushApiLodgingPushPushIdUnpushPostResponses]
 
 export type SetSlotMergeApiLodgingMergePutData = {
   body: SlotMergeRequest
