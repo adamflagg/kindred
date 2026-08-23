@@ -727,6 +727,18 @@ def write_in_covers(
     in it, where one room says only that the building is no longer free to let
     whole.
 
+    OWN BEATS DESCENDANT ONLY WHILE OWN IS UNSIZED (kindred#2540 fix-round).
+    An unsized own row is a WHOLESALE claim -- "somebody is in this space",
+    the same fact the em dash has always printed -- and that claim already
+    covers whatever is beneath it, exactly as an ancestor's does. A SIZED own
+    row is a different kind of statement: it asserts a headcount, not a claim
+    on the whole space, so it does not subsume a separately-recorded room.
+    When the unit's own row carries a `party_size`, its written-into
+    descendants are appended to the own cover rather than dropped by it --
+    the container reads "own, plus every descendant beneath it" instead of
+    "own alone". A house of 8 with its own row sized at 2 and all four rooms
+    separately written into must still show 8 people accounted for, not 2.
+
     THE DESCENDANT STEP RETURNS ALL OF THEM (kindred#2381), and that is the
     arity fix. A merged container draws in place of its rooms, so returning the
     first match dropped every other occupant off the board -- four of them on
@@ -826,18 +838,23 @@ def write_in_covers(
         # a space on the strength of a row it does not hold.
         if not unit.code:
             continue
+        pairs: list[tuple[LodgingUnitSummary, Literal["own", "ancestor", "descendant"]]]
         if _is_written_in(unit):
-            sources = [unit]
-            relation: Literal["own", "ancestor", "descendant"] = "own"
+            pairs = [(unit, "own")]
+            if unit.party_size is not None:
+                # SIZED, not wholesale -- see the docstring's "OWN BEATS
+                # DESCENDANT ONLY WHILE OWN IS UNSIZED". The own row asserts a
+                # headcount rather than a claim on the whole space, so it does
+                # not subsume a separately-recorded room; every written-into
+                # descendant still contributes its own cover beside it.
+                pairs.extend((descendant, "descendant") for descendant in _written_in_descendants(unit))
         else:
             ancestor = _nearest_ancestor(unit)
             if ancestor is not None:
-                sources = [ancestor]
-                relation = "ancestor"
+                pairs = [(ancestor, "ancestor")]
             else:
-                sources = _written_in_descendants(unit)
-                relation = "descendant"
-        if not sources:
+                pairs = [(descendant, "descendant") for descendant in _written_in_descendants(unit)]
+        if not pairs:
             continue
         covers[unit.code] = [
             WriteInCover(
@@ -848,9 +865,19 @@ def write_in_covers(
                 note=source.reason,
                 party_size=source.party_size,
                 relation=relation,
-                unit_sleeps=capacity_by_code.get(source.code),
+                # 0, not the raw lookup, when the SOURCE is retired
+                # (kindred#2540 fix-round FINDING 5). `_effective_sleeps`
+                # filters `is_active` only inside a container's sum over its
+                # leaves -- a leaf looked up directly by code still returns
+                # its raw `sleeps` unfiltered, which is right for every other
+                # caller of `capacity_by_code` but wrong here: a retired
+                # unit's beds were never counted toward its container's own
+                # capacity, so its cover must not consume any either. The
+                # cover itself is NOT dropped -- the write-in still names the
+                # room -- only the beds it claims are zeroed.
+                unit_sleeps=(capacity_by_code.get(source.code) if source.is_active else 0),
             )
-            for source in sources
+            for source, relation in pairs
         ]
     return covers
 
@@ -902,7 +929,12 @@ def _resolve_family_availability(
     It is `_effective_sleeps` rather than `unit.sleeps` so a combined house is
     judged on its whole-house total and a written-into ROOM on the room's own
     beds; reading `unit.sleeps` here would judge all fifteen production
-    containers at `sleeps = 0`.
+    containers at `sleeps = 0`. That is the CARD's OWN capacity
+    (`capacity_by_code.get(unit.code)`) only -- each LOAD's capacity (the
+    beds the covering unit itself claims) reads `cover.unit_sleeps` instead
+    of a second `capacity_by_code` lookup, so a source `write_in_covers` has
+    already zeroed (a retired unit, kindred#2540 FINDING 5) cannot be
+    re-inflated here by looking the same code up a second, unclamped way.
 
     ⚠️ `write_in_unit_ids` IS THE BLANK-CODE BACKSTOP, and it is why this takes
     a third argument rather than reading covers alone. Everything above is
@@ -929,8 +961,18 @@ def _resolve_family_availability(
             WriteInLoad(
                 relation=cover.relation,
                 party_size=cover.party_size,
-                # The capacity of the unit the ROW names, not this card's.
-                capacity=capacity_by_code.get(cover.unit_code),
+                # The capacity of the unit the ROW names, not this card's --
+                # read off `cover.unit_sleeps` itself rather than a second
+                # `capacity_by_code.get(cover.unit_code)` lookup (kindred#2540
+                # fix-round, FINDING 5's interaction with the declined FINDING
+                # 10). The two used to be independent derivations that were
+                # merely equal today; FINDING 5 clamps `unit_sleeps` to 0 for
+                # a retired source, and a caller still reading
+                # `capacity_by_code` directly would silently disagree with
+                # what the client is handed. Reading the cover's own field
+                # instead makes the server and the wire structurally ONE
+                # value rather than two that happen to agree.
+                capacity=cover.unit_sleeps,
             )
             for cover in unit.write_ins
         ]

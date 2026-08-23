@@ -224,6 +224,13 @@ class WriteInCover(BaseModel):
     # The EFFECTIVE capacity of the unit the row NAMES -- a whole-house total
     # on a container, `sleeps` on a leaf, None when nobody measured it.
     #
+    # 0, not the raw figure, when the row's own unit is RETIRED (kindred#2540
+    # fix-round FINDING 5). `_effective_sleeps` filters `is_active` only
+    # inside a container's sum over its leaves -- a leaf looked up directly
+    # still returns its raw `sleeps` -- so an unclamped retired source would
+    # consume beds its own container's capacity never counted. The cover
+    # itself still names the room; only the beds it claims are zeroed.
+    #
     # PUBLISHED because a descendant cover consumes ITS OWN room's beds, and
     # the one surface that has to know cannot look it up: `MapUnitPopover`
     # never receives the full registry -- its own `units` prop is documented as
@@ -231,6 +238,12 @@ class WriteInCover(BaseModel):
     # the registry in was rejected there deliberately. The server already
     # computes this while resolving availability, so publishing it removes a
     # client-side registry walk rather than adding a field for its own sake.
+    #
+    # THE SERVER READS THIS FIELD BACK, not a second `capacity_by_code`
+    # lookup (`_resolve_family_availability`'s per-load capacity) -- the two
+    # used to be independent derivations that were merely equal; the retired-
+    # unit clamp above is what would make them diverge if the server kept
+    # re-deriving its own answer instead of reading the one it just published.
     unit_sleeps: int | None = None
 
 

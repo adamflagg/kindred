@@ -5308,6 +5308,30 @@ class TestWriteInCovers:
         assert covers["house"][0].unit_sleeps == 3
         assert covers["room"][0].unit_sleeps == 3
 
+    def test_a_retired_unit_s_cover_does_not_publish_its_raw_capacity(self) -> None:
+        """kindred#2540 fix-round FINDING 5. `_effective_sleeps` filters
+        `is_active` only inside a CONTAINER's sum over its leaves -- a leaf
+        looked up directly still returns its raw, unfiltered `sleeps`. Left
+        alone, a retired room's descendant cover would consume beds its own
+        container's capacity never counted (the container's own capacity
+        already excludes it). The cover still names the room -- it is not
+        dropped -- but its published `unit_sleeps` must not carry the raw
+        figure the container never counted."""
+        house = _summary("house", is_container=True)
+        retired_room = _summary("house-a", parent_code="house", is_active=False)
+
+        # capacity_by_code as the orchestrator would build it: house-a's raw
+        # sleeps (6) is unfiltered because it is a direct leaf lookup, exactly
+        # as `_effective_sleeps` returns it today.
+        covers = write_in_covers(
+            [house, retired_room],
+            _written_ids("house-a"),
+            {"house": 0, "house-a": 6},
+        )
+
+        assert covers["house"][0].unit_sleeps == 0
+        assert covers["house"][0].unit_code == "house-a"
+
     def test_a_room_inherits_the_write_in_of_the_building_above_it(self) -> None:
         # The SPLIT case. Staff wrote into the whole house while it was merged,
         # then split it back to rooms: the row still names the house, which now
@@ -5361,6 +5385,46 @@ class TestWriteInCovers:
 
         assert covers["house-a"][0].unit_code == "house-a"
         assert covers["house-a"][0].occupant_name == "Ava Martinez"
+
+    def test_a_sized_own_row_does_not_discard_written_into_descendants(self) -> None:
+        """kindred#2540 fix-round finding (BLOCKER 3). A SIZED own row asserts
+        a headcount, not a wholesale claim on the space -- unlike an UNSIZED
+        (wholesale) own row, it does not subsume separately-recorded room
+        occupancy. Every written-into descendant still contributes its own
+        cover, house of 8 / own party_size=2 / two rooms separately written
+        into -- the container's cover list must carry all three, not just the
+        own row."""
+        house = _summary("house", is_container=True, party_size=2)
+        room_a = _summary("house-a", parent_code="house", party_size=1, occupant_name="Liam Garcia")
+        room_b = _summary("house-b", parent_code="house", occupant_name="Olivia Chen")
+
+        covers = write_in_covers(
+            [house, room_a, room_b],
+            _written_ids("house", "house-a", "house-b"),
+            {"house": 8, "house-a": 3, "house-b": 3},
+        )
+
+        relations = {cover.unit_code: cover.relation for cover in covers["house"]}
+        assert relations == {"house": "own", "house-a": "descendant", "house-b": "descendant"}
+        sizes = {cover.unit_code: cover.party_size for cover in covers["house"]}
+        assert sizes == {"house": 2, "house-a": 1, "house-b": None}
+
+    def test_an_unsized_own_row_still_closes_the_whole_space(self) -> None:
+        """The UNCHANGED half of the fix above. An unsized own row is a
+        wholesale claim -- 'somebody is in this space' -- and stays the sole
+        cover; it must not start dragging descendant rows in beside it."""
+        house = _summary("house", is_container=True, occupant_name="Liam Garcia")
+        room = _summary("house-a", parent_code="house", occupant_name="Olivia Chen")
+
+        covers = write_in_covers(
+            [house, room],
+            _written_ids("house", "house-a"),
+            {"house": 8, "house-a": 3},
+        )
+
+        assert len(covers["house"]) == 1
+        assert covers["house"][0].relation == "own"
+        assert covers["house"][0].occupant_name == "Liam Garcia"
 
     def test_the_nearest_ancestor_wins(self) -> None:
         block = _summary("block", is_container=True, occupant_name="Ava Martinez")
@@ -5568,6 +5632,50 @@ class TestFamilyAvailabilityIsResolvedOverTheTree:
         assert house.is_family_available is False
         # The map the counts read, not a second derivation of the same sum.
         assert free_by_unit[house.unit_id] == 0
+
+    def test_a_sized_own_row_still_lets_its_rooms_close_the_house(self) -> None:
+        """BLOCKER 3 (kindred#2540 fix-round). Unlike the fully-covered case
+        above, this house's OWN row also carries a size, and every room is
+        still separately written into. A sized own row asserts a headcount,
+        not a wholesale claim on the space, so it must not subsume the rooms'
+        own occupancy: the house has to close on everybody recorded, capped
+        at its own capacity, not on the own row's count alone."""
+        house = _summary("house", is_container=True, is_combined=True, sleeps=None, party_size=2)
+        rooms = [
+            _summary("back", parent_code="house", sleeps=3),
+            _summary("laundry", parent_code="house", sleeps=1),
+            _summary("loft", parent_code="house", sleeps=2),
+            _summary("side", parent_code="house", sleeps=2),
+        ]
+        units = [house, *rooms]
+        caps = _caps(units)
+        written = _written_ids("house", "back", "laundry", "loft", "side")
+        _resolve_write_in_covers(units, written, caps)
+        free_by_unit = _resolve_family_availability(units, caps, written)
+
+        assert house.is_family_available is False
+        assert free_by_unit[house.unit_id] == 0
+
+    def test_a_retired_room_s_write_in_does_not_close_the_active_house(self) -> None:
+        """kindred#2540 fix-round FINDING 5, end to end. Active r1(3) + r2(3),
+        retired r3(6) written into with no size. The house's own capacity
+        (`_effective_sleeps`) already excludes r3 because it filters
+        `is_active` when summing a container's leaves -- so r3's descendant
+        cover must not consume any beds either, or the house closes on a room
+        that was never counted as its inventory to begin with."""
+        house = _summary("house", is_container=True, is_combined=True, sleeps=None)
+        r1 = _summary("r1", parent_code="house", sleeps=3)
+        r2 = _summary("r2", parent_code="house", sleeps=3)
+        r3 = _summary("r3", parent_code="house", sleeps=6, is_active=False)
+        units = [house, r1, r2, r3]
+        caps = _caps(units)
+        assert caps["house"] == 6  # r1 + r2 only -- r3 is excluded, same as production
+        written = _written_ids("r3")
+        _resolve_write_in_covers(units, written, caps)
+        free_by_unit = _resolve_family_availability(units, caps, written)
+
+        assert house.is_family_available is True
+        assert free_by_unit[house.unit_id] == 6
 
     def test_one_covered_room_leaves_the_rest_of_the_house_available(self) -> None:
         """Owner ruling 2026-08-20, verbatim: "if its entered at the room level,
