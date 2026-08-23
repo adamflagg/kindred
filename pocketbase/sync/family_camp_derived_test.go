@@ -923,6 +923,123 @@ func TestMedicalNeedsUpdateSeesAGateOnlyChange(t *testing.T) {
 	}
 }
 
+// TestSetMedicalFieldsReachesBothCreateAndUpdate is the acceptance test for
+// kindred#2546. upsertMedical used to hand-copy family_camp_medical's 13
+// columns into both its create branch and its update branch -- a field
+// written into only ONE of them still compiles and fails SILENTLY, because
+// PocketBase's record.Set on a column the schema doesn't carry is a no-op
+// with no error (setRegistrationRequestFields' doc comment states the same
+// invariant for the registration sibling this mirrors).
+//
+// This drives the shared setMedicalFields helper against two separate
+// records: "created" stands in for the create branch's brand-new record,
+// "updated" stands in for the update branch's pre-existing record, seeded
+// here with different STALE values first. Every column on medicalData must
+// land its real value on BOTH -- which is only guaranteed while both
+// upsertMedical branches call this one function instead of naming the
+// columns twice more by hand.
+//
+// Same harness as TestMedicalNeedsUpdateSeesAGateOnlyChange: a bare
+// core.NewBaseCollection with just the columns this test touches, and
+// core.NewRecord + Set -- no app, no Save, since setMedicalFields only ever
+// calls record.Set.
+// ⚠️ The collection built below is a REALISTIC fixture, not a schema
+// assertion. PocketBase's Record.Set falls through to SetRaw for an unknown
+// key and GetString reads it straight back, so this test passes identically
+// with every Fields.Add removed -- it cannot detect a column the schema
+// lacks. That property is a house pattern here (see
+// TestMedicalNeedsUpdateSeesAGateOnlyChange), and the silent-no-op hazard is
+// covered instead by TestMedicalColumnValuesAreSchemaBacked, which reads the
+// migrations. What THIS test pins is kindred#2546's actual acceptance: both
+// branches write every column, and an update overwrites stale values.
+func TestSetMedicalFieldsReachesBothCreateAndUpdate(t *testing.T) {
+	t.Parallel()
+	col := core.NewBaseCollection("family_camp_medical")
+	col.Fields.Add(&core.TextField{Name: "cpap_info"})
+	col.Fields.Add(&core.TextField{Name: "physician_info"})
+	col.Fields.Add(&core.TextField{Name: "special_needs_info"})
+	col.Fields.Add(&core.TextField{Name: "allergy_info"})
+	col.Fields.Add(&core.TextField{Name: "dietary_info"})
+	col.Fields.Add(&core.TextField{Name: "additional_info"})
+	col.Fields.Add(&core.TextField{Name: "bathroom_explain"})
+	col.Fields.Add(&core.TextField{Name: "accommodation_explain"})
+	col.Fields.Add(&core.TextField{Name: enrollmentStatusColumn})
+	col.Fields.Add(&core.TextField{Name: "allergy_gate"})
+	col.Fields.Add(&core.TextField{Name: "dietary_gate"})
+	col.Fields.Add(&core.TextField{Name: "special_needs_gate"})
+	col.Fields.Add(&core.TextField{Name: "physician_gate"})
+	col.Fields.Add(&core.TextField{Name: "cpap_gate"})
+
+	med := &medicalData{
+		householdPBID:        "hh_1",
+		cpapInfo:             "Household reports a CPAP machine is needed overnight.",
+		physicianInfo:        "A family physician is listed on file with the camp health center.",
+		specialNeedsInfo:     "Camper uses a wheelchair to get around camp.",
+		allergyInfo:          "Camper carries an EpiPen for a tree-nut allergy.",
+		dietaryInfo:          "Camper follows a gluten-free diet.",
+		additionalInfo:       "Family requested a ground-floor cabin if one is available.",
+		bathroomExplain:      "Camper needs a private bathroom for a mobility aid.",
+		accommodationExplain: "Camper needs a step-free path to the cabin door.",
+		enrollmentStatus:     enrollmentStatusEnrolled,
+		allergyGate:          gateYes,
+		dietaryGate:          gateYes,
+		specialNeedsGate:     gateYes,
+		physicianGate:        gateNo,
+		cpapGate:             gateYes,
+	}
+
+	// Stands in for the create branch: a brand-new record with nothing set.
+	created := core.NewRecord(col)
+	setMedicalFields(created, med)
+
+	// Stands in for the update branch: a record pre-loaded with different,
+	// stale values before setMedicalFields overwrites them.
+	updated := core.NewRecord(col)
+	updated.Set("cpap_info", "stale")
+	updated.Set("physician_info", "stale")
+	updated.Set("special_needs_info", "stale")
+	updated.Set("allergy_info", "stale")
+	updated.Set("dietary_info", "stale")
+	updated.Set("additional_info", "stale")
+	updated.Set("bathroom_explain", "stale")
+	updated.Set("accommodation_explain", "stale")
+	updated.Set(enrollmentStatusColumn, "waitlisted")
+	updated.Set("allergy_gate", gateNo)
+	updated.Set("dietary_gate", gateNo)
+	updated.Set("special_needs_gate", gateNo)
+	updated.Set("physician_gate", gateYes)
+	updated.Set("cpap_gate", gateNo)
+	setMedicalFields(updated, med)
+
+	checks := []struct {
+		column string
+		want   string
+	}{
+		{"cpap_info", med.cpapInfo},
+		{"physician_info", med.physicianInfo},
+		{"special_needs_info", med.specialNeedsInfo},
+		{"allergy_info", med.allergyInfo},
+		{"dietary_info", med.dietaryInfo},
+		{"additional_info", med.additionalInfo},
+		{"bathroom_explain", med.bathroomExplain},
+		{"accommodation_explain", med.accommodationExplain},
+		{enrollmentStatusColumn, med.enrollmentStatus},
+		{"allergy_gate", med.allergyGate},
+		{"dietary_gate", med.dietaryGate},
+		{"special_needs_gate", med.specialNeedsGate},
+		{"physician_gate", med.physicianGate},
+		{"cpap_gate", med.cpapGate},
+	}
+	for _, c := range checks {
+		if got := created.GetString(c.column); got != c.want {
+			t.Errorf("create: %s = %q, want %q", c.column, got, c.want)
+		}
+		if got := updated.GetString(c.column); got != c.want {
+			t.Errorf("update: %s = %q, want %q", c.column, got, c.want)
+		}
+	}
+}
+
 // TestCompositeKeyFormats verifies the composite key format for each table
 func TestCompositeKeyFormats(t *testing.T) {
 	t.Parallel()
@@ -4400,5 +4517,107 @@ func TestProcessMedicalKeepsAGateOnlyHousehold(t *testing.T) {
 	}
 	if got, want := meds[0].allergyGate, gateNo; got != want {
 		t.Errorf("allergyGate = %q, want %q", got, want)
+	}
+}
+
+// TestMedicalColumnValuesAreSchemaBacked closes the gap kindred#2546's own
+// premise is about. medicalColumnValues is now the single write list for
+// family_camp_medical, so it is the one place a new column enters the write
+// path -- and record.Set() on a column no migration declares is a SILENT
+// no-op: no error, no log, the value simply never persists.
+//
+// Thirteen of today's fourteen columns are guarded only INCIDENTALLY: eight
+// by TestMedicalColumnLimitsMatchTheSchema (they are capped text) and five by
+// TestMedicalGateColumnsExistInASchemaMigration. A fifteenth column that is
+// neither capped text nor a gate would join the write list with no schema
+// guard at all, which is exactly the failure those two tests exist to stop.
+// This asserts the property directly over the write list itself, so coverage
+// no longer depends on which OTHER list a column happens to also be on.
+func TestMedicalColumnValuesAreSchemaBacked(t *testing.T) {
+	t.Parallel()
+
+	paths, err := filepath.Glob("../pb_migrations/*.js")
+	if err != nil {
+		t.Fatalf("globbing migrations: %v", err)
+	}
+	if len(paths) == 0 {
+		t.Fatal("no migrations found -- this test would pass vacuously")
+	}
+
+	written := make([]string, 0, 16)
+	for _, cv := range medicalColumnValues(&medicalData{}) {
+		written = append(written, cv.column)
+	}
+	if len(written) == 0 {
+		t.Fatal("medicalColumnValues returned nothing -- this test would pass vacuously")
+	}
+
+	declared := make(map[string]string, len(written))
+	for _, path := range paths {
+		source, err := os.ReadFile(path) //nolint:gosec // fixed repo-relative glob
+		if err != nil {
+			t.Fatalf("reading %s: %v", path, err)
+		}
+		text := string(source)
+		if !strings.Contains(text, "family_camp_medical") {
+			continue
+		}
+		for _, column := range written {
+			if strings.Contains(text, `name: "`+column+`"`) {
+				declared[column] = filepath.Base(path)
+			}
+		}
+	}
+
+	for _, column := range written {
+		if _, ok := declared[column]; !ok {
+			t.Errorf("family_camp_medical.%s is written by setMedicalFields but no "+
+				"migration creates it -- record.Set() would silently no-op, so the "+
+				"value never persists and nothing reports it", column)
+		}
+	}
+}
+
+// TestMedicalColumnValuesMatchesTheGuardedVocabulary pins the write list
+// against the export-guard lists, so the two cannot drift apart.
+//
+// The precedent and the reason are both already in this package:
+// TestMedicalGateColumnsExistInASchemaMigration's comment says "two identical
+// lists in this package is exactly the drift shape
+// TestMedicalColumnLimitsMatchTheSchema above already guards against", and
+// kindred#2542 was ruled on the same ground. A column written to
+// family_camp_medical but absent from guardedColumns() is a column that
+// reaches an export unguarded; one on guardedColumns() but never written is a
+// dead entry that makes the export ban look wider than it is.
+//
+// enrollment_status is the deliberate exception and the only one: it is
+// written here (stamped in Step 7b) but is NOT medical content, so it is
+// correctly outside the export ban.
+func TestMedicalColumnValuesMatchesTheGuardedVocabulary(t *testing.T) {
+	t.Parallel()
+
+	written := make(map[string]bool)
+	for _, cv := range medicalColumnValues(&medicalData{}) {
+		written[cv.column] = true
+	}
+
+	expected := append(guardedColumns(), enrollmentStatusColumn)
+	for _, column := range expected {
+		if !written[column] {
+			t.Errorf("%s is in the guarded vocabulary but setMedicalFields never "+
+				"writes it -- either add it to medicalColumnValues or drop it", column)
+		}
+	}
+
+	allowed := make(map[string]bool, len(expected))
+	for _, column := range expected {
+		allowed[column] = true
+	}
+	for column := range written {
+		if !allowed[column] {
+			t.Errorf("setMedicalFields writes family_camp_medical.%s but it is on "+
+				"neither guardedColumns() nor the enrollment_status exception -- a "+
+				"medical column outside the export ban reaches Google Sheets", column)
+		}
 	}
 }
