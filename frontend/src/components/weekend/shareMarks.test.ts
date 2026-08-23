@@ -120,33 +120,38 @@ describe('rule 2 — the anchor is always on for a household, shade = the answer
 
 // ── Rule 3 ───────────────────────────────────────────────────────────────────
 
-describe('rule 3 — anchor tooltip: preference_raw verbatim, else the label fallback', () => {
-  it('uses preference_raw verbatim when it is non-blank', () => {
+describe('rule 3 — anchor tooltip: a fixed short prefix per state, never the verbatim sentence', () => {
+  /*
+   * Owner ruling 2026-08-22 (supersedes the spec's raw-sentence clause): staff
+   * know the answer wordings, so the verbatim CampMinder sentence is noise.
+   * The tooltip is `Yes, Share Cabin` / `Maybe Share Cabin` /
+   * `Don't Share Cabin`, with `: <content>` appended only when the reg-form
+   * Shared-request text exists. `preference_raw` renders nowhere.
+   */
+  it('renders the yes prefix, never the verbatim sentence', () => {
     const a = resolveShareAnchor(
       party({ share: { preference: 'yes_share', preference_raw: 'Yes, I would like to share…' } })
     )
-    expect(a?.tooltip).toBe('Yes, I would like to share…')
+    expect(a?.tooltip).toBe('Yes, Share Cabin')
   })
-  it('falls back to the yes label when preference_raw is blank', () => {
+  it('renders the maybe prefix', () => {
     const a = resolveShareAnchor(
-      party({ share: { preference: 'yes_share', preference_raw: '   ' } })
+      party({
+        share: { preference: 'maybe_mutual', preference_raw: 'Maybe, if a family we know…' },
+      })
     )
-    expect(a?.tooltip).toBe('Open to sharing')
+    expect(a?.tooltip).toBe('Maybe Share Cabin')
   })
-  it('falls back to the maybe label when preference_raw is absent', () => {
-    const a = resolveShareAnchor(party({ share: { preference: 'maybe_mutual' } }))
-    expect(a?.tooltip).toBe('Only if mutual')
-  })
-  it('falls back to the no label when preference_raw is absent', () => {
+  it('renders the no prefix', () => {
     const a = resolveShareAnchor(party({ share: { preference: 'no_share' } }))
-    expect(a?.tooltip).toBe('Will not share')
+    expect(a?.tooltip).toBe("Don't Share Cabin")
   })
-  it('falls back to the unanswered label when the share block is silent', () => {
+  it('keeps the self-explanatory unanswered sentence when the share block is silent', () => {
     const a = resolveShareAnchor(party({ share: { preference: 'unknown' } }))
     expect(a?.tooltip).toBe('Share question not answered')
   })
 
-  describe('the Shared-request append — yes/maybe only, and only when the text is non-empty', () => {
+  describe('the conditional `: <content>` append — yes/maybe only, only when the reg-form text is non-empty', () => {
     it('appends to a yes tooltip when a family Shared-request block exists', () => {
       const a = resolveShareAnchor(
         party({
@@ -157,7 +162,7 @@ describe('rule 3 — anchor tooltip: preference_raw verbatim, else the label fal
           },
         })
       )
-      expect(a?.tooltip).toBe('Yes, I would like to share… — Shared-request: the Martinez family')
+      expect(a?.tooltip).toBe('Yes, Share Cabin: the Martinez family')
     })
     it('appends to a maybe tooltip when a family Shared-request block exists', () => {
       const a = resolveShareAnchor(
@@ -168,7 +173,7 @@ describe('rule 3 — anchor tooltip: preference_raw verbatim, else the label fal
           },
         })
       )
-      expect(a?.tooltip).toBe('Only if mutual — Shared-request: the Nguyen family')
+      expect(a?.tooltip).toBe('Maybe Share Cabin: the Nguyen family')
     })
     it('never appends for no, even with a Shared-request block present', () => {
       const a = resolveShareAnchor(
@@ -179,8 +184,8 @@ describe('rule 3 — anchor tooltip: preference_raw verbatim, else the label fal
           },
         })
       )
-      expect(a?.tooltip).toBe('Will not share')
-      expect(a?.tooltip).not.toContain('Shared-request')
+      expect(a?.tooltip).toBe("Don't Share Cabin")
+      expect(a?.tooltip).not.toContain(':')
     })
     it('never appends for unanswered, even with a Shared-request block present', () => {
       const a = resolveShareAnchor(
@@ -204,7 +209,7 @@ describe('rule 3 — anchor tooltip: preference_raw verbatim, else the label fal
           },
         })
       )
-      expect(a?.tooltip).toBe('Yes')
+      expect(a?.tooltip).toBe('Yes, Share Cabin')
     })
     it('ignores a COVID-19 Bunking Requests block for the anchor append — Shared-request only', () => {
       const a = resolveShareAnchor(
@@ -216,7 +221,7 @@ describe('rule 3 — anchor tooltip: preference_raw verbatim, else the label fal
           },
         })
       )
-      expect(a?.tooltip).toBe('Yes')
+      expect(a?.tooltip).toBe('Yes, Share Cabin')
     })
   })
 })

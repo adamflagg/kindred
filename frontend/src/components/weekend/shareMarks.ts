@@ -60,11 +60,14 @@
  * The anchor's tooltip fallback and its aria-label are NOT the same text, and
  * that is deliberate rather than an oversight to converge:
  *
- *   - `ANCHOR_TOOLTIP_FALLBACK` is the self-explanatory bubble text shown when
- *     `preference_raw` is blank. The dotted `unanswered` mark is a lone hover
- *     target with no neighbouring caption, so its fallback spells out what is
- *     missing — `'Share question not answered'` — rather than reusing the
- *     terser chip word, which would read as cut off in isolation.
+ *   - `ANCHOR_TOOLTIP_PREFIX` is the bubble text: a fixed short prefix per
+ *     state (owner ruling 2026-08-22 — staff know the answer wordings, so the
+ *     verbatim sentence is noise and `preference_raw` renders nowhere), with
+ *     the reg-form Shared-request text appended as `: <content>` on
+ *     yes/maybe. The dotted `unanswered` mark is a lone hover target with no
+ *     neighbouring caption, so its entry spells out what is missing —
+ *     `'Share question not answered'` — rather than reusing the terser chip
+ *     word, which would read as cut off in isolation.
  *   - `ANCHOR_ARIA_LABEL` is the test-query handle (`frontend/CLAUDE.md`'s a11y
  *     policy: an `aria-label` exists only when a test needs one, never for
  *     assistive tech). It is copied VERBATIM from `SharePreferenceChip`'s
@@ -135,14 +138,18 @@ const ANCHOR_STATE: Record<SharePreferenceValue, ShareAnchorState> = {
 }
 
 /**
- * The tooltip fallback text, by state, used when `preference_raw` is blank.
- * See the header comment for why `unanswered` is self-explanatory rather than
- * matching `SharePreferenceChip`'s terser chip word.
+ * The tooltip prefix, by state. Owner ruling 2026-08-22 (supersedes the
+ * spec's raw-sentence clause): staff already know the answer wordings, so the
+ * verbatim CampMinder sentence is noise — `preference_raw` renders nowhere.
+ * The reg-form Shared-request text (274133) appends as `: <content>` on
+ * yes/maybe when present; the bare prefix stands alone otherwise.
+ * `unanswered` stays self-explanatory rather than matching
+ * `SharePreferenceChip`'s terser chip word.
  */
-const ANCHOR_TOOLTIP_FALLBACK: Record<ShareAnchorState, string> = {
-  yes: 'Open to sharing',
-  maybe: 'Only if mutual',
-  no: 'Will not share',
+const ANCHOR_TOOLTIP_PREFIX: Record<ShareAnchorState, string> = {
+  yes: 'Yes, Share Cabin',
+  maybe: 'Maybe Share Cabin',
+  no: "Don't Share Cabin",
   unanswered: 'Share question not answered',
 }
 
@@ -150,7 +157,8 @@ const ANCHOR_TOOLTIP_FALLBACK: Record<ShareAnchorState, string> = {
  * The aria-label text, by state — copied verbatim from `SharePreferenceChip`'s
  * `CHIP` map (see the header comment). This is the map rule 10's
  * `` `Share: ${label}` `` composition reads, and it is NOT
- * `ANCHOR_TOOLTIP_FALLBACK`: only the `unanswered` entry differs between them.
+ * `ANCHOR_TOOLTIP_PREFIX` — the two serve different purposes and now share no
+ * wording at all.
  */
 const ANCHOR_ARIA_LABEL: Record<ShareAnchorState, string> = {
   yes: 'Open to sharing',
@@ -237,18 +245,18 @@ export function resolveShareAnchor(party: RosterPartyRow): ShareAnchorSpec | nul
 
   const preference = party.share?.preference ?? 'unknown'
   const state = Object.hasOwn(ANCHOR_STATE, preference) ? ANCHOR_STATE[preference] : 'unanswered'
-  const tooltipFallback = ANCHOR_TOOLTIP_FALLBACK[state]
-
-  const raw = party.share?.preference_raw
-  let tooltip = raw !== undefined && raw.trim().length > 0 ? raw : tooltipFallback
+  let tooltip = ANCHOR_TOOLTIP_PREFIX[state]
 
   // The Shared-request (274133) append is hard-gated to yes/maybe — a value
   // showing up for no/unanswered would be drift in the data, not a case to
-  // render (rule 3).
+  // render (rule 3). Both the radio and 274133 live on the REGISTRATION form
+  // (provenance doc §3b: 274133 is its "note your request(s) below in the
+  // comments" box); the Information form's names text (206286) belongs to the
+  // cluster icons, never here.
   if (state === 'yes' || state === 'maybe') {
     const sharedRequestText = requestBlockText(party.share, SHARED_REQUEST_SOURCE)
     if (sharedRequestText.length > 0) {
-      tooltip = `${tooltip} — Shared-request: ${sharedRequestText}`
+      tooltip = `${tooltip}: ${sharedRequestText}`
     }
   }
 
