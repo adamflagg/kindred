@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING, Any, NamedTuple, cast
 
 from api.constants.lodging import INFANT_BED_EXEMPT_MONTHS, is_attending_adult_name
 from api.schemas.lodging import (
+    MEDICAL_GATE_FIELD_NAMES,
     MEDICAL_NARRATIVE_FIELD_NAMES,
     AccessibilityFlagSummary,
     EffectiveBathroom,
@@ -31,6 +32,7 @@ from api.schemas.lodging import (
     HouseholdMedicalResponse,
     HousingState,
     LodgingUnitSummary,
+    MedicalGate,
     PartyAdult,
     PartyChild,
     ProximityKind,
@@ -128,6 +130,22 @@ _NO_PLACEMENT = _Placement("", "", False, ())
 def _s(record: Any, field: str, default: str = "") -> str:
     value = getattr(record, field, default)
     return default if value is None else str(value)
+
+
+def _gate(record: Any, field: str) -> MedicalGate:
+    """One medical gate answer, with the column's empty string named.
+
+    `_s` alone would emit "", which is not a member of MedicalGate. A value
+    outside the vocabulary reads as "unknown" rather than raising: the panel
+    showing no pill is a better failure than the endpoint 500ing on a row a
+    future migration widened.
+    """
+    value = _s(record, field)
+    if value == "yes":
+        return "yes"
+    if value == "no":
+        return "no"
+    return "unknown"
 
 
 def _i(record: Any, field: str, default: int = 0) -> int:
@@ -1902,6 +1920,7 @@ class LodgingRosterService:
             household_cm_id=household_cm_id,
             year=year,
             **{field: _s(record, field) for field in sorted(MEDICAL_NARRATIVE_FIELD_NAMES)},
+            **{field: _gate(record, field) for field in sorted(MEDICAL_GATE_FIELD_NAMES)},
         )
 
     async def _housing_names(self) -> HousingNameResolver:

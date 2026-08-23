@@ -40,6 +40,12 @@ var gateColumns = []string{
 	"cpap_gate",
 }
 
+// guardedColumns is every family_camp_medical column that must never reach an
+// export, narrative and gate together.
+func guardedColumns() []string {
+	return append(slices.Clone(narrativeColumns), gateColumns...)
+}
+
 // KNOWN EXPOSURE, deliberately not fixed here. person_custom_values and
 // household_custom_values ARE exported to Google Sheets, with First Name, Last
 // Name, Field Name and the raw Value, so the medical narrative already reaches
@@ -69,9 +75,9 @@ func TestNarrativeCollectionsAreNotExported(t *testing.T) {
 			}
 		}
 		for _, col := range cfg.Columns {
-			for _, column := range narrativeColumns {
+			for _, column := range guardedColumns() {
 				if col.Field == column {
-					t.Errorf("export %q writes medical narrative column %q to sheet %q",
+					t.Errorf("export %q writes medical column %q to sheet %q",
 						cfg.Collection, column, cfg.SheetName)
 				}
 			}

@@ -56,6 +56,34 @@ MEDICAL_NARRATIVE_FIELD_NAMES: frozenset[str] = frozenset(
     }
 )
 
+# The five structured gate answers on family_camp_medical (kindred#2542).
+#
+# Kept SEPARATE from MEDICAL_NARRATIVE_FIELD_NAMES above: a gate is one of
+# "yes" / "no" / "", not a disclosure sentence, and kindred#2409 spent a PR
+# making that vocabulary accurate. They carry the same protection under their
+# own name -- kept out of every roster payload here, out of every export by
+# `gateColumns` in pocketbase/sync/lodging_medical_narrative_test.go, and a
+# test asserts the two lists are identical.
+MEDICAL_GATE_FIELD_NAMES: frozenset[str] = frozenset(
+    {
+        "allergy_gate",
+        "dietary_gate",
+        "special_needs_gate",
+        "physician_gate",
+        "cpap_gate",
+    }
+)
+
+# A household's answer to one medical gate question.
+#
+# THREE STATES. "unknown" is this layer's rendering of the column's empty
+# string: the household never reached the question. It is never coerced into
+# "no" -- in 2026, 430 of 900 households answered the allergy gate No and 224
+# never answered it, and telling staff a family declined a question they were
+# never shown is a different claim from the truth. Same shape, and the same
+# reason, as SharePreference below.
+MedicalGate = Literal["yes", "no", "unknown"]
+
 # The 3-state gate, straight from family_camp_registrations.share_cabin_gate.
 # "unknown" is this layer's rendering of the column's empty string: nobody
 # answered. It is never coerced into permission to pair.
@@ -846,8 +874,8 @@ class WeekendRosterResponse(BaseModel):
 
 
 class HouseholdMedicalResponse(BaseModel):
-    """Narrative medical text. Served by ONE endpoint gated on
-    `bunking.manage`. Never nested elsewhere."""
+    """Narrative medical text and the gate answers beside it. Served by ONE
+    endpoint gated on `bunking.manage`. Never nested elsewhere."""
 
     household_cm_id: int
     year: int
@@ -859,6 +887,15 @@ class HouseholdMedicalResponse(BaseModel):
     additional_info: str = ""
     bathroom_explain: str = ""
     accommodation_explain: str = ""
+
+    # The gate answers, split out of the narrative columns by kindred#2542. The
+    # panel renders these as a pill beside the row label; the narrative above
+    # holds the family's own words alone.
+    allergy_gate: MedicalGate = "unknown"
+    dietary_gate: MedicalGate = "unknown"
+    special_needs_gate: MedicalGate = "unknown"
+    physician_gate: MedicalGate = "unknown"
+    cpap_gate: MedicalGate = "unknown"
 
 
 # What is known about where a household slept in one year (kindred#2073).
