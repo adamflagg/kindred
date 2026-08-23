@@ -135,6 +135,31 @@ function renderModal(preview: PushPreview) {
   )
 }
 
+/**
+ * Mirrors `utils/queryClient.ts`'s real app defaults (30 min staleTime) —
+ * the bare `retry: false` client every other test in this file uses starts
+ * every query at TanStack Query's own default `staleTime: 0`, which can
+ * never reproduce a bug that only exists because this app's real client
+ * opts every query into a 30-minute stale window by default.
+ */
+function renderModalWithAppDefaults(isOpen: boolean) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false, staleTime: 30 * 60 * 1000 } },
+  })
+  const utils = render(
+    <QueryClientProvider client={client}>
+      <PushWriteInsModal
+        year={2026}
+        sessionCmId={1309001}
+        scenario="scn_1"
+        isOpen={isOpen}
+        onClose={() => undefined}
+      />
+    </QueryClientProvider>
+  )
+  return { ...utils, client }
+}
+
 beforeEach(() => {
   mockFetchWithAuth.mockReset()
   mockExecuteWriteInPush.mockReset()
@@ -174,6 +199,53 @@ describe('PushWriteInsModal — report screen', () => {
 
     expect(await screen.findByRole('button', { name: /push 1 write-in/i })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /review/i })).not.toBeInTheDocument()
+  })
+
+  // kindred#2477 final review, Important #3: the modal STAYS MOUNTED across
+  // opens (LodgingBoard renders it unconditionally, gated only by `isOpen`),
+  // so `refetchOnMount: 'always'` never re-fires on reopen — there is no new
+  // mount, only `enabled` flipping true again on an observer that already
+  // exists. Under the app's real 30-minute staleTime default, that leaves a
+  // reopen serving the cache from the FIRST open until the digest 409 bounces
+  // a stale push — exactly the report this screen exists to keep current.
+  it("reopening under the app default staleTime still shows a fresh report, not the first open's cache", async () => {
+    mockFetchWithAuth.mockResolvedValueOnce(ok(ADD_ONLY_PREVIEW))
+    const { rerender, client } = renderModalWithAppDefaults(true)
+
+    expect(await screen.findByRole('button', { name: /push 1 write-in/i })).toBeInTheDocument()
+
+    // Close. The component does not unmount (matches how LodgingBoard
+    // actually renders it) — only `isOpen` flips.
+    rerender(
+      <QueryClientProvider client={client}>
+        <PushWriteInsModal
+          year={2026}
+          sessionCmId={1309001}
+          scenario="scn_1"
+          isOpen={false}
+          onClose={() => undefined}
+        />
+      </QueryClientProvider>
+    )
+
+    // The board or the scenario moved while the modal was closed — the next
+    // preview fetch would report a DIFFERENT decision count.
+    mockFetchWithAuth.mockResolvedValueOnce(ok(PREVIEW))
+
+    // Reopen.
+    rerender(
+      <QueryClientProvider client={client}>
+        <PushWriteInsModal
+          year={2026}
+          sessionCmId={1309001}
+          scenario="scn_1"
+          isOpen={true}
+          onClose={() => undefined}
+        />
+      </QueryClientProvider>
+    )
+
+    expect(await screen.findByRole('button', { name: /review 2 decisions/i })).toBeInTheDocument()
   })
 })
 

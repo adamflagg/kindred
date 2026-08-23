@@ -22,15 +22,23 @@
  * that need one before handing them to `PushDecisionDeck`, which is what
  * actually writes into it via `onDecide`.
  *
- * ## The digest, not a staleTime
+ * ## The digest, not a staleTime tier — but staleTime IS 0, deliberately
  *
- * `useQuery` carries no staleness tuning beyond `refetchOnMount: 'always'`.
- * `PushPreview.digest` is what makes freshness explicit — `executeWriteInPush`
- * echoes it back and the server refuses a push made against a report the
- * live board or the scenario has since moved past, so there is no
- * correctness reason to guard this read with a short `staleTime` the way
- * `userDataOptions` would. Every OPEN re-asks instead: reviewing a push is a
- * "look right before you act" screen, not a background list.
+ * `useQuery` sets `staleTime: 0` alongside `refetchOnMount: 'always'`. This
+ * is a real divergence from the app's 30-minute default (CLAUDE.md §4's
+ * "Family Camp Models Summer" caching row), and it earns it: this modal
+ * STAYS MOUNTED across opens — `LodgingBoard` renders it unconditionally,
+ * gated only by `isOpen` — so there is no fresh "mount" for
+ * `refetchOnMount: 'always'` to catch on reopen, only an existing observer's
+ * `enabled` flipping true again. Under the 30-minute default that reopen
+ * would keep serving the FIRST open's cached report until the digest 409
+ * bounced a stale push, which defeats the point of a "look right before you
+ * act" screen. `staleTime: 0` is what makes every open actually re-ask.
+ * `PushPreview.digest` remains the correctness backstop regardless —
+ * `executeWriteInPush` echoes it back and the server refuses a push made
+ * against a report the live board or the scenario has since moved past —
+ * but the freshness of what staff SEE on open is this staleTime, not the
+ * digest; the digest only catches what slips through.
  *
  * ## 409 stale is not an error
  *
@@ -352,8 +360,11 @@ export function PushWriteInsModal({
     queryKey: previewKey,
     queryFn: () => fetchPushPreview(fetchWithAuth, { year, sessionCmId, scenario }),
     enabled: isOpen,
-    // No staleTime tuning beyond this — see the module doc's "digest, not a
-    // staleTime" section.
+    // staleTime 0 (opted DOWN from the app's 30-minute default) plus
+    // refetchOnMount: 'always' — see the module doc's "digest, not a
+    // staleTime tier — but staleTime IS 0" section for why the mount-based
+    // option alone can't do this modal's job.
+    staleTime: 0,
     refetchOnMount: 'always',
   })
 
