@@ -4377,12 +4377,16 @@ export type PushBuildingReport = {
  * means the board or the scenario moved between the review and this call.
  *
  * `decisions` names a verdict ONLY for the buildings that need one: a
- * `conflict` chooses `"scenario"` (replace the live rows) or `"keep"` (leave
- * the live board as it is); a `remove` chooses `"remove"` or `"keep"`. An
+ * `conflict` chooses `"live"` (keep the live occupant) or `"scenario"`
+ * (replace with the draft's rows); a `remove` chooses `"keep"` (leave it on
+ * the board) or `"remove"`. The two verdict pairs are NOT interchangeable --
+ * `execute_push` only ever checks a `conflict` decision against `"scenario"`
+ * and a `remove` decision against `"remove"`, treating anything else
+ * (including a value from the other class's pair) as the no-op side. An
  * `add` or a `match` building needs no entry -- there is nothing to decide.
  * The RULED block rule (owner, 2026-08-22) is that a missing decision on a
  * building that needs one refuses the whole push rather than defaulting to
- * `"keep"`; see `PushDecisionsIncompleteError`.
+ * the no-op side; see `PushDecisionsIncompleteError`.
  */
 export type PushExecuteRequest = {
   /**
