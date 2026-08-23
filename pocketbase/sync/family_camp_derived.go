@@ -2819,22 +2819,60 @@ func formatRequestStamp(t time.Time) string {
 	return t.UTC().Format("2006-01-02 15:04:05.000Z")
 }
 
+// medicalColumnValue pairs one family_camp_medical column with the value
+// medicalData currently holds for it.
+type medicalColumnValue struct {
+	column string
+	value  string
+}
+
+// medicalColumnValues lists every family_camp_medical column setMedicalFields
+// writes, next to med's current value for it. Both setMedicalFields and
+// medicalNeedsUpdate walk this ONE list rather than each naming the same 13
+// columns by hand -- so, unlike setRegistrationRequestFields' comparison
+// sibling registrationNeedsUpdate (which stays a hand-written list because it
+// mixes bools with a normalisation step, NormalizeShareEligibility, that has
+// no single scalar to compare), a column added here reaches the write path
+// and the change-detection path in one edit. What makes a shared list
+// workable here and not there: every field on medicalData is a plain string,
+// with no normalisation applied between the struct and the column.
+func medicalColumnValues(med *medicalData) []medicalColumnValue {
+	return []medicalColumnValue{
+		{"cpap_info", med.cpapInfo},
+		{"physician_info", med.physicianInfo},
+		{"special_needs_info", med.specialNeedsInfo},
+		{"allergy_info", med.allergyInfo},
+		{"dietary_info", med.dietaryInfo},
+		{"additional_info", med.additionalInfo},
+		{"bathroom_explain", med.bathroomExplain},
+		{"accommodation_explain", med.accommodationExplain},
+		{"allergy_gate", med.allergyGate},
+		{"dietary_gate", med.dietaryGate},
+		{"special_needs_gate", med.specialNeedsGate},
+		{"physician_gate", med.physicianGate},
+		{"cpap_gate", med.cpapGate},
+		{enrollmentStatusColumn, med.enrollmentStatus},
+	}
+}
+
 // medicalNeedsUpdate checks if a medical record needs updating
 func (s *FamilyCampDerivedSync) medicalNeedsUpdate(existing *core.Record, med *medicalData) bool {
-	return existing.GetString("cpap_info") != med.cpapInfo ||
-		existing.GetString("physician_info") != med.physicianInfo ||
-		existing.GetString("special_needs_info") != med.specialNeedsInfo ||
-		existing.GetString("allergy_info") != med.allergyInfo ||
-		existing.GetString("dietary_info") != med.dietaryInfo ||
-		existing.GetString("additional_info") != med.additionalInfo ||
-		existing.GetString("bathroom_explain") != med.bathroomExplain ||
-		existing.GetString("accommodation_explain") != med.accommodationExplain ||
-		existing.GetString("allergy_gate") != med.allergyGate ||
-		existing.GetString("dietary_gate") != med.dietaryGate ||
-		existing.GetString("special_needs_gate") != med.specialNeedsGate ||
-		existing.GetString("physician_gate") != med.physicianGate ||
-		existing.GetString("cpap_gate") != med.cpapGate ||
-		existing.GetString(enrollmentStatusColumn) != med.enrollmentStatus
+	for _, c := range medicalColumnValues(med) {
+		if existing.GetString(c.column) != c.value {
+			return true
+		}
+	}
+	return false
+}
+
+// setMedicalFields writes the household's medical disclosures and derived
+// gate answers. Shared by the create and update branches so the two cannot
+// drift -- PocketBase Set on a column the schema lacks is a silent no-op, so
+// a field written in only one branch fails invisibly on the other path.
+func setMedicalFields(record *core.Record, med *medicalData) {
+	for _, c := range medicalColumnValues(med) {
+		record.Set(c.column, c.value)
+	}
 }
 
 // ============================================================================
@@ -3005,20 +3043,7 @@ func (s *FamilyCampDerivedSync) upsertMedical(
 		if existingRecord, ok := existing[key]; ok {
 			// Record exists - check if update needed
 			if s.medicalNeedsUpdate(existingRecord, med) {
-				existingRecord.Set("cpap_info", med.cpapInfo)
-				existingRecord.Set("physician_info", med.physicianInfo)
-				existingRecord.Set("special_needs_info", med.specialNeedsInfo)
-				existingRecord.Set("allergy_info", med.allergyInfo)
-				existingRecord.Set("dietary_info", med.dietaryInfo)
-				existingRecord.Set("additional_info", med.additionalInfo)
-				existingRecord.Set("bathroom_explain", med.bathroomExplain)
-				existingRecord.Set("accommodation_explain", med.accommodationExplain)
-				existingRecord.Set("allergy_gate", med.allergyGate)
-				existingRecord.Set("dietary_gate", med.dietaryGate)
-				existingRecord.Set("special_needs_gate", med.specialNeedsGate)
-				existingRecord.Set("physician_gate", med.physicianGate)
-				existingRecord.Set("cpap_gate", med.cpapGate)
-				existingRecord.Set(enrollmentStatusColumn, med.enrollmentStatus)
+				setMedicalFields(existingRecord, med)
 
 				if err := s.App.Save(existingRecord); err != nil {
 					slog.Error("Error updating medical record", "household", med.householdPBID, "error", err)
@@ -3034,20 +3059,7 @@ func (s *FamilyCampDerivedSync) upsertMedical(
 			record := core.NewRecord(col)
 			record.Set("household", med.householdPBID)
 			record.Set("year", year)
-			record.Set("cpap_info", med.cpapInfo)
-			record.Set("physician_info", med.physicianInfo)
-			record.Set("special_needs_info", med.specialNeedsInfo)
-			record.Set("allergy_info", med.allergyInfo)
-			record.Set("dietary_info", med.dietaryInfo)
-			record.Set("additional_info", med.additionalInfo)
-			record.Set("bathroom_explain", med.bathroomExplain)
-			record.Set("accommodation_explain", med.accommodationExplain)
-			record.Set("allergy_gate", med.allergyGate)
-			record.Set("dietary_gate", med.dietaryGate)
-			record.Set("special_needs_gate", med.specialNeedsGate)
-			record.Set("physician_gate", med.physicianGate)
-			record.Set("cpap_gate", med.cpapGate)
-			record.Set(enrollmentStatusColumn, med.enrollmentStatus)
+			setMedicalFields(record, med)
 
 			if err := s.App.Save(record); err != nil {
 				slog.Error("Error creating medical record", "household", med.householdPBID, "error", err)

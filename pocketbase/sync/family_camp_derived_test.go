@@ -923,6 +923,114 @@ func TestMedicalNeedsUpdateSeesAGateOnlyChange(t *testing.T) {
 	}
 }
 
+// TestSetMedicalFieldsReachesBothCreateAndUpdate is the acceptance test for
+// kindred#2546. upsertMedical used to hand-copy family_camp_medical's 13
+// columns into both its create branch and its update branch -- a field
+// written into only ONE of them still compiles and fails SILENTLY, because
+// PocketBase's record.Set on a column the schema doesn't carry is a no-op
+// with no error (setRegistrationRequestFields' doc comment states the same
+// invariant for the registration sibling this mirrors).
+//
+// This drives the shared setMedicalFields helper against two separate
+// records: "created" stands in for the create branch's brand-new record,
+// "updated" stands in for the update branch's pre-existing record, seeded
+// here with different STALE values first. Every column on medicalData must
+// land its real value on BOTH -- which is only guaranteed while both
+// upsertMedical branches call this one function instead of naming the
+// columns twice more by hand.
+//
+// Same harness as TestMedicalNeedsUpdateSeesAGateOnlyChange: a bare
+// core.NewBaseCollection with just the columns this test touches, and
+// core.NewRecord + Set -- no app, no Save, since setMedicalFields only ever
+// calls record.Set.
+func TestSetMedicalFieldsReachesBothCreateAndUpdate(t *testing.T) {
+	t.Parallel()
+	col := core.NewBaseCollection("family_camp_medical")
+	col.Fields.Add(&core.TextField{Name: "cpap_info"})
+	col.Fields.Add(&core.TextField{Name: "physician_info"})
+	col.Fields.Add(&core.TextField{Name: "special_needs_info"})
+	col.Fields.Add(&core.TextField{Name: "allergy_info"})
+	col.Fields.Add(&core.TextField{Name: "dietary_info"})
+	col.Fields.Add(&core.TextField{Name: "additional_info"})
+	col.Fields.Add(&core.TextField{Name: "bathroom_explain"})
+	col.Fields.Add(&core.TextField{Name: "accommodation_explain"})
+	col.Fields.Add(&core.TextField{Name: enrollmentStatusColumn})
+	col.Fields.Add(&core.TextField{Name: "allergy_gate"})
+	col.Fields.Add(&core.TextField{Name: "dietary_gate"})
+	col.Fields.Add(&core.TextField{Name: "special_needs_gate"})
+	col.Fields.Add(&core.TextField{Name: "physician_gate"})
+	col.Fields.Add(&core.TextField{Name: "cpap_gate"})
+
+	med := &medicalData{
+		householdPBID:        "hh_1",
+		cpapInfo:             "Household reports a CPAP machine is needed overnight.",
+		physicianInfo:        "A family physician is listed on file with the camp health center.",
+		specialNeedsInfo:     "Camper uses a wheelchair to get around camp.",
+		allergyInfo:          "Camper carries an EpiPen for a tree-nut allergy.",
+		dietaryInfo:          "Camper follows a gluten-free diet.",
+		additionalInfo:       "Family requested a ground-floor cabin if one is available.",
+		bathroomExplain:      "Camper needs a private bathroom for a mobility aid.",
+		accommodationExplain: "Camper needs a step-free path to the cabin door.",
+		enrollmentStatus:     enrollmentStatusEnrolled,
+		allergyGate:          gateYes,
+		dietaryGate:          gateYes,
+		specialNeedsGate:     gateYes,
+		physicianGate:        gateNo,
+		cpapGate:             gateYes,
+	}
+
+	// Stands in for the create branch: a brand-new record with nothing set.
+	created := core.NewRecord(col)
+	setMedicalFields(created, med)
+
+	// Stands in for the update branch: a record pre-loaded with different,
+	// stale values before setMedicalFields overwrites them.
+	updated := core.NewRecord(col)
+	updated.Set("cpap_info", "stale")
+	updated.Set("physician_info", "stale")
+	updated.Set("special_needs_info", "stale")
+	updated.Set("allergy_info", "stale")
+	updated.Set("dietary_info", "stale")
+	updated.Set("additional_info", "stale")
+	updated.Set("bathroom_explain", "stale")
+	updated.Set("accommodation_explain", "stale")
+	updated.Set(enrollmentStatusColumn, "waitlisted")
+	updated.Set("allergy_gate", gateNo)
+	updated.Set("dietary_gate", gateNo)
+	updated.Set("special_needs_gate", gateNo)
+	updated.Set("physician_gate", gateYes)
+	updated.Set("cpap_gate", gateNo)
+	setMedicalFields(updated, med)
+
+	checks := []struct {
+		column string
+		want   string
+	}{
+		{"cpap_info", med.cpapInfo},
+		{"physician_info", med.physicianInfo},
+		{"special_needs_info", med.specialNeedsInfo},
+		{"allergy_info", med.allergyInfo},
+		{"dietary_info", med.dietaryInfo},
+		{"additional_info", med.additionalInfo},
+		{"bathroom_explain", med.bathroomExplain},
+		{"accommodation_explain", med.accommodationExplain},
+		{enrollmentStatusColumn, med.enrollmentStatus},
+		{"allergy_gate", med.allergyGate},
+		{"dietary_gate", med.dietaryGate},
+		{"special_needs_gate", med.specialNeedsGate},
+		{"physician_gate", med.physicianGate},
+		{"cpap_gate", med.cpapGate},
+	}
+	for _, c := range checks {
+		if got := created.GetString(c.column); got != c.want {
+			t.Errorf("create: %s = %q, want %q", c.column, got, c.want)
+		}
+		if got := updated.GetString(c.column); got != c.want {
+			t.Errorf("update: %s = %q, want %q", c.column, got, c.want)
+		}
+	}
+}
+
 // TestCompositeKeyFormats verifies the composite key format for each table
 func TestCompositeKeyFormats(t *testing.T) {
 	t.Parallel()
