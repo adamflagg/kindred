@@ -569,6 +569,92 @@ describe("the pencil's People field, kindred#2503", () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
     expect(onEdit).not.toHaveBeenCalled()
   })
+
+  it('refuses bad input typed straight into an ALREADY-BLANK field, where the string never changes (kindred#2540 validation-fix, Q1)', () => {
+    // Every production write-in row is unsized, so every pencil edit opens
+    // with a blank People field -- this is the field's EVERYDAY entry point,
+    // not a corner case. `<input type="number">` sanitises unparseable text
+    // to `''`, indistinguishable by the string alone from a field nobody
+    // touched. Because the string never changes, React's own dedup
+    // (`getInstIfValueChanged` -> `updateValueIfChanged`) never invokes
+    // `onChange` at all: `peopleBadInput`, set ONLY inside `onChange`, never
+    // gets the signal, and the Save button stays enabled on a value the
+    // staff member believes they typed.
+    const onEdit = vi.fn()
+    render(
+      <WriteInCard occupant={{ name: 'Liam Garcia', note: '', partySize: null }} onEdit={onEdit} />
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit write-in Liam Garcia' }))
+    const people = screen.getByLabelText('People')
+    expect(people).toHaveValue(null) // genuinely untouched, not a prior edit
+
+    const original = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'validity')
+    Object.defineProperty(window.HTMLInputElement.prototype, 'validity', {
+      configurable: true,
+      get: () => ({ badInput: true }) as ValidityState,
+    })
+    try {
+      // The SAME string the field already holds -- no change, exactly as a
+      // real browser's sanitisation leaves an already-blank field.
+      fireEvent.change(people, { target: { value: '' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    } finally {
+      if (original) Object.defineProperty(window.HTMLInputElement.prototype, 'validity', original)
+    }
+
+    expect(onEdit).not.toHaveBeenCalled()
+  })
+
+  it('accepts blank again once a caught bad edit is cleared back to genuinely blank (kindred#2540 validation-fix, Q2)', () => {
+    // The mirror image of the case above. A real bad edit (from the seeded
+    // `3`) is caught correctly via `onChange`, exactly like "refuses to save
+    // when the field sanitised away unparseable text" above. Backspacing
+    // FURTHER, past that point, to a genuinely blank field is -- again -- a
+    // `'' -> ''` no-op that fires no `onChange`, so an implementation that
+    // only reads state captured at `onChange` time leaves `true` stuck
+    // forever. Blank is a COMPLETE answer (wholesale) and must always be
+    // accepted, so this exercises the one path a stuck-disabled Save does not
+    // block: Enter inside the field itself, which calls `trySubmit` directly.
+    const onEdit = vi.fn()
+    render(
+      <WriteInCard occupant={{ name: 'Liam Garcia', note: '', partySize: 3 }} onEdit={onEdit} />
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit write-in Liam Garcia' }))
+    const people = screen.getByLabelText('People')
+
+    const original = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'validity')
+    Object.defineProperty(window.HTMLInputElement.prototype, 'validity', {
+      configurable: true,
+      get: () => ({ badInput: true }) as ValidityState,
+    })
+    try {
+      fireEvent.change(people, { target: { value: '' } }) // caught, as above
+    } finally {
+      if (original) Object.defineProperty(window.HTMLInputElement.prototype, 'validity', original)
+    }
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
+
+    Object.defineProperty(window.HTMLInputElement.prototype, 'validity', {
+      configurable: true,
+      get: () => ({ badInput: false }) as ValidityState,
+    })
+    try {
+      // Same string, `'' -> ''`, no change -- the field is now genuinely
+      // blank and no `onChange` fires to say so.
+      fireEvent.change(people, { target: { value: '' } })
+      fireEvent.keyDown(people, { key: 'Enter' })
+    } finally {
+      if (original) Object.defineProperty(window.HTMLInputElement.prototype, 'validity', original)
+    }
+
+    expect(onEdit).toHaveBeenCalledWith({
+      occupantName: 'Liam Garcia',
+      reason: '',
+      partySize: null,
+    })
+  })
 })
 
 describe('the "Written in at …" footer', () => {

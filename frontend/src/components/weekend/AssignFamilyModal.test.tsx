@@ -1384,6 +1384,86 @@ describe('AssignFamilyModal — the People field, kindred#2503', () => {
     fireEvent.click(screen.getByRole('button', { name: /write in/i }))
     expect(props.onWriteIn).not.toHaveBeenCalled()
   })
+
+  it('refuses bad input typed straight into an ALREADY-BLANK field, where the string never changes (kindred#2540 validation-fix, Q1)', () => {
+    // The People field opens blank on every mount (`useState('')`), and every
+    // production write-in row is unsized -- so this is the field's EVERYDAY
+    // entry point, not a corner case. `<input type="number">` sanitises
+    // unparseable text to `''`, indistinguishable by the string alone from a
+    // field nobody touched. Because the string never changes, React's own
+    // dedup (`getInstIfValueChanged` -> `updateValueIfChanged`) never invokes
+    // `onChange` at all: `peopleBadInput`, set ONLY inside `onChange`, never
+    // gets the signal, `peopleValid` reads true by default, and the button
+    // stays enabled on a value the staff member believes they typed.
+    const { props } = renderModal()
+    fireEvent.change(searchBox(), { target: { value: 'Burst pipe' } })
+    const people = screen.getByLabelText('People')
+    expect(people).toHaveValue(null) // genuinely untouched, not a prior edit
+
+    const original = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'validity')
+    Object.defineProperty(window.HTMLInputElement.prototype, 'validity', {
+      configurable: true,
+      get: () => ({ badInput: true }) as ValidityState,
+    })
+    try {
+      // The SAME string the field already holds -- no change, exactly as a
+      // real browser's sanitisation leaves an already-blank field.
+      fireEvent.change(people, { target: { value: '' } })
+      fireEvent.click(screen.getByRole('button', { name: /write in/i }))
+    } finally {
+      if (original) Object.defineProperty(window.HTMLInputElement.prototype, 'validity', original)
+    }
+
+    expect(props.onWriteIn).not.toHaveBeenCalled()
+  })
+
+  it('accepts blank again once a caught bad edit is cleared back to genuinely blank (kindred#2540 validation-fix, Q2)', () => {
+    // The mirror image of the case above. A real bad edit (from `'2'`) is
+    // caught correctly via `onChange`, exactly like "refuses to save when the
+    // field sanitised away unparseable text" two cases up. Backspacing
+    // FURTHER, past that point, to a genuinely blank field is -- again -- a
+    // `'' -> ''` no-op that fires no `onChange`, so an implementation that
+    // only reads state captured at `onChange` time leaves `true` stuck
+    // forever. Blank is a COMPLETE answer (wholesale) and must always be
+    // accepted, so this exercises the one path a stuck-disabled button does
+    // not block: Enter inside the field itself, which calls `writeIn`
+    // directly.
+    const { props } = renderModal()
+    fireEvent.change(searchBox(), { target: { value: 'Burst pipe' } })
+    const people = screen.getByLabelText('People')
+    fireEvent.change(people, { target: { value: '2' } })
+
+    const original = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'validity')
+    Object.defineProperty(window.HTMLInputElement.prototype, 'validity', {
+      configurable: true,
+      get: () => ({ badInput: true }) as ValidityState,
+    })
+    try {
+      fireEvent.change(people, { target: { value: '' } }) // caught, as above
+    } finally {
+      if (original) Object.defineProperty(window.HTMLInputElement.prototype, 'validity', original)
+    }
+    expect(screen.getByRole('button', { name: /write in/i })).toBeDisabled()
+
+    Object.defineProperty(window.HTMLInputElement.prototype, 'validity', {
+      configurable: true,
+      get: () => ({ badInput: false }) as ValidityState,
+    })
+    try {
+      // Same string, `'' -> ''`, no change -- the field is now genuinely
+      // blank and no `onChange` fires to say so.
+      fireEvent.change(people, { target: { value: '' } })
+      fireEvent.keyDown(people, { key: 'Enter' })
+    } finally {
+      if (original) Object.defineProperty(window.HTMLInputElement.prototype, 'validity', original)
+    }
+
+    expect(props.onWriteIn).toHaveBeenCalledWith({
+      occupantName: 'Burst pipe',
+      note: '',
+      partySize: null,
+    })
+  })
 })
 
 describe('AssignFamilyModal — what it refuses to offer', () => {

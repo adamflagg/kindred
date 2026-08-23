@@ -103,7 +103,7 @@
  * row updates it rather than duplicating it.
  */
 import { Pencil } from 'lucide-react'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 
 import { writeInOccupantLabel, type WriteInOccupant } from './writeIn'
 
@@ -181,8 +181,27 @@ export function WriteInCard({ occupant, onRemove, onEdit, isSaving = false }: Wr
    * sanitisation: true for text the field could not parse, false for a
    * field that is simply empty. Read at the point of the event, not derived
    * from the current string.
+   *
+   * ⚠️ THIS STATE ALONE DOES NOT CLOSE THE BUG (validation-fix review,
+   * finding "half-closed" — mirrored from `AssignFamilyModal.tsx`, and the
+   * two must keep agreeing). `setPeopleBadInput` fires only from `onChange`,
+   * and React suppresses `onChange` whenever the DOM value string does not
+   * change — a number input's `.value` IDL is `''` for ANY unparseable text.
+   * Every production write-in row is unsized, so a pencil edit opens with a
+   * blank People field on every reachable row: typing bad input straight
+   * into it never fires `onChange` at all, this state never updates, and
+   * Save reads `peopleValid` as true on a value that was never accepted.
+   *
+   * It still does useful work — disabling Save the instant a REAL value
+   * change (a prior good count going bad) is caught, and pinned by the two
+   * tests below that predate this comment — so it stays, as Save's
+   * best-effort UI signal. `trySubmit`, below, is what actually enforces the
+   * rule: it re-reads `validity.badInput` fresh off `peopleFieldRef` at the
+   * moment of a real submit attempt, live DOM state rather than anything
+   * `onChange` had to have told it about.
    */
   const [peopleBadInput, setPeopleBadInput] = useState(false)
+  const peopleFieldRef = useRef<HTMLInputElement>(null)
   const [wantsName, setWantsName] = useState(false)
 
   const openEdit = () => {
@@ -210,9 +229,9 @@ export function WriteInCard({ occupant, onRemove, onEdit, isSaving = false }: Wr
   // read correctly rather than truncated to `1`.
   const parsedPeople = Number(draftPeople)
   const draftPartySize = draftPeople.trim() === '' ? null : parsedPeople
-  const peopleValid =
-    !peopleBadInput &&
-    (draftPartySize === null || (Number.isInteger(draftPartySize) && draftPartySize >= 1))
+  const peopleCountValid =
+    draftPartySize === null || (Number.isInteger(draftPartySize) && draftPartySize >= 1)
+  const peopleValid = !peopleBadInput && peopleCountValid
 
   // Shared by the form's own `onSubmit` (Save, or Enter from Occupant/Note)
   // and the People field's `onKeyDown` below. `fireEvent.keyDown` in jsdom
@@ -238,9 +257,18 @@ export function WriteInCard({ occupant, onRemove, onEdit, isSaving = false }: Wr
     }
     // A count that does not parse REFUSES the whole save, the same way an
     // empty name does — never saved as something else (owner ruling
-    // 2026-08-21). Blank is not this: `peopleValid` is true for it by
+    // 2026-08-21). Blank is not this: `peopleCountValid` is true for it by
     // construction, since `draftPartySize` is already `null`.
-    if (!peopleValid) return
+    //
+    // ⚠️ THE LIVE RE-READ, NOT `peopleBadInput`, IS WHAT MAKES THIS CORRECT —
+    // see the state's own doc above, and `AssignFamilyModal.tsx`'s `writeIn`,
+    // which this mirrors exactly. `peopleBadInput` can be stale in EITHER
+    // direction: never set (an already-blank field, bad input typed), or
+    // stuck set (bad input, then cleared back to blank without the string
+    // ever changing). Reading `validity.badInput` here, at the moment of an
+    // actual submit attempt, answers what the field holds RIGHT NOW.
+    const badInputNow = peopleFieldRef.current?.validity.badInput ?? false
+    if (badInputNow || !peopleCountValid) return
     onEdit?.({ occupantName: trimmedName, reason: draftNote.trim(), partySize: draftPartySize })
     closeEdit()
   }
@@ -282,6 +310,7 @@ export function WriteInCard({ occupant, onRemove, onEdit, isSaving = false }: Wr
               the room wholesale, and Save is not gated on it. */}
           <input
             type="number"
+            ref={peopleFieldRef}
             min={1}
             step={1}
             inputMode="numeric"

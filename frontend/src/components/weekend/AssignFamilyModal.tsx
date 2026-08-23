@@ -503,12 +503,34 @@ export function AssignFamilyModal({
    * for a field that is genuinely, simply blank. Read at the point of the
    * event, because it describes what THIS keystroke did, not a property of
    * the current string.
+   *
+   * ⚠️ THIS STATE ALONE DOES NOT CLOSE THE BUG (validation-fix review,
+   * finding "half-closed"). `setPeopleBadInput` fires only from `onChange`,
+   * and React suppresses `onChange` whenever the DOM value string does not
+   * change (`getInstIfValueChanged` → `updateValueIfChanged`) — and a number
+   * input's `.value` IDL is `''` for ANY unparseable text, on an
+   * already-blank field exactly as on a genuinely blank one. The field opens
+   * blank on every mount and every production write-in row is unsized, so
+   * "already blank" is the field's EVERYDAY starting point, not a corner
+   * case: typing bad input straight into it never fires `onChange` at all,
+   * this state never updates, and the button reads `peopleValid` as true on
+   * a value that was never actually accepted.
+   *
+   * It still does useful work — it is what disables the button the instant a
+   * REAL value change (a prior good count going bad) is caught, and what the
+   * two tests below it that predate this comment pin — so it stays, as the
+   * button's best-effort UI signal. `writeIn`, below, is what actually
+   * enforces the rule: it re-reads `validity.badInput` fresh off
+   * `peopleFieldRef` at the moment of a real submit attempt, which is live
+   * DOM state rather than anything `onChange` had to have told it about, and
+   * is unaffected by whether this state is stale in either direction.
    */
   const [peopleBadInput, setPeopleBadInput] = useState(false)
+  const peopleFieldRef = useRef<HTMLInputElement>(null)
   const parsedPeople = Number(people)
   const partySize = people.trim() === '' ? null : parsedPeople
-  const peopleValid =
-    !peopleBadInput && (partySize === null || (Number.isInteger(partySize) && partySize >= 1))
+  const peopleCountValid = partySize === null || (Number.isInteger(partySize) && partySize >= 1)
+  const peopleValid = !peopleBadInput && peopleCountValid
 
   const trimmed = query.trim()
   const needle = trimmed.toLowerCase()
@@ -565,11 +587,26 @@ export function AssignFamilyModal({
   }
 
   const writeIn = () => {
-    // TWO guards now: `offersWriteIn` (unchanged — the caller can write one, a
-    // name was typed, and no family still matches) and `peopleValid`, which
-    // blocks only an UNPARSEABLE count, never a blank one. Blank means
-    // `partySize === null`, and `peopleValid` is true for it by construction.
-    if (!offersWriteIn || !peopleValid) return
+    // THREE guards now: `offersWriteIn` (unchanged — the caller can write
+    // one, a name was typed, and no family still matches), `peopleCountValid`
+    // (blocks only an UNPARSEABLE count, never a blank one — blank means
+    // `partySize === null`, and `peopleCountValid` is true for it by
+    // construction), and a FRESH, live re-read of `validity.badInput` off the
+    // field itself.
+    //
+    // ⚠️ THE LIVE RE-READ, NOT `peopleBadInput`, IS WHAT MAKES THIS CORRECT
+    // (validation-fix review, finding "half-closed"). `peopleBadInput` can be
+    // stale in EITHER direction, because it is only ever written from
+    // `onChange`, which React suppresses whenever the DOM value string does
+    // not change — see the state's own doc above. Reading `validity.badInput`
+    // here, at the moment of an actual submit attempt, answers the true
+    // question ("does the field the staff member is looking at right now
+    // hold something it could not parse?") instead of trusting a flag that
+    // may never have been set (an already-blank field, bad input typed) or
+    // may be stuck set from an edit that has since been corrected (bad input,
+    // then cleared back to blank without the string ever changing).
+    const badInputNow = peopleFieldRef.current?.validity.badInput ?? false
+    if (!offersWriteIn || badInputNow || !peopleCountValid) return
     // The TRIMMED text, which is what the offer shows. Staff type into a search
     // box and a trailing space is a typing artefact, not a name.
     onWriteIn({ occupantName: trimmed, note: note.trim(), partySize })
@@ -810,6 +847,7 @@ export function AssignFamilyModal({
                 People
                 <input
                   type="number"
+                  ref={peopleFieldRef}
                   min={1}
                   step={1}
                   inputMode="numeric"
