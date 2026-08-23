@@ -61,6 +61,8 @@ import asyncio
 from collections import defaultdict
 from typing import TYPE_CHECKING, Any, NamedTuple
 
+from pocketbase.client import ClientResponseError  # type: ignore[attr-defined]
+
 from api.constants.collections import (
     ATTENDEES,
     CAMP_SESSIONS,
@@ -76,6 +78,7 @@ from api.constants.collections import (
     LODGING_SLOT_MERGES,
     LODGING_UNIT_ALIASES,
     LODGING_UNITS,
+    LODGING_WRITE_IN_PUSHES,
     LODGING_WRITE_INS,
     LODGING_WRITE_INS_DRAFT,
     ORIGINAL_BUNK_REQUESTS,
@@ -1371,6 +1374,29 @@ class LodgingRepository:
 
     async def delete_draft_write_in(self, record_id: str) -> None:
         await asyncio.to_thread(self.pb.collection(LODGING_WRITE_INS_DRAFT).delete, record_id)
+
+    # ---------------------------------------------------------- push ledger
+    #
+    # kindred#2477. `lodging_write_in_pushes` records each push a staff member
+    # actually applies -- the audit trail behind "who pushed what, and when"
+    # -- and is written after a push, never read to build the preview above.
+    # `preview_push` (lodging_write_service.py) classifies straight off
+    # `fetch_write_ins` / `fetch_draft_write_ins` and never touches this
+    # collection at all.
+
+    async def create_push_event(self, data: dict[str, Any]) -> Any:
+        return await asyncio.to_thread(self.pb.collection(LODGING_WRITE_IN_PUSHES).create, data)
+
+    async def find_push_event(self, record_id: str) -> Any | None:
+        try:
+            return await asyncio.to_thread(self.pb.collection(LODGING_WRITE_IN_PUSHES).get_one, record_id)
+        except ClientResponseError as exc:
+            if exc.status == 404:
+                return None
+            raise
+
+    async def update_push_event(self, record_id: str, data: dict[str, Any]) -> Any:
+        return await asyncio.to_thread(self.pb.collection(LODGING_WRITE_IN_PUSHES).update, record_id, data)
 
     async def find_slot_merge(self, year: int, session_cm_id: int, unit_pb_id: str, scenario: str) -> Any | None:
         """The one merge row for a container at this tier, or None.

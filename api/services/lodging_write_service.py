@@ -51,9 +51,13 @@ from api.schemas.lodging import (
     PlacementCopyRequest,
     PlacementDeleteRequest,
     PlacementWriteRequest,
+    PushBuildingReport,
+    PushPreviewResponse,
+    PushRowPayload,
     SlotMergeRequest,
 )
 from api.services.lodging_roster_service import SessionNotFoundError, placement_grain, resolved_units
+from api.services.lodging_rules import PushBuilding, PushRow, classify_push, push_digest
 from api.utils.pb_error import pb_error_to_http
 from bunking.logging_config import get_logger
 
@@ -1094,3 +1098,74 @@ class LodgingWriteService:
                 except ClientResponseError as retry_exc:
                     raise pb_error_to_http(retry_exc) from retry_exc
         return LodgingWriteResponse(record_id=str(getattr(record, "id", "")))
+
+    def _push_rows(self, rows: list[Any], units_by_id: dict[str, Any]) -> list[PushRow]:
+        """One occupancy read (live or draft) turned into `PushRow`s.
+
+        `unit_code` / `unit_name` fall back to the raw `unit` relation id when
+        the row names a unit `fetch_units` did not return -- a unit deleted
+        or year-mismatched since the row was written -- so a building this
+        row cannot be grouped under still renders as SOMETHING rather than
+        vanishing from the report. `classify_push`'s own `key_for` makes the
+        identical fallback for grouping.
+        """
+        out: list[PushRow] = []
+        for row in rows:
+            unit_id = str(getattr(row, "unit", "") or "")
+            unit = units_by_id.get(unit_id)
+            out.append(
+                PushRow(
+                    unit_id=unit_id,
+                    unit_code=str(getattr(unit, "code", "") or "") if unit is not None else unit_id,
+                    unit_name=str(getattr(unit, "name", "") or "") if unit is not None else unit_id,
+                    occupant_name=str(getattr(row, "occupant_name", "") or ""),
+                    note=str(getattr(row, "note", "") or ""),
+                    party_size=getattr(row, "party_size", None),
+                    sleeps=getattr(unit, "sleeps", None) if unit is not None else None,
+                )
+            )
+        return out
+
+    async def preview_push(self, year: int, session_cm_id: int, scenario: str) -> PushPreviewResponse:
+        """The report half of the kindred#2477 push. Classification is SERVER-SIDE
+        ONLY -- inside a scenario the client never reads lodging_write_ins (the
+        roster replaces them with the draft twin), so it cannot diff. The client
+        renders this payload and echoes `digest`; there is deliberately no TS
+        mirror of the classifier.
+        """
+        if not scenario:
+            raise ValueError("push preview requires a scenario -- the live board cannot push onto itself")
+        units = await self.repository.fetch_units(year)
+        units_by_id = {str(getattr(u, "id", "") or ""): u for u in units}
+        live = self._push_rows(await self.repository.fetch_write_ins(year, session_cm_id), units_by_id)
+        draft = self._push_rows(await self.repository.fetch_draft_write_ins(year, session_cm_id, scenario), units_by_id)
+        buildings = classify_push(live, draft, units)
+        return PushPreviewResponse(
+            year=year,
+            session_cm_id=session_cm_id,
+            scenario=scenario,
+            digest=push_digest(buildings),
+            buildings=[_building_report(b) for b in buildings],
+        )
+
+
+def _row_payload(row: PushRow) -> PushRowPayload:
+    return PushRowPayload(
+        unit_id=row.unit_id,
+        unit_code=row.unit_code,
+        unit_name=row.unit_name,
+        occupant_name=row.occupant_name,
+        note=row.note,
+        party_size=row.party_size,
+        sleeps=row.sleeps,
+    )
+
+
+def _building_report(building: PushBuilding) -> PushBuildingReport:
+    return PushBuildingReport(
+        key=building.key,
+        label=building.label,
+        cls=building.cls,
+        live=[_row_payload(r) for r in building.live],
+        draft=[_row_payload(r) for r in building.draft],
+    )

@@ -275,6 +275,62 @@ class WriteInCover(BaseModel):
     unit_sleeps: int | None = None
 
 
+class PushRowPayload(BaseModel):
+    """One classified write-in row, as `preview_push` reports it (kindred#2477).
+
+    A wire rendering of `lodging_rules.PushRow`, field-for-field -- the row's
+    MEANING lives on that frozen dataclass and this is not a second opinion of
+    it, only the shape that crosses the API boundary.
+    """
+
+    unit_id: str
+    unit_code: str
+    unit_name: str
+    occupant_name: str
+    note: str = ""
+    # `None` is *occupies wholesale, never zero* -- the same #2540 reading
+    # `WriteInCover.party_size` carries above. A live row with no count
+    # against a draft row that recorded one is a genuine difference, and
+    # `PushRow.tuple_key()` treats it as such rather than coercing it to 0.
+    party_size: int | None = None
+    sleeps: int | None = None
+
+
+class PushBuildingReport(BaseModel):
+    """One building's live-vs-draft write-ins, and the RULED verdict for it.
+
+    `cls` is `classify_push`'s own word (`api/services/lodging_rules.py`),
+    computed server-side and PUBLISHED rather than re-derived: inside a
+    scenario the client never reads `lodging_write_ins` at all -- the roster
+    replaces those rows with the draft twin -- so it has nothing to diff
+    against and no TS mirror of the classifier exists on purpose.
+    """
+
+    key: str
+    label: str
+    cls: Literal["add", "match", "conflict", "remove"]
+    live: list[PushRowPayload] = Field(default_factory=list)
+    draft: list[PushRowPayload] = Field(default_factory=list)
+
+
+class PushPreviewResponse(BaseModel):
+    """The report half of kindred#2477's write-in push queue.
+
+    `digest` fingerprints `buildings` (`push_digest`), and it is not a fact
+    about the request -- it is a fact about what this preview SAW. The client
+    echoes it back unchanged when it actually pushes; a mismatch means the
+    live board or the scenario moved between the preview and the push, and
+    the push refuses with a fresh report rather than applying decisions made
+    against one that is no longer true.
+    """
+
+    year: int
+    session_cm_id: int
+    scenario: str
+    digest: str
+    buildings: list[PushBuildingReport] = Field(default_factory=list)
+
+
 class LodgingUnitSummary(BaseModel):
     """One row of the lodging registry, as the roster sees it."""
 

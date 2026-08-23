@@ -78,6 +78,14 @@ def _repo(**overrides: Any) -> MagicMock:
         "create_slot_merge": SimpleNamespace(id="merge_new"),
         "update_slot_merge": SimpleNamespace(id="merge_existing"),
         "fetch_slot_merges": [],
+        # kindred#2477's push preview. `fetch_units` is the registry
+        # `preview_push` groups write-ins by building against; the ledger
+        # trio (`*_push_event`) has no caller yet in this file, but a mock
+        # missing them raises AttributeError the moment Task 4 adds one.
+        "fetch_units": [],
+        "create_push_event": SimpleNamespace(id="push_1"),
+        "find_push_event": None,
+        "update_push_event": None,
     }
     defaults.update(overrides)
     for method, value in defaults.items():
@@ -2333,3 +2341,45 @@ class TestAWriteInInsideAScenarioIsWrittenToTheDraftTable:
         assert data["scenario"] == "scn_1"
         assert response.record_id == "draft_write_in_existing"
         repo.update_write_in.assert_not_called()
+
+
+def _wi(unit: str, occ: str, note: str = "", ppl: int | None = None, id: str = "wi_x") -> SimpleNamespace:
+    return SimpleNamespace(
+        id=id, unit=unit, occupant_name=occ, note=note, party_size=ppl, session_cm_id=1309001, year=2026
+    )
+
+
+def _u(
+    id: str, code: str, name: str | None = None, container: bool = False, parent: str = "", sleeps: int = 4
+) -> SimpleNamespace:
+    return SimpleNamespace(
+        id=id, code=code, name=name or code, is_container=container, parent_unit=parent, sleeps=sleeps
+    )
+
+
+class TestPreviewPush:
+    """kindred#2477. `preview_push` classifies the live board against a
+    scenario's draft write-ins and reports the diff, building by building.
+    """
+
+    @pytest.mark.asyncio
+    async def test_classifies_and_carries_digest(self) -> None:
+        repo = _repo(
+            fetch_units=[_u("uh", "big-house", container=True), _u("u1", "room-1", parent="uh")],
+            fetch_write_ins=[_wi("u1", "R. Okafor", id="wi_1")],
+            fetch_draft_write_ins=[_wi("uh", "Woodson family", ppl=6, id="wd_1")],
+        )
+        svc = LodgingWriteService(repo)
+        out = await svc.preview_push(2026, 1309001, "scn_1")
+        assert [b.cls for b in out.buildings] == ["conflict"]
+        assert out.buildings[0].key == "big-house"
+        assert out.digest
+        assert len(out.digest) == 64
+        # sleeps resolved from the NAMED unit's own row, never summed
+        assert out.buildings[0].draft[0].sleeps == 4
+
+    @pytest.mark.asyncio
+    async def test_scenario_is_required(self) -> None:
+        svc = LodgingWriteService(_repo())
+        with pytest.raises(ValueError):
+            await svc.preview_push(2026, 1309001, "")
