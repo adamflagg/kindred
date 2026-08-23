@@ -442,6 +442,55 @@ describe("the pencil's People field, kindred#2503", () => {
     expect(controls[0]).toBe(screen.getByLabelText('People'))
   })
 
+  it('shows a recorded count that sits outside the offered range, rather than reading blank', () => {
+    // kindred#2540 final scan, FINDING 4. `PARTY_SIZE_CHOICES` stops at 20,
+    // but `AvailabilityWriteRequest.party_size` is `Field(None, ge=1)` with NO
+    // upper bound and the PocketBase column is `max: null` -- deliberately, so
+    // an over-capacity count stays writable. A row holding 25 therefore seeded
+    // the select with a value no `<option>` matched, and a `<select>` in that
+    // state falls back to its FIRST option: the em dash, which means WHOLESALE.
+    //
+    // The card beside it draws a red `25/4`. So the form said "the whole room"
+    // while the card said "25 people" about the same row. Not data loss -- an
+    // untouched Save still sends 25 back -- but the contradiction is on screen,
+    // and a staff member resolving it in the form's favour would clear a real
+    // count by hand.
+    render(
+      <WriteInCard
+        occupant={{ name: 'Liam Garcia', note: '', partySize: 25 }}
+        onEdit={() => undefined}
+      />
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit write-in Liam Garcia' }))
+
+    expect(screen.getByLabelText('People')).toHaveValue('25')
+    const options = Array.from(screen.getByLabelText('People').querySelectorAll('option')).map(
+      (el) => (el as HTMLOptionElement).value
+    )
+    // Appended, so the ordinary 1-20 run is undisturbed and the odd value sits
+    // where its magnitude puts it.
+    expect(options).toEqual(['', ...Array.from({ length: 20 }, (_, i) => String(i + 1)), '25'])
+  })
+
+  it('adds no stray option for a recorded count already inside the range', () => {
+    // The other half: the extra option exists ONLY for a value the list cannot
+    // otherwise express. A count of 3 must not appear twice.
+    render(
+      <WriteInCard
+        occupant={{ name: 'Liam Garcia', note: '', partySize: 3 }}
+        onEdit={() => undefined}
+      />
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit write-in Liam Garcia' }))
+
+    const options = Array.from(screen.getByLabelText('People').querySelectorAll('option')).map(
+      (el) => (el as HTMLOptionElement).value
+    )
+    expect(options).toEqual(['', ...Array.from({ length: 20 }, (_, i) => String(i + 1))])
+  })
+
   it('saves the recorded count untouched — the data-loss guard', () => {
     const onEdit = vi.fn()
     render(

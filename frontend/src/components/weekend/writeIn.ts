@@ -413,3 +413,30 @@ export function writeInDemand(
  * capacity would make that state unenterable and quietly retire the red.
  */
 export const PARTY_SIZE_CHOICES: readonly number[] = Array.from({ length: 20 }, (_, i) => i + 1)
+
+/**
+ * `PARTY_SIZE_CHOICES`, plus a recorded count the list cannot otherwise express.
+ *
+ * ⚠️ A `<select>` WHOSE VALUE MATCHES NO OPTION FALLS BACK TO ITS FIRST ONE,
+ * silently (kindred#2540 final scan, FINDING 4). The first option here is the
+ * blank em dash, which means WHOLESALE -- so a row holding 25 opened its
+ * pencil reading "the whole room" while the card beside it drew a red `25/4`.
+ * Two answers about one row, on one screen.
+ *
+ * It is reachable because the bound is a CONTROL affordance, not a rule:
+ * `AvailabilityWriteRequest.party_size` is `Field(None, ge=1)` with no upper
+ * bound and the PocketBase column is `max: null`, deliberately, so that an
+ * over-capacity count stays writable. Nothing in the product writes above 20
+ * today -- both surfaces cap there and the two seed paths copy verbatim -- so
+ * this needs an API or import caller. That is exactly why it must not be
+ * silent when it happens.
+ *
+ * APPENDED rather than sorted in, so the ordinary 1-20 run is undisturbed and
+ * the odd value sits at the end where its magnitude puts it. Keyed on the
+ * RECORDED count rather than the draft, so it survives the staff member
+ * picking another value and changing their mind back.
+ */
+export function partySizeOptions(recorded: number | null): readonly number[] {
+  if (recorded === null || PARTY_SIZE_CHOICES.includes(recorded)) return PARTY_SIZE_CHOICES
+  return [...PARTY_SIZE_CHOICES, recorded]
+}

@@ -105,7 +105,7 @@
 import { Pencil } from 'lucide-react'
 import { useState } from 'react'
 
-import { PARTY_SIZE_CHOICES, writeInOccupantLabel, type WriteInOccupant } from './writeIn'
+import { partySizeOptions, writeInOccupantLabel, type WriteInOccupant } from './writeIn'
 
 /** `FamilyCard`'s `CARD_FRAME`, verbatim. Pinned by this module's test. */
 export const WRITE_IN_FRAME =
@@ -290,7 +290,7 @@ export function WriteInCard({ occupant, onRemove, onEdit, isSaving = false }: Wr
               className="border-border bg-background text-foreground focus:border-primary/50 focus:ring-primary/10 w-[4.25rem] shrink-0 rounded-md border px-1.5 py-1 text-sm focus:ring-2 focus:outline-none"
             >
               <option value="">—</option>
-              {PARTY_SIZE_CHOICES.map((count) => (
+              {partySizeOptions(occupant.partySize).map((count) => (
                 <option key={count} value={String(count)}>
                   {count}
                 </option>
