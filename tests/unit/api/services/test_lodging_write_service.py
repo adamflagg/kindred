@@ -2629,6 +2629,29 @@ class TestUnpush:
         with pytest.raises(PushNotFoundError):
             await LodgingWriteService(repo).unpush("push_missing", 2026, 1309001)
 
+    @pytest.mark.asyncio
+    async def test_unpush_for_a_different_weekend_than_the_ledger_row_refuses(self) -> None:
+        """kindred#2477 final review, Important #5. `_ledger` names its OWN
+        weekend (year=2026, session_cm_id=1309001) -- unpush must refuse when
+        the caller addresses a DIFFERENT weekend, the same honest 404
+        `test_missing_push_refuses` already covers for an id that resolves to
+        nothing at all. Without this check, `find_push_event(push_id)` alone
+        decides scope: a push id from one weekend addressed with another
+        weekend's year/session_cm_id would replay THAT weekend's changes onto
+        a board they were never taken from.
+        """
+        repo = _repo(
+            find_push_event=_ledger([CH_ADD]),  # year=2026, session_cm_id=1309001
+            fetch_units=[_u("uc", "cedar-9")],
+            fetch_write_ins=[_wi("uc", "H. Osei", ppl=2, id="wi_new")],
+        )
+        svc = LodgingWriteService(repo)
+        with pytest.raises(PushNotFoundError):
+            await svc.unpush("push_1", 2026, 9999999)  # a different weekend's session_cm_id
+        repo.delete_write_in.assert_not_called()
+        repo.create_write_in.assert_not_called()
+        repo.update_push_event.assert_not_called()
+
 
 class _StatefulWriteInRepo:
     """A minimal STATEFUL fake standing in for PocketBase's own

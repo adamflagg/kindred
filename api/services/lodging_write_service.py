@@ -1512,6 +1512,14 @@ class LodgingWriteService:
         event = await self.repository.find_push_event(push_id)
         if event is None:
             raise PushNotFoundError(push_id)
+        # The ledger row names its OWN weekend. `find_push_event(push_id)`
+        # resolves by id alone, so without this check any push id addressed
+        # with a DIFFERENT weekend's year/session_cm_id would replay that
+        # push's changes onto a board they were never taken from -- an
+        # honest 404 ("no such push for THIS weekend"), not a 500 or a
+        # cross-weekend write.
+        if getattr(event, "year", None) != year or getattr(event, "session_cm_id", None) != session_cm_id:
+            raise PushNotFoundError(push_id)
         if getattr(event, "unpushed_at", ""):
             raise AlreadyUnpushedError(push_id)
         changes: list[dict[str, Any]] = _json_list(event, "changes")
