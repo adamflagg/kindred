@@ -2455,6 +2455,82 @@ class TestExecutePush:
         repo.delete_write_in.assert_called_once_with("wi_1")
 
     @pytest.mark.asyncio
+    async def test_ledger_write_precedes_the_apply_calls(self) -> None:
+        """Fix-round finding (2026-08-23): the ledger comment claims
+        "ledger FIRST, then apply", but the earlier version of this test only
+        checked ledger CONTENTS and that delete/create were called at all --
+        `_repo()`'s independent AsyncMocks never captured cross-method call
+        ORDER, so a reordered implementation could still pass it. Attaching
+        the three calls that matter to one parent mock makes the order
+        observable.
+        """
+        repo = self._repo_one_conflict()
+        order = MagicMock()
+        order.attach_mock(repo.create_push_event, "create_push_event")
+        order.attach_mock(repo.delete_write_in, "delete_write_in")
+        order.attach_mock(repo.create_write_in, "create_write_in")
+        svc = LodgingWriteService(repo)
+        preview = await svc.preview_push(2026, 1309001, "scn_1")
+        req = PushExecuteRequest(
+            year=2026,
+            session_cm_id=1309001,
+            scenario="scn_1",
+            digest=preview.digest,
+            decisions={"cedar-9": "scenario"},
+        )
+        await svc.execute_push(req, pushed_by="user_1")
+        names = [call[0] for call in order.mock_calls]
+        ledger_index = names.index("create_push_event")
+        apply_indices = [i for i, name in enumerate(names) if name in ("delete_write_in", "create_write_in")]
+        assert apply_indices, "expected at least one delete_write_in/create_write_in call"
+        assert ledger_index < min(apply_indices)
+
+    @pytest.mark.asyncio
+    async def test_vanished_live_row_refuses_the_push_instead_of_lying(self) -> None:
+        """Fix-round finding (2026-08-23): `preview_push` (inside `execute_push`)
+        and `_live_rows_with_ids` are TWO INDEPENDENT reads of `fetch_write_ins`,
+        so a row `fresh` already classified as removable can be gone by the
+        time `_live_rows_with_ids` looks for its record id -- another caller
+        deleted it in the gap between the two fetches. `fetch_write_ins` is
+        given a `side_effect` list so the SECOND call (inside `execute_push`'s
+        own `preview_push`) still agrees with the digest computed by the
+        FIRST (both see the live row), but the THIRD call
+        (`_live_rows_with_ids`) sees it gone -- reproducing the race without
+        touching a real PocketBase.
+
+        A silent skip here would let `removed` and the ledger both claim a
+        delete that never happened; the ruling is to refuse the whole push
+        instead, exactly as a stale digest does, and write no ledger row.
+        """
+        live_present = [_wi("uc", "G. Whitfield", id="wi_1")]
+        repo = _repo(
+            fetch_units=[_u("uc", "cedar-9")],
+            fetch_draft_write_ins=[_wi("uc", "H. Osei", ppl=2, id="wd_1")],
+            create_push_event=SimpleNamespace(id="push_1"),
+        )
+        # 1st call: this test's own preview_push (for `preview.digest`).
+        # 2nd call: execute_push's internal re-preview -- same live state, so
+        #           the digest check passes and execution proceeds.
+        # 3rd call: _live_rows_with_ids -- the row is gone.
+        # 4th call: execute_push's OWN re-preview once the miss is found, to
+        #           build the fresh report PushDigestStaleError carries.
+        repo.fetch_write_ins = AsyncMock(side_effect=[live_present, live_present, [], []])
+        svc = LodgingWriteService(repo)
+        preview = await svc.preview_push(2026, 1309001, "scn_1")
+        req = PushExecuteRequest(
+            year=2026,
+            session_cm_id=1309001,
+            scenario="scn_1",
+            digest=preview.digest,
+            decisions={"cedar-9": "scenario"},
+        )
+        with pytest.raises(PushDigestStaleError):
+            await svc.execute_push(req, pushed_by="user_1")
+        repo.create_push_event.assert_not_called()
+        repo.delete_write_in.assert_not_called()
+        repo.create_write_in.assert_not_called()
+
+    @pytest.mark.asyncio
     async def test_keep_live_and_all_match_is_a_no_op(self) -> None:
         repo = _repo(
             fetch_units=[_u("uc", "cedar-9")],

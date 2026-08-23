@@ -1215,18 +1215,39 @@ class LodgingWriteService:
         `PushDecisionsIncompleteError`. There is no default-keep-live path --
         see that error's docstring for why.
 
-        LEDGER FIRST, THEN APPLY. `create_push_event` writes what this push
-        intends to do before a single row moves, so a crash mid-apply leaves a
-        row naming exactly what was intended rather than an unexplained
-        partial board (spec §4.2). `changes` carries the payload BOTH
+        RESOLVE, THEN LEDGER, THEN APPLY -- in that order, and the order is
+        pinned by `TestExecutePush.test_ledger_write_precedes_the_apply_calls`
+        (fix-round, 2026-08-23). Every remove is turned into a live record id
+        BEFORE `create_push_event` runs at all, for a reason `create_push_event`
+        alone cannot fix: `_live_rows_with_ids` below re-fetches the live board
+        independently of the `fresh` snapshot taken at the top of this method,
+        so the two reads can disagree about the very rows `fresh` already
+        classified as removable. A miss there -- a row deleted by someone else
+        in the gap between the two fetches -- must not silently skip: `removed`
+        and the ledger would then both claim a delete that never happened, and
+        Task 5's Unpush would replay a delete against a row already gone. So a
+        miss refuses the WHOLE push via `PushDigestStaleError`, carrying a
+        FRESHLY RE-RUN preview -- not `fresh` above, which is already stale by
+        definition the moment a miss is found -- and writes NO ledger row.
+        Only once every remove has resolved does `create_push_event` run, and
+        only after that do the deletes/creates it just described actually
+        happen: a crash mid-apply then leaves a ledger row naming exactly what
+        was intended, never a row promising a delete this method could not
+        actually find (spec §4.2). `changes` carries the payload BOTH
         directions -- what makes Task 6's Unpush a replay: delete what the
         push added, recreate what it removed.
 
-        `live_ids` KEYS ON `PushRow.tuple_key()`, the same RULED matching
-        tuple `classify_push` already groups on, so the live record a
-        "scenario"/"remove" decision deletes is found the same way the
-        classifier decided it conflicted or should go -- not a second,
-        independently-written lookup free to disagree with the first.
+        `live_ids` KEYS ON THE SAME FOUR-FIELD TUPLE `PushRow.tuple_key()`
+        RETURNS -- the RULED matching tuple `classify_push` already groups on
+        -- so the live record a "scenario"/"remove" decision deletes is found
+        the same way the classifier decided it conflicted or should go, not a
+        second, independently-written lookup free to disagree with the first.
+        Built by calling `.tuple_key()` on the genuine `PushRow`s
+        `_live_rows_with_ids` returns; looked up by hand-building the
+        identical tuple from `PushRowPayload` (the wire shape `removes` holds,
+        off `fresh.buildings[*].live`) -- that model is a separate Pydantic
+        class with no `tuple_key()` method of its own, so the shape is
+        reproduced rather than a second definition of it invented.
 
         `party_size` IS EXPLICIT ALWAYS ON THE CREATE PAYLOAD, `None` included.
         This method is the "fifth producer" kindred#2540's data-loss guard
@@ -1249,12 +1270,6 @@ class LodgingWriteService:
         adds: list[PushRowPayload] = []
         removes: list[PushRowPayload] = []
         replaced = kept = matched = 0
-        # Tuple-keyed live rows so a "scenario"/"remove" decision can name the
-        # exact record id to delete -- see the method docstring.
-        live_ids = {
-            r.tuple_key(): str(getattr(row, "id", "") or "")
-            for row, r in await self._live_rows_with_ids(request.year, request.session_cm_id)
-        }
         for b in fresh.buildings:
             if b.cls == "add":
                 adds.extend(b.draft)
@@ -1278,6 +1293,22 @@ class LodgingWriteService:
                 push_id="", added=0, removed=0, replaced=replaced, kept=kept, matched=matched, no_op=True
             )
 
+        # Resolve every remove to a live record id BEFORE anything is written
+        # -- see the method docstring for why a miss here refuses rather than
+        # skips.
+        remove_ids: list[str] = []
+        if removes:
+            live_ids = {
+                r.tuple_key(): str(getattr(row, "id", "") or "")
+                for row, r in await self._live_rows_with_ids(request.year, request.session_cm_id)
+            }
+            for r in removes:
+                rid = live_ids.get((r.unit_id, r.occupant_name.strip(), r.note.strip(), r.party_size))
+                if rid is None:
+                    stale = await self.preview_push(request.year, request.session_cm_id, request.scenario)
+                    raise PushDigestStaleError(stale)
+                remove_ids.append(rid)
+
         changes = [
             {
                 "action": "remove",
@@ -1300,7 +1331,10 @@ class LodgingWriteService:
             for r in adds
         ]
         # Ledger FIRST, then apply: a crash mid-apply leaves a row naming
-        # exactly what was intended (spec §4.2).
+        # exactly what was intended (spec §4.2). Every remove above has
+        # already resolved to a real record id, so nothing this ledger row
+        # claims can turn out to be undeliverable once the apply loop below
+        # actually runs.
         #
         # `scenario_name` carries the SAME value as `scenario_id` -- there is
         # no cheap scenario-record-name accessor on `LodgingRepository` today,
@@ -1320,15 +1354,8 @@ class LodgingWriteService:
             }
         )
         session_pb_id = await self._resolve_session_pb_id(request.year, request.session_cm_id)
-        for r in removes:
-            # `removes` holds `PushRowPayload` (the wire shape off `b.live`),
-            # which carries the same four fields as `PushRow.tuple_key()` but
-            # is not that dataclass and has no method of its own -- so the key
-            # is rebuilt by hand here, matching `tuple_key()`'s own shape
-            # exactly rather than duplicating a second definition of it.
-            rid = live_ids.get((r.unit_id, r.occupant_name.strip(), r.note.strip(), r.party_size))
-            if rid is not None:
-                await self.repository.delete_write_in(rid)
+        for rid in remove_ids:
+            await self.repository.delete_write_in(rid)
         for r in adds:
             await self.repository.create_write_in(
                 {
