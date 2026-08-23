@@ -363,6 +363,37 @@ describe('PushWriteInsModal — push execution (Task 10)', () => {
   })
 })
 
+describe('PushWriteInsModal — deck stage (kindred#2477 final review, Minor #8)', () => {
+  // The deck (stage 'deck', Task 9) is not otherwise exercised in this file
+  // — see the module doc. D33's ruled block ("Push disabled until all
+  // decided") is already pinned at PushDecisionDeck.test.tsx's own level;
+  // this hardens it at the INTEGRATION level too, through the real modal's
+  // `pushDisabled={deckBuildings.length > decidedCount || ...}` wiring
+  // rather than a hand-built `deck()` fixture that computes the same
+  // expression independently and could drift from what the modal actually
+  // passes.
+  it("the deck's push stays disabled until every decision is made, enforced through the real modal", async () => {
+    const user = userEvent.setup()
+    renderModal(PREVIEW) // 2 decisions needed: cedar-9 (conflict), aspen-5 (remove)
+
+    await user.click(await screen.findByRole('button', { name: /review 2 decisions/i }))
+
+    // First card: cedar-9, a pairwise conflict. 0/2 decided.
+    expect(screen.getByRole('button', { name: 'Push' })).toBeDisabled()
+    await user.click(screen.getByRole('button', { name: 'Take scenario' }))
+    // 1/2 decided — still disabled.
+    expect(screen.getByRole('button', { name: 'Push' })).toBeDisabled()
+
+    // Move to the second card (aspen-5, a remove) and decide it too. Manual
+    // navigation, not the auto-advance timer, so this doesn't race it.
+    await user.click(screen.getByRole('button', { name: 'Next card' }))
+    await user.click(screen.getByRole('button', { name: 'Remove' }))
+
+    // 2/2 decided — enabled.
+    expect(screen.getByRole('button', { name: 'Push' })).toBeEnabled()
+  })
+})
+
 describe('PushWriteInsModal — dialog anchoring (kindred#2477 final review, Important #7)', () => {
   // spec §7 called for `anchor="top"` — this modal's three stages (report,
   // deck, done) change content height exactly the way `ui/Modal`'s own doc
