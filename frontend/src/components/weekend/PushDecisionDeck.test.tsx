@@ -73,11 +73,27 @@ const BIRCH: PushBuildingReport = {
   draft: [],
 }
 
+// A remove building CAN carry more than one live row — a multi-room
+// building the scenario drops entirely still has every one of its live rows
+// removed by `execute_push`, not just the first. RemoveCard must show all of
+// them, not just `building.live[0]`.
+const WILLOW: PushBuildingReport = {
+  key: 'willow-3',
+  label: 'Willow 3',
+  cls: 'remove',
+  live: [
+    row('willow-3-loft', 'M. Kowalczyk', { sleeps: 2 }),
+    row('willow-3-den', 'T. Abubakar', { sleeps: 3 }),
+  ],
+  draft: [],
+}
+
 const BUILDINGS_BY_KEY: Record<string, PushBuildingReport> = {
   'cedar-9': CEDAR,
   'aspen-5': ASPEN,
   'big-house': BIG_HOUSE,
   'birch-2': BIRCH,
+  'willow-3': WILLOW,
 }
 
 function decidedCount(
@@ -182,5 +198,14 @@ describe('PushDecisionDeck', () => {
   it('a sized side shows the summed party size, not the wholesale text', () => {
     render(deckAt('birch-2'))
     expect(screen.getByText('3 of 5 beds')).toBeInTheDocument()
+  })
+
+  // kindred#2477 final review, Critical #2: `execute_push` removes ALL of a
+  // remove building's live rows, but RemoveCard rendered only `live[0]` —
+  // staff approving the removal never saw the second occupant being dropped.
+  it('a remove building with two live rows shows both occupants', () => {
+    render(deckAt('willow-3'))
+    expect(screen.getByText('M. Kowalczyk')).toBeInTheDocument()
+    expect(screen.getByText('T. Abubakar')).toBeInTheDocument()
   })
 })

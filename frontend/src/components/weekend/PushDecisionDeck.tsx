@@ -309,16 +309,21 @@ function RemoveCard({
   decision: Decision | undefined
   onPick: (decision: Decision) => void
 }) {
-  const live = building.live[0]
-  if (live === undefined) return null
+  // ALL of `building.live`, not just the first row: `execute_push` removes
+  // every live row for a `remove` building (a multi-room building the
+  // scenario dropped entirely), and the approval card must show staff
+  // everything that decision takes with it.
+  if (building.live.length === 0) return null
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="border-border bg-muted/30 rounded-xl border p-3">
-        <p className="font-semibold">{live.occupant_name}</p>
-        {live.note !== '' && <p className="text-muted-foreground text-sm">{live.note}</p>}
-        <p className="text-muted-foreground text-sm">{partySizeText(live.party_size)} people</p>
-      </div>
+      {building.live.map((live, i) => (
+        <div key={`live-${String(i)}`} className="border-border bg-muted/30 rounded-xl border p-3">
+          <p className="font-semibold">{live.occupant_name}</p>
+          {live.note !== '' && <p className="text-muted-foreground text-sm">{live.note}</p>}
+          <p className="text-muted-foreground text-sm">{partySizeText(live.party_size)} people</p>
+        </div>
+      ))}
       <p className="text-muted-foreground text-xs">
         Removals are soft — one Unpush restores everything this push changed
       </p>
