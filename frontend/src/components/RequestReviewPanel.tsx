@@ -38,6 +38,7 @@ import {
 } from '../utils/dispositionColors'
 import RequestRowDesktop from './RequestRowDesktop'
 import CreateRequestModal from './CreateRequestModal'
+import { useRetainedDialog } from '../hooks/useRetainedDialog'
 import CamperDetailsPanel from './CamperDetailsPanel'
 import { CamperRequestSummary } from './CamperRequestSummary'
 import MergeRequestsModal from './MergeRequestsModal'
@@ -96,7 +97,13 @@ export default function RequestReviewPanel({
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set())
   const [sortBy, setSortBy] = useState<SortColumn>(DEFAULT_SORT_BY)
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>(DEFAULT_SORT_ORDER)
-  const [showCreateModal, setShowCreateModal] = useState(false)
+  // kindred#2538: always-mounted so ui/Modal's 150ms leave can play. <true>
+  // rather than <void>: this dialog retains no snapshot -- its gate was a
+  // plain boolean, not the data itself -- but eslint's
+  // @typescript-eslint/no-invalid-void-type bans a void type argument, so the
+  // literal is inert and only isOpen and nonce are read. Same gap
+  // NewScenarioModal hit; kindred#2549's review predicted it.
+  const createDialog = useRetainedDialog<true>()
   const [showMergeModal, setShowMergeModal] = useState(false)
   const [showSplitModal, setShowSplitModal] = useState(false)
   const [requestToSplit, setRequestToSplit] = useState<BunkRequestsResponse | null>(null)
@@ -953,7 +960,7 @@ export default function RequestReviewPanel({
 
             {/* Create Button */}
             <button
-              onClick={() => setShowCreateModal(true)}
+              onClick={() => createDialog.open(true)}
               className="btn-primary flex touch-manipulation items-center gap-2 px-3 py-2 text-sm"
             >
               <Plus className="h-4 w-4" />
@@ -1464,14 +1471,16 @@ export default function RequestReviewPanel({
           </div>
         </div>
 
-        {/* Create Request Modal */}
-        {showCreateModal && (
-          <CreateRequestModal
-            sessionId={sessionId}
-            year={year}
-            onClose={() => setShowCreateModal(false)}
-          />
-        )}
+        {/* Create Request Modal — always mounted (kindred#2538), so the close
+            has something to fade. `nonce` is what wipes the eight form fields
+            an unmount used to clear for free. */}
+        <CreateRequestModal
+          sessionId={sessionId}
+          year={year}
+          isOpen={createDialog.isOpen}
+          nonce={createDialog.nonce}
+          onClose={() => createDialog.close()}
+        />
 
         {/* Camper Details Panel */}
         {selectedCamperId && (

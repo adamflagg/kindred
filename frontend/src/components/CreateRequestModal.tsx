@@ -13,11 +13,32 @@ interface CreateRequestModalProps {
   sessionId: number
   year: number
   onClose: () => void
+  /**
+   * kindred#2538 tier 2b. The dialog is ALWAYS MOUNTED so ui/Modal's 150ms
+   * leave transition has something to fade; the parent drives this flag
+   * instead of unmounting on the close frame.
+   *
+   * Optional and defaulting to TRUE, matching NewScenarioModal: an
+   * unconverted call site keeps its old conditional-mount behaviour, so the
+   * degradation for a missed site is "no fade" rather than "a modal appears".
+   */
+  isOpen?: boolean
+  /**
+   * Per-open nonce from kindred#2541's useRetainedDialog. Bumping it wipes
+   * every field, which is what an unmount used to do for free.
+   */
+  nonce?: number
 }
 
 type RequestType = 'bunk_with' | 'not_bunk_with' | 'age_preference'
 
-export default function CreateRequestModal({ sessionId, year, onClose }: CreateRequestModalProps) {
+export default function CreateRequestModal({
+  sessionId,
+  year,
+  onClose,
+  isOpen = true,
+  nonce,
+}: CreateRequestModalProps) {
   const queryClient = useQueryClient()
   const [requestType, setRequestType] = useState<RequestType>('bunk_with')
   const [requesterSearch, setRequesterSearch] = useState('')
@@ -28,12 +49,51 @@ export default function CreateRequestModal({ sessionId, year, onClose }: CreateR
   const [notes, setNotes] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
 
-  // Fetch campers for this session
+  // kindred#2538's per-open reset, as a RENDER-TIME CORRECTION rather than
+  // NewScenarioModal's `key={nonce}` on a split-out form body. The split does
+  // not apply here and the reason is structural, not stylistic: this dialog's
+  // footer is a `<Modal footer={…}>` PROP, and it reads four of the states
+  // below (isSubmitting, campersLoading, selectedRequester, selectedTarget).
+  // Modal renders `footer` OUTSIDE the scrollable content area, which is what
+  // pins it — so moving these states into a keyed child would force the
+  // buttons into `children` and leave them scrolling with the form. Keying the
+  // shell instead is the one thing kindred#2541 forbids: it remounts the
+  // fading <Modal> and snaps it away mid-leave.
+  //
+  // The correction is safe precisely where a remount would have been: all
+  // eight initializers below are static constants, so re-running them by hand
+  // reproduces a fresh mount exactly. NewScenarioModal genuinely needed the
+  // remount because its `copyFrom` default is DERIVED from a prop.
+  //
+  // Render-time, not an effect — React discards this render and re-renders
+  // synchronously with the corrected state, so a reopen never paints the
+  // abandoned draft for a frame. Same shape as `usePanelParty` and
+  // `useRetainedDialog`'s `resetWhen`. Guarded on the nonce having actually
+  // changed, or it loops.
+  const [lastNonce, setLastNonce] = useState(nonce)
+  if (nonce !== lastNonce) {
+    setLastNonce(nonce)
+    setRequestType('bunk_with')
+    setRequesterSearch('')
+    setTargetSearch('')
+    setSelectedRequester(null)
+    setSelectedTarget(null)
+    setAgePreferenceTarget('older')
+    setNotes('')
+    setIsSubmitting(false)
+  }
+
+  // Fetch campers for this session.
+  //
+  // Gated on `isOpen` (kindred#2538): always-mounted, an ungated hook pulls
+  // the FULL enrolled-attendee list on every RequestReviewPanel visit whether
+  // or not this dialog is ever opened. The hook already accepts `enabled`;
+  // `EditableRequestTarget` gates the same query the same way.
   const {
     data: campers = [],
     isLoading: campersLoading,
     isError: campersError,
-  } = useSessionCamperPersons(sessionId, year)
+  } = useSessionCamperPersons(sessionId, year, { enabled: isOpen })
 
   // Filter campers based on search
   const filteredRequesters = campers.filter((camper) => {
@@ -137,7 +197,7 @@ export default function CreateRequestModal({ sessionId, year, onClose }: CreateR
 
   return (
     <Modal
-      isOpen={true}
+      isOpen={isOpen}
       onClose={onClose}
       header={headerContent}
       footer={footerContent}
