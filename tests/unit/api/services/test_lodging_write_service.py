@@ -36,10 +36,13 @@ from api.schemas.lodging import (
     SlotMergeRequest,
 )
 from api.services.lodging_write_service import (
+    AlreadyUnpushedError,
     LodgingWriteService,
     PushDecisionsIncompleteError,
     PushDigestStaleError,
+    PushNotFoundError,
     ScenarioNotEmptyError,
+    UnpushDriftError,
 )
 from bunking.logging_config import ISO8601Formatter
 
@@ -2546,3 +2549,82 @@ class TestExecutePush:
         assert out.no_op is True
         assert out.push_id == ""
         repo.create_push_event.assert_not_called()
+
+
+def _ledger(changes: list[dict[str, Any]], unpushed: str = "") -> SimpleNamespace:
+    return SimpleNamespace(
+        id="push_1", year=2026, session_cm_id=1309001, scenario_id="scn_1", changes=changes, unpushed_at=unpushed
+    )
+
+
+CH_ADD = {
+    "action": "add",
+    "unit": "uc",
+    "unit_code": "cedar-9",
+    "occupant_name": "H. Osei",
+    "note": "",
+    "party_size": 2,
+}
+CH_REM = {
+    "action": "remove",
+    "unit": "uc2",
+    "unit_code": "fern-1",
+    "occupant_name": "E. Sandoval",
+    "note": "",
+    "party_size": None,
+}
+
+
+class TestUnpush:
+    """kindred#2477 Task 5. `unpush` replays a ledger row's `changes` in
+    reverse -- delete what the push added, recreate what it removed -- but
+    ONLY when the live board still matches the push's after-state exactly.
+    Any drift on any touched unit refuses the WHOLE push (RULED
+    refuse-wholesale, owner 2026-08-22): nothing reverted, the mismatched
+    buildings named in the error.
+    """
+
+    @pytest.mark.asyncio
+    async def test_round_trip_restores(self) -> None:
+        repo = _repo(
+            find_push_event=_ledger([CH_ADD, CH_REM]),
+            fetch_units=[_u("uc", "cedar-9"), _u("uc2", "fern-1")],
+            # current live state == the push's after-state:
+            fetch_write_ins=[_wi("uc", "H. Osei", ppl=2, id="wi_new")],
+        )
+        svc = LodgingWriteService(repo)
+        out = await svc.unpush("push_1", 2026, 1309001)
+        assert (out.deleted, out.restored) == (1, 1)
+        repo.delete_write_in.assert_called_once_with("wi_new")
+        recreated = repo.create_write_in.call_args.args[0]
+        assert recreated["occupant_name"] == "E. Sandoval"
+        assert "party_size" in recreated
+        assert recreated["party_size"] is None
+        repo.update_push_event.assert_called_once()  # unpushed_at stamped
+
+    @pytest.mark.asyncio
+    async def test_manual_edit_since_push_refuses_wholesale(self) -> None:
+        repo = _repo(
+            find_push_event=_ledger([CH_ADD]),
+            fetch_units=[_u("uc", "cedar-9")],
+            # someone renamed the occupant since the push:
+            fetch_write_ins=[_wi("uc", "H. Osei-Brown", ppl=2, id="wi_new")],
+        )
+        svc = LodgingWriteService(repo)
+        with pytest.raises(UnpushDriftError) as exc:
+            await svc.unpush("push_1", 2026, 1309001)
+        assert "cedar-9" in exc.value.buildings
+        repo.delete_write_in.assert_not_called()
+        repo.create_write_in.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_double_unpush_refuses(self) -> None:
+        repo = _repo(find_push_event=_ledger([CH_ADD], unpushed="2026-08-22T20:00:00Z"))
+        with pytest.raises(AlreadyUnpushedError):
+            await LodgingWriteService(repo).unpush("push_1", 2026, 1309001)
+
+    @pytest.mark.asyncio
+    async def test_missing_push_refuses(self) -> None:
+        repo = _repo(find_push_event=None)
+        with pytest.raises(PushNotFoundError):
+            await LodgingWriteService(repo).unpush("push_missing", 2026, 1309001)

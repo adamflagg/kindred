@@ -371,6 +371,20 @@ class PushExecuteResponse(BaseModel):
     no_op: bool = False
 
 
+class UnpushResponse(BaseModel):
+    """What `unpush` actually did (kindred#2477 Task 5).
+
+    `restored` is how many removed rows came back; `deleted` is how many
+    added rows were taken back off the live board -- the mirror image of
+    `PushExecuteResponse.added` / `.removed`, one field per direction the
+    ledger's `changes` replay moves a row.
+    """
+
+    push_id: str = ""
+    restored: int = 0
+    deleted: int = 0
+
+
 class LodgingUnitSummary(BaseModel):
     """One row of the lodging registry, as the roster sees it."""
 

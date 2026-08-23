@@ -39,7 +39,9 @@ is choosing, which is the board. Not here, and not in the ingest.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from pocketbase.client import ClientResponseError  # type: ignore[attr-defined]
@@ -57,6 +59,7 @@ from api.schemas.lodging import (
     PushPreviewResponse,
     PushRowPayload,
     SlotMergeRequest,
+    UnpushResponse,
 )
 from api.services.lodging_roster_service import SessionNotFoundError, placement_grain, resolved_units
 from api.services.lodging_rules import PushBuilding, PushRow, classify_push, push_digest
@@ -111,6 +114,79 @@ class PushDecisionsIncompleteError(RuntimeError):
     there is no default-keep-live path. Enforced here, not only by the
     disabled button the frontend puts up for the same rule.
     """
+
+
+class PushNotFoundError(RuntimeError):
+    """`unpush` was asked for a `lodging_write_in_pushes` row that does not
+    exist (kindred#2477 Task 5). `find_push_event` returns `None` on a 404
+    rather than raising, so this is the service's own translation of that --
+    the router answers it as a 404, the same shape a bad id gets everywhere
+    else on this surface.
+    """
+
+
+class AlreadyUnpushedError(RuntimeError):
+    """The ledger row `unpush` was asked to replay already carries an
+    `unpushed_at` stamp (kindred#2477 Task 5). A push is reverted at most
+    once: replaying it a second time would delete rows the first unpush
+    already recreated and recreate rows the first unpush already deleted,
+    silently doubling a party's write-in or destroying one nobody asked to
+    remove. The stamp is the only guard against that, so it is checked
+    before anything else about the row is trusted.
+    """
+
+
+class UnpushDriftError(RuntimeError):
+    """RULED refuse-wholesale (owner 2026-08-22): `unpush` checks EVERY unit
+    the push touched against the push's own after-state before it reverts
+    anything, and a single mismatch -- an added row hand-edited or deleted
+    since, a removed row hand-recreated since -- refuses the WHOLE push
+    rather than reverting the units that still match.
+
+    A partial revert leaves a state nobody reviewed: the buildings that
+    still matched silently go back to how they were before the push, the
+    ones that drifted silently keep whatever a staff member did to them
+    since, and nothing on the board marks which is which. That is worse than
+    refusing outright, because it reads as "unpush worked" while quietly
+    deciding, per building, whether the click actually applied. Clobbering a
+    hand edit outright is exactly the blind delete this feature exists to
+    prevent -- the ledger names precise rows so a revert can be precise, and
+    a revert that overwrites drift throws that away.
+
+    The same check also refuses unpushing an OLDER push once a NEWER one has
+    moved the same units -- not as a special case, but for free: the newer
+    push's own apply already changed what the older push's after-state
+    described, so the older push's added rows are gone or altered and its
+    removed rows are back, and the drift check catches both without knowing
+    anything about push ordering.
+
+    `.buildings` carries the offending building codes, sorted and
+    deduplicated, so the router can serialise them straight into the 409
+    body (Task 6) -- the same shape `PushBuildingReport.key` uses elsewhere
+    on this surface.
+    """
+
+    def __init__(self, buildings: list[str]) -> None:
+        super().__init__(f"the live board has changed since this push: {', '.join(buildings)}")
+        self.buildings = buildings
+
+
+def _json_list(record: Any, field: str) -> list[dict[str, Any]]:
+    """One PB JSON field, normalised to the list it always logically is.
+
+    A `json` field comes back as a native `list` through the Python SDK's own
+    HTTP client, but the mock repositories this file's tests build hand a
+    `SimpleNamespace` straight over, and a live PocketBase JS-side hook or a
+    differently-configured client can still hand back the column's raw
+    serialised string instead. `lodging_write_in_pushes.changes` is exactly
+    that column -- `create_push_event` writes it as the `changes` list
+    `execute_push` built -- so `unpush` reads through this rather than
+    assuming either shape.
+    """
+    value = getattr(record, field, None)
+    if isinstance(value, str):
+        return list(json.loads(value)) if value else []
+    return list(value or [])
 
 
 class LodgingWriteService:
@@ -1376,6 +1452,92 @@ class LodgingWriteService:
             kept=kept,
             matched=matched,
         )
+
+    async def unpush(self, push_id: str, year: int, session_cm_id: int) -> UnpushResponse:
+        """Revert one push as a unit (kindred#2477 Task 5).
+
+        REPLAYS `changes` IN REVERSE: `execute_push` recorded every row it
+        added and every row it removed, so reverting is "delete what was
+        added, recreate what was removed" -- no re-classification, no
+        re-diffing against the scenario, because the ledger row already IS
+        the diff that was applied.
+
+        VALIDATES BEFORE TOUCHING ANYTHING (RULED refuse-wholesale, owner
+        2026-08-22): every touched unit's LIVE state must still match the
+        push's after-state -- an added row still present tuple-identical, a
+        removed row still absent -- before a single write happens. ANY
+        mismatch raises `UnpushDriftError` naming the offending building
+        codes and reverts nothing. See that error's docstring for why a
+        partial revert is worse than refusing outright, and why this also
+        covers unpushing an older push after a newer one moved the same
+        units.
+
+        `by_tuple` KEYS ON `PushRow.tuple_key()`, the same four-field RULED
+        matching tuple `execute_push` and `classify_push` both use --
+        current live rows resolved to their record ids the same way
+        `execute_push`'s own `live_ids` is built, not a second, independently
+        written lookup free to disagree with the first.
+
+        ON PASS: adds are deleted by the id resolved from THIS live fetch
+        (not a stale id off the ledger row -- a live row keeps its identity
+        across an unrelated edit that leaves its tuple unchanged, but a
+        record id copied from the push event could not survive that);
+        removes are recreated with `party_size` EXPLICIT ALWAYS, `None`
+        included -- the identical #2540 hazard `execute_push`'s own create
+        call documents, and the same reason a dict-literal omission would
+        silently drop a wholesale-occupancy write-in into an unsized one.
+
+        `unpushed_at` is stamped only once the reverting writes have
+        actually run, so a crash before this line leaves the ledger row
+        still claiming "not yet unpushed" -- recoverable by retrying --
+        rather than a row that says it was reverted when it was not.
+        """
+        event = await self.repository.find_push_event(push_id)
+        if event is None:
+            raise PushNotFoundError(push_id)
+        if getattr(event, "unpushed_at", ""):
+            raise AlreadyUnpushedError(push_id)
+        changes: list[dict[str, Any]] = _json_list(event, "changes")
+
+        live = await self._live_rows_with_ids(year, session_cm_id)
+        by_tuple = {r.tuple_key(): str(getattr(row, "id", "") or "") for row, r in live}
+
+        def change_tuple(c: dict[str, Any]) -> tuple[str, str, str, int | None]:
+            return (c["unit"], c["occupant_name"].strip(), c["note"].strip(), c["party_size"])
+
+        drifted: list[str] = []
+        for c in changes:
+            present = change_tuple(c) in by_tuple
+            if c["action"] == "add" and not present:
+                drifted.append(c["unit_code"])  # the row the push added was edited/removed
+            if c["action"] == "remove" and present:
+                drifted.append(c["unit_code"])  # the row the push removed was hand-recreated
+        if drifted:
+            raise UnpushDriftError(sorted(set(drifted)))
+
+        session_pb_id = await self._resolve_session_pb_id(year, session_cm_id)
+        deleted = restored = 0
+        for c in changes:
+            if c["action"] == "add":
+                await self.repository.delete_write_in(by_tuple[change_tuple(c)])
+                deleted += 1
+            else:
+                await self.repository.create_write_in(
+                    {
+                        "year": year,
+                        "session_cm_id": session_cm_id,
+                        "session": session_pb_id,
+                        "unit": c["unit"],
+                        "occupant_name": c["occupant_name"],
+                        "note": c["note"],
+                        "party_size": c["party_size"],
+                    }
+                )
+                restored += 1
+        await self.repository.update_push_event(
+            str(getattr(event, "id", "") or ""), {"unpushed_at": datetime.now(UTC).isoformat()}
+        )
+        return UnpushResponse(push_id=push_id, restored=restored, deleted=deleted)
 
 
 def _row_payload(row: PushRow) -> PushRowPayload:
