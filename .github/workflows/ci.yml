@@ -247,9 +247,9 @@ jobs:
 
   # Lodging-name guard (spec 3.8) -- the tripwire that fails the build if a
   # real camp unit name lands in source. Unconditional like secret-scan
-  # above, not gated behind detect-changes: it scans four fixed roots
-  # (pocketbase/ api/ bunking/ frontend/src/) rather than the PR diff, so a
-  # leak added under any of them must fail regardless of which
+  # above, not gated behind detect-changes: it scans six fixed roots
+  # (pocketbase/ api/ bunking/ frontend/src/ scripts/ tests/) rather than the
+  # PR diff, so a leak added under any of them must fail regardless of which
   # detect-changes filter the touched files happen to match. It also needs a
   # real git checkout -- `git rev-parse --show-toplevel` inside the script
   # exits 128 without one -- so actions/checkout below is load-bearing, not

@@ -1542,8 +1542,8 @@ class TestCountsFollowTheDrawLevel:
     async def test_a_combined_container_with_no_own_figure_still_totals_its_measured_rooms(self) -> None:
         """The inverse of the case where a container's own figure already
         includes measured common-space furniture: none was ever recorded for
-        this house, and that is a real zero, not a
-        missing measurement (kindred#2041) -- 14 of 15 production containers
+        this house, and that is a real zero, not a missing measurement
+        (kindred#2041) -- 14 of 15 production containers
         are in exactly this state. The card drawn still totals what its
         rooms report: 0 + 2 + 2 = 4, and the total is KNOWN.
         """
@@ -2105,7 +2105,7 @@ class TestPartyEffectiveBathroom:
     @pytest.mark.asyncio
     async def test_whole_container_let_covering_its_bathroom_group_is_private(self) -> None:
         """A party placed on the CONTAINER id alone -- staff booked the whole
-        the whole container rather than naming its two bedrooms. The container's
+        container rather than naming its two bedrooms. The container's
         own row is bathroom="none" (a building is not a room), so without
         inheritance from its leaves this reads as no bathroom at all -- the
         "container whole-let" gap #2022's re-measurement widened the issue
@@ -2763,8 +2763,8 @@ class TestScenarioResolution:
         assert by_code["ridge-a"].family_available_override is False
         assert by_code["ridge-a"].reason == "Burst pipe"
         # No row for the second unit: absence means "ask the unit's role", which
-        # is not
-        # the same answer as a stored False and must not be flattened into one.
+        # is not the same answer as a stored False and must not be flattened
+        # into one.
         assert by_code["ridge-b"].family_available_override is None
 
 
@@ -5979,7 +5979,7 @@ class TestFamilyAvailabilityIsResolvedOverTheTree:
     """
 
     def test_a_fully_covered_combined_house_is_not_a_family_space(self) -> None:
-        """The house built above: a combined container whose four rooms each carry a
+        """The house built below: a combined container whose four rooms each carry a
         write-in and which carries none itself.
 
         The card has always drawn the write-in badge and all four occupants --
