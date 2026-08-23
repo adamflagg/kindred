@@ -4211,6 +4211,58 @@ func TestGateVerdictIsOrderIndependent(t *testing.T) {
 	}
 }
 
+// TestGateVerdictWarnsOnUnrecognizedAnswerWithoutLoggingIt pins the ONLY
+// remaining signal that a CampMinder gate field's vocabulary has drifted.
+//
+// Before kindred#2542, medicalAnswers.parts had a fall-through valve that let
+// an answer outside the Yes/No vocabulary survive into the narrative column,
+// so a widened CampMinder field was at least visible in the sheet even though
+// nothing flagged it. That valve was retired by owner ruling once the gate got
+// its own column (gateVerdict's doc comment), and gateVerdict's slog.Warn is
+// what replaced it -- if this warning stopped firing, or stopped being
+// distinguishable from routine noise, nobody would ever find out the
+// vocabulary moved.
+//
+// The warning must carry enough to act on (the field, and a count) and must
+// NEVER carry the answer text itself: these are answers on a medical form, the
+// same contract joinMedicalColumn's cap-warning states and
+// TestNarrativeIsNeverLogged enforces at the source-scan level for every other
+// slog call in this package.
+//
+// Not t.Parallel(): captureSweepLogs (orphan_sweep_test.go) swaps the
+// process-global slog default; this test is exempted in
+// pocketbase/main_test_parallelism_test.go alongside the sync package's other
+// captureSweepLogs callers.
+func TestGateVerdictWarnsOnUnrecognizedAnswerWithoutLoggingIt(t *testing.T) {
+	logs := captureSweepLogs(t)
+
+	const secretAnswer = "Only in an emergency, ask my doctor first"
+	verdict := gateVerdict("Family Medical-Allergies", []string{secretAnswer, "No"})
+
+	// The unrecognized answer must not overrule the denial that sits beside it
+	// -- TestGateVerdictOrsAcrossAnswerers already pins this at the verdict
+	// level; repeating the input here (rather than a bare unrecognized-only
+	// case) proves the warning fires on the SAME call that produces a real,
+	// stored verdict, not only on a degenerate all-garbage input.
+	if verdict != gateVerdictNo {
+		t.Fatalf("verdict = %q, want %q", verdict, gateVerdictNo)
+	}
+
+	got := logs.String()
+	if got == "" {
+		t.Fatal("gateVerdict saw an answer outside the Yes/No vocabulary and logged nothing")
+	}
+	if !strings.Contains(got, "Family Medical-Allergies") {
+		t.Errorf("warning does not name the field:\n%s", got)
+	}
+	if !strings.Contains(got, "count=1") {
+		t.Errorf("warning does not carry a count of 1 unrecognized answer:\n%s", got)
+	}
+	if strings.Contains(got, secretAnswer) {
+		t.Errorf("warning leaked the answer text -- this is a medical form:\n%s", got)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // kindred#2542: the gate answer moves to its own column and the narrative
 // columns hold the family's own words alone.
