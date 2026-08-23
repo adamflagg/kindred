@@ -24,7 +24,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { LodgingUnitRow, WriteInCoverRow } from '../../types/lodging'
-import { hasWriteIn, writeInEntries } from './writeIn'
+import { hasWriteIn, writeInDemand, writeInEntries } from './writeIn'
 
 function unit(overrides: Partial<LodgingUnitRow> = {}): LodgingUnitRow {
   return {
@@ -78,7 +78,7 @@ describe('writeInEntries', () => {
           is_family_available: false,
         })
       ).map((entry) => entry.occupant)
-    ).toEqual([{ name: 'Emma Johnson', note: 'Kitchen lead, Fri–Sun' }])
+    ).toEqual([{ name: 'Emma Johnson', note: 'Kitchen lead, Fri–Sun', partySize: null }])
   })
 
   it('is empty for a room the ROLE closed, which names nobody', () => {
@@ -120,7 +120,9 @@ describe('writeInEntries', () => {
     // so reporting "no write-in" here would hand it back to the open-tint and
     // send staff at the one room they may not fill.
     const entries = writeInEntries(unit({ write_ins: [cover()], is_family_available: false }))
-    expect(entries.map((entry) => entry.occupant)).toEqual([{ name: '', note: '' }])
+    expect(entries.map((entry) => entry.occupant)).toEqual([
+      { name: '', note: '', partySize: null },
+    ])
   })
 
   it('treats a whitespace-only occupant as unnamed rather than as a name', () => {
@@ -128,7 +130,7 @@ describe('writeInEntries', () => {
       writeInEntries(
         unit({ write_ins: [cover({ occupant_name: '   ' })], is_family_available: false })
       ).map((entry) => entry.occupant)
-    ).toEqual([{ name: '', note: '' }])
+    ).toEqual([{ name: '', note: '', partySize: null }])
   })
 
   it('does not fall back to the note when the occupant is unnamed', () => {
@@ -143,7 +145,7 @@ describe('writeInEntries', () => {
           is_family_available: false,
         })
       ).map((entry) => entry.occupant)
-    ).toEqual([{ name: '', note: 'Back Monday' }])
+    ).toEqual([{ name: '', note: 'Back Monday', partySize: null }])
   })
 
   it('treats a payload with no write_ins key at all as uncovered', () => {
@@ -179,7 +181,7 @@ describe('a write-in resolved through the unit tree', () => {
 
   it('names the occupant of a room its BUILDING was written into', () => {
     expect(writeInEntries(inherited).map((entry) => entry.occupant)).toEqual([
-      { name: 'Liam Garcia', note: 'Back Monday' },
+      { name: 'Liam Garcia', note: 'Back Monday', partySize: null },
     ])
   })
 
@@ -287,5 +289,135 @@ describe('a merged container over several written-into rooms', () => {
 
   it('reports the space as covered', () => {
     expect(hasWriteIn(merged)).toBe(true)
+  })
+})
+
+describe('writeInDemand', () => {
+  // THE MIRROR of `write_in_demand` in api/services/lodging_rules.py. The same
+  // cases in the same order, deliberately: this pair is what stops the card
+  // and the stats bar answering "is there room here" two different ways, and a
+  // case added on one side and not the other is how that starts.
+  //
+  // It takes a CAPACITY and COVERS, not a unit and the registry, because
+  // `MapUnitPopover` has no registry — its `units` prop is one cluster's
+  // members and its own doc says so. Each cover publishes its `unit_sleeps`.
+  const demandCover = (over: Partial<WriteInCoverRow>): WriteInCoverRow => ({
+    unit_id: 'u',
+    unit_code: 'c',
+    unit_name: 'n',
+    occupant_name: '',
+    note: '',
+    party_size: null,
+    relation: 'own',
+    unit_sleeps: null,
+    ...over,
+  })
+
+  it('is nothing on a card with no write-ins', () => {
+    expect(writeInDemand(15, [])).toEqual({ consumed: 0, sized: 0, known: true })
+  })
+
+  it('takes a recorded size', () => {
+    expect(
+      writeInDemand(15, [demandCover({ relation: 'own', party_size: 2, unit_sleeps: 15 })])
+    ).toEqual({ consumed: 2, sized: 2, known: true })
+  })
+
+  it('takes the whole room when nobody recorded a size, and reports none sized', () => {
+    // `sized: 0` is the em dash's meaning. A wholesale fallback must never
+    // reach the numerator — it would print a headcount nobody wrote down.
+    expect(
+      writeInDemand(15, [demandCover({ relation: 'own', party_size: null, unit_sleeps: 15 })])
+    ).toEqual({ consumed: 15, sized: 0, known: false })
+  })
+
+  it('takes each written-into room’s own beds on a combined house', () => {
+    // gt-clouds-rest: own 0, rooms 3 + 1 + 2 + 2.
+    const rooms = [3, 1, 2, 2].map((n) =>
+      demandCover({ relation: 'descendant', party_size: null, unit_sleeps: n })
+    )
+    expect(writeInDemand(8, rooms)).toEqual({ consumed: 8, sized: 0, known: false })
+  })
+
+  it('sums a mixture both ways and withholds the claim', () => {
+    const rooms = [
+      demandCover({ relation: 'descendant', party_size: 2, unit_sleeps: 3 }),
+      demandCover({ relation: 'descendant', party_size: null, unit_sleeps: 1 }),
+      demandCover({ relation: 'descendant', party_size: null, unit_sleeps: 2 }),
+      demandCover({ relation: 'descendant', party_size: null, unit_sleeps: 2 }),
+    ]
+    expect(writeInDemand(8, rooms)).toEqual({ consumed: 7, sized: 2, known: false })
+  })
+
+  it('lets an ancestor take the whole card without printing its size', () => {
+    // A house written into whole, then split. Printing 2 on both rooms would
+    // spend one two-person party twice on one screen.
+    expect(
+      writeInDemand(4, [demandCover({ relation: 'ancestor', party_size: 2, unit_sleeps: 7 })])
+    ).toEqual({ consumed: 4, sized: 0, known: true })
+  })
+
+  it('answers the same regardless of where the ancestor cover sits in the list', () => {
+    // Mirrors a reviewer-verified Python fix-round finding: the ancestor
+    // branch must be a PRE-PASS over the covers, not a value the per-cover
+    // loop happens to have accumulated by the time it reaches the ancestor —
+    // otherwise the same set of covers in a different order answers
+    // differently (`known` in particular, since an unsized descendant seen
+    // before the ancestor sets `known = false` before the loop would ever
+    // reach the ancestor's early return).
+    const unsizedDescendant = demandCover({
+      relation: 'descendant',
+      party_size: null,
+      unit_sleeps: 3,
+    })
+    const ancestor = demandCover({ relation: 'ancestor', party_size: 2, unit_sleeps: 7 })
+    const forward = writeInDemand(4, [unsizedDescendant, ancestor])
+    const backward = writeInDemand(4, [ancestor, unsizedDescendant])
+    expect(forward).toEqual({ consumed: 4, sized: 0, known: true })
+    expect(backward).toEqual(forward)
+  })
+
+  it('caps consumption at the card but never caps the recorded size', () => {
+    // A hand-typed count above the card's own beds is over capacity, which is
+    // a real state the card reddens for — `sized` has to carry the true
+    // recorded figure or that overage would be invisible.
+    const demand = writeInDemand(4, [
+      demandCover({ relation: 'own', party_size: 9, unit_sleeps: 4 }),
+    ])
+    expect(demand.consumed).toBe(4)
+    expect(demand.sized).toBe(9)
+  })
+
+  it('withholds everything when an unsized cover names an unmeasured unit', () => {
+    expect(
+      writeInDemand(8, [
+        demandCover({ relation: 'descendant', party_size: null, unit_sleeps: null }),
+      ])
+    ).toEqual({ consumed: 8, sized: 0, known: false })
+  })
+
+  it('is never known on a card nobody measured, but a recorded size still survives', () => {
+    // `sized` is computed before the capacity guard and never depends on
+    // capacity — a cabin nobody has measured, holding a two-person write-in,
+    // still prints 2/-, not -/-.
+    expect(writeInDemand(null, [demandCover({ relation: 'own', party_size: 2 })])).toEqual({
+      consumed: 0,
+      sized: 2,
+      known: false,
+    })
+  })
+
+  it('is never known on a card nobody measured, even with an ancestor cover', () => {
+    // Mirror of Python's `test_an_unmeasured_card_is_not_known_even_with_an_ancestor_cover`.
+    // An ancestor cover only tells you the whole card is taken, not how big
+    // the card is — so a capacity nobody measured stays unknown even here.
+    // This pins the GUARD ORDERING: the `capacity === null` guard has to run
+    // before the ancestor pre-pass, or this answers `known: true` instead —
+    // an ancestor cover asserting occupancy is not the same fact as a
+    // measured card, and only the capacity guard can tell them apart.
+    expect(
+      writeInDemand(null, [demandCover({ relation: 'ancestor', party_size: 2, unit_sleeps: 7 })])
+        .known
+    ).toBe(false)
   })
 })

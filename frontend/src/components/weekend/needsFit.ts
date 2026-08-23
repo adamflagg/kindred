@@ -99,10 +99,22 @@ export type DragFit =
  * What the card already knows about its own beds, passed in rather than
  * re-derived.
  *
- * `known` is `effectiveSleeps(...) !== null`: a cabin nobody has measured.
- * `free` is capacity minus placed occupants and MAY BE NEGATIVE on a card that
- * is already over. The caller withholds this when `spanWidth > 0`, where the
- * occupant count is an upper bound rather than a fact — see `slotOccupancy`.
+ * `known` is NOT simply `effectiveSleeps(...) !== null` any more
+ * (kindred#2503). An unmeasured cabin is still one way to get `known:
+ * false`, but a fully-measured cabin covered by a write-in withholds too,
+ * unless EVERY cover on it is a fact — a recorded size, or an ancestor's
+ * whole-card claim (the house was let whole, so a room inside it has no room
+ * of its own to offer). A wholesale guess and a partly-sized card (some
+ * covers recorded, one not) both withhold, the same as before this task.
+ * See `LodgingUnitCard`'s `writeInKnown` for the caller that builds this
+ * value, and `writeInDemand` (`writeIn.ts`) for the underlying rule.
+ *
+ * `free` is capacity minus placed occupants minus write-in consumption
+ * (`capacity − occupants − writeInConsumed`, plus the dragged party's own
+ * beds added back when it already occupies this card) and MAY BE NEGATIVE on
+ * a card that is already over. The caller withholds this when `spanWidth > 0`,
+ * where the occupant count is an upper bound rather than a fact — see
+ * `slotOccupancy`.
  */
 export interface DragCapacity {
   readonly known: boolean
@@ -133,7 +145,8 @@ export const NEUTRAL: DragFit = { state: 'neutral', severity: 'fits' }
  * `known: false` yields FALSE, not true. A count that is not a fact cannot
  * support the claim "you will not fit here" any more than it can support a
  * match — the caller withholds `known` for an unmeasured cabin, a straddling
- * party, and a wholesale write-in, and all three mean the same thing here:
+ * party, and a write-in card where any cover is unsized — wholesale or only
+ * partly sized (kindred#2503) — and all three mean the same thing here:
  * nothing to say.
  *
  * The boundary is `<`, so a party that exactly fills a cabin FITS.

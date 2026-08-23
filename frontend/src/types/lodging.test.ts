@@ -254,6 +254,10 @@ const _exhaustiveAvailabilityWriteRequest: Required<AvailabilityWriteRequest> = 
   // — the same split `reason` makes, for the same reason.
   occupant_name: 'Emma Johnson',
   reason: 'Kitchen lead, Fri–Sun',
+  // kindred#2503. OPTIONAL, here and at the control alike — most write-ins
+  // are non-rostered staff and `null` (the common case) takes the cabin
+  // wholesale. The occupancy half only; a release carries no count.
+  party_size: 2,
 }
 void _exhaustiveAvailabilityWriteRequest
 
@@ -334,6 +338,10 @@ const _exhaustiveLodgingUnit: Required<LodgingUnitRow> = {
   family_available_override: null,
   occupant_name: '',
   reason: '',
+  // The unit's OWN write-in row's count, read the way `occupant_name` and
+  // `reason` are. `null` is *occupies wholesale*, never "zero people" -- the
+  // column's `min: 1` forbids zero.
+  party_size: null,
   is_family_available: true,
   // The write-in COVERING this space, resolved through the unit tree by the
   // server — this unit's own row, else its nearest ancestor's, else its

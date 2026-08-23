@@ -198,6 +198,16 @@ export interface AvailabilityWrite {
   occupantName: string
   /** Display only — the rule never branches on it. `''` when clearing. */
   reason: string
+  /**
+   * How many people the write-in is for (kindred#2503). `null` is a REAL
+   * value — nobody recorded a count — never a missing one, and it is the
+   * PERMANENT common case: most write-ins are non-rostered staff and staff
+   * will type nothing. Sent explicitly for the same reason `familyAvailable`
+   * is: a key dropped on the way out is indistinguishable from a key nobody
+   * set, and the endpoint's `party_size` upsert would then wipe a recorded
+   * count on any write that omitted it.
+   */
+  partySize: number | null
 }
 
 /**
@@ -218,7 +228,16 @@ export interface AvailabilityWrite {
  */
 export async function setUnitAvailability(
   fetchWithAuth: FetchWithAuth,
-  { year, sessionCmId, scenario, unitId, familyAvailable, occupantName, reason }: AvailabilityWrite
+  {
+    year,
+    sessionCmId,
+    scenario,
+    unitId,
+    familyAvailable,
+    occupantName,
+    reason,
+    partySize,
+  }: AvailabilityWrite
 ): Promise<LodgingWriteResult> {
   const response = await fetchWithAuth(`${API_BASE}/availability`, {
     method: 'PUT',
@@ -231,6 +250,7 @@ export async function setUnitAvailability(
       family_available: familyAvailable,
       occupant_name: occupantName,
       reason,
+      party_size: partySize,
     }),
   })
   if (!response.ok) throw await toError(response, 'Failed to update availability')

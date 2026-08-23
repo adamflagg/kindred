@@ -670,6 +670,44 @@ class LodgingWriteService:
                         # `_build_units` remain the only two places the two
                         # names meet.
                         "note": str(getattr(row, "note", "") or ""),
+                        # kindred#2540. A dropped `party_size` is not a
+                        # smaller row -- it is a DIFFERENT one: `null` means
+                        # the write-in takes its room WHOLESALE, so an
+                        # unsized copy of a sized write-in silently widens "2
+                        # of 5 beds" into "the whole cabin" and a scenario
+                        # reports a room closed the live board shows as
+                        # partly open.
+                        #
+                        # ⚠️ THE `None` DEFAULT NEVER ACTUALLY FIRES on a real
+                        # row, and it is worth being honest about that rather
+                        # than reading it as the reason this is correct. PB
+                        # declares `party_size` `NUMERIC DEFAULT 0 NOT NULL`
+                        # and `fetch_write_ins`/`fetch_draft_write_ins` apply
+                        # no field filter, so `row.party_size` is ALWAYS
+                        # present and reads `0`, never absent, for an unsized
+                        # write-in -- `getattr`'s default is dead code here,
+                        # not the mechanism. What actually makes this correct
+                        # is the round trip: PocketBase's own `NumberField`
+                        # validator short-circuits on a `0` value BEFORE it
+                        # ever checks `Min` (`core/field_number.go`,
+                        # `if val == 0 { ...; return nil }`), so `min: 1`
+                        # never fires here -- a DIFFERENT, stricter gate from
+                        # `AvailabilityWriteRequest`'s own `ge=1` in
+                        # `api/schemas/lodging.py`, which rejects a literal 0
+                        # before it ever reaches PocketBase and is what
+                        # `_i_or_none`'s docstring means by "unwritable
+                        # through the API" -- that is the FastAPI path
+                        # (`set_availability`), not this one. `_i_or_none`
+                        # (`lodging_roster_service.py`) then maps `0` back to
+                        # `None` on read, same as it always did.
+                        #
+                        # NOT rewritten to call `_i_or_none` here, deliberately
+                        # -- that helper answers "is this column genuinely
+                        # set", the READ-side question; this line's job is a
+                        # verbatim table-to-table COPY of whatever the source
+                        # row already carries, and `0` copied to `0` already
+                        # round-trips to the right answer without asking it.
+                        "party_size": getattr(row, "party_size", None),
                     }
                 )
             except ClientResponseError as exc:
@@ -817,20 +855,48 @@ class LodgingWriteService:
         and that is the cost of the asymmetry rather than an oversight. Write
         somebody into a cabin on the live board, then release it from inside a
         scenario, and both rows exist: the live occupancy the scenario's drop
-        could not see, and the weekend-level role row it just wrote. Nothing
-        downstream is confused by it -- `is_family_available` folds both in and
-        occupancy wins, so the cabin reads closed on the live board -- and a
-        clear on either grain still removes the role row along with its own
-        occupancy. Narrowing the role drop instead would leave a release
-        standing under a write-in on the SAME board, which is worse.
+        could not see, and the weekend-level role row it just wrote.
+        `is_family_available` still folds both in and the live board still
+        reads the write-in, and a clear on either grain removes the role row
+        along with its own occupancy. Narrowing the role drop instead would
+        leave a release standing under a write-in on the SAME board, which is
+        worse.
+
+        WHAT THE LIVE BOARD THEN SHOWS DEPENDS ON THE COUNT, and this paragraph
+        claimed unconditionally that the cabin "reads closed" until
+        kindred#2503. Occupancy is no longer absolute: a write-in that leaves
+        beds free leaves the cabin OPEN to a family, by design (kindred#2432
+        made a written-into cabin take a family like any other). An unsized
+        write-in takes the space wholesale and still closes it. So the
+        surviving row is always VISIBLE on the live board -- it badges, it
+        names its occupant, and its beds leave the count -- which is the
+        property this asymmetry actually needs; "closed" was only ever the
+        wholesale case.
 
         ORDER: the new fact is written BEFORE the old one is dropped. There is
         no transaction across two PocketBase tables, and a failure between the
         steps has to leave the board saying something true. Write-then-drop
-        leaves both rows present for that window, and `_build_units` resolves
-        occupancy over role -- so a half-applied write-in still reads "somebody
-        is in it", the safe half. Drop-then-write would leave a window with
-        NEITHER fact, opening a cabin nobody meant to open.
+        leaves BOTH rows present for that window; drop-then-write would leave a
+        window with NEITHER fact, opening a cabin nobody meant to open. Both
+        rows present is the recoverable state, and that is what fixes the
+        order.
+
+        THE MECHANISM MOVED IN kindred#2503, AND THIS PARAGRAPH NAMED THE OLD
+        ONE. It used to read "`_build_units` resolves occupancy over role -- so
+        a half-applied write-in still reads 'somebody is in it', the safe
+        half." Two things about that are now wrong. `_build_units` no longer
+        resolves occupancy at all: it writes the ROLE-only answer and
+        `_resolve_family_availability` overwrites it from the resolved covers,
+        on both orchestrators. And "the safe half" was conditional even then --
+        a half-applied write-in carrying a COUNT smaller than the cabin leaves
+        beds free and the cabin stays open to a family, which is the deliberate
+        kindred#2432 behaviour rather than a regression.
+
+        The ordering argument survives all of that intact, because it never
+        depended on which answer the derivation returns. What it needs is that
+        the window contains the write-in ROW rather than nothing, so the fact
+        is still on the board and still recoverable by a retry. Do not
+        re-derive this order from a claim about what the cabin renders as.
 
         `family_available: null` DELETES rather than writing a value meaning
         "normal". There is no such value: the absence of a row is how "whatever
@@ -930,10 +996,15 @@ class LodgingWriteService:
             record = await self._upsert_row(
                 what="write-in",
                 existing=existing_write_in,
-                # `scenario` rides on the OCCUPANCY payload only. The draft
-                # collection's relation is required; the live one has no such
-                # column, and the role payload above must never carry one.
-                data={**data, "scenario": request.scenario} if in_scenario else data,
+                data={
+                    **data,
+                    "party_size": request.party_size,
+                    # `scenario` rides on the OCCUPANCY payload only. The draft
+                    # collection's relation is required; the live one has no
+                    # such column, and the role payload above must never carry
+                    # one.
+                    **({"scenario": request.scenario} if in_scenario else {}),
+                },
                 find=find_occupancy,
                 create=create_occupancy,
                 update=update_occupancy,

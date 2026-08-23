@@ -101,6 +101,14 @@ export interface AvailabilityIntent {
   occupantName: string
   /** OPTIONAL on a write-in, required on a release; `''` when clearing. */
   reason: string
+  /**
+   * How many people the write-in is for (kindred#2503). `null` is a REAL
+   * value — nobody recorded a count — not a missing one; most write-ins are
+   * non-rostered staff and staff will type nothing. Mirrors
+   * `UnitAvailabilityWrite.partySize` in `writeIn.ts`, which is where the
+   * full producer-by-producer accounting lives.
+   */
+  partySize: number | null
 }
 
 export interface UseUnitAvailabilityReturn {
@@ -132,6 +140,7 @@ export function useUnitAvailability({
         familyAvailable: intent.familyAvailable,
         occupantName: intent.occupantName,
         reason: intent.reason,
+        partySize: intent.partySize,
       })
     },
 

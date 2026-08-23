@@ -176,7 +176,7 @@ class WeekendSessionListResponse(BaseModel):
 
 
 class WriteInCover(BaseModel):
-    """The write-in that closes a space, wherever in the tree it was recorded.
+    """The write-in that covers a space, wherever in the tree it was recorded.
 
     A write-in names ONE unit, but it is a fact about a physical space, and a
     building's space contains its rooms'. The board draws whichever level the
@@ -205,6 +205,46 @@ class WriteInCover(BaseModel):
     unit_name: str = ""
     occupant_name: str = ""
     note: str = ""
+    # How many people the row is for, or None when nobody recorded a count.
+    #
+    # `None` is *occupies wholesale* -- never "zero people" -- the column's
+    # `min: 1` forbids zero, and the em dash the card has always drawn is
+    # exactly this state. `write_in_demand` (api/services/lodging_rules.py) is
+    # the one place that reading turns into arithmetic.
+    party_size: int | None = None
+    # WHICH DIRECTION this cover reached the unit from, resolved by
+    # `write_in_covers` at the moment it walks the tree.
+    #
+    # PUBLISHED rather than left to the client, and that is the point: an
+    # ancestor and a descendant take a card's beds differently (an ancestor
+    # takes the whole card; a descendant takes its own room's), and
+    # `writeInEntries` can only tell own from not-own by comparing codes. A
+    # second walk on the client is a second answer to "who is in this space".
+    relation: Literal["own", "ancestor", "descendant"] = "own"
+    # The EFFECTIVE capacity of the unit the row NAMES -- a whole-house total
+    # on a container, `sleeps` on a leaf, None when nobody measured it.
+    #
+    # 0, not the raw figure, when the row's own unit is RETIRED (kindred#2540
+    # fix-round FINDING 5). `_effective_sleeps` filters `is_active` only
+    # inside a container's sum over its leaves -- a leaf looked up directly
+    # still returns its raw `sleeps` -- so an unclamped retired source would
+    # consume beds its own container's capacity never counted. The cover
+    # itself still names the room; only the beds it claims are zeroed.
+    #
+    # PUBLISHED because a descendant cover consumes ITS OWN room's beds, and
+    # the one surface that has to know cannot look it up: `MapUnitPopover`
+    # never receives the full registry -- its own `units` prop is documented as
+    # "only a cluster's members… cannot answer the question alone". Threading
+    # the registry in was rejected there deliberately. The server already
+    # computes this while resolving availability, so publishing it removes a
+    # client-side registry walk rather than adding a field for its own sake.
+    #
+    # THE SERVER READS THIS FIELD BACK, not a second `capacity_by_code`
+    # lookup (`_resolve_family_availability`'s per-load capacity) -- the two
+    # used to be independent derivations that were merely equal; the retired-
+    # unit clamp above is what would make them diverge if the server kept
+    # re-deriving its own answer instead of reading the one it just published.
+    unit_sleeps: int | None = None
 
 
 class LodgingUnitSummary(BaseModel):
@@ -383,16 +423,27 @@ class LodgingUnitSummary(BaseModel):
     # `occupant_name` back -- the note is PROSPECTIVE, for write-ins recorded
     # from 1500000148 onward.
     reason: str = ""
+    # The unit's OWN write-in row's count, read the way `occupant_name` and
+    # `reason` are and for the same reason: `write_in_covers` reads it back off
+    # the summary rather than re-fetching the row.
+    party_size: int | None = None
     # CAN A FAMILY GO IN THIS SPACE -- the DERIVED answer, and the one every
-    # count on the stats bar goes through. Folds the two facts above together:
-    # the ROLE from `family_available_override`, and OCCUPANCY from this unit's
-    # own write-in row. Occupancy is absolute and closes the unit over a
-    # release, because a cabin somebody is sleeping in cannot take a family.
+    # count on the stats bar goes through. Folds two facts together: the ROLE
+    # from `family_available_override`, and how many beds are LEFT once every
+    # write-in in `write_ins` below is paid for.
+    #
+    # ⚠️ OCCUPANCY IS NOT ABSOLUTE, AND THIS COMMENT USED TO SAY IT WAS.
+    # kindred#2432 made a written-into cabin take a family like any other and
+    # took the drop refusal out of `dragPlacement.ts`; kindred#2503 stopped
+    # this field disagreeing with that board. A fifteen-bed cabin with two
+    # people written in is a space with thirteen beds. What closes a unit is
+    # having none left -- the same answer for a full cabin and for a write-in
+    # that takes a space wholesale, a different one for a shared space.
     #
     # Its rule is `is_family_available` in api/services/lodging_rules.py, and
     # that is the only place the two are combined.
     is_family_available: bool = False
-    # EVERY write-in that closes this space, resolved through the unit tree --
+    # EVERY write-in that covers this space, resolved through the unit tree --
     # this unit's own row, else the nearest ancestor's, else the nearest
     # written-into descendant on each branch beneath it. Empty means no
     # write-in covers it.
@@ -416,11 +467,13 @@ class LodgingUnitSummary(BaseModel):
     # names no occupant and closes nothing, so inheriting it would silently
     # open every room beneath a released building.
     #
-    # ⚠️ `is_family_available` deliberately does NOT read this field: it folds
-    # in the unit's OWN occupancy row only, so an inherited write-in badges and
-    # blocks placement without moving the bed counts. That is the behaviour the
-    # counts have always had, and changing it is a counts decision rather than
-    # a side effect of the split.
+    # ⚠️ `is_family_available` READS THIS FIELD, and it did not until
+    # kindred#2503 -- it folded in the unit's OWN occupancy row alone, so a
+    # combined container whose write-ins live on its rooms drew the badge and
+    # listed all four occupants while the bar above it counted the whole house
+    # open with every bed free. `_resolve_family_availability` recomputes the
+    # flag from these RESOLVED covers, after the cover walk, on both
+    # orchestrators.
     write_ins: list[WriteInCover] = Field(default_factory=list)
     map_x: float | None = None
     map_y: float | None = None
@@ -807,24 +860,30 @@ class RosterCounts(BaseModel):
     # draw their own card, are not counted a second time.
     units_total: int = 0
     units_family_available: int = 0
-    # Planning inventory held back from families this session -- a burst pipe,
-    # a caretaker in residence. Does NOT include permanent staff housing,
-    # which was never bookable and so cannot be "held back"; that is
-    # units_staff_housing.
-    units_reserved: int = 0
     # Permanent full-time staff housing: 21 of the registry's 102 leaf units,
     # occupied by staff who are not enrolled per session and never appear on a
     # roster. Outside the planning inventory entirely, so NOT a subset of
-    # units_total -- that distinction is what units_reserved used to get
-    # wrong, reporting 21 cabins as "held back" that were never inventory.
+    # units_total -- a held-back FAMILY cabin (a burst pipe, a caretaker in
+    # residence) is still counted there and against units_family_available,
+    # because it was never staff housing and remains inventory. The two are
+    # different facts with different remedies, which is why staff housing
+    # gets its own count rather than folding into "not available".
     #
     # Counted rather than dropped silently: units_total shrinking by 21 with
     # nothing on the surface explaining it reads as data loss to a staff
     # member who knows how many cabins the property has.
     units_staff_housing: int = 0
-    # Sum of `sleeps` over family-available bookable units with a KNOWN
-    # sleeps value. Units with unknown capacity are excluded and reported
-    # separately, so the number never overstates what is placeable.
+    # Sum of FREE beds (kindred#2503 Task 5) over family-available bookable
+    # units with a known capacity -- not whole cabins. A written-into cabin
+    # with beds left contributes only its remainder; an uncovered cabin
+    # contributes its whole `sleeps`, which is still the common case. Units
+    # with unknown capacity are excluded and reported separately, so the
+    # number never overstates what is placeable.
+    #
+    # Placed families are still NOT subtracted: this bar's numerator
+    # (`bedsNeeded`) already counts them, so subtracting here too would count
+    # a placed family on both sides. A write-in is on nobody's roster and
+    # appears in neither, so its beds must leave the denominator instead.
     beds_family_available: int = 0
     units_capacity_unknown: int = 0
     units_unconfirmed: int = 0
@@ -1212,6 +1271,24 @@ class AvailabilityWriteRequest(BaseModel):
     # required half now, and the note is the "say why, so next week's staff
     # can act on it" affordance riding beside it.
     reason: str = Field("", max_length=500)
+    # HOW MANY PEOPLE the write-in is for (kindred#2503). OPTIONAL, here and at
+    # the control alike -- unlike `occupant_name` above, which is permissive
+    # here only because an ingest has no author to ask.
+    #
+    # Owner ruling 2026-08-21: most write-ins are non-rostered staff and staff
+    # will type nothing, so `None` is the COMMON answer and means the cabin is
+    # taken wholesale -- the em dash the card has always drawn, and the right
+    # outcome for a staff cabin nobody is counting beds against. The rarer
+    # paper registrations are what a number is for. Do not tighten this to
+    # required, and do not treat the None branch downstream as legacy.
+    #
+    # `ge=1` mirrors the column's `min: 1`. Zero is not "a write-in for
+    # nobody"; absence of a count is spelled `None`.
+    #
+    # THE OCCUPANCY HALF ONLY. A release (`family_available: true`) is the
+    # staff<->family role for the weekend, stored in `lodging_availability`,
+    # and names no occupant -- `set_availability` must not put a count on it.
+    party_size: int | None = Field(None, ge=1)
 
 
 class SlotMergeRequest(BaseModel):

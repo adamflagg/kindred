@@ -1236,6 +1236,7 @@ export type LodgingWriteInsRecord = {
   id: string
   note?: string
   occupant_name?: string
+  party_size?: number
   session: RecordIdString
   session_cm_id: number
   unit: RecordIdString
@@ -1248,6 +1249,7 @@ export type LodgingWriteInsDraftRecord = {
   id: string
   note?: string
   occupant_name?: string
+  party_size?: number
   scenario: RecordIdString
   session: RecordIdString
   session_cm_id: number

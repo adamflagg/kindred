@@ -87,6 +87,38 @@ export interface UnitAvailabilityWrite {
   occupantName: string
   /** The write-in's optional note. `''` on a clear. */
   reason: string
+  /**
+   * How many people the write-in is for (kindred#2503). `null` is a REAL
+   * value — "nobody recorded a count" — never a missing one, matching
+   * `WriteInOccupant.partySize` above: most write-ins are non-rostered staff
+   * and staff will type nothing, so `null` is the common case and stays that
+   * way, not a legacy branch on its way out.
+   *
+   * FOUR PRODUCERS, not three (kindred#2540 fix-round CHEAP 6 — this
+   * paragraph used to say three and describe a form that, by the time this
+   * PR landed, already touched the field). The Assign modal's `People`
+   * field sends what staff typed, or `null` when they typed nothing. The
+   * X (`onRemove`) sends `null` unconditionally — harmless, because
+   * `family_available: null` deletes the row before `set_availability` ever
+   * reaches the party-size upsert. The pencil (`onEdit`) sends whatever its
+   * OWN `People` field currently holds: seeded from the row's recorded count
+   * when the pencil opens, and staff's own edit if they changed it —
+   * `WriteInCard.tsx`'s `onEdit` prop doc and `LodgingUnitCard.tsx`'s call
+   * site both spell out the forward. `party_size` rides in every write-in
+   * upsert's payload regardless of what else the form asked about, so a save
+   * that sent `null` here on an unrelated note edit would silently erase a
+   * count a staff member had already recorded — the data-loss guard the
+   * pencil's own form now carries.
+   *
+   * THE FOURTH never touches this TypeScript type at all:
+   * `_seed_write_ins` (`api/services/lodging_write_service.py`) copies one
+   * weekend's write-ins into a scenario server-side, row for row, and
+   * carries `party_size` along unchanged for the identical reason this
+   * guard exists here — a dropped count is not a smaller row, it is a
+   * DIFFERENT one, and an unsized copy of a sized write-in would silently
+   * widen "2 of 5 beds" into "the whole cabin".
+   */
+  partySize: number | null
 }
 
 export interface WriteInOccupant {
@@ -106,6 +138,17 @@ export interface WriteInOccupant {
    * rather than a bug.
    */
   note: string
+  /**
+   * How many people the row is for, or `null` when nobody recorded a count.
+   *
+   * `null` means *occupies wholesale* — never "zero people" — and it is the
+   * PERMANENT common case, not a legacy or transitional one: most write-ins
+   * are non-rostered staff, and staff will type nothing. `writeInDemand`
+   * (below) is the one place that reading turns into arithmetic; this field
+   * exists so `WriteInCard`'s pencil (a later task) can seed an edit form
+   * from a recorded size instead of starting blank every time.
+   */
+  partySize: number | null
 }
 
 /**
@@ -185,6 +228,7 @@ export function writeInEntries(unit: LodgingUnitRow): WriteInEntry[] {
       occupant: {
         name: (cover.occupant_name ?? '').trim(),
         note: (cover.note ?? '').trim(),
+        partySize: cover.party_size ?? null,
       },
       source: {
         unitId: cover.unit_id ?? '',
@@ -232,7 +276,167 @@ export function hasWriteIn(unit: LodgingUnitRow): boolean {
  * returns, and a unit with neither a cover nor a role row is simply open. The
  * `?? []` is for the FIELD being absent from an older payload, not for a unit
  * the walk declined to answer for.
+ *
+ * EXPORTED so the board, the Assign modal and the map peek each hand THEIR
+ * covers to `writeInDemand` rather than re-deriving "which write-ins cover
+ * this unit" on their own — the same drift `hasWriteIn`'s doc warns about.
+ * Round 2 of kindred#2528's scan already caught one site hand-rolling
+ * `writeInEntries(unit).length > 0` where `hasWriteIn(unit)` existed; this is
+ * that lesson applied before a second site can repeat it.
  */
-function coveringWriteIns(unit: LodgingUnitRow): WriteInCoverRow[] {
+export function coveringWriteIns(unit: LodgingUnitRow): WriteInCoverRow[] {
   return unit.write_ins ?? []
+}
+
+/**
+ * What the write-ins covering this card take from it.
+ *
+ * ⚠️ THE MIRROR of `write_in_demand` in `api/services/lodging_rules.py`. Keep
+ * the two in step — the card's numerator, the Assign modal's header and the
+ * map peek read this one, while `is_family_available` and
+ * `beds_family_available` read the other, and the pair sits on one screen.
+ * The same pairing discipline `effectiveSleeps` documents for
+ * `_effective_sleeps`.
+ *
+ * It takes a CAPACITY and COVERS, not a unit and the registry, because
+ * `MapUnitPopover` never receives the full registry — its own `units` prop is
+ * documented as "only a cluster's members… cannot answer the question
+ * alone". Each cover now publishes its own `unit_sleeps` (the effective
+ * capacity of the unit the row NAMES), which is what makes that possible.
+ *
+ * TWO SUMS, and collapsing them is the mistake this shape exists to stop:
+ *
+ * `sized` is what the NUMERATOR prints — recorded counts from the card's own
+ * row and from written-into rooms beneath it, and nothing else. Never a
+ * wholesale fallback, which would put a headcount nobody recorded on the
+ * card; never an ancestor's count, which is a fact about the house rather
+ * than about this room. It is a PRE-PASS over every non-ancestor cover
+ * carrying a recorded `party_size`, computed before either guard below runs
+ * and never depending on `capacity` — a cabin nobody has measured, holding a
+ * two-person write-in, still prints `2/-`, not `-/-`. `sized` is also
+ * deliberately UNCAPPED, unlike `consumed`: a hand-typed count above the
+ * card's own beds is what drives kindred#2503's over-capacity red, so the
+ * numerator has to carry the true recorded figure.
+ *
+ * `consumed` is what the BEDS arithmetic pays — the same recorded counts plus
+ * the wholesale fallback plus an ancestor's whole-card claim.
+ *
+ * `known` asks whether `consumed` is a FACT, and gates kindred#2528's two
+ * drag-time capacity marks. A recorded size is a fact; an ancestor taking the
+ * whole card is a fact (the house is let whole); a wholesale guess about a
+ * room that may be shared is not.
+ *
+ * AN ANCESTOR TAKES THE WHOLE CARD, decided by a PRE-PASS over `covers`
+ * rather than inside the per-cover loop, so the answer cannot depend on where
+ * in the list the ancestor sits. The house was let whole and a room inside it
+ * is not separately lettable — the alternative, each room subtracting the
+ * ancestor's size, spends one party once per room and would report a
+ * seven-bed house holding four people as having five beds free.
+ */
+export function writeInDemand(
+  capacity: number | null,
+  covers: WriteInCoverRow[]
+): { consumed: number; sized: number; known: boolean } {
+  if (covers.length === 0) return { consumed: 0, sized: 0, known: true }
+
+  // A fact about people, not about the card — see the doc above. Computed
+  // before either guard so neither one can discard it.
+  const sized = covers.reduce((total, c) => {
+    const relation = c.relation ?? 'own'
+    if (relation === 'ancestor' || c.party_size == null) return total
+    return total + c.party_size
+  }, 0)
+
+  if (capacity === null) {
+    // Nothing to subtract from. `consumed` is meaningless here and callers
+    // must read `known` before using it. `sized` survives regardless.
+    return { consumed: 0, sized, known: false }
+  }
+
+  if (covers.some((c) => (c.relation ?? 'own') === 'ancestor')) {
+    // Whole-card, and order-independent by construction: a pre-pass, not a
+    // value the loop happens to have accumulated so far. `known=true`
+    // unconditionally, because the guard above has already returned for
+    // every unmeasured card.
+    return { consumed: capacity, sized, known: true }
+  }
+
+  let consumed = 0
+  let known = true
+  for (const c of covers) {
+    if (c.party_size != null) {
+      consumed += c.party_size
+      continue
+    }
+    known = false
+    // The cover's OWN unit's beds, published by the server (`unit_sleeps`)
+    // rather than looked up here — the map popover has no registry to look
+    // it up in.
+    const sourceCapacity = c.unit_sleeps ?? null
+    if (sourceCapacity === null) {
+      // An unbounded wholesale claim: somebody is in a space nobody
+      // measured, so nothing on this card is offerable.
+      return { consumed: capacity, sized, known: false }
+    }
+    consumed += sourceCapacity
+  }
+  return { consumed: Math.min(consumed, capacity), sized, known }
+}
+
+/**
+ * The counts the `People` control offers — blank, then these.
+ *
+ * ONE LIST, TWO SURFACES: the Assign modal's write-in form and `WriteInCard`'s
+ * pencil both import it, for the same reason `writeInDemand` is imported rather
+ * than re-derived. Two lists are two answers to "what can a write-in be for".
+ *
+ * ⚠️ A CONTROL THAT CANNOT EXPRESS A BAD VALUE, replacing one that had to
+ * refuse them (owner ruling 2026-08-23). `<input type="number">` sanitises
+ * anything unparseable to `''` before React sees it, making `abc`
+ * indistinguishable from an untouched field; the only surviving signal,
+ * `validity.badInput`, reaches nothing because React suppresses `onChange`
+ * whenever the value string does not change — which is every keystroke into an
+ * already-blank field, and blank is how the control opens. A `<select>` cannot
+ * emit a value that is not an option, so `0`, fractions, exponent notation and
+ * unparseable text are not refused: they cannot be expressed.
+ *
+ * BOUND 20, NOT THE UNIT'S CAPACITY, and both halves are deliberate.
+ * Measured against the registry: the largest unit sleeps 19, so 20 covers
+ * every real cabin; and 15 of 118 units record no capacity at all, so a
+ * capacity-derived list would collapse to blank-only on exactly the units
+ * where writing a headcount down matters most.
+ *
+ * It also keeps OVER-CAPACITY reachable, which is an acceptance criterion of
+ * kindred#2503 rather than an oversight: six people written into a four-bed
+ * room is what the card's red figure exists to show, and `sized` is left
+ * uncapped through the whole rule so it can. A list stopping at the room's own
+ * capacity would make that state unenterable and quietly retire the red.
+ */
+export const PARTY_SIZE_CHOICES: readonly number[] = Array.from({ length: 20 }, (_, i) => i + 1)
+
+/**
+ * `PARTY_SIZE_CHOICES`, plus a recorded count the list cannot otherwise express.
+ *
+ * ⚠️ A `<select>` WHOSE VALUE MATCHES NO OPTION FALLS BACK TO ITS FIRST ONE,
+ * silently (kindred#2540 final scan, FINDING 4). The first option here is the
+ * blank em dash, which means WHOLESALE -- so a row holding 25 opened its
+ * pencil reading "the whole room" while the card beside it drew a red `25/4`.
+ * Two answers about one row, on one screen.
+ *
+ * It is reachable because the bound is a CONTROL affordance, not a rule:
+ * `AvailabilityWriteRequest.party_size` is `Field(None, ge=1)` with no upper
+ * bound and the PocketBase column is `max: null`, deliberately, so that an
+ * over-capacity count stays writable. Nothing in the product writes above 20
+ * today -- both surfaces cap there and the two seed paths copy verbatim -- so
+ * this needs an API or import caller. That is exactly why it must not be
+ * silent when it happens.
+ *
+ * APPENDED rather than sorted in, so the ordinary 1-20 run is undisturbed and
+ * the odd value sits at the end where its magnitude puts it. Keyed on the
+ * RECORDED count rather than the draft, so it survives the staff member
+ * picking another value and changing their mind back.
+ */
+export function partySizeOptions(recorded: number | null): readonly number[] {
+  if (recorded === null || PARTY_SIZE_CHOICES.includes(recorded)) return PARTY_SIZE_CHOICES
+  return [...PARTY_SIZE_CHOICES, recorded]
 }

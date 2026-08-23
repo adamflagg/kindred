@@ -199,6 +199,10 @@ export type AvailabilityWriteRequest = {
    * Reason
    */
   reason?: string
+  /**
+   * Party Size
+   */
+  party_size?: number | null
 }
 
 /**
@@ -2302,6 +2306,10 @@ export type LodgingUnitSummary = {
    * Reason
    */
   reason?: string
+  /**
+   * Party Size
+   */
+  party_size?: number | null
   /**
    * Is Family Available
    */
@@ -5241,10 +5249,6 @@ export type RosterCounts = {
    */
   units_family_available?: number
   /**
-   * Units Reserved
-   */
-  units_reserved?: number
-  /**
    * Units Staff Housing
    */
   units_staff_housing?: number
@@ -7335,7 +7339,7 @@ export type WeeklyDataPoint = {
 /**
  * WriteInCover
  *
- * The write-in that closes a space, wherever in the tree it was recorded.
+ * The write-in that covers a space, wherever in the tree it was recorded.
  *
  * A write-in names ONE unit, but it is a fact about a physical space, and a
  * building's space contains its rooms'. The board draws whichever level the
@@ -7376,6 +7380,18 @@ export type WriteInCover = {
    * Note
    */
   note?: string
+  /**
+   * Party Size
+   */
+  party_size?: number | null
+  /**
+   * Relation
+   */
+  relation?: 'own' | 'ancestor' | 'descendant'
+  /**
+   * Unit Sleeps
+   */
+  unit_sleeps?: number | null
 }
 
 /**
