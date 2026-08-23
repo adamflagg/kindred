@@ -52,6 +52,8 @@ from api.schemas.lodging import (
     PlacementDeleteRequest,
     PlacementWriteRequest,
     PushBuildingReport,
+    PushExecuteRequest,
+    PushExecuteResponse,
     PushPreviewResponse,
     PushRowPayload,
     SlotMergeRequest,
@@ -88,6 +90,27 @@ REFUSAL_STATUSES = frozenset({401, 403})
 
 class ScenarioNotEmptyError(RuntimeError):
     """A copy was asked for into a scenario that already holds placements."""
+
+
+class PushDigestStaleError(RuntimeError):
+    """The board or scenario moved between preview and push (kindred#2477).
+
+    Carries the fresh report so the router can hand it straight back as the
+    409 body -- the client re-renders the review against what is actually
+    true now, instead of a bare "try again" with nothing to show.
+    """
+
+    def __init__(self, report: PushPreviewResponse) -> None:
+        super().__init__("the write-in diff changed since this review was opened")
+        self.report = report
+
+
+class PushDecisionsIncompleteError(RuntimeError):
+    """The RULED block rule (kindred#2477, owner 2026-08-22): every conflict
+    and remove building needs a decision before a push may apply anything;
+    there is no default-keep-live path. Enforced here, not only by the
+    disabled button the frontend puts up for the same rule.
+    """
 
 
 class LodgingWriteService:
@@ -1146,6 +1169,185 @@ class LodgingWriteService:
             scenario=scenario,
             digest=push_digest(buildings),
             buildings=[_building_report(b) for b in buildings],
+        )
+
+    async def _live_rows_with_ids(self, year: int, session_cm_id: int) -> list[tuple[Any, PushRow]]:
+        """The live board's write-ins, paired with the raw record each `PushRow`
+        came from (kindred#2477).
+
+        `_push_rows` throws the record id away turning a raw row into a
+        `PushRow` -- fine for a report, useless for a write, which needs to
+        name the exact row to delete. This zips the two back together rather
+        than widening `PushRow` itself, because `PushRow.tuple_key()` is the
+        matching key `classify_push` and `push_digest` both hash, and a fifth
+        field on it would move into every one of those tuples too.
+
+        TAKES `year`/`session_cm_id` DIRECTLY, not a `PushExecuteRequest` --
+        the brief's draft threaded the whole request through, but the live
+        board has no scenario dimension at all, so accepting one here would
+        invite a caller to believe it matters. `execute_push` below is not the
+        only caller: Task 5's Unpush replays a ledger row against the SAME
+        live rows, under no scenario at all (a sentinel like `"unpush"` would
+        be make-believe), so the signature this method actually needs is the
+        weekend alone.
+
+        PURE FETCH-AND-ADAPT, and deliberately does not call `preview_push` --
+        it has no digest to check and no decisions to apply, so a caller
+        wanting the guarded, classified diff calls that instead.
+        """
+        units = await self.repository.fetch_units(year)
+        units_by_id = {str(getattr(u, "id", "") or ""): u for u in units}
+        raw = await self.repository.fetch_write_ins(year, session_cm_id)
+        return list(zip(raw, self._push_rows(raw, units_by_id), strict=True))
+
+    async def execute_push(self, request: PushExecuteRequest, pushed_by: str) -> PushExecuteResponse:
+        """Apply a scenario's write-ins onto the live board (kindred#2477).
+
+        RE-CLASSIFIES FIRST, and compares its own fresh digest against the
+        caller's -- never trusts a client-supplied classification, because the
+        board or the scenario can move in the time a staff member spends
+        looking at the review. A mismatch refuses with `PushDigestStaleError`,
+        carrying the fresh report so the router can hand it straight back as
+        the 409 body.
+
+        BLOCKED UNTIL DECIDED: every `conflict` and `remove` building must
+        have an entry in `request.decisions`, or the whole push refuses via
+        `PushDecisionsIncompleteError`. There is no default-keep-live path --
+        see that error's docstring for why.
+
+        LEDGER FIRST, THEN APPLY. `create_push_event` writes what this push
+        intends to do before a single row moves, so a crash mid-apply leaves a
+        row naming exactly what was intended rather than an unexplained
+        partial board (spec §4.2). `changes` carries the payload BOTH
+        directions -- what makes Task 6's Unpush a replay: delete what the
+        push added, recreate what it removed.
+
+        `live_ids` KEYS ON `PushRow.tuple_key()`, the same RULED matching
+        tuple `classify_push` already groups on, so the live record a
+        "scenario"/"remove" decision deletes is found the same way the
+        classifier decided it conflicted or should go -- not a second,
+        independently-written lookup free to disagree with the first.
+
+        `party_size` IS EXPLICIT ALWAYS ON THE CREATE PAYLOAD, `None` included.
+        This method is the "fifth producer" kindred#2540's data-loss guard
+        warns about -- `set_availability`, `_seed_write_ins` (both copy paths)
+        and `update_write_in`'s implicit pass-through are the other four, and
+        every one of them was audited to carry the field explicitly rather
+        than let a dict-literal omission silently drop it. Mutation-checked:
+        Step 4 of the task brief deletes this line and confirms the covering
+        test goes red.
+        """
+        fresh = await self.preview_push(request.year, request.session_cm_id, request.scenario)
+        if fresh.digest != request.digest:
+            raise PushDigestStaleError(fresh)
+
+        needing = [b for b in fresh.buildings if b.cls in ("conflict", "remove")]
+        missing = sorted(b.key for b in needing if b.key not in request.decisions)
+        if missing:
+            raise PushDecisionsIncompleteError(f"undecided: {', '.join(missing)}")
+
+        adds: list[PushRowPayload] = []
+        removes: list[PushRowPayload] = []
+        replaced = kept = matched = 0
+        # Tuple-keyed live rows so a "scenario"/"remove" decision can name the
+        # exact record id to delete -- see the method docstring.
+        live_ids = {
+            r.tuple_key(): str(getattr(row, "id", "") or "")
+            for row, r in await self._live_rows_with_ids(request.year, request.session_cm_id)
+        }
+        for b in fresh.buildings:
+            if b.cls == "add":
+                adds.extend(b.draft)
+            elif b.cls == "match":
+                matched += 1
+            elif b.cls == "conflict":
+                if request.decisions[b.key] == "scenario":
+                    removes.extend(b.live)
+                    adds.extend(b.draft)
+                    replaced += 1
+                else:
+                    kept += 1
+            elif b.cls == "remove":
+                if request.decisions[b.key] == "remove":
+                    removes.extend(b.live)
+                else:
+                    kept += 1
+
+        if not adds and not removes:
+            return PushExecuteResponse(
+                push_id="", added=0, removed=0, replaced=replaced, kept=kept, matched=matched, no_op=True
+            )
+
+        changes = [
+            {
+                "action": "remove",
+                "unit": r.unit_id,
+                "unit_code": r.unit_code,
+                "occupant_name": r.occupant_name,
+                "note": r.note,
+                "party_size": r.party_size,
+            }
+            for r in removes
+        ] + [
+            {
+                "action": "add",
+                "unit": r.unit_id,
+                "unit_code": r.unit_code,
+                "occupant_name": r.occupant_name,
+                "note": r.note,
+                "party_size": r.party_size,
+            }
+            for r in adds
+        ]
+        # Ledger FIRST, then apply: a crash mid-apply leaves a row naming
+        # exactly what was intended (spec §4.2).
+        #
+        # `scenario_name` carries the SAME value as `scenario_id` -- there is
+        # no cheap scenario-record-name accessor on `LodgingRepository` today,
+        # so a display name would cost an extra round trip this ledger write
+        # does not otherwise need. Accepted as v1 (the id is at least legible
+        # to whoever reads the raw table); a follow-up can resolve the display
+        # name once a reader actually needs it rendered.
+        event = await self.repository.create_push_event(
+            {
+                "year": request.year,
+                "session_cm_id": request.session_cm_id,
+                "scenario_id": request.scenario,
+                "scenario_name": request.scenario,
+                "pushed_by": pushed_by,
+                "changes": changes,
+                "unpushed_at": "",
+            }
+        )
+        session_pb_id = await self._resolve_session_pb_id(request.year, request.session_cm_id)
+        for r in removes:
+            # `removes` holds `PushRowPayload` (the wire shape off `b.live`),
+            # which carries the same four fields as `PushRow.tuple_key()` but
+            # is not that dataclass and has no method of its own -- so the key
+            # is rebuilt by hand here, matching `tuple_key()`'s own shape
+            # exactly rather than duplicating a second definition of it.
+            rid = live_ids.get((r.unit_id, r.occupant_name.strip(), r.note.strip(), r.party_size))
+            if rid is not None:
+                await self.repository.delete_write_in(rid)
+        for r in adds:
+            await self.repository.create_write_in(
+                {
+                    "year": request.year,
+                    "session_cm_id": request.session_cm_id,
+                    "session": session_pb_id,
+                    "unit": r.unit_id,
+                    "occupant_name": r.occupant_name,
+                    "note": r.note,
+                    "party_size": r.party_size,
+                }
+            )
+        return PushExecuteResponse(
+            push_id=str(getattr(event, "id", "") or ""),
+            added=len(adds),
+            removed=len(removes),
+            replaced=replaced,
+            kept=kept,
+            matched=matched,
         )
 
 

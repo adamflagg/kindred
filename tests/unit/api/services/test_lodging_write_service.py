@@ -32,9 +32,15 @@ from api.schemas.lodging import (
     PlacementCopyRequest,
     PlacementDeleteRequest,
     PlacementWriteRequest,
+    PushExecuteRequest,
     SlotMergeRequest,
 )
-from api.services.lodging_write_service import LodgingWriteService, ScenarioNotEmptyError
+from api.services.lodging_write_service import (
+    LodgingWriteService,
+    PushDecisionsIncompleteError,
+    PushDigestStaleError,
+    ScenarioNotEmptyError,
+)
 from bunking.logging_config import ISO8601Formatter
 
 
@@ -2383,3 +2389,84 @@ class TestPreviewPush:
         svc = LodgingWriteService(_repo())
         with pytest.raises(ValueError):
             await svc.preview_push(2026, 1309001, "")
+
+
+class TestExecutePush:
+    """kindred#2477 Task 4. `execute_push` writes the ledger BEFORE applying,
+    refuses a stale digest with a fresh report, and refuses to apply until
+    every conflict/remove has a decision -- no default-keep-live path.
+    """
+
+    def _repo_one_conflict(self) -> MagicMock:
+        return _repo(
+            fetch_units=[_u("uc", "cedar-9")],
+            fetch_write_ins=[_wi("uc", "G. Whitfield", id="wi_1")],
+            fetch_draft_write_ins=[_wi("uc", "H. Osei", ppl=2, id="wd_1")],
+            create_push_event=SimpleNamespace(id="push_1"),
+        )
+
+    @pytest.mark.asyncio
+    async def test_stale_digest_refuses_with_fresh_report(self) -> None:
+        svc = LodgingWriteService(self._repo_one_conflict())
+        req = PushExecuteRequest(
+            year=2026,
+            session_cm_id=1309001,
+            scenario="scn_1",
+            digest="0" * 64,
+            decisions={"cedar-9": "scenario"},
+        )
+        with pytest.raises(PushDigestStaleError) as exc:
+            await svc.execute_push(req, pushed_by="user_1")
+        assert exc.value.report.buildings[0].cls == "conflict"
+
+    @pytest.mark.asyncio
+    async def test_incomplete_decisions_refuse(self) -> None:
+        svc = LodgingWriteService(self._repo_one_conflict())
+        preview = await svc.preview_push(2026, 1309001, "scn_1")
+        req = PushExecuteRequest(
+            year=2026, session_cm_id=1309001, scenario="scn_1", digest=preview.digest, decisions={}
+        )
+        with pytest.raises(PushDecisionsIncompleteError):
+            await svc.execute_push(req, pushed_by="user_1")
+
+    @pytest.mark.asyncio
+    async def test_take_scenario_writes_ledger_then_applies_with_party_size(self) -> None:
+        repo = self._repo_one_conflict()
+        svc = LodgingWriteService(repo)
+        preview = await svc.preview_push(2026, 1309001, "scn_1")
+        req = PushExecuteRequest(
+            year=2026,
+            session_cm_id=1309001,
+            scenario="scn_1",
+            digest=preview.digest,
+            decisions={"cedar-9": "scenario"},
+        )
+        out = await svc.execute_push(req, pushed_by="user_1")
+        assert (out.added, out.removed, out.replaced) == (1, 1, 1)
+        # ledger written BEFORE apply, with both directions
+        ledger = repo.create_push_event.call_args.args[0]
+        actions = sorted(c["action"] for c in ledger["changes"])
+        assert actions == ["add", "remove"]
+        # party_size EXPLICIT on the created live row -- the #2540 fifth-producer
+        # hazard. Mutation check in Step 4.
+        created = repo.create_write_in.call_args.args[0]
+        assert "party_size" in created
+        assert created["party_size"] == 2
+        repo.delete_write_in.assert_called_once_with("wi_1")
+
+    @pytest.mark.asyncio
+    async def test_keep_live_and_all_match_is_a_no_op(self) -> None:
+        repo = _repo(
+            fetch_units=[_u("uc", "cedar-9")],
+            fetch_write_ins=[_wi("uc", "K. Sato", id="wi_1")],
+            fetch_draft_write_ins=[_wi("uc", "K. Sato", id="wd_1")],
+        )
+        svc = LodgingWriteService(repo)
+        preview = await svc.preview_push(2026, 1309001, "scn_1")
+        out = await svc.execute_push(
+            PushExecuteRequest(year=2026, session_cm_id=1309001, scenario="scn_1", digest=preview.digest, decisions={}),
+            pushed_by="user_1",
+        )
+        assert out.no_op is True
+        assert out.push_id == ""
+        repo.create_push_event.assert_not_called()

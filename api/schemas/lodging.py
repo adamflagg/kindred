@@ -331,6 +331,46 @@ class PushPreviewResponse(BaseModel):
     buildings: list[PushBuildingReport] = Field(default_factory=list)
 
 
+class PushExecuteRequest(BaseModel):
+    """Apply a scenario's write-ins onto the live board (kindred#2477).
+
+    `digest` is `PushPreviewResponse.digest`, ECHOED BACK unchanged --
+    `execute_push` refuses with a fresh report the moment it disagrees, which
+    means the board or the scenario moved between the review and this call.
+
+    `decisions` names a verdict ONLY for the buildings that need one: a
+    `conflict` chooses `"scenario"` (replace the live rows) or `"keep"` (leave
+    the live board as it is); a `remove` chooses `"remove"` or `"keep"`. An
+    `add` or a `match` building needs no entry -- there is nothing to decide.
+    The RULED block rule (owner, 2026-08-22) is that a missing decision on a
+    building that needs one refuses the whole push rather than defaulting to
+    `"keep"`; see `PushDecisionsIncompleteError`.
+    """
+
+    year: int
+    session_cm_id: int = Field(gt=0)
+    scenario: str = Field(min_length=1)
+    digest: str
+    decisions: dict[str, Literal["live", "scenario", "keep", "remove"]] = Field(default_factory=dict)
+
+
+class PushExecuteResponse(BaseModel):
+    """What the push actually did.
+
+    `push_id` is the `lodging_write_in_pushes` row's id -- the ledger entry
+    Unpush will replay -- and is `""` on a no-op, when nothing needed to move
+    and no ledger row was written at all.
+    """
+
+    push_id: str = ""
+    added: int = 0
+    removed: int = 0
+    replaced: int = 0
+    kept: int = 0
+    matched: int = 0
+    no_op: bool = False
+
+
 class LodgingUnitSummary(BaseModel):
     """One row of the lodging registry, as the roster sees it."""
 
