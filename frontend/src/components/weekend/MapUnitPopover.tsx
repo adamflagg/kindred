@@ -721,8 +721,22 @@ function ClusterSummary({
           <dt className="text-muted-foreground">Rooms</dt>
           <dd>{`${String(rooms)} · ${String(taken)} taken, ${String(rooms - taken)} open`}</dd>
         </div>
-        <div className="flex justify-between gap-3">
-          {/* "Beds", not "Sleeps"/"placed" (kindred#2540 fix-round CHEAP 9).
+        {/* ⚠️ GATED, the way `DetailCard`'s own Beds row is (kindred#2540
+            final scan, FINDING 3). Rendered unconditionally, a cluster written
+            into WHOLESALE printed `Beds 0 of 8` directly beneath `Rooms 4 · 4
+            taken, 0 open` -- `writeInSized` sums recorded counts only, so a
+            cover with no count contributes 0 and the row claimed an empty
+            building the line above had just called full. Every production row
+            is unsized, so this was the live reading, not an edge case.
+
+            `main` said `Sleeps 8 · 0 placed` here, which was at least
+            literally true; the `placed` fold-in is what made silence the only
+            honest answer. The board card draws an em dash for this same state
+            and `DetailCard` omits the row outright -- this matches the latter
+            rather than inventing a third phrasing. */}
+        {(families.length > 0 || writeInSized > 0) && (
+          <div className="flex justify-between gap-3">
+            {/* "Beds", not "Sleeps"/"placed" (kindred#2540 fix-round CHEAP 9).
               `placed` folds in a write-in's recorded count (`writeInSized`
               above), and the "Occupied by" list beneath draws that occupant
               as a write-in chip rather than a family -- "N placed" claimed a
@@ -730,11 +744,12 @@ function ClusterSummary({
               `DetailCard`'s own combined figure is labelled `Beds` and reads
               `X of Y` for exactly this reason; this matches it rather than
               inventing a third phrasing. */}
-          <dt className="text-muted-foreground">Beds</dt>
-          <dd>
-            {capacity === null ? <em>unknown</em> : `${String(placed)} of ${String(capacity)}`}
-          </dd>
-        </div>
+            <dt className="text-muted-foreground">Beds</dt>
+            <dd>
+              {capacity === null ? <em>unknown</em> : `${String(placed)} of ${String(capacity)}`}
+            </dd>
+          </div>
+        )}
       </dl>
 
       {/* A BLOCK, not a right-aligned `dd`: a chip naming four people needs the

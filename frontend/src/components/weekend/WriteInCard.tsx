@@ -246,6 +246,8 @@ export function WriteInCard({ occupant, onRemove, onEdit, isSaving = false }: Wr
             // otherwise unlabelled input under the name.
             placeholder="Emma Johnson, burst pipe…"
             value={draftName}
+            // See the Note field below for why all three carry this.
+            disabled={isSaving}
             maxLength={500}
             autoFocus
             aria-invalid={wantsName && draftName.trim() === ''}
@@ -299,6 +301,16 @@ export function WriteInCard({ occupant, onRemove, onEdit, isSaving = false }: Wr
               aria-label="Note (optional)"
               placeholder="Note (optional) — back Monday…"
               value={draftNote}
+              // ⚠️ ALL THREE FIELDS TAKE `isSaving`, not the select alone
+              // (kindred#2540 final scan, FINDING 8). `main` disabled none of
+              // them, so this PR introduced the asymmetry by adding the flag
+              // to the new control and not its neighbours -- and
+              // `AssignFamilyModal` disables both of its own fields on the
+              // same flag, so the pencil was the odd one out. It bites when a
+              // second row's pencil is opened while another row's save is in
+              // flight; `trySubmit` unmounts this form immediately, so it
+              // cannot fire from the same row.
+              disabled={isSaving}
               maxLength={500}
               onChange={(event) => {
                 setDraftNote(event.target.value)

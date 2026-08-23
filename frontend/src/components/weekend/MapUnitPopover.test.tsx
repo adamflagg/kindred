@@ -860,6 +860,85 @@ describe('MapUnitPopover — a cluster of rooms', () => {
     expect(screen.queryByTitle(/Cedar 2 — empty/i)).not.toBeInTheDocument()
   })
 
+  it('states no Beds line for a cluster written into WHOLESALE, rather than \u201c0 of N\u201d', () => {
+    // kindred#2540 final scan, FINDING 3. `writeInSized` sums RECORDED counts
+    // only, so a cover with no count contributes 0 \u2014 and the Beds row was
+    // rendered unconditionally, so a house written into whole printed
+    // `Beds 0 of 4` directly beneath `Rooms 2 \u00b7 2 taken, 0 open`. One
+    // popover, two contradictory answers, and every production write-in row is
+    // unsized, so this WAS the live reading rather than an edge case.
+    //
+    // `main` said `Sleeps 4 \u00b7 0 placed` here, which was at least literally
+    // true; folding write-ins into `placed` is what made silence the only
+    // honest answer. `DetailCard` already gates its own Beds row exactly this
+    // way, so this matches it rather than inventing a third phrasing.
+    const house = [
+      mapUnit(
+        row({
+          unit_id: 'u1',
+          code: 'cedar-1',
+          name: 'Cedar 1',
+          write_ins: [
+            cover({
+              unit_id: 'u1',
+              unit_code: 'cedar-1',
+              unit_name: 'Cedar 1',
+              occupant_name: 'Liam Garcia',
+            }),
+          ],
+          is_family_available: false,
+        })
+      ),
+      mapUnit(
+        row({
+          unit_id: 'u2',
+          code: 'cedar-2',
+          name: 'Cedar 2',
+          write_ins: [
+            cover({
+              unit_id: 'u2',
+              unit_code: 'cedar-2',
+              unit_name: 'Cedar 2',
+              occupant_name: 'Emma Johnson',
+            }),
+          ],
+          is_family_available: false,
+        })
+      ),
+    ]
+    render(<MapUnitPopover units={house} hue={HUE} onOpenParty={vi.fn()} />)
+    expect(screen.getByText('2 \u00b7 2 taken, 0 open')).toBeInTheDocument()
+    expect(screen.queryByText('Beds')).not.toBeInTheDocument()
+    expect(screen.queryByText(/0 of \d+/)).not.toBeInTheDocument()
+  })
+
+  it('still states Beds once any write-in carries a recorded count', () => {
+    // The other half of FINDING 3's fix: the gate must not silence a cluster
+    // that DOES have a figure to state. One recorded count is enough.
+    const house = [
+      mapUnit(
+        row({
+          unit_id: 'u1',
+          code: 'cedar-1',
+          name: 'Cedar 1',
+          write_ins: [
+            cover({
+              unit_id: 'u1',
+              unit_code: 'cedar-1',
+              unit_name: 'Cedar 1',
+              occupant_name: 'Liam Garcia',
+              party_size: 2,
+            }),
+          ],
+          is_family_available: false,
+        })
+      ),
+      mapUnit(row({ unit_id: 'u2', code: 'cedar-2', name: 'Cedar 2' })),
+    ]
+    render(<MapUnitPopover units={house} hue={HUE} onOpenParty={vi.fn()} />)
+    expect(screen.getByText('Beds')).toBeInTheDocument()
+  })
+
   it('keeps a write-in-only cell INERT — there is no party to open behind it', () => {
     const onOpenParty = vi.fn()
     const house = [

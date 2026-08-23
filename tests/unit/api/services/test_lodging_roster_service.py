@@ -5430,6 +5430,59 @@ class TestWriteInCovers:
         sizes = {cover.unit_code: cover.party_size for cover in covers["house"]}
         assert sizes == {"house": 2, "house-a": 1, "house-b": None}
 
+    def test_a_sized_own_row_does_not_escape_an_ancestors_whole_house_let(self) -> None:
+        """kindred#2540 final scan, FINDING 1 -- the ANCESTOR direction of the
+        rule BLOCKER 3 fixed for descendants.
+
+        `_nearest_ancestor` was never consulted for a unit that is itself
+        written into, so a room carrying its own SIZED row dropped the
+        whole-house claim above it and reported the leftover beds as open.
+        Room of 3 inside a house let whole, own count of 1 -> `consumed=1`,
+        `free_family_beds` -> 2, and the bar offered two beds in a room inside
+        a house nobody else can enter.
+
+        Harmless before this PR because occupancy was absolute; live the moment
+        a count turns precedence into arithmetic, which is the same argument
+        that made the descendant direction a blocker.
+        """
+        house = _summary("house", is_container=True, occupant_name="Liam Garcia")
+        room = _summary("house-a", parent_code="house", party_size=1, occupant_name="Ava Martinez")
+
+        covers = write_in_covers(
+            [house, room],
+            _written_ids("house", "house-a"),
+            {"house": 10, "house-a": 3},
+        )
+
+        relations = {cover.unit_code: cover.relation for cover in covers["house-a"]}
+        assert relations == {"house-a": "own", "house": "ancestor"}
+        # The OWN row still leads -- the card names its own occupant first.
+        assert covers["house-a"][0].unit_code == "house-a"
+
+    def test_an_unsized_own_row_does_not_gain_an_ancestor_cover(self) -> None:
+        """The UNCHANGED half of FINDING 1, and the reason the fix is gated on
+        `party_size is not None` rather than applied to every own row.
+
+        An unsized own row is ALREADY a wholesale claim on the whole card, so
+        `free_family_beds` is 0 with or without the ancestor beside it -- but
+        the two differ on `known`: a lone unsized own cover falls through to
+        the wholesale branch and returns `known=False`, while an ancestor
+        present short-circuits to `known=True`. Adding it would flip the
+        drag-time marks on for every one of the 24 production rows, buying
+        nothing, so the ancestor joins a SIZED own row only.
+        """
+        house = _summary("house", is_container=True, occupant_name="Liam Garcia")
+        room = _summary("house-a", parent_code="house", occupant_name="Ava Martinez")
+
+        covers = write_in_covers(
+            [house, room],
+            _written_ids("house", "house-a"),
+            {"house": 10, "house-a": 3},
+        )
+
+        assert len(covers["house-a"]) == 1
+        assert covers["house-a"][0].relation == "own"
+
     def test_an_unsized_own_row_still_closes_the_whole_space(self) -> None:
         """The UNCHANGED half of the fix above. An unsized own row is a
         wholesale claim -- 'somebody is in this space' -- and stays the sole

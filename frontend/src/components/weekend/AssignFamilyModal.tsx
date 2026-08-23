@@ -85,7 +85,7 @@ import { resolveNeedGlyphs } from './needGlyphs'
 import { partyKey } from './partyKey'
 import { placementCandidates, type PlacementCandidate } from './placementCandidates'
 import { effectiveSleeps, partyBeds } from './rosterAttention'
-import { PARTY_SIZE_CHOICES, coveringWriteIns, hasWriteIn, writeInDemand } from './writeIn'
+import { PARTY_SIZE_CHOICES, coveringWriteIns, writeInDemand } from './writeIn'
 
 export interface AssignFamilyModalProps {
   isOpen: boolean
@@ -302,7 +302,12 @@ function capacitySentence(
   // "harmonise" this to `sized` — that is precisely the change the owner
   // declined.
   const { consumed, known } = writeInDemand(capacity, coveringWriteIns(unit))
-  if (!known && hasWriteIn(unit)) {
+  // `!known` ALONE (kindred#2540 final scan, FINDING 9). `writeInDemand`
+  // returns `known: true` unconditionally when nothing covers the card, and
+  // `hasWriteIn` IS `coveringWriteIns(unit).length > 0` -- so `!known` already
+  // implies it, and the second conjunct only re-read `unit.write_ins` to
+  // re-answer a question the first had settled.
+  if (!known) {
     return `Sleeps ${String(capacity)} · occupancy not counted (write-in)`
   }
   // The card's own gate, mirrored — see `spanWidth`'s doc. A spanning
@@ -310,8 +315,22 @@ function capacitySentence(
   // write-in headcount into `taken` exactly the way `occupants` already did
   // on its own — `consumed` is `0` whenever there is nothing to count.
   const taken = occupants + consumed
-  if (taken > capacity && spanWidth === 0) {
-    return `Over capacity — ${String(taken)} placed, sleeps ${String(capacity)}`
+  // ⚠️ THE OVER-CAPACITY SENTENCE COUNTS PLACED FAMILIES ONLY, never `taken`
+  // (kindred#2540 final scan, FINDING 2). `consumed` is `capacity` on an
+  // ancestor cover -- a whole-house let takes the whole card -- so
+  // `occupants + consumed` exceeded capacity the moment ANY family was placed
+  // in a room inside a let house, and the sentence read `Over capacity — 12
+  // placed, sleeps 10` with two people in the room. Twelve is a number nobody
+  // recorded, printed under the word "placed".
+  //
+  // This is NOT the declined FINDING 7. That one asked the header to START
+  // shouting over-capacity from `sized`, and the owner ruled the modal stays
+  // calm ("0 free is clear enough"). This keeps it calm -- a write-in overage
+  // still says `0 of N beds free` -- and only stops the sentence claiming a
+  // headcount for beds a whole-card claim took. `taken` still pays for the
+  // write-in in the free-bed arithmetic below, unchanged.
+  if (occupants > capacity && spanWidth === 0) {
+    return `Over capacity — ${String(occupants)} placed, sleeps ${String(capacity)}`
   }
   return `${String(Math.max(0, capacity - taken))} of ${String(capacity)} beds free`
 }

@@ -843,10 +843,24 @@ def write_in_covers(
             pairs = [(unit, "own")]
             if unit.party_size is not None:
                 # SIZED, not wholesale -- see the docstring's "OWN BEATS
-                # DESCENDANT ONLY WHILE OWN IS UNSIZED". The own row asserts a
-                # headcount rather than a claim on the whole space, so it does
-                # not subsume a separately-recorded room; every written-into
-                # descendant still contributes its own cover beside it.
+                # EVERYTHING ELSE ONLY WHILE OWN IS UNSIZED". The own row
+                # asserts a headcount rather than a claim on the whole space,
+                # so it subsumes nothing: every written-into descendant still
+                # contributes its own cover beside it, and a whole-house let
+                # ABOVE it still takes the card.
+                #
+                # THE ANCESTOR HALF WAS THE FINAL SCAN'S FINDING 1, and it is
+                # the direction that had arithmetic and no rule.
+                # `_nearest_ancestor` was not consulted at all for a unit that
+                # is itself written into, so a room of 3 inside a house let
+                # whole, carrying its own count of 1, resolved to
+                # `consumed=1` -> 2 free beds -> OPEN, and the bar offered two
+                # beds in a room nobody can enter. Harmless while occupancy was
+                # absolute; live the moment a count turns precedence into
+                # arithmetic.
+                ancestor = _nearest_ancestor(unit)
+                if ancestor is not None:
+                    pairs.append((ancestor, "ancestor"))
                 pairs.extend((descendant, "descendant") for descendant in _written_in_descendants(unit))
         else:
             ancestor = _nearest_ancestor(unit)
@@ -872,11 +886,28 @@ def write_in_covers(
                 # CONTAINER's sum over its leaves -- a leaf looked up directly
                 # by code still returns its raw `sleeps` unfiltered, which is
                 # right for every other caller of `capacity_by_code` but wrong
-                # for an ANCESTOR or DESCENDANT cover: a retired unit's beds
-                # were never counted toward its container's own capacity, so
-                # its cover must not consume any either. The cover itself is
-                # NOT dropped -- the write-in still names the room -- only
-                # the beds it claims are zeroed.
+                # for a DESCENDANT cover: a retired unit's beds were never
+                # counted toward its container's own capacity, so its cover
+                # must not consume any either. The cover itself is NOT dropped
+                # -- the write-in still names the room -- only the beds it
+                # claims are zeroed.
+                #
+                # ⚠️ IT DOES NOTHING ON AN ANCESTOR COVER, and the comment
+                # here used to say "an ANCESTOR or DESCENDANT" as though it
+                # did (kindred#2540 final scan, FINDING 5). `write_in_demand`
+                # answers an ancestor with a PRE-PASS -- `consumed=capacity`,
+                # the whole card -- and returns before the loop that reads
+                # `load.capacity` ever runs; `writeInDemand` mirrors that. So
+                # the clamped value is never read on that branch, and a
+                # retired ancestor still takes the whole card.
+                #
+                # LEFT AS IS RATHER THAN NARROWED TO `relation == "descendant"`,
+                # because the clamp is what the field would need the moment the
+                # ancestor branch ever reads a capacity, and zeroing a value
+                # nobody reads costs nothing. What was wrong was the comment
+                # claiming a mechanism the code does not have -- the same
+                # defect `write_in_demand`'s own docstring corrected once
+                # already ("the guard is the mechanism").
                 #
                 # ⚠️ `relation == "own"` IS EXEMPT, and applying the same
                 # clamp there was the review's finding. The unit's OWN

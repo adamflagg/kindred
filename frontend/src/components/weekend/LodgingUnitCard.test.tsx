@@ -2315,13 +2315,21 @@ describe('LodgingUnitCard — placing a family from the space itself (kindred#20
   })
 
   it("preserves the pencil-edited row's already-recorded party size, never dropping it", async () => {
-    // MAJOR A. `WriteInCard`'s edit form does not ask about party size yet
-    // (kindred#2503's own edit form is a later task), but
-    // `set_availability` upserts `party_size` on EVERY write-in write — an
-    // edit that sent `null` here would silently erase a count a staff
-    // member had already recorded. Mutation-checked: hardcoding
+    // MAJOR A. `set_availability` upserts `party_size` on EVERY write-in
+    // write, so an edit that sent `null` here would silently erase a count a
+    // staff member had already recorded. Mutation-checked: hardcoding
     // `partySize: null` at the `onEdit` call site in `LodgingUnitCard.tsx`
     // leaves this red.
+    //
+    // ⚠️ THE GUARD MOVED AND THIS COMMENT NAMED THE OLD ONE (kindred#2540
+    // final scan, FINDING 6). It said "`WriteInCard`'s edit form does not ask
+    // about party size yet (kindred#2503's own edit form is a later task)" --
+    // written by `4010cb52` and invalidated by `d419d4f7` ONE COMMIT LATER,
+    // then carried 22 commits. The pencil has asked since, and
+    // `LodgingUnitCard.tsx` says so at its own `onEdit`. So what this pins is
+    // no longer "the form omits the field" but "the form round-trips the
+    // seeded value untouched" -- a reader following the old sentence would
+    // hunt the preserve-on-edit guard in the wrong file.
     const user = userEvent.setup()
     const onSetAvailability = vi.fn()
     renderCard({
@@ -2399,7 +2407,21 @@ describe('LodgingUnitCard — placing a family from the space itself (kindred#20
      * from that ruling without knowing it had moved.
      */
     renderCard({ canSetAvailability: true, onSetAvailability: vi.fn() })
-    expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
+    // ⚠️ SCOPED TO THE CARD'S OWN CHROME, not the whole card (kindred#2540
+    // final scan, FINDING 7). `queryByRole('combobox')` was a unique proxy
+    // for `PlaceFamilyPicker` until 2026-08-23, when the write-in pencil's
+    // `People` field became a native `<select>` -- which carries the implicit
+    // role `combobox` and mounts INSIDE this card. The bare query passes here
+    // only because this fixture has no write-in and the pencil starts closed,
+    // so it is vacuous for a legitimate card state and a future test that
+    // opens a pencil would red it for a reason unrelated to the struck
+    // picker. Excluding the People control keeps the pin pointed at the
+    // typeahead it was written for. This is the sibling of the `option`-role
+    // collision repaired in `AssignFamilyModal.test.tsx`.
+    const comboboxes = screen
+      .queryAllByRole('combobox')
+      .filter((el) => el.getAttribute('aria-label') !== 'People')
+    expect(comboboxes).toHaveLength(0)
   })
 })
 

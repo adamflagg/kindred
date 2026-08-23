@@ -208,6 +208,51 @@ describe('AssignFamilyModal — the header states beds FREE (owner ruling 2026-0
     expect(screen.getByTestId('assign-capacity')).not.toHaveTextContent('beds free')
   })
 
+  it('never counts an ancestor\u2019s whole-card claim as people PLACED', () => {
+    // kindred#2540 final scan, FINDING 2. `consumed` is the WHOLE CARD on an
+    // ancestor cover \u2014 a house let whole leaves a room inside it nothing to
+    // offer \u2014 so `occupants + consumed` cleared capacity the instant any
+    // family was placed there, and the header read
+    // `Over capacity \u2014 12 placed, sleeps 10` with TWO people in the room.
+    // Twelve is a number nobody recorded, printed under the word "placed".
+    //
+    // The modal STAYS CALM about a write-in overage (owner ruling
+    // 2026-08-23, declining FINDING 7: "0 free is clear enough"), so the fix
+    // is not to make it shout a different number \u2014 it is that the sentence
+    // counts placed families only, and the write-in is still paid for in the
+    // free-bed arithmetic.
+    renderModal({
+      unit: unit({
+        sleeps: 10,
+        write_ins: [
+          {
+            unit_id: 'u-house',
+            unit_code: 'house',
+            unit_name: 'The house',
+            occupant_name: 'Liam Garcia',
+            note: '',
+            relation: 'ancestor',
+            unit_sleeps: 10,
+          },
+        ],
+      }),
+      occupants: 2,
+    })
+    const header = screen.getByTestId('assign-capacity')
+    expect(header).not.toHaveTextContent('Over capacity')
+    expect(header).not.toHaveTextContent('12')
+    expect(header).toHaveTextContent('0 of 10 beds free')
+  })
+
+  it('still reports a room over-full from PLACED families as over capacity', () => {
+    // The other half of FINDING 2's fix: narrowing the sentence to `occupants`
+    // must not retire it. Five placed in a room of two still says so.
+    renderModal({ unit: unit({ sleeps: 2 }), occupants: 5 })
+    expect(screen.getByTestId('assign-capacity')).toHaveTextContent(
+      'Over capacity \u2014 5 placed, sleeps 2'
+    )
+  })
+
   it('says nothing it cannot support when nobody has measured the room', () => {
     renderModal({ unit: unit({ sleeps: null }), occupants: 0 })
     expect(screen.getByTestId('assign-capacity')).toHaveTextContent('Capacity not recorded')

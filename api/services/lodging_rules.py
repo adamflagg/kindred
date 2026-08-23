@@ -264,6 +264,24 @@ def free_family_beds(capacity: int | None, loads: Sequence[WriteInLoad]) -> int 
                  space.
     * `n`     -- the remainder.
 
+    ⚠️ `known` IS DELIBERATELY NOT READ HERE, and this is the note that stops
+    it being "fixed" (owner ruling 2026-08-23; the reasoning lives on
+    `WriteInDemand` above, which is not where a reader arrives). A PARTLY-SIZED
+    card -- some covers recorded, one not -- gives this function a `consumed`
+    it will happily turn into a remainder, while the client's drag marks
+    withhold on the same card because `writeInDemand`'s `known` is false. A
+    container of 10 with one unsized written-into room of 3 and one sized cover
+    of 2 publishes FIVE free beds that the board itself declines to claim.
+
+    That divergence is the design, not a bug. `consumed` answers "how many beds
+    are left", and the server has to answer it -- open/closed is the only thing
+    the wire carries, and there is no third state. `known` gates a CLAIM the
+    board makes to a staff member mid-drag, which is held to a higher bar
+    because withholding it costs only a match the board might have drawn.
+    Making this withhold too would mean understating free beds, which is its
+    own lie, on a state that needs somebody to have sized some write-ins and
+    not others.
+
     Placed families are NOT subtracted here. `beds_family_available` is paired
     with `bedsNeeded` on the stats bar, and a placed family is counted in that
     numerator; subtracting its beds too would count it on both sides. A
