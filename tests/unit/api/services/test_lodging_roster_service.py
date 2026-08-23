@@ -2904,6 +2904,43 @@ class TestMedicalFlagsAndNarrative:
         assert result.household_cm_id == 9999999
         assert result.cpap_info == ""
 
+    @pytest.mark.asyncio
+    async def test_get_household_medical_reads_an_unanswered_gate_as_unknown(self) -> None:
+        """The column's empty string is "never asked", never a denial.
+
+        In 2026, 224 of 900 households never answered the allergy gate and 430
+        answered it No; rendering the first as "no" would tell staff a family
+        declined a question they were never shown.
+        """
+        repo = _repo(
+            fetch_household_by_cm_id=_rec(id="hh_1", cm_id=2000001),
+            fetch_medical_for_household=_rec(allergy_gate="yes", dietary_gate="no", physician_gate=""),
+        )
+        result = await LodgingRosterService(repo).get_household_medical(2026, 2000001)
+
+        assert result.allergy_gate == "yes"
+        assert result.dietary_gate == "no"
+        assert result.physician_gate == "unknown"
+
+    @pytest.mark.asyncio
+    async def test_get_household_medical_reads_a_value_outside_the_vocabulary_as_unknown(
+        self,
+    ) -> None:
+        """A garbage NON-EMPTY value falls back to "unknown" rather than raising.
+
+        Only the empty-string case was pinned above. `_gate`'s own docstring
+        promises this: a value outside the vocabulary should read as "unknown"
+        so the panel shows no pill, rather than the endpoint 500ing on a row a
+        future migration widened.
+        """
+        repo = _repo(
+            fetch_household_by_cm_id=_rec(id="hh_1", cm_id=2000001),
+            fetch_medical_for_household=_rec(allergy_gate="maybe"),
+        )
+        result = await LodgingRosterService(repo).get_household_medical(2026, 2000001)
+
+        assert result.allergy_gate == "unknown"
+
 
 class TestChildUnderTwoFlag:
     """The COMPUTED baby/toddler mark (staff ruling, 2026-08-21).

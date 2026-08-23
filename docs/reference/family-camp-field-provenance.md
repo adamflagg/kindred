@@ -410,13 +410,23 @@ Known pairs — housing plus the medical forms that use the same convention:
 
 ### The splice: a gate and its explanation can survive from different children
 
-`processRegistrations` and `processMedical` collapse each field to household grain
-**independently**, taking the first non-empty value over an id-sorted list of person
-values. Because the two halves of a pair are separate fields, their winners can be
-different children.
+**Historical, and fixed — the table below measures the code as it stood before
+2026-08-19.** `processRegistrations` and `processMedical` then collapsed each field to
+household grain **independently**, taking the first non-empty value over an id-sorted list
+of person values; because the two halves of a pair are separate fields, their winners could
+be different children.
+
+Two changes have since retired that mechanism in `processMedical`. kindred#2255 (#2450,
+2026-08-19) replaced first-non-empty-wins with `medicalAnswers`, which keeps every distinct
+answer every household member gave to a field. kindred#2542 (2026-08-22) then moved the gate
+answer out of the narrative column into its own three-state `*_gate` column, where the
+household's verdict is the OR of its members' answers (`gateVerdict`). Neither half of a pair
+picks a winner any more, so there is no id-min row for either half to be spliced from.
+`processRegistrations` was never the splice risk: it stores its gates as household-wide OR
+booleans.
 
 Measured share of households (where both halves have a value) whose **id-min gate row and
-id-min explain row belong to different children**:
+id-min explain row belonged to different children**, on the pre-#2450 code:
 
 | Pair | 2024 | 2025 | 2026 |
 |------|------|------|------|
@@ -425,10 +435,13 @@ id-min explain row belong to different children**:
 | Housing Accommodation | — | — | 11 / 30 · 36.7% |
 | Bathroom | — | — | 17 / 45 · 37.8% |
 
-**Of the four rows above, this is worse than losing a sibling's text for Special Needs and
-CPAP only.** Those two pairs concatenate a **stored gate string** with a stored explanation
-in `processMedical`, so the two halves of one question get spliced across two children and
-the explanation staff read does not necessarily describe the need that raised the flag.
+**Of the four rows above, this was worse than losing a sibling's text for Special Needs and
+CPAP only.** Those two pairs concatenated a **stored gate string** with a stored explanation
+in `processMedical`, so the two halves of one question got spliced across two children and
+the explanation staff read did not necessarily describe the need that raised the flag. Since
+kindred#2542 no gate string is stored in a narrative column at all: `special_needs_info` and
+`cpap_info` hold the family's own words, and the gate sits beside them in
+`special_needs_gate` / `cpap_gate` as an OR across the household.
 
 **Housing Accommodation and Bathroom are not the same claim, and their rows should not be
 read against the other two.** Both gates are stored as household-wide OR booleans by
@@ -459,18 +472,26 @@ form — so a future change that gives a gate its own column does not, by itself
 unless the collapse rule for both halves moves together, in the same change, from
 first-non-empty-wins to something that never picks a winner.
 
+**Satisfied as of kindred#2542 (2026-08-22) — and the rule's own escape clause is what it is
+measured against, not waived.** A gate did get its own column, but by the time it did,
+neither half selected a winner: kindred#2255 (#2450, 2026-08-19) moved *both* halves off
+first-non-empty-wins in one change, to `medicalAnswers`, which keeps every distinct answer;
+kindred#2542 then made the gate's own collapse an explicit OR over every member's answer
+(`gateVerdict`) and left the narrative column holding every distinct sentence. Splitting the
+halves into separate columns therefore reintroduces no winner for the split to expose.
+
 The special-occasion pair is the first one collapsed that way (2026-08-13,
 `registrationText.specialOccasions` in `family_camp_registration_text.go`): the two fields
 are accumulated per answering person and deduplicated as one unit, so one parent's answer
 fanned onto three children still collapses to a single value while two members who each
-answered keep both explanations beside the gate that member gave. The other four pairs
-measured above (Special Needs, CPAP, Housing Accommodation, Bathroom) still collapse
-independently in `processMedical` — that is kindred#2255. Allergies, Dietary Needs and
-`Family Camp-Physician ` are not merely the same shape on the form: `processMedical`
-concatenates each one's stored gate string with its stored explanation exactly as it does
-for Special Needs and CPAP, so they are in the same splice class and any fix has to cover
-them. They are not measured in the table above — which is why the ceiling is stated as the
-highest *measured* one. Adult-Bathroom's collapse behavior has not been measured here
+answered keep both explanations beside the gate that member gave. kindred#2255 (#2450) then did the same for
+every field `processMedical` reads, and kindred#2542 split the five medical gates into their
+own columns. Special Needs, CPAP, Allergies, Dietary Needs and `Family Camp-Physician ` are
+one class and were fixed as one: none of them collapses independently any more, and none
+concatenates a stored gate string with a stored explanation. Housing Accommodation and
+Bathroom never stored a gate string — their gates are `processRegistrations` booleans, as
+above. The last three are not measured in the table above, which is why its ceiling is stated
+as the highest *measured* one. Adult-Bathroom's collapse behavior has not been measured here
 either.
 
 ---

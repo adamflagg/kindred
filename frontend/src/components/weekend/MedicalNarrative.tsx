@@ -24,6 +24,13 @@
  * not made on behalf of a user who cannot have the answer, and a 403 that
  * arrives anyway renders inline rather than escalating to the page
  * ErrorBoundary.
+ *
+ * kindred#2542: the gate answer renders as a pill beside the row label, not
+ * concatenated into the narrative. The API used to fold the yes/no answer
+ * into the free-text column, so a family who answered "No" and wrote nothing
+ * else showed a paragraph that read the bare word "No" — 418 of 676 populated
+ * allergy rows in 2026. The narrative column now holds the family's own words
+ * alone; the gate is its own `'yes' | 'no' | 'unknown'` field, rendered here.
  */
 import { Loader2 } from 'lucide-react'
 
@@ -41,16 +48,24 @@ export interface MedicalNarrativeProps {
   year: number
 }
 
-/** Display order, which is need-first rather than the API's field order. */
+/**
+ * Display order, which is need-first rather than the API's field order.
+ *
+ * The third entry is the row's GATE column, or null where the question has no
+ * stored gate: `additional_info` was never a gate/explain pair, and
+ * `bathroom_explain` / `accommodation_explain` keep their gates as booleans on
+ * family_camp_registrations, where `AccessibilityFlagList` already renders them
+ * one section above. Adding a row here is the one edit a new pair needs.
+ */
 const FIELDS = [
-  ['CPAP', 'cpap_info'],
-  ['Bathroom', 'bathroom_explain'],
-  ['Accommodation', 'accommodation_explain'],
-  ['Special needs', 'special_needs_info'],
-  ['Allergies', 'allergy_info'],
-  ['Dietary', 'dietary_info'],
-  ['Physician', 'physician_info'],
-  ['Additional', 'additional_info'],
+  ['CPAP', 'cpap_info', 'cpap_gate'],
+  ['Bathroom', 'bathroom_explain', null],
+  ['Accommodation', 'accommodation_explain', null],
+  ['Special needs', 'special_needs_info', 'special_needs_gate'],
+  ['Allergies', 'allergy_info', 'allergy_gate'],
+  ['Dietary', 'dietary_info', 'dietary_gate'],
+  ['Physician', 'physician_info', 'physician_gate'],
+  ['Additional', 'additional_info', null],
 ] as const
 
 export function MedicalNarrative({ householdCmId, year }: MedicalNarrativeProps) {
@@ -61,15 +76,25 @@ export function MedicalNarrative({ householdCmId, year }: MedicalNarrativeProps)
 
   if (!canRead) return null
 
-  const populated = FIELDS.map(([label, key]) => [label, data?.[key]] as const).filter(
-    ([, value]) => typeof value === 'string' && value.length > 0
-  )
+  // A row earns its place if the family wrote something OR answered the gate.
+  // "unknown" is not an answer -- the household never reached the question, and
+  // rendering it as a denial would tell staff a family declined something they
+  // were never shown.
+  const rows = FIELDS.map(([label, key, gateKey]) => {
+    const text = data?.[key]
+    const gate = gateKey ? data?.[gateKey] : undefined
+    return {
+      label,
+      text: typeof text === 'string' ? text : '',
+      gate: gate === 'yes' || gate === 'no' ? gate : null,
+    }
+  }).filter((row) => row.text.length > 0 || row.gate !== null)
 
   // Nothing to show and nothing pending. Emptiness is now discovered from the
   // payload rather than predicted by a flag, so this branch is what stands in
   // for the flag's one honest use — and an empty bordered box would read as a
   // disclosure that failed to load.
-  if (!isLoading && !error && populated.length === 0) return null
+  if (!isLoading && !error && rows.length === 0) return null
 
   return (
     <div className="rounded-r-lg border-l-2 border-red-400 bg-red-50/60 px-3 py-2 text-sm text-red-900 dark:border-red-500/60 dark:bg-red-900/20 dark:text-red-200">
@@ -80,12 +105,25 @@ export function MedicalNarrative({ householdCmId, year }: MedicalNarrativeProps)
         </span>
       )}
       {error && <span>{error.message}</span>}
-      {populated.length > 0 && (
+      {rows.length > 0 && (
         <dl className="space-y-1.5">
-          {populated.map(([label, value]) => (
-            <div key={label}>
-              <dt className="text-xs font-bold tracking-wider uppercase opacity-70">{label}</dt>
-              <dd className="whitespace-pre-wrap">{value}</dd>
+          {rows.map((row) => (
+            <div key={row.label}>
+              <dt className="flex items-center gap-1.5 text-xs font-bold tracking-wider uppercase opacity-70">
+                {row.label}
+                {row.gate !== null && (
+                  <span
+                    className={
+                      row.gate === 'yes'
+                        ? 'rounded-full bg-red-200 px-2 py-0.5 text-xs font-semibold tracking-normal text-red-900 normal-case dark:bg-red-500/30 dark:text-red-100'
+                        : 'bg-muted text-muted-foreground rounded-full px-2 py-0.5 text-xs font-semibold tracking-normal normal-case'
+                    }
+                  >
+                    {row.gate === 'yes' ? 'Yes' : 'No'}
+                  </span>
+                )}
+              </dt>
+              {row.text.length > 0 && <dd className="whitespace-pre-wrap">{row.text}</dd>}
             </div>
           ))}
         </dl>

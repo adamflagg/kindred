@@ -2087,8 +2087,8 @@ export type HouseholdJourneyYear = {
 /**
  * HouseholdMedicalResponse
  *
- * Narrative medical text. Served by ONE endpoint gated on
- * `bunking.manage`. Never nested elsewhere.
+ * Narrative medical text and the gate answers beside it. Served by ONE
+ * endpoint gated on `bunking.manage`. Never nested elsewhere.
  */
 export type HouseholdMedicalResponse = {
   /**
@@ -2131,6 +2131,26 @@ export type HouseholdMedicalResponse = {
    * Accommodation Explain
    */
   accommodation_explain?: string
+  /**
+   * Allergy Gate
+   */
+  allergy_gate?: 'yes' | 'no' | 'unknown'
+  /**
+   * Dietary Gate
+   */
+  dietary_gate?: 'yes' | 'no' | 'unknown'
+  /**
+   * Special Needs Gate
+   */
+  special_needs_gate?: 'yes' | 'no' | 'unknown'
+  /**
+   * Physician Gate
+   */
+  physician_gate?: 'yes' | 'no' | 'unknown'
+  /**
+   * Cpap Gate
+   */
+  cpap_gate?: 'yes' | 'no' | 'unknown'
 }
 
 /**

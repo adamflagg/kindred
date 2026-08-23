@@ -633,18 +633,57 @@ export type FamilyCampAdultsRecord<Tattribute_conflicts = unknown> = {
   year: number
 }
 
+export const FamilyCampMedicalAllergyGateOptions = {
+  yes: 'yes',
+  no: 'no',
+} as const
+export type FamilyCampMedicalAllergyGateOptions =
+  (typeof FamilyCampMedicalAllergyGateOptions)[keyof typeof FamilyCampMedicalAllergyGateOptions]
+
+export const FamilyCampMedicalDietaryGateOptions = {
+  yes: 'yes',
+  no: 'no',
+} as const
+export type FamilyCampMedicalDietaryGateOptions =
+  (typeof FamilyCampMedicalDietaryGateOptions)[keyof typeof FamilyCampMedicalDietaryGateOptions]
+
+export const FamilyCampMedicalSpecialNeedsGateOptions = {
+  yes: 'yes',
+  no: 'no',
+} as const
+export type FamilyCampMedicalSpecialNeedsGateOptions =
+  (typeof FamilyCampMedicalSpecialNeedsGateOptions)[keyof typeof FamilyCampMedicalSpecialNeedsGateOptions]
+
+export const FamilyCampMedicalPhysicianGateOptions = {
+  yes: 'yes',
+  no: 'no',
+} as const
+export type FamilyCampMedicalPhysicianGateOptions =
+  (typeof FamilyCampMedicalPhysicianGateOptions)[keyof typeof FamilyCampMedicalPhysicianGateOptions]
+
+export const FamilyCampMedicalCpapGateOptions = {
+  yes: 'yes',
+  no: 'no',
+} as const
+export type FamilyCampMedicalCpapGateOptions =
+  (typeof FamilyCampMedicalCpapGateOptions)[keyof typeof FamilyCampMedicalCpapGateOptions]
 export type FamilyCampMedicalRecord = {
   accommodation_explain?: string
   additional_info?: string
+  allergy_gate?: FamilyCampMedicalAllergyGateOptions
   allergy_info?: string
   bathroom_explain?: string
+  cpap_gate?: FamilyCampMedicalCpapGateOptions
   cpap_info?: string
   created: IsoAutoDateString
+  dietary_gate?: FamilyCampMedicalDietaryGateOptions
   dietary_info?: string
   enrollment_status?: string
   household: RecordIdString
   id: string
+  physician_gate?: FamilyCampMedicalPhysicianGateOptions
   physician_info?: string
+  special_needs_gate?: FamilyCampMedicalSpecialNeedsGateOptions
   special_needs_info?: string
   updated: IsoAutoDateString
   year: number

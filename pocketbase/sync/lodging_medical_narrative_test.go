@@ -26,6 +26,26 @@ var narrativeColumns = []string{
 	"physician_info",
 }
 
+// gateColumns are the structured gate answers that sit beside the narrative
+// columns above (kindred#2542). They are not narrative -- each is one of "yes",
+// "no" or "" -- but they are answers to the same medical questions on the same
+// admin-gated collection, so they get the same export ban. A separate list
+// rather than an entry in narrativeColumns because kindred#2409 spent a PR
+// making that vocabulary mean what it says.
+var gateColumns = []string{
+	"allergy_gate",
+	"dietary_gate",
+	"special_needs_gate",
+	"physician_gate",
+	"cpap_gate",
+}
+
+// guardedColumns is every family_camp_medical column that must never reach an
+// export, narrative and gate together.
+func guardedColumns() []string {
+	return append(slices.Clone(narrativeColumns), gateColumns...)
+}
+
 // KNOWN EXPOSURE, deliberately not fixed here. person_custom_values and
 // household_custom_values ARE exported to Google Sheets, with First Name, Last
 // Name, Field Name and the raw Value, so the medical narrative already reaches
@@ -55,9 +75,9 @@ func TestNarrativeCollectionsAreNotExported(t *testing.T) {
 			}
 		}
 		for _, col := range cfg.Columns {
-			for _, column := range narrativeColumns {
+			for _, column := range guardedColumns() {
 				if col.Field == column {
-					t.Errorf("export %q writes medical narrative column %q to sheet %q",
+					t.Errorf("export %q writes medical column %q to sheet %q",
 						cfg.Collection, column, cfg.SheetName)
 				}
 			}
@@ -187,10 +207,19 @@ func TestNarrativeIsNeverLogged(t *testing.T) {
 // narrativeExprs are the Go expressions that evaluate to narrative text.
 // Separate from narrativeColumns because a log line can name either the
 // column or the struct field that feeds it.
+//
+// The five *Gate fields (kindred#2542) are listed here too even though they
+// are structured, not narrative -- guardedColumns() below is what this file
+// calls the "same export/log ban" list, and a log guard that only watched the
+// column names and not the struct fields that feed them would miss a slog
+// call built from the field directly, the same gap this list already closes
+// for the narrative columns.
 var narrativeExprs = []string{
 	"med.cpapInfo", "med.specialNeedsInfo", "med.allergyInfo",
 	"med.dietaryInfo", "med.additionalInfo", "med.bathroomExplain",
 	"med.accommodationExplain", "med.physicianInfo",
+	"med.allergyGate", "med.dietaryGate", "med.specialNeedsGate",
+	"med.physicianGate", "med.cpapGate",
 	"reg.requestText", "req.RequestText", "a.req.RequestText",
 }
 
@@ -222,9 +251,9 @@ func narrativeLogViolations(src string) []string {
 			i = j
 		}
 
-		for _, column := range narrativeColumns {
+		for _, column := range guardedColumns() {
 			if strings.Contains(call, `"`+column+`"`) {
-				out = append(out, "a slog call references the medical narrative column "+column+":\n  "+call)
+				out = append(out, "a slog call references the medical column "+column+":\n  "+call)
 			}
 		}
 		for _, expr := range narrativeExprs {

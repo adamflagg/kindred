@@ -212,133 +212,147 @@ func TestRegistrationFieldMapping(t *testing.T) {
 	}
 }
 
-// TestMedicalInfoBlobConcatenation tests that related medical fields are concatenated
+// gateYes/gateNo are the values a *_gate column stores, spelled out here rather
+// than read from gateVerdictYes/gateVerdictNo. A test that asserted against the
+// production constant would keep passing if the constant's VALUE changed, and
+// the stored string is what the migration's select options, the API and the
+// family panel all read -- so it is part of the specification, not an
+// implementation detail. TestMedicalGateColumnsExistInASchemaMigration pins the
+// same two spellings against the migration.
+const (
+	gateYes = "yes"
+	gateNo  = "no"
+)
+
+// TestMedicalInfoBlobConcatenation pins the shape of every gate/explain pair
+// processMedical stores: the explanation alone in the narrative column, the
+// household's answer to the gate question in its own column beside it
+// (kindred#2542). It used to assert the two glued into one string -- against a
+// test-local reimplementation rather than production -- so a household that
+// said No and explained anyway rendered "No; <the condition it denies>".
 func TestMedicalInfoBlobConcatenation(t *testing.T) {
 	t.Parallel()
+	ts := time.Date(2026, 4, 21, 0, 0, 0, 0, time.UTC)
+
 	tests := []struct {
 		name     string
 		fields   map[string]string
-		expected map[string]string
+		wantInfo map[string]string
+		wantGate map[string]string
 	}{
 		{
-			name: "CPAP info concatenation",
+			name: "CPAP explanation, gate beside it",
 			fields: map[string]string{
 				"Family Camp-CPAP":            "Yes",
 				"FAM CAMP-CPAP":               "Yes",
 				"Family Medical-CPAP Explain": "Need outlet near bed",
 			},
-			expected: map[string]string{
-				"cpap_info": "Yes; Need outlet near bed",
-			},
+			wantInfo: map[string]string{"cpap_info": "Need outlet near bed"},
+			wantGate: map[string]string{"cpap_gate": gateYes},
 		},
 		{
-			name: "Physician info concatenation",
+			name: "Physician explanation, gate beside it",
 			fields: map[string]string{
 				"Family Camp-Physician":        "Yes",
 				"Family Camp-Physician If Yes": "Dr. Emma Johnson, 555-0100",
 			},
-			expected: map[string]string{
-				"physician_info": "Yes; Dr. Emma Johnson, 555-0100",
-			},
+			wantInfo: map[string]string{"physician_info": "Dr. Emma Johnson, 555-0100"},
+			wantGate: map[string]string{"physician_gate": gateYes},
 		},
 		{
-			name: "Allergy info concatenation",
+			name: "Allergy explanation, gate beside it",
 			fields: map[string]string{
 				"Family Medical-Allergies":    "Yes",
 				"Family Medical-Allergy Info": "Peanuts, shellfish",
 			},
-			expected: map[string]string{
-				"allergy_info": "Yes; Peanuts, shellfish",
-			},
+			wantInfo: map[string]string{"allergy_info": "Peanuts, shellfish"},
+			wantGate: map[string]string{"allergy_gate": gateYes},
 		},
 		{
-			name: "Dietary info concatenation",
+			// "Vegetarian" is not in the gate vocabulary and production has
+			// never stored it there. It contributes no verdict and -- unlike
+			// the valve that used to let it fall through -- it does not reach
+			// the narrative column either, so the family's own explanation
+			// stands alone.
+			name: "an answer outside the gate vocabulary is not a verdict",
 			fields: map[string]string{
 				"Family Medical-Dietary Needs":   "Vegetarian",
 				"Family Medical-Dietary Explain": "No meat products",
 			},
-			expected: map[string]string{
-				"dietary_info": "Vegetarian; No meat products",
-			},
+			wantInfo: map[string]string{"dietary_info": "No meat products"},
+			wantGate: map[string]string{"dietary_gate": ""},
 		},
 		{
-			name: "Special needs info concatenation",
+			name: "Special needs explanation, gate beside it",
 			fields: map[string]string{
 				"Family Camp-Special Needs":     "Yes",
 				"Family Camp-Special Needs Yes": "Wheelchair accessible cabin needed",
 			},
-			expected: map[string]string{
-				"special_needs_info": "Yes; Wheelchair accessible cabin needed",
-			},
+			wantInfo: map[string]string{"special_needs_info": "Wheelchair accessible cabin needed"},
+			wantGate: map[string]string{"special_needs_gate": gateYes},
 		},
 		{
-			name: "Empty fields should not add extra separators",
+			name: "an unanswered gate leaves no separator and no verdict",
 			fields: map[string]string{
 				"Family Medical-Allergies":    "",
 				"Family Medical-Allergy Info": "Peanuts",
 			},
-			expected: map[string]string{
-				"allergy_info": "Peanuts",
-			},
+			wantInfo: map[string]string{"allergy_info": "Peanuts"},
+			wantGate: map[string]string{"allergy_gate": ""},
 		},
 		{
 			name: "Additional info standalone",
 			fields: map[string]string{
 				"Family Medical-Additional": "Prefers ground floor",
 			},
-			expected: map[string]string{
-				"additional_info": "Prefers ground floor",
-			},
+			wantInfo: map[string]string{"additional_info": "Prefers ground floor"},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := concatenateMedicalFields(tt.fields)
-			for key, expectedVal := range tt.expected {
-				if result[key] != expectedVal {
-					t.Errorf("%s: %q = %q, want %q", tt.name, key, result[key], expectedVal)
+			t.Parallel()
+			s := NewFamilyCampDerivedSync(nil)
+
+			values := make([]customValueEntry, 0, len(tt.fields))
+			for name, value := range tt.fields {
+				values = append(values, customValueEntry{
+					householdPBID: "hh_johnson", fieldName: name,
+					value: value, lastUpdated: ts,
+				})
+			}
+
+			meds := s.processMedical(values)
+			if len(meds) != 1 {
+				t.Fatalf("medical rows = %d, want 1", len(meds))
+			}
+			info := map[string]string{
+				"cpap_info":          meds[0].cpapInfo,
+				"physician_info":     meds[0].physicianInfo,
+				"allergy_info":       meds[0].allergyInfo,
+				"dietary_info":       meds[0].dietaryInfo,
+				"special_needs_info": meds[0].specialNeedsInfo,
+				"additional_info":    meds[0].additionalInfo,
+			}
+			gate := map[string]string{
+				"cpap_gate":          meds[0].cpapGate,
+				"physician_gate":     meds[0].physicianGate,
+				"allergy_gate":       meds[0].allergyGate,
+				"dietary_gate":       meds[0].dietaryGate,
+				"special_needs_gate": meds[0].specialNeedsGate,
+			}
+			for column, want := range tt.wantInfo {
+				if got := info[column]; got != want {
+					t.Errorf("%s = %q, want %q -- the narrative column holds the "+
+						"family's words alone", column, got, want)
+				}
+			}
+			for column, want := range tt.wantGate {
+				if got := gate[column]; got != want {
+					t.Errorf("%s = %q, want %q", column, got, want)
 				}
 			}
 		})
-	}
-}
-
-// TestMedicalDeduplicationByHousehold tests that medical info is deduplicated per household.
-//
-// NOTE: it drives aggregateMedicalByHousehold, a test-local reimplementation,
-// and asserts only non-emptiness -- so it is blind to how production collapses a
-// household's answers and cannot fail when processMedical changes. The real
-// coverage of that is TestProcessMedicalKeepsEveryAnswerersNarrative and the
-// kindred#2255 tests beside it.
-func TestMedicalDeduplicationByHousehold(t *testing.T) {
-	t.Parallel()
-	personValues := []testPersonCustomValue{
-		// Child 1's medical info for household 100
-		{HouseholdCMID: 100, PersonCMID: 1001, FieldName: "Family Medical-Allergies", Value: "Yes"},
-		{HouseholdCMID: 100, PersonCMID: 1001, FieldName: "Family Medical-Allergy Info", Value: "Peanuts"},
-		// Child 2's medical info for same household (may have same or different data)
-		{HouseholdCMID: 100, PersonCMID: 1002, FieldName: "Family Medical-Allergies", Value: "Yes"},
-		{HouseholdCMID: 100, PersonCMID: 1002, FieldName: "Family Medical-Allergy Info", Value: "Shellfish"},
-		// Different household
-		{HouseholdCMID: 200, PersonCMID: 2001, FieldName: "Family Medical-Allergies", Value: "No"},
-	}
-
-	medicalByHousehold := aggregateMedicalByHousehold(personValues)
-
-	// Household 100 should have 1 medical record (deduplicated)
-	if len(medicalByHousehold) != 2 {
-		t.Errorf("expected 2 households with medical data, got %d", len(medicalByHousehold))
-	}
-
-	// The medical info should capture all values (concatenated or first non-empty)
-	if med, ok := medicalByHousehold[100]; ok {
-		// Should contain allergy info from at least one child
-		if med.AllergyInfo == "" {
-			t.Error("expected allergy_info for household 100, got empty")
-		}
-	} else {
-		t.Error("expected medical data for household 100")
 	}
 }
 
@@ -411,12 +425,6 @@ func TestEmptyDataHandling(t *testing.T) {
 	adults := extractAdultsFromHousehold(householdValues, 100)
 	if len(adults) != 0 {
 		t.Errorf("expected 0 adults for empty household data, got %d", len(adults))
-	}
-
-	// Empty medical data
-	medicalByHousehold := aggregateMedicalByHousehold(personValues)
-	if len(medicalByHousehold) != 0 {
-		t.Errorf("expected 0 medical records for empty data, got %d", len(medicalByHousehold))
 	}
 }
 
@@ -698,117 +706,6 @@ func mapRegistrationField(fieldName string) string {
 	return ""
 }
 
-// concatenateMedicalFields concatenates related medical fields into blobs
-func concatenateMedicalFields(fields map[string]string) map[string]string {
-	result := make(map[string]string)
-
-	// CPAP info
-	cpapParts := []string{}
-	for _, key := range []string{"Family Camp-CPAP", "FAM CAMP-CPAP"} {
-		if v, ok := fields[key]; ok && v != "" {
-			cpapParts = append(cpapParts, v)
-			break // Only take one "Yes/No" value
-		}
-	}
-	if v, ok := fields["Family Medical-CPAP Explain"]; ok && v != "" {
-		cpapParts = append(cpapParts, v)
-	}
-	if len(cpapParts) > 0 {
-		result["cpap_info"] = strings.Join(cpapParts, "; ")
-	}
-
-	// Physician info
-	physicianParts := []string{}
-	if v, ok := fields["Family Camp-Physician"]; ok && v != "" {
-		physicianParts = append(physicianParts, v)
-	}
-	if v, ok := fields["Family Camp-Physician If Yes"]; ok && v != "" {
-		physicianParts = append(physicianParts, v)
-	}
-	if len(physicianParts) > 0 {
-		result["physician_info"] = strings.Join(physicianParts, "; ")
-	}
-
-	// Allergy info
-	allergyParts := []string{}
-	if v, ok := fields["Family Medical-Allergies"]; ok && v != "" {
-		allergyParts = append(allergyParts, v)
-	}
-	if v, ok := fields["Family Medical-Allergy Info"]; ok && v != "" {
-		allergyParts = append(allergyParts, v)
-	}
-	if len(allergyParts) > 0 {
-		result["allergy_info"] = strings.Join(allergyParts, "; ")
-	}
-
-	// Dietary info
-	dietaryParts := []string{}
-	if v, ok := fields["Family Medical-Dietary Needs"]; ok && v != "" {
-		dietaryParts = append(dietaryParts, v)
-	}
-	if v, ok := fields["Family Medical-Dietary Explain"]; ok && v != "" {
-		dietaryParts = append(dietaryParts, v)
-	}
-	if len(dietaryParts) > 0 {
-		result["dietary_info"] = strings.Join(dietaryParts, "; ")
-	}
-
-	// Special needs info
-	specialParts := []string{}
-	if v, ok := fields["Family Camp-Special Needs"]; ok && v != "" {
-		specialParts = append(specialParts, v)
-	}
-	if v, ok := fields["Family Camp-Special Needs Yes"]; ok && v != "" {
-		specialParts = append(specialParts, v)
-	}
-	if len(specialParts) > 0 {
-		result["special_needs_info"] = strings.Join(specialParts, "; ")
-	}
-
-	// Additional info (standalone)
-	if v, ok := fields["Family Medical-Additional"]; ok && v != "" {
-		result["additional_info"] = v
-	}
-
-	return result
-}
-
-// aggregateMedicalByHousehold aggregates medical info by household
-func aggregateMedicalByHousehold(values []testPersonCustomValue) map[int]*testMedical {
-	result := make(map[int]*testMedical)
-	// Track fields by household
-	fieldsByHousehold := make(map[int]map[string]string)
-
-	for _, v := range values {
-		if fieldsByHousehold[v.HouseholdCMID] == nil {
-			fieldsByHousehold[v.HouseholdCMID] = make(map[string]string)
-		}
-
-		// First non-empty value wins
-		if _, exists := fieldsByHousehold[v.HouseholdCMID][v.FieldName]; !exists && v.Value != "" {
-			fieldsByHousehold[v.HouseholdCMID][v.FieldName] = v.Value
-		}
-	}
-
-	// Concatenate fields for each household
-	for household, fields := range fieldsByHousehold {
-		concatenated := concatenateMedicalFields(fields)
-		if len(concatenated) > 0 {
-			result[household] = &testMedical{
-				HouseholdCMID:    household,
-				AllergyInfo:      concatenated["allergy_info"],
-				DietaryInfo:      concatenated["dietary_info"],
-				CPAPInfo:         concatenated["cpap_info"],
-				PhysicianInfo:    concatenated["physician_info"],
-				SpecialNeedsInfo: concatenated["special_needs_info"],
-				AdditionalInfo:   concatenated["additional_info"],
-			}
-		}
-	}
-
-	return result
-}
-
 // ============================================================================
 // Idempotency Tests - Define expected upsert behavior
 // ============================================================================
@@ -976,6 +873,53 @@ func TestUpsertMedicalIdempotency(t *testing.T) {
 	}
 	if stats2.Created != 0 {
 		t.Errorf("second run: expected Created=0, got %d", stats2.Created)
+	}
+}
+
+// TestMedicalNeedsUpdateSeesAGateOnlyChange is the silent-no-op guard on the
+// UPDATE side. 375 of 900 2026 households have no narrative at all, so for them
+// the gate columns are the only thing that can ever change; a comparison blind
+// to them would skip the row forever and the panel would show a stale answer.
+//
+// medicalNeedsUpdate takes a *core.Record, which TestUpsertMedicalIdempotency's
+// simulateUpsertMedical harness never touches -- that helper drives a
+// test-local map[string]*testMedRecord, not a real record. The harness here
+// instead follows TestRegistrationNeedsUpdateIgnoresTheUnknownSpelling: a bare
+// core.NewBaseCollection with just the columns this test reads, and a record
+// built with core.NewRecord and Set -- no app, no Save, since the function
+// under test only ever calls GetString.
+func TestMedicalNeedsUpdateSeesAGateOnlyChange(t *testing.T) {
+	t.Parallel()
+	col := core.NewBaseCollection("family_camp_medical")
+	col.Fields.Add(&core.TextField{Name: "cpap_info"})
+	col.Fields.Add(&core.TextField{Name: "physician_info"})
+	col.Fields.Add(&core.TextField{Name: "special_needs_info"})
+	col.Fields.Add(&core.TextField{Name: "allergy_info"})
+	col.Fields.Add(&core.TextField{Name: "dietary_info"})
+	col.Fields.Add(&core.TextField{Name: "additional_info"})
+	col.Fields.Add(&core.TextField{Name: "bathroom_explain"})
+	col.Fields.Add(&core.TextField{Name: "accommodation_explain"})
+	col.Fields.Add(&core.TextField{Name: enrollmentStatusColumn})
+	col.Fields.Add(&core.TextField{Name: "allergy_gate"})
+	col.Fields.Add(&core.TextField{Name: "dietary_gate"})
+	col.Fields.Add(&core.TextField{Name: "special_needs_gate"})
+	col.Fields.Add(&core.TextField{Name: "physician_gate"})
+	col.Fields.Add(&core.TextField{Name: "cpap_gate"})
+
+	existing := core.NewRecord(col)
+	existing.Set("allergy_gate", gateNo)
+
+	s := &FamilyCampDerivedSync{}
+
+	changed := &medicalData{householdPBID: "hh_1", allergyGate: gateYes}
+	if !s.medicalNeedsUpdate(existing, changed) {
+		t.Error("a gate-only change was invisible to medicalNeedsUpdate -- " +
+			"the row would never be rewritten")
+	}
+
+	same := &medicalData{householdPBID: "hh_1", allergyGate: gateNo}
+	if s.medicalNeedsUpdate(existing, same) {
+		t.Error("an unchanged row was reported as needing an update")
 	}
 }
 
@@ -1490,16 +1434,21 @@ func TestLoadFieldDefinitionsRoutesRenamedRequestFieldByCMID(t *testing.T) {
 	}
 }
 
-// TestProcessMedicalKeepsBothCamperAndAdultCPAPNarratives: the registration
-// flags OR across the three CPAP fields because they describe DIFFERENT PEOPLE
-// -- the Camper-partition generations and the Adult-partition twin. The
-// narrative behind those flags has to follow the same rule, or staff see a
-// bathroom flag with nothing in the admin-gated record explaining it.
+// TestProcessMedicalUnionsCamperAndAdultCPAPGates: the registration flags OR
+// across the three CPAP fields because they describe DIFFERENT PEOPLE -- the
+// Camper-partition generations and the Adult-partition twin. The medical
+// record has to follow the same rule, or staff see a bathroom flag with
+// nothing in the admin-gated record answering for it.
 //
-// "Family Camp-CPAP" and "FAM CAMP-CPAP" are name-generations of the SAME
-// question, so those two still collapse to one; Adult-CPAP is a different
-// person and is always additive.
-func TestProcessMedicalKeepsBothCamperAndAdultCPAPNarratives(t *testing.T) {
+// Since kindred#2542 the CPAP option sentences no longer reach cpap_info, so
+// what each of the two people contributes is a GATE answer, and the
+// household's cpapGate is the union of the three fields. The distinction
+// between the two answers -- outlet versus bathroom -- is not lost with the
+// wording: it is exactly what classifyCPAPAnswer resolves into needs_power
+// and needs_private_bathroom, which this test still asserts on the same
+// fixture. cpapInfo itself must stay empty: neither field's answer is
+// something the family wrote into an explain box.
+func TestProcessMedicalUnionsCamperAndAdultCPAPGates(t *testing.T) {
 	t.Parallel()
 	s := NewFamilyCampDerivedSync(nil)
 	ts := time.Date(2025, 4, 21, 0, 0, 0, 0, time.UTC)
@@ -1524,36 +1473,25 @@ func TestProcessMedicalKeepsBothCamperAndAdultCPAPNarratives(t *testing.T) {
 	if len(meds) != 1 {
 		t.Fatalf("medical rows = %d, want 1", len(meds))
 	}
-	if !strings.Contains(meds[0].cpapInfo, "outlet") {
-		t.Errorf("cpapInfo lost the camper narrative: %q", meds[0].cpapInfo)
+	if got, want := meds[0].cpapGate, gateYes; got != want {
+		t.Errorf("cpapGate = %q, want %q -- two people disclosed and the household "+
+			"gate must carry it", got, want)
 	}
-	if !strings.Contains(strings.ToLower(meds[0].cpapInfo), "bathroom") {
-		t.Errorf("cpapInfo lost the adult narrative, leaving needs_private_bathroom "+
-			"with no explanation behind it: %q", meds[0].cpapInfo)
+	if got := meds[0].cpapInfo; got != "" {
+		t.Errorf("cpapInfo = %q, want %q -- neither option sentence is something "+
+			"the family wrote in the explain field", got, "")
 	}
 }
 
-// TestProcessMedicalCollapsesCamperCPAPGenerations is the other half: the two
-// Camper-partition names are the same question asked twice, so answering both
-// must not duplicate the sentence in the medical record.
-func TestProcessMedicalCollapsesCamperCPAPGenerations(t *testing.T) {
-	t.Parallel()
-	s := NewFamilyCampDerivedSync(nil)
-	ts := time.Date(2025, 4, 21, 0, 0, 0, 0, time.UTC)
-
-	meds := s.processMedical([]customValueEntry{
-		{householdPBID: "hh_garcia", fieldName: "Family Camp-CPAP",
-			value: "Yes, outlet needed for CPAP machine", lastUpdated: ts},
-		{householdPBID: "hh_garcia", fieldName: "FAM CAMP-CPAP",
-			value: "Yes, outlet needed for CPAP machine", lastUpdated: ts},
-	})
-	if len(meds) != 1 {
-		t.Fatalf("medical rows = %d, want 1", len(meds))
-	}
-	if strings.Count(strings.ToLower(meds[0].cpapInfo), "outlet") != 1 {
-		t.Errorf("cpapInfo repeated one question's answer: %q", meds[0].cpapInfo)
-	}
-}
+// TestProcessMedicalCollapsesCamperCPAPGenerations is deliberately absent. It
+// fed the same answer ("Yes, outlet needed...") into both Camper-partition
+// CPAP fields, so the OR that gateVerdict performs and the wrong "just take
+// one" implementation it was written to catch produce the identical verdict
+// on that fixture -- since kindred#2542 moved cpap_info down to a single
+// source field, there was no longer a second claim left for the duplicate
+// gate answers to falsify. It could not fail. The union across all three CPAP
+// fields, WITH conflicting answers so a wrong implementation actually
+// disagrees with a right one, is TestProcessMedicalCPAPGateUnionsAllThreeGenerations.
 
 // TestProcessRegistrationsMandatoryOnlyHouseholdSurvives: accommodation_is_mandatory
 // is the one stored VIP signal (owner ruling 2026-08-22), so a household whose
@@ -1920,7 +1858,10 @@ func TestProcessRegistrationsHasInfantORsAcrossHousehold(t *testing.T) {
 
 // TestProcessMedicalCPAPIncludesAdultField: Adult-CPAP is admitted by
 // extraFieldCMIDs but processMedical never read it, so a household where only
-// the accompanying adult answers produced an empty cpap_info. kindred#1875.
+// the accompanying adult answers produced an empty CPAP record. kindred#1875.
+// Since kindred#2542 that answer lands in the gate column rather than in
+// cpap_info, so this asserts the field is still read -- one verdict, from
+// whichever of the three generations carries the answer.
 func TestProcessMedicalCPAPIncludesAdultField(t *testing.T) {
 	t.Parallel()
 	s := NewFamilyCampDerivedSync(nil)
@@ -1933,8 +1874,9 @@ func TestProcessMedicalCPAPIncludesAdultField(t *testing.T) {
 	if len(meds) != 1 {
 		t.Fatalf("medical rows = %d, want 1", len(meds))
 	}
-	if meds[0].cpapInfo == "" {
-		t.Error("cpapInfo empty; an adult-only CPAP answer was dropped")
+	if got, want := meds[0].cpapGate, gateYes; got != want {
+		t.Errorf("cpapGate = %q, want %q; an adult-only CPAP answer was dropped",
+			got, want)
 	}
 }
 
@@ -3228,11 +3170,13 @@ func TestAdultsCollectionHasAttributeConflictsColumn(t *testing.T) {
 // aggregation, never by picking a winner.
 //
 // The tests below are deliberately written against the PRODUCTION
-// processMedical. The two tests that look like they already cover this
-// (TestMedicalDeduplicationByHousehold, which drives a test-local
-// reimplementation and asserts only non-emptiness, and
-// TestProcessMedicalCollapsesCamperCPAPGenerations, which exercises one person)
-// are blind to the defect by construction.
+// processMedical. Two tests that looked like they already covered this were
+// blind to the defect by construction and have since been removed:
+// TestMedicalDeduplicationByHousehold drove a test-local reimplementation
+// (concatenateMedicalFields/aggregateMedicalByHousehold) and asserted only
+// non-emptiness, and TestProcessMedicalCollapsesCamperCPAPGenerations fed the
+// same answer into both fields it exercised, so it could not disagree with a
+// wrong implementation either. kindred#2542.
 // ---------------------------------------------------------------------------
 
 // medicalNarrativeA/B are placeholder disclosures. Never put a real medical
@@ -3270,11 +3214,14 @@ func TestProcessMedicalKeepsEveryAnswerersNarrative(t *testing.T) {
 }
 
 // TestProcessMedicalOrsTheGateAcrossAnswerers pins the half of the fix that
-// makes the join safe. A gate is a two-value Yes/No question; joining two
-// people's gate answers verbatim would render "No; Yes; <narrative>", which is
-// why an earlier uniform dedup-and-join was reverted. The household's gate is
-// the OR of its answers, so the one person who said Yes is not overruled by the
-// one who said No.
+// makes the join safe. A gate is a two-value Yes/No question asked on a
+// per-CAMPER form, so a household with two children answers it twice; the
+// household's gate is the OR of those answers, so the one person who said Yes
+// is not overruled by the one who said No.
+//
+// Since kindred#2542 the verdict lands in its own column, so the narrative
+// beside it is the family's sentence alone -- neither answerer's gate token
+// reaches it.
 //
 // The "No" is listed FIRST so the test fails against first-non-empty-wins
 // rather than passing by luck of load order.
@@ -3294,9 +3241,13 @@ func TestProcessMedicalOrsTheGateAcrossAnswerers(t *testing.T) {
 	if len(meds) != 1 {
 		t.Fatalf("medical rows = %d, want 1", len(meds))
 	}
-	if got, want := meds[0].allergyInfo, "Yes; "+medicalNarrativeA; got != want {
-		t.Errorf("allergyInfo = %q, want %q -- a denial in front of the condition "+
-			"it denies is the rendered contradiction this fixes", got, want)
+	if got, want := meds[0].allergyGate, gateYes; got != want {
+		t.Errorf("allergyGate = %q, want %q -- one answerer's denial must not "+
+			"overrule another's disclosure", got, want)
+	}
+	if got, want := meds[0].allergyInfo, medicalNarrativeA; got != want {
+		t.Errorf("allergyInfo = %q, want %q -- a gate token in front of the "+
+			"condition it denies is the rendered contradiction this fixes", got, want)
 	}
 }
 
@@ -3494,19 +3445,18 @@ func TestMedicalColumnLimitsMatchTheSchema(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// The CPAP column is the one gate/explain pair processMedical still stores as a
-// gate STRING. docs/reference/family-camp-field-provenance.md section 4 names
-// Special Needs and CPAP as the two pairs where a split across children does
-// real harm; Special Needs is now ORed, and CPAP is carved out of kindred#2255
-// for its own pass. Aggregating it the way every other field is aggregated is
-// what would put a denial and a disclosure in one column.
+// CPAP. The three fields are one question asked in three generations, and since
+// kindred#2542 they feed the cpap_gate column by OR while cpap_info holds only
+// "Family Medical-CPAP Explain" -- the family's own sentence. The affirmative
+// options name WHICH accommodation is needed, and that distinction survives in
+// needs_power / needs_private_bathroom via classifyCPAPAnswer, which the panel
+// renders as Housing-needs rows directly above this text. What leaves cpap_info
+// is the wording, never the decision.
 // ---------------------------------------------------------------------------
 
 // TestProcessMedicalDropsADeniedCPAPGateBesideADisclosedOne: one child's form
-// says No and another's says Yes. Keeping both renders
-// "No; Yes; <explanation>" -- the contradiction medicalGateFields exists to
-// prevent, reaching the row through the one column medicalGateFields does not
-// cover.
+// says No and another's says Yes. The denial must not overrule the disclosure,
+// and neither token may reach the column staff read for the explanation.
 func TestProcessMedicalDropsADeniedCPAPGateBesideADisclosedOne(t *testing.T) {
 	t.Parallel()
 	s := NewFamilyCampDerivedSync(nil)
@@ -3522,34 +3472,51 @@ func TestProcessMedicalDropsADeniedCPAPGateBesideADisclosedOne(t *testing.T) {
 	if len(meds) != 1 {
 		t.Fatalf("medical rows = %d, want 1", len(meds))
 	}
-	if got, want := meds[0].cpapInfo, "Yes; needs an outlet overnight"; got != want {
-		t.Errorf("cpapInfo = %q, want %q -- a denial in front of the need it denies", got, want)
+	if got, want := meds[0].cpapGate, gateYes; got != want {
+		t.Errorf("cpapGate = %q, want %q -- a denial in front of the need it denies", got, want)
+	}
+	if got, want := meds[0].cpapInfo, "needs an outlet overnight"; got != want {
+		t.Errorf("cpapInfo = %q, want %q -- no gate answer belongs in this column", got, want)
 	}
 }
 
 // TestProcessMedicalKeepsTwoDifferentCPAPNeeds: the CPAP fields are NOT a
 // two-value gate (kindred#1875) -- every affirmative option names WHICH
 // accommodation is needed, so two different affirmatives are two different
-// needs and neither may be collapsed away. Only the pure denial goes.
+// needs and neither may be collapsed away. Since kindred#2542 they are no
+// longer carried as sentences in cpap_info, so this asserts the place the
+// distinction now lives: both flags raised off the same answers, with the gate
+// reading yes once.
 func TestProcessMedicalKeepsTwoDifferentCPAPNeeds(t *testing.T) {
 	t.Parallel()
 	s := NewFamilyCampDerivedSync(nil)
 	ts := time.Date(2026, 4, 21, 0, 0, 0, 0, time.UTC)
 
-	const (
-		outlet   = "Yes, outlet needed for CPAP machine"
-		bathroom = "Yes, bathroom or other housing accommodation needed"
-	)
-	meds := s.processMedical([]customValueEntry{
+	const outlet = "Yes, outlet needed for CPAP machine"
+	vals := []customValueEntry{
 		{householdPBID: "hh_johnson", fieldName: "FAM CAMP-CPAP", value: "No", lastUpdated: ts},
 		{householdPBID: "hh_johnson", fieldName: "FAM CAMP-CPAP", value: outlet, lastUpdated: ts},
-		{householdPBID: "hh_johnson", fieldName: "FAM CAMP-CPAP", value: bathroom, lastUpdated: ts},
-	})
+		{householdPBID: "hh_johnson", fieldName: "FAM CAMP-CPAP", value: cpapBathroomOption, lastUpdated: ts},
+	}
+
+	regs := s.processRegistrations(nil, vals)
+	if len(regs) != 1 {
+		t.Fatalf("registrations = %d, want 1", len(regs))
+	}
+	if !regs[0].needsPower {
+		t.Error("the outlet option must still raise needsPower")
+	}
+	if !regs[0].needsPrivateBathroom {
+		t.Error("the bathroom option must still raise needsPrivateBathroom -- " +
+			"two different affirmatives are two different needs")
+	}
+
+	meds := s.processMedical(vals)
 	if len(meds) != 1 {
 		t.Fatalf("medical rows = %d, want 1", len(meds))
 	}
-	if got, want := meds[0].cpapInfo, bathroom+"; "+outlet; got != want {
-		t.Errorf("cpapInfo = %q, want %q", got, want)
+	if got, want := meds[0].cpapGate, gateYes; got != want {
+		t.Errorf("cpapGate = %q, want %q", got, want)
 	}
 }
 
@@ -3560,29 +3527,45 @@ func TestProcessMedicalKeepsTwoDifferentCPAPNeeds(t *testing.T) {
 // processRegistrations ORs BOTH fields into needs_power and
 // needs_private_bathroom, so the household got a housing flag with a cpap_info
 // that denies it. 27 households in 2025 and 1 in 2026 on the production
-// snapshot.
+// snapshot. Each generation is asked for on its own so the union cannot pass by
+// reading only one of the two names.
 func TestProcessMedicalUnionsBothCamperCPAPFields(t *testing.T) {
 	t.Parallel()
-	s := NewFamilyCampDerivedSync(nil)
-	ts := time.Date(2026, 4, 21, 0, 0, 0, 0, time.UTC)
 
 	const outlet = "Yes, outlet needed for CPAP machine"
-	meds := s.processMedical([]customValueEntry{
-		{householdPBID: "hh_johnson", fieldName: "Family Camp-CPAP", value: "No", lastUpdated: ts},
-		{householdPBID: "hh_johnson", fieldName: "FAM CAMP-CPAP", value: outlet, lastUpdated: ts},
-	})
-	if len(meds) != 1 {
-		t.Fatalf("medical rows = %d, want 1", len(meds))
+	cases := []struct {
+		name      string
+		discloser string
+		denier    string
+	}{
+		{"the successor name carries the disclosure", "FAM CAMP-CPAP", "Family Camp-CPAP"},
+		{"the older name carries the disclosure", "Family Camp-CPAP", "FAM CAMP-CPAP"},
 	}
-	if got, want := meds[0].cpapInfo, outlet; got != want {
-		t.Errorf("cpapInfo = %q, want %q -- the flag says the household needs power "+
-			"and the narrative would deny it", got, want)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			s := NewFamilyCampDerivedSync(nil)
+			ts := time.Date(2026, 4, 21, 0, 0, 0, 0, time.UTC)
+
+			meds := s.processMedical([]customValueEntry{
+				{householdPBID: "hh_johnson", fieldName: tc.denier, value: "No", lastUpdated: ts},
+				{householdPBID: "hh_johnson", fieldName: tc.discloser, value: outlet, lastUpdated: ts},
+			})
+			if len(meds) != 1 {
+				t.Fatalf("medical rows = %d, want 1", len(meds))
+			}
+			if got, want := meds[0].cpapGate, gateYes; got != want {
+				t.Errorf("cpapGate = %q, want %q -- the flag says the household needs "+
+					"power and the gate would deny it", got, want)
+			}
+		})
 	}
 }
 
-// TestProcessMedicalKeepsAnUnanimousCPAPDenial: dropping negatives is only the
-// half of the OR that applies. A household where nobody said Yes still has an
-// answer, and blanking it would be the silent loss this whole change ends.
+// TestProcessMedicalKeepsAnUnanimousCPAPDenial: a household where nobody said
+// Yes still ANSWERED, and "no" is not the same fact as never being asked. The
+// row must survive the has-data guard carrying that answer, with nothing in the
+// narrative column, because nobody wrote anything there.
 func TestProcessMedicalKeepsAnUnanimousCPAPDenial(t *testing.T) {
 	t.Parallel()
 	s := NewFamilyCampDerivedSync(nil)
@@ -3593,10 +3576,13 @@ func TestProcessMedicalKeepsAnUnanimousCPAPDenial(t *testing.T) {
 		{householdPBID: "hh_johnson", fieldName: "Family Camp-CPAP", value: "No", lastUpdated: ts},
 	})
 	if len(meds) != 1 {
-		t.Fatalf("medical rows = %d, want 1", len(meds))
+		t.Fatalf("medical rows = %d, want 1 -- a denial is an answer", len(meds))
 	}
-	if got, want := meds[0].cpapInfo, "No"; got != want {
-		t.Errorf("cpapInfo = %q, want %q", got, want)
+	if got, want := meds[0].cpapGate, gateNo; got != want {
+		t.Errorf("cpapGate = %q, want %q", got, want)
+	}
+	if got := meds[0].cpapInfo; got != "" {
+		t.Errorf("cpapInfo = %q, want empty -- the family wrote no explanation", got)
 	}
 }
 
@@ -4109,5 +4095,310 @@ func TestProcessMedicalBathroomExplainUsesTheSharedRoutingList(t *testing.T) {
 		if !strings.Contains(meds[0].bathroomExplain, "narrative for "+name) {
 			t.Errorf("field %q: bathroomExplain = %q", name, meds[0].bathroomExplain)
 		}
+	}
+}
+
+// TestMedicalGateColumnsExistInASchemaMigration guards the failure mode that has
+// no symptom: record.Set() on a PocketBase column that does not exist is a
+// silent no-op, so a gate whose migration was never written simply never
+// persists, with nothing in the logs and nothing in the tests to notice.
+//
+// Ranges over gateColumns (lodging_medical_narrative_test.go, same package)
+// rather than a list of its own -- two identical lists in this package is
+// exactly the drift shape TestMedicalColumnLimitsMatchTheSchema above already
+// guards against for medicalColumnLimits.
+func TestMedicalGateColumnsExistInASchemaMigration(t *testing.T) {
+	t.Parallel()
+
+	paths, err := filepath.Glob("../pb_migrations/*.js")
+	if err != nil {
+		t.Fatalf("globbing migrations: %v", err)
+	}
+	if len(paths) == 0 {
+		t.Fatal("no migrations found -- this test would pass vacuously")
+	}
+
+	declared := make(map[string]string, len(gateColumns))
+	for _, path := range paths {
+		source, err := os.ReadFile(path) //nolint:gosec // fixed repo-relative glob
+		if err != nil {
+			t.Fatalf("reading %s: %v", path, err)
+		}
+		text := string(source)
+		if !strings.Contains(text, "family_camp_medical") {
+			continue
+		}
+		for _, column := range gateColumns {
+			if strings.Contains(text, `name: "`+column+`"`) {
+				declared[column] = filepath.Base(path)
+			}
+		}
+	}
+
+	for _, column := range gateColumns {
+		path, ok := declared[column]
+		if !ok {
+			t.Errorf("family_camp_medical.%s is written by processMedical but no "+
+				"migration creates it -- record.Set() would silently no-op", column)
+			continue
+		}
+		source, err := os.ReadFile(filepath.Join("..", "pb_migrations", path)) //nolint:gosec // from the glob above
+		if err != nil {
+			t.Fatalf("re-reading %s: %v", path, err)
+		}
+		text := string(source)
+		if !strings.Contains(text, `"select"`) {
+			t.Errorf("%s declares %s but no select field -- the gate must be a "+
+				"three-state select, not a bool", path, column)
+		}
+		if !strings.Contains(text, `values: ["yes", "no"]`) {
+			t.Errorf(`%s declares %s without values: ["yes", "no"]`, path, column)
+		}
+	}
+}
+
+func TestGateVerdictOrsAcrossAnswerers(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name  string
+		parts []string
+		want  string
+	}{
+		{"nobody answered", nil, ""},
+		{"every answer empty", []string{"", "   "}, ""},
+		{"single no", []string{"No"}, "no"},
+		{"single yes", []string{"Yes"}, "yes"},
+		{"one yes among denials wins", []string{"No", "Yes", "No"}, "yes"},
+		{"denials only stay no", []string{"No", "No"}, "no"},
+		{"a CPAP option sentence is affirmative",
+			[]string{"No", "Yes, outlet needed for CPAP machine"}, "yes"},
+		{"the bathroom option sentence is affirmative too",
+			[]string{"Yes, bathroom or other housing accommodation for a medical " +
+				"(not CPAP related) or accessibility-related reason needed"}, "yes"},
+		{"case and whitespace do not matter", []string{" nO ", "  "}, "no"},
+		{"an answer outside the vocabulary is not an answer",
+			[]string{"Vegetarian"}, ""},
+		{"an unrecognized answer never becomes a denial",
+			[]string{"Vegetarian", "No"}, "no"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := gateVerdict("Family Medical-Allergies", tt.parts); got != tt.want {
+				t.Errorf("gateVerdict(%q) = %q, want %q", tt.parts, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestGateVerdictIsOrderIndependent is the probe kindred#2255 prescribes instead
+// of a flakiness test. The old collapse picked a winner by load order, so the
+// only honest assertion is that permuting the input changes nothing -- and it
+// must not pin WHICH answerer wins, because none does.
+func TestGateVerdictIsOrderIndependent(t *testing.T) {
+	t.Parallel()
+	permutations := [][]string{
+		{"No", "Yes", "No"},
+		{"No", "No", "Yes"},
+		{"Yes", "No", "No"},
+	}
+	want := gateVerdict("Family Camp-Physician", permutations[0])
+	for _, parts := range permutations[1:] {
+		if got := gateVerdict("Family Camp-Physician", parts); got != want {
+			t.Errorf("gateVerdict(%q) = %q, want %q -- permuting the answers must "+
+				"not change the verdict", parts, got, want)
+		}
+	}
+}
+
+// TestGateVerdictWarnsOnUnrecognizedAnswerWithoutLoggingIt pins the ONLY
+// remaining signal that a CampMinder gate field's vocabulary has drifted.
+//
+// Before kindred#2542, medicalAnswers.parts had a fall-through valve that let
+// an answer outside the Yes/No vocabulary survive into the narrative column,
+// so a widened CampMinder field was at least visible in the sheet even though
+// nothing flagged it. That valve was retired by owner ruling once the gate got
+// its own column (gateVerdict's doc comment), and gateVerdict's slog.Warn is
+// what replaced it -- if this warning stopped firing, or stopped being
+// distinguishable from routine noise, nobody would ever find out the
+// vocabulary moved.
+//
+// The warning must carry enough to act on (the field, and a count) and must
+// NEVER carry the answer text itself: these are answers on a medical form, the
+// same contract joinMedicalColumn's cap-warning states and
+// TestNarrativeIsNeverLogged enforces at the source-scan level for every other
+// slog call in this package.
+//
+// Not t.Parallel(): captureSweepLogs (orphan_sweep_test.go) swaps the
+// process-global slog default; this test is exempted in
+// pocketbase/main_test_parallelism_test.go alongside the sync package's other
+// captureSweepLogs callers.
+func TestGateVerdictWarnsOnUnrecognizedAnswerWithoutLoggingIt(t *testing.T) {
+	logs := captureSweepLogs(t)
+
+	const secretAnswer = "Only in an emergency, ask my doctor first"
+	verdict := gateVerdict("Family Medical-Allergies", []string{secretAnswer, "No"})
+
+	// The unrecognized answer must not overrule the denial that sits beside it
+	// -- TestGateVerdictOrsAcrossAnswerers already pins this at the verdict
+	// level; repeating the input here (rather than a bare unrecognized-only
+	// case) proves the warning fires on the SAME call that produces a real,
+	// stored verdict, not only on a degenerate all-garbage input.
+	if verdict != gateVerdictNo {
+		t.Fatalf("verdict = %q, want %q", verdict, gateVerdictNo)
+	}
+
+	got := logs.String()
+	if got == "" {
+		t.Fatal("gateVerdict saw an answer outside the Yes/No vocabulary and logged nothing")
+	}
+	if !strings.Contains(got, "Family Medical-Allergies") {
+		t.Errorf("warning does not name the field:\n%s", got)
+	}
+	if !strings.Contains(got, "count=1") {
+		t.Errorf("warning does not carry a count of 1 unrecognized answer:\n%s", got)
+	}
+	if strings.Contains(got, secretAnswer) {
+		t.Errorf("warning leaked the answer text -- this is a medical form:\n%s", got)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// kindred#2542: the gate answer moves to its own column and the narrative
+// columns hold the family's own words alone.
+// ---------------------------------------------------------------------------
+
+// TestProcessMedicalSplitsTheGateFromTheNarrative is the issue in one test: the
+// family's words alone in the narrative column, the gate answer beside it.
+func TestProcessMedicalSplitsTheGateFromTheNarrative(t *testing.T) {
+	t.Parallel()
+	s := NewFamilyCampDerivedSync(nil)
+	ts := time.Date(2026, 4, 21, 0, 0, 0, 0, time.UTC)
+
+	meds := s.processMedical([]customValueEntry{
+		{householdPBID: "hh_johnson", fieldName: "Family Medical-Allergies",
+			value: "Yes", lastUpdated: ts},
+		{householdPBID: "hh_johnson", fieldName: "Family Medical-Allergy Info",
+			value: medicalNarrativeA, lastUpdated: ts},
+	})
+	if len(meds) != 1 {
+		t.Fatalf("medical rows = %d, want 1", len(meds))
+	}
+	if got, want := meds[0].allergyInfo, medicalNarrativeA; got != want {
+		t.Errorf("allergyInfo = %q, want %q -- the leading gate token is not "+
+			"something the family wrote", got, want)
+	}
+	if got, want := meds[0].allergyGate, gateYes; got != want {
+		t.Errorf("allergyGate = %q, want %q", got, want)
+	}
+}
+
+// TestProcessMedicalKeepsANarrativeBesideADenial is the 836-row rendered
+// contradiction, now expressible without a contradiction: the household says No
+// and someone still wrote a sentence. Both survive, in different columns.
+func TestProcessMedicalKeepsANarrativeBesideADenial(t *testing.T) {
+	t.Parallel()
+	s := NewFamilyCampDerivedSync(nil)
+	ts := time.Date(2026, 4, 21, 0, 0, 0, 0, time.UTC)
+
+	meds := s.processMedical([]customValueEntry{
+		{householdPBID: "hh_johnson", fieldName: "Family Medical-Allergies",
+			value: "No", lastUpdated: ts},
+		{householdPBID: "hh_johnson", fieldName: "Family Medical-Allergy Info",
+			value: medicalNarrativeA, lastUpdated: ts},
+	})
+	if len(meds) != 1 {
+		t.Fatalf("medical rows = %d, want 1", len(meds))
+	}
+	if got, want := meds[0].allergyInfo, medicalNarrativeA; got != want {
+		t.Errorf("allergyInfo = %q, want %q", got, want)
+	}
+	if got, want := meds[0].allergyGate, gateNo; got != want {
+		t.Errorf("allergyGate = %q, want %q", got, want)
+	}
+}
+
+// TestProcessMedicalDistinguishesADenialFromSilence is ruling D15: 224 of 900
+// 2026 households never answered the allergy gate and 430 answered it No. A
+// non-nullable boolean would render both as the same false.
+func TestProcessMedicalDistinguishesADenialFromSilence(t *testing.T) {
+	t.Parallel()
+	s := NewFamilyCampDerivedSync(nil)
+	ts := time.Date(2026, 4, 21, 0, 0, 0, 0, time.UTC)
+
+	meds := s.processMedical([]customValueEntry{
+		{householdPBID: "hh_johnson", fieldName: "Family Medical-Allergies",
+			value: "No", lastUpdated: ts},
+		{householdPBID: "hh_johnson", fieldName: "Family Medical-Dietary Explain",
+			value: "no gluten", lastUpdated: ts},
+	})
+	if len(meds) != 1 {
+		t.Fatalf("medical rows = %d, want 1", len(meds))
+	}
+	if got, want := meds[0].allergyGate, gateNo; got != want {
+		t.Errorf("allergyGate = %q, want %q -- answered", got, want)
+	}
+	if got, want := meds[0].physicianGate, ""; got != want {
+		t.Errorf("physicianGate = %q, want %q -- never asked, which is not a denial",
+			got, want)
+	}
+	if got, want := meds[0].dietaryGate, ""; got != want {
+		t.Errorf("dietaryGate = %q, want %q -- an explain with no gate answer "+
+			"leaves the gate unanswered rather than inferring one", got, want)
+	}
+}
+
+// TestProcessMedicalCPAPGateUnionsAllThreeGenerations: the three CPAP fields are
+// one question asked in three generations, and every affirmative option --
+// including the ones whose text names WHICH accommodation -- raises the gate.
+// The option sentence itself does not survive into cpap_info: classifyCPAPAnswer
+// already resolves it into needs_power / needs_private_bathroom, which the panel
+// renders as Housing-needs rows directly above this text.
+func TestProcessMedicalCPAPGateUnionsAllThreeGenerations(t *testing.T) {
+	t.Parallel()
+	s := NewFamilyCampDerivedSync(nil)
+	ts := time.Date(2026, 4, 21, 0, 0, 0, 0, time.UTC)
+
+	meds := s.processMedical([]customValueEntry{
+		{householdPBID: "hh_johnson", fieldName: "Family Camp-CPAP",
+			value: "No", lastUpdated: ts},
+		{householdPBID: "hh_johnson", fieldName: "FAM CAMP-CPAP",
+			value: "Yes, outlet needed for CPAP machine", lastUpdated: ts},
+		{householdPBID: "hh_johnson", fieldName: "Adult-CPAP",
+			value: "No", lastUpdated: ts},
+		{householdPBID: "hh_johnson", fieldName: "Family Medical-CPAP Explain",
+			value: "outlet by the lower bunk", lastUpdated: ts},
+	})
+	if len(meds) != 1 {
+		t.Fatalf("medical rows = %d, want 1", len(meds))
+	}
+	if got, want := meds[0].cpapGate, gateYes; got != want {
+		t.Errorf("cpapGate = %q, want %q", got, want)
+	}
+	if got, want := meds[0].cpapInfo, "outlet by the lower bunk"; got != want {
+		t.Errorf("cpapInfo = %q, want %q -- the option sentence is a gate answer, "+
+			"not the family's explanation", got, want)
+	}
+}
+
+// TestProcessMedicalKeepsAGateOnlyHousehold: 375 of 900 2026 households have
+// nothing but gate answers once the narratives are clean. Without the gates in
+// the has-data guard they vanish from the result slice and deleteOrphanedMedical
+// removes their rows -- taking the gate answers with them.
+func TestProcessMedicalKeepsAGateOnlyHousehold(t *testing.T) {
+	t.Parallel()
+	s := NewFamilyCampDerivedSync(nil)
+	ts := time.Date(2026, 4, 21, 0, 0, 0, 0, time.UTC)
+
+	meds := s.processMedical([]customValueEntry{
+		{householdPBID: "hh_johnson", fieldName: "Family Medical-Allergies",
+			value: "No", lastUpdated: ts},
+	})
+	if len(meds) != 1 {
+		t.Fatalf("medical rows = %d, want 1 -- a household whose only content is "+
+			"a gate answer still has content", len(meds))
+	}
+	if got, want := meds[0].allergyGate, gateNo; got != want {
+		t.Errorf("allergyGate = %q, want %q", got, want)
 	}
 }

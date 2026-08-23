@@ -16,6 +16,7 @@ from typing import Any, get_args, get_origin
 from pydantic import BaseModel
 
 from api.schemas.lodging import (
+    MEDICAL_GATE_FIELD_NAMES,
     MEDICAL_NARRATIVE_FIELD_NAMES,
     HouseholdMedicalResponse,
     WeekendRosterResponse,
@@ -98,6 +99,59 @@ def test_narrative_field_names_match_the_go_guard() -> None:
     came to be missing from the original six-name Python list.
     """
     assert set(MEDICAL_NARRATIVE_FIELD_NAMES) == _go_narrative_columns()
+
+
+def _go_gate_columns() -> set[str]:
+    """The gateColumns list from the Go export guard."""
+    source = GO_NARRATIVE_GUARD.read_text()
+    block = re.search(r"var gateColumns = \[\]string\{(.*?)\}", source, re.DOTALL)
+    assert block, "could not find gateColumns in lodging_medical_narrative_test.go"
+    return set(re.findall(r'"([^"]+)"', block.group(1)))
+
+
+def test_gate_field_names_are_declared() -> None:
+    """The five family_camp_medical gate columns (kindred#2542).
+
+    Separate from MEDICAL_NARRATIVE_FIELD_NAMES on purpose: a gate is a
+    structured answer, not narrative text, and kindred#2409 spent a PR making
+    that vocabulary accurate. They get the same protection, under their own
+    name.
+    """
+    assert (
+        frozenset(
+            {
+                "allergy_gate",
+                "dietary_gate",
+                "special_needs_gate",
+                "physician_gate",
+                "cpap_gate",
+            }
+        )
+        == MEDICAL_GATE_FIELD_NAMES
+    )
+
+
+def test_gate_field_names_match_the_go_guard() -> None:
+    assert set(MEDICAL_GATE_FIELD_NAMES) == _go_gate_columns()
+
+
+def test_roster_response_graph_contains_no_gate_field() -> None:
+    leaked = _all_field_names(WeekendRosterResponse) & MEDICAL_GATE_FIELD_NAMES
+    assert not leaked, f"gate fields reachable from the roster payload: {sorted(leaked)}"
+
+
+def test_session_list_response_graph_contains_no_gate_field() -> None:
+    leaked = _all_field_names(WeekendSessionListResponse) & MEDICAL_GATE_FIELD_NAMES
+    assert not leaked, f"gate fields reachable from the session list payload: {sorted(leaked)}"
+
+
+def test_summary_response_graph_contains_no_gate_field() -> None:
+    leaked = _all_field_names(WeekendSummaryResponse) & MEDICAL_GATE_FIELD_NAMES
+    assert not leaked, f"gate reachable from WeekendSummaryResponse: {sorted(leaked)}"
+
+
+def test_household_medical_response_carries_the_gates() -> None:
+    assert set(HouseholdMedicalResponse.model_fields.keys()) >= MEDICAL_GATE_FIELD_NAMES
 
 
 def test_roster_response_graph_contains_no_narrative_field() -> None:
