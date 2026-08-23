@@ -2885,6 +2885,25 @@ class TestMedicalFlagsAndNarrative:
         assert result.dietary_gate == "no"
         assert result.physician_gate == "unknown"
 
+    @pytest.mark.asyncio
+    async def test_get_household_medical_reads_a_value_outside_the_vocabulary_as_unknown(
+        self,
+    ) -> None:
+        """A garbage NON-EMPTY value falls back to "unknown" rather than raising.
+
+        Only the empty-string case was pinned above. `_gate`'s own docstring
+        promises this: a value outside the vocabulary should read as "unknown"
+        so the panel shows no pill, rather than the endpoint 500ing on a row a
+        future migration widened.
+        """
+        repo = _repo(
+            fetch_household_by_cm_id=_rec(id="hh_1", cm_id=2000001),
+            fetch_medical_for_household=_rec(allergy_gate="maybe"),
+        )
+        result = await LodgingRosterService(repo).get_household_medical(2026, 2000001)
+
+        assert result.allergy_gate == "unknown"
+
 
 class TestChildUnderTwoFlag:
     """The COMPUTED baby/toddler mark (staff ruling, 2026-08-21).
