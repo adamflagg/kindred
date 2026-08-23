@@ -1,6 +1,6 @@
 /** Units list: sortable, grouped by area, confirm in one click, never delete. */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -584,9 +584,23 @@ describe('LodgingUnitsPanel — the editor opens in a modal', () => {
     await user.type(name, 'STALE DRAFT')
 
     const dialogBefore = screen.getByRole('dialog')
-    await user.click(screen.getByRole('button', { name: 'Cancel' }))
-    // Reopen before the leave completes — no waitFor between close and open.
-    await user.click(screen.getByRole('button', { name: 'Edit Cabin A' }))
+    // Synchronous `fireEvent`, NOT `await user.click()` — and the two calls
+    // must stay adjacent with no `await` between them (kindred#2553).
+    //
+    // Modal's leave does not last 150ms under jsdom. Headless UI ends a leave
+    // when `getAnimations()` reports no running CSSTransition, and in a test
+    // env it polyfills that method to return `[]` (the warning it logs is
+    // swallowed by setup.ts's console mock). So `duration-150` is never
+    // honoured here: the leave completes after three queued animation frames
+    // — `nextFrame` is a double rAF, plus one more before the check.
+    // `await user.click()` yields to the macrotask queue, which lets those
+    // frames run, so whether the leave was still in flight at reopen was
+    // decided by event-loop scheduling — i.e. by machine load. It held on an
+    // idle box and lost roughly 1 run in 5 under CPU saturation.
+    // Both `fireEvent` calls run in one synchronous stack, so the rAF
+    // callbacks provably cannot interleave and the leave is always in flight.
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Cabin A' }))
     // Same element = the leave really was interrupted, which is the case
     // this test exists for. Without this, a timing change that let the
     // leave complete would unmount + freshly remount the subtree and the

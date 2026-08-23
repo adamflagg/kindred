@@ -194,14 +194,26 @@ describe('code splitting (#1964)', () => {
     // second, independent signal for the same gate.
     expect(screen.queryByTestId('map-canvas')).not.toBeInTheDocument()
 
-    expect(await screen.findByText('Ridge A')).toBeInTheDocument()
-  })
+    // Explicit timeout, well above `findBy`'s 1000ms default (kindred#2553).
+    // This line waits on a REAL dynamic `import()` — the whole point of the
+    // test — so vitest must transform and evaluate the board's module graph
+    // before 'Ridge A' can paint. Measured: 369ms on an idle box, but 2536ms
+    // and 3059ms with all 12 cores saturated, which is what a full-suite run
+    // looks like. The default budget made this a load-sensitive flake. The
+    // assertion is unchanged: the fallback checks above are what pin the
+    // lazy + gated behaviour, and this one only pins that the chunk DOES
+    // arrive — so waiting longer for it weakens nothing.
+    expect(await screen.findByText('Ridge A', undefined, { timeout: 10000 })).toBeInTheDocument()
+  }, 15000)
 
   it('paints a fallback for the map first, then the map once its chunk resolves', async () => {
     renderPage('map')
     expect(screen.queryByTestId('map-canvas')).not.toBeInTheDocument()
     expect(screen.getByTestId('lodging-view-loading')).toBeInTheDocument()
 
-    expect(await screen.findByTestId('map-canvas')).toBeInTheDocument()
-  })
+    // Same real-`import()` wait as the housing test above (kindred#2553).
+    expect(
+      await screen.findByTestId('map-canvas', undefined, { timeout: 10000 })
+    ).toBeInTheDocument()
+  }, 15000)
 })
