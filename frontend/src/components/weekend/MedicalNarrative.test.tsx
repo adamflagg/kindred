@@ -239,3 +239,53 @@ describe('the gate pill', () => {
     expect(container).toBeEmptyDOMElement()
   })
 })
+
+describe('privacy: narrative text never becomes an accessible name (kindred#2348)', () => {
+  // This is a privacy assertion, not an accessibility one -- the codebase has
+  // opted out of accessibility work (frontend/CLAUDE.md). It matters here
+  // because an accessible name is a SEPARATE channel from visible text: a
+  // `getByRole(role, { name })` query, or a future screen reader, would find
+  // the sentence through it even if nobody wrote a new `sr-only` span or
+  // `aria-label`. This is exactly the leak kindred#2348 already closed
+  // everywhere else in this codebase for different reasons (routing sr-only
+  // text out entirely); the assertion here is that the pattern already holds
+  // for medical narrative specifically, and stays holding.
+  //
+  // Checked through Testing Library's own public API (queryByTitle) plus a
+  // direct look at the two other naming attributes, rather than importing an
+  // accessible-name library: MedicalNarrative renders no interactive role
+  // (no button/link/input), so "name from content" never applies here and
+  // aria-label / aria-labelledby / title are the only channels a name could
+  // leak through.
+  it('never lets rendered narrative text become an accessible name', () => {
+    const narrative = 'needs an outlet within reach of the lower bunk overnight'
+    medicalResult.value = {
+      data: {
+        allergy_gate: 'yes',
+        allergy_info: narrative,
+      },
+      isLoading: false,
+      error: null,
+    }
+    const { container } = renderWithPermission()
+
+    // The narrative is visibly on the page...
+    expect(screen.getByText(narrative)).toBeInTheDocument()
+
+    // ...but must never be reachable through a naming attribute. DO NOT "fix"
+    // a failure here by adding aria-label/title/role to MedicalNarrative --
+    // frontend/CLAUDE.md's accessibility-is-opt-out policy forbids it, and the
+    // component passing this test unmodified is the point: nothing here
+    // reaches for a naming attribute, so nothing leaks through one.
+    expect(screen.queryByTitle(narrative)).not.toBeInTheDocument()
+
+    const labelLeaks = Array.from(
+      container.querySelectorAll('[aria-label], [aria-labelledby]')
+    ).filter((el) => {
+      if (el.getAttribute('aria-label')?.includes(narrative)) return true
+      const ids = el.getAttribute('aria-labelledby')?.split(/\s+/) ?? []
+      return ids.some((id) => (document.getElementById(id)?.textContent ?? '').includes(narrative))
+    })
+    expect(labelLeaks).toEqual([])
+  })
+})
