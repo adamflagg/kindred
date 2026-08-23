@@ -1506,8 +1506,19 @@ class LodgingWriteService:
 
         `unpushed_at` is stamped only once BOTH phases have actually run, so
         a crash before this line leaves the ledger row still claiming "not
-        yet unpushed" -- recoverable by retrying -- rather than a row that
-        says it was reverted when it was not.
+        yet unpushed" rather than a row that says it was reverted when it was
+        not.
+
+        NOT "recoverable by retrying", despite how that reads -- a retry
+        after a crash mid-phase-2 hits the SAME drift guard above and 409s.
+        Phase 2 recreates a `remove` change's row; if the crash lands after
+        some of those recreates land but before `unpushed_at` is stamped, a
+        retry's own drift check sees exactly what a hand-edit would have left
+        -- a row the push's after-state says should be ABSENT, now PRESENT --
+        and refuses wholesale, the same as `test_manual_edit_since_push_refuses_wholesale`
+        covers for an actual manual edit. The guard cannot tell "unpush
+        partially ran" from "someone recreated this by hand", and does not
+        try to: staff resolve a drifted push by hand, not by retrying it.
         """
         event = await self.repository.find_push_event(push_id)
         if event is None:
@@ -1525,6 +1536,11 @@ class LodgingWriteService:
         changes: list[dict[str, Any]] = _json_list(event, "changes")
 
         live = await self._live_rows_with_ids(year, session_cm_id)
+        # A dict keyed on `tuple_key()` collapses a duplicate key silently --
+        # safe here only because `idx_lodging_write_in_unique` (unit,
+        # session_cm_id, year) makes two live rows sharing a tuple on the
+        # SAME side schema-impossible: the unit_id alone already forces at
+        # most one live row per unit, so `by_tuple` can never lose one.
         by_tuple = {r.tuple_key(): str(getattr(row, "id", "") or "") for row, r in live}
 
         def change_tuple(c: dict[str, Any]) -> tuple[str, str, str, int | None]:
