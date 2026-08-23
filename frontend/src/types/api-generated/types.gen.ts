@@ -92,6 +92,14 @@ export type AccessibilityFlagSummary = {
    * Has Infant
    */
   has_infant?: boolean
+  /**
+   * Has Child Under Two
+   */
+  has_child_under_two?: boolean
+  /**
+   * Has Bed Exempt Child
+   */
+  has_bed_exempt_child?: boolean
 }
 
 /**
@@ -191,6 +199,10 @@ export type AvailabilityWriteRequest = {
    * Reason
    */
   reason?: string
+  /**
+   * Party Size
+   */
+  party_size?: number | null
 }
 
 /**
@@ -2075,8 +2087,8 @@ export type HouseholdJourneyYear = {
 /**
  * HouseholdMedicalResponse
  *
- * Narrative medical text. Served by ONE endpoint gated on
- * `bunking.manage`. Never nested elsewhere.
+ * Narrative medical text and the gate answers beside it. Served by ONE
+ * endpoint gated on `bunking.manage`. Never nested elsewhere.
  */
 export type HouseholdMedicalResponse = {
   /**
@@ -2119,6 +2131,26 @@ export type HouseholdMedicalResponse = {
    * Accommodation Explain
    */
   accommodation_explain?: string
+  /**
+   * Allergy Gate
+   */
+  allergy_gate?: 'yes' | 'no' | 'unknown'
+  /**
+   * Dietary Gate
+   */
+  dietary_gate?: 'yes' | 'no' | 'unknown'
+  /**
+   * Special Needs Gate
+   */
+  special_needs_gate?: 'yes' | 'no' | 'unknown'
+  /**
+   * Physician Gate
+   */
+  physician_gate?: 'yes' | 'no' | 'unknown'
+  /**
+   * Cpap Gate
+   */
+  cpap_gate?: 'yes' | 'no' | 'unknown'
 }
 
 /**
@@ -2294,6 +2326,10 @@ export type LodgingUnitSummary = {
    * Reason
    */
   reason?: string
+  /**
+   * Party Size
+   */
+  party_size?: number | null
   /**
    * Is Family Available
    */
@@ -5233,10 +5269,6 @@ export type RosterCounts = {
    */
   units_family_available?: number
   /**
-   * Units Reserved
-   */
-  units_reserved?: number
-  /**
    * Units Staff Housing
    */
   units_staff_housing?: number
@@ -6005,6 +6037,12 @@ export type ShareRequestSummary = {
    * Proximity
    */
   proximity?: Array<'near' | 'with' | 'similar_ages'>
+  /**
+   * Wants With Named
+   *
+   * The WITH-a-named-family checkbox specifically, read verbatim from family_camp_registrations.wants_with_named (owner ruling 2026-08-22: the ticks are stored un-ORed). `proximity`'s 'with' remains the co-housing SUPERSET — derived here as named OR similar_ages, so its public semantics are unchanged. The board's HeartHandshake icon keys on this flag alone.
+   */
+  wants_with_named?: boolean
   /**
    * Request Text
    */
@@ -7327,7 +7365,7 @@ export type WeeklyDataPoint = {
 /**
  * WriteInCover
  *
- * The write-in that closes a space, wherever in the tree it was recorded.
+ * The write-in that covers a space, wherever in the tree it was recorded.
  *
  * A write-in names ONE unit, but it is a fact about a physical space, and a
  * building's space contains its rooms'. The board draws whichever level the
@@ -7368,6 +7406,18 @@ export type WriteInCover = {
    * Note
    */
   note?: string
+  /**
+   * Party Size
+   */
+  party_size?: number | null
+  /**
+   * Relation
+   */
+  relation?: 'own' | 'ancestor' | 'descendant'
+  /**
+   * Unit Sleeps
+   */
+  unit_sleeps?: number | null
 }
 
 /**

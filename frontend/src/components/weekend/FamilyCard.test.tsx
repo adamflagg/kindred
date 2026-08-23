@@ -430,16 +430,10 @@ describe('FamilyCard — what it shows', () => {
   // absence as words is pinned in "the marks kindred#2072 STRUCK". Deleted
   // rather than softened — a test that still passed with either shape on the
   // card would defend neither.
-
-  it('marks a mandatory accommodation, which outranks placement', () => {
-    render(
-      <FamilyCard
-        party={party({ flags: { needs_accommodation: true, accommodation_is_mandatory: true } })}
-        onOpen={vi.fn()}
-      />
-    )
-    expect(screen.getByText('Needs Accommodation')).toBeInTheDocument()
-  })
+  //
+  // The mandatory-accommodation chip this test used to assert here is struck
+  // too now, on the same terms — see "the marks kindred#2072 STRUCK" for the
+  // absence, pinned under the staff ruling that moved it off the board.
 
   it('marks a returning household', () => {
     render(<FamilyCard party={party({ is_returning: true })} onOpen={vi.fn()} />)
@@ -587,7 +581,13 @@ describe('FamilyCard — what it shows', () => {
         onOpen={vi.fn()}
       />
     )
-    expect(screen.getByText('Wants to share')).toBeInTheDocument()
+    // Retargeted off the struck `Wants to share` word chip onto a surviving
+    // chip in the same fixture (kindred#2072/#2521 pattern; struck
+    // 2026-08-22 — see "the marks kindred#2072 STRUCK"). This assertion only
+    // ever proved the fixture rendered enough of the share block for the
+    // button-nesting sweep below to be meaningful; it never depended on
+    // which chip did that.
+    expect(screen.getByText('Answers disagree')).toBeInTheDocument()
     const roleButtons = within(container).getAllByRole('button')
     expect(roleButtons.length).toBeGreaterThan(0)
     for (const outer of roleButtons) {
@@ -627,41 +627,29 @@ describe('FamilyCard — what it shows', () => {
     expect(screen.queryByText('Answers disagree')).not.toBeInTheDocument()
   })
 
-  it('shows a share request as one chip covering both `with` and `similar_ages`', () => {
-    // `similar_ages` ACCOMPANIES `with`; a chip showing one or the other drops
-    // 22 households out of any "wants to share" view.
-    render(
-      <FamilyCard
-        party={party({
-          share: {
-            preference: 'yes_share',
-            proximity: ['with', 'similar_ages'],
-            request_text: '',
-            needs_resolution: false,
-          },
-        })}
-        onOpen={vi.fn()}
-      />
-    )
-    expect(screen.getByText('Wants to share')).toBeInTheDocument()
+  // Same grain guard, for the always-on anchor `ShareMarks` mounts
+  // (`resolveShareAnchor`'s rule 1): a person-grain party has no share
+  // question to answer, so it must not draw the dotted "unanswered" mark
+  // for a question it was never asked. `ShareMarks.test.tsx` pins this at
+  // the component's own level; this pins it through the card that mounts it.
+  it('renders no share anchor for an adult weekend guest (person grain)', () => {
+    render(<FamilyCard party={party({ grain: 'person' })} onOpen={vi.fn()} />)
+    expect(screen.queryByRole('button', { name: /^Share: / })).not.toBeInTheDocument()
   })
 
-  it('shows a similar-ages request even without an explicit `with`', () => {
-    render(
-      <FamilyCard
-        party={party({
-          share: {
-            preference: 'yes_share',
-            proximity: ['similar_ages'],
-            request_text: '',
-            needs_resolution: false,
-          },
-        })}
-        onOpen={vi.fn()}
-      />
-    )
-    expect(screen.getByText('Wants to share')).toBeInTheDocument()
-  })
+  // The two tests this replaced ("shows a share request as one chip covering
+  // both `with` and `similar_ages`" / "shows a similar-ages request even
+  // without an explicit `with`") pinned the OLD collapsed-chip behaviour —
+  // `wantsToShare`'s OR of the two proximity kinds into one "Wants to share"
+  // chip. That behaviour is gone, not moved: the 2026-08-22 ruling replaced
+  // it with `ShareMarks`' cluster, which draws each ticked box as its own
+  // icon with no OR/dominance (a dominance rule was proposed and explicitly
+  // REVERSED by the owner the same day — `shareMarks.ts`'s header comment).
+  // The underlying grading is tested where it now lives: `shareMarks.test.ts`
+  // (the pure truth table) and `ShareMarks.test.tsx` (the rendered marks).
+  // The struck chips' absence is pinned below in "the marks kindred#2072
+  // STRUCK"; the replacement marks' presence is pinned in "the share marks
+  // (2026-08-22 ruling)".
 
   describe('single-parent flag (kindred#2254 half 2)', () => {
     /*
@@ -893,10 +881,15 @@ describe('FamilyCardPreview — the drag overlay', () => {
     // `onOpen` to call.
     expect(screen.getByTestId('family-card-name').closest('button')).toBeNull()
     // It DOES carry the chip row's own tooltip triggers, because it shares
-    // `FamilyCardChips` rather than copying it — R3's history mark here. That
-    // is the sharing working, not a leak: this used to assert "no button at
-    // all", which only held while no chip had a tooltip.
-    expect(screen.getAllByRole('button')).toEqual([screen.getByTestId('family-card-history')])
+    // `FamilyCardChips` rather than copying it — the always-on share anchor
+    // (2026-08-22, `ShareMarks`) and R3's history mark here. That is the
+    // sharing working, not a leak: this used to assert "no button at all",
+    // which only held while no chip had a tooltip, then "exactly one button"
+    // (R3 alone), which only held before the anchor became always-on.
+    expect(screen.getAllByRole('button')).toEqual([
+      screen.getByRole('button', { name: 'Share: Not answered' }),
+      screen.getByTestId('family-card-history'),
+    ])
   })
 
   it('shows the same children and truncated ages the real card does', () => {
@@ -1013,24 +1006,32 @@ describe('FamilyCard — summer’s type scale', () => {
   })
 
   it('sets chips at summer’s meta size', () => {
-    // Retargeted off the struck `Power` NEED chip onto a surviving word chip
-    // (kindred#2072). The size rule is unchanged; only the chip that carried
-    // the assertion went.
+    // Retargeted TWICE now. First off the struck `Power` NEED chip onto the
+    // `Near another family` word chip (kindred#2072). That word chip is
+    // itself struck now (2026-08-22 — see "the marks kindred#2072 STRUCK"),
+    // replaced by `ShareMarks`' icon cluster, which carries no `text-xs`
+    // chip class at all — so this retarget lands on `Did not request
+    // sharing` instead (kindred#2072/#2521 pattern). The size rule is
+    // unchanged; only the chip that carried the assertion keeps moving.
     render(
       <FamilyCard
         party={party({
           share: {
-            preference: 'yes_share',
-            proximity: ['near'],
+            preference: 'no_share',
+            proximity: [],
             request_text: '',
             needs_resolution: false,
+            eligibility: 'declined',
+            eligibility_source: 'form',
+            answers_conflict: false,
           },
         })}
+        sharedSlot={true}
         unit={confirmedUnit()}
         onOpen={vi.fn()}
       />
     )
-    expect(screen.getByText('Near another family')).toHaveClass('text-xs')
+    expect(screen.getByText('Did not request sharing')).toHaveClass('text-xs')
   })
 
   it('sets the need glyph at the chip row’s own icon size, in a chip-height box', () => {
@@ -1628,6 +1629,113 @@ describe('FamilyCard — the marks kindred#2072 STRUCK', () => {
     render(<FamilyCard party={party()} onOpen={vi.fn()} />)
     expect(screen.queryByText('Single parent')).not.toBeInTheDocument()
   })
+
+  it('draws no "Needs Accommodation" chip — staff ruling moved the accommodation/VIP signal off the board', () => {
+    // Not a kindred#2072 cut like the rest of this block — a later staff
+    // ruling: the board answers "does this family go here?" (kindred#2528),
+    // and the VIP answer is a staff-facing REQUEST, not a placement verdict.
+    // One stored signal since the 2026-08-22 owner ruling:
+    // `accommodation_is_mandatory` — this pins that the card does not chip
+    // it. `AccessibilityFlagList` renders the mandatory row on
+    // `FamilyDetailsPanel`, and `rosterAttention`/`partyAttention` still
+    // grade `'required'` for the roster tab's own sections and the modal's
+    // Placement verdict — untouched here.
+    render(
+      <FamilyCard
+        party={party({
+          flags: { needs_accommodation: true, accommodation_is_mandatory: true },
+        })}
+        onOpen={vi.fn()}
+      />
+    )
+    expect(screen.queryByText('Needs Accommodation')).not.toBeInTheDocument()
+    expect(screen.queryByText(/VIP/i)).not.toBeInTheDocument()
+  })
+
+  it('draws no "Wants to share" chip — replaced by the share-mark cluster (staff ruling, 2026-08-22)', () => {
+    // spec §5 replaced the two proximity word chips with `ShareMarks`'
+    // cluster icons. This pins the WORD's absence; the underlying grading
+    // (which proximity kinds render a mark, and which flag the WITH icon
+    // actually keys on) is tested in `shareMarks.test.ts` and
+    // `ShareMarks.test.tsx`, not re-tested here.
+    render(
+      <FamilyCard
+        party={party({
+          share: { preference: 'yes_share', proximity: ['with', 'similar_ages'] },
+        })}
+        onOpen={vi.fn()}
+      />
+    )
+    expect(screen.queryByText('Wants to share')).not.toBeInTheDocument()
+  })
+
+  it('draws no "Near another family" chip — same 2026-08-22 replacement', () => {
+    render(
+      <FamilyCard
+        party={party({ share: { preference: 'yes_share', proximity: ['near'] } })}
+        onOpen={vi.fn()}
+      />
+    )
+    expect(screen.queryByText('Near another family')).not.toBeInTheDocument()
+  })
+})
+
+describe('FamilyCard — the share marks (2026-08-22 ruling replaces the word chips)', () => {
+  /*
+   * `ShareMarks` (Task 4) owns the rendering; `shareMarks.ts` (Task 3) owns
+   * the vocabulary and grading. This describe pins only the INTEGRATION —
+   * that `FamilyCardChips` actually mounts it, first, ahead of the need
+   * glyphs — not the mark-by-mark truth table those two files already cover.
+   */
+  it('renders the "Share with family" cluster trigger for a WITH-named tick', () => {
+    render(
+      <FamilyCard
+        party={party({
+          share: { preference: 'yes_share', proximity: ['with'], wants_with_named: true },
+        })}
+        onOpen={vi.fn()}
+      />
+    )
+    expect(screen.getByRole('button', { name: 'Share with family' })).toBeInTheDocument()
+  })
+
+  it('renders the "Near family" cluster trigger for a NEAR tick', () => {
+    render(
+      <FamilyCard
+        party={party({ share: { preference: 'yes_share', proximity: ['near'] } })}
+        onOpen={vi.fn()}
+      />
+    )
+    expect(screen.getByRole('button', { name: 'Near family' })).toBeInTheDocument()
+  })
+
+  it('renders the always-on "Share: …" anchor on every household card, requests or not', () => {
+    // The default fixture carries no `share` block at all — `unanswered`,
+    // same as `ShareMarks.test.tsx`'s own "unanswered household" case — and
+    // the anchor still draws, because it answers a DIFFERENT question
+    // (the radio) than the cluster (the checkboxes) does.
+    render(<FamilyCard party={party()} onOpen={vi.fn()} />)
+    expect(screen.getByRole('button', { name: 'Share: Not answered' })).toBeInTheDocument()
+  })
+
+  it('draws the anchor before the first need glyph, in DOM order', () => {
+    // The row order is part of the vocabulary (weekend-card-vocabulary.md
+    // §2): share marks lead because who-can-bunk-together is the board's
+    // first question, and the need glyphs follow as context for it.
+    render(
+      <FamilyCard
+        party={party({
+          flags: { needs_power: true },
+          share: { preference: 'yes_share' },
+        })}
+        unit={confirmedUnit({ power_coverage: 'all' })}
+        onOpen={vi.fn()}
+      />
+    )
+    const anchor = screen.getByRole('button', { name: 'Share: Open to sharing' })
+    const glyph = screen.getByTestId('need-glyph-power')
+    expect(anchor.compareDocumentPosition(glyph) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
 })
 
 describe('FamilyCard — single parent is a mark on line 2 (S2 + Sa)', () => {
@@ -1838,17 +1946,101 @@ describe('FamilyCard — Returning / First-time is a 20px icon, bottom right (R3
   })
 })
 
-describe('FamilyCard — the mandatory-accommodation chip is renamed', () => {
-  it('reads "Needs Accommodation"', () => {
-    // Renamed under kindred#2072; the label is EXPLICITLY NOT LOCKED and is
-    // one of the five marks parked for staff input.
+describe('FamilyCard — the child-under-two mark (staff ruling, 2026-08-21)', () => {
+  // COMPUTED server-side from the children's birthdates against the session
+  // start — `has_infant` beside it is form-declared and 0 across all 3,923
+  // production family_camp_registrations rows on family weekends. The mark is
+  // UNGRADED, like Returning/First-time: it has no unit coverage side and no
+  // red/unmet state, so it is not a fifth NEED_GLYPHS entry.
+  it('draws the Baby mark when the server computed a child under two', () => {
+    render(<FamilyCard party={party({ flags: { has_child_under_two: true } })} onOpen={vi.fn()} />)
+    const mark = screen.getByTestId('family-card-under-two')
+    expect(mark.querySelector('svg')).toBeInTheDocument()
+  })
+
+  it('names itself in a tooltip, since the icon carries no words', () => {
+    render(<FamilyCard party={party({ flags: { has_child_under_two: true } })} onOpen={vi.fn()} />)
+    fireEvent.focus(screen.getByTestId('family-card-under-two'))
+    expect(screen.getByRole('tooltip')).toHaveTextContent('Child under 2')
+  })
+
+  it('adds the capacity note when a child is bed-exempt (staff ruling, supersedes kindred#2212)', () => {
+    // `has_bed_exempt_child` derives from the SAME `_consumes_a_bed` call
+    // that discounts party_size, so this sentence and the bed count cannot
+    // disagree: under 18 months at the session start, no bed consumed.
     render(
-      <FamilyCard party={party({ flags: { accommodation_is_mandatory: true } })} onOpen={vi.fn()} />
+      <FamilyCard
+        party={party({ flags: { has_child_under_two: true, has_bed_exempt_child: true } })}
+        onOpen={vi.fn()}
+      />
     )
-    expect(screen.getByText('Needs Accommodation')).toBeInTheDocument()
-    expect(screen.queryByText('Accommodation required')).not.toBeInTheDocument()
+    fireEvent.focus(screen.getByTestId('family-card-under-two'))
+    expect(screen.getByRole('tooltip')).toHaveTextContent(
+      'Child under 2 — under 18 months at the session start, so they don’t count toward capacity'
+    )
+  })
+
+  it('keeps the plain label for a 18-23-month-old: under two, but they DO hold a bed', () => {
+    render(
+      <FamilyCard
+        party={party({ flags: { has_child_under_two: true, has_bed_exempt_child: false } })}
+        onOpen={vi.fn()}
+      />
+    )
+    fireEvent.focus(screen.getByTestId('family-card-under-two'))
+    expect(screen.getByRole('tooltip')).toHaveTextContent(/^Child under 2$/)
+  })
+
+  it('draws nothing when the flag is false', () => {
+    render(<FamilyCard party={party({ flags: { has_child_under_two: false } })} onOpen={vi.fn()} />)
+    expect(screen.queryByTestId('family-card-under-two')).not.toBeInTheDocument()
+  })
+
+  it('draws nothing when the flags block is absent entirely', () => {
+    // A party with no flags block — the icon asserts knowledge, and absence
+    // of the block is absence of knowledge, not "no baby".
+    render(<FamilyCard party={party()} onOpen={vi.fn()} />)
+    expect(screen.queryByTestId('family-card-under-two')).not.toBeInTheDocument()
+  })
+
+  it('never goes red — it is not a graded need', () => {
+    // The mark reads no unit coverage: placed in a cabin or not, it keeps its
+    // own hue. `needVerdict` has no say here.
+    render(
+      <FamilyCard
+        party={party({ flags: { has_child_under_two: true } })}
+        unit={confirmedUnit()}
+        onOpen={vi.fn()}
+      />
+    )
+    const mark = screen.getByTestId('family-card-under-two')
+    expect(mark.className).not.toContain('red')
+    expect(mark.querySelector('svg')?.getAttribute('class')).not.toContain('red')
+  })
+
+  it('draws the Baby face a step larger than the need glyphs', () => {
+    // Owner feedback 2026-08-22: at the glyphs' 12px the Baby face reads as
+    // frowning. The face gets 14px (h-3.5) inside the same GLYPH_BASE frame —
+    // the frame stays 20px so the row still reads as one run.
+    render(
+      <FamilyCard
+        party={party({ flags: { has_child_under_two: true } })}
+        unit={confirmedUnit()}
+        onOpen={vi.fn()}
+      />
+    )
+    const icon = screen.getByTestId('family-card-under-two').querySelector('svg')
+    expect(icon?.getAttribute('class')).toContain('h-3.5 w-3.5')
   })
 })
+
+// The "Needs Accommodation" rename (kindred#2072) this describe block used
+// to pin is moot: the staff ruling that followed struck the chip from the
+// card entirely rather than settling its wording. See "the marks
+// kindred#2072 STRUCK" for the absence and `AccessibilityFlagList.test.tsx`
+// for the two labels — "Accommodation required" / "Accommodation
+// requested" — that still carry the wording question, unchanged, on the
+// panel this signal moved to.
 
 describe('FamilyCard — the shell/body split actually bails (perf)', () => {
   /*

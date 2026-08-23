@@ -79,7 +79,7 @@ import { partyIdentityLabel } from './householdIdentity'
 import { resolveNeedGlyphs } from './needGlyphs'
 import { worseOf, type NeedsFit } from './needsFit'
 import { effectiveSleeps, partyBeds } from './rosterAttention'
-import { hasWriteIn } from './writeIn'
+import { coveringWriteIns, writeInDemand } from './writeIn'
 
 /** The picker's verdict for one party against one space. `needsFit`'s vocabulary. */
 export type CandidateFitLevel = NeedsFit
@@ -144,29 +144,58 @@ interface DimensionVerdict {
  *   occupancy figure must get the reading this had before, not a room graded
  *   as full.
  */
+/**
+ * The UNIT-ONLY half of `capacityVerdict`, split out so a list of candidates
+ * computes it once instead of once per party (kindred#2540 final scan,
+ * FINDING 10).
+ *
+ * `effectiveSleeps` walks a container's leaves and `writeInDemand` reduces the
+ * cover list; neither reads the PARTY. `capacityVerdict` ran both from inside
+ * `parties.map(...)`, so a modal over ~80 unplaced parties did 80 identical
+ * passes — and `candidates` is memoised on the typed filter, so it re-ran on
+ * every keystroke in the search box.
+ */
+export interface UnitCapacityReading {
+  readonly capacity: number | null
+  readonly consumed: number
+  readonly known: boolean
+}
+
+export function readUnitCapacity(
+  unit: LodgingUnitRow,
+  units: LodgingUnitRow[]
+): UnitCapacityReading {
+  const capacity = effectiveSleeps(unit, units)
+  if (capacity === null) return { capacity: null, consumed: 0, known: false }
+  const { consumed, known } = writeInDemand(capacity, coveringWriteIns(unit))
+  return { capacity, consumed, known }
+}
+
 function capacityVerdict(
   party: RosterPartyRow,
-  unit: LodgingUnitRow,
-  units: LodgingUnitRow[],
+  reading: UnitCapacityReading,
   occupied: number
 ): DimensionVerdict {
-  const capacity = effectiveSleeps(unit, units)
+  const { capacity, consumed, known } = reading
   if (capacity === null) return { fit: 'fits', note: null }
-  // A written-into room has an occupant no occupancy figure counts — a
-  // write-in is not a party (kindred#2439), so `occupied` reads the room as
-  // empty however it was derived. Every number this verdict could state is
-  // therefore false in one direction or the other, and the reading is the
-  // unmeasured-capacity one above: no count, no claim. This is the same rule
-  // the card's own drag marks apply (`dragCapacity.known` in
-  // `LodgingUnitCard`), reaching the third surface that asks "is there room"
-  // — the board's match/red, the card figure, and now this row — so a
-  // written-into cabin cannot read "fits" in the picker while the card it was
-  // opened from refuses to print a numerator at all.
-  if (hasWriteIn(unit)) return { fit: 'fits', note: null }
+  // A written-into room has an occupant `occupied` never counts — a write-in
+  // is not a party (kindred#2439) — so its beds have to come from
+  // `writeInDemand`, the SAME reading the card's own drag marks fold in
+  // (`writeInKnown` in `LodgingUnitCard`, since kindred#2503) and the Assign
+  // modal's header states as "N of M beds free". `known` is what decides
+  // whether there is a fact to grade against, not `hasWriteIn`: a fully- or
+  // partly-unsized cover still asserts an occupant nothing has counted, so
+  // this row falls back to the unmeasured-capacity reading above rather than
+  // claim a number it does not have. Once every cover on the card carries a
+  // recorded `party_size` (or an ancestor's whole-card claim), `consumed`
+  // folds into `occupied` exactly as a placed party's own beds already do —
+  // a written-into cabin is graded, not exempted, the moment its occupancy
+  // is a fact rather than a guess.
+  if (!known) return { fit: 'fits', note: null }
   const beds = partyBeds(party)
   // `Math.max(0, …)` for the same reason the header does it: a room already
   // over its capacity has nothing left, never a negative number of beds.
-  const free = Math.max(0, capacity - occupied)
+  const free = Math.max(0, capacity - occupied - consumed)
   if (beds <= free) return { fit: 'fits', note: null }
   return {
     fit: 'unmet',
@@ -198,7 +227,12 @@ export function candidateFit(
   party: RosterPartyRow,
   unit: LodgingUnitRow,
   units: LodgingUnitRow[] = [],
-  occupied = 0
+  occupied = 0,
+  // OPTIONAL, and defaulted so every existing caller is unchanged: this is the
+  // unit-only reading `placementCandidates` computes ONCE for a whole list
+  // (kindred#2540 final scan, FINDING 10). Passing it is a pure optimisation —
+  // `readUnitCapacity(unit, units)` is exactly what the default does.
+  reading: UnitCapacityReading = readUnitCapacity(unit, units)
 ): PlacementCandidate {
   // ONE grading, in `needGlyphs.ts`, read in its PROSPECTIVE sense — see that
   // module's `NeedReading`. All four ruled needs, where this table used to
@@ -206,7 +240,7 @@ export function candidateFit(
   // access was hatched mid-drag on a cabin that could not supply it and
   // annotated `fits` right here.
   const glyphs = resolveNeedGlyphs(party, unit, 'prospective')
-  const capacity = capacityVerdict(party, unit, units, occupied)
+  const capacity = capacityVerdict(party, reading, occupied)
 
   let fit: CandidateFitLevel = capacity.fit
   for (const glyph of glyphs) fit = worseOf(glyph.verdict, fit)
@@ -230,8 +264,10 @@ export function placementCandidates(
   units: LodgingUnitRow[] = [],
   occupied = 0
 ): PlacementCandidate[] {
+  // ONCE for the whole list, not once per party — see `readUnitCapacity`.
+  const reading = readUnitCapacity(unit, units)
   return parties
-    .map((party) => candidateFit(party, unit, units, occupied))
+    .map((party) => candidateFit(party, unit, units, occupied, reading))
     .sort((a, b) => {
       const byFit = DISPLAY_ORDER.indexOf(a.fit) - DISPLAY_ORDER.indexOf(b.fit)
       if (byFit !== 0) return byFit

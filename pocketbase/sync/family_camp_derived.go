@@ -301,24 +301,24 @@ type registrationData struct {
 	shareCabinPreference string
 	// Renamed from sharedCabinWith by Task 16's migration. It never held "who
 	// they want to share with" -- it holds the pipe-delimited NEAR/WITH
-	// multi-select verbatim. wantsNear / wantsWith below are the parsed form.
+	// multi-select verbatim. wantsNear / wantsWithNamed below are the parsed
+	// form.
 	sharedCabinModesRaw string
 	arrivalETA          string
 	specialOccasions    string
 	goals               string
 	notes               string
 	needsAccommodation  bool
-	optOutVIP           bool
 
 	// Household-grain request layer (spec 4). shareCabinPreference and
 	// sharedCabinModesRaw above stay as the RAW profile values; these are the
 	// normalised, deduplicated versions the board reads.
 	shareCabinGate string
 	wantsNear      bool
-	wantsWith      bool
-	// wantsSimilarAges implies wantsWith: the option it comes from is itself a
-	// "Share a cabin WITH" answer whose partner is unnamed, which is what makes
-	// these households the staff-matchable pool.
+	// wantsWithNamed is the named-family tick ALONE (owner ruling 2026-08-22:
+	// the checkbox ticks are stored as truly separate answers). It does NOT
+	// imply wantsSimilarAges, nor the reverse -- see ParseSharedCabinModes.
+	wantsWithNamed     bool
 	wantsSimilarAges   bool
 	requestText        string
 	requestSourceField string
@@ -385,6 +385,19 @@ type medicalData struct {
 	// this table is one of the three keyed on (household, year) and a reader
 	// of any one of them needs the same answer.
 	enrollmentStatus string
+
+	// The household's answer to each gate question, split out of the narrative
+	// columns above (kindred#2542). Three states: "yes", "no", and "" for a
+	// question the household never reached -- see gateVerdict for why the third
+	// is not optional. These are answers to medical questions and live on this
+	// admin-gated table with the narrative, but they are STRUCTURED, not
+	// narrative: lodging_medical_narrative_test.go keeps them in their own
+	// gateColumns list rather than in narrativeColumns.
+	allergyGate      string
+	dietaryGate      string
+	specialNeedsGate string
+	physicianGate    string
+	cpapGate         string
 }
 
 // Sync executes the family camp derived computation
@@ -1646,20 +1659,17 @@ func (s *FamilyCampDerivedSync) processRegistrations(
 		case "FAM Camp-Accommodation", "Housing Accommodation", "Housing Accomodation":
 			reg.needsAccommodation = reg.needsAccommodation || parseBoolFieldValue(v.value)
 		case fieldFamCampOptOutVIP, fieldAdultOptOut:
-			optedOut := parseBoolFieldValue(v.value)
-			// Accumulated with OR here and then RESOLVED against the blocker in
-			// the finalization pass below (kindred#1874). Both steps are needed:
-			// this one cannot see the rest of the household, so on its own it
-			// let one member's "Yes, please register regardless of cabin type"
-			// override another's "No, I am only able to attend with this
-			// accommodation in place" -- 3 households a year.
-			reg.optOutVIP = reg.optOutVIP || optedOut
-			// "Yes, please register regardless of cabin type" (90 values) means
-			// the family will come anyway, so the need is a warning. "No, I am
-			// only able to attend with this accommodation in place" (39) makes it
-			// a blocker. An UNANSWERED question must stay soft, which is why this
-			// keys off a non-empty value rather than off !optedOut alone.
-			if strings.TrimSpace(v.value) != "" && !optedOut {
+			// ONE stored boolean for the VIP answer (owner ruling 2026-08-22):
+			// accommodation_is_mandatory, its No pole -- "must have the
+			// accommodation or they cancel". "Yes, please register regardless
+			// of cabin type" carries no signal we store, and an UNANSWERED
+			// question must stay soft, which is why this keys off a non-empty
+			// value rather than off the parse alone (kindred#1874's polarity
+			// trap). A blocker anywhere in the household wins structurally: a
+			// plain OR over the No pole is order-independent, unlike the
+			// retired two-column encoding, which needed a finalization pass to
+			// stop one member's yes-flexible clobbering another's blocker.
+			if strings.TrimSpace(v.value) != "" && !parseBoolFieldValue(v.value) {
 				reg.accommodationIsMandatory = true
 			}
 		// Derived accessibility flags. The narrative behind each of these lives
@@ -1724,32 +1734,13 @@ func (s *FamilyCampDerivedSync) processRegistrations(
 		// been seen. Doing it inside the loop above is what made it first-wins.
 		s.applyRegistrationText(reg, textByHousehold[reg.householdPBID])
 
-		// A blocker anywhere in the household outranks another member's opt-out
-		// (kindred#1874). Resolving it here rather than in the switch is what
-		// makes it order-independent: the switch sees one member at a time and
-		// cannot know a later one will answer blocker, so a running OR gave a
-		// different answer depending on which member CampMinder returned first.
-		//
-		// The two columns are a three-state answer wearing two booleans, and
-		// this is what keeps them mutually exclusive:
-		//
-		//	accommodationIsMandatory  -> some member cannot attend without it
-		//	optOutVIP                 -> answered, and the family will come anyway
-		//	both false                -> nobody answered
-		//
-		// Collapsing toward the blocker is the fail-SAFE direction. The reverse
-		// reads as "this family will cope" when someone said they cannot attend.
-		if reg.accommodationIsMandatory {
-			reg.optOutVIP = false
-		}
-
 		// Only include if has some data
 		if reg.cabinAssignment != "" || reg.shareCabinPreference != "" ||
 			reg.sharedCabinModesRaw != "" || reg.arrivalETA != "" ||
 			reg.specialOccasions != "" || reg.goals != "" ||
-			reg.notes != "" || reg.needsAccommodation || reg.optOutVIP ||
+			reg.notes != "" || reg.needsAccommodation ||
 			reg.shareCabinGate != "" || reg.requestText != "" ||
-			reg.wantsNear || reg.wantsWith || reg.wantsSimilarAges ||
+			reg.wantsNear || reg.wantsWithNamed || reg.wantsSimilarAges ||
 			reg.needsPrivateBathroom || reg.needsPower || reg.hasInfant ||
 			// Same reason as accommodationIsMandatory below: a household whose
 			// only parseable answer is the narrative-derived need would be the
@@ -2022,7 +2013,7 @@ func (s *FamilyCampDerivedSync) applyHouseholdRequests(
 		}
 		reg.shareCabinGate = req.Gate
 		reg.wantsNear = req.WantsNear
-		reg.wantsWith = req.WantsWith
+		reg.wantsWithNamed = req.WantsWithNamed
 		reg.wantsSimilarAges = req.WantsSimilarAges
 		reg.requestText = req.RequestText
 		reg.requestSourceField = req.SourceField
@@ -2056,34 +2047,108 @@ var medicalColumnLimits = map[string]int{
 	"accommodation_explain": 4000,
 }
 
-// medicalGateFields are the family-camp medical questions processMedical reads
-// whose entire answer vocabulary is "Yes" / "No" -- 2 distinct values each, 3
-// characters at the longest, across 30,124 stored answers.
-//
-// They are named because a gate cannot be concatenated the way a narrative can.
-// CampMinder asks each of these questions in two parts, a gate and a free-text
-// explanation, and processMedical stores the pair in one column. Joining two
-// people's gate answers verbatim renders "No; Yes; <A>; <B>" -- two
-// contradictory gates in front of the text -- which is why an earlier uniform
-// dedup-and-join over every field was reverted. A household's gate is the OR of
-// its answers instead: see medicalAnswers.parts.
-//
-// "Family Camp-CPAP" is a true binary gate too and is deliberately absent. The
-// CPAP column is fed by three fields of two different shapes -- the other two
-// are multi-option selects whose text says WHICH accommodation is needed -- and
-// kindred#2255 carves it out for its own pass. Absent from this map is NOT
-// absent from the rule: cpapGateParts drops that column's denials by the half
-// of the OR that survives multi-option answers, so no household's row renders a
-// gate contradicting the need beside it.
-var medicalGateFields = map[string]struct{}{
-	"Family Medical-Allergies":     {},
-	"Family Medical-Dietary Needs": {},
-	"Family Camp-Special Needs":    {},
-	"Family Camp-Physician":        {},
+// The three states a family-camp medical gate can be in. The third is the whole
+// reason the column is a select and not a bool: families reach different
+// question blocks, so "answered No" and "never asked" are different facts. In
+// 2026, 430 of 900 households answered the allergy gate No and 224 never
+// answered it at all; for the physician gate it is 284 and 589. A bool would
+// collapse those into one false.
+const (
+	gateVerdictUnanswered = ""
+	gateVerdictNo         = "no"
+	gateVerdictYes        = "yes"
+)
+
+// gateDenials is the negative pole of the gate vocabulary -- the mirror of the
+// affirmative set parseBoolFieldValue accepts.
+var gateDenials = map[string]struct{}{
+	"no": {}, "false": {}, "0": {}, "n": {},
 }
 
-// gateAnswerYes is the affirmative token those gates store.
-const gateAnswerYes = "Yes"
+// gateVerdict collapses every household member's answer to one gate question
+// into the household's answer, by OR.
+//
+// This is the same total aggregation processRegistrations applies to the
+// housing flags, and it is the only collapse rule on this path that never picks
+// a winner: `personValues` carries one entry per person per field and
+// CampMinder asks these questions on a per-CAMPER form, so a household with two
+// enrolled children answers each question twice. It is therefore
+// order-independent, which is what docs/reference/family-camp-field-provenance.md
+// section 4's binding rule requires -- a gate and its explain must collapse as a
+// pair, and after this neither half selects a winner.
+//
+// The vocabulary is closed. Across all 35,895 stored answers to the seven gate
+// fields, every one is either a leading-token "Yes" or a member of gateDenials;
+// the four pure Yes/No gates hold 2 distinct values each, 3 characters at the
+// longest, across 30,283 answers. That measurement is what licenses collapsing
+// them to a single verdict rather than keeping every distinct answer the way the
+// narrative columns do.
+//
+// An answer outside that vocabulary is NOT stored anywhere -- it contributes no
+// verdict and does not reach the narrative column. `medicalAnswers.parts` used
+// to let one fall through into the narrative join; that valve was retired by
+// owner ruling (2026-08-22) once the gate stopped sharing the column. The
+// warning below is what replaced it, and is the only way a CampMinder
+// vocabulary change would now surface. It carries the field name and a COUNT
+// and never the answer: these are answers on a medical form, and the same
+// never-log contract joinMedicalColumn states covers them.
+func gateVerdict(fieldName string, parts []string) string {
+	verdict := gateVerdictUnanswered
+	unrecognized := 0
+
+	for _, part := range parts {
+		trimmed := strings.TrimSpace(part)
+		if trimmed == "" {
+			continue
+		}
+		if parseBoolFieldValue(trimmed) {
+			verdict = gateVerdictYes
+			continue
+		}
+		if _, denied := gateDenials[strings.ToLower(trimmed)]; denied {
+			// Never downgrades a Yes already seen: the OR is the point.
+			if verdict == gateVerdictUnanswered {
+				verdict = gateVerdictNo
+			}
+			continue
+		}
+		unrecognized++
+	}
+
+	if unrecognized > 0 {
+		slog.Warn("Family camp medical gate answer outside the Yes/No vocabulary",
+			"field", fieldName, "count", unrecognized,
+			"hint", "the answer is not stored; check the CampMinder field's options")
+	}
+
+	return verdict
+}
+
+// orGateVerdicts unions per-field gate verdicts by the same rule gateVerdict
+// itself uses to union per-person answers within one field: yes beats no
+// beats unanswered, order-independent.
+//
+// It exists for CPAP, the one gate spread across three CampMinder fields
+// (fieldFamilyCampCPAP, fieldFamCampCPAP, fieldAdultCPAP -- one question asked
+// in three generations). Calling gateVerdict once per field, then ORing the
+// results, keeps its "field" warning naming the actual field whose vocabulary
+// moved -- the promise gateVerdict's doc comment makes -- instead of the
+// single literal "CPAP" label a combined call would have to invent. The union
+// itself changes nothing observable: yes/no/unanswered is order-independent
+// whether it is computed over one combined answer list or three separate
+// ones, so processMedical's cpap_gate is identical either way.
+func orGateVerdicts(verdicts ...string) string {
+	verdict := gateVerdictUnanswered
+	for _, v := range verdicts {
+		if v == gateVerdictYes {
+			return gateVerdictYes
+		}
+		if v == gateVerdictNo {
+			verdict = gateVerdictNo
+		}
+	}
+	return verdict
+}
 
 // medicalAnswers holds one household's family-camp medical answers: every
 // distinct answer given to each field, in canonical order, across everyone who
@@ -2100,74 +2165,22 @@ const gateAnswerYes = "Yes"
 type medicalAnswers map[string][]string
 
 // parts returns the answers to one field, ready to be concatenated into a
-// column.
+// column: every distinct answer, in canonical order, across everyone who
+// answered it. A second person's sentence is a second disclosure.
 //
-// A binary gate collapses to a single token by OR: if anyone in the household
-// said Yes, the household's answer is Yes. That is the same total aggregation
-// processRegistrations already applies to the housing flags, and it is what
-// makes the narrative join safe. Anything else keeps every distinct answer,
-// because a second person's sentence is a second disclosure.
-//
-// A gate whose answers are all negative falls through to the join rather than
-// picking one, so a vocabulary that ever widens past Yes/No is not silently
-// narrowed to whichever value sorted first.
+// It used to collapse a Yes/No gate to a single token, because the gate and its
+// explanation shared a column and joining two answerers' gates verbatim rendered
+// "No; Yes; <A>; <B>". kindred#2542 gave the gate its own column, so no gate
+// token reaches a narrative join any more and the collapse moved to gateVerdict.
 func (m medicalAnswers) parts(fieldName string) []string {
 	values := m[fieldName]
 	if len(values) == 0 {
 		return nil
 	}
-	if _, isGate := medicalGateFields[fieldName]; !isGate {
-		// Cloned because callers append the next field's parts onto this
-		// slice: handing back the map's own backing array would let one
-		// column's join overwrite another's answers.
-		return slices.Clone(values)
-	}
-	for _, v := range values {
-		if strings.EqualFold(v, gateAnswerYes) {
-			return []string{v}
-		}
-	}
+	// Cloned because callers append the next field's parts onto this slice:
+	// handing back the map's own backing array would let one column's join
+	// overwrite another's answers.
 	return slices.Clone(values)
-}
-
-// cpapGateParts drops a household's pure CPAP denials whenever anyone in it
-// disclosed a need.
-//
-// The CPAP column is the one gate/explain pair processMedical still stores as a
-// gate STRING, and docs/reference/family-camp-field-provenance.md section 4
-// names Special Needs and CPAP as the two pairs where splitting the halves does
-// real harm. Special Needs is a Yes/No gate and collapses by OR through
-// medicalGateFields; CPAP cannot, because the three CPAP fields are
-// multi-option selects whose affirmative options say WHICH accommodation is
-// needed (kindred#1875, see classifyCPAPAnswer). Two different affirmatives are
-// two different needs and both have to survive, so this is only the half of the
-// OR that applies: a household that needs an outlet needs it whoever else on
-// the form said no.
-//
-// Without it the household aggregation would put a denial and a disclosure in
-// one column -- "No; Yes, outlet needed for CPAP machine" -- which is the
-// rendered contradiction medicalGateFields exists to prevent, arriving through
-// the one column medicalGateFields does not cover. Measured on the production
-// snapshot it is 1 household-year in 2026 and 1-2 a year back to 2022: rare,
-// and on a column staff read to decide whether a family needs a powered cabin.
-//
-// Every stored answer to the three fields is either "No" or starts "Yes"
-// (30,124 values checked), so parseBoolFieldValue -- which anchors on the
-// leading token, the whole reason it is not enough to CLASSIFY these answers --
-// is exactly the right test for which of them is a denial.
-func cpapGateParts(parts []string) []string {
-	disclosed := make([]string, 0, len(parts))
-	for _, part := range parts {
-		if parseBoolFieldValue(part) {
-			disclosed = append(disclosed, part)
-		}
-	}
-	if len(disclosed) == 0 {
-		// Nobody disclosed. "No" is still an answer, and blanking it would be
-		// the silent loss this whole function's neighbors exist to end.
-		return parts
-	}
-	return disclosed
 }
 
 // joinMedicalColumn concatenates one column's parts within its declared cap,
@@ -2229,53 +2242,60 @@ func (s *FamilyCampDerivedSync) processMedical(personValues []customValueEntry) 
 			householdPBID: householdID,
 		}
 
-		// CPAP info, unioned across all three fields and deduplicated.
+		// CPAP. The three fields are one question asked in three generations, so
+		// the gate is the union of all three -- which is what makes it match the
+		// flag logic in processRegistrations, which ORs across the same three.
 		//
-		// The union is what has to match the flag logic in processRegistrations,
-		// which ORs across all three: any answer that can raise needs_power or
-		// needs_private_bathroom has to be readable in the one place staff can
-		// look for the reason. Dedup is what keeps the union honest -- the two
-		// Camper-partition names are generations of the SAME question, and
-		// answering both must not print the sentence twice.
+		// The affirmative options are multi-option sentences whose text names
+		// WHICH accommodation is needed ("Yes, outlet needed for CPAP machine"
+		// vs "Yes, bathroom or other housing accommodation ... (not CPAP
+		// related)"). That distinction is real and is NOT lost here: it is
+		// exactly what classifyCPAPAnswer resolves into needs_power and
+		// needs_private_bathroom, and AccessibilityFlagList renders both as
+		// Housing-needs rows directly above this text in the same panel section.
+		// What leaves is the wording, never the decision -- which is why this
+		// column no longer needs the pass that stood here before kindred#2542,
+		// dropping a household's pure CPAP denials whenever anyone in it
+		// disclosed a need so that "No; Yes, outlet needed for CPAP machine"
+		// could not be rendered. No gate answer reaches this column at all now,
+		// so there is nothing left for it to contradict.
 		//
-		// It replaces a first-non-empty-wins loop over the two camper names,
-		// which stopped at whichever had an answer: a "No" on Family Camp-CPAP
-		// hid a disclosure on FAM CAMP-CPAP outright, in 27 households in 2025
-		// and 1 in 2026 on the production snapshot, each of them carrying a
-		// housing flag their cpap_info then denied. Taking one field's answer as
-		// the household's is the same first-wins mistake medicalAnswers exists
-		// to end, one level up.
-		cpapParts := []string{}
-		for _, key := range []string{fieldFamilyCampCPAP, fieldFamCampCPAP, fieldAdultCPAP} {
-			for _, v := range fields.parts(key) {
-				if !slices.Contains(cpapParts, v) {
-					cpapParts = append(cpapParts, v)
-				}
-			}
-		}
-		cpapParts = cpapGateParts(cpapParts)
-		cpapParts = append(cpapParts, fields.parts("Family Medical-CPAP Explain")...)
-		med.cpapInfo = s.joinMedicalColumn(householdID, "cpap_info", cpapParts)
+		// One gateVerdict call per field, ORed by orGateVerdicts, rather than one
+		// combined call over all three fields' answers -- so a vocabulary warning
+		// names the actual CampMinder field that drifted (Family Camp-CPAP, FAM
+		// CAMP-CPAP or Adult-CPAP) instead of the aggregate label "CPAP". The
+		// verdict itself is unchanged either way: see orGateVerdicts' doc comment.
+		med.cpapGate = orGateVerdicts(
+			gateVerdict(fieldFamilyCampCPAP, fields.parts(fieldFamilyCampCPAP)),
+			gateVerdict(fieldFamCampCPAP, fields.parts(fieldFamCampCPAP)),
+			gateVerdict(fieldAdultCPAP, fields.parts(fieldAdultCPAP)),
+		)
+		med.cpapInfo = s.joinMedicalColumn(householdID, "cpap_info",
+			fields.parts("Family Medical-CPAP Explain"))
 
-		// Physician info
-		physicianParts := fields.parts("Family Camp-Physician")
-		physicianParts = append(physicianParts, fields.parts("Family Camp-Physician If Yes")...)
-		med.physicianInfo = s.joinMedicalColumn(householdID, "physician_info", physicianParts)
+		// Physician
+		med.physicianGate = gateVerdict("Family Camp-Physician",
+			fields.parts("Family Camp-Physician"))
+		med.physicianInfo = s.joinMedicalColumn(householdID, "physician_info",
+			fields.parts("Family Camp-Physician If Yes"))
 
-		// Special needs info
-		specialParts := fields.parts("Family Camp-Special Needs")
-		specialParts = append(specialParts, fields.parts("Family Camp-Special Needs Yes")...)
-		med.specialNeedsInfo = s.joinMedicalColumn(householdID, "special_needs_info", specialParts)
+		// Special needs
+		med.specialNeedsGate = gateVerdict("Family Camp-Special Needs",
+			fields.parts("Family Camp-Special Needs"))
+		med.specialNeedsInfo = s.joinMedicalColumn(householdID, "special_needs_info",
+			fields.parts("Family Camp-Special Needs Yes"))
 
-		// Allergy info
-		allergyParts := fields.parts("Family Medical-Allergies")
-		allergyParts = append(allergyParts, fields.parts("Family Medical-Allergy Info")...)
-		med.allergyInfo = s.joinMedicalColumn(householdID, "allergy_info", allergyParts)
+		// Allergies
+		med.allergyGate = gateVerdict("Family Medical-Allergies",
+			fields.parts("Family Medical-Allergies"))
+		med.allergyInfo = s.joinMedicalColumn(householdID, "allergy_info",
+			fields.parts("Family Medical-Allergy Info"))
 
-		// Dietary info
-		dietaryParts := fields.parts("Family Medical-Dietary Needs")
-		dietaryParts = append(dietaryParts, fields.parts("Family Medical-Dietary Explain")...)
-		med.dietaryInfo = s.joinMedicalColumn(householdID, "dietary_info", dietaryParts)
+		// Dietary
+		med.dietaryGate = gateVerdict("Family Medical-Dietary Needs",
+			fields.parts("Family Medical-Dietary Needs"))
+		med.dietaryInfo = s.joinMedicalColumn(householdID, "dietary_info",
+			fields.parts("Family Medical-Dietary Explain"))
 
 		// Additional info
 		med.additionalInfo = s.joinMedicalColumn(
@@ -2311,11 +2331,16 @@ func (s *FamilyCampDerivedSync) processMedical(personValues []customValueEntry) 
 		med.accommodationExplain = s.joinMedicalColumn(
 			householdID, "accommodation_explain", accommodationParts)
 
-		// Only include if has some data
+		// A gate answer is content. 375 of 900 2026 households have nothing else
+		// once the narratives hold the family's words alone, and without this
+		// they would be absent from the result slice and swept as orphans.
 		if med.cpapInfo != "" || med.physicianInfo != "" ||
 			med.specialNeedsInfo != "" || med.allergyInfo != "" ||
 			med.dietaryInfo != "" || med.additionalInfo != "" ||
-			med.bathroomExplain != "" || med.accommodationExplain != "" {
+			med.bathroomExplain != "" || med.accommodationExplain != "" ||
+			med.allergyGate != "" || med.dietaryGate != "" ||
+			med.specialNeedsGate != "" || med.physicianGate != "" ||
+			med.cpapGate != "" {
 			result = append(result, med)
 		}
 	}
@@ -2732,10 +2757,9 @@ func (s *FamilyCampDerivedSync) registrationNeedsUpdate(existing *core.Record, r
 		existing.GetString("goals") != reg.goals ||
 		existing.GetString("notes") != reg.notes ||
 		existing.GetBool("needs_accommodation") != reg.needsAccommodation ||
-		existing.GetBool("opt_out_vip") != reg.optOutVIP ||
 		existing.GetString("share_cabin_gate") != reg.shareCabinGate ||
 		existing.GetBool("wants_near") != reg.wantsNear ||
-		existing.GetBool("wants_with") != reg.wantsWith ||
+		existing.GetBool("wants_with_named") != reg.wantsWithNamed ||
 		existing.GetBool("wants_similar_ages") != reg.wantsSimilarAges ||
 		existing.GetString("request_text") != reg.requestText ||
 		existing.GetString("request_source_field") != reg.requestSourceField ||
@@ -2760,7 +2784,7 @@ func setRegistrationRequestFields(record *core.Record, reg *registrationData) {
 	record.Set(enrollmentStatusColumn, reg.enrollmentStatus)
 	record.Set("share_cabin_gate", reg.shareCabinGate)
 	record.Set("wants_near", reg.wantsNear)
-	record.Set("wants_with", reg.wantsWith)
+	record.Set("wants_with_named", reg.wantsWithNamed)
 	record.Set("wants_similar_ages", reg.wantsSimilarAges)
 	record.Set("request_text", reg.requestText)
 	record.Set("request_source_field", reg.requestSourceField)
@@ -2805,6 +2829,11 @@ func (s *FamilyCampDerivedSync) medicalNeedsUpdate(existing *core.Record, med *m
 		existing.GetString("additional_info") != med.additionalInfo ||
 		existing.GetString("bathroom_explain") != med.bathroomExplain ||
 		existing.GetString("accommodation_explain") != med.accommodationExplain ||
+		existing.GetString("allergy_gate") != med.allergyGate ||
+		existing.GetString("dietary_gate") != med.dietaryGate ||
+		existing.GetString("special_needs_gate") != med.specialNeedsGate ||
+		existing.GetString("physician_gate") != med.physicianGate ||
+		existing.GetString("cpap_gate") != med.cpapGate ||
 		existing.GetString(enrollmentStatusColumn) != med.enrollmentStatus
 }
 
@@ -2915,7 +2944,6 @@ func (s *FamilyCampDerivedSync) upsertRegistrations(
 				existingRecord.Set("goals", reg.goals)
 				existingRecord.Set("notes", reg.notes)
 				existingRecord.Set("needs_accommodation", reg.needsAccommodation)
-				existingRecord.Set("opt_out_vip", reg.optOutVIP)
 				setRegistrationRequestFields(existingRecord, reg)
 
 				if err := s.App.Save(existingRecord); err != nil {
@@ -2940,7 +2968,6 @@ func (s *FamilyCampDerivedSync) upsertRegistrations(
 			record.Set("goals", reg.goals)
 			record.Set("notes", reg.notes)
 			record.Set("needs_accommodation", reg.needsAccommodation)
-			record.Set("opt_out_vip", reg.optOutVIP)
 			setRegistrationRequestFields(record, reg)
 
 			if err := s.App.Save(record); err != nil {
@@ -2986,6 +3013,11 @@ func (s *FamilyCampDerivedSync) upsertMedical(
 				existingRecord.Set("additional_info", med.additionalInfo)
 				existingRecord.Set("bathroom_explain", med.bathroomExplain)
 				existingRecord.Set("accommodation_explain", med.accommodationExplain)
+				existingRecord.Set("allergy_gate", med.allergyGate)
+				existingRecord.Set("dietary_gate", med.dietaryGate)
+				existingRecord.Set("special_needs_gate", med.specialNeedsGate)
+				existingRecord.Set("physician_gate", med.physicianGate)
+				existingRecord.Set("cpap_gate", med.cpapGate)
 				existingRecord.Set(enrollmentStatusColumn, med.enrollmentStatus)
 
 				if err := s.App.Save(existingRecord); err != nil {
@@ -3010,6 +3042,11 @@ func (s *FamilyCampDerivedSync) upsertMedical(
 			record.Set("additional_info", med.additionalInfo)
 			record.Set("bathroom_explain", med.bathroomExplain)
 			record.Set("accommodation_explain", med.accommodationExplain)
+			record.Set("allergy_gate", med.allergyGate)
+			record.Set("dietary_gate", med.dietaryGate)
+			record.Set("special_needs_gate", med.specialNeedsGate)
+			record.Set("physician_gate", med.physicianGate)
+			record.Set("cpap_gate", med.cpapGate)
 			record.Set(enrollmentStatusColumn, med.enrollmentStatus)
 
 			if err := s.App.Save(record); err != nil {

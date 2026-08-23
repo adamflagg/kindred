@@ -48,6 +48,8 @@ interface CohortDrillDownModalProps {
    */
   reserveSidePanel?: boolean
   onClose: () => void
+  /** Forwarded to Modal — fires when the leave completes; parents use it to release their retained snapshot (kindred#2529). */
+  afterLeave?: () => void
 }
 
 const KIND_TITLE: Record<CohortKind, string> = {
@@ -130,6 +132,7 @@ export function CohortDrillDownModal({
   bunkByPerson,
   reserveSidePanel = true,
   onClose,
+  afterLeave,
 }: CohortDrillDownModalProps) {
   const count = attendees.length
   const camperWord = count === 1 ? 'camper' : 'campers'
@@ -154,6 +157,7 @@ export function CohortDrillDownModal({
     <Modal
       isOpen={open}
       onClose={onClose}
+      {...(afterLeave !== undefined && { afterLeave })}
       header={header}
       ariaLabelledBy="cohort-modal-title"
       size="lg"

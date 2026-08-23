@@ -428,3 +428,202 @@ describe('LodgingBoard — merging without a pointer, and while a write is in fl
     expect(screen.getByTestId('merge-handle-o1')).not.toBeDisabled()
   })
 })
+
+describe('LodgingBoard — the swap happens AT the gesture, not at the refetch (kindred#2537)', () => {
+  // The owner's ruling: no perceptible delay between the click and the
+  // morph. The board applies the draw level to its OWN render immediately —
+  // a view overlay, not a cache write: every cached scenario stays
+  // untouched, which is the reason `useUnitMerge` refuses an optimistic
+  // cache layer, and that refusal stands.
+  const card = (code: string) => document.querySelector(`[data-unit-code="${code}"]`)
+
+  it('draws the merged container the moment a merge drop lands — no refetch needed', () => {
+    renderBoard({ units: wingUnits() })
+    expect(card('wing')).toBeNull()
+    act(() => {
+      drop(mergeDragId('r1'), mergeDragId('r2'))
+    })
+    expect(card('wing')).not.toBeNull()
+    expect(card('r1')).toBeNull()
+    expect(card('r2')).toBeNull()
+  })
+
+  it('draws the rooms the moment the split control is clicked', async () => {
+    const user = userEvent.setup()
+    renderBoard({ units: wingUnits({ is_combined: true }) })
+    expect(card('r1')).toBeNull()
+    await user.click(screen.getByRole('button', { name: /split the wing/i }))
+    expect(card('r1')).not.toBeNull()
+    expect(card('r2')).not.toBeNull()
+    expect(card('wing')).toBeNull()
+  })
+
+  it('reverts the swap when the write is REFUSED — the board must not keep showing a merge the server rejected', async () => {
+    setCombined.mockImplementationOnce(() => Promise.reject(new Error('boom')))
+    renderBoard({ units: wingUnits() })
+    await act(async () => {
+      drop(mergeDragId('r1'), mergeDragId('r2'))
+      // let the rejected write settle; the hook owns the toast, the board
+      // owns putting the rooms back
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(card('wing')).toBeNull()
+    expect(card('r1')).not.toBeNull()
+  })
+
+  it('hands the overlay off to the payload once the server confirms, so a LATER server-side split still draws', () => {
+    const { rerender } = render(
+      <LodgingBoard
+        parties={[]}
+        units={wingUnits()}
+        year={2026}
+        sessionCmId={1000001}
+        scenario={SCENARIO}
+        canManage={true}
+      />,
+      { wrapper }
+    )
+    act(() => {
+      drop(mergeDragId('r1'), mergeDragId('r2'))
+    })
+    expect(card('wing')).not.toBeNull()
+    // The refetch lands, agreeing with the overlay: exactly one wing card.
+    rerender(
+      <LodgingBoard
+        parties={[]}
+        units={wingUnits({ is_combined: true })}
+        year={2026}
+        sessionCmId={1000001}
+        scenario={SCENARIO}
+        canManage={true}
+      />
+    )
+    expect(document.querySelectorAll('[data-unit-code="wing"]')).toHaveLength(1)
+    // A later payload splits it again (another client, another scenario
+    // action). A sticky overlay would pin the merged view forever.
+    rerender(
+      <LodgingBoard
+        parties={[]}
+        units={wingUnits()}
+        year={2026}
+        sessionCmId={1000001}
+        scenario={SCENARIO}
+        canManage={true}
+      />
+    )
+    expect(card('wing')).toBeNull()
+    expect(card('r1')).not.toBeNull()
+  })
+})
+
+describe('LodgingBoard — the overlay cannot outlive its weekend or lie about a failed write', () => {
+  const card = (code: string) => document.querySelector(`[data-unit-code="${code}"]`)
+
+  it('drops an in-flight override on a weekend switch — no merged card on a weekend where nothing merged', () => {
+    // The override is keyed by unit_id, which is weekend-agnostic; the board
+    // re-renders (never remounts) on a switch. Without a context reset, a
+    // merge clicked on weekend A paints weekend B's identical unit as merged
+    // — the legible-lie class this feature exists to avoid.
+    const { rerender } = render(
+      <LodgingBoard
+        parties={[]}
+        units={wingUnits()}
+        year={2026}
+        sessionCmId={1000001}
+        scenario={SCENARIO}
+        canManage={true}
+      />,
+      { wrapper }
+    )
+    act(() => {
+      drop(mergeDragId('r1'), mergeDragId('r2'))
+    })
+    expect(card('wing')).not.toBeNull()
+    rerender(
+      <LodgingBoard
+        parties={[]}
+        units={wingUnits()}
+        year={2026}
+        sessionCmId={2000002}
+        scenario={SCENARIO}
+        canManage={true}
+      />
+    )
+    expect(card('wing')).toBeNull()
+    expect(card('r1')).not.toBeNull()
+  })
+
+  it('drops an in-flight override on a scenario switch, for the same reason', () => {
+    const { rerender } = render(
+      <LodgingBoard
+        parties={[]}
+        units={wingUnits()}
+        year={2026}
+        sessionCmId={1000001}
+        scenario={SCENARIO}
+        canManage={true}
+      />,
+      { wrapper }
+    )
+    act(() => {
+      drop(mergeDragId('r1'), mergeDragId('r2'))
+    })
+    expect(card('wing')).not.toBeNull()
+    rerender(
+      <LodgingBoard
+        parties={[]}
+        units={wingUnits()}
+        year={2026}
+        sessionCmId={1000001}
+        scenario={'scnother1234567'}
+        canManage={true}
+      />
+    )
+    expect(card('wing')).toBeNull()
+  })
+
+  it("a FAILED older write does not erase a newer gesture's override on the same unit", async () => {
+    // `useLodgingPlacement` guards this identical race and documents why:
+    // nothing serializes mutations, so a stale failure reverting wholesale
+    // erases the newer gesture too. Repro: merge (w1) → merge a second
+    // building (re-enables the first) → merge the first again (w3, the
+    // override on screen is now w3's) → w1 fails late. w1's revert must be
+    // a no-op: the entry it would delete belongs to w3, still in flight.
+    const deferred: { reject: (e: Error) => void }[] = []
+    setCombined.mockImplementation(
+      () =>
+        new Promise<void>((_resolve, reject) => {
+          deferred.push({ reject })
+        })
+    )
+    const secondBuilding = [
+      unit({
+        unit_id: 'u_barn',
+        code: 'barn',
+        name: 'The Barn',
+        is_container: true,
+      }),
+      unit({ unit_id: 'u_s1', code: 's1', name: 'Barn Stall 1', parent_code: 'barn' }),
+      unit({ unit_id: 'u_s2', code: 's2', name: 'Barn Stall 2', parent_code: 'barn' }),
+    ]
+    renderBoard({ units: [...wingUnits(), ...secondBuilding] })
+    act(() => {
+      drop(mergeDragId('r1'), mergeDragId('r2')) // w1: merge wing
+    })
+    act(() => {
+      drop(mergeDragId('s1'), mergeDragId('s2')) // w2: merge barn
+    })
+    act(() => {
+      drop(mergeDragId('r1'), mergeDragId('r2')) // w3: merge wing again
+    })
+    expect(card('wing')).not.toBeNull()
+    await act(async () => {
+      deferred[0]?.reject(new Error('boom')) // w1 fails LATE
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    // w3 is still in flight and its override is the one on screen.
+    expect(card('wing')).not.toBeNull()
+  })
+})

@@ -22,14 +22,18 @@ from api.services.lodging_rules import (
     HousingNameResolver,
     RegistryUnit,
     UnitAlias,
+    WriteInDemand,
+    WriteInLoad,
     amenity_coverage,
     container_bathroom,
     effective_bathroom,
+    free_family_beds,
     is_family_available,
     ramp_coverage,
     request_text_authorship,
     request_text_source_order,
     unit_capacity,
+    write_in_demand,
 )
 
 
@@ -57,9 +61,10 @@ class TestIsFamilyAvailable:
 
     kindred#2382 then found that the surviving boolean was still carrying two
     unrelated facts -- the staff<->family ROLE and whether somebody is IN the
-    room -- and split them. `override` is the role; `is_occupied` is the
-    occupancy, read from `lodging_write_ins` rather than from the role column.
-    This function is where the two meet, and the only place they do.
+    room -- and split them. `override` is the role; `free` is how many beds are
+    left once the write-ins covering the unit are paid for, resolved by
+    `free_family_beds` from the occupancy source rather than from the role
+    column. This function is where the two meet, and the only place they do.
     """
 
     @pytest.mark.parametrize(
@@ -81,7 +86,7 @@ class TestIsFamilyAvailable:
     def test_the_override_wins_and_the_role_decides_without_one(
         self, inventory_class: str, override: bool | None, expected: bool
     ) -> None:
-        assert is_family_available(inventory_class, override, is_occupied=False) is expected
+        assert is_family_available(inventory_class, override, free=None) is expected
 
     def test_false_is_a_decision_and_not_an_absent_override(self) -> None:
         """`False` and `None` are different answers on a family_pool unit.
@@ -90,29 +95,41 @@ class TestIsFamilyAvailable:
         test (`if override:`), which would silently discard every closure.
         Absence means "ask the role"; False means "closed this weekend".
         """
-        assert is_family_available("family_pool", False, is_occupied=False) is False
-        assert is_family_available("family_pool", None, is_occupied=False) is True
+        assert is_family_available("family_pool", False, free=None) is False
+        assert is_family_available("family_pool", None, free=None) is True
 
     @pytest.mark.parametrize(
         ("inventory_class", "override"),
         [
             ("family_pool", None),
             ("family_pool", True),
-            ("staff_default", True),  # released AND written into -- occupancy wins
+            ("staff_default", True),  # released AND fully taken -- occupancy wins
             ("", None),
         ],
     )
-    def test_an_occupancy_closes_the_unit_whatever_the_role_says(
+    def test_no_free_beds_closes_the_unit_whatever_the_role_says(
         self, inventory_class: str, override: bool | None
     ) -> None:
-        """kindred#2382: somebody is in it, so no family can go in it.
+        assert is_family_available(inventory_class, override, free=0) is False
 
-        The role can say "this is family inventory" as loudly as it likes; a
-        cabin with an occupant cannot take a second party. Ordering it the other
-        way round is a bed collision, which is the failure write-ins exist to
-        prevent.
+    def test_a_write_in_smaller_than_the_cabin_leaves_it_available(self) -> None:
+        """THE REVERSAL, and it is deliberate. This function used to say
+        "OCCUPANCY IS ABSOLUTE"; kindred#2432 struck that by making a
+        written-into cabin take a family like any other, and the drop refusal
+        came out of `dragPlacement.ts` with it. The stats bar has disagreed
+        with the board it sits above ever since.
+
+        Ridge A sleeps 15. Two people written in leaves thirteen, and the board
+        will accept a family in them.
         """
-        assert is_family_available(inventory_class, override, is_occupied=True) is False
+        assert is_family_available("family_pool", None, free=13) is True
+
+    def test_none_free_means_no_occupancy_and_not_unmeasured(self) -> None:
+        """`None` mirrors `override: None` -- "there is no row, ask the role".
+        An unmeasured cabin that somebody IS written into resolves to 0 in
+        `free_family_beds`, never to None."""
+        assert is_family_available("family_pool", None, free=None) is True
+        assert is_family_available("staff_default", None, free=None) is False
 
 
 class TestEffectiveBathroom:
@@ -349,9 +366,14 @@ class TestRequestTextSourceRegistry:
         must not be re-derived from volume (or from authorship -- see the
         next test) by a later reader who measures the columns and "corrects"
         it back."""
+        # Owner ruling 2026-08-23, after the form-label correction: the
+        # REGISTRATION-form box (`Shared-request`, written in the radio's
+        # sitting) renders FIRST, ahead of the Information form's names box
+        # (`COVID-19 Bunking Requests`). Under the earlier backwards labels
+        # the old order merely LOOKED reg-first; this pin makes it real.
         assert [source.label for source in REQUEST_TEXT_SOURCES] == [
-            "COVID-19 Bunking Requests",
             "Shared-request",
+            "COVID-19 Bunking Requests",
             "FAM CAMP-Share Comments",
             "BunkingNotes Notes",
             "Internal Bunk Notes",
@@ -604,3 +626,171 @@ class TestHousingNameResolver:
         )
 
         assert resolver.display_name("Cedar Lodge 1", 2023) == "Cedar Lodge 1"
+
+
+class TestWriteInDemand:
+    """How many beds the write-ins covering one card take, and how many of
+    those the board actually knows about.
+
+    TWO SUMS, and collapsing them is the mistake this class exists to stop.
+    `consumed` includes the WHOLESALE fallback for a row with no count, because
+    such a row still asserts somebody is in the space. `sized` includes only
+    counts a human recorded, because it is what the card's numerator prints and
+    a numerator must never state a headcount nobody wrote down -- that is the
+    whole reason the em dash exists.
+
+    They differ on every production row today: all 24 are unsized.
+    """
+
+    def test_no_covers_is_no_demand(self) -> None:
+        assert write_in_demand(15, []) == WriteInDemand(consumed=0, sized=0, known=True)
+
+    def test_an_own_sized_cover_consumes_its_size(self) -> None:
+        loads = [WriteInLoad("own", 2, 15)]
+        assert write_in_demand(15, loads) == WriteInDemand(consumed=2, sized=2, known=True)
+
+    def test_an_unsized_cover_consumes_the_unit_it_names_but_is_not_sized(self) -> None:
+        """The wholesale fallback: `null` means "occupies the room", which is
+        what the card's em dash has always asserted. It reaches `consumed` and
+        must never reach `sized`."""
+        loads = [WriteInLoad("own", None, 15)]
+        assert write_in_demand(15, loads) == WriteInDemand(consumed=15, sized=0, known=False)
+
+    def test_descendants_consume_their_own_capacity_not_the_card_s(self) -> None:
+        """gt-clouds-rest: a combined house whose four rooms are each written
+        into. Each room contributes ITS beds, not the house's."""
+        loads = [
+            WriteInLoad("descendant", None, 3),
+            WriteInLoad("descendant", None, 1),
+            WriteInLoad("descendant", None, 2),
+            WriteInLoad("descendant", None, 2),
+        ]
+        assert write_in_demand(8, loads) == WriteInDemand(consumed=8, sized=0, known=False)
+
+    def test_a_mixture_sums_both_ways_and_is_not_known(self) -> None:
+        """One room counted, three not. `consumed` is exact enough to place
+        against; `known` is false because a partial count is a lower bound, and
+        kindred#2528's rule is that a count which is not a fact supports no
+        claim."""
+        loads = [
+            WriteInLoad("descendant", 2, 3),
+            WriteInLoad("descendant", None, 1),
+            WriteInLoad("descendant", None, 2),
+            WriteInLoad("descendant", None, 2),
+        ]
+        assert write_in_demand(8, loads) == WriteInDemand(consumed=7, sized=2, known=False)
+
+    def test_an_ancestor_takes_the_whole_card_and_contributes_no_sized_people(self) -> None:
+        """Wawona written into whole, then split. Each room is inside a house
+        somebody has taken, so neither is separately lettable -- but the
+        house's size is a fact about the HOUSE, and printing it on both rooms
+        would spend one two-person party twice on one screen.
+
+        `known` is TRUE: "the whole card is taken" is a fact, unlike a
+        wholesale guess about a room that may be shared.
+        """
+        assert write_in_demand(4, [WriteInLoad("ancestor", 2, 7)]) == WriteInDemand(consumed=4, sized=0, known=True)
+
+    def test_an_ancestor_answers_the_same_regardless_of_load_order(self) -> None:
+        """Fix-round finding, reviewer-verified repro: the ancestor branch
+        used to return whatever the loop had accumulated from covers seen
+        EARLIER in the list. An unsized descendant before the ancestor set
+        `known = False` before the loop ever reached the ancestor's early
+        return; the same descendant placed AFTER the ancestor never got a
+        chance to run, so `known` stayed `True`. Same set of loads, two
+        different answers on the one field (`known`) that a hoisted `sized`
+        computation does not by itself make order-independent -- the ancestor
+        check has to be a pre-pass over `loads`, not a fact the per-cover loop
+        happens to preserve, so the order cannot matter."""
+        unsized_descendant = WriteInLoad("descendant", None, 3)
+        ancestor = WriteInLoad("ancestor", 2, 7)
+        forward = write_in_demand(4, [unsized_descendant, ancestor])
+        backward = write_in_demand(4, [ancestor, unsized_descendant])
+        assert forward == backward == WriteInDemand(consumed=4, sized=0, known=True)
+
+    def test_an_unmeasured_card_is_not_known_even_with_an_ancestor_cover(self) -> None:
+        """An ancestor cover only tells you the whole card is taken, not how
+        big the card is -- a capacity nobody measured stays unknown even with
+        an ancestor cover asserting occupancy.
+
+        NAMED FOR THE GUARD IT ACTUALLY PINS, which is the unmeasured-capacity
+        return above the ancestor branch, not the branch. It cannot be made to
+        bite on the branch: reaching the branch requires `capacity is not
+        None`, so the branch's `known` could never be False there, and its old
+        `known=capacity is not None` was dead-code-equivalent to True. The
+        behaviour under test is real and unchanged -- only the claim about
+        WHERE it is decided was wrong.
+        """
+        assert write_in_demand(None, [WriteInLoad("ancestor", 2, 7)]).known is False
+
+    def test_an_ancestor_on_a_measured_card_is_known(self) -> None:
+        """The other side of the same guard, and the case the branch really
+        owns: capacity is a fact, so the whole-card claim is one too."""
+        assert write_in_demand(4, [WriteInLoad("ancestor", 2, 7)]).known is True
+
+    def test_consumption_is_capped_at_the_card(self) -> None:
+        """A hand-typed count above the cabin's beds is over capacity, which is
+        a real state the card reddens -- but it cannot take MORE beds than
+        exist, or a container's arithmetic would go negative. `sized` is NOT
+        capped the same way: kindred#2503's over-capacity red needs the true
+        recorded count, so the numerator must show 9, not a clipped 4."""
+        demand = write_in_demand(4, [WriteInLoad("own", 9, 4)])
+        assert demand.consumed == 4
+        assert demand.sized == 9
+
+    def test_an_unbounded_wholesale_claim_takes_everything(self) -> None:
+        """An unsized cover on a unit nobody measured cannot be bounded, so
+        nothing on this card is offerable."""
+        demand = write_in_demand(8, [WriteInLoad("descendant", None, None)])
+        assert demand == WriteInDemand(consumed=8, sized=0, known=False)
+
+    def test_unknown_card_capacity_is_never_known(self) -> None:
+        assert write_in_demand(None, [WriteInLoad("own", 2, None)]).known is False
+
+    def test_sized_survives_an_unknown_card_capacity(self) -> None:
+        """A human-recorded count is a fact whether or not the card itself is
+        measured. A cabin nobody has measured, holding a two-person write-in,
+        must print 2/-, not -/- -- no capacity guard may discard a count
+        somebody actually wrote down."""
+        assert write_in_demand(None, [WriteInLoad("own", 2, None)]).sized == 2
+
+
+class TestFreeFamilyBeds:
+    """THREE returns, and the middle one is the one this design nearly shipped
+    without.
+
+    `None` reads as "no occupancy at all", mirroring how `override: None`
+    already reads as "no row" in `is_family_available`. It does NOT mean
+    unmeasured: an unmeasured cabin somebody is written into must CLOSE, or a
+    cabin with a person in it is reported as an open space -- the exact defect
+    this change exists to fix, in a different disguise.
+    """
+
+    def test_no_covers_is_no_occupancy(self) -> None:
+        assert free_family_beds(15, []) is None
+
+    def test_covered_and_unmeasurable_is_closed(self) -> None:
+        assert free_family_beds(None, [WriteInLoad("own", 2, None)]) == 0
+
+    def test_a_sized_write_in_leaves_the_remainder(self) -> None:
+        """Ridge A sleeps 15; two people written in leaves thirteen. Since
+        kindred#2432 the board will accept a family there, so the bar must
+        agree with it."""
+        assert free_family_beds(15, [WriteInLoad("own", 2, 15)]) == 13
+
+    def test_a_wholesale_write_in_leaves_nothing(self) -> None:
+        assert free_family_beds(15, [WriteInLoad("own", None, 15)]) == 0
+
+    def test_a_fully_covered_house_leaves_nothing(self) -> None:
+        loads = [
+            WriteInLoad("descendant", None, 3),
+            WriteInLoad("descendant", None, 1),
+            WriteInLoad("descendant", None, 2),
+            WriteInLoad("descendant", None, 2),
+        ]
+        assert free_family_beds(8, loads) == 0
+
+    def test_a_partly_covered_house_keeps_the_rest(self) -> None:
+        """Owner ruling 2026-08-20: a room-level write-in does not make the
+        rest of the house unavailable."""
+        assert free_family_beds(8, [WriteInLoad("descendant", None, 3)]) == 5

@@ -31,7 +31,13 @@ import type { MapUnit } from './mapModel'
 import { partyKey } from './partyKey'
 import { partyAttention, partyBeds } from './rosterAttention'
 import { reservationBadge, shareabilityBadge, writeInBadgeApplies } from './unitBadges'
-import { writeInEntries, writeInOccupantLabel, type WriteInEntry } from './writeIn'
+import {
+  coveringWriteIns,
+  writeInDemand,
+  writeInEntries,
+  writeInOccupantLabel,
+  type WriteInEntry,
+} from './writeIn'
 
 /**
  * The board's `border-amber-400`, reused rather than re-picked. A consent flag
@@ -296,6 +302,24 @@ function DetailCard({ entry, hue, onOpenParty, wholeBuildingKeys }: DetailCardPr
   const writeIns = writeInEntries(unit)
   const bedsNeeded = parties.reduce((sum, party) => sum + partyBeds(party), 0)
   /*
+   * What the write-ins covering THIS room add to the FIGURE (kindred#2503) —
+   * `writeInDemand`'s own doc in `writeIn.ts` carries the full arithmetic;
+   * this popover is one of its readers, not a second copy of the rule. It
+   * takes `capacity`, not the registry: this popover NEVER receives the full
+   * unit registry (`units` above is documented as "only a cluster's
+   * members… cannot answer the question alone"), and each cover publishes
+   * its own `unit_sleeps`, which is what makes a registry walk unnecessary.
+   *
+   * `sized` — recorded counts only — is the ONLY quantity this card reads.
+   * Never `consumed`, which folds in a wholesale fallback and an ancestor's
+   * whole-card claim: `LodgingUnitCard`'s own `overCapacity` reads
+   * `occupants + writeInPeople` where `writeInPeople` IS `sized` (kindred
+   * #2503, see that card's comment above its own `overCapacity`), and this
+   * mirrors it exactly — the figure and the over-capacity verdict below are
+   * the SAME number compared against capacity, as they are on the card.
+   */
+  const { sized: writeInSized } = writeInDemand(capacity, coveringWriteIns(unit))
+  /*
    * THE AMBER IS A CLAIM, AND `spanWidth` IS WHAT WITHHOLDS IT — the same gate
    * `LodgingUnitCard`'s `overCapacity` and `AssignFamilyModal`'s header take,
    * mirrored here rather than left off. This card had no gate at all.
@@ -310,8 +334,16 @@ function DetailCard({ entry, hue, onOpenParty, wholeBuildingKeys }: DetailCardPr
    *
    * ZERO parties span the 2026 registry after #2040, so nothing on screen moves
    * today. This is a guard on a reachable state.
+   *
+   * `bedsNeeded + writeInSized`, deliberately uncapped (kindred#2503): a
+   * hand-typed write-in count above the room's own beds drives this same
+   * red figure, the way an over-full placement always has. A surface that
+   * PRINTS an over-capacity figure without reddening contradicts itself, so
+   * this reads the same sum the figure below prints, not the card's separate
+   * `consumed` (which folds in the wholesale fallback and is capped at
+   * `capacity` — a number this popover never shows).
    */
-  const overCapacity = capacityKnown && spanWidth === 0 && bedsNeeded > capacity
+  const overCapacity = capacityKnown && spanWidth === 0 && bedsNeeded + writeInSized > capacity
 
   // Only the ACTIONABLE levels. `unverified` is a live fallback for a cabin
   // nobody has confirmed yet, not the state of the whole registry — measured
@@ -364,12 +396,20 @@ function DetailCard({ entry, hue, onOpenParty, wholeBuildingKeys }: DetailCardPr
             scrape staff transpose by hand and 16–22 households a year carry
             adults it never receives (#1925's accepted cost) — the error now
             runs in both directions instead of only high. Shown only against a
-            capacity that exists; "3 of unknown" says nothing. */}
-        {parties.length > 0 && capacityKnown && (
+            capacity that exists; "3 of unknown" says nothing.
+
+            The gate is `parties.length > 0 || writeInSized > 0`, widened from
+            `parties.length > 0` alone (kindred#2503): a cabin holding ONLY
+            write-ins used to fall through this gate entirely, so since
+            kindred#2525 gave the map a "Occupied by" list of write-in names,
+            such a room named its occupant and then printed no figure beside
+            them. A recorded write-in count is exactly the kind of fact this
+            hint exists to show. */}
+        {(parties.length > 0 || writeInSized > 0) && capacityKnown && (
           <div className="flex justify-between gap-3">
             <dt className="text-muted-foreground">Beds</dt>
             <dd className={overCapacity ? 'font-semibold text-amber-700' : ''}>
-              {`${String(bedsNeeded)} of ${String(capacity)}`}
+              {`${String(bedsNeeded + writeInSized)} of ${String(capacity)}`}
             </dd>
           </div>
         )}
@@ -641,8 +681,35 @@ function ClusterSummary({
   // which is what stops the second room rendering empty — so the flat list
   // counts its beds once per door, and can print more placed than the
   // building sleeps. One chip, one household, one bed total.
-  const placed = families.reduce((total, { party }) => total + partyBeds(party), 0)
+  //
+  // PLUS every DISTINCT write-in ROW's recorded count (kindred#2540, and its
+  // CodeRabbit follow-up), mirroring `DetailCard`'s own
+  // `bedsNeeded + writeInSized` for a room that carries no ancestor cover.
+  //
+  // The first cut of this summed `writeInDemand(...).sized` PER UNIT — right
+  // for a room's own card, where `sized` deliberately excludes an ancestor
+  // cover (an ancestor's count is a fact about the HOUSE, not the room, so
+  // printing it on both halves of a split house would spend one party twice
+  // on one screen). But this is the house-level aggregate that ancestor
+  // number belongs to, and `drawnUnits` guarantees a house written in whole
+  // and then split draws its ROOMS, never itself — so every room in the
+  // cluster inherits the SAME ancestor row, and summing the per-room,
+  // ancestor-excluding `sized` reported zero for a house that has some.
+  //
+  // The fix: dedupe by the cover's own `unit_id` (`WriteInSource.unitId`,
+  // published once per row no matter how many rooms resolve it) BEFORE
+  // summing, reusing `writeIns` below — the same identity `summaryWriteIns`
+  // already established for the "Occupied by" name list, computed once and
+  // shared rather than re-derived. `drawnUnits` also guarantees a cluster
+  // never holds both a container and its own rooms, so on every own/
+  // descendant cover this reduces to the same figure the old per-unit sum
+  // produced; only the ancestor case changes.
   const writeIns = summaryWriteIns(resolved)
+  const writeInSized = writeIns.reduce(
+    (total, { occupant }) => total + (occupant.partySize ?? 0),
+    0
+  )
+  const placed = families.reduce((total, { party }) => total + partyBeds(party), 0) + writeInSized
 
   return (
     <div className="flex min-w-[11rem] flex-col gap-1.5">
@@ -654,16 +721,35 @@ function ClusterSummary({
           <dt className="text-muted-foreground">Rooms</dt>
           <dd>{`${String(rooms)} · ${String(taken)} taken, ${String(rooms - taken)} open`}</dd>
         </div>
-        <div className="flex justify-between gap-3">
-          <dt className="text-muted-foreground">Sleeps</dt>
-          <dd>
-            {capacity === null ? (
-              <em>unknown</em>
-            ) : (
-              `${String(capacity)} · ${String(placed)} placed`
-            )}
-          </dd>
-        </div>
+        {/* ⚠️ GATED, the way `DetailCard`'s own Beds row is (kindred#2540
+            final scan, FINDING 3). Rendered unconditionally, a cluster written
+            into WHOLESALE printed `Beds 0 of 8` directly beneath `Rooms 4 · 4
+            taken, 0 open` -- `writeInSized` sums recorded counts only, so a
+            cover with no count contributes 0 and the row claimed an empty
+            building the line above had just called full. Every production row
+            is unsized, so this was the live reading, not an edge case.
+
+            `main` said `Sleeps 8 · 0 placed` here, which was at least
+            literally true; the `placed` fold-in is what made silence the only
+            honest answer. The board card draws an em dash for this same state
+            and `DetailCard` omits the row outright -- this matches the latter
+            rather than inventing a third phrasing. */}
+        {(families.length > 0 || writeInSized > 0) && (
+          <div className="flex justify-between gap-3">
+            {/* "Beds", not "Sleeps"/"placed" (kindred#2540 fix-round CHEAP 9).
+              `placed` folds in a write-in's recorded count (`writeInSized`
+              above), and the "Occupied by" list beneath draws that occupant
+              as a write-in chip rather than a family -- "N placed" claimed a
+              family placement for a figure that is not always one.
+              `DetailCard`'s own combined figure is labelled `Beds` and reads
+              `X of Y` for exactly this reason; this matches it rather than
+              inventing a third phrasing. */}
+            <dt className="text-muted-foreground">Beds</dt>
+            <dd>
+              {capacity === null ? <em>unknown</em> : `${String(placed)} of ${String(capacity)}`}
+            </dd>
+          </div>
+        )}
       </dl>
 
       {/* A BLOCK, not a right-aligned `dd`: a chip naming four people needs the

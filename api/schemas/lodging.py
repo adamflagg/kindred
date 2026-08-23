@@ -56,6 +56,34 @@ MEDICAL_NARRATIVE_FIELD_NAMES: frozenset[str] = frozenset(
     }
 )
 
+# The five structured gate answers on family_camp_medical (kindred#2542).
+#
+# Kept SEPARATE from MEDICAL_NARRATIVE_FIELD_NAMES above: a gate is one of
+# "yes" / "no" / "", not a disclosure sentence, and kindred#2409 spent a PR
+# making that vocabulary accurate. They carry the same protection under their
+# own name -- kept out of every roster payload here, out of every export by
+# `gateColumns` in pocketbase/sync/lodging_medical_narrative_test.go, and a
+# test asserts the two lists are identical.
+MEDICAL_GATE_FIELD_NAMES: frozenset[str] = frozenset(
+    {
+        "allergy_gate",
+        "dietary_gate",
+        "special_needs_gate",
+        "physician_gate",
+        "cpap_gate",
+    }
+)
+
+# A household's answer to one medical gate question.
+#
+# THREE STATES. "unknown" is this layer's rendering of the column's empty
+# string: the household never reached the question. It is never coerced into
+# "no" -- in 2026, 430 of 900 households answered the allergy gate No and 224
+# never answered it, and telling staff a family declined a question they were
+# never shown is a different claim from the truth. Same shape, and the same
+# reason, as SharePreference below.
+MedicalGate = Literal["yes", "no", "unknown"]
+
 # The 3-state gate, straight from family_camp_registrations.share_cabin_gate.
 # "unknown" is this layer's rendering of the column's empty string: nobody
 # answered. It is never coerced into permission to pair.
@@ -176,7 +204,7 @@ class WeekendSessionListResponse(BaseModel):
 
 
 class WriteInCover(BaseModel):
-    """The write-in that closes a space, wherever in the tree it was recorded.
+    """The write-in that covers a space, wherever in the tree it was recorded.
 
     A write-in names ONE unit, but it is a fact about a physical space, and a
     building's space contains its rooms'. The board draws whichever level the
@@ -205,6 +233,46 @@ class WriteInCover(BaseModel):
     unit_name: str = ""
     occupant_name: str = ""
     note: str = ""
+    # How many people the row is for, or None when nobody recorded a count.
+    #
+    # `None` is *occupies wholesale* -- never "zero people" -- the column's
+    # `min: 1` forbids zero, and the em dash the card has always drawn is
+    # exactly this state. `write_in_demand` (api/services/lodging_rules.py) is
+    # the one place that reading turns into arithmetic.
+    party_size: int | None = None
+    # WHICH DIRECTION this cover reached the unit from, resolved by
+    # `write_in_covers` at the moment it walks the tree.
+    #
+    # PUBLISHED rather than left to the client, and that is the point: an
+    # ancestor and a descendant take a card's beds differently (an ancestor
+    # takes the whole card; a descendant takes its own room's), and
+    # `writeInEntries` can only tell own from not-own by comparing codes. A
+    # second walk on the client is a second answer to "who is in this space".
+    relation: Literal["own", "ancestor", "descendant"] = "own"
+    # The EFFECTIVE capacity of the unit the row NAMES -- a whole-house total
+    # on a container, `sleeps` on a leaf, None when nobody measured it.
+    #
+    # 0, not the raw figure, when the row's own unit is RETIRED (kindred#2540
+    # fix-round FINDING 5). `_effective_sleeps` filters `is_active` only
+    # inside a container's sum over its leaves -- a leaf looked up directly
+    # still returns its raw `sleeps` -- so an unclamped retired source would
+    # consume beds its own container's capacity never counted. The cover
+    # itself still names the room; only the beds it claims are zeroed.
+    #
+    # PUBLISHED because a descendant cover consumes ITS OWN room's beds, and
+    # the one surface that has to know cannot look it up: `MapUnitPopover`
+    # never receives the full registry -- its own `units` prop is documented as
+    # "only a cluster's members… cannot answer the question alone". Threading
+    # the registry in was rejected there deliberately. The server already
+    # computes this while resolving availability, so publishing it removes a
+    # client-side registry walk rather than adding a field for its own sake.
+    #
+    # THE SERVER READS THIS FIELD BACK, not a second `capacity_by_code`
+    # lookup (`_resolve_family_availability`'s per-load capacity) -- the two
+    # used to be independent derivations that were merely equal; the retired-
+    # unit clamp above is what would make them diverge if the server kept
+    # re-deriving its own answer instead of reading the one it just published.
+    unit_sleeps: int | None = None
 
 
 class LodgingUnitSummary(BaseModel):
@@ -383,16 +451,27 @@ class LodgingUnitSummary(BaseModel):
     # `occupant_name` back -- the note is PROSPECTIVE, for write-ins recorded
     # from 1500000148 onward.
     reason: str = ""
+    # The unit's OWN write-in row's count, read the way `occupant_name` and
+    # `reason` are and for the same reason: `write_in_covers` reads it back off
+    # the summary rather than re-fetching the row.
+    party_size: int | None = None
     # CAN A FAMILY GO IN THIS SPACE -- the DERIVED answer, and the one every
-    # count on the stats bar goes through. Folds the two facts above together:
-    # the ROLE from `family_available_override`, and OCCUPANCY from this unit's
-    # own write-in row. Occupancy is absolute and closes the unit over a
-    # release, because a cabin somebody is sleeping in cannot take a family.
+    # count on the stats bar goes through. Folds two facts together: the ROLE
+    # from `family_available_override`, and how many beds are LEFT once every
+    # write-in in `write_ins` below is paid for.
+    #
+    # ⚠️ OCCUPANCY IS NOT ABSOLUTE, AND THIS COMMENT USED TO SAY IT WAS.
+    # kindred#2432 made a written-into cabin take a family like any other and
+    # took the drop refusal out of `dragPlacement.ts`; kindred#2503 stopped
+    # this field disagreeing with that board. A fifteen-bed cabin with two
+    # people written in is a space with thirteen beds. What closes a unit is
+    # having none left -- the same answer for a full cabin and for a write-in
+    # that takes a space wholesale, a different one for a shared space.
     #
     # Its rule is `is_family_available` in api/services/lodging_rules.py, and
     # that is the only place the two are combined.
     is_family_available: bool = False
-    # EVERY write-in that closes this space, resolved through the unit tree --
+    # EVERY write-in that covers this space, resolved through the unit tree --
     # this unit's own row, else the nearest ancestor's, else the nearest
     # written-into descendant on each branch beneath it. Empty means no
     # write-in covers it.
@@ -416,11 +495,13 @@ class LodgingUnitSummary(BaseModel):
     # names no occupant and closes nothing, so inheriting it would silently
     # open every room beneath a released building.
     #
-    # ⚠️ `is_family_available` deliberately does NOT read this field: it folds
-    # in the unit's OWN occupancy row only, so an inherited write-in badges and
-    # blocks placement without moving the bed counts. That is the behaviour the
-    # counts have always had, and changing it is a counts decision rather than
-    # a side effect of the split.
+    # ⚠️ `is_family_available` READS THIS FIELD, and it did not until
+    # kindred#2503 -- it folded in the unit's OWN occupancy row alone, so a
+    # combined container whose write-ins live on its rooms drew the badge and
+    # listed all four occupants while the bar above it counted the whole house
+    # open with every bed free. `_resolve_family_availability` recomputes the
+    # flag from these RESOLVED covers, after the cover walk, on both
+    # orchestrators.
     write_ins: list[WriteInCover] = Field(default_factory=list)
     map_x: float | None = None
     map_y: float | None = None
@@ -524,6 +605,17 @@ class ShareRequestSummary(BaseModel):
     # The verbatim CampMinder answer, so staff can see what was actually said.
     preference_raw: str = ""
     proximity: list[ProximityKind] = Field(default_factory=list)
+    wants_with_named: bool = Field(
+        default=False,
+        description=(
+            "The WITH-a-named-family checkbox specifically, read verbatim from "
+            "family_camp_registrations.wants_with_named (owner ruling 2026-08-22: "
+            "the ticks are stored un-ORed). `proximity`'s 'with' remains the "
+            "co-housing SUPERSET — derived here as named OR similar_ages, so its "
+            "public semantics are unchanged. The board's HeartHandshake icon keys "
+            "on this flag alone."
+        ),
+    )
     # Household-grain free text, already deduplicated across siblings and joined
     # across the three request source fields by the ingest. One string, not a
     # list: the join is lossy to reverse, since a request may itself contain the
@@ -617,12 +709,18 @@ class AccessibilityFlagSummary(BaseModel):
     # "No, I am only able to attend with this accommodation" makes it a
     # blocker.
     #
-    # READ FROM THE COLUMN. Do not recompute this as
-    # `needs_accommodation and not opt_out_vip` -- kindred#1874: opt_out_vip
-    # is OR'd across household members, so one member's "register regardless"
-    # overrides another's "only able to attend with this in place" and the
-    # blocker silently becomes a warning. The ingest layer writes the honest
-    # value into accommodation_is_mandatory instead.
+    # READ FROM THE COLUMN. This is the ONE stored VIP signal (owner ruling
+    # 2026-08-22): the answer's No pole. "Yes, please register regardless of
+    # cabin type" and an unanswered question both read false -- the retired
+    # `opt_out_vip` column stored the Yes pole and taught kindred#1874's
+    # lesson: an OR over the flexible pole inverts a sibling's blocker into a
+    # warning, the fail-UNSAFE direction. The ingest layer ORs the No pole
+    # only, which is blocker-wins by construction.
+    #
+    # Staff ruling: this signal is the family panel's, not the board card's
+    # -- `FamilyCard.tsx`'s chip row struck `Needs Accommodation`, and
+    # `AccessibilityFlagList` on `FamilyDetailsPanel` renders the mandatory
+    # row.
     accommodation_is_mandatory: bool = False
     # True when any adult in the household is bringing an infant
     # (`Adult-Infant`). Asked because of nursing -- Women's and Men's Weekend
@@ -631,6 +729,38 @@ class AccessibilityFlagSummary(BaseModel):
     # signal, not an accessibility need: it argues for privacy and quiet, so
     # it informs unit choice rather than gating it.
     has_infant: bool = False
+    # A child under TWO YEARS at session start (staff ruling, 2026-08-21).
+    #
+    # ⚠️ COMPUTED AT ROSTER BUILD TIME, and that is a DELIBERATE DIVERGENCE
+    # from the read-from-the-column contract every registration-derived flag
+    # above honours. `has_infant` above cannot serve the board it was added
+    # for: the CampMinder Adult-Infant question is only answered on adult
+    # sessions, so it is 0 across all 3,923 production
+    # `family_camp_registrations` rows -- dead by construction on exactly the
+    # family weekends where a baby changes what a unit has to provide. The
+    # children's real birthdates ARE in the roster build's hands
+    # (`_build_household_parties`), so this flag is derived there against the
+    # session's start date. `has_infant` stays as-is: raw form answer, its own
+    # provenance.
+    #
+    # 24 months, NOT the 18-month bed rule (`INFANT_BED_EXEMPT_MONTHS`) --
+    # "is there a baby or toddler in this party" is a different question from
+    # "does this child need a bed". FALSE-WHEN-UNKNOWN: a missing or
+    # unparseable birthdate, or an unreadable session start, contributes
+    # false, the OPPOSITE polarity from the bed rule's keep-the-bed fallback,
+    # because the icon asserts knowledge. Person-grain (adult-session)
+    # parties ride this default. See `_has_child_under_two` in
+    # `lodging_roster_service.py` for the rule itself.
+    has_child_under_two: bool = False
+    # The second computed flag, feeding the baby mark's capacity note (staff
+    # ruling 2026-08-21, superseding kindred#2212's inline icon): ANY child
+    # here is bed-exempt -- under the 18-month `_consumes_a_bed` rule at
+    # session start. Derived from the SAME call that discounts `party_size`,
+    # so this and the bed count can never disagree; it therefore inherits the
+    # bed rule's conservatism (sentinel age, missing birthdate, unreadable
+    # session start all KEEP the bed, and a kept bed is never claimed exempt).
+    # Always a subset of `has_child_under_two`.
+    has_bed_exempt_child: bool = False
     # There is deliberately NO `has_medical_narrative` here (kindred#1889). It
     # was true for every household in every year measured, because these
     # questions store "No" as text and a non-empty answer set the flag. See
@@ -769,24 +899,30 @@ class RosterCounts(BaseModel):
     # draw their own card, are not counted a second time.
     units_total: int = 0
     units_family_available: int = 0
-    # Planning inventory held back from families this session -- a burst pipe,
-    # a caretaker in residence. Does NOT include permanent staff housing,
-    # which was never bookable and so cannot be "held back"; that is
-    # units_staff_housing.
-    units_reserved: int = 0
     # Permanent full-time staff housing: 21 of the registry's 102 leaf units,
     # occupied by staff who are not enrolled per session and never appear on a
     # roster. Outside the planning inventory entirely, so NOT a subset of
-    # units_total -- that distinction is what units_reserved used to get
-    # wrong, reporting 21 cabins as "held back" that were never inventory.
+    # units_total -- a held-back FAMILY cabin (a burst pipe, a caretaker in
+    # residence) is still counted there and against units_family_available,
+    # because it was never staff housing and remains inventory. The two are
+    # different facts with different remedies, which is why staff housing
+    # gets its own count rather than folding into "not available".
     #
     # Counted rather than dropped silently: units_total shrinking by 21 with
     # nothing on the surface explaining it reads as data loss to a staff
     # member who knows how many cabins the property has.
     units_staff_housing: int = 0
-    # Sum of `sleeps` over family-available bookable units with a KNOWN
-    # sleeps value. Units with unknown capacity are excluded and reported
-    # separately, so the number never overstates what is placeable.
+    # Sum of FREE beds (kindred#2503 Task 5) over family-available bookable
+    # units with a known capacity -- not whole cabins. A written-into cabin
+    # with beds left contributes only its remainder; an uncovered cabin
+    # contributes its whole `sleeps`, which is still the common case. Units
+    # with unknown capacity are excluded and reported separately, so the
+    # number never overstates what is placeable.
+    #
+    # Placed families are still NOT subtracted: this bar's numerator
+    # (`bedsNeeded`) already counts them, so subtracting here too would count
+    # a placed family on both sides. A write-in is on nobody's roster and
+    # appears in neither, so its beds must leave the denominator instead.
     beds_family_available: int = 0
     units_capacity_unknown: int = 0
     units_unconfirmed: int = 0
@@ -808,8 +944,8 @@ class WeekendRosterResponse(BaseModel):
 
 
 class HouseholdMedicalResponse(BaseModel):
-    """Narrative medical text. Served by ONE endpoint gated on
-    `bunking.manage`. Never nested elsewhere."""
+    """Narrative medical text and the gate answers beside it. Served by ONE
+    endpoint gated on `bunking.manage`. Never nested elsewhere."""
 
     household_cm_id: int
     year: int
@@ -821,6 +957,15 @@ class HouseholdMedicalResponse(BaseModel):
     additional_info: str = ""
     bathroom_explain: str = ""
     accommodation_explain: str = ""
+
+    # The gate answers, split out of the narrative columns by kindred#2542. The
+    # panel renders these as a pill beside the row label; the narrative above
+    # holds the family's own words alone.
+    allergy_gate: MedicalGate = "unknown"
+    dietary_gate: MedicalGate = "unknown"
+    special_needs_gate: MedicalGate = "unknown"
+    physician_gate: MedicalGate = "unknown"
+    cpap_gate: MedicalGate = "unknown"
 
 
 # What is known about where a household slept in one year (kindred#2073).
@@ -1174,6 +1319,24 @@ class AvailabilityWriteRequest(BaseModel):
     # required half now, and the note is the "say why, so next week's staff
     # can act on it" affordance riding beside it.
     reason: str = Field("", max_length=500)
+    # HOW MANY PEOPLE the write-in is for (kindred#2503). OPTIONAL, here and at
+    # the control alike -- unlike `occupant_name` above, which is permissive
+    # here only because an ingest has no author to ask.
+    #
+    # Owner ruling 2026-08-21: most write-ins are non-rostered staff and staff
+    # will type nothing, so `None` is the COMMON answer and means the cabin is
+    # taken wholesale -- the em dash the card has always drawn, and the right
+    # outcome for a staff cabin nobody is counting beds against. The rarer
+    # paper registrations are what a number is for. Do not tighten this to
+    # required, and do not treat the None branch downstream as legacy.
+    #
+    # `ge=1` mirrors the column's `min: 1`. Zero is not "a write-in for
+    # nobody"; absence of a count is spelled `None`.
+    #
+    # THE OCCUPANCY HALF ONLY. A release (`family_available: true`) is the
+    # staff<->family role for the weekend, stored in `lodging_availability`,
+    # and names no occupant -- `set_availability` must not put a count on it.
+    party_size: int | None = Field(None, ge=1)
 
 
 class SlotMergeRequest(BaseModel):

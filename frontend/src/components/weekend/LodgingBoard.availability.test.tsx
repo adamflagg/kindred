@@ -201,6 +201,14 @@ describe('LodgingBoard — the control becomes a write', () => {
     await user.click(screen.getByRole('button', { name: /assign to cedar 2/i }))
     await user.type(screen.getByRole('searchbox'), 'Emma Johnson')
     await user.type(screen.getByLabelText(/note/i), 'paper registration')
+    // MAJOR B: a non-null count, typed through the real modal control,
+    // exercised all the way through `writeAvailability` — the glue hop the
+    // task-9 brief omitted. A `partySize: null` fixture here cannot tell a
+    // forwarded value from a hardcoded one; `null` is what a hardcode would
+    // produce too.
+    // `selectOptions`, not `type` — People is a `<select>` since 2026-08-23
+    // (kindred#2540) and `user.type` does not drive one.
+    await user.selectOptions(screen.getByLabelText('People'), '3')
     await user.click(screen.getByRole('button', { name: /^write in$/i }))
 
     expect(setAvailability).toHaveBeenCalledTimes(1)
@@ -216,6 +224,7 @@ describe('LodgingBoard — the control becomes a write', () => {
       // then editing it from the pencil on its own card. kindred#2072's modal
       // has the width for the field, so the first write carries it.
       reason: 'paper registration',
+      partySize: 3,
     })
   })
 
@@ -264,6 +273,7 @@ describe('LodgingBoard — removing a write-in this card inherited', () => {
       familyAvailable: null,
       occupantName: '',
       reason: '',
+      partySize: null,
     })
   })
 

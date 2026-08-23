@@ -535,24 +535,95 @@ describe('LodgingUnitsPanel — the editor opens in a modal', () => {
   })
 
   it('closes on Cancel, returning to the list', async () => {
+    // REWRITE for kindred#2529, not an adaptation: this test used to assert
+    // the dialog was gone synchronously, which pinned the pre-#2530 vanish.
+    // The dialog now outlives the close by Modal's leave transition, so gone
+    // is an eventually — the linger itself is pinned by the exit-fade test
+    // below.
     const user = userEvent.setup()
     await renderPanel()
 
     await user.click(screen.getByRole('button', { name: 'Edit Cabin A' }))
     await user.click(screen.getByRole('button', { name: 'Cancel' }))
 
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
     expect(screen.getByText('Cabin A')).toBeInTheDocument()
   })
 
-  it('closes on Escape', async () => {
+  it('keeps the editor painted through the exit fade after Cancel (kindred#2529)', async () => {
+    // The exit-fade pin. `{editing !== null && <Modal>}` used to unmount the
+    // dialog in the same frame Cancel fired; `editing` is now a retained
+    // snapshot and a separate flag drives isOpen, so the DOM must outlive
+    // the close, then go.
     const user = userEvent.setup()
     await renderPanel()
 
     await user.click(screen.getByRole('button', { name: 'Edit Cabin A' }))
+    expect(screen.getByLabelText('Name')).toHaveValue('Cabin A')
+
+    await user.click(screen.getByRole('button', { name: 'Cancel' }))
+    // Still painted on the frame the close fires...
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    // ...and gone once the leave completes.
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  })
+
+  it('reopening WITHIN the exit fade shows a fresh form, not the abandoned draft (kindred#2529)', async () => {
+    // The #2539 scan's blocking finding: an interrupted leave never unmounts
+    // the form, and with an unchanged key React reuses the instance — so a
+    // Cancel followed by a fast reopen surfaced the abandoned draft, and the
+    // next Save would have written it. That is the exact stale-write hazard
+    // this dialog's own docstring says it exists to close. The form's key is
+    // now a nonce bumped on every open, so every open remounts fresh.
+    const user = userEvent.setup()
+    await renderPanel()
+
+    await user.click(screen.getByRole('button', { name: 'Edit Cabin A' }))
+    const name = screen.getByLabelText('Name')
+    await user.clear(name)
+    await user.type(name, 'STALE DRAFT')
+
+    const dialogBefore = screen.getByRole('dialog')
+    await user.click(screen.getByRole('button', { name: 'Cancel' }))
+    // Reopen before the leave completes — no waitFor between close and open.
+    await user.click(screen.getByRole('button', { name: 'Edit Cabin A' }))
+    // Same element = the leave really was interrupted, which is the case
+    // this test exists for. Without this, a timing change that let the
+    // leave complete would unmount + freshly remount the subtree and the
+    // value assertion below would pass vacuously (#2539 scan round 2).
+    expect(screen.getByRole('dialog')).toBe(dialogBefore)
+    expect(screen.getByLabelText('Name')).toHaveValue('Cabin A')
+  })
+
+  it('moves focus back into the form when switching records while the editor is open (kindred#2529)', async () => {
+    // Pins editorNonce in the focus effect's deps. A record switch while the
+    // dialog is already open flips no open state, so Modal's beforeEnter
+    // never re-fires — the nonce bump is the only thing that pulls focus off
+    // the just-clicked Edit button and back into the remounted form.
+    const user = userEvent.setup()
+    await renderPanel()
+
+    await user.click(screen.getByRole('button', { name: 'Edit Cabin A' }))
+    await waitFor(() => expect(screen.getByLabelText('Name')).toHaveFocus())
+
+    await user.click(screen.getByRole('button', { name: 'Edit North Lodge' }))
+    expect(screen.getByLabelText('Name')).toHaveValue('North Lodge')
+    await waitFor(() => expect(screen.getByLabelText('Name')).toHaveFocus())
+  })
+
+  it('closes on Escape', async () => {
+    // REWRITE for kindred#2529 — same synchronous-gone assertion as Cancel
+    // above; see that test's comment. The open-precondition below is what
+    // keeps the final waitFor from passing vacuously against a dialog that
+    // never opened (#2539 scan finding 3).
+    const user = userEvent.setup()
+    await renderPanel()
+
+    await user.click(screen.getByRole('button', { name: 'Edit Cabin A' }))
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
     await user.keyboard('{Escape}')
 
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
   })
 })
 

@@ -633,18 +633,57 @@ export type FamilyCampAdultsRecord<Tattribute_conflicts = unknown> = {
   year: number
 }
 
+export const FamilyCampMedicalAllergyGateOptions = {
+  yes: 'yes',
+  no: 'no',
+} as const
+export type FamilyCampMedicalAllergyGateOptions =
+  (typeof FamilyCampMedicalAllergyGateOptions)[keyof typeof FamilyCampMedicalAllergyGateOptions]
+
+export const FamilyCampMedicalDietaryGateOptions = {
+  yes: 'yes',
+  no: 'no',
+} as const
+export type FamilyCampMedicalDietaryGateOptions =
+  (typeof FamilyCampMedicalDietaryGateOptions)[keyof typeof FamilyCampMedicalDietaryGateOptions]
+
+export const FamilyCampMedicalSpecialNeedsGateOptions = {
+  yes: 'yes',
+  no: 'no',
+} as const
+export type FamilyCampMedicalSpecialNeedsGateOptions =
+  (typeof FamilyCampMedicalSpecialNeedsGateOptions)[keyof typeof FamilyCampMedicalSpecialNeedsGateOptions]
+
+export const FamilyCampMedicalPhysicianGateOptions = {
+  yes: 'yes',
+  no: 'no',
+} as const
+export type FamilyCampMedicalPhysicianGateOptions =
+  (typeof FamilyCampMedicalPhysicianGateOptions)[keyof typeof FamilyCampMedicalPhysicianGateOptions]
+
+export const FamilyCampMedicalCpapGateOptions = {
+  yes: 'yes',
+  no: 'no',
+} as const
+export type FamilyCampMedicalCpapGateOptions =
+  (typeof FamilyCampMedicalCpapGateOptions)[keyof typeof FamilyCampMedicalCpapGateOptions]
 export type FamilyCampMedicalRecord = {
   accommodation_explain?: string
   additional_info?: string
+  allergy_gate?: FamilyCampMedicalAllergyGateOptions
   allergy_info?: string
   bathroom_explain?: string
+  cpap_gate?: FamilyCampMedicalCpapGateOptions
   cpap_info?: string
   created: IsoAutoDateString
+  dietary_gate?: FamilyCampMedicalDietaryGateOptions
   dietary_info?: string
   enrollment_status?: string
   household: RecordIdString
   id: string
+  physician_gate?: FamilyCampMedicalPhysicianGateOptions
   physician_info?: string
+  special_needs_gate?: FamilyCampMedicalSpecialNeedsGateOptions
   special_needs_info?: string
   updated: IsoAutoDateString
   year: number
@@ -690,7 +729,6 @@ export type FamilyCampRegistrationsRecord = {
   needs_private_bathroom?: boolean
   needs_step_free?: boolean
   notes?: string
-  opt_out_vip?: boolean
   request_last_updated?: IsoDateString
   request_source_field?: string
   request_text?: string
@@ -704,7 +742,7 @@ export type FamilyCampRegistrationsRecord = {
   updated: IsoAutoDateString
   wants_near?: boolean
   wants_similar_ages?: boolean
-  wants_with?: boolean
+  wants_with_named?: boolean
   year: number
 }
 
@@ -1237,6 +1275,7 @@ export type LodgingWriteInsRecord = {
   id: string
   note?: string
   occupant_name?: string
+  party_size?: number
   session: RecordIdString
   session_cm_id: number
   unit: RecordIdString
@@ -1249,6 +1288,7 @@ export type LodgingWriteInsDraftRecord = {
   id: string
   note?: string
   occupant_name?: string
+  party_size?: number
   scenario: RecordIdString
   session: RecordIdString
   session_cm_id: number

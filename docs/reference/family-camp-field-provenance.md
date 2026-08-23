@@ -137,6 +137,27 @@ The form opens with the shared-cabin question.
 | 7 | `Family Camp-CPAP` | Is anyone in your family bringing a CPAP machine to Camp? | Yes / No |
 | 8 | `Family Medical-CPAP Explain` | If yes, please explain: | Free text, gated on #7 = Yes |
 
+### Which form writes each free-text box — MEASURED, 2026-08-23
+
+The two general-purpose request boxes both carry misleading names, and on 2026-08-17 they
+were friendly-labeled backwards from the sound of those names ("Reg Form Bunk Notes" on
+206286, "Fam Info Form" on 274133 — caught via a family whose two answers read on the
+wrong surfaces, corrected on kindred#2544). Write timestamps settle the attribution, and
+they agree with this file's §3/§3b placement:
+
+- **`Shared-request` (274133) is REGISTRATION-time.** Of 94 people (2026) holding the
+  radio, the multi and 274133: **93 wrote 274133 in the radio's sitting** (median gap
+  0.00d) and a median **181 days** before the multi. It is the registration form's
+  *"or can note your request(s) below in the comments"* box, rendered only on radio
+  Yes/Maybe — which is also why it never rendered on the §3b confirmation PDF.
+- **`COVID-19 Bunking Requests` (206286) is INFORMATION-form-time.** Its writes land a
+  median **0.0d** from the multi's across 252 people. It is the *"please include names
+  below"* box under the shared-cabin checkboxes, exactly where §3 row 2 places it.
+
+Anything mapping either field to a form label must match this — the friendly labels in
+`ShareRequestPanel.tsx`'s `DISPLAY_LABELS`, the board's share-mark tooltips, and any
+future surface.
+
 ### `COVID-19 Bunking Requests` is not conditional, and the name is misleading
 
 Two corrections that have both bitten already:
@@ -190,6 +211,16 @@ Two corrections that have both bitten already:
 >   register for this program?"* → *"Yes, please register regardless of cabin type"* /
 >   *"No, I am only able to attend with this accommodation in place"*. **Gated on the
 >   ACCOMMODATION boolean (274057)**, not the bathroom one.
+>
+>   **This answer is ONE stored boolean — `accommodation_is_mandatory`, its No pole**
+>   (owner ruling 2026-08-22): answered *No* → true (a blocker — "must have the
+>   accommodation or they cancel"); answered *Yes* or unanswered → false (soft). A blocker
+>   anywhere in the household wins structurally, since only the No pole is OR'd.
+>   *History, so nobody re-derives it:* the original derived-tables work (#91) also stored
+>   the Yes pole as `opt_out_vip`; #1878 added the explicit blocker column after
+>   kindred#1874 showed that reading the Yes pole's OR as a blocker inverts a sibling's
+>   "cannot attend" into "will cope" (~3 households/year), and the vestigial Yes-pole
+>   column was retired by the same PR that first tried to surface it (#2535).
 >
 > **4. The share gate's three options, verbatim** — `FAM CAMP-Share Cabins` (240877) is a
 > pick-one radio, not the four-checkbox `FAM CAMP-Shared Cabin` (263379):
@@ -400,13 +431,23 @@ Known pairs — housing plus the medical forms that use the same convention:
 
 ### The splice: a gate and its explanation can survive from different children
 
-`processRegistrations` and `processMedical` collapse each field to household grain
-**independently**, taking the first non-empty value over an id-sorted list of person
-values. Because the two halves of a pair are separate fields, their winners can be
-different children.
+**Historical, and fixed — the table below measures the code as it stood before
+2026-08-19.** `processRegistrations` and `processMedical` then collapsed each field to
+household grain **independently**, taking the first non-empty value over an id-sorted list
+of person values; because the two halves of a pair are separate fields, their winners could
+be different children.
+
+Two changes have since retired that mechanism in `processMedical`. kindred#2255 (#2450,
+2026-08-19) replaced first-non-empty-wins with `medicalAnswers`, which keeps every distinct
+answer every household member gave to a field. kindred#2542 (2026-08-22) then moved the gate
+answer out of the narrative column into its own three-state `*_gate` column, where the
+household's verdict is the OR of its members' answers (`gateVerdict`). Neither half of a pair
+picks a winner any more, so there is no id-min row for either half to be spliced from.
+`processRegistrations` was never the splice risk: it stores its gates as household-wide OR
+booleans.
 
 Measured share of households (where both halves have a value) whose **id-min gate row and
-id-min explain row belong to different children**:
+id-min explain row belonged to different children**, on the pre-#2450 code:
 
 | Pair | 2024 | 2025 | 2026 |
 |------|------|------|------|
@@ -415,10 +456,13 @@ id-min explain row belong to different children**:
 | Housing Accommodation | — | — | 11 / 30 · 36.7% |
 | Bathroom | — | — | 17 / 45 · 37.8% |
 
-**Of the four rows above, this is worse than losing a sibling's text for Special Needs and
-CPAP only.** Those two pairs concatenate a **stored gate string** with a stored explanation
-in `processMedical`, so the two halves of one question get spliced across two children and
-the explanation staff read does not necessarily describe the need that raised the flag.
+**Of the four rows above, this was worse than losing a sibling's text for Special Needs and
+CPAP only.** Those two pairs concatenated a **stored gate string** with a stored explanation
+in `processMedical`, so the two halves of one question got spliced across two children and
+the explanation staff read did not necessarily describe the need that raised the flag. Since
+kindred#2542 no gate string is stored in a narrative column at all: `special_needs_info` and
+`cpap_info` hold the family's own words, and the gate sits beside them in
+`special_needs_gate` / `cpap_gate` as an OR across the household.
 
 **Housing Accommodation and Bathroom are not the same claim, and their rows should not be
 read against the other two.** Both gates are stored as household-wide OR booleans by
@@ -449,18 +493,26 @@ form — so a future change that gives a gate its own column does not, by itself
 unless the collapse rule for both halves moves together, in the same change, from
 first-non-empty-wins to something that never picks a winner.
 
+**Satisfied as of kindred#2542 (2026-08-22) — and the rule's own escape clause is what it is
+measured against, not waived.** A gate did get its own column, but by the time it did,
+neither half selected a winner: kindred#2255 (#2450, 2026-08-19) moved *both* halves off
+first-non-empty-wins in one change, to `medicalAnswers`, which keeps every distinct answer;
+kindred#2542 then made the gate's own collapse an explicit OR over every member's answer
+(`gateVerdict`) and left the narrative column holding every distinct sentence. Splitting the
+halves into separate columns therefore reintroduces no winner for the split to expose.
+
 The special-occasion pair is the first one collapsed that way (2026-08-13,
 `registrationText.specialOccasions` in `family_camp_registration_text.go`): the two fields
 are accumulated per answering person and deduplicated as one unit, so one parent's answer
 fanned onto three children still collapses to a single value while two members who each
-answered keep both explanations beside the gate that member gave. The other four pairs
-measured above (Special Needs, CPAP, Housing Accommodation, Bathroom) still collapse
-independently in `processMedical` — that is kindred#2255. Allergies, Dietary Needs and
-`Family Camp-Physician ` are not merely the same shape on the form: `processMedical`
-concatenates each one's stored gate string with its stored explanation exactly as it does
-for Special Needs and CPAP, so they are in the same splice class and any fix has to cover
-them. They are not measured in the table above — which is why the ceiling is stated as the
-highest *measured* one. Adult-Bathroom's collapse behavior has not been measured here
+answered keep both explanations beside the gate that member gave. kindred#2255 (#2450) then did the same for
+every field `processMedical` reads, and kindred#2542 split the five medical gates into their
+own columns. Special Needs, CPAP, Allergies, Dietary Needs and `Family Camp-Physician ` are
+one class and were fixed as one: none of them collapses independently any more, and none
+concatenates a stored gate string with a stored explanation. Housing Accommodation and
+Bathroom never stored a gate string — their gates are `processRegistrations` booleans, as
+above. The last three are not measured in the table above, which is why its ceiling is stated
+as the highest *measured* one. Adult-Bathroom's collapse behavior has not been measured here
 either.
 
 ---

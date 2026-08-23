@@ -124,6 +124,13 @@ export function isValidMergeTarget(
 export interface MergeIntent {
   parentCode: string
   combined: true
+  /**
+   * The DROP TARGET room — the card the merge handle landed on, where staff
+   * are looking. The merge-morph animation anchors its convergence there
+   * (`boardMorph.ts`), which is what makes the building appear to form ONTO
+   * the card they acted on rather than at an arbitrary sibling.
+   */
+  targetCode: string
 }
 
 export interface ResolveMergeDropArgs {
@@ -146,7 +153,7 @@ export function resolveMergeDrop({
   const source = mergeDragUnit(activeId, units)
   const target = mergeDragUnit(overId, units)
   if (source === null || target === null || !isValidMergeTarget(source, target)) return null
-  return { parentCode: source.parent_code ?? '', combined: true }
+  return { parentCode: source.parent_code ?? '', combined: true, targetCode: target.code }
 }
 
 export type PlacementIntent =
@@ -245,9 +252,15 @@ export function resolveDrop({
   // is what still lands the write-in and the family in the SAME card's well
   // whichever level the board draws (`LodgingUnitCard`'s `writeInEntries`).
   //
-  // The known cost is filed, not hidden: a write-in carries no headcount, so a
-  // shared space's free-bed figure overstates once both are in it (kindred#2439,
-  // ruled an optional investigation and explicitly not a blocker).
+  // The known cost was filed, not hidden, and kindred#2503 has since closed
+  // most of it: a write-in used to carry no headcount at all, so a shared
+  // space's free-bed figure always overstated once both were in it
+  // (kindred#2439, ruled an optional investigation and explicitly not a
+  // blocker at the time). `dragCapacity`'s `freeBeds` (LodgingUnitCard.tsx)
+  // now subtracts a write-in's recorded `party_size`, and withholds the
+  // free-bed claim via `known` rather than assert a wrong one when nobody
+  // recorded a size -- which is still every one of the 24 production rows
+  // today, so this drop path's behaviour is unchanged in practice.
   // A COMBINED container IS a card now — Task 6 draws its own row in place of
   // its rooms (unitLevel.ts, `drawnUnits`) — so it must accept a drop exactly
   // like any other drawn unit. A NON-combined container still carries only

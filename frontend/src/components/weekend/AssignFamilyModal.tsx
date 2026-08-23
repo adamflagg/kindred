@@ -51,10 +51,24 @@
  *   keystroke that commits lives in a field the staff member moved to on
  *   purpose. The list rows are real buttons, so a keyboard still has a path.
  *
- * The `People` field W3 draws is kindred#2503 and is NOT BUILT: `lodging_write_ins`
- * carries `occupant_name` and `note` and nothing else, and a control with no
- * destination is worse than an absent one (owner ruling, 2026-08-19). The
- * layout leaves it room.
+ * The `People` field W3 draws is kindred#2503, and it IS BUILT, in the slot
+ * the layout always reserved for it: it stacks above `Note` in the write-in
+ * region, so the note that used to sit first now sits second — the same shift
+ * the reserved-slot comment promised before the destination existed.
+ *
+ * It is OPTIONAL, unlike the occupant name beside it (owner ruling
+ * 2026-08-21): *"staff doesn't want the integer field mandatory on input
+ * since most will be staff, and she isn't concerned about staff housing
+ * hitting quantity limits, and the paper write-ins are fewer."* Blank is a
+ * COMPLETE answer meaning the write-in takes the room wholesale, not a
+ * missing one — most write-ins are non-rostered staff who will type nothing,
+ * and requiring a number would tax every one of them to buy precision only
+ * the rarer paper registrations need. A TYPED value still has to parse,
+ * though: `0` and anything non-numeric disable `Write in` rather than being
+ * silently dropped, because saving a write-in the staff member believes
+ * carries a count, without one, is worse than refusing the keystroke.
+ * `Enter` saves from it exactly as it does from `Note` below — adding a field
+ * adds a save site, never an exception to that ruling.
  *
  * Built on `ui/Modal`, which owns the portal, the focus trap, the background
  * `inert` and `ui/modalStack`'s Escape ordering. Do not hand-roll any of it.
@@ -71,7 +85,7 @@ import { resolveNeedGlyphs } from './needGlyphs'
 import { partyKey } from './partyKey'
 import { placementCandidates, type PlacementCandidate } from './placementCandidates'
 import { effectiveSleeps, partyBeds } from './rosterAttention'
-import { hasWriteIn } from './writeIn'
+import { PARTY_SIZE_CHOICES, coveringWriteIns, writeInDemand } from './writeIn'
 
 export interface AssignFamilyModalProps {
   isOpen: boolean
@@ -114,7 +128,8 @@ export interface AssignFamilyModalProps {
    * Optional, and the offer is absent when it is: a caller with no write path
    * must not be shown an affordance it cannot honour.
    */
-  onWriteIn?: ((write: { occupantName: string; note: string }) => void) | undefined
+  onWriteIn?:
+    ((write: { occupantName: string; note: string; partySize: number | null }) => void) | undefined
   /** True while a write THIS card started is in flight. */
   isSaving?: boolean
 }
@@ -228,25 +243,18 @@ function amenityWords(unit: LodgingUnitRow): string[] {
  * has counted", never "sleeps nobody", and says so rather than printing a
  * number it does not have — the same refusal the card's em dash makes.
  *
- * ⚠️ THE UNIT CARD DOES NOT AGREE WITH THIS YET, AND THAT IS A KNOWN,
- * DELIBERATE ONE-RELEASE DIVERGENCE (owner ruling 2026-08-20, option A: the
- * card is stage 3's file, so it is fixed there).
- *
- * The card's denominator is the RAW `unit.sleeps`. Measured against the
- * production snapshot, **all 15 containers record `sleeps = 0`**, which the API
- * maps to `null` and the card renders as an em dash — so on each of the four
- * combined containers the card says "capacity not recorded" while this header
- * says, correctly, how many beds the rooms beneath it hold:
- *
- *     container 1   own 0, 4 rooms, leaves sum 8
- *     container 2   own 0, 2 rooms, leaves sum 7
- *     container 3   own 0, 2 rooms, leaves sum 5
- *     container 4   own 0, 2 rooms, leaves sum 5
- *
- * THIS surface is the correct one — `countUnmeasuredSpaces` and the map peek
- * already use `effectiveSleeps`, and the card is the only reader of the raw
- * value left. Do not "resolve" the disagreement by making this one read
- * `unit.sleeps`. Raised by CodeRabbit on PR #2506.
+ * ⚠️ THE DENOMINATOR DISAGREEMENT BELOW IS HISTORY, NOT A LIVE WARNING
+ * (kindred#2540 fix-round CHEAP 14). It used to say the unit card read the
+ * RAW `unit.sleeps` while this header read `effectiveSleeps`, and forbade
+ * "resolving" that by touching this file — a real, deliberate one-release
+ * divergence at the time (owner ruling 2026-08-20, option A). #2508 shipped
+ * the card's own move to `effectiveSleeps` (`LodgingUnitCard.tsx`, its own
+ * "denominator of total possible sleeps" comment), so the two surfaces have
+ * shared a denominator source since before this PR. The paragraph is kept
+ * for the historical record and because the FRAMING difference above —
+ * beds free here, `N/M` on the card — is still current and still deliberate;
+ * only the denominator-SOURCE disagreement it used to also describe is gone.
+ * Raised by CodeRabbit on PR #2506.
  */
 function capacitySentence(
   unit: LodgingUnitRow,
@@ -256,19 +264,75 @@ function capacitySentence(
 ): string {
   const capacity = effectiveSleeps(unit, units)
   if (capacity === null) return 'Capacity not recorded'
-  // A written-into room has an occupant no `occupants` figure counts (a
-  // write-in is not a party — kindred#2439), so a free-bed number here would
-  // be one the card itself refuses to print (it shows an em dash) and one the
-  // candidate rows below DECLINE to grade against (`capacityVerdict`'s own
-  // write-in gate). The header states what it knows — the capacity — and
-  // stops there, or the modal disagrees with itself about the same cabin.
-  if (hasWriteIn(unit)) return `Sleeps ${String(capacity)} · occupancy not counted (write-in)`
+  // ⚠️ THE REFUSAL NARROWS, IT DOES NOT DISAPPEAR (kindred#2503). A
+  // written-into room used to have NO occupancy figure at all — `occupants`
+  // never counts a write-in (kindred#2439), so a free-bed number here would
+  // be one the card itself refused to print (it shows an em dash).
+  // `writeInDemand` supplies a real headcount wherever every cover on this
+  // card recorded a `party_size`, so the refusal applies only to the case
+  // that still has none — `known` is false. A partly-counted card is a lower
+  // bound (`writeInDemand`'s own doc), and this header states facts.
+  // Candidate rows below now read the SAME `writeInDemand` and grade a
+  // written-into card exactly this way (`capacityVerdict`, fix-wave
+  // 2026-08-22) — the two used to disagree the moment any size was recorded,
+  // this header stating a real remainder while every row beneath it still
+  // declined to grade against it.
+  // ⚠️ `consumed`, NOT `sized` — DELIBERATE, and the same reviewer who
+  // flagged it agreed once the reasoning was in front of them (kindred#2540
+  // fix-round FINDING 7, declined by the owner 2026-08-22). The card
+  // (`LodgingUnitCard.tsx`) and the map peek (`MapUnitPopover.tsx`) both grade
+  // against `sized`, so a 4-bed room with one write-in of 6 and no families
+  // shows red `6` on the card and amber `6 of 4` on the map, while this
+  // header — reading `consumed` — says plain "0 of 4 beds free". The figure
+  // `6` never appears here and `Over capacity` below never fires for it, even
+  // though that branch exists and does fire for placed families.
+  //
+  // Owner ruling, verbatim: "the modal can stay calm — '0 free' is clear
+  // enough." This header is the placement moment, and the ruling above (BEDS
+  // FREE, not the card's figure) has always framed it as answering "will this
+  // party fit in what is left" — "0 of 4 beds free" answers that truthfully
+  // on its own, without needing the overage spelled out.
+  //
+  // The split is BY ROLE, not by surface, and that is the clause that matters:
+  // `consumed` is capped at capacity because it answers "how many beds are
+  // left", and a remainder cannot go negative. `sized` is deliberately
+  // UNCAPPED (`writeInDemand`'s own doc) because it answers "is this over,
+  // and by how much" — the question the card's red exists to show. Two
+  // different questions, not two copies of one answer that drifted. Do NOT
+  // "harmonise" this to `sized` — that is precisely the change the owner
+  // declined.
+  const { consumed, known } = writeInDemand(capacity, coveringWriteIns(unit))
+  // `!known` ALONE (kindred#2540 final scan, FINDING 9). `writeInDemand`
+  // returns `known: true` unconditionally when nothing covers the card, and
+  // `hasWriteIn` IS `coveringWriteIns(unit).length > 0` -- so `!known` already
+  // implies it, and the second conjunct only re-read `unit.write_ins` to
+  // re-answer a question the first had settled.
+  if (!known) {
+    return `Sleeps ${String(capacity)} · occupancy not counted (write-in)`
+  }
   // The card's own gate, mirrored — see `spanWidth`'s doc. A spanning
-  // placement keeps its figure and loses the claim.
+  // placement keeps its figure and loses the claim. `consumed` folds the
+  // write-in headcount into `taken` exactly the way `occupants` already did
+  // on its own — `consumed` is `0` whenever there is nothing to count.
+  const taken = occupants + consumed
+  // ⚠️ THE OVER-CAPACITY SENTENCE COUNTS PLACED FAMILIES ONLY, never `taken`
+  // (kindred#2540 final scan, FINDING 2). `consumed` is `capacity` on an
+  // ancestor cover -- a whole-house let takes the whole card -- so
+  // `occupants + consumed` exceeded capacity the moment ANY family was placed
+  // in a room inside a let house, and the sentence read `Over capacity — 12
+  // placed, sleeps 10` with two people in the room. Twelve is a number nobody
+  // recorded, printed under the word "placed".
+  //
+  // This is NOT the declined FINDING 7. That one asked the header to START
+  // shouting over-capacity from `sized`, and the owner ruled the modal stays
+  // calm ("0 free is clear enough"). This keeps it calm -- a write-in overage
+  // still says `0 of N beds free` -- and only stops the sentence claiming a
+  // headcount for beds a whole-card claim took. `taken` still pays for the
+  // write-in in the free-bed arithmetic below, unchanged.
   if (occupants > capacity && spanWidth === 0) {
     return `Over capacity — ${String(occupants)} placed, sleeps ${String(capacity)}`
   }
-  return `${String(Math.max(0, capacity - occupants))} of ${String(capacity)} beds free`
+  return `${String(Math.max(0, capacity - taken))} of ${String(capacity)} beds free`
 }
 
 /**
@@ -424,6 +488,31 @@ export function AssignFamilyModal({
    * nothing.
    */
   const [note, setNote] = useState('')
+  /*
+   * OPTIONAL, unlike the occupant name beside it (owner ruling 2026-08-21).
+   * Most write-ins are non-rostered staff and staff will choose nothing here;
+   * blank means the cabin is taken wholesale, which is the correct answer for
+   * that population rather than a missing one. It is the FIRST option and the
+   * default, so the control opens on it.
+   *
+   * A STRING, because that is what a `<select>` value is. `''` is the blank
+   * option and every other value is one of `PARTY_SIZE_CHOICES` rendered by
+   * `String(...)`, so `Number(...)` below is total over anything this state
+   * can hold — there is no parse to fail.
+   *
+   * ⚠️ THERE IS NOTHING TO VALIDATE HERE ANY MORE, and the absence is the
+   * point (owner ruling 2026-08-23). This used to be an `<input
+   * type="number">` guarded by a `peopleBadInput` state, a `peopleFieldRef`,
+   * a `peopleCountValid` check and a live `validity.badInput` re-read at
+   * submit — four mechanisms to catch text the control should never have
+   * accepted. `PARTY_SIZE_CHOICES`'s own doc carries why that never fully
+   * worked. A select cannot express `0`, a fraction, `1e3` or `abc`, so all
+   * four are gone rather than fixed. Do not reintroduce a People-shaped
+   * disable on the commit: it would be dead code, and a dead disable is
+   * exactly what left the old button looking enabled while doing nothing.
+   */
+  const [people, setPeople] = useState('')
+  const partySize = people === '' ? null : Number(people)
 
   const trimmed = query.trim()
   const needle = trimmed.toLowerCase()
@@ -474,19 +563,22 @@ export function AssignFamilyModal({
     onSelect(party)
     setQuery('')
     setNote('')
+    setPeople('')
     onClose()
   }
 
   const writeIn = () => {
-    // The single guard is enough, and the redundant `onWriteIn === undefined`
-    // that used to sit beside it is gone: `offersWriteIn` is a `const` whose
-    // definition includes that check, so TypeScript narrows through it.
+    // ONE guard, unchanged in meaning: the caller can write one, a name was
+    // typed, and no family still matches. The two count guards that stood
+    // beside it (`peopleCountValid` and a live `validity.badInput` re-read)
+    // are gone with the number input -- see the `people` state's doc.
     if (!offersWriteIn) return
     // The TRIMMED text, which is what the offer shows. Staff type into a search
     // box and a trailing space is a typing artefact, not a name.
-    onWriteIn({ occupantName: trimmed, note: note.trim() })
+    onWriteIn({ occupantName: trimmed, note: note.trim(), partySize })
     setQuery('')
     setNote('')
+    setPeople('')
     onClose()
   }
 
@@ -711,40 +803,78 @@ export function AssignFamilyModal({
               <p className="text-sm font-medium text-amber-700 dark:text-amber-400">
                 {`No family matches “${trimmed}” — this will be written in.`}
               </p>
-              {/* kindred#2503's `People` field belongs HERE, above the note.
-                  It is not built: `lodging_write_ins` has `occupant_name` and
-                  `note` and nowhere to put a count, and a field with no
-                  destination is worse than an absent one. When #2503 lands it
-                  STACKS above `Note` in this column — the artifact draws it
-                  that way too — so the note moves down by one field's height.
-                  The swap region has a fixed height, so the dialog will not
-                  move around it. */}
-              {/* `gap-[3px]` is the artifact's `.mfield`. */}
-              <label className="flex flex-col gap-[3px] text-xs font-medium">
-                Note
-                <input
-                  type="text"
-                  value={note}
-                  disabled={isSaving}
-                  placeholder="Optional — e.g. back Monday"
-                  onChange={(event) => {
-                    setNote(event.target.value)
-                  }}
-                  onKeyDown={(event) => {
-                    // ↵ SAVES FROM A FIELD. This is the other half of the
-                    // ruling above, and the half that makes it usable.
-                    if (event.key !== 'Enter') return
-                    event.preventDefault()
-                    writeIn()
-                  }}
-                  // The SAME `.pinput` as the search box above — one class in
-                  // the artifact, so one set of numbers here. It kept the
-                  // pre-ruling `px-2 py-1.5` when §3.3 was applied, which left
-                  // the two inputs 4px different in height with both on screen
-                  // at once.
-                  className="border-border bg-background text-foreground placeholder:text-muted-foreground/60 focus:border-primary/50 focus:ring-primary/10 rounded-md border px-1.5 py-1 text-sm font-normal focus:ring-2 focus:outline-none"
-                />
-              </label>
+              {/* ONE ROW, People then Note (owner ruling 2026-08-23). They
+                  were stacked; a select needs ~5.5rem and the note wants the
+                  rest, so the pair costs one field's height instead of two.
+                  The region's height is FIXED (W3, no jump), so what this
+                  actually buys is empty ground below rather than a shorter
+                  dialog -- nothing above or below it moves either way.
+
+                  `items-end` so the two controls sit on a common baseline
+                  despite `People`'s narrower label; `gap-2` matches the
+                  artifact's field rhythm. */}
+              <div data-testid="write-in-fields" className="flex items-end gap-2">
+                {/* `gap-[3px]` is the artifact's `.mfield`, matching `Note`. */}
+                <label className="flex w-[5.5rem] shrink-0 flex-col gap-[3px] text-xs font-medium">
+                  People
+                  <select
+                    value={people}
+                    disabled={isSaving}
+                    onChange={(event) => {
+                      setPeople(event.target.value)
+                    }}
+                    onKeyDown={(event) => {
+                      // ↵ SAVES FROM A FIELD -- the same half of the ruling
+                      // `Note` beside it carries. A select is still a field;
+                      // changing the control's type does not change which
+                      // half of the keybinding rule it takes
+                      // (weekend-card-vocabulary.md §6).
+                      if (event.key !== 'Enter') return
+                      event.preventDefault()
+                      writeIn()
+                    }}
+                    // The SAME `.pinput` as `Note` and the search box above,
+                    // minus the placeholder colour a select has no use for.
+                    className="border-border bg-background text-foreground focus:border-primary/50 focus:ring-primary/10 rounded-md border px-1.5 py-1 text-sm font-normal focus:ring-2 focus:outline-none"
+                  >
+                    {/* BLANK FIRST AND DEFAULT -- wholesale, the common case
+                        (owner ruling 2026-08-21). The em dash is the same
+                        glyph the card draws for an unsized write-in, so the
+                        control and the card say the absence the same way. */}
+                    <option value="">—</option>
+                    {PARTY_SIZE_CHOICES.map((count) => (
+                      <option key={count} value={String(count)}>
+                        {count}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="flex min-w-0 flex-1 flex-col gap-[3px] text-xs font-medium">
+                  Note
+                  <input
+                    type="text"
+                    value={note}
+                    disabled={isSaving}
+                    placeholder="Optional — e.g. back Monday"
+                    onChange={(event) => {
+                      setNote(event.target.value)
+                    }}
+                    onKeyDown={(event) => {
+                      // ↵ SAVES FROM A FIELD. This is the other half of the
+                      // ruling above, and the half that makes it usable.
+                      if (event.key !== 'Enter') return
+                      event.preventDefault()
+                      writeIn()
+                    }}
+                    // The SAME `.pinput` as the search box above — one class in
+                    // the artifact, so one set of numbers here. It kept the
+                    // pre-ruling `px-2 py-1.5` when §3.3 was applied, which left
+                    // the two inputs 4px different in height with both on screen
+                    // at once.
+                    className="border-border bg-background text-foreground placeholder:text-muted-foreground/60 focus:border-primary/50 focus:ring-primary/10 rounded-md border px-1.5 py-1 text-sm font-normal focus:ring-2 focus:outline-none"
+                  />
+                </label>
+              </div>
               {/* ⚠️ THE COMMIT LIVES HERE, NOT IN THE FOOTER (owner ruling
                   2026-08-20, option C), and it is the last of the jump W3
                   forbids. In the footer this button made that band 51px on the

@@ -31,6 +31,7 @@ import type {
   SlotMergeRequest,
 } from './api-generated'
 import type {
+  AccessibilityFlags,
   HouseholdJourney,
   HouseholdJourneyRow,
   LodgingUnitRow,
@@ -111,6 +112,33 @@ const _exhaustiveHouseholdJourney: Required<HouseholdJourney> = {
   years: [],
 }
 void _exhaustiveHouseholdJourney
+
+/**
+ * Every flag on the accessibility summary. `RosterParty`'s own fixture below
+ * writes a partial flags block (they are all optional on the wire), so it
+ * proves nothing about the flag set — this is the guard that a regen adding
+ * or dropping a flag stops the build here rather than silently changing what
+ * the board, the roster filter chips and the details panel can see.
+ *
+ * `has_child_under_two` and `has_bed_exempt_child` are the two COMPUTED
+ * flags (staff ruling, 2026-08-21): derived at roster build time from the
+ * children's birthdates, because the form-declared sibling `has_infant` is
+ * answered only on adult sessions and is 0 across every production
+ * family-weekend row. The bed-exempt one reuses `_consumes_a_bed` itself and
+ * feeds the baby mark's capacity note.
+ */
+const _exhaustiveAccessibilityFlags: Required<AccessibilityFlags> = {
+  needs_private_bathroom: false,
+  needs_power: false,
+  needs_accommodation: false,
+  needs_fridge: false,
+  needs_step_free: false,
+  accommodation_is_mandatory: false,
+  has_infant: false,
+  has_child_under_two: false,
+  has_bed_exempt_child: false,
+}
+void _exhaustiveAccessibilityFlags
 
 const _exhaustiveRosterParty: Required<RosterPartyRow> = {
   grain: 'household',
@@ -226,6 +254,10 @@ const _exhaustiveAvailabilityWriteRequest: Required<AvailabilityWriteRequest> = 
   // — the same split `reason` makes, for the same reason.
   occupant_name: 'Emma Johnson',
   reason: 'Kitchen lead, Fri–Sun',
+  // kindred#2503. OPTIONAL, here and at the control alike — most write-ins
+  // are non-rostered staff and `null` (the common case) takes the cabin
+  // wholesale. The occupancy half only; a release carries no count.
+  party_size: 2,
 }
 void _exhaustiveAvailabilityWriteRequest
 
@@ -306,6 +338,10 @@ const _exhaustiveLodgingUnit: Required<LodgingUnitRow> = {
   family_available_override: null,
   occupant_name: '',
   reason: '',
+  // The unit's OWN write-in row's count, read the way `occupant_name` and
+  // `reason` are. `null` is *occupies wholesale*, never "zero people" -- the
+  // column's `min: 1` forbids zero.
+  party_size: null,
   is_family_available: true,
   // The write-in COVERING this space, resolved through the unit tree by the
   // server — this unit's own row, else its nearest ancestor's, else its

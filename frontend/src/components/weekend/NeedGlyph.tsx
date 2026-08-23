@@ -66,8 +66,13 @@ const GLYPH_UNMET = `${WARN_TONE} border-red-800 dark:border-red-300`
  * It also closes a 2px overlap: `ui/Tooltip`'s invisible 24px hit target
  * overhung an 18px glyph by 3px a side against a 4px gap, so adjacent glyphs'
  * hit areas collided and the later one in the DOM won.
+ *
+ * EXPORTED for the family card's child-under-two mark (staff ruling,
+ * 2026-08-21), which shares the chip row and must share this geometry — it is
+ * an UNGRADED mark, not a fifth glyph, so it borrows the frame and nothing
+ * else. Same drift argument as WARN_TONE above: one geometry, one definition.
  */
-const GLYPH_BASE = 'inline-flex h-5 w-5 items-center justify-center rounded-lg border'
+export const GLYPH_BASE = 'inline-flex h-5 w-5 items-center justify-center rounded-lg border'
 
 /**
  * ICON-ONLY, and that is the ruling rather than a space saving: four needs

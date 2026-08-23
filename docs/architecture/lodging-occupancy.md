@@ -180,8 +180,15 @@ rule: it blocks legitimate work and teaches staff to ignore warnings.
   was derived from that one field. Every consumer now reads the occupancy
   source directly (`LodgingUnitSummary.write_in`, and `writeInOccupant` on the
   client), so the field answers one question again. `is_family_available`
-  remains the DERIVED answer and still folds both facts in: occupancy closes a
-  unit whatever the role says, so no reported number moved.
+  remains the DERIVED answer and still folds both facts in — but kindred#2503
+  is why the second half of that sentence no longer holds. Availability is
+  `free > 0`, not "no write-in at all", and a number DOES move: a combined
+  container with four rooms totalling eight beds, each room written into and
+  all four unsized, has each cover fall back to the capacity of the room
+  it names — 3 + 1 + 2 + 2 = 8, exactly the card's own capacity — and `free`
+  is 0. It closes on day one, with no `party_size` recorded at all; that is
+  the full-closure case kindred#2503 exists to fix, and demonstrating it needs
+  no size typed.
 
   ### What a hold represents (owner ruling, 2026-08-09; kindred#2090, kindred#2087)
 

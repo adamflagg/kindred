@@ -147,6 +147,112 @@ describe('AssignFamilyModal — the header states beds FREE (owner ruling 2026-0
     expect(screen.getByTestId('assign-capacity')).not.toHaveTextContent('beds free')
   })
 
+  it('states the real remainder once every write-in is counted (kindred#2503)', () => {
+    // ⚠️ THE REFUSAL NARROWS, IT DOES NOT DISAPPEAR. The test above pins the
+    // case that still has no count; this one pins the case that now has one.
+    // `writeInDemand`'s `sized` count folds into the header's own arithmetic
+    // via `consumed`, so a fully-counted card states a real lower bound
+    // instead of declining the question outright.
+    renderModal({
+      unit: unit({
+        sleeps: 4,
+        write_ins: [
+          {
+            unit_id: 'u1',
+            unit_code: 'ridge-1',
+            unit_name: 'Ridge 1',
+            occupant_name: 'Liam Garcia',
+            note: '',
+            party_size: 2,
+          },
+        ],
+      }),
+      occupants: 0,
+    })
+    expect(screen.getByTestId('assign-capacity')).toHaveTextContent('2 of 4 beds free')
+  })
+
+  it('still refuses on a PARTLY-counted card — one sized cover is not every cover', () => {
+    // NIT E. `writeInDemand`'s `known` is false whenever even one covering
+    // write-in lacks a recorded size, pinned at that function's own level in
+    // Task 7's tests — this pins it where the narrowing ruling actually
+    // lives: the header a staff member reads. A card with one counted write-in
+    // and one uncounted one is a LOWER bound, not a fact, and must still
+    // decline rather than print a number that undercounts the room.
+    renderModal({
+      unit: unit({
+        sleeps: 6,
+        write_ins: [
+          {
+            unit_id: 'u1',
+            unit_code: 'ridge-1',
+            unit_name: 'Ridge 1',
+            occupant_name: 'Liam Garcia',
+            note: '',
+            party_size: 2,
+          },
+          {
+            unit_id: 'u1',
+            unit_code: 'ridge-1',
+            unit_name: 'Ridge 1',
+            occupant_name: 'Emma Johnson',
+            note: '',
+          },
+        ],
+      }),
+      occupants: 0,
+    })
+    expect(screen.getByTestId('assign-capacity')).toHaveTextContent(
+      'Sleeps 6 · occupancy not counted (write-in)'
+    )
+    expect(screen.getByTestId('assign-capacity')).not.toHaveTextContent('beds free')
+  })
+
+  it('never counts an ancestor\u2019s whole-card claim as people PLACED', () => {
+    // kindred#2540 final scan, FINDING 2. `consumed` is the WHOLE CARD on an
+    // ancestor cover \u2014 a house let whole leaves a room inside it nothing to
+    // offer \u2014 so `occupants + consumed` cleared capacity the instant any
+    // family was placed there, and the header read
+    // `Over capacity \u2014 12 placed, sleeps 10` with TWO people in the room.
+    // Twelve is a number nobody recorded, printed under the word "placed".
+    //
+    // The modal STAYS CALM about a write-in overage (owner ruling
+    // 2026-08-23, declining FINDING 7: "0 free is clear enough"), so the fix
+    // is not to make it shout a different number \u2014 it is that the sentence
+    // counts placed families only, and the write-in is still paid for in the
+    // free-bed arithmetic.
+    renderModal({
+      unit: unit({
+        sleeps: 10,
+        write_ins: [
+          {
+            unit_id: 'u-house',
+            unit_code: 'house',
+            unit_name: 'The house',
+            occupant_name: 'Liam Garcia',
+            note: '',
+            relation: 'ancestor',
+            unit_sleeps: 10,
+          },
+        ],
+      }),
+      occupants: 2,
+    })
+    const header = screen.getByTestId('assign-capacity')
+    expect(header).not.toHaveTextContent('Over capacity')
+    expect(header).not.toHaveTextContent('12')
+    expect(header).toHaveTextContent('0 of 10 beds free')
+  })
+
+  it('still reports a room over-full from PLACED families as over capacity', () => {
+    // The other half of FINDING 2's fix: narrowing the sentence to `occupants`
+    // must not retire it. Five placed in a room of two still says so.
+    renderModal({ unit: unit({ sleeps: 2 }), occupants: 5 })
+    expect(screen.getByTestId('assign-capacity')).toHaveTextContent(
+      'Over capacity \u2014 5 placed, sleeps 2'
+    )
+  })
+
   it('says nothing it cannot support when nobody has measured the room', () => {
     renderModal({ unit: unit({ sleeps: null }), occupants: 0 })
     expect(screen.getByTestId('assign-capacity')).toHaveTextContent('Capacity not recorded')
@@ -988,7 +1094,13 @@ describe('AssignFamilyModal — W3, one live box and only the region below it sw
     const user = userEvent.setup()
     renderModal()
     await user.type(searchBox(), 'Burst pipe')
-    expect(screen.queryAllByRole('option')).toHaveLength(0)
+    // THE LISTBOX IS GONE, asserted directly rather than as "no `option`
+    // roles anywhere" (kindred#2540). The People control is a native
+    // `<select>` since 2026-08-23 and its `<option>` elements carry the same
+    // implicit role as the candidate rows, so a document-wide `option` count
+    // now answers a different question than this test is asking. The listbox
+    // is the candidate list itself, which is the thing that swapped away.
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
     expect(screen.getByTestId('write-in-region')).toBeInTheDocument()
     // The sentence explaining the swap sits OUTSIDE the region that swapped —
     // it is fixed furniture, alongside the input and the footer. Inside, it
@@ -1118,6 +1230,7 @@ describe('AssignFamilyModal — Enter saves from a FIELD, never from the search 
     expect(props.onWriteIn).toHaveBeenCalledWith({
       occupantName: 'Burst pipe',
       note: 'back Monday',
+      partySize: null,
     })
   })
 
@@ -1125,7 +1238,11 @@ describe('AssignFamilyModal — Enter saves from a FIELD, never from the search 
     const { props } = renderModal()
     fireEvent.change(searchBox(), { target: { value: 'Burst pipe' } })
     fireEvent.click(screen.getByRole('button', { name: /write in/i }))
-    expect(props.onWriteIn).toHaveBeenCalledWith({ occupantName: 'Burst pipe', note: '' })
+    expect(props.onWriteIn).toHaveBeenCalledWith({
+      occupantName: 'Burst pipe',
+      note: '',
+      partySize: null,
+    })
   })
 
   it('puts the Write in button INSIDE the swap region, under the field it commits', () => {
@@ -1174,21 +1291,153 @@ describe('AssignFamilyModal — Enter saves from a FIELD, never from the search 
     const { props } = renderModal()
     fireEvent.change(searchBox(), { target: { value: '  Burst pipe  ' } })
     fireEvent.click(screen.getByRole('button', { name: /write in/i }))
-    expect(props.onWriteIn).toHaveBeenCalledWith({ occupantName: 'Burst pipe', note: '' })
+    expect(props.onWriteIn).toHaveBeenCalledWith({
+      occupantName: 'Burst pipe',
+      note: '',
+      partySize: null,
+    })
   })
 })
 
-describe('AssignFamilyModal — the People field is kindred#2503 and is NOT built', () => {
-  it('offers no people count, because there is nowhere to store one', () => {
-    // Owner ruling 2026-08-19: land the modal without it rather than build a
-    // control with no destination. `lodging_write_ins` carries `occupant_name`
-    // and `note` and nothing else. The layout reserves the slot; the field
-    // arrives with kindred#2503.
+describe('AssignFamilyModal — the People field, kindred#2503', () => {
+  /**
+   * ⚠️ A SELECT, NOT A NUMBER INPUT (owner ruling 2026-08-23), and the change
+   * is what makes a whole class of bug unreachable rather than guarded.
+   *
+   * `<input type="number">` sanitises anything it cannot parse to `''` BEFORE
+   * React sees it, so `abc` and "nobody typed anything" are the same string.
+   * The only signal that survived was `validity.badInput`, and React suppresses
+   * `onChange` whenever the value string does not change — which is every
+   * keystroke into an already-blank field, the field's own starting state. The
+   * button read valid, the click did nothing, and the staff member saw typed
+   * text sitting in a field that would not save.
+   *
+   * A select cannot emit a value that is not one of its options. `0`,
+   * fractions, `1e3` and unparseable text are not refused — they cannot be
+   * expressed. The tests that pinned each refusal are gone with the mechanism
+   * they described; what replaces them is the options list below, which is the
+   * single fact all of those cases now follow from.
+   */
+  it('draws People and Note on ONE row, People first', () => {
     renderModal()
     fireEvent.change(searchBox(), { target: { value: 'Burst pipe' } })
-    const region = screen.getByTestId('write-in-region')
-    expect(within(region).queryByLabelText(/people/i)).not.toBeInTheDocument()
-    expect(within(region).queryByRole('spinbutton')).not.toBeInTheDocument()
+    const row = screen.getByTestId('write-in-fields')
+    // ONE ROW is the structural claim: both labels are children of the SAME
+    // flex container, which is what puts them on a line. Read that way rather
+    // than off computed style -- jsdom does not apply Tailwind, so
+    // `getComputedStyle(row).display` would answer `block` however the page
+    // actually renders.
+    const labels = Array.from(row.querySelectorAll('label'))
+    expect(labels).toHaveLength(2)
+    expect(row.className).toContain('flex')
+    // `querySelectorAll` walks in document order, so this is a direct read of
+    // which field the row draws first. Matched by the CONTROL each label owns,
+    // not by `textContent` -- the People label wraps a `<select>`, so its text
+    // content is the word followed by all 21 option labels.
+    expect(labels[0]).toContainElement(screen.getByLabelText('People'))
+    expect(labels[1]).toContainElement(screen.getByLabelText('Note'))
+  })
+
+  it('offers a blank and the integers 1 to 20, and nothing else', () => {
+    // THE BOUND IS 20 (owner ruling 2026-08-23) and it is not derived from the
+    // unit's capacity, deliberately. Two reasons, both measured against the
+    // registry: the largest unit sleeps 19, so 20 covers every real cabin; and
+    // 15 of 118 units record no capacity at all, so a capacity-derived list
+    // would collapse to blank-only on exactly the units where writing a
+    // headcount down matters most.
+    //
+    // IT ALSO KEEPS OVER-CAPACITY REACHABLE, which is an acceptance criterion
+    // of kindred#2503 rather than an accident: six people written into a
+    // four-bed room is what the card's red figure exists to show. A list
+    // stopping at the room's own capacity would make that state unenterable
+    // and quietly retire the red.
+    renderModal()
+    fireEvent.change(searchBox(), { target: { value: 'Burst pipe' } })
+    const options = Array.from(screen.getByLabelText('People').querySelectorAll('option')).map(
+      (el) => (el as HTMLOptionElement).value
+    )
+    expect(options).toEqual(['', ...Array.from({ length: 20 }, (_, i) => String(i + 1))])
+  })
+
+  it('writes somebody in with no people count at all', () => {
+    // OPTIONAL, owner ruling 2026-08-21. Most write-ins are non-rostered staff
+    // and staff will type nothing; blank means the cabin is taken wholesale,
+    // which is the right answer for that population. Requiring a number would
+    // tax every staff write-in to buy precision only paper registrations need.
+    //
+    // BLANK IS THE FIRST OPTION AND THE DEFAULT, so this is also a test that
+    // the select opens on it rather than on `1`.
+    const { props } = renderModal()
+    fireEvent.change(searchBox(), { target: { value: 'Burst pipe' } })
+    expect(screen.getByLabelText('People')).toHaveValue('')
+    fireEvent.click(screen.getByRole('button', { name: /write in/i }))
+    expect(props.onWriteIn).toHaveBeenCalledWith({
+      occupantName: 'Burst pipe',
+      note: '',
+      partySize: null,
+    })
+  })
+
+  it('sends a chosen count', () => {
+    const { props } = renderModal()
+    fireEvent.change(searchBox(), { target: { value: 'Burst pipe' } })
+    fireEvent.change(screen.getByLabelText('People'), { target: { value: '2' } })
+    fireEvent.click(screen.getByRole('button', { name: /write in/i }))
+    expect(props.onWriteIn).toHaveBeenCalledWith({
+      occupantName: 'Burst pipe',
+      note: '',
+      partySize: 2,
+    })
+  })
+
+  it('never disables the commit on account of the People field', () => {
+    // THE GATE COLLAPSED TO `isSaving` and this pins that it stays collapsed.
+    // A select cannot hold an invalid value, so a People-shaped disable would
+    // be dead code — and a dead disable is how the pre-select build ended up
+    // with a button that looked enabled and did nothing.
+    renderModal()
+    fireEvent.change(searchBox(), { target: { value: 'Burst pipe' } })
+    expect(screen.getByRole('button', { name: /write in/i })).toBeEnabled()
+    fireEvent.change(screen.getByLabelText('People'), { target: { value: '20' } })
+    expect(screen.getByRole('button', { name: /write in/i })).toBeEnabled()
+  })
+
+  it('saves on Enter from People, as it does from Note', () => {
+    // weekend-card-vocabulary.md §6, locked: Enter saves from a FIELD, never
+    // from the search box. Changing the control's type does not change which
+    // half of that rule it carries.
+    const { props } = renderModal()
+    fireEvent.change(searchBox(), { target: { value: 'Burst pipe' } })
+    const people = screen.getByLabelText('People')
+    fireEvent.change(people, { target: { value: '2' } })
+    fireEvent.keyDown(people, { key: 'Enter' })
+    expect(props.onWriteIn).toHaveBeenCalledWith({
+      occupantName: 'Burst pipe',
+      note: '',
+      partySize: 2,
+    })
+  })
+
+  it('still does nothing on Enter in the search box, even with a count already chosen', () => {
+    const { props } = renderModal()
+    fireEvent.change(searchBox(), { target: { value: 'Burst pipe' } })
+    fireEvent.change(screen.getByLabelText('People'), { target: { value: '2' } })
+    fireEvent.keyDown(searchBox(), { key: 'Enter' })
+    expect(props.onWriteIn).not.toHaveBeenCalled()
+  })
+
+  it('clears the chosen count after a write-in, so the next one opens blank', () => {
+    const { props } = renderModal()
+    fireEvent.change(searchBox(), { target: { value: 'Burst pipe' } })
+    fireEvent.change(screen.getByLabelText('People'), { target: { value: '3' } })
+    fireEvent.click(screen.getByRole('button', { name: /write in/i }))
+    expect(props.onWriteIn).toHaveBeenCalledWith({
+      occupantName: 'Burst pipe',
+      note: '',
+      partySize: 3,
+    })
+    fireEvent.change(searchBox(), { target: { value: 'Caretaker' } })
+    expect(screen.getByLabelText('People')).toHaveValue('')
   })
 })
 

@@ -13,7 +13,15 @@ export default function SessionLastUploadChip({ sessionCmId, agSessionCmIds, ses
   const { runId, session } = useLastUploadSummary(sessionCmId, agSessionCmIds)
   const [open, setOpen] = useState(false)
 
-  if (!session || !runId) return null
+  // Render-time correction, same pattern as usePanelParty's render-time
+  // clearing (hooks/usePanelParty.ts):
+  // when the summary transiently disappears (refetch gap), this early return
+  // unmounts the always-mounted dialog below — and a latched `open` would
+  // make it re-open itself via Modal's `appear` the moment data returns.
+  if (!session || !runId) {
+    if (open) setOpen(false)
+    return null
+  }
 
   const cmIds = [sessionCmId, ...agSessionCmIds].filter((k): k is number => typeof k === 'number')
 
@@ -33,14 +41,17 @@ export default function SessionLastUploadChip({ sessionCmId, agSessionCmIds, ses
           </span>
         )}
       </button>
-      {open && (
-        <SessionUploadChangesModal
-          runId={runId}
-          sessionCmIds={cmIds}
-          sessionName={sessionName}
-          onClose={() => setOpen(false)}
-        />
-      )}
+      {/* Always mounted once session+runId resolve (kindred#2529): the old
+          `{open && ...}` gate unmounted the dialog on the frame the close
+          fired, so Modal's exit fade never played. The dialog's query gates
+          on isOpen, so mounted-closed it fetches nothing. */}
+      <SessionUploadChangesModal
+        isOpen={open}
+        runId={runId}
+        sessionCmIds={cmIds}
+        sessionName={sessionName}
+        onClose={() => setOpen(false)}
+      />
     </>
   )
 }

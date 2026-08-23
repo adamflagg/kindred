@@ -105,7 +105,7 @@
 import { Pencil } from 'lucide-react'
 import { useState } from 'react'
 
-import { writeInOccupantLabel, type WriteInOccupant } from './writeIn'
+import { partySizeOptions, writeInOccupantLabel, type WriteInOccupant } from './writeIn'
 
 /** `FamilyCard`'s `CARD_FRAME`, verbatim. Pinned by this module's test. */
 export const WRITE_IN_FRAME =
@@ -123,15 +123,24 @@ export interface WriteInCardProps {
    */
   onRemove?: () => void
   /**
-   * Save an edit to THIS write-in's occupant name and note — kindred#2430.
+   * Save an edit to THIS write-in's occupant name, note, and party size —
+   * kindred#2430, and kindred#2503 for the count.
    *
    * NO ID, for the same reason `onRemove` takes none: the card knows which
    * row it draws and the caller binds the target, so there is exactly one
    * place that has to agree about which of the well's rows this is. Omitted
    * for a reader who cannot edit, which hides the pencil rather than a
    * second permission flag here.
+   *
+   * `partySize` is ALWAYS a real answer, never a "didn't ask" placeholder:
+   * `null` when the People field is blank (wholesale, or untouched from a
+   * row that already had no count) and the row's own recorded count when
+   * the field was left alone. The caller — `LodgingUnitCard.tsx`'s `onEdit`
+   * handler — forwards this value verbatim rather than re-deriving it from
+   * the row, which is what makes "save without touching People" and "clear
+   * People to blank" distinguishable on the wire.
    */
-  onEdit?: (write: { occupantName: string; reason: string }) => void
+  onEdit?: (write: { occupantName: string; reason: string; partySize: number | null }) => void
   /**
    * True while a write this card's controls are waiting on is in flight.
    *
@@ -155,17 +164,64 @@ export function WriteInCard({ occupant, onRemove, onEdit, isSaving = false }: Wr
   const [isEditing, setIsEditing] = useState(false)
   const [draftName, setDraftName] = useState(occupant.name)
   const [draftNote, setDraftNote] = useState(occupant.note)
+  // Seeded as a STRING, matching `AssignFamilyModal`'s `people` state — empty
+  // when `occupant.partySize` is `null`, otherwise the count printed as text.
+  // A STRING because that is what a `<select>` value is, and `''` is the blank
+  // option; `draftPartySize` below turns it back into the number it means.
+  const [draftPeople, setDraftPeople] = useState(
+    occupant.partySize === null ? '' : String(occupant.partySize)
+  )
   const [wantsName, setWantsName] = useState(false)
 
   const openEdit = () => {
     setDraftName(occupant.name)
     setDraftNote(occupant.note)
+    setDraftPeople(occupant.partySize === null ? '' : String(occupant.partySize))
     setWantsName(false)
     setIsEditing(true)
   }
   const closeEdit = () => {
     setIsEditing(false)
     setWantsName(false)
+  }
+
+  // OPTIONAL, exactly as the Assign modal's write-in form (owner ruling
+  // 2026-08-21): blank is a complete answer meaning the write-in takes the
+  // room wholesale, and Save is not gated on it.
+  //
+  // TOTAL, with no parse to fail (owner ruling 2026-08-23). `draftPeople` is a
+  // `<select>` value, so it is either `''` or one of `PARTY_SIZE_CHOICES`
+  // rendered by `String(...)` -- `Number(...)` cannot return `NaN` here, and
+  // the `Number.isInteger` / `>= 1` / `validity.badInput` checks that used to
+  // stand around it are gone WITH the number input rather than relaxed
+  // against it. See `PARTY_SIZE_CHOICES` in `writeIn.ts` for why the control
+  // changed and what it makes unreachable.
+  const draftPartySize = draftPeople === '' ? null : Number(draftPeople)
+
+  // Shared by the form's own `onSubmit` (Save, or Enter from Occupant/Note)
+  // and the People field's `onKeyDown` below. `fireEvent.keyDown` in jsdom
+  // does not trigger native implicit form submission the way a real Enter
+  // keypress does in a browser, so People needs an explicit call site rather
+  // than relying on the surrounding `<form>` — the same reason
+  // `AssignFamilyModal`'s own People field carries an explicit handler
+  // (weekend-card-vocabulary.md §6: Enter saves from a field).
+  const trySubmit = () => {
+    const trimmedName = draftName.trim()
+    // THE SAME GUARD THE ASSIGN MODAL'S WRITE-IN OFFER USES (`offersWriteIn`,
+    // which requires a non-empty trimmed name): a write-in that names nobody
+    // is a valid state a legacy row can already be in, but an edit that
+    // CLEARS a name is a staff member erasing who is in the room, which is
+    // worth a refusal rather than a silent write.
+    //
+    // It named `UnitAvailabilityControl`'s occupant prompt until that
+    // control was cut (kindred#2072 stage 3, vocabulary §3). The rule
+    // outlived the control; the modal is where it lives now.
+    if (trimmedName === '') {
+      setWantsName(true)
+      return
+    }
+    onEdit?.({ occupantName: trimmedName, reason: draftNote.trim(), partySize: draftPartySize })
+    closeEdit()
   }
 
   if (isEditing) {
@@ -175,23 +231,7 @@ export function WriteInCard({ occupant, onRemove, onEdit, isSaving = false }: Wr
           className="flex w-full flex-col gap-1"
           onSubmit={(event) => {
             event.preventDefault()
-            const trimmedName = draftName.trim()
-            // THE SAME GUARD THE ASSIGN MODAL'S WRITE-IN OFFER USES
-            // (`offersWriteIn`, which requires a non-empty trimmed name): a
-            // write-in that names nobody is a valid state a legacy row can
-            // already be in, but an edit that CLEARS a name is a staff member
-            // erasing who is in the room, which is worth a refusal rather
-            // than a silent write.
-            //
-            // It named `UnitAvailabilityControl`'s occupant prompt until that
-            // control was cut (kindred#2072 stage 3, vocabulary §3). The rule
-            // outlived the control; the modal is where it lives now.
-            if (trimmedName === '') {
-              setWantsName(true)
-              return
-            }
-            onEdit?.({ occupantName: trimmedName, reason: draftNote.trim() })
-            closeEdit()
+            trySubmit()
           }}
         >
           <input
@@ -206,6 +246,8 @@ export function WriteInCard({ occupant, onRemove, onEdit, isSaving = false }: Wr
             // otherwise unlabelled input under the name.
             placeholder="Emma Johnson, burst pipe…"
             value={draftName}
+            // See the Note field below for why all three carry this.
+            disabled={isSaving}
             maxLength={500}
             autoFocus
             aria-invalid={wantsName && draftName.trim() === ''}
@@ -215,17 +257,67 @@ export function WriteInCard({ occupant, onRemove, onEdit, isSaving = false }: Wr
             }}
             className="border-border bg-background text-foreground placeholder:text-muted-foreground/60 focus:border-primary/50 focus:ring-primary/10 w-full rounded-md border px-1.5 py-1 text-sm focus:ring-2 focus:outline-none aria-[invalid=true]:border-amber-500"
           />
-          <input
-            type="text"
-            aria-label="Note (optional)"
-            placeholder="Note (optional) — back Monday…"
-            value={draftNote}
-            maxLength={500}
-            onChange={(event) => {
-              setDraftNote(event.target.value)
-            }}
-            className="border-border bg-background text-foreground placeholder:text-muted-foreground/60 focus:border-primary/50 focus:ring-primary/10 w-full rounded-md border px-1.5 py-1 text-sm focus:ring-2 focus:outline-none"
-          />
+          {/* ONE ROW, People then Note (owner ruling 2026-08-23), mirroring
+              `AssignFamilyModal`'s write-in form exactly -- same control, same
+              order, same list. OPTIONAL exactly as there (owner ruling
+              2026-08-21): blank means the write-in takes the room wholesale,
+              and Save is not gated on it.
+
+              NO VISIBLE LABELS, unlike the modal: this form is a compact card
+              in a board slot, and the two controls carry `aria-label` as test
+              handles the way the occupant field above them already does
+              (frontend/CLAUDE.md -- that is test infrastructure here, not an
+              accessibility affordance). The select's blank option reads as the
+              same em dash the card draws for an unsized write-in. */}
+          <div data-testid="write-in-edit-fields" className="flex items-center gap-1.5">
+            <select
+              aria-label="People"
+              value={draftPeople}
+              disabled={isSaving}
+              onChange={(event) => {
+                setDraftPeople(event.target.value)
+              }}
+              onKeyDown={(event) => {
+                // ↵ SAVES FROM A FIELD (weekend-card-vocabulary.md §6). Native
+                // form submission on Enter is not reliable under
+                // `fireEvent.keyDown` in jsdom, so this calls the same
+                // `trySubmit` the form's `onSubmit` calls, rather than relying
+                // on the surrounding `<form>` alone.
+                if (event.key !== 'Enter') return
+                event.preventDefault()
+                trySubmit()
+              }}
+              className="border-border bg-background text-foreground focus:border-primary/50 focus:ring-primary/10 w-[4.25rem] shrink-0 rounded-md border px-1.5 py-1 text-sm focus:ring-2 focus:outline-none"
+            >
+              <option value="">—</option>
+              {partySizeOptions(occupant.partySize).map((count) => (
+                <option key={count} value={String(count)}>
+                  {count}
+                </option>
+              ))}
+            </select>
+            <input
+              type="text"
+              aria-label="Note (optional)"
+              placeholder="Note (optional) — back Monday…"
+              value={draftNote}
+              // ⚠️ ALL THREE FIELDS TAKE `isSaving`, not the select alone
+              // (kindred#2540 final scan, FINDING 8). `main` disabled none of
+              // them, so this PR introduced the asymmetry by adding the flag
+              // to the new control and not its neighbours -- and
+              // `AssignFamilyModal` disables both of its own fields on the
+              // same flag, so the pencil was the odd one out. It bites when a
+              // second row's pencil is opened while another row's save is in
+              // flight; `trySubmit` unmounts this form immediately, so it
+              // cannot fire from the same row.
+              disabled={isSaving}
+              maxLength={500}
+              onChange={(event) => {
+                setDraftNote(event.target.value)
+              }}
+              className="border-border bg-background text-foreground placeholder:text-muted-foreground/60 focus:border-primary/50 focus:ring-primary/10 min-w-0 flex-1 rounded-md border px-1.5 py-1 text-sm focus:ring-2 focus:outline-none"
+            />
+          </div>
           {wantsName && draftName.trim() === '' && (
             <span className="text-xs font-medium text-amber-700 dark:text-amber-400">
               Say who is in it, so next week’s staff know who to ask.

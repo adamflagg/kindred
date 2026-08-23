@@ -860,6 +860,85 @@ describe('MapUnitPopover — a cluster of rooms', () => {
     expect(screen.queryByTitle(/Cedar 2 — empty/i)).not.toBeInTheDocument()
   })
 
+  it('states no Beds line for a cluster written into WHOLESALE, rather than \u201c0 of N\u201d', () => {
+    // kindred#2540 final scan, FINDING 3. `writeInSized` sums RECORDED counts
+    // only, so a cover with no count contributes 0 \u2014 and the Beds row was
+    // rendered unconditionally, so a house written into whole printed
+    // `Beds 0 of 4` directly beneath `Rooms 2 \u00b7 2 taken, 0 open`. One
+    // popover, two contradictory answers, and every production write-in row is
+    // unsized, so this WAS the live reading rather than an edge case.
+    //
+    // `main` said `Sleeps 4 \u00b7 0 placed` here, which was at least literally
+    // true; folding write-ins into `placed` is what made silence the only
+    // honest answer. `DetailCard` already gates its own Beds row exactly this
+    // way, so this matches it rather than inventing a third phrasing.
+    const house = [
+      mapUnit(
+        row({
+          unit_id: 'u1',
+          code: 'cedar-1',
+          name: 'Cedar 1',
+          write_ins: [
+            cover({
+              unit_id: 'u1',
+              unit_code: 'cedar-1',
+              unit_name: 'Cedar 1',
+              occupant_name: 'Liam Garcia',
+            }),
+          ],
+          is_family_available: false,
+        })
+      ),
+      mapUnit(
+        row({
+          unit_id: 'u2',
+          code: 'cedar-2',
+          name: 'Cedar 2',
+          write_ins: [
+            cover({
+              unit_id: 'u2',
+              unit_code: 'cedar-2',
+              unit_name: 'Cedar 2',
+              occupant_name: 'Emma Johnson',
+            }),
+          ],
+          is_family_available: false,
+        })
+      ),
+    ]
+    render(<MapUnitPopover units={house} hue={HUE} onOpenParty={vi.fn()} />)
+    expect(screen.getByText('2 \u00b7 2 taken, 0 open')).toBeInTheDocument()
+    expect(screen.queryByText('Beds')).not.toBeInTheDocument()
+    expect(screen.queryByText(/0 of \d+/)).not.toBeInTheDocument()
+  })
+
+  it('still states Beds once any write-in carries a recorded count', () => {
+    // The other half of FINDING 3's fix: the gate must not silence a cluster
+    // that DOES have a figure to state. One recorded count is enough.
+    const house = [
+      mapUnit(
+        row({
+          unit_id: 'u1',
+          code: 'cedar-1',
+          name: 'Cedar 1',
+          write_ins: [
+            cover({
+              unit_id: 'u1',
+              unit_code: 'cedar-1',
+              unit_name: 'Cedar 1',
+              occupant_name: 'Liam Garcia',
+              party_size: 2,
+            }),
+          ],
+          is_family_available: false,
+        })
+      ),
+      mapUnit(row({ unit_id: 'u2', code: 'cedar-2', name: 'Cedar 2' })),
+    ]
+    render(<MapUnitPopover units={house} hue={HUE} onOpenParty={vi.fn()} />)
+    expect(screen.getByText('Beds')).toBeInTheDocument()
+  })
+
   it('keeps a write-in-only cell INERT — there is no party to open behind it', () => {
     const onOpenParty = vi.fn()
     const house = [
@@ -1032,7 +1111,7 @@ describe('MapUnitPopover — a container, master-detail (kindred#2183)', () => {
   it('totals the building’s beds and says how many are spoken for', () => {
     render(<MapUnitPopover units={HOUSE} hue={HUE} onOpenParty={vi.fn()} />)
     // 4 + 2 + 3 beds; both parties report `party_size: 3`.
-    expect(screen.getByText('9 · 6 placed')).toBeInTheDocument()
+    expect(screen.getByText('6 of 9')).toBeInTheDocument()
   })
 
   it('counts a family holding two rooms once, not once per room', () => {
@@ -1060,7 +1139,140 @@ describe('MapUnitPopover — a container, master-detail (kindred#2183)', () => {
     render(<MapUnitPopover units={spread} hue={HUE} onOpenParty={vi.fn()} />)
     expect(screen.getAllByTestId('map-popover-family')).toHaveLength(1)
     // 2 + 3 beds; ONE household of 3, however many doors it is behind.
-    expect(screen.getByText('5 · 3 placed')).toBeInTheDocument()
+    expect(screen.getByText('3 of 5')).toBeInTheDocument()
+  })
+
+  it('folds a written-in room’s recorded count into the building’s placed figure', () => {
+    // kindred#2540. `summaryWriteIns` already carries the sized counts, but
+    // only for the "Occupied by" name list — the beds arithmetic above it
+    // summed `families` alone, so a cluster containing a sized write-in
+    // reported "0 placed" at the building level while `DetailCard` reports
+    // the true count for that same room once staff drill in. One popover
+    // contradicting itself, which is the defect class this whole surface
+    // exists to remove. Reads `sized`, never `consumed` — see
+    // `writeInDemand`'s own doc for why the two must not collapse.
+    const withWriteIn = [
+      HOUSE[0],
+      HOUSE[1],
+      mapUnit(
+        row({
+          unit_id: 'u3',
+          code: 'cedar-side',
+          name: 'Cedar Lodge Side',
+          sleeps: 3,
+          write_ins: [
+            cover({
+              unit_id: 'u3',
+              unit_code: 'cedar-side',
+              unit_name: 'Cedar Lodge Side',
+              party_size: 2,
+            }),
+          ],
+        })
+      ),
+    ]
+    render(<MapUnitPopover units={withWriteIn as MapUnit[]} hue={HUE} onOpenParty={vi.fn()} />)
+    // Capacity unchanged at 9 (4 + 2 + 3); 6 rostered + 2 written-in = 8 placed.
+    expect(screen.getByText('8 of 9')).toBeInTheDocument()
+  })
+
+  it('counts an ancestor write-in once across every room it resolves onto', () => {
+    // CodeRabbit's second review of kindred#2540. `sized` deliberately EXCLUDES
+    // ancestor covers per `DetailCard` — an ancestor's count is a fact about
+    // the house, not the room, so printing it on both halves of a split house
+    // would spend one party twice on one screen. That rule is right for a
+    // single card, but a CLUSTER is the house-level aggregate the ancestor
+    // number belongs to. A house written in whole and then split draws its
+    // ROOMS, not itself (`drawnUnits`); every room inherits the SAME ancestor
+    // row, so the old per-room `sized` sum reported zero — not the true count
+    // — for a house that has some. The fix dedupes by the cover's own
+    // `unit_id` (`WriteInSource.unitId`, published once per row no matter how
+    // many rooms resolve it) before summing — the same identity
+    // `summaryWriteIns` already uses for the "Occupied by" name list.
+    const ancestor = cover({
+      unit_id: 'cedar-house',
+      unit_code: 'cedar-house',
+      unit_name: 'Cedar House',
+      occupant_name: 'Overnight Staff',
+      relation: 'ancestor',
+      party_size: 5,
+      unit_sleeps: 7,
+    })
+    const split = [
+      mapUnit(
+        row({
+          unit_id: 'u1',
+          code: 'cedar-back',
+          name: 'Cedar Lodge Back',
+          sleeps: 4,
+          write_ins: [ancestor],
+        })
+      ),
+      mapUnit(
+        row({
+          unit_id: 'u2',
+          code: 'cedar-loft',
+          name: 'Cedar Lodge Loft',
+          sleeps: 3,
+          write_ins: [ancestor],
+        })
+      ),
+    ]
+    render(<MapUnitPopover units={split} hue={HUE} onOpenParty={vi.fn()} />)
+    // Capacity 4 + 3 = 7. Placed: the ONE ancestor row's `party_size` (5) —
+    // not 0 (per-room `sized` drops ancestors) and not 10 (double-counted
+    // once per room it resolves onto).
+    expect(screen.getByText('5 of 7')).toBeInTheDocument()
+  })
+
+  it('counts an ancestor cover and a room’s own cover separately in one cluster', () => {
+    // The mixed case: deduping by row identity must not collapse two
+    // DIFFERENT rows into one, nor drop the own-cover figure the pre-existing
+    // sum already got right (kindred#2540's original fix, guarded above).
+    const ancestor = cover({
+      unit_id: 'cedar-house',
+      unit_code: 'cedar-house',
+      unit_name: 'Cedar House',
+      occupant_name: 'Overnight Staff',
+      relation: 'ancestor',
+      party_size: 5,
+      unit_sleeps: 7,
+    })
+    const own = cover({
+      unit_id: 'z1',
+      unit_code: 'birch-1',
+      unit_name: 'Birch 1',
+      occupant_name: 'Weekend Staff',
+      party_size: 2,
+    })
+    const mixed = [
+      mapUnit(
+        row({
+          unit_id: 'u1',
+          code: 'cedar-back',
+          name: 'Cedar Lodge Back',
+          sleeps: 4,
+          write_ins: [ancestor],
+        })
+      ),
+      mapUnit(
+        row({
+          unit_id: 'u2',
+          code: 'cedar-loft',
+          name: 'Cedar Lodge Loft',
+          sleeps: 3,
+          write_ins: [ancestor],
+        })
+      ),
+      mapUnit(
+        row({ unit_id: 'z1', code: 'birch-1', name: 'Birch 1', sleeps: 2, write_ins: [own] })
+      ),
+    ]
+    render(<MapUnitPopover units={mixed} hue={HUE} onOpenParty={vi.fn()} />)
+    // Capacity 4 + 3 + 2 = 9. Placed: the ancestor row once (5) plus the
+    // separate own row (2) = 7 — not 12 (the ancestor double-counted) and not
+    // 5 (the own cover dropped by the dedupe).
+    expect(screen.getByText('7 of 9')).toBeInTheDocument()
   })
 
   it('refuses a building total when one of its rooms is unmeasured', () => {
@@ -1415,5 +1627,90 @@ describe('MapUnitPopover write-in occupants (kindred#2499)', () => {
     ]
     render(<MapUnitPopover units={house} hue={HUE} onOpenParty={vi.fn()} />)
     expect(screen.getByText('2 · 1 taken, 1 open')).toBeInTheDocument()
+  })
+})
+
+/**
+ * A write-in's optional `party_size` (kindred#2503) reaching the map peek —
+ * the last surface in the plan. `writeInDemand`'s own doc in `writeIn.ts`
+ * carries the arithmetic; these pin the three things Task 11 changes: the
+ * figure's numerator, `overCapacity`'s threshold, and the gate that used to
+ * hide the figure entirely on a write-in-only room.
+ *
+ * Both the figure and `overCapacity` read `writeInDemand`'s `sized` —
+ * mirroring `LodgingUnitCard`'s own `occupants + writeInPeople` exactly
+ * (`writeInPeople` IS `sized` there too) — never `consumed`, which folds in
+ * a wholesale fallback and an ancestor's whole-card claim and is capped at
+ * capacity. That distinction has already caused one real finding in this
+ * plan; the last test below pins it here too.
+ */
+describe('MapUnitPopover write-in party size in the peek figure (kindred#2503)', () => {
+  it('counts written-in people in the peek figure', () => {
+    // bedsNeeded (3, from `party('Johnson')`) + sized (2, the cover's own
+    // recorded count).
+    render(
+      <MapUnitPopover
+        units={[
+          mapUnit(row({ sleeps: 15, write_ins: [cover({ party_size: 2 })] }), [party('Johnson')]),
+        ]}
+        hue={HUE}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.getByText('5 of 15')).toBeInTheDocument()
+  })
+
+  it('draws a figure for a cabin holding only write-ins', () => {
+    // The gate used to be `parties.length > 0`, so since kindred#2525 the peek
+    // listed the write-in occupant by name and then printed no number at all
+    // beside them — a room the peek stayed silent about how full it was.
+    render(
+      <MapUnitPopover
+        units={[mapUnit(row({ sleeps: 15, write_ins: [cover({ party_size: 2 })] }))]}
+        hue={HUE}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.getByText('2 of 15')).toBeInTheDocument()
+  })
+
+  it('prints no figure for a cabin holding only an UNSIZED write-in — the day-one guard', () => {
+    // Every production write-in row is unsized today, so `sized` is 0 and the
+    // widened gate `(parties.length > 0 || sized > 0) && capacityKnown` must
+    // reduce to exactly the old gate's answer: no parties, no recorded size,
+    // no figure. Regress this and every occupied-but-unsized cabin in
+    // production starts printing "0 of N".
+    render(
+      <MapUnitPopover
+        units={[mapUnit(row({ sleeps: 15, write_ins: [cover()] }))]}
+        hue={HUE}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.queryByText('Beds')).not.toBeInTheDocument()
+    expect(screen.queryByText(/of 15/)).not.toBeInTheDocument()
+    // The occupant still gets listed — this task changes only the figure.
+    expect(screen.getByText('Emma Johnson')).toBeInTheDocument()
+  })
+
+  it('reddens on the same UNCAPPED sized figure it prints, not the capped `consumed`', () => {
+    // No placed party (bedsNeeded=0), capacity 3, one write-in with a
+    // hand-typed count of 5 — well above the room's own beds. `sized` is
+    // deliberately uncapped (`writeInDemand`'s doc), so the figure prints the
+    // true "5 of 3" rather than clamping to capacity, exactly as
+    // `LodgingUnitCard`'s own `overCapacity` reads `occupants + writeInPeople`
+    // (kindred#2503) rather than the separately-capped `consumed`. Printing
+    // "5 of 3" without reddening would be the self-contradiction spec §6.2
+    // forbids: had this card instead been wired to the capped `consumed`
+    // (`Math.min(5, 3) = 3`), `0 + 3 = 3` is not greater than capacity 3 and
+    // this would never redden.
+    render(
+      <MapUnitPopover
+        units={[mapUnit(row({ sleeps: 3, write_ins: [cover({ party_size: 5 })] }))]}
+        hue={HUE}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.getByText('5 of 3')).toHaveClass('text-amber-700')
   })
 })
