@@ -75,21 +75,45 @@ const partySizeText = (partySize: number | null): string =>
   partySize === null ? '—' : String(partySize)
 
 /**
- * `wholesale — all N beds` when any row in the card occupies wholesale
- * (`party_size === null`), else `Σ of N beds`. `N` sums `sleeps` across the
- * card's rows deduped by `unit_id` — a pairwise card's live/draft rows name
- * the same physical unit, and double-counting its capacity would overstate
- * the bed line.
+ * One SIDE's bed line — `wholesale — all N beds` when any of `rows`
+ * occupies wholesale (`party_size === null`), else `<summed party_size> of
+ * N beds`. `N` sums `sleeps` across `rows` deduped by `unit_id` (a side's
+ * rows never repeat a unit in practice — cheap insurance rather than a
+ * live case).
+ *
+ * SIDE-SCOPED ON PURPOSE — never called across live+draft together. A
+ * whole-building card's draft can carry a whole-house CONTAINER row
+ * alongside live's per-room rows; those are the same physical beds counted
+ * at two different grains; not two different pools. Summing across both
+ * sides double-counts them: kindred#2477 review caught this as `bedLine`
+ * unioning `[...live, ...draft]` before dedupe, which for a 2-room live
+ * side (4 + 3) plus a whole-house draft row (9) rendered "all 16 beds" — a
+ * number matching no real state. Ruled fix: compute each side on its own
+ * `bedSideLine(building.live)` / `bedSideLine(building.draft)` and show
+ * both, never combine them into one dedupe pass.
  */
-function bedLine(building: PushBuildingReport): string {
-  const rows: PushRowPayload[] = [...building.live, ...building.draft]
+function bedSideLine(rows: readonly PushRowPayload[]): string {
   const sleepsByUnit = new Map<string, number>()
   for (const row of rows) {
     if (!sleepsByUnit.has(row.unit_id)) sleepsByUnit.set(row.unit_id, row.sleeps ?? 0)
   }
-  const total = Array.from(sleepsByUnit.values()).reduce((sum, n) => sum + n, 0)
+  const totalBeds = Array.from(sleepsByUnit.values()).reduce((sum, n) => sum + n, 0)
   const wholesale = rows.some((row) => row.party_size === null)
-  return wholesale ? `wholesale — all ${String(total)} beds` : `Σ of ${String(total)} beds`
+  if (wholesale) return `wholesale — all ${String(totalBeds)} beds`
+  const totalPeople = rows.reduce((sum, row) => sum + (row.party_size ?? 0), 0)
+  return `${String(totalPeople)} of ${String(totalBeds)} beds`
+}
+
+/**
+ * The card's full bed summary. A conflict card (pairwise or whole-building)
+ * shows both sides, since both are live options staff can pick between; a
+ * remove card has no scenario side to show — there is nothing in the
+ * scenario for this building at all — so it shows live alone.
+ */
+function bedSummary(building: PushBuildingReport): string {
+  const liveLine = bedSideLine(building.live)
+  if (building.cls === 'remove') return liveLine
+  return `Live: ${liveLine} → Scenario: ${bedSideLine(building.draft)}`
 }
 
 function pickColumnClass(picked: boolean): string {
@@ -507,7 +531,7 @@ export function PushDecisionDeck({
         </button>
       </div>
 
-      <p className="text-muted-foreground -mt-2 text-center text-xs">{bedLine(building)}</p>
+      <p className="text-muted-foreground -mt-2 text-center text-xs">{bedSummary(building)}</p>
 
       <div ref={cardRef} key={building.key}>
         {shape === 'pairwise' && (

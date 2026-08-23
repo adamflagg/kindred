@@ -65,10 +65,19 @@ const BIG_HOUSE: PushBuildingReport = {
   draft: [row('big-house', 'Woodson family', { sleeps: 9, party_size: 6 })],
 }
 
+const BIRCH: PushBuildingReport = {
+  key: 'birch-2',
+  label: 'Birch 2',
+  cls: 'remove',
+  live: [row('birch-2', 'S. Delacroix', { sleeps: 5, party_size: 3 })],
+  draft: [],
+}
+
 const BUILDINGS_BY_KEY: Record<string, PushBuildingReport> = {
   'cedar-9': CEDAR,
   'aspen-5': ASPEN,
   'big-house': BIG_HOUSE,
+  'birch-2': BIRCH,
 }
 
 function decidedCount(
@@ -142,5 +151,36 @@ describe('PushDecisionDeck', () => {
     expect(screen.getByText('2 / 2')).toBeInTheDocument()
     await userEvent.keyboard('2')
     expect(onDecide).toHaveBeenCalledWith('aspen-5', 'remove')
+  })
+
+  // kindred#2477 review finding: the bed line must be SIDE-SCOPED (live and
+  // scenario computed independently), never a union of both sides' rows.
+  // BIG_HOUSE's draft carries a whole-house container row (sleeps 9) ALONGSIDE
+  // two live room rows (sleeps 4 + 3) that name a different unit_id each — a
+  // union sums all three to a nonsense 16 beds. Side-scoped: live (loft+den,
+  // both wholesale) is 7; scenario (the whole-house row alone) is 9.
+  it('the whole-building bed line is side-scoped, not the union of both sides', () => {
+    render(deckAt('big-house'))
+    expect(
+      screen.getByText('Live: wholesale — all 7 beds → Scenario: 6 of 9 beds')
+    ).toBeInTheDocument()
+  })
+
+  // A pairwise card's live and draft rows name the SAME unit (one room, two
+  // proposed occupants) — the per-side bed count must read that unit's own
+  // sleeps once, not sum live's 4 and draft's 4 into 8.
+  it('a pairwise same-unit card counts the unit once per side, not doubled', () => {
+    render(deckAt('cedar-9'))
+    expect(
+      screen.getByText('Live: wholesale — all 4 beds → Scenario: 2 of 4 beds')
+    ).toBeInTheDocument()
+  })
+
+  // The wholesale/sized branch, pinned independent of the two-sided cards
+  // above: a side with every row's party_size recorded shows the SUMMED
+  // party size over capacity, not the literal wholesale text.
+  it('a sized side shows the summed party size, not the wholesale text', () => {
+    render(deckAt('birch-2'))
+    expect(screen.getByText('3 of 5 beds')).toBeInTheDocument()
   })
 })
