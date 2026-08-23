@@ -1,23 +1,25 @@
 /**
- * The write-in push queue's modal shell and report screen (kindred#2477 Task
- * 8). Entry is the board's own "Push write-ins" toolbar button
- * (`LodgingBoard.tsx`).
+ * The write-in push queue's modal shell, report screen, and decision deck
+ * (kindred#2477 Tasks 8/9). Entry is the board's own "Push write-ins"
+ * toolbar button (`LodgingBoard.tsx`).
  *
  * ## The report vs. the deck vs. done
  *
  * Three stages, one component: `'report'` (this file, the four class
- * tiles), `'deck'` (Task 9 — one card per building that needs a verdict),
- * and `'done'` (Task 10 — what the push actually did). Kept in ONE component
- * rather than three, because the stages share the same preview fetch and the
- * same `decisions` record building up across them, and splitting that state
- * across sibling components would need to thread it back up through props
- * for no reader this modal has today.
+ * tiles), `'deck'` (this file wires `PushDecisionDeck.tsx` — one card per
+ * building that needs a verdict), and `'done'` (Task 10 — what the push
+ * actually did). Kept in ONE component rather than three, because the stages
+ * share the same preview fetch and the same `decisions` record building up
+ * across them, and splitting that state across sibling components would need
+ * to thread it back up through props for no reader this modal has today.
  *
  * `decisions: Record<string, Decision>` is keyed on `PushBuildingReport.key`
  * and carries a verdict ONLY for a building the report classed `conflict` or
  * `remove` — an `add` or `match` building is shown here for audit and is
- * never queued (kindred#2477 design contract). Task 8 declares the shape and
- * resets it on open; Task 9's deck is what actually writes into it.
+ * never queued (kindred#2477 design contract). This file declares the shape,
+ * resets it on open, and filters `preview.buildings` down to the two classes
+ * that need one before handing them to `PushDecisionDeck`, which is what
+ * actually writes into it via `onDecide`.
  *
  * ## The digest, not a staleTime
  *
@@ -41,6 +43,7 @@ import {
 import { queryKeys } from '../../utils/queryKeys'
 import { QueryGuard } from '../QueryGuard'
 import { Modal } from '../ui/Modal'
+import { PushDecisionDeck } from './PushDecisionDeck'
 
 /** Which screen the modal is showing. Task 9 builds `'deck'`, Task 10 `'done'`. */
 export type PushStage = 'report' | 'deck' | 'done'
@@ -238,14 +241,24 @@ export function PushWriteInsModal({
             )
           }
           if (stage === 'deck') {
-            // Task 9 replaces this with the conflict/remove decision deck,
-            // reading and writing `decisions` above. Read here only enough
-            // to keep the state live for Task 9 to build on.
-            const decided = Object.keys(decisions).length
+            // Only conflict/remove buildings ever need a verdict — add/match
+            // are shown on the report screen for audit and are never queued
+            // (module doc's "the digest, not a staleTime" section covers the
+            // rest of the report/deck split).
+            const deckBuildings = preview.buildings.filter(
+              (b) => b.cls === 'conflict' || b.cls === 'remove'
+            )
+            const decidedCount = deckBuildings.filter((b) => decisions[b.key] !== undefined).length
             return (
-              <div data-testid="push-deck-placeholder" className="text-muted-foreground text-sm">
-                {`Decision deck coming in Task 9. ${String(decided)} decision${decided === 1 ? '' : 's'} recorded so far.`}
-              </div>
+              <PushDecisionDeck
+                buildings={deckBuildings}
+                decisions={decisions}
+                onDecide={(key, decision) => {
+                  setDecisions((prev) => ({ ...prev, [key]: decision }))
+                }}
+                onPush={handlePush}
+                pushDisabled={deckBuildings.length > decidedCount}
+              />
             )
           }
           // Task 10 replaces this with what the push actually did
