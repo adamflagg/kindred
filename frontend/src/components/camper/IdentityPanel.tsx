@@ -25,6 +25,7 @@ import { useYear } from '../../hooks/useCurrentYear'
 import { useCamperCohorts } from '../../hooks/useCamperCohorts'
 import { useCohortRequestRelations } from '../../hooks/useCohortRequestRelations'
 import { useCohortBunkAssignments } from '../../hooks/useCohortBunkAssignments'
+import { useRetainedDialog } from '../../hooks/useRetainedDialog'
 import { CohortDrillDownModal, type CohortKind } from '../CohortDrillDownModal'
 import type { Camper } from '../../types/app-types'
 
@@ -56,18 +57,15 @@ export function IdentityPanel({
 }: IdentityPanelProps) {
   const [isExpanded, setIsExpanded] = useState(defaultExpanded)
   const viewingYear = useYear()
-  // `openKind` is a RETAINED SNAPSHOT, not the open flag (kindred#2529) —
-  // same shape as CamperCohortsSection: closing clears only `drillOpen`, so
-  // the drill-down stays mounted (and its content stays renderable) through
-  // Modal's 150ms leave transition, and afterLeave releases the snapshot
-  // once the fade completes so the element tree stops re-evaluating.
-  const [openKind, setOpenKind] = useState<CohortKind | null>(null)
-  const [drillOpen, setDrillOpen] = useState(false)
-
-  const openCohort = (kind: CohortKind) => {
-    setOpenKind(kind)
-    setDrillOpen(true)
-  }
+  // The retained-snapshot pattern, one hook (kindred#2541) — same shape and
+  // same reasoning as CamperCohortsSection: `close()` clears only the open
+  // flag, so the drill-down stays mounted (and its content stays renderable)
+  // through Modal's 150ms leave transition, and `afterLeave` releases the
+  // snapshot once the fade completes so the element tree stops re-evaluating.
+  // No `resetWhen` and no `nonce` here either, for the reasons spelled out at
+  // that site and in the hook's docstring.
+  const drill = useRetainedDialog<CohortKind>()
+  const openKind = drill.data
 
   const personCmId = cohortContext?.personCmId ?? null
   const sessionCmId = cohortContext?.sessionCmId ?? 0
@@ -162,7 +160,7 @@ export function IdentityPanel({
               subValue={`${formatGradeOrdinal(camper.grade)} Grade`}
               cohortKind="school"
               cohortCount={cohortContext ? (cohorts?.school?.count ?? 0) : 0}
-              onOpenCohort={() => openCohort('school')}
+              onOpenCohort={() => drill.open('school')}
             />
             <CohortField
               icon={MapPin}
@@ -170,7 +168,7 @@ export function IdentityPanel({
               value={location ?? 'Not specified'}
               cohortKind="city"
               cohortCount={cohortContext ? (cohorts?.city?.count ?? 0) : 0}
-              onOpenCohort={() => openCohort('city')}
+              onOpenCohort={() => drill.open('city')}
             />
             <CohortField
               icon={Building2}
@@ -178,7 +176,7 @@ export function IdentityPanel({
               value={congregation ?? 'Not provided'}
               cohortKind="congregation"
               cohortCount={cohortContext ? (cohorts?.congregation?.count ?? 0) : 0}
-              onOpenCohort={() => openCohort('congregation')}
+              onOpenCohort={() => drill.open('congregation')}
             />
           </div>
         </div>
@@ -186,7 +184,7 @@ export function IdentityPanel({
 
       {openKind && openEntry && cohorts && cohortContext && (
         <CohortDrillDownModal
-          open={drillOpen}
+          open={drill.isOpen}
           kind={openKind}
           label={openEntry.label}
           selfDisplayName={cohortContext.selfDisplayName}
@@ -195,8 +193,8 @@ export function IdentityPanel({
           requestRelations={relations}
           bunkByPerson={bunkByPerson}
           reserveSidePanel={false}
-          onClose={() => setDrillOpen(false)}
-          afterLeave={() => setOpenKind(null)}
+          onClose={drill.close}
+          afterLeave={drill.afterLeave}
         />
       )}
     </div>
