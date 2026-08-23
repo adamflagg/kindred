@@ -1,9 +1,12 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 
 export interface RetainedDialog<T> {
   /**
    * The retained snapshot — `null` until the first open, then kept ACROSS the
-   * close. Gate the dialog on it (`{data && <Modal …>}`); driving the gate
+   * close. Gate the dialog on it (`{data !== null && <Modal …>}` — an
+   * explicit null check, NOT `{data && …}`: `T` is generic, so `open(0)` or
+   * `open('')` would leave `isOpen` true with nothing mounted and no error.
+   * `LodgingUnitsPanel` already writes it the correct way); driving the gate
    * from `isOpen` instead is the bug this hook exists to prevent.
    */
   data: T | null
@@ -28,6 +31,14 @@ export interface UseRetainedDialogOptions {
    * section. `true` closes the dialog and drops the snapshot AT RENDER TIME;
    * omitted (the default) latches, and a source that vanishes and returns
    * leaves the dialog exactly as the staffer left it.
+   *
+   * ⚠️ NO PRODUCTION CONSUMER TODAY, and that is deliberate rather than dead
+   * code: kindred#2541 asked the hook to take an explicit position on
+   * transient loss instead of letting consumers re-derive one, and both
+   * answers have shipped in this codebase. All four migrated sites want the
+   * latch. `SessionLastUploadChip` is the reset answer in the wild but cannot
+   * consume this — its dialog is always mounted and holds no snapshot, so it
+   * has a bare `useState(false)` and nothing for the hook to retain.
    */
   resetWhen?: boolean
 }
@@ -82,8 +93,15 @@ interface RetainedDialogState<T> {
  *
  * ## Transient source loss — the position, and why it is a knob
  *
- * A retained dialog's source can vanish briefly: a refetch gap, a weekend
- * switch, a parent that `return null`s while its query is in flight. There
+ * A retained dialog's source can vanish briefly — in practice on a QUERY-KEY
+ * CHANGE (a camper or weekend switch), which is when a parent's
+ * `if (isLoading || !data) return null` actually fires. Note it is NOT an
+ * ordinary background refetch: `useQuery`'s `isLoading` is
+ * `isPending && isFetching`, so refetching a cached key never sets it. The
+ * distinction matters because the older framing of this paragraph — "a
+ * refetch gap" — describes something that cannot happen, and a future
+ * consumer reading it would pick `resetWhen` to solve a problem it does not
+ * have. There
  * are exactly two defensible answers and this codebase has shipped both, so
  * the hook makes the choice explicit at the call site instead of letting each
  * consumer re-derive one by accident.
@@ -92,7 +110,8 @@ interface RetainedDialogState<T> {
  *   returns the dialog is still open — which, if the parent unmounted it, is
  *   a dialog that re-opens itself with no click. That is the cohort
  *   drill-down's long-standing behaviour (`CamperCohortsSection` returns null
- *   while `useCamperCohorts` is loading), and the owner ruled on 2026-08-22
+ *   while `useCamperCohorts` has no data for a newly-keyed query), and the
+ *   owner ruled on 2026-08-22
  *   not to patch it ad hoc: the alternative closes a dialog a staffer is
  *   actively reading, on an ordinary refetch blip, which is the worse
  *   failure. All four #2539 sites take this answer.
@@ -113,10 +132,14 @@ interface RetainedDialogState<T> {
  * paint of the wrong thing.
  *
  * Same hazard family, not covered by this hook because it is a missing `key`
- * rather than a missing reset: `CamperDetailsPanel` in `BunkingBoardByArea`
- * renders without a `key`, so switching campers while a drill-down is open
- * re-pops it under the previous camper's snapshot. A `key` on the panel is
- * that one's fix; `resetWhen` would only close the dialog, not re-target it.
+ * rather than a missing reset: `CamperDetailsPanel` is rendered WITHOUT a
+ * `key` at every one of its five call sites — `BunkingBoardByArea`,
+ * `BunkSocialGraphModal`, `RequestReviewPanel`, `RightPanelContainer` and
+ * `SocialNetworkGraph` — so switching campers while a drill-down is open
+ * re-pops it under the previous camper's snapshot. It is the CLASS that
+ * needs fixing, not one site: a reader who fixes only the first leaves four
+ * behind. A `key` on the panel is that one's fix; `resetWhen` would only
+ * close the dialog, not re-target it.
  */
 export function useRetainedDialog<T>(options?: UseRetainedDialogOptions): RetainedDialog<T> {
   // ONE state object, not three: `afterLeave` has to consult `isOpen` to know
@@ -141,13 +164,33 @@ export function useRetainedDialog<T>(options?: UseRetainedDialogOptions): Retain
     setState((s) => ({ data, isOpen: true, nonce: s.nonce + 1 }))
   }, [])
 
+  // Both bail out by identity when there is nothing to change. React compares
+  // with Object.is, so returning `s` unchanged skips the re-render entirely --
+  // and a no-op close is not hypothetical: LodgingUnitsPanel.refresh() calls
+  // close() on every save, including saves made while the editor is already
+  // shut. The hand-rolled `setEditorOpen(false)` this replaced bailed out for
+  // free because it set a boolean to the value it already held; an object
+  // spread does not, so the bail-out has to be written.
   const close = useCallback(() => {
-    setState((s) => ({ ...s, isOpen: false }))
+    setState((s) => (s.isOpen ? { ...s, isOpen: false } : s))
   }, [])
 
   const afterLeave = useCallback(() => {
-    setState((s) => (s.isOpen ? s : { ...s, data: null }))
+    // Guarded on isOpen, not just on data: an INTERRUPTED leave re-opens the
+    // dialog before the transition finishes, and dropping the snapshot then
+    // would blank a dialog somebody is reading.
+    setState((s) => (s.isOpen || s.data === null ? s : { ...s, data: null }))
   }, [])
 
-  return { data: state.data, isOpen: state.isOpen, nonce: state.nonce, open, close, afterLeave }
+  // Memoised so the CONTAINER is dep-list-safe, not just its members. The
+  // three callbacks are already stable, but a fresh wrapper each render makes
+  // `react-hooks/exhaustive-deps` demand the whole receiver wherever a method
+  // is called off it -- which would rebuild any `useCallback` holding it on
+  // every open and close. Without this, a site feeding a dep list has to
+  // destructure while the others need not, and one hook grows two calling
+  // conventions. Now either form is correct everywhere.
+  return useMemo(
+    () => ({ data: state.data, isOpen: state.isOpen, nonce: state.nonce, open, close, afterLeave }),
+    [state.data, state.isOpen, state.nonce, open, close, afterLeave]
+  )
 }

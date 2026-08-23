@@ -233,7 +233,7 @@ export default function SessionView() {
             camperNameById
           ),
         })
-      } else if (hasReviewableDiagnostics(result.diagnostics)) {
+      } else if (result.diagnostics && hasReviewableDiagnostics(result.diagnostics)) {
         // #1638 — persistent review surface replaces the transient red box.
         solverProgress.close()
         openDiagnostics(result.diagnostics)

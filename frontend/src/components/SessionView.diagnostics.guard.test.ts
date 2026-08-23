@@ -52,6 +52,18 @@ describe('SessionView solver-diagnostics close path (kindred#2529, #2541)', () =
     expect(src).toContain('data: diagnostics,')
     expect(src).not.toContain('setDiagnostics')
     expect(src).not.toContain('setShowDiagnostics')
+
+    // The BINDINGS, not just the names. Every member of this hook is
+    // `() => void`, so swapping two aliases in the destructure type-checks and
+    // leaves the whole suite green while the dialog can never be closed:
+    // `onClose` would call the hook's `afterLeave`, whose `isOpen` guard makes
+    // it a no-op while the dialog is open, so Escape, the backdrop and the X
+    // all stop working. Pinning `onClose={closeDiagnostics}` in the JSX below
+    // does not catch it -- the name is still spelled correctly, it is just
+    // wired to the wrong member. Mutation-checked: swapping these two turns
+    // this assertion red and nothing else in the suite.
+    expect(src).toContain('close: closeDiagnostics,')
+    expect(src).toContain('afterLeave: releaseDiagnostics,')
   })
 
   it('keeps the retained-snapshot latch — the modal renders only behind the retained data', () => {

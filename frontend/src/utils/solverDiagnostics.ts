@@ -18,12 +18,17 @@ export function resolveYields(
 /**
  * #1638 — does this diagnostics payload have anything worth opening the modal for?
  *
- * A TYPE PREDICATE, because `undefined` can never be reviewable: the caller
- * that opens the dialog on a `true` result has to hand it a payload, and
- * narrowing here is what saves it from a `?? null` that would silently gate
- * the dialog off (kindred#2541).
+ * Returns a plain boolean, NOT a type predicate, and the distinction is load
+ * bearing. `d is SolverDiagnostics` is unsound in its FALSE branch: a payload
+ * that is present but wholly empty -- all three fields null, which
+ * `solverDiagnostics.test.ts` pins as a real case -- returns false, so the
+ * else branch would narrow `d` to `undefined` and let a caller reason about a
+ * value that exists. The caller gets the narrowing it needs for free from a
+ * truthiness conjunct (`result.diagnostics && hasReviewableDiagnostics(...)`),
+ * which is what saves it from the `?? null` that would silently gate the
+ * dialog off (kindred#2541) without buying the unsound half.
  */
-export function hasReviewableDiagnostics(d: SolverDiagnostics | undefined): d is SolverDiagnostics {
+export function hasReviewableDiagnostics(d: SolverDiagnostics | undefined): boolean {
   if (!d) return false
   return (
     Boolean(d.infeasibilityCause) ||
