@@ -207,10 +207,19 @@ func TestNarrativeIsNeverLogged(t *testing.T) {
 // narrativeExprs are the Go expressions that evaluate to narrative text.
 // Separate from narrativeColumns because a log line can name either the
 // column or the struct field that feeds it.
+//
+// The five *Gate fields (kindred#2542) are listed here too even though they
+// are structured, not narrative -- guardedColumns() below is what this file
+// calls the "same export/log ban" list, and a log guard that only watched the
+// column names and not the struct fields that feed them would miss a slog
+// call built from the field directly, the same gap this list already closes
+// for the narrative columns.
 var narrativeExprs = []string{
 	"med.cpapInfo", "med.specialNeedsInfo", "med.allergyInfo",
 	"med.dietaryInfo", "med.additionalInfo", "med.bathroomExplain",
 	"med.accommodationExplain", "med.physicianInfo",
+	"med.allergyGate", "med.dietaryGate", "med.specialNeedsGate",
+	"med.physicianGate", "med.cpapGate",
 	"reg.requestText", "req.RequestText", "a.req.RequestText",
 }
 
@@ -242,9 +251,9 @@ func narrativeLogViolations(src string) []string {
 			i = j
 		}
 
-		for _, column := range narrativeColumns {
+		for _, column := range guardedColumns() {
 			if strings.Contains(call, `"`+column+`"`) {
-				out = append(out, "a slog call references the medical narrative column "+column+":\n  "+call)
+				out = append(out, "a slog call references the medical column "+column+":\n  "+call)
 			}
 		}
 		for _, expr := range narrativeExprs {
