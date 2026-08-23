@@ -61,18 +61,20 @@ NEEDLES="Ridge Yurt|Tawonga Village|Manzanita|Tuolumne|Cloud'?s Rest|Wawona|Half
 # Scan roots, overridable ONLY so the test suite can point the guard at a
 # missing directory and assert it fails rather than reporting a clean scan.
 #
-# THESE FIVE ARE THE WHOLE SCOPE. Every rule stated below -- including the
-# code/comment table -- describes what happens INSIDE these roots and nowhere
-# else. The pytest tree at tests/ is NOT among them and never has been: it
-# carries 71 needle hits (80 case-insensitively) across three files under
-# tests/unit/api/services/, of which 4 sit in comments, and none of them has
-# ever been checked. One of those comments restates in prose the exact fact
-# kindred#2512 scrubbed out of api/services/lodging_rules.py, so the scrub
-# moved the sentence into an unscanned file rather than out of the repository.
-# Widening the roots changes what every future PR is measured against, so it
-# gets its own change: kindred#2515 carries the measurement and the
-# scrub-or-exempt decision.
-read -r -a SCAN_ROOTS <<<"${LODGING_SCAN_ROOTS:-pocketbase/ api/ bunking/ frontend/src/ scripts/}"
+# SIX ROOTS, AND THE RULE TABLE BELOW APPLIES TO ALL OF THEM EQUALLY. tests/
+# joined in kindred#2515 -- DECISION: OPTION A, not B. It was missing from the
+# very first version of this guard and stayed missing through every widening
+# since, so nothing under the pytest tree was ever checked, in either column:
+# a full-registry re-measurement (not just the NEEDLES sample) found 17
+# comment-line hits across two files under tests/unit/api/services/, all
+# rewritten in the same change that added this root. Option B -- exempt
+# tests/ deliberately -- was rejected because it is not a coherent rule: this
+# guard already scans other test files (frontend/src/**/*.test.ts,
+# pocketbase/**/*_test.go) under the code/comment table below, so the same
+# comment would fail in a Go test file and pass in a pytest file purely by
+# directory. Fixture CODE in a test file stays exempt here exactly as it does
+# under every other root -- only the comment split changed.
+read -r -a SCAN_ROOTS <<<"${LODGING_SCAN_ROOTS:-pocketbase/ api/ bunking/ frontend/src/ scripts/ tests/}"
 
 # Capture grep's OWN status before the filter pipeline swallows it. grep exits
 # 0 for matches, 1 for none, and >=2 when the scan itself failed — an
@@ -138,8 +140,8 @@ done
 #   not a test file -> code hits fail, comment hits fail
 #   a test file     -> code hits are exempt, comment hits fail
 #
-# ...for files under SCAN_ROOTS. See the note there: tests/ is outside them
-# (kindred#2515).
+# ...for files under SCAN_ROOTS, which since kindred#2515 is all six roots,
+# tests/ included -- see the note there for why it joined and what it cost.
 #
 # The 18 comment hits this widening newly caught were scrubbed in the same
 # change (7 outside test files, including `effective_bathroom`'s own docstring

@@ -699,4 +699,52 @@ else
 fi
 
 echo
+echo "=== TEST 23: a needle in a COMMENT under tests/ must fail (kindred#2515) ==="
+# kindred#2515: SCAN_ROOTS never included tests/, so nothing under the pytest
+# tree was ever checked, in either column -- 14 real comment hits across two
+# files sat there while this guard reported OK. This asserts the widening: a
+# comment probe under tests/ must be caught with NO env override, the same way
+# TEST 8 asserts scripts/ is a default root rather than an opt-in one.
+TESTS_DIR_COMMENT_PROBE="$REPO_ROOT/tests/leak_probe_kindred2515.py"
+cleanup20() { rm -f "$TESTS_DIR_COMMENT_PROBE"; }
+trap 'cleanup20; cleanup19; cleanup18; cleanup17; cleanup16; cleanup15; cleanup14; cleanup13; cleanup12; cleanup11; cleanup10; cleanup9; cleanup8; cleanup7; cleanup6; cleanup5; cleanup4; cleanup3; cleanup' EXIT INT TERM
+echo '# Regression comment naming Manzanita to explain a fixture below.' > "$TESTS_DIR_COMMENT_PROBE"
+set +e
+OUT=$("$GUARD_SCRIPT" 2>&1)
+rc=$?
+set -e
+rm -f "$TESTS_DIR_COMMENT_PROBE"
+if [[ $rc -eq 1 ]] && grep -q "tests/leak_probe_kindred2515.py:1:" <<<"$OUT"; then
+  echo "PASS: a needle in a tests/ comment is caught with no env override"
+else
+  echo "FAIL: expected exit 1 naming the tests/ comment probe, got $rc" >&2
+  echo "$OUT" >&2
+  exit 1
+fi
+
+echo
+echo "=== TEST 24: a needle in FIXTURE CODE under tests/ must still exit 0 ==="
+# The mirror of TEST 23, and why kindred#2515 chose Option A over exempting
+# tests/ wholesale: the existing test-file rule (TEST 11, TEST 19 for other
+# roots) applies here unchanged -- a real unit name as fixture DATA is
+# legitimate under tests/ exactly as it is under frontend/src/** or
+# pocketbase/, so widening SCAN_ROOTS must not also start failing fixtures.
+TESTS_DIR_CODE_PROBE="$REPO_ROOT/tests/leak_probe_kindred2515_code.py"
+cleanup21() { rm -f "$TESTS_DIR_CODE_PROBE"; }
+trap 'cleanup21; cleanup20; cleanup19; cleanup18; cleanup17; cleanup16; cleanup15; cleanup14; cleanup13; cleanup12; cleanup11; cleanup10; cleanup9; cleanup8; cleanup7; cleanup6; cleanup5; cleanup4; cleanup3; cleanup' EXIT INT TERM
+echo 'UNIT = "Manzanita 3"' > "$TESTS_DIR_CODE_PROBE"
+set +e
+OUT=$("$GUARD_SCRIPT" 2>&1)
+rc=$?
+set -e
+rm -f "$TESTS_DIR_CODE_PROBE"
+if [[ $rc -eq 0 ]]; then
+  echo "PASS: a needle as fixture code under tests/ is still exempt"
+else
+  echo "FAIL: expected exit 0 for a needle as fixture code under tests/, got $rc" >&2
+  echo "$OUT" >&2
+  exit 1
+fi
+
+echo
 echo "All tests passed."
