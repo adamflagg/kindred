@@ -437,10 +437,24 @@ func CollapseToHouseholdGrain(values []PersonRequestValue) map[string]*Household
 		// real request survives another's "No requests" -- which is the
 		// correct reading and the reason most such combinations exist.
 		//
-		// wants_with is no longer stored; the eligibility superset is derived
-		// here. Truth table unchanged: similar -> open before with is
-		// consulted, named -> named, neither -> declined -- exactly what the
-		// ORed column produced.
+		// wants_with is no longer stored; the eligibility superset is
+		// derived here from WantsWithNamed || WantsSimilarAges rather than
+		// from ParseSharedCabinModes' own bare `with` return. On every
+		// option sentence that exists in 2025/2026 data the two are equal,
+		// so the truth table is unchanged in practice: similar -> open
+		// before with is consulted, named -> named, neither -> declined.
+		//
+		// That equality is a fact about the live vocabulary, not a
+		// structural guarantee -- it is an accepted narrowing. withNamed
+		// requires BOTH "WITH" and "SPECIFIC" (see ParseSharedCabinModes
+		// above); the bare `with` this replaced required only "WITH". A
+		// hypothetically reworded named option that kept "WITH" but
+		// dropped "specific" would have parsed to eligibility named before
+		// this change, and parses to declined now. Same hazard class as
+		// the hyphen guard on similarAges above and NormalizeShareGate's
+		// "shar" guard -- staff reword these option sentences -- but this
+		// one is accepted rather than defended against.
+		// TestParseSharedCabinModesNamedWith pins the trade.
 		a.req.ShareEligibility, a.req.ShareEligibilitySource, a.req.ShareAnswersConflict =
 			DeriveShareEligibility(
 				a.req.Gate, a.formAnswered, a.req.WantsWithNamed || a.req.WantsSimilarAges,

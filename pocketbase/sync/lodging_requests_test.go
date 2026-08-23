@@ -223,7 +223,10 @@ func TestParseSharedCabinModes(t *testing.T) {
 // TestParseSharedCabinModesNamedWith pins the split itself (owner ruling
 // 2026-08-22): the named-family tick and the similar-ages tick are truly
 // separate stored answers now, not one OR-collapsed wants_with column. `with`
-// stays the in-memory superset DeriveShareEligibility's callers use.
+// documents the in-memory superset contract; the only production caller
+// (CollapseToHouseholdGrain, lodging_requests.go) discards this parse's
+// `with` return and re-derives it from WantsWithNamed || WantsSimilarAges, so
+// `with` here is exercised by tests only.
 func TestParseSharedCabinModesNamedWith(t *testing.T) {
 	t.Parallel()
 	named := "Share a cabin WITH a specific family that I know (please include names below and " +
@@ -250,6 +253,15 @@ func TestParseSharedCabinModesNamedWith(t *testing.T) {
 	_, with, withNamed, similarAges = ParseSharedCabinModes(named + "|" + similar)
 	if !with || !withNamed || !similarAges {
 		t.Fatalf("both options: with=%v withNamed=%v similarAges=%v", with, withNamed, similarAges)
+	}
+	// The accepted narrowing, pinned: a reworded named option that keeps
+	// "WITH" but drops "specific" still counts as the with SUPERSET, but no
+	// longer as the NAMED tick -- eligibility for such a household would read
+	// declined rather than named. Live 2025/2026 vocabulary never hits this;
+	// if staff reword the option, this is the test that names the trade.
+	_, with, withNamed, _ = ParseSharedCabinModes("Share a cabin WITH a family I know (names below)")
+	if !with || withNamed {
+		t.Fatalf("reworded named option: with=%v withNamed=%v", with, withNamed)
 	}
 }
 
