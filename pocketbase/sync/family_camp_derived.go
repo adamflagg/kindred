@@ -1708,18 +1708,25 @@ func (s *FamilyCampDerivedSync) processRegistrations(
 			if isAccommodationExplainField(v.fieldName) {
 				reg.needsFridge = reg.needsFridge || mentionsFridge(v.value)
 			}
-			// The step-free need reads BOTH narratives, and that difference is
-			// measured rather than defensive (kindred#2438). Copying the fridge
-			// route verbatim would lose more than a third of this signal: on
-			// the 2026 snapshot 5 of the 14 mobility households narrate ONLY
-			// through the bathroom field and 3 through both, against 0 of the 6
-			// fridge households. A family explaining why it needs a private bathroom
-			// is often explaining that someone cannot walk to the shared one.
+			// The step-free need reads the accommodation narrative ALONE, the
+			// same route as fridge above. It used to read the bathroom
+			// narrative too (kindred#2438) on the reasoning that a family
+			// explaining why it needs a private bathroom is often explaining
+			// that someone cannot walk to the shared one.
 			//
-			// The two routes stay separate for the same measured reason: no
-			// fridge ask lands in the bathroom field, so widening one must not
-			// widen the other.
-			if isAccommodationExplainField(v.fieldName) || isBathroomExplainField(v.fieldName) {
+			// REVERSED by owner ruling 2026-08-23, because of what it did to
+			// the board: a household whose only narrative is a bathroom
+			// explanation raised this flag AND needs_private_bathroom, drawing
+			// two glyphs whose tooltips showed the same paragraph -- one family
+			// answer rendered as two independent needs.
+			//
+			// Re-measured before reversing, and the signal loss is zero. Of the
+			// 14 step-free households on the 2026 snapshot, 11 narrate through
+			// the accommodation field and are unaffected; the other 3 narrate
+			// only through the bathroom field and are ALL already
+			// needs_private_bathroom, so they keep a glyph carrying the very
+			// same words. 2025: 4 step-free, none bathroom-only.
+			if isAccommodationExplainField(v.fieldName) {
 				reg.needsStepFree = reg.needsStepFree || mentionsStepFree(v.value)
 			}
 		}
@@ -1842,10 +1849,10 @@ var bathroomExplainFieldNames = []string{
 	"Bathroom-Yes",
 }
 
-// isBathroomExplainField reports whether name routes the bathroom narrative.
-func isBathroomExplainField(name string) bool {
-	return slices.Contains(bathroomExplainFieldNames, name)
-}
+// (isBathroomExplainField was here. Its only caller was the step-free
+// derivation, removed by the 2026-08-23 owner ruling; bathroomExplainFieldNames
+// itself is still the routing list processMedical reads for the narrative
+// column, so the LIST stays and only the predicate went.)
 
 // stepFreeKeywords is the recall surface for needs_step_free (kindred#2438).
 //

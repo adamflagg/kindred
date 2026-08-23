@@ -373,31 +373,51 @@ describe('explainSources — which medical field(s) explain each need', () => {
    * vocabulary, so it is pinned here with the rest of the closed set, and it
    * mirrors the Go sync's flag derivation rather than guessing by name:
    * `needs_private_bathroom` is derived from `bathroom_explain`, `needs_power`
-   * from `cpap_info` (the power need IS the CPAP disclosure), `needs_fridge`
-   * keyword-matches `accommodation_explain`, and `needs_step_free`
-   * keyword-matches BOTH `accommodation_explain` and `bathroom_explain`.
+   * from `cpap_info` (the power need IS the CPAP disclosure), and both
+   * `needs_fridge` and `needs_step_free` keyword-match `accommodation_explain`.
+   *
+   * ⚠️ step-free read `bathroom_explain` TOO until the 2026-08-23 owner ruling.
+   * Both halves of that route were removed together -- the Go derivation stops
+   * raising the flag from a bathroom narrative, and this list stops reading it
+   * -- because keeping either half alone is incoherent: a tooltip that quotes a
+   * field the flag no longer comes from, or a flag with no words behind it.
+   * What the pair produced was a DUPLICATE mark: a household whose only
+   * narrative is a bathroom explanation drew a bathroom glyph and a step-free
+   * glyph whose tooltips showed the same paragraph.
    */
   it('maps each need to the field(s) its flag was derived from', () => {
     expect(needGlyph('bathroom').explainSources).toEqual(['bathroom_explain'])
     expect(needGlyph('power').explainSources).toEqual(['cpap_info'])
     expect(needGlyph('fridge').explainSources).toEqual(['accommodation_explain'])
-    expect(needGlyph('step_free').explainSources).toEqual([
-      'accommodation_explain',
-      'bathroom_explain',
-    ])
+    expect(needGlyph('step_free').explainSources).toEqual(['accommodation_explain'])
   })
 })
 
 describe('needExplainTexts — the explain paragraphs one glyph appends', () => {
-  it('returns the mapped texts in source order', () => {
+  /*
+   * THE DUPE GUARD (owner ruling 2026-08-23). A household that wrote only a
+   * bathroom explanation used to draw two glyphs quoting one paragraph. The
+   * step-free glyph must now read the accommodation narrative and leave the
+   * bathroom narrative to the bathroom glyph, which is the answer the family
+   * actually gave.
+   */
+  it('reads the accommodation narrative and never the bathroom one', () => {
     const texts = needExplainTexts('step_free', {
       accommodation_explain: 'A ground-floor room, please — Riley uses a walker.',
       bathroom_explain: 'Cannot manage the path to the bathhouse at night.',
     })
-    expect(texts).toEqual([
-      'A ground-floor room, please — Riley uses a walker.',
-      'Cannot manage the path to the bathhouse at night.',
-    ])
+    expect(texts).toEqual(['A ground-floor room, please — Riley uses a walker.'])
+  })
+
+  it('says nothing for a step-free household whose only narrative is the bathroom one', () => {
+    // The 3 of 14 households on the 2026 snapshot that this ruling affects.
+    // They keep a BATHROOM glyph carrying these very words; what they lose is
+    // the second glyph repeating them.
+    expect(
+      needExplainTexts('step_free', {
+        bathroom_explain: 'Cannot manage the path to the bathhouse at night.',
+      })
+    ).toEqual([])
   })
 
   it('reads only its own source field, never a sibling need’s', () => {
@@ -415,14 +435,9 @@ describe('needExplainTexts — the explain paragraphs one glyph appends', () => 
   })
 
   it('skips empty and whitespace-only fields — the label alone is the tooltip then', () => {
+    expect(needExplainTexts('step_free', { accommodation_explain: '   ' })).toEqual([])
     expect(
-      needExplainTexts('step_free', { accommodation_explain: '   ', bathroom_explain: '' })
-    ).toEqual([])
-    expect(
-      needExplainTexts('step_free', {
-        accommodation_explain: '',
-        bathroom_explain: 'Cannot manage stairs.',
-      })
+      needExplainTexts('step_free', { accommodation_explain: 'Cannot manage stairs.' })
     ).toEqual(['Cannot manage stairs.'])
   })
 

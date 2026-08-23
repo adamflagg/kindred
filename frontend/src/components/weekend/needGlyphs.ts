@@ -299,7 +299,12 @@ export const NEED_GLYPHS: readonly NeedGlyphSpec[] = [
     // BOTH keyword sources, so a step-free tooltip shows whichever the family
     // actually wrote — a walker disclosure lands in `bathroom_explain` as
     // often as in `accommodation_explain`.
-    explainSources: ['accommodation_explain', 'bathroom_explain'],
+    // The accommodation narrative ALONE, matching the Go derivation exactly.
+    // Both used to include the bathroom narrative; the 2026-08-23 owner ruling
+    // removed it from the pair together, because a household whose only
+    // narrative is a bathroom explanation was drawing two glyphs that quoted
+    // the same paragraph. The bathroom narrative belongs to the bathroom glyph.
+    explainSources: ['accommodation_explain'],
     // `ramp_coverage`, never the raw `has_ramp` — and here that is not only the
     // container trap. `has_ramp` is a STRING, so `'no'` is TRUTHY: any consumer
     // testing it for truthiness renders "step-free" on the four cabins staff

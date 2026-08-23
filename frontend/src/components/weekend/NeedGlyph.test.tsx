@@ -178,7 +178,14 @@ describe('the manage user’s glyph tooltip', () => {
     expect(tooltip).toHaveTextContent(ACCOMMODATION_EXPLAIN)
   })
 
-  it('shows BOTH of step-free’s source fields, accommodation first', () => {
+  /*
+   * THE DUPE GUARD, at the render level (owner ruling 2026-08-23). Step-free
+   * used to quote the bathroom narrative as well, so a household that wrote one
+   * bathroom explanation saw it twice -- once under the bathroom glyph and
+   * again under step-free. The bathroom narrative now belongs to the bathroom
+   * glyph alone.
+   */
+  it('shows step-free’s accommodation narrative and never the bathroom one', () => {
     medicalResult.value = {
       data: {
         bathroom_explain: BATHROOM_EXPLAIN,
@@ -197,8 +204,7 @@ describe('the manage user’s glyph tooltip', () => {
     fireEvent.focus(screen.getByTestId('need-glyph-step_free'))
     const text = screen.getByRole('tooltip').textContent ?? ''
     expect(text).toContain(ACCOMMODATION_EXPLAIN)
-    expect(text).toContain(BATHROOM_EXPLAIN)
-    expect(text.indexOf(ACCOMMODATION_EXPLAIN)).toBeLessThan(text.indexOf(BATHROOM_EXPLAIN))
+    expect(text).not.toContain(BATHROOM_EXPLAIN)
   })
 
   it('shows the label alone while the payload is still loading — the label IS the placeholder', () => {
