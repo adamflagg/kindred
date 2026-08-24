@@ -906,8 +906,8 @@
    * puts `rounded-full` there for exactly that reason.
    */
   .share-emphasis-glow {
-    box-shadow:
-      0 0 calc(4px + var(--share-emphasis-amp) * 8px) calc(var(--share-emphasis-amp) * 2px)
+    box-shadow: 0 0 calc(4px + var(--share-emphasis-amp) * 8px)
+      calc(var(--share-emphasis-amp) * 2px)
       color-mix(in srgb, var(--share-yes) calc(30% + var(--share-emphasis-amp) * 45%), transparent);
   }
 
