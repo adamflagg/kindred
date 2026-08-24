@@ -75,6 +75,7 @@
  * what no glyph can say, which today is capacity alone.
  */
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
+import { unplacedFilterGroup, type UnplacedFilterKey } from './unplacedFilters'
 import { partyIdentityLabel } from './householdIdentity'
 import { resolveNeedGlyphs } from './needGlyphs'
 import { worseOf, type NeedsFit } from './needsFit'
@@ -275,4 +276,42 @@ export function placementCandidates(
       if (bySort !== 0) return bySort
       return partyIdentityLabel(a.party).localeCompare(partyIdentityLabel(b.party))
     })
+}
+
+/**
+ * Split an already-ordered candidate list into a pinned band and the rest —
+ * the Assign modal's half of kindred#2480 (owner pick "B", 2026-08-24).
+ *
+ * ## This is the "never hide" ruling holding, not bending
+ *
+ * The module doc above rules that a fit-filtered list would be empty most of
+ * the time, so this list never removes anyone. A GROUP pin is a different
+ * axis and removes nobody either: both halves come back, and the caller
+ * renders them one after the other. The arithmetic that makes hiding wrong
+ * here makes pinning right — on a 62-party weekend, 4 ask for a bathroom, so
+ * hiding would leave 4 rows while pinning surfaces those 4 and keeps 58.
+ *
+ * ## Why the fit order survives inside each band
+ *
+ * The input is already sorted by fit then name, and a stable partition keeps
+ * that order in both halves. So an over-capacity family never floats above one
+ * that fits merely because it asked for a bathroom — the band groups, it does
+ * not promote. Fit remains the primary signal; the group is a lens over it.
+ *
+ * A `null` group is the no-pick case and puts everyone in `rest`, which is
+ * exactly today's list.
+ */
+export function partitionByGroup(
+  candidates: PlacementCandidate[],
+  group: UnplacedFilterKey | null
+): { pinned: PlacementCandidate[]; rest: PlacementCandidate[] } {
+  if (!group) return { pinned: [], rest: candidates }
+  const { matches } = unplacedFilterGroup(group)
+  const pinned: PlacementCandidate[] = []
+  const rest: PlacementCandidate[] = []
+  for (const candidate of candidates) {
+    if (matches(candidate.party)) pinned.push(candidate)
+    else rest.push(candidate)
+  }
+  return { pinned, rest }
 }

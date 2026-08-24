@@ -12,7 +12,12 @@
 import { describe, expect, it } from 'vitest'
 
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
-import { candidateFit, placementCandidates } from './placementCandidates'
+import {
+  candidateFit,
+  partitionByGroup,
+  placementCandidates,
+  type PlacementCandidate,
+} from './placementCandidates'
 
 function unit(overrides: Partial<LodgingUnitRow> = {}): LodgingUnitRow {
   return {
@@ -587,5 +592,68 @@ describe('candidateFit — one grading, and the notes the glyphs now carry (kind
     const result = candidateFit(party({ party_size: 6 }), unit({ sleeps: 4 }), [])
     expect(result.fit).toBe('unmet')
     expect(result.notes).toEqual(['Over capacity · needs 6, 4 free'])
+  })
+})
+
+/**
+ * Pinning by staff group — the Assign modal's half of kindred#2480.
+ *
+ * The module's "it annotates and orders, it never hides" ruling is the whole
+ * constraint here: a group PIN reorders and nothing else. Every test below
+ * exists to prove the list that comes out is the list that went in.
+ */
+describe('partitionByGroup — pins without hiding', () => {
+  const bathroomer = party({
+    household_cm_id: 301,
+    sort_name: 'Alvarez',
+    flags: { needs_private_bathroom: true },
+  })
+  const plainA = party({ household_cm_id: 302, sort_name: 'Bennett' })
+  const plainB = party({ household_cm_id: 303, sort_name: 'Castillo' })
+
+  function candidates(): PlacementCandidate[] {
+    return [plainA, bathroomer, plainB].map((party) => ({
+      party,
+      fit: 'fits' as const,
+      notes: [],
+    }))
+  }
+
+  it('returns every candidate it was given, split in two', () => {
+    const { pinned, rest } = partitionByGroup(candidates(), 'bathroom')
+    expect(pinned).toHaveLength(1)
+    expect(rest).toHaveLength(2)
+    // The invariant the module doc protects: nothing is lost in the split.
+    expect([...pinned, ...rest]).toHaveLength(candidates().length)
+  })
+
+  it('puts the matches first and leaves everyone else in their existing order', () => {
+    const { pinned, rest } = partitionByGroup(candidates(), 'bathroom')
+    expect(pinned[0]?.party.sort_name).toBe('Alvarez')
+    // Bennett/Castillo keep the fit-then-name order they arrived in — the
+    // pin is a second axis over the fit sort, never a replacement for it.
+    expect(rest.map((c) => c.party.sort_name)).toEqual(['Bennett', 'Castillo'])
+  })
+
+  it('pins nobody when no group is picked', () => {
+    const { pinned, rest } = partitionByGroup(candidates(), null)
+    expect(pinned).toHaveLength(0)
+    expect(rest).toHaveLength(3)
+  })
+
+  it('keeps the fit order WITHIN the pinned band', () => {
+    // An over-capacity family must not float above one that fits merely
+    // because it asked for a bathroom. The band is a grouping, not a promotion.
+    const other = party({
+      household_cm_id: 304,
+      sort_name: 'Abbott',
+      flags: { needs_private_bathroom: true },
+    })
+    const list: PlacementCandidate[] = [
+      { party: bathroomer, fit: 'fits', notes: [] },
+      { party: other, fit: 'unmet', notes: ['Over capacity'] },
+    ]
+    const { pinned } = partitionByGroup(list, 'bathroom')
+    expect(pinned.map((c) => c.fit)).toEqual(['fits', 'unmet'])
   })
 })
