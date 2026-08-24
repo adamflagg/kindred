@@ -58,7 +58,7 @@
  * exists once a push has actually run in this session.
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
 
 import { useApiWithAuth } from '../../hooks/useApiWithAuth'
@@ -87,6 +87,25 @@ export type PushStage = 'report' | 'deck' | 'done'
  * longer writes into at all.
  */
 export type Decision = 'live' | 'scenario' | 'keep' | 'remove'
+
+/**
+ * Every `conflict`/`remove` building defaults to its ACTIONABLE side — owner
+ * ruling 2026-08-24 (visual round 2, item 6): decisions arrive pre-populated
+ * the instant the preview loads, never blank. `conflict` defaults to
+ * `'scenario'` (take what this scenario proposes) and `remove` defaults to
+ * `'remove'` (the scenario carries nothing here, so the push removes it) —
+ * both are the change a push actually makes if staff never touch the deck at
+ * all, which is what "actionable" means here. Staff review-and-override from
+ * this pre-picked state rather than building it up from nothing.
+ */
+function defaultDecisionsFor(buildings: readonly PushBuildingReport[]): Record<string, Decision> {
+  const decisions: Record<string, Decision> = {}
+  for (const building of buildings) {
+    if (building.cls === 'conflict') decisions[building.key] = 'scenario'
+    else if (building.cls === 'remove') decisions[building.key] = 'remove'
+  }
+  return decisions
+}
 
 export interface PushWriteInsModalProps {
   year: number
@@ -128,6 +147,28 @@ const TILE_META: Record<PushBuildingReport['cls'], { label: string; className: s
   },
 }
 
+/**
+ * `add`/`remove` tiles name the occupant the push will create or delete,
+ * not just the building — owner ruling 2026-08-24 (visual round 2, item 5):
+ * staff approving an add or a removal need to see WHO, not just WHERE. A
+ * building can carry more than one row (kindred#2477's Yurt 5 fixture: two
+ * write-ins added to one building), so this is per-ROW, not per-building.
+ * `match`/`conflict` tiles are audit-only here and keep the building-label
+ * list — the deck is where a conflict's occupants get named.
+ */
+function tileSummaryLines(
+  cls: PushBuildingReport['cls'],
+  buildings: readonly PushBuildingReport[]
+): string[] {
+  if (cls === 'add') {
+    return buildings.flatMap((b) => b.draft.map((row) => `${row.occupant_name} — ${b.label}`))
+  }
+  if (cls === 'remove') {
+    return buildings.flatMap((b) => b.live.map((row) => `${row.occupant_name} — ${b.label}`))
+  }
+  return buildings.map((b) => b.label)
+}
+
 function ReportTile({
   cls,
   buildings,
@@ -143,7 +184,7 @@ function ReportTile({
         <span className="text-xl font-bold tabular-nums">{buildings.length}</span>
       </div>
       {buildings.length > 0 && (
-        <p className="truncate text-xs opacity-80">{buildings.map((b) => b.label).join(', ')}</p>
+        <p className="truncate text-xs opacity-80">{tileSummaryLines(cls, buildings).join(', ')}</p>
       )}
     </div>
   )
@@ -163,7 +204,7 @@ function ReportScreen({
   if (preview.buildings.length === 0) {
     return (
       <p className="text-muted-foreground text-sm">
-        This scenario&rsquo;s write-ins already match the live board. Nothing to push.
+        This scenario&rsquo;s write-ins already match CampMinder. Nothing to push.
       </p>
     )
   }
@@ -248,13 +289,37 @@ function ResultTile({ field, value }: { field: ResultField; value: number }) {
   )
 }
 
+/** One label + names group under the result tiles — owner ruling 2026-08-24
+ * (visual round 2, item 5): staff see WHO was added and WHO was removed,
+ * not just the counts. One line per person, no group when there's nobody
+ * to name. */
+function NameList({ label, names }: { label: string; names: readonly string[] }) {
+  if (names.length === 0) return null
+  return (
+    <div className="flex flex-col gap-0.5">
+      <span className="text-muted-foreground text-xs font-bold tracking-wider uppercase opacity-80">
+        {label}
+      </span>
+      {names.map((name, i) => (
+        <p key={`${name}-${String(i)}`} className="text-sm">
+          {name}
+        </p>
+      ))}
+    </div>
+  )
+}
+
 function PushSuccessScreen({
   result,
+  addedNames,
+  removedNames,
   onUnpush,
   isUnpushing,
   driftBuildings,
 }: {
   result: PushResult
+  addedNames: readonly string[]
+  removedNames: readonly string[]
   onUnpush: () => void
   isUnpushing: boolean
   driftBuildings: readonly string[] | null
@@ -274,6 +339,15 @@ function PushSuccessScreen({
           <ResultTile key={field} field={field} value={result[field]} />
         ))}
       </div>
+      {(addedNames.length > 0 || removedNames.length > 0) && (
+        <div className="flex flex-col gap-3 sm:flex-row sm:gap-6">
+          {/* "Occupants added/removed", not the bare "Added"/"Removed" the
+              tiles above already use — a duplicate label would make every
+              `getByText('Added')` query in this screen ambiguous. */}
+          <NameList label="Occupants added" names={addedNames} />
+          <NameList label="Occupants removed" names={removedNames} />
+        </div>
+      )}
       <p className="text-muted-foreground text-xs">
         One event: the push records its adds and removes together, so Unpush deletes what it added
         and restores what it removed.
@@ -327,6 +401,7 @@ export function PushWriteInsModal({
 }: PushWriteInsModalProps) {
   const { fetchWithAuth } = useApiWithAuth()
   const queryClient = useQueryClient()
+  const previewKey = queryKeys.pushPreview(year, sessionCmId, scenario)
 
   const [stage, setStage] = useState<PushStage>('report')
   const [decisions, setDecisions] = useState<Record<string, Decision>>({})
@@ -344,12 +419,21 @@ export function PushWriteInsModal({
   // that), so without this a staff member who reached the deck reviewing one
   // scenario would reopen the modal on a DIFFERENT scenario still sitting in
   // stage 'deck' with the previous scenario's decisions attached.
+  //
+  // `decisions` re-derives from whatever preview is CURRENTLY cached for this
+  // key (owner ruling 2026-08-24, visual round 2, item 6: reset-on-reopen
+  // must re-derive the actionable defaults, never blank to `{}`) rather than
+  // waiting for the fresh fetch below to land — the `useEffect` right after
+  // this block re-derives again once that fetch actually resolves, which is
+  // what corrects this if the cached preview turns out to be stale.
   const [wasOpen, setWasOpen] = useState(isOpen)
   if (isOpen !== wasOpen) {
     setWasOpen(isOpen)
     if (isOpen) {
       setStage('report')
-      setDecisions({})
+      setDecisions(
+        defaultDecisionsFor(queryClient.getQueryData<PushPreview>(previewKey)?.buildings ?? [])
+      )
       setPushResult(null)
       setUnpushResult(null)
       setDriftBuildings(null)
@@ -357,7 +441,6 @@ export function PushWriteInsModal({
     }
   }
 
-  const previewKey = queryKeys.pushPreview(year, sessionCmId, scenario)
   const query = useQuery<PushPreview>({
     queryKey: previewKey,
     queryFn: () => fetchPushPreview(fetchWithAuth, { year, sessionCmId, scenario }),
@@ -369,6 +452,20 @@ export function PushWriteInsModal({
     staleTime: 0,
     refetchOnMount: 'always',
   })
+
+  // The other half of "re-derive from the fresh preview": whenever a NEW
+  // preview object lands for this key — the first successful fetch, a
+  // reopen's refetch resolving with different content, or the 409-stale
+  // handler below swapping in a fresh report — repopulate `decisions` to the
+  // actionable defaults for THAT preview. React Query's structural sharing
+  // keeps `query.data` referentially stable when a refetch returns content
+  // identical to what's already cached, so this does not re-fire (and does
+  // not fight a staff override) on every render, only on an actual change.
+  useEffect(() => {
+    if (query.data === undefined) return
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- syncing decisions with a fetched preview object we don't own the identity of; re-derives only when React Query hands us a genuinely different `query.data` reference (see comment above)
+    setDecisions(defaultDecisionsFor(query.data.buildings))
+  }, [query.data])
 
   const pushMutation = useMutation<
     PushResult,
@@ -398,7 +495,11 @@ export function PushWriteInsModal({
         error.detail.reason === 'stale'
       ) {
         queryClient.setQueryData(previewKey, error.detail.report)
-        setDecisions({})
+        // Set directly from the fresh report rather than waiting on the
+        // `useEffect` above to catch `query.data`'s change — same result,
+        // no gap where the (about-to-be-replaced) report screen would need
+        // to render blank decisions first.
+        setDecisions(defaultDecisionsFor(error.detail.report.buildings))
         setStage('report')
         setStaleNotice(true)
         return
@@ -436,7 +537,12 @@ export function PushWriteInsModal({
       isOpen={isOpen}
       onClose={onClose}
       title="Push write-ins"
-      size="2xl"
+      // Dropped one step (owner ruling 2026-08-24, visual round 2, item 1):
+      // "2xl" (max-w-6xl) read too wide for a screen whose content is four
+      // small tiles or a single deck card. "xl" (max-w-4xl) still fits the
+      // report tiles (they wrap 2x2 at this width, which is fine) and the
+      // deck card comfortably.
+      size="xl"
       // spec §7: the three stages (report, deck, done) change content
       // height — exactly the defect `anchor="top"` exists for (`ui/Modal`'s
       // own doc). Centred, a height change re-centres the whole card and
@@ -448,7 +554,7 @@ export function PushWriteInsModal({
         error={query.error}
         data={query.data}
         label="push preview"
-        emptyMessage="This scenario's write-ins already match the live board. Nothing to push."
+        emptyMessage="This scenario's write-ins already match CampMinder. Nothing to push."
       >
         {(preview) => {
           const handlePush = () => {
@@ -513,9 +619,27 @@ export function PushWriteInsModal({
             )
           }
           if (pushResult === null) return null
+          // Named from the SAME `preview`/`decisions` the push was made
+          // with — `invalidateLodgingRegistryQueries` never touches the
+          // push-preview key, so `preview` is still the exact report that
+          // was pushed (owner ruling 2026-08-24, visual round 2, item 5).
+          // `add` buildings always write their draft rows unconditionally;
+          // `remove` buildings only write a removal when staff decided
+          // 'remove' (their actionable default, but staff may have flipped
+          // it to 'keep'). `conflict`-class replacements are deliberately
+          // NOT named here — the ruling scopes naming to unconditional
+          // creates/deletes, not to a resolved conflict.
+          const addedNames = preview.buildings
+            .filter((b) => b.cls === 'add')
+            .flatMap((b) => b.draft.map((row) => row.occupant_name))
+          const removedNames = preview.buildings
+            .filter((b) => b.cls === 'remove' && decisions[b.key] === 'remove')
+            .flatMap((b) => b.live.map((row) => row.occupant_name))
           return (
             <PushSuccessScreen
               result={pushResult}
+              addedNames={addedNames}
+              removedNames={removedNames}
               driftBuildings={driftBuildings}
               isUnpushing={unpushMutation.isPending}
               onUnpush={() => {

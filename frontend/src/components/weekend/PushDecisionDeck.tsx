@@ -25,13 +25,19 @@
  * place that mapping lives, so the pairwise card, the whole-building card,
  * and the keyboard handler can't drift from each other.
  *
- * ## The composed after-view previews `scenario` when undecided
+ * ## The composed after-view defaults to previewing `scenario`
  *
- * A whole-building card with no decision yet shows what "take scenario"
- * would do — live rows `gone` (struck), draft rows `new` — rather than a
- * blank or a `stay` default. That is what makes the after-list read as a
- * PREVIEW staff can flip, not an inert diff they must resolve before seeing
- * anything.
+ * A whole-building card falls back to showing what "use this scenario's"
+ * would do — live rows `gone` (struck), draft rows `new` — whenever
+ * `decision` isn't `'live'`. In the real product this branch is never
+ * actually reached undecided any more: the caller (`PushWriteInsModal`)
+ * pre-populates every `conflict`/`remove` building to its actionable side
+ * before the deck ever renders (owner ruling 2026-08-24, visual round 2,
+ * item 6) — the "staff hasn't decided yet, so preview the likely outcome"
+ * UX this section used to describe no longer exists. The ternary stays as
+ * the simplest correct fallback rather than being narrowed to a case that
+ * can't happen through the app; nothing here needed to change to keep
+ * behaving the same way.
  *
  * ## Advance animation
  *
@@ -75,9 +81,10 @@ const partySizeText = (partySize: number | null): string =>
   partySize === null ? '—' : String(partySize)
 
 /**
- * One SIDE's bed line — `wholesale — all N beds` when any of `rows`
- * occupies wholesale (`party_size === null`), else `<summed party_size> of
- * N beds`. `N` sums `sleeps` across `rows` deduped by `unit_id` (a side's
+ * One SIDE's bed line — `takes the whole space — all N beds` when any of
+ * `rows` occupies the whole space with no headcount recorded
+ * (`party_size === null`), else `<summed party_size> of N beds`. `N` sums
+ * `sleeps` across `rows` deduped by `unit_id` (a side's
  * rows never repeat a unit in practice — cheap insurance rather than a
  * live case).
  *
@@ -98,22 +105,26 @@ function bedSideLine(rows: readonly PushRowPayload[]): string {
     if (!sleepsByUnit.has(row.unit_id)) sleepsByUnit.set(row.unit_id, row.sleeps ?? 0)
   }
   const totalBeds = Array.from(sleepsByUnit.values()).reduce((sum, n) => sum + n, 0)
-  const wholesale = rows.some((row) => row.party_size === null)
-  if (wholesale) return `wholesale — all ${String(totalBeds)} beds`
+  const takesWholeSpace = rows.some((row) => row.party_size === null)
+  if (takesWholeSpace) return `takes the whole space — all ${String(totalBeds)} beds`
   const totalPeople = rows.reduce((sum, row) => sum + (row.party_size ?? 0), 0)
   return `${String(totalPeople)} of ${String(totalBeds)} beds`
 }
 
 /**
  * The card's full bed summary. A conflict card (pairwise or whole-building)
- * shows both sides, since both are live options staff can pick between; a
- * remove card has no scenario side to show — there is nothing in the
- * scenario for this building at all — so it shows live alone.
+ * shows both sides, since both are options staff can pick between; a remove
+ * card has no scenario side to show — there is nothing in the scenario for
+ * this building at all — so it shows the CampMinder side alone.
+ *
+ * "On CampMinder now" / "This scenario" (never "live") — owner ruling
+ * 2026-08-24, visual round 2, item 2: staff think of the live board as
+ * "CampMinder".
  */
 function bedSummary(building: PushBuildingReport): string {
   const liveLine = bedSideLine(building.live)
   if (building.cls === 'remove') return liveLine
-  return `Live: ${liveLine} → Scenario: ${bedSideLine(building.draft)}`
+  return `On CampMinder now: ${liveLine} → This scenario: ${bedSideLine(building.draft)}`
 }
 
 function pickColumnClass(picked: boolean): string {
@@ -124,7 +135,20 @@ function pickColumnClass(picked: boolean): string {
   }`
 }
 
-function FieldRow({ label, value, differs }: { label: string; value: string; differs: boolean }) {
+function FieldRow({
+  label,
+  value,
+  differs,
+  title,
+}: {
+  label: string
+  value: string
+  differs: boolean
+  /** Set only on the People row's em dash — "no headcount recorded", not a
+   * missing value (kindred#2540). Cheap accessibility-adjacent hint, not a
+   * behavior change. */
+  title?: string | undefined
+}) {
   return (
     <div
       className={`flex items-baseline justify-between gap-2 rounded-md px-1.5 py-1 text-sm ${
@@ -132,7 +156,9 @@ function FieldRow({ label, value, differs }: { label: string; value: string; dif
       }`}
     >
       <span className="text-muted-foreground text-xs">{label}</span>
-      <span className="truncate font-medium">{value || '—'}</span>
+      <span className="truncate font-medium" title={title}>
+        {value || '—'}
+      </span>
     </div>
   )
 }
@@ -145,6 +171,8 @@ function ColumnHeader({ label, picked }: { label: string; picked: boolean }) {
     </div>
   )
 }
+
+const NO_HEADCOUNT_TITLE = 'No headcount recorded'
 
 function PairwiseConflictCard({
   building,
@@ -177,47 +205,62 @@ function PairwiseConflictCard({
       liveValue: partySizeText(live.party_size),
       scenarioValue: partySizeText(draft.party_size),
       differs: live.party_size !== draft.party_size,
+      liveTitle: live.party_size === null ? NO_HEADCOUNT_TITLE : undefined,
+      scenarioTitle: draft.party_size === null ? NO_HEADCOUNT_TITLE : undefined,
     },
   ]
 
+  // Column headers + button names speak staff language, never "live" (owner
+  // ruling 2026-08-24, visual round 2, item 2). Both aria-label and the
+  // visible ColumnHeader carry the same text — the aria-label exists only so
+  // a test can query the whole column by name without matching every
+  // FieldRow's text too (frontend/CLAUDE.md's "test infrastructure" a11y
+  // policy).
   return (
-    <div className="flex gap-3">
-      <button
-        type="button"
-        aria-label="Keep live"
-        onClick={() => {
-          onPick('live')
-        }}
-        className={pickColumnClass(decision === 'live')}
-      >
-        <ColumnHeader label="Live" picked={decision === 'live'} />
-        {fields.map((field) => (
-          <FieldRow
-            key={field.label}
-            label={field.label}
-            value={field.liveValue}
-            differs={field.differs}
-          />
-        ))}
-      </button>
-      <button
-        type="button"
-        aria-label="Take scenario"
-        onClick={() => {
-          onPick('scenario')
-        }}
-        className={pickColumnClass(decision === 'scenario')}
-      >
-        <ColumnHeader label="Scenario" picked={decision === 'scenario'} />
-        {fields.map((field) => (
-          <FieldRow
-            key={field.label}
-            label={field.label}
-            value={field.scenarioValue}
-            differs={field.differs}
-          />
-        ))}
-      </button>
+    <div className="flex flex-col gap-3">
+      <p className="text-muted-foreground text-sm">
+        Same space, two different write-ins. Choose which one CampMinder should have.
+      </p>
+      <div className="flex gap-3">
+        <button
+          type="button"
+          aria-label="On CampMinder now"
+          onClick={() => {
+            onPick('live')
+          }}
+          className={pickColumnClass(decision === 'live')}
+        >
+          <ColumnHeader label="On CampMinder now" picked={decision === 'live'} />
+          {fields.map((field) => (
+            <FieldRow
+              key={field.label}
+              label={field.label}
+              value={field.liveValue}
+              differs={field.differs}
+              title={field.liveTitle}
+            />
+          ))}
+        </button>
+        <button
+          type="button"
+          aria-label="This scenario"
+          onClick={() => {
+            onPick('scenario')
+          }}
+          className={pickColumnClass(decision === 'scenario')}
+        >
+          <ColumnHeader label="This scenario" picked={decision === 'scenario'} />
+          {fields.map((field) => (
+            <FieldRow
+              key={field.label}
+              label={field.label}
+              value={field.scenarioValue}
+              differs={field.differs}
+              title={field.scenarioTitle}
+            />
+          ))}
+        </button>
+      </div>
     </div>
   )
 }
@@ -228,14 +271,29 @@ const AFTER_STATE_CLASS: Record<'stay' | 'gone' | 'new', string> = {
   new: 'border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-200',
 }
 
+/**
+ * A composed after-view row — occupant, unit, note (when present), and
+ * People, exactly the fields the pairwise card shows (owner ruling
+ * 2026-08-24, visual round 2, item 4). Previously this row showed only
+ * occupant + unit name, which hid what a whole-building "use this
+ * scenario's" decision was actually about to write.
+ */
 function AfterRow({ row, state }: { row: PushRowPayload; state: 'stay' | 'gone' | 'new' }) {
   return (
     <div
       data-after-state={state}
-      className={`flex items-baseline justify-between gap-2 rounded-md border px-2 py-1.5 text-sm ${AFTER_STATE_CLASS[state]}`}
+      className={`flex flex-col gap-0.5 rounded-md border px-2 py-1.5 text-sm ${AFTER_STATE_CLASS[state]}`}
     >
-      <span className="truncate font-medium">{row.occupant_name}</span>
-      <span className="text-xs opacity-80">{row.unit_name}</span>
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="truncate font-medium">{row.occupant_name}</span>
+        <span className="text-xs opacity-80">{row.unit_name}</span>
+      </div>
+      <div className="flex items-baseline justify-between gap-2 text-xs opacity-80">
+        <span className="truncate">{row.note !== '' ? row.note : null}</span>
+        <span title={row.party_size === null ? NO_HEADCOUNT_TITLE : undefined}>
+          {partySizeText(row.party_size)} people
+        </span>
+      </div>
     </div>
   )
 }
@@ -267,28 +325,36 @@ function WholeBuildingCard({
         ]
       : building.live.map((row, i) => ({ key: `live-${String(i)}`, row, state: 'stay' as const }))
 
+  // Button copy states what CampMinder ends up with (owner ruling
+  // 2026-08-24, visual round 2, item 2) — no separate aria-label needed
+  // here, unlike the pairwise card: each button's only content IS its
+  // ColumnHeader label, so the accessible name already reads clean.
+  const keepCount = building.live.length
+  const keepLabel = `Keep what CampMinder has (${String(keepCount)} write-in${keepCount === 1 ? '' : 's'})`
+
   return (
     <div className="flex flex-col gap-3">
       <div className="flex gap-3">
         <button
           type="button"
-          aria-label="Keep live"
           onClick={() => {
             onPick('live')
           }}
           className={pickColumnClass(decision === 'live')}
         >
-          <ColumnHeader label="Keep live" picked={decision === 'live'} />
+          <ColumnHeader label={keepLabel} picked={decision === 'live'} />
         </button>
         <button
           type="button"
-          aria-label="Take scenario"
           onClick={() => {
             onPick('scenario')
           }}
           className={pickColumnClass(decision === 'scenario')}
         >
-          <ColumnHeader label="Take scenario" picked={decision === 'scenario'} />
+          <ColumnHeader
+            label="Use this scenario's (replaces them)"
+            picked={decision === 'scenario'}
+          />
         </button>
       </div>
       <div className="flex flex-col gap-1.5">
@@ -317,36 +383,40 @@ function RemoveCard({
 
   return (
     <div className="flex flex-col gap-3">
+      <p className="text-muted-foreground text-sm">
+        This scenario doesn&rsquo;t place anyone here.
+      </p>
       {building.live.map((live, i) => (
         <div key={`live-${String(i)}`} className="border-border bg-muted/30 rounded-xl border p-3">
           <p className="font-semibold">{live.occupant_name}</p>
           {live.note !== '' && <p className="text-muted-foreground text-sm">{live.note}</p>}
-          <p className="text-muted-foreground text-sm">{partySizeText(live.party_size)} people</p>
+          <p className="text-muted-foreground text-sm">
+            <span title={live.party_size === null ? NO_HEADCOUNT_TITLE : undefined}>
+              {partySizeText(live.party_size)}
+            </span>{' '}
+            people
+          </p>
         </div>
       ))}
-      <p className="text-muted-foreground text-xs">
-        Removals are soft — one Unpush restores everything this push changed
-      </p>
+      <p className="text-muted-foreground text-xs">Pushing can be undone in one step afterwards.</p>
       <div className="flex gap-3">
         <button
           type="button"
-          aria-label="Keep on board"
           onClick={() => {
             onPick('keep')
           }}
           className={pickColumnClass(decision === 'keep')}
         >
-          <ColumnHeader label="Keep on board" picked={decision === 'keep'} />
+          <ColumnHeader label="Leave on CampMinder" picked={decision === 'keep'} />
         </button>
         <button
           type="button"
-          aria-label="Remove"
           onClick={() => {
             onPick('remove')
           }}
           className={pickColumnClass(decision === 'remove')}
         >
-          <ColumnHeader label="Remove" picked={decision === 'remove'} />
+          <ColumnHeader label="Remove from CampMinder" picked={decision === 'remove'} />
         </button>
       </div>
     </div>

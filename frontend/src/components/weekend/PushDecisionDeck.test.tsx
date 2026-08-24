@@ -131,7 +131,14 @@ function deckAt(key: string) {
 }
 
 describe('PushDecisionDeck', () => {
-  it('push stays disabled until every decision is made — the ruled block', () => {
+  // REWRITTEN — owner ruling 2026-08-24 (visual round 2, item 6): decisions
+  // now arrive pre-populated to the actionable side (every `PushWriteInsModal`
+  // renders the deck already decided — see that file's own tests), so "push
+  // disabled until every decision is made" is no longer reachable through the
+  // real app. D33's block rule survives only as a defensive belt — this test
+  // now proves the belt directly by constructing an incomplete `decisions`
+  // prop on the deck itself, which nothing in the real flow does any more.
+  it('the belt: push stays disabled if decisions are ever incomplete, even though the real flow never leaves one', () => {
     const { rerender } = render(deck({ decisions: {} }))
     expect(screen.getByRole('button', { name: 'Push' })).toBeDisabled()
     rerender(deck({ decisions: { 'cedar-9': 'scenario' } })) // 1 of 2
@@ -143,7 +150,7 @@ describe('PushDecisionDeck', () => {
   it('pairwise conflict picks a side and reports it', async () => {
     const onDecide = vi.fn()
     render(deck({ onDecide }))
-    await userEvent.click(screen.getByRole('button', { name: /take scenario|scn_1/i }))
+    await userEvent.click(screen.getByRole('button', { name: 'This scenario' }))
     expect(onDecide).toHaveBeenCalledWith('cedar-9', 'scenario')
   })
 
@@ -178,7 +185,9 @@ describe('PushDecisionDeck', () => {
   it('the whole-building bed line is side-scoped, not the union of both sides', () => {
     render(deckAt('big-house'))
     expect(
-      screen.getByText('Live: wholesale — all 7 beds → Scenario: 6 of 9 beds')
+      screen.getByText(
+        'On CampMinder now: takes the whole space — all 7 beds → This scenario: 6 of 9 beds'
+      )
     ).toBeInTheDocument()
   })
 
@@ -188,7 +197,9 @@ describe('PushDecisionDeck', () => {
   it('a pairwise same-unit card counts the unit once per side, not doubled', () => {
     render(deckAt('cedar-9'))
     expect(
-      screen.getByText('Live: wholesale — all 4 beds → Scenario: 2 of 4 beds')
+      screen.getByText(
+        'On CampMinder now: takes the whole space — all 4 beds → This scenario: 2 of 4 beds'
+      )
     ).toBeInTheDocument()
   })
 
@@ -207,5 +218,31 @@ describe('PushDecisionDeck', () => {
     render(deckAt('willow-3'))
     expect(screen.getByText('M. Kowalczyk')).toBeInTheDocument()
     expect(screen.getByText('T. Abubakar')).toBeInTheDocument()
+  })
+
+  // Owner ruling 2026-08-24 (visual round 2, item 4): AfterRow previously
+  // showed only occupant + unit name. The whole-building composed view must
+  // show note and People per row exactly like the pairwise card does.
+  it("the whole-building after view shows each row's note and People count", () => {
+    const building: PushBuildingReport = {
+      ...BIG_HOUSE,
+      draft: [
+        row('big-house', 'Woodson family', {
+          sleeps: 9,
+          party_size: 6,
+          note: 'Reserved for staff family',
+        }),
+      ],
+    }
+    render(deck({ buildings: [building] }))
+    expect(screen.getByText('Reserved for staff family')).toBeInTheDocument()
+    expect(screen.getByText('6 people')).toBeInTheDocument()
+  })
+
+  // Owner ruling 2026-08-24 (visual round 2, item 3): "wholesale" is banned
+  // from staff-facing copy everywhere in this deck.
+  it('never renders the word "wholesale"', () => {
+    render(deckAt('big-house'))
+    expect(screen.queryByText(/wholesale/i)).not.toBeInTheDocument()
   })
 })

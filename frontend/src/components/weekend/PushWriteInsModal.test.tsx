@@ -201,6 +201,26 @@ describe('PushWriteInsModal — report screen', () => {
     expect(screen.queryByRole('button', { name: /review/i })).not.toBeInTheDocument()
   })
 
+  // Owner ruling 2026-08-24 (visual round 2, item 5): the "Will add" and "Not
+  // in scenario" tiles must name the occupant, not just list the building —
+  // staff approving an add or a removal need to see WHO, not just WHERE.
+  it('the "Will add" tile names the occupant, not just the building', async () => {
+    renderModal(PREVIEW)
+    expect(await screen.findByText(/Kitchen crew — Yurt 5/)).toBeInTheDocument()
+  })
+
+  it('the "Not in scenario" tile names the occupant being removed', async () => {
+    renderModal(PREVIEW)
+    expect(await screen.findByText(/F\. Moreau — Aspen 5/)).toBeInTheDocument()
+  })
+
+  // Owner ruling 2026-08-24 (visual round 2, item 2): "live" is banned from
+  // staff-facing copy — staff think of the live board as "CampMinder".
+  it('an empty report speaks CampMinder, not "the live board"', async () => {
+    renderModal({ ...PREVIEW, buildings: [] })
+    expect(await screen.findByText(/already match campminder/i)).toBeInTheDocument()
+  })
+
   // kindred#2477 final review, Important #6: `execute_push`'s `match` branch
   // only increments `matched` -- it extends neither `adds` nor `removes`, so
   // a match writes NOTHING. The CTA count must reflect that: only an `add`
@@ -361,36 +381,101 @@ describe('PushWriteInsModal — push execution (Task 10)', () => {
     expect(await screen.findByText(/restored 1, deleted 0/i)).toBeInTheDocument()
     expect(mockInvalidateLodgingRegistryQueries).toHaveBeenCalledTimes(2)
   })
+
+  // Owner ruling 2026-08-24 (visual round 2, item 5): under the added/removed
+  // counts, the success screen must list WHO was added and WHO was removed.
+  it('success screen names who was added and who was removed', async () => {
+    const user = userEvent.setup()
+    mockExecuteWriteInPush.mockResolvedValue({
+      push_id: 'push_456',
+      added: 1,
+      removed: 1,
+      replaced: 0,
+      kept: 0,
+      matched: 0,
+      no_op: false,
+    })
+    const addAndRemove = PREVIEW.buildings.filter((b) => b.cls === 'add' || b.cls === 'remove')
+    renderModal({ ...PREVIEW, buildings: addAndRemove })
+
+    // aspen-5 (remove) arrives pre-decided to 'remove' — the actionable
+    // default (owner ruling 2026-08-24, item 6) — so Push is already enabled
+    // once the deck is reached.
+    await user.click(await screen.findByRole('button', { name: /review 1 decision/i }))
+    await user.click(screen.getByRole('button', { name: 'Push' }))
+
+    expect(await screen.findByText('Added')).toBeInTheDocument()
+    expect(screen.getByText('Kitchen crew')).toBeInTheDocument()
+    expect(screen.getByText('F. Moreau')).toBeInTheDocument()
+  })
 })
 
-describe('PushWriteInsModal — deck stage (kindred#2477 final review, Minor #8)', () => {
-  // The deck (stage 'deck', Task 9) is not otherwise exercised in this file
-  // — see the module doc. D33's ruled block ("Push disabled until all
-  // decided") is already pinned at PushDecisionDeck.test.tsx's own level;
-  // this hardens it at the INTEGRATION level too, through the real modal's
-  // `pushDisabled={deckBuildings.length > decidedCount || ...}` wiring
-  // rather than a hand-built `deck()` fixture that computes the same
-  // expression independently and could drift from what the modal actually
-  // passes.
-  it("the deck's push stays disabled until every decision is made, enforced through the real modal", async () => {
+// REWRITTEN — owner ruling 2026-08-24 (visual round 2, item 6): "Push stays
+// disabled until every decision is made" described a spec this modal no
+// longer implements. Decisions now arrive pre-populated to the actionable
+// side (every `conflict` defaults to 'scenario', every `remove` defaults to
+// 'remove') the instant the preview loads, so by the time staff reaches the
+// deck every building already has a decision and Push is enabled from the
+// start. D33's block rule is untouched — it is still wired
+// (`pushDisabled={deckBuildings.length > decidedCount || ...}`) and still
+// enforced by the server's 422 completeness check — but it now functions as
+// a defensive belt rather than a state staff routinely sees, which is why
+// PushDecisionDeck.test.tsx's own rewritten test proves the belt directly
+// via props instead of here. This block instead pins the new default state,
+// that staff can still override it, and that overriding both ways works.
+describe('PushWriteInsModal — deck stage defaults are actionable (owner ruling 2026-08-24)', () => {
+  it('decisions arrive pre-populated to the actionable side and Push is enabled immediately', async () => {
     const user = userEvent.setup()
     renderModal(PREVIEW) // 2 decisions needed: cedar-9 (conflict), aspen-5 (remove)
 
     await user.click(await screen.findByRole('button', { name: /review 2 decisions/i }))
 
-    // First card: cedar-9, a pairwise conflict. 0/2 decided.
-    expect(screen.getByRole('button', { name: 'Push' })).toBeDisabled()
-    await user.click(screen.getByRole('button', { name: 'Take scenario' }))
-    // 1/2 decided — still disabled.
-    expect(screen.getByRole('button', { name: 'Push' })).toBeDisabled()
-
-    // Move to the second card (aspen-5, a remove) and decide it too. Manual
-    // navigation, not the auto-advance timer, so this doesn't race it.
-    await user.click(screen.getByRole('button', { name: 'Next card' }))
-    await user.click(screen.getByRole('button', { name: 'Remove' }))
-
-    // 2/2 decided — enabled.
+    // No clicks yet — both buildings already carry a default decision.
+    expect(screen.getByText('2 / 2 decided')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Push' })).toBeEnabled()
+
+    // cedar-9 (pairwise conflict) defaults to 'scenario' — "This scenario"
+    // starts picked, not "On CampMinder now".
+    expect(screen.getByRole('button', { name: 'This scenario' }).className).toContain(
+      'ring-primary/30'
+    )
+    expect(screen.getByRole('button', { name: 'On CampMinder now' }).className).not.toContain(
+      'ring-primary/30'
+    )
+
+    // aspen-5 (remove) defaults to 'remove' — "Remove from CampMinder"
+    // starts picked, not "Leave on CampMinder".
+    await user.click(screen.getByRole('button', { name: 'Next card' }))
+    expect(screen.getByRole('button', { name: 'Remove from CampMinder' }).className).toContain(
+      'ring-primary/30'
+    )
+    expect(screen.getByRole('button', { name: 'Leave on CampMinder' }).className).not.toContain(
+      'ring-primary/30'
+    )
+  })
+
+  it('flipping a card to "On CampMinder now" and back to "This scenario" works', async () => {
+    const user = userEvent.setup()
+    renderModal(PREVIEW)
+    await user.click(await screen.findByRole('button', { name: /review 2 decisions/i }))
+
+    const campminderSide = screen.getByRole('button', { name: 'On CampMinder now' })
+    const scenarioSide = screen.getByRole('button', { name: 'This scenario' })
+
+    // Starts on the default (actionable) side.
+    expect(scenarioSide.className).toContain('ring-primary/30')
+    expect(campminderSide.className).not.toContain('ring-primary/30')
+
+    await user.click(campminderSide)
+    expect(campminderSide.className).toContain('ring-primary/30')
+    expect(scenarioSide.className).not.toContain('ring-primary/30')
+    // Overriding never un-decides a building the ruled block cares about.
+    expect(screen.getByText('2 / 2 decided')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Push' })).toBeEnabled()
+
+    await user.click(scenarioSide)
+    expect(scenarioSide.className).toContain('ring-primary/30')
+    expect(campminderSide.className).not.toContain('ring-primary/30')
   })
 })
 
@@ -407,5 +492,16 @@ describe('PushWriteInsModal — dialog anchoring (kindred#2477 final review, Imp
     const wrapper = screen.getByRole('dialog')
     expect(wrapper.className).toContain('items-start')
     expect(wrapper.className).not.toContain('items-center')
+  })
+
+  // Owner ruling 2026-08-24 (visual round 2, item 1): the modal was too
+  // wide — drop `ui/Modal`'s `size` one step, `"2xl"` (max-w-6xl) to `"xl"`
+  // (max-w-4xl).
+  it('is one size step narrower than before ("xl", not "2xl")', async () => {
+    renderModal(PREVIEW)
+    await screen.findByText('Will add')
+    const content = screen.getByTestId('modal-content')
+    expect(content.className).toContain('max-w-4xl')
+    expect(content.className).not.toContain('max-w-6xl')
   })
 })
