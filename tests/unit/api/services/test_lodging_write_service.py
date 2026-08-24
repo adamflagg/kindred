@@ -35,6 +35,7 @@ from api.schemas.lodging import (
     PushExecuteRequest,
     SlotMergeRequest,
 )
+from api.services.lodging_roster_service import SessionNotFoundError
 from api.services.lodging_write_service import (
     AlreadyUnpushedError,
     LodgingWriteService,
@@ -2439,6 +2440,28 @@ class TestPreviewPush:
         with pytest.raises(ValueError):
             await svc.preview_push(2026, 1309001, "")
 
+    @pytest.mark.asyncio
+    async def test_unset_party_size_reads_as_wholesale_not_zero(self) -> None:
+        """CodeRabbit fix-round finding (2026-08-23, PR #2555 comment 1).
+        PocketBase declares `party_size` `NUMERIC DEFAULT 0 NOT NULL`, so an
+        unset write-in reads back as literal `0`, never SQL NULL --
+        `_i_or_none`'s docstring in lodging_roster_service.py documents this
+        exact trap, and `write_in_covers` already routes through it. `_push_rows`
+        must normalize identically: a raw `getattr` would treat PocketBase's 0
+        as a recorded party of nobody, producing a false "0 of N beds" line
+        instead of "wholesale -- all N beds" and a false conflict against a
+        scenario row that genuinely recorded a count.
+        """
+        repo = _repo(
+            fetch_units=[_u("uc", "cedar-9")],
+            fetch_write_ins=[_wi("uc", "G. Whitfield", ppl=0, id="wi_1")],
+            fetch_draft_write_ins=[],
+        )
+        svc = LodgingWriteService(repo)
+        out = await svc.preview_push(2026, 1309001, "scn_1")
+        assert out.buildings[0].cls == "remove"
+        assert out.buildings[0].live[0].party_size is None
+
 
 class TestExecutePush:
     """kindred#2477 Task 4. `execute_push` writes the ledger BEFORE applying,
@@ -2533,6 +2556,36 @@ class TestExecutePush:
         apply_indices = [i for i, name in enumerate(names) if name in ("delete_write_in", "create_write_in")]
         assert apply_indices, "expected at least one delete_write_in/create_write_in call"
         assert ledger_index < min(apply_indices)
+
+    @pytest.mark.asyncio
+    async def test_vanished_session_refuses_before_the_ledger_write(self) -> None:
+        """CodeRabbit fix-round finding (2026-08-23, PR #2555 comment 2).
+        `SessionsSync` orphan-deletes `camp_sessions` rows while lodging rows
+        keep `session_cm_id` (docs/architecture/sync-layer.md), so a push can
+        be classified against a weekend whose session record is already gone.
+        Resolving the session AFTER `create_push_event` would leave a ledger
+        row describing changes that then 404 and never apply -- and because
+        the drift guard requires every `add` in the ledger to still be
+        present on the live board, that orphan row could never be unpushed.
+        The session lookup must run BEFORE the ledger write, refusing with
+        nothing written.
+        """
+        repo = self._repo_one_conflict()
+        repo.fetch_session = AsyncMock(side_effect=SessionNotFoundError("No weekend session 1309001 in 2026"))
+        svc = LodgingWriteService(repo)
+        preview = await svc.preview_push(2026, 1309001, "scn_1")
+        req = PushExecuteRequest(
+            year=2026,
+            session_cm_id=1309001,
+            scenario="scn_1",
+            digest=preview.digest,
+            decisions={"cedar-9": "scenario"},
+        )
+        with pytest.raises(SessionNotFoundError):
+            await svc.execute_push(req, pushed_by="user_1")
+        repo.create_push_event.assert_not_called()
+        repo.delete_write_in.assert_not_called()
+        repo.create_write_in.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_vanished_live_row_refuses_the_push_instead_of_lying(self) -> None:

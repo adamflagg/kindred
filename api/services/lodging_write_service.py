@@ -66,6 +66,7 @@ from api.services.lodging_roster_service import (
     SessionNotFoundError,
     _BathroomIndex,
     _capacity_by_code,
+    _i_or_none,
     placement_grain,
     resolved_units,
 )
@@ -1261,6 +1262,15 @@ class LodgingWriteService:
         `sleeps` reads `capacity_by_unit_id` (the EFFECTIVE capacity --
         `_capacity_by_unit_id`'s docstring), never `unit.sleeps` directly --
         that raw column is a combined container's DELTA, not its capacity.
+
+        `party_size` reads through `_i_or_none` (kindred#2555 fix-round),
+        the SAME normalizer `write_in_covers` uses in lodging_roster_service.py:
+        PocketBase declares the column `NUMERIC DEFAULT 0 NOT NULL`, so an
+        unset write-in reads back as literal `0`, never SQL NULL. A raw
+        `getattr` would read that 0 as a recorded party of nobody -- a false
+        "0 of N beds" line and a false conflict against a scenario row that
+        genuinely recorded a count -- instead of `PushRow.party_size`'s own
+        documented meaning of `None`: occupies the room WHOLESALE.
         """
         out: list[PushRow] = []
         for row in rows:
@@ -1273,7 +1283,7 @@ class LodgingWriteService:
                     unit_name=str(getattr(unit, "name", "") or "") if unit is not None else unit_id,
                     occupant_name=str(getattr(row, "occupant_name", "") or ""),
                     note=str(getattr(row, "note", "") or ""),
-                    party_size=getattr(row, "party_size", None),
+                    party_size=_i_or_none(row, "party_size"),
                     sleeps=capacity_by_unit_id.get(unit_id),
                 )
             )
@@ -1355,20 +1365,24 @@ class LodgingWriteService:
 
         RESOLVE, THEN LEDGER, THEN APPLY -- in that order, and the order is
         pinned by `TestExecutePush.test_ledger_write_precedes_the_apply_calls`
-        (fix-round, 2026-08-23). Every remove is turned into a live record id
-        BEFORE `create_push_event` runs at all, for a reason `create_push_event`
-        alone cannot fix: `_live_rows_with_ids` below re-fetches the live board
-        independently of the `fresh` snapshot taken at the top of this method,
-        so the two reads can disagree about the very rows `fresh` already
-        classified as removable. A miss there -- a row deleted by someone else
-        in the gap between the two fetches -- must not silently skip: `removed`
-        and the ledger would then both claim a delete that never happened, and
-        Task 5's Unpush would replay a delete against a row already gone. So a
-        miss refuses the WHOLE push via `PushDigestStaleError`, carrying a
-        FRESHLY RE-RUN preview -- not `fresh` above, which is already stale by
-        definition the moment a miss is found -- and writes NO ledger row.
-        Only once every remove has resolved does `create_push_event` run, and
-        only after that do the deletes/creates it just described actually
+        (fix-round, 2026-08-23). RESOLVE covers two independent reads, both
+        BEFORE `create_push_event` runs at all: every remove is turned into a
+        live record id (`_live_rows_with_ids`), and the target session is
+        turned into a PocketBase id (`_resolve_session_pb_id`). Neither can
+        move after the ledger write -- see each's own comment at its call
+        site for the failure it prevents. `_live_rows_with_ids` re-fetches
+        the live board independently of the `fresh` snapshot taken at the top
+        of this method, so the two reads can disagree about the very rows
+        `fresh` already classified as removable. A miss there -- a row
+        deleted by someone else in the gap between the two fetches -- must
+        not silently skip: `removed` and the ledger would then both claim a
+        delete that never happened, and Task 5's Unpush would replay a delete
+        against a row already gone. So a miss refuses the WHOLE push via
+        `PushDigestStaleError`, carrying a FRESHLY RE-RUN preview -- not
+        `fresh` above, which is already stale by definition the moment a miss
+        is found -- and writes NO ledger row. Only once every remove has
+        resolved AND the session has resolved does `create_push_event` run,
+        and only after that do the deletes/creates it just described actually
         happen: a crash mid-apply then leaves a ledger row naming exactly what
         was intended, never a row promising a delete this method could not
         actually find (spec §4.2). `changes` carries the payload BOTH
@@ -1447,6 +1461,20 @@ class LodgingWriteService:
                     raise PushDigestStaleError(stale)
                 remove_ids.append(rid)
 
+        # Resolved BEFORE the ledger write, for the same reason `remove_ids`
+        # is (kindred#2555 fix-round, 2026-08-23): a ledger row must never
+        # describe work this method then refuses to do. `SessionsSync`
+        # orphan-deletes `camp_sessions` rows while `session_cm_id` survives
+        # on the lodging tables (docs/architecture/sync-layer.md), so a
+        # weekend that classified cleanly above can still have no session
+        # record by the time this method reaches it. `SessionNotFoundError`
+        # here has to 404 with NOTHING written -- resolving after
+        # `create_push_event` would leave a ledger row naming an add/remove
+        # that then never applies, and because `unpush`'s drift guard
+        # requires every `add` to still be present live, that orphan row
+        # could never be reverted or cleared.
+        session_pb_id = await self._resolve_session_pb_id(request.year, request.session_cm_id)
+
         changes = [
             {
                 "action": "remove",
@@ -1491,7 +1519,6 @@ class LodgingWriteService:
                 "unpushed_at": "",
             }
         )
-        session_pb_id = await self._resolve_session_pb_id(request.year, request.session_cm_id)
         for rid in remove_ids:
             await self.repository.delete_write_in(rid)
         for r in adds:
