@@ -451,6 +451,12 @@ export function PushDecisionDeck({
     applyDecision(sideDecision(building, side))
   }
 
+  // Document-level arrow-key navigation is scan-flagged against
+  // frontend/CLAUDE.md's "DO NOT add ... arrow-key navigation" list, but this
+  // one stays: it is the owner's explicit ruled product ask for this queue
+  // screen (2026-08-22 — "staff could click next/previous or arrow right/left
+  // ... to wheel through"), not unrequested accessibility scaffolding, which
+  // is what that list targets. Escape is deliberately left untouched above.
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'ArrowLeft') {
