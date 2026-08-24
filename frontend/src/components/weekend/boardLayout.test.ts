@@ -836,6 +836,34 @@ describe('buildBoard — consent flagging on ELIGIBILITY, not the gate', () => {
     const slot = shared(['declined', 'open'], 'yes_share').areas[0]?.slots[0]
     expect(slot?.consent?.declinedCount).toBe(1)
   })
+
+  /*
+   * A CUT IS A RULING, and the absence has to be defended by a test or it
+   * comes back — `FamilyCard.test.tsx`'s "the marks kindred#2072 STRUCK"
+   * header records two elements this codebase restored after ruling them out,
+   * because nothing failed when they returned. The chip-level half of the
+   * 2026-08-23 "Answers disagree" ruling is pinned there; this is the
+   * slot-level half, and it lives here because `ConsentFlag` is this file's
+   * shape.
+   */
+  it('rolls up no ANSWER CONFLICT — the slot-level half of the struck chip (2026-08-23)', () => {
+    // Owner ruling: "it is dead all the way down." `DeriveShareEligibility`
+    // computed and stored a per-household conflict flag as a third return
+    // value, but eligibility itself never read it and nothing downstream did
+    // either, so `ShareRequestSummary.answers_conflict` and the column behind
+    // it went with the chip. `ConsentFlag.conflictCount` was the slot-level
+    // rollup of that same field; it went too. A flag that fires here does so
+    // on eligibility alone, and says so in words a household would recognise.
+    const flag = shared(['declined', 'unknown']).areas[0]?.slots[0]?.consent
+    expect(flag).not.toBeNull()
+    expect(flag).not.toHaveProperty('conflictCount')
+    // The reason line never reaches for the struck vocabulary either — a
+    // rollup can be restored as wording alone, without a count to grep for.
+    expect(flag?.reason).not.toMatch(/disagree|conflict/i)
+    // Backstop: the two counts that survive are the whole set, so a third one
+    // under any name fails here rather than quietly reaching the board.
+    expect(Object.keys(flag ?? {}).sort()).toEqual(['declinedCount', 'reason', 'unansweredCount'])
+  })
 })
 
 describe('buildBoard — area grouping and colour', () => {

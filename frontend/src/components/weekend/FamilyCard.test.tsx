@@ -1480,9 +1480,9 @@ describe('FamilyCard — the marks kindred#2072 STRUCK', () => {
     // either. The chip, `answersConflictDetail`, `ShareRequestSummary.
     // answers_conflict` and the column it read all came out together, so
     // there is no longer any payload shape that can ask for this chip — this
-    // fixture is the shape that used to. `boardLayout.test.ts` pins the
-    // sibling slot-level absence (`ConsentFlag` no longer has a
-    // `conflictCount`).
+    // fixture is the shape that used to. The sibling slot-level absence
+    // (`ConsentFlag` no longer has a `conflictCount`) is pinned by
+    // `boardLayout.test.ts`'s "rolls up no ANSWER CONFLICT".
     render(
       <FamilyCard
         party={party({
