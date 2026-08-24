@@ -640,12 +640,16 @@ export function LodgingBoard({
       <BoardMorphBoundary slotCodes={slotCodes} unitsByCode={unitsByCode} />
       <div className="flex flex-col gap-3">
         {/* The write-in push queue's entry point (kindred#2477 Task 8) — a
-            scenario to compare against the live board, AND the permission to
-            act on it. ABSENT rather than disabled outside that: `opacity-40`
-            is this board's vocabulary for a refusal (CLAUDE.md §4), and an
-            affordance with nothing behind it on the mirror or for a
-            read-only viewer is not a refusal to badge that way. */}
-        {scenario !== '' && canManage && (
+            scenario to compare against the live board, the permission to
+            act on it, AND a real weekend session. ABSENT rather than
+            disabled outside that: `opacity-40` is this board's vocabulary
+            for a refusal (CLAUDE.md §4), and an affordance with nothing
+            behind it on the mirror, for a read-only viewer, or on a board
+            with no session is not a refusal to badge that way.
+            `sessionCmId > 0` carries the same reason `canPlace` (Line ~314)
+            does — a board under test defaults it to 0, and the preview
+            endpoint requires a positive id (kindred#2555 fix-round). */}
+        {scenario !== '' && canManage && sessionCmId > 0 && (
           <div className="flex justify-end">
             <button
               type="button"

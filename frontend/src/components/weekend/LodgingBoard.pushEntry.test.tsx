@@ -143,6 +143,16 @@ describe('LodgingBoard — the push write-ins entry button', () => {
     expect(screen.queryByRole('button', { name: /push write-ins/i })).not.toBeInTheDocument()
   })
 
+  it('is absent without a weekend session, where a preview would fire session_cm_id=0', () => {
+    // CodeRabbit fix-round finding (2026-08-23, PR #2555 comment 3): the
+    // same third condition `canPlace` (Line ~314) carries for the identical
+    // reason -- `sessionCmId` defaults to 0 for boards under test that don't
+    // exercise a real weekend, and the preview endpoint requires a positive
+    // id.
+    renderBoard({ sessionCmId: 0 })
+    expect(screen.queryByRole('button', { name: /push write-ins/i })).not.toBeInTheDocument()
+  })
+
   it('is present, badged, with both', () => {
     renderBoard()
     expect(screen.getByRole('button', { name: /push write-ins/i })).toBeInTheDocument()
