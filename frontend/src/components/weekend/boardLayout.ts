@@ -43,13 +43,7 @@
  *    rooms is drawn on each of them, which is why an area's family count reads
  *    distinct `partyKey`s rather than slot entries.
  */
-import type {
-  LodgingUnitRow,
-  RosterPartyRow,
-  ShareEligibilityValue,
-  ShareRequest,
-  SharePreferenceValue,
-} from '../../types/lodging'
+import type { LodgingUnitRow, RosterPartyRow, ShareEligibilityValue } from '../../types/lodging'
 import { partyHeadcount } from './householdIdentity'
 import { partyKey } from './partyKey'
 import {
@@ -261,131 +255,11 @@ export const AREA_HUES = [
 export const SHARE_WORDING = {
   /** Sentence fragment: "N families <…>". */
   declined: 'did not request sharing',
-  /** Sentence fragment: "N families' two <…>". */
-  conflict: 'answers disagree',
 } as const
 
 /** The same phrase as a standalone chip label. One source, two positions. */
 export function shareWordingChip(phrase: string): string {
   return phrase.charAt(0).toUpperCase() + phrase.slice(1)
-}
-
-/**
- * The REGISTRATION gate's answer, worded for a sentence rather than a chip.
- *
- * `preference` (`share_cabin_gate`) is a 3-state answer plus "never
- * answered" — see `SharePreferenceChip`'s doc, which owns the CHIP-label
- * spelling of the same four values. This is a distinct wording, not a
- * duplicate: it exists to sit in a sentence fragment ("Registration said
- * …"), where the chip's title-case labels ("Will not share") read oddly.
- */
-const REGISTRATION_ANSWER: Record<SharePreferenceValue, string> = {
-  no_share: 'will not share',
-  maybe_mutual: 'only if a mutual match',
-  yes_share: 'open to sharing',
-  unknown: 'not answered',
-}
-
-/**
- * The FAMILY CAMP FORM's resolved answer, worded for the same sentence.
- *
- * `declined` reuses `SHARE_WORDING.declined` rather than its own phrase —
- * ONE definition of that claim, so the slot flag, the card's "did not
- * request sharing" chip, and this tooltip cannot drift into three different
- * wordings of a form that has no refusal option to record.
- */
-const FORM_ANSWER: Record<ShareEligibilityValue, string> = {
-  open: 'open to sharing',
-  named: 'wants to share with a named family',
-  declined: SHARE_WORDING.declined,
-  unknown: 'not answered',
-}
-
-/**
- * Guarded lookup — same philosophy as `SharePreferenceChip`'s `Object.hasOwn`
- * guard on `CHIP`: a payload sent ahead of a type regen must degrade to the
- * "not answered" phrasing rather than throw and take the whole card with it.
- */
-function wordingFor<T extends string>(
-  table: Record<T, string>,
-  value: T,
-  fallback: string
-): string {
-  return Object.hasOwn(table, value) ? table[value] : fallback
-}
-
-/**
- * The tooltip text for the per-party "answers disagree" chip (kindred#2083).
- *
- * The chip alone said only that the two forms disagreed, never which two
- * answers or which one staff are acting on. This names both sides and the
- * resolution in one sentence.
- *
- * Reads `preference` (the registration gate) and `eligibility` (the
- * resolved verdict) directly rather than re-deriving either from `proximity`.
- * `DeriveShareEligibility` only ever sets `answers_conflict` true on its
- * form-answered branch (Go, `lodging_requests.go`), so whenever this returns
- * non-null, `eligibility` already IS the Family Camp form's own answer --
- * confirmed against 2026 production PRE-kindred#2269: all 16 conflicting
- * households then carried `eligibility_source: 'form'`. That count is stale
- * -- kindred#2269's union conflict test is a strict superset of the one it
- * was measured against, so the true count can only be equal or higher now --
- * but the invariant itself (raised only off the form-answered branch) is
- * structural, not a property of the count, and still holds.
- *
- * That invariant is enforced only in a separate Go file, with nothing here
- * to catch a future change or a stale mid-`family_camp_derived`-recompute
- * row that briefly disagrees with it — so this still BRANCHES on
- * `eligibility_source` rather than assuming it, and only names "the Family
- * Camp form" when the field itself says so. Off that branch the resolved
- * answer is worded as "the answer on file" instead: a claim this function
- * can defend either way, matching `consentFlag`'s own rule of reporting only
- * what was recorded.
- *
- * `preference` (`share_cabin_gate`) is the registration answer that WON
- * `winsGate`'s newest-wins race, not necessarily the answer that disagrees
- * (kindred#2269). `DeriveShareEligibility` raises the conflict off the UNION
- * of every sibling's recorded no_share/yes_share answer, so a household can
- * conflict with a WINNING gate that itself agrees with the resolved verdict
- * -- the actual contradiction is a *different* sibling's answer that lost
- * recency and never reaches this payload at all. This is not only a
- * `maybe_mutual` shape: the winning gate can be `no_share` while eligibility
- * is ALSO `declined` (a hidden lost `yes_share` sibling is the real
- * conflict), or `yes_share` while eligibility is ALSO non-declined (a hidden
- * lost `no_share` sibling). `preferenceDisagrees` below reruns the same
- * two-arm test `DeriveShareEligibility` used before kindred#2269 introduced
- * the union signals -- the one case where `preference` itself, taken alone,
- * actually contradicts `eligibility`. Only then is it safe to name; every
- * other case falls back to the generic "a registration answer on file
- * disagrees" sentence, because naming an agreeing pair would have the
- * tooltip look like agreement on a chip whose whole job is to say they
- * don't.
- *
- * Returns null when there is nothing to report: no conflict, or no share
- * block at all — the shape of an adult-weekend guest, who has no share
- * question to disagree on (`_build_person_parties` attaches no share data).
- * The caller gates the whole chip on this, rather than on the raw boolean,
- * so a party this can't explain never renders an empty chip.
- */
-export function answersConflictDetail(share: ShareRequest | undefined): string | null {
-  if (share?.answers_conflict !== true) return null
-  const resolved = wordingFor(FORM_ANSWER, share.eligibility ?? 'unknown', 'not answered')
-  const winner =
-    share.eligibility_source === 'form'
-      ? `the Family Camp form said ${resolved} — staff use the form's answer`
-      : `the answer on file is ${resolved} — staff use that answer`
-  const preferenceDisagrees =
-    (share.preference === 'no_share' && share.eligibility !== 'declined') ||
-    (share.preference === 'yes_share' && share.eligibility === 'declined')
-  if (!preferenceDisagrees) {
-    return `A registration answer on file disagrees with this: ${winner}.`
-  }
-  const registration = wordingFor(
-    REGISTRATION_ANSWER,
-    share.preference ?? 'unknown',
-    'not answered'
-  )
-  return `Registration said ${registration}; ${winner}.`
 }
 
 /** A shared unit holding somebody who did not consent to sharing it. */
@@ -399,12 +273,6 @@ export interface ConsentFlag {
    * is a claim staff cannot defend to that household.
    */
   unansweredCount: number
-  /**
-   * Parties whose two forms point opposite ways. A staff-review signal, not a
-   * placement rule — it fires even when everyone in the slot is shareable,
-   * because the disagreement is the thing worth a human look.
-   */
-  conflictCount: number
   /** Ready to render beside the slot. Never the medical narrative. */
   reason: string
 }
@@ -805,9 +673,7 @@ export function consentFlag(
 
   let declinedCount = 0
   let unansweredCount = 0
-  let conflictCount = 0
   for (const party of sharing) {
-    if (party.share?.answers_conflict === true) conflictCount += 1
     // Absent eligibility is UNKNOWN, never open. These columns are written by
     // family_camp_derived, so they are empty until it re-runs, and empty must
     // fall to the side that does not consent.
@@ -837,12 +703,11 @@ export function consentFlag(
     }
   }
 
-  if (declinedCount === 0 && unansweredCount === 0 && conflictCount === 0) return null
+  if (declinedCount === 0 && unansweredCount === 0) return null
   return {
     declinedCount,
     unansweredCount,
-    conflictCount,
-    reason: consentReason(declinedCount, unansweredCount, conflictCount),
+    reason: consentReason(declinedCount, unansweredCount),
   }
 }
 
@@ -853,11 +718,7 @@ export function consentFlag(
  * option, so this state is the absence of a share request, and most of the
  * households in it asked to be housed near someone instead.
  */
-function consentReason(
-  declinedCount: number,
-  unansweredCount: number,
-  conflictCount: number
-): string {
+function consentReason(declinedCount: number, unansweredCount: number): string {
   const parts: string[] = []
   if (declinedCount > 0) {
     parts.push(
@@ -871,13 +732,6 @@ function consentReason(
       unansweredCount === 1
         ? "1 family hasn't answered the cabin form"
         : `${String(unansweredCount)} families haven't answered the cabin form`
-    )
-  }
-  if (conflictCount > 0) {
-    parts.push(
-      conflictCount === 1
-        ? `1 family's two ${SHARE_WORDING.conflict}`
-        : `${String(conflictCount)} families' two ${SHARE_WORDING.conflict}`
     )
   }
   return parts.join(', ')

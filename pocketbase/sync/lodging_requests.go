@@ -149,8 +149,7 @@ func ParseSharedCabinModes(raw string) (near, with, withNamed, similarAges bool)
 }
 
 // DeriveShareEligibility resolves the two share questions into the one verdict
-// the board places on, plus where it came from and whether the two answers
-// disagree.
+// the board places on, plus where it came from.
 //
 // PRECEDENCE, staff-stated 2026-08-02: the Family Camp information form wins.
 // The registration gate is a coarse early filter -- it even told families so in
@@ -170,23 +169,20 @@ func ParseSharedCabinModes(raw string) (near, with, withNamed, similarAges bool)
 // across 2025-2026 selected NEAR alone, so reading it as consent would make the
 // largest cohort on the board look shareable.
 //
-// A conflict is a HARD contradiction only: the two forms point opposite ways.
-// maybe_mutual resolving into anything is the answer arriving, not a conflict --
-// counting refinements would put a third of respondents in the review queue
-// instead of the measured 7.5% (pre-kindred#2269; the union widening below is
-// a strict superset of the test that rate was measured against, so the true
-// rate can only be equal or higher now).
+// anySiblingDeclined reports whether ANY of the household's person-partition
+// gate answers normalised to no_share, regardless of which one winsGate
+// picked as the recency winner -- a UNION signal across every sibling, not
+// the single winning gate. It feeds the FALLBACK fail-safe below.
 //
-// anySiblingDeclined and anySiblingYesShare report whether ANY of the
-// household's person-partition gate answers normalised to no_share /
-// yes_share respectively, regardless of which one winsGate picked as the
-// recency winner. Both are UNION signals across every sibling, not the single
-// winning gate -- see the conflict test below and kindred#2269, which is what
-// happens when only one direction of this union is wired in (or, before this
-// function existed, when neither was).
+// This used to take a symmetric anySiblingYesShare parameter too, feeding an
+// answers-disagree conflict flag this function computed and returned as a
+// third value. That flag is retired (owner ruling 2026-08-23, "it is dead
+// all the way down" -- eligibility never read it, only stored it), and the
+// parameter went with it: CollapseToHouseholdGrain's matching sawYesGate
+// tracking is gone too, rather than left computing a union nothing reads.
 func DeriveShareEligibility(
-	gate string, formAnswered, wantsWith, wantsSimilarAges, anySiblingDeclined, anySiblingYesShare bool,
-) (eligibility, source string, conflict bool) {
+	gate string, formAnswered, wantsWith, wantsSimilarAges, anySiblingDeclined bool,
+) (eligibility, source string) {
 	if formAnswered {
 		switch {
 		case wantsSimilarAges:
@@ -198,28 +194,10 @@ func DeriveShareEligibility(
 		default:
 			eligibility = shareEligibilityDeclined
 		}
-		// Keyed off the VERDICT, not off wantsWith. The two agree today only
-		// because ParseSharedCabinModes guarantees similarAges implies with,
-		// and that invariant lives in another function whose own comment says
-		// it exists because staff reword these sentences. If it ever broke,
-		// keying off wantsWith would fail PERMISSIVELY -- reporting no conflict
-		// for a no_share gate sitting against an open verdict.
-		//
-		// Both arms are keyed off the UNION signals (anySiblingDeclined /
-		// anySiblingYesShare), not off `gate` -- the single answer that WON
-		// the recency race. A contradicting sibling that lost recency is
-		// still a contradiction the household stated -- kindred#2269 -- and
-		// reading only the winner missed it whenever the winner was
-		// maybe_mutual, since that gate matches neither arm on its own.
-		conflict = (anySiblingDeclined && eligibility != shareEligibilityDeclined) ||
-			(anySiblingYesShare && eligibility == shareEligibilityDeclined)
-		return eligibility, shareSourceForm, conflict
+		return eligibility, shareSourceForm
 	}
 
-	// FALLBACK. conflict is hardcoded false on every return below -- the
-	// fallback never raises share_answers_conflict itself, no matter how many
-	// sibling registration gate answers disagree with each other; evaluating
-	// a conflict is the form-answered branch's job, above.
+	// FALLBACK.
 	//
 	// A recorded decline anywhere in the household outranks a later permissive
 	// sibling answer. winsGate resolves the gate by newest-wins with no
@@ -232,22 +210,22 @@ func DeriveShareEligibility(
 	// authoritative, and letting an old sibling gate override it would invert
 	// the whole precedence rule.
 	if anySiblingDeclined {
-		return shareEligibilityDeclined, shareSourceRegistration, false
+		return shareEligibilityDeclined, shareSourceRegistration
 	}
 
 	switch gate {
 	case gateYesShare:
-		return shareEligibilityOpen, shareSourceRegistration, false
+		return shareEligibilityOpen, shareSourceRegistration
 	case gateMaybeMutual:
 		// "Maybe, I am open to sharing ... if a specific family that I know
 		// wants to" is consent to a NAMED partner, never to a staff match. It
 		// arrives with no names attached, so these are eligible in principle
 		// and unmatchable in practice until somebody else names them.
-		return shareEligibilityNamed, shareSourceRegistration, false
+		return shareEligibilityNamed, shareSourceRegistration
 	case gateNoShare:
-		return shareEligibilityDeclined, shareSourceRegistration, false
+		return shareEligibilityDeclined, shareSourceRegistration
 	}
-	return shareEligibilityUnknown, shareSourceNone, false
+	return shareEligibilityUnknown, shareSourceNone
 }
 
 // NormalizeShareEligibility gives an unwritten verdict its explicit spelling.
@@ -306,7 +284,6 @@ type HouseholdRequest struct {
 	// asked why a household is flagged.
 	ShareEligibility       string
 	ShareEligibilitySource string
-	ShareAnswersConflict   bool
 }
 
 // CollapseToHouseholdGrain implements spec 4.2, which is mandatory: the request
@@ -335,22 +312,9 @@ func CollapseToHouseholdGrain(values []PersonRequestValue) map[string]*Household
 		// unknown, so it tracks value PRESENCE, not parsed modes.
 		formAnswered bool
 		// Whether ANY sibling's gate answer normalised to no_share, regardless
-		// of which one winsGate picked. The fallback fails safe on this, and
-		// the form-answered conflict test reads it too -- see
-		// DeriveShareEligibility.
+		// of which one winsGate picked. DeriveShareEligibility's FALLBACK path
+		// fails safe on this -- see that function.
 		sawDeclineGate bool
-		// The symmetric union for yes_share -- kindred#2269. Consulted only by
-		// the form-answered conflict test. On DeriveShareEligibility's
-		// FALLBACK path (above), the only reachable case where this signal
-		// could change the answer is a winning maybe_mutual gate with a lost
-		// yes_share sibling: a winning no_share gate already sets
-		// sawDeclineGate and returns declined before this is ever read, and a
-		// winning yes_share gate already returns the fallback's most
-		// permissive verdict, open. Honoring sawYesGate there would turn
-		// maybe_mutual's `named` into `open` -- MORE permissive, not less --
-		// and the fallback deliberately does not buy that fail-safe, unlike
-		// the restrictive one anySiblingDeclined buys above.
-		sawYesGate bool
 	}
 
 	byHousehold := make(map[string]*accumulator)
@@ -390,14 +354,10 @@ func CollapseToHouseholdGrain(values []PersonRequestValue) map[string]*Household
 		switch v.FieldName {
 		case fieldShareCabinsRegistration, fieldSharedCabinForm:
 			gate := NormalizeShareGate(value)
-			// Recorded BEFORE winsGate picks a winner: a decline -- or a
-			// yes -- that loses on recency is still an answer the household
-			// stated.
+			// Recorded BEFORE winsGate picks a winner: a decline that loses
+			// on recency is still an answer the household stated.
 			if gate == gateNoShare {
 				a.sawDeclineGate = true
-			}
-			if gate == gateYesShare {
-				a.sawYesGate = true
 			}
 			if gate != "" && winsGate(a.gateAt, a.gateField, v) {
 				a.req.Gate = gate
@@ -455,10 +415,10 @@ func CollapseToHouseholdGrain(values []PersonRequestValue) map[string]*Household
 		// "shar" guard -- staff reword these option sentences -- but this
 		// one is accepted rather than defended against.
 		// TestParseSharedCabinModesNamedWith pins the trade.
-		a.req.ShareEligibility, a.req.ShareEligibilitySource, a.req.ShareAnswersConflict =
+		a.req.ShareEligibility, a.req.ShareEligibilitySource =
 			DeriveShareEligibility(
 				a.req.Gate, a.formAnswered, a.req.WantsWithNamed || a.req.WantsSimilarAges,
-				a.req.WantsSimilarAges, a.sawDeclineGate, a.sawYesGate)
+				a.req.WantsSimilarAges, a.sawDeclineGate)
 		out[hh] = a.req
 	}
 	return out

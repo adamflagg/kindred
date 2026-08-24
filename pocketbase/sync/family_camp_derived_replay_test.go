@@ -111,7 +111,7 @@ func newFamilyCampReplayTestApp(t *testing.T) core.App {
 		"share_eligibility", "share_eligibility_source")
 	boolean(regs, "needs_accommodation", "wants_near", "wants_with_named",
 		"wants_similar_ages", "needs_private_bathroom", "needs_power",
-		"accommodation_is_mandatory", "has_infant", "share_answers_conflict",
+		"accommodation_is_mandatory", "has_infant",
 		"needs_fridge", "needs_step_free")
 	text(regs, enrollmentStatusColumn)
 	save(regs)

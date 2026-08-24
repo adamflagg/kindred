@@ -328,11 +328,9 @@ type registrationData struct {
 	// shareCabinGate above is the registration answer only; the Family Camp
 	// information form outranks it wherever both were answered, which is why
 	// these are separate columns rather than a reinterpretation of the gate.
-	// shareAnswersConflict marks the two forms pointing opposite ways -- a
-	// staff-review signal, not a placement rule. See DeriveShareEligibility.
+	// See DeriveShareEligibility.
 	shareEligibility       string
 	shareEligibilitySource string
-	shareAnswersConflict   bool
 
 	// Derived accessibility flags. Spec 5.3: the board shows a flag, never the
 	// narrative -- that lives in family_camp_medical.
@@ -2027,7 +2025,6 @@ func (s *FamilyCampDerivedSync) applyHouseholdRequests(
 		reg.requestLastUpdated = req.LastUpdated
 		reg.shareEligibility = req.ShareEligibility
 		reg.shareEligibilitySource = req.ShareEligibilitySource
-		reg.shareAnswersConflict = req.ShareAnswersConflict
 	}
 }
 
@@ -2779,7 +2776,6 @@ func (s *FamilyCampDerivedSync) registrationNeedsUpdate(existing *core.Record, r
 		existing.GetBool("needs_step_free") != reg.needsStepFree ||
 		existing.GetString("share_eligibility") != normalizedEligibility ||
 		existing.GetString("share_eligibility_source") != normalizedSource ||
-		existing.GetBool("share_answers_conflict") != reg.shareAnswersConflict ||
 		existing.GetString(enrollmentStatusColumn) != reg.enrollmentStatus
 }
 
@@ -2813,7 +2809,6 @@ func setRegistrationRequestFields(record *core.Record, reg *registrationData) {
 		reg.shareEligibility, reg.shareEligibilitySource)
 	record.Set("share_eligibility", eligibility)
 	record.Set("share_eligibility_source", eligibilitySource)
-	record.Set("share_answers_conflict", reg.shareAnswersConflict)
 }
 
 // formatRequestStamp renders requestLastUpdated for the PocketBase date column.

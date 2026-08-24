@@ -505,7 +505,6 @@ describe('LodgingMap', () => {
         needs_resolution: false,
         eligibility: 'declined',
         eligibility_source: 'form',
-        answers_conflict: false,
       },
     })
     const sharing = party({
@@ -521,7 +520,6 @@ describe('LodgingMap', () => {
         needs_resolution: false,
         eligibility: 'open',
         eligibility_source: 'form',
-        answers_conflict: false,
       },
     })
     render(<LodgingMap parties={[declined, sharing]} units={[unit()]} year={2026} />)
@@ -549,7 +547,6 @@ describe('LodgingMap', () => {
       needs_resolution: false,
       eligibility: 'open' as const,
       eligibility_source: 'form' as const,
-      answers_conflict: false,
     }
     render(
       <LodgingMap

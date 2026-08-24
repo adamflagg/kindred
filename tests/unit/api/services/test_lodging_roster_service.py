@@ -3500,7 +3500,6 @@ class TestShareEligibility:
                     wants_with_named=True,
                     share_eligibility="named",
                     share_eligibility_source="form",
-                    share_answers_conflict=True,
                 )
             },
         )
@@ -3510,7 +3509,6 @@ class TestShareEligibility:
         assert share.preference == "no_share", "the raw gate stays visible"
         assert share.eligibility == "named", "the form outranks the gate"
         assert share.eligibility_source == "form"
-        assert share.answers_conflict is True
 
     @pytest.mark.asyncio
     async def test_registration_fallback_is_marked_provisional(self) -> None:
@@ -3529,7 +3527,6 @@ class TestShareEligibility:
                     share_cabin_gate="maybe_mutual",
                     share_eligibility="named",
                     share_eligibility_source="registration",
-                    share_answers_conflict=False,
                 )
             },
         )
@@ -3538,7 +3535,6 @@ class TestShareEligibility:
         share = roster.parties[0].share
         assert share.eligibility == "named"
         assert share.eligibility_source == "registration"
-        assert share.answers_conflict is False
 
     @pytest.mark.asyncio
     async def test_absent_columns_read_as_unknown_never_as_open(self) -> None:
@@ -3560,7 +3556,6 @@ class TestShareEligibility:
         share = roster.parties[0].share
         assert share.eligibility == "unknown"
         assert share.eligibility_source == "none"
-        assert share.answers_conflict is False
 
     @pytest.mark.asyncio
     async def test_adult_weekend_parties_carry_no_eligibility(self) -> None:

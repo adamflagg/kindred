@@ -363,7 +363,6 @@ describe('LodgingUnitCard', () => {
           consent: {
             declinedCount: 1,
             unansweredCount: 0,
-            conflictCount: 0,
             reason: '1 family did not request sharing',
           },
         })}
@@ -847,7 +846,6 @@ describe('LodgingUnitCard — no shared-space ring (#2179)', () => {
   const declinedConsent = {
     declinedCount: 1,
     unansweredCount: 0,
-    conflictCount: 0,
     reason: '1 family did not request sharing',
   }
 
@@ -1357,7 +1355,6 @@ describe('LodgingUnitCard — summer’s type scale', () => {
           consent: {
             declinedCount: 1,
             unansweredCount: 0,
-            conflictCount: 0,
             reason: 'One household declined sharing',
           },
         })}
@@ -1419,7 +1416,6 @@ describe('LodgingUnitCard — summer’s type scale', () => {
           consent: {
             declinedCount: 1,
             unansweredCount: 0,
-            conflictCount: 0,
             reason: 'One household declined sharing',
           },
         })}

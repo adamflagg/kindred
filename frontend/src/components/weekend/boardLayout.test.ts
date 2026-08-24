@@ -12,17 +12,14 @@ import type {
   RosterPartyRow,
   ShareEligibilityValue,
   SharePreferenceValue,
-  ShareRequest,
 } from '../../types/lodging'
 import {
-  answersConflictDetail,
   AREA_HUES,
   areaTokens,
   buildBoard,
   countBoardSlots,
   overlappingPartyKeys,
   partySize,
-  SHARE_WORDING,
   slotOccupancy,
   wholeBuildingHolders,
 } from './boardLayout'
@@ -670,11 +667,7 @@ describe('buildBoard — a party across several rooms', () => {
 
 describe('buildBoard — consent flagging on ELIGIBILITY, not the gate', () => {
   /** A shared unit whose parties carry the given resolved eligibilities. */
-  function shared(
-    values: ShareEligibilityValue[],
-    gate: SharePreferenceValue = 'unknown',
-    conflicts: boolean[] = []
-  ) {
+  function shared(values: ShareEligibilityValue[], gate: SharePreferenceValue = 'unknown') {
     return buildBoard(
       values.map((eligibility, index) =>
         party({
@@ -689,7 +682,6 @@ describe('buildBoard — consent flagging on ELIGIBILITY, not the gate', () => {
             needs_resolution: false,
             eligibility,
             eligibility_source: 'form',
-            answers_conflict: conflicts[index] ?? false,
           },
         })
       ),
@@ -735,16 +727,6 @@ describe('buildBoard — consent flagging on ELIGIBILITY, not the gate', () => {
     const reason = shared(['declined', 'open']).areas[0]?.slots[0]?.consent?.reason ?? ''
     expect(reason).toContain('did not request sharing')
     expect(reason).not.toMatch(/declined|said no|refused/i)
-  })
-
-  it('flags a recorded ANSWER CONFLICT, so the 16 households carrying one are visible', () => {
-    // The two forms point opposite ways. Not a placement rule -- a
-    // staff-review signal -- so it flags even when everyone is shareable.
-    const slot = shared(['named', 'named'], 'no_share', [true, false]).areas[0]?.slots[0]
-    expect(slot?.consent).not.toBeNull()
-    expect(slot?.consent?.conflictCount).toBe(1)
-    expect(slot?.consent?.declinedCount).toBe(0)
-    expect(slot?.consent?.reason).toContain('disagree')
   })
 
   it('does not flag a shared unit whose parties are all consenting and consistent', () => {
@@ -821,7 +803,6 @@ describe('buildBoard — consent flagging on ELIGIBILITY, not the gate', () => {
           needs_resolution: false,
           eligibility: 'unknown',
           eligibility_source: 'form',
-          answers_conflict: false,
         },
       })
 
@@ -855,181 +836,34 @@ describe('buildBoard — consent flagging on ELIGIBILITY, not the gate', () => {
     const slot = shared(['declined', 'open'], 'yes_share').areas[0]?.slots[0]
     expect(slot?.consent?.declinedCount).toBe(1)
   })
-})
 
-describe('answersConflictDetail — which two answers disagreed, and which one won (kindred#2083)', () => {
-  /** A minimal share block, defaulting to no conflict. */
-  function shareBlock(overrides: Partial<ShareRequest> = {}): ShareRequest {
-    return {
-      preference: 'unknown',
-      proximity: [],
-      request_text: '',
-      needs_resolution: false,
-      eligibility: 'unknown',
-      eligibility_source: 'none',
-      answers_conflict: false,
-      ...overrides,
-    }
-  }
-
-  it('says nothing when there is no conflict', () => {
-    expect(answersConflictDetail(shareBlock({ answers_conflict: false }))).toBeNull()
-  })
-
-  it('says nothing for a party with no share block at all — an adult weekend guest', () => {
-    // Adult weekends carry no share question (_build_person_parties attaches
-    // no share data), so there is nothing here to disagree about.
-    expect(answersConflictDetail(undefined)).toBeNull()
-  })
-
-  it('names the registration answer, the form answer, and that the form wins', () => {
-    // Measured against production 2026 data pre-kindred#2269: all 16
-    // conflicting households then resolved with `eligibility_source: 'form'`
-    // — DeriveShareEligibility only ever sets `answers_conflict` true on that
-    // branch, so `eligibility` here already IS the form's own verdict, not a
-    // re-derivation of it. kindred#2269's union widening is a strict superset
-    // of the test that count was measured against, so the true count can only
-    // be equal or higher now; the form-answered-only invariant still holds.
-    const detail = answersConflictDetail(
-      shareBlock({
-        preference: 'no_share',
-        eligibility: 'open',
-        eligibility_source: 'form',
-        answers_conflict: true,
-      })
-    )
-    expect(detail).not.toBeNull()
-    expect(detail).toMatch(/regist.*will not share/i)
-    expect(detail).toMatch(/form.*open to sharing/i)
-    expect(detail).toMatch(/form/i)
-  })
-
-  it('reuses the ONE "did not request sharing" wording for a form decline, never "declined"', () => {
-    // SHARE_WORDING is defined once specifically so the slot flag, the card
-    // chip, and this tooltip cannot drift into three different claims about a
-    // form with no refusal option.
-    const detail = answersConflictDetail(
-      shareBlock({
-        preference: 'yes_share',
-        eligibility: 'declined',
-        eligibility_source: 'form',
-        answers_conflict: true,
-      })
-    )
-    expect(detail).toContain(SHARE_WORDING.declined)
-    expect(detail).not.toMatch(/\bdeclined\b/i)
-  })
-
-  it('names a named-partner form answer distinctly from an open one', () => {
-    const detail = answersConflictDetail(
-      shareBlock({
-        preference: 'no_share',
-        eligibility: 'named',
-        eligibility_source: 'form',
-        answers_conflict: true,
-      })
-    )
-    expect(detail).toMatch(/named/i)
-  })
-
-  it('never attributes the resolved answer to the form when eligibility_source says otherwise', () => {
-    // DeriveShareEligibility (Go, lodging_requests.go) only ever sets
-    // `answers_conflict` true on its form-answered branch -- measured on 2026
-    // production pre-kindred#2269, all 16 conflicting rows then carried
-    // `eligibility_source: 'form'` (stale count; kindred#2269's union
-    // widening can only raise it, though the form-answered-only invariant
-    // still holds). This reads the field rather than assuming it, so a
-    // future Go change or a stale mid-recompute row can never misattribute a
-    // registration-only verdict to a form the household may not have even
-    // returned.
-    const detail = answersConflictDetail(
-      shareBlock({
-        preference: 'no_share',
-        eligibility: 'open',
-        eligibility_source: 'registration',
-        answers_conflict: true,
-      })
-    )
-    expect(detail).not.toBeNull()
-    expect(detail).not.toMatch(/Family Camp form/i)
-    expect(detail).toMatch(/open to sharing/)
-  })
-
-  it('never crashes on an unrecognised preference or eligibility value', () => {
-    // Same guard philosophy as `SharePreferenceChip`: a payload ahead of a
-    // type regen must degrade, not throw and take the whole card with it.
-    expect(() =>
-      answersConflictDetail({
-        ...shareBlock({ answers_conflict: true }),
-        preference: 'bogus' as unknown as SharePreferenceValue,
-        eligibility: 'bogus' as unknown as ShareEligibilityValue,
-      })
-    ).not.toThrow()
-  })
-
-  it('does not name a maybe_mutual registration answer as the side that disagrees (kindred#2269)', () => {
-    // As of kindred#2269, DeriveShareEligibility raises answers_conflict off
-    // the UNION of every sibling's no_share/yes_share answer, not just the
-    // winning gate -- so a household can now conflict with maybe_mutual as
-    // the winning share_cabin_gate, because the actual contradiction is a
-    // sibling answer that lost the recency race and isn't in this payload at
-    // all. REGISTRATION_ANSWER['maybe_mutual'] is "only if a mutual match",
-    // which does not read as a disagreement against any resolved verdict --
-    // naming it here would have the chip pair two answers that look like
-    // they agree, on a tooltip whose whole job is to say they don't.
-    const detail = answersConflictDetail(
-      shareBlock({
-        preference: 'maybe_mutual',
-        eligibility: 'declined',
-        eligibility_source: 'form',
-        answers_conflict: true,
-      })
-    )
-    expect(detail).not.toBeNull()
-    expect(detail).not.toMatch(/only if a mutual match/i)
-    expect(detail).not.toMatch(/^Registration said/)
-    // Still says what actually won, so the chip stays informative.
-    expect(detail).toMatch(SHARE_WORDING.declined)
-  })
-
-  it('does not name a no_share registration answer that itself AGREES with the verdict (kindred#2269)', () => {
-    // The winning gate can be no_share while eligibility is ALSO declined --
-    // they agree -- and the union fix can still raise answers_conflict, because
-    // a DIFFERENT sibling recorded yes_share and lost the recency race (Go
-    // CollapseToHouseholdGrain's sawYesGate, consulted by DeriveShareEligibility
-    // regardless of which gate won). Pairing "will not share" against a
-    // declined verdict reads as agreement, not disagreement, so naming
-    // `preference` here would be exactly the misleading pairing kindred#2269
-    // exists to prevent -- the maybe_mutual case is not the only shape of it.
-    const detail = answersConflictDetail(
-      shareBlock({
-        preference: 'no_share',
-        eligibility: 'declined',
-        eligibility_source: 'form',
-        answers_conflict: true,
-      })
-    )
-    expect(detail).not.toBeNull()
-    expect(detail).not.toMatch(/will not share/i)
-    expect(detail).not.toMatch(/^Registration said/)
-    expect(detail).toMatch(SHARE_WORDING.declined)
-  })
-
-  it('does not name a yes_share registration answer that itself AGREES with the verdict (kindred#2269)', () => {
-    // Mirror of the no_share case above: the winning gate is yes_share and
-    // eligibility resolves to something other than declined -- they agree --
-    // while a hidden no_share sibling that lost recency is the real conflict.
-    const detail = answersConflictDetail(
-      shareBlock({
-        preference: 'yes_share',
-        eligibility: 'open',
-        eligibility_source: 'form',
-        answers_conflict: true,
-      })
-    )
-    expect(detail).not.toBeNull()
-    expect(detail).not.toMatch(/open to sharing.*open to sharing/i)
-    expect(detail).not.toMatch(/^Registration said/)
+  /*
+   * A CUT IS A RULING, and the absence has to be defended by a test or it
+   * comes back — `FamilyCard.test.tsx`'s "the marks kindred#2072 STRUCK"
+   * header records two elements this codebase restored after ruling them out,
+   * because nothing failed when they returned. The chip-level half of the
+   * 2026-08-23 "Answers disagree" ruling is pinned there; this is the
+   * slot-level half, and it lives here because `ConsentFlag` is this file's
+   * shape.
+   */
+  it('rolls up no ANSWER CONFLICT — the slot-level half of the struck chip (2026-08-23)', () => {
+    // Owner ruling: "it is dead all the way down." `DeriveShareEligibility`
+    // computed and stored a per-household conflict flag as a third return
+    // value, but eligibility itself never read it. The payload/chip chain —
+    // `ShareRequestSummary.answers_conflict` and the column behind it — DID
+    // read it, and that chain is what comes out with the chip.
+    // `ConsentFlag.conflictCount` was the slot-level rollup of that same
+    // field; it went too. A flag that fires here does so on eligibility
+    // alone, and says so in words a household would recognise.
+    const flag = shared(['declined', 'unknown']).areas[0]?.slots[0]?.consent
+    expect(flag).not.toBeNull()
+    expect(flag).not.toHaveProperty('conflictCount')
+    // The reason line never reaches for the struck vocabulary either — a
+    // rollup can be restored as wording alone, without a count to grep for.
+    expect(flag?.reason).not.toMatch(/disagree|conflict/i)
+    // Backstop: the two counts that survive are the whole set, so a third one
+    // under any name fails here rather than quietly reaching the board.
+    expect(Object.keys(flag ?? {}).sort()).toEqual(['declinedCount', 'reason', 'unansweredCount'])
   })
 })
 
@@ -1441,7 +1275,6 @@ describe('buildBoard — consent flag follows leaf overlap, not the card (task-1
         needs_resolution: false,
         eligibility: 'declined',
         eligibility_source: 'form',
-        answers_conflict: false,
       },
       ...overrides,
     })
@@ -1534,7 +1367,6 @@ describe('buildBoard — consent flag follows leaf overlap, not the card (task-1
         needs_resolution: false,
         eligibility: 'declined',
         eligibility_source: 'form',
-        answers_conflict: false,
       },
     })
     const singleRoom = inRoom('r1', { household_cm_id: 500002, display_name: 'Beta' })
@@ -1561,7 +1393,6 @@ describe('buildBoard — consent flag follows leaf overlap, not the card (task-1
             needs_resolution: false,
             eligibility: 'declined',
             eligibility_source: 'form',
-            answers_conflict: false,
           },
         }),
         party({
@@ -1576,7 +1407,6 @@ describe('buildBoard — consent flag follows leaf overlap, not the card (task-1
             needs_resolution: false,
             eligibility: 'declined',
             eligibility_source: 'form',
-            answers_conflict: false,
           },
         }),
       ],
@@ -1724,7 +1554,6 @@ describe('overlappingPartyKeys — a two-unit alias is ambiguous, not a confirme
           // rather than the fixture having nothing to report.
           eligibility: 'declined',
           eligibility_source: 'form',
-          answers_conflict: false,
         },
       })
     )
@@ -1843,7 +1672,6 @@ describe('overlappingPartyKeys — a CONTAINER is ambiguous on the same terms as
           // than the fixture having nothing to report.
           eligibility: 'declined',
           eligibility_source: 'form',
-          answers_conflict: false,
         },
       })
     )
