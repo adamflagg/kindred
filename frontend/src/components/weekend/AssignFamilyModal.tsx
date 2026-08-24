@@ -817,31 +817,19 @@ export function AssignFamilyModal({
           // dialog, which is the same ground the rows take (§3.6).
           className="border-border bg-background text-foreground placeholder:text-muted-foreground/60 focus:border-primary/50 focus:ring-primary/10 w-full rounded-md border px-1.5 py-1 text-sm focus:ring-2 focus:outline-none"
         />
-
-        {/* THE SWAP REGION — the only thing that changes when the last match
-            goes.
-
-            `h-80`, NOT `max-h-80`, and that is the fix for a measured defect
-            rather than a tidy-up. `ui/Modal` lays the dialog out around a card
-            whose height is its content's, so a shorter swap region re-centred
-            the WHOLE card: the search box moved 133px across a three-character
-            typeahead and 28px on the keystroke that performs the flip — the
-            exact jump W3 forbids. Anchoring the dialog (`anchor="top"`) fixes
-            the direction; a constant height fixes the amount, so the input does
-            not move at all.
-
-            The artifact's separator (`.mswap`'s `border-top: 1px dashed`) is
-            what makes the boundary between "what you typed" and "what that
-            found" legible once the region no longer shrinks to fit. */}
-        {/* THE GROUP CHIPS — above the swap region on purpose. That region's
-            `h-80` is a fixed height fixing a measured jump; putting a row of
-            controls INSIDE it would spend list rows on chrome, and putting one
-            that can change height inside it would reopen the jump. Here the row
-            is constant and the region below is untouched. */}
         {parties.length > 0 && (
           <div
             data-testid="assign-group-chips"
-            className="flex flex-wrap items-center gap-1 px-3.5 pb-1.5"
+            // No padding and NO negative margin: this row lives INSIDE the
+            // search box's `flex flex-col gap-[9px] … pb-[9px]` container, so
+            // that container's gap is the single vertical rhythm, its padding
+            // the single bottom gap, and its `px-3.5` the left edge the chip
+            // BOX shares with the typeahead above and the candidate rows below.
+            //
+            // A `-ml-2` was tried here to flush the ICON rather than the box and
+            // it reads as overhanging — the Unplaced popout, which is the
+            // reference for this row, aligns the box and not the glyph.
+            className="flex flex-wrap items-center gap-1"
           >
             {UNPLACED_FILTER_GROUPS.map((spec) => {
               const Icon = spec.Icon
@@ -864,19 +852,46 @@ export function AssignFamilyModal({
                   onClick={() => {
                     setGroup((current) => (current === spec.key ? null : spec.key))
                   }}
-                  className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium tabular-nums transition-colors ${
+                  // Geometry is the Unplaced popout's, verbatim — same radius,
+                  // padding, icon size and active treatment. One chip row means
+                  // one chip, and the popout is the reference (owner ruling,
+                  // 2026-08-24). Do not re-tune it on this side alone.
+                  className={`inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium tabular-nums transition-colors ${
                     isActive
-                      ? 'bg-primary text-primary-foreground'
+                      ? 'bg-primary text-primary-foreground shadow-lodge-sm'
                       : 'text-muted-foreground hover:bg-muted disabled:opacity-40 disabled:hover:bg-transparent'
                   }`}
                 >
-                  <Icon className={`h-3 w-3 flex-shrink-0 ${isActive ? '' : spec.hueClassName}`} />
+                  <Icon
+                    className={`h-3.5 w-3.5 flex-shrink-0 ${isActive ? '' : spec.hueClassName}`}
+                  />
                   {count}
                 </button>
               )
             })}
           </div>
         )}
+
+        {/* THE SWAP REGION — the only thing that changes when the last match
+            goes.
+
+            `h-80`, NOT `max-h-80`, and that is the fix for a measured defect
+            rather than a tidy-up. `ui/Modal` lays the dialog out around a card
+            whose height is its content's, so a shorter swap region re-centred
+            the WHOLE card: the search box moved 133px across a three-character
+            typeahead and 28px on the keystroke that performs the flip — the
+            exact jump W3 forbids. Anchoring the dialog (`anchor="top"`) fixes
+            the direction; a constant height fixes the amount, so the input does
+            not move at all.
+
+            The artifact's separator (`.mswap`'s `border-top: 1px dashed`) is
+            what makes the boundary between "what you typed" and "what that
+            found" legible once the region no longer shrinks to fit. */}
+        {/* THE GROUP CHIPS — above the swap region on purpose. That region's
+            `h-80` is a fixed height fixing a measured jump; putting a row of
+            controls INSIDE it would spend list rows on chrome, and putting one
+            that can change height inside it would reopen the jump. Here the row
+            is constant and the region below is untouched. */}
 
         <div
           data-testid="assign-swap-region"
