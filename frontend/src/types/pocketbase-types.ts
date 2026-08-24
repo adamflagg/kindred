@@ -732,7 +732,6 @@ export type FamilyCampRegistrationsRecord = {
   request_last_updated?: IsoDateString
   request_source_field?: string
   request_text?: string
-  share_answers_conflict?: boolean
   share_cabin_gate?: FamilyCampRegistrationsShareCabinGateOptions
   share_cabin_preference?: string
   share_eligibility?: FamilyCampRegistrationsShareEligibilityOptions

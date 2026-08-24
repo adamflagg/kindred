@@ -6063,10 +6063,6 @@ export type ShareRequestSummary = {
    * Eligibility Source
    */
   eligibility_source?: 'form' | 'registration' | 'none'
-  /**
-   * Answers Conflict
-   */
-  answers_conflict?: boolean
 }
 
 /**

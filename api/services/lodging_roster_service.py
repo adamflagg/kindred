@@ -3062,7 +3062,6 @@ class LodgingRosterService:
             request_blocks=blocks,
             eligibility=eligibility,
             eligibility_source=eligibility_source,
-            answers_conflict=_b(registration, "share_answers_conflict"),
         )
 
     def _build_flags(

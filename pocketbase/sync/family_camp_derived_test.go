@@ -2174,7 +2174,6 @@ func TestRegistrationNeedsUpdateIgnoresTheUnknownSpelling(t *testing.T) {
 	col := core.NewBaseCollection("family_camp_registrations")
 	col.Fields.Add(&core.TextField{Name: "share_eligibility"})
 	col.Fields.Add(&core.TextField{Name: "share_eligibility_source"})
-	col.Fields.Add(&core.BoolField{Name: "share_answers_conflict"})
 
 	existing := core.NewRecord(col)
 	existing.Set("share_eligibility", "unknown")

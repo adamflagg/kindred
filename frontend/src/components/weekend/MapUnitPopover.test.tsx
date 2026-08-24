@@ -131,7 +131,6 @@ function flagged(unit: LodgingUnitRow, parties: RosterPartyRow[]): MapUnit {
     consent: {
       declinedCount: 1,
       unansweredCount: 0,
-      conflictCount: 0,
       reason: '1 family did not request sharing',
     },
   }

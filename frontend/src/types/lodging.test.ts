@@ -178,7 +178,6 @@ const _exhaustiveRosterParty: Required<RosterPartyRow> = {
     request_blocks: [],
     eligibility: 'unknown',
     eligibility_source: 'none',
-    answers_conflict: false,
   },
   flags: {
     needs_private_bathroom: false,

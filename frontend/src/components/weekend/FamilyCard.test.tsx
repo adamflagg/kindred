@@ -487,7 +487,6 @@ describe('FamilyCard — what it shows', () => {
             needs_resolution: false,
             eligibility: 'declined',
             eligibility_source: 'form',
-            answers_conflict: false,
           },
         })}
         sharedSlot={true}
@@ -514,45 +513,6 @@ describe('FamilyCard — what it shows', () => {
     expect(screen.queryByText('Declined sharing')).not.toBeInTheDocument()
   })
 
-  it('says which two answers disagreed, and that the form wins, on the "Answers disagree" chip\'s tooltip (kindred#2250)', () => {
-    render(
-      <FamilyCard
-        party={party({
-          share: {
-            preference: 'no_share',
-            proximity: [],
-            request_text: '',
-            needs_resolution: false,
-            eligibility: 'open',
-            eligibility_source: 'form',
-            answers_conflict: true,
-          },
-        })}
-        onOpen={vi.fn()}
-      />
-    )
-    // kindred#2250: the detail is now a real, keyboard- and touch-reachable
-    // `ui/Tooltip` trigger, not the `sr-only` text kindred#2177 shipped as a
-    // stopgap while the card's outer `<button>` still forbade a nested
-    // interactive descendant (kindred#2222 lifted that wall; this chip is
-    // what actually uses the opening).
-    const chip = screen.getByText('Answers disagree').closest('button')
-    expect(chip).not.toBeNull()
-    expect(chip).not.toHaveAttribute('title')
-    // Closed by default — the detail sentence is not sitting on the page
-    // until a staff member actually summons it.
-    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
-    fireEvent.focus(chip as HTMLElement)
-    const tooltip = screen.getByRole('tooltip')
-    expect(tooltip).toHaveTextContent(/will not share/)
-    expect(tooltip).toHaveTextContent(/open to sharing/)
-    expect(tooltip).toHaveTextContent(/form's answer/)
-    // Still a SIBLING of the card's own open control, never nested inside
-    // it (kindred#2222) — a nested interactive trigger would be invalid
-    // HTML and its tap would bubble into `onOpen` instead of the bubble.
-    expect(screen.getByRole('button', { name: /Johnson/ })).not.toContainElement(chip)
-  })
-
   it('never nests an interactive control inside another one — checked by ROLE, not TAG (kindred#2222)', () => {
     // The guard behind the chip's `sr-only` detail (kindred#2177), re-keyed
     // for kindred#2222. The original version of this guard matched on the
@@ -575,19 +535,20 @@ describe('FamilyCard — what it shows', () => {
             needs_resolution: false,
             eligibility: 'open',
             eligibility_source: 'form',
-            answers_conflict: true,
           },
         })}
         onOpen={vi.fn()}
       />
     )
-    // Retargeted off the struck `Wants to share` word chip onto a surviving
-    // chip in the same fixture (kindred#2072/#2521 pattern; struck
-    // 2026-08-22 — see "the marks kindred#2072 STRUCK"). This assertion only
-    // ever proved the fixture rendered enough of the share block for the
-    // button-nesting sweep below to be meaningful; it never depended on
-    // which chip did that.
-    expect(screen.getByText('Answers disagree')).toBeInTheDocument()
+    // Retargeted off the struck `Wants to share` word chip, then off the
+    // struck `Answers disagree` chip (kindred#2072/#2521 pattern; the latter
+    // struck 2026-08-24 — see "the marks kindred#2072 STRUCK") onto the
+    // always-on `ShareMarks` anchor button, which any household-grain party
+    // with a share block draws regardless of its content (`resolveShareAnchor`
+    // rule 1). This assertion only ever proved the fixture rendered enough of
+    // the share block for the button-nesting sweep below to be meaningful; it
+    // never depended on which interactive element did that.
+    expect(screen.getByRole('button', { name: /^Share: / })).toBeInTheDocument()
     const roleButtons = within(container).getAllByRole('button')
     expect(roleButtons.length).toBeGreaterThan(0)
     for (const outer of roleButtons) {
@@ -597,34 +558,6 @@ describe('FamilyCard — what it shows', () => {
       // element some future edit makes tabbable without giving it a role.
       expect(outer.querySelectorAll('[tabindex]:not([tabindex="-1"])')).toHaveLength(0)
     }
-  })
-
-  it('renders no "Answers disagree" chip, and no tooltip, when there is no conflict', () => {
-    render(
-      <FamilyCard
-        party={party({
-          share: {
-            preference: 'yes_share',
-            proximity: ['with'],
-            request_text: '',
-            needs_resolution: false,
-            eligibility: 'open',
-            eligibility_source: 'form',
-            answers_conflict: false,
-          },
-        })}
-        onOpen={vi.fn()}
-      />
-    )
-    expect(screen.queryByText('Answers disagree')).not.toBeInTheDocument()
-  })
-
-  it('never shows "Answers disagree" for an adult weekend guest — there is no share question to disagree on', () => {
-    // person-grain parties carry no share block at all
-    // (`_build_person_parties` attaches none), so there is nothing here to
-    // report — not an empty chip.
-    render(<FamilyCard party={party({ grain: 'person' })} onOpen={vi.fn()} />)
-    expect(screen.queryByText('Answers disagree')).not.toBeInTheDocument()
   })
 
   // Same grain guard, for the always-on anchor `ShareMarks` mounts
@@ -971,7 +904,7 @@ describe('FamilyCard — summer’s type scale', () => {
         party={party({
           is_returning: true,
           flags: { needs_private_bathroom: true, needs_power: true },
-          share: { proximity: ['with', 'near'], eligibility: 'named', answers_conflict: true },
+          share: { proximity: ['with', 'near'], eligibility: 'named' },
         })}
         unit={confirmedUnit()}
         sharedSlot
@@ -1023,7 +956,6 @@ describe('FamilyCard — summer’s type scale', () => {
             needs_resolution: false,
             eligibility: 'declined',
             eligibility_source: 'form',
-            answers_conflict: false,
           },
         })}
         sharedSlot={true}
@@ -1540,6 +1472,35 @@ describe('FamilyCard — the marks kindred#2072 STRUCK', () => {
    * `weekend-card-vocabulary.md` §3 that lands on this card is pinned here.
    */
   const confirmed = confirmedUnit({ power_coverage: 'none' })
+
+  it('draws no "Answers disagree" chip — the mark and its data column are both struck (2026-08-23)', () => {
+    // Owner ruling: "it is dead all the way down" — DeriveShareEligibility's
+    // third return value was computed and stored (Go, lodging_requests.go)
+    // but never read by eligibility itself, and nothing downstream read it
+    // either. The chip, `answersConflictDetail`, `ShareRequestSummary.
+    // answers_conflict` and the column it read all came out together, so
+    // there is no longer any payload shape that can ask for this chip — this
+    // fixture is the shape that used to. `boardLayout.test.ts` pins the
+    // sibling slot-level absence (`ConsentFlag` no longer has a
+    // `conflictCount`).
+    render(
+      <FamilyCard
+        party={party({
+          share: {
+            preference: 'no_share',
+            proximity: [],
+            request_text: '',
+            needs_resolution: false,
+            eligibility: 'open',
+            eligibility_source: 'form',
+          },
+        })}
+        onOpen={vi.fn()}
+      />
+    )
+    expect(screen.queryByText('Answers disagree')).not.toBeInTheDocument()
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
+  })
 
   it('draws no "Private bathroom" or "Power" NEED chip — the glyph is the mark', () => {
     render(

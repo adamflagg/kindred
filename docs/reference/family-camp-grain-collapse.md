@@ -104,7 +104,7 @@ The only site with a written-down, reviewed policy.
 | C1 | `share_cabin_gate` | `:344-357`, `winsGate` `:408-418` | **newest-wins by `last_updated`**, form field breaks an exact tie. `sawDeclineGate` `:347-349` preserves one direction of the discarded signal |
 | C2 | `request_text` | `:366-372` | **dedup-and-join — LOSSLESS.** The model to copy |
 | C3 | `wants_near/with/similar_ages` | `:358-364` | OR — correct |
-| C4 | `share_eligibility`, `share_answers_conflict` | `:377-386` | derived from the collapsed set; the conflict flag is computed against the **winner only**, which is `#2269` |
+| C4 | `share_eligibility` | `:377-386` | derived from the collapsed set. Used to carry a sibling `share_answers_conflict` flag too — retired 2026-08-23, "dead all the way down": computed and stored, but eligibility itself never read it and nothing downstream did either |
 
 ### `processMedical` — `family_camp_derived.go:1146-1159`, then `:1161-1262`
 

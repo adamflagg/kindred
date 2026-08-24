@@ -103,7 +103,7 @@ import { Fragment, memo } from 'react'
 import type { LodgingUnitRow, PartyChildRow, RosterPartyRow } from '../../types/lodging'
 import { displayCampMinderAge, displayTruncatedAge } from '../../utils/age'
 import { Tooltip } from '../ui/Tooltip'
-import { answersConflictDetail, SHARE_WORDING, shareWordingChip } from './boardLayout'
+import { SHARE_WORDING, shareWordingChip } from './boardLayout'
 import {
   attendingAdults as computeAttendingAdults,
   childrenRun,
@@ -183,10 +183,15 @@ function Chip({
   label: string
   tone: ChipTone
   /**
-   * The chip's per-party detail, e.g. "Answers disagree"'s account of which
-   * two answers disagreed (kindred#2083).
+   * A chip's per-party detail, shown on hover/focus rather than baked into
+   * the label. No current chip on this card passes one (the "Answers
+   * disagree" chip that motivated this, kindred#2083/#2250, is struck — see
+   * "the marks kindred#2072 STRUCK"), but the branch stays: `SharePreferenceChip`
+   * on this same surface uses the identical `Tooltip`-when-present,
+   * plain-`<span>`-when-absent pattern for its own per-party detail, so a
+   * future chip with something to explain has this to reach for.
    *
-   * ## Now a real `ui/Tooltip` trigger, not `sr-only` text (kindred#2250)
+   * ## Why a real `ui/Tooltip` trigger, not `sr-only` text (kindred#2250)
    *
    * kindred#2177 replaced the board's `title` attributes with a focusable
    * tooltip everywhere except here: THE WHOLE CARD WAS A `<button>` at the
@@ -198,14 +203,9 @@ function Chip({
    *
    * kindred#2222 removed that wall — `FamilyCard`'s frame is a `<div>` now,
    * and this chip row is a SIBLING of the card's open control, not its
-   * child — but left the trigger unwired. A real staff member could not
-   * read a real answer-conflict explanation because it was parked in
-   * `sr-only` text nothing on this desktop-only board ever announces
-   * (kindred#2250's field report). Same trigger primitive as
-   * `SharePreferenceChip`, the other chip on this surface with a per-party
-   * detail behind it: `Tooltip` when there's a `title` to show, a plain
-   * `<span>` when there isn't, so a chip with nothing to explain never
-   * becomes a dead stop in the tab order.
+   * child — but left the trigger unwired until kindred#2250 wired it: a
+   * plain `<span>` when there is no detail, so a chip with nothing to
+   * explain never becomes a dead stop in the tab order.
    */
   title?: string
 }) {
@@ -526,11 +526,13 @@ function FamilyCardIdentity({ party }: { party: RosterPartyRow }) {
  * chips, and the Returning/First-time badges.
  *
  * A SIBLING of `FamilyCardIdentity`'s `<button>` (kindred#2222), never its
- * child — see that component's doc for why. The one chip carrying a `title`
- * today (`Chip`'s "Answers disagree" detail, kindred#2083) is a real
- * `ui/Tooltip` trigger now, not `sr-only` text (kindred#2250) — the sibling
- * relationship this refactor set up is what makes that trigger valid HTML
- * here at all.
+ * child — see that component's doc for why. A chip carrying `Chip`'s `title`
+ * prop renders as a real `ui/Tooltip` trigger, not `sr-only` text
+ * (kindred#2250) — the sibling relationship this refactor set up is what
+ * makes that trigger valid HTML here at all. No chip in this row uses it
+ * today (the one that did, "Answers disagree", is struck — see "the marks
+ * kindred#2072 STRUCK"); the capability stays on `Chip` for the next one
+ * that needs it.
  */
 function FamilyCardChips({
   party,
@@ -542,7 +544,6 @@ function FamilyCardChips({
   sharedSlot: boolean
 }) {
   const isHousehold = party.grain === 'household'
-  const conflictDetail = answersConflictDetail(party.share)
   // The four ruled needs, graded once, in `needGlyphs.ts`. A need the
   // household did not ask for is ABSENT from this array — never dimmed (§6).
   const glyphs = resolveNeedGlyphs(party, unit)
@@ -628,21 +629,6 @@ function FamilyCardChips({
             Wording matches the slot: the form has no refusal option. */}
         {sharedSlot && party.share?.eligibility === 'declined' && (
           <Chip label={shareWordingChip(SHARE_WORDING.declined)} tone="warn" />
-        )}
-        {/* 16 households for 2026 carry disagreeing answers. Shown on the card
-            as well as the slot, so a party sitting alone still surfaces one.
-            Gated on the DETAIL, not the raw boolean (kindred#2083): a party
-            this can't explain — none exist today, but a person-grain party
-            carries no share block to begin with — never renders an empty
-            chip. The tooltip names which two answers disagreed and which one
-            staff are acting on, matching `SharePreferenceChip`'s hover
-            pattern rather than a bare unexplained flag. */}
-        {conflictDetail !== null && (
-          <Chip
-            label={shareWordingChip(SHARE_WORDING.conflict)}
-            tone="warn"
-            title={conflictDetail}
-          />
         )}
       </span>
 

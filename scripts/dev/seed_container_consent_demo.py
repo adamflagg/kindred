@@ -374,13 +374,13 @@ def seed(conn: sqlite3.Connection, scene: Scene, year: int, session_cm_id: int, 
         # this surface judges on (see `consentFlag`'s "WHY NOT THE GATE").
         conn.execute(
             "INSERT INTO family_camp_registrations (id, household, year, share_eligibility, "
-            "share_eligibility_source, share_answers_conflict, share_cabin_gate, "
+            "share_eligibility_source, share_cabin_gate, "
             "share_cabin_preference, shared_cabin_modes_raw, wants_near, wants_with_named, "
             "wants_similar_ages, request_text, request_source_field, request_last_updated, "
             "arrival_eta, cabin_assignment, goals, notes, special_occasions, needs_accommodation, "
             "needs_private_bathroom, needs_power, accommodation_is_mandatory, has_infant, "
             "created, updated) "
-            "VALUES (?, ?, ?, 'declined', 'form', 0, '', '', '', 0, 0, 0, '', '', '', "
+            "VALUES (?, ?, ?, 'declined', 'form', '', '', '', 0, 0, 0, '', '', '', "
             "'', '', '', '', '', 0, 0, 0, 0, 0, ?, ?)",
             (demo_id("fr", index + 1), household_id, year, stamp, stamp),
         )

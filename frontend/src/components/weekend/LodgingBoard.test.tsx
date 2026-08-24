@@ -498,7 +498,6 @@ describe('LodgingBoard — the consent flag', () => {
               needs_resolution: false,
               eligibility: 'declined',
               eligibility_source: 'form',
-              answers_conflict: false,
             },
           }),
           party({
@@ -513,7 +512,6 @@ describe('LodgingBoard — the consent flag', () => {
               needs_resolution: false,
               eligibility: 'open',
               eligibility_source: 'form',
-              answers_conflict: false,
             },
           }),
         ]}
