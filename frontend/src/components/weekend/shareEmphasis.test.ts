@@ -164,13 +164,29 @@ describe('shareEmphasis — the burst', () => {
     expect(burst).not.toBeNull()
     expect(burst?.targets).toEqual([el])
     expect(burst?.active).toBe(true)
+    // A real ~6s timeline, and `afterEach` only restores mocks and clears the
+    // DOM — nothing there stops a GSAP ticker. Every sibling that starts an
+    // unmocked burst kills it, and so does this one.
+    burst?.kill()
   })
 
   it('kill() leaves the mark at its resting glow — no inline transform, nothing running', () => {
     mockReducedMotion(false)
     const el = mountVehicle()
     el.classList.add(SHARE_GLOW_CLASS)
+    const spy = vi.spyOn(gsap, 'timeline')
     const burst = defaultShareEmphasisRunner.run()
+    const timeline = spy.mock.results[0]?.value as gsap.core.Timeline
+    expect(timeline).toBeDefined()
+
+    // ADVANCE FIRST, or the assertion below is vacuous. A burst that has never
+    // been ticked has had no frame written, so `style.transform` is '' before
+    // the kill as well as after — a `settle()` that cleared nothing would sail
+    // through. Half a cycle in, the mark is at its peak and there is a real
+    // inline transform for the kill to have to remove.
+    timeline.time(SHARE_EMPHASIS_CYCLE_SECONDS / 2)
+    expect(el.style.transform).not.toBe('')
+
     burst?.kill()
     expect(burst?.active).toBe(false)
     expect(el.style.transform).toBe('')

@@ -6,11 +6,19 @@
  *
  * ## What it emphasizes, and what it never does
  *
- * Exactly the owner's "open to sharing" set — the same three marks the
- * unplaced-popout filter predicate keys on:
+ * Exactly the owner's "open to sharing" set, which is the spec's §1 shared
+ * definition of an emphasized mark:
  *
  *   - the anchor when the radio says **yes** (61 households in 2026)
  *   - a cluster carrying **WITH-named** (55) or **similar-age** (8)
+ *
+ * That definition is shared with kindred#2480 (the unplaced-families picker's
+ * share filter), whose body records the same three marks as a ruling. #2480 is
+ * deliberately sequenced AFTER this item and is NOT BUILT — there is no filter
+ * predicate to point at, and `FloatingUnplacedBadge.tsx` carries no share
+ * logic at all. `anchorIsEmphasized` and `clusterIsEmphasized` below are
+ * therefore the only implementation of the definition that exists; when #2480
+ * lands it should import them rather than restate them.
  *
  * NEAR is proximity, not sharing, and is never the REASON a card is
  * emphasized (158 households; 147 of them NEAR-only, which draw nothing at

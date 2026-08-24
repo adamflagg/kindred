@@ -146,6 +146,26 @@ describe('useShareEmphasisBurst — a drag kills it outright', () => {
     expect(runner.bursts[0]?.killed).toBe(1)
     expect(runner.bursts[0]?.active).toBe(false)
   })
+
+  it('kills it when the board is gone but a hidden tab still holds marks of its own', () => {
+    // THE MIXED CASE, and the one a "some target is still connected" test can
+    // never see. `shareEmphasisTargets()` queries the whole DOCUMENT on
+    // purpose, and `Activity` keeps an already-opened map tab mounted-but-
+    // hidden — so a burst armed by the board legitimately owns marks from two
+    // surfaces. When the board navigates away, ITS marks disconnect and the
+    // map's stay put. Reading that as StrictMode leaves the timeline ticking
+    // against detached nodes with `burst.current` still dangling.
+    const boardMark = mountVehicle()
+    const hiddenTabMark = mountVehicle()
+    const runner = fakeRunner([boardMark, hiddenTabMark])
+    const { unmount } = renderHook(() => {
+      useShareEmphasisBurst({ ready: true, suppressed: false, runner })
+    })
+    boardMark.remove()
+    unmount()
+    expect(runner.bursts[0]?.killed).toBe(1)
+    expect(runner.bursts[0]?.active).toBe(false)
+  })
 })
 
 describe('useShareEmphasisBurst — StrictMode must not eat the burst', () => {

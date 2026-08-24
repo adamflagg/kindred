@@ -289,11 +289,19 @@ export function LodgingBoard({
    * `parties.length > 0` is that moment — the board renders empty while the
    * page's query is still in flight, and the first payload is the arrival.
    *
-   * It reads the SAME `dragging` state the unit cards receive as
-   * `draggingParty`, deliberately, rather than threading a new prop down
-   * through `FamilyCard`: one drag signal, one meaning.
+   * Suppression reads BOTH drag states, and it has to. `handleDragStart`
+   * splits the two gestures: a merge-handle drag takes the early-return branch
+   * that sets `draggingMergeUnit` and `setDragging(null)`, so `dragging` stays
+   * null for the entire merge. Keying this on `dragging` alone therefore reads
+   * "no drag in flight" through the one gesture that puts #2528's three-state
+   * hatch/wash highlight on every unit card — the precision task the marks are
+   * not allowed to compete with. Whatever else is added here, a new drag state
+   * has to be added to this expression too.
    */
-  useShareEmphasisBurst({ ready: parties.length > 0, suppressed: dragging !== null })
+  useShareEmphasisBurst({
+    ready: parties.length > 0,
+    suppressed: dragging !== null || draggingMergeUnit !== null,
+  })
 
   // THREE conditions, not two. `sessionCmId` is in there because every write
   // names a weekend, and the prop defaults to 0 for the thirty tests that do

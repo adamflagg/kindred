@@ -49,8 +49,20 @@ export function useShareEmphasisBurst({
 
   useEffect(() => {
     if (suppressed) {
-      // KILL, never pause-and-resume. `armed` stays false afterwards, so the
-      // burst does not pick up again when the family lands.
+      // KILL, never pause-and-resume: a burst that resumes halfway through a
+      // placement is the thing this rule exists to prevent.
+      //
+      // This branch writes NOTHING to `armed` — only the arming line below
+      // ever does. It does not need to, and the two cases are worth spelling
+      // out because they look like one:
+      //
+      //   - The drag interrupted a burst already playing. `armed` was spent
+      //     when that burst started, so the effect that runs when the family
+      //     lands returns early and the killed burst never picks up again.
+      //   - The drag beat the first payload, so no burst has ever run and
+      //     `armed` is still true. When the drag ends the burst fires — which
+      //     is right: the arrival cascade is still owed, and nothing has been
+      //     interrupted to resume.
       burst.current?.kill()
       burst.current = null
       return
@@ -70,17 +82,37 @@ export function useShareEmphasisBurst({
   // invisible in CI and in the bundle, and visible only to whoever opens the
   // running dev app to look at the animation.
   //
-  // The DOM tells the two cases apart. React tears out the board's host nodes
-  // during the mutation phase, which runs BEFORE passive cleanups, so a real
-  // unmount reaches this line with every target already disconnected;
-  // StrictMode's simulated unmount removes nothing and they all read
-  // connected. `suppressed` in the effect above stays the one unconditional
-  // kill, because a drag has to stop the burst whatever the DOM says.
+  // The DOM tells the two cases apart, and the test is EVERY target, not any.
+  // React tears out the board's host nodes during the mutation phase, which
+  // runs BEFORE passive cleanups, so a real unmount reaches this line with its
+  // targets already disconnected; StrictMode's simulated unmount removes
+  // nothing and they all read connected. Only the second case may skip the
+  // kill, so only "all still connected" may return early.
+  //
+  // `some` is the tempting spelling and it is wrong, because the target set is
+  // not all one surface. `shareEmphasisTargets()` queries the whole document
+  // on purpose, and `Activity` keeps an already-opened map tab mounted-but-
+  // hidden — so a board navigation disconnects the board's marks and leaves
+  // the map's connected. Under `some` that MIXED case reads as StrictMode: the
+  // cleanup returns early, the timeline goes on ticking against detached nodes
+  // and `burst.current` is left dangling with nothing that will ever kill it.
+  //
+  // The length guard is the degenerate third case. An empty target set is no
+  // evidence either way rather than evidence of StrictMode (`[].every` is
+  // vacuously true), and the safe reading of no evidence is to kill. The real
+  // runner never returns such a burst — it declines with `null` when there is
+  // nothing to animate — but an injected one can, and a cleanup that leaks on
+  // it would leak silently.
+  //
+  // `suppressed` in the effect above stays the one unconditional kill, because
+  // a drag has to stop the burst whatever the DOM says.
   useEffect(
     () => () => {
       const running = burst.current
       if (!running) return
-      if (running.targets.some((target) => target.isConnected)) return
+      if (running.targets.length > 0 && running.targets.every((target) => target.isConnected)) {
+        return
+      }
       running.kill()
       burst.current = null
     },
