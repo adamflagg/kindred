@@ -23,10 +23,34 @@ interface SourceLinkData {
 interface SplitRequestModalProps {
   isOpen: boolean
   onClose: () => void
+  /**
+   * NOT nullable, and kindred#2538's ⛔ section is why it must stay that way.
+   *
+   * That section refutes widening this to `BunkRequestsResponse | null` plus
+   * an `if (!request) return null` guard: the effect dep array below
+   * dereferences `request.request_type` at RENDER time, before any guard line
+   * runs, and hoisting the guard above the hooks makes the hook count
+   * conditional ("Rendered more hooks than during the previous render").
+   *
+   * The conversion sidesteps the whole problem instead of solving it. The
+   * parent gates on `useRetainedDialog`'s retained SNAPSHOT
+   * (`splitDialog.data !== null`), which is non-null for as long as the dialog
+   * is mounted -- including throughout the exit fade. So this prop is never
+   * null while mounted and none of those dereferences need guarding. Do not
+   * "fix" this by making it nullable.
+   */
   request: BunkRequestsResponse
   sourceLinks: SourceLinkData[]
   isLoadingSourceLinks?: boolean
   onSplitComplete: () => void
+  /**
+   * Per-open nonce from kindred#2541's useRetainedDialog (kindred#2538). The
+   * remount is what clears a failed split's error banner, which would
+   * otherwise greet the next open.
+   */
+  nonce?: number
+  /** Modal's afterLeave, so the parent can release its retained snapshot. */
+  afterLeave?: () => void
 }
 
 interface SplitSourceConfig {
@@ -43,12 +67,40 @@ interface SplitResponse {
 
 export default function SplitRequestModal({
   isOpen,
+  nonce,
+  onClose,
+  afterLeave,
+  ...body
+}: SplitRequestModalProps) {
+  // Thin shell owning the chrome; the state lives in the body, keyed by the
+  // nonce so every open remounts it fresh. The key goes on the CONTENT and
+  // never on <Modal> — remounting the chrome mid-leave would snap the fading
+  // dialog away instead of fading it (kindred#2541).
+  return (
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      // Spread: tsconfig sets exactOptionalPropertyTypes, so an explicit
+      // `undefined` is not assignable to Modal's `afterLeave?: () => void`.
+      {...(afterLeave !== undefined && { afterLeave })}
+      title="Split Request"
+      size="lg"
+    >
+      <SplitRequestForm key={nonce} isOpen={isOpen} onClose={onClose} {...body} />
+    </Modal>
+  )
+}
+
+type SplitRequestFormProps = Omit<SplitRequestModalProps, 'nonce' | 'afterLeave'>
+
+function SplitRequestForm({
+  isOpen,
   onClose,
   request,
   sourceLinks,
   isLoadingSourceLinks = false,
   onSplitComplete,
-}: SplitRequestModalProps) {
+}: SplitRequestFormProps) {
   const queryClient = useQueryClient()
   const { fetchWithAuth } = useApiWithAuth()
   const [selectedSources, setSelectedSources] = useState<Set<string>>(new Set())
@@ -230,7 +282,7 @@ export default function SplitRequestModal({
   // would defeat kindred#2529's parent conversion.
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Split Request" size="lg">
+    <>
       <div className="space-y-6">
         {/* Error display */}
         {error && (
@@ -430,6 +482,6 @@ export default function SplitRequestModal({
           </button>
         </div>
       </div>
-    </Modal>
+    </>
   )
 }

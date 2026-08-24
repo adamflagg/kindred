@@ -629,4 +629,123 @@ describe('SplitRequestModal', () => {
       expect(badgeText).toBeNull()
     })
   })
+
+  describe('always-mounted conversion (kindred#2538)', () => {
+    interface ExtendedSourceLinkData extends SourceLinkData {
+      is_primary?: boolean
+    }
+
+    it('clears a failed split error when reopened', async () => {
+      const sourceLinks: ExtendedSourceLinkData[] = [
+        { original_request_id: 'orig_1', source_field: 'share_bunk_with', is_primary: false },
+      ]
+      mockFetchWithAuth.mockResolvedValue({
+        ok: false,
+        json: async () => ({ detail: 'Split exploded' }),
+      })
+      const request = createMergedMockRequest()
+
+      const { rerender } = renderWithProviders(
+        <SplitRequestModal
+          isOpen={true}
+          nonce={1}
+          onClose={() => {}}
+          request={request}
+          sourceLinks={sourceLinks}
+          onSplitComplete={() => {}}
+        />
+      )
+
+      fireEvent.click(screen.getByRole('button', { name: /split/i }))
+      expect(await screen.findByText(/Split exploded/i)).toBeInTheDocument()
+
+      // Close and reopen with no await between — the leave is still in flight.
+      rerender(
+        <QueryClientProvider client={new QueryClient()}>
+          <SplitRequestModal
+            isOpen={false}
+            nonce={1}
+            onClose={() => {}}
+            request={request}
+            sourceLinks={sourceLinks}
+            onSplitComplete={() => {}}
+          />
+        </QueryClientProvider>
+      )
+      rerender(
+        <QueryClientProvider client={new QueryClient()}>
+          <SplitRequestModal
+            isOpen={true}
+            nonce={2}
+            onClose={() => {}}
+            request={request}
+            sourceLinks={sourceLinks}
+            onSplitComplete={() => {}}
+          />
+        </QueryClientProvider>
+      )
+
+      // kindred#2538 asked for `setError(null)` in the closed->open effect.
+      // The per-open remount does it instead, and covers the other two states
+      // with it.
+      expect(screen.queryByText(/Split exploded/i)).not.toBeInTheDocument()
+    })
+
+    // NOTE: this one passes BEFORE the conversion as well as after, and is
+    // kept deliberately rather than as a TDD red. The closed->open effect
+    // already re-initializes `selectedSources` (kindred#2538 says as much), so
+    // this pins behaviour the conversion must not BREAK -- the effect has to
+    // keep firing once the body is remounted per open rather than reset in
+    // place.
+    it('re-derives the auto-selected sources from the CURRENT request when reopened', () => {
+      const firstLinks: ExtendedSourceLinkData[] = [
+        { original_request_id: 'orig_1', source_field: 'share_bunk_with', is_primary: true },
+        { original_request_id: 'orig_2', source_field: 'bunking_notes', is_primary: false },
+      ]
+      const { rerender } = renderWithProviders(
+        <SplitRequestModal
+          isOpen={true}
+          nonce={1}
+          onClose={() => {}}
+          request={createMergedMockRequest()}
+          sourceLinks={firstLinks}
+          onSplitComplete={() => {}}
+        />
+      )
+      // The non-primary source is auto-selected; staff untick it.
+      const firstBox = screen.getByRole('checkbox', { name: /bunking_notes/i })
+      expect(firstBox).toBeChecked()
+      fireEvent.click(firstBox)
+      expect(screen.getByRole('checkbox', { name: /bunking_notes/i })).not.toBeChecked()
+
+      rerender(
+        <QueryClientProvider client={new QueryClient()}>
+          <SplitRequestModal
+            isOpen={false}
+            nonce={1}
+            onClose={() => {}}
+            request={createMergedMockRequest()}
+            sourceLinks={firstLinks}
+            onSplitComplete={() => {}}
+          />
+        </QueryClientProvider>
+      )
+      rerender(
+        <QueryClientProvider client={new QueryClient()}>
+          <SplitRequestModal
+            isOpen={true}
+            nonce={2}
+            onClose={() => {}}
+            request={createMergedMockRequest()}
+            sourceLinks={firstLinks}
+            onSplitComplete={() => {}}
+          />
+        </QueryClientProvider>
+      )
+
+      // Reopening must present the default selection again, not the abandoned
+      // one — otherwise Split would act on a set the staffer had cleared.
+      expect(screen.getByRole('checkbox', { name: /bunking_notes/i })).toBeChecked()
+    })
+  })
 })

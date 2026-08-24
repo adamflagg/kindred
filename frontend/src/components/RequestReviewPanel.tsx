@@ -111,8 +111,20 @@ export default function RequestReviewPanel({
   // Set())` flipped the gate false and yanked the dialog out mid-fade. The
   // snapshot holds the pair being merged through the close.
   const mergeDialog = useRetainedDialog<BunkRequestsResponse[]>()
-  const [showSplitModal, setShowSplitModal] = useState(false)
-  const [requestToSplit, setRequestToSplit] = useState<BunkRequestsResponse | null>(null)
+  // kindred#2538: always-mounted, on the retained SNAPSHOT.
+  //
+  // This is the dialog whose obvious conversion was refuted (#2538's ⛔
+  // section): widening SplitRequestModal's `request` to nullable crashes two
+  // different ways, because its effect dep array dereferences the prop at
+  // render time and hoisting a guard above the hooks makes the hook count
+  // conditional. The snapshot removes the premise instead of working around
+  // it -- `splitDialog.data` is non-null for as long as the dialog is mounted,
+  // the exit fade included, so `request` is never null and nothing downstream
+  // needs guarding. The old `setRequestToSplit(null)` on close is exactly what
+  // #2538 warns re-creates the crash; the hook drops the snapshot in
+  // `afterLeave`, once the fade has actually finished.
+  const splitDialog = useRetainedDialog<BunkRequestsResponse>()
+  const requestToSplit = splitDialog.data
   const [selectedCamperId, setSelectedCamperId] = useState<string | null>(null)
   const [confirmPopover, setConfirmPopover] = useState<{
     action: 'approve' | 'decline'
@@ -930,10 +942,12 @@ export default function RequestReviewPanel({
     setSelectedCamperId(cmId)
   }, [])
 
-  const handleSplitRow = useCallback((request: BunkRequestsResponse) => {
-    setRequestToSplit(request)
-    setShowSplitModal(true)
-  }, [])
+  const handleSplitRow = useCallback(
+    (request: BunkRequestsResponse) => {
+      splitDialog.open(request)
+    },
+    [splitDialog]
+  )
 
   return (
     <>
@@ -1523,20 +1537,22 @@ export default function RequestReviewPanel({
           />
         )}
 
-        {/* Split Request Modal */}
-        {showSplitModal && requestToSplit && (
+        {/* Split Request Modal — gated on the SNAPSHOT (explicit null check,
+            per useRetainedDialog), and neither close path nulls it. Nulling
+            the request at close is what #2538's ⛔ section says re-creates the
+            crash mid-exit-fade; `afterLeave` releases it once the fade is
+            actually done. */}
+        {splitDialog.data !== null && (
           <SplitRequestModal
-            isOpen={showSplitModal}
-            onClose={() => {
-              setShowSplitModal(false)
-              setRequestToSplit(null)
-            }}
-            request={requestToSplit}
+            isOpen={splitDialog.isOpen}
+            nonce={splitDialog.nonce}
+            afterLeave={splitDialog.afterLeave}
+            onClose={() => splitDialog.close()}
+            request={splitDialog.data}
             sourceLinks={sourceLinks}
             isLoadingSourceLinks={isLoadingSourceLinks}
             onSplitComplete={() => {
-              setShowSplitModal(false)
-              setRequestToSplit(null)
+              splitDialog.close()
               toast.success('Request split successfully')
             }}
           />
