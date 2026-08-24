@@ -38,7 +38,7 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from '@dnd-kit/core'
-import { ChevronDown, ChevronRight, Info, Send, TriangleAlert } from 'lucide-react'
+import { ChevronDown, ChevronRight, Info, Send } from 'lucide-react'
 import { useCallback, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router'
 
@@ -670,42 +670,6 @@ export function LodgingBoard({
               }}
             />
           </div>
-        )}
-
-        {/* The mode chip that used to lead this row moved to the header badge,
-            where summer keeps it. The row itself is now conditional: left
-            unconditional it renders empty and still spends the parent's gap. */}
-        {board.flaggedCount > 0 && (
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800 dark:bg-amber-950/50 dark:text-amber-300">
-              <TriangleAlert className="h-3.5 w-3.5 flex-shrink-0" />
-              {board.flaggedCount === 1
-                ? '1 shared cabin needs a look'
-                : `${String(board.flaggedCount)} shared cabins need a look`}
-            </span>
-          </div>
-        )}
-
-        {/* The rule behind the amber, stated where the amber is.
-
-            HANDOFF §4 deferred two consent questions to this PR: does a NAMED
-            partner satisfy "mutual", and does a blank share gate count as
-            consent? The code had already answered both — `named` does not
-            flag, silence does — and this is the half that was missing. Once
-            staff can create a shared cabin by dragging, a flag whose rule is
-            invisible is one they have to infer from behaviour, and inferring
-            it wrongly in the permissive direction is the failure this whole
-            surface exists to prevent.
-
-            Rendered only alongside a flag, so it is an explanation rather
-            than a lecture on a clean board. */}
-        {board.flaggedCount > 0 && (
-          <p data-testid="consent-rule" className="text-muted-foreground text-xs">
-            A shared cabin is flagged when someone in it did not request sharing, hasn&rsquo;t
-            answered the cabin form, or gave two answers that disagree. A named partner is{' '}
-            <strong className="font-semibold">not checked for mutual agreement</strong> — open the
-            family to see who they asked for.
-          </p>
         )}
 
         <div className="card-lodge overflow-hidden">
