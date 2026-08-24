@@ -33,7 +33,7 @@ dependencies = [
     "aiohttp>=3.14.3",
     "requests>=2.34.2",
     # AI/ML
-    "openai>=3.0.0",
+    "openai>=3.3.1",
     "ortools>=9.15.6755",
     # Data processing
     "pandas>=3.0.5",
@@ -42,7 +42,7 @@ dependencies = [
     # Configuration & validation
     "pydantic>=2.13.4",
     "pydantic-settings>=2.15.0",
-    "python-dotenv>=1.2.2",
+    "python-dotenv>=1.2.3",
     "PyYAML>=6.0.3",
     # Auth
     "PyJWT[crypto]>=2.13.0",
