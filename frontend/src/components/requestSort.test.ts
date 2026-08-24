@@ -7,7 +7,12 @@
  * back on refresh.
  */
 import { describe, it, expect } from 'vitest'
-import { sortRequests, DEFAULT_SORT_BY, DEFAULT_SORT_ORDER } from './requestSort'
+import {
+  sortRequests,
+  orderByTablePosition,
+  DEFAULT_SORT_BY,
+  DEFAULT_SORT_ORDER,
+} from './requestSort'
 import type { BunkRequestsResponse, PersonsResponse } from '../types/pocketbase-types'
 
 describe('requests-tab default sort constants', () => {
@@ -196,5 +201,34 @@ describe('sortRequests — column click behavior preserved', () => {
       'high',
       'low',
     ])
+  })
+})
+
+/**
+ * kindred#2538 scan, finding 1. The merge dialog seeds `selectedTargetId` from
+ * `requests[0]` and POSTs it as `keep_target_from`, so the ORDER of the pair
+ * handed to it is load-bearing. Both of RequestReviewPanel's openers now build
+ * that pair through this helper, so they cannot disagree.
+ */
+describe('orderByTablePosition', () => {
+  const table = [{ id: 'c' }, { id: 'a' }, { id: 'b' }]
+
+  it('orders a subset by its position in the table, not by the subset order', () => {
+    const picked = [{ id: 'b' }, { id: 'c' }]
+    expect(orderByTablePosition(picked, table).map((r) => r.id)).toEqual(['c', 'b'])
+  })
+
+  it('leaves a member the table does not contain at the end rather than dropping it', () => {
+    // The reason the caller filters `requests` and not `sortedRequests`: an
+    // active search can hide a row that is still a legitimate merge member.
+    // Losing it would open a one-item merge dialog.
+    const picked = [{ id: 'hidden' }, { id: 'b' }]
+    expect(orderByTablePosition(picked, table).map((r) => r.id)).toEqual(['b', 'hidden'])
+  })
+
+  it('does not mutate the array it is given', () => {
+    const picked = [{ id: 'b' }, { id: 'a' }]
+    orderByTablePosition(picked, table)
+    expect(picked.map((r) => r.id)).toEqual(['b', 'a'])
   })
 })

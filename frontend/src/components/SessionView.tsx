@@ -84,11 +84,7 @@ export default function SessionView() {
     useSessionHierarchy({ sessionId, tabPath: tabPath ?? '' })
 
   // UI state
-  // kindred#2538: always-mounted so ui/Modal's 150ms leave can play. <void>
-  // because this dialog retains no snapshot -- it takes no data prop the gate
-  // depends on -- but it still wants the per-open nonce that remounts the form
-  // fresh. A void type parameter may be omitted at the call site, so open()
-  // reads naturally.
+  // kindred#2538: always-mounted so ui/Modal's 150ms leave can play.
   // <true> rather than <void>: this dialog retains no payload, but eslint's
   // @typescript-eslint/no-invalid-void-type bans a void type argument, and
   // tsc alone does not -- kindred#2549's review flagged that the hook cannot

@@ -66,7 +66,12 @@ interface FilterState {
   searchQuery: string
 }
 
-import { sortRequests, DEFAULT_SORT_BY, DEFAULT_SORT_ORDER } from './requestSort'
+import {
+  sortRequests,
+  orderByTablePosition,
+  DEFAULT_SORT_BY,
+  DEFAULT_SORT_ORDER,
+} from './requestSort'
 import type { SortColumn } from './requestSort'
 import { SortableColumnHeader, type SortDirection } from './ui/SortableColumnHeader'
 
@@ -872,24 +877,49 @@ export default function RequestReviewPanel({
     }
   }, [pendingUpdate, updateRequestMutation, clearConflicts])
 
+  // The ONE way the merge dialog is opened (kindred#2538 scan, finding 1).
+  //
+  // Both openers route through here so they cannot disagree about the order of
+  // the pair -- and the order matters, because MergeRequestsForm seeds
+  // `selectedTargetId` from `requests[0]` and that is POSTed as
+  // `keep_target_from`. The conflict path previously built its pair from raw
+  // `requests` while the toolbar used `mergeEligibility.requests` (built from
+  // `sortedRequests`), so under a confidence/status/request sort the two
+  // disagreed about which request survives a merge by default.
+  //
+  // Source from `requests`, order by `sortedRequests`: filtering the sorted
+  // list directly would let an active search hide a legitimate member and open
+  // a one-item dialog.
+  const openMergeFor = useCallback(
+    (ids: Set<string>) => {
+      mergeDialog.open(
+        orderByTablePosition(
+          requests.filter((r) => ids.has(r.id)),
+          sortedRequests
+        )
+      )
+    },
+    [requests, sortedRequests, mergeDialog]
+  )
+
   // Handle conflict resolution - merge instead
   const handleMergeConflict = useCallback(() => {
     if (pendingUpdate && conflictingRequest) {
       // Open merge modal with the two conflicting requests
       const selectedIds = new Set([pendingUpdate.id, conflictingRequest.id])
       setSelectedRequests(selectedIds)
-      // The pair is taken from `requests` here and NOT from
-      // `mergeEligibility.requests` (kindred#2538). `mergeEligibility` is a
-      // useMemo over `selectedRequests`, which the line above has only just
-      // queued -- reading it in this same handler snapshots the PREVIOUS
-      // selection. The conditional mount this replaced was immune because it
-      // mounted a render later, after the memo had recomputed.
-      mergeDialog.open(requests.filter((r) => selectedIds.has(r.id)))
+      // `selectedIds` is passed explicitly rather than read back off
+      // `mergeEligibility` (kindred#2538): that is a useMemo over
+      // `selectedRequests`, which the line above has only just QUEUED, so
+      // reading it in this same handler would snapshot the PREVIOUS selection.
+      // The conditional mount this replaced was immune because it mounted a
+      // render later, after the memo had recomputed.
+      openMergeFor(selectedIds)
       clearConflicts()
       setPendingUpdate(null)
       setConflictingRequest(null)
     }
-  }, [pendingUpdate, conflictingRequest, clearConflicts, requests, mergeDialog])
+  }, [pendingUpdate, conflictingRequest, clearConflicts, openMergeFor])
 
   // Cancel conflict resolution
   const handleCancelConflict = useCallback(() => {
@@ -1643,7 +1673,7 @@ export default function RequestReviewPanel({
               </button>
               {mergeEligibility.canMerge && (
                 <button
-                  onClick={() => mergeDialog.open(mergeEligibility.requests)}
+                  onClick={() => openMergeFor(selectedRequests)}
                   className="bg-primary text-primary-foreground hover:bg-primary/90 flex min-h-[44px] touch-manipulation items-center gap-2 rounded-xl px-4 py-2 font-medium shadow-sm transition-colors"
                   title="Merge these two requests into one"
                 >

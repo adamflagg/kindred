@@ -46,9 +46,7 @@ export function WeekendScenarioPicker({
   scenario,
 }: WeekendScenarioPickerProps) {
   const { currentScenario, scenarios, selectScenario, isLoading } = useScenario()
-  // kindred#2538: always-mounted so ui/Modal's 150ms leave can play. See
-  // SessionView's twin for why <void> -- no snapshot to retain, but the
-  // per-open nonce still remounts the form fresh.
+  // kindred#2538: always-mounted so ui/Modal's 150ms leave can play.
   // <true> rather than <void>: this dialog retains no payload, but eslint's
   // @typescript-eslint/no-invalid-void-type bans a void type argument, and
   // tsc alone does not -- kindred#2549's review flagged that the hook cannot

@@ -68,8 +68,15 @@ export default function ScenarioManagementModal({
   // into a shell and a keyed body, this component's state cannot move below
   // <Modal>: its confirm dialog and its two child dialogs are rendered as
   // SIBLINGS of the main Modal, not inside it. So the hook lives at the
-  // permanent mount and needs the flag -- ungated, its query and its auth
-  // listener stay alive for as long as the panel exists.
+  // permanent mount and needs the flag -- ungated, its QUERY would keep
+  // polling for as long as the panel exists.
+  //
+  // What the flag does NOT stop is the hook's auth listener: that is an
+  // unconditional useEffect with deps [queryClient] (useSyncStatusAPI.ts), so
+  // the pb.authStore.onChange subscription lives for the permanent mount
+  // whether the dialog is open or not. It only invalidates a query key, so the
+  // cost is small -- but `enabled` is not what bounds it, and an earlier
+  // version of this comment implied otherwise.
   const { data: syncStatus } = useSyncStatusAPI({ enabled: isOpen })
 
   const editDialog = useRetainedDialog<Scenario>()
