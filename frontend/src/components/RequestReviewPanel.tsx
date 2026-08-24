@@ -104,7 +104,13 @@ export default function RequestReviewPanel({
   // literal is inert and only isOpen and nonce are read. Same gap
   // NewScenarioModal hit; kindred#2549's review predicted it.
   const createDialog = useRetainedDialog<true>()
-  const [showMergeModal, setShowMergeModal] = useState(false)
+  // kindred#2538: always-mounted, and this one genuinely needs the retained
+  // SNAPSHOT rather than just an open flag. The old gate was
+  // `showMergeModal && mergeEligibility.canMerge`, and `canMerge` is derived
+  // from `selectedRequests` -- so the success path's `setSelectedRequests(new
+  // Set())` flipped the gate false and yanked the dialog out mid-fade. The
+  // snapshot holds the pair being merged through the close.
+  const mergeDialog = useRetainedDialog<BunkRequestsResponse[]>()
   const [showSplitModal, setShowSplitModal] = useState(false)
   const [requestToSplit, setRequestToSplit] = useState<BunkRequestsResponse | null>(null)
   const [selectedCamperId, setSelectedCamperId] = useState<string | null>(null)
@@ -858,13 +864,20 @@ export default function RequestReviewPanel({
   const handleMergeConflict = useCallback(() => {
     if (pendingUpdate && conflictingRequest) {
       // Open merge modal with the two conflicting requests
-      setSelectedRequests(new Set([pendingUpdate.id, conflictingRequest.id]))
-      setShowMergeModal(true)
+      const selectedIds = new Set([pendingUpdate.id, conflictingRequest.id])
+      setSelectedRequests(selectedIds)
+      // The pair is taken from `requests` here and NOT from
+      // `mergeEligibility.requests` (kindred#2538). `mergeEligibility` is a
+      // useMemo over `selectedRequests`, which the line above has only just
+      // queued -- reading it in this same handler snapshots the PREVIOUS
+      // selection. The conditional mount this replaced was immune because it
+      // mounted a render later, after the memo had recomputed.
+      mergeDialog.open(requests.filter((r) => selectedIds.has(r.id)))
       clearConflicts()
       setPendingUpdate(null)
       setConflictingRequest(null)
     }
-  }, [pendingUpdate, conflictingRequest, clearConflicts])
+  }, [pendingUpdate, conflictingRequest, clearConflicts, requests, mergeDialog])
 
   // Cancel conflict resolution
   const handleCancelConflict = useCallback(() => {
@@ -1490,14 +1503,20 @@ export default function RequestReviewPanel({
           />
         )}
 
-        {/* Merge Requests Modal */}
-        {showMergeModal && mergeEligibility.canMerge && (
+        {/* Merge Requests Modal — gated on the SNAPSHOT, not on `canMerge`
+            (kindred#2538). An explicit null check, per useRetainedDialog: the
+            payload is an array, and `{data && …}` would be a truthiness test
+            on it. Clearing the selection on success no longer empties the card
+            grid mid-fade, because the dialog is reading the snapshot. */}
+        {mergeDialog.data !== null && (
           <MergeRequestsModal
-            isOpen={showMergeModal}
-            onClose={() => setShowMergeModal(false)}
-            requests={mergeEligibility.requests}
+            isOpen={mergeDialog.isOpen}
+            nonce={mergeDialog.nonce}
+            afterLeave={mergeDialog.afterLeave}
+            onClose={() => mergeDialog.close()}
+            requests={mergeDialog.data}
             onMergeComplete={() => {
-              setShowMergeModal(false)
+              mergeDialog.close()
               setSelectedRequests(new Set())
               toast.success('Requests merged successfully')
             }}
@@ -1608,7 +1627,7 @@ export default function RequestReviewPanel({
               </button>
               {mergeEligibility.canMerge && (
                 <button
-                  onClick={() => setShowMergeModal(true)}
+                  onClick={() => mergeDialog.open(mergeEligibility.requests)}
                   className="bg-primary text-primary-foreground hover:bg-primary/90 flex min-h-[44px] touch-manipulation items-center gap-2 rounded-xl px-4 py-2 font-medium shadow-sm transition-colors"
                   title="Merge these two requests into one"
                 >

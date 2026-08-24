@@ -10,6 +10,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
 import MergeRequestsModal from './MergeRequestsModal'
+import { pb } from '../lib/pocketbase'
 import type { BunkRequestsResponse } from '../types/pocketbase-types'
 import { BunkRequestsRequestTypeOptions } from '../types/pocketbase-types'
 import { queryKeys } from '../utils/queryKeys'
@@ -23,10 +24,12 @@ vi.mock('../hooks/useApiWithAuth', () => ({
 }))
 
 // Mock pocketbase with all required exports
+const personsGetFullList = vi.fn(() => Promise.resolve([]))
+
 vi.mock('../lib/pocketbase', () => ({
   pb: {
     collection: vi.fn(() => ({
-      getFullList: vi.fn(() => Promise.resolve([])),
+      getFullList: (...args: unknown[]) => personsGetFullList(...(args as [])),
     })),
     authStore: {
       isValid: true,
@@ -465,6 +468,188 @@ describe('MergeRequestsModal', () => {
       await waitFor(() => {
         expect(mergeButton).toBeDisabled()
       })
+    })
+  })
+
+  describe('always-mounted conversion (kindred#2538)', () => {
+    beforeEach(() => {
+      // Re-arm the collection mock. The file-level `vi.resetAllMocks()` blanks
+      // `pb.collection` so it returns undefined, which makes the persons query
+      // throw before it ever reaches the spy -- and a "was not called"
+      // assertion would then pass whether or not the query is gated. Found by
+      // mutation-checking: ungating the query left these tests green.
+      personsGetFullList.mockClear()
+      personsGetFullList.mockResolvedValue([])
+      vi.mocked(pb.collection).mockReturnValue({
+        getFullList: personsGetFullList,
+      } as unknown as ReturnType<typeof pb.collection>)
+    })
+
+    it('re-seeds the kept target from the CURRENT requests when reopened on a different pair', () => {
+      const first = [
+        createMockRequest({ id: 'req_1' }),
+        createMockRequest({ id: 'req_2', requestee_id: 22222 }),
+      ]
+      const { rerender } = renderWithQueryClient(
+        <MergeRequestsModal
+          isOpen={true}
+          nonce={1}
+          onClose={() => {}}
+          requests={first}
+          onMergeComplete={() => {}}
+        />
+      )
+      // The first request of the pair is the default kept target.
+      expect(screen.getByDisplayValue('req_1')).toBeChecked()
+
+      // Staff picks the OTHER one, then closes.
+      fireEvent.click(screen.getByDisplayValue('req_2'))
+      expect(screen.getByDisplayValue('req_2')).toBeChecked()
+
+      const second = [
+        createMockRequest({ id: 'req_9' }),
+        createMockRequest({ id: 'req_10', requestee_id: 33333 }),
+      ]
+      rerender(
+        <QueryClientProvider client={new QueryClient()}>
+          <MergeRequestsModal
+            isOpen={false}
+            nonce={1}
+            onClose={() => {}}
+            requests={first}
+            onMergeComplete={() => {}}
+          />
+        </QueryClientProvider>
+      )
+      rerender(
+        <QueryClientProvider client={new QueryClient()}>
+          <MergeRequestsModal
+            isOpen={true}
+            nonce={2}
+            onClose={() => {}}
+            requests={second}
+            onMergeComplete={() => {}}
+          />
+        </QueryClientProvider>
+      )
+
+      // Always-mounted, `useState(requests[0]?.id)` runs ONCE at mount and
+      // never re-derives -- so without a per-open remount this still holds
+      // `req_2`, and Merge would POST a keep_target_from belonging to a pair
+      // that is no longer on screen. This is the issue's correctness bug, not
+      // a cosmetic one.
+      expect(screen.getByDisplayValue('req_9')).toBeChecked()
+    })
+
+    it('clears a failed merge error when reopened', async () => {
+      mockFetchWithAuth.mockResolvedValue({
+        ok: false,
+        json: () => Promise.resolve({ detail: 'Merge exploded' }),
+      })
+      const requests = [createMockRequest({ id: 'req_1' }), createMockRequest({ id: 'req_2' })]
+
+      const { rerender } = renderWithQueryClient(
+        <MergeRequestsModal
+          isOpen={true}
+          nonce={1}
+          onClose={() => {}}
+          requests={requests}
+          onMergeComplete={() => {}}
+        />
+      )
+
+      fireEvent.click(screen.getByRole('button', { name: /merge/i }))
+      expect(await screen.findByText(/Merge exploded/i)).toBeInTheDocument()
+
+      rerender(
+        <QueryClientProvider client={new QueryClient()}>
+          <MergeRequestsModal
+            isOpen={false}
+            nonce={1}
+            onClose={() => {}}
+            requests={requests}
+            onMergeComplete={() => {}}
+          />
+        </QueryClientProvider>
+      )
+      rerender(
+        <QueryClientProvider client={new QueryClient()}>
+          <MergeRequestsModal
+            isOpen={true}
+            nonce={2}
+            onClose={() => {}}
+            requests={requests}
+            onMergeComplete={() => {}}
+          />
+        </QueryClientProvider>
+      )
+
+      // The banner is set on failure and nothing clears it, so always-mounted
+      // it greets the next open.
+      expect(screen.queryByText(/Merge exploded/i)).not.toBeInTheDocument()
+    })
+
+    it("does not look up the merge targets' persons while it is closed", async () => {
+      const requests = [
+        createMockRequest({ id: 'req_1', requestee_id: 67890 }),
+        createMockRequest({ id: 'req_2', requestee_id: 22222 }),
+      ]
+
+      renderWithQueryClient(
+        <MergeRequestsModal
+          isOpen={false}
+          nonce={0}
+          onClose={() => {}}
+          requests={requests}
+          onMergeComplete={() => {}}
+        />
+      )
+
+      // `mergeEligibility.requests` goes non-empty on SELECTION alone, so a
+      // closed dialog that fetched would look persons up every time staff tick
+      // a second merge-eligible row, with a fresh queryKey per selection.
+      //
+      // TWO mechanisms keep this true and either alone is sufficient, so
+      // mutating one leaves this green: (1) `<Modal isOpen={false}>` renders
+      // no children, so the form body — and its useQuery — is not mounted at
+      // all while closed; (2) the query's own `enabled: isOpen && …`, which is
+      // what covers the exit-fade window, when the body IS mounted with
+      // isOpen already false. Verified by mutation: removing both together is
+      // what reds this.
+      await Promise.resolve()
+      expect(personsGetFullList).not.toHaveBeenCalled()
+    })
+
+    it('looks the persons up once it is opened', async () => {
+      const requests = [
+        createMockRequest({ id: 'req_1', requestee_id: 67890 }),
+        createMockRequest({ id: 'req_2', requestee_id: 22222 }),
+      ]
+
+      const { rerender } = renderWithQueryClient(
+        <MergeRequestsModal
+          isOpen={false}
+          nonce={0}
+          onClose={() => {}}
+          requests={requests}
+          onMergeComplete={() => {}}
+        />
+      )
+      expect(personsGetFullList).not.toHaveBeenCalled()
+
+      rerender(
+        <QueryClientProvider client={new QueryClient()}>
+          <MergeRequestsModal
+            isOpen={true}
+            nonce={1}
+            onClose={() => {}}
+            requests={requests}
+            onMergeComplete={() => {}}
+          />
+        </QueryClientProvider>
+      )
+
+      await waitFor(() => expect(personsGetFullList).toHaveBeenCalled())
     })
   })
 })

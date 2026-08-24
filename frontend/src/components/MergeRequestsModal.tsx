@@ -14,6 +14,18 @@ interface MergeRequestsModalProps {
   onClose: () => void
   requests: BunkRequestsResponse[]
   onMergeComplete: () => void
+  /**
+   * Per-open nonce from kindred#2541's useRetainedDialog (kindred#2538).
+   *
+   * Load-bearing for CORRECTNESS here, not just for tidiness. Always-mounted,
+   * `selectedTargetId` and `finalType` below are `useState(requests[0]…)`
+   * initializers that run ONCE at mount and never re-derive -- so a second
+   * open on a different pair would keep the first pair's target and Merge
+   * would POST a `keep_target_from` that is no longer on screen.
+   */
+  nonce?: number
+  /** Modal's afterLeave, so the parent can release its retained snapshot. */
+  afterLeave?: () => void
 }
 
 interface MergeResponse {
@@ -25,10 +37,34 @@ interface MergeResponse {
 
 export default function MergeRequestsModal({
   isOpen,
+  nonce,
   onClose,
-  requests,
-  onMergeComplete,
+  afterLeave,
+  ...body
 }: MergeRequestsModalProps) {
+  // Thin shell owning the chrome; every useState lives in the body below,
+  // keyed by the nonce so each open remounts it fresh. The key goes on the
+  // CONTENT and never on <Modal> -- remounting the chrome mid-leave would snap
+  // the fading dialog away instead of fading it (kindred#2541).
+  return (
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      // Spread rather than passed straight through: tsconfig sets
+      // exactOptionalPropertyTypes, so an explicit `undefined` is not
+      // assignable to Modal's `afterLeave?: () => void`.
+      {...(afterLeave !== undefined && { afterLeave })}
+      title="Merge Requests"
+      size="lg"
+    >
+      <MergeRequestsForm key={nonce} isOpen={isOpen} onClose={onClose} {...body} />
+    </Modal>
+  )
+}
+
+type MergeRequestsFormProps = Omit<MergeRequestsModalProps, 'nonce' | 'afterLeave'>
+
+function MergeRequestsForm({ isOpen, onClose, requests, onMergeComplete }: MergeRequestsFormProps) {
   const queryClient = useQueryClient()
   const { fetchWithAuth } = useApiWithAuth()
   const [selectedTargetId, setSelectedTargetId] = useState<string>(requests[0]?.id ?? '')
@@ -62,7 +98,14 @@ export default function MergeRequestsModal({
       const filter = `(${requesteeIds.map((id) => `cm_id = ${id}`).join(' || ')}) && year = ${year}`
       return pb.collection<PersonsResponse>('persons').getFullList({ filter })
     },
-    enabled: requesteeIds.length > 0,
+    // Gated on `isOpen` too (kindred#2538), as defence in depth rather than
+    // as the primary guard. The primary guard is structural: <Modal
+    // isOpen={false}> renders no children, so this body is not mounted while
+    // the dialog is closed and the query cannot run. What `isOpen` adds is the
+    // EXIT-FADE window -- the body stays mounted for the leave with isOpen
+    // already false, and this stops a `requests` change landing in that window
+    // from starting a lookup for a dialog on its way out.
+    enabled: isOpen && requesteeIds.length > 0,
   })
 
   const personMap = useMemo(() => {
@@ -170,7 +213,7 @@ export default function MergeRequestsModal({
   // fade play would find the guard unmounting Modal anyway.
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Merge Requests" size="lg">
+    <>
       <div className="space-y-6">
         {/* Error display */}
         {error && (
@@ -320,6 +363,6 @@ export default function MergeRequestsModal({
           </button>
         </div>
       </div>
-    </Modal>
+    </>
   )
 }
