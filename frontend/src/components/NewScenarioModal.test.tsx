@@ -203,7 +203,7 @@ describe('onScenarioCreated', () => {
  *    stale default.
  */
 describe('NewScenarioModal — always-mounted exit fade (kindred#2538)', () => {
-  it('stays mounted when isOpen goes false, so the exit fade can play', () => {
+  it('stays painted on the close frame, then unmounts once the leave completes', async () => {
     const { rerender } = render(
       <NewScenarioModal
         sessionId={1000001}
@@ -223,9 +223,17 @@ describe('NewScenarioModal — always-mounted exit fade (kindred#2538)', () => {
       />
     )
 
-    // Still in the DOM on the close frame. Headless UI's Transition removes it
-    // 150ms later; asserting absence here would be asserting the bug.
+    // Still in the DOM on the close frame — the exit fade has something to
+    // fade. Asserting absence HERE would be asserting the bug.
     expect(screen.getByText('Create New Scenario')).toBeInTheDocument()
+
+    // ...and gone once the leave completes. Both halves are required, and the
+    // second was missing: on its own, the presence assertion passes vacuously
+    // against a component that hardcodes `isOpen={true}` and so ignores the
+    // prop and never unmounts at all — which is exactly the pre-conversion
+    // shape it is meant to rule out. The other five dialogs in this issue pin
+    // both halves; this one now matches them.
+    await waitFor(() => expect(screen.queryByText('Create New Scenario')).not.toBeInTheDocument())
   })
 
   it('reopening resets the typed name rather than showing the previous draft', async () => {
