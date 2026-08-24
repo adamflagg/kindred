@@ -1477,3 +1477,91 @@ describe('AssignFamilyModal — it is the shared dialog, not a second pattern', 
     expect(props.onClose).toHaveBeenCalled()
   })
 })
+
+/**
+ * The staff-group chips — kindred#2480's Assign-modal half, owner pick "B"
+ * (2026-08-24): the same row the Unplaced popout carries, but a pick PINS its
+ * matches to the top instead of hiding everyone else.
+ *
+ * The load-bearing property is that nothing is hidden. `placementCandidates`'
+ * "annotate and order, never hide" ruling is what makes the picker usable at
+ * all — 4 of 62 parties ask for a bathroom, so a hiding filter would leave 4
+ * rows where pinning surfaces 4 and keeps 58.
+ */
+describe('the staff-group chips (kindred#2480)', () => {
+  const BATHROOMER = party({
+    household_cm_id: 201,
+    display_name: 'Alvarez',
+    sort_name: 'Alvarez',
+    children: [{ person_cm_id: 9101, display_name: 'Mia Alvarez', age: 5, grade: 0 }],
+    flags: { needs_private_bathroom: true },
+  })
+
+  function chips() {
+    return within(screen.getByTestId('assign-group-chips'))
+  }
+
+  it('renders one chip per group, each carrying its count', () => {
+    renderModal({ parties: [BATHROOMER, party(), NGUYEN] })
+    expect(chips().getByRole('button', { name: /bathroom in unit/i })).toHaveTextContent('1')
+    expect(chips().getByRole('button', { name: /power/i })).toHaveTextContent('0')
+  })
+
+  it('PINS the matches and keeps everyone else listed below', async () => {
+    renderModal({ parties: [BATHROOMER, party(), NGUYEN] })
+    await userEvent.click(chips().getByRole('button', { name: /bathroom in unit/i }))
+
+    // The match is first. Queried by ROLE, not by a `candidate-` testid
+    // prefix — the row carries nested `candidate-detail-line` and
+    // `candidate-…-fit` testids that a prefix match would also collect.
+    const rows = screen.getAllByRole('option')
+    expect(rows[0]).toHaveTextContent(/Alvarez/)
+    // ...and NOBODY is gone. This is the assertion the ruling exists for.
+    expect(rows).toHaveLength(3)
+    expect(screen.getByText(/Nguyen/)).toBeInTheDocument()
+  })
+
+  it('labels the pinned band with the group and its count', async () => {
+    renderModal({ parties: [BATHROOMER, party(), NGUYEN] })
+    await userEvent.click(chips().getByRole('button', { name: /bathroom in unit/i }))
+    expect(screen.getByText(/1 asked for bathroom in unit/i)).toBeInTheDocument()
+    expect(screen.getByText(/everyone else/i)).toBeInTheDocument()
+  })
+
+  it('is single-select, and clicking the active chip clears the pin', async () => {
+    renderModal({ parties: [BATHROOMER, party(), NGUYEN] })
+    const chip = () => chips().getByRole('button', { name: /bathroom in unit/i })
+    await userEvent.click(chip())
+    expect(chip()).toHaveAttribute('aria-pressed', 'true')
+    await userEvent.click(chip())
+    expect(chip()).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.queryByText(/everyone else/i)).not.toBeInTheDocument()
+  })
+
+  it('disables a zero-count chip rather than hiding it', () => {
+    renderModal({ parties: [party(), NGUYEN] })
+    expect(chips().getByRole('button', { name: /child under 2/i })).toBeDisabled()
+  })
+
+  it('leaves the footer count untouched — pinning is not filtering', async () => {
+    renderModal({ parties: [BATHROOMER, party(), NGUYEN] })
+    const before = screen.getByText(/3 of 3/).textContent
+    await userEvent.click(chips().getByRole('button', { name: /bathroom in unit/i }))
+    expect(screen.getByText(/3 of 3/).textContent).toBe(before)
+  })
+
+  it('renders no chip row when there are no candidates to pin', () => {
+    // Write-in-only mode: the card offered no placements, so there is no list
+    // to reorder and a chip row would be four dead controls.
+    renderModal({ parties: [] })
+    expect(screen.queryByTestId('assign-group-chips')).not.toBeInTheDocument()
+  })
+
+  it('keeps the typed search working alongside a pin', async () => {
+    renderModal({ parties: [BATHROOMER, party(), NGUYEN] })
+    await userEvent.click(chips().getByRole('button', { name: /bathroom in unit/i }))
+    await userEvent.type(searchBox(), 'Nguyen')
+    expect(screen.getByText(/Nguyen/)).toBeInTheDocument()
+    expect(screen.queryByText(/Alvarez/)).not.toBeInTheDocument()
+  })
+})

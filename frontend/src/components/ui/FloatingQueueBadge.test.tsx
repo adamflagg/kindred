@@ -339,3 +339,80 @@ describe('FloatingQueueBadge — the drop target', () => {
     expect(attached.length).toBeGreaterThan(0)
   })
 })
+
+/**
+ * The caller-owned filter seam (kindred#2480). Summer passes none of these and
+ * must be unaffected — need-based filtering is a weekend concept, and baking
+ * it into the shell would put dead controls on the camper queue.
+ */
+describe('the optional filter seam', () => {
+  const rows = ['Alvarez', 'Bennett', 'Castillo']
+  function shell(extra: Record<string, unknown> = {}) {
+    return (
+      <FloatingQueueBadge<string>
+        items={rows}
+        sortKey={(i) => [i]}
+        getSearchText={(i) => i}
+        renderList={(visible) => (
+          <ul>
+            {visible.map((i) => (
+              <li key={i}>{i}</li>
+            ))}
+          </ul>
+        )}
+        label="Unplaced"
+        noun="parties"
+        cardSelector="[data-row]"
+        emptyState={<p>nothing queued</p>}
+        isExpanded={true}
+        onToggle={() => {}}
+        onClose={() => {}}
+        {...extra}
+      />
+    )
+  }
+
+  it('renders no filter row and filters nothing when the props are omitted', () => {
+    render(shell())
+    expect(screen.getByText('Alvarez')).toBeInTheDocument()
+    expect(screen.getByText('Castillo')).toBeInTheDocument()
+    expect(screen.queryByTestId('row')).not.toBeInTheDocument()
+  })
+
+  it('applies itemFilter and the name search together', async () => {
+    render(
+      shell({
+        itemFilter: (i: string) => i !== 'Castillo',
+        filterRow: <div data-testid="row">chips</div>,
+      })
+    )
+    expect(screen.getByTestId('row')).toBeInTheDocument()
+    expect(screen.queryByText('Castillo')).not.toBeInTheDocument()
+
+    await userEvent.type(screen.getByPlaceholderText(/filter by name/i), 'Alv')
+    expect(screen.getByText('Alvarez')).toBeInTheDocument()
+    expect(screen.queryByText('Bennett')).not.toBeInTheDocument()
+  })
+
+  it('shows filterEmptyState when the predicate empties the list, but the SEARCH miss still wins', async () => {
+    // Two different dead ends. A name-search miss names the term; a filter
+    // miss names the group. Whichever the staff member just did is the one
+    // that should explain itself.
+    render(
+      shell({
+        itemFilter: () => false,
+        filterEmptyState: <p>no parties in that group</p>,
+      })
+    )
+    expect(screen.getByText('no parties in that group')).toBeInTheDocument()
+
+    await userEvent.type(screen.getByPlaceholderText(/filter by name/i), 'zzz')
+    expect(screen.getByText(/No parties match "zzz"/)).toBeInTheDocument()
+    expect(screen.queryByText('no parties in that group')).not.toBeInTheDocument()
+  })
+
+  it('counts N/M in the header while a group filter is active, with no search term', () => {
+    render(shell({ itemFilter: (i: string) => i === 'Alvarez' }))
+    expect(screen.getByText('1/3')).toBeInTheDocument()
+  })
+})

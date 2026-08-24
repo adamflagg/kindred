@@ -12,7 +12,16 @@
  */
 import clsx from 'clsx'
 import { CircleCheck, Search, UserRoundSearch, Users, X } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type Ref } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+  type Ref,
+} from 'react'
 
 /**
  * One node, two owners: the shell's own click-outside ref and the caller's
@@ -43,6 +52,26 @@ export interface FloatingQueueBadgeProps<T> {
   cardSelector: string
   /** Shown when there is nothing queued at all, as opposed to nothing matching the filter. */
   emptyState: ReactNode
+  /**
+   * A row of caller-owned controls, rendered under the name search.
+   *
+   * Chrome only: the shell renders the node and never reads it. What the
+   * controls MEAN is the adapter's business, which is why the predicate
+   * arrives separately as `itemFilter` — need-based filtering is a weekend
+   * concept and a summer camper queue has no `needs_private_bathroom` to
+   * offer. Both are optional, so summer passes neither and is unchanged.
+   */
+  filterRow?: ReactNode
+  /**
+   * Applied BEFORE the name search; both compose.
+   *
+   * `| undefined` is explicit because the project builds with
+   * `exactOptionalPropertyTypes`: without it a caller cannot pass the
+   * "no filter" case through as a variable, only by omitting the prop.
+   */
+  itemFilter?: ((item: T) => boolean) | undefined
+  /** Shown when `itemFilter` hides everything — a different dead end from a name-search miss. */
+  filterEmptyState?: ReactNode
   footer?: ReactNode
   isExpanded: boolean
   onToggle: () => void
@@ -70,6 +99,9 @@ export function FloatingQueueBadge<T>({
   noun,
   cardSelector,
   emptyState,
+  filterRow,
+  itemFilter,
+  filterEmptyState,
   footer,
   isExpanded,
   onToggle,
@@ -89,6 +121,31 @@ export function FloatingQueueBadge<T>({
   // clear", so it stays keyed to the raw `searchTerm`.
   const trimmedSearchTerm = searchTerm.trim()
 
+  /**
+   * THE CARD MUST NOT RESIZE WHEN A GROUP FILTER IS APPLIED.
+   *
+   * This popover is anchored at the BOTTOM corner and its height is its
+   * content's, so a shorter list drops the top edge rather than lifting the
+   * bottom one. Measured on a 1080px viewport with 73 unplaced parties: the
+   * `Child under 2` filter (4 matches) moved the top edge **217px** and `Power`
+   * (5 matches) **124px** — the two cases where the filtered list stops needing
+   * a scrollbar. Filters with enough matches to keep overflowing (9 and 13) did
+   * not move at all, which is exactly why it reads as intermittent.
+   *
+   * The fix is the Assign modal's, adapted: it pins its swap region to a
+   * constant `h-80` because "a constant height fixes the amount". Here the
+   * right constant is not a literal — it is whatever height the UNFILTERED list
+   * occupies, which already respects `max-h-[70vh]` and the queue's real
+   * length. So measure that, and hold it while a filter narrows the list.
+   *
+   * Deliberately NOT applied to the name search: typing has always resized the
+   * card and nobody has asked for that to change, so this stays scoped to the
+   * group filter that introduced the complaint.
+   */
+  const listRef = useRef<HTMLDivElement>(null)
+  const unfilteredListHeight = useRef<number | null>(null)
+  const isGroupFiltered = itemFilter !== undefined
+
   const visible = useMemo(() => {
     const sorted = items.toSorted((a, b) => {
       const left = sortKey(a)
@@ -100,10 +157,24 @@ export function FloatingQueueBadge<T>({
       return 0
     })
 
-    if (!trimmedSearchTerm) return sorted
+    const grouped = itemFilter ? sorted.filter((item) => itemFilter(item)) : sorted
+
+    if (!trimmedSearchTerm) return grouped
     const term = trimmedSearchTerm.toLowerCase()
-    return sorted.filter((item) => getSearchText(item).toLowerCase().includes(term))
-  }, [items, trimmedSearchTerm, sortKey, getSearchText])
+    return grouped.filter((item) => getSearchText(item).toLowerCase().includes(term))
+  }, [items, trimmedSearchTerm, sortKey, getSearchText, itemFilter])
+
+  // Record the unfiltered height so the next render CAN pin it. `useLayoutEffect`
+  // because a `useEffect` would measure a frame late and let the jump paint once.
+  useLayoutEffect(() => {
+    if (!isExpanded) {
+      unfilteredListHeight.current = null
+      return
+    }
+    if (isGroupFiltered) return
+    const element = listRef.current
+    if (element) unfilteredListHeight.current = element.clientHeight
+  }, [isExpanded, isGroupFiltered, items, trimmedSearchTerm])
 
   const handleClickOutside = useCallback(
     (event: MouseEvent) => {
@@ -209,7 +280,7 @@ export function FloatingQueueBadge<T>({
                 <span className="text-muted-foreground ml-1.5 text-sm font-normal">
                   (
                   <span>
-                    {trimmedSearchTerm
+                    {trimmedSearchTerm || itemFilter
                       ? `${String(visible.length)}/${String(items.length)}`
                       : items.length}
                   </span>
@@ -256,7 +327,21 @@ export function FloatingQueueBadge<T>({
             </div>
           )}
 
+          {items.length > 0 && filterRow !== undefined && (
+            <div className="border-border flex-shrink-0 border-b px-3 py-2">{filterRow}</div>
+          )}
+
           <div
+            ref={listRef}
+            // The pin is a FLOOR, never a cap, and it is only ever a height this
+            // same list already occupied at this viewport — so it cannot push
+            // the card past `max-h-[70vh]`. A mid-filter viewport change
+            // self-corrects on the next unfiltered render.
+            style={
+              isGroupFiltered && unfilteredListHeight.current !== null
+                ? { minHeight: unfilteredListHeight.current }
+                : undefined
+            }
             className={clsx(
               'min-h-[200px] flex-1 overflow-y-auto p-3',
               isDropTarget && 'bg-primary/5'
@@ -264,12 +349,14 @@ export function FloatingQueueBadge<T>({
           >
             {items.length === 0 ? (
               emptyState
-            ) : visible.length === 0 ? (
+            ) : visible.length === 0 && trimmedSearchTerm ? (
               <div className="flex h-full flex-col items-center justify-center py-8 text-center">
                 <p className="text-muted-foreground text-sm">
                   No {noun} match "{trimmedSearchTerm}"
                 </p>
               </div>
+            ) : visible.length === 0 ? (
+              filterEmptyState
             ) : (
               renderList(visible)
             )}

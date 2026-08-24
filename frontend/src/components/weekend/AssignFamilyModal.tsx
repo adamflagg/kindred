@@ -83,7 +83,16 @@ import { childrenRunLabel, partyIdentityLabel, partySearchText } from './househo
 import { NeedGlyphMark } from './NeedGlyph'
 import { resolveNeedGlyphs } from './needGlyphs'
 import { partyKey } from './partyKey'
-import { placementCandidates, type PlacementCandidate } from './placementCandidates'
+import {
+  UNPLACED_FILTER_GROUPS,
+  unplacedFilterGroup,
+  type UnplacedFilterKey,
+} from './unplacedFilters'
+import {
+  partitionByGroup,
+  placementCandidates,
+  type PlacementCandidate,
+} from './placementCandidates'
 import { effectiveSleeps, partyBeds } from './rosterAttention'
 import { PARTY_SIZE_CHOICES, coveringWriteIns, writeInDemand } from './writeIn'
 
@@ -544,6 +553,48 @@ export function AssignFamilyModal({
   )
 
   /**
+   * The staff-group pin (kindred#2480, owner pick "B" 2026-08-24). Single-select
+   * like the Unplaced popout's row, because the ruling behind that — a party in
+   * two groups never needs a tie-break — is the same one here.
+   */
+  const [group, setGroup] = useState<UnplacedFilterKey | null>(null)
+
+  // Over every party the card offered, never the typed subset: the number
+  // answers "is this group worth pinning" before the click, and one that moved
+  // while you typed would stop answering it. Same rule as the popout's chips.
+  const groupCounts = useMemo(() => {
+    const tally = {} as Record<UnplacedFilterKey, number>
+    for (const spec of UNPLACED_FILTER_GROUPS) {
+      tally[spec.key] = parties.filter((party) => spec.matches(party)).length
+    }
+    return tally
+  }, [parties])
+
+  /**
+   * PINNED, NOT FILTERED. Both halves render, one after the other — see
+   * `partitionByGroup`, and the "never hide" ruling it protects. `candidates`
+   * itself is untouched, which is what keeps the footer count and the write-in
+   * offer honest.
+   */
+  const { pinned, rest } = useMemo(() => partitionByGroup(candidates, group), [candidates, group])
+
+  const listEntries = useMemo(() => {
+    type ListEntry =
+      { kind: 'band'; label: string } | { kind: 'row'; candidate: PlacementCandidate }
+    const entries: ListEntry[] = []
+    if (pinned.length > 0 && group) {
+      entries.push({
+        kind: 'band',
+        label: `${String(pinned.length)} asked for ${unplacedFilterGroup(group).label.toLowerCase()}`,
+      })
+      for (const candidate of pinned) entries.push({ kind: 'row', candidate })
+      entries.push({ kind: 'band', label: 'Everyone else' })
+    }
+    for (const candidate of rest) entries.push({ kind: 'row', candidate })
+    return entries
+  }, [pinned, rest, group])
+
+  /**
    * THE WRITE-IN OFFER, and the three conditions are each load-bearing.
    *
    * `onWriteIn` — the caller can actually write one.
@@ -766,6 +817,60 @@ export function AssignFamilyModal({
           // dialog, which is the same ground the rows take (§3.6).
           className="border-border bg-background text-foreground placeholder:text-muted-foreground/60 focus:border-primary/50 focus:ring-primary/10 w-full rounded-md border px-1.5 py-1 text-sm focus:ring-2 focus:outline-none"
         />
+        {parties.length > 0 && (
+          <div
+            data-testid="assign-group-chips"
+            // No padding and NO negative margin: this row lives INSIDE the
+            // search box's `flex flex-col gap-[9px] … pb-[9px]` container, so
+            // that container's gap is the single vertical rhythm, its padding
+            // the single bottom gap, and its `px-3.5` the left edge the chip
+            // BOX shares with the typeahead above and the candidate rows below.
+            //
+            // A `-ml-2` was tried here to flush the ICON rather than the box and
+            // it reads as overhanging — the Unplaced popout, which is the
+            // reference for this row, aligns the box and not the glyph.
+            className="flex flex-wrap items-center gap-1"
+          >
+            {UNPLACED_FILTER_GROUPS.map((spec) => {
+              const Icon = spec.Icon
+              const isActive = group === spec.key
+              const count = groupCounts[spec.key]
+              return (
+                <button
+                  key={spec.key}
+                  type="button"
+                  // Icon + count, no text label — the popout's locked style.
+                  // The label is the button's only name, a test handle per
+                  // frontend/CLAUDE.md rather than an accessibility posture.
+                  aria-label={spec.label}
+                  aria-pressed={isActive}
+                  title={spec.label}
+                  // Dimmed at zero, never hidden — a chip that vanished could
+                  // not say the group is empty. The active chip stays live at
+                  // zero so a pin can always be undone.
+                  disabled={(count === 0 && !isActive) || isSaving}
+                  onClick={() => {
+                    setGroup((current) => (current === spec.key ? null : spec.key))
+                  }}
+                  // Geometry is the Unplaced popout's, verbatim — same radius,
+                  // padding, icon size and active treatment. One chip row means
+                  // one chip, and the popout is the reference (owner ruling,
+                  // 2026-08-24). Do not re-tune it on this side alone.
+                  className={`inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium tabular-nums transition-colors ${
+                    isActive
+                      ? 'bg-primary text-primary-foreground shadow-lodge-sm'
+                      : 'text-muted-foreground hover:bg-muted disabled:opacity-40 disabled:hover:bg-transparent'
+                  }`}
+                >
+                  <Icon
+                    className={`h-3.5 w-3.5 flex-shrink-0 ${isActive ? '' : spec.hueClassName}`}
+                  />
+                  {count}
+                </button>
+              )
+            })}
+          </div>
+        )}
 
         {/* THE SWAP REGION — the only thing that changes when the last match
             goes.
@@ -782,6 +887,12 @@ export function AssignFamilyModal({
             The artifact's separator (`.mswap`'s `border-top: 1px dashed`) is
             what makes the boundary between "what you typed" and "what that
             found" legible once the region no longer shrinks to fit. */}
+        {/* THE GROUP CHIPS — above the swap region on purpose. That region's
+            `h-80` is a fixed height fixing a measured jump; putting a row of
+            controls INSIDE it would spend list rows on chrome, and putting one
+            that can change height inside it would reopen the jump. Here the row
+            is constant and the region below is untouched. */}
+
         <div
           data-testid="assign-swap-region"
           className="border-border h-80 overflow-y-auto border-t border-dashed pt-[9px]"
@@ -925,7 +1036,19 @@ export function AssignFamilyModal({
               aria-label={`Families to place in ${unit.name}`}
               className="flex flex-col gap-[6px]"
             >
-              {candidates.map((candidate) => {
+              {listEntries.map((entry) => {
+                if (entry.kind === 'band') {
+                  return (
+                    <div
+                      key={`band-${entry.label}`}
+                      className="text-muted-foreground flex items-center gap-1.5 pt-0.5 text-[10px] font-bold tracking-wider uppercase"
+                    >
+                      <span>{entry.label}</span>
+                      <span className="bg-border h-px flex-1" />
+                    </div>
+                  )
+                }
+                const candidate = entry.candidate
                 const party = candidate.party
                 const lastYearCabin = (party.last_year_cabin ?? '').trim()
                 // The PROSPECTIVE reading — graded against the cabin being
