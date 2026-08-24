@@ -4,6 +4,7 @@ import { formatDistanceToNow } from 'date-fns'
 import { useScenario } from '../hooks/useScenario'
 import { useYear } from '../hooks/useCurrentYear'
 import { useSyncStatusAPI } from '../hooks/useSyncStatusAPI'
+import { useRetainedDialog } from '../hooks/useRetainedDialog'
 import ScenarioEditModal from './ScenarioEditModal'
 import NewScenarioModal from './NewScenarioModal'
 import { Modal } from './ui/Modal'
@@ -33,12 +34,21 @@ interface ScenarioManagementModalProps {
    * (`SessionView`) uses the default.
    */
   emptyLabel?: string
+  /**
+   * kindred#2538 tier 2b. Always mounted so ui/Modal's 150ms leave can play.
+   *
+   * Optional and defaulting to TRUE, matching the other tier-2b dialogs: an
+   * unconverted call site keeps its old conditional-mount behaviour, so a
+   * missed site degrades to "no fade" rather than "a modal appears".
+   */
+  isOpen?: boolean
 }
 
 export default function ScenarioManagementModal({
   sessionId,
   onClose,
   emptyLabel,
+  isOpen = true,
 }: ScenarioManagementModalProps) {
   const currentYear = useYear()
   // Read `isLoading` (initial query fetch) rather than the combined
@@ -54,15 +64,46 @@ export default function ScenarioManagementModal({
     clearScenario,
     isLoading,
   } = useScenario()
-  const { data: syncStatus } = useSyncStatusAPI()
+  // Gated on `isOpen` (kindred#2538). Unlike the tier-2b dialogs that split
+  // into a shell and a keyed body, this component's state cannot move below
+  // <Modal>: its confirm dialog and its two child dialogs are rendered as
+  // SIBLINGS of the main Modal, not inside it. So the hook lives at the
+  // permanent mount and needs the flag -- ungated, its query and its auth
+  // listener stay alive for as long as the panel exists.
+  const { data: syncStatus } = useSyncStatusAPI({ enabled: isOpen })
 
-  const [editingScenario, setEditingScenario] = useState<Scenario | null>(null)
-  const [showNewScenarioModal, setShowNewScenarioModal] = useState(false)
-  const [confirmAction, setConfirmAction] = useState<{
+  const editDialog = useRetainedDialog<Scenario>()
+  const newScenarioDialog = useRetainedDialog<true>()
+  const confirmDialog = useRetainedDialog<{
     type: 'delete' | 'clear'
     scenario: Scenario
-  } | null>(null)
+  }>()
   const [isProcessing, setIsProcessing] = useState(false)
+
+  // Close every child when this dialog closes (kindred#2538).
+  //
+  // Modals portal outside `#root` and `modalStack` inerts only `#root`, so a
+  // staffer can reach this dialog's close while a child confirm is up. While
+  // this component was conditionally mounted that was moot -- its unmount took
+  // the children with it. Always-mounted, an unreset child stays on screen
+  // with its parent gone.
+  //
+  // On the isOpen FALLING EDGE rather than inside `onClose`, which is what
+  // kindred#2538 suggested: `onClose` only fires for a user-initiated close,
+  // so a parent that drops `isOpen` itself would still strand the child. The
+  // falling edge covers both. Render-time correction, guarded on the flag
+  // actually having changed, so it cannot loop.
+  const [wasOpen, setWasOpen] = useState(isOpen)
+  if (isOpen !== wasOpen) {
+    setWasOpen(isOpen)
+    if (!isOpen) {
+      // `close()` rather than dropping the snapshots: each child plays its own
+      // leave, and each hook releases its data in its own afterLeave.
+      editDialog.close()
+      newScenarioDialog.close()
+      confirmDialog.close()
+    }
+  }
 
   const formatDate = (dateString?: string) => {
     if (!dateString) return 'Unknown'
@@ -81,7 +122,7 @@ export default function ScenarioManagementModal({
     try {
       await deleteScenario(scenario.id)
       toast.success(`Deleted scenario: ${scenario.name}`)
-      setConfirmAction(null)
+      confirmDialog.close()
     } catch {
       toast.error('Failed to delete scenario')
     } finally {
@@ -97,7 +138,7 @@ export default function ScenarioManagementModal({
       // 0 or 400 rows were cleared.
       const message = await clearScenario(scenario.id, currentYear, sessionId)
       toast.success(message)
-      setConfirmAction(null)
+      confirmDialog.close()
     } catch {
       toast.error('Failed to clear scenario')
     } finally {
@@ -113,6 +154,11 @@ export default function ScenarioManagementModal({
     toast.success('Scenario updated')
   }
 
+  // A local const, not `confirmDialog.data` inline: TypeScript's narrowing
+  // from the `!== null` guard below does not survive into the button
+  // callbacks, which are closures.
+  const confirm = confirmDialog.data
+
   const headerContent = (
     <div className="border-border border-b p-6 pr-14">
       <h2 className="font-display text-2xl font-bold">Manage Scenarios</h2>
@@ -122,7 +168,7 @@ export default function ScenarioManagementModal({
   const footerContent = (
     <div className="border-border border-t p-6">
       <button
-        onClick={() => setShowNewScenarioModal(true)}
+        onClick={() => newScenarioDialog.open(true)}
         className="btn-primary flex w-full items-center justify-center gap-2 py-3"
       >
         <Plus className="h-5 w-5" />
@@ -134,7 +180,7 @@ export default function ScenarioManagementModal({
   return (
     <>
       <Modal
-        isOpen={true}
+        isOpen={isOpen}
         onClose={onClose}
         header={headerContent}
         footer={footerContent}
@@ -237,21 +283,21 @@ export default function ScenarioManagementModal({
 
                     <div className="flex items-center gap-2">
                       <button
-                        onClick={() => setEditingScenario(scenario)}
+                        onClick={() => editDialog.open(scenario)}
                         className="btn-ghost p-2"
                         title="Edit scenario"
                       >
                         <Edit className="h-4 w-4" />
                       </button>
                       <button
-                        onClick={() => setConfirmAction({ type: 'clear', scenario })}
+                        onClick={() => confirmDialog.open({ type: 'clear', scenario })}
                         className="btn-ghost p-2"
                         title="Clear assignments"
                       >
                         <RotateCcw className="h-4 w-4" />
                       </button>
                       <button
-                        onClick={() => setConfirmAction({ type: 'delete', scenario })}
+                        onClick={() => confirmDialog.open({ type: 'delete', scenario })}
                         className="hover:bg-destructive/10 text-destructive rounded-xl p-2 transition-colors"
                         title="Delete scenario"
                       >
@@ -268,21 +314,22 @@ export default function ScenarioManagementModal({
 
       {/* Confirmation Dialog */}
       <Modal
-        isOpen={!!confirmAction}
-        onClose={() => setConfirmAction(null)}
-        title={confirmAction?.type === 'delete' ? 'Delete Scenario?' : 'Clear Assignments?'}
+        isOpen={confirmDialog.isOpen}
+        onClose={() => confirmDialog.close()}
+        afterLeave={confirmDialog.afterLeave}
+        title={confirmDialog.data?.type === 'delete' ? 'Delete Scenario?' : 'Clear Assignments?'}
         size="sm"
       >
-        {confirmAction && (
+        {confirm !== null && (
           <>
             <p className="text-muted-foreground mb-6">
-              {confirmAction.type === 'delete'
-                ? `Are you sure you want to delete "${confirmAction.scenario.name}"? This action cannot be undone.`
-                : `Are you sure you want to clear all assignments in "${confirmAction.scenario.name}"? This action cannot be undone.`}
+              {confirm.type === 'delete'
+                ? `Are you sure you want to delete "${confirm.scenario.name}"? This action cannot be undone.`
+                : `Are you sure you want to clear all assignments in "${confirm.scenario.name}"? This action cannot be undone.`}
             </p>
             <div className="flex gap-3">
               <button
-                onClick={() => setConfirmAction(null)}
+                onClick={() => confirmDialog.close()}
                 className="btn-ghost flex-1 py-2"
                 disabled={isProcessing}
               >
@@ -290,20 +337,20 @@ export default function ScenarioManagementModal({
               </button>
               <button
                 onClick={() => {
-                  if (confirmAction.type === 'delete') {
-                    void handleDelete(confirmAction.scenario)
+                  if (confirm.type === 'delete') {
+                    void handleDelete(confirm.scenario)
                   } else {
-                    void handleClear(confirmAction.scenario)
+                    void handleClear(confirm.scenario)
                   }
                 }}
                 className="bg-destructive hover:bg-destructive/90 text-destructive-foreground shadow-lodge flex-1 rounded-xl px-4 py-2.5 font-semibold transition-all disabled:opacity-50"
                 disabled={isProcessing}
               >
                 {isProcessing
-                  ? confirmAction.type === 'delete'
+                  ? confirm.type === 'delete'
                     ? 'Deleting...'
                     : 'Clearing...'
-                  : confirmAction.type === 'delete'
+                  : confirm.type === 'delete'
                     ? 'Delete'
                     : 'Clear'}
               </button>
@@ -313,26 +360,35 @@ export default function ScenarioManagementModal({
       </Modal>
 
       {/* Edit Modal */}
-      {editingScenario && (
+      {/* Gated on the SNAPSHOT (explicit null check, per useRetainedDialog):
+          the gate used to BE the data, which is what unmounted the editor on
+          the close frame. */}
+      {editDialog.data !== null && (
         <ScenarioEditModal
-          scenario={editingScenario}
-          onClose={() => setEditingScenario(null)}
+          scenario={editDialog.data}
+          isOpen={editDialog.isOpen}
+          nonce={editDialog.nonce}
+          afterLeave={editDialog.afterLeave}
+          onClose={() => editDialog.close()}
           onSave={handleUpdate}
         />
       )}
 
       {/* New Scenario Modal */}
-      {showNewScenarioModal && (
-        <NewScenarioModal
-          sessionId={sessionId}
-          {...(emptyLabel !== undefined && { emptyLabel })}
-          onClose={() => setShowNewScenarioModal(false)}
-          onScenarioCreated={(scenario) => {
-            setShowNewScenarioModal(false)
-            toast.success(`Created scenario: ${scenario.name}`)
-          }}
-        />
-      )}
+      {/* Always mounted (kindred#2538); NewScenarioModal grew its own isOpen +
+          nonce in this issue's first commit. This is the third of its three
+          gate sites, which that commit left for this one. */}
+      <NewScenarioModal
+        isOpen={newScenarioDialog.isOpen}
+        nonce={newScenarioDialog.nonce}
+        sessionId={sessionId}
+        {...(emptyLabel !== undefined && { emptyLabel })}
+        onClose={() => newScenarioDialog.close()}
+        onScenarioCreated={(scenario) => {
+          newScenarioDialog.close()
+          toast.success(`Created scenario: ${scenario.name}`)
+        }}
+      />
     </>
   )
 }

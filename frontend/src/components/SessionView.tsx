@@ -537,10 +537,14 @@ export default function SessionView() {
         />
       )}
 
-      {/* Scenario Management Modal (manage permission required) */}
-      {canManage && showScenarioManagementModal && (
+      {/* Scenario Management Modal (manage permission required).
+          `canManage` stays a MOUNT gate -- it is a permission, not an open
+          flag, and a user without it should not carry the dialog at all.
+          `isOpen` drives the fade (kindred#2538). */}
+      {canManage && (
         <ScenarioManagementModal
           sessionId={session.cm_id}
+          isOpen={showScenarioManagementModal}
           onClose={() => setShowScenarioManagementModal(false)}
         />
       )}

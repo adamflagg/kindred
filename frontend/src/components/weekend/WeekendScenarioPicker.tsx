@@ -122,10 +122,13 @@ export function WeekendScenarioPicker({
         </button>
       )}
 
-      {canManage && showManageModal && (
+      {/* `canManage` stays a MOUNT gate -- a permission, not an open flag.
+          `isOpen` drives the fade (kindred#2538). */}
+      {canManage && (
         <ScenarioManagementModal
           sessionId={sessionCmId}
           emptyLabel={EMPTY_LABEL}
+          isOpen={showManageModal}
           onClose={() => {
             setShowManageModal(false)
           }}

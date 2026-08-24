@@ -50,6 +50,18 @@ vi.mock('../hooks/useApiWithAuth', () => ({
   useApiWithAuth: () => ({ fetchWithAuth: vi.fn(), isAuthenticated: true, isAuthLoading: false }),
 }))
 
+// Same reason, new since kindred#2538: WeekendScenarioPicker now keeps
+// ScenarioManagementModal MOUNTED so its close can play an exit fade, and that
+// modal calls `useSyncStatusAPI`, which calls `useAuth`. The dialog's query is
+// gated on `isOpen`, but the hook itself still runs at the permanent mount --
+// so without this stub every test in the file dies on "useAuth must be used
+// within an AuthProvider", exactly as the note above describes. The real app
+// always has the provider (App.tsx wraps everything in AuthProvider); this
+// file's convention is to stub the auth-touching hooks rather than mount one.
+vi.mock('../hooks/useSyncStatusAPI', () => ({
+  useSyncStatusAPI: () => ({ data: undefined }),
+}))
+
 vi.mock('@tanstack/react-query', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@tanstack/react-query')>()
   return { ...actual, useQueryClient: () => ({ invalidateQueries: vi.fn() }) }
