@@ -1,10 +1,12 @@
 """Writes for the weekend lodging board.
 
-EVERY write here targets the DRAFT grain, `lodging_availability`, or
-`lodging_write_ins` -- the occupancy table kindred#2382 split out of
-availability, whose LIVE rows the board writes directly, because the live board
-is a scope in its own right rather than the absence of one. No write in this
-module can reach `lodging_assignments`, `lodging_assignment_history` or
+EVERY write here targets the DRAFT grain, `lodging_availability`,
+`lodging_write_ins`, or `lodging_write_in_pushes` -- the occupancy table
+kindred#2382 split out of availability, whose LIVE rows the board writes
+directly, because the live board is a scope in its own right rather than the
+absence of one, and the push ledger kindred#2477 added on top of it, whose
+rows record what a push applied so `unpush` can replay them in reverse. No
+write in this module can reach `lodging_assignments`, `lodging_assignment_history` or
 `lodging_field_mappings`: those belong to the CampMinder ingest, stay
 `is_admin` in PocketBase (1500000132), and are the reason the draft tables
 exist at all. Summer draws the identical line and has never crossed it.
@@ -1365,27 +1367,48 @@ class LodgingWriteService:
 
         RESOLVE, THEN LEDGER, THEN APPLY -- in that order, and the order is
         pinned by `TestExecutePush.test_ledger_write_precedes_the_apply_calls`
-        (fix-round, 2026-08-23). RESOLVE covers two independent reads, both
-        BEFORE `create_push_event` runs at all: every remove is turned into a
-        live record id (`_live_rows_with_ids`), and the target session is
-        turned into a PocketBase id (`_resolve_session_pb_id`). Neither can
-        move after the ledger write -- see each's own comment at its call
-        site for the failure it prevents. `_live_rows_with_ids` re-fetches
-        the live board independently of the `fresh` snapshot taken at the top
-        of this method, so the two reads can disagree about the very rows
-        `fresh` already classified as removable. A miss there -- a row
-        deleted by someone else in the gap between the two fetches -- must
-        not silently skip: `removed` and the ledger would then both claim a
-        delete that never happened, and Task 5's Unpush would replay a delete
-        against a row already gone. So a miss refuses the WHOLE push via
-        `PushDigestStaleError`, carrying a FRESHLY RE-RUN preview -- not
-        `fresh` above, which is already stale by definition the moment a miss
-        is found -- and writes NO ledger row. Only once every remove has
-        resolved AND the session has resolved does `create_push_event` run,
-        and only after that do the deletes/creates it just described actually
-        happen: a crash mid-apply then leaves a ledger row naming exactly what
-        was intended, never a row promising a delete this method could not
-        actually find (spec §4.2). `changes` carries the payload BOTH
+        (fix-round, 2026-08-23). RESOLVE covers THREE independent checks, all
+        BEFORE `create_push_event` runs at all -- the session is turned into a
+        PocketBase id (`_resolve_session_pb_id`), every remove is turned into
+        a live record id, and every add's target unit is confirmed free or
+        about to be vacated by this push's own removes. None can move after
+        the ledger write -- see each's own comment at its call site for the
+        failure it prevents.
+
+        SESSION FIRST, AND AHEAD OF THE NO-OP RETURN TOO (kindred#2555 scan
+        fix-round, 2026-08-23; the no-op return used to come first, letting a
+        push against an orphaned `session_cm_id` with nothing to add or
+        remove answer 200 instead of 404). `SessionsSync` orphan-deletes
+        `camp_sessions` rows while `session_cm_id` survives on the lodging
+        tables (docs/architecture/sync-layer.md), so a weekend that classified
+        cleanly above can still have no session record by the time this
+        method reaches it. `SessionNotFoundError` here has to 404 with
+        NOTHING written -- resolving after `create_push_event` would leave a
+        ledger row naming an add/remove that then never applies, and because
+        `unpush`'s drift guard requires every `add` to still be present live,
+        that orphan row could never be reverted or cleared.
+
+        THEN THE LIVE-ROW CHECKS, both reading `_live_rows_with_ids` ONCE.
+        That call re-fetches the live board independently of the `fresh`
+        snapshot taken at the top of this method, so the two reads can
+        disagree about the very rows `fresh` already classified. A miss on
+        the REMOVE side -- a row deleted by someone else in the gap between
+        the two fetches -- must not silently skip: `removed` and the ledger
+        would then both claim a delete that never happened, and Task 5's
+        Unpush would replay a delete against a row already gone. A miss on
+        the ADD side -- a row created by someone else on an add's target unit
+        in that same gap -- must not silently proceed either: the create
+        would collide with it AFTER the ledger row already exists, so the
+        ledger would lie about what actually landed. Either miss refuses the
+        WHOLE push via `PushDigestStaleError`, carrying a FRESHLY RE-RUN
+        preview -- not `fresh` above, which is already stale by definition
+        the moment a miss is found -- and writes NO ledger row. Only once
+        every remove has resolved, every add's target is clear, AND the
+        session has resolved does `create_push_event` run, and only after
+        that do the deletes/creates it just described actually happen: a
+        crash mid-apply then leaves a ledger row naming exactly what was
+        intended, never a row promising a write this method could not
+        actually make (spec §4.2). `changes` carries the payload BOTH
         directions -- what makes Task 6's Unpush a replay: delete what the
         push added, recreate what it removed.
 
@@ -1399,7 +1422,13 @@ class LodgingWriteService:
         identical tuple from `PushRowPayload` (the wire shape `removes` holds,
         off `fresh.buildings[*].live`) -- that model is a separate Pydantic
         class with no `tuple_key()` method of its own, so the shape is
-        reproduced rather than a second definition of it invented.
+        reproduced rather than a second definition of it invented. `live_by_unit`
+        (kindred#2555 scan fix-round, M) is the same fetch keyed on unit_id
+        alone instead -- safe because `idx_lodging_write_in_unique` (unit,
+        session_cm_id, year) already forces at most one live row per unit --
+        which is what lets the add-side check ask "is this unit's CURRENT
+        occupant, if any, one of the rows this push's own removes will
+        delete?" without a second read.
 
         `party_size` IS EXPLICIT ALWAYS ON THE CREATE PAYLOAD, `None` included.
         This method is the "fifth producer" kindred#2540's data-loss guard
@@ -1409,6 +1438,13 @@ class LodgingWriteService:
         than let a dict-literal omission silently drop it. Mutation-checked:
         Step 4 of the task brief deletes this line and confirms the covering
         test goes red.
+
+        THE WRITE PHASES (`create_push_event`, the delete/create apply loops)
+        are wrapped in `pb_error_to_http` (kindred#2555 scan fix-round, M) --
+        this file's own convention for a raw PocketBase write (`_upsert_row`'s
+        docstring) -- as the belt for whatever residual `ClientResponseError`
+        still reaches a write once the pre-checks above have closed the
+        collisions they can see.
         """
         fresh = await self.preview_push(request.year, request.session_cm_id, request.scenario)
         if fresh.digest != request.digest:
@@ -1440,40 +1476,55 @@ class LodgingWriteService:
                 else:
                     kept += 1
 
+        # Resolved BEFORE the no-op return and BEFORE the ledger write
+        # (kindred#2555 scan fix-round, 2026-08-23): every execute path
+        # resolves the session first (05f29b89's own intent), and a push
+        # against an orphaned/stale `session_cm_id` -- `SessionsSync`
+        # orphan-deletes `camp_sessions` rows while `session_cm_id` survives
+        # on the lodging tables (docs/architecture/sync-layer.md) -- must 404
+        # even when there is nothing to add or remove, not read back as a 200
+        # no-op. Resolving after `create_push_event` would leave a ledger row
+        # naming an add/remove that then never applies, and because
+        # `unpush`'s drift guard requires every `add` to still be present
+        # live, that orphan row could never be reverted or cleared.
+        session_pb_id = await self._resolve_session_pb_id(request.year, request.session_cm_id)
+
         if not adds and not removes:
             return PushExecuteResponse(
                 push_id="", added=0, removed=0, replaced=replaced, kept=kept, matched=matched, no_op=True
             )
 
-        # Resolve every remove to a live record id BEFORE anything is written
-        # -- see the method docstring for why a miss here refuses rather than
-        # skips.
-        remove_ids: list[str] = []
-        if removes:
-            live_ids = {
-                r.tuple_key(): str(getattr(row, "id", "") or "")
-                for row, r in await self._live_rows_with_ids(request.year, request.session_cm_id)
-            }
-            for r in removes:
-                rid = live_ids.get((r.unit_id, r.occupant_name.strip(), r.note.strip(), r.party_size))
-                if rid is None:
-                    stale = await self.preview_push(request.year, request.session_cm_id, request.scenario)
-                    raise PushDigestStaleError(stale)
-                remove_ids.append(rid)
+        # Resolve every remove to a live record id, and verify every add's
+        # target unit is free (or about to be vacated by this push's own
+        # removes) -- BOTH before anything is written. See the method
+        # docstring for why a miss here refuses rather than skips.
+        #
+        # `live_rows_with_ids` is fetched once and read two ways: `live_ids`
+        # (the RULED four-field tuple) resolves removes exactly as before;
+        # `live_by_unit` (kindred#2555 scan fix-round, M) is the add-side
+        # symmetric check -- a live row appearing on an add's target unit
+        # between the entry re-classify and the apply would otherwise collide
+        # AFTER the ledger row already exists, making the ledger lie about
+        # what actually landed. At most one live row per unit
+        # (`idx_lodging_write_in_unique`), so keying on unit_id alone is safe.
+        live_rows_with_ids = await self._live_rows_with_ids(request.year, request.session_cm_id)
+        live_ids = {r.tuple_key(): str(getattr(row, "id", "") or "") for row, r in live_rows_with_ids}
+        live_by_unit = {r.unit_id: str(getattr(row, "id", "") or "") for row, r in live_rows_with_ids}
 
-        # Resolved BEFORE the ledger write, for the same reason `remove_ids`
-        # is (kindred#2555 fix-round, 2026-08-23): a ledger row must never
-        # describe work this method then refuses to do. `SessionsSync`
-        # orphan-deletes `camp_sessions` rows while `session_cm_id` survives
-        # on the lodging tables (docs/architecture/sync-layer.md), so a
-        # weekend that classified cleanly above can still have no session
-        # record by the time this method reaches it. `SessionNotFoundError`
-        # here has to 404 with NOTHING written -- resolving after
-        # `create_push_event` would leave a ledger row naming an add/remove
-        # that then never applies, and because `unpush`'s drift guard
-        # requires every `add` to still be present live, that orphan row
-        # could never be reverted or cleared.
-        session_pb_id = await self._resolve_session_pb_id(request.year, request.session_cm_id)
+        remove_ids: list[str] = []
+        for r in removes:
+            rid = live_ids.get((r.unit_id, r.occupant_name.strip(), r.note.strip(), r.party_size))
+            if rid is None:
+                stale = await self.preview_push(request.year, request.session_cm_id, request.scenario)
+                raise PushDigestStaleError(stale)
+            remove_ids.append(rid)
+
+        removing = set(remove_ids)
+        for r in adds:
+            occupant_id = live_by_unit.get(r.unit_id)
+            if occupant_id is not None and occupant_id not in removing:
+                stale = await self.preview_push(request.year, request.session_cm_id, request.scenario)
+                raise PushDigestStaleError(stale)
 
         changes = [
             {
@@ -1508,31 +1559,40 @@ class LodgingWriteService:
         # does not otherwise need. Accepted as v1 (the id is at least legible
         # to whoever reads the raw table); a follow-up can resolve the display
         # name once a reader actually needs it rendered.
-        event = await self.repository.create_push_event(
-            {
-                "year": request.year,
-                "session_cm_id": request.session_cm_id,
-                "scenario_id": request.scenario,
-                "scenario_name": request.scenario,
-                "pushed_by": pushed_by,
-                "changes": changes,
-                "unpushed_at": "",
-            }
-        )
-        for rid in remove_ids:
-            await self.repository.delete_write_in(rid)
-        for r in adds:
-            await self.repository.create_write_in(
+        try:
+            event = await self.repository.create_push_event(
                 {
                     "year": request.year,
                     "session_cm_id": request.session_cm_id,
-                    "session": session_pb_id,
-                    "unit": r.unit_id,
-                    "occupant_name": r.occupant_name,
-                    "note": r.note,
-                    "party_size": r.party_size,
+                    "scenario_id": request.scenario,
+                    "scenario_name": request.scenario,
+                    "pushed_by": pushed_by,
+                    "changes": changes,
+                    "unpushed_at": "",
                 }
             )
+        except ClientResponseError as exc:
+            raise pb_error_to_http(exc) from exc
+        try:
+            for rid in remove_ids:
+                await self.repository.delete_write_in(rid)
+        except ClientResponseError as exc:
+            raise pb_error_to_http(exc) from exc
+        try:
+            for r in adds:
+                await self.repository.create_write_in(
+                    {
+                        "year": request.year,
+                        "session_cm_id": request.session_cm_id,
+                        "session": session_pb_id,
+                        "unit": r.unit_id,
+                        "occupant_name": r.occupant_name,
+                        "note": r.note,
+                        "party_size": r.party_size,
+                    }
+                )
+        except ClientResponseError as exc:
+            raise pb_error_to_http(exc) from exc
         return PushExecuteResponse(
             push_id=str(getattr(event, "id", "") or ""),
             added=len(adds),
@@ -1631,17 +1691,36 @@ class LodgingWriteService:
         # SAME side schema-impossible: the unit_id alone already forces at
         # most one live row per unit, so `by_tuple` can never lose one.
         by_tuple = {r.tuple_key(): str(getattr(row, "id", "") or "") for row, r in live}
+        # unit_id -> that unit's live tuple, for the `remove` check below.
+        # Keying on unit_id alone is safe for the identical reason `by_tuple`
+        # is: the unique index already forces at most one live row per unit.
+        by_unit = {r.tuple_key()[0]: r.tuple_key() for _row, r in live}
 
         def change_tuple(c: dict[str, Any]) -> tuple[str, str, str, int | None]:
             return (c["unit"], c["occupant_name"].strip(), c["note"].strip(), c["party_size"])
 
+        # The tuples THIS push's own `add` changes name -- phase 1 below
+        # deletes every one of them, so a `remove` change whose target unit
+        # currently holds exactly one of these is not drift: it is the
+        # pushed row, still waiting for phase 1 to vacate it.
+        own_add_tuples = {change_tuple(c) for c in changes if c["action"] == "add"}
+
         drifted: list[str] = []
         for c in changes:
-            present = change_tuple(c) in by_tuple
-            if c["action"] == "add" and not present:
-                drifted.append(c["unit_code"])  # the row the push added was edited/removed
-            if c["action"] == "remove" and present:
-                drifted.append(c["unit_code"])  # the row the push removed was hand-recreated
+            if c["action"] == "add":
+                if change_tuple(c) not in by_tuple:
+                    drifted.append(c["unit_code"])  # the row the push added was edited/removed
+            elif c["action"] == "remove":
+                # kindred#2555 scan fix-round (M): drift is not "the ORIGINAL
+                # removed tuple is back" alone -- ANY occupant on this unit
+                # that phase 1 will not itself clear is a row phase 2's
+                # recreate would collide with on idx_lodging_write_in_unique
+                # (unit, session_cm_id, year). The recreate-target unit must
+                # hold nothing, or only a row this push's own adds account
+                # for.
+                occupant = by_unit.get(c["unit"])
+                if occupant is not None and occupant not in own_add_tuples:
+                    drifted.append(c["unit_code"])
         if drifted:
             raise UnpushDriftError(sorted(set(drifted)))
 
@@ -1650,30 +1729,39 @@ class LodgingWriteService:
         # PHASE 1: every delete, before any create -- see the method
         # docstring. Vacates every unit the push occupied before phase 2
         # tries to recreate a row on any of them.
-        for c in changes:
-            if c["action"] == "add":
-                await self.repository.delete_write_in(by_tuple[change_tuple(c)])
-                deleted += 1
+        try:
+            for c in changes:
+                if c["action"] == "add":
+                    await self.repository.delete_write_in(by_tuple[change_tuple(c)])
+                    deleted += 1
+        except ClientResponseError as exc:
+            raise pb_error_to_http(exc) from exc
         # PHASE 2: every create, only now that phase 1 has freed whichever
         # units a "take scenario" conflict shares between its remove and its
         # add.
-        for c in changes:
-            if c["action"] != "add":
-                await self.repository.create_write_in(
-                    {
-                        "year": year,
-                        "session_cm_id": session_cm_id,
-                        "session": session_pb_id,
-                        "unit": c["unit"],
-                        "occupant_name": c["occupant_name"],
-                        "note": c["note"],
-                        "party_size": c["party_size"],
-                    }
-                )
-                restored += 1
-        await self.repository.update_push_event(
-            str(getattr(event, "id", "") or ""), {"unpushed_at": datetime.now(UTC).isoformat()}
-        )
+        try:
+            for c in changes:
+                if c["action"] != "add":
+                    await self.repository.create_write_in(
+                        {
+                            "year": year,
+                            "session_cm_id": session_cm_id,
+                            "session": session_pb_id,
+                            "unit": c["unit"],
+                            "occupant_name": c["occupant_name"],
+                            "note": c["note"],
+                            "party_size": c["party_size"],
+                        }
+                    )
+                    restored += 1
+        except ClientResponseError as exc:
+            raise pb_error_to_http(exc) from exc
+        try:
+            await self.repository.update_push_event(
+                str(getattr(event, "id", "") or ""), {"unpushed_at": datetime.now(UTC).isoformat()}
+            )
+        except ClientResponseError as exc:
+            raise pb_error_to_http(exc) from exc
         return UnpushResponse(push_id=push_id, restored=restored, deleted=deleted)
 
 

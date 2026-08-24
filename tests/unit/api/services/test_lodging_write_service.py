@@ -2633,6 +2633,77 @@ class TestExecutePush:
         repo.create_write_in.assert_not_called()
 
     @pytest.mark.asyncio
+    async def test_a_foreign_occupant_on_an_adds_target_unit_refuses_the_push(self) -> None:
+        """kindred#2555 scan fix-round (M). `execute_push` pre-resolves every
+        `remove` to a live record id before writing the ledger, but had NO
+        symmetric check for `adds`: a live row appearing on an add's target
+        unit between the entry re-classify and the apply collides AFTER the
+        ledger row already exists -- the ledger then lies about what actually
+        landed. `fetch_write_ins` is given a side_effect list so the test's
+        own preview (for `preview.digest`) and execute_push's internal
+        re-classify both see the unit free (an "add" building), and only the
+        NEW add-side pre-check's own live fetch sees the foreign row that
+        appeared in between -- reproducing the race without touching a real
+        PocketBase.
+        """
+        foreign = [_wi("uc", "Foreign Party", ppl=1, id="wi_foreign")]
+        repo = _repo(
+            fetch_units=[_u("uc", "cedar-9")],
+            fetch_draft_write_ins=[_wi("uc", "H. Osei", ppl=2, id="wd_1")],
+            create_push_event=SimpleNamespace(id="push_1"),
+        )
+        # 1st call: this test's own preview_push (for `preview.digest`) -- no
+        #           live row, so "uc" classifies "add".
+        # 2nd call: execute_push's internal re-preview -- same empty live
+        #           state, so the digest check passes and execution proceeds.
+        # 3rd call: the NEW add-side pre-check's own live fetch -- a foreign
+        #           row has appeared on "uc" since the classify.
+        # 4th call: execute_push's own re-preview once the collision is
+        #           found, to build the fresh report PushDigestStaleError
+        #           carries.
+        repo.fetch_write_ins = AsyncMock(side_effect=[[], [], foreign, foreign])
+        svc = LodgingWriteService(repo)
+        preview = await svc.preview_push(2026, 1309001, "scn_1")
+        req = PushExecuteRequest(
+            year=2026, session_cm_id=1309001, scenario="scn_1", digest=preview.digest, decisions={}
+        )
+        with pytest.raises(PushDigestStaleError):
+            await svc.execute_push(req, pushed_by="user_1")
+        repo.create_push_event.assert_not_called()
+        repo.delete_write_in.assert_not_called()
+        repo.create_write_in.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_a_pb_error_during_apply_converts_through_pb_error_to_http(self) -> None:
+        """kindred#2555 scan fix-round (M). The six raw PB write calls in the
+        push paths (`create_push_event`, the delete/create apply loops,
+        unpush's two phases, `update_push_event`) let a `ClientResponseError`
+        escape straight to the global 500 handler, against this file's own
+        `pb_error_to_http` convention (see `_upsert_row`'s docstring). The
+        add/remove pre-checks close most collisions before the ledger row
+        exists; this is the belt for whatever residual PocketBase error still
+        reaches a write.
+        """
+        repo = self._repo_one_conflict()
+        repo.create_write_in = AsyncMock(
+            side_effect=ClientResponseError(
+                "validation_not_unique", status=400, data={}, url="", is_abort=False, original_error=None
+            )
+        )
+        svc = LodgingWriteService(repo)
+        preview = await svc.preview_push(2026, 1309001, "scn_1")
+        req = PushExecuteRequest(
+            year=2026,
+            session_cm_id=1309001,
+            scenario="scn_1",
+            digest=preview.digest,
+            decisions={"cedar-9": "scenario"},
+        )
+        with pytest.raises(HTTPException) as exc:
+            await svc.execute_push(req, pushed_by="user_1")
+        assert exc.value.status_code == 400
+
+    @pytest.mark.asyncio
     async def test_keep_live_and_all_match_is_a_no_op(self) -> None:
         repo = _repo(
             fetch_units=[_u("uc", "cedar-9")],
@@ -2647,6 +2718,30 @@ class TestExecutePush:
         )
         assert out.no_op is True
         assert out.push_id == ""
+        repo.create_push_event.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_a_stale_session_refuses_even_when_the_push_would_be_a_no_op(self) -> None:
+        """kindred#2555 scan fix-round (S). The `no_op=True` return used to
+        exit before `_resolve_session_pb_id` ran at all, so a push against an
+        orphaned/stale `session_cm_id` with nothing to add or remove returned
+        a 200 no-op instead of 404 -- against commit 05f29b89's own stated
+        intent that every execute path resolves the session first. Session
+        resolution now runs ahead of the no-op return.
+        """
+        repo = _repo(
+            fetch_units=[_u("uc", "cedar-9")],
+            fetch_write_ins=[_wi("uc", "K. Sato", id="wi_1")],
+            fetch_draft_write_ins=[_wi("uc", "K. Sato", id="wd_1")],
+        )
+        repo.fetch_session = AsyncMock(side_effect=SessionNotFoundError("No weekend session 1309001 in 2026"))
+        svc = LodgingWriteService(repo)
+        preview = await svc.preview_push(2026, 1309001, "scn_1")
+        req = PushExecuteRequest(
+            year=2026, session_cm_id=1309001, scenario="scn_1", digest=preview.digest, decisions={}
+        )
+        with pytest.raises(SessionNotFoundError):
+            await svc.execute_push(req, pushed_by="user_1")
         repo.create_push_event.assert_not_called()
 
 
@@ -2715,6 +2810,35 @@ class TestUnpush:
         assert "cedar-9" in exc.value.buildings
         repo.delete_write_in.assert_not_called()
         repo.create_write_in.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_a_foreign_occupant_on_the_removed_units_target_refuses_wholesale(self) -> None:
+        """kindred#2555 scan fix-round (M). The old guard only checked whether
+        the ORIGINAL removed tuple was back -- if staff wrote a DIFFERENT
+        write-in into that unit after the push, the guard saw no drift, phase
+        1 deleted the push's adds, and phase 2's `create_write_in` collided
+        with the foreign occupant on `idx_lodging_write_in_unique` (unit,
+        session_cm_id, year): a bare mid-revert 500 with `unpushed_at` never
+        stamped -- exactly what the refuse-wholesale guard exists to prevent.
+        A `remove` change's target unit must hold NOTHING, or only a row this
+        push's own `add` changes account for (phase 1 deletes those) --
+        anything else drifts the building.
+        """
+        repo = _repo(
+            find_push_event=_ledger([CH_REM]),
+            fetch_units=[_u("uc2", "fern-1")],
+            # a DIFFERENT write-in was recorded on fern-1 after the push --
+            # not the original removed occupant, and not one of this push's
+            # own adds:
+            fetch_write_ins=[_wi("uc2", "Foreign Party", ppl=3, id="wi_foreign")],
+        )
+        svc = LodgingWriteService(repo)
+        with pytest.raises(UnpushDriftError) as exc:
+            await svc.unpush("push_1", 2026, 1309001)
+        assert "fern-1" in exc.value.buildings
+        repo.delete_write_in.assert_not_called()
+        repo.create_write_in.assert_not_called()
+        repo.update_push_event.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_double_unpush_refuses(self) -> None:
