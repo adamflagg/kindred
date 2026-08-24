@@ -1,6 +1,7 @@
 /**
- * The "Push write-ins" toolbar button (kindred#2477 Task 8): the entry point
- * into comparing a scenario's write-ins against the live board.
+ * The "Push write-ins" entry (kindred#2477): the button beside the stats
+ * line that opens the scenario→live review. Extracted from `LodgingBoard`
+ * to the page header on the owner's first visual pass (2026-08-24).
  *
  * Present only where a push could ever apply — inside a scenario, held by a
  * `bunking.manage` user — and ABSENT everywhere else. `opacity-40` is this
@@ -16,8 +17,8 @@ import type { ReactNode } from 'react'
 import { MemoryRouter } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
-import { LodgingBoard } from './LodgingBoard'
+import type { LodgingUnitRow } from '../../types/lodging'
+import { PushWriteInsEntry } from './PushWriteInsEntry'
 
 vi.mock('../../hooks/usePermissions', () => ({
   usePermissions: () => ({
@@ -34,14 +35,6 @@ vi.mock('../../hooks/useWeekendRoster', () => ({
 
 vi.mock('../../hooks/useLodgingPlacement', () => ({
   useLodgingPlacement: () => ({ move: vi.fn(), isMoving: false }),
-}))
-
-vi.mock('../../hooks/useUnitAvailability', () => ({
-  useUnitAvailability: () => ({ setAvailability: vi.fn(), pendingUnitId: '' }),
-}))
-
-vi.mock('../../hooks/useUnitMerge', () => ({
-  useUnitMerge: () => ({ setCombined: vi.fn(), pendingUnitId: null }),
 }))
 
 // `PushWriteInsModal` (mounted alongside the button) calls the real
@@ -95,51 +88,30 @@ function unit(overrides: Partial<LodgingUnitRow> = {}): LodgingUnitRow {
   }
 }
 
-function party(overrides: Partial<RosterPartyRow> = {}): RosterPartyRow {
-  return {
-    grain: 'household',
-    household_cm_id: 1000001,
-    person_cm_id: 0,
-    display_name: 'Johnson',
-    sort_name: 'Johnson',
-    adults: [],
-    children: [],
-    party_size: 3,
-    unit_code: '',
-    unit_name: '',
-    unit_codes: [],
-    is_merged_slot: false,
-    arrival_eta: '',
-    is_returning: false,
-    ...overrides,
-  }
-}
-
 const SCENARIO = 'scn7x2k9qw3mnbv'
 
-function renderBoard(props: Partial<Parameters<typeof LodgingBoard>[0]> = {}) {
+function renderEntry(props: Partial<Parameters<typeof PushWriteInsEntry>[0]> = {}) {
   return render(
-    <LodgingBoard
-      parties={[party()]}
-      units={[unit()]}
+    <PushWriteInsEntry
       year={2026}
       sessionCmId={1000001}
       scenario={SCENARIO}
       canManage={true}
+      units={[unit()]}
       {...props}
     />,
     { wrapper }
   )
 }
 
-describe('LodgingBoard — the push write-ins entry button', () => {
+describe('PushWriteInsEntry — the push write-ins button beside the stats line', () => {
   it('is absent without bunking.manage', () => {
-    renderBoard({ canManage: false })
+    renderEntry({ canManage: false })
     expect(screen.queryByRole('button', { name: /push write-ins/i })).not.toBeInTheDocument()
   })
 
   it('is absent on the CampMinder mirror, where there is no scenario to push', () => {
-    renderBoard({ scenario: '' })
+    renderEntry({ scenario: '' })
     expect(screen.queryByRole('button', { name: /push write-ins/i })).not.toBeInTheDocument()
   })
 
@@ -149,12 +121,12 @@ describe('LodgingBoard — the push write-ins entry button', () => {
     // reason -- `sessionCmId` defaults to 0 for boards under test that don't
     // exercise a real weekend, and the preview endpoint requires a positive
     // id.
-    renderBoard({ sessionCmId: 0 })
+    renderEntry({ sessionCmId: 0 })
     expect(screen.queryByRole('button', { name: /push write-ins/i })).not.toBeInTheDocument()
   })
 
   it('is present, badged, with both', () => {
-    renderBoard()
+    renderEntry()
     expect(screen.getByRole('button', { name: /push write-ins/i })).toBeInTheDocument()
   })
 
@@ -171,7 +143,7 @@ describe('LodgingBoard — the push write-ins entry button', () => {
       note: '',
       relation,
     })
-    renderBoard({
+    renderEntry({
       units: [
         // Its own row: counts once.
         unit({

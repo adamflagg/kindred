@@ -38,7 +38,7 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from '@dnd-kit/core'
-import { ChevronDown, ChevronRight, Info, Send } from 'lucide-react'
+import { ChevronDown, ChevronRight, Info } from 'lucide-react'
 import { useCallback, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router'
 
@@ -64,10 +64,9 @@ import { FamilyDetailsPanel } from './FamilyDetailsPanel'
 import { FloatingUnplacedBadge } from './FloatingUnplacedBadge'
 import { LodgingUnitCard } from './LodgingUnitCard'
 import { partyKey } from './partyKey'
-import { PushWriteInsModal } from './PushWriteInsModal'
 import { resolvePartyUnit } from './rosterAttention'
 import type { UnitAvailabilityWrite } from './writeIn'
-import { coveringWriteIns, writeInEntries } from './writeIn'
+import { writeInEntries } from './writeIn'
 
 export interface LodgingBoardProps {
   parties: RosterPartyRow[]
@@ -257,29 +256,6 @@ export function LodgingBoard({
     () => board.areas.flatMap((area) => area.slots.map((slot) => slot.unit.code)),
     [board]
   )
-  // The "Push write-ins" toolbar button's badge (kindred#2477 Task 8):
-  // board-wide count of write-in rows a push would compare.
-  //
-  // Summed over DRAWN cards only (`board.areas`, the same set `slotCodes`
-  // above reads), not the raw `units` array — a write-in surfaces on every
-  // unit its space resolves through: `own` on the unit holding the row,
-  // `descendant` on a merged ancestor drawing in its rooms' write-ins,
-  // `ancestor` on a split descendant drawing in its building's write-in. Only
-  // ONE of those levels is ever drawn at a time (`drawnUnits`), so summing
-  // `own` + `descendant` while excluding `ancestor` is what keeps one
-  // underlying row from being counted twice depending on which direction the
-  // tree happens to be walked from.
-  const pushableWriteInCount = useMemo(() => {
-    let count = 0
-    for (const area of board.areas) {
-      for (const slot of area.slots) {
-        for (const cover of coveringWriteIns(slot.unit)) {
-          if ((cover.relation ?? 'own') !== 'ancestor') count += 1
-        }
-      }
-    }
-    return count
-  }, [board])
   const [searchParams, setSearchParams] = useSearchParams()
   /*
    * Which areas are collapsed, read from the query string rather than held in
@@ -305,7 +281,6 @@ export function LodgingBoard({
   /** The card currently being dragged BY ITS MERGE HANDLE, for grey-out. */
   const [draggingMergeUnit, setDraggingMergeUnit] = useState<LodgingUnitRow | null>(null)
   /** Whether the write-in push queue's modal is open (kindred#2477 Task 8). */
-  const [pushModalOpen, setPushModalOpen] = useState(false)
 
   // THREE conditions, not two. `sessionCmId` is in there because every write
   // names a weekend, and the prop defaults to 0 for the thirty tests that do
@@ -639,43 +614,6 @@ export function LodgingBoard({
           See its doc for why siblinghood is equivalent to wrapping. */}
       <BoardMorphBoundary slotCodes={slotCodes} unitsByCode={unitsByCode} />
       <div className="flex flex-col gap-3">
-        {/* The write-in push queue's entry point (kindred#2477 Task 8) — a
-            scenario to compare against the live board, the permission to
-            act on it, AND a real weekend session. ABSENT rather than
-            disabled outside that: `opacity-40` is this board's vocabulary
-            for a refusal (CLAUDE.md §4), and an affordance with nothing
-            behind it on the mirror, for a read-only viewer, or on a board
-            with no session is not a refusal to badge that way.
-            `sessionCmId > 0` carries the same reason `canPlace` (Line ~314)
-            does — a board under test defaults it to 0, and the preview
-            endpoint requires a positive id (kindred#2555 fix-round). */}
-        {scenario !== '' && canManage && sessionCmId > 0 && (
-          <div className="flex justify-end">
-            <button
-              type="button"
-              onClick={() => {
-                setPushModalOpen(true)
-              }}
-              className="btn-secondary flex items-center gap-1.5"
-            >
-              <Send className="h-4 w-4" />
-              Push write-ins
-              <span className="bg-primary text-primary-foreground rounded-full px-2 py-0.5 text-xs font-semibold tabular-nums">
-                {pushableWriteInCount}
-              </span>
-            </button>
-            <PushWriteInsModal
-              year={year}
-              sessionCmId={sessionCmId}
-              scenario={scenario}
-              isOpen={pushModalOpen}
-              onClose={() => {
-                setPushModalOpen(false)
-              }}
-            />
-          </div>
-        )}
-
         <div className="card-lodge overflow-hidden">
           <div className="flex flex-col gap-5 p-3">
             {board.areas.length === 0 ? (

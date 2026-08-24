@@ -132,6 +132,15 @@ vi.mock('@tanstack/react-query', async (importOriginal) => {
   return { ...actual, useQueryClient: () => ({ invalidateQueries }) }
 })
 
+// The push entry (kindred#2477) mounts `PushWriteInsModal`, whose preview
+// `useQuery` reaches for a real QueryClient the moment a scenario is selected
+// — the exact tests below. Same policy as every hook mock in this file: these
+// are layout/navigation tests, and the entry has its own dedicated suite in
+// `components/weekend/PushWriteInsEntry.test.tsx`.
+vi.mock('../components/weekend/PushWriteInsEntry', () => ({
+  PushWriteInsEntry: () => null,
+}))
+
 // The board mounts `useLodgingPlacement`, which mounts a real `useMutation` —
 // and that reaches for a QueryClient through react-query's own internals,
 // which the `useQueryClient` stub above does not satisfy. These files are
