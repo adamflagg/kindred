@@ -138,6 +138,17 @@
     /* Custom Lodge Tokens */
     --shadow-color: 160 40% 10%;
     --glow-color: 42 92% 62%;
+
+    /* Share-emphasis (spec 2026-08-24). A COMPLETE color, not this block's
+       bare HSL triplet convention, because `color-mix()` needs a real color
+       — see `.share-emphasis-glow`. Green because the REASON a capsule is
+       emphasized is always the share mark inside it. */
+    --share-yes: hsl(160 100% 24%);
+    /* The one number that tunes the whole treatment: blur, spread and alpha
+       all resolve from it, as does `SHARE_EMPHASIS_PEAK_SCALE` in
+       `components/weekend/shareEmphasis.ts`. `shareEmphasis.test.ts` pins
+       this declaration and that constant to the same value. */
+    --share-emphasis-amp: 0.4;
   }
 
   .dark {
@@ -164,6 +175,10 @@
 
     --shadow-color: 160 80% 3%;
     --glow-color: 42 85% 55%;
+
+    /* The dark-theme share green — lighter and less saturated so the halo
+       reads as a bloom against the forest-night card, not a smear. */
+    --share-yes: hsl(160 55% 62%);
   }
 }
 
@@ -868,6 +883,32 @@
   .pending-lock-glow {
     animation: pulse-glow 2s ease-in-out infinite;
     /* All elements using this class share the same animation timeline */
+  }
+
+  /*
+   * The share-emphasis halo (spec 2026-08-24 §3) — the RESTING state of the
+   * treatment, and on its own the whole treatment for a viewer who asked for
+   * reduced motion. The breathe that plays over it on board arrival is GSAP's
+   * (`components/weekend/shareEmphasis.ts`); this rule never animates.
+   *
+   * A plain class rule, deliberately, NOT a Tailwind `@utility`: the class
+   * reaches the markup only through the `SHARE_GLOW_CLASS` constant, and a
+   * utility Tailwind never sees as a scanned candidate generates nothing at
+   * all — the silent-dead-class shape of #1894 and #2027. Nothing here needs
+   * a `hover:`/`dark:` variant, which is the only thing `@utility` would buy.
+   *
+   * Every value resolves from `--share-emphasis-amp` rather than being pasted
+   * in at its 0.4 reading (blur 7.2px, spread 0.8px, alpha 48%), so the
+   * intensity stays one tunable number.
+   *
+   * It rides a WRAPPER span, so `border-radius` — which a box-shadow follows
+   * — describes the capsule silhouette rather than a rectangle. `ShareMarks`
+   * puts `rounded-full` there for exactly that reason.
+   */
+  .share-emphasis-glow {
+    box-shadow: 0 0 calc(4px + var(--share-emphasis-amp) * 8px)
+      calc(var(--share-emphasis-amp) * 2px)
+      color-mix(in srgb, var(--share-yes) calc(30% + var(--share-emphasis-amp) * 45%), transparent);
   }
 
   /* Stagger delays for lists */

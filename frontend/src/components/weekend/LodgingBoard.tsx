@@ -45,6 +45,7 @@ import { useSearchParams } from 'react-router'
 import { useDismissOnDeadSpace } from '../../hooks/useDismissOnDeadSpace'
 import { useLodgingPlacement } from '../../hooks/useLodgingPlacement'
 import { usePanelParty } from '../../hooks/usePanelParty'
+import { useShareEmphasisBurst } from '../../hooks/useShareEmphasisBurst'
 import { useUnitAvailability } from '../../hooks/useUnitAvailability'
 import { useUnitMerge } from '../../hooks/useUnitMerge'
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
@@ -280,6 +281,27 @@ export function LodgingBoard({
   const [dragging, setDragging] = useState<RosterPartyRow | null>(null)
   /** The card currently being dragged BY ITS MERGE HANDLE, for grey-out. */
   const [draggingMergeUnit, setDraggingMergeUnit] = useState<LodgingUnitRow | null>(null)
+
+  /*
+   * The share marks' arrival burst (spec 2026-08-24 §5), armed HERE rather
+   * than in `ShareMarks` because it is a board-level event: the marks
+   * cascade once when the roster becomes visible, not once per card mount.
+   * `parties.length > 0` is that moment — the board renders empty while the
+   * page's query is still in flight, and the first payload is the arrival.
+   *
+   * Suppression reads BOTH drag states, and it has to. `handleDragStart`
+   * splits the two gestures: a merge-handle drag takes the early-return branch
+   * that sets `draggingMergeUnit` and `setDragging(null)`, so `dragging` stays
+   * null for the entire merge. Keying this on `dragging` alone therefore reads
+   * "no drag in flight" through the one gesture that puts #2528's three-state
+   * hatch/wash highlight on every unit card — the precision task the marks are
+   * not allowed to compete with. Whatever else is added here, a new drag state
+   * has to be added to this expression too.
+   */
+  useShareEmphasisBurst({
+    ready: parties.length > 0,
+    suppressed: dragging !== null || draggingMergeUnit !== null,
+  })
 
   // THREE conditions, not two. `sessionCmId` is in there because every write
   // names a weekend, and the prop defaults to 0 for the thirty tests that do
