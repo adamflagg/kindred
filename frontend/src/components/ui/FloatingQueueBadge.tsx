@@ -43,6 +43,26 @@ export interface FloatingQueueBadgeProps<T> {
   cardSelector: string
   /** Shown when there is nothing queued at all, as opposed to nothing matching the filter. */
   emptyState: ReactNode
+  /**
+   * A row of caller-owned controls, rendered under the name search.
+   *
+   * Chrome only: the shell renders the node and never reads it. What the
+   * controls MEAN is the adapter's business, which is why the predicate
+   * arrives separately as `itemFilter` — need-based filtering is a weekend
+   * concept and a summer camper queue has no `needs_private_bathroom` to
+   * offer. Both are optional, so summer passes neither and is unchanged.
+   */
+  filterRow?: ReactNode
+  /**
+   * Applied BEFORE the name search; both compose.
+   *
+   * `| undefined` is explicit because the project builds with
+   * `exactOptionalPropertyTypes`: without it a caller cannot pass the
+   * "no filter" case through as a variable, only by omitting the prop.
+   */
+  itemFilter?: ((item: T) => boolean) | undefined
+  /** Shown when `itemFilter` hides everything — a different dead end from a name-search miss. */
+  filterEmptyState?: ReactNode
   footer?: ReactNode
   isExpanded: boolean
   onToggle: () => void
@@ -70,6 +90,9 @@ export function FloatingQueueBadge<T>({
   noun,
   cardSelector,
   emptyState,
+  filterRow,
+  itemFilter,
+  filterEmptyState,
   footer,
   isExpanded,
   onToggle,
@@ -100,10 +123,12 @@ export function FloatingQueueBadge<T>({
       return 0
     })
 
-    if (!trimmedSearchTerm) return sorted
+    const grouped = itemFilter ? sorted.filter((item) => itemFilter(item)) : sorted
+
+    if (!trimmedSearchTerm) return grouped
     const term = trimmedSearchTerm.toLowerCase()
-    return sorted.filter((item) => getSearchText(item).toLowerCase().includes(term))
-  }, [items, trimmedSearchTerm, sortKey, getSearchText])
+    return grouped.filter((item) => getSearchText(item).toLowerCase().includes(term))
+  }, [items, trimmedSearchTerm, sortKey, getSearchText, itemFilter])
 
   const handleClickOutside = useCallback(
     (event: MouseEvent) => {
@@ -209,7 +234,7 @@ export function FloatingQueueBadge<T>({
                 <span className="text-muted-foreground ml-1.5 text-sm font-normal">
                   (
                   <span>
-                    {trimmedSearchTerm
+                    {trimmedSearchTerm || itemFilter
                       ? `${String(visible.length)}/${String(items.length)}`
                       : items.length}
                   </span>
@@ -256,6 +281,10 @@ export function FloatingQueueBadge<T>({
             </div>
           )}
 
+          {items.length > 0 && filterRow !== undefined && (
+            <div className="border-border flex-shrink-0 border-b px-3 py-2">{filterRow}</div>
+          )}
+
           <div
             className={clsx(
               'min-h-[200px] flex-1 overflow-y-auto p-3',
@@ -264,12 +293,14 @@ export function FloatingQueueBadge<T>({
           >
             {items.length === 0 ? (
               emptyState
-            ) : visible.length === 0 ? (
+            ) : visible.length === 0 && trimmedSearchTerm ? (
               <div className="flex h-full flex-col items-center justify-center py-8 text-center">
                 <p className="text-muted-foreground text-sm">
                   No {noun} match "{trimmedSearchTerm}"
                 </p>
               </div>
+            ) : visible.length === 0 ? (
+              filterEmptyState
             ) : (
               renderList(visible)
             )}
