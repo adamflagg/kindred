@@ -275,6 +275,120 @@ class WriteInCover(BaseModel):
     unit_sleeps: int | None = None
 
 
+class PushRowPayload(BaseModel):
+    """One classified write-in row, as `preview_push` reports it (kindred#2477).
+
+    A wire rendering of `lodging_rules.PushRow`, field-for-field -- the row's
+    MEANING lives on that frozen dataclass and this is not a second opinion of
+    it, only the shape that crosses the API boundary.
+    """
+
+    unit_id: str
+    unit_code: str
+    unit_name: str
+    occupant_name: str
+    note: str = ""
+    # `None` is *occupies wholesale, never zero* -- the same #2540 reading
+    # `WriteInCover.party_size` carries above. A live row with no count
+    # against a draft row that recorded one is a genuine difference, and
+    # `PushRow.tuple_key()` treats it as such rather than coercing it to 0.
+    party_size: int | None = None
+    sleeps: int | None = None
+
+
+class PushBuildingReport(BaseModel):
+    """One building's live-vs-draft write-ins, and the RULED verdict for it.
+
+    `cls` is `classify_push`'s own word (`api/services/lodging_rules.py`),
+    computed server-side and PUBLISHED rather than re-derived: inside a
+    scenario the client never reads `lodging_write_ins` at all -- the roster
+    replaces those rows with the draft twin -- so it has nothing to diff
+    against and no TS mirror of the classifier exists on purpose.
+    """
+
+    key: str
+    label: str
+    cls: Literal["add", "match", "conflict", "remove"]
+    live: list[PushRowPayload] = Field(default_factory=list)
+    draft: list[PushRowPayload] = Field(default_factory=list)
+
+
+class PushPreviewResponse(BaseModel):
+    """The report half of kindred#2477's write-in push queue.
+
+    `digest` fingerprints `buildings` (`push_digest`), and it is not a fact
+    about the request -- it is a fact about what this preview SAW. The client
+    echoes it back unchanged when it actually pushes; a mismatch means the
+    live board or the scenario moved between the preview and the push, and
+    the push refuses with a fresh report rather than applying decisions made
+    against one that is no longer true.
+    """
+
+    year: int
+    session_cm_id: int
+    scenario: str
+    digest: str
+    buildings: list[PushBuildingReport] = Field(default_factory=list)
+
+
+class PushExecuteRequest(BaseModel):
+    """Apply a scenario's write-ins onto the live board (kindred#2477).
+
+    `digest` is `PushPreviewResponse.digest`, ECHOED BACK unchanged --
+    `execute_push` refuses with a fresh report the moment it disagrees, which
+    means the board or the scenario moved between the review and this call.
+
+    `decisions` names a verdict ONLY for the buildings that need one: a
+    `conflict` chooses `"live"` (keep the live occupant) or `"scenario"`
+    (replace with the draft's rows); a `remove` chooses `"keep"` (leave it on
+    the board) or `"remove"`. The two verdict pairs are NOT interchangeable --
+    `execute_push` only ever checks a `conflict` decision against `"scenario"`
+    and a `remove` decision against `"remove"`, treating anything else
+    (including a value from the other class's pair) as the no-op side. An
+    `add` or a `match` building needs no entry -- there is nothing to decide.
+    The RULED block rule (owner, 2026-08-22) is that a missing decision on a
+    building that needs one refuses the whole push rather than defaulting to
+    the no-op side; see `PushDecisionsIncompleteError`.
+    """
+
+    year: int
+    session_cm_id: int = Field(gt=0)
+    scenario: str = Field(min_length=1)
+    digest: str
+    decisions: dict[str, Literal["live", "scenario", "keep", "remove"]] = Field(default_factory=dict)
+
+
+class PushExecuteResponse(BaseModel):
+    """What the push actually did.
+
+    `push_id` is the `lodging_write_in_pushes` row's id -- the ledger entry
+    Unpush will replay -- and is `""` on a no-op, when nothing needed to move
+    and no ledger row was written at all.
+    """
+
+    push_id: str = ""
+    added: int = 0
+    removed: int = 0
+    replaced: int = 0
+    kept: int = 0
+    matched: int = 0
+    no_op: bool = False
+
+
+class UnpushResponse(BaseModel):
+    """What `unpush` actually did (kindred#2477 Task 5).
+
+    `restored` is how many removed rows came back; `deleted` is how many
+    added rows were taken back off the live board -- the mirror image of
+    `PushExecuteResponse.added` / `.removed`, one field per direction the
+    ledger's `changes` replay moves a row.
+    """
+
+    push_id: str = ""
+    restored: int = 0
+    deleted: int = 0
+
+
 class LodgingUnitSummary(BaseModel):
     """One row of the lodging registry, as the roster sees it."""
 

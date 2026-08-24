@@ -13,6 +13,9 @@ module docstring of api/services/lodging_rules.py for why re-parsing them in
 Python would regress two fixes that live only on the Go side.
 """
 
+from types import SimpleNamespace
+from typing import ClassVar
+
 import pytest
 
 from api.services.lodging_rules import (
@@ -20,15 +23,19 @@ from api.services.lodging_rules import (
     FAMILY_CAMP_REQUEST_TEXT_CM_IDS,
     REQUEST_TEXT_SOURCES,
     HousingNameResolver,
+    PushRow,
     RegistryUnit,
     UnitAlias,
     WriteInDemand,
     WriteInLoad,
     amenity_coverage,
+    classify_push,
     container_bathroom,
     effective_bathroom,
     free_family_beds,
     is_family_available,
+    push_building_key,
+    push_digest,
     ramp_coverage,
     request_text_authorship,
     request_text_source_order,
@@ -796,3 +803,128 @@ class TestFreeFamilyBeds:
         """Owner ruling 2026-08-20: a room-level write-in does not make the
         rest of the house unavailable."""
         assert free_family_beds(8, [WriteInLoad("descendant", None, 3)]) == 5
+
+
+def _push_unit(id, code, name=None, container=False, parent=""):
+    return SimpleNamespace(id=id, code=code, name=name or code, is_container=container, parent_unit=parent, sleeps=4)
+
+
+def _push_row(unit_id, code, occ, note="", ppl=None, sleeps=4, name=None):
+    return PushRow(
+        unit_id=unit_id,
+        unit_code=code,
+        unit_name=name or code,
+        occupant_name=occ,
+        note=note,
+        party_size=ppl,
+        sleeps=sleeps,
+    )
+
+
+class TestPushBuildingKey:
+    def test_container_is_its_own_key(self):
+        units = [
+            _push_unit("u1", "big-house", container=True, parent="u0"),
+            _push_unit("u0", "grouping", container=True),
+        ]
+        by_code = {u.code: u for u in units}
+        assert push_building_key(units[0], by_code) == "big-house"
+
+    def test_leaf_keys_to_immediate_parent_not_root(self):
+        units = [
+            _push_unit("u0", "top", container=True),
+            _push_unit("u1", "mid", container=True, parent="u0"),
+            _push_unit("u2", "room-1", parent="u1"),
+        ]
+        by_code = {u.code: u for u in units}
+        # classify_push resolves parent PB id -> code before calling this;
+        # here the test passes the resolved shape the classifier builds.
+        assert push_building_key(units[2], by_code, parent_code="mid") == "mid"
+
+    def test_orphan_leaf_is_its_own_key(self):
+        u = _push_unit("u9", "lone-cabin")
+        assert push_building_key(u, {"lone-cabin": u}, parent_code="") == "lone-cabin"
+
+
+class TestClassifyPush:
+    UNITS: ClassVar[list[SimpleNamespace]] = [
+        _push_unit("uh", "big-house", container=True),
+        _push_unit("u1", "room-1", parent="uh"),
+        _push_unit("u2", "room-2", parent="uh"),
+        _push_unit("uc", "cedar-9"),
+    ]
+
+    def test_whole_house_draft_groups_with_room_live_rows_as_one_conflict(self):
+        live = [_push_row("u1", "room-1", "R. Okafor"), _push_row("u2", "room-2", "M. Diaz")]
+        draft = [_push_row("uh", "big-house", "Woodson family", ppl=6)]
+        out = classify_push(live, draft, self.UNITS)
+        assert [b.cls for b in out] == ["conflict"]
+        assert out[0].key == "big-house"
+
+    def test_multiset_equality_is_match(self):
+        live = [_push_row("u1", "room-1", "A. Chen"), _push_row("u2", "room-2", "T. Nguyen")]
+        draft = [_push_row("u2", "room-2", "T. Nguyen"), _push_row("u1", "room-1", "A. Chen")]
+        assert [b.cls for b in classify_push(live, draft, self.UNITS)] == ["match"]
+
+    def test_null_vs_sized_people_is_a_conflict(self):
+        live = [_push_row("uc", "cedar-9", "B. Tran", ppl=None)]
+        draft = [_push_row("uc", "cedar-9", "B. Tran", ppl=2)]
+        assert [b.cls for b in classify_push(live, draft, self.UNITS)] == ["conflict"]
+
+    def test_trim_only_normalisation(self):
+        live = [_push_row("uc", "cedar-9", "  E. Sandoval  ")]
+        draft = [_push_row("uc", "cedar-9", "E. Sandoval")]
+        assert [b.cls for b in classify_push(live, draft, self.UNITS)] == ["match"]
+        draft2 = [_push_row("uc", "cedar-9", "e. sandoval")]  # case differs: conflict
+        assert [b.cls for b in classify_push(live, draft2, self.UNITS)] == ["conflict"]
+
+    def test_add_and_remove(self):
+        live = [_push_row("uc", "cedar-9", "K. Sato")]
+        out = classify_push(live, [], self.UNITS)
+        assert [b.cls for b in out] == ["remove"]
+        out2 = classify_push([], live, self.UNITS)
+        assert [b.cls for b in out2] == ["add"]
+
+    def test_none_vs_int_party_size_with_shared_prefix_does_not_crash(self):
+        """kindred#2477 fix-round: two same-side rows on one building sharing
+        (unit_id, occupant, note) but differing only in party_size -- one
+        None, one recorded -- crashed the multiset comparison. Plain
+        `sorted()` over `tuple_key()` reaches the fourth element only when
+        the first three already tie, and Python 3 refuses `int < NoneType`
+        there. Repro: `sorted([('u1','N','',None), ('u1','N','',5)])`."""
+        live = [
+            _push_row("uc", "cedar-9", "Same Name", ppl=None),
+            _push_row("uc", "cedar-9", "Same Name", ppl=5),
+        ]
+        draft = [_push_row("uc", "cedar-9", "Same Name", ppl=5)]
+        out = classify_push(live, draft, self.UNITS)
+        assert [b.cls for b in out] == ["conflict"]
+        assert push_digest(out)  # must not raise either
+
+
+class TestPushDigest:
+    def test_stable_across_row_order(self):
+        # 2+ rows per side, sharing one building, including the mixed
+        # None/int party_size shape that exercises the new sort key.
+        units = [
+            _push_unit("uh", "big-house", container=True),
+            _push_unit("u1", "room-1", parent="uh"),
+            _push_unit("u2", "room-2", parent="uh"),
+        ]
+        live = [
+            _push_row("u1", "room-1", "A", ppl=None),
+            _push_row("u2", "room-2", "B", ppl=5),
+        ]
+        draft = [
+            _push_row("u1", "room-1", "A", ppl=2),
+            _push_row("u2", "room-2", "C", ppl=None),
+        ]
+        a = classify_push(live, draft, units)
+        b = classify_push(list(reversed(live)), list(reversed(draft)), units)
+        assert push_digest(a) == push_digest(b)
+
+    def test_changes_when_a_tuple_changes(self):
+        u = [_push_unit("uc", "cedar-9")]
+        a = classify_push([], [_push_row("uc", "cedar-9", "A", ppl=None)], u)
+        b = classify_push([], [_push_row("uc", "cedar-9", "A", ppl=2)], u)
+        assert push_digest(a) != push_digest(b)

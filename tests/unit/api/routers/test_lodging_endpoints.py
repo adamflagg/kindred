@@ -6,7 +6,7 @@ produces spurious 401s elsewhere in the suite.
 """
 
 from collections.abc import Generator
-from typing import Any
+from typing import Any, ClassVar
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
@@ -20,12 +20,40 @@ from api.schemas.lodging import (
     PlacementCopyRequest,
     PlacementDeleteRequest,
     PlacementWriteRequest,
+    PushExecuteRequest,
+    PushExecuteResponse,
+    PushPreviewResponse,
     RosterCounts,
     SlotMergeRequest,
+    UnpushResponse,
     WeekendRosterResponse,
+)
+from api.services.lodging_roster_service import SessionNotFoundError
+from api.services.lodging_rules import push_digest
+from api.services.lodging_write_service import (
+    AlreadyUnpushedError,
+    PushDecisionsIncompleteError,
+    PushDigestStaleError,
+    PushNotFoundError,
+    UnpushDriftError,
 )
 from bunking.auth_middleware import AuthUser, get_current_user
 from bunking.rbac.permissions import Permission
+
+# `preview_push` on an empty live/draft board (the `_write_client` fixture's
+# generic PB mock, which answers every non-session read with `[]`) hashes to
+# this deterministically -- computed the same way the service does rather
+# than pinned as a magic string, so a change to `push_digest`'s algorithm
+# does not silently desync this fixture from what the router actually checks.
+_EMPTY_PUSH_DIGEST = push_digest([])
+
+
+class _NoRequestBody(BaseModel):
+    """`POST /push/{push_id}/unpush` takes no body -- push id is a path
+    param, year/session_cm_id are query params. Named explicitly rather than
+    reusing an unrelated schema so `WRITE_MODELS` keeps meaning what it says:
+    the body sent in the table above must be a subset of this model's
+    fields, and this model has none."""
 
 
 def _rec(**kwargs: Any) -> MagicMock:
@@ -601,6 +629,28 @@ WRITE_ENDPOINTS: list[tuple[str, str, str, dict[str, Any]]] = [
             "combined": True,
         },
     ),
+    (
+        "POST",
+        "/api/lodging/push",
+        "/api/lodging/push",
+        {
+            "year": 2026,
+            "session_cm_id": 1000001,
+            "scenario": "scn_1",
+            # Matches what `_write_client`'s generic PB mock actually produces
+            # for this weekend (an empty live/draft board), so the digest
+            # check inside `execute_push` passes rather than refusing every
+            # generic run in this file as stale.
+            "digest": _EMPTY_PUSH_DIGEST,
+            "decisions": {},
+        },
+    ),
+    (
+        "POST",
+        "/api/lodging/push/{push_id}/unpush",
+        "/api/lodging/push/push_1/unpush?year=2026&session_cm_id=1000001",
+        {},
+    ),
 ]
 
 # The request model each row above posts against. Only used by the shape guard
@@ -611,6 +661,8 @@ WRITE_MODELS: dict[tuple[str, str], type[BaseModel]] = {
     ("PUT", "/api/lodging/availability"): AvailabilityWriteRequest,
     ("POST", "/api/lodging/placements/copy"): PlacementCopyRequest,
     ("PUT", "/api/lodging/merge"): SlotMergeRequest,
+    ("POST", "/api/lodging/push"): PushExecuteRequest,
+    ("POST", "/api/lodging/push/{push_id}/unpush"): _NoRequestBody,
 }
 
 
@@ -652,6 +704,20 @@ def _write_client(user: AuthUser, mock_pb: MagicMock) -> TestClient:
     # bare MagicMock this reads as 1 -- MagicMock implements __int__ -- and
     # every copy would refuse with a 409 for a scenario holding nothing.
     mock_pb.collection.return_value.get_list.return_value = _rec(total_items=0)
+    # find_push_event uses get_one, not get_full_list -- an untouched-changes
+    # ledger row, not yet unpushed, so unpush's generic run is a trivial
+    # replay of nothing rather than a 404 (no row) or a 409 (already
+    # unpushed) that no other row in this table would produce.
+    #
+    # year/session_cm_id MUST match the table row's own query params
+    # (2026/1000001) -- `unpush` now refuses a push id whose ledger row names
+    # a DIFFERENT weekend (kindred#2477 final review, Important #5) with the
+    # same PushNotFoundError -> 404 a missing row produces, and a bare
+    # MagicMock's auto-vivified `.year`/`.session_cm_id` never equal the real
+    # ints, which read as exactly that mismatch.
+    mock_pb.collection.return_value.get_one.return_value = _rec(
+        id="push_1", year=2026, session_cm_id=1000001, changes=[], unpushed_at=""
+    )
     return TestClient(_build_app(user, mock_pb))
 
 
@@ -1726,3 +1792,203 @@ class TestAvailabilityWrites:
         # Same guard as the sibling above: the recovery path must actually
         # have been walked, not skipped by a lookup that answered too early.
         mock_pb.collection.return_value.create.assert_called_once()
+
+
+class TestPushPreviewEndpoint:
+    """`GET /api/lodging/push/preview` (kindred#2477 Task 6).
+
+    Service-mocked, following `TestStaffAuthoredBlocksNeedBunkingManage`'s
+    pattern (`patch("api.routers.lodging.LodgingWriteService")`) rather than
+    the raw-PocketBase `_write_client` fixture: classification is
+    `preview_push`'s own contract, pinned by
+    tests/unit/api/services/test_lodging_write_service.py, so these tests
+    check the wiring -- auth gate, argument order, error mapping -- not the
+    diff logic underneath it.
+    """
+
+    URL = "/api/lodging/push/preview"
+    PARAMS: ClassVar[dict[str, int | str]] = {"year": 2026, "session_cm_id": 1000001, "scenario": "scn_1"}
+
+    def test_user_without_the_permission_gets_403(self, mock_pb: MagicMock) -> None:
+        with patch("api.routers.lodging.pb", mock_pb):
+            app = _build_app(_plain_user(), mock_pb)
+            response = TestClient(app).get(self.URL, params=self.PARAMS)
+
+        assert response.status_code == 403
+        assert Permission.BUNKING_MANAGE in response.json()["detail"]
+
+    def test_bunking_staff_get_the_preview(self, mock_pb: MagicMock) -> None:
+        report = PushPreviewResponse(
+            year=2026, session_cm_id=1000001, scenario="scn_1", digest="digest_abc", buildings=[]
+        )
+        app = _build_app(_manage_user(), mock_pb)
+        with patch("api.routers.lodging.LodgingWriteService") as service_cls:
+            service_cls.return_value.preview_push = AsyncMock(return_value=report)
+            with patch("api.routers.lodging.pb", mock_pb):
+                response = TestClient(app).get(self.URL, params=self.PARAMS)
+
+        assert response.status_code == 200
+        assert response.json()["digest"] == "digest_abc"
+        service_cls.return_value.preview_push.assert_awaited_once_with(2026, 1000001, "scn_1")
+
+    def test_an_unknown_weekend_is_404_not_500(self, mock_pb: MagicMock) -> None:
+        app = _build_app(_manage_user(), mock_pb)
+        with patch("api.routers.lodging.LodgingWriteService") as service_cls:
+            service_cls.return_value.preview_push = AsyncMock(side_effect=SessionNotFoundError("no weekend 9999999"))
+            with patch("api.routers.lodging.pb", mock_pb):
+                response = TestClient(app).get(self.URL, params={**self.PARAMS, "session_cm_id": 9999999})
+
+        assert response.status_code == 404
+        assert "9999999" in response.json()["detail"]
+
+
+class TestExecutePushEndpoint:
+    """`POST /api/lodging/push` (kindred#2477 Task 6). Service-mocked, same
+    reasoning as `TestPushPreviewEndpoint` above."""
+
+    URL = "/api/lodging/push"
+    BODY: ClassVar[dict[str, Any]] = {
+        "year": 2026,
+        "session_cm_id": 1000001,
+        "scenario": "scn_1",
+        "digest": "digest_abc",
+        "decisions": {},
+    }
+
+    def test_user_without_the_permission_gets_403(self, mock_pb: MagicMock) -> None:
+        with patch("api.routers.lodging.pb", mock_pb):
+            app = _build_app(_plain_user(), mock_pb)
+            response = TestClient(app).post(self.URL, json=self.BODY)
+
+        assert response.status_code == 403
+        assert Permission.BUNKING_MANAGE in response.json()["detail"]
+
+    def test_bunking_staff_can_execute_a_push(self, mock_pb: MagicMock) -> None:
+        """Also pins the `pushed_by` adaptation: `AuthUser` has no `.id` --
+        the router reads `user.email`, the same identity
+        `lodging_friend_groups.py` already records a creator/editor by."""
+        result = PushExecuteResponse(push_id="push_1", added=2, removed=1, replaced=1, kept=0, matched=0)
+        app = _build_app(_manage_user(), mock_pb)
+        with patch("api.routers.lodging.LodgingWriteService") as service_cls:
+            service_cls.return_value.execute_push = AsyncMock(return_value=result)
+            with patch("api.routers.lodging.pb", mock_pb):
+                response = TestClient(app).post(self.URL, json=self.BODY)
+
+        assert response.status_code == 200
+        assert response.json()["push_id"] == "push_1"
+        call_args = service_cls.return_value.execute_push.await_args
+        assert call_args.kwargs["pushed_by"] == "bunking@example.com"
+        assert call_args.args[0].scenario == "scn_1"
+
+    def test_a_stale_digest_is_a_409_carrying_the_fresh_report(self, mock_pb: MagicMock) -> None:
+        fresh = PushPreviewResponse(
+            year=2026, session_cm_id=1000001, scenario="scn_1", digest="digest_fresh", buildings=[]
+        )
+        app = _build_app(_manage_user(), mock_pb)
+        with patch("api.routers.lodging.LodgingWriteService") as service_cls:
+            service_cls.return_value.execute_push = AsyncMock(side_effect=PushDigestStaleError(fresh))
+            with patch("api.routers.lodging.pb", mock_pb):
+                response = TestClient(app).post(self.URL, json=self.BODY)
+
+        assert response.status_code == 409
+        detail = response.json()["detail"]
+        assert detail["reason"] == "stale"
+        assert detail["report"]["digest"] == "digest_fresh"
+
+    def test_incomplete_decisions_is_a_422(self, mock_pb: MagicMock) -> None:
+        app = _build_app(_manage_user(), mock_pb)
+        with patch("api.routers.lodging.LodgingWriteService") as service_cls:
+            service_cls.return_value.execute_push = AsyncMock(
+                side_effect=PushDecisionsIncompleteError("undecided: bldg_1")
+            )
+            with patch("api.routers.lodging.pb", mock_pb):
+                response = TestClient(app).post(self.URL, json=self.BODY)
+
+        assert response.status_code == 422
+        assert response.json()["detail"] == "undecided: bldg_1"
+
+    def test_an_unknown_weekend_is_404_not_500(self, mock_pb: MagicMock) -> None:
+        app = _build_app(_manage_user(), mock_pb)
+        with patch("api.routers.lodging.LodgingWriteService") as service_cls:
+            service_cls.return_value.execute_push = AsyncMock(side_effect=SessionNotFoundError("no weekend 9999999"))
+            with patch("api.routers.lodging.pb", mock_pb):
+                response = TestClient(app).post(self.URL, json={**self.BODY, "session_cm_id": 9999999})
+
+        assert response.status_code == 404
+        assert "9999999" in response.json()["detail"]
+
+
+class TestUnpushEndpoint:
+    """`POST /api/lodging/push/{push_id}/unpush` (kindred#2477 Task 6).
+    Service-mocked, same reasoning as `TestPushPreviewEndpoint` above."""
+
+    PARAMS: ClassVar[dict[str, int]] = {"year": 2026, "session_cm_id": 1000001}
+
+    @staticmethod
+    def _url(push_id: str = "push_1") -> str:
+        return f"/api/lodging/push/{push_id}/unpush"
+
+    def test_user_without_the_permission_gets_403(self, mock_pb: MagicMock) -> None:
+        with patch("api.routers.lodging.pb", mock_pb):
+            app = _build_app(_plain_user(), mock_pb)
+            response = TestClient(app).post(self._url(), params=self.PARAMS)
+
+        assert response.status_code == 403
+        assert Permission.BUNKING_MANAGE in response.json()["detail"]
+
+    def test_bunking_staff_can_unpush(self, mock_pb: MagicMock) -> None:
+        result = UnpushResponse(push_id="push_1", restored=1, deleted=2)
+        app = _build_app(_manage_user(), mock_pb)
+        with patch("api.routers.lodging.LodgingWriteService") as service_cls:
+            service_cls.return_value.unpush = AsyncMock(return_value=result)
+            with patch("api.routers.lodging.pb", mock_pb):
+                response = TestClient(app).post(self._url(), params=self.PARAMS)
+
+        assert response.status_code == 200
+        assert response.json() == {"push_id": "push_1", "restored": 1, "deleted": 2}
+        service_cls.return_value.unpush.assert_awaited_once_with("push_1", 2026, 1000001)
+
+    def test_an_unknown_push_is_a_404(self, mock_pb: MagicMock) -> None:
+        app = _build_app(_manage_user(), mock_pb)
+        with patch("api.routers.lodging.LodgingWriteService") as service_cls:
+            service_cls.return_value.unpush = AsyncMock(side_effect=PushNotFoundError("push_1"))
+            with patch("api.routers.lodging.pb", mock_pb):
+                response = TestClient(app).post(self._url(), params=self.PARAMS)
+
+        assert response.status_code == 404
+        assert "push_1" in response.json()["detail"]
+
+    def test_an_already_unpushed_push_is_a_409(self, mock_pb: MagicMock) -> None:
+        app = _build_app(_manage_user(), mock_pb)
+        with patch("api.routers.lodging.LodgingWriteService") as service_cls:
+            service_cls.return_value.unpush = AsyncMock(side_effect=AlreadyUnpushedError("push_1"))
+            with patch("api.routers.lodging.pb", mock_pb):
+                response = TestClient(app).post(self._url(), params=self.PARAMS)
+
+        assert response.status_code == 409
+        assert response.json()["detail"] == {"reason": "already_unpushed"}
+
+    def test_drift_is_a_409_naming_the_offending_buildings(self, mock_pb: MagicMock) -> None:
+        app = _build_app(_manage_user(), mock_pb)
+        with patch("api.routers.lodging.LodgingWriteService") as service_cls:
+            service_cls.return_value.unpush = AsyncMock(side_effect=UnpushDriftError(["Cabin A", "Cabin B"]))
+            with patch("api.routers.lodging.pb", mock_pb):
+                response = TestClient(app).post(self._url(), params=self.PARAMS)
+
+        assert response.status_code == 409
+        assert response.json()["detail"] == {"reason": "drift", "buildings": ["Cabin A", "Cabin B"]}
+
+    def test_an_unknown_weekend_is_404_not_500(self, mock_pb: MagicMock) -> None:
+        """`unpush` resolves the weekend AFTER the push-found / not-already-
+        unpushed / no-drift checks pass (`_resolve_session_pb_id`, called
+        just before the reverting writes) -- a year/session pair that no
+        longer names a weekend must still map to the router's one named 404,
+        not escape uncaught into the global handler's 500."""
+        app = _build_app(_manage_user(), mock_pb)
+        with patch("api.routers.lodging.LodgingWriteService") as service_cls:
+            service_cls.return_value.unpush = AsyncMock(side_effect=SessionNotFoundError("no weekend 9999999"))
+            with patch("api.routers.lodging.pb", mock_pb):
+                response = TestClient(app).post(self._url(), params={**self.PARAMS, "session_cm_id": 9999999})
+
+        assert response.status_code == 404
+        assert "9999999" in response.json()["detail"]

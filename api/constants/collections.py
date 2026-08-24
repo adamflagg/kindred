@@ -91,6 +91,9 @@ LODGING_SLOT_MERGES = "lodging_slot_merges"
 LODGING_WRITE_INS = "lodging_write_ins"
 LODGING_WRITE_INS_DRAFT = "lodging_write_ins_draft"
 
+# Push-event ledger for kindred#2477 -- app-owned history, API-only access.
+LODGING_WRITE_IN_PUSHES = "lodging_write_in_pushes"
+
 # The single work queue for cabin strings ingest could not resolve. Owned and
 # solely written by the ingest layer; the admin UI reads it filtered to
 # kind = "unresolved_alias". Deliberately NOT a second surfaces-only collection.

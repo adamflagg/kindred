@@ -25,8 +25,11 @@ ingest never touches.
 
 from __future__ import annotations
 
+import hashlib
+import json
 from collections.abc import Sequence
-from typing import Literal, NamedTuple
+from dataclasses import dataclass
+from typing import Any, Literal, NamedTuple
 
 # Values of lodging_units.bathroom. An unset PocketBase select stores as "",
 # which means "nobody has told us yet", not "no bathroom".
@@ -861,3 +864,140 @@ class HousingNameResolver:
             if parent is not None:
                 return parent.name
         return _MEMBER_JOIN.join(unit.name for unit in members)
+
+
+# ------------------------------------------------------------ push classifier
+#
+# kindred#2477. The RULED diff between a scenario's draft write-ins and the
+# live board's, grouped by physical building, feeding the push queue Task 3
+# turns into an endpoint. Pure rules only: what changed and how to group it,
+# never how to fetch it or apply it.
+#
+# `_s`/`_b` mirror the accessors of the same name in `lodging_roster_service`
+# rather than importing them -- that service module already imports FROM this
+# one (`from api.services.lodging_rules import ...`), so importing back would
+# be circular. Same tiny contract either way: total over a record missing the
+# attribute entirely, which is what a `SimpleNamespace` test stub or a
+# not-yet-migrated PB row both look like.
+
+
+def _s(record: Any, field: str, default: str = "") -> str:
+    value = getattr(record, field, default)
+    return default if value is None else str(value)
+
+
+def _b(record: Any, field: str) -> bool:
+    return bool(getattr(record, field, False))
+
+
+def _tuple_key_sort_key(t: tuple[str, str, str, int | None]) -> tuple[str, str, str, bool, int]:
+    """A TOTAL order for `PushRow.tuple_key()`, where the last element is
+    `int | None`.
+
+    Plain `sorted()` on the 4-tuple works right up until two rows on the same
+    side of one building share `(unit_id, occupant, note)` and differ only in
+    `party_size`, one of them `None` -- Python's tuple comparison only reaches
+    the fourth element once the first three already tie, and then refuses
+    `int < NoneType`. `sorted([('u1','N','',None), ('u1','N','',5)])` is the
+    two-line repro that found this. `None` sorts before every recorded count
+    here (`False < True`); that placement is arbitrary but STABLE, which is
+    all either caller needs -- the multiset-equality check in `classify_push`
+    and the canonicalisation in `push_digest` both only ask "is this ordering
+    the same every time", never "which one is smaller"."""
+    unit_id, occupant, note, party_size = t
+    return (unit_id, occupant, note, party_size is not None, party_size or 0)
+
+
+@dataclass(frozen=True)
+class PushRow:
+    unit_id: str
+    unit_code: str
+    unit_name: str
+    occupant_name: str
+    note: str
+    party_size: int | None
+    sleeps: int | None
+
+    def tuple_key(self) -> tuple[str, str, str, int | None]:
+        # The RULED matching tuple (kindred#2477): placement, occupant, note,
+        # people. strip() is the ONLY normalisation -- no casefold, no fuzz --
+        # and None people is a VALUE (occupies wholesale, #2540), so a live
+        # None against a recorded count IS a difference.
+        return (self.unit_id, self.occupant_name.strip(), self.note.strip(), self.party_size)
+
+
+@dataclass(frozen=True)
+class PushBuilding:
+    key: str
+    label: str
+    cls: str
+    live: tuple[PushRow, ...]
+    draft: tuple[PushRow, ...]
+
+
+def push_building_key(unit: Any, units_by_code: dict[str, Any], parent_code: str = "") -> str:
+    """The RULED grain (kindred#2477): a container is its own building; a leaf
+    belongs to its immediate parent when the registry knows it; an orphan is
+    itself. Deliberately NOT the TS `buildingKey` (unitLevel.ts) -- that one
+    feeds #2008's whole-building-held marker and lacks the container clause on
+    purpose for its own consumer. Root-walking was measured wrong: 36 groups
+    by immediate parent vs 35 by top ancestor on the draft set."""
+    if _b(unit, "is_container"):
+        return _s(unit, "code")
+    if parent_code and parent_code in units_by_code:
+        return parent_code
+    return _s(unit, "code")
+
+
+def classify_push(live: Sequence[PushRow], draft: Sequence[PushRow], units: Sequence[Any]) -> list[PushBuilding]:
+    units_by_id = {_s(u, "id"): u for u in units}
+    units_by_code = {_s(u, "code"): u for u in units}
+
+    def key_for(row: PushRow) -> str:
+        unit = units_by_id.get(row.unit_id)
+        if unit is None:
+            return row.unit_code or row.unit_id
+        parent = units_by_id.get(_s(unit, "parent_unit"))
+        return push_building_key(unit, units_by_code, _s(parent, "code") if parent else "")
+
+    def label_for(key: str) -> str:
+        unit = units_by_code.get(key)
+        return _s(unit, "name") if unit is not None else key
+
+    grouped: dict[str, tuple[list[PushRow], list[PushRow]]] = {}
+    for row in live:
+        grouped.setdefault(key_for(row), ([], []))[0].append(row)
+    for row in draft:
+        grouped.setdefault(key_for(row), ([], []))[1].append(row)
+
+    out: list[PushBuilding] = []
+    for key in sorted(grouped):
+        lrows, drows = grouped[key]
+        if drows and not lrows:
+            cls = "add"
+        elif lrows and not drows:
+            cls = "remove"
+        elif sorted((r.tuple_key() for r in lrows), key=_tuple_key_sort_key) == sorted(
+            (r.tuple_key() for r in drows), key=_tuple_key_sort_key
+        ):
+            cls = "match"
+        else:
+            cls = "conflict"
+        out.append(PushBuilding(key=key, label=label_for(key), cls=cls, live=tuple(lrows), draft=tuple(drows)))
+    return out
+
+
+def push_digest(buildings: Sequence[PushBuilding]) -> str:
+    """A stable fingerprint of the classified diff. The client only ECHOES it;
+    a mismatch at push time means the board or scenario moved mid-review and
+    the push refuses with a fresh report rather than applying stale decisions."""
+    canonical = [
+        (
+            b.key,
+            b.cls,
+            sorted((r.tuple_key() for r in b.live), key=_tuple_key_sort_key),
+            sorted((r.tuple_key() for r in b.draft), key=_tuple_key_sort_key),
+        )
+        for b in sorted(buildings, key=lambda b: b.key)
+    ]
+    return hashlib.sha256(json.dumps(canonical, default=str).encode()).hexdigest()

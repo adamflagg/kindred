@@ -57,6 +57,7 @@ export const Collections = {
   LodgingUnitAliases: 'lodging_unit_aliases',
   LodgingUnits: 'lodging_units',
   LodgingValueHistory: 'lodging_value_history',
+  LodgingWriteInPushes: 'lodging_write_in_pushes',
   LodgingWriteIns: 'lodging_write_ins',
   LodgingWriteInsDraft: 'lodging_write_ins_draft',
   NormalizedMappings: 'normalized_mappings',
@@ -1269,6 +1270,19 @@ export type LodgingValueHistoryRecord = {
   year: number
 }
 
+export type LodgingWriteInPushesRecord<Tchanges = unknown> = {
+  changes: null | Tchanges
+  created: IsoAutoDateString
+  id: string
+  pushed_by?: string
+  scenario_id: string
+  scenario_name?: string
+  session_cm_id: number
+  unpushed_at?: string
+  updated: IsoAutoDateString
+  year: number
+}
+
 export type LodgingWriteInsRecord = {
   created: IsoAutoDateString
   id: string
@@ -1936,6 +1950,10 @@ export type LodgingUnitsResponse<Tbeds = unknown, Texpand = unknown> = Required<
   BaseSystemFields<Texpand>
 export type LodgingValueHistoryResponse<Texpand = unknown> = Required<LodgingValueHistoryRecord> &
   BaseSystemFields<Texpand>
+export type LodgingWriteInPushesResponse<Tchanges = unknown, Texpand = unknown> = Required<
+  LodgingWriteInPushesRecord<Tchanges>
+> &
+  BaseSystemFields<Texpand>
 export type LodgingWriteInsResponse<Texpand = unknown> = Required<LodgingWriteInsRecord> &
   BaseSystemFields<Texpand>
 export type LodgingWriteInsDraftResponse<Texpand = unknown> = Required<LodgingWriteInsDraftRecord> &
@@ -2057,6 +2075,7 @@ export type CollectionRecords = {
   lodging_unit_aliases: LodgingUnitAliasesRecord
   lodging_units: LodgingUnitsRecord
   lodging_value_history: LodgingValueHistoryRecord
+  lodging_write_in_pushes: LodgingWriteInPushesRecord
   lodging_write_ins: LodgingWriteInsRecord
   lodging_write_ins_draft: LodgingWriteInsDraftRecord
   normalized_mappings: NormalizedMappingsRecord
@@ -2135,6 +2154,7 @@ export type CollectionResponses = {
   lodging_unit_aliases: LodgingUnitAliasesResponse
   lodging_units: LodgingUnitsResponse
   lodging_value_history: LodgingValueHistoryResponse
+  lodging_write_in_pushes: LodgingWriteInPushesResponse
   lodging_write_ins: LodgingWriteInsResponse
   lodging_write_ins_draft: LodgingWriteInsDraftResponse
   normalized_mappings: NormalizedMappingsResponse

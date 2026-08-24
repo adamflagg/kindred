@@ -1,10 +1,12 @@
 """Writes for the weekend lodging board.
 
-EVERY write here targets the DRAFT grain, `lodging_availability`, or
-`lodging_write_ins` -- the occupancy table kindred#2382 split out of
-availability, whose LIVE rows the board writes directly, because the live board
-is a scope in its own right rather than the absence of one. No write in this
-module can reach `lodging_assignments`, `lodging_assignment_history` or
+EVERY write here targets the DRAFT grain, `lodging_availability`,
+`lodging_write_ins`, or `lodging_write_in_pushes` -- the occupancy table
+kindred#2382 split out of availability, whose LIVE rows the board writes
+directly, because the live board is a scope in its own right rather than the
+absence of one, and the push ledger kindred#2477 added on top of it, whose
+rows record what a push applied so `unpush` can replay them in reverse. No
+write in this module can reach `lodging_assignments`, `lodging_assignment_history` or
 `lodging_field_mappings`: those belong to the CampMinder ingest, stay
 `is_admin` in PocketBase (1500000132), and are the reason the draft tables
 exist at all. Summer draws the identical line and has never crossed it.
@@ -39,7 +41,9 @@ is choosing, which is the board. Not here, and not in the ingest.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from pocketbase.client import ClientResponseError  # type: ignore[attr-defined]
@@ -47,13 +51,28 @@ from pocketbase.client import ClientResponseError  # type: ignore[attr-defined]
 from api.schemas.lodging import (
     AvailabilityWriteRequest,
     LodgingCopyResponse,
+    LodgingUnitSummary,
     LodgingWriteResponse,
     PlacementCopyRequest,
     PlacementDeleteRequest,
     PlacementWriteRequest,
+    PushBuildingReport,
+    PushExecuteRequest,
+    PushExecuteResponse,
+    PushPreviewResponse,
+    PushRowPayload,
     SlotMergeRequest,
+    UnpushResponse,
 )
-from api.services.lodging_roster_service import SessionNotFoundError, placement_grain, resolved_units
+from api.services.lodging_roster_service import (
+    SessionNotFoundError,
+    _BathroomIndex,
+    _capacity_by_code,
+    _i_or_none,
+    placement_grain,
+    resolved_units,
+)
+from api.services.lodging_rules import PushBuilding, PushRow, classify_push, push_digest, unit_capacity
 from api.utils.pb_error import pb_error_to_http
 from bunking.logging_config import get_logger
 
@@ -84,6 +103,100 @@ REFUSAL_STATUSES = frozenset({401, 403})
 
 class ScenarioNotEmptyError(RuntimeError):
     """A copy was asked for into a scenario that already holds placements."""
+
+
+class PushDigestStaleError(RuntimeError):
+    """The board or scenario moved between preview and push (kindred#2477).
+
+    Carries the fresh report so the router can hand it straight back as the
+    409 body -- the client re-renders the review against what is actually
+    true now, instead of a bare "try again" with nothing to show.
+    """
+
+    def __init__(self, report: PushPreviewResponse) -> None:
+        super().__init__("the write-in diff changed since this review was opened")
+        self.report = report
+
+
+class PushDecisionsIncompleteError(RuntimeError):
+    """The RULED block rule (kindred#2477, owner 2026-08-22): every conflict
+    and remove building needs a decision before a push may apply anything;
+    there is no default-keep-live path. Enforced here, not only by the
+    disabled button the frontend puts up for the same rule.
+    """
+
+
+class PushNotFoundError(RuntimeError):
+    """`unpush` was asked for a `lodging_write_in_pushes` row that does not
+    exist (kindred#2477 Task 5). `find_push_event` returns `None` on a 404
+    rather than raising, so this is the service's own translation of that --
+    the router answers it as a 404, the same shape a bad id gets everywhere
+    else on this surface.
+    """
+
+
+class AlreadyUnpushedError(RuntimeError):
+    """The ledger row `unpush` was asked to replay already carries an
+    `unpushed_at` stamp (kindred#2477 Task 5). A push is reverted at most
+    once: replaying it a second time would delete rows the first unpush
+    already recreated and recreate rows the first unpush already deleted,
+    silently doubling a party's write-in or destroying one nobody asked to
+    remove. The stamp is the only guard against that, so it is checked
+    before anything else about the row is trusted.
+    """
+
+
+class UnpushDriftError(RuntimeError):
+    """RULED refuse-wholesale (owner 2026-08-22): `unpush` checks EVERY unit
+    the push touched against the push's own after-state before it reverts
+    anything, and a single mismatch -- an added row hand-edited or deleted
+    since, a removed row hand-recreated since -- refuses the WHOLE push
+    rather than reverting the units that still match.
+
+    A partial revert leaves a state nobody reviewed: the buildings that
+    still matched silently go back to how they were before the push, the
+    ones that drifted silently keep whatever a staff member did to them
+    since, and nothing on the board marks which is which. That is worse than
+    refusing outright, because it reads as "unpush worked" while quietly
+    deciding, per building, whether the click actually applied. Clobbering a
+    hand edit outright is exactly the blind delete this feature exists to
+    prevent -- the ledger names precise rows so a revert can be precise, and
+    a revert that overwrites drift throws that away.
+
+    The same check also refuses unpushing an OLDER push once a NEWER one has
+    moved the same units -- not as a special case, but for free: the newer
+    push's own apply already changed what the older push's after-state
+    described, so the older push's added rows are gone or altered and its
+    removed rows are back, and the drift check catches both without knowing
+    anything about push ordering.
+
+    `.buildings` carries the offending building codes, sorted and
+    deduplicated, so the router can serialise them straight into the 409
+    body (Task 6) -- the same shape `PushBuildingReport.key` uses elsewhere
+    on this surface.
+    """
+
+    def __init__(self, buildings: list[str]) -> None:
+        super().__init__(f"the live board has changed since this push: {', '.join(buildings)}")
+        self.buildings = buildings
+
+
+def _json_list(record: Any, field: str) -> list[dict[str, Any]]:
+    """One PB JSON field, normalised to the list it always logically is.
+
+    A `json` field comes back as a native `list` through the Python SDK's own
+    HTTP client, but the mock repositories this file's tests build hand a
+    `SimpleNamespace` straight over, and a live PocketBase JS-side hook or a
+    differently-configured client can still hand back the column's raw
+    serialised string instead. `lodging_write_in_pushes.changes` is exactly
+    that column -- `create_push_event` writes it as the `changes` list
+    `execute_push` built -- so `unpush` reads through this rather than
+    assuming either shape.
+    """
+    value = getattr(record, field, None)
+    if isinstance(value, str):
+        return list(json.loads(value)) if value else []
+    return list(value or [])
 
 
 class LodgingWriteService:
@@ -1094,3 +1207,581 @@ class LodgingWriteService:
                 except ClientResponseError as retry_exc:
                     raise pb_error_to_http(retry_exc) from retry_exc
         return LodgingWriteResponse(record_id=str(getattr(record, "id", "")))
+
+    def _capacity_by_unit_id(self, units: list[Any]) -> dict[str, int | None]:
+        """Each unit's TRUE (effective) capacity, keyed by id -- the same
+        figure `write_in_covers` publishes as `unit_sleeps` (kindred#2477
+        final review, Important #4).
+
+        A leaf's raw `sleeps` column IS its capacity, but a combined
+        container's own `sleeps` is a DELTA over its rooms (kindred#2041's
+        ruling) and reads 0 on every production container -- reading it
+        directly, as `_push_rows` used to, published that delta as a
+        write-in's bed count instead of the whole-house total. Reuses
+        `lodging_roster_service`'s `_capacity_by_code`/`_effective_sleeps`
+        walk rather than re-deriving it: that walk is already the one place
+        this computation lives, and importing it here creates no cycle --
+        this module already imports `SessionNotFoundError`/`placement_grain`/
+        `resolved_units` from `lodging_roster_service`, which does not import
+        back from this module.
+
+        Builds a MINIMAL `LodgingUnitSummary` per raw unit -- just the fields
+        `_effective_sleeps`'s walk actually reads (code, parent_code, sleeps,
+        is_container, is_active) -- rather than routing through
+        `_build_units`, which additionally needs availability/write-in/merge
+        rows this method has no reason to fetch.
+        """
+        code_by_id = {str(getattr(u, "id", "") or ""): str(getattr(u, "code", "") or "") for u in units}
+        summaries = [
+            LodgingUnitSummary(
+                unit_id=str(getattr(u, "id", "") or ""),
+                code=str(getattr(u, "code", "") or ""),
+                name=str(getattr(u, "name", "") or ""),
+                sleeps=unit_capacity(int(getattr(u, "sleeps", 0) or 0)),
+                is_container=bool(getattr(u, "is_container", False)),
+                is_active=bool(getattr(u, "is_active", False)),
+                parent_code=code_by_id.get(str(getattr(u, "parent_unit", "") or ""), ""),
+            )
+            for u in units
+            if str(getattr(u, "code", "") or "")
+        ]
+        unit_index = _BathroomIndex.build(summaries)
+        capacity_by_code = _capacity_by_code(summaries, unit_index)
+        return {str(getattr(u, "id", "") or ""): capacity_by_code.get(str(getattr(u, "code", "") or "")) for u in units}
+
+    def _push_rows(
+        self, rows: list[Any], units_by_id: dict[str, Any], capacity_by_unit_id: dict[str, int | None]
+    ) -> list[PushRow]:
+        """One occupancy read (live or draft) turned into `PushRow`s.
+
+        `unit_code` / `unit_name` fall back to the raw `unit` relation id when
+        the row names a unit `fetch_units` did not return -- a unit deleted
+        or year-mismatched since the row was written -- so a building this
+        row cannot be grouped under still renders as SOMETHING rather than
+        vanishing from the report. `classify_push`'s own `key_for` makes the
+        identical fallback for grouping.
+
+        `sleeps` reads `capacity_by_unit_id` (the EFFECTIVE capacity --
+        `_capacity_by_unit_id`'s docstring), never `unit.sleeps` directly --
+        that raw column is a combined container's DELTA, not its capacity.
+
+        `party_size` reads through `_i_or_none` (kindred#2555 fix-round),
+        the SAME normalizer `write_in_covers` uses in lodging_roster_service.py:
+        PocketBase declares the column `NUMERIC DEFAULT 0 NOT NULL`, so an
+        unset write-in reads back as literal `0`, never SQL NULL. A raw
+        `getattr` would read that 0 as a recorded party of nobody -- a false
+        "0 of N beds" line and a false conflict against a scenario row that
+        genuinely recorded a count -- instead of `PushRow.party_size`'s own
+        documented meaning of `None`: occupies the room WHOLESALE.
+        """
+        out: list[PushRow] = []
+        for row in rows:
+            unit_id = str(getattr(row, "unit", "") or "")
+            unit = units_by_id.get(unit_id)
+            out.append(
+                PushRow(
+                    unit_id=unit_id,
+                    unit_code=str(getattr(unit, "code", "") or "") if unit is not None else unit_id,
+                    unit_name=str(getattr(unit, "name", "") or "") if unit is not None else unit_id,
+                    occupant_name=str(getattr(row, "occupant_name", "") or ""),
+                    note=str(getattr(row, "note", "") or ""),
+                    party_size=_i_or_none(row, "party_size"),
+                    sleeps=capacity_by_unit_id.get(unit_id),
+                )
+            )
+        return out
+
+    async def preview_push(self, year: int, session_cm_id: int, scenario: str) -> PushPreviewResponse:
+        """The report half of the kindred#2477 push. Classification is SERVER-SIDE
+        ONLY -- inside a scenario the client never reads lodging_write_ins (the
+        roster replaces them with the draft twin), so it cannot diff. The client
+        renders this payload and echoes `digest`; there is deliberately no TS
+        mirror of the classifier.
+        """
+        if not scenario:
+            raise ValueError("push preview requires a scenario -- the live board cannot push onto itself")
+        units = await self.repository.fetch_units(year)
+        units_by_id = {str(getattr(u, "id", "") or ""): u for u in units}
+        capacity_by_unit_id = self._capacity_by_unit_id(units)
+        live = self._push_rows(
+            await self.repository.fetch_write_ins(year, session_cm_id), units_by_id, capacity_by_unit_id
+        )
+        draft = self._push_rows(
+            await self.repository.fetch_draft_write_ins(year, session_cm_id, scenario),
+            units_by_id,
+            capacity_by_unit_id,
+        )
+        buildings = classify_push(live, draft, units)
+        return PushPreviewResponse(
+            year=year,
+            session_cm_id=session_cm_id,
+            scenario=scenario,
+            digest=push_digest(buildings),
+            buildings=[_building_report(b) for b in buildings],
+        )
+
+    async def _live_rows_with_ids(self, year: int, session_cm_id: int) -> list[tuple[Any, PushRow]]:
+        """The live board's write-ins, paired with the raw record each `PushRow`
+        came from (kindred#2477).
+
+        `_push_rows` throws the record id away turning a raw row into a
+        `PushRow` -- fine for a report, useless for a write, which needs to
+        name the exact row to delete. This zips the two back together rather
+        than widening `PushRow` itself, because `PushRow.tuple_key()` is the
+        matching key `classify_push` and `push_digest` both hash, and a fifth
+        field on it would move into every one of those tuples too.
+
+        TAKES `year`/`session_cm_id` DIRECTLY, not a `PushExecuteRequest` --
+        the brief's draft threaded the whole request through, but the live
+        board has no scenario dimension at all, so accepting one here would
+        invite a caller to believe it matters. `execute_push` below is not the
+        only caller: Task 5's Unpush replays a ledger row against the SAME
+        live rows, under no scenario at all (a sentinel like `"unpush"` would
+        be make-believe), so the signature this method actually needs is the
+        weekend alone.
+
+        PURE FETCH-AND-ADAPT, and deliberately does not call `preview_push` --
+        it has no digest to check and no decisions to apply, so a caller
+        wanting the guarded, classified diff calls that instead.
+        """
+        units = await self.repository.fetch_units(year)
+        units_by_id = {str(getattr(u, "id", "") or ""): u for u in units}
+        capacity_by_unit_id = self._capacity_by_unit_id(units)
+        raw = await self.repository.fetch_write_ins(year, session_cm_id)
+        return list(zip(raw, self._push_rows(raw, units_by_id, capacity_by_unit_id), strict=True))
+
+    async def execute_push(self, request: PushExecuteRequest, pushed_by: str) -> PushExecuteResponse:
+        """Apply a scenario's write-ins onto the live board (kindred#2477).
+
+        RE-CLASSIFIES FIRST, and compares its own fresh digest against the
+        caller's -- never trusts a client-supplied classification, because the
+        board or the scenario can move in the time a staff member spends
+        looking at the review. A mismatch refuses with `PushDigestStaleError`,
+        carrying the fresh report so the router can hand it straight back as
+        the 409 body.
+
+        BLOCKED UNTIL DECIDED: every `conflict` and `remove` building must
+        have an entry in `request.decisions`, or the whole push refuses via
+        `PushDecisionsIncompleteError`. There is no default-keep-live path --
+        see that error's docstring for why.
+
+        RESOLVE, THEN LEDGER, THEN APPLY -- in that order, and the order is
+        pinned by `TestExecutePush.test_ledger_write_precedes_the_apply_calls`
+        (fix-round, 2026-08-23). RESOLVE covers THREE independent checks, all
+        BEFORE `create_push_event` runs at all -- the session is turned into a
+        PocketBase id (`_resolve_session_pb_id`), every remove is turned into
+        a live record id, and every add's target unit is confirmed free or
+        about to be vacated by this push's own removes. None can move after
+        the ledger write -- see each's own comment at its call site for the
+        failure it prevents.
+
+        SESSION FIRST, AND AHEAD OF THE NO-OP RETURN TOO (kindred#2555 scan
+        fix-round, 2026-08-23; the no-op return used to come first, letting a
+        push against an orphaned `session_cm_id` with nothing to add or
+        remove answer 200 instead of 404). `SessionsSync` orphan-deletes
+        `camp_sessions` rows while `session_cm_id` survives on the lodging
+        tables (docs/architecture/sync-layer.md), so a weekend that classified
+        cleanly above can still have no session record by the time this
+        method reaches it. `SessionNotFoundError` here has to 404 with
+        NOTHING written -- resolving after `create_push_event` would leave a
+        ledger row naming an add/remove that then never applies, and because
+        `unpush`'s drift guard requires every `add` to still be present live,
+        that orphan row could never be reverted or cleared.
+
+        THEN THE LIVE-ROW CHECKS, both reading `_live_rows_with_ids` ONCE.
+        That call re-fetches the live board independently of the `fresh`
+        snapshot taken at the top of this method, so the two reads can
+        disagree about the very rows `fresh` already classified. A miss on
+        the REMOVE side -- a row deleted by someone else in the gap between
+        the two fetches -- must not silently skip: `removed` and the ledger
+        would then both claim a delete that never happened, and Task 5's
+        Unpush would replay a delete against a row already gone. A miss on
+        the ADD side -- a row created by someone else on an add's target unit
+        in that same gap -- must not silently proceed either: the create
+        would collide with it AFTER the ledger row already exists, so the
+        ledger would lie about what actually landed. Either miss refuses the
+        WHOLE push via `PushDigestStaleError`, carrying a FRESHLY RE-RUN
+        preview -- not `fresh` above, which is already stale by definition
+        the moment a miss is found -- and writes NO ledger row. Only once
+        every remove has resolved, every add's target is clear, AND the
+        session has resolved does `create_push_event` run, and only after
+        that do the deletes/creates it just described actually happen: a
+        crash mid-apply then leaves a ledger row naming exactly what was
+        intended, never a row promising a write this method could not
+        actually make (spec §4.2). `changes` carries the payload BOTH
+        directions -- what makes Task 6's Unpush a replay: delete what the
+        push added, recreate what it removed.
+
+        `live_ids` KEYS ON THE SAME FOUR-FIELD TUPLE `PushRow.tuple_key()`
+        RETURNS -- the RULED matching tuple `classify_push` already groups on
+        -- so the live record a "scenario"/"remove" decision deletes is found
+        the same way the classifier decided it conflicted or should go, not a
+        second, independently-written lookup free to disagree with the first.
+        Built by calling `.tuple_key()` on the genuine `PushRow`s
+        `_live_rows_with_ids` returns; looked up by hand-building the
+        identical tuple from `PushRowPayload` (the wire shape `removes` holds,
+        off `fresh.buildings[*].live`) -- that model is a separate Pydantic
+        class with no `tuple_key()` method of its own, so the shape is
+        reproduced rather than a second definition of it invented. `live_by_unit`
+        (kindred#2555 scan fix-round, M) is the same fetch keyed on unit_id
+        alone instead -- safe because `idx_lodging_write_in_unique` (unit,
+        session_cm_id, year) already forces at most one live row per unit --
+        which is what lets the add-side check ask "is this unit's CURRENT
+        occupant, if any, one of the rows this push's own removes will
+        delete?" without a second read.
+
+        `party_size` IS EXPLICIT ALWAYS ON THE CREATE PAYLOAD, `None` included.
+        This method is the "fifth producer" kindred#2540's data-loss guard
+        warns about -- `set_availability`, `_seed_write_ins` (both copy paths)
+        and `update_write_in`'s implicit pass-through are the other four, and
+        every one of them was audited to carry the field explicitly rather
+        than let a dict-literal omission silently drop it. Mutation-checked:
+        Step 4 of the task brief deletes this line and confirms the covering
+        test goes red.
+
+        THE WRITE PHASES (`create_push_event`, the delete/create apply loops)
+        are wrapped in `pb_error_to_http` (kindred#2555 scan fix-round, M) --
+        this file's own convention for a raw PocketBase write (`_upsert_row`'s
+        docstring) -- as the belt for whatever residual `ClientResponseError`
+        still reaches a write once the pre-checks above have closed the
+        collisions they can see.
+        """
+        fresh = await self.preview_push(request.year, request.session_cm_id, request.scenario)
+        if fresh.digest != request.digest:
+            raise PushDigestStaleError(fresh)
+
+        needing = [b for b in fresh.buildings if b.cls in ("conflict", "remove")]
+        missing = sorted(b.key for b in needing if b.key not in request.decisions)
+        if missing:
+            raise PushDecisionsIncompleteError(f"undecided: {', '.join(missing)}")
+
+        adds: list[PushRowPayload] = []
+        removes: list[PushRowPayload] = []
+        replaced = kept = matched = 0
+        for b in fresh.buildings:
+            if b.cls == "add":
+                adds.extend(b.draft)
+            elif b.cls == "match":
+                matched += 1
+            elif b.cls == "conflict":
+                if request.decisions[b.key] == "scenario":
+                    removes.extend(b.live)
+                    adds.extend(b.draft)
+                    replaced += 1
+                else:
+                    kept += 1
+            elif b.cls == "remove":
+                if request.decisions[b.key] == "remove":
+                    removes.extend(b.live)
+                else:
+                    kept += 1
+
+        # Resolved BEFORE the no-op return and BEFORE the ledger write
+        # (kindred#2555 scan fix-round, 2026-08-23): every execute path
+        # resolves the session first (05f29b89's own intent), and a push
+        # against an orphaned/stale `session_cm_id` -- `SessionsSync`
+        # orphan-deletes `camp_sessions` rows while `session_cm_id` survives
+        # on the lodging tables (docs/architecture/sync-layer.md) -- must 404
+        # even when there is nothing to add or remove, not read back as a 200
+        # no-op. Resolving after `create_push_event` would leave a ledger row
+        # naming an add/remove that then never applies, and because
+        # `unpush`'s drift guard requires every `add` to still be present
+        # live, that orphan row could never be reverted or cleared.
+        session_pb_id = await self._resolve_session_pb_id(request.year, request.session_cm_id)
+
+        if not adds and not removes:
+            return PushExecuteResponse(
+                push_id="", added=0, removed=0, replaced=replaced, kept=kept, matched=matched, no_op=True
+            )
+
+        # Resolve every remove to a live record id, and verify every add's
+        # target unit is free (or about to be vacated by this push's own
+        # removes) -- BOTH before anything is written. See the method
+        # docstring for why a miss here refuses rather than skips.
+        #
+        # `live_rows_with_ids` is fetched once and read two ways: `live_ids`
+        # (the RULED four-field tuple) resolves removes exactly as before;
+        # `live_by_unit` (kindred#2555 scan fix-round, M) is the add-side
+        # symmetric check -- a live row appearing on an add's target unit
+        # between the entry re-classify and the apply would otherwise collide
+        # AFTER the ledger row already exists, making the ledger lie about
+        # what actually landed. At most one live row per unit
+        # (`idx_lodging_write_in_unique`), so keying on unit_id alone is safe.
+        live_rows_with_ids = await self._live_rows_with_ids(request.year, request.session_cm_id)
+        live_ids = {r.tuple_key(): str(getattr(row, "id", "") or "") for row, r in live_rows_with_ids}
+        live_by_unit = {r.unit_id: str(getattr(row, "id", "") or "") for row, r in live_rows_with_ids}
+
+        remove_ids: list[str] = []
+        for r in removes:
+            rid = live_ids.get((r.unit_id, r.occupant_name.strip(), r.note.strip(), r.party_size))
+            if rid is None:
+                stale = await self.preview_push(request.year, request.session_cm_id, request.scenario)
+                raise PushDigestStaleError(stale)
+            remove_ids.append(rid)
+
+        removing = set(remove_ids)
+        for r in adds:
+            occupant_id = live_by_unit.get(r.unit_id)
+            if occupant_id is not None and occupant_id not in removing:
+                stale = await self.preview_push(request.year, request.session_cm_id, request.scenario)
+                raise PushDigestStaleError(stale)
+
+        changes = [
+            {
+                "action": "remove",
+                "unit": r.unit_id,
+                "unit_code": r.unit_code,
+                "occupant_name": r.occupant_name,
+                "note": r.note,
+                "party_size": r.party_size,
+            }
+            for r in removes
+        ] + [
+            {
+                "action": "add",
+                "unit": r.unit_id,
+                "unit_code": r.unit_code,
+                "occupant_name": r.occupant_name,
+                "note": r.note,
+                "party_size": r.party_size,
+            }
+            for r in adds
+        ]
+        # Ledger FIRST, then apply: a crash mid-apply leaves a row naming
+        # exactly what was intended (spec §4.2). Every remove above has
+        # already resolved to a real record id, so nothing this ledger row
+        # claims can turn out to be undeliverable once the apply loop below
+        # actually runs.
+        #
+        # `scenario_name` carries the SAME value as `scenario_id` -- there is
+        # no cheap scenario-record-name accessor on `LodgingRepository` today,
+        # so a display name would cost an extra round trip this ledger write
+        # does not otherwise need. Accepted as v1 (the id is at least legible
+        # to whoever reads the raw table); a follow-up can resolve the display
+        # name once a reader actually needs it rendered.
+        try:
+            event = await self.repository.create_push_event(
+                {
+                    "year": request.year,
+                    "session_cm_id": request.session_cm_id,
+                    "scenario_id": request.scenario,
+                    "scenario_name": request.scenario,
+                    "pushed_by": pushed_by,
+                    "changes": changes,
+                    "unpushed_at": "",
+                }
+            )
+        except ClientResponseError as exc:
+            raise pb_error_to_http(exc) from exc
+        try:
+            for rid in remove_ids:
+                await self.repository.delete_write_in(rid)
+        except ClientResponseError as exc:
+            raise pb_error_to_http(exc) from exc
+        try:
+            for r in adds:
+                await self.repository.create_write_in(
+                    {
+                        "year": request.year,
+                        "session_cm_id": request.session_cm_id,
+                        "session": session_pb_id,
+                        "unit": r.unit_id,
+                        "occupant_name": r.occupant_name,
+                        "note": r.note,
+                        "party_size": r.party_size,
+                    }
+                )
+        except ClientResponseError as exc:
+            raise pb_error_to_http(exc) from exc
+        return PushExecuteResponse(
+            push_id=str(getattr(event, "id", "") or ""),
+            added=len(adds),
+            removed=len(removes),
+            replaced=replaced,
+            kept=kept,
+            matched=matched,
+        )
+
+    async def unpush(self, push_id: str, year: int, session_cm_id: int) -> UnpushResponse:
+        """Revert one push as a unit (kindred#2477 Task 5).
+
+        REPLAYS `changes` IN REVERSE: `execute_push` recorded every row it
+        added and every row it removed, so reverting is "delete what was
+        added, recreate what was removed" -- no re-classification, no
+        re-diffing against the scenario, because the ledger row already IS
+        the diff that was applied.
+
+        VALIDATES BEFORE TOUCHING ANYTHING (RULED refuse-wholesale, owner
+        2026-08-22): every touched unit's LIVE state must still match the
+        push's after-state -- an added row still present tuple-identical, a
+        removed row still absent -- before a single write happens. ANY
+        mismatch raises `UnpushDriftError` naming the offending building
+        codes and reverts nothing. See that error's docstring for why a
+        partial revert is worse than refusing outright, and why this also
+        covers unpushing an older push after a newer one moved the same
+        units.
+
+        `by_tuple` KEYS ON `PushRow.tuple_key()`, the same four-field RULED
+        matching tuple `execute_push` and `classify_push` both use --
+        current live rows resolved to their record ids the same way
+        `execute_push`'s own `live_ids` is built, not a second, independently
+        written lookup free to disagree with the first.
+
+        ON PASS: adds are deleted by the id resolved from THIS live fetch
+        (not a stale id off the ledger row -- a live row keeps its identity
+        across an unrelated edit that leaves its tuple unchanged, but a
+        record id copied from the push event could not survive that);
+        removes are recreated with `party_size` EXPLICIT ALWAYS, `None`
+        included -- the identical #2540 hazard `execute_push`'s own create
+        call documents, and the same reason a dict-literal omission would
+        silently drop a wholesale-occupancy write-in into an unsized one.
+
+        TWO PHASES, DELETES BEFORE CREATES -- NOT `changes` ITERATION ORDER
+        (fix, kindred#2477, found by Task 10's live-PocketBase acceptance
+        pass against real unique indexes). `execute_push` stores `changes`
+        as `[removes..., adds...]`; a single pass over that list in stored
+        order therefore recreates every removed row BEFORE it deletes any
+        added row. For a conflict decided "take scenario" -- the ordinary
+        case for a resolved conflict, not an edge case -- the push's remove
+        and add name the SAME unit, so the stray still-live pushed row is
+        sitting on `idx_lodging_write_in_unique` (unit, session_cm_id, year)
+        at the exact moment the recreate tries to claim it: a
+        `ClientResponseError` the mocked repository in this file's own tests
+        cannot produce, because a `MagicMock` enforces no unique index. Two
+        explicit passes -- every `add` deleted first, only then every
+        `remove` recreated -- guarantee the unit is vacated before anything
+        tries to occupy it again, independent of whatever order `changes`
+        happens to store its two kinds in.
+
+        `unpushed_at` is stamped only once BOTH phases have actually run, so
+        a crash before this line leaves the ledger row still claiming "not
+        yet unpushed" rather than a row that says it was reverted when it was
+        not.
+
+        NOT "recoverable by retrying", despite how that reads -- a retry
+        after a crash mid-phase-2 hits the SAME drift guard above and 409s.
+        Phase 2 recreates a `remove` change's row; if the crash lands after
+        some of those recreates land but before `unpushed_at` is stamped, a
+        retry's own drift check sees exactly what a hand-edit would have left
+        -- a row the push's after-state says should be ABSENT, now PRESENT --
+        and refuses wholesale, the same as `test_manual_edit_since_push_refuses_wholesale`
+        covers for an actual manual edit. The guard cannot tell "unpush
+        partially ran" from "someone recreated this by hand", and does not
+        try to: staff resolve a drifted push by hand, not by retrying it.
+        """
+        event = await self.repository.find_push_event(push_id)
+        if event is None:
+            raise PushNotFoundError(push_id)
+        # The ledger row names its OWN weekend. `find_push_event(push_id)`
+        # resolves by id alone, so without this check any push id addressed
+        # with a DIFFERENT weekend's year/session_cm_id would replay that
+        # push's changes onto a board they were never taken from -- an
+        # honest 404 ("no such push for THIS weekend"), not a 500 or a
+        # cross-weekend write.
+        if getattr(event, "year", None) != year or getattr(event, "session_cm_id", None) != session_cm_id:
+            raise PushNotFoundError(push_id)
+        if getattr(event, "unpushed_at", ""):
+            raise AlreadyUnpushedError(push_id)
+        changes: list[dict[str, Any]] = _json_list(event, "changes")
+
+        live = await self._live_rows_with_ids(year, session_cm_id)
+        # A dict keyed on `tuple_key()` collapses a duplicate key silently --
+        # safe here only because `idx_lodging_write_in_unique` (unit,
+        # session_cm_id, year) makes two live rows sharing a tuple on the
+        # SAME side schema-impossible: the unit_id alone already forces at
+        # most one live row per unit, so `by_tuple` can never lose one.
+        by_tuple = {r.tuple_key(): str(getattr(row, "id", "") or "") for row, r in live}
+        # unit_id -> that unit's live tuple, for the `remove` check below.
+        # Keying on unit_id alone is safe for the identical reason `by_tuple`
+        # is: the unique index already forces at most one live row per unit.
+        by_unit = {r.tuple_key()[0]: r.tuple_key() for _row, r in live}
+
+        def change_tuple(c: dict[str, Any]) -> tuple[str, str, str, int | None]:
+            return (c["unit"], c["occupant_name"].strip(), c["note"].strip(), c["party_size"])
+
+        # The tuples THIS push's own `add` changes name -- phase 1 below
+        # deletes every one of them, so a `remove` change whose target unit
+        # currently holds exactly one of these is not drift: it is the
+        # pushed row, still waiting for phase 1 to vacate it.
+        own_add_tuples = {change_tuple(c) for c in changes if c["action"] == "add"}
+
+        drifted: list[str] = []
+        for c in changes:
+            if c["action"] == "add":
+                if change_tuple(c) not in by_tuple:
+                    drifted.append(c["unit_code"])  # the row the push added was edited/removed
+            elif c["action"] == "remove":
+                # kindred#2555 scan fix-round (M): drift is not "the ORIGINAL
+                # removed tuple is back" alone -- ANY occupant on this unit
+                # that phase 1 will not itself clear is a row phase 2's
+                # recreate would collide with on idx_lodging_write_in_unique
+                # (unit, session_cm_id, year). The recreate-target unit must
+                # hold nothing, or only a row this push's own adds account
+                # for.
+                occupant = by_unit.get(c["unit"])
+                if occupant is not None and occupant not in own_add_tuples:
+                    drifted.append(c["unit_code"])
+        if drifted:
+            raise UnpushDriftError(sorted(set(drifted)))
+
+        session_pb_id = await self._resolve_session_pb_id(year, session_cm_id)
+        deleted = restored = 0
+        # PHASE 1: every delete, before any create -- see the method
+        # docstring. Vacates every unit the push occupied before phase 2
+        # tries to recreate a row on any of them.
+        try:
+            for c in changes:
+                if c["action"] == "add":
+                    await self.repository.delete_write_in(by_tuple[change_tuple(c)])
+                    deleted += 1
+        except ClientResponseError as exc:
+            raise pb_error_to_http(exc) from exc
+        # PHASE 2: every create, only now that phase 1 has freed whichever
+        # units a "take scenario" conflict shares between its remove and its
+        # add.
+        try:
+            for c in changes:
+                if c["action"] != "add":
+                    await self.repository.create_write_in(
+                        {
+                            "year": year,
+                            "session_cm_id": session_cm_id,
+                            "session": session_pb_id,
+                            "unit": c["unit"],
+                            "occupant_name": c["occupant_name"],
+                            "note": c["note"],
+                            "party_size": c["party_size"],
+                        }
+                    )
+                    restored += 1
+        except ClientResponseError as exc:
+            raise pb_error_to_http(exc) from exc
+        try:
+            await self.repository.update_push_event(
+                str(getattr(event, "id", "") or ""), {"unpushed_at": datetime.now(UTC).isoformat()}
+            )
+        except ClientResponseError as exc:
+            raise pb_error_to_http(exc) from exc
+        return UnpushResponse(push_id=push_id, restored=restored, deleted=deleted)
+
+
+def _row_payload(row: PushRow) -> PushRowPayload:
+    return PushRowPayload(
+        unit_id=row.unit_id,
+        unit_code=row.unit_code,
+        unit_name=row.unit_name,
+        occupant_name=row.occupant_name,
+        note=row.note,
+        party_size=row.party_size,
+        sleeps=row.sleeps,
+    )
+
+
+def _building_report(building: PushBuilding) -> PushBuildingReport:
+    return PushBuildingReport(
+        key=building.key,
+        label=building.label,
+        cls=building.cls,
+        live=[_row_payload(r) for r in building.live],
+        draft=[_row_payload(r) for r in building.draft],
+    )

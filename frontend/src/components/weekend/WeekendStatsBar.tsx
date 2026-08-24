@@ -14,6 +14,7 @@
  * moves it, which the title on the spaces figure says.
  */
 import { AlertCircle, BedDouble, Home, Users } from 'lucide-react'
+import type { ReactNode } from 'react'
 
 import type { RosterCountSummary } from '../../types/lodging'
 import { Tooltip } from '../ui/Tooltip'
@@ -30,11 +31,24 @@ export interface WeekendStatsBarProps {
    * `countUnmeasuredSpaces`.
    */
   spacesUnmeasured: number
+  /**
+   * Rendered right-aligned INSIDE this bar's own row (the write-in push
+   * entry, kindred#2477). A slot rather than a sibling because the bar owns
+   * the band's bottom rule: a control placed beside the bar leaves that rule
+   * stopping short of it, which is exactly what the owner caught on the
+   * first visual pass (2026-08-24).
+   */
+  trailing?: ReactNode
 }
 
 const DIVIDER = <span className="text-border hidden sm:inline">|</span>
 
-export function WeekendStatsBar({ counts, bedsNeeded, spacesUnmeasured }: WeekendStatsBarProps) {
+export function WeekendStatsBar({
+  counts,
+  bedsNeeded,
+  spacesUnmeasured,
+  trailing,
+}: WeekendStatsBarProps) {
   const partiesTotal = counts.parties_total ?? 0
   const partiesAssigned = counts.parties_assigned ?? 0
   const partiesUnassigned = counts.parties_unassigned ?? 0
@@ -161,6 +175,8 @@ export function WeekendStatsBar({ counts, bedsNeeded, spacesUnmeasured }: Weeken
         {notes.length > 0 && (
           <span className="text-muted-foreground/80 text-xs">{notes.join(' · ')}</span>
         )}
+
+        {trailing !== undefined && <div className="ml-auto flex-shrink-0">{trailing}</div>}
       </div>
     </div>
   )

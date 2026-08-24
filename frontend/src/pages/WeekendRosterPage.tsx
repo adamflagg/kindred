@@ -47,6 +47,7 @@ import {
   WeekendFriendGroups,
   WeekendScenarioPicker,
   WeekendStatsBar,
+  PushWriteInsEntry,
 } from '../components/weekend'
 import { useCurrentYear } from '../hooks/useCurrentYear'
 import { usePermissions } from '../hooks/usePermissions'
@@ -388,10 +389,23 @@ export default function WeekendRosterPage() {
                 </div>
               </nav>
 
+              {/* The push entry rides INSIDE the stats bar's row (owner
+                  rulings 2026-08-24): a toolbar row of its own inside the
+                  board pushed the board down, and sitting beside the bar left
+                  the band's bottom rule stopping short of the button. */}
               <WeekendStatsBar
                 counts={roster.counts ?? {}}
                 bedsNeeded={bedsNeeded}
                 spacesUnmeasured={spacesUnmeasured}
+                trailing={
+                  <PushWriteInsEntry
+                    year={currentYear}
+                    sessionCmId={selectedCmId ?? 0}
+                    scenario={scenario}
+                    canManage={canManageLodging}
+                    units={units}
+                  />
+                }
               />
             </div>
 

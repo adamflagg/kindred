@@ -281,6 +281,7 @@ export function LodgingBoard({
   const [dragging, setDragging] = useState<RosterPartyRow | null>(null)
   /** The card currently being dragged BY ITS MERGE HANDLE, for grey-out. */
   const [draggingMergeUnit, setDraggingMergeUnit] = useState<LodgingUnitRow | null>(null)
+  /** Whether the write-in push queue's modal is open (kindred#2477 Task 8). */
 
   /*
    * The share marks' arrival burst (spec 2026-08-24 §5), armed HERE rather

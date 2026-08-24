@@ -32,9 +32,19 @@ from api.schemas.lodging import (
     PlacementCopyRequest,
     PlacementDeleteRequest,
     PlacementWriteRequest,
+    PushExecuteRequest,
     SlotMergeRequest,
 )
-from api.services.lodging_write_service import LodgingWriteService, ScenarioNotEmptyError
+from api.services.lodging_roster_service import SessionNotFoundError
+from api.services.lodging_write_service import (
+    AlreadyUnpushedError,
+    LodgingWriteService,
+    PushDecisionsIncompleteError,
+    PushDigestStaleError,
+    PushNotFoundError,
+    ScenarioNotEmptyError,
+    UnpushDriftError,
+)
 from bunking.logging_config import ISO8601Formatter
 
 
@@ -78,6 +88,14 @@ def _repo(**overrides: Any) -> MagicMock:
         "create_slot_merge": SimpleNamespace(id="merge_new"),
         "update_slot_merge": SimpleNamespace(id="merge_existing"),
         "fetch_slot_merges": [],
+        # kindred#2477's push preview. `fetch_units` is the registry
+        # `preview_push` groups write-ins by building against; the ledger
+        # trio (`*_push_event`) has no caller yet in this file, but a mock
+        # missing them raises AttributeError the moment Task 4 adds one.
+        "fetch_units": [],
+        "create_push_event": SimpleNamespace(id="push_1"),
+        "find_push_event": None,
+        "update_push_event": None,
     }
     defaults.update(overrides)
     for method, value in defaults.items():
@@ -2333,3 +2351,668 @@ class TestAWriteInInsideAScenarioIsWrittenToTheDraftTable:
         assert data["scenario"] == "scn_1"
         assert response.record_id == "draft_write_in_existing"
         repo.update_write_in.assert_not_called()
+
+
+def _wi(unit: str, occ: str, note: str = "", ppl: int | None = None, id: str = "wi_x") -> SimpleNamespace:
+    return SimpleNamespace(
+        id=id, unit=unit, occupant_name=occ, note=note, party_size=ppl, session_cm_id=1309001, year=2026
+    )
+
+
+def _u(
+    id: str,
+    code: str,
+    name: str | None = None,
+    container: bool = False,
+    parent: str = "",
+    sleeps: int = 4,
+    active: bool = True,
+) -> SimpleNamespace:
+    return SimpleNamespace(
+        id=id,
+        code=code,
+        name=name or code,
+        is_container=container,
+        parent_unit=parent,
+        sleeps=sleeps,
+        is_active=active,
+    )
+
+
+class TestPreviewPush:
+    """kindred#2477. `preview_push` classifies the live board against a
+    scenario's draft write-ins and reports the diff, building by building.
+    """
+
+    @pytest.mark.asyncio
+    async def test_classifies_and_carries_digest(self) -> None:
+        repo = _repo(
+            fetch_units=[_u("uh", "big-house", container=True), _u("u1", "room-1", parent="uh")],
+            fetch_write_ins=[_wi("u1", "R. Okafor", id="wi_1")],
+            fetch_draft_write_ins=[_wi("uh", "Woodson family", ppl=6, id="wd_1")],
+        )
+        svc = LodgingWriteService(repo)
+        out = await svc.preview_push(2026, 1309001, "scn_1")
+        assert [b.cls for b in out.buildings] == ["conflict"]
+        assert out.buildings[0].key == "big-house"
+        assert out.digest
+        assert len(out.digest) == 64
+        # kindred#2477 final review, Important #4: the container's OWN
+        # `sleeps` (4, kindred#2041's delta) plus its one active leaf room's
+        # `sleeps` (4) -- the roster's effective whole-house capacity, the
+        # same figure `write_in_covers` publishes, not the raw column alone.
+        # `test_a_combined_containers_sleeps_is_the_effective_capacity_...`
+        # below pins this with deliberately non-coincidental numbers.
+        assert out.buildings[0].draft[0].sleeps == 8
+
+    @pytest.mark.asyncio
+    async def test_a_combined_containers_sleeps_is_the_effective_capacity_not_the_raw_delta(self) -> None:
+        """kindred#2477 final review, Important #4. A combined container's
+        OWN `sleeps` column is a DELTA over its rooms (kindred#2041's
+        ruling) and reads 0 on every production container --
+        `write_in_covers` publishes the WHOLE-HOUSE total instead (the
+        effective-capacity walk `_capacity_by_code`/`_effective_sleeps` in
+        `lodging_roster_service` do), and this preview must publish the same
+        figure a push review is comparing bed counts against, not the raw
+        column.
+
+        Numbers are deliberately NON-coincidental: the container's own delta
+        is 0, and the two rooms carry 3 and 5 -- distinct from each other and
+        from the buggy answer (0), so a regression back to reading the raw
+        column reads 0 rather than accidentally matching the right answer.
+        """
+        repo = _repo(
+            fetch_units=[
+                _u("uh", "big-house", container=True, sleeps=0),
+                _u("u1", "room-1", parent="uh", sleeps=3),
+                _u("u2", "room-2", parent="uh", sleeps=5),
+            ],
+            fetch_write_ins=[_wi("u1", "R. Okafor", id="wi_1")],
+            fetch_draft_write_ins=[_wi("uh", "Woodson family", ppl=6, id="wd_1")],
+        )
+        svc = LodgingWriteService(repo)
+        out = await svc.preview_push(2026, 1309001, "scn_1")
+        assert out.buildings[0].draft[0].sleeps == 8  # 0 (delta) + 3 + 5, not the raw 0
+
+    @pytest.mark.asyncio
+    async def test_scenario_is_required(self) -> None:
+        svc = LodgingWriteService(_repo())
+        with pytest.raises(ValueError):
+            await svc.preview_push(2026, 1309001, "")
+
+    @pytest.mark.asyncio
+    async def test_unset_party_size_reads_as_wholesale_not_zero(self) -> None:
+        """CodeRabbit fix-round finding (2026-08-23, PR #2555 comment 1).
+        PocketBase declares `party_size` `NUMERIC DEFAULT 0 NOT NULL`, so an
+        unset write-in reads back as literal `0`, never SQL NULL --
+        `_i_or_none`'s docstring in lodging_roster_service.py documents this
+        exact trap, and `write_in_covers` already routes through it. `_push_rows`
+        must normalize identically: a raw `getattr` would treat PocketBase's 0
+        as a recorded party of nobody, producing a false "0 of N beds" line
+        instead of "wholesale -- all N beds" and a false conflict against a
+        scenario row that genuinely recorded a count.
+        """
+        repo = _repo(
+            fetch_units=[_u("uc", "cedar-9")],
+            fetch_write_ins=[_wi("uc", "G. Whitfield", ppl=0, id="wi_1")],
+            fetch_draft_write_ins=[],
+        )
+        svc = LodgingWriteService(repo)
+        out = await svc.preview_push(2026, 1309001, "scn_1")
+        assert out.buildings[0].cls == "remove"
+        assert out.buildings[0].live[0].party_size is None
+
+
+class TestExecutePush:
+    """kindred#2477 Task 4. `execute_push` writes the ledger BEFORE applying,
+    refuses a stale digest with a fresh report, and refuses to apply until
+    every conflict/remove has a decision -- no default-keep-live path.
+    """
+
+    def _repo_one_conflict(self) -> MagicMock:
+        return _repo(
+            fetch_units=[_u("uc", "cedar-9")],
+            fetch_write_ins=[_wi("uc", "G. Whitfield", id="wi_1")],
+            fetch_draft_write_ins=[_wi("uc", "H. Osei", ppl=2, id="wd_1")],
+            create_push_event=SimpleNamespace(id="push_1"),
+        )
+
+    @pytest.mark.asyncio
+    async def test_stale_digest_refuses_with_fresh_report(self) -> None:
+        svc = LodgingWriteService(self._repo_one_conflict())
+        req = PushExecuteRequest(
+            year=2026,
+            session_cm_id=1309001,
+            scenario="scn_1",
+            digest="0" * 64,
+            decisions={"cedar-9": "scenario"},
+        )
+        with pytest.raises(PushDigestStaleError) as exc:
+            await svc.execute_push(req, pushed_by="user_1")
+        assert exc.value.report.buildings[0].cls == "conflict"
+
+    @pytest.mark.asyncio
+    async def test_incomplete_decisions_refuse(self) -> None:
+        svc = LodgingWriteService(self._repo_one_conflict())
+        preview = await svc.preview_push(2026, 1309001, "scn_1")
+        req = PushExecuteRequest(
+            year=2026, session_cm_id=1309001, scenario="scn_1", digest=preview.digest, decisions={}
+        )
+        with pytest.raises(PushDecisionsIncompleteError):
+            await svc.execute_push(req, pushed_by="user_1")
+
+    @pytest.mark.asyncio
+    async def test_take_scenario_writes_ledger_then_applies_with_party_size(self) -> None:
+        repo = self._repo_one_conflict()
+        svc = LodgingWriteService(repo)
+        preview = await svc.preview_push(2026, 1309001, "scn_1")
+        req = PushExecuteRequest(
+            year=2026,
+            session_cm_id=1309001,
+            scenario="scn_1",
+            digest=preview.digest,
+            decisions={"cedar-9": "scenario"},
+        )
+        out = await svc.execute_push(req, pushed_by="user_1")
+        assert (out.added, out.removed, out.replaced) == (1, 1, 1)
+        # ledger written BEFORE apply, with both directions
+        ledger = repo.create_push_event.call_args.args[0]
+        actions = sorted(c["action"] for c in ledger["changes"])
+        assert actions == ["add", "remove"]
+        # party_size EXPLICIT on the created live row -- the #2540 fifth-producer
+        # hazard. Mutation check in Step 4.
+        created = repo.create_write_in.call_args.args[0]
+        assert "party_size" in created
+        assert created["party_size"] == 2
+        repo.delete_write_in.assert_called_once_with("wi_1")
+
+    @pytest.mark.asyncio
+    async def test_ledger_write_precedes_the_apply_calls(self) -> None:
+        """Fix-round finding (2026-08-23): the ledger comment claims
+        "ledger FIRST, then apply", but the earlier version of this test only
+        checked ledger CONTENTS and that delete/create were called at all --
+        `_repo()`'s independent AsyncMocks never captured cross-method call
+        ORDER, so a reordered implementation could still pass it. Attaching
+        the three calls that matter to one parent mock makes the order
+        observable.
+        """
+        repo = self._repo_one_conflict()
+        order = MagicMock()
+        order.attach_mock(repo.create_push_event, "create_push_event")
+        order.attach_mock(repo.delete_write_in, "delete_write_in")
+        order.attach_mock(repo.create_write_in, "create_write_in")
+        svc = LodgingWriteService(repo)
+        preview = await svc.preview_push(2026, 1309001, "scn_1")
+        req = PushExecuteRequest(
+            year=2026,
+            session_cm_id=1309001,
+            scenario="scn_1",
+            digest=preview.digest,
+            decisions={"cedar-9": "scenario"},
+        )
+        await svc.execute_push(req, pushed_by="user_1")
+        names = [call[0] for call in order.mock_calls]
+        ledger_index = names.index("create_push_event")
+        apply_indices = [i for i, name in enumerate(names) if name in ("delete_write_in", "create_write_in")]
+        assert apply_indices, "expected at least one delete_write_in/create_write_in call"
+        assert ledger_index < min(apply_indices)
+
+    @pytest.mark.asyncio
+    async def test_vanished_session_refuses_before_the_ledger_write(self) -> None:
+        """CodeRabbit fix-round finding (2026-08-23, PR #2555 comment 2).
+        `SessionsSync` orphan-deletes `camp_sessions` rows while lodging rows
+        keep `session_cm_id` (docs/architecture/sync-layer.md), so a push can
+        be classified against a weekend whose session record is already gone.
+        Resolving the session AFTER `create_push_event` would leave a ledger
+        row describing changes that then 404 and never apply -- and because
+        the drift guard requires every `add` in the ledger to still be
+        present on the live board, that orphan row could never be unpushed.
+        The session lookup must run BEFORE the ledger write, refusing with
+        nothing written.
+        """
+        repo = self._repo_one_conflict()
+        repo.fetch_session = AsyncMock(side_effect=SessionNotFoundError("No weekend session 1309001 in 2026"))
+        svc = LodgingWriteService(repo)
+        preview = await svc.preview_push(2026, 1309001, "scn_1")
+        req = PushExecuteRequest(
+            year=2026,
+            session_cm_id=1309001,
+            scenario="scn_1",
+            digest=preview.digest,
+            decisions={"cedar-9": "scenario"},
+        )
+        with pytest.raises(SessionNotFoundError):
+            await svc.execute_push(req, pushed_by="user_1")
+        repo.create_push_event.assert_not_called()
+        repo.delete_write_in.assert_not_called()
+        repo.create_write_in.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_vanished_live_row_refuses_the_push_instead_of_lying(self) -> None:
+        """Fix-round finding (2026-08-23): `preview_push` (inside `execute_push`)
+        and `_live_rows_with_ids` are TWO INDEPENDENT reads of `fetch_write_ins`,
+        so a row `fresh` already classified as removable can be gone by the
+        time `_live_rows_with_ids` looks for its record id -- another caller
+        deleted it in the gap between the two fetches. `fetch_write_ins` is
+        given a `side_effect` list so the SECOND call (inside `execute_push`'s
+        own `preview_push`) still agrees with the digest computed by the
+        FIRST (both see the live row), but the THIRD call
+        (`_live_rows_with_ids`) sees it gone -- reproducing the race without
+        touching a real PocketBase.
+
+        A silent skip here would let `removed` and the ledger both claim a
+        delete that never happened; the ruling is to refuse the whole push
+        instead, exactly as a stale digest does, and write no ledger row.
+        """
+        live_present = [_wi("uc", "G. Whitfield", id="wi_1")]
+        repo = _repo(
+            fetch_units=[_u("uc", "cedar-9")],
+            fetch_draft_write_ins=[_wi("uc", "H. Osei", ppl=2, id="wd_1")],
+            create_push_event=SimpleNamespace(id="push_1"),
+        )
+        # 1st call: this test's own preview_push (for `preview.digest`).
+        # 2nd call: execute_push's internal re-preview -- same live state, so
+        #           the digest check passes and execution proceeds.
+        # 3rd call: _live_rows_with_ids -- the row is gone.
+        # 4th call: execute_push's OWN re-preview once the miss is found, to
+        #           build the fresh report PushDigestStaleError carries.
+        repo.fetch_write_ins = AsyncMock(side_effect=[live_present, live_present, [], []])
+        svc = LodgingWriteService(repo)
+        preview = await svc.preview_push(2026, 1309001, "scn_1")
+        req = PushExecuteRequest(
+            year=2026,
+            session_cm_id=1309001,
+            scenario="scn_1",
+            digest=preview.digest,
+            decisions={"cedar-9": "scenario"},
+        )
+        with pytest.raises(PushDigestStaleError):
+            await svc.execute_push(req, pushed_by="user_1")
+        repo.create_push_event.assert_not_called()
+        repo.delete_write_in.assert_not_called()
+        repo.create_write_in.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_a_foreign_occupant_on_an_adds_target_unit_refuses_the_push(self) -> None:
+        """kindred#2555 scan fix-round (M). `execute_push` pre-resolves every
+        `remove` to a live record id before writing the ledger, but had NO
+        symmetric check for `adds`: a live row appearing on an add's target
+        unit between the entry re-classify and the apply collides AFTER the
+        ledger row already exists -- the ledger then lies about what actually
+        landed. `fetch_write_ins` is given a side_effect list so the test's
+        own preview (for `preview.digest`) and execute_push's internal
+        re-classify both see the unit free (an "add" building), and only the
+        NEW add-side pre-check's own live fetch sees the foreign row that
+        appeared in between -- reproducing the race without touching a real
+        PocketBase.
+        """
+        foreign = [_wi("uc", "Foreign Party", ppl=1, id="wi_foreign")]
+        repo = _repo(
+            fetch_units=[_u("uc", "cedar-9")],
+            fetch_draft_write_ins=[_wi("uc", "H. Osei", ppl=2, id="wd_1")],
+            create_push_event=SimpleNamespace(id="push_1"),
+        )
+        # 1st call: this test's own preview_push (for `preview.digest`) -- no
+        #           live row, so "uc" classifies "add".
+        # 2nd call: execute_push's internal re-preview -- same empty live
+        #           state, so the digest check passes and execution proceeds.
+        # 3rd call: the NEW add-side pre-check's own live fetch -- a foreign
+        #           row has appeared on "uc" since the classify.
+        # 4th call: execute_push's own re-preview once the collision is
+        #           found, to build the fresh report PushDigestStaleError
+        #           carries.
+        repo.fetch_write_ins = AsyncMock(side_effect=[[], [], foreign, foreign])
+        svc = LodgingWriteService(repo)
+        preview = await svc.preview_push(2026, 1309001, "scn_1")
+        req = PushExecuteRequest(
+            year=2026, session_cm_id=1309001, scenario="scn_1", digest=preview.digest, decisions={}
+        )
+        with pytest.raises(PushDigestStaleError):
+            await svc.execute_push(req, pushed_by="user_1")
+        repo.create_push_event.assert_not_called()
+        repo.delete_write_in.assert_not_called()
+        repo.create_write_in.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_a_pb_error_during_apply_converts_through_pb_error_to_http(self) -> None:
+        """kindred#2555 scan fix-round (M). The six raw PB write calls in the
+        push paths (`create_push_event`, the delete/create apply loops,
+        unpush's two phases, `update_push_event`) let a `ClientResponseError`
+        escape straight to the global 500 handler, against this file's own
+        `pb_error_to_http` convention (see `_upsert_row`'s docstring). The
+        add/remove pre-checks close most collisions before the ledger row
+        exists; this is the belt for whatever residual PocketBase error still
+        reaches a write.
+        """
+        repo = self._repo_one_conflict()
+        repo.create_write_in = AsyncMock(
+            side_effect=ClientResponseError(
+                "validation_not_unique", status=400, data={}, url="", is_abort=False, original_error=None
+            )
+        )
+        svc = LodgingWriteService(repo)
+        preview = await svc.preview_push(2026, 1309001, "scn_1")
+        req = PushExecuteRequest(
+            year=2026,
+            session_cm_id=1309001,
+            scenario="scn_1",
+            digest=preview.digest,
+            decisions={"cedar-9": "scenario"},
+        )
+        with pytest.raises(HTTPException) as exc:
+            await svc.execute_push(req, pushed_by="user_1")
+        assert exc.value.status_code == 400
+
+    @pytest.mark.asyncio
+    async def test_keep_live_and_all_match_is_a_no_op(self) -> None:
+        repo = _repo(
+            fetch_units=[_u("uc", "cedar-9")],
+            fetch_write_ins=[_wi("uc", "K. Sato", id="wi_1")],
+            fetch_draft_write_ins=[_wi("uc", "K. Sato", id="wd_1")],
+        )
+        svc = LodgingWriteService(repo)
+        preview = await svc.preview_push(2026, 1309001, "scn_1")
+        out = await svc.execute_push(
+            PushExecuteRequest(year=2026, session_cm_id=1309001, scenario="scn_1", digest=preview.digest, decisions={}),
+            pushed_by="user_1",
+        )
+        assert out.no_op is True
+        assert out.push_id == ""
+        repo.create_push_event.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_a_stale_session_refuses_even_when_the_push_would_be_a_no_op(self) -> None:
+        """kindred#2555 scan fix-round (S). The `no_op=True` return used to
+        exit before `_resolve_session_pb_id` ran at all, so a push against an
+        orphaned/stale `session_cm_id` with nothing to add or remove returned
+        a 200 no-op instead of 404 -- against commit 05f29b89's own stated
+        intent that every execute path resolves the session first. Session
+        resolution now runs ahead of the no-op return.
+        """
+        repo = _repo(
+            fetch_units=[_u("uc", "cedar-9")],
+            fetch_write_ins=[_wi("uc", "K. Sato", id="wi_1")],
+            fetch_draft_write_ins=[_wi("uc", "K. Sato", id="wd_1")],
+        )
+        repo.fetch_session = AsyncMock(side_effect=SessionNotFoundError("No weekend session 1309001 in 2026"))
+        svc = LodgingWriteService(repo)
+        preview = await svc.preview_push(2026, 1309001, "scn_1")
+        req = PushExecuteRequest(
+            year=2026, session_cm_id=1309001, scenario="scn_1", digest=preview.digest, decisions={}
+        )
+        with pytest.raises(SessionNotFoundError):
+            await svc.execute_push(req, pushed_by="user_1")
+        repo.create_push_event.assert_not_called()
+
+
+def _ledger(changes: list[dict[str, Any]], unpushed: str = "") -> SimpleNamespace:
+    return SimpleNamespace(
+        id="push_1", year=2026, session_cm_id=1309001, scenario_id="scn_1", changes=changes, unpushed_at=unpushed
+    )
+
+
+CH_ADD = {
+    "action": "add",
+    "unit": "uc",
+    "unit_code": "cedar-9",
+    "occupant_name": "H. Osei",
+    "note": "",
+    "party_size": 2,
+}
+CH_REM = {
+    "action": "remove",
+    "unit": "uc2",
+    "unit_code": "fern-1",
+    "occupant_name": "E. Sandoval",
+    "note": "",
+    "party_size": None,
+}
+
+
+class TestUnpush:
+    """kindred#2477 Task 5. `unpush` replays a ledger row's `changes` in
+    reverse -- delete what the push added, recreate what it removed -- but
+    ONLY when the live board still matches the push's after-state exactly.
+    Any drift on any touched unit refuses the WHOLE push (RULED
+    refuse-wholesale, owner 2026-08-22): nothing reverted, the mismatched
+    buildings named in the error.
+    """
+
+    @pytest.mark.asyncio
+    async def test_round_trip_restores(self) -> None:
+        repo = _repo(
+            find_push_event=_ledger([CH_ADD, CH_REM]),
+            fetch_units=[_u("uc", "cedar-9"), _u("uc2", "fern-1")],
+            # current live state == the push's after-state:
+            fetch_write_ins=[_wi("uc", "H. Osei", ppl=2, id="wi_new")],
+        )
+        svc = LodgingWriteService(repo)
+        out = await svc.unpush("push_1", 2026, 1309001)
+        assert (out.deleted, out.restored) == (1, 1)
+        repo.delete_write_in.assert_called_once_with("wi_new")
+        recreated = repo.create_write_in.call_args.args[0]
+        assert recreated["occupant_name"] == "E. Sandoval"
+        assert "party_size" in recreated
+        assert recreated["party_size"] is None
+        repo.update_push_event.assert_called_once()  # unpushed_at stamped
+
+    @pytest.mark.asyncio
+    async def test_manual_edit_since_push_refuses_wholesale(self) -> None:
+        repo = _repo(
+            find_push_event=_ledger([CH_ADD]),
+            fetch_units=[_u("uc", "cedar-9")],
+            # someone renamed the occupant since the push:
+            fetch_write_ins=[_wi("uc", "H. Osei-Brown", ppl=2, id="wi_new")],
+        )
+        svc = LodgingWriteService(repo)
+        with pytest.raises(UnpushDriftError) as exc:
+            await svc.unpush("push_1", 2026, 1309001)
+        assert "cedar-9" in exc.value.buildings
+        repo.delete_write_in.assert_not_called()
+        repo.create_write_in.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_a_foreign_occupant_on_the_removed_units_target_refuses_wholesale(self) -> None:
+        """kindred#2555 scan fix-round (M). The old guard only checked whether
+        the ORIGINAL removed tuple was back -- if staff wrote a DIFFERENT
+        write-in into that unit after the push, the guard saw no drift, phase
+        1 deleted the push's adds, and phase 2's `create_write_in` collided
+        with the foreign occupant on `idx_lodging_write_in_unique` (unit,
+        session_cm_id, year): a bare mid-revert 500 with `unpushed_at` never
+        stamped -- exactly what the refuse-wholesale guard exists to prevent.
+        A `remove` change's target unit must hold NOTHING, or only a row this
+        push's own `add` changes account for (phase 1 deletes those) --
+        anything else drifts the building.
+        """
+        repo = _repo(
+            find_push_event=_ledger([CH_REM]),
+            fetch_units=[_u("uc2", "fern-1")],
+            # a DIFFERENT write-in was recorded on fern-1 after the push --
+            # not the original removed occupant, and not one of this push's
+            # own adds:
+            fetch_write_ins=[_wi("uc2", "Foreign Party", ppl=3, id="wi_foreign")],
+        )
+        svc = LodgingWriteService(repo)
+        with pytest.raises(UnpushDriftError) as exc:
+            await svc.unpush("push_1", 2026, 1309001)
+        assert "fern-1" in exc.value.buildings
+        repo.delete_write_in.assert_not_called()
+        repo.create_write_in.assert_not_called()
+        repo.update_push_event.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_double_unpush_refuses(self) -> None:
+        repo = _repo(find_push_event=_ledger([CH_ADD], unpushed="2026-08-22T20:00:00Z"))
+        with pytest.raises(AlreadyUnpushedError):
+            await LodgingWriteService(repo).unpush("push_1", 2026, 1309001)
+
+    @pytest.mark.asyncio
+    async def test_missing_push_refuses(self) -> None:
+        repo = _repo(find_push_event=None)
+        with pytest.raises(PushNotFoundError):
+            await LodgingWriteService(repo).unpush("push_missing", 2026, 1309001)
+
+    @pytest.mark.asyncio
+    async def test_unpush_for_a_different_weekend_than_the_ledger_row_refuses(self) -> None:
+        """kindred#2477 final review, Important #5. `_ledger` names its OWN
+        weekend (year=2026, session_cm_id=1309001) -- unpush must refuse when
+        the caller addresses a DIFFERENT weekend, the same honest 404
+        `test_missing_push_refuses` already covers for an id that resolves to
+        nothing at all. Without this check, `find_push_event(push_id)` alone
+        decides scope: a push id from one weekend addressed with another
+        weekend's year/session_cm_id would replay THAT weekend's changes onto
+        a board they were never taken from.
+        """
+        repo = _repo(
+            find_push_event=_ledger([CH_ADD]),  # year=2026, session_cm_id=1309001
+            fetch_units=[_u("uc", "cedar-9")],
+            fetch_write_ins=[_wi("uc", "H. Osei", ppl=2, id="wi_new")],
+        )
+        svc = LodgingWriteService(repo)
+        with pytest.raises(PushNotFoundError):
+            await svc.unpush("push_1", 2026, 9999999)  # a different weekend's session_cm_id
+        repo.delete_write_in.assert_not_called()
+        repo.create_write_in.assert_not_called()
+        repo.update_push_event.assert_not_called()
+
+
+class _StatefulWriteInRepo:
+    """A minimal STATEFUL fake standing in for PocketBase's own
+    `idx_lodging_write_in_unique` on `lodging_write_ins` (unit,
+    session_cm_id, year) -- kindred#2477 fix round, found by Task 10's
+    live-PocketBase acceptance pass.
+
+    The `MagicMock`-based `_repo()` helper this file otherwise uses
+    enforces no such index, so it cannot reproduce a real
+    `ClientResponseError` collision. This fake keeps an actual dict of
+    "live" rows and refuses a `create_write_in` that would put two rows on
+    the same (unit, session_cm_id, year) -- exactly what PocketBase itself
+    refuses -- so a stored-order replay that recreates before it deletes
+    hits the same 400 in this test that it hit against the real database.
+    """
+
+    def __init__(self, push_event: SimpleNamespace, units: list[Any], write_ins: dict[str, SimpleNamespace]) -> None:
+        self._push_event = push_event
+        self._units = units
+        self._store: dict[str, SimpleNamespace] = dict(write_ins)
+        self._next_id = 0
+        self.delete_write_in_calls: list[str] = []
+        self.create_write_in_calls: list[dict[str, Any]] = []
+
+    async def find_push_event(self, record_id: str) -> SimpleNamespace | None:
+        return self._push_event if record_id == self._push_event.id else None
+
+    async def update_push_event(self, record_id: str, data: dict[str, Any]) -> SimpleNamespace:
+        self._push_event.unpushed_at = data.get("unpushed_at", self._push_event.unpushed_at)
+        return self._push_event
+
+    async def fetch_session(self, year: int, session_cm_id: int) -> SimpleNamespace:
+        return SimpleNamespace(id="sess_1")
+
+    async def fetch_units(self, year: int) -> list[Any]:
+        return self._units
+
+    async def fetch_write_ins(self, year: int, session_cm_id: int) -> list[SimpleNamespace]:
+        return list(self._store.values())
+
+    async def delete_write_in(self, record_id: str) -> None:
+        self.delete_write_in_calls.append(record_id)
+        for key, row in list(self._store.items()):
+            if row.id == record_id:
+                del self._store[key]
+                return
+        raise ClientResponseError("missing", status=404, data={}, url="", is_abort=False, original_error=None)
+
+    async def create_write_in(self, data: dict[str, Any]) -> SimpleNamespace:
+        self.create_write_in_calls.append(data)
+        # The real index: (unit, session_cm_id, year). A row still occupying
+        # this unit refuses the create exactly as PocketBase's own index
+        # does -- the collision this test exists to reproduce.
+        for row in self._store.values():
+            if (row.unit, row.session_cm_id, row.year) == (data["unit"], data["session_cm_id"], data["year"]):
+                raise ClientResponseError(
+                    "validation_not_unique", status=400, data={}, url="", is_abort=False, original_error=None
+                )
+        self._next_id += 1
+        record_id = f"wi_recreated_{self._next_id}"
+        row = SimpleNamespace(
+            id=record_id,
+            unit=data["unit"],
+            occupant_name=data["occupant_name"],
+            note=data["note"],
+            party_size=data["party_size"],
+            session_cm_id=data["session_cm_id"],
+            year=data["year"],
+        )
+        self._store[record_id] = row
+        return row
+
+
+class TestUnpushDeletesTheAddsBeforeItRecreatesTheRemoves:
+    """kindred#2477 fix round (2026-08-23 controller ruling, from Task 10's
+    live-PocketBase acceptance pass). `execute_push` stores `changes` as
+    `[removes..., adds...]`; replaying that list in STORED order recreates
+    every removed row before deleting any added one. For a conflict resolved
+    "take scenario" -- the ordinary case, not an edge case -- the remove and
+    the add name the SAME unit, so the recreate collides with the
+    not-yet-deleted pushed row on `idx_lodging_write_in_unique` (unit,
+    session_cm_id, year). Fixed by splitting the apply loop into two passes:
+    every delete first, then every create.
+    """
+
+    def _build_repo(self) -> _StatefulWriteInRepo:
+        # The push this replays: a conflict on unit "uc" resolved "take
+        # scenario" -- G. Whitfield (live) removed, H. Osei (scenario) added,
+        # both on the same unit. `execute_push` stores removes before adds.
+        push_event = _ledger(
+            [
+                {
+                    "action": "remove",
+                    "unit": "uc",
+                    "unit_code": "cedar-9",
+                    "occupant_name": "G. Whitfield",
+                    "note": "",
+                    "party_size": None,
+                },
+                {
+                    "action": "add",
+                    "unit": "uc",
+                    "unit_code": "cedar-9",
+                    "occupant_name": "H. Osei",
+                    "note": "",
+                    "party_size": 2,
+                },
+            ]
+        )
+        # The pushed state: H. Osei is the row currently live on "uc" -- the
+        # row the push created and this unpush must delete before anything
+        # else can occupy "uc" again.
+        pushed_row = SimpleNamespace(
+            id="wi_pushed",
+            unit="uc",
+            occupant_name="H. Osei",
+            note="",
+            party_size=2,
+            session_cm_id=1309001,
+            year=2026,
+        )
+        return _StatefulWriteInRepo(
+            push_event=push_event, units=[_u("uc", "cedar-9")], write_ins={"wi_pushed": pushed_row}
+        )
+
+    @pytest.mark.asyncio
+    async def test_a_replace_on_a_shared_unit_round_trips(self) -> None:
+        repo = self._build_repo()
+        svc = LodgingWriteService(repo)  # type: ignore[arg-type]
+
+        out = await svc.unpush("push_1", 2026, 1309001)
+
+        assert (out.deleted, out.restored) == (1, 1)
+        assert repo.delete_write_in_calls == ["wi_pushed"]
+        assert len(repo.create_write_in_calls) == 1
+        assert repo.create_write_in_calls[0]["occupant_name"] == "G. Whitfield"
+        # The unit ends up occupied by the RESTORED row, not both / neither.
+        assert len(repo._store) == 1
+        restored_row = next(iter(repo._store.values()))
+        assert restored_row.occupant_name == "G. Whitfield"
+        assert restored_row.unit == "uc"

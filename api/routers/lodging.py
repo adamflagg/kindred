@@ -24,14 +24,26 @@ from api.schemas.lodging import (
     PlacementCopyRequest,
     PlacementDeleteRequest,
     PlacementWriteRequest,
+    PushExecuteRequest,
+    PushExecuteResponse,
+    PushPreviewResponse,
     SlotMergeRequest,
+    UnpushResponse,
     WeekendRosterResponse,
     WeekendSessionListResponse,
     WeekendSummaryResponse,
 )
 from api.services.lodging_repository import LodgingRepository
 from api.services.lodging_roster_service import LodgingRosterService, SessionNotFoundError
-from api.services.lodging_write_service import LodgingWriteService, ScenarioNotEmptyError
+from api.services.lodging_write_service import (
+    AlreadyUnpushedError,
+    LodgingWriteService,
+    PushDecisionsIncompleteError,
+    PushDigestStaleError,
+    PushNotFoundError,
+    ScenarioNotEmptyError,
+    UnpushDriftError,
+)
 from bunking.auth_middleware import AuthUser, get_current_user
 from bunking.rbac.dependencies import require_permission
 from bunking.rbac.permissions import Permission
@@ -323,6 +335,104 @@ async def set_availability(
         return await _writes().set_availability(request)
     except SessionNotFoundError as exc:
         raise _weekend_404(request.year, request.session_cm_id) from exc
+
+
+@router.get("/push/preview", response_model=PushPreviewResponse)
+async def get_push_preview(
+    year: int = Query(..., description="Year of the weekend", ge=2000, le=2100),
+    session_cm_id: int = Query(..., description="CampMinder id of the weekend session", gt=0),
+    scenario: str = Query(
+        ..., description="Scenario whose write-ins are compared against the live board", min_length=1
+    ),
+    user: AuthUser = Depends(require_permission(Permission.BUNKING_MANAGE)),
+) -> PushPreviewResponse:
+    """Classify a scenario's write-ins against the live board (kindred#2477).
+
+    Reads and reports; nothing here is applied yet. Not a crossing of this
+    module's own mirror line -- `lodging_write_ins` is app-owned rather than
+    a CampMinder ingest table (see the module docstring atop
+    `api/services/lodging_write_service.py`), so diffing it against a
+    scenario's draft twin is the same kind of read/write this router already
+    makes onto the draft grain, not a new exception to it.
+
+    CLASSIFICATION IS SERVER-SIDE ONLY, and there is deliberately no TS
+    mirror of it: `/roster` already replaces `lodging_write_ins` with the
+    scenario's draft rows for the duration of a scenario, so a client working
+    inside one never reads the live table at all and has nothing to diff
+    against even if it tried. `preview_push` is the one place both sides are
+    read together, and this endpoint is a thin wrapper over it.
+
+    `BUNKING_MANAGE`-gated like every write below, even though this endpoint
+    writes nothing -- reviewing what a push would do is part of the same
+    staff workflow the push itself is.
+    """
+    try:
+        return await _writes().preview_push(year, session_cm_id, scenario)
+    except SessionNotFoundError as exc:
+        raise _weekend_404(year, session_cm_id) from exc
+
+
+@router.post("/push", response_model=PushExecuteResponse)
+async def execute_push(
+    request: PushExecuteRequest,
+    user: AuthUser = Depends(require_permission(Permission.BUNKING_MANAGE)),
+) -> PushExecuteResponse:
+    """Apply a scenario's write-ins onto the live board (kindred#2477).
+
+    Still `lodging_write_ins`, not `lodging_assignments` or its history --
+    this is not the promote/publish path that
+    `api/services/lodging_write_service.py`'s module docstring says does not
+    exist yet, because the table it writes is app-owned rather than a
+    CampMinder mirror in the first place.
+
+    `pushed_by=user.email` -- `AuthUser` (`bunking/auth_middleware.py`) has
+    no `.id`; `email` is the same identity `api/routers/lodging_friend_groups.py`
+    already records a creator/editor by on this surface.
+
+    `execute_push` re-classifies before touching anything and refuses rather
+    than trusting what this request already believes: a digest that no
+    longer matches means the board or the scenario moved since the review
+    was opened (409, with the fresh report so the client can re-render
+    rather than just retry blind), and a `conflict`/`remove` building with no
+    decision refuses the whole push rather than defaulting to keep-live
+    (422) -- see `PushDigestStaleError` and `PushDecisionsIncompleteError`.
+    """
+    try:
+        return await _writes().execute_push(request, pushed_by=user.email)
+    except PushDigestStaleError as exc:
+        raise HTTPException(status_code=409, detail={"reason": "stale", "report": exc.report.model_dump()}) from exc
+    except PushDecisionsIncompleteError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except SessionNotFoundError as exc:
+        raise _weekend_404(request.year, request.session_cm_id) from exc
+
+
+@router.post("/push/{push_id}/unpush", response_model=UnpushResponse)
+async def unpush(
+    push_id: str,
+    year: int = Query(..., description="Year of the weekend", ge=2000, le=2100),
+    session_cm_id: int = Query(..., description="CampMinder id of the weekend session", gt=0),
+    user: AuthUser = Depends(require_permission(Permission.BUNKING_MANAGE)),
+) -> UnpushResponse:
+    """Revert one push as a unit (kindred#2477 Task 5).
+
+    Replays the ledger row's `changes` in reverse against `lodging_write_ins`
+    -- the same app-owned table `execute_push` above writes -- deleting what
+    the push added and recreating what it removed. See
+    `LodgingWriteService.unpush` for the drift check that refuses the whole
+    revert rather than applying it partially when a touched unit no longer
+    matches the push's own after-state.
+    """
+    try:
+        return await _writes().unpush(push_id, year, session_cm_id)
+    except PushNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=f"push {push_id} not found") from exc
+    except AlreadyUnpushedError as exc:
+        raise HTTPException(status_code=409, detail={"reason": "already_unpushed"}) from exc
+    except UnpushDriftError as exc:
+        raise HTTPException(status_code=409, detail={"reason": "drift", "buildings": exc.buildings}) from exc
+    except SessionNotFoundError as exc:
+        raise _weekend_404(year, session_cm_id) from exc
 
 
 @router.put("/merge", response_model=LodgingWriteResponse)
