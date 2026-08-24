@@ -1,6 +1,7 @@
 import { readFileSync } from 'fs'
 import { resolve } from 'path'
 
+import gsap from 'gsap'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import {
@@ -190,5 +191,75 @@ describe('shareEmphasis — the burst', () => {
 
   it('selects vehicles by the attribute the markup stamps', () => {
     expect(SHARE_MOTION_SELECTOR).toBe(`[${SHARE_MOTION_ATTR}]`)
+  })
+})
+
+describe('shareEmphasis — the burst is FOUR CONTINUOUS CYCLES, not four staggered sets', () => {
+  /** The median weekend's emphasized-mark count (spec §6). */
+  const MEDIAN_MARKS = 13
+
+  function runOnMedianBoard(): {
+    /** Head and tail of the cascade — the only two the assertions need. */
+    first: HTMLElement
+    last: HTMLElement
+    timeline: gsap.core.Timeline
+    kill: () => void
+  } {
+    mockReducedMotion(false)
+    const first = mountVehicle()
+    for (let i = 0; i < MEDIAN_MARKS - 2; i += 1) mountVehicle()
+    const last = mountVehicle()
+    const spy = vi.spyOn(gsap, 'timeline')
+    const burst = defaultShareEmphasisRunner.run()
+    expect(burst?.targets).toHaveLength(MEDIAN_MARKS)
+    const timeline = spy.mock.results[0]?.value as gsap.core.Timeline
+    expect(timeline).toBeDefined()
+    return {
+      first,
+      last,
+      timeline,
+      kill: () => {
+        burst?.kill()
+      },
+    }
+  }
+
+  it('lasts one breathe-run plus the cascade tail — never one tail PER cycle', () => {
+    // `repeat` beside `stagger` at the TWEEN level makes GSAP repeat the whole
+    // staggered SET as one unit: the set is 1.4s + a 0.42s tail = 1.82s, and
+    // four of those is 7.28s — 21% over the locked ~6.0s, and it gets worse as
+    // the board gets busier (0.63s of tail on a 19-mark weekend).
+    const { timeline, kill } = runOnMedianBoard()
+    const expectedSeconds =
+      SHARE_EMPHASIS_CYCLES * SHARE_EMPHASIS_CYCLE_SECONDS +
+      (MEDIAN_MARKS - 1) * SHARE_EMPHASIS_STAGGER_SECONDS
+    expect(expectedSeconds).toBeCloseTo(6.02, 5)
+    expect(timeline.totalDuration()).toBeCloseTo(expectedSeconds, 5)
+    kill()
+  })
+
+  it('breathes without a stall — the first mark is at peak halfway through cycle two', () => {
+    // The stall is what the totals above are made of, and it is the part a
+    // viewer actually sees: with the repeat at tween level the mark sits dead
+    // at scale 1 for 420ms between every cycle, so "breathe" reads as four
+    // separate blips rather than one continuous pulse.
+    const { first, timeline, kill } = runOnMedianBoard()
+    timeline.time(SHARE_EMPHASIS_CYCLE_SECONDS * 1.5)
+    expect(Number(gsap.getProperty(first, 'scaleX'))).toBeCloseTo(SHARE_EMPHASIS_PEAK_SCALE, 3)
+    kill()
+  })
+
+  it('staggers the LAST mark by exactly the cascade, so the tail stays a cascade', () => {
+    const { last, timeline, kill } = runOnMedianBoard()
+    // The last mark starts its first breathe one full cascade in, so at that
+    // moment it is still at rest while the first mark has already moved.
+    timeline.time((MEDIAN_MARKS - 1) * SHARE_EMPHASIS_STAGGER_SECONDS)
+    expect(Number(gsap.getProperty(last, 'scaleX'))).toBeCloseTo(1, 4)
+    // ...and one half-cycle later it is at its own peak.
+    timeline.time(
+      (MEDIAN_MARKS - 1) * SHARE_EMPHASIS_STAGGER_SECONDS + SHARE_EMPHASIS_CYCLE_SECONDS / 2
+    )
+    expect(Number(gsap.getProperty(last, 'scaleX'))).toBeCloseTo(SHARE_EMPHASIS_PEAK_SCALE, 3)
+    kill()
   })
 })

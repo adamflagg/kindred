@@ -184,8 +184,23 @@ function run(): ShareEmphasisBurst | null {
       { scale: SHARE_EMPHASIS_PEAK_SCALE, duration: half, ease: 'power1.inOut' },
       { scale: 1, duration: half, ease: 'power1.inOut' },
     ],
-    repeat: SHARE_EMPHASIS_CYCLES - 1,
-    stagger: SHARE_EMPHASIS_STAGGER_SECONDS,
+    /**
+     * `repeat` belongs INSIDE the stagger object, and this is the one detail
+     * of the whole module that is easy to get wrong silently.
+     *
+     * At the TWEEN level — `repeat` beside `stagger` rather than within it —
+     * GSAP repeats the whole staggered SET as one unit. Measured on
+     * gsap@3.15.0 with the median weekend's 13 marks: the set is 1.82s (a 1.4s
+     * breathe plus the 0.42s cascade tail) and four of those is 7.28s, 21%
+     * over the locked ~6.0s. Worse than the total, each mark then sits DEAD at
+     * scale 1 for 420ms between cycles, so the breathe reads as four separate
+     * blips; the stall is the cascade tail, so it grows with the board (0.63s
+     * on a 19-mark weekend).
+     *
+     * The advanced stagger object repeats each MARK instead — measured 6.02s,
+     * breathing continuously, cascade intact.
+     */
+    stagger: { each: SHARE_EMPHASIS_STAGGER_SECONDS, repeat: SHARE_EMPHASIS_CYCLES - 1 },
   })
 
   return {

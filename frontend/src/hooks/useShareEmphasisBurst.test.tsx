@@ -1,13 +1,14 @@
 import { renderHook } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { StrictMode } from 'react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { ShareEmphasisBurst, ShareEmphasisRunner } from '../components/weekend/shareEmphasis'
 import { useShareEmphasisBurst } from './useShareEmphasisBurst'
 
 /** A burst that records its own death, standing in for the GSAP timeline. */
-function fakeBurst(): ShareEmphasisBurst & { killed: number } {
+function fakeBurst(targets: HTMLElement[] = []): ShareEmphasisBurst & { killed: number } {
   const burst = {
-    targets: [] as HTMLElement[],
+    targets,
     active: true,
     killed: 0,
     kill(): void {
@@ -18,17 +19,36 @@ function fakeBurst(): ShareEmphasisBurst & { killed: number } {
   return burst
 }
 
-function fakeRunner(): ShareEmphasisRunner & { bursts: Array<ReturnType<typeof fakeBurst>> } {
+function fakeRunner(
+  targets: HTMLElement[] = []
+): ShareEmphasisRunner & { bursts: Array<ReturnType<typeof fakeBurst>> } {
   const bursts: Array<ReturnType<typeof fakeBurst>> = []
   return {
     bursts,
     run: vi.fn(() => {
-      const burst = fakeBurst()
+      const burst = fakeBurst(targets)
       bursts.push(burst)
       return burst
     }),
   }
 }
+
+/**
+ * A stand-in for a share mark sitting on the board. Tracked so it is removed
+ * between tests without clearing `document.body`, which would fight RTL's own
+ * cleanup for the render containers.
+ */
+const vehicles: HTMLElement[] = []
+function mountVehicle(): HTMLElement {
+  const el = document.createElement('span')
+  document.body.appendChild(el)
+  vehicles.push(el)
+  return el
+}
+
+afterEach(() => {
+  while (vehicles.length > 0) vehicles.pop()?.remove()
+})
 
 describe('useShareEmphasisBurst — the trigger fires once per board arrival', () => {
   it('fires when the roster first becomes visible', () => {
@@ -109,5 +129,62 @@ describe('useShareEmphasisBurst — a drag kills it outright', () => {
     })
     unmount()
     expect(runner.bursts[0]?.killed).toBe(1)
+  })
+
+  it('kills it when the marks themselves have left the document', () => {
+    // React tears the board's host nodes out during the mutation phase, which
+    // runs BEFORE passive cleanups — so a real navigation reaches this cleanup
+    // with every target already disconnected. Verified against React 19 in
+    // this worktree: `isConnected` is false by the time the cleanup fires.
+    const el = mountVehicle()
+    const runner = fakeRunner([el])
+    const { unmount } = renderHook(() => {
+      useShareEmphasisBurst({ ready: true, suppressed: false, runner })
+    })
+    el.remove()
+    unmount()
+    expect(runner.bursts[0]?.killed).toBe(1)
+    expect(runner.bursts[0]?.active).toBe(false)
+  })
+})
+
+describe('useShareEmphasisBurst — StrictMode must not eat the burst', () => {
+  it('survives the double-invoked mount effect, so the breathe plays in dev', () => {
+    // `main.tsx` wraps the app in <StrictMode> and React 19 double-invokes
+    // mount effects in development: setup -> cleanup -> setup. `armed` is
+    // spent by pass 1, so a cleanup that kills unconditionally kills the only
+    // burst there will ever be and pass 2 returns early — the dev server (the
+    // environment the design review happens in) shows the static glow and no
+    // motion at all. Production builds do not double-invoke, which is exactly
+    // why this is invisible until someone looks at the running app.
+    //
+    // The cleanup tells the two cases apart by the DOM: StrictMode's simulated
+    // unmount removes nothing, so the marks are still connected.
+    const el = mountVehicle()
+    const runner = fakeRunner([el])
+    renderHook(
+      () => {
+        useShareEmphasisBurst({ ready: true, suppressed: false, runner })
+      },
+      { wrapper: StrictMode }
+    )
+    expect(runner.run).toHaveBeenCalledTimes(1)
+    expect(runner.bursts[0]?.killed).toBe(0)
+    expect(runner.bursts[0]?.active).toBe(true)
+  })
+
+  it('still kills on drag under StrictMode — suppression is the unconditional kill', () => {
+    const el = mountVehicle()
+    const runner = fakeRunner([el])
+    const { rerender } = renderHook(
+      ({ suppressed }: { suppressed: boolean }) => {
+        useShareEmphasisBurst({ ready: true, suppressed, runner })
+      },
+      { initialProps: { suppressed: false }, wrapper: StrictMode }
+    )
+    expect(runner.bursts[0]?.active).toBe(true)
+    rerender({ suppressed: true })
+    expect(runner.bursts[0]?.killed).toBeGreaterThanOrEqual(1)
+    expect(runner.bursts[0]?.active).toBe(false)
   })
 })

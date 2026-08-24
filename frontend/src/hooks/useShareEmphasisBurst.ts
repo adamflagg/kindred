@@ -61,10 +61,27 @@ export function useShareEmphasisBurst({
   }, [ready, suppressed, runner])
 
   // A navigation away mid-burst must not leave a timeline ticking against
-  // elements React has unmounted.
+  // elements React has unmounted — but this cleanup ALSO runs on React 19's
+  // StrictMode double-invoke (setup -> cleanup -> setup), and `main.tsx` wraps
+  // the whole app in <StrictMode>. Killing unconditionally there kills the
+  // only burst there will ever be: `armed` was spent by pass 1, so pass 2
+  // returns early and the dev server shows the static glow with no motion.
+  // Production builds do not double-invoke, which is exactly why this is
+  // invisible in CI and in the bundle, and visible only to whoever opens the
+  // running dev app to look at the animation.
+  //
+  // The DOM tells the two cases apart. React tears out the board's host nodes
+  // during the mutation phase, which runs BEFORE passive cleanups, so a real
+  // unmount reaches this line with every target already disconnected;
+  // StrictMode's simulated unmount removes nothing and they all read
+  // connected. `suppressed` in the effect above stays the one unconditional
+  // kill, because a drag has to stop the burst whatever the DOM says.
   useEffect(
     () => () => {
-      burst.current?.kill()
+      const running = burst.current
+      if (!running) return
+      if (running.targets.some((target) => target.isConnected)) return
+      running.kill()
       burst.current = null
     },
     []
