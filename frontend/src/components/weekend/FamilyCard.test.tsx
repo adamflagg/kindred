@@ -1476,13 +1476,12 @@ describe('FamilyCard — the marks kindred#2072 STRUCK', () => {
   it('draws no "Answers disagree" chip — the mark and its data column are both struck (2026-08-23)', () => {
     // Owner ruling: "it is dead all the way down" — DeriveShareEligibility's
     // third return value was computed and stored (Go, lodging_requests.go)
-    // but never read by eligibility itself, and nothing downstream read it
-    // either. The chip, `answersConflictDetail`, `ShareRequestSummary.
-    // answers_conflict` and the column it read all came out together, so
-    // there is no longer any payload shape that can ask for this chip — this
-    // fixture is the shape that used to. The sibling slot-level absence
-    // (`ConsentFlag` no longer has a `conflictCount`) is pinned by
-    // `boardLayout.test.ts`'s "rolls up no ANSWER CONFLICT".
+    // but never read by eligibility itself. The chip, `answersConflictDetail`,
+    // `ShareRequestSummary.answers_conflict` and the column it read all came
+    // out together, so there is no longer any payload shape that can ask for
+    // this chip — this fixture is the shape that used to. The sibling
+    // slot-level absence (`ConsentFlag` no longer has a `conflictCount`) is
+    // pinned by `boardLayout.test.ts`'s "rolls up no ANSWER CONFLICT".
     render(
       <FamilyCard
         party={party({

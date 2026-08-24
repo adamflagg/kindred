@@ -3,8 +3,9 @@
 // Owner ruling 2026-08-23: the "Answers disagree" chip comes out front to
 // back. share_answers_conflict is DeriveShareEligibility's third return value
 // (pocketbase/sync/lodging_requests.go) -- computed and stored, but never read
-// by eligibility itself, and nothing downstream (the API schema, the roster
-// service, the board) consumed it either. Same write-only shape 1500000169
+// by eligibility itself. The API schema, the roster service, and the board's
+// chip DID read it downstream -- that payload -> chip chain is what this
+// migration and its siblings retire. Same write-only-column shape 1500000169
 // found in opt_out_vip, and the same fix: drop the column.
 //
 // Dropping the column loses only derived data: family_camp_registrations is

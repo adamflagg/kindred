@@ -849,11 +849,12 @@ describe('buildBoard — consent flagging on ELIGIBILITY, not the gate', () => {
   it('rolls up no ANSWER CONFLICT — the slot-level half of the struck chip (2026-08-23)', () => {
     // Owner ruling: "it is dead all the way down." `DeriveShareEligibility`
     // computed and stored a per-household conflict flag as a third return
-    // value, but eligibility itself never read it and nothing downstream did
-    // either, so `ShareRequestSummary.answers_conflict` and the column behind
-    // it went with the chip. `ConsentFlag.conflictCount` was the slot-level
-    // rollup of that same field; it went too. A flag that fires here does so
-    // on eligibility alone, and says so in words a household would recognise.
+    // value, but eligibility itself never read it. The payload/chip chain —
+    // `ShareRequestSummary.answers_conflict` and the column behind it — DID
+    // read it, and that chain is what comes out with the chip.
+    // `ConsentFlag.conflictCount` was the slot-level rollup of that same
+    // field; it went too. A flag that fires here does so on eligibility
+    // alone, and says so in words a household would recognise.
     const flag = shared(['declined', 'unknown']).areas[0]?.slots[0]?.consent
     expect(flag).not.toBeNull()
     expect(flag).not.toHaveProperty('conflictCount')
