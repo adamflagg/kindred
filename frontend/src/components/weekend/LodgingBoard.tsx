@@ -45,6 +45,7 @@ import { useSearchParams } from 'react-router'
 import { useDismissOnDeadSpace } from '../../hooks/useDismissOnDeadSpace'
 import { useLodgingPlacement } from '../../hooks/useLodgingPlacement'
 import { usePanelParty } from '../../hooks/usePanelParty'
+import { useShareEmphasisBurst } from '../../hooks/useShareEmphasisBurst'
 import { useUnitAvailability } from '../../hooks/useUnitAvailability'
 import { useUnitMerge } from '../../hooks/useUnitMerge'
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
@@ -280,6 +281,19 @@ export function LodgingBoard({
   const [dragging, setDragging] = useState<RosterPartyRow | null>(null)
   /** The card currently being dragged BY ITS MERGE HANDLE, for grey-out. */
   const [draggingMergeUnit, setDraggingMergeUnit] = useState<LodgingUnitRow | null>(null)
+
+  /*
+   * The share marks' arrival burst (spec 2026-08-24 §5), armed HERE rather
+   * than in `ShareMarks` because it is a board-level event: the marks
+   * cascade once when the roster becomes visible, not once per card mount.
+   * `parties.length > 0` is that moment — the board renders empty while the
+   * page's query is still in flight, and the first payload is the arrival.
+   *
+   * It reads the SAME `dragging` state the unit cards receive as
+   * `draggingParty`, deliberately, rather than threading a new prop down
+   * through `FamilyCard`: one drag signal, one meaning.
+   */
+  useShareEmphasisBurst({ ready: parties.length > 0, suppressed: dragging !== null })
 
   // THREE conditions, not two. `sessionCmId` is in there because every write
   // names a weekend, and the prop defaults to 0 for the thirty tests that do
