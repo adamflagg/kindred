@@ -14,8 +14,12 @@ import type { ReactNode } from 'react'
 import { Toaster } from 'react-hot-toast'
 
 // Mock useSyncStatusAPI — modal uses it for the CampMinder "synced" line.
+const syncStatusOpts = vi.fn()
 vi.mock('../hooks/useSyncStatusAPI', () => ({
-  useSyncStatusAPI: () => ({ data: undefined }),
+  useSyncStatusAPI: (opts?: { enabled?: boolean }) => {
+    syncStatusOpts(opts)
+    return { data: undefined }
+  },
 }))
 
 // Mock useYear — modal reads currentYear for clear-scenario calls.
@@ -89,6 +93,30 @@ function renderModal(ctx: ScenarioContextType, emptyLabel?: string) {
     />,
     { wrapper }
   )
+}
+
+// Same providers, but lets a test drive `isOpen` across rerenders.
+function renderModalWithOpen(ctx: ScenarioContextType, isOpen: boolean) {
+  const qc = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  })
+  const wrapper = ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={qc}>
+      <ScenarioContext value={ctx}>{children}</ScenarioContext>
+      <Toaster />
+    </QueryClientProvider>
+  )
+  const view = render(
+    <ScenarioManagementModal sessionId={1000001} onClose={vi.fn()} isOpen={isOpen} />,
+    { wrapper }
+  )
+  return {
+    ...view,
+    setOpen: (next: boolean) =>
+      view.rerender(
+        <ScenarioManagementModal sessionId={1000001} onClose={vi.fn()} isOpen={next} />
+      ),
+  }
 }
 
 beforeEach(() => {
@@ -167,5 +195,60 @@ describe('clearing a scenario names its own session', () => {
         screen.getByText('Cleared 47 assignments from scenario for year 2026')
       ).toBeInTheDocument()
     )
+  })
+
+  describe('always-mounted conversion (kindred#2538)', () => {
+    it('stays painted on the close frame, then unmounts once the leave completes', async () => {
+      const { setOpen } = renderModalWithOpen(makeContext({}), true)
+      expect(screen.getByRole('heading', { name: 'Manage Scenarios' })).toBeInTheDocument()
+
+      setOpen(false)
+
+      // Painted on the close frame — the fade has something to fade.
+      expect(screen.getByRole('heading', { name: 'Manage Scenarios' })).toBeInTheDocument()
+
+      // ...and gone once the leave finishes. The presence half alone passes
+      // vacuously against a component hardcoding `isOpen={true}`.
+      await waitFor(() =>
+        expect(screen.queryByRole('heading', { name: 'Manage Scenarios' })).not.toBeInTheDocument()
+      )
+    })
+
+    it('does not poll sync status while it is closed', () => {
+      syncStatusOpts.mockClear()
+      renderModalWithOpen(makeContext({}), false)
+
+      // Always-mounted, an ungated useSyncStatusAPI keeps its query — and its
+      // auth listener — alive for the permanent mount.
+      expect(syncStatusOpts).toHaveBeenCalledWith(expect.objectContaining({ enabled: false }))
+    })
+
+    it('polls sync status once it is opened', () => {
+      syncStatusOpts.mockClear()
+      renderModalWithOpen(makeContext({}), true)
+
+      expect(syncStatusOpts).toHaveBeenCalledWith(expect.objectContaining({ enabled: true }))
+    })
+
+    it('closing the outer modal takes an open confirm dialog with it', async () => {
+      const user = userEvent.setup()
+      const { setOpen } = renderModalWithOpen(makeContext({}), true)
+
+      await user.click(screen.getByRole('button', { name: /delete scenario/i }))
+      expect(screen.getByRole('heading', { name: /Delete Scenario\?/i })).toBeInTheDocument()
+
+      // Modals portal outside #root and modalStack inerts only #root, so a
+      // staffer really can reach the outer dialog's close while a child confirm
+      // is up. Conditionally mounted this was moot — the parent's unmount took
+      // the child with it. Always-mounted, an unreset `confirmAction` leaves a
+      // "Delete Scenario?" prompt on screen with its parent gone.
+      setOpen(false)
+
+      await waitFor(() =>
+        expect(
+          screen.queryByRole('heading', { name: /Delete Scenario\?/i })
+        ).not.toBeInTheDocument()
+      )
+    })
   })
 })

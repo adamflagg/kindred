@@ -114,7 +114,11 @@ describe('ScenarioManagementModal — ScenarioEditModal (:317) on top of the out
 
     fireEvent.keyDown(document, { key: 'Escape' })
 
-    expect(screen.queryByText('Edit Scenario')).not.toBeInTheDocument()
+    // Awaited since kindred#2538 converted this child: its DOM now outlives
+    // the close by Modal's exit fade, exactly as the confirm dialog above
+    // already did. The overlay TOKEN still releases synchronously on the flip
+    // (D12), which is what the second test leans on.
+    await waitFor(() => expect(screen.queryByText('Edit Scenario')).not.toBeInTheDocument())
     expect(onClose).not.toHaveBeenCalled()
   })
 
@@ -124,7 +128,7 @@ describe('ScenarioManagementModal — ScenarioEditModal (:317) on top of the out
     await userEvent.click(screen.getByRole('button', { name: /edit scenario/i }))
 
     fireEvent.keyDown(document, { key: 'Escape' })
-    expect(screen.queryByText('Edit Scenario')).not.toBeInTheDocument()
+    await waitFor(() => expect(screen.queryByText('Edit Scenario')).not.toBeInTheDocument())
 
     fireEvent.keyDown(document, { key: 'Escape' })
 
@@ -144,7 +148,11 @@ describe('ScenarioManagementModal — NewScenarioModal (:325) on top of the oute
 
     fireEvent.keyDown(document, { key: 'Escape' })
 
-    expect(screen.queryByRole('heading', { name: 'Create New Scenario' })).not.toBeInTheDocument()
+    // Awaited since kindred#2538 converted this child — see the note on the
+    // edit-modal test above.
+    await waitFor(() =>
+      expect(screen.queryByRole('heading', { name: 'Create New Scenario' })).not.toBeInTheDocument()
+    )
     expect(onClose).not.toHaveBeenCalled()
   })
 
@@ -154,7 +162,9 @@ describe('ScenarioManagementModal — NewScenarioModal (:325) on top of the oute
     await userEvent.click(screen.getByRole('button', { name: /create new scenario/i }))
 
     fireEvent.keyDown(document, { key: 'Escape' })
-    expect(screen.queryByRole('heading', { name: 'Create New Scenario' })).not.toBeInTheDocument()
+    await waitFor(() =>
+      expect(screen.queryByRole('heading', { name: 'Create New Scenario' })).not.toBeInTheDocument()
+    )
 
     fireEvent.keyDown(document, { key: 'Escape' })
 

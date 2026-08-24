@@ -50,16 +50,56 @@ interface NewScenarioModalProps {
    * this modal — the three choices, their order, the layout — is identical.
    */
   emptyLabel?: string
+  /**
+   * kindred#2538 tier 2b. The dialog is ALWAYS MOUNTED so ui/Modal's 150ms
+   * leave transition has something to fade; the parent drives this flag
+   * instead of unmounting on the close frame.
+   *
+   * Optional and defaulting to TRUE on purpose. Three call sites gate this
+   * component today, and a site that has not been converted keeps its old
+   * conditional-mount behaviour rather than silently rendering an open dialog
+   * -- the degradation is "no fade", not "a modal appears".
+   */
+  isOpen?: boolean
+  /**
+   * Per-open nonce keying the form BODY, from kindred#2541's
+   * useRetainedDialog. Bumping it remounts the body and re-runs its useState
+   * initializers against CURRENT props, which is what replaces a hand-written
+   * reset-on-open effect.
+   *
+   * It keys the BODY and never the <Modal> chrome: remounting the chrome
+   * mid-leave would snap the fading dialog away instead of fading it.
+   *
+   * `copyFrom` is why this has to be a remount rather than a reset effect --
+   * its initial value is derived from canCopyFromProduction, so a static
+   * re-initializer would reinstate a default the current props contradict.
+   */
+  nonce?: number
 }
 
 export default function NewScenarioModal({
+  isOpen = true,
+  nonce,
+  onClose,
+  ...body
+}: NewScenarioModalProps) {
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title="Create New Scenario" size="sm">
+      <NewScenarioForm key={nonce} onClose={onClose} {...body} />
+    </Modal>
+  )
+}
+
+type NewScenarioFormProps = Omit<NewScenarioModalProps, 'isOpen' | 'nonce'>
+
+function NewScenarioForm({
   sessionId,
   onClose,
   onScenarioCreated,
   canCopyFromProduction = true,
   canCopyFromScenario = true,
   emptyLabel = 'Start with empty bunks',
-}: NewScenarioModalProps) {
+}: NewScenarioFormProps) {
   const { createScenario, scenarios } = useScenario()
   const currentYear = useYear()
   const [name, setName] = useState('')
@@ -113,7 +153,7 @@ export default function NewScenarioModal({
   }
 
   return (
-    <Modal isOpen={true} onClose={onClose} title="Create New Scenario" size="sm">
+    <>
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
           <label htmlFor="scenario-name" className="mb-2 block text-sm font-medium">
@@ -226,6 +266,6 @@ export default function NewScenarioModal({
           </button>
         </div>
       </form>
-    </Modal>
+    </>
   )
 }

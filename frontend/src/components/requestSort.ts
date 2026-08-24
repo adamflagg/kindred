@@ -105,3 +105,30 @@ export function sortRequests(
     return aValue < bValue ? -direction : direction
   })
 }
+
+/**
+ * Order `picked` by each member's position in `table`, without mutating either.
+ *
+ * kindred#2538: the merge dialog seeds `selectedTargetId` from `requests[0]`
+ * and POSTs that as `keep_target_from`, so the order of the pair it is handed
+ * decides which request survives a merge by default. RequestReviewPanel opens
+ * that dialog from two places — the toolbar button and the conflict banner —
+ * and they must agree.
+ *
+ * `picked` is sourced from the UNFILTERED request list on purpose while the
+ * ORDER comes from the visible, sorted table. Sourcing from the table itself
+ * would let an active search filter drop a legitimate merge member and open a
+ * one-item dialog; anything the table does not contain is therefore kept, and
+ * parked at the end.
+ */
+export function orderByTablePosition<T extends { id: string }>(
+  picked: T[],
+  table: { id: string }[]
+): T[] {
+  const position = new Map(table.map((r, i) => [r.id, i]))
+  return [...picked].sort(
+    (a, b) =>
+      (position.get(a.id) ?? Number.POSITIVE_INFINITY) -
+      (position.get(b.id) ?? Number.POSITIVE_INFINITY)
+  )
+}

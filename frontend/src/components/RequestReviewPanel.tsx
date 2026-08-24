@@ -38,6 +38,7 @@ import {
 } from '../utils/dispositionColors'
 import RequestRowDesktop from './RequestRowDesktop'
 import CreateRequestModal from './CreateRequestModal'
+import { useRetainedDialog } from '../hooks/useRetainedDialog'
 import CamperDetailsPanel from './CamperDetailsPanel'
 import { CamperRequestSummary } from './CamperRequestSummary'
 import MergeRequestsModal from './MergeRequestsModal'
@@ -65,7 +66,12 @@ interface FilterState {
   searchQuery: string
 }
 
-import { sortRequests, DEFAULT_SORT_BY, DEFAULT_SORT_ORDER } from './requestSort'
+import {
+  sortRequests,
+  orderByTablePosition,
+  DEFAULT_SORT_BY,
+  DEFAULT_SORT_ORDER,
+} from './requestSort'
 import type { SortColumn } from './requestSort'
 import { SortableColumnHeader, type SortDirection } from './ui/SortableColumnHeader'
 
@@ -96,10 +102,34 @@ export default function RequestReviewPanel({
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set())
   const [sortBy, setSortBy] = useState<SortColumn>(DEFAULT_SORT_BY)
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>(DEFAULT_SORT_ORDER)
-  const [showCreateModal, setShowCreateModal] = useState(false)
-  const [showMergeModal, setShowMergeModal] = useState(false)
-  const [showSplitModal, setShowSplitModal] = useState(false)
-  const [requestToSplit, setRequestToSplit] = useState<BunkRequestsResponse | null>(null)
+  // kindred#2538: always-mounted so ui/Modal's 150ms leave can play. <true>
+  // rather than <void>: this dialog retains no snapshot -- its gate was a
+  // plain boolean, not the data itself -- but eslint's
+  // @typescript-eslint/no-invalid-void-type bans a void type argument, so the
+  // literal is inert and only isOpen and nonce are read. Same gap
+  // NewScenarioModal hit; kindred#2549's review predicted it.
+  const createDialog = useRetainedDialog<true>()
+  // kindred#2538: always-mounted, and this one genuinely needs the retained
+  // SNAPSHOT rather than just an open flag. The old gate was
+  // `showMergeModal && mergeEligibility.canMerge`, and `canMerge` is derived
+  // from `selectedRequests` -- so the success path's `setSelectedRequests(new
+  // Set())` flipped the gate false and yanked the dialog out mid-fade. The
+  // snapshot holds the pair being merged through the close.
+  const mergeDialog = useRetainedDialog<BunkRequestsResponse[]>()
+  // kindred#2538: always-mounted, on the retained SNAPSHOT.
+  //
+  // This is the dialog whose obvious conversion was refuted (#2538's ⛔
+  // section): widening SplitRequestModal's `request` to nullable crashes two
+  // different ways, because its effect dep array dereferences the prop at
+  // render time and hoisting a guard above the hooks makes the hook count
+  // conditional. The snapshot removes the premise instead of working around
+  // it -- `splitDialog.data` is non-null for as long as the dialog is mounted,
+  // the exit fade included, so `request` is never null and nothing downstream
+  // needs guarding. The old `setRequestToSplit(null)` on close is exactly what
+  // #2538 warns re-creates the crash; the hook drops the snapshot in
+  // `afterLeave`, once the fade has actually finished.
+  const splitDialog = useRetainedDialog<BunkRequestsResponse>()
+  const requestToSplit = splitDialog.data
   const [selectedCamperId, setSelectedCamperId] = useState<string | null>(null)
   const [confirmPopover, setConfirmPopover] = useState<{
     action: 'approve' | 'decline'
@@ -847,17 +877,49 @@ export default function RequestReviewPanel({
     }
   }, [pendingUpdate, updateRequestMutation, clearConflicts])
 
+  // The ONE way the merge dialog is opened (kindred#2538 scan, finding 1).
+  //
+  // Both openers route through here so they cannot disagree about the order of
+  // the pair -- and the order matters, because MergeRequestsForm seeds
+  // `selectedTargetId` from `requests[0]` and that is POSTed as
+  // `keep_target_from`. The conflict path previously built its pair from raw
+  // `requests` while the toolbar used `mergeEligibility.requests` (built from
+  // `sortedRequests`), so under a confidence/status/request sort the two
+  // disagreed about which request survives a merge by default.
+  //
+  // Source from `requests`, order by `sortedRequests`: filtering the sorted
+  // list directly would let an active search hide a legitimate member and open
+  // a one-item dialog.
+  const openMergeFor = useCallback(
+    (ids: Set<string>) => {
+      mergeDialog.open(
+        orderByTablePosition(
+          requests.filter((r) => ids.has(r.id)),
+          sortedRequests
+        )
+      )
+    },
+    [requests, sortedRequests, mergeDialog]
+  )
+
   // Handle conflict resolution - merge instead
   const handleMergeConflict = useCallback(() => {
     if (pendingUpdate && conflictingRequest) {
       // Open merge modal with the two conflicting requests
-      setSelectedRequests(new Set([pendingUpdate.id, conflictingRequest.id]))
-      setShowMergeModal(true)
+      const selectedIds = new Set([pendingUpdate.id, conflictingRequest.id])
+      setSelectedRequests(selectedIds)
+      // `selectedIds` is passed explicitly rather than read back off
+      // `mergeEligibility` (kindred#2538): that is a useMemo over
+      // `selectedRequests`, which the line above has only just QUEUED, so
+      // reading it in this same handler would snapshot the PREVIOUS selection.
+      // The conditional mount this replaced was immune because it mounted a
+      // render later, after the memo had recomputed.
+      openMergeFor(selectedIds)
       clearConflicts()
       setPendingUpdate(null)
       setConflictingRequest(null)
     }
-  }, [pendingUpdate, conflictingRequest, clearConflicts])
+  }, [pendingUpdate, conflictingRequest, clearConflicts, openMergeFor])
 
   // Cancel conflict resolution
   const handleCancelConflict = useCallback(() => {
@@ -910,10 +972,12 @@ export default function RequestReviewPanel({
     setSelectedCamperId(cmId)
   }, [])
 
-  const handleSplitRow = useCallback((request: BunkRequestsResponse) => {
-    setRequestToSplit(request)
-    setShowSplitModal(true)
-  }, [])
+  const handleSplitRow = useCallback(
+    (request: BunkRequestsResponse) => {
+      splitDialog.open(request)
+    },
+    [splitDialog]
+  )
 
   return (
     <>
@@ -953,7 +1017,7 @@ export default function RequestReviewPanel({
 
             {/* Create Button */}
             <button
-              onClick={() => setShowCreateModal(true)}
+              onClick={() => createDialog.open(true)}
               className="btn-primary flex touch-manipulation items-center gap-2 px-3 py-2 text-sm"
             >
               <Plus className="h-4 w-4" />
@@ -1464,14 +1528,16 @@ export default function RequestReviewPanel({
           </div>
         </div>
 
-        {/* Create Request Modal */}
-        {showCreateModal && (
-          <CreateRequestModal
-            sessionId={sessionId}
-            year={year}
-            onClose={() => setShowCreateModal(false)}
-          />
-        )}
+        {/* Create Request Modal — always mounted (kindred#2538), so the close
+            has something to fade. `nonce` is what wipes the eight form fields
+            an unmount used to clear for free. */}
+        <CreateRequestModal
+          sessionId={sessionId}
+          year={year}
+          isOpen={createDialog.isOpen}
+          nonce={createDialog.nonce}
+          onClose={() => createDialog.close()}
+        />
 
         {/* Camper Details Panel */}
         {selectedCamperId && (
@@ -1481,34 +1547,42 @@ export default function RequestReviewPanel({
           />
         )}
 
-        {/* Merge Requests Modal */}
-        {showMergeModal && mergeEligibility.canMerge && (
+        {/* Merge Requests Modal — gated on the SNAPSHOT, not on `canMerge`
+            (kindred#2538). An explicit null check, per useRetainedDialog: the
+            payload is an array, and `{data && …}` would be a truthiness test
+            on it. Clearing the selection on success no longer empties the card
+            grid mid-fade, because the dialog is reading the snapshot. */}
+        {mergeDialog.data !== null && (
           <MergeRequestsModal
-            isOpen={showMergeModal}
-            onClose={() => setShowMergeModal(false)}
-            requests={mergeEligibility.requests}
+            isOpen={mergeDialog.isOpen}
+            nonce={mergeDialog.nonce}
+            afterLeave={mergeDialog.afterLeave}
+            onClose={() => mergeDialog.close()}
+            requests={mergeDialog.data}
             onMergeComplete={() => {
-              setShowMergeModal(false)
+              mergeDialog.close()
               setSelectedRequests(new Set())
               toast.success('Requests merged successfully')
             }}
           />
         )}
 
-        {/* Split Request Modal */}
-        {showSplitModal && requestToSplit && (
+        {/* Split Request Modal — gated on the SNAPSHOT (explicit null check,
+            per useRetainedDialog), and neither close path nulls it. Nulling
+            the request at close is what #2538's ⛔ section says re-creates the
+            crash mid-exit-fade; `afterLeave` releases it once the fade is
+            actually done. */}
+        {splitDialog.data !== null && (
           <SplitRequestModal
-            isOpen={showSplitModal}
-            onClose={() => {
-              setShowSplitModal(false)
-              setRequestToSplit(null)
-            }}
-            request={requestToSplit}
+            isOpen={splitDialog.isOpen}
+            nonce={splitDialog.nonce}
+            afterLeave={splitDialog.afterLeave}
+            onClose={() => splitDialog.close()}
+            request={splitDialog.data}
             sourceLinks={sourceLinks}
             isLoadingSourceLinks={isLoadingSourceLinks}
             onSplitComplete={() => {
-              setShowSplitModal(false)
-              setRequestToSplit(null)
+              splitDialog.close()
               toast.success('Request split successfully')
             }}
           />
@@ -1599,7 +1673,7 @@ export default function RequestReviewPanel({
               </button>
               {mergeEligibility.canMerge && (
                 <button
-                  onClick={() => setShowMergeModal(true)}
+                  onClick={() => openMergeFor(selectedRequests)}
                   className="bg-primary text-primary-foreground hover:bg-primary/90 flex min-h-[44px] touch-manipulation items-center gap-2 rounded-xl px-4 py-2 font-medium shadow-sm transition-colors"
                   title="Merge these two requests into one"
                 >
