@@ -389,25 +389,24 @@ export default function WeekendRosterPage() {
                 </div>
               </nav>
 
-              {/* The stat line and the push entry share one header band
-                  (owner placement ruling, 2026-08-24): a toolbar row of its
-                  own inside the board pushed the whole board down. */}
-              <div className="flex items-center gap-4">
-                <div className="min-w-0 flex-1">
-                  <WeekendStatsBar
-                    counts={roster.counts ?? {}}
-                    bedsNeeded={bedsNeeded}
-                    spacesUnmeasured={spacesUnmeasured}
+              {/* The push entry rides INSIDE the stats bar's row (owner
+                  rulings 2026-08-24): a toolbar row of its own inside the
+                  board pushed the board down, and sitting beside the bar left
+                  the band's bottom rule stopping short of the button. */}
+              <WeekendStatsBar
+                counts={roster.counts ?? {}}
+                bedsNeeded={bedsNeeded}
+                spacesUnmeasured={spacesUnmeasured}
+                trailing={
+                  <PushWriteInsEntry
+                    year={currentYear}
+                    sessionCmId={selectedCmId ?? 0}
+                    scenario={scenario}
+                    canManage={canManageLodging}
+                    units={units}
                   />
-                </div>
-                <PushWriteInsEntry
-                  year={currentYear}
-                  sessionCmId={selectedCmId ?? 0}
-                  scenario={scenario}
-                  canManage={canManageLodging}
-                  units={units}
-                />
-              </div>
+                }
+              />
             </div>
 
             {/* FOUR STATIC PANELS, not one panel whose id follows `view`.

@@ -213,4 +213,31 @@ describe('WeekendStatsBar', () => {
     render(<WeekendStatsBar counts={{}} bedsNeeded={0} spacesUnmeasured={0} />)
     expect(screen.getByText('(0 spare)')).toBeInTheDocument()
   })
+
+  // The push entry (kindred#2477) rides in this slot rather than beside the
+  // bar, because the bar owns the band's bottom rule: a control placed as a
+  // SIBLING leaves that rule stopping short of it, which is what the owner
+  // caught on the 2026-08-24 visual pass. Pinning containment is what stops a
+  // later refactor from quietly hoisting it back out.
+  it('renders a trailing control inside its own bordered row', () => {
+    const { container } = render(
+      <WeekendStatsBar
+        counts={counts({})}
+        bedsNeeded={0}
+        spacesUnmeasured={0}
+        trailing={<button type="button">Push write-ins</button>}
+      />
+    )
+    const trailing = screen.getByRole('button', { name: 'Push write-ins' })
+    const rule = container.querySelector('.border-b')
+    expect(rule).not.toBeNull()
+    expect(rule?.contains(trailing)).toBe(true)
+  })
+
+  it('renders no trailing wrapper when the slot is empty', () => {
+    // Queried by NAME: the bar's own figures are tooltip buttons, so a bare
+    // `queryByRole('button')` matches them and proves nothing about the slot.
+    render(<WeekendStatsBar counts={counts({})} bedsNeeded={0} spacesUnmeasured={0} />)
+    expect(screen.queryByRole('button', { name: 'Push write-ins' })).not.toBeInTheDocument()
+  })
 })

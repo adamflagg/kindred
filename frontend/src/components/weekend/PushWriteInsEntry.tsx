@@ -2,11 +2,12 @@
  * The "Push write-ins" entry point (kindred#2477) — the button that opens the
  * scenario→live review, and the modal it opens.
  *
- * Lives at the PAGE level, to the right of `WeekendStatsBar` in the sticky
- * header, not inside `LodgingBoard` — the owner's placement ruling on the
- * first visual pass (2026-08-24): a toolbar row of its own above the areas
- * pushed the whole board down for one button. The stats line already owns the
- * header's horizontal band; the entry shares it.
+ * Rendered through `WeekendStatsBar`'s `trailing` slot — INSIDE the bar's own
+ * row, not beside it — per two owner rulings on the first visual pass
+ * (2026-08-24). A toolbar row of its own above the areas pushed the whole
+ * board down for one button; sitting beside the bar left the band's bottom
+ * rule stopping short of the button. The bar owns the band, so the entry
+ * lives in it.
  *
  * Present only where a push could ever apply — inside a scenario, held by a
  * `bunking.manage` user, on a real weekend — and ABSENT everywhere else.
@@ -68,7 +69,11 @@ export function PushWriteInsEntry({
         onClick={() => {
           setOpen(true)
         }}
-        className="btn-secondary flex flex-shrink-0 items-center gap-1.5"
+        // `px-4 py-2` overrides `btn-secondary`'s roomier `px-6 py-3` to match
+        // summer's "Refresh Bunking" control (`AppLayout.tsx`), which is the
+        // sizing the owner asked this to align with — and it has to sit inside
+        // a `min-h-10` stats row without stretching it.
+        className="btn-secondary flex flex-shrink-0 items-center gap-1.5 px-4 py-2"
       >
         <Send className="h-4 w-4" />
         Push write-ins
