@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the lodging-name-guard NEEDLES pattern from the private registry.
+r"""Build the lodging-name-guard NEEDLES pattern from the private registry.
 
 kindred#2551, Option B. verify-no-hardcoded-lodging.sh's NEEDLES used to be a
 hand-picked, hand-maintained sample of "distinctive unit strings" -- 15
@@ -118,7 +118,7 @@ _WORD_CHAR = re.compile(r"[0-9A-Za-z_]")
 
 
 def _anchor(term: str) -> str:
-    """ERE-escape `term` and anchor each edge that can actually satisfy a \b.
+    r"""ERE-escape `term` and anchor each edge that can actually satisfy a \b.
 
     A \b needs a word/non-word transition, so anchoring an edge whose own
     character is NOT a word character produces a needle that can never match --
