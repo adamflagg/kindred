@@ -282,7 +282,7 @@ export function HouseholdRosterRow({ party, showRequests, unit, onOpen }: Househ
 
       <td className="py-3 pr-3">
         {/* Chips only. The medical narrative is `FamilyDetailsPanel`'s, one
-            household at a time — see MedicalNarrative (kindred#1889). */}
+            household at a time — see HousingNeedDetails (kindred#1889). */}
         <AccessibilityFlagList flags={party.flags ?? NO_FLAGS} />
       </td>
     </tr>

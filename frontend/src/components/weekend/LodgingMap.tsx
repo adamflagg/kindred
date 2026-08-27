@@ -371,7 +371,7 @@ export function LodgingMap({ parties, units, year, sessionCmId = 0 }: LodgingMap
   // stopped existing. A `parties`/`units` prop change (a roster refetch or a
   // weekend switch) can dissolve a cluster and a LATER prop change can
   // re-mint the identical `clusterKey` (sorted unit ids), reopening a
-  // popover with no click. `MapUnitPopover` renders no `MedicalNarrative`,
+  // popover with no click. `MapUnitPopover` renders no `HousingNeedDetails`,
   // so this is a correctness/UX defect, not a medical disclosure — but the fix
   // shape is identical: clear the stored key(s) right here, during render,
   // rather than in an Effect.

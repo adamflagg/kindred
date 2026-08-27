@@ -243,7 +243,7 @@ export function NeedGlyphMark({
  *   - a user without `bunking.manage` returns before the fetch component
  *     exists, so there is no disabled query either — no medical request is
  *     made, or even prepared, on behalf of someone who cannot have the
- *     answer (`MedicalNarrative`'s rule, one panel further out);
+ *     answer (`HousingNeedDetails`'s rule, one panel further out);
  *   - closing the bubble unmounts the query, and `useHouseholdMedical`'s
  *     `staleTime: 0, gcTime: 0` — the documented privacy divergence — then
  *     drops the payload from the cache at once. The narrative lives exactly
