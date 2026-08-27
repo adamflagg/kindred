@@ -61,7 +61,7 @@ var requestFieldProbes = map[string][]string{
 		"Share a cabin with a family with similarly aged kid(s) that I can meet at Camp.",
 		"No requests",
 	},
-	fieldSharedRequest:        {"We would love to be near the Nakamura family."},
+	fieldSharedRequest:        {"We would love to be near the Garcia family."},
 	fieldShareComments:        {"Please keep us close to the dining hall."},
 	fieldCovidBunkingRequests: {"Anywhere with a short walk is fine."},
 
