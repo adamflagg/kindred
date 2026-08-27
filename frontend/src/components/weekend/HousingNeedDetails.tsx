@@ -62,7 +62,7 @@ interface PanelRow {
 export function HousingNeedDetails({ party, householdCmId, year }: HousingNeedDetailsProps) {
   const { hasPermission } = usePermissions()
   const canRead = hasPermission(Permission.BUNKING_MANAGE) && householdCmId !== null
-  const { data, error } = useHouseholdMedical(year, householdCmId, canRead)
+  const { data, error, isLoading } = useHouseholdMedical(year, householdCmId, canRead)
 
   const flags = party.flags
   const mandatory = flags?.accommodation_is_mandatory === true
@@ -174,6 +174,30 @@ export function HousingNeedDetails({ party, householdCmId, year }: HousingNeedDe
       hueClassName: 'text-rose-500 dark:text-rose-400',
       texts: specialNeeds,
     })
+  }
+
+  // THE ONE CASE WHERE SILENCE IS AMBIGUOUS, and the exception to the
+  // no-spinner rule below. Rows 1-6 paint immediately off roster booleans, so
+  // a pending fetch is invisible for a household that asks for anything at
+  // all. `Special needs` is different: it is the only row with no flag behind
+  // it and renders on TEXT alone, so a household whose sole disclosure is
+  // `special_needs_info` renders NOTHING until the query settles -- and an
+  // empty section is exactly what "nothing on file" looks like. That is 18 of
+  // the 392 rostered 2026 households, so it is not a corner case.
+  //
+  // GATED ON `canRead` EXPLICITLY, not left to the query's `enabled` flag.
+  // React Query does report `isLoading: false` for a disabled query, so this
+  // is belt-and-braces today -- but "a viewer without the permission is never
+  // told a fetch is happening" is this component's rule to keep, not a
+  // library detail to inherit. A refactor that moved the `enabled` guard
+  // would otherwise show them a spinner for a request nobody made; a test
+  // pins that.
+  if (rows.length === 0 && error === null && canRead && isLoading) {
+    return (
+      <p data-testid="housing-need-loading" className="text-muted-foreground text-sm">
+        Loading housing needs…
+      </p>
+    )
   }
 
   // Nothing to say, and the fetch (if any) came back clean: the old

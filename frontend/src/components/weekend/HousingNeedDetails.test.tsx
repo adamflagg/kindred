@@ -25,9 +25,10 @@ const DEFAULT_MEDICAL = {
 let medical: typeof DEFAULT_MEDICAL
 let medicalError: Error | null
 let canRead: boolean
+let medicalLoading: boolean
 
 vi.mock('../../hooks/useWeekendRoster', () => ({
-  useHouseholdMedical: () => ({ data: medical, isLoading: false, error: medicalError }),
+  useHouseholdMedical: () => ({ data: medical, isLoading: medicalLoading, error: medicalError }),
 }))
 vi.mock('../../hooks/usePermissions', () => ({
   usePermissions: () => ({ hasPermission: () => canRead }),
@@ -37,6 +38,7 @@ beforeEach(() => {
   medical = { ...DEFAULT_MEDICAL }
   medicalError = null
   canRead = true
+  medicalLoading = false
 })
 
 function party(flags: Record<string, boolean>) {
@@ -240,5 +242,44 @@ describe('HousingNeedDetails', () => {
     // rather than blocking it.
     expect(screen.getByText('Bathroom in unit')).toBeInTheDocument()
     expect(screen.getByText('Could not load medical detail.')).toBeInTheDocument()
+  })
+
+  it('says it is loading when the only row would come from the narrative', () => {
+    // The special-needs row is the ONLY one with no flag behind it, so a
+    // household whose sole disclosure is `special_needs_info` renders nothing
+    // until the query settles -- and an empty section is indistinguishable
+    // from "nothing on file". 18 of the 392 rostered 2026 households.
+    // Found by CodeRabbit on kindred#2577.
+    medicalLoading = true
+    medical = { ...DEFAULT_MEDICAL, bathroom_explain: '', special_needs_info: '' }
+    const { container } = render(
+      <HousingNeedDetails party={party({})} householdCmId={1000001} year={2026} />
+    )
+    expect(screen.getByTestId('housing-need-loading')).toBeInTheDocument()
+    expect(container).not.toBeEmptyDOMElement()
+  })
+
+  it('does not say it is loading once a clean empty result is in', () => {
+    medicalLoading = false
+    medical = { ...DEFAULT_MEDICAL, bathroom_explain: '', special_needs_info: '' }
+    const { container } = render(
+      <HousingNeedDetails party={party({})} householdCmId={1000001} year={2026} />
+    )
+    expect(screen.queryByTestId('housing-need-loading')).not.toBeInTheDocument()
+    expect(container).toBeEmptyDOMElement()
+  })
+
+  it('never says it is loading for a viewer without bunking.manage', () => {
+    // `canRead` false means the query never runs, so `isLoading` can never be
+    // true for them -- but pin it, because a future refactor that drops the
+    // `enabled` guard would otherwise show them a spinner for a fetch that
+    // is not happening.
+    canRead = false
+    medicalLoading = true
+    const { container } = render(
+      <HousingNeedDetails party={party({})} householdCmId={1000001} year={2026} />
+    )
+    expect(screen.queryByTestId('housing-need-loading')).not.toBeInTheDocument()
+    expect(container).toBeEmptyDOMElement()
   })
 })
