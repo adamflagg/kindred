@@ -1433,8 +1433,7 @@ def _resolve_power_coverage(units: list[LodgingUnitSummary], index: _BathroomInd
     point: a real three-level container looks split one level down (1 powered
     child, 2 not) and is not, because its two "unpowered" children are
     themselves containers whose every leaf has power. A one-level walk gets
-    that wrong in
-    the direction that looks plausible.
+    that wrong in the direction that looks plausible.
 
     Rooms that are `is_active = False` do not answer for their building -- the
     same filter `_effective_sleeps` applies when totalling a combined

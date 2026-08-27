@@ -27,9 +27,12 @@
 # (.github/workflows/ci.yml) -- the same one CD already uses for branding
 # assets -- so a job that needed no secrets before now reads one, purely to
 # build this pattern. build_lodging_needles.py's distinctiveness filter keeps
-# the registry's ordinary-English-word single-token entries out of NEEDLES,
-# which is what makes reading the whole registry safe rather than a
-# false-positive machine.
+# the registry's bare single-token entries out of NEEDLES, which is what makes
+# reading the whole registry workable rather than a false-positive machine.
+# Read that module's docstring before touching the filter: it is a token-COUNT
+# test, not an ordinariness test, so it does not remove the false-positive
+# class precisely -- what makes it acceptable is that its residue fails LOUDLY
+# (kindred#2573).
 #
 # FALLBACK_NEEDLES below is what a fork or a contributor without the deploy
 # key gets instead: the same hand-picked, unwidened sample this guard has
@@ -50,7 +53,7 @@ set -euo pipefail
 
 # Preflight BEFORE the first git call — checking for git after invoking it is
 # pointless, since the missing binary would already have exited 127.
-for cmd in git grep awk python3; do
+for cmd in git grep awk python3 mktemp; do
   command -v "$cmd" >/dev/null 2>&1 || { echo "error: required command '$cmd' not found" >&2; exit 2; }
 done
 
@@ -125,20 +128,48 @@ REGISTRY_PATH="${LODGING_REGISTRY_PATH:-config/lodging_registry.json}"
 NEEDLES="$FALLBACK_NEEDLES"
 FALLBACK_COUNT=$(( $(grep -o '|' <<<"$FALLBACK_NEEDLES" | wc -l) + 1 ))
 NEEDLE_ANNOUNCEMENT="fallback sample ($FALLBACK_COUNT terms)"
+# ⚠️ STDERR IS CAPTURED SEPARATELY, AND THE BUILDER'S STDOUT IS NEVER ECHOED.
+# This block used to run the builder with `2>&1`, merging stderr into the same
+# variable that holds stdout -- and stdout IS the pattern: every unit name,
+# area name, code and alias string in the registry, '|'-joined. Any stderr at
+# all from an OTHERWISE SUCCESSFUL build then made `head -n1` non-numeric, and
+# the "unexpected output" branch below echoed that whole variable: the entire
+# registry printed into a world-readable Actions log on a PUBLIC repo, with the
+# guard still exiting 0 and printing OK, so nothing about the run looked wrong.
+# It took no bug in the builder to fire -- a DeprecationWarning, PYTHONDEVMODE,
+# a sitecustomize/.pth print, or a diagnostic someone adds later all do it.
+#
+# The rule the diagnostics below follow: the builder's STDERR may be echoed
+# (it is name-free by construction -- build_lodging_needles.py only ever writes
+# "could not read/parse <path>" shapes there), the captured STDOUT never may.
+# TEST 29 in test-verify-no-hardcoded-lodging.sh pins this by simulating the
+# stray-stderr trigger and asserting no registry term reaches the output.
 if [[ -r "$REGISTRY_PATH" ]]; then
-  if REGISTRY_OUT=$(python3 "$REPO_ROOT/scripts/dev/lib/build_lodging_needles.py" "$REGISTRY_PATH" 2>&1); then
+  REGISTRY_ERR=$(mktemp)
+  REGISTRY_STATUS=0
+  REGISTRY_OUT=$(python3 "$REPO_ROOT/scripts/dev/lib/build_lodging_needles.py" "$REGISTRY_PATH" 2>"$REGISTRY_ERR") \
+    || REGISTRY_STATUS=$?
+  # ONE emission point for the builder's stderr, and it is unconditional: a
+  # stray warning is a thing to see, not to swallow. Safe to show because
+  # build_lodging_needles.py only ever writes "could not read/parse <path>"
+  # shapes there -- name-free by construction. $REGISTRY_OUT is what must never
+  # be echoed, in any branch.
+  if [[ -s "$REGISTRY_ERR" ]]; then
+    echo "verify-no-hardcoded-lodging: needle builder stderr follows:" >&2
+    cat "$REGISTRY_ERR" >&2
+  fi
+  rm -f "$REGISTRY_ERR"
+  if [[ "$REGISTRY_STATUS" -eq 0 ]]; then
     REGISTRY_COUNT=$(head -n1 <<<"$REGISTRY_OUT")
     REGISTRY_PATTERN=$(tail -n +2 <<<"$REGISTRY_OUT")
     if [[ "$REGISTRY_COUNT" =~ ^[0-9]+$ ]] && [[ -n "$REGISTRY_PATTERN" ]]; then
       NEEDLES="$REGISTRY_PATTERN"
       NEEDLE_ANNOUNCEMENT="registry ($REGISTRY_PATH, $REGISTRY_COUNT terms)"
     else
-      echo "warning: $REGISTRY_PATH is readable but the needle builder returned unexpected output -- using the fallback sample instead:" >&2
-      echo "$REGISTRY_OUT" >&2
+      echo "warning: $REGISTRY_PATH is readable but the needle builder returned unexpected output -- using the fallback sample instead. Any stderr it produced is above; its STDOUT is deliberately not printed, because that is the needle pattern." >&2
     fi
   else
-    echo "warning: could not build needles from $REGISTRY_PATH -- using the fallback sample instead:" >&2
-    echo "$REGISTRY_OUT" >&2
+    echo "warning: could not build needles from $REGISTRY_PATH (builder exited $REGISTRY_STATUS) -- using the fallback sample instead. Any stderr it produced is above." >&2
   fi
 fi
 # A guard that silently degrades to the small sample while still printing OK

@@ -269,6 +269,17 @@ jobs:
   # stays: it stops the checked-out repo's own token from persisting, not
   # this action's ssh key, which the composite action removes itself when
   # done.
+  #
+  # DEPENDABOT PRs ALSO RUN THIS IN FALLBACK MODE, and they are not the rare
+  # case forks are (kindred#2573). A Dependabot-triggered `pull_request` run
+  # receives DEPENDABOT secrets, not Actions secrets, so
+  # KINDRED_LOCAL_DEPLOY_KEY is empty there even though the branch is
+  # in-repo -- and this workflow does run on Dependabot PRs (see the
+  # permissions comment at the top of this file). On a repo where most of the
+  # commit traffic is dependency bumps, "fallback sample" is therefore the
+  # MAJORITY announcement, which is exactly why the step below asserts the
+  # mode rather than leaving a reader to eyeball it: routine fallback traffic
+  # would otherwise make a real regression indistinguishable from a Tuesday.
   lodging-guard:
     name: Lodging Name Guard
     runs-on: ubuntu-latest
@@ -284,7 +295,47 @@ jobs:
         deploy-key: ${{ secrets.KINDRED_LOCAL_DEPLOY_KEY }}
 
     - name: No hardcoded lodging unit names
-      run: ./scripts/dev/verify-no-hardcoded-lodging.sh
+      env:
+        # NOT the secret -- a boolean DERIVED from it. `!= ''` is evaluated by
+        # the runner and expands to the literal string "true" or "false"; the
+        # key itself never reaches the shell, the environment or the log.
+        HAVE_DEPLOY_KEY: ${{ secrets.KINDRED_LOCAL_DEPLOY_KEY != '' }}
+      run: |
+        guard_status=0
+        OUT=$(./scripts/dev/verify-no-hardcoded-lodging.sh 2>&1) || guard_status=$?
+        printf '%s\n' "$OUT"
+        if [ "$guard_status" -ne 0 ]; then
+          exit "$guard_status"
+        fi
+
+        # kindred#2573. The guard ANNOUNCES its needle source; until now nothing
+        # READ that announcement, so the announcement was advisory and this job
+        # was green either way. Both gates below close that, and the class they
+        # close is kindred#1867's -- a guard reporting clean on a scan that did
+        # not really happen -- one level up.
+        #
+        # GATE 1: the registry must have ARRIVED. clone-kindred-local copies
+        # with `cp ... 2>/dev/null || true`, so a rename or move on the
+        # kindred-local side makes the file simply not appear: the guard then
+        # runs its 15-term fallback sample, exits 0, and CI stays green
+        # forever, with the deploy-key cost paid for nothing.
+        if [ "$HAVE_DEPLOY_KEY" = "true" ] && [ ! -r config/lodging_registry.json ]; then
+          echo "::error::this run has the kindred-local deploy key, but config/lodging_registry.json never arrived. clone-kindred-local copies with '|| true', so a rename or move in kindred-local degrades this guard to its 15-term fallback sample silently. Fix the copy - do not delete this check."
+          exit 1
+        fi
+
+        # GATE 2: if it arrived, the guard must have CONSUMED it. Covers the
+        # other half -- a malformed registry, a builder crash, or any future
+        # rewiring that leaves the file in place but the guard on the sample.
+        if [ -r config/lodging_registry.json ]; then
+          if ! printf '%s\n' "$OUT" | grep -q 'needle source = registry'; then
+            echo "::error::config/lodging_registry.json is present but the guard did not use it: $(printf '%s\n' "$OUT" | grep 'needle source' || echo '(no announcement at all)')"
+            exit 1
+          fi
+          echo "assert ok: the guard ran in registry mode"
+        else
+          echo "::notice::no private registry on this run - expected on fork PRs and on Dependabot PRs, neither of which receives Actions secrets. The guard ran on its FALLBACK sample, which covers a fraction of the registry."
+        fi
 
     - name: Guard self-test
       run: ./scripts/dev/test-verify-no-hardcoded-lodging.sh
