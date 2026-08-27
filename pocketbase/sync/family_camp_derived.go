@@ -344,9 +344,14 @@ type registrationData struct {
 	// admin-gated and absent from every export (lodging_medical_narrative_test.go).
 	needsFridge bool
 
-	// kindred#2438. The step-free twin of needsFridge, and the reason it is a
-	// SEPARATE derivation rather than a wider keyword list on the same one: it
-	// routes BOTH narrative fields. See stepFreeKeywords.
+	// kindred#2438. The step-free twin of needsFridge, kept a SEPARATE
+	// derivation rather than a wider keyword list on the same one because the
+	// two answer different questions off the same sentence. See stepFreeKeywords.
+	//
+	// It routes the ACCOMMODATION narrative alone, exactly as needsFridge does.
+	// It also read the bathroom narrative until the 2026-08-23 owner ruling
+	// reversed that -- a household narrating only a bathroom need drew this
+	// glyph AND needs_private_bathroom, two tooltips quoting one paragraph.
 	needsStepFree bool
 
 	// Housing-suitability signal rather than an accessibility need (kindred#1876).
@@ -2309,10 +2314,12 @@ func (s *FamilyCampDerivedSync) processMedical(personValues []customValueEntry) 
 		// describe named individuals' medical circumstances, so they live only
 		// here -- family_camp_medical is admin-gated on all five rules and is
 		// absent from every export config (lodging_medical_narrative_test.go asserts that).
-		// bathroomExplainFieldNames is the ONE routing list, shared with
-		// processRegistrations' needs_step_free derivation (kindred#2438) so a
-		// generation added for one is added for both -- the same discipline
-		// accommodationExplainFieldNames below already follows.
+		// bathroomExplainFieldNames has ONE reader, this column. It was shared
+		// with processRegistrations' needs_step_free derivation until the
+		// 2026-08-23 owner ruling removed that route (kindred#2438); the list
+		// stayed because the narrative column still needs it. Unlike
+		// accommodationExplainFieldNames below it is no longer a two-reader
+		// list, so a generation added here reaches this column and nothing else.
 		bathroomParts := make([]string, 0, len(bathroomExplainFieldNames))
 		for _, key := range bathroomExplainFieldNames {
 			bathroomParts = append(bathroomParts, fields.parts(key)...)

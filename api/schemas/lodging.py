@@ -797,12 +797,14 @@ class AccessibilityFlagSummary(BaseModel):
     # the one the registry has always been able to answer: `lodging_units`
     # has carried `has_ramp` since migration 1500000131 and nothing read it.
     #
-    # ⚠️ ROUTED DIFFERENTLY from `needs_fridge` above, and the difference is
-    # measured. Fridge reads the accommodation narrative alone; this reads the
-    # BATHROOM narrative too, because 5 of the 14 mobility households on the
-    # 2026 snapshot narrate only through that field and 3 through both -- a
-    # family explaining why it needs a private bathroom is often explaining
-    # that someone cannot walk to the shared one.
+    # ⚠️ ROUTED THE SAME WAY as `needs_fridge` above: the accommodation
+    # narrative ALONE. It read the bathroom narrative too until the 2026-08-23
+    # owner ruling reversed that, because a household whose only narrative was
+    # a bathroom explanation raised this flag AND `needs_private_bathroom`,
+    # drawing two glyphs whose tooltips quoted the same paragraph. Re-measured
+    # before reversing: of the 14 step-free households on the 2026 snapshot, 11
+    # narrate through the accommodation field and the other 3 are ALL already
+    # `needs_private_bathroom`, so the signal loss is zero.
     #
     # ⚠️ NOT GATED on `needs_accommodation`. All 6 fridge households are gated;
     # only 11 of the 14 mobility households are.

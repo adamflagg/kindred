@@ -14,9 +14,22 @@ const (
 )
 
 // Target columns produced by the lodging ingest.
+//
+// These two are ROUTING KEYS rather than column names -- defIDsForTarget
+// matches on them to pick which custom-field definitions each grain pass reads,
+// and the pass writes lodging_assignments rows. They are the primary target of
+// their registry rows for that reason. targetFamilyCampCabin below is a real
+// column, and is the second thing the household field writes.
 const (
 	targetCabinAssignmentHousehold = "cabin_assignment_household"
 	targetCabinAssignmentPerson    = "cabin_assignment_person"
+
+	// family_camp_registrations.cabin_assignment -- the same staff-typed
+	// string, kept at (household, year) grain as the raw record. The
+	// assignment lane pins it to a weekend and queues an ingest issue when it
+	// cannot; this column never tries and no caller may read it as
+	// per-weekend placement (kindred#2336).
+	targetFamilyCampCabin = "cabin_assignment"
 )
 
 // Target columns produced by the request layer (spec 4), on
@@ -29,6 +42,24 @@ const (
 	targetNeedsPower               = "needs_power"
 	targetHasInfant                = "has_infant"
 	targetAccommodationIsMandatory = "accommodation_is_mandatory"
+
+	// The rest of the request layer. These are not the primary target of any
+	// row -- they are the columns a field ALSO writes, which is the whole
+	// reason Targets is a slice.
+	targetShareCabinPreference   = "share_cabin_preference"
+	targetWantsNear              = "wants_near"
+	targetWantsWithNamed         = "wants_with_named"
+	targetWantsSimilarAges       = "wants_similar_ages"
+	targetShareEligibility       = "share_eligibility"
+	targetShareEligibilitySource = "share_eligibility_source"
+	targetRequestSourceField     = "request_source_field"
+	targetRequestLastUpdated     = "request_last_updated"
+
+	// TABLE-QUALIFIED because it is on a different table: the CPAP fields
+	// reach family_camp_medical as well as family_camp_registrations, and an
+	// unqualified "cpap_gate" beside "needs_power" would read as one row's two
+	// columns rather than two tables'.
+	targetMedicalCPAPGate = "family_camp_medical.cpap_gate"
 )
 
 // CampMinder custom-field ids for the lodging sources.
@@ -86,10 +117,39 @@ const (
 
 // lodgingSourceField is one CampMinder custom field the lodging ingest reads.
 type lodgingSourceField struct {
-	CMID   int
-	Name   string // also the lookup key -- see lodgingSourceFieldByName
-	Target string
-	Grain  string
+	CMID int
+	Name string // also the lookup key -- see lodgingSourceFieldByName
+	// Targets is EVERY stored column this one CampMinder answer reaches, not
+	// just the headline one. It is a slice because the interesting direction
+	// of this map is the one a single value could not express.
+	//
+	// Many sources -> one target is the safe direction and was always
+	// representable: three fields name request_text, two name
+	// needs_private_bathroom. ONE source -> two columns is the direction that
+	// has produced a defect twice -- `opt_out_vip` stored the Yes pole of an
+	// answer whose No pole was already in `accommodation_is_mandatory`
+	// (migration 1500000169), and `share_answers_conflict` was computed and
+	// stored beside a verdict nothing read it with (1500000174) -- and while
+	// this was `Target string` a fan-out was structurally unsayable. A reader
+	// auditing the registry counted one column per row and concluded there
+	// were none, which is exactly how both survived. kindred#2569.
+	//
+	// Targets[0] is the PRIMARY, and it is load-bearing rather than a
+	// convention: it is the routing key defIDsForTarget matches on and the
+	// value UpsertFieldMappingStatus snapshots into lodging_field_mappings.
+	// The rest are declarations, pinned by
+	// TestLodgingRequestFieldsDeclareEveryColumnTheTransformWrites.
+	Targets []string
+	Grain   string
+}
+
+// primaryTarget is the routing key: the column this field's answer is
+// principally about. See Targets.
+func (f lodgingSourceField) primaryTarget() string {
+	if len(f.Targets) == 0 {
+		return ""
+	}
+	return f.Targets[0]
 }
 
 // lodgingSourceFields is the assignment-source registry: the fields whose values
@@ -101,10 +161,22 @@ type lodgingSourceField struct {
 // only that ingest collects; a request field listed here would file a work-queue
 // issue on every run for a field another job is reading correctly.
 var lodgingSourceFields = []lodgingSourceField{
+	// TWO DESTINATIONS, TWO INGESTS. This field is admitted by the assignment
+	// lane through its cm_id AND by family_camp_derived's "family camp" name
+	// heuristic, so the one staff-typed string becomes a lodging_assignments
+	// row (session-attributed, queueing an issue when it cannot be) and lands
+	// verbatim in family_camp_registrations.cabin_assignment (household-year
+	// grain, the raw record the journey card reads). Deliberate and both
+	// halves are read -- but it was invisible here until kindred#2569, because
+	// neither registry names the other lane's column.
 	{CMID: cmIDFamilyCampCabin, Name: fieldNameFamilyCampCabin,
-		Target: targetCabinAssignmentHousehold, Grain: grainHousehold},
+		Targets: []string{targetCabinAssignmentHousehold, targetFamilyCampCabin},
+		Grain:   grainHousehold},
+	// The person twin writes one destination: it is person-partition, and
+	// processRegistrations' household loop is the only thing that routes a
+	// cabin string into family_camp_registrations.
 	{CMID: cmIDReportableFamilyCampCabin, Name: fieldNameReportableFamilyCampCabin,
-		Target: targetCabinAssignmentPerson, Grain: grainPerson},
+		Targets: []string{targetCabinAssignmentPerson}, Grain: grainPerson},
 }
 
 // lodgingSourceFieldByName looks an assignment source field up by the display
@@ -127,8 +199,9 @@ func lodgingSourceFieldByName(name string) (lodgingSourceField, bool) {
 }
 
 // lodgingRequestFields is the request-layer registry (spec 4): every CampMinder
-// field family_camp_derived.go's switch routes into a family_camp_registrations
-// column.
+// field family_camp_derived.go's switch routes into a stored column -- mostly
+// family_camp_registrations, and for the CPAP generations family_camp_medical
+// as well.
 //
 // Its job is the half extraFieldCMIDs could not do. That allowlist decides
 // whether a definition is ADMITTED into the field map, so admission already
@@ -142,40 +215,88 @@ func lodgingSourceFieldByName(name string) (lodgingSourceField, bool) {
 // the case labels. The field-name constants are shared with that switch for
 // precisely that reason.
 var lodgingRequestFields = []lodgingSourceField{
+	// The share pair. Both fields feed CollapseToHouseholdGrain, so both reach
+	// the resolved verdict AND its provenance stamps, and each also keeps its
+	// own answer verbatim in a raw column beside the verdict. That raw/verdict
+	// pairing is deliberate and load-bearing -- ShareRequestSummary
+	// (api/schemas/lodging.py) forbids recomputing the verdict from the raw --
+	// but note the registry used to declare the pair at DIFFERENT layers: the
+	// verdict for one field and the raw for the other. Both are declared now.
 	{CMID: cmIDShareCabinsRegistration, Name: fieldShareCabinsRegistration,
-		Target: targetShareCabinGate, Grain: grainPerson},
+		Targets: []string{
+			targetShareCabinGate, targetShareCabinPreference,
+			targetShareEligibility, targetShareEligibilitySource,
+			targetRequestSourceField, targetRequestLastUpdated,
+		}, Grain: grainPerson},
+	// share_cabin_gate is declared here too, and it is not a courtesy: this
+	// field is in the SAME switch arm as the registration gate above and wins
+	// an exact timestamp tie for that column (winsGate). No live option
+	// sentence of this field normalises to a gate today -- "No requests" is
+	// held out by NormalizeShareGate's "shar" guard, which is the bug that
+	// guard exists to stop -- so the route is reachable rather than exercised,
+	// and that is exactly the kind of thing a declaration should carry.
 	{CMID: cmIDSharedCabinForm, Name: fieldSharedCabinForm,
-		Target: targetSharedCabinModesRaw, Grain: grainPerson},
+		Targets: []string{
+			targetSharedCabinModesRaw, targetShareCabinGate,
+			targetWantsNear, targetWantsWithNamed, targetWantsSimilarAges,
+			targetShareEligibility, targetShareEligibilitySource,
+			targetRequestSourceField, targetRequestLastUpdated,
+		}, Grain: grainPerson},
 
+	// Free text. Three sources, one text column -- the safe many-to-one
+	// direction -- plus the recency stamp spec 4.1 resolves precedence with.
+	// They do NOT set request_source_field: that stamp names the field the
+	// GATE came from, and only the two arms above write it.
 	{CMID: cmIDSharedRequest, Name: fieldSharedRequest,
-		Target: targetRequestText, Grain: grainPerson},
+		Targets: []string{targetRequestText, targetRequestLastUpdated}, Grain: grainPerson},
 	{CMID: cmIDShareComments, Name: fieldShareComments,
-		Target: targetRequestText, Grain: grainPerson},
+		Targets: []string{targetRequestText, targetRequestLastUpdated}, Grain: grainPerson},
 	{CMID: cmIDCovidBunkingRequests, Name: fieldCovidBunkingRequests,
-		Target: targetRequestText, Grain: grainPerson},
+		Targets: []string{targetRequestText, targetRequestLastUpdated}, Grain: grainPerson},
 
+	// One column each, and the narrative that explains them is a DIFFERENT
+	// pair of CampMinder fields (Housing-Bathroom / Bathroom-Yes) that reaches
+	// family_camp_medical.bathroom_explain. These two carry only the boolean.
 	{CMID: cmIDFamCampBathroom, Name: fieldFamCampBathroom,
-		Target: targetNeedsPrivateBathroom, Grain: grainPerson},
+		Targets: []string{targetNeedsPrivateBathroom}, Grain: grainPerson},
 	{CMID: cmIDAdultBathroom, Name: fieldAdultBathroom,
-		Target: targetNeedsPrivateBathroom, Grain: grainPerson},
+		Targets: []string{targetNeedsPrivateBathroom}, Grain: grainPerson},
 
-	// These three target needs_power, but a bathroom-qualified option also sets
-	// needs_private_bathroom -- classifyCPAPAnswer owns that split. Target names
-	// the primary column; it is not a claim that the field writes only one.
+	// THREE COLUMNS ACROSS TWO TABLES, and only the first split was ever
+	// written down. classifyCPAPAnswer resolves the multi-option sentence into
+	// needs_power and needs_private_bathroom (kindred#1875), and processMedical
+	// ALSO reads these same three fields into family_camp_medical.cpap_gate
+	// (kindred#2542).
+	//
+	// Not a pole pair, and worth stating so nobody "tidies" one away: the gate
+	// is three-state and separates a recorded No from a question never asked,
+	// which the two booleans cannot. The one-way implication is
+	// cpap_gate == "yes"  =>  needs_power || needs_private_bathroom, since
+	// classifyCPAPAnswer always sets at least one need for an answer
+	// parseBoolFieldValue accepts. The converse does NOT hold --
+	// needs_private_bathroom is also set by the two bathroom fields above.
 	{CMID: cmIDFamCampCPAP, Name: fieldFamCampCPAP,
-		Target: targetNeedsPower, Grain: grainPerson},
+		Targets: []string{targetNeedsPower, targetNeedsPrivateBathroom, targetMedicalCPAPGate},
+		Grain:   grainPerson},
 	{CMID: cmIDFamilyCampCPAP, Name: fieldFamilyCampCPAP,
-		Target: targetNeedsPower, Grain: grainPerson},
+		Targets: []string{targetNeedsPower, targetNeedsPrivateBathroom, targetMedicalCPAPGate},
+		Grain:   grainPerson},
 	{CMID: cmIDAdultCPAP, Name: fieldAdultCPAP,
-		Target: targetNeedsPower, Grain: grainPerson},
+		Targets: []string{targetNeedsPower, targetNeedsPrivateBathroom, targetMedicalCPAPGate},
+		Grain:   grainPerson},
 
 	{CMID: cmIDAdultInfant, Name: fieldAdultInfant,
-		Target: targetHasInfant, Grain: grainPerson},
+		Targets: []string{targetHasInfant}, Grain: grainPerson},
 
+	// ONE column, and it is one on purpose. This answer was stored as two --
+	// opt_out_vip held the Yes pole and accommodation_is_mandatory the No --
+	// until migration 1500000169 dropped the Yes pole on the owner ruling of
+	// 2026-08-22. It is the precedent this whole registry shape exists to make
+	// visible, and it is clean now.
 	{CMID: cmIDFamCampOptOutVIP, Name: fieldFamCampOptOutVIP,
-		Target: targetAccommodationIsMandatory, Grain: grainPerson},
+		Targets: []string{targetAccommodationIsMandatory}, Grain: grainPerson},
 	{CMID: cmIDAdultOptOut, Name: fieldAdultOptOut,
-		Target: targetAccommodationIsMandatory, Grain: grainPerson},
+		Targets: []string{targetAccommodationIsMandatory}, Grain: grainPerson},
 }
 
 // LodgingRequestFieldNames maps custom_field_defs PB record id -> the canonical
@@ -229,7 +350,7 @@ func LodgingFieldDefIDs(app core.App) (map[string]string, error) {
 		if disabled[f.CMID] {
 			continue
 		}
-		byCMID[f.CMID] = f.Target
+		byCMID[f.CMID] = f.primaryTarget()
 	}
 
 	defs, err := app.FindRecordsByFilter("custom_field_defs", "", "", 0, 0)
@@ -303,7 +424,7 @@ func UpsertFieldMappingStatus(app core.App, year int, counts, priorCounts map[in
 			name = f.Name
 		}
 		rec.Set("field_name", name)
-		rec.Set("target", f.Target)
+		rec.Set("target", f.primaryTarget())
 
 		// last_seen_* means MOST RECENT, and the sync is year-parameterised, so
 		// Task 14's 2024/2025 backfill runs AFTER the current season has synced.
