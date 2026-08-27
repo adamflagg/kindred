@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { HousingNeedDetails } from './HousingNeedDetails'
@@ -171,6 +171,58 @@ describe('HousingNeedDetails', () => {
     expect(screen.getByTestId('need-row-fridge')).toBeInTheDocument()
     expect(screen.getByTestId('need-row-step_free')).toBeInTheDocument()
     expect(screen.getAllByText('Needs level ground and an outlet near the bed.')).toHaveLength(1)
+  })
+
+  // Regression (fix round 2): `dedupe()` mutates `seenTexts` as a SIDE
+  // EFFECT, so it must only run for a row that is actually about to be
+  // pushed. Round 1 computed `accommodationText` unconditionally, before the
+  // `mandatory`/`needs_accommodation` branch decided whether any row would
+  // consume it -- so a household with neither flag set still poisoned
+  // `seenTexts` with `accommodation_explain`, and a later `fridge` or
+  // `step_free` row (both of which read the same field through
+  // `needExplainTexts`) rendered with zero text instead of one paragraph.
+  //
+  // This is LATENT, not live: `AccessibilityFlagSummary`'s own schema
+  // comment (`api/schemas/lodging.py`) documents `needs_fridge` and
+  // `needs_step_free` as "NOT GATED on `needs_accommodation`" as a CODE
+  // decision, but on the current snapshot every household raising either
+  // flag also raises `needs_accommodation` (6 of 6 fridge, 9 of 9 mobility;
+  // kindred#2572's re-measure), so the failing combination hits zero
+  // households today. It is worth fixing anyway because nothing in the data
+  // model enforces that co-occurrence -- the Family Camp Information form is
+  // documented as a re-submittable, per-child "drift engine"
+  // (`docs/reference/family-camp-field-provenance.md` §3c), and 3 ungated
+  // rows already exist (narrating through the bathroom question instead).
+  // One of them gaining accommodation text turns this live.
+  it('renders the fridge paragraph for a household that asks for a fridge alone', () => {
+    medical.accommodation_explain = 'Needs a fridge for insulin storage.'
+    render(
+      <HousingNeedDetails
+        party={party({ needs_fridge: true })}
+        householdCmId={1000001}
+        year={2026}
+      />
+    )
+    expect(screen.getByTestId('need-row-fridge')).toBeInTheDocument()
+    expect(screen.getByText('Needs a fridge for insulin storage.')).toBeInTheDocument()
+  })
+
+  it('renders the shared paragraph once, under the first of two ungated rows', () => {
+    medical.accommodation_explain = 'Needs a fridge for insulin storage.'
+    render(
+      <HousingNeedDetails
+        party={party({ needs_fridge: true, needs_step_free: true })}
+        householdCmId={1000001}
+        year={2026}
+      />
+    )
+    const fridgeRow = screen.getByTestId('need-row-fridge')
+    const stepFreeRow = screen.getByTestId('need-row-step_free')
+    expect(screen.getAllByText('Needs a fridge for insulin storage.')).toHaveLength(1)
+    expect(within(fridgeRow).queryByText('Needs a fridge for insulin storage.')).toBeInTheDocument()
+    expect(
+      within(stepFreeRow).queryByText('Needs a fridge for insulin storage.')
+    ).not.toBeInTheDocument()
   })
 
   it('renders an inline error and no spinner when the medical fetch fails', () => {

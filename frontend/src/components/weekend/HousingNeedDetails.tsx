@@ -82,6 +82,28 @@ export function HousingNeedDetails({ party, householdCmId, year }: HousingNeedDe
   // regardless of this -- the glyph and label are what carry the need; only
   // the duplicate TEXT is suppressed. `needExplainTexts` stays the single
   // calculation; nothing here re-derives which field explains which need.
+  //
+  // INVARIANT: `dedupe()` MUTATES `seenTexts`, so it must only run for a row
+  // that is actually about to be pushed. A round-1 version of this fix called
+  // it unconditionally while computing `accommodationText`, before the
+  // `mandatory`/`needs_accommodation` branch below decided whether any row
+  // would consume it -- so a household with NEITHER flag set still poisoned
+  // `seenTexts` with `accommodation_explain`, and a later `fridge` or
+  // `step_free` row (both read the same field through `needExplainTexts`)
+  // rendered with zero text instead of one paragraph. That combination is
+  // LATENT rather than live: `AccessibilityFlagSummary`'s own schema comment
+  // (`api/schemas/lodging.py`) documents `needs_fridge`/`needs_step_free` as
+  // NOT GATED on `needs_accommodation` as a CODE decision, but on the current
+  // snapshot every household raising either flag also raises
+  // `needs_accommodation` (kindred#2572's re-measure: 6 of 6 fridge, 9 of 9
+  // mobility). Nothing in the data model enforces that co-occurrence, though
+  // -- the Family Camp Information form is a re-submittable, per-child
+  // "drift engine" (`docs/reference/family-camp-field-provenance.md` §3c),
+  // and 3 households already narrate an ungated need through the bathroom
+  // question instead of the accommodation one. One of those gaining
+  // accommodation text turns this live, so `rawAccommodationText` below stays
+  // UNDEDUPED, and `dedupe()` is called only inside the branch that pushes
+  // the row consuming it.
   const seenTexts = new Set<string>()
   const dedupe = (texts: string[]): string[] =>
     texts.filter((text) => {
@@ -90,8 +112,8 @@ export function HousingNeedDetails({ party, householdCmId, year }: HousingNeedDe
       return true
     })
 
-  const accommodationText = canRead
-    ? dedupe([(data?.accommodation_explain ?? '').trim()].filter(Boolean))
+  const rawAccommodationText = canRead
+    ? [(data?.accommodation_explain ?? '').trim()].filter(Boolean)
     : []
 
   const rows: PanelRow[] = []
@@ -105,7 +127,7 @@ export function HousingNeedDetails({ party, householdCmId, year }: HousingNeedDe
       label: 'Accommodation required',
       Icon: ShieldAlert,
       hueClassName: 'text-red-500 dark:text-red-400',
-      texts: accommodationText,
+      texts: dedupe(rawAccommodationText),
       isBlocker: true,
     })
   } else if (flags?.needs_accommodation === true) {
@@ -117,7 +139,7 @@ export function HousingNeedDetails({ party, householdCmId, year }: HousingNeedDe
       label: 'Accommodation',
       Icon: HandHelping,
       hueClassName: 'text-rose-500 dark:text-rose-400',
-      texts: accommodationText,
+      texts: dedupe(rawAccommodationText),
     })
   }
 
