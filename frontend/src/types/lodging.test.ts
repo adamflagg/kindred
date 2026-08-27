@@ -56,6 +56,9 @@ const _exhaustivePartyChild: Required<PartyChildRow> = {
   // value is one of them.
   last_name: 'Martinez Garcia',
   age: 9,
+  // Reads `birthdate`, never this field — `age` is CampMinder's yy.mm
+  // snapshot and thresholding on it is forbidden (kindred#2480).
+  is_under_two: false,
   grade: 4,
   // kindred#2393. WHICH WEEKENDS this child attended that year, earliest
   // first — the journey populates it and every other surface leaves it empty,

@@ -38,6 +38,7 @@ from api.services.lodging_roster_service import (
     SessionNotFoundError,
     _BathroomIndex,
     _effective_sleeps,
+    _party_child,
     _resolve_family_availability,
     _resolve_write_in_covers,
     write_in_covers,
@@ -3125,6 +3126,46 @@ class TestChildUnderTwoFlag:
         roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
 
         assert roster.parties[0].flags.has_child_under_two is False
+
+
+class TestPartyChildIsUnderTwo:
+    """`PartyChild.is_under_two` (kindred#2480): the per-child twin of
+    `TestChildUnderTwoFlag`'s household-level `has_child_under_two`.
+
+    Same birthdate source and the same `UNDER_TWO_MONTHS = 24` threshold, so
+    the filter and the per-child mark can never disagree -- see
+    `_party_child`'s docstring on why this is the one mapping the roster and
+    the journey both share.
+
+    Fixtures here are `_rec(...)` -- a `SimpleNamespace` -- not a dict:
+    `_s`/`_i`/`_f` read fields with `getattr`, which a plain dict never
+    satisfies (it silently falls through to each accessor's default instead
+    of raising), so a dict fixture would make every one of these pass or fail
+    for the wrong reason.
+    """
+
+    def test_party_child_is_under_two_from_birthdate_not_age(self) -> None:
+        """`age` is CampMinder's yy.mm snapshot and marks 4 of 717 rostered
+        children who are not under two. The flag must read birthdate."""
+        # 25 completed months at session start: age rounds to 2, birthdate says no.
+        child = _rec(cm_id=1000001, first_name="Olivia", last_name="Chen", age=2.01, birthdate="2024-05-01")
+        result = _party_child(child, session_start=date(2026, 6, 1))
+        assert result.is_under_two is False
+
+    def test_party_child_is_under_two_true_under_24_months(self) -> None:
+        child = _rec(cm_id=1000002, first_name="Riley", last_name="Sam", age=1.05, birthdate="2025-01-01")
+        result = _party_child(child, session_start=date(2026, 6, 1))
+        assert result.is_under_two is True
+
+    def test_party_child_is_under_two_false_without_a_reference_date(self) -> None:
+        """Absent mark reads as 'nothing known', never as 'no baby' -- the
+        same polarity `_has_child_under_two` documents."""
+        child = _rec(cm_id=1000003, first_name="Emma", last_name="Johnson", age=1.0, birthdate="2025-01-01")
+        assert _party_child(child).is_under_two is False
+
+    def test_party_child_is_under_two_false_without_a_birthdate(self) -> None:
+        child = _rec(cm_id=1000004, first_name="Samuel", last_name="Johnson", age=1.0, birthdate="")
+        assert _party_child(child, session_start=date(2026, 6, 1)).is_under_two is False
 
 
 class TestBedExemptChildFlag:
