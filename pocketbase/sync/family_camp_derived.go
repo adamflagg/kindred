@@ -1724,11 +1724,18 @@ func (s *FamilyCampDerivedSync) processRegistrations(
 			// answer rendered as two independent needs.
 			//
 			// Re-measured before reversing, and the signal loss is zero. Of the
-			// 14 step-free households on the 2026 snapshot, 11 narrate through
-			// the accommodation field and are unaffected; the other 3 narrate
-			// only through the bathroom field and are ALL already
+			// 14 step-free households on the 2026 snapshot, 9 trip the keyword
+			// surface on the accommodation narrative and are unaffected; the
+			// other 5 trip only on the bathroom narrative and are ALL already
 			// needs_private_bathroom, so they keep a glyph carrying the very
 			// same words. 2025: 4 step-free, none bathroom-only.
+			//
+			// This split read 11/3 until it was re-derived read-only against
+			// the 2026 snapshot for kindred#2572. 11 is how many of the 14 HAVE
+			// an accommodation narrative at all; 2 of those 11 carry the
+			// mobility words only in their bathroom answer, so they lose the
+			// flag too. The conclusion is unchanged -- all 5 that lose it are
+			// already needs_private_bathroom.
 			if isAccommodationExplainField(v.fieldName) {
 				reg.needsStepFree = reg.needsStepFree || mentionsStepFree(v.value)
 			}
@@ -1756,11 +1763,19 @@ func (s *FamilyCampDerivedSync) processRegistrations(
 			// only parseable answer is the narrative-derived need would be the
 			// row dropped before it is written.
 			reg.needsFridge ||
-			// And needs_step_free more so than the fridge line above: 3 of the
-			// 14 mobility households on the 2026 snapshot are NOT
-			// accommodation-gated, against 0 of the 6 fridge households, so
-			// this is a guard entry with rows actually behind it rather than a
-			// defensive one (kindred#2438).
+			// And needs_step_free, which is now PURELY DEFENSIVE and worth
+			// saying so rather than leaving a measured justification that no
+			// longer measures anything. The entry shipped because 3 of the 14
+			// mobility households on the 2026 snapshot were NOT
+			// accommodation-gated, against 0 of the 6 fridge households -- but
+			// all 3 narrated only through the BATHROOM field, and the
+			// 2026-08-23 ruling above removed that route, so none of them
+			// raises this flag any more. Re-measured over the accommodation
+			// narrative alone: all 9 step-free households are
+			// accommodation-gated, exactly as all 6 fridge households are, so
+			// no row reaches this line today. It stays because the flag is
+			// deliberately not gated in code and a household could narrate a
+			// step-free need without answering the gate (kindred#2438).
 			reg.needsStepFree ||
 			// accommodationIsMandatory belongs here for the same reason as the
 			// rest, and more so: it is the blocker signal, and a household whose
@@ -1833,11 +1848,16 @@ func mentionsFridge(text string) bool {
 }
 
 // bathroomExplainFieldNames routes the bathroom NARRATIVE, by literal display
-// name, in both places that read it: processMedical (which stores the sentence)
-// and processRegistrations (which derives needs_step_free from it and stores
-// nothing). ONE list, for the reason accommodationExplainFieldNames states
-// above -- two copies of a name-keyed route drift the moment a generation is
-// added.
+// name, into the ONE place that reads it: processMedical, which stores the
+// sentence in family_camp_medical.bathroom_explain.
+//
+// It had a SECOND reader until the 2026-08-23 owner ruling -- processRegistrations
+// derived needs_step_free from this narrative as well (kindred#2438) -- and the
+// note below records where the predicate went. The list is still ONE list for
+// the reason accommodationExplainFieldNames states above, and because a second
+// reader may well come back; but it has none today, so a generation added here
+// reaches bathroom_explain and nothing else. processMedical's bathroom block
+// says the same thing from the reader's side.
 //
 // "Housing-Bathroom" (cm_id 274059) is the Camper partition and "Bathroom-Yes"
 // (274054) the Adult twin. Unlike the accommodation list this carries NO
@@ -1864,38 +1884,46 @@ var bathroomExplainFieldNames = []string{
 // positive costs a mark staff overrule at a glance while a false negative costs
 // the ask entirely and returns the household to prose nobody parses.
 //
-// Measured over BOTH narrative fields on the production snapshot, 2026,
-// household grain: this surface finds 14 of the 86 households carrying any
-// narrative, against 6 for fridge. Contributions, so the surface can be argued
-// rather than inherited:
+// Measured over the ACCOMMODATION narrative alone -- the one field the live
+// derivation reads since the 2026-08-23 ruling -- on the production snapshot,
+// 2026, household grain, re-derived read-only for kindred#2572: this surface
+// finds 9 of the 43 households carrying an accommodation narrative, against 6
+// for fridge. Contributions, so the surface can be argued rather than
+// inherited (they overlap, so they sum above 9):
 //
-//	"walk"          -- 10, and as a SUBSTRING, so it also catches
-//	                   walking/walkway. Every one of the ten reads as a genuine
-//	                   step-free ask on inspection.
-//	"mobilit"       -- 2, one of them new.
-//	"knee" / "hip"  -- 3 and 3, THREE of them new. Every knee/hip mention in
-//	                   the corpus, in every year, is a mobility limitation:
-//	                   a joint replacement, a post-surgical recovery, or a
-//	                   stated limit on how far someone can walk. Zero false
-//	                   positives, which is why a diagnosis word earns its place
-//	                   in an otherwise ask-shaped list. (Aggregate only -- the
-//	                   narratives themselves are PHI and are not quoted here.)
-//	"crutch"        -- 1, none new.
+//	"walk"          -- 6, and as a SUBSTRING, so it also catches
+//	                   walking/walkway. Every one reads as a genuine step-free
+//	                   ask on inspection.
+//	"knee" / "hip"  -- 3 and 2. Every knee/hip mention in the corpus, in every
+//	                   year, is a mobility limitation: a joint replacement, a
+//	                   post-surgical recovery, or a stated limit on how far
+//	                   someone can walk. Zero false positives, which is why a
+//	                   diagnosis word earns its place in an otherwise ask-shaped
+//	                   list. (Aggregate only -- the narratives themselves are
+//	                   PHI and are not quoted here.)
+//	"crutch"        -- 1.
 //
-// Every other entry matches 0 households today and is kept because each is the
-// plain word for an ask `has_ramp` answers. 2026 is only 16% placed, so 14 is
-// the SHAPE of the demand, not a rate.
+// HISTORICAL, and kept so the surface is not re-argued from a number that no
+// longer describes it: this comment read "14 of the 86" with a "walk" of 10 and
+// a "mobilit" of 2 until kindred#2572. Those figures were measured over BOTH
+// narrative fields -- 86 is the union corpus, and 5 of the 14 trip only on the
+// bathroom narrative, which nothing derives from any more.
 //
-// DELIBERATELY EXCLUDED: bare "close to". It matches 5 households, and it is
-// PROXIMITY rather than step-free access -- a different ask, which the registry
-// answers with `map_x`/`map_y` and `near_bathhouse` rather than with `has_ramp`,
-// so a household flagged on it would be hatched against a column that cannot
-// speak to what they asked for. The mobility-bearing one of the five is already
-// caught by "knee"; the three that remain uncaught are a child who needs to be
-// near activities, a family recalling a past illness, and a bathroom-proximity
-// request that `needs_private_bathroom` already carries. None is a step-free
-// ask. (This is the one exclusion, and it is a PRECISION judgement made against
-// a specific supply column -- not a retreat from the recall rule above.)
+// "mobilit" and "stair" match 0 households in the 2026 accommodation corpus and
+// 1 each in 2025. Every other entry matches 0 today and is kept because each is
+// the plain word for an ask `has_ramp` answers. 2026 is only 16% placed, so 9
+// is the SHAPE of the demand, not a rate.
+//
+// DELIBERATELY EXCLUDED: bare "close to". It matches 4 households in the
+// accommodation corpus, and it is PROXIMITY rather than step-free access -- a
+// different ask, which the registry answers with `map_x`/`map_y` and
+// `near_bathhouse` rather than with `has_ramp`, so a household flagged on it
+// would be hatched against a column that cannot speak to what they asked for.
+// Two of the four are already caught on a genuine mobility word ("walk" and
+// "knee"); the two that remain uncaught were inspected under the earlier
+// both-field measurement and neither is a step-free ask. (This is the one
+// exclusion, and it is a PRECISION judgement made against a specific supply
+// column -- not a retreat from the recall rule above.)
 //
 // SUBSTRING matching, as fridgeKeywords uses, because the input is unvalidated
 // prose and anything stricter loses answers to punctuation and compounding:

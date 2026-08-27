@@ -2,6 +2,7 @@ package sync
 
 import (
 	"fmt"
+	"slices"
 	"strconv"
 
 	"github.com/pocketbase/pocketbase/core"
@@ -59,7 +60,14 @@ const (
 	// reach family_camp_medical as well as family_camp_registrations, and an
 	// unqualified "cpap_gate" beside "needs_power" would read as one row's two
 	// columns rather than two tables'.
-	targetMedicalCPAPGate = "family_camp_medical.cpap_gate"
+	//
+	// medicalTablePrefix is the qualifier itself, lifted to a package-level
+	// const because the fan-out guard builds and strips the same prefix when
+	// it merges the two tables' columns into one comparison. Two copies of a
+	// literal that must stay byte-identical is the drift this registry exists
+	// to stop; one const cannot drift.
+	medicalTablePrefix    = "family_camp_medical."
+	targetMedicalCPAPGate = medicalTablePrefix + "cpap_gate"
 )
 
 // CampMinder custom-field ids for the lodging sources.
@@ -189,19 +197,51 @@ var lodgingSourceFields = []lodgingSourceField{
 // whatever CampMinder currently calls the field. A rename therefore cannot
 // break this lookup; it can only leave rows queued under the old constant,
 // which is what they were queued under.
+// Targets is CLONED on the way out. The struct is returned by value and
+// primaryTarget has a value receiver, so the type reads as copy-safe -- but a
+// slice field is not copied by either, and `f.Targets[0] = x` in a caller
+// would rewrite the package-level registry for the life of the process.
+// Nothing does that today; the clone is one two-element slice per work-queue
+// row and it means nothing has to.
 func lodgingSourceFieldByName(name string) (lodgingSourceField, bool) {
 	for _, f := range lodgingSourceFields {
 		if f.Name == name {
+			f.Targets = slices.Clone(f.Targets)
 			return f, true
 		}
 	}
 	return lodgingSourceField{}, false
 }
 
-// lodgingRequestFields is the request-layer registry (spec 4): every CampMinder
-// field family_camp_derived.go's switch routes into a stored column -- mostly
+// lodgingRequestFields is the request-layer registry (spec 4): the CampMinder
+// fields whose routing into a stored column is DECLARED -- mostly
 // family_camp_registrations, and for the CPAP generations family_camp_medical
 // as well.
+//
+// ⚠️ IT IS NOT THE WHOLE SWITCH, and reading it as one is how a fan-out hides.
+// processRegistrations' person switch carries eight more case labels, across
+// six arms, that no row below names -- "Family Camp-Trans ETA", the
+// special-occasion gate and its describe half, "Family Camp-Goals Attending",
+// "Family Camp-Anything else", and the three-generation accommodation gate --
+// plus the `default:` arm. Between them they cover arrival_eta,
+// special_occasions, goals, notes, needs_accommodation, needs_fridge and
+// needs_step_free. processMedical routes its own narrative and gate fields by
+// name as well, and of those only the CPAP trio is declared here.
+//
+// WHAT THAT COSTS THE GUARD, which is the part worth being plain about.
+// TestLodgingRequestFieldsDeclareEveryColumnTheTransformWrites iterates THESE
+// ROWS, so an undeclared arm is not an under-declaration it reports -- it is a
+// field the guard never probes at all. The `default:` arm is the sharpest
+// case: one accommodation-narrative value sets needs_fridge AND needs_step_free
+// (mentionsFridge and mentionsStepFree, in the arm's two ifs), a
+// one-source-to-two-column fan-out of exactly the shape Targets was widened to
+// make sayable -- and it is structurally invisible, because there is no
+// registry row for the guard to walk.
+//
+// Adding those arms is a DESIGN change rather than a doc fix, and is not made
+// here: the free-text arms are name-routed generations with no cm_id contract
+// of their own, and the `default:` arm is keyed by a name LIST rather than by a
+// case label, so neither has a row shape today.
 //
 // Its job is the half extraFieldCMIDs could not do. That allowlist decides
 // whether a definition is ADMITTED into the field map, so admission already

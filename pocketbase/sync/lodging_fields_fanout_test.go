@@ -1,8 +1,9 @@
 package sync
 
 import (
+	"os"
+	"regexp"
 	"slices"
-	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -31,6 +32,32 @@ import (
 // not happen to reach is not a defect -- these fields are multi-option selects
 // and no single sentence exercises every column -- but a column written under
 // no declaration is exactly the shape both migrations dropped.
+//
+// THREE MORE BLIND SPOTS, none of them the under-claim above, and all of them
+// worth stating because this file otherwise reads more complete than it is.
+// The guard catches a column written under no declaration; it cannot catch:
+//
+//	ZERO-VALUE WRITES. columnsWrittenBy diffs each probe against the EMPTY
+//	household's columns, so an arm that writes false or "" writes nothing this
+//	can see. Observable today rather than theoretical: the Opt Out VIP probe
+//	"Yes, please register regardless of cabin type" reports no columns at all,
+//	and so does the Adult-Infant "No".
+//
+//	DROPPED ROWS. processRegistrations' has-some-data predicate does not test
+//	enrollmentStatus, requestSourceField, requestLastUpdated, shareEligibility
+//	or shareEligibilitySource, so an arm writing ONLY one of those yields no
+//	registration row and the loop below has nothing to compare. The guard sees
+//	a field that writes nothing, not a field whose row was dropped.
+//
+//	ONE VALUE PER PROBE. Each probe drives the transform with a single person
+//	value, so every route that needs two or more is unreachable here: winsGate
+//	timestamp ties, orGateVerdicts, and the free-text dedup. lodgingRequestFields'
+//	own comment on fieldSharedCabinForm declares share_cabin_gate for exactly
+//	such a tie and says no live option sentence normalises to a gate -- an
+//	entirely unchecked declaration, and the guard cannot say so.
+//
+// Closing any of the three is a change to the probe harness rather than to the
+// registry, and none is closed here.
 
 // requestFieldProbes is one or more REAL CampMinder option sentences per
 // registered request field, keyed by the registry's canonical name.
@@ -111,9 +138,12 @@ var requestFieldProbes = map[string][]string{
 // column is what a reader of the table sees, and the column is what this
 // compares.
 //
-// It mirrors setRegistrationRequestFields plus the six columns upsertRegistrations
-// writes directly. Keeping the two in step is what TestRegistrationColumnsCoverEveryWrittenColumn
-// below is for.
+// It mirrors setRegistrationRequestFields plus the eight columns
+// upsertRegistrations writes directly, and not the household/year key it also
+// writes on the create branch. Keeping the mirror in step with the production
+// writer is what TestRegistrationColumnsCoverEveryWrittenColumn below is for,
+// and that test reads the writer's source rather than a second copy of this
+// list.
 func registrationColumns(reg *registrationData) map[string]string {
 	eligibility, eligibilitySource := NormalizeShareEligibility(
 		reg.shareEligibility, reg.shareEligibilitySource)
@@ -187,7 +217,7 @@ func columnsWrittenBy(f lodgingSourceField, value string, at time.Time) []string
 		got[k] = v
 	}
 	for k, v := range baseMed {
-		got["family_camp_medical."+k] = v
+		got[medicalTablePrefix+k] = v
 	}
 
 	s := NewFamilyCampDerivedSync(nil)
@@ -198,24 +228,25 @@ func columnsWrittenBy(f lodgingSourceField, value string, at time.Time) []string
 	}
 	for _, med := range s.processMedical(personValues) {
 		for k, v := range medicalColumns(med) {
-			got["family_camp_medical."+k] = v
+			got[medicalTablePrefix+k] = v
 		}
 	}
 
+	// Every key in got came from one of the two base maps -- both column
+	// functions return a fixed key set -- so the baseline lookup always finds
+	// one. No "not found, skip" branch: a silent skip is the one thing this
+	// guard must never do.
 	var written []string
 	for column, value := range got {
-		base, ok := baseReg[strings.TrimPrefix(column, "family_camp_medical.")]
-		if strings.HasPrefix(column, "family_camp_medical.") {
-			base, ok = baseMed[strings.TrimPrefix(column, "family_camp_medical.")]
-		}
-		if !ok {
-			continue
+		base := baseReg[column]
+		if name, isMedical := strings.CutPrefix(column, medicalTablePrefix); isMedical {
+			base = baseMed[name]
 		}
 		if value != base {
 			written = append(written, column)
 		}
 	}
-	sort.Strings(written)
+	slices.Sort(written)
 	return written
 }
 
@@ -261,47 +292,110 @@ func TestLodgingRequestFieldsDeclareEveryColumnTheTransformWrites(t *testing.T) 
 	}
 }
 
-// TestRegistrationColumnsCoverEveryWrittenColumn keeps the mirror above honest.
+// setCallColumnConstants resolves the non-literal column keys the production
+// writer passes to record.Set. Anything not in here fails the scan loudly
+// rather than being skipped -- a column named by an unknown constant is
+// exactly the write this guard must not miss.
+var setCallColumnConstants = map[string]string{
+	"enrollmentStatusColumn": enrollmentStatusColumn,
+}
+
+// setCallPattern matches one `record.Set(key, …)` key: a string literal, or an
+// identifier resolved through setCallColumnConstants.
+var setCallPattern = regexp.MustCompile(`\.Set\(\s*(?:"([^"]*)"|([A-Za-z_][A-Za-z0-9_]*))\s*,`)
+
+// setCallColumns reads family_camp_derived.go and returns the column key of
+// every record.Set call inside funcName's body.
+//
+// A SOURCE READ, and that is the whole point of it. Running the writer against
+// a scratch record would need a live PocketBase collection, so the list this
+// replaced was hand-written -- and it lived in THIS file, next to the mirror it
+// was checking, so both sides were the same author's belief. Adding a column to
+// setRegistrationRequestFields and nothing else left it green, on precisely the
+// write the fan-out guard exists to catch. Reading the writer's source means
+// that edit fails here. Same shape as the other source scans in this package:
+// the one pinning the Go status ordering against the TypeScript map it
+// duplicates, and the one asserting that nothing in the sync layer writes the
+// staff-owned weekend cancellation flag. (Named by description rather than by
+// file, because that second guard fails any file in this package that contains
+// its collection name.)
+func setCallColumns(t *testing.T, funcName string) []string {
+	t.Helper()
+
+	const path = "family_camp_derived.go"
+	source, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading %s: %v", path, err)
+	}
+	text := string(source)
+
+	// gofmt puts a top-level func's closing brace at column 0, so the first
+	// "\n}\n" after the signature ends the body.
+	head := regexp.MustCompile(`(?m)^func (?:\([^)]*\) )?` + regexp.QuoteMeta(funcName) + `\(`).
+		FindStringIndex(text)
+	if head == nil {
+		t.Fatalf("%s not found in %s -- if it was renamed, rename it here too", funcName, path)
+	}
+	end := strings.Index(text[head[0]:], "\n}\n")
+	if end < 0 {
+		t.Fatalf("could not find the end of %s in %s", funcName, path)
+	}
+	body := text[head[0] : head[0]+end]
+
+	var columns []string
+	for _, m := range setCallPattern.FindAllStringSubmatch(body, -1) {
+		if m[1] != "" {
+			columns = append(columns, m[1])
+			continue
+		}
+		resolved, ok := setCallColumnConstants[m[2]]
+		if !ok {
+			t.Fatalf("%s calls Set with the unresolved constant %s; add it to "+
+				"setCallColumnConstants so this guard can see the column it names", funcName, m[2])
+		}
+		columns = append(columns, resolved)
+	}
+	return columns
+}
+
+// TestRegistrationColumnsCoverEveryWrittenColumn keeps the mirror above honest,
+// in BOTH directions, against the production writer's own source.
 //
 // registrationColumns is a hand-written list, and a column added to
 // setRegistrationRequestFields but not to it would be invisible to the fan-out
-// guard -- the guard would go green on the very write it exists to catch. This
-// asserts the mirror against the production writer by counting: every Set in
-// setRegistrationRequestFields and in upsertRegistrations' two branches.
+// guard -- the guard would go green on the very write it exists to catch. So
+// this reads every record.Set in setRegistrationRequestFields and in
+// upsertRegistrations' two branches and demands set equality with the mirror.
 func TestRegistrationColumnsCoverEveryWrittenColumn(t *testing.T) {
 	t.Parallel()
 
-	// The six upsertRegistrations writes outside setRegistrationRequestFields,
-	// plus household and year, which are keys rather than answers.
-	direct := []string{
-		"cabin_assignment", "share_cabin_preference", "shared_cabin_modes_raw",
-		"arrival_eta", "special_occasions", "goals", "notes", "needs_accommodation",
-	}
-	mirrored := registrationColumns(&registrationData{})
-	for _, column := range direct {
-		if _, ok := mirrored[column]; !ok {
-			t.Errorf("registrationColumns is missing %q, which upsertRegistrations writes", column)
+	// household and year are the ROW KEY, written on the create branch only.
+	// registrationColumns does not mirror them and should not: the fan-out
+	// guard compares answers, and a key is not an answer.
+	keyColumns := map[string]bool{"household": true, "year": true}
+
+	written := map[string]bool{}
+	for _, funcName := range []string{"setRegistrationRequestFields", "upsertRegistrations"} {
+		columns := setCallColumns(t, funcName)
+		if len(columns) == 0 {
+			t.Fatalf("found no record.Set calls in %s; this guard would pass vacuously", funcName)
+		}
+		for _, column := range columns {
+			if !keyColumns[column] {
+				written[column] = true
+			}
 		}
 	}
 
-	// And every column setRegistrationRequestFields writes. Read off the
-	// production function by running it against a scratch record would need a
-	// PocketBase collection; this list is the second-best guard and is short
-	// enough to keep in step by eye.
-	shared := []string{
-		enrollmentStatusColumn, "share_cabin_gate", "wants_near", "wants_with_named",
-		"wants_similar_ages", "request_text", "request_source_field",
-		"request_last_updated", "needs_private_bathroom", "needs_power",
-		"accommodation_is_mandatory", "has_infant", "needs_fridge", "needs_step_free",
-		"share_eligibility", "share_eligibility_source",
-	}
-	for _, column := range shared {
+	mirrored := registrationColumns(&registrationData{})
+	for column := range written {
 		if _, ok := mirrored[column]; !ok {
-			t.Errorf("registrationColumns is missing %q, which setRegistrationRequestFields writes", column)
+			t.Errorf("registrationColumns is missing %q, which the production writer sets", column)
 		}
 	}
-	if len(mirrored) != len(direct)+len(shared) {
-		t.Errorf("registrationColumns has %d columns; the two writer lists name %d",
-			len(mirrored), len(direct)+len(shared))
+	for column := range mirrored {
+		if !written[column] {
+			t.Errorf("registrationColumns names %q, which no production writer sets", column)
+		}
 	}
 }
