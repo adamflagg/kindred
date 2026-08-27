@@ -21,8 +21,8 @@ The trigger was scale: a 2026 inventory seed would have added roughly five times
 the existing exposure. Moving 30 literals once was cheaper than moving 160
 later.
 
-`scripts/dev/verify-no-hardcoded-lodging.sh` already encoded *"the registry is
-DATA, not code"*. This extends it to *private* data, and the guard now scans
+`scripts/dev/verify-no-hardcoded-lodging.sh` already encoded _"the registry is
+DATA, not code"_. This extends it to _private_ data, and the guard now scans
 `pb_migrations/` too — with the data gone from the seed migrations, skipping
 that directory would leave a hole exactly where a future seed would land.
 
@@ -56,7 +56,7 @@ returns early without reading the file at all, so an already-seeded
 deployment cannot be taken down by a bad file on a later boot. Only a
 genuinely empty registry with a broken file present fails.
 
-The one exception is a failure to *check* for existing rows
+The one exception is a failure to _check_ for existing rows
 (`lodging.ErrRegistryRowCheck`): the loader then cannot tell whether anything
 is at risk, so it warns and boots rather than compounding one failure with a
 second, less legible one.
@@ -108,7 +108,7 @@ source of truth for a season that already exists.
 This is deliberate, and load-bearing. Before this gate existed, the loader's
 `(code, year)` create-if-absent key meant the first restart after
 `scripts/prepare_for_new_year.py` flipped `CAMPMINDER_SEASON_ID` silently
-rebuilt the *entire* registry for the new season out of the stale bootstrap
+rebuilt the _entire_ registry for the new season out of the stale bootstrap
 file — unconfirmed, every amenity correction, coordinate, rename and
 deactivation gone — and then the roll-forward panel (the first path below)
 found every code already present and reported nothing to carry forward,
@@ -119,11 +119,11 @@ Two paths exist for a season that already has rows:
 
 - **A new season with no registry of its own yet** — Manage → Lodging →
   Season, or `POST /api/custom/lodging/roll-forward` directly. Roll-forward
-  copies the *prior* season's confirmed state forward instead of re-guessing
+  copies the _prior_ season's confirmed state forward instead of re-guessing
   it from the file; see `pocketbase/lodging/rollforward.go`.
 - **A correction to the bootstrap data itself, reaching a season that
   already exists** — run `scripts/dev/apply_lodging_inventory.py --apply
-  --year N` by hand. Its own create-if-absent and staff-owned-field rules
+--year N` by hand. Its own create-if-absent and staff-owned-field rules
   ("Getting the inventory onto rows that already exist", below) still apply;
   it is the deliberate file-to-database path this loader is not.
 
@@ -131,12 +131,12 @@ Two paths exist for a season that already has rows:
 
 First match wins:
 
-| Path | Context |
-|---|---|
-| `/config/lodging_registry.json` | Docker — where `docker-compose.yml` mounts the private config directory |
-| `/app/config/lodging_registry.json` | Docker, alternate layout; matches `pocketbase/google/branding.go` |
-| `./config/lodging_registry.json` | run from the repo root |
-| `../config/lodging_registry.json` | run from `pocketbase/` |
+| Path                                | Context                                                                 |
+| ----------------------------------- | ----------------------------------------------------------------------- |
+| `/config/lodging_registry.json`     | Docker — where `docker-compose.yml` mounts the private config directory |
+| `/app/config/lodging_registry.json` | Docker, alternate layout; matches `pocketbase/google/branding.go`       |
+| `./config/lodging_registry.json`    | run from the repo root                                                  |
+| `../config/lodging_registry.json`   | run from `pocketbase/`                                                  |
 
 `scripts/setup/setup-local-config.sh` symlinks the file in from `kindred-local`,
 and `scripts/worktree/new.sh` does the same for a new worktree.
@@ -149,7 +149,7 @@ and `scripts/worktree/new.sh` does the same for a new worktree.
 > with an empty registry.
 >
 > The absolute candidates are listed first deliberately. The runtime image sets
-> no `WORKDIR`, so the container runs from `/` and the *relative* `./config`
+> no `WORKDIR`, so the container runs from `/` and the _relative_ `./config`
 > candidate resolves to `/config` as well — which means the loader would appear
 > to work in production while depending on a coincidence that any future
 > `WORKDIR` would silently break.
@@ -167,31 +167,31 @@ loud on purpose, rather than a silently empty registry.
   "_notes": [
     "Free prose about the registry. Ignored by the loader.",
     "Camp-specific knowledge lives here, beside the data it describes,",
-    "rather than in a tracked comment."
+    "rather than in a tracked comment.",
   ],
   "areas": [
     {
-      "code": "AREA1",          // unique, uppercase; a join key — never lowercase it
+      "code": "AREA1", // unique, uppercase; a join key — never lowercase it
       "name": "Display Name",
-      "map_x": 0.5,             // normalised 0-1 on the camp map canvas
+      "map_x": 0.5, // normalised 0-1 on the camp map canvas
       "map_y": 0.25,
-      "sort_order": 1
-    }
+      "sort_order": 1,
+    },
   ],
   "units": [
     {
-      "area": "AREA1",          // area CODE, not an id
-      "code": "unit-a",         // unique
+      "area": "AREA1", // area CODE, not an id
+      "code": "unit-a", // unique
       "name": "Display Name",
       "map_x": 0.51,
       "map_y": 0.26,
-      "sleeps": 4,              // null = unknown; see below
-      "bathroom": "shared",     // none | private | shared
-      "bathroom_group": "grp-1",// units sharing one bathroom; "" for none
-      "parent_unit": "bldg-1",  // unit CODE of the containing building, or ""
+      "sleeps": 4, // null = unknown; see below
+      "bathroom": "shared", // none | private | shared
+      "bathroom_group": "grp-1", // units sharing one bathroom; "" for none
+      "parent_unit": "bldg-1", // unit CODE of the containing building, or ""
       "near_bathhouse": true,
-      "inventory_class": "family_pool",  // family_pool | staff_default
-      "is_container": false,    // true = a building row: never bookable, never counted
+      "inventory_class": "family_pool", // family_pool | staff_default
+      "is_container": false, // true = a building row: never bookable, never counted
       "notes": "",
 
       // Amenities. Absent means false, which is the same claim the column made
@@ -204,26 +204,26 @@ loud on purpose, rather than a silently empty registry.
       "is_weatherized": true,
       "has_plumbing": true,
       "has_space_heater": false,
-      "has_pack_play_space": false,   // unit-side counterpart to the family infant flag
+      "has_pack_play_space": false, // unit-side counterpart to the family infant flag
       "has_living_room": false,
       "has_kitchen": false,
       "has_lights": true,
 
-      "has_ramp": "partial",    // yes | no | partial; "" or absent = NOT ASSESSED
-                                //   read by the roster as ramp_coverage (#2438)
-      "max_beds": 14,           // total sleeping spots. NOT sleeps — see below
+      "has_ramp": "partial", // yes | no | partial; "" or absent = NOT ASSESSED
+      //   read by the roster as ramp_coverage (#2438)
+      "max_beds": 14, // total sleeping spots. NOT sleeps — see below
 
-      "shareability": "shareable"  // shareable | single_party; absent = not curated
-    }
+      "shareability": "shareable", // shareable | single_party; absent = not curated
+    },
   ],
   "aliases": [
     {
-      "alias_string": "As CampMinder stores it",  // VERBATIM — do not trim
-      "member_units": ["unit-a"],                 // unit CODEs; 2+ denotes a merge
-      "valid_from_year": null,                    // null = unbounded
-      "valid_to_year": null
-    }
-  ]
+      "alias_string": "As CampMinder stores it", // VERBATIM — do not trim
+      "member_units": ["unit-a"], // unit CODEs; 2+ denotes a merge
+      "valid_from_year": null, // null = unbounded
+      "valid_to_year": null,
+    },
+  ],
 }
 ```
 
@@ -261,11 +261,11 @@ Like every other field here, the loader is create-if-absent, so the key reaches
 ### A multi-unit alias is ambiguous, not automatically a share (kindred#2339)
 
 `member_units` with 2+ codes denotes a merge — **one** household occupying
-every named unit at once, a whole-house let. It is not evidence that *every*
+every named unit at once, a whole-house let. It is not evidence that _every_
 household who ever resolves through that alias occupies all of them: the same
 alias string routinely gets reused by different households, on different
 weekends or in different years, for what is really one unit per household —
-ambiguous only in *which* unit, never confirmed as a shared room.
+ambiguous only in _which_ unit, never confirmed as a shared room.
 
 **The rule:** for H households observed resolving through an alias whose
 `member_units` names N units, `H > N` is the earliest point that is provable
@@ -325,11 +325,11 @@ inventory exists to fix.
 `scripts/dev/apply_lodging_inventory.py` closes that gap. It is dry-run by
 default and splits fields by how much damage writing them could do:
 
-| Class | Fields | Behaviour |
-|---|---|---|
-| Inventory | the amenities and `max_beds` | filled freely — they were empty |
-| Structural | `bathroom`, `bathroom_group`, `is_container`, `parent_unit` | reported; written only under `--structural`, since each overwrites a value that may be deliberate |
-| Staff-owned | `sleeps`, `map_x`, `map_y`, `is_confirmed`, `is_active`, `inventory_class` | **never written**, under any flag |
+| Class       | Fields                                                                     | Behaviour                                                                                         |
+| ----------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| Inventory   | the amenities and `max_beds`                                               | filled freely — they were empty                                                                   |
+| Structural  | `bathroom`, `bathroom_group`, `is_container`, `parent_unit`                | reported; written only under `--structural`, since each overwrites a value that may be deliberate |
+| Staff-owned | `sleeps`, `map_x`, `map_y`, `is_confirmed`, `is_active`, `inventory_class` | **never written**, under any flag                                                                 |
 
 Two further rules: an empty `has_ramp` never overwrites a real assessment, and
 `notes` are filled only when the database has none — replacing free text a staff
@@ -362,16 +362,19 @@ On unconfirmed units, an unset `has_power: false` means "nobody has said", not "
 is no power", so the check reports `unverified` and stays silent.
 
 **Capacity-suggestion gate** — `capacityFlag.ts:52` offers to fill a unit's `sleeps`
-when it differs from bed count — **only when unconfirmed**. Confirmed units suppress
-the suggestion permanently. Containers suppress it unconditionally (line 58) because
+when it differs from bed count — **only when unconfirmed**. Confirming a unit suppresses
+the suggestion **for that season**, not permanently: the next roll-forward clears
+`is_confirmed` (kindred#2500) and the suggestion becomes available again. Containers suppress it unconditionally (line 58) because
 their `sleeps` records shared furniture (a futon), not whole-house capacity.
 
 **Admin UI visibility gates**:
+
 - `LodgingUnitRow.tsx:96` shows the `Unconfirmed` badge only on unconfirmed units
 - `LodgingUnitRow.tsx:106` shows the `Confirm` button only on unconfirmed units
 - `unitSort.ts:52–55` allows sorting by confirmed status as a dimension
 
 **Weekend board gates**:
+
 - `MapUnitPopover.tsx:142` renders the badge container only when `is_confirmed === false`
 - `MapUnitPopover.tsx:157` renders the unconfirmed badge only when `is_confirmed === false`
 
@@ -379,6 +382,7 @@ their `sleeps` records shared furniture (a futon), not whole-house capacity.
 `is_confirmed` false.
 
 **Write sites** (where `is_confirmed` is modified):
+
 1. `LodgingUnitForm.tsx:338` — Form checkbox updates state on save
 2. `lodgingCrud.ts:166` — Bulk confirm function sets all selected units to true
 3. `lodgingCrud.ts:124` — Create function defaults to false
@@ -386,12 +390,17 @@ their `sleeps` records shared furniture (a futon), not whole-house capacity.
 5. `api/schemas/lodging.py:117` — Schema field definition with false default
 6. `confirm_lodging_units.py:135` — Script API call for manual bulk updates
 
+Roll-forward is deliberately **not** in that list and does not make it seven: it never
+calls `.Set("is_confirmed", …)`. It omits the field from the columns it copies, so the
+new record simply holds the bool zero value. The effect on a new season's units is
+decided there all the same — see _"Is confirmation ephemeral?"_ below.
+
 **Is confirmation ephemeral?** Yes, per-season (kindred#2500). `is_confirmed` means
 "someone walked this cabin THIS season", not a permanent attestation about the
 building. Year roll-forward (`pocketbase/lodging/rollforward.go`) therefore creates
 every new season's units **unconfirmed**, regardless of roll direction — a yearly
 re-confirm is exactly the point, not something the system spares staff from. The
-amenity *values* themselves still carry forward (bed count, room layout, and
+amenity _values_ themselves still carry forward (bed count, room layout, and
 `shareability` do not change when the calendar does); only the "has staff looked at
 this for the current season" bit resets. This walks back an earlier design
 (#2029) that made confirmation carry forward permanently — see #2500 for the

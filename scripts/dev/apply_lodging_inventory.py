@@ -237,6 +237,21 @@ def plan_updates(
         # operator which rows a human already ruled on. The skip is printed, so
         # a real file/database disagreement stays visible and gets fixed through
         # the admin UI — the right channel for a confirmed row.
+        #
+        # ⚠️ THIS GUARD IS OPEN FOR THE WHOLE OF A NEWLY-ROLLED SEASON, and that
+        # is a consequence of kindred#2500 rather than a defect here. A season
+        # roll carries the amenity VALUES forward and clears `is_confirmed`, so
+        # every unit in the new year is unconfirmed until staff walk it. This
+        # guard is the only thing protecting the amenity booleans — STAFF_OWNED
+        # protects a fixed list of COLUMNS and cannot protect those — so a
+        # `--apply` run against a freshly-rolled season would overwrite
+        # staff-verified amenities from the file, and `skipped_confirmed` would
+        # be EMPTY, so the report would not show it.
+        #
+        # Not live today: no roll-forward has ever run and production is
+        # 2026-only, 118 of 118 confirmed. The mitigation is operational rather
+        # than code — do not re-run this against a season staff have not yet
+        # reconfirmed, or pass `--year` explicitly at a season nobody rolled.
         if current.get("is_confirmed"):
             withheld = {name: value for name, value in changes.items() if name != "notes"}
             withheld.update(structural)

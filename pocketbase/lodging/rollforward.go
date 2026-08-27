@@ -29,16 +29,20 @@ import (
 //	area / parent_unit     — relations, re-resolved into the target year by the
 //	                         two later passes
 //
-// `is_confirmed` IS here, unconditionally, on every roll regardless of
-// direction (kindred#2500). It means "someone walked this cabin THIS
-// SEASON", not a permanent attestation about the building — #2029 had it
-// backwards, and this walks that back. Carrying it forward would stamp every
-// cabin confirmed before anyone has looked at it for the new season, which
-// is exactly the state a season roll must not create.
+//	is_confirmed           — NEVER carried, in either direction (kindred#2500)
 //
-// `shareability` is deliberately NOT here: it follows from bed count and
-// room layout, which do not change when the calendar does, so it carries
-// like any ordinary column (kindred#2500).
+// To be unambiguous about the polarity, because a comment on this exact
+// declaration asserting the opposite of the code is what kindred#2500 had to
+// fix: the entries above are the DENY-LIST. `is_confirmed` is one of them, so
+// it is NOT copied — a rolled unit always lands unconfirmed. It means
+// "someone walked this cabin THIS SEASON", not a permanent attestation about
+// the building; #2029 had that backwards and this walks it back. Carrying it
+// would stamp every cabin confirmed before anyone had looked at it for the
+// new season.
+//
+// `shareability`, by contrast, is ABSENT from the deny-list and therefore
+// DOES carry: it follows from bed count and room layout, which do not change
+// when the calendar does (kindred#2500).
 var notCarried = map[string]bool{
 	"id": true, "created": true, "updated": true,
 	"year": true, "area": true, "parent_unit": true,

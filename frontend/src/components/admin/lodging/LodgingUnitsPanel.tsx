@@ -8,8 +8,10 @@
  * CONFIRMATION IS THE POINT OF THIS SCREEN. Every unit is seeded unconfirmed
  * the first time it is created, and `is_confirmed` does NOT carry forward on
  * a season roll (see SeasonRollForwardPanel) — it means "someone walked this
- * cabin THIS season" (kindred#2500), so a roll in either direction lands
- * every unit unconfirmed again for staff to re-verify. The roster still
+ * cabin THIS season" (kindred#2500), so every unit a roll CREATES lands
+ * unconfirmed again for staff to re-verify — in either direction. A code
+ * already present in the target year is skipped untouched, so a re-run does
+ * not un-confirm anything. The roster still
  * refuses to judge a family's housing need against an unconfirmed cabin — on
  * such a row `has_power: false` means "nobody has said", not "there is no
  * power". So confirming is available inline per row and in bulk over a

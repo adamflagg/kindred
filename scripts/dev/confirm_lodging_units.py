@@ -7,7 +7,7 @@ resets it to false on every unit it creates regardless of direction. Everything
 the registry loader writes is a guess from a spreadsheet, so it writes `false`
 on every row, and `partyAttention` refuses to judge a housing need against an
 unconfirmed cabin — `has_power: false` there means "nobody has said", not "no
-power". With none of the registry's 114 units confirmed, every constrained
+power". With none of the registry's 118 units confirmed, every constrained
 party reports `unverified` and the whole fit check reads as dark.
 
 That is correct behaviour, and it makes the board hard to develop against. This

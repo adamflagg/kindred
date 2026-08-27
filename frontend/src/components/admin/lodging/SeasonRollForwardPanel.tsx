@@ -155,9 +155,9 @@ export function SeasonRollForwardPanel() {
     <div className="flex flex-col gap-4">
       <p className="text-muted-foreground max-w-2xl text-sm">
         Copy {fromYear}&apos;s areas and units forward as a starting point for {toYear}. Values and
-        codes carry forward, but confirmation does not — every unit lands unconfirmed so staff
-        re-verify it for {toYear}. A demolished building carries too, and gets marked inactive by
-        hand afterward.
+        codes carry forward, but confirmation does not — every unit this creates lands unconfirmed
+        so staff re-verify it for {toYear}. A demolished building carries too, and gets marked
+        inactive by hand afterward.
       </p>
 
       {/* The same QueryGuard the other three lodging panels use, rather than a
