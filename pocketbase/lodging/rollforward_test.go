@@ -28,8 +28,8 @@ func newRollForwardTestApp(t *testing.T) core.App {
 // seedYear seeds one self-contained season: 2 areas and 3 units, one of which
 // (test-unit-a-room-1) has a parent (test-unit-a) — the minimum shape that
 // exercises the area-index pass, the parent-relink pass, and is_confirmed's
-// direction-dependent carry behavior (kindred#2392): forward, it travels like
-// any ordinary column; backward, it must not.
+// carry behavior: since kindred#2500 it is excluded unconditionally, on
+// every roll regardless of direction.
 func seedYear(t *testing.T, app core.App, year int) {
 	t.Helper()
 
@@ -102,16 +102,17 @@ func TestApplyRollForwardCopiesEveryUnitAndArea(t *testing.T) {
 	}
 }
 
-// TestApplyRollForwardCarriesIsConfirmedOnAForwardRoll pins the #2029 design
-// this PR must not silently reverse: "Confirmation carries forward... a
-// yearly re-confirm is unnecessary" (docs/reference/lodging-registry.md:368-373)
-// and SeasonRollForwardPanel.tsx's own doc comment ("Values, is_confirmed and
-// code all carry forward"). The Season panel only ever calls this direction
+// TestApplyRollForwardDoesNotCarryIsConfirmedOnAForwardRoll pins the
+// kindred#2500 ruling: `is_confirmed` means "someone walked this cabin THIS
+// SEASON", not a permanent attestation about the building. A season roll
+// must therefore land every unit unconfirmed regardless of direction, which
+// walks back #2029's "Confirmation carries forward... a yearly re-confirm is
+// unnecessary". The Season panel only ever calls this direction
 // (fromYear = currentYear-1, toYear = currentYear) -- it is the ONLY roll
-// staff perform today. A blanket exclusion of is_confirmed from notCarried
-// would silently un-confirm every previously-verified cabin on ordinary
-// season advance, forcing staff to re-walk buildings nothing changed about.
-func TestApplyRollForwardCarriesIsConfirmedOnAForwardRoll(t *testing.T) {
+// staff perform today, so this is the case that matters in practice: without
+// it, the very first forward roll would stamp every cabin confirmed before
+// anyone has walked it for the new season.
+func TestApplyRollForwardDoesNotCarryIsConfirmedOnAForwardRoll(t *testing.T) {
 	t.Parallel()
 	app := newRollForwardTestApp(t)
 	seedYear(t, app, 2026) // parent unit test-unit-a seeds with is_confirmed = true
@@ -124,18 +125,22 @@ func TestApplyRollForwardCarriesIsConfirmedOnAForwardRoll(t *testing.T) {
 	if err != nil || rec == nil {
 		t.Fatalf("unit not carried forward: %v", err)
 	}
-	if !rec.GetBool("is_confirmed") {
-		t.Error("is_confirmed did not carry forward on a FORWARD roll; want true -- " +
-			"confirmation is a permanent staff attestation per #2029, not a per-season flag")
+	if rec.GetBool("is_confirmed") {
+		t.Error("is_confirmed carried forward on a FORWARD roll; want false -- " +
+			"is_confirmed is a per-SEASON assertion (kindred#2500), not a permanent " +
+			"attestation about the building, so a new season's units must start " +
+			"unconfirmed until staff walk them")
 	}
 }
 
 // TestApplyRollForwardDoesNotCarryIsConfirmedOnABackwardRoll pins kindred#2392's
 // concern: a BACKWARD roll -- the mechanism proposed for backfilling
 // lodging_units into 2022-2025 -- must not stamp is_confirmed = true onto a
-// season nobody has ever walked. `is_confirmed` is excluded from carriedFields
-// only in this direction (`to < from`); see carriedFields's doc comment for
-// why the exclusion cannot be direction-blind without breaking the test above.
+// season nobody has ever walked. Since kindred#2500, `is_confirmed` is
+// excluded from carriedFields UNCONDITIONALLY -- this is no longer the only
+// direction that behaves this way (see the forward-roll test above), which
+// makes this a stronger, direction-independent claim rather than a redundant
+// one, and it is kept for exactly that reason.
 func TestApplyRollForwardDoesNotCarryIsConfirmedOnABackwardRoll(t *testing.T) {
 	t.Parallel()
 	app := newRollForwardTestApp(t)
@@ -152,6 +157,44 @@ func TestApplyRollForwardDoesNotCarryIsConfirmedOnABackwardRoll(t *testing.T) {
 	if rec.GetBool("is_confirmed") {
 		t.Error("is_confirmed carried backward from the source season; want false -- " +
 			"a historical backfill row nobody has walked must start unconfirmed")
+	}
+}
+
+// TestApplyRollForwardCarriesShareabilityOnAForwardRoll pins the other half of
+// kindred#2500's ruling: unlike `is_confirmed`, `shareability` DOES carry
+// forward. Shareability follows from bed count and room layout, which do not
+// change when the calendar does -- confirmation answers "has anyone walked
+// this cabin THIS season", shareability answers "can two families fit in it",
+// and only the first is a per-season judgement. Nothing pinned this before;
+// `shareability` is absent from notCarried and was never given a direction
+// guard, so this test exists only to make that a deliberate, checked decision
+// rather than an accident of the deny-list's contents.
+func TestApplyRollForwardCarriesShareabilityOnAForwardRoll(t *testing.T) {
+	t.Parallel()
+	app := newRollForwardTestApp(t)
+	seedYear(t, app, 2026)
+
+	src, findErr := findByCodeAndYear(app, "lodging_units", "test-unit-a", 2026)
+	if findErr != nil || src == nil {
+		t.Fatalf("seeded unit not found: %v", findErr)
+	}
+	src.Set("shareability", shareabilityShareable)
+	if saveErr := app.Save(src); saveErr != nil {
+		t.Fatalf("save shareability: %v", saveErr)
+	}
+
+	if _, rollErr := ApplyRollForward(app, 2026, 2027); rollErr != nil {
+		t.Fatalf("ApplyRollForward: %v", rollErr)
+	}
+
+	rec, findErr := findByCodeAndYear(app, "lodging_units", "test-unit-a", 2027)
+	if findErr != nil || rec == nil {
+		t.Fatalf("unit not carried forward: %v", findErr)
+	}
+	if got := rec.GetString("shareability"); got != shareabilityShareable {
+		t.Errorf("shareability = %q on a FORWARD roll; want %q -- shareability is a "+
+			"durable fact about the building (kindred#2500) and must carry forward "+
+			"even though is_confirmed does not", got, shareabilityShareable)
 	}
 }
 

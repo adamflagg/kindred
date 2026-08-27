@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """DEV ONLY: mark lodging units confirmed, so the roster's fit check lights up.
 
-`is_confirmed` means A HUMAN HAS CHECKED THIS CABIN. Everything the registry
-loader writes is a guess from a spreadsheet, so it writes `false` on every row,
-and `partyAttention` refuses to judge a housing need against an unconfirmed
-cabin — `has_power: false` there means "nobody has said", not "no power". With
-none of the registry's 114 units confirmed, every constrained party reports
-`unverified` and the whole fit check reads as dark.
+`is_confirmed` means A HUMAN HAS CHECKED THIS CABIN FOR THIS SEASON (kindred#2500)
+— it is a per-season assertion, not a permanent one, and year roll-forward
+resets it to false on every unit it creates regardless of direction. Everything
+the registry loader writes is a guess from a spreadsheet, so it writes `false`
+on every row, and `partyAttention` refuses to judge a housing need against an
+unconfirmed cabin — `has_power: false` there means "nobody has said", not "no
+power". With none of the registry's 114 units confirmed, every constrained
+party reports `unverified` and the whole fit check reads as dark.
 
 That is correct behaviour, and it makes the board hard to develop against. This
 script flips the flag on a LOCAL database so the surface can be built and seen

@@ -386,12 +386,16 @@ their `sleeps` records shared furniture (a futon), not whole-house capacity.
 5. `api/schemas/lodging.py:117` — Schema field definition with false default
 6. `confirm_lodging_units.py:135` — Script API call for manual bulk updates
 
-**Is confirmation ephemeral?** No. A confirmed unit carries that state across
-seasons by roll-forward (pocketbase/lodging/rollforward.go), and the unit's
-confirmed status asserts *permanently* that staff have verified the amenity values
-recorded on that row. A yearly re-confirm is unnecessary: staff confirm once,
-and the recorded amenities remain the staff's last verified answer until someone
-explicitly edits the row.
+**Is confirmation ephemeral?** Yes, per-season (kindred#2500). `is_confirmed` means
+"someone walked this cabin THIS season", not a permanent attestation about the
+building. Year roll-forward (`pocketbase/lodging/rollforward.go`) therefore creates
+every new season's units **unconfirmed**, regardless of roll direction — a yearly
+re-confirm is exactly the point, not something the system spares staff from. The
+amenity *values* themselves still carry forward (bed count, room layout, and
+`shareability` do not change when the calendar does); only the "has staff looked at
+this for the current season" bit resets. This walks back an earlier design
+(#2029) that made confirmation carry forward permanently — see #2500 for the
+reasoning.
 
 ### Lighting up the fit check locally
 
