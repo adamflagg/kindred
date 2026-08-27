@@ -2869,7 +2869,7 @@ type medicalColumnValue struct {
 // deliberately untouched -- whether it can fuse with the write list the way
 // this one does is kindred#2552 piece 2, and it carries a real decision: a
 // column whose write and compare sets should DIVERGE cannot simply join a
-// fused list, for the same reason given two paragraphs below.
+// fused list, for the same reason given in the paragraph below.
 //
 // ONE LIST FUSES TWO QUESTIONS -- "is this column written?" and "does a
 // change to it make the row dirty?" -- and today those sets are identical for
