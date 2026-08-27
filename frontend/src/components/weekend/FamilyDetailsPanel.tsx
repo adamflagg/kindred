@@ -286,10 +286,25 @@ export function FamilyDetailsPanel({
                     against a cabin. NOT sky, which is `bathroom`'s need hue
                     in `NEED_GLYPHS`: spending it here would put one colour on
                     two meanings a few rows apart. */}
+                {/* `self-center`, because the row is `items-baseline` and an
+                    SVG HAS NO TEXT BASELINE — the browser synthesises one from
+                    its bottom edge, so a 14px box hung from the baseline runs
+                    its full height ABOVE it while the text's cap reaches only
+                    ~10px, and the mark sits visibly high against the name
+                    either side of it (owner, 2026-08-27). The same synthesis
+                    is what `HouseholdJourneyCard`'s housing row documents and
+                    what `FamilyCard`'s single-parent mark was measured against.
+                    Centring sidesteps it entirely.
+
+                    Scoped to the ICON rather than switching the `<li>` to
+                    `items-center`: baseline is right for the two TEXT spans
+                    here, which are different sizes (text-sm name, text-xs
+                    age·grade) and should sit on one line, and every child row
+                    without a mark must stay pixel-identical. */}
                 {child.is_under_two === true && (
                   <Baby
                     data-testid={`under-two-${String(child.person_cm_id ?? index)}`}
-                    className="h-3.5 w-3.5 flex-shrink-0 text-pink-500 dark:text-pink-400"
+                    className="h-3.5 w-3.5 flex-shrink-0 self-center text-pink-500 dark:text-pink-400"
                   />
                 )}
                 <span className="text-muted-foreground text-xs">
