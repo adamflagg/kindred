@@ -91,19 +91,25 @@ export function HousingNeedDetails({ party, householdCmId, year }: HousingNeedDe
   // `seenTexts` with `accommodation_explain`, and a later `fridge` or
   // `step_free` row (both read the same field through `needExplainTexts`)
   // rendered with zero text instead of one paragraph. That combination is
-  // LATENT rather than live: `AccessibilityFlagSummary`'s own schema comment
-  // (`api/schemas/lodging.py`) documents `needs_fridge`/`needs_step_free` as
-  // NOT GATED on `needs_accommodation` as a CODE decision, but on the current
-  // snapshot every household raising either flag also raises
-  // `needs_accommodation` (kindred#2572's re-measure: 6 of 6 fridge, 9 of 9
-  // mobility). Nothing in the data model enforces that co-occurrence, though
-  // -- the Family Camp Information form is a re-submittable, per-child
-  // "drift engine" (`docs/reference/family-camp-field-provenance.md` §3c),
-  // and 3 households already narrate an ungated need through the bathroom
-  // question instead of the accommodation one. One of those gaining
-  // accommodation text turns this live, so `rawAccommodationText` below stays
-  // UNDEDUPED, and `dedupe()` is called only inside the branch that pushes
-  // the row consuming it.
+  // LATENT rather than live, but not because every household is gated:
+  // `AccessibilityFlagSummary`'s own schema comment (`api/schemas/lodging.py`)
+  // documents `needs_fridge`/`needs_step_free` as NOT GATED on
+  // `needs_accommodation` as a CODE decision, and on the rostered 392 cohort
+  // fridge IS fully gated (6 of 6) but step-free is NOT (5 of 7; 11 of 14
+  // across all 481 2026 registrations) -- 2 of the 7 rostered step-free
+  // households (3 of 14 overall) raise no `needs_accommodation` at all. What
+  // actually keeps this latent is narrower: both of those 2 rostered ungated
+  // households have an EMPTY `accommodation_explain` and narrate through
+  // `bathroom_explain` instead, so there is currently nothing in that field
+  // for a poisoned `seenTexts` to swallow -- zero households on either
+  // cohort hit the failing combination. Nothing in the data model enforces
+  // that emptiness, though -- the Family Camp Information form is a
+  // re-submittable, per-child "drift engine"
+  // (`docs/reference/family-camp-field-provenance.md` §3c), so one of those
+  // two households writing into the accommodation box instead turns this
+  // live. That is why `rawAccommodationText` below stays UNDEDUPED, and
+  // `dedupe()` is called only inside the branch that pushes the row
+  // consuming it.
   const seenTexts = new Set<string>()
   const dedupe = (texts: string[]): string[] =>
     texts.filter((text) => {
