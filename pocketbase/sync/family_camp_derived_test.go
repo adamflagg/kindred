@@ -4186,11 +4186,16 @@ func TestProcessAdultsDedupesHandlesThreeRowGroup(t *testing.T) {
 // free-text narrative, and the registry answers it with `has_ramp`.
 //
 // Measured on the production snapshot, 2026, at the household grain and over
-// BOTH narrative fields: 86 households carry any narrative at all, 6 name cold
-// storage, and 14 describe a mobility or step-free need -- more than twice the
-// signal that justified shipping needs_fridge. Supply: 14 of 118 units carry a
-// staff `has_ramp` assessment (5 yes / 5 partial / 4 no), which a boolean read
-// of that three-value select reports as 0.
+// the ACCOMMODATION narrative alone -- the one field the live derivation reads
+// since the 2026-08-23 ruling: 43 households carry an accommodation narrative,
+// 6 name cold storage, and 9 describe a mobility or step-free need. Supply: 14
+// of 118 units carry a staff `has_ramp` assessment (5 yes / 5 partial / 4 no),
+// which a boolean read of that three-value select reports as 0.
+//
+// HISTORICAL: this read 86 / 6 / 14 when the column shipped, measured over BOTH
+// narrative fields. The 5 households that trip only on the bathroom narrative
+// are all already needs_private_bathroom, which is why the ruling cost no
+// signal. Re-derived read-only for kindred#2572.
 //
 // The narrative is PHI-adjacent, so only the BOOLEAN is derived here; the
 // sentence stays in family_camp_medical, which is admin-gated and absent from
@@ -4430,13 +4435,18 @@ func TestProcessRegistrationsNeverStoresTheMobilityNarrative(t *testing.T) {
 	}
 }
 
-// ONE routing list, shared by processMedical (which stores the sentence) and
-// processRegistrations (which derives a boolean and stores nothing) -- the same
-// discipline accommodationExplainFieldNames already follows, and for the same
-// reason: two copies of a name-keyed route drift the moment a generation is
-// added, which is how the Adult accommodation twin came to be read in one of
-// the two and not the other.
-func TestProcessMedicalBathroomExplainUsesTheSharedRoutingList(t *testing.T) {
+// EVERY generation in bathroomExplainFieldNames reaches bathroom_explain, so a
+// name added to the list is a name processMedical actually reads.
+//
+// The list had a second reader -- processRegistrations derived needs_step_free
+// from the same narrative -- until the 2026-08-23 owner ruling removed that
+// route (kindred#2438). What is asserted here is what survived: ONE list, ONE
+// reader, and the list still routes by literal display name, so a CampMinder
+// rename silently stops population and only a name added here restores it.
+// (accommodationExplainFieldNames is still the two-reader list, and
+// TestProcessRegistrationsDerivesNeedsStepFreeFromTheAccommodationNarrative
+// covers the derivation half of it.)
+func TestProcessMedicalBathroomExplainRoutesEveryGenerationToTheNarrativeColumn(t *testing.T) {
 	t.Parallel()
 	ts := time.Date(2026, 4, 21, 0, 0, 0, 0, time.UTC)
 

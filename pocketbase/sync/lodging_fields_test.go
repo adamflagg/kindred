@@ -17,7 +17,7 @@ func TestLodgingSourceFieldsAreUnique(t *testing.T) {
 			t.Errorf("cm_id %d is registered twice: %q and %q", f.CMID, prev, f.Name)
 		}
 		seenCMID[f.CMID] = f.Name
-		if f.Target == "" {
+		if len(f.Targets) == 0 {
 			t.Errorf("%q (cm_id %d) has no target", f.Name, f.CMID)
 		}
 		if f.Grain != grainHousehold && f.Grain != grainPerson {
@@ -52,8 +52,8 @@ func TestLodgingRequestFieldsAreWellFormed(t *testing.T) {
 		if prev, clash := assignment[f.CMID]; clash {
 			t.Errorf("cm_id %d (%q) is in both registries, also as %q", f.CMID, f.Name, prev)
 		}
-		if f.Name == "" || f.Target == "" {
-			t.Errorf("cm_id %d has an empty name (%q) or target (%q)", f.CMID, f.Name, f.Target)
+		if f.Name == "" || len(f.Targets) == 0 {
+			t.Errorf("cm_id %d has an empty name (%q) or no targets (%v)", f.CMID, f.Name, f.Targets)
 		}
 		if f.Name != normalizeFieldName(f.Name) {
 			t.Errorf("%q is not in canonical (trimmed) form; the switch compares by exact equality", f.Name)

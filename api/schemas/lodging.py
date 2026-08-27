@@ -797,15 +797,24 @@ class AccessibilityFlagSummary(BaseModel):
     # the one the registry has always been able to answer: `lodging_units`
     # has carried `has_ramp` since migration 1500000131 and nothing read it.
     #
-    # ⚠️ ROUTED DIFFERENTLY from `needs_fridge` above, and the difference is
-    # measured. Fridge reads the accommodation narrative alone; this reads the
-    # BATHROOM narrative too, because 5 of the 14 mobility households on the
-    # 2026 snapshot narrate only through that field and 3 through both -- a
-    # family explaining why it needs a private bathroom is often explaining
-    # that someone cannot walk to the shared one.
+    # ⚠️ ROUTED THE SAME WAY as `needs_fridge` above: the accommodation
+    # narrative ALONE. It read the bathroom narrative too until the 2026-08-23
+    # owner ruling reversed that, because a household whose only narrative was
+    # a bathroom explanation raised this flag AND `needs_private_bathroom`,
+    # drawing two glyphs whose tooltips quoted the same paragraph. Re-measured
+    # before reversing: of the 14 households the pre-ruling both-field read
+    # found on the 2026 snapshot, 9 trip on the accommodation narrative and keep
+    # the flag; the other 5 are ALL already `needs_private_bathroom`, so the
+    # signal loss is zero.
     #
-    # ⚠️ NOT GATED on `needs_accommodation`. All 6 fridge households are gated;
-    # only 11 of the 14 mobility households are.
+    # ⚠️ NOT GATED on `needs_accommodation` -- a CODE decision, not a measured
+    # one, and not the same split as the sentence above. On the live route every
+    # household raising either flag happens to be gated (6 of 6 fridge, 9 of 9
+    # mobility), so nothing turns on the ungated path today; it stays open
+    # because a family can narrate a need without answering the gate. This read
+    # "only 11 of the 14 mobility households are" until kindred#2572: a
+    # both-field count whose 3 ungated households all narrate through the
+    # bathroom question and no longer raise the flag at all.
     #
     # DERIVED IN THE SYNC LAYER and ADVISORY, on the same terms as the flag
     # above: only the boolean crosses into this payload, and the mark it feeds

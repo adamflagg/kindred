@@ -3145,8 +3145,8 @@ class LodgingRosterService:
             needs_fridge=_b(registration, "needs_fridge"),
             # kindred#2438, and read from the column for the same reason: the
             # derivation runs over RAW per-person narrative values in the sync
-            # layer, across BOTH housing narratives, and this service cannot
-            # see them.
+            # layer -- the accommodation narrative alone since the 2026-08-23
+            # ruling -- and this service cannot see them.
             needs_step_free=_b(registration, "needs_step_free"),
         )
 

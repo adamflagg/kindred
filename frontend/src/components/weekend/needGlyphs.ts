@@ -157,10 +157,11 @@ export interface NeedGlyphSpec {
    * The medical field(s) this need's flag was DERIVED from — the Go sync's
    * own sources, not a guess by name: `needs_power` exists because a family
    * wrote something in `cpap_info`, `needs_private_bathroom` because they
-   * wrote `bathroom_explain`, `needs_fridge` keyword-matches
-   * `accommodation_explain`, and `needs_step_free` keyword-matches BOTH
-   * `accommodation_explain` and `bathroom_explain` (both listed, in the
-   * order shown). The glyph tooltip appends these texts for a
+   * wrote `bathroom_explain`, and `needs_fridge` and `needs_step_free` both
+   * keyword-match `accommodation_explain` alone -- step-free matched
+   * `bathroom_explain` too until the 2026-08-23 owner ruling removed it from
+   * the Go derivation, and this list followed. The glyph tooltip appends
+   * these texts for a
    * `bunking.manage` holder, fetched through the gated medical endpoint —
    * see `needExplainTexts`.
    */
@@ -296,9 +297,6 @@ export const NEED_GLYPHS: readonly NeedGlyphSpec[] = [
     // shared-fridge ruling's logic in reverse: a fridge one room over is still
     // a fridge a family can use, and a ramp one room over is not.
     someIs: 'unmet',
-    // BOTH keyword sources, so a step-free tooltip shows whichever the family
-    // actually wrote — a walker disclosure lands in `bathroom_explain` as
-    // often as in `accommodation_explain`.
     // The accommodation narrative ALONE, matching the Go derivation exactly.
     // Both used to include the bathroom narrative; the 2026-08-23 owner ruling
     // removed it from the pair together, because a household whose only

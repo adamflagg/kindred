@@ -228,7 +228,7 @@ func ReplayPartylessIssue(app core.App, issueID string) (int, error) {
 	if err != nil {
 		return 0, fmt.Errorf("loading source field mappings: %w", err)
 	}
-	defIDs := defIDsForTarget(fieldTargets, field.Target)
+	defIDs := defIDsForTarget(fieldTargets, field.primaryTarget())
 	if len(defIDs) == 0 {
 		return 0, fmt.Errorf(
 			"issue %s reads source field %q, which is disabled or absent from custom_field_defs; "+

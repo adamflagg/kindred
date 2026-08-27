@@ -2883,10 +2883,11 @@ class TestMedicalFlagsAndNarrative:
 
     @pytest.mark.asyncio
     async def test_step_free_need_comes_from_the_derived_column(self) -> None:
-        """kindred#2438. Derived in the SYNC layer from BOTH housing narratives
-        and read here as a column, for the same reason `needs_fridge` above is:
-        the narrative is PHI-adjacent, so only the boolean crosses into a
-        payload this service builds."""
+        """kindred#2438. Derived in the SYNC layer from the accommodation
+        narrative ALONE since the 2026-08-23 owner ruling, and read here as a
+        column for the same reason `needs_fridge` above is: the narrative is
+        PHI-adjacent, so only the boolean crosses into a payload this service
+        builds."""
         repo = _repo(
             fetch_session=FAMILY_SESSION,
             fetch_households={"hh_1": _household(title="The Chen Family")},
