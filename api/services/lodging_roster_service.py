@@ -538,7 +538,13 @@ def _age_at(birthdate: date, as_of: date) -> float | None:
     return float(f"{years}.{months:02d}")
 
 
-def _party_child(child: Any, *, as_of: date | None = None, session_cm_ids: Sequence[int] = ()) -> PartyChild:
+def _party_child(
+    child: Any,
+    *,
+    as_of: date | None = None,
+    session_cm_ids: Sequence[int] = (),
+    session_start: date | None = None,
+) -> PartyChild:
     """A `persons` row as the wire sees it. See `_party_adult` on sharing.
 
     `session_cm_ids` is the same kind of journey-only argument `as_of` is
@@ -564,6 +570,17 @@ def _party_child(child: Any, *, as_of: date | None = None, session_cm_ids: Seque
         # rather than falling back to the stale stored value -- that
         # fallback is exactly the bug this branch exists to fix.
         age = _age_at(birthdate, as_of) if birthdate is not None else None
+    # The under-two reference date: the historical year's start on a journey
+    # row (`as_of`), this weekend's start on the roster (`session_start`).
+    # Same birthdate source and same threshold as `_has_child_under_two`, so
+    # the per-child mark and the household flag cannot disagree.
+    under_two_ref = as_of if as_of is not None else session_start
+    under_two_birthdate = _as_date(_s(child, "birthdate"))
+    is_under_two = (
+        under_two_ref is not None
+        and under_two_birthdate is not None
+        and _completed_months(under_two_birthdate, under_two_ref) < UNDER_TWO_MONTHS
+    )
     return PartyChild(
         person_cm_id=_i(child, "cm_id"),
         display_name=_person_display_name(child),
@@ -584,6 +601,7 @@ def _party_child(child: Any, *, as_of: date | None = None, session_cm_ids: Seque
         # rostered cohort against the derived rule's 26. `_consumes_a_bed`
         # reads `birthdate` instead.
         age=age,
+        is_under_two=is_under_two,
         grade=_i(child, "grade") or None,
         # A LIST COPY, not the caller's own: the journey builds one list per
         # (year, child) and a shared reference would let a later mutation
@@ -2930,7 +2948,7 @@ class LodgingRosterService:
                     # frontend applies the same predicate at render time
                     # (`householdIdentity.isAttendingAdultName`).
                     adults=[_party_adult(adult) for adult in adults],
-                    children=[_party_child(child) for child in children_oldest_first],
+                    children=[_party_child(child, session_start=session_start) for child in children_oldest_first],
                     party_size=beds,
                     unit_code=placement.unit_code,
                     unit_name=placement.unit_name,

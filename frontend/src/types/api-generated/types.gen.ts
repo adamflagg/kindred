@@ -3277,6 +3277,10 @@ export type PartyChild = {
    */
   age?: number | null
   /**
+   * Is Under Two
+   */
+  is_under_two?: boolean
+  /**
    * Grade
    */
   grade?: number | null

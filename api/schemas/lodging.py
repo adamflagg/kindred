@@ -645,6 +645,20 @@ class PartyChild(BaseModel):
     # is blank, which no rostered 2026 child is.
     last_name: str = ""
     age: float | None = None
+    # Whether this child is under 24 months at the reference date -- the
+    # weekend's start on the roster, the historical year's start on a journey
+    # row. kindred#2480's rule: filter and mark key on ONE server-computed
+    # answer so they can never disagree.
+    #
+    # ⚠️ NOT derived from `age`. That column is CampMinder's yy.mm snapshot and
+    # thresholding on it is forbidden -- see `_has_child_under_two`. Measured
+    # over 717 rostered 2026 children: `age <= 2` marks 47, birthdate marks 43,
+    # so age produces four false positives and misses none.
+    #
+    # OPPOSITE POLARITY from `_consumes_a_bed` on every unknown, matching
+    # `_has_child_under_two`: this draws an ICON asserting knowledge, so a
+    # missing birthdate or an unreadable reference date contributes False.
+    is_under_two: bool = False
     grade: int | None = None
     # WHICH FAMILY WEEKENDS THIS CHILD ATTENDED that year, earliest first
     # (kindred#2393). Populated by the household journey ONLY, and empty on
