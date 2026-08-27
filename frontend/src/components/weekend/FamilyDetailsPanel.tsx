@@ -21,19 +21,13 @@
 import { Baby, Clock, Home, Repeat, Star, Users, X } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 
-import type {
-  AccessibilityFlags,
-  LodgingUnitRow,
-  RosterPartyRow,
-  ShareRequest,
-} from '../../types/lodging'
+import type { LodgingUnitRow, RosterPartyRow, ShareRequest } from '../../types/lodging'
 import { displayCampMinderAge } from '../../utils/age'
 import { hasOpenModal } from '../ui/modalStack'
 import { Tooltip } from '../ui/Tooltip'
-import { AccessibilityFlagList } from './AccessibilityFlagList'
 import { HouseholdJourneyCard } from './HouseholdJourneyCard'
 import { namedAdults, partyFamilyLabel, partyHeadcount } from './householdIdentity'
-import { MedicalNarrative } from './MedicalNarrative'
+import { HousingNeedDetails } from './HousingNeedDetails'
 import { partyKey } from './partyKey'
 import { ATTENTION_LABEL, partyAttention } from './rosterAttention'
 import { ShareRequestPanel } from './ShareRequestPanel'
@@ -56,14 +50,6 @@ const NO_SHARE_REQUEST: ShareRequest = {
   request_text: '',
   needs_resolution: false,
   request_blocks: [],
-}
-
-const NO_FLAGS: AccessibilityFlags = {
-  needs_private_bathroom: false,
-  needs_power: false,
-  needs_accommodation: false,
-  accommodation_is_mandatory: false,
-  has_infant: false,
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -331,15 +317,16 @@ export function FamilyDetailsPanel({
       </Section>
 
       <Section title="Housing needs">
-        <div className="flex flex-col gap-1.5">
-          <AccessibilityFlagList flags={party.flags ?? NO_FLAGS} />
-          {/* Kept in this section rather than given its own, because it is
-              where the narrative already appeared and staff know to look here.
-              It self-hides for a viewer without `bunking.manage` and for a
-              household with nothing on file, so no empty block is left
-              behind. */}
-          <MedicalNarrative householdCmId={householdCmId > 0 ? householdCmId : null} year={year} />
-        </div>
+        {/* ONE component now, not two. `AccessibilityFlagList` still serves
+            `HouseholdRosterRow`, where 62 rows must not fetch medical; this
+            panel shows one household, so its rows carry their own words.
+            kindred#2255's section 2 is superseded -- the duplication it
+            proposed collapsing behind a click is removed instead. */}
+        <HousingNeedDetails
+          party={party}
+          householdCmId={householdCmId > 0 ? householdCmId : null}
+          year={year}
+        />
       </Section>
 
       {/* kindred#2073. NOT wrapped in a `Section`: it is a sidebar CARD with
@@ -347,7 +334,7 @@ export function FamilyDetailsPanel({
           takes on the camper page, and a `Section` heading above it would
           title the card twice.
 
-          The panel is the right host for the same reason `MedicalNarrative`
+          The panel is the right host for the same reason `HousingNeedDetails`
           lives here rather than on a roster row: it shows ONE household at a
           time, which is what makes a fetch on mount proportionate. A
           person-grain party has no household, and the card renders nothing

@@ -937,7 +937,7 @@ describe('LodgingBoard — clears the selection on a SESSION change (kindred#213
 
 describe('LodgingBoard — the actual medical fetch (kindred#2139)', () => {
   // Every other test in this file mocks `useHouseholdMedical` to a constant,
-  // so `MedicalNarrative`'s fetch -- the exact harm #2062 named -- is never
+  // so `HousingNeedDetails`'s fetch -- the exact harm #2062 named -- is never
   // exercised by any assertion in the whole suite. This block flips
   // `medicalFetchMode.real` to drive the GENUINE `useHouseholdMedical` hook,
   // through the same mocked-service-plus-`useApiWithAuth` harness
@@ -948,7 +948,7 @@ describe('LodgingBoard — the actual medical fetch (kindred#2139)', () => {
     mockFetchHouseholdMedical.mockReset().mockResolvedValue({
       household_cm_id: 2000001,
       year: 2026,
-      allergy_info: 'Peanuts',
+      bathroom_explain: 'Grandmother cannot manage the walk at night.',
     })
   })
 
@@ -964,6 +964,7 @@ describe('LodgingBoard — the actual medical fetch (kindred#2139)', () => {
             household_cm_id: 2000001,
             unit_code: 'cedar-1',
             unit_name: 'Cedar 1',
+            flags: { needs_private_bathroom: true },
           }),
         ]}
         units={[unit()]}
@@ -978,7 +979,9 @@ describe('LodgingBoard — the actual medical fetch (kindred#2139)', () => {
     await waitFor(() => {
       expect(mockFetchHouseholdMedical).toHaveBeenCalledWith(expect.anything(), 2026, 2000001)
     })
-    expect(await screen.findByText('Peanuts')).toBeInTheDocument()
+    expect(
+      await screen.findByText('Grandmother cannot manage the walk at night.')
+    ).toBeInTheDocument()
   })
 
   it('never fetches for a party with no household to look up', async () => {

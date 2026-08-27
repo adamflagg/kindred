@@ -141,7 +141,7 @@ export function useHouseholdJourney(householdCmId: number | null) {
  * who only ever looked at the roster.
  *
  * The click-to-reveal that used to supply `enabled` is gone (kindred#1889).
- * Its only caller is now `MedicalNarrative`, which `FamilyDetailsPanel`
+ * Its callers are `HousingNeedDetails`, which `FamilyDetailsPanel`
  * renders for ONE household at a time — the grain that makes fetching on
  * mount acceptable. `staleTime: 0, gcTime: 0` is what keeps this honest: the
  * narrative leaves the cache the moment the panel closes.

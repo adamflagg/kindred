@@ -184,13 +184,20 @@ describe('FamilyDetailsPanel — the content the card omits', () => {
     // for every household, so it gated nothing. A `bunking.manage` holder now
     // sees the text directly (`isAdmin` is true for this suite).
     medicalResult.value = {
-      data: { allergy_info: 'Peanuts' },
+      data: { bathroom_explain: 'Grandmother cannot manage the walk at night.' },
       isLoading: false,
       error: null,
     }
-    render(<FamilyDetailsPanel party={party()} year={2026} onClose={vi.fn()} />, { wrapper })
+    render(
+      <FamilyDetailsPanel
+        party={party({ flags: { needs_private_bathroom: true } })}
+        year={2026}
+        onClose={vi.fn()}
+      />,
+      { wrapper }
+    )
 
-    expect(screen.getByText('Peanuts')).toBeInTheDocument()
+    expect(screen.getByText('Grandmother cannot manage the walk at night.')).toBeInTheDocument()
   })
 
   it('does not render the narrative for an adult-weekend party', () => {
@@ -198,8 +205,9 @@ describe('FamilyDetailsPanel — the content the card omits', () => {
     // narrative up by. This pins the PANEL's grain gate -- `isHousehold`
     // deciding `householdCmId`, and the `> 0 ? : null` below it -- which is
     // the half that decides whether a person-grain party ever asks for
-    // `/households/0/medical`. `MedicalNarrative`'s own null gate is pinned
-    // separately in its suite.
+    // `/households/0/medical`. `HousingNeedDetails` is handed `householdCmId`
+    // as a prop rather than deriving it itself, so this grain gate lives
+    // here and only here.
     //
     // The hook mock is grain-blind on purpose: it returns a narrative for
     // ANY arguments. So the only thing that can keep this text off the panel
@@ -207,7 +215,7 @@ describe('FamilyDetailsPanel — the content the card omits', () => {
     // assertion it replaced could not do, having outlived the button it
     // looked for.
     medicalResult.value = {
-      data: { allergy_info: 'Peanuts' },
+      data: { bathroom_explain: 'Grandmother cannot manage the walk at night.' },
       isLoading: false,
       error: null,
     }
@@ -219,13 +227,30 @@ describe('FamilyDetailsPanel — the content the card omits', () => {
           person_cm_id: 5001,
           adults: [],
           children: [],
+          flags: { needs_private_bathroom: true },
         })}
         year={2026}
         onClose={vi.fn()}
       />,
       { wrapper }
     )
-    expect(screen.queryByText('Peanuts')).not.toBeInTheDocument()
+    expect(
+      screen.queryByText('Grandmother cannot manage the walk at night.')
+    ).not.toBeInTheDocument()
+  })
+
+  it('renders the merged housing-need rows and no separate medical block', () => {
+    render(
+      <FamilyDetailsPanel
+        party={party({ flags: { needs_private_bathroom: true } })}
+        year={2026}
+        onClose={vi.fn()}
+      />,
+      { wrapper }
+    )
+    expect(screen.getByTestId('need-row-bathroom')).toBeInTheDocument()
+    expect(screen.queryByText('Allergies')).not.toBeInTheDocument()
+    expect(screen.queryByText('Dietary')).not.toBeInTheDocument()
   })
 })
 
@@ -742,8 +767,8 @@ describe('FamilyDetailsPanel — the headcount agrees with the printed adult/chi
 /**
  * kindred#2073. The household journey is the family-camp sibling of the
  * camper journey, and the panel is where a household is looked at one at a
- * time — the same grain argument that lets `MedicalNarrative` fetch on mount
- * here and never on a roster row.
+ * time — the same grain argument that lets `HousingNeedDetails` fetch on
+ * mount here and never on a roster row.
  */
 describe('the household journey', () => {
   it('renders the year-over-year record for a household', () => {

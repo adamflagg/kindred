@@ -19,7 +19,7 @@
  *   - while loading, or when the family wrote nothing, the label alone is the
  *     tooltip. The label is the placeholder; there is no spinner in a bubble.
  *
- * Mocking follows `MedicalNarrative.test.tsx`, which reads the same payload
+ * Mocking follows `HousingNeedDetails.test.tsx`, which reads the same payload
  * through the same two hooks one panel further in.
  *
  * Fictional data throughout.
