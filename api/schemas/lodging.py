@@ -140,9 +140,11 @@ Shareability = Literal["unknown", "shareable", "single_party"]
 # graded from `has_ramp`, NOT `is_accessible` -- this named the wrong column
 # until kindred#2502; the two are independent and disagree on five rows.)
 #
-# "unknown" is the absence of evidence, exactly as EffectiveBathroom and
-# Shareability spell their own. `has_power = False` on an unconfirmed row
-# means "nobody has said", not "there is no power". See `amenity_coverage`.
+# "unknown" is the EMPTY AGGREGATION -- a slot with no active leaf has nothing
+# to say -- exactly as EffectiveBathroom and Shareability spell their own. It
+# is NOT "nobody has reconfirmed this cabin": kindred#2526 took `is_confirmed`
+# out of the arithmetic, and a recorded value is now read at face value. See
+# `amenity_coverage`.
 AmenityCoverage = Literal["all", "some", "none", "unknown"]
 
 # The registry's own step-free assessment, mirrored from the `has_ramp` select
@@ -954,11 +956,11 @@ class RosterParty(BaseModel):
     # unverified) shown on the roster row, family card, map popover, and
     # detail panel -- #2022's own body named this the intended consumer
     # ("#1982 consumes it"). The RAW enum value is still never rendered
-    # directly; only the derived verdict, and only for a CONFIRMED unit --
-    # `rosterAttention.ts`'s `is_confirmed` gate still stands between this
-    # field and the UI. Any OTHER surface reading this value directly, past
-    # that gate, is the thing to stay wary of -- see
-    # LodgingRosterService._resolve_party_bathroom.
+    # directly; only the derived verdict. ⚠️ `rosterAttention.ts`'s
+    # `is_confirmed` gate USED to stand between this field and the UI and no
+    # longer does (kindred#2526) -- every placed cabin is graded. Any OTHER
+    # surface reading this value directly is still the thing to stay wary of
+    # -- see LodgingRosterService._resolve_party_bathroom.
     effective_bathroom: EffectiveBathroom = "unknown"
     arrival_eta: str = ""
     # The household's cm_id was seen in an earlier year.

@@ -4255,6 +4255,27 @@ class TestUnitAcCoverage:
 
         assert roster.units[0].ac_coverage == "all"
 
+    @pytest.mark.asyncio
+    async def test_an_unconfirmed_room_answers_at_face_value(self) -> None:
+        """kindred#2526, on the fourth and last resolver sharing the walk.
+
+        Pinned per resolver rather than once, because the gate came out of
+        the SHARED walk and a re-added special case would show up on exactly
+        one of them.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("u1", "ridge-1", "Ridge 1", sleeps=4, is_confirmed=False, has_ac=False),
+                _unit("u2", "ridge-2", "Ridge 2", sleeps=4, is_confirmed=False, has_ac=True),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        by_code = {u.code: u.ac_coverage for u in roster.units}
+        assert by_code["ridge-1"] == "none"
+        assert by_code["ridge-2"] == "all"
+
 
 class TestUnitBathroomResolution:
     """kindred#2502 -- `LodgingUnitSummary.bathroom`, resolved over LEAF
@@ -4278,6 +4299,58 @@ class TestUnitBathroomResolution:
     exactly why the fix is a resolver and not the slot-code threading the
     issue body originally proposed.
     """
+
+    @pytest.mark.asyncio
+    async def test_the_five_resolvers_agree_on_an_unconfirmed_row(self) -> None:
+        """kindred#2526 -- the divergence that drove the change.
+
+        `_resolve_bathroom` has NEVER gated on `is_confirmed`, so an
+        unconfirmed room's bathroom was already taken at face value while the
+        same room's power, fridge, step-free and AC were discarded. The
+        divergence was invisible because production is 118/118 confirmed, and
+        kindred#2500 (roll-forward creates units unconfirmed) is what fires
+        it. This pins the resolution: the four agree with the fifth.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit(
+                    "c1",
+                    "gt-lodge",
+                    "Lodge",
+                    is_container=True,
+                    is_confirmed=False,
+                    bathroom="none",
+                ),
+                _unit(
+                    "u1",
+                    "gt-lodge-1",
+                    "Lodge 1",
+                    sleeps=4,
+                    parent_unit="c1",
+                    is_confirmed=False,
+                    # `container_bathroom` inherits only through a GROUP --
+                    # a group says which rooms share one bathroom, and a
+                    # whole-let covers it by construction. A bare `private`
+                    # leaf with no group inherits nothing, which is settled
+                    # behaviour and not what this test is about.
+                    bathroom="shared",
+                    bathroom_group="gt-lodge-bath",
+                    has_power=True,
+                    has_fridge=True,
+                    has_ac=True,
+                    has_ramp="yes",
+                ),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        lodge = {u.code: u for u in roster.units}["gt-lodge"]
+        assert lodge.bathroom == "private"
+        assert lodge.power_coverage == "all"
+        assert lodge.fridge_coverage == "all"
+        assert lodge.ac_coverage == "all"
+        assert lodge.ramp_coverage == "all"
 
     @pytest.mark.asyncio
     async def test_a_leaf_still_answers_for_itself(self) -> None:
@@ -4568,18 +4641,42 @@ class TestUnitPowerCoverage:
         assert {u.code: u.power_coverage for u in roster.units}["gt-lodge"] == "some"
 
     @pytest.mark.asyncio
-    async def test_an_unconfirmed_room_is_unknown_not_unmet(self) -> None:
-        """`has_power = False` on an unconfirmed row means "nobody has said"."""
+    async def test_an_unconfirmed_room_answers_at_face_value(self) -> None:
+        """kindred#2526 -- `is_confirmed` no longer gates the value.
+
+        REVERSES the gate this test used to pin, which read an unconfirmed
+        `has_power = False` as "nobody has said" and graded the row
+        `unknown`. Registry values are now shown AS-IS: kindred#2500 carries
+        the VALUES forward across a season roll and clears only the flag, so
+        an unconfirmed row holds last season's CONFIRMED value rather than a
+        guess, and suppressing it asserts nothing about the cabin while
+        hiding what staff did record.
+
+        `is_confirmed` survives as the `Reconfirm space` work-down list
+        (`LodgingUnitCard`'s `needsReconfirm`) and nothing else.
+        """
         repo = _repo(
             fetch_session=FAMILY_SESSION,
-            fetch_units=[_unit("u1", "ridge-1", "Ridge 1", sleeps=4, is_confirmed=False, has_power=False)],
+            fetch_units=[
+                _unit("u1", "ridge-1", "Ridge 1", sleeps=4, is_confirmed=False, has_power=False),
+                _unit("u2", "ridge-2", "Ridge 2", sleeps=4, is_confirmed=False, has_power=True),
+            ],
         )
         roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
 
-        assert roster.units[0].power_coverage == "unknown"
+        by_code = {u.code: u.power_coverage for u in roster.units}
+        assert by_code["ridge-1"] == "none"
+        assert by_code["ridge-2"] == "all"
 
     @pytest.mark.asyncio
-    async def test_one_unconfirmed_room_makes_the_whole_building_unknown(self) -> None:
+    async def test_an_unconfirmed_room_still_answers_for_its_building(self) -> None:
+        """One unconfirmed room no longer collapses the whole container.
+
+        The gate ran per ROOM inside the shared leaf walk, so a single
+        unconfirmed leaf mapped every sibling's answer to `None` and graded
+        the building `unknown`. Under face value the building reports what
+        its rooms actually record.
+        """
         repo = _repo(
             fetch_session=FAMILY_SESSION,
             fetch_units=[
@@ -4590,7 +4687,7 @@ class TestUnitPowerCoverage:
         )
         roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
 
-        assert {u.code: u.power_coverage for u in roster.units}["gt-lodge"] == "unknown"
+        assert {u.code: u.power_coverage for u in roster.units}["gt-lodge"] == "all"
 
     @pytest.mark.asyncio
     async def test_a_deactivated_room_does_not_answer_for_the_building(self) -> None:
@@ -4744,15 +4841,20 @@ class TestUnitFridgeCoverage:
         assert {u.code: u.fridge_coverage for u in roster.units}["gt-lodge"] == "some"
 
     @pytest.mark.asyncio
-    async def test_an_unconfirmed_room_is_unknown_not_unmet(self) -> None:
-        """`has_fridge = False` on an unconfirmed row means "nobody has said"."""
+    async def test_an_unconfirmed_room_answers_at_face_value(self) -> None:
+        """kindred#2526, on the second of the four resolvers sharing the walk."""
         repo = _repo(
             fetch_session=FAMILY_SESSION,
-            fetch_units=[_unit("u1", "ridge-1", "Ridge 1", sleeps=4, is_confirmed=False, has_fridge=False)],
+            fetch_units=[
+                _unit("u1", "ridge-1", "Ridge 1", sleeps=4, is_confirmed=False, has_fridge=False),
+                _unit("u2", "ridge-2", "Ridge 2", sleeps=4, is_confirmed=False, has_fridge=True),
+            ],
         )
         roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
 
-        assert roster.units[0].fridge_coverage == "unknown"
+        by_code = {u.code: u.fridge_coverage for u in roster.units}
+        assert by_code["ridge-1"] == "none"
+        assert by_code["ridge-2"] == "all"
 
     @pytest.mark.asyncio
     async def test_a_building_with_no_active_room_left_is_unknown_never_its_own_row(self) -> None:
@@ -4920,14 +5022,27 @@ class TestUnitRampCoverage:
         assert {u.code: u.ramp_coverage for u in roster.units}["gt-lodge"] == "unknown"
 
     @pytest.mark.asyncio
-    async def test_an_unconfirmed_room_is_unknown_not_unmet(self) -> None:
+    async def test_an_unconfirmed_room_answers_at_face_value(self) -> None:
+        """kindred#2526. ⚠️ THE BLANK CASE IS NOT THIS ONE and does not move:
+        `has_ramp = ""` is still `unknown` (see
+        `test_blank_is_unknown_never_none` above), because a blank field is a
+        field nobody filled in. What changed is that a RECORDED value on an
+        unconfirmed row is now read, instead of being discarded first.
+        """
         repo = _repo(
             fetch_session=FAMILY_SESSION,
-            fetch_units=[_unit("u1", "ridge-1", "Ridge 1", sleeps=4, is_confirmed=False, has_ramp="no")],
+            fetch_units=[
+                _unit("u1", "ridge-1", "Ridge 1", sleeps=4, is_confirmed=False, has_ramp="no"),
+                _unit("u2", "ridge-2", "Ridge 2", sleeps=4, is_confirmed=False, has_ramp="yes"),
+                _unit("u3", "ridge-3", "Ridge 3", sleeps=4, is_confirmed=False, has_ramp=""),
+            ],
         )
         roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
 
-        assert roster.units[0].ramp_coverage == "unknown"
+        by_code = {u.code: u.ramp_coverage for u in roster.units}
+        assert by_code["ridge-1"] == "none"
+        assert by_code["ridge-2"] == "all"
+        assert by_code["ridge-3"] == "unknown"
 
     @pytest.mark.asyncio
     async def test_ramp_is_independent_of_is_accessible(self) -> None:

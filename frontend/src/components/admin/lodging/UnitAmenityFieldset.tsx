@@ -8,9 +8,10 @@
  * though the list never changed. Columns hold their position.
  *
  * `is_confirmed` is NOT rendered here. It is an assertion OVER these ten, not
- * an eleventh peer, and it is the switch that makes the roster judge a
- * family's housing need against this cabin at all — so it belongs beside Save,
- * where the form's other commitments live.
+ * an eleventh peer — "a human has walked this cabin and checked them" — so it
+ * belongs beside Save, where the form's other commitments live. It stopped
+ * gating the roster's judgement under kindred#2526; it is the reconfirm
+ * work-down list, and it is still an assertion over the whole set.
  */
 import { Plus, X } from 'lucide-react'
 import { useState } from 'react'

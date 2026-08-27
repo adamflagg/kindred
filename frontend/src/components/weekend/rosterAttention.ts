@@ -13,17 +13,22 @@
  *
  * The state worth surfacing is a party whose cabin does not provide what they
  * asked for. Answering that needs the registry to record what each cabin HAS,
- * and an unset `has_power` means "nobody has said", not "there is no power".
- * So the check runs only against CONFIRMED cabins and otherwise reports
- * `unverified`, rather than flagging every constrained family on the strength
- * of unset defaults.
+ * and REGISTRY VALUES ARE TAKEN AT FACE VALUE (owner ruling, kindred#2526):
+ * the fit check grades every placed cabin, confirmed or not.
  *
- * That gate is now OPEN, which this comment used to deny: it claimed "today
- * every cabin is `is_confirmed: false`", and production is 118/118 confirmed
- * as of 2026-08-09. The `unverified` branch is a live fallback for a cabin
- * nobody has confirmed yet, not the state of the whole registry — do not read
- * it as evidence that the fit check is inert. (Found during kindred#1912's
- * review, fixed under kindred#2180.)
+ * ⚠️ `is_confirmed` USED TO GATE THIS and no longer does anywhere in this
+ * module. Two gates came out — the one below on a single unit, and
+ * `resolvePartyUnit`'s all-members bar — because they suppressed known-good
+ * information rather than withholding a guess: kindred#2500 carries the
+ * VALUES forward across a season roll and clears only the flag, so an
+ * unconfirmed row holds last season's CONFIRMED value. The flag's whole
+ * remaining job is the `Reconfirm space` work-down list on
+ * `LodgingUnitCard`, and it is not read here at all.
+ *
+ * ⚠️ THE `unverified` BAND IS NOT DEAD, and a reader deleting it would be
+ * wrong. Two producers are live: a GENERIC accommodation request no cabin
+ * field can settle, and a placement whose unit cannot be resolved. Only the
+ * "this cabin is unconfirmed" fallthrough went.
  */
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
 import { partyHeadcount } from './householdIdentity'
@@ -178,8 +183,9 @@ function representingCards(
  * THE RESOLVED GRADES, ORDERED WORST FIRST, and the order is the whole content
  * of the roll-up below — so it is worth saying why it is this one.
  *
- * It is a ladder of how much of the space provides the thing: nothing, nobody
- * has looked, some rooms, a qualified answer, all of it. Ordered that way the
+ * It is a ladder of how much of the space provides the thing: nothing,
+ * nothing answered, some rooms, a qualified answer, all of it. Ordered that
+ * way the
  * fold is exactly `needVerdict`'s worst case over the cards — checked pair by
  * pair, the fold's verdict is never softer than the loudest card's, including
  * the two pairs that are not obvious: `unknown` beats `some` because an
@@ -267,8 +273,8 @@ function worstCard(cards: readonly LodgingUnitRow[]): LodgingUnitRow | undefined
 }
 
 /**
- * The unit whose confirmed data backs this party's fit check, or undefined
- * when there is no confirmed evidence to read.
+ * The unit whose registry data backs this party's fit check, or undefined
+ * when the placement names no cabin this payload can resolve.
  *
  * ⚠️ THE CARD THE BOARD DRAWS, which is what this used to get wrong. An
  * ordinary placement resolves off `unit_code`, same as always. A merged slot's
@@ -304,12 +310,16 @@ function worstCard(cards: readonly LodgingUnitRow[]): LodgingUnitRow | undefined
  * (`worstCard`), not a member. A family whose need fails in one of its rooms
  * has a problem, and surfacing the best room hides it.
  *
- * Trusting a multi-card placement as evidence still requires EVERY card to
- * resolve AND be confirmed — one unconfirmed room is an absence of data, the
- * same principle the single-unit gate enforces, not a looser one for having
- * more rooms. A code with no row in the payload fails that outright. The
- * single-card path returns the row as it always has and lets `partyAttention`
- * apply its own `is_confirmed` gate.
+ * Trusting a multi-card placement as evidence requires EVERY card to resolve.
+ * A code with no row in the payload fails that outright — an unreadable
+ * placement is genuinely unreadable.
+ *
+ * ⚠️ IT NO LONGER REQUIRES EVERY CARD TO BE CONFIRMED (kindred#2526). That
+ * bar dropped the whole merge to `undefined` on one unreconfirmed room, which
+ * made every glyph on the party read as MET — a strictly worse answer than
+ * the `worstCard` fold it was refusing to compute. The fold is what protects
+ * the family here, and it is untouched: a room short of the need is surfaced
+ * whether or not staff have walked it this season.
  *
  * The bathroom need never looks at the unit in the placed reading — it reads
  * `party.effective_bathroom` — so which card is picked never changes THAT
@@ -341,16 +351,17 @@ export function resolvePartyUnit(
   }
 
   if (cards.length === 1) return cards[0]
-  return cards.every((card) => card.is_confirmed === true) ? worstCard(cards) : undefined
+  return worstCard(cards)
 }
 
 /**
  * @param unit The cabin the party is assigned to, when it can be resolved —
  *   ordinarily via `unit_code`, or via `resolvePartyUnit` for a merge.
- *   Undefined means no confirmed evidence, and the fit reports as
- *   unverified regardless of what `party.effective_bathroom` says
- *   (kindred#1982's `is_confirmed` gate: an unconfirmed cabin is an absence
- *   of data, not evidence).
+ *   Undefined means the placement names no cabin this payload can read, and
+ *   the fit reports as unverified regardless of what
+ *   `party.effective_bathroom` says: a resolved `private` with no cabin
+ *   behind it must not read as `settled` (kindred#1982). Whether the cabin
+ *   is CONFIRMED has not mattered since kindred#2526.
  */
 export function partyAttention(
   party: RosterPartyRow,
@@ -377,8 +388,9 @@ export function partyAttention(
     return { level: 'settled', reason: '' }
   }
 
-  // Only a confirmed cabin is evidence. Anything else is an absence of data.
-  if (unit?.is_confirmed === true) {
+  // A resolved cabin is evidence, whether or not staff have reconfirmed it
+  // (kindred#2526). No cabin at all is not.
+  if (unit !== undefined) {
     /*
      * ANYTHING SHORT OF `fits` COUNTS AS UNMET HERE, and the roster is binary
      * on purpose: it has no third band to put a qualification in.
@@ -403,14 +415,16 @@ export function partyAttention(
      *   unmeasured cabin exactly as `unmet` is, and this band has no third
      *   option to retreat to.
      *
-     * ⚠️ THE `is_confirmed` GATE ABOVE IS UNTOUCHED BY THAT REVERSAL and does
-     * most of the work: an unconfirmed cabin never reaches this branch at all.
-     * What changed is the narrower case the gate does not cover — a cabin
-     * somebody HAS confirmed whose coverage the server still could not
-     * resolve. Measured across 2026's twelve weekends and 575 parties: no
-     * placed party's bathroom or power coverage is anything but `all` or
-     * `none`, so no section count moves today. kindred#2502 narrows the ways
-     * `unknown` can arise further still, on the unit side.
+     * ⚠️ THAT REVERSAL SURVIVES kindred#2526 and its target is what is left
+     * of `unknown`: a cabin whose coverage cannot be RESOLVED — an empty
+     * aggregation, or a blank `has_ramp` nobody assessed — as opposed to a
+     * cabin nobody has reconfirmed, which is no longer a way to get here.
+     * The `is_confirmed` gate this paragraph used to credit with "most of
+     * the work" is gone; every placed cabin reaches this branch now.
+     * Measured across 2026's twelve weekends and 575 parties: no placed
+     * party's bathroom or power coverage is anything but `all` or `none`, so
+     * no section count moves today. kindred#2502 narrows the ways `unknown`
+     * can arise further still, on the unit side.
      *
      * Both directions are pinned in `rosterAttention.test.ts`, so a future
      * reader meets the decisions rather than inferring them from behaviour.

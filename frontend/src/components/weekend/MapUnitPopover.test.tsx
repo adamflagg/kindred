@@ -348,7 +348,17 @@ describe('MapUnitPopover — one room', () => {
     expect(screen.queryByText(/Mr\. and Mrs\. Johnson/)).not.toBeInTheDocument()
   })
 
-  it('does not accuse an UNCONFIRMED cabin of failing a request', () => {
+  it('grades an UNCONFIRMED cabin against the request, and still badges it', () => {
+    /*
+     * ⚠️ REVERSED BY kindred#2526. This used to assert the peek said NOTHING
+     * about an unconfirmed cabin's power. Registry values are taken at face
+     * value now: a cabin recorded as having no power fails a power request
+     * whether or not staff have reconfirmed it this season.
+     *
+     * The `Unconfirmed` badge is the flag's REMAINING job and is asserted
+     * alongside deliberately — the reconfirm work-down list stays, only the
+     * suppression went.
+     */
     const needsPower = party('Johnson')
     needsPower.flags = {
       needs_private_bathroom: false,
@@ -359,12 +369,17 @@ describe('MapUnitPopover — one room', () => {
     }
     render(
       <MapUnitPopover
-        units={[mapUnit(row({ is_confirmed: false, has_power: false }), [needsPower])]}
+        units={[
+          mapUnit(row({ is_confirmed: false, has_power: false, power_coverage: 'none' }), [
+            needsPower,
+          ]),
+        ]}
         hue={HUE}
         onOpenParty={vi.fn()}
       />
     )
-    expect(screen.queryByText(/No power/)).not.toBeInTheDocument()
+    expect(screen.getByText(/No power/)).toBeInTheDocument()
+    expect(screen.getByText('Unconfirmed')).toBeInTheDocument()
   })
 
   it('prints the consent reason, as the board card does', () => {

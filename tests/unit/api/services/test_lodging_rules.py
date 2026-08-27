@@ -263,11 +263,15 @@ class TestAmenityCoverage:
     subset that costs more to build.
 
     `None` is the fourth answer and it is not a grain: it is the ABSENCE of
-    evidence, which `unit_capacity`, `unit_shareability` and
+    an answer, which `unit_capacity`, `unit_shareability` and
     `effective_bathroom` each already spell as "unknown" for the same reason.
-    An unconfirmed cabin's `has_power = False` means "nobody has said", not
-    "there is no power" -- the gate `rosterAttention` already applies to the
-    roster's own fit check.
+
+    ⚠️ AN UNCONFIRMED ROW IS NOT ONE (kindred#2526). `_resolve_amenity_coverage`
+    used to map one to `None` here; registry values are read at face value now
+    and `is_confirmed` is a staff work-down checklist. A bool cannot be
+    unanswered, so the boolean callers pass no `None` today at all -- the arm
+    is `ramp_coverage`'s, whose select genuinely can be blank -- but the
+    all-or-nothing rule is pinned below because both share this shape.
     """
 
     def test_every_source_has_it(self) -> None:
@@ -290,9 +294,11 @@ class TestAmenityCoverage:
         assert amenity_coverage([]) == "unknown"
 
     def test_one_unmeasured_source_makes_the_whole_answer_unknown(self) -> None:
-        """The same all-or-nothing evidence bar `resolvePartyUnit` applies to
-        a merge: one unconfirmed room is an absence of data, not a looser
-        standard for having more rooms."""
+        """One room that gave NO answer withholds the whole verdict, rather
+        than the slot being graded on the rooms that did answer -- a looser
+        bar would grade a building on the strength of the rooms somebody got
+        to. (The room is unmeasured, NOT merely unreconfirmed: kindred#2526
+        stopped confirmation producing a `None` here.)"""
         assert amenity_coverage([True, None]) == "unknown"
         assert amenity_coverage([False, None]) == "unknown"
         assert amenity_coverage([None]) == "unknown"

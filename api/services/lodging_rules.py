@@ -334,7 +334,9 @@ def effective_bathroom(
 
 # Values of an amenity's resolved coverage over the rooms a slot actually
 # contains (kindred#1912). `unknown` is not a fourth grain -- it is the
-# absence of evidence, exactly as it is for `bathroom` and `shareability`.
+# EMPTY AGGREGATION: nothing answered, so there is nothing to say. It stopped
+# being "nobody has looked at this cabin" under kindred#2526, which took
+# `is_confirmed` out of the arithmetic entirely.
 AMENITY_COVERAGE_VALUES = ("all", "some", "none", "unknown")
 
 
@@ -373,18 +375,25 @@ def amenity_coverage(values: Sequence[bool | None]) -> str:
     Args:
         values: one entry per unit that answers for the slot -- a leaf's own
             flag, or every leaf descendant's for a container. `None` means
-            the unit is unconfirmed, i.e. nobody has recorded the amenity;
-            `has_power = False` on an unconfirmed row means "nobody has
-            said", never "there is no power".
+            the unit gave NO ANSWER at all. A bool cannot be unanswered, so
+            no boolean caller passes one today; the parameter stays `| None`
+            because `ramp_coverage` below shares this shape and its select
+            genuinely can be blank.
+
+            ⚠️ AN UNCONFIRMED ROW IS NOT `None` and has not been since
+            kindred#2526. `_resolve_amenity_coverage` used to map one here,
+            so a cabin nobody had reconfirmed graded `unknown` however much
+            the registry recorded about it. Confirmation is a staff work-down
+            checklist now and never enters this arithmetic.
 
     Returns:
-        "all" | "some" | "none" | "unknown". `unknown` whenever there is
-        nothing to judge or ANY contributing unit is unmeasured -- the same
-        all-or-nothing evidence bar `resolvePartyUnit` already applies to a
-        multi-room merge, rather than a looser standard for having more
-        rooms. Never "none" on missing evidence: this feeds a mark that
-        STATES something about a slot, and "nothing here meets the need" is
-        not a claim an unrecorded row supports.
+        "all" | "some" | "none" | "unknown". `unknown` on an EMPTY sequence
+        -- a container with no active leaf has genuinely nothing to say,
+        exactly as `_effective_sleeps` returns `None` in the same degenerate
+        case -- or when any contributing unit gave no answer. Never "none" on
+        missing evidence: this feeds a mark that STATES something about a
+        slot, and "nothing here meets the need" is not a claim an unrecorded
+        row supports.
     """
     if not values or any(value is None for value in values):
         return "unknown"
@@ -413,10 +422,12 @@ def ramp_coverage(values: Sequence[str | None]) -> str:
 
     Args:
         values: one entry per unit that answers for the slot -- `"yes"`,
-            `"partial"` or `"no"`. `None` means NO ANSWER, and it covers both
-            an unconfirmed row and an assessed-nobody blank; the caller maps
-            an unrecognised string to `None` too, because an unreadable answer
-            is not a claim in either direction.
+            `"partial"` or `"no"`. `None` means NO ANSWER: the field is blank,
+            i.e. nobody has assessed the cabin. The caller maps an
+            unrecognised string to `None` too, because an unreadable answer is
+            not a claim in either direction. It NO LONGER covers an
+            unconfirmed row (kindred#2526) -- a recorded `has_ramp` answers
+            whether or not staff have reconfirmed the cabin.
 
     Returns:
         "all" | "some" | "partial" | "none" | "unknown".

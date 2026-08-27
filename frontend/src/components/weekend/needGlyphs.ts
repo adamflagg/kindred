@@ -375,11 +375,16 @@ export function needExplainTexts(
  *    its unconfirmed information."
  *
  * It agrees with the same owner on 2026-08-19 — *"if something's unconfirmed,
- * I'm always going to want to know"* — and it closes the asymmetry that made
- * BATHROOM the only one of the four able to go red on an unconfirmed cabin:
- * its supply is resolved server-side without the `is_confirmed` gate the other
- * three pass through, so the others reported `unknown` and stayed silent while
- * it spoke. Now all four speak.
+ * I'm always going to want to know"*.
+ *
+ * ⚠️ THE ASYMMETRY IT WAS PARTLY ARGUED FROM IS GONE, AT THE SOURCE. Bathroom
+ * used to be the only one of the four able to go red on an unconfirmed cabin,
+ * because its supply was resolved server-side without the `is_confirmed` gate
+ * the other three passed through. kindred#2526 deleted that gate rather than
+ * extending it — the four coverage resolvers now agree with `_resolve_bathroom`
+ * — so `unknown` no longer means "nobody has reconfirmed this cabin" on any of
+ * them. The ruling below is unaffected: what reaches it is an EMPTY
+ * aggregation or a blank `has_ramp`, and `fits` would still be a claim.
  *
  * ⚠️ AN UNPLACED PARTY IS A DIFFERENT CASE AND IS NOT GRADED HERE. No unit
  * means nothing to be unconfirmed ABOUT; `resolveNeedGlyphs` short-circuits to

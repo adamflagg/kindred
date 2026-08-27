@@ -5,17 +5,24 @@
  * about the site by zone and a flat 93-row table loses that. The chosen column
  * sorts within a zone (see ./unitSort).
  *
- * CONFIRMATION IS THE POINT OF THIS SCREEN. Every unit is seeded unconfirmed
- * the first time it is created, and `is_confirmed` does NOT carry forward on
- * a season roll (see SeasonRollForwardPanel) — it means "someone walked this
- * cabin THIS season" (kindred#2500), so every unit a roll CREATES lands
- * unconfirmed again for staff to re-verify — in either direction. A code
- * already present in the target year is skipped untouched, so a re-run does
- * not un-confirm anything. The roster still
- * refuses to judge a family's housing need against an unconfirmed cabin — on
- * such a row `has_power: false` means "nobody has said", not "there is no
- * power". So confirming is available inline per row and in bulk over a
- * selection; it is never buried behind opening the form.
+ * CONFIRMATION IS THE POINT OF THIS SCREEN, and since kindred#2500 and
+ * kindred#2526 it is the ONLY thing `is_confirmed` is for.
+ *
+ * Every unit is seeded unconfirmed the first time it is created, and
+ * `is_confirmed` does NOT carry forward on a season roll (kindred#2500, see
+ * SeasonRollForwardPanel) — it means "someone walked this cabin THIS season".
+ * Every unit a roll CREATES lands unconfirmed again, in either direction; a
+ * code already present in the target year is skipped untouched, so a re-run
+ * does not un-confirm anything.
+ *
+ * ⚠️ IT NO LONGER GATES ANY VERDICT (kindred#2526). The roster grades every
+ * placed cabin at FACE VALUE — an unset `has_power: false` now means "there is
+ * no power", not "nobody has said", because the registry is taken at its word
+ * and the flag carries no epistemic weight. `is_confirmed` is the staff
+ * WORK-DOWN LIST — "which cabins still need walking this season" — and this
+ * screen plus the board's `Reconfirm space` mark are the whole of its job.
+ * Confirming is available inline per row and in bulk over a selection; it is
+ * never buried behind opening the form.
  *
  * Deactivate, never delete (spec §3.8). The Go guard in pocketbase/lodging
  * blocks deleting a referenced unit anyway, but the UI should not offer it.
