@@ -97,8 +97,8 @@ migrate((app) => {
       "CREATE INDEX `idx_lodging_issues_year_kind` ON `lodging_ingest_issues` (`year`, `kind`)",
       "CREATE INDEX `idx_lodging_issues_open` ON `lodging_ingest_issues` (`is_resolved`, `year`)",
       // One row per distinct problem, with an occurrences counter, instead of one
-      // row per affected record. Backfilling 2022 hits "River Side - R1" five
-      // times; that is one queue item, not five.
+      // row per affected record. Backfilling 2022 hits the same alias string
+      // five times; that is one queue item, not five.
       // household_cm_id / person_cm_id are 0 for whole-string issues like
       // unresolved_alias, which collapses them correctly. No WHERE predicate:
       // every key column is NOT NULL by PocketBase's own column defaults.

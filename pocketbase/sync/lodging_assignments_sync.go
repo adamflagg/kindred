@@ -701,7 +701,8 @@ func (s *LodgingAssignmentsSync) findAssignment(in *assignmentInput) (*core.Reco
 // filtering against lodging_units would silently change what a placement
 // points at. Appending the empty code anyway made unitLabel sort it FIRST and
 // join it, so a set holding one dangling id and one real room rendered as
-// "+ridge-a". The observed label is only ever built from resolved ids, so the
+// "+<code>" -- an empty label glued to the real one with a leading "+". The
+// observed label is only ever built from resolved ids, so the
 // two could never match, and upsertAssignment's `oldLabel == in.NewUnitLabel`
 // short-circuit failed to fire: writeHistory appended a row claiming the
 // household moved out of a cabin whose name began with a "+".

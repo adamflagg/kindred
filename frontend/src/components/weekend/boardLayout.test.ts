@@ -275,8 +275,9 @@ describe('areaTokens — the URL shorthand for each area', () => {
    * dependency on a field nothing else in the board reads.
    *
    * TWO CHARACTERS IS NOT ALWAYS ENOUGH, which is the whole reason this takes
-   * the full set rather than one area at a time. On the 2026 registry
-   * "Ridge Side" and "River Side" both reduce to RS. No pure function of a
+   * the full set rather than one area at a time. On the 2026 registry, two
+   * real areas whose first words share a prefix and whose second words share
+   * a first letter both reduce to the same two letters. No pure function of a
    * single name can separate them, so the colliding pair -- and only that pair
    * -- deepens until it is distinct.
    */

@@ -332,7 +332,7 @@ describe('writeInDemand', () => {
   })
 
   it('takes each written-into room’s own beds on a combined house', () => {
-    // gt-clouds-rest: own 0, rooms 3 + 1 + 2 + 2.
+    // A combined container with no figure of its own: own 0, rooms 3 + 1 + 2 + 2.
     const rooms = [3, 1, 2, 2].map((n) =>
       demandCover({ relation: 'descendant', party_size: null, unit_sleeps: n })
     )

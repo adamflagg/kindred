@@ -183,9 +183,9 @@ describe('code splitting (#1964)', () => {
   it('paints a fallback for the housing board first, then the board once its chunk resolves', async () => {
     renderPage('housing')
     // SYNCHRONOUS check — no `await` before this line. An eager import
-    // would already have 'Ridge A' painted in the same tick as `render()`;
-    // a lazy one has only started the dynamic import and is still waiting
-    // on its microtask to settle.
+    // would already have the fixture's card painted in the same tick as
+    // `render()`; a lazy one has only started the dynamic import and is
+    // still waiting on its microtask to settle.
     expect(screen.queryByText('Ridge A')).not.toBeInTheDocument()
 
     // EXACTLY one fallback, not "at least one" (`getAllByTestId`, not
@@ -208,7 +208,7 @@ describe('code splitting (#1964)', () => {
     // Explicit timeout, well above `findBy`'s 1000ms default (kindred#2553).
     // This line waits on a REAL dynamic `import()` — the whole point of the
     // test — so vitest must transform and evaluate the board's module graph
-    // before 'Ridge A' can paint. Measured: 369ms on an idle box, but 2536ms
+    // before the fixture's card can paint. Measured: 369ms on an idle box, but 2536ms
     // and 3059ms with all 12 cores saturated, which is what a full-suite run
     // looks like. The default budget made this a load-sensitive flake. The
     // assertion is unchanged: the fallback checks above are what pin the

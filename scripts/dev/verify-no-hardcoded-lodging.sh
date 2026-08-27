@@ -10,12 +10,42 @@
 # SCANNED, not dropped, so a unit name in a migration header fails exactly as a
 # unit list in a migration body does.
 #
-# SCOPE, honestly stated: this is a tripwire, not a proof. It greps for a
-# REPRESENTATIVE SAMPLE of distinctive unit strings (NEEDLES below) — not the
-# full ~90-unit registry, which would be both unmaintainable and prone to
-# false positives on ordinary words ("Ridge A", "Kitty"). A leak of a unit name
-# that is not in NEEDLES will pass. Treat a green run as "the obvious cases are
-# clean", not "no unit name exists in source".
+# ★ DECISION kindred#2551 (2026-08-24): OPTION B. NEEDLES is now BUILT FROM
+# THE REGISTRY (scripts/dev/lib/build_lodging_needles.py) whenever one is
+# readable, rather than sampled by hand. Two facts forced this over the
+# cheaper separator-tolerant widening (Option A) first proposed for the same
+# issue: (1) this guard runs ONLY in CI -- it is wired into neither
+# .lefthook.yml nor scripts/pre-push-verify.sh -- so widening a sample CI
+# already ran past fixes nothing CI actually gates; and (2) re-measuring the
+# sample's blind spot found separator tolerance would have closed 1 of 14
+# known misses, not all of them -- the other 13 were area and unit names the
+# sample never sampled at all, which no widening of a hand list closes for
+# the NEXT unit either.
+#
+# The cost, taken deliberately: the `lodging-guard` CI job now clones the
+# private kindred-local repo via the `KINDRED_LOCAL_DEPLOY_KEY` secret
+# (.github/workflows/ci.yml) -- the same one CD already uses for branding
+# assets -- so a job that needed no secrets before now reads one, purely to
+# build this pattern. build_lodging_needles.py's distinctiveness filter keeps
+# the registry's ordinary-English-word single-token entries out of NEEDLES,
+# which is what makes reading the whole registry safe rather than a
+# false-positive machine.
+#
+# FALLBACK_NEEDLES below is what a fork or a contributor without the deploy
+# key gets instead: the same hand-picked, unwidened sample this guard has
+# always shipped. Option A was superseded by this decision, not folded into
+# it, so that sample is deliberately untouched. Every run announces which
+# mode it used ("needle source = ..." below) -- a guard that silently
+# degrades from registry to sample while still printing OK is worse than one
+# that fails loudly.
+#
+# SCOPE, honestly stated: this is a tripwire, not a proof, IN EITHER MODE. The
+# scan is textual -- a paraphrase, a name split across lines, or a unit name
+# that is itself an ordinary-word substring can still slip past exact literal
+# matching. In fallback mode specifically, a leak of a unit name that is not
+# in FALLBACK_NEEDLES will also pass, exactly as it always has. Treat a green
+# run as "the obvious cases are clean", never as "no unit name exists in
+# source".
 set -euo pipefail
 
 # Preflight BEFORE the first git call — checking for git after invoking it is
@@ -27,6 +57,13 @@ done
 REPO_ROOT=$(git rev-parse --show-toplevel)
 cd "$REPO_ROOT"
 
+# FALLBACK sample, used only when no registry is readable (see the ★
+# DECISION note above) -- unwidened since kindred#2551 superseded Option A
+# rather than adopting it. Everything below this line, including the \b
+# policy, is the pre-existing sample: do not widen it to "fix" a gap here --
+# widen the registry-derived path instead, which is what closes gaps for
+# real.
+#
 # Distinctive unit strings that must never appear outside seed migrations.
 # Double-quoted so "Doctor's House" can carry its apostrophe.
 # "Cloud'?s Rest" matches both spellings on purpose: the canonical unit name is
@@ -49,7 +86,7 @@ cd "$REPO_ROOT"
 # deliberately NOT applied to the whole list -- it would stop matching
 # camelCase identifiers such as a Go variable built from a unit name, which is
 # a leak shape this guard does catch today.
-NEEDLES="Ridge Yurt|Tawonga Village|Manzanita|Tuolumne|Cloud'?s Rest|Wawona|Half Dome|\bEl Cap|Bayit|Tenaya|Tioga|Le Shack|Lofty|Kitty|Doctor's House"
+FALLBACK_NEEDLES="Ridge Yurt|Tawonga Village|Manzanita|Tuolumne|Cloud'?s Rest|Wawona|Half Dome|\bEl Cap|Bayit|Tenaya|Tioga|Le Shack|Lofty|Kitty|Doctor's House"
 
 # --include='*.js' matters: pocketbase/pb_hooks/ is application JavaScript and
 # pocketbase/pb_migrations/ is where the registry used to live, so both have to
@@ -76,6 +113,40 @@ NEEDLES="Ridge Yurt|Tawonga Village|Manzanita|Tuolumne|Cloud'?s Rest|Wawona|Half
 # under every other root -- only the comment split changed.
 read -r -a SCAN_ROOTS <<<"${LODGING_SCAN_ROOTS:-pocketbase/ api/ bunking/ frontend/src/ scripts/ tests/}"
 
+# kindred#2551, Option B: resolve which NEEDLES this run actually uses.
+# Overridable on the same "ONLY so the test suite can..." principle as
+# LODGING_SCAN_ROOTS above -- test-verify-no-hardcoded-lodging.sh forces a
+# path that cannot exist for every pre-existing test (determinism, no
+# coupling to whichever registry happens to be checked out locally) and
+# points this at a small FICTIONAL registry only for the tests that exercise
+# registry mode on purpose. Production behavior (no override) is: read
+# config/lodging_registry.json when it exists, fall back when it doesn't.
+REGISTRY_PATH="${LODGING_REGISTRY_PATH:-config/lodging_registry.json}"
+NEEDLES="$FALLBACK_NEEDLES"
+FALLBACK_COUNT=$(( $(grep -o '|' <<<"$FALLBACK_NEEDLES" | wc -l) + 1 ))
+NEEDLE_ANNOUNCEMENT="fallback sample ($FALLBACK_COUNT terms)"
+if [[ -r "$REGISTRY_PATH" ]]; then
+  if REGISTRY_OUT=$(python3 "$REPO_ROOT/scripts/dev/lib/build_lodging_needles.py" "$REGISTRY_PATH" 2>&1); then
+    REGISTRY_COUNT=$(head -n1 <<<"$REGISTRY_OUT")
+    REGISTRY_PATTERN=$(tail -n +2 <<<"$REGISTRY_OUT")
+    if [[ "$REGISTRY_COUNT" =~ ^[0-9]+$ ]] && [[ -n "$REGISTRY_PATTERN" ]]; then
+      NEEDLES="$REGISTRY_PATTERN"
+      NEEDLE_ANNOUNCEMENT="registry ($REGISTRY_PATH, $REGISTRY_COUNT terms)"
+    else
+      echo "warning: $REGISTRY_PATH is readable but the needle builder returned unexpected output -- using the fallback sample instead:" >&2
+      echo "$REGISTRY_OUT" >&2
+    fi
+  else
+    echo "warning: could not build needles from $REGISTRY_PATH -- using the fallback sample instead:" >&2
+    echo "$REGISTRY_OUT" >&2
+  fi
+fi
+# A guard that silently degrades to the small sample while still printing OK
+# is worse than one that fails loudly -- announce the mode on every run,
+# clean or not. TESTs 25-28 in test-verify-no-hardcoded-lodging.sh assert
+# this line.
+echo "verify-no-hardcoded-lodging: needle source = $NEEDLE_ANNOUNCEMENT"
+
 # Capture grep's OWN status before the filter pipeline swallows it. grep exits
 # 0 for matches, 1 for none, and >=2 when the scan itself failed — an
 # unreadable or missing search root. The old form sent stderr to /dev/null and
@@ -94,18 +165,23 @@ if [[ "$grep_status" -ge 2 ]]; then
   exit 2
 fi
 
-# scripts/ joined SCAN_ROOTS in kindred#2223, and these three files are the
-# guard itself: they MUST carry the needles to function (verify's own NEEDLES
-# definition, the test fixtures in test-verify-no-hardcoded-lodging.sh, and
-# the docstring examples in drop_comment_hits.py). Exempted BY PATH,
-# deliberately -- NOT via the _test./.test. filter below. That filter is a
-# known blind spot (kindred#1909: two real needle-matching literals sailed
-# through it once already) and would not even cover the two .sh files here,
-# whose names don't match `_test\.` or `\.test\.`.
+# scripts/ joined SCAN_ROOTS in kindred#2223, and these four files are the
+# guard itself: they MUST carry the needles to function (verify's own
+# FALLBACK_NEEDLES definition, the test fixtures in
+# test-verify-no-hardcoded-lodging.sh, the docstring examples in
+# drop_comment_hits.py, and -- since kindred#2551 -- the docstring in
+# build_lodging_needles.py, which names the same "El Cap" example
+# FALLBACK_NEEDLES's own comment does to explain why every registry-derived
+# needle is \b-anchored). Exempted BY PATH, deliberately -- NOT via the
+# _test./.test. filter below. That filter is a known blind spot
+# (kindred#1909: two real needle-matching literals sailed through it once
+# already) and would not even cover the two .sh files here, whose names
+# don't match `_test\.` or `\.test\.`.
 GUARD_OWN_FILES=(
   "scripts/dev/verify-no-hardcoded-lodging.sh"
   "scripts/dev/test-verify-no-hardcoded-lodging.sh"
   "scripts/dev/lib/drop_comment_hits.py"
+  "scripts/dev/lib/build_lodging_needles.py"
 )
 for owned in "${GUARD_OWN_FILES[@]}"; do
   RAW=$(printf '%s\n' "$RAW" | grep -v -F "${owned}:" || true)

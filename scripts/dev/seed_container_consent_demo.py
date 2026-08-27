@@ -10,11 +10,12 @@ two rooms. Nobody has ever placed two households that way, so the difference
 between the fixed board and the unfixed board is invisible without this script.
 
 WHAT IT SEEDS. Two fictional family-camp households, both placed on the SAME
-container unit (default: `hc-downstairs`, which expands to HC Downstairs A and
-HC Downstairs B), on the same weekend, both with `share_eligibility = declined`
--- the eligibility that DOES raise the amber flag once an overlap is found, so
-a silent board is the guard working rather than the fixture having nothing to
-report.
+container unit -- pass its code via --unit-code, a real container with 2+
+leaf rooms from YOUR OWN local registry (kindred#2551 removed the hardcoded
+public default, which named one real container and its two real rooms) -- on
+the same weekend, both with `share_eligibility = declined` -- the eligibility
+that DOES raise the amber flag once an overlap is found, so a silent board is
+the guard working rather than the fixture having nothing to report.
 
 WHAT TO EXPECT, running the SAME script against both databases:
 
@@ -71,10 +72,20 @@ DEFAULT_YEAR = 2026
 # Family Camp 1: Memorial Day Weekend -- the weekend with placements already on
 # it, so the seeded card sits among real ones rather than on an empty board.
 DEFAULT_SESSION_CM_ID = 1309514
-# A container with exactly two leaf rooms, unoccupied on the default weekend,
-# and already resolved COMBINED there (a weekend-level `lodging_slot_merges`
-# row), so the board draws it as ONE card and both households land on it.
-DEFAULT_UNIT_CODE = "hc-downstairs"
+# kindred#2551: this used to default to a REAL container's code -- one with
+# exactly two leaf rooms, unoccupied on the default weekend and already
+# resolved COMBINED there (a weekend-level `lodging_slot_merges` row), so the
+# board drew it as ONE card and both households landed on it. That default
+# was a real unit name shipping in public source, which spec 3.8 forbids
+# regardless of whether the surrounding file is a dev-only seed helper --
+# fixture DATA in a test file is exempt, but this is neither a test file nor
+# fixture data, it is the tool's own public default. There is no fictional
+# stand-in that resolves: --unit-code always names a code in the CALLER'S OWN
+# local registry (it varies year to year and camp to camp anyway), so this
+# now fails loudly with a clear SeedError until one is supplied, instead of
+# silently working for whoever happened to have the specific registry this
+# default used to name.
+DEFAULT_UNIT_CODE = "replace-with-your-own-container-code"
 
 # Fictional, per CLAUDE.md section 4. Never put a real camper, family or staff
 # name in a fixture, a seed or anything else that can be read back out.
@@ -441,7 +452,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--db", required=True, help="path to a DEV pocketbase data.db (never data-prod)")
     parser.add_argument("--year", type=int, default=DEFAULT_YEAR)
     parser.add_argument("--session-cm-id", type=int, default=DEFAULT_SESSION_CM_ID)
-    parser.add_argument("--unit-code", default=DEFAULT_UNIT_CODE, help="a CONTAINER code with 2+ leaf rooms")
+    parser.add_argument(
+        "--unit-code",
+        default=DEFAULT_UNIT_CODE,
+        help="a CONTAINER code with 2+ leaf rooms from your own local registry "
+        "(required in practice: the shipped default does not resolve, kindred#2551)",
+    )
     parser.add_argument(
         "--parties",
         type=int,

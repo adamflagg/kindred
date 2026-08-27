@@ -255,6 +255,20 @@ jobs:
   # exits 128 without one -- so actions/checkout below is load-bearing, not
   # boilerplate. kindred#2181: this was entirely unwired before, so nothing
   # ran it and nothing failed when it would have caught something.
+  #
+  # kindred#2551, Option B: the "Clone private config" step below gives this
+  # job read access to config/lodging_registry.json via the same
+  # KINDRED_LOCAL_DEPLOY_KEY secret CD already uses for branding assets --
+  # this job needed no secrets before. The guard reads the registry to build
+  # its own needle list (scripts/dev/lib/build_lodging_needles.py) rather
+  # than a hand-maintained sample; nothing here writes to kindred-local, and
+  # the key is scoped to that one repo. A fork's PR run has no access to this
+  # secret and gets the guard's committed FALLBACK_NEEDLES sample instead --
+  # the guard announces which mode it ran in either way (see the script's own
+  # header). persist-credentials: false on the main checkout is unrelated and
+  # stays: it stops the checked-out repo's own token from persisting, not
+  # this action's ssh key, which the composite action removes itself when
+  # done.
   lodging-guard:
     name: Lodging Name Guard
     runs-on: ubuntu-latest
@@ -263,6 +277,11 @@ jobs:
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         persist-credentials: false
+
+    - name: Clone private config
+      uses: ./.github/actions/clone-kindred-local
+      with:
+        deploy-key: ${{ secrets.KINDRED_LOCAL_DEPLOY_KEY }}
 
     - name: No hardcoded lodging unit names
       run: ./scripts/dev/verify-no-hardcoded-lodging.sh

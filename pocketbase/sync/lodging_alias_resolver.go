@@ -123,10 +123,11 @@ func (r *AliasResolver) HasAnyUnits() bool {
 
 // aliasLookupKey normalises outer whitespace and case only.
 //
-// Inner spacing stays significant: the seed stores strings verbatim and one of
-// them, "Health Center Downstairs  - Room A", genuinely carries a double space.
-// Collapsing inner runs would merge it with a single-space variant that means
-// the same room today but need not tomorrow.
+// Inner spacing stays significant: the seed stores strings verbatim, and one
+// real alias carries a double space between its area segment and its room
+// segment (e.g. "Some Area  - Room A"). Collapsing inner runs would merge it
+// with a single-space variant that means the same room today but need not
+// tomorrow.
 func aliasLookupKey(s string) string {
 	return strings.ToLower(strings.TrimSpace(s))
 }
