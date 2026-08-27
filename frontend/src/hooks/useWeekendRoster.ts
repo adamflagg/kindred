@@ -141,10 +141,14 @@ export function useHouseholdJourney(householdCmId: number | null) {
  * who only ever looked at the roster.
  *
  * The click-to-reveal that used to supply `enabled` is gone (kindred#1889).
- * Its callers are `HousingNeedDetails`, which `FamilyDetailsPanel`
- * renders for ONE household at a time — the grain that makes fetching on
- * mount acceptable. `staleTime: 0, gcTime: 0` is what keeps this honest: the
- * narrative leaves the cache the moment the panel closes.
+ * Two callers supply it themselves now, at two different grains, and each is
+ * proportionate to what is actually on screen: `HousingNeedDetails`, which
+ * `FamilyDetailsPanel` renders for ONE household at a time, so fetching on
+ * MOUNT is fine; and `NeedGlyph`, the board's glyph tooltip, which mounts its
+ * own fetch component only while the bubble is OPEN, so ~82 cards on a page
+ * fetch nothing until a staff member actually asks one. `staleTime: 0,
+ * gcTime: 0` is what keeps both honest: the narrative leaves the cache the
+ * moment the panel closes or the bubble unmounts.
  *
  * `bunking.manage` is held by admins and the Bunking Staff role (kindred#2312
  * retargeted the gate from the now-removed `lodging.phi`, which gated only

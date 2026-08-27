@@ -29,7 +29,7 @@ function party(overrides: Partial<RosterPartyRow> = {}): RosterPartyRow {
     party_size: 2,
     flags: { needs_private_bathroom: true },
     ...overrides,
-  } as RosterPartyRow
+  }
 }
 
 describe('HouseholdRosterRow', () => {

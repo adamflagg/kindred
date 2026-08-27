@@ -62,12 +62,36 @@ interface PanelRow {
 export function HousingNeedDetails({ party, householdCmId, year }: HousingNeedDetailsProps) {
   const { hasPermission } = usePermissions()
   const canRead = hasPermission(Permission.BUNKING_MANAGE) && householdCmId !== null
-  const { data } = useHouseholdMedical(year, householdCmId, canRead)
+  const { data, error } = useHouseholdMedical(year, householdCmId, canRead)
 
   const flags = party.flags
   const mandatory = flags?.accommodation_is_mandatory === true
+
+  // A paragraph already rendered under an earlier row is never repeated
+  // under a later one. `accommodation_explain` is read directly by the
+  // accommodation/blocker row below AND returned again by `needExplainTexts`
+  // for BOTH `fridge` and `step_free` (`needGlyphs.ts` lists it as the sole
+  // `explainSources` for each) -- so a household asking for accommodation, a
+  // fridge and a step-free room used to see the identical paragraph under
+  // three consecutive labels. Measured on the 2026 roster's 392 rostered
+  // households: 10 see it repeated -- 9 twice, 1 three times -- which is all
+  // 6 fridge households and 5 of the 7 step-free ones. This is the same
+  // defect the owner ruled on 2026-08-23 for `bathroom_explain`/`step_free`
+  // (see `needGlyphs.ts`'s own note on that ruling): one glyph, one
+  // paragraph, never re-quoted under a second label. THE ROW STILL RENDERS
+  // regardless of this -- the glyph and label are what carry the need; only
+  // the duplicate TEXT is suppressed. `needExplainTexts` stays the single
+  // calculation; nothing here re-derives which field explains which need.
+  const seenTexts = new Set<string>()
+  const dedupe = (texts: string[]): string[] =>
+    texts.filter((text) => {
+      if (seenTexts.has(text)) return false
+      seenTexts.add(text)
+      return true
+    })
+
   const accommodationText = canRead
-    ? [(data?.accommodation_explain ?? '').trim()].filter(Boolean)
+    ? dedupe([(data?.accommodation_explain ?? '').trim()].filter(Boolean))
     : []
 
   const rows: PanelRow[] = []
@@ -104,7 +128,7 @@ export function HousingNeedDetails({ party, householdCmId, year }: HousingNeedDe
       label: glyph.label,
       Icon: glyph.Icon,
       hueClassName: glyph.hueClassName,
-      texts: canRead ? needExplainTexts(glyph.key, data) : [],
+      texts: canRead ? dedupe(needExplainTexts(glyph.key, data)) : [],
     })
   }
 
@@ -112,21 +136,40 @@ export function HousingNeedDetails({ party, householdCmId, year }: HousingNeedDe
   //    text alone, which is why it disappears entirely without the
   //    permission. Deliberately NOT a NEED_GLYPHS entry: an entry there would
   //    draw on the board card too, and the board shows four graded needs.
-  const specialNeeds = canRead ? (data?.special_needs_info ?? '').trim() : ''
+  const specialNeedsText = canRead ? (data?.special_needs_info ?? '').trim() : ''
+  const specialNeeds = dedupe(specialNeedsText.length > 0 ? [specialNeedsText] : [])
   if (specialNeeds.length > 0) {
     rows.push({
       key: 'special_needs',
       label: 'Special needs',
       Icon: HandHeart,
       hueClassName: 'text-rose-500 dark:text-rose-400',
-      texts: [specialNeeds],
+      texts: specialNeeds,
     })
   }
 
-  if (rows.length === 0) return null
+  // Nothing to say, and the fetch (if any) came back clean: the old
+  // component's honest empty case, now discovered from the payload plus the
+  // roster booleans rather than predicted by a flag.
+  if (rows.length === 0 && error === null) return null
 
   return (
     <ul className="flex flex-col gap-2.5">
+      {error !== null && (
+        // NO SPINNER, deliberately asymmetric with the rows below: every row
+        // above paints immediately off a roster boolean, and its label is
+        // its own placeholder while the narrative loads (`needExplainTexts`'s
+        // own note). A fetch failure is different -- silence there reads as
+        // "the family wrote nothing" to a `bunking.manage` holder, which is
+        // the wrong answer, so it gets the one line of text this component
+        // renders on its own account.
+        <li
+          data-testid="housing-need-fetch-error"
+          className="text-sm text-red-600 dark:text-red-400"
+        >
+          {error.message}
+        </li>
+      )}
       {rows.map((row) => (
         <li
           key={row.key}
