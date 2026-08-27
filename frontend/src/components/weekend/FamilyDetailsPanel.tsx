@@ -18,7 +18,7 @@
  * **One component, both surfaces.** The board and the map both open this same
  * slide-in overlay — there is no second implementation to keep in sync.
  */
-import { Clock, Home, Repeat, Star, Users, X } from 'lucide-react'
+import { Baby, Clock, Home, Repeat, Star, Users, X } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 
 import type {
@@ -279,6 +279,12 @@ export function FamilyDetailsPanel({
                 className="flex flex-wrap items-baseline gap-2 text-sm"
               >
                 <span className="text-foreground">{child.display_name}</span>
+                {child.is_under_two === true && (
+                  <Baby
+                    data-testid={`under-two-${String(child.person_cm_id ?? index)}`}
+                    className="h-3.5 w-3.5 flex-shrink-0 text-sky-500 dark:text-sky-400"
+                  />
+                )}
                 <span className="text-muted-foreground text-xs">
                   {/* An age or grade we do not have is omitted, never zero. */}
                   {[

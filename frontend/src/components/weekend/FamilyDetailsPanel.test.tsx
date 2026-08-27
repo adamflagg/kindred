@@ -112,7 +112,14 @@ function party(overrides: Partial<RosterPartyRow> = {}): RosterPartyRow {
       { adult_number: 2, display_name: 'David Johnson', relationship: 'Father' },
     ],
     children: [
-      { person_cm_id: 9001, display_name: 'Noah Johnson', last_name: 'Johnson', age: 8, grade: 3 },
+      {
+        person_cm_id: 9001,
+        display_name: 'Noah Johnson',
+        last_name: 'Johnson',
+        age: 8,
+        grade: 3,
+        is_under_two: false,
+      },
     ],
     party_size: 3,
     unit_code: 'cedar-1',
@@ -700,6 +707,35 @@ describe('FamilyDetailsPanel — the headcount agrees with the printed adult/chi
       { wrapper }
     )
     expect(screen.getByText('2 people')).toBeInTheDocument()
+  })
+
+  it('marks a child under two, and does not mark one whose age merely rounds to 2', () => {
+    const p = party({
+      children: [
+        {
+          person_cm_id: 1000001,
+          display_name: 'Riley Sam',
+          last_name: 'Sam',
+          age: 1.05,
+          grade: null,
+          is_under_two: true,
+          session_cm_ids: [],
+        },
+        {
+          person_cm_id: 1000002,
+          display_name: 'Olivia Chen',
+          last_name: 'Chen',
+          age: 2.01,
+          grade: null,
+          is_under_two: false,
+          session_cm_ids: [],
+        },
+      ],
+    })
+    render(<FamilyDetailsPanel party={p} year={2026} onClose={vi.fn()} />, { wrapper })
+
+    expect(screen.getByTestId('under-two-1000001')).toBeInTheDocument()
+    expect(screen.queryByTestId('under-two-1000002')).not.toBeInTheDocument()
   })
 })
 
