@@ -2779,11 +2779,33 @@ func (s *FamilyCampDerivedSync) registrationNeedsUpdate(existing *core.Record, r
 		existing.GetString(enrollmentStatusColumn) != reg.enrollmentStatus
 }
 
-// setRegistrationRequestFields writes the household-grain request layer and the
-// derived housing flags. Shared by the create and update branches so the two
-// cannot drift -- PocketBase Set on a column the schema lacks is a silent no-op,
-// so a field written in only one branch fails invisibly on the other path.
+// setRegistrationRequestFields writes the registration profile columns, the
+// household-grain request layer, and the derived housing flags. Shared by the
+// create and update branches so the two cannot drift -- PocketBase Set on a
+// column the schema lacks is a silent no-op, so a field written in only one
+// branch fails invisibly on the other path.
+//
+// The first block (cabin_assignment through needs_accommodation) used to be
+// hand-copied into both branches of upsertRegistrations (kindred#2552 piece
+// 1). Seven of those eight columns are plain strings with no normalisation,
+// meeting the inclusion criterion medicalColumnValues' doc comment states.
+// needs_accommodation is the bool of the eight, but unlike that comment's
+// "shared list" (a single []struct{column, value string} walked by both the
+// writer and the comparator), this function is write-only and already mixes
+// bools with strings below -- wantsNear, needsPower, hasInfant, and the rest.
+// Nothing about being a bool stops a column joining a write-only helper, so
+// it is included here too. registrationNeedsUpdate's SEPARATE compare list
+// is untouched: whether that list can fuse with this one is kindred#2552
+// piece 2, not yet decided.
 func setRegistrationRequestFields(record *core.Record, reg *registrationData) {
+	record.Set("cabin_assignment", reg.cabinAssignment)
+	record.Set("share_cabin_preference", reg.shareCabinPreference)
+	record.Set("shared_cabin_modes_raw", reg.sharedCabinModesRaw)
+	record.Set("arrival_eta", reg.arrivalETA)
+	record.Set("special_occasions", reg.specialOccasions)
+	record.Set("goals", reg.goals)
+	record.Set("notes", reg.notes)
+	record.Set("needs_accommodation", reg.needsAccommodation)
 	record.Set(enrollmentStatusColumn, reg.enrollmentStatus)
 	record.Set("share_cabin_gate", reg.shareCabinGate)
 	record.Set("wants_near", reg.wantsNear)
@@ -2839,12 +2861,15 @@ type medicalColumnValue struct {
 // workable here and not there: every field on medicalData is a plain string,
 // with no normalisation applied between the struct and the column.
 //
-// The registration comparison is also only PARTLY solved, which the sentence
-// above should not be read as denying: setRegistrationRequestFields covers
-// about 17 of the 25 columns registrationNeedsUpdate compares, and the other
-// eight are still hand-copied into both branches of upsertRegistrations.
-// Seven of those eight are plain strings and would meet the criterion stated
-// here. Tracked separately; it is a registration change, not a medical one.
+// The registration WRITE path is now fully solved (kindred#2552 piece 1):
+// setRegistrationRequestFields covers all of the columns upsertRegistrations
+// writes, including the eight (seven plain strings plus the bool
+// needs_accommodation) that used to be hand-copied into both its branches.
+// registrationNeedsUpdate's SEPARATE compare list is still hand-written and
+// deliberately untouched -- whether it can fuse with the write list the way
+// this one does is kindred#2552 piece 2, and it carries a real decision: a
+// column whose write and compare sets should DIVERGE cannot simply join a
+// fused list, for the same reason given two paragraphs below.
 //
 // ONE LIST FUSES TWO QUESTIONS -- "is this column written?" and "does a
 // change to it make the row dirty?" -- and today those sets are identical for
@@ -2990,14 +3015,6 @@ func (s *FamilyCampDerivedSync) upsertRegistrations(
 		if existingRecord, ok := existing[key]; ok {
 			// Record exists - check if update needed
 			if s.registrationNeedsUpdate(existingRecord, reg) {
-				existingRecord.Set("cabin_assignment", reg.cabinAssignment)
-				existingRecord.Set("share_cabin_preference", reg.shareCabinPreference)
-				existingRecord.Set("shared_cabin_modes_raw", reg.sharedCabinModesRaw)
-				existingRecord.Set("arrival_eta", reg.arrivalETA)
-				existingRecord.Set("special_occasions", reg.specialOccasions)
-				existingRecord.Set("goals", reg.goals)
-				existingRecord.Set("notes", reg.notes)
-				existingRecord.Set("needs_accommodation", reg.needsAccommodation)
 				setRegistrationRequestFields(existingRecord, reg)
 
 				if err := s.App.Save(existingRecord); err != nil {
@@ -3014,14 +3031,6 @@ func (s *FamilyCampDerivedSync) upsertRegistrations(
 			record := core.NewRecord(col)
 			record.Set("household", reg.householdPBID)
 			record.Set("year", year)
-			record.Set("cabin_assignment", reg.cabinAssignment)
-			record.Set("share_cabin_preference", reg.shareCabinPreference)
-			record.Set("shared_cabin_modes_raw", reg.sharedCabinModesRaw)
-			record.Set("arrival_eta", reg.arrivalETA)
-			record.Set("special_occasions", reg.specialOccasions)
-			record.Set("goals", reg.goals)
-			record.Set("notes", reg.notes)
-			record.Set("needs_accommodation", reg.needsAccommodation)
 			setRegistrationRequestFields(record, reg)
 
 			if err := s.App.Save(record); err != nil {
