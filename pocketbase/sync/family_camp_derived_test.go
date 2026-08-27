@@ -1119,6 +1119,19 @@ func TestSetRegistrationRequestFieldsReachesBothCreateAndUpdate(t *testing.T) {
 		reg.shareEligibility, reg.shareEligibilitySource)
 
 	// Stands in for the create branch: a brand-new record with nothing set.
+	//
+	// ⚠️ This calls the helper DIRECTLY -- it does not drive upsertRegistrations,
+	// so it cannot catch a branch that stops CALLING the helper. Verified by
+	// mutation: deleting `setRegistrationRequestFields(record, reg)` from the
+	// create branch leaves this test green. What this test pins is the helper's
+	// own contract: every one of the eight columns is written, on a fresh record
+	// and over a stale one alike.
+	//
+	// The branch-level coverage lives in TestFamilyCampEnrollmentStatusReachesAllThreeTables
+	// (family_camp_enrollment_status_test.go), which drives upsertRegistrations
+	// for real and DOES fail under that mutation. If that test is ever narrowed
+	// or deleted, this file stops being enough -- drive upsertRegistrations here
+	// instead of standing in for it.
 	created := core.NewRecord(col)
 	setRegistrationRequestFields(created, reg)
 
