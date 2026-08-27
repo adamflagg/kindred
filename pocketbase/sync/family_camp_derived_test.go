@@ -1040,6 +1040,190 @@ func TestSetMedicalFieldsReachesBothCreateAndUpdate(t *testing.T) {
 	}
 }
 
+// TestSetRegistrationRequestFieldsReachesBothCreateAndUpdate is the
+// acceptance test for kindred#2552 piece 1, on the model of
+// TestSetMedicalFieldsReachesBothCreateAndUpdate above.
+//
+// Before this, upsertRegistrations hand-copied eight columns
+// (cabin_assignment, share_cabin_preference, shared_cabin_modes_raw,
+// arrival_eta, special_occasions, goals, notes, needs_accommodation) into
+// BOTH its create branch and its update branch, on top of the columns
+// setRegistrationRequestFields already covered. A field written into only
+// ONE of the two branches still compiles and fails SILENTLY, because
+// PocketBase's record.Set on a column the schema doesn't carry is a no-op
+// with no error -- setRegistrationRequestFields' own doc comment states the
+// invariant.
+//
+// This drives setRegistrationRequestFields against two separate records:
+// "created" stands in for the create branch's brand-new record, "updated"
+// stands in for the update branch's pre-existing record, seeded here with
+// different STALE values first. Every column setRegistrationRequestFields
+// writes must land its real value on BOTH.
+func TestSetRegistrationRequestFieldsReachesBothCreateAndUpdate(t *testing.T) {
+	t.Parallel()
+	col := core.NewBaseCollection("family_camp_registrations")
+	col.Fields.Add(&core.TextField{Name: "cabin_assignment"})
+	col.Fields.Add(&core.TextField{Name: "share_cabin_preference"})
+	col.Fields.Add(&core.TextField{Name: "shared_cabin_modes_raw"})
+	col.Fields.Add(&core.TextField{Name: "arrival_eta"})
+	col.Fields.Add(&core.TextField{Name: "special_occasions"})
+	col.Fields.Add(&core.TextField{Name: "goals"})
+	col.Fields.Add(&core.TextField{Name: "notes"})
+	col.Fields.Add(&core.BoolField{Name: "needs_accommodation"})
+	col.Fields.Add(&core.TextField{Name: enrollmentStatusColumn})
+	col.Fields.Add(&core.TextField{Name: "share_cabin_gate"})
+	col.Fields.Add(&core.BoolField{Name: "wants_near"})
+	col.Fields.Add(&core.BoolField{Name: "wants_with_named"})
+	col.Fields.Add(&core.BoolField{Name: "wants_similar_ages"})
+	col.Fields.Add(&core.TextField{Name: "request_text"})
+	col.Fields.Add(&core.TextField{Name: "request_source_field"})
+	col.Fields.Add(&core.TextField{Name: "request_last_updated"})
+	col.Fields.Add(&core.BoolField{Name: "needs_private_bathroom"})
+	col.Fields.Add(&core.BoolField{Name: "needs_power"})
+	col.Fields.Add(&core.BoolField{Name: "accommodation_is_mandatory"})
+	col.Fields.Add(&core.BoolField{Name: "has_infant"})
+	col.Fields.Add(&core.BoolField{Name: "needs_fridge"})
+	col.Fields.Add(&core.BoolField{Name: "needs_step_free"})
+	col.Fields.Add(&core.TextField{Name: "share_eligibility"})
+	col.Fields.Add(&core.TextField{Name: "share_eligibility_source"})
+
+	ts := time.Date(2026, 4, 21, 9, 30, 0, 0, time.UTC)
+	reg := &registrationData{
+		householdPBID:            "hh_1",
+		cabinAssignment:          "Cabin 12",
+		shareCabinPreference:     "Yes",
+		sharedCabinModesRaw:      "NEAR|WITH",
+		arrivalETA:               "Friday 5pm",
+		specialOccasions:         "Anniversary",
+		goals:                    "Family bonding",
+		notes:                    "Prefers ground floor",
+		needsAccommodation:       true,
+		enrollmentStatus:         enrollmentStatusEnrolled,
+		shareCabinGate:           gateYes,
+		wantsNear:                true,
+		wantsWithNamed:           true,
+		wantsSimilarAges:         false,
+		requestText:              "Would like to be near the Andersons",
+		requestSourceField:       "FAM CAMP-Share Cabins",
+		requestLastUpdated:       ts,
+		needsPrivateBathroom:     true,
+		needsPower:               true,
+		accommodationIsMandatory: false,
+		hasInfant:                true,
+		needsFridge:              true,
+		needsStepFree:            false,
+		shareEligibility:         "open",
+		shareEligibilitySource:   "form",
+	}
+	wantEligibility, wantEligibilitySource := NormalizeShareEligibility(
+		reg.shareEligibility, reg.shareEligibilitySource)
+
+	// Stands in for the create branch: a brand-new record with nothing set.
+	//
+	// ⚠️ This calls the helper DIRECTLY -- it does not drive upsertRegistrations,
+	// so it cannot catch a branch that stops CALLING the helper. Verified by
+	// mutation: deleting `setRegistrationRequestFields(record, reg)` from the
+	// create branch leaves this test green. What this test pins is the helper's
+	// own contract: every one of the eight columns is written, on a fresh record
+	// and over a stale one alike.
+	//
+	// The branch-level coverage lives in TestFamilyCampEnrollmentStatusReachesAllThreeTables
+	// (family_camp_enrollment_status_test.go), which drives upsertRegistrations
+	// for real and DOES fail under that mutation. If that test is ever narrowed
+	// or deleted, this file stops being enough -- drive upsertRegistrations here
+	// instead of standing in for it.
+	created := core.NewRecord(col)
+	setRegistrationRequestFields(created, reg)
+
+	// Stands in for the update branch: a record pre-loaded with different,
+	// stale values before setRegistrationRequestFields overwrites them.
+	updated := core.NewRecord(col)
+	updated.Set("cabin_assignment", "stale")
+	updated.Set("share_cabin_preference", "stale")
+	updated.Set("shared_cabin_modes_raw", "stale")
+	updated.Set("arrival_eta", "stale")
+	updated.Set("special_occasions", "stale")
+	updated.Set("goals", "stale")
+	updated.Set("notes", "stale")
+	updated.Set("needs_accommodation", false)
+	updated.Set(enrollmentStatusColumn, "waitlisted")
+	updated.Set("share_cabin_gate", gateNo)
+	updated.Set("wants_near", false)
+	updated.Set("wants_with_named", false)
+	updated.Set("wants_similar_ages", true)
+	updated.Set("request_text", "stale")
+	updated.Set("request_source_field", "stale")
+	updated.Set("request_last_updated", time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC))
+	updated.Set("needs_private_bathroom", false)
+	updated.Set("needs_power", false)
+	updated.Set("accommodation_is_mandatory", true)
+	updated.Set("has_infant", false)
+	updated.Set("needs_fridge", false)
+	updated.Set("needs_step_free", true)
+	updated.Set("share_eligibility", "stale")
+	updated.Set("share_eligibility_source", "stale")
+	setRegistrationRequestFields(updated, reg)
+
+	stringChecks := []struct {
+		column string
+		want   string
+	}{
+		{"cabin_assignment", reg.cabinAssignment},
+		{"share_cabin_preference", reg.shareCabinPreference},
+		{"shared_cabin_modes_raw", reg.sharedCabinModesRaw},
+		{"arrival_eta", reg.arrivalETA},
+		{"special_occasions", reg.specialOccasions},
+		{"goals", reg.goals},
+		{"notes", reg.notes},
+		{enrollmentStatusColumn, reg.enrollmentStatus},
+		{"share_cabin_gate", reg.shareCabinGate},
+		{"request_text", reg.requestText},
+		{"request_source_field", reg.requestSourceField},
+		{"share_eligibility", wantEligibility},
+		{"share_eligibility_source", wantEligibilitySource},
+	}
+	for _, c := range stringChecks {
+		if got := created.GetString(c.column); got != c.want {
+			t.Errorf("create: %s = %q, want %q", c.column, got, c.want)
+		}
+		if got := updated.GetString(c.column); got != c.want {
+			t.Errorf("update: %s = %q, want %q", c.column, got, c.want)
+		}
+	}
+
+	boolChecks := []struct {
+		column string
+		want   bool
+	}{
+		{"needs_accommodation", reg.needsAccommodation},
+		{"wants_near", reg.wantsNear},
+		{"wants_with_named", reg.wantsWithNamed},
+		{"wants_similar_ages", reg.wantsSimilarAges},
+		{"needs_private_bathroom", reg.needsPrivateBathroom},
+		{"needs_power", reg.needsPower},
+		{"accommodation_is_mandatory", reg.accommodationIsMandatory},
+		{"has_infant", reg.hasInfant},
+		{"needs_fridge", reg.needsFridge},
+		{"needs_step_free", reg.needsStepFree},
+	}
+	for _, c := range boolChecks {
+		if got := created.GetBool(c.column); got != c.want {
+			t.Errorf("create: %s = %v, want %v", c.column, got, c.want)
+		}
+		if got := updated.GetBool(c.column); got != c.want {
+			t.Errorf("update: %s = %v, want %v", c.column, got, c.want)
+		}
+	}
+
+	wantStamp := formatRequestStamp(reg.requestLastUpdated)
+	if got := created.GetString("request_last_updated"); got != wantStamp {
+		t.Errorf("create: request_last_updated = %q, want %q", got, wantStamp)
+	}
+	if got := updated.GetString("request_last_updated"); got != wantStamp {
+		t.Errorf("update: request_last_updated = %q, want %q", got, wantStamp)
+	}
+}
+
 // TestCompositeKeyFormats verifies the composite key format for each table
 func TestCompositeKeyFormats(t *testing.T) {
 	t.Parallel()
