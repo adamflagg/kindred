@@ -10,11 +10,12 @@ two rooms. Nobody has ever placed two households that way, so the difference
 between the fixed board and the unfixed board is invisible without this script.
 
 WHAT IT SEEDS. Two fictional family-camp households, both placed on the SAME
-container unit (default: `hc-downstairs`, which expands to HC Downstairs A and
-HC Downstairs B), on the same weekend, both with `share_eligibility = declined`
--- the eligibility that DOES raise the amber flag once an overlap is found, so
-a silent board is the guard working rather than the fixture having nothing to
-report.
+container unit -- pass its code via --unit-code, a real container with 2+
+leaf rooms from YOUR OWN local registry (kindred#2551 removed the hardcoded
+public default, which named one real container and its two real rooms) -- on
+the same weekend, both with `share_eligibility = declined` -- the eligibility
+that DOES raise the amber flag once an overlap is found, so a silent board is
+the guard working rather than the fixture having nothing to report.
 
 WHAT TO EXPECT, running the SAME script against both databases:
 
@@ -38,8 +39,10 @@ throwaway copy. Every row it writes carries the id prefix `demo2371`, so a
 re-run deletes exactly its own rows and touches nothing else -- it is safely
 re-runnable, and `--remove` undoes it completely.
 
-  uv run python scripts/dev/seed_container_consent_demo.py --db pocketbase/pb_data/data.db
-  uv run python scripts/dev/seed_container_consent_demo.py --db pocketbase/pb_data/data.db --remove
+  uv run python scripts/dev/seed_container_consent_demo.py \
+      --db pocketbase/pb_data/data.db --unit-code <a container code from your own registry>
+  uv run python scripts/dev/seed_container_consent_demo.py \
+      --db pocketbase/pb_data/data.db --remove
 
 Seed BEFORE starting the dev servers, or restart them afterwards: the FastAPI
 layer caches the year-scoped reads (`lodging_cache`, ~15 min), so a running
@@ -71,10 +74,25 @@ DEFAULT_YEAR = 2026
 # Family Camp 1: Memorial Day Weekend -- the weekend with placements already on
 # it, so the seeded card sits among real ones rather than on an empty board.
 DEFAULT_SESSION_CM_ID = 1309514
-# A container with exactly two leaf rooms, unoccupied on the default weekend,
-# and already resolved COMBINED there (a weekend-level `lodging_slot_merges`
-# row), so the board draws it as ONE card and both households land on it.
-DEFAULT_UNIT_CODE = "hc-downstairs"
+# kindred#2551: --unit-code used to default to a REAL container's code -- one
+# with exactly two leaf rooms, unoccupied on the default weekend and already
+# resolved COMBINED there (a weekend-level `lodging_slot_merges` row), so the
+# board drew it as ONE card and both households landed on it. That default was
+# a real unit name shipping in public source, which spec 3.8 forbids regardless
+# of whether the surrounding file is a dev-only seed helper -- fixture DATA in
+# a test file is exempt, but this is neither a test file nor fixture data, it
+# is the tool's own public default.
+#
+# kindred#2573: the first replacement was a SENTINEL placeholder that could not
+# resolve. That made the flag mandatory in effect but discovered it in the
+# wrong place -- deep inside resolve_scene, after --db had been validated and
+# a database opened, reported as "no lodging_units row for code=<sentinel>",
+# which reads as a data problem rather than a missing argument. There is no
+# fictional stand-in that CAN resolve: --unit-code always names a code in the
+# CALLER'S OWN local registry, which varies by year and by camp. A flag with no
+# honest default should just be required, so it is -- checked at parse time, by
+# name, before anything is opened. It stays optional for --remove, which reads
+# no unit at all.
 
 # Fictional, per CLAUDE.md section 4. Never put a real camper, family or staff
 # name in a fixture, a seed or anything else that can be read back out.
@@ -441,7 +459,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--db", required=True, help="path to a DEV pocketbase data.db (never data-prod)")
     parser.add_argument("--year", type=int, default=DEFAULT_YEAR)
     parser.add_argument("--session-cm-id", type=int, default=DEFAULT_SESSION_CM_ID)
-    parser.add_argument("--unit-code", default=DEFAULT_UNIT_CODE, help="a CONTAINER code with 2+ leaf rooms")
+    parser.add_argument(
+        "--unit-code",
+        help="a CONTAINER code with 2+ leaf rooms from your own local registry. "
+        "Required for a seed run -- there is no default that could resolve "
+        "(kindred#2551, kindred#2573). Not needed with --remove.",
+    )
     parser.add_argument(
         "--parties",
         type=int,
@@ -451,6 +474,15 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--remove", action="store_true", help="delete the seeded rows and exit")
     args = parser.parse_args(argv)
+
+    # Required for a seed, meaningless for a removal. argparse's own
+    # required=True cannot express "required unless --remove", so it is checked
+    # here instead -- parser.error still exits 2 naming the flag, and still does
+    # so before --db is validated and before any database is opened.
+    if not args.remove and not args.unit_code:
+        parser.error(
+            "--unit-code is required (except with --remove): pass a container code from your own local registry"
+        )
 
     try:
         db_path = guard_path(args.db)

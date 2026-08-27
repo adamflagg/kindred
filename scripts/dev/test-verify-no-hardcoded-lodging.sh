@@ -30,6 +30,19 @@ fi
 
 REPO_ROOT=$(git rev-parse --show-toplevel)
 
+# kindred#2551: the guard now builds its needle list from the private
+# registry when one is readable, and this worktree's config/lodging_registry.json
+# is very likely a live symlink into kindred-local for local dev. Left alone,
+# EVERY test below would silently start running against the real ~366-term
+# registry instead of the committed FALLBACK_NEEDLES sample the probes were
+# written against -- non-deterministic across registries, and coupling this
+# self-test suite to private data that CI contributors without the deploy key
+# don't have. Forcing a path that cannot exist pins every pre-existing test to
+# fallback mode regardless of environment; TESTs 25-28 below override this
+# per-test to exercise registry mode deliberately, on a small FICTIONAL
+# registry, never the real one.
+export LODGING_REGISTRY_PATH="does-not-exist-kindred2551-registry.json"
+
 # Probe paths deliberately avoid the guard's own test-file exclusions (see
 # header above) and sit directly under two of the six scanned trees
 # (pocketbase/pb_hooks -- application JS -- and api -- Python).
@@ -762,6 +775,309 @@ else
   echo "$OUT" >&2
   exit 1
 fi
+
+echo
+echo "=== TEST 25: registry-derived needles catch a hyphenated code AND an area name never in FALLBACK_NEEDLES (kindred#2551) ==="
+# Option B (kindred#2551): when a registry is readable, NEEDLES is built from
+# it -- name, code, and alias_string, for both units and areas -- rather than
+# sampled by hand. This is a FICTIONAL two-unit, one-area registry, never the
+# real one, so this suite stays reproducible with or without kindred-local
+# checked out. It plants a hyphenated lowercase CODE in a comment -- the exact
+# shape that was invisible under Option A's own reasoning, since a code-form
+# needle now exists in the pattern as its own literal rather than needing a
+# separator-tolerant rewrite of a space-form one.
+FICTIONAL_REGISTRY=$(mktemp)
+cat > "$FICTIONAL_REGISTRY" <<'REGISTRY'
+{
+  "_notes": ["fictional registry for kindred#2551 self-tests -- not real data"],
+  "areas": [
+    {"code": "quiet-loop", "name": "Quiet Loop"}
+  ],
+  "units": [
+    {"area": "quiet-loop", "code": "north-ridge-3", "name": "North Ridge 3"},
+    {"area": "quiet-loop", "code": "lantern", "name": "Lantern"}
+  ],
+  "aliases": []
+}
+REGISTRY
+REGISTRY_CODE_PROBE="$REPO_ROOT/bunking/leak_probe_kindred2551_code.py"
+cleanup22() { rm -f "$FICTIONAL_REGISTRY" "$REGISTRY_CODE_PROBE"; }
+trap 'cleanup22; cleanup21; cleanup20; cleanup19; cleanup18; cleanup17; cleanup16; cleanup15; cleanup14; cleanup13; cleanup12; cleanup11; cleanup10; cleanup9; cleanup8; cleanup7; cleanup6; cleanup5; cleanup4; cleanup3; cleanup' EXIT INT TERM
+echo '# See north-ridge-3 for the shape this handles.' > "$REGISTRY_CODE_PROBE"
+set +e
+OUT=$(LODGING_REGISTRY_PATH="$FICTIONAL_REGISTRY" "$GUARD_SCRIPT" 2>&1)
+rc=$?
+set -e
+rm -f "$REGISTRY_CODE_PROBE"
+if [[ $rc -ne 1 ]]; then
+  echo "FAIL: expected exit 1 for a registry-derived hyphenated code, got $rc" >&2
+  echo "$OUT" >&2
+  exit 1
+fi
+if ! grep -q "bunking/leak_probe_kindred2551_code.py:1:" <<<"$OUT"; then
+  echo "FAIL: output missing the registry-code probe file:line" >&2
+  echo "$OUT" >&2
+  exit 1
+fi
+if ! grep -q "needle source = registry" <<<"$OUT"; then
+  echo "FAIL: expected the guard to announce registry mode, got: $OUT" >&2
+  exit 1
+fi
+if ! grep -q "4 terms" <<<"$OUT"; then
+  echo "FAIL: expected exactly 4 distinctive terms (the fictional registry's 2 multi-token names + 2 hyphenated codes; its 2 bare single tokens must be excluded), got: $OUT" >&2
+  exit 1
+fi
+echo "PASS: a registry-derived hyphenated code is caught, and the guard announces registry mode with the right term count"
+
+echo
+echo "=== TEST 26: the distinctiveness filter excludes a bare single-token registry entry, even when it reads as an ordinary word (kindred#2551) ==="
+# The other half of Option B's acceptance criterion: a registry value with no
+# space and no hyphen is exactly the false-positive class this guard's own
+# header warns about (measured against the real registry: 38 of 366 distinct
+# terms), so it must never enter the pattern. Reuses the same fictional
+# registry as TEST 25 -- "lantern" there is a bare single-token unit code AND
+# name, deliberately chosen to also be ordinary English prose.
+REGISTRY_WORD_PROBE="$REPO_ROOT/bunking/leak_probe_kindred2551_word.py"
+cleanup23() { rm -f "$REGISTRY_WORD_PROBE"; cleanup22; }
+trap 'cleanup23; cleanup21; cleanup20; cleanup19; cleanup18; cleanup17; cleanup16; cleanup15; cleanup14; cleanup13; cleanup12; cleanup11; cleanup10; cleanup9; cleanup8; cleanup7; cleanup6; cleanup5; cleanup4; cleanup3; cleanup' EXIT INT TERM
+echo '# The lantern by the trailhead flickered all night.' > "$REGISTRY_WORD_PROBE"
+set +e
+OUT=$(LODGING_REGISTRY_PATH="$FICTIONAL_REGISTRY" "$GUARD_SCRIPT" 2>&1)
+rc=$?
+set -e
+rm -f "$REGISTRY_WORD_PROBE"
+if [[ $rc -ne 0 ]]; then
+  echo "FAIL: expected exit 0 -- a bare single-token registry entry must not become a needle, got $rc" >&2
+  echo "$OUT" >&2
+  exit 1
+fi
+if ! grep -q "needle source = registry" <<<"$OUT" || ! grep -q "4 terms" <<<"$OUT"; then
+  echo "FAIL: expected registry mode with 4 terms (proving the single-token entries were excluded, not just untested), got: $OUT" >&2
+  exit 1
+fi
+echo "PASS: an ordinary-English-word single-token registry entry does not trip the guard"
+rm -f "$FICTIONAL_REGISTRY"
+
+echo
+echo "=== TEST 27: with no registry available, the guard falls back to the committed sample and says so (kindred#2551) ==="
+# Every test above this one already runs in forced-fallback mode (the
+# LODGING_REGISTRY_PATH export near the top of this file points nowhere), so
+# this is the first to actually ASSERT the announcement rather than only
+# relying on the fallback behind the scenes. FALLBACK_NEEDLES carries 15
+# pipe-separated terms today (verify-no-hardcoded-lodging.sh); this pins that
+# the count in the announcement is computed, not stale, without hardcoding the
+# sample's own content here.
+FALLBACK_PROBE="$REPO_ROOT/bunking/leak_probe_kindred2551_fallback.py"
+cleanup24() { rm -f "$FALLBACK_PROBE"; }
+trap 'cleanup24; cleanup23; cleanup21; cleanup20; cleanup19; cleanup18; cleanup17; cleanup16; cleanup15; cleanup14; cleanup13; cleanup12; cleanup11; cleanup10; cleanup9; cleanup8; cleanup7; cleanup6; cleanup5; cleanup4; cleanup3; cleanup' EXIT INT TERM
+echo '# comment naming Wawona to explain a fixture below.' > "$FALLBACK_PROBE"
+set +e
+OUT=$("$GUARD_SCRIPT" 2>&1)
+rc=$?
+set -e
+rm -f "$FALLBACK_PROBE"
+if [[ $rc -ne 1 ]]; then
+  echo "FAIL: expected exit 1 for a FALLBACK_NEEDLES hit with no registry available, got $rc" >&2
+  echo "$OUT" >&2
+  exit 1
+fi
+if ! grep -q "bunking/leak_probe_kindred2551_fallback.py:1:" <<<"$OUT"; then
+  echo "FAIL: output missing the fallback probe file:line" >&2
+  echo "$OUT" >&2
+  exit 1
+fi
+if ! grep -q "needle source = fallback sample (15 terms)" <<<"$OUT"; then
+  echo "FAIL: expected the guard to announce fallback mode with 15 terms, got: $OUT" >&2
+  exit 1
+fi
+echo "PASS: an unreadable registry path falls back to the committed sample and announces it"
+
+echo
+echo "=== TEST 28: a present but MALFORMED registry falls back gracefully, never silently (kindred#2551) ==="
+# A guard that silently degrades to a smaller needle list while still printing
+# OK is worse than one that fails -- the owner's own framing for this
+# decision. A malformed registry must not crash the script (set -euo pipefail
+# makes an uncaught python traceback fatal) and must not produce an EMPTY
+# pattern that matches nothing while reporting registry mode; it must fall
+# back to FALLBACK_NEEDLES and say so, the same as a missing file.
+MALFORMED_REGISTRY=$(mktemp)
+echo '{ this is not valid json' > "$MALFORMED_REGISTRY"
+MALFORMED_PROBE="$REPO_ROOT/bunking/leak_probe_kindred2551_malformed.py"
+cleanup25() { rm -f "$MALFORMED_REGISTRY" "$MALFORMED_PROBE"; }
+trap 'cleanup25; cleanup24; cleanup23; cleanup21; cleanup20; cleanup19; cleanup18; cleanup17; cleanup16; cleanup15; cleanup14; cleanup13; cleanup12; cleanup11; cleanup10; cleanup9; cleanup8; cleanup7; cleanup6; cleanup5; cleanup4; cleanup3; cleanup' EXIT INT TERM
+echo '# comment naming Wawona to explain a fixture below.' > "$MALFORMED_PROBE"
+set +e
+OUT=$(LODGING_REGISTRY_PATH="$MALFORMED_REGISTRY" "$GUARD_SCRIPT" 2>&1)
+rc=$?
+set -e
+rm -f "$MALFORMED_REGISTRY" "$MALFORMED_PROBE"
+if [[ $rc -ne 1 ]]; then
+  echo "FAIL: expected exit 1 (fallback still catches the sample needle), got $rc" >&2
+  echo "$OUT" >&2
+  exit 1
+fi
+if ! grep -q "needle source = fallback sample (15 terms)" <<<"$OUT"; then
+  echo "FAIL: a malformed registry must fall back to the sample and announce it, got: $OUT" >&2
+  exit 1
+fi
+echo "PASS: a malformed registry degrades to the fallback sample instead of crashing or silently passing"
+
+echo
+echo "=== TEST 29: stray stderr from the needle builder must NEVER dump the needle pattern (kindred#2573) ==="
+# ⚠️ THIS IS A PRIVACY TEST, not a correctness one, and it guards a PUBLIC repo.
+#
+# The guard used to invoke build_lodging_needles.py with `2>&1`, merging the
+# builder's stderr into the SAME variable that carries its stdout -- and its
+# stdout IS the pattern: every unit name, area name, code and alias string in
+# the registry, '|'-joined. Any stderr at all from an OTHERWISE SUCCESSFUL
+# build then made `head -n1` non-numeric, and the "returned unexpected output"
+# branch echoed that whole variable to stderr. On a public repo that is the
+# entire registry printed into a world-readable Actions log -- and the guard
+# still exited 0 and printed OK, so nothing about the run looked wrong.
+#
+# The trigger needs no bug in the builder. A DeprecationWarning, PYTHONDEVMODE,
+# a sitecustomize/.pth print, or a diagnostic someone adds later all produce it.
+# This test simulates exactly that shape: a sitecustomize.py on PYTHONPATH
+# writing one line to stderr at interpreter startup.
+#
+# The registry here is FICTIONAL, so the suite proves the property without ever
+# needing the real one -- what it asserts is that NO term from whichever
+# registry was read reaches the guard's output.
+STRAY_PYPATH=$(mktemp -d)
+cat > "$STRAY_PYPATH/sitecustomize.py" <<'PYSTRAY'
+import sys
+
+print("kindred2573-stray-stderr", file=sys.stderr)
+PYSTRAY
+
+# Shared by TESTs 29 and 30. Six distinctive terms: two for the area
+# (name + code), two for the plain unit, two for the parenthesised one. The
+# bare single-token unit contributes none -- see TEST 26. The parenthesised
+# name deliberately does NOT contain a shorter needle as a prefix: when it
+# did, TEST 30's probe line matched that shorter needle instead and passed
+# without the trailing-anchor fix ever being made.
+ANCHOR_REGISTRY=$(mktemp)
+cat > "$ANCHOR_REGISTRY" <<'REGISTRY'
+{
+  "_notes": ["fictional registry for kindred#2573 self-tests -- not real data"],
+  "areas": [
+    {"code": "quiet-loop", "name": "Quiet Loop"}
+  ],
+  "units": [
+    {"area": "quiet-loop", "code": "north-ridge-3", "name": "North Ridge 3"},
+    {"area": "quiet-loop", "code": "lantern-house-annex", "name": "Lantern House (Annex)"},
+    {"area": "quiet-loop", "code": "lantern", "name": "Lantern"}
+  ],
+  "aliases": []
+}
+REGISTRY
+cleanup26() { rm -rf "$STRAY_PYPATH"; rm -f "$ANCHOR_REGISTRY"; cleanup25; }
+trap 'cleanup26; cleanup24; cleanup23; cleanup21; cleanup20; cleanup19; cleanup18; cleanup17; cleanup16; cleanup15; cleanup14; cleanup13; cleanup12; cleanup11; cleanup10; cleanup9; cleanup8; cleanup7; cleanup6; cleanup5; cleanup4; cleanup3; cleanup' EXIT INT TERM
+
+set +e
+OUT=$(PYTHONPATH="$STRAY_PYPATH" LODGING_REGISTRY_PATH="$ANCHOR_REGISTRY" "$GUARD_SCRIPT" 2>&1)
+rc=$?
+set -e
+
+# Prove the simulation actually fired before trusting what it proves. A
+# sitecustomize that never got imported would make every assertion below pass
+# vacuously -- the exact false-green shape this whole suite exists to prevent.
+if ! grep -q "kindred2573-stray-stderr" <<<"$OUT"; then
+  echo "FAIL: the stray-stderr simulation did not fire (no sitecustomize marker in the output), so this test proves nothing" >&2
+  echo "$OUT" >&2
+  exit 1
+fi
+leaked=0
+for term in "Lantern House (Annex)" "lantern-house-annex" "North Ridge 3" "north-ridge-3" "Quiet Loop" "quiet-loop"; do
+  if grep -qF -- "$term" <<<"$OUT"; then
+    leaked=$((leaked + 1))
+  fi
+done
+if [[ $leaked -ne 0 ]]; then
+  # Deliberately does NOT echo $OUT: on a real registry that is the leak itself.
+  echo "FAIL: $leaked registry term(s) reached the guard's output when the builder emitted stray stderr" >&2
+  exit 1
+fi
+if [[ $rc -ne 0 ]]; then
+  echo "FAIL: expected exit 0 on a clean tree, got $rc" >&2
+  exit 1
+fi
+if ! grep -q "needle source = registry" <<<"$OUT"; then
+  echo "FAIL: stray stderr must not even degrade the mode -- expected registry mode, got: $(grep 'needle source' <<<"$OUT")" >&2
+  exit 1
+fi
+echo "PASS: builder stderr is captured apart from the pattern -- no registry term reaches the output, and the mode is unaffected"
+
+echo
+echo "=== TEST 30: a registry term ENDING in a non-word character must still be catchable (kindred#2573) ==="
+# build_lodging_needles.py wrapped every term in \b...\b unconditionally. A
+# TRAILING \b after a non-word character is UNSATISFIABLE: \b needs a word/
+# non-word transition, and after ')' the next character is either end-of-line
+# or punctuation/space -- never a word character. Every such needle sat in the
+# pattern and could never match, which is a silent-clean hole, not a loud one.
+# Measured on the real registry: ~30 of its 328 distinctive terms end in a
+# non-word character.
+#
+# The fix anchors each EDGE only when that edge's own character is a word
+# character -- it does NOT drop \b wholesale, which would re-open the
+# false-positive class the leading anchor exists for. Line 1 of the probe below
+# pins that half: an ordinary word that merely ENDS with a needle's text must
+# still not match.
+ANCHOR_PROBE="$REPO_ROOT/bunking/leak_probe_kindred2573_anchor.py"
+cleanup27() { rm -f "$ANCHOR_PROBE"; cleanup26; }
+trap 'cleanup27; cleanup24; cleanup23; cleanup21; cleanup20; cleanup19; cleanup18; cleanup17; cleanup16; cleanup15; cleanup14; cleanup13; cleanup12; cleanup11; cleanup10; cleanup9; cleanup8; cleanup7; cleanup6; cleanup5; cleanup4; cleanup3; cleanup' EXIT INT TERM
+{
+  echo '# Prose about a disquiet loop of thought -- must NOT match.'
+  echo '# The layout mirrors Lantern House (Annex)'
+} > "$ANCHOR_PROBE"
+set +e
+OUT=$(LODGING_REGISTRY_PATH="$ANCHOR_REGISTRY" "$GUARD_SCRIPT" 2>&1)
+rc=$?
+set -e
+rm -f "$ANCHOR_PROBE"
+if [[ $rc -ne 1 ]]; then
+  echo "FAIL: expected exit 1 -- a needle ending in ')' must still be catchable, got $rc" >&2
+  echo "$OUT" >&2
+  exit 1
+fi
+if ! grep -q "6 terms" <<<"$OUT"; then
+  echo "FAIL: expected 6 distinctive terms from the fictional registry, got: $(grep 'needle source' <<<"$OUT")" >&2
+  exit 1
+fi
+probe_lines=$(grep -c "leak_probe_kindred2573_anchor.py" <<<"$OUT" || true)
+if [[ $probe_lines -eq 1 ]] && grep -q "leak_probe_kindred2573_anchor.py:2:" <<<"$OUT"; then
+  echo "PASS: the parenthesised needle is caught at :2, and the leading anchor still suppresses the :1 false positive"
+else
+  echo "FAIL: expected exactly one reported line, the one at :2; got $probe_lines line(s)" >&2
+  echo "$OUT" >&2
+  exit 1
+fi
+
+echo
+echo "=== TEST 31: CI must ASSERT registry mode, not merely let the guard announce it (kindred#2573) ==="
+# The announcement the guard prints is advisory: nothing in CI reads it. The
+# clone-kindred-local action copies with `2>/dev/null || true`, so if the
+# registry is renamed or moved in kindred-local the file simply never arrives,
+# the guard prints "fallback sample", exits 0, CI Summary goes green -- and
+# stays green forever, with the deploy-key cost paid for nothing. That is the
+# kindred#1867 silent-clean class one level up.
+#
+# ⚠️ These are SOURCE-GREP anchors: the literals below must stay byte-identical
+# in .github/workflows/ci.yml. If you reword that step, update this test.
+CI_WORKFLOW="$REPO_ROOT/.github/workflows/ci.yml"
+if [[ ! -f "$CI_WORKFLOW" ]]; then
+  echo "FAIL: $CI_WORKFLOW not found" >&2
+  exit 1
+fi
+if ! grep -q 'needle source = registry' "$CI_WORKFLOW"; then
+  echo "FAIL: ci.yml never asserts the guard ran in registry mode -- a silent downgrade to the fallback sample would pass CI forever" >&2
+  exit 1
+fi
+if ! grep -q 'config/lodging_registry.json' "$CI_WORKFLOW"; then
+  echo "FAIL: ci.yml never asserts the registry file actually arrived from kindred-local" >&2
+  exit 1
+fi
+echo "PASS: ci.yml asserts both that the registry arrived and that the guard consumed it"
 
 echo
 echo "All tests passed."

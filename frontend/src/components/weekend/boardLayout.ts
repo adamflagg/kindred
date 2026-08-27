@@ -308,11 +308,12 @@ const MAX_TOKEN_DEPTH = 6
  * a field nothing else on this board reads.
  *
  * WHY THIS TAKES THE WHOLE SET. Two characters is not always enough, and no
- * pure function of one name can fix that: on the 2026 registry "Ridge Side"
- * and "River Side" both reduce to RS, and both first words begin "Ri". So the
- * colliding group — and only that group — deepens a letter at a time until its
- * members are distinct, leaving every other area's token, and every link
- * already holding it, untouched.
+ * pure function of one name can fix that: two real areas on the 2026 registry
+ * reduce to the same two letters, because their first words share a common
+ * prefix and their second words share a first letter. So the colliding group
+ * — and only that group — deepens a letter at a time until its members are
+ * distinct, leaving every other area's token, and every link already holding
+ * it, untouched.
  *
  * Stability: a token depends on its own name and on the names it clashes with,
  * never on position or on the number of areas. Adding an unrelated area cannot

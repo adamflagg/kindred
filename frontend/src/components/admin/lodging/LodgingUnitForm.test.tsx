@@ -1121,10 +1121,10 @@ describe('LodgingUnitForm — a rejected save says what to change', () => {
 describe('LodgingUnitForm — the bathroom group is an exact-match id', () => {
   it('offers the groups already in use, so one is picked rather than retyped', async () => {
     // Units share a bathroom by carrying the SAME string. Nothing validates
-    // it, so `hc-upstairs-hal` silently makes a group of one and the roster
-    // stops matching that family on a shared bathroom — with no error anywhere.
-    // Suggesting the existing ids makes the common case a choice, not a
-    // spelling test, while leaving a new group typeable.
+    // it, so a single mistyped character silently makes a group of one and
+    // the roster stops matching that family on a shared bathroom — with no
+    // error anywhere. Suggesting the existing ids makes the common case a
+    // choice, not a spelling test, while leaving a new group typeable.
     const peers = [
       { ...UNIT, id: 'u2', code: 'b', bathroom_group: 'hc-upstairs-hall' },
       { ...UNIT, id: 'u3', code: 'c', bathroom_group: 'hc-upstairs-hall' },

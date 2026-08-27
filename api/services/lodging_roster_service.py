@@ -1430,10 +1430,10 @@ def _resolve_power_coverage(units: list[LodgingUnitSummary], index: _BathroomInd
     already shared by `_resolve_party_bathroom` and `_build_counts` -- rather
     than a second traversal of its own, because two walks over one tree are
     free to drift. It recurses to LEAVES at any depth, which is the whole
-    point: `hc-health-center` looks split one level down (1 powered child, 2
-    not) and is not, because its two "unpowered" children are themselves
-    containers whose every leaf has power. A one-level walk gets that wrong in
-    the direction that looks plausible.
+    point: a real three-level container looks split one level down (1 powered
+    child, 2 not) and is not, because its two "unpowered" children are
+    themselves containers whose every leaf has power. A one-level walk gets
+    that wrong in the direction that looks plausible.
 
     Rooms that are `is_active = False` do not answer for their building -- the
     same filter `_effective_sleeps` applies when totalling a combined

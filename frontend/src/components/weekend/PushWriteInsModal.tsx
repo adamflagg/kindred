@@ -151,7 +151,7 @@ const TILE_META: Record<PushBuildingReport['cls'], { label: string; className: s
  * `add`/`remove` tiles name the occupant the push will create or delete,
  * not just the building — owner ruling 2026-08-24 (visual round 2, item 5):
  * staff approving an add or a removal need to see WHO, not just WHERE. A
- * building can carry more than one row (kindred#2477's Yurt 5 fixture: two
+ * building can carry more than one row (kindred#2477's fixture: two
  * write-ins added to one building), so this is per-ROW, not per-building.
  * `match`/`conflict` tiles are audit-only here and keep the building-label
  * list — the deck is where a conflict's occupants get named.
