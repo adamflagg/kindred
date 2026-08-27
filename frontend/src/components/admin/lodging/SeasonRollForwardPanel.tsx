@@ -10,10 +10,12 @@
  * plus ~118 units plus parent relinking, in an order that matters, and a
  * half-applied roll-forward is a broken registry.
  *
- * Values, `is_confirmed` and `code` all carry forward. A demolished building is
- * carried and then edited to `is_active: false` — there is no exclusion step,
- * because inventing one here would be a second way to express a state the
- * registry already has.
+ * Values and `code` carry forward; `is_confirmed` does NOT (kindred#2500) — it
+ * means "someone walked this cabin THIS season", so every unit a roll creates
+ * lands unconfirmed regardless of direction, for staff to re-verify. A
+ * demolished building is carried and then edited to `is_active: false` —
+ * there is no exclusion step for that, because inventing one here would be a
+ * second way to express a state the registry already has.
  */
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
 import { Check, ChevronDown, ChevronUp, Loader2 } from 'lucide-react'
@@ -152,9 +154,10 @@ export function SeasonRollForwardPanel() {
   return (
     <div className="flex flex-col gap-4">
       <p className="text-muted-foreground max-w-2xl text-sm">
-        Copy {fromYear}&apos;s areas and units forward as a starting point for {toYear}. Values,
-        confirmation and codes all carry forward — a demolished building carries too, and gets
-        marked inactive by hand afterward.
+        Copy {fromYear}&apos;s areas and units forward as a starting point for {toYear}. Values and
+        codes carry forward, but confirmation does not — every unit this creates lands unconfirmed
+        so staff re-verify it for {toYear}. A demolished building carries too, and gets marked
+        inactive by hand afterward.
       </p>
 
       {/* The same QueryGuard the other three lodging panels use, rather than a

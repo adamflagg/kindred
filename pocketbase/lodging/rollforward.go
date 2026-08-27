@@ -29,39 +29,34 @@ import (
 //	area / parent_unit     — relations, re-resolved into the target year by the
 //	                         two later passes
 //
-// `is_confirmed` is NOT here — see carriedFields's direction-dependent
-// exclusion below. It cannot be a blanket entry in this map: #2029 made
-// confirmation a permanent staff attestation that deliberately carries
-// forward ("Confirmation carries forward... a yearly re-confirm is
-// unnecessary", docs/reference/lodging-registry.md:368-373;
-// SeasonRollForwardPanel.tsx's doc comment says the same), and that is the
-// ONLY direction the Season panel exposes today (fromYear = currentYear-1,
-// toYear = currentYear). A blanket exclusion would silently un-confirm every
-// already-verified cabin the next time staff advance the season.
+//	is_confirmed           — NEVER carried, in either direction (kindred#2500)
+//
+// To be unambiguous about the polarity, because a comment on this exact
+// declaration asserting the opposite of the code is what kindred#2500 had to
+// fix: the entries above are the DENY-LIST. `is_confirmed` is one of them, so
+// it is NOT copied — a rolled unit always lands unconfirmed. It means
+// "someone walked this cabin THIS SEASON", not a permanent attestation about
+// the building; #2029 had that backwards and this walks it back. Carrying it
+// would stamp every cabin confirmed before anyone had looked at it for the
+// new season.
+//
+// `shareability`, by contrast, is ABSENT from the deny-list and therefore
+// DOES carry: it follows from bed count and room layout, which do not change
+// when the calendar does (kindred#2500).
 var notCarried = map[string]bool{
 	"id": true, "created": true, "updated": true,
 	"year": true, "area": true, "parent_unit": true,
+	"is_confirmed": true,
 }
 
 // carriedFields returns every field on the collection that should travel to
 // the target season, so a column added tomorrow rides along without editing
 // this file.
-//
-// backward reports whether this roll copies from a LATER season onto an
-// EARLIER one (`to < from`) — the direction kindred#2392 proposes for
-// backfilling lodging_units into years that predate the confirmed registry.
-// `is_confirmed` is excluded ONLY on that direction: a backward roll would
-// otherwise stamp is_confirmed = true on a season nobody has ever walked, in
-// a field the docs describe as a permanent staff attestation (see
-// notCarried's comment for the forward case this must not break).
-func carriedFields(col *core.Collection, backward bool) []string {
+func carriedFields(col *core.Collection) []string {
 	out := make([]string, 0, len(col.Fields))
 	for _, f := range col.Fields {
 		name := f.GetName()
 		if notCarried[name] {
-			continue
-		}
-		if backward && name == "is_confirmed" {
 			continue
 		}
 		out = append(out, name)
@@ -201,8 +196,6 @@ func copyAreas(app core.App, from, to int, write bool, plan *RollForwardPlan) (m
 	if err != nil {
 		return nil, fmt.Errorf("lodging_areas collection: %w", err)
 	}
-	backward := to < from
-
 	for _, src := range source {
 		code := src.GetString("code")
 		existing, err := findByCodeAndYear(app, "lodging_areas", code, to)
@@ -219,7 +212,7 @@ func copyAreas(app core.App, from, to int, write bool, plan *RollForwardPlan) (m
 			continue
 		}
 		rec := core.NewRecord(col)
-		for _, f := range carriedFields(col, backward) {
+		for _, f := range carriedFields(col) {
 			rec.Set(f, src.Get(f))
 		}
 		rec.Set("year", to)
@@ -245,7 +238,6 @@ func copyUnits(app core.App, from, to int, write bool, areaIDs map[string]string
 	if err != nil {
 		return fmt.Errorf("lodging_units collection: %w", err)
 	}
-	backward := to < from
 
 	for _, src := range source {
 		code := src.GetString("code")
@@ -265,7 +257,7 @@ func copyUnits(app core.App, from, to int, write bool, areaIDs map[string]string
 		}
 
 		rec := core.NewRecord(col)
-		for _, f := range carriedFields(col, backward) {
+		for _, f := range carriedFields(col) {
 			rec.Set(f, src.Get(f))
 		}
 		rec.Set("year", to)
