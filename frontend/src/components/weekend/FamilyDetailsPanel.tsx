@@ -279,10 +279,17 @@ export function FamilyDetailsPanel({
                 className="flex flex-wrap items-baseline gap-2 text-sm"
               >
                 <span className="text-foreground">{child.display_name}</span>
+                {/* The Baby mark's own pink, the same hue `FamilyCard` draws
+                    it in and `unplacedFilters` names — deliberately outside
+                    the closed four-hue need set, because under-2 is an
+                    ungraded fact about the party rather than a need matched
+                    against a cabin. NOT sky, which is `bathroom`'s need hue
+                    in `NEED_GLYPHS`: spending it here would put one colour on
+                    two meanings a few rows apart. */}
                 {child.is_under_two === true && (
                   <Baby
                     data-testid={`under-two-${String(child.person_cm_id ?? index)}`}
-                    className="h-3.5 w-3.5 flex-shrink-0 text-sky-500 dark:text-sky-400"
+                    className="h-3.5 w-3.5 flex-shrink-0 text-pink-500 dark:text-pink-400"
                   />
                 )}
                 <span className="text-muted-foreground text-xs">
