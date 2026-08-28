@@ -43,15 +43,15 @@
  * ## THE BOARD NAMES THE PLACEMENTS, not the roster
 
 Owner ruling, 2026-08-28: "take the board's state label ... if staff splits
-wawona on the board and reopens the modal, it should reflect the board state.
+delta-house on the board and reopens the modal, it should reflect the board state.
 right now board is the authority, roster tab has been neglected intentionally
 for a while."
 
 `ComparePartyReport.*_unit_label` is `RosterParty.unit_name`, a pure function of
 the assignment row's arity -- one unit gives that unit's name, 2+ gives them
-joined. A family holding all of a combined house therefore arrived as `Wawona
-Front + Wawona Back` while the board it describes draws ONE card headed
-`Wawona`. The label's own docstring gives the reason it is republished at all --
+joined. A family holding all of a combined house therefore arrived as `Delta House
+Front + Delta 2` while the board it describes draws ONE card headed
+`Delta House`. The label's own docstring gives the reason it is republished at all --
 "so the modal never rebuilds a name from codes and shows staff something the
 board does not" -- and that is an argument FOR taking the board's answer, not
 against it.
@@ -73,7 +73,7 @@ move that never happened.
 ⚠️ THE VERDICT IS UNTOUCHED. `_placement_verdict` is exact set equality on
 `unit_codes` by owner ruling, so a mirror row naming two rooms against a
 scenario row naming their combined house is still a `conflict` -- and now a
-conflict whose two labels both read `Wawona`. That is a question about what the
+conflict whose two labels both read `Delta House`. That is a question about what the
 comparison MEANS, not about what it is called, and it is the owner's to answer.
 
 ## staleTime 0, opted down from the app's 30-minute default

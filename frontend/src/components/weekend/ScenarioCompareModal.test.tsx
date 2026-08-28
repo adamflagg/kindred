@@ -625,14 +625,19 @@ describe('ScenarioCompareModal — a placement is named the way the board draws 
   /**
    * A house and its two rooms, at whichever draw level the test wants. Owner
    * ruling, 2026-08-28: "take the board's state label ... if staff splits
-   * wawona on the board and reopens the modal, it should reflect the board
+   * the house on the board and reopens the modal, it should reflect the board
    * state. right now board is the authority."
    */
-  function wawona(combined: boolean): LodgingUnitRow[] {
+  function deltaHouse(combined: boolean): LodgingUnitRow[] {
     return [
-      unitRow({ code: 'wawona', name: 'Wawona', is_container: true, is_combined: combined }),
-      unitRow({ code: 'wawona-front', name: 'Wawona Front', parent_code: 'wawona' }),
-      unitRow({ code: 'wawona-back', name: 'Wawona Back', parent_code: 'wawona' }),
+      unitRow({
+        code: 'delta-house',
+        name: 'Delta House',
+        is_container: true,
+        is_combined: combined,
+      }),
+      unitRow({ code: 'delta-1', name: 'Delta 1', parent_code: 'delta-house' }),
+      unitRow({ code: 'delta-2', name: 'Delta 2', parent_code: 'delta-house' }),
     ]
   }
 
@@ -648,8 +653,8 @@ describe('ScenarioCompareModal — a placement is named the way the board draws 
         display_name: 'The Adeyemi Family',
         cls: 'add',
         both_unassigned: false,
-        scenario_unit_label: 'Wawona Front + Wawona Back',
-        scenario_unit_codes: ['wawona-front', 'wawona-back'],
+        scenario_unit_label: 'Delta 1 + Delta 2',
+        scenario_unit_codes: ['delta-1', 'delta-2'],
         mirror_unit_label: '',
         mirror_unit_codes: [],
       },
@@ -670,24 +675,24 @@ describe('ScenarioCompareModal — a placement is named the way the board draws 
 
   it('names a whole combined house by the house, as the board heads its card', async () => {
     // The owner's report. `unit_name` joins the rooms because the assignment
-    // row names two units, but the board draws ONE card headed `Wawona` and
+    // row names two units, but the board draws ONE card headed `Delta House` and
     // rolls both rooms onto it -- so the modal was showing staff a placement
     // spelled a way the board never spells it.
-    mockRosterUnits = wawona(true)
+    mockRosterUnits = deltaHouse(true)
     renderModal(WHOLE_HOUSE)
     const rows = await differenceRows()
-    expect(rows.some((t) => t.includes('Wawona'))).toBe(true)
-    expect(rows.some((t) => t.includes('Wawona Front'))).toBe(false)
+    expect(rows.some((t) => t.includes('Delta House'))).toBe(true)
+    expect(rows.some((t) => t.includes('Delta 1'))).toBe(false)
   })
 
   it('follows the board when staff split the house', async () => {
     // The half that makes this the BOARD'S label rather than a prettier one of
     // our own: split the card and the rooms are two cards again, so the same
     // placement must read as two rooms again.
-    mockRosterUnits = wawona(false)
+    mockRosterUnits = deltaHouse(false)
     renderModal(WHOLE_HOUSE)
     const rows = await differenceRows()
-    expect(rows.some((t) => t.includes('Wawona Front + Wawona Back'))).toBe(true)
+    expect(rows.some((t) => t.includes('Delta 1 + Delta 2'))).toBe(true)
   })
 
   it("keeps the roster's own label when the board's registry is not loaded", async () => {
@@ -698,17 +703,17 @@ describe('ScenarioCompareModal — a placement is named the way the board draws 
     mockRosterUnits = undefined
     renderModal(WHOLE_HOUSE)
     const rows = await differenceRows()
-    expect(rows.some((t) => t.includes('Wawona Front + Wawona Back'))).toBe(true)
+    expect(rows.some((t) => t.includes('Delta 1 + Delta 2'))).toBe(true)
   })
 
   it('still says nothing for the side that holds nobody', async () => {
     // An `add` has an empty mirror side, and "" there means UNPLACED -- it must
     // keep reading as the em-dash, never as a name the board failed to supply.
-    mockRosterUnits = wawona(true)
+    mockRosterUnits = deltaHouse(true)
     renderModal(WHOLE_HOUSE)
     const rows = await differenceRows()
     // The whole `add` row, exactly: the house the board draws, the arrow, and
     // the em-dash for the side CampMinder never placed.
-    expect(rows.some((t) => t.includes('Wawona\u2192\u2014'))).toBe(true)
+    expect(rows.some((t) => t.includes('Delta House\u2192\u2014'))).toBe(true)
   })
 })

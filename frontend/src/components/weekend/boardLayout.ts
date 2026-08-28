@@ -835,8 +835,8 @@ export function cardCodeResolver(units: LodgingUnitRow[]): {
  * THE BOARD IS THE AUTHORITY on a placement's name (owner ruling, 2026-08-28).
  * `RosterParty.unit_name` is a pure function of the assignment row's arity --
  * one unit gives that unit's name, 2+ gives them joined with " + " -- so a
- * family holding all of a combined house reads as `Wawona Front + Wawona Back`
- * while the board it is describing draws ONE card headed `Wawona`. Staff were
+ * family holding all of a combined house reads as `Delta 1 + Delta 2`
+ * while the board it is describing draws ONE card headed `Delta House`. Staff were
  * shown the rooms for a house nobody had split.
  *
  * The answer runs through `cardCodeResolver`, the board's OWN roll-up, rather
@@ -856,7 +856,7 @@ export function boardPlacementNamer(units: LodgingUnitRow[]): (codes: readonly s
   return (codes: readonly string[]): string =>
     // De-duplicated for the same reason `indexPayload` de-duplicates: a party
     // naming two rooms of one combined house lands on that house ONCE, and a
-    // name of "Wawona + Wawona" would be the label form of drawing it twice.
+    // name of "Delta House + Delta House" would be the label form of drawing it twice.
     [...new Set(codes.flatMap(cardCodesFor))]
       .map((code) => nameByCode.get(code) ?? '')
       .filter((name) => name !== '')
