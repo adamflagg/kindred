@@ -392,8 +392,8 @@ function DetailCard({ entry, hue, onOpenParty, wholeBuildingKeys }: DetailCardPr
             so it runs high" — no longer true since #1925 and #2046: the
             server drops blank and placeholder `family_camp_adults` slots and
             discounts a child under 18 months, so `partySpots` is spots
-            consumed, not a raw headcount. Still a
-            hint rather than a verdict, because the adult list is a five-slot
+            consumed, not a raw headcount. Still a hint rather than a
+            verdict, because the adult list is a five-slot
             scrape staff transpose by hand and 16–22 households a year carry
             adults it never receives (#1925's accepted cost) — the error now
             runs in both directions instead of only high. Shown only against a
