@@ -283,7 +283,7 @@ type syncRunRow struct {
 //
 // Failure is logged and swallowed, matching recordSyncRun: this is a freshness readout, and a
 // telemetry query that cannot run must not take the status endpoint down with it. The caller
-// gets an empty map and falls back to `idle`, which is exactly the old behaviour.
+// gets an empty map and falls back to `idle`, which is exactly the old behavior.
 func (o *Orchestrator) LastRecordedRuns() map[string]*Status {
 	out := make(map[string]*Status)
 	if o.app == nil {
@@ -324,7 +324,10 @@ func (o *Orchestrator) LastRecordedRuns() map[string]*Status {
 		return out
 	}
 
-	for _, row := range rows {
+	// Indexed rather than `for _, row := range rows`: syncRunRow is 208 bytes and gocritic's
+	// rangeValCopy flags the per-iteration copy.
+	for i := range rows {
+		row := &rows[i]
 		status := &Status{
 			Type:    row.Service,
 			Status:  rehydratedStatus(row.Status),

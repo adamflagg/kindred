@@ -1383,7 +1383,8 @@ func TestResolveServiceStatusesUsesHistoryAfterRestart(t *testing.T) {
 
 	status, ok := got["lodging_assignments"].(*Status)
 	if !ok {
-		t.Fatalf("lodging_assignments = %#v, want a *Status rehydrated from sync_runs — an idle map here is the bug", got["lodging_assignments"])
+		t.Fatalf("lodging_assignments = %#v, want a *Status rehydrated from sync_runs "+
+			"— an idle map here is the bug", got["lodging_assignments"])
 	}
 	if status.EndTime == nil {
 		t.Error("EndTime is nil — the freshness line renders off this field and would show nothing")
