@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHook } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import type { ReactNode } from 'react'
@@ -11,6 +11,11 @@ vi.mock('./useWeekendRoster', () => ({
 
 vi.mock('./useCurrentYear', () => ({
   useCurrentYear: () => ({ currentYear: 2026 }),
+}))
+
+let authLoading = false
+vi.mock('../contexts/AuthContext', () => ({
+  useAuth: () => ({ isLoading: authLoading }),
 }))
 
 const { useWeekendShellSession, weekendRefFromPath } = await import('./useWeekendShellSession')
@@ -36,6 +41,16 @@ function renderAt(path: string) {
   sessionsSpy.mockReturnValue({ data: { sessions: SESSIONS } })
   return renderHook(() => useWeekendShellSession(), { wrapper: wrapper(path) })
 }
+
+// `sessionsSpy` is module-scoped, so without this its call history accumulates
+// across tests and the negative assertions below ("was never called with 2026")
+// hold only because of the order the tests happen to run in. They pass today;
+// adding any weekend-route test above them would break them, and the failure
+// would read as unrelated. Raised by CodeRabbit on #2586.
+beforeEach(() => {
+  authLoading = false
+  sessionsSpy.mockClear()
+})
 
 describe('weekendRefFromPath', () => {
   it('reads the weekend reference out of a roster URL', () => {
@@ -99,5 +114,15 @@ describe('useWeekendShellSession', () => {
     })
     expect(result.current.session).toBeUndefined()
     expect(result.current.isAdultWeekend).toBe(false)
+  })
+
+  // `useWeekendSessions` gates only on `year > 0`, so without an auth gate this
+  // hook fires `fetchWithAuth` during authentication bootstrap. It runs in the
+  // app shell on every weekend route, which is exactly that window.
+  it('declines the fetch while authentication is still loading', () => {
+    authLoading = true
+    renderAt('/weekend/fc4')
+    expect(sessionsSpy).toHaveBeenCalledWith(0)
+    expect(sessionsSpy).not.toHaveBeenCalledWith(2026)
   })
 })

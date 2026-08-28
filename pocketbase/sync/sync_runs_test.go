@@ -1204,6 +1204,37 @@ func TestLastRecordedRunsSurvivesRestart(t *testing.T) {
 	}
 }
 
+// TestLastRecordedRunsRestoresSubStats: `persons` is a combined sync that also populates
+// households and reports that half through SubStats. Restoring the parent's counters while
+// dropping the nested ones rehydrates half a summary — the sub-entity reads zero, which is
+// the shape of the bug kindred#2284 exists to prevent, one layer down.
+func TestLastRecordedRunsRestoresSubStats(t *testing.T) {
+	t.Parallel()
+
+	app := newSyncRunsApp(t)
+	o := NewOrchestrator(app)
+	o.RegisterService("persons", &MockService{name: "persons", stats: Stats{
+		Created:  3,
+		SubStats: map[string]Stats{"households": {Created: 9, Rejected: 2}},
+	}})
+	if err := o.RunSingleSync(context.Background(), "persons"); err != nil {
+		t.Fatalf("RunSingleSync: %v", err)
+	}
+	waitForSyncRuns(t, app, 1)
+
+	got, ok := NewOrchestrator(app).LastRecordedRuns()["persons"]
+	if !ok {
+		t.Fatal("no entry for persons")
+	}
+	sub, ok := got.Summary.SubStats["households"]
+	if !ok {
+		t.Fatalf("SubStats = %+v, want a households entry restored from sync_runs", got.Summary.SubStats)
+	}
+	if sub.Created != 9 || sub.Rejected != 2 {
+		t.Errorf("households SubStats = %+v, want Created=9 Rejected=2", sub)
+	}
+}
+
 // TestLastRecordedRunsIgnoresAFailedNewerRun is the reason the query filters on success.
 //
 // The caller renders "<noun> synced {N} ago" off EndTime. A nightly run that FAILED at 02:00,

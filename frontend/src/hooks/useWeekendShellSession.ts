@@ -27,6 +27,7 @@ import { useLocation } from 'react-router'
 
 import { resolveWeekendRef } from '../components/weekend/weekendNames'
 import type { WeekendSession } from '../types/lodging'
+import { useAuth } from '../contexts/AuthContext'
 import { useCurrentYear } from './useCurrentYear'
 import { useWeekendSessions } from './useWeekendRoster'
 
@@ -72,12 +73,21 @@ export interface WeekendShellSession {
 export function useWeekendShellSession(): WeekendShellSession {
   const location = useLocation()
   const { currentYear } = useCurrentYear()
+  const { isLoading: authLoading } = useAuth()
   const ref = weekendRefFromPath(location.pathname)
 
   // `useWeekendSessions` already gates its own query on `year > 0` (the
   // CurrentYearContext cold-load guard). Passing 0 off a weekend route reuses
   // that gate rather than adding a second `enabled` flag to a shared hook.
-  const sessionsQuery = useWeekendSessions(ref === undefined ? 0 : currentYear)
+  //
+  // AUTH IS PART OF THE SAME GATE, and it matters more here than at this hook's
+  // sibling call sites. `useWeekendSessions` gates only on `year > 0`, so it
+  // will call `fetchWithAuth` during authentication bootstrap — and unlike
+  // `WeekendRosterPage`, which mounts behind a resolved session, this hook runs
+  // in the APP SHELL on every render of every weekend route, which is exactly
+  // the bootstrap window. `frontend/CLAUDE.md`: "Always check `isLoading`
+  // before making authenticated API calls."
+  const sessionsQuery = useWeekendSessions(ref === undefined || authLoading ? 0 : currentYear)
   const session = resolveWeekendRef(sessionsQuery.data?.sessions ?? [], ref) as
     WeekendSession | undefined
 

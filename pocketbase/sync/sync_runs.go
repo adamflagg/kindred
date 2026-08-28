@@ -1,6 +1,7 @@
 package sync
 
 import (
+	"encoding/json"
 	"log/slog"
 	"time"
 
@@ -261,6 +262,7 @@ type syncRunRow struct {
 	ProdAuditWarnings        int    `db:"prod_audit_warnings_count"`
 	LodgingProdAuditWarnings int    `db:"lodging_prod_audit_warnings_count"`
 	Duration                 int    `db:"duration"`
+	SubStats                 string `db:"sub_stats"`
 }
 
 // LastRecordedRuns returns the most recent SUCCESSFUL run per service, as Status values.
@@ -312,7 +314,13 @@ func (o *Orchestrator) LastRecordedRuns() map[string]*Status {
 		SELECT service, status, started, ended, error, year, trigger, batch_id,
 		       created_count, updated_count, deleted_count, skipped_count, errors_count,
 		       rejected_count, expanded_count, already_processed_count,
-		       prod_audit_warnings_count, lodging_prod_audit_warnings_count, duration
+		       prod_audit_warnings_count, lodging_prod_audit_warnings_count, duration,
+		       -- COALESCE because the column is NULL on every run whose SubStats was
+		       -- empty, which is most of them: recordSyncRun sets it only when non-empty.
+		       -- Scanning NULL into a string fails the WHOLE query, and this function
+		       -- swallows its error to an empty map -- so without this the fallback would
+		       -- degrade silently to "no history at all" rather than failing loudly.
+		       COALESCE(sub_stats, '') AS sub_stats
 		FROM (
 			SELECT *, ROW_NUMBER() OVER (PARTITION BY service ORDER BY started DESC, id DESC) AS rn
 			FROM ` + syncRunsCollection + `
@@ -348,6 +356,20 @@ func (o *Orchestrator) LastRecordedRuns() map[string]*Status {
 				LodgingProdAuditWarnings: row.LodgingProdAuditWarnings,
 				Duration:                 row.Duration,
 			},
+		}
+		// SubStats is the combined syncs' nested half — `persons` populates households
+		// and reports them here. recordSyncRun persists it whenever non-empty, so
+		// dropping it on the way back would rehydrate half a summary: the parent's
+		// counters restored and the sub-entity's silently zero. Unmarshal failure is
+		// swallowed to a nil map for the same reason the query's is: a malformed
+		// telemetry blob must not take a freshness readout down.
+		if row.SubStats != "" && row.SubStats != "null" {
+			var subs map[string]Stats
+			if err := json.Unmarshal([]byte(row.SubStats), &subs); err != nil {
+				slog.Warn("Failed to decode sync_runs sub_stats", "service", row.Service, "error", err)
+			} else if len(subs) > 0 {
+				status.Summary.SubStats = subs
+			}
 		}
 		if started, err := types.ParseDateTime(row.Started); err == nil && !started.IsZero() {
 			status.StartTime = started.Time()
