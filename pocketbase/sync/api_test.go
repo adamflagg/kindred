@@ -1935,15 +1935,18 @@ func TestRunPhaseYearMustPropagateToServices(t *testing.T) {
 }
 
 // TestSyncStatusListIncludesStrandedAssignmentCleanup verifies stranded_assignment_cleanup
-// is registered in syncJobMeta with a phase. handleSyncStatus's hardcoded syncTypes slice
-// is a local var that can't be read from tests; the placement in the diff is the primary
-// safeguard. This test catches one related regression: forgetting to register the job in
-// syncJobMeta before adding it to the status list or routes.
+// is registered in syncJobMeta with a phase AND actually published in the status payload.
+//
+// It used to only be able to check the first half: handleSyncStatus's syncTypes slice was a
+// local var no test could read, so "placement in the diff" was the only guard on the second
+// half. That slice is now statusSyncTypes(), so the membership this test was really about
+// is asserted directly rather than trusted. api_status_types_test.go generalises it -- every
+// job in every sequence must be published; these three are kept named here because each was
+// a specific past regression.
 func TestSyncStatusListIncludesStrandedAssignmentCleanup(t *testing.T) {
 	t.Parallel()
-	// Required jobs that must be registered in syncJobMeta. handleSyncStatus's
-	// local syncTypes slice can't be inspected here; placement in the diff is
-	// the human-readable guard for that path.
+	// Required jobs: registered in syncJobMeta with a phase, and published by
+	// statusSyncTypes so the card does not sit at "idle" while the job runs.
 	requiredInStatusList := []string{
 		"normalize_geographic",
 		"enrollment_snapshots",
@@ -1956,6 +1959,14 @@ func TestSyncStatusListIncludesStrandedAssignmentCleanup(t *testing.T) {
 		phase := GetPhaseForJob(jobID)
 		if phase == "" {
 			t.Errorf("job %q not found in syncJobMeta — add it before adding to status list", jobID)
+		}
+	}
+
+	// The half that used to be unassertable: the job must actually reach the client.
+	published := publishedSyncTypes()
+	for _, jobID := range requiredInStatusList {
+		if !published[jobID] {
+			t.Errorf("job %q is not published by statusSyncTypes — its card shows \"idle\" while it runs", jobID)
 		}
 	}
 
