@@ -6168,9 +6168,11 @@ class TestTwoWriteInRowsOnOneUnit:
     async def test_both_occupants_of_one_cabin_reach_the_payload(self) -> None:
         """Two paper families in one shareable cabin, both drawn, in fetch order.
 
-        The plain shape the feature exists for: Ridge D sleeps 15 and is
-        classified `shareable`, so two households in it is not a contradiction
-        about who is in the cabin -- both names are the answer.
+        The plain shape the feature exists for. `shareability: shareable`
+        is an assertion that two or more households MAY occupy a unit -- 30
+        leaf units carry it, several sleeping 15 or more -- so two paper
+        families in one of them is not a contradiction about who is in the
+        cabin. Both names are the answer.
         """
         repo = _repo(
             fetch_session=FAMILY_SESSION,

@@ -1246,7 +1246,8 @@ describe('MapUnitPopover — a container, master-detail (kindred#2183)', () => {
      * failure: *"two rooms can genuinely hold two different people who happen
      * to share a name, and collapsing those would hide one."* It then
      * introduced the same hiding through the id, because one unit meant one
-     * row. Two occupants of Ridge D were ONE chip and one headcount.
+     * row. Two occupants of one shareable cabin were ONE chip and one
+     * headcount.
      *
      * The dedupe is still needed and still right — a building's ancestor row
      * comes back once per drawn room and listing it per room would name one
