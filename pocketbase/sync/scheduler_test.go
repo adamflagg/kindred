@@ -302,6 +302,161 @@ func TestRefreshBunkingRegistersRequiredServices(t *testing.T) {
 	}
 }
 
+// TestGetRefreshFamilyCampJobs tests that refresh family camp returns the
+// correct six services, in order.
+func TestGetRefreshFamilyCampJobs(t *testing.T) {
+	t.Parallel()
+	jobs := GetRefreshFamilyCampJobs()
+
+	// lodging_assignments runs last: family_camp_derived does NOT write it, and it is
+	// the table the weekend board's mirror is read from — ending the chain earlier
+	// refreshes the roster but leaves the board on yesterday's cabins.
+	expected := []string{
+		"attendees",
+		"persons",
+		"person_custom_values_family_camp",
+		"household_custom_values_family_camp",
+		"family_camp_derived",
+		"lodging_assignments",
+	}
+	if len(jobs) != len(expected) {
+		t.Fatalf("expected %d jobs, got %d: %v", len(expected), len(jobs), jobs)
+	}
+
+	for i, job := range expected {
+		if jobs[i] != job {
+			t.Errorf("expected job %d to be %q, got %q", i, job, jobs[i])
+		}
+	}
+}
+
+// TestGetRefreshFamilyCampJobsExcludesSessions pins that "sessions" and
+// "session_groups" are deliberately absent — a targeted refresh re-runs what
+// must be FRESH, not what must merely EXIST (the same rule GetRefreshBunkingJobs
+// follows for its own "sessions" dependency).
+func TestGetRefreshFamilyCampJobsExcludesSessions(t *testing.T) {
+	t.Parallel()
+	jobs := GetRefreshFamilyCampJobs()
+
+	for _, excluded := range []string{"sessions", "session_groups"} {
+		for _, job := range jobs {
+			if job == excluded {
+				t.Errorf("expected %q to be excluded from GetRefreshFamilyCampJobs, but found it: %v",
+					excluded, jobs)
+			}
+		}
+	}
+}
+
+// TestGetRefreshFamilyCampJobsUsesBoundedCustomValues pins that the family-camp
+// refresh uses the "_family_camp" bounded variants of the custom-values jobs,
+// not the unrestricted "person_custom_values" / "household_custom_values" pair
+// (kindred#2482) — the unrestricted pair costs 42.9 min + 29.0 min against the
+// bounded pair's 8.9 min + 4.0 min.
+func TestGetRefreshFamilyCampJobsUsesBoundedCustomValues(t *testing.T) {
+	t.Parallel()
+	jobs := GetRefreshFamilyCampJobs()
+
+	for _, unrestricted := range []string{"person_custom_values", "household_custom_values"} {
+		for _, job := range jobs {
+			if job == unrestricted {
+				t.Errorf("expected the bounded _family_camp variant, not %q: %v", unrestricted, jobs)
+			}
+		}
+	}
+
+	for _, bounded := range []string{"person_custom_values_family_camp", "household_custom_values_family_camp"} {
+		found := false
+		for _, job := range jobs {
+			if job == bounded {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("expected %q in GetRefreshFamilyCampJobs, got %v", bounded, jobs)
+		}
+	}
+}
+
+// TestRefreshFamilyCampRunsAllServicesInOrder verifies that RunSyncSequence —
+// the mechanism handleRefreshFamilyCamp actually calls, mirroring
+// handleRefreshBunking — runs all six family-camp refresh jobs in order.
+func TestRefreshFamilyCampRunsAllServicesInOrder(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		s := NewScheduler(nil)
+
+		var mu sync.Mutex
+		var callOrder []string
+
+		for _, name := range GetRefreshFamilyCampJobs() {
+			jobName := name
+			mock := &MockService{
+				name:  jobName,
+				delay: 10 * time.Millisecond,
+			}
+			wrappedMock := &timingMockService{
+				MockService: mock,
+				onSync: func() {
+					mu.Lock()
+					callOrder = append(callOrder, jobName)
+					mu.Unlock()
+				},
+			}
+			s.orchestrator.RegisterService(name, wrappedMock)
+		}
+
+		err := s.orchestrator.RunSyncSequence(context.Background(), GetRefreshFamilyCampJobs())
+		if err != nil {
+			t.Fatalf("RunSyncSequence failed: %v", err)
+		}
+
+		// Allow virtual time to advance past all 6 services × 10ms mock delays plus margin.
+		time.Sleep(200 * time.Millisecond)
+
+		mu.Lock()
+		defer mu.Unlock()
+
+		// Hardcoded, not derived from GetRefreshFamilyCampJobs() — deriving it from the
+		// same function under test would make this comparison a tautology.
+		expected := []string{
+			"attendees",
+			"persons",
+			"person_custom_values_family_camp",
+			"household_custom_values_family_camp",
+			"family_camp_derived",
+			"lodging_assignments",
+		}
+		if len(callOrder) != len(expected) {
+			t.Fatalf("expected %d services called, got %d: %v", len(expected), len(callOrder), callOrder)
+		}
+
+		for i, name := range expected {
+			if callOrder[i] != name {
+				t.Errorf("expected service %d to be %q, got %q (order: %v)", i, name, callOrder[i], callOrder)
+			}
+		}
+	})
+}
+
+// TestRefreshFamilyCampRequiresAllServicesRegistered verifies that
+// RunSyncSequence over GetRefreshFamilyCampJobs requires every job to be a
+// registered service — mirroring TestRefreshBunkingRegistersRequiredServices.
+func TestRefreshFamilyCampRequiresAllServicesRegistered(t *testing.T) {
+	t.Parallel()
+	s := NewScheduler(nil)
+
+	// Only register "attendees" — should fail because the other five jobs are
+	// also needed.
+	mock := &MockService{name: "test"}
+	s.orchestrator.RegisterService("attendees", mock)
+
+	err := s.orchestrator.RunSyncSequence(context.Background(), GetRefreshFamilyCampJobs())
+	if err == nil {
+		t.Error("expected error when persons/person_custom_values_family_camp/etc. are not registered")
+	}
+}
+
 // timingMockService wraps MockService to add timing callbacks
 type timingMockService struct {
 	*MockService

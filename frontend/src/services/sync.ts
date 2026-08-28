@@ -46,6 +46,21 @@ export const syncService = {
   },
 
   /**
+   * Refresh family camp housing placements from CampMinder
+   */
+  async refreshFamilyCamp(
+    fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>
+  ): Promise<unknown> {
+    const response = await fetchWithAuth(`${API_BASE}/refresh-family-camp`, {
+      method: 'POST',
+    })
+    if (!response.ok) {
+      throw new Error('Failed to refresh family camp housing')
+    }
+    return response.json()
+  },
+
+  /**
    * Upload a bunk requests CSV file
    * @param file The CSV file to upload
    * @param fetchWithAuth Authenticated fetch function

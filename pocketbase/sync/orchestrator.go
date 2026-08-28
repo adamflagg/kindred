@@ -900,6 +900,41 @@ func GetRefreshBunkingJobs() []string {
 	}
 }
 
+// GetRefreshFamilyCampJobs returns the services needed for a full family-camp
+// housing refresh. Runs in order: attendees (roster membership) -> persons
+// (household relations) -> person_custom_values_family_camp and
+// household_custom_values_family_camp (the raw cabin-preference answers) ->
+// family_camp_derived (the roster tables the board reads) -> lodging_assignments
+// (the board's mirror of CampMinder's cabin placements).
+//
+// Two things about this list are deliberate, not oversights:
+//
+//   - The custom-values jobs are the "_family_camp" BOUNDED variants
+//     (kindred#2482), not "person_custom_values" / "household_custom_values".
+//     The unrestricted pair costs 42.9 min + 29.0 min; the bounded pair costs
+//     8.9 min + 4.0 min for the same freshness an operator-triggered refresh
+//     needs.
+//   - lodging_assignments runs LAST and is easy to omit. family_camp_derived
+//     does NOT write it — LodgingAssignmentsSync is a separate transform job
+//     that derives lodging_assignments from CampMinder's cabin custom fields,
+//     and it is the table the weekend board's mirror is read from. Ending the
+//     chain at family_camp_derived refreshes the roster and leaves the board's
+//     mirror at yesterday's cabins.
+//
+// "sessions" and "session_groups" are deliberately excluded, on
+// GetRefreshBunkingJobs' own precedent: a targeted refresh re-runs what must be
+// FRESH, not what must merely EXIST.
+func GetRefreshFamilyCampJobs() []string {
+	return []string{
+		"attendees",
+		"persons",
+		"person_custom_values_family_camp",
+		"household_custom_values_family_camp",
+		"family_camp_derived",
+		"lodging_assignments",
+	}
+}
+
 // GetCustomValuesSyncJobs returns the list of services that run in the custom values sync.
 // These are expensive syncs (1 API call per entity) that run weekly after the main weekly sync.
 func GetCustomValuesSyncJobs() []string {
