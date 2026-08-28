@@ -125,8 +125,47 @@ const COMPARE: ScenarioCompare = {
     },
   ],
   write_ins: [
-    { key: 'gamma-1', label: 'Gamma 1', cls: 'add', live: [], draft: [] },
-    { key: 'gamma-2', label: 'Gamma 2', cls: 'match', live: [], draft: [] },
+    {
+      key: 'gamma-1',
+      label: 'Gamma 1',
+      cls: 'add',
+      live: [],
+      draft: [
+        {
+          unit_id: 'g1',
+          unit_code: 'gamma-1',
+          unit_name: 'Gamma 1',
+          occupant_name: 'Abara',
+          note: '',
+          party_size: 4,
+        },
+      ],
+    },
+    {
+      key: 'gamma-2',
+      label: 'Gamma 2',
+      cls: 'match',
+      live: [
+        {
+          unit_id: 'g2',
+          unit_code: 'gamma-2',
+          unit_name: 'Gamma 2',
+          occupant_name: 'Delacroix',
+          note: '',
+          party_size: null,
+        },
+      ],
+      draft: [
+        {
+          unit_id: 'g2',
+          unit_code: 'gamma-2',
+          unit_name: 'Gamma 2',
+          occupant_name: 'Delacroix',
+          note: '',
+          party_size: null,
+        },
+      ],
+    },
   ],
 }
 
@@ -218,10 +257,15 @@ describe('ScenarioCompareModal', () => {
   })
 
   it('renders the write-in section from the preview_push classification', async () => {
+    // Both buildings come from the same classifier the Push Write-Ins screen
+    // uses. Gamma 1 (`add`) shows at rest; Gamma 2 (`match`) sits behind the
+    // disclosure, mirroring the family half — asserted in its own test below.
     renderModal()
     const writeIns = await screen.findByTestId('compare-write-ins')
     expect(within(writeIns).getByText('Gamma 1')).toBeInTheDocument()
-    expect(within(writeIns).getByText('Gamma 2')).toBeInTheDocument()
+    expect(
+      within(writeIns).getByRole('button', { name: /1 matching write-in/i })
+    ).toBeInTheDocument()
   })
 
   it('names the mirror and its age in the footer', async () => {
@@ -427,5 +471,50 @@ describe('ScenarioCompareModal — the protected query waits for auth', () => {
     )
     await Promise.resolve()
     expect(mockFetchWithAuth).not.toHaveBeenCalled()
+  })
+})
+
+describe('ScenarioCompareModal — the write-in half mirrors the family half', () => {
+  it('names the occupants, not just the cabin', async () => {
+    // A cabin name on its own says nothing: "Gamma 1 — Only in this plan"
+    // does not tell you WHO the scenario put there. The push screen already
+    // pairs the two (`occupant_name — label`), so this one does too, with the
+    // occupant on the left where a family row carries the family.
+    renderModal()
+    const rows = await screen.findAllByTestId('compare-write-in-row')
+    const texts = rows.map((r) => r.textContent)
+    expect(texts.some((t) => t?.includes('Abara') && t.includes('Gamma 1'))).toBe(true)
+  })
+
+  it('shows a recorded party size and stays quiet about one nobody typed', async () => {
+    // `party_size: null` is "occupies wholesale, never zero" (kindred#2540), so
+    // the name renders BARE — no parenthetical at all. Asserted on the absence
+    // of "(" rather than of "0": the first version of this test looked for a
+    // literal 0 and stayed green while the code rendered "Delacroix (null)".
+    renderModal()
+    const shown = await screen.findAllByTestId('compare-write-in-row')
+    expect(shown.map((r) => r.textContent ?? '').some((t) => t.includes('Abara (4)'))).toBe(true)
+
+    // Delacroix is a MATCH, so it lives behind the disclosure — checking it
+    // without opening that was the second reason the first version was inert.
+    await userEvent.click(screen.getByRole('button', { name: /matching write-in/i }))
+    const rows = await screen.findAllByTestId('compare-write-in-row')
+    const delacroix = rows.map((r) => r.textContent ?? '').find((t) => t.includes('Delacroix'))
+    expect(delacroix).toBeDefined()
+    expect(delacroix).not.toContain('(')
+  })
+
+  it('collapses MATCHING write-ins behind a disclosure, as matching families are', async () => {
+    // Gamma 2 matches; Gamma 1 does not. Only the differing one is on screen
+    // at rest — a matched write-in is agreement, and agreement is what the
+    // family half already tucks away.
+    renderModal()
+    const rows = await screen.findAllByTestId('compare-write-in-row')
+    expect(rows.map((r) => r.textContent).some((t) => t?.includes('Gamma 1'))).toBe(true)
+    expect(rows.map((r) => r.textContent).some((t) => t?.includes('Gamma 2'))).toBe(false)
+
+    await userEvent.click(screen.getByRole('button', { name: /matching write-in/i }))
+    const after = await screen.findAllByTestId('compare-write-in-row')
+    expect(after.map((r) => r.textContent).some((t) => t?.includes('Gamma 2'))).toBe(true)
   })
 })

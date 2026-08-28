@@ -189,28 +189,112 @@ function PartyRow({ party, testId }: { party: CompareParty; testId: string }) {
  * it is literally the same classifier over the same rows — which is the whole
  * reason it is here rather than a second diff of our own.
  */
+/**
+ * One write-in building's occupants, as text.
+ *
+ * WHICH SIDE depends on the verdict, the same way `PushWriteInsModal`'s
+ * `tileSummaryLines` picks one: an `add` exists only in the scenario's draft, a
+ * `remove` only on the live board, and a `match` is the same row either way. A
+ * `conflict` is the only one with two answers, so it is the only one that
+ * renders an arrow -- mirroring the family row directly above it, where
+ * `scenario -> CampMinder` is spelled the same way.
+ *
+ * `party_size` is OMITTED when null rather than printed as 0: null means
+ * "occupies wholesale, never zero" (kindred#2540), and a 0 on screen would be a
+ * fact the board declined to state.
+ */
+function occupantsOf(rows: NonNullable<CompareWriteIn['draft']>): string {
+  return rows
+    .map((row) =>
+      row.party_size == null
+        ? row.occupant_name
+        : `${row.occupant_name} (${String(row.party_size)})`
+    )
+    .filter((text) => text !== '')
+    .join(' · ')
+}
+
+function WriteInRow({ building }: { building: CompareWriteIn }) {
+  const draft = occupantsOf(building.draft ?? [])
+  const live = occupantsOf(building.live ?? [])
+  return (
+    <div
+      data-testid="compare-write-in-row"
+      className="border-border/60 flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b py-2 last:border-b-0"
+    >
+      {/* The OCCUPANTS lead, where a family row carries the family. A cabin
+          name on its own says nothing: "Gamma 1 — Only in this plan" does not
+          tell staff who the scenario put there. */}
+      <span className="min-w-48 flex-1 text-sm font-semibold">
+        {building.cls === 'conflict' && draft !== '' && live !== '' ? (
+          <>
+            {draft} <span className="text-muted-foreground font-normal">&rarr;</span> {live}
+          </>
+        ) : (
+          draft || live || <span className="text-muted-foreground">&mdash;</span>
+        )}
+      </span>
+      <span className="text-sm">{building.label}</span>
+      <span
+        className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${VERDICT_TONE[building.cls]}`}
+      >
+        {ROW_LABEL[building.cls]}
+      </span>
+    </div>
+  )
+}
+
+/**
+ * The write-in half, straight from `preview_push` (kindred#2478 section 5.4).
+ * It costs nothing to build and can never disagree with the Push Write-Ins
+ * review screen, because it is literally the same classifier over the same
+ * rows.
+ *
+ * MATCHING BUILDINGS COLLAPSE, exactly as matching families do above. A matched
+ * write-in is agreement, and a screen whose job is to surface disagreement
+ * should not make you scroll past the agreement to find it.
+ */
 function WriteInSection({ buildings }: { buildings: readonly CompareWriteIn[] }) {
+  const [showMatches, setShowMatches] = useState(false)
   if (buildings.length === 0) return null
+  const differing = buildings.filter((b) => b.cls !== 'match')
+  const matching = buildings.filter((b) => b.cls === 'match')
   return (
     <section data-testid="compare-write-ins" className="flex flex-col gap-2">
       <h3 className="text-muted-foreground text-xs font-bold tracking-wider uppercase">
         Write-ins
       </h3>
-      <div className="flex flex-col">
-        {buildings.map((building) => (
-          <div
-            key={building.key}
-            className="border-border/60 flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b py-2 last:border-b-0"
+      {differing.length === 0 ? (
+        <p className="text-muted-foreground text-sm">
+          Every write-in in this plan is already on the board.
+        </p>
+      ) : (
+        <div className="flex flex-col">
+          {differing.map((building) => (
+            <WriteInRow key={building.key} building={building} />
+          ))}
+        </div>
+      )}
+      {matching.length > 0 && (
+        <>
+          <button
+            type="button"
+            className="text-muted-foreground hover:text-foreground self-start text-xs font-semibold underline-offset-2 hover:underline"
+            onClick={() => {
+              setShowMatches((open) => !open)
+            }}
           >
-            <span className="min-w-48 flex-1 text-sm font-semibold">{building.label}</span>
-            <span
-              className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${VERDICT_TONE[building.cls]}`}
-            >
-              {ROW_LABEL[building.cls]}
-            </span>
-          </div>
-        ))}
-      </div>
+            {`${showMatches ? 'Hide' : 'Show'} ${String(matching.length)} matching write-in${matching.length === 1 ? '' : 's'}`}
+          </button>
+          {showMatches && (
+            <div className="flex flex-col">
+              {matching.map((building) => (
+                <WriteInRow key={building.key} building={building} />
+              ))}
+            </div>
+          )}
+        </>
+      )}
     </section>
   )
 }
