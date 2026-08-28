@@ -1005,15 +1005,15 @@ func resolveServiceStatuses(orchestrator *Orchestrator, syncTypes []string) map[
 	return statuses
 }
 
-// handleSyncStatus returns the status of all sync jobs
-func handleSyncStatus(e *core.RequestEvent, scheduler *Scheduler) error {
-	orchestrator := scheduler.GetOrchestrator()
-
-	// Get status of all known sync types (in dependency order)
-	// Note: "persons" is a combined sync that populates persons, households, AND person_tags
-	// tables from a single API call - there are no separate households or person_tags syncs
-	// Note: "divisions" now runs in daily sync (before persons) rather than weekly
-	syncTypes := []string{
+// statusSyncTypes is every sync job GET /api/custom/sync/status reports on.
+//
+// EXTRACTED so the ordering and the coverage can be asserted in tests, the same
+// reason getDailySyncJobs is a function rather than a literal inside RunDailySync.
+// A job missing from this list is INVISIBLE to the client: `useSyncStatusAPI`'s
+// refetchInterval returns false when nothing reports running, so polling stops
+// while that job works and its completion is never detected.
+func statusSyncTypes() []string {
+	return []string{
 		// Weekly syncs - global definitions that rarely change
 		"person_tag_defs",   // Global sync: tag definitions
 		"custom_field_defs", // Global sync: custom field definitions
@@ -1028,8 +1028,17 @@ func handleSyncStatus(e *core.RequestEvent, scheduler *Scheduler) error {
 		"bunks",
 		"bunk_plans",
 		"bunk_assignments",
-		"staff",                       // Year-scoped staff records (depends on divisions, bunks, persons)
-		"financial_transactions",      // Year-scoped financial data (depends on sessions, persons, households)
+		"staff",                  // Year-scoped staff records (depends on divisions, bunks, persons)
+		"financial_transactions", // Year-scoped financial data (depends on sessions, persons, households)
+		// Bounded daily family-camp custom-values pass (kindred#2482), in the same
+		// position getDailySyncJobs runs it: after the source jobs, before the
+		// transform phase that reads what it wrote. Published here because the
+		// STATUS PAYLOAD IS WHAT THE CLIENT CAN SEE -- these two are 13 of the
+		// family-camp refresh chain's 13.5 minutes, and while they were absent
+		// `useSyncStatusAPI` saw nothing running, stopped polling, and could never
+		// detect the cutover (kindred#2478 section 4.2c).
+		"person_custom_values_family_camp",
+		"household_custom_values_family_camp",
 		"family_camp_derived",         // Computed from person_custom_values, household_custom_values
 		"lodging_assignments",         // Derived: cabin custom fields -> lodging assignments
 		"staff_skills",                // Derived: staff skills extraction
@@ -1043,6 +1052,10 @@ func handleSyncStatus(e *core.RequestEvent, scheduler *Scheduler) error {
 		"normalize_geographic",        // Derived: normalize state/country names
 		"enrollment_snapshots",        // Derived: daily enrollment snapshot capture
 		"stranded_assignment_cleanup", // Derived: auto-unassign stranded scenario-draft assignments
+		// Found by the coverage test below, not by report: it is a registered daily
+		// job in the Process phase whose two neighbors here were published while it
+		// was not. Same class of omission as the bounded pair above.
+		"reconcile_request_lifecycle",
 		"bunk_requests",
 		"process_requests",
 		"multi_workbook_export",
@@ -1050,6 +1063,17 @@ func handleSyncStatus(e *core.RequestEvent, scheduler *Scheduler) error {
 		"person_custom_values",
 		"household_custom_values",
 	}
+}
+
+// handleSyncStatus returns the status of all sync jobs
+func handleSyncStatus(e *core.RequestEvent, scheduler *Scheduler) error {
+	orchestrator := scheduler.GetOrchestrator()
+
+	// Get status of all known sync types (in dependency order)
+	// Note: "persons" is a combined sync that populates persons, households, AND person_tags
+	// tables from a single API call - there are no separate households or person_tags syncs
+	// Note: "divisions" now runs in daily sync (before persons) rather than weekly
+	syncTypes := statusSyncTypes()
 
 	statuses := resolveServiceStatuses(orchestrator, syncTypes)
 
