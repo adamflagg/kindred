@@ -13,17 +13,21 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { ScenarioCompare } from '../../types/lodging'
 import { ScenarioCompareModal } from './ScenarioCompareModal'
 
 const mockFetchWithAuth = vi.fn()
+/** Flipped by the auth-gate test; every other test runs with auth settled. */
+let mockIsAuthLoading = false
 vi.mock('../../hooks/useApiWithAuth', () => ({
   useApiWithAuth: () => ({
     fetchWithAuth: mockFetchWithAuth,
     isAuthenticated: true,
-    isAuthLoading: false,
+    get isAuthLoading() {
+      return mockIsAuthLoading
+    },
   }),
 }))
 
@@ -392,5 +396,36 @@ describe('ScenarioCompareModal — a family is named by its children, as the boa
     // The tiles and the footer sit OUTSIDE it, or they scroll away too.
     expect(region.querySelector('[data-testid="compare-tile-match"]')).toBeNull()
     expect(region.querySelector('[data-testid="compare-footer"]')).toBeNull()
+  })
+})
+
+describe('ScenarioCompareModal — the protected query waits for auth', () => {
+  afterEach(() => {
+    mockIsAuthLoading = false
+  })
+
+  it('does not fetch while AuthContext is still loading', async () => {
+    // `frontend/CLAUDE.md`: "useAuth().isLoading first. Always check isLoading
+    // before making authenticated API calls." `useApiWithAuth` reads
+    // `pb.authStore.token` at CALL time, so a query that fires mid-restore
+    // sends no Authorization header, and `/api/lodging/compare` is permission
+    // -gated — the 401 handler then clears auth and bounces the user to
+    // /login from a modal they just opened.
+    mockIsAuthLoading = true
+    mockFetchWithAuth.mockResolvedValue(ok(COMPARE))
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={client}>
+        <ScenarioCompareModal
+          isOpen={true}
+          onClose={() => {}}
+          year={2026}
+          sessionCmId={1309001}
+          scenario="scn_1"
+        />
+      </QueryClientProvider>
+    )
+    await Promise.resolve()
+    expect(mockFetchWithAuth).not.toHaveBeenCalled()
   })
 })

@@ -314,19 +314,26 @@ export function ScenarioCompareModal({
   isOpen,
   onClose,
 }: ScenarioCompareModalProps) {
-  const { fetchWithAuth } = useApiWithAuth()
+  const { fetchWithAuth, isAuthLoading } = useApiWithAuth()
   // The same number §4's "Housing synced" line reads: `lodging_assignments` is
   // the transform that writes the mirror this compare is against, and it is
   // the last job of the six-job chain. Fetched only while the modal is open —
   // `useSyncStatusAPI` polls solely while a sync is running and costs nothing
   // at rest.
-  const { data: syncStatus } = useSyncStatusAPI({ enabled: isOpen })
+  // `!isAuthLoading` on BOTH reads, per `frontend/CLAUDE.md`: "useAuth().isLoading
+  // first. Always check isLoading before making authenticated API calls."
+  // `useApiWithAuth` reads `pb.authStore.token` at CALL time, so a query that
+  // fires mid-restore sends no Authorization header; both endpoints here are
+  // permission-gated, and the global 401 handler would clear auth and bounce
+  // the user to /login out of a modal they had just opened.
+  const ready = isOpen && !isAuthLoading
+  const { data: syncStatus } = useSyncStatusAPI({ enabled: ready })
   const syncedAt = syncStatus?.lodging_assignments.end_time
 
   const query = useQuery<ScenarioCompare>({
     queryKey: queryKeys.scenarioCompare(year, sessionCmId, scenario),
     queryFn: () => fetchScenarioCompare(fetchWithAuth, { year, sessionCmId, scenario }),
-    enabled: isOpen,
+    enabled: ready,
     // See the module doc's staleTime section: this modal stays mounted, so
     // `refetchOnMount` alone cannot make a reopen re-ask.
     staleTime: 0,
