@@ -177,8 +177,8 @@ export function LodgingUnitsPanel() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-muted-foreground max-w-2xl text-sm">
           Amenity values seeded from historical occupancy stay marked unconfirmed until staff verify
-          them — and the roster will not judge a family&apos;s housing need against an unconfirmed
-          cabin.
+          them. The roster grades what is recorded either way, so confirming does not change a
+          verdict — it clears the cabin from this list.
         </p>
         <div className="flex flex-shrink-0 gap-2">
           <button

@@ -4900,7 +4900,9 @@ class TestUnitRampCoverage:
         some     at least one is, but not all
         partial  none is, but at least one is a qualified ramp
         none     every answering room answered `no`
-        unknown  nothing answers -- blank, unconfirmed, or no active room
+        unknown  nothing answers -- a blank or unrecognised value, or no
+                 active room left. NOT unconfirmed: a recorded value is read
+                 at face value whether or not staff have walked it (#2526)
 
     `partial` is its own grade rather than folding into `none`, because folding
     it would re-erase 5 of the 14 assessments in the very direction the select
