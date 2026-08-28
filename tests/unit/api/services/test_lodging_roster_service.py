@@ -35,12 +35,12 @@ from api.services.lodging_repository import RequestValueRow
 from api.services.lodging_roster_service import (
     SUMMARY_ENTRY_CONCURRENCY,
     LodgingRosterService,
+    OwnWriteIn,
     SessionNotFoundError,
     _BathroomIndex,
     _effective_sleeps,
     _party_child,
     _resolve_family_availability,
-    OwnWriteIn,
     _resolve_write_in_covers,
     write_in_covers,
 )

@@ -1528,10 +1528,13 @@ class LodgingWriteService:
         # exactly one entry and both loops below reduce to what they were.
         live_ids: dict[tuple[str, str, str, int | None], list[str]] = {}
         live_by_unit: dict[str, list[str]] = {}
-        for row, r in live_rows_with_ids:
+        # `live_row`, not `r`: the `for r in removes` / `for r in adds` loops
+        # below bind the same name to a `PushRowPayload`, and one variable
+        # holding two shapes is a type error rather than a style point.
+        for row, live_row in live_rows_with_ids:
             record_id = str(getattr(row, "id", "") or "")
-            live_ids.setdefault(r.tuple_key(), []).append(record_id)
-            live_by_unit.setdefault(r.unit_id, []).append(record_id)
+            live_ids.setdefault(live_row.tuple_key(), []).append(record_id)
+            live_by_unit.setdefault(live_row.unit_id, []).append(record_id)
 
         remove_ids: list[str] = []
         for r in removes:
@@ -1730,9 +1733,9 @@ class LodgingWriteService:
         # and both checks below reduce to what they were.
         by_tuple: dict[tuple[str, str, str, int | None], list[str]] = {}
         by_unit: dict[str, list[tuple[str, str, str, int | None]]] = {}
-        for row, r in live:
-            by_tuple.setdefault(r.tuple_key(), []).append(str(getattr(row, "id", "") or ""))
-            by_unit.setdefault(r.tuple_key()[0], []).append(r.tuple_key())
+        for row, live_row in live:
+            by_tuple.setdefault(live_row.tuple_key(), []).append(str(getattr(row, "id", "") or ""))
+            by_unit.setdefault(live_row.tuple_key()[0], []).append(live_row.tuple_key())
 
         def change_tuple(c: dict[str, Any]) -> tuple[str, str, str, int | None]:
             return (c["unit"], c["occupant_name"].strip(), c["note"].strip(), c["party_size"])

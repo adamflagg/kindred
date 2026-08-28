@@ -555,6 +555,16 @@ class LodgingUnitSummary(BaseModel):
     # occupancy row alone and `family_available_override` stays None -- which
     # is exactly what stopped this field having to spell an occupancy as
     # `False`.
+    #
+    # ⚠️ THE FIRST OWN ROW, since a unit may hold more than one. This field
+    # and the two below are a SINGULAR projection of a list, and they were
+    # total answers only while `idx_lodging_write_in_unique` made one unit
+    # mean one row. The multi-row answer is `write_ins` below, whose entries
+    # with `relation == "own"` are the rows this projects from -- keeping
+    # these as "the first" is what makes the change invisible on the wire
+    # (with one row, "the first" and "the" name the same row). Whether they
+    # should be deprecated outright is an open question and not this
+    # change's to answer.
     occupant_name: str = ""
     # Display only. The rule never branches on it. Read from the `note` column
     # of whichever row supplied the decision -- the write-in row for an
@@ -569,9 +579,15 @@ class LodgingUnitSummary(BaseModel):
     # `occupant_name` back -- the note is PROSPECTIVE, for write-ins recorded
     # from 1500000148 onward.
     reason: str = ""
-    # The unit's OWN write-in row's count, read the way `occupant_name` and
-    # `reason` are and for the same reason: `write_in_covers` reads it back off
-    # the summary rather than re-fetching the row.
+    # The unit's FIRST OWN write-in row's count, read the way `occupant_name`
+    # and `reason` are -- see the caveat at `occupant_name`.
+    #
+    # ⚠️ NO LONGER WHAT THE COVERS READ, and this comment used to say it was
+    # ("`write_in_covers` reads it back off the summary rather than
+    # re-fetching the row"). That reading is exactly what made a second
+    # occupant unrepresentable however the tree walk resolved, so the covers
+    # take their occupant, note and count from the ROWS now. These three are
+    # a projection for readers that want one answer, not the source.
     party_size: int | None = None
     # CAN A FAMILY GO IN THIS SPACE -- the DERIVED answer, and the one every
     # count on the stats bar goes through. Folds two facts together: the ROLE
