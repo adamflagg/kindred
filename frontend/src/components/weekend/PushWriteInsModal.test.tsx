@@ -27,6 +27,7 @@ import {
   type PushResult,
   type PushRowPayload,
 } from '../../services/lodgingApi'
+import { queryKeys } from '../../utils/queryKeys'
 import { PushWriteInsModal } from './PushWriteInsModal'
 
 const mockFetchWithAuth = vi.fn()
@@ -122,7 +123,7 @@ const PREVIEW: PushPreview = {
 function renderModal(preview: PushPreview) {
   mockFetchWithAuth.mockResolvedValue(ok(preview))
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  return render(
+  const utils = render(
     <QueryClientProvider client={client}>
       <PushWriteInsModal
         year={2026}
@@ -133,6 +134,7 @@ function renderModal(preview: PushPreview) {
       />
     </QueryClientProvider>
   )
+  return { ...utils, client }
 }
 
 /**
@@ -405,6 +407,46 @@ describe('PushWriteInsModal — push execution (Task 10)', () => {
     await user.click(screen.getByRole('button', { name: 'Push' }))
 
     expect(await screen.findByText('Added')).toBeInTheDocument()
+    expect(screen.getByText('Kitchen crew')).toBeInTheDocument()
+    expect(screen.getByText('F. Moreau')).toBeInTheDocument()
+  })
+
+  // The push's own `invalidateLodgingRegistryQueries` now reaches the
+  // push-preview key too (owner ruling 2026-08-28: the board's badge reads
+  // that key and must drop to 0 the moment a push lands). That refetch
+  // replaces `query.data` with a report in which nothing is left to push —
+  // so the success screen cannot name its occupants off the CURRENT preview,
+  // which is what it used to do while the key was never invalidated.
+  it('the success screen keeps naming the pushed occupants after the preview refetches', async () => {
+    const user = userEvent.setup()
+    mockExecuteWriteInPush.mockResolvedValue({
+      push_id: 'push_789',
+      added: 1,
+      removed: 1,
+      replaced: 0,
+      kept: 0,
+      matched: 0,
+      no_op: false,
+    })
+    const addAndRemove = PREVIEW.buildings.filter((b) => b.cls === 'add' || b.cls === 'remove')
+    const { client } = renderModal({ ...PREVIEW, buildings: addAndRemove })
+
+    await user.click(await screen.findByRole('button', { name: /review 1 decision/i }))
+    await user.click(screen.getByRole('button', { name: 'Push' }))
+    expect(await screen.findByText('Kitchen crew')).toBeInTheDocument()
+
+    // What the server would now report: the push landed, everything matches.
+    mockFetchWithAuth.mockResolvedValue(ok({ ...PREVIEW, buildings: [], digest: 'e'.repeat(64) }))
+    void client.invalidateQueries({ queryKey: queryKeys.pushPreviewPrefix() })
+
+    // Waits for the refetched report to actually land in the cache — a call
+    // count would go up the instant the fetch STARTS, well before the data
+    // this test is about reaches the component.
+    await waitFor(() => {
+      expect(client.getQueryData(queryKeys.pushPreview(2026, 1309001, 'scn_1'))).toMatchObject({
+        digest: 'e'.repeat(64),
+      })
+    })
     expect(screen.getByText('Kitchen crew')).toBeInTheDocument()
     expect(screen.getByText('F. Moreau')).toBeInTheDocument()
   })

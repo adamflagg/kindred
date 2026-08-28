@@ -492,6 +492,10 @@ export const queryKeys = {
    */
   pushPreview: (year: number, sessionCmId: number, scenario: string) =>
     ['push-preview', year, sessionCmId, scenario] as const,
+  // The invalidation prefix. `invalidateLodgingRegistryQueries` knows neither
+  // the weekend nor the scenario, and every writer that moves a write-in
+  // already goes through it — see the note on this key in that helper.
+  pushPreviewPrefix: () => ['push-preview'] as const,
   // Prefixes for invalidation. The lodging admin panels edit registry rows
   // that feed the roster, but know neither the year nor the weekend, so they
   // cannot build a full key — see `invalidateLodgingRegistryQueries`.
@@ -668,6 +672,17 @@ export function invalidateLodgingRegistryQueries(queryClient: {
   // the board behind it shows the new one — the disagreement the issue exists
   // to remove, re-created by the fix for it.
   void queryClient.invalidateQueries({ queryKey: queryKeys.householdJourneyPrefix() })
+  // The board's "Push write-ins" badge reads the push preview (owner ruling
+  // 2026-08-28: it counts what a push would actually write, which only the
+  // server can know — inside a scenario the client never sees the live
+  // board's write-ins). That observer stays mounted for as long as the board
+  // is open and inherits the app's 30 minute staleTime, so without this line
+  // the badge would sit on a number that every write-in edit, merge or unit
+  // rename has already moved. `PushWriteInsModal` calls this helper after a
+  // push and after an unpush for exactly that reason — it names the pushed
+  // occupants from a snapshot taken at push time, not from this query, so
+  // refetching under it is safe.
+  void queryClient.invalidateQueries({ queryKey: queryKeys.pushPreviewPrefix() })
 }
 
 /**

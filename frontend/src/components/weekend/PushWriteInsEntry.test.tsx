@@ -9,15 +9,20 @@
  * Summer"); an affordance with nothing behind it is not a refusal, so it is
  * not rendered at all rather than disabled.
  *
+ * THE BADGE IS THE SERVER'S ANSWER, not the board's own write-in total: it
+ * counts the rows a push would actually write or delete, which is the whole
+ * point of the owner's 2026-08-28 ruling. Only the server can know that —
+ * inside a scenario the client never reads the live board's write-ins.
+ *
  * Fictional data throughout.
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { MemoryRouter } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { LodgingUnitRow } from '../../types/lodging'
+import type { PushBuildingReport, PushPreview, PushRowPayload } from '../../services/lodgingApi'
 import { PushWriteInsEntry } from './PushWriteInsEntry'
 
 vi.mock('../../hooks/usePermissions', () => ({
@@ -42,14 +47,31 @@ vi.mock('../../hooks/useLodgingPlacement', () => ({
 // carries no AuthProvider — the same reason the sibling board test files mock
 // `useUnitAvailability`/`useUnitMerge` rather than let them reach the real
 // hook.
+const mockFetchWithAuth = vi.fn()
 vi.mock('../../hooks/useApiWithAuth', () => ({
-  useApiWithAuth: () => ({ fetchWithAuth: vi.fn(), isAuthenticated: true, isAuthLoading: false }),
+  useApiWithAuth: () => ({
+    fetchWithAuth: mockFetchWithAuth,
+    isAuthenticated: true,
+    isAuthLoading: false,
+  }),
 }))
+
+const mockFetchPushPreview = vi.fn()
+vi.mock('../../services/lodgingApi', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../services/lodgingApi')>()
+  return {
+    ...actual,
+    fetchPushPreview: (...args: unknown[]) => mockFetchPushPreview(...args) as unknown,
+  }
+})
 
 let client: QueryClient
 
 beforeEach(() => {
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  mockFetchWithAuth.mockReset()
+  mockFetchPushPreview.mockReset()
+  mockFetchPushPreview.mockResolvedValue(preview([]))
 })
 
 function wrapper({ children }: { children: ReactNode }) {
@@ -60,31 +82,34 @@ function wrapper({ children }: { children: ReactNode }) {
   )
 }
 
-function unit(overrides: Partial<LodgingUnitRow> = {}): LodgingUnitRow {
+function row(unitCode: string, occupantName: string): PushRowPayload {
   return {
-    unit_id: 'u1',
-    code: 'cedar-1',
-    name: 'Cedar 1',
-    area_code: 'CG',
-    area_name: 'Cedar Grove',
-    sleeps: 5,
-    bathroom: 'shared',
-    bathroom_group: '',
-    near_bathhouse: false,
-    has_power: false,
-    has_ac: false,
-    has_fridge: false,
-    is_accessible: false,
-    is_confirmed: false,
-    is_active: true,
-    is_container: false,
-    inventory_class: 'family_pool',
-    family_available_override: null,
-    reason: '',
-    is_family_available: true,
-    map_x: 0.5,
-    map_y: 0.5,
-    ...overrides,
+    unit_id: `u-${unitCode}`,
+    unit_code: unitCode,
+    unit_name: unitCode,
+    occupant_name: occupantName,
+    note: '',
+    party_size: null,
+    sleeps: null,
+  }
+}
+
+function building(
+  key: string,
+  cls: PushBuildingReport['cls'],
+  live: PushRowPayload[],
+  draft: PushRowPayload[]
+): PushBuildingReport {
+  return { key, label: key, cls, live, draft }
+}
+
+function preview(buildings: PushBuildingReport[]): PushPreview {
+  return {
+    year: 2026,
+    session_cm_id: 1000001,
+    scenario: SCENARIO,
+    digest: 'd'.repeat(64),
+    buildings,
   }
 }
 
@@ -97,11 +122,14 @@ function renderEntry(props: Partial<Parameters<typeof PushWriteInsEntry>[0]> = {
       sessionCmId={1000001}
       scenario={SCENARIO}
       canManage={true}
-      units={[unit()]}
       {...props}
     />,
     { wrapper }
   )
+}
+
+function pushButton() {
+  return screen.getByRole('button', { name: /push write-ins/i })
 }
 
 describe('PushWriteInsEntry — the push write-ins button beside the stats line', () => {
@@ -125,52 +153,83 @@ describe('PushWriteInsEntry — the push write-ins button beside the stats line'
     expect(screen.queryByRole('button', { name: /push write-ins/i })).not.toBeInTheDocument()
   })
 
-  it('is present, badged, with both', () => {
-    renderEntry()
-    expect(screen.getByRole('button', { name: /push write-ins/i })).toBeInTheDocument()
+  it('asks for no preview where it does not render', () => {
+    renderEntry({ scenario: '' })
+    expect(mockFetchPushPreview).not.toHaveBeenCalled()
   })
 
-  it('badges the board-wide count of own-or-descendant write-in covers, excluding ancestor duplicates', () => {
-    const cover = (
-      unitCode: string,
-      occupantName: string,
-      relation: 'own' | 'ancestor' | 'descendant'
-    ) => ({
-      unit_id: `u-${unitCode}`,
-      unit_code: unitCode,
-      unit_name: unitCode,
-      occupant_name: occupantName,
-      note: '',
-      relation,
+  it('is present with both', () => {
+    renderEntry()
+    expect(pushButton()).toBeInTheDocument()
+  })
+
+  it('badges the rows a push would write or delete, not the board-wide write-in total', async () => {
+    // Five write-in rows on this board; only three of them are a push. The
+    // old badge counted the board's own rows and read "4" here — every
+    // already-matching row inflating a number staff read as work to do.
+    mockFetchPushPreview.mockResolvedValue(
+      preview([
+        building('yurt-5', 'add', [], [row('yurt-5', 'Kitchen crew'), row('yurt-5', 'A. Rivera')]),
+        building('fern-1', 'match', [row('fern-1', 'E. Sandoval')], [row('fern-1', 'E. Sandoval')]),
+        building(
+          'cedar-9',
+          'conflict',
+          [row('cedar-9', 'G. Whitfield')],
+          [row('cedar-9', 'H. Osei')]
+        ),
+      ])
+    )
+    renderEntry()
+
+    await waitFor(() => {
+      expect(pushButton()).toHaveTextContent('3')
     })
-    renderEntry({
-      units: [
-        // Its own row: counts once.
-        unit({
-          unit_id: 'u1',
-          code: 'cedar-1',
-          write_ins: [cover('cedar-1', 'Alex Rivera', 'own')],
-        }),
-        // A merged building drawing in two rooms' rows: counts twice, as
-        // `descendant`.
-        unit({
-          unit_id: 'u2',
-          code: 'house',
-          write_ins: [
-            cover('house-a', 'Jordan Lee', 'descendant'),
-            cover('house-b', 'Sam Patel', 'descendant'),
-          ],
-        }),
-        // A split room inheriting its building's row: excluded. The
-        // building's own row is counted wherever IT is drawn, and this is
-        // the same row surfacing a second time.
-        unit({
-          unit_id: 'u3',
-          code: 'annex-a',
-          write_ins: [cover('annex', 'Taylor Brooks', 'ancestor')],
-        }),
-      ],
+  })
+
+  it('reads 0 and greys out when the scenario already matches CampMinder', async () => {
+    mockFetchPushPreview.mockResolvedValue(
+      preview([
+        building('fern-1', 'match', [row('fern-1', 'E. Sandoval')], [row('fern-1', 'E. Sandoval')]),
+      ])
+    )
+    renderEntry()
+
+    await waitFor(() => {
+      expect(pushButton()).toHaveClass('text-muted-foreground')
     })
-    expect(screen.getByRole('button', { name: /push write-ins/i })).toHaveTextContent('3')
+    expect(pushButton()).toHaveTextContent('0')
+  })
+
+  it('stays clickable with nothing to push — the report is still worth reading', async () => {
+    mockFetchPushPreview.mockResolvedValue(preview([]))
+    renderEntry()
+
+    await waitFor(() => {
+      expect(pushButton()).toHaveClass('text-muted-foreground')
+    })
+    // Greyed, never disabled: staff opening it see WHY there is nothing to
+    // do, which a dead button cannot say.
+    expect(pushButton()).toBeEnabled()
+  })
+
+  it('is not greyed while the preview is still in flight', () => {
+    mockFetchPushPreview.mockReturnValue(new Promise(() => undefined))
+    renderEntry()
+
+    expect(pushButton()).not.toHaveClass('text-muted-foreground')
+    // No badge either — a placeholder count would be a guess, and the count
+    // is the one thing this button now promises to be right about.
+    expect(pushButton()).not.toHaveTextContent(/\d/)
+  })
+
+  it('is not greyed when the preview fails — an unknown count is not a zero', async () => {
+    mockFetchPushPreview.mockRejectedValue(new Error('boom'))
+    renderEntry()
+
+    await waitFor(() => {
+      expect(mockFetchPushPreview).toHaveBeenCalled()
+    })
+    expect(pushButton()).not.toHaveClass('text-muted-foreground')
+    expect(pushButton()).not.toHaveTextContent(/\d/)
   })
 })

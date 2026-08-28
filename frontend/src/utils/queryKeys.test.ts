@@ -214,6 +214,24 @@ describe('invalidateLodgingRegistryQueries', () => {
     expect(full.slice(0, 1)).toEqual(roster)
   })
 
+  it('invalidates the push preview, which every write-in edit moves', () => {
+    // The board's "Push write-ins" badge is now the SERVER's count of what a
+    // push would write (owner ruling 2026-08-28), read from this key by an
+    // observer that stays mounted for as long as the board is open. Every
+    // writer that changes a write-in — `useUnitAvailability`, a merge, an
+    // admin rename that re-keys a building — already funnels through this
+    // helper, so this line is what keeps that badge from sitting on a stale
+    // number for the app's 30 minute default.
+    const client = recordingClient()
+    invalidateLodgingRegistryQueries(client)
+
+    const preview = client.keys.find((k) => k[0] === 'push-preview')
+    expect(preview).toHaveLength(1)
+    // By PREFIX: the real key carries year, weekend and scenario, and an
+    // admin panel knows none of them.
+    expect(queryKeys.pushPreview(2026, 1000001, 'scn_1').slice(0, 1)).toEqual(preview)
+  })
+
   it('invalidates the lodging registry keys by PREFIX too, since 1500000141', () => {
     // Units and areas became year-scoped: the real keys are [key, year], and
     // an admin panel editing one season's registry does not know every year a

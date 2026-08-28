@@ -96,6 +96,17 @@ vi.mock('../hooks/useUnitMerge', () => ({
   }),
 }))
 
+// The "Push write-ins" badge became a real React Query hook when it stopped
+// counting the board's own write-ins and started reading the server's report
+// of what a push would actually write (owner ruling 2026-08-28). Same reason
+// as the placement/availability/merge mocks above: a real `useQuery` reaches
+// for a QueryClient through react-query's own internals, which the
+// `useQueryClient` stub does not satisfy. The badge itself is pinned in
+// `components/weekend/PushWriteInsEntry.test.tsx`.
+vi.mock('../hooks/usePushPreview', () => ({
+  usePushPreview: () => ({ data: undefined, isPending: false, error: null }),
+}))
+
 vi.mock('../hooks/useScenario', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../hooks/useScenario')>()
   return {
