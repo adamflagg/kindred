@@ -84,6 +84,10 @@ const COMPARE: ScenarioCompare = {
       household_cm_id: 104,
       person_cm_id: 0,
       display_name: 'The Okafor Family',
+      children: [
+        { person_cm_id: 941, display_name: 'Rowan Okafor', last_name: 'Okafor', age: 9.4 },
+        { person_cm_id: 942, display_name: 'Wren Okafor', last_name: 'Okafor', age: 6.1 },
+      ],
       cls: 'conflict',
       both_unassigned: false,
       scenario_unit_label: 'Beta 1 + Beta 2',
@@ -184,7 +188,10 @@ describe('ScenarioCompareModal', () => {
     renderModal()
     const rows = await differenceRows()
     expect(rows).toHaveLength(3)
-    expect(rows[0]).toMatch(/^The Okafor FamilyBeta 1 \+ Beta 2.*Beta 1/)
+    // Named by its children, as the board names it — the mailing title is the
+    // fallback, not the label. This assertion is about ORDER; the naming rule
+    // has its own describe block below.
+    expect(rows[0]).toMatch(/^Wren \(6\) · Rowan \(9\) OkaforBeta 1 \+ Beta 2.*Beta 1/)
   })
 
   it('renders a multi-room difference as a difference, not a match', async () => {
@@ -192,7 +199,7 @@ describe('ScenarioCompareModal', () => {
     // Beta 2` against `Beta 1` is a conflict, and the row must say so.
     renderModal()
     const rows = await differenceRows()
-    const okafor = rows.find((text) => text.includes('The Okafor Family'))
+    const okafor = rows.find((text) => text.includes('Rowan (9) Okafor'))
     expect(okafor).toMatch(/different cabin/i)
   })
 
@@ -347,5 +354,43 @@ describe('ScenarioCompareModal', () => {
     expect(rows.join(' | ')).toContain('The Lindqvist Family')
     expect(consoleError.mock.calls.flat().join(' ')).not.toMatch(/two children with the same key/i)
     consoleError.mockRestore()
+  })
+})
+
+describe('ScenarioCompareModal — a family is named by its children, as the board names it', () => {
+  it("leads with the children's run, not CampMinder's mailing title", async () => {
+    renderModal()
+    const rows = await differenceRows()
+    // `childrenRun`'s own grammar, shared with FamilyCard's bold line: youngest
+    // first, whole-year ages, the surname lifted out once when every child
+    // shares it. Asserted through the row text so a drift in that helper is
+    // caught here rather than silently rendering a second vocabulary.
+    expect(rows.some((row) => row.includes('Wren (6) · Rowan (9) Okafor'))).toBe(true)
+    expect(rows.some((row) => row.includes('The Okafor Family'))).toBe(false)
+  })
+
+  it('falls back to the household name for a party with no children on file', async () => {
+    renderModal()
+    const rows = await differenceRows()
+    // The Novak Family carries no `children`, exactly as an adult-grain guest
+    // would, so the mailing title is all there is to show.
+    expect(rows.some((row) => row.includes('The Novak Family'))).toBe(true)
+  })
+
+  it('scrolls the family list inside the dialog, leaving the tiles and footer put', async () => {
+    // A real weekend ran to a list taller than the viewport, so the OVERLAY
+    // scrolled -- taking the blurred backdrop with it (`ui/Modal` fixes its
+    // half). Here the body owns its overflow, which also keeps the footer's
+    // "compared against the mirror, last synced X" on screen: the modal's own
+    // docstring calls that line load-bearing, and a footer you have to scroll
+    // to find is a footer staff do not read.
+    renderModal()
+    await screen.findAllByTestId('compare-difference-row')
+    const region = screen.getByTestId('compare-scroll')
+    expect(region.className).toMatch(/overflow-y-auto/)
+    expect(region.className).toMatch(/max-h-/)
+    // The tiles and the footer sit OUTSIDE it, or they scroll away too.
+    expect(region.querySelector('[data-testid="compare-tile-match"]')).toBeNull()
+    expect(region.querySelector('[data-testid="compare-footer"]')).toBeNull()
   })
 })

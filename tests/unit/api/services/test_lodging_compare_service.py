@@ -16,6 +16,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from api.schemas.lodging import (
+    PartyChild,
     PushPreviewResponse,
     RosterParty,
     WeekendRosterResponse,
@@ -27,13 +28,20 @@ from api.services.lodging_compare_service import (
 from api.services.lodging_roster_service import SessionNotFoundError
 
 
-def _party(cm_id: int, name: str, codes: tuple[str, ...] = (), label: str = "") -> RosterParty:
+def _party(
+    cm_id: int,
+    name: str,
+    codes: tuple[str, ...] = (),
+    label: str = "",
+    children: list[PartyChild] | None = None,
+) -> RosterParty:
     return RosterParty(
         grain="household",
         household_cm_id=cm_id,
         display_name=name,
         unit_codes=list(codes),
         unit_name=label or " + ".join(codes),
+        children=children or [],
     )
 
 
@@ -185,3 +193,58 @@ class TestCompareScenario:
 
         assert "digest" not in report.model_dump()
         assert all("decision" not in field for field in report.parties[0].model_dump())
+
+
+class TestComparePartyChildren:
+    """The modal names a family by its CHILDREN, exactly as the board does
+    (`FamilyCard`: "the children lead, bold", with `display_name` only as the
+    fallback). That means the children have to reach the wire -- the verdict
+    carries placement and identity, not the roster row -- so the SERVICE
+    attaches them rather than `compare_placements`, which stays a pure
+    placement predicate over the two sides.
+    """
+
+    @pytest.mark.asyncio
+    async def test_the_report_carries_the_scenario_partys_children(self) -> None:
+        kids = [
+            PartyChild(person_cm_id=91, display_name="Rowan Abara", last_name="Abara", age=9.4),
+            PartyChild(person_cm_id=92, display_name="Wren Abara", last_name="Abara", age=6.1),
+        ]
+        stubs = _service(
+            mirror=_roster([_party(11, "The Abara Family", ("alpha-1",), children=kids)]),
+            scenario=_roster([_party(11, "The Abara Family", ("beta-2",), children=kids)]),
+        )
+
+        result = await stubs.service.compare_scenario(2026, 1000001, "plan-a")
+
+        assert [c.person_cm_id for c in result.parties[0].children] == [91, 92]
+        assert [c.display_name for c in result.parties[0].children] == ["Rowan Abara", "Wren Abara"]
+
+    @pytest.mark.asyncio
+    async def test_a_mirror_only_party_still_carries_its_children(self) -> None:
+        """`remove` parties exist only on the mirror side, so a children map
+        built from the scenario alone would leave exactly the rows staff most
+        need to identify with nothing but a mailing title."""
+        kids = [PartyChild(person_cm_id=93, display_name="Ines Okafor", last_name="Okafor", age=7.0)]
+        stubs = _service(
+            mirror=_roster([_party(12, "The Okafor Family", ("alpha-1",), children=kids)]),
+            scenario=_roster([]),
+        )
+
+        result = await stubs.service.compare_scenario(2026, 1000001, "plan-a")
+
+        assert result.parties[0].cls == "remove"
+        assert [c.display_name for c in result.parties[0].children] == ["Ines Okafor"]
+
+    @pytest.mark.asyncio
+    async def test_a_party_with_no_children_carries_an_empty_list(self) -> None:
+        """Not None -- the client falls back to `display_name` on empty, and an
+        adult-grain guest legitimately has no children at all."""
+        stubs = _service(
+            mirror=_roster([_party(13, "The Vance Family", ("alpha-1",))]),
+            scenario=_roster([_party(13, "The Vance Family", ("alpha-1",))]),
+        )
+
+        result = await stubs.service.compare_scenario(2026, 1000001, "plan-a")
+
+        assert result.parties[0].children == []

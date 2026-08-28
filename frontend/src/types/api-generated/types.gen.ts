@@ -769,6 +769,10 @@ export type ComparePartyReport = {
    */
   both_unassigned?: boolean
   /**
+   * Children
+   */
+  children?: Array<PartyChild>
+  /**
    * Scenario Unit Label
    */
   scenario_unit_label?: string

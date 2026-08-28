@@ -39,17 +39,24 @@ session-scoped ones; issued concurrently they would both miss a cold cache and
 pay the year-scoped set twice.
 """
 
+from collections.abc import Sequence
 from typing import Any
 
 from api.schemas.lodging import (
     ComparePartyReport,
+    PartyChild,
     RosterParty,
     ScenarioCompareCounts,
     ScenarioCompareResponse,
 )
 from api.services.lodging_repository import LodgingRepository
 from api.services.lodging_roster_service import LodgingRosterService
-from api.services.lodging_rules import ComparePartyPlacement, ComparePartyVerdict, compare_placements
+from api.services.lodging_rules import (
+    ComparePartyPlacement,
+    ComparePartyVerdict,
+    compare_party_key,
+    compare_placements,
+)
 from api.services.lodging_write_service import LodgingWriteService
 
 # `camp_sessions.session_type` for a family-camp weekend. The same literal
@@ -89,7 +96,27 @@ def _placement_side(party: RosterParty) -> ComparePartyPlacement:
     )
 
 
-def _report(verdict: ComparePartyVerdict) -> ComparePartyReport:
+def _children_by_key(*rosters: Sequence[RosterParty]) -> dict[str, list[PartyChild]]:
+    """Every party's children, keyed exactly as `compare_placements` keys them.
+
+    BOTH sides are folded in, scenario first, because a `remove` party exists
+    only on the mirror side -- and those are precisely the rows staff most need
+    to identify, since they are the ones the plan has dropped. A map built from
+    the scenario alone would leave them with nothing but a mailing title.
+
+    Earlier rosters win: a party on both sides is the same enrolment either
+    way (a scenario changes where families sleep, not who is enrolled), so the
+    collision is a formality rather than a choice between two answers.
+    """
+    out: dict[str, list[PartyChild]] = {}
+    for roster in rosters:
+        for party in roster:
+            key = compare_party_key(party.grain, party.household_cm_id, party.person_cm_id, party.display_name)
+            out.setdefault(key, list(party.children))
+    return out
+
+
+def _report(verdict: ComparePartyVerdict, children: list[PartyChild]) -> ComparePartyReport:
     return ComparePartyReport(
         grain=verdict.grain,
         household_cm_id=verdict.household_cm_id,
@@ -97,6 +124,7 @@ def _report(verdict: ComparePartyVerdict) -> ComparePartyReport:
         display_name=verdict.display_name,
         cls=verdict.cls,
         both_unassigned=verdict.both_unassigned,
+        children=children,
         scenario_unit_label=verdict.scenario_unit_label,
         scenario_unit_codes=list(verdict.scenario_unit_codes),
         mirror_unit_label=verdict.mirror_unit_label,
@@ -151,6 +179,7 @@ class LodgingCompareService:
             [_placement_side(p) for p in mirror_roster.parties],
             [_placement_side(p) for p in scenario_roster.parties],
         )
+        children = _children_by_key(scenario_roster.parties, mirror_roster.parties)
         preview = await self.writes.preview_push(year, session_cm_id, scenario)
 
         return ScenarioCompareResponse(
@@ -159,6 +188,6 @@ class LodgingCompareService:
             scenario=scenario,
             session_name=mirror_roster.session_name,
             counts=_counts(verdicts),
-            parties=[_report(v) for v in verdicts],
+            parties=[_report(v, children.get(v.key, [])) for v in verdicts],
             write_ins=preview.buildings,
         )

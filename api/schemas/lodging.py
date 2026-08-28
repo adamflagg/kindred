@@ -427,6 +427,14 @@ class ComparePartyReport(BaseModel):
     # kinds of agreement, and one green number over the pair hides a barely
     # worked scenario.
     both_unassigned: bool = False
+    # The party's enrolled children, so the modal can NAME a family the way the
+    # board does -- `FamilyCard`'s bold line is the children's run, with
+    # `display_name` (CampMinder's mailing title) only the fallback beneath it.
+    # Published here rather than derived client-side because `compare_placements`
+    # is a placement predicate and has no roster row to hand; the SERVICE
+    # attaches these from the roster it already read. Empty for a party with no
+    # children, which is the signal the client falls back on.
+    children: list[PartyChild] = Field(default_factory=list)
     scenario_unit_label: str = ""
     scenario_unit_codes: list[str] = Field(default_factory=list)
     mirror_unit_label: str = ""

@@ -57,9 +57,11 @@ import { useApiWithAuth } from '../../hooks/useApiWithAuth'
 import { useSyncStatusAPI } from '../../hooks/useSyncStatusAPI'
 import { fetchScenarioCompare } from '../../services/lodgingApi'
 import type { CompareParty, ScenarioCompare } from '../../types/lodging'
+import { displayTruncatedAge } from '../../utils/age'
 import { queryKeys } from '../../utils/queryKeys'
 import { QueryGuard } from '../QueryGuard'
 import { Modal } from '../ui/Modal'
+import { childrenRunLabel } from './householdIdentity'
 import { partyKey } from './partyKey'
 import { VERDICT_TONE, type Verdict } from './verdictTone'
 
@@ -129,6 +131,36 @@ function UnitLabel({ label }: { label: string }) {
   )
 }
 
+/**
+ * What a row CALLS a family: its children, exactly as the board calls it.
+ *
+ * `FamilyCard`'s bold line is the children's run and `display_name` is only
+ * the fallback beneath it, because CampMinder's mailing title ("The Okafor
+ * Family") is not what staff are looking for when they scan a list -- the
+ * children are, and the ages are what a housing decision turns on. A compare
+ * that named families a second way would be the same drift `childrenRun`
+ * exists to prevent (kindred#2072), so this goes through the shared helper
+ * rather than reproducing its ordering, its age format or its lifted surname.
+ *
+ * `childrenRunLabel` rather than `childrenRun`: that is the text form, built
+ * from the SAME segments the card renders as elements, and its own docstring
+ * names this case ("the card wants one element per child and the modal wants
+ * text"). `displayTruncatedAge` matches the card's bold line -- whole years,
+ * because that is the granularity a similar-ages match is made on.
+ *
+ * Empty means no children on file, which is the signal the helper documents
+ * for falling back: an adult-grain guest has none by construction, and a
+ * household whose roster row failed to resolve has none either.
+ */
+function partyLabel(party: CompareParty): string {
+  const run = childrenRunLabel(party.children ?? [], displayTruncatedAge)
+  // `?? ''` on the fallback, not `||`: `display_name` is optional on the
+  // generated type (the server defaults it to ""), and the server-side
+  // `_household_display_name` has its own fallback, so an absent one here is
+  // a wire-shape artifact rather than a party with no name.
+  return run === '' ? (party.display_name ?? '') : run
+}
+
 function PartyRow({ party, testId }: { party: CompareParty; testId: string }) {
   const verdict = party.cls
   return (
@@ -136,7 +168,7 @@ function PartyRow({ party, testId }: { party: CompareParty; testId: string }) {
       data-testid={testId}
       className="border-border/60 flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b py-2 last:border-b-0"
     >
-      <span className="min-w-48 flex-1 text-sm font-semibold">{party.display_name}</span>
+      <span className="min-w-48 flex-1 text-sm font-semibold">{partyLabel(party)}</span>
       <span className="flex items-baseline gap-2 text-sm">
         <UnitLabel label={party.scenario_unit_label ?? ''} />
         <span className="text-muted-foreground">&rarr;</span>
@@ -214,40 +246,54 @@ function CompareScreen({
         ))}
       </div>
 
-      {differing.length === 0 ? (
-        <p className="text-muted-foreground text-sm">
-          Every family is in the same place in this plan and in CampMinder.
-        </p>
-      ) : (
-        <section className="flex flex-col">
-          {differing.map((party) => (
-            <PartyRow key={partyKey(party)} party={party} testId="compare-difference-row" />
-          ))}
-        </section>
-      )}
+      {/* THE BODY SCROLLS, NOT THE OVERLAY. A real weekend runs to a list
+          taller than the viewport, and `ui/Modal`'s top-anchored wrapper is
+          itself the scroll container -- so without a bound here the whole
+          dialog grew past the screen and the page scrolled behind it.
+          Bounding the body keeps the tiles above and the footer below in
+          view, which matters most for the footer: it is the line that says
+          how old the mirror is, and a stale diff read as a live one is the
+          failure this screen exists to prevent. */}
+      <div
+        data-testid="compare-scroll"
+        className="-mr-2 flex max-h-[55vh] flex-col gap-4 overflow-y-auto pr-2"
+      >
+        {differing.length === 0 ? (
+          <p className="text-muted-foreground text-sm">
+            Every family is in the same place in this plan and in CampMinder.
+          </p>
+        ) : (
+          <section className="flex flex-col">
+            {differing.map((party) => (
+              <PartyRow key={partyKey(party)} party={party} testId="compare-difference-row" />
+            ))}
+          </section>
+        )}
 
-      {matching.length > 0 && (
-        <section className="flex flex-col gap-2">
-          <button
-            type="button"
-            className="text-muted-foreground hover:text-foreground self-start text-xs font-semibold underline-offset-2 hover:underline"
-            onClick={() => {
-              setShowMatches((open) => !open)
-            }}
-          >
-            {`${showMatches ? 'Hide' : 'Show'} ${String(matching.length)} matching famil${matching.length === 1 ? 'y' : 'ies'}`}
-          </button>
-          {showMatches && (
-            <div className="flex flex-col">
-              {matching.map((party) => (
-                <PartyRow key={partyKey(party)} party={party} testId="compare-match-row" />
-              ))}
-            </div>
-          )}
-        </section>
-      )}
+        {matching.length > 0 && (
+          <section className="flex flex-col gap-2">
+            <button
+              type="button"
+              className="text-muted-foreground hover:text-foreground self-start text-xs font-semibold underline-offset-2 hover:underline"
+              onClick={() => {
+                setShowMatches((open) => !open)
+              }}
+            >
+              {`${showMatches ? 'Hide' : 'Show'} ${String(matching.length)} matching famil${matching.length === 1 ? 'y' : 'ies'}`}
+            </button>
+            {showMatches && (
+              <div className="flex flex-col">
+                {matching.map((party) => (
+                  <PartyRow key={partyKey(party)} party={party} testId="compare-match-row" />
+                ))}
+              </div>
+            )}
+          </section>
+        )}
 
-      <WriteInSection buildings={compare.write_ins ?? []} />
+        <WriteInSection buildings={compare.write_ins ?? []} />
+      </div>
+
       <CompareFooter syncedAt={syncedAt} />
     </div>
   )
