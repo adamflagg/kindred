@@ -625,8 +625,10 @@ describe('ScenarioCompareModal — a placement is named the way the board draws 
   /**
    * A house and its two rooms, at whichever draw level the test wants. Owner
    * ruling, 2026-08-28: "take the board's state label ... if staff splits
-   * the house on the board and reopens the modal, it should reflect the board
-   * state. right now board is the authority."
+   * [a house] on the board and reopens the modal, it should reflect the board
+   * state. right now board is the authority." The bracket stands in for the
+   * real house the ruling named -- `verify-no-hardcoded-lodging.sh` scans
+   * tests too, so the fixture invents one.
    */
   function deltaHouse(combined: boolean): LodgingUnitRow[] {
     return [

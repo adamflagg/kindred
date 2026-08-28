@@ -43,15 +43,16 @@
  * ## THE BOARD NAMES THE PLACEMENTS, not the roster
 
 Owner ruling, 2026-08-28: "take the board's state label ... if staff splits
-delta-house on the board and reopens the modal, it should reflect the board state.
-right now board is the authority, roster tab has been neglected intentionally
-for a while."
+[a house] on the board and reopens the modal, it should reflect the board
+state. right now board is the authority, roster tab has been neglected
+intentionally for a while." (The ruling named a real house; the bracket keeps
+`verify-no-hardcoded-lodging.sh` happy without rewording the owner.)
 
 `ComparePartyReport.*_unit_label` is `RosterParty.unit_name`, a pure function of
 the assignment row's arity -- one unit gives that unit's name, 2+ gives them
-joined. A family holding all of a combined house therefore arrived as `Delta House
-Front + Delta 2` while the board it describes draws ONE card headed
-`Delta House`. The label's own docstring gives the reason it is republished at all --
+joined. A family holding all of a combined house therefore arrived as `Delta 1
++ Delta 2` while the board it describes draws ONE card headed `Delta House`.
+The label's own docstring gives the reason it is republished at all --
 "so the modal never rebuilds a name from codes and shows staff something the
 board does not" -- and that is an argument FOR taking the board's answer, not
 against it.
