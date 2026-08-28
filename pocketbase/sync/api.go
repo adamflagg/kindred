@@ -662,9 +662,22 @@ func handleRefreshBunking(e *core.RequestEvent, scheduler *Scheduler) error {
 func handleRefreshFamilyCamp(e *core.RequestEvent, scheduler *Scheduler) error {
 	orchestrator := scheduler.GetOrchestrator()
 
-	// Check if any family-camp-refresh-related sync is already running
+	// Check if any family-camp-refresh-related sync is already running.
+	//
+	// Collection-group-aware (kindred#2491 Face A), not a plain IsRunning(job) over the six
+	// literal names: "person_custom_values_family_camp" and
+	// "household_custom_values_family_camp" write the same PocketBase collections as the
+	// unrestricted "person_custom_values" / "household_custom_values" jobs under different
+	// registered names (kindred#2489), so the literal check does not see the weekly sweep --
+	// or an operator's on-demand custom-values run -- as a writer of what this chain is about
+	// to rewrite. runSingleSyncInternal blocks the bounded job anyway, so the cost of missing
+	// it here is not a data race but a worse failure: this handler answers 200 "started",
+	// attendees and persons run, and then the sequence aborts before family_camp_derived and
+	// lodging_assignments -- leaving the board on yesterday's cabins while the operator has
+	// been told the refresh began. For the four jobs outside the group map this is exactly
+	// the check IsRunning makes.
 	for _, job := range GetRefreshFamilyCampJobs() {
-		if orchestrator.IsRunning(job) {
+		if orchestrator.IsCustomValuesCollectionRunning(job) {
 			return e.JSON(http.StatusConflict, map[string]any{
 				"error":  "Family camp refresh already in progress",
 				"status": "running",
