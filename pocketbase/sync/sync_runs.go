@@ -1,6 +1,7 @@
 package sync
 
 import (
+	"encoding/json"
 	"log/slog"
 	"time"
 
@@ -233,4 +234,171 @@ func truncateRunes(s string, n int) string {
 		return s
 	}
 	return string(runes[:n])
+}
+
+// syncRunRow is one `sync_runs` row, scanned raw.
+//
+// Dates are scanned as strings rather than types.DateTime: the column is text and a row
+// carrying "" for `ended` is not something a date scanner accepts. Parsing per row lets an
+// unparseable value degrade to "no end time" instead of failing the whole query — the same
+// posture recordSyncRun takes on the write side.
+type syncRunRow struct {
+	Service                  string `db:"service"`
+	Status                   string `db:"status"`
+	Started                  string `db:"started"`
+	Ended                    string `db:"ended"`
+	Error                    string `db:"error"`
+	Year                     int    `db:"year"`
+	Trigger                  string `db:"trigger"`
+	BatchID                  string `db:"batch_id"`
+	Created                  int    `db:"created_count"`
+	Updated                  int    `db:"updated_count"`
+	Deleted                  int    `db:"deleted_count"`
+	Skipped                  int    `db:"skipped_count"`
+	Errors                   int    `db:"errors_count"`
+	Rejected                 int    `db:"rejected_count"`
+	Expanded                 int    `db:"expanded_count"`
+	AlreadyProcessed         int    `db:"already_processed_count"`
+	ProdAuditWarnings        int    `db:"prod_audit_warnings_count"`
+	LodgingProdAuditWarnings int    `db:"lodging_prod_audit_warnings_count"`
+	Duration                 int    `db:"duration"`
+	SubStats                 string `db:"sub_stats"`
+}
+
+// LastRecordedRuns returns the most recent SUCCESSFUL run per service, as Status values.
+//
+// THIS IS THE READ HALF OF kindred#2284, and it was missing. This file's header says the
+// table exists because lastCompletedStatus "was an in-memory map wiped on every container
+// restart" — but only the WRITE side was ever wired up. `GET /api/custom/sync/status` still
+// answered purely from that map, so after any restart it reported every service `idle` with a
+// full history sitting in the table. The app shell's freshness lines render off `end_time`
+// ("Assignments synced …" on summer, "Housing synced …" on weekend), so they did not go
+// stale — they DISAPPEARED, until the next sync repopulated memory. For a mid-morning deploy
+// that means the 3am cron the following night.
+//
+// ONE QUERY, not one per service. The status endpoint asks about ~32 services and is polled
+// every 3 s while any sync runs, so a per-service lookup would be 32 round trips a tick.
+//
+// Deliberately NOT called from GetStatus. That is on the hot path — runSyncAndWait polls it
+// in a loop — and putting a query behind it would turn a mutex read into database traffic.
+// The handler prefetches this once per request instead and fills its own gaps.
+//
+// Failure is logged and swallowed, matching recordSyncRun: this is a freshness readout, and a
+// telemetry query that cannot run must not take the status endpoint down with it. The caller
+// gets an empty map and falls back to `idle`, which is exactly the old behavior.
+func (o *Orchestrator) LastRecordedRuns() map[string]*Status {
+	out := make(map[string]*Status)
+	if o.app == nil {
+		return out
+	}
+
+	// SUCCESSFUL RUNS ONLY, and that is the whole point rather than a filter for tidiness.
+	// The caller renders "<noun> synced {N} ago" off EndTime, and only a run that succeeded
+	// made anything fresh. Rehydrating the last run regardless of outcome would take a
+	// nightly failure at 02:00, a restart, and a staff member opening the app at 09:00, and
+	// tell them the data was refreshed seven hours ago when it never arrived — the same
+	// class of lie as reporting a no-op CSV re-process as "Requests synced".
+	//
+	// The cost, stated so it is a decision: a failure that happened before the restart is not
+	// resurrected here. That is acceptable because it is not actionable from this endpoint
+	// once the process is gone, and `sync_runs` still holds it for anything that wants run
+	// history rather than data freshness.
+	//
+	// ROW_NUMBER over (service ORDER BY started DESC) rather than a bare GROUP BY: SQLite's
+	// bare-column-with-max() extension would also work, but it is a SQLite-specific guarantee
+	// that silently returns an arbitrary row if the aggregate is ever changed. `id DESC`
+	// breaks the tie for two rows sharing a `started` — stored timestamps are millisecond
+	// precision and a fast transform can produce two within one.
+	var rows []syncRunRow
+	query := o.app.DB().NewQuery(`
+		SELECT service, status, started, ended, error, year, trigger, batch_id,
+		       created_count, updated_count, deleted_count, skipped_count, errors_count,
+		       rejected_count, expanded_count, already_processed_count,
+		       prod_audit_warnings_count, lodging_prod_audit_warnings_count, duration,
+		       -- COALESCE because the column is NULL on every run whose SubStats was
+		       -- empty, which is most of them: recordSyncRun sets it only when non-empty.
+		       -- Scanning NULL into a string fails the WHOLE query, and this function
+		       -- swallows its error to an empty map -- so without this the fallback would
+		       -- degrade silently to "no history at all" rather than failing loudly.
+		       COALESCE(sub_stats, '') AS sub_stats
+		FROM (
+			SELECT *, ROW_NUMBER() OVER (PARTITION BY service ORDER BY started DESC, id DESC) AS rn
+			FROM ` + syncRunsCollection + `
+			WHERE status = {:success}
+		)
+		WHERE rn = 1`).Bind(dbx.Params{"success": statusSuccess})
+	if err := query.All(&rows); err != nil {
+		slog.Warn("Failed to read sync_runs history; status falls back to idle", "error", err)
+		return out
+	}
+
+	// Indexed rather than `for _, row := range rows`: syncRunRow is 208 bytes and gocritic's
+	// rangeValCopy flags the per-iteration copy.
+	for i := range rows {
+		row := &rows[i]
+		status := &Status{
+			Type:    row.Service,
+			Status:  rehydratedStatus(row.Status),
+			Error:   row.Error,
+			Year:    row.Year,
+			Trigger: row.Trigger,
+			BatchID: row.BatchID,
+			Summary: Stats{
+				Created:                  row.Created,
+				Updated:                  row.Updated,
+				Deleted:                  row.Deleted,
+				Skipped:                  row.Skipped,
+				Errors:                   row.Errors,
+				Rejected:                 row.Rejected,
+				Expanded:                 row.Expanded,
+				AlreadyProcessed:         row.AlreadyProcessed,
+				ProdAuditWarnings:        row.ProdAuditWarnings,
+				LodgingProdAuditWarnings: row.LodgingProdAuditWarnings,
+				Duration:                 row.Duration,
+			},
+		}
+		// SubStats is the combined syncs' nested half — `persons` populates households
+		// and reports them here. recordSyncRun persists it whenever non-empty, so
+		// dropping it on the way back would rehydrate half a summary: the parent's
+		// counters restored and the sub-entity's silently zero. Unmarshal failure is
+		// swallowed to a nil map for the same reason the query's is: a malformed
+		// telemetry blob must not take a freshness readout down.
+		if row.SubStats != "" && row.SubStats != "null" {
+			var subs map[string]Stats
+			if err := json.Unmarshal([]byte(row.SubStats), &subs); err != nil {
+				slog.Warn("Failed to decode sync_runs sub_stats", "service", row.Service, "error", err)
+			} else if len(subs) > 0 {
+				status.Summary.SubStats = subs
+			}
+		}
+		if started, err := types.ParseDateTime(row.Started); err == nil && !started.IsZero() {
+			status.StartTime = started.Time()
+		}
+		if ended, err := types.ParseDateTime(row.Ended); err == nil && !ended.IsZero() {
+			at := ended.Time()
+			status.EndTime = &at
+		}
+		out[row.Service] = status
+	}
+
+	return out
+}
+
+// rehydratedStatus maps a stored status onto one safe to publish for a run that is over.
+//
+// A row can only be written by publishCompletedLocked, so in practice this is already
+// terminal — but a process killed mid-write, or a future path that records differently, must
+// not be able to resurrect a job as in-flight. The client polls every 3 s for as long as ANY
+// service reads `running` or `pending` and stops otherwise, so a rehydrated "running" would
+// poll forever against a job that ended before the restart and can never complete.
+//
+// Anything non-terminal is reported as failed rather than success: the run did not finish,
+// and the honest reading of a half-written row is that it did not work.
+func rehydratedStatus(stored string) string {
+	switch stored {
+	case statusRunning, statusPending, "":
+		return statusFailed
+	default:
+		return stored
+	}
 }

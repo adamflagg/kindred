@@ -10,9 +10,25 @@ import { queryKeys } from '../utils/queryKeys'
 
 interface BunkRequestsUploadProps {
   compact?: boolean
+  /**
+   * The full-width button label, and the button this component's success toast
+   * tells the reader to watch (kindred#2478 §4).
+   *
+   * Parameterised because the weekend surface renders this same component as
+   * "Upload Bunk Notes" — one CSV, one upload lane, but each program reads a
+   * different column of it. It MUST be threaded through both places: the toast
+   * hardcoded "Upload Requests" while the button said something else, which
+   * pointed weekend staff at a button that is not on their screen.
+   *
+   * The default keeps summer's strings byte-identical.
+   */
+  label?: string
 }
 
-export default function BunkRequestsUpload({ compact = false }: BunkRequestsUploadProps) {
+export default function BunkRequestsUpload({
+  compact = false,
+  label = 'Upload Requests',
+}: BunkRequestsUploadProps) {
   const { fetchWithAuth } = useApiWithAuth()
   const queryClient = useQueryClient()
   const { currentYear } = useCurrentYear()
@@ -30,7 +46,7 @@ export default function BunkRequestsUpload({ compact = false }: BunkRequestsUplo
     },
     onSuccess: () => {
       toast.success(
-        "Importing CSV — this may take a few minutes. The icon next to the Upload Requests button will update when it's done.",
+        `Importing CSV — this may take a few minutes. The icon next to the ${label} button will update when it's done.`,
         { duration: 6000 }
       )
       setShowModal(false)
@@ -111,7 +127,7 @@ export default function BunkRequestsUpload({ compact = false }: BunkRequestsUplo
         ) : (
           <>
             <span className="nav-text-short">Upload</span>
-            <span className="nav-text-full">Upload Requests</span>
+            <span className="nav-text-full">{label}</span>
           </>
         )}
       </button>
