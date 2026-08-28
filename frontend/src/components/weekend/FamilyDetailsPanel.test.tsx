@@ -16,6 +16,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
 import { FamilyDetailsPanel } from './FamilyDetailsPanel'
+import { partyAttention } from './rosterAttention'
 
 const isAdmin = { value: true }
 
@@ -131,7 +132,6 @@ function party(overrides: Partial<RosterPartyRow> = {}): RosterPartyRow {
       preference: 'yes_share',
       proximity: ['with'],
       request_text: REQUEST_TEXT,
-      needs_resolution: false,
     },
     flags: { needs_power: true },
     ...overrides,
@@ -597,21 +597,40 @@ describe('FamilyDetailsPanel — current placement', () => {
     expect(screen.getByText("Cabin doesn't fit the request")).toBeInTheDocument()
   })
 
-  it('still reports "not verified" for a generic accommodation request', () => {
-    // The `unverified` band's surviving producer, pinned at the panel: no
-    // cabin field settles `needs_accommodation`, so a fully-answered cabin
-    // still cannot verify it. kindred#2526 removed the "cabin unconfirmed"
-    // fallthrough and nothing else.
-    render(
-      <FamilyDetailsPanel
-        party={party({ flags: { needs_accommodation: true } })}
-        unit={unit({ is_confirmed: true, has_power: true, power_coverage: 'all' })}
-        year={2026}
-        onClose={vi.fn()}
-      />,
-      { wrapper }
-    )
-    expect(screen.getByText('Fit not verified')).toBeInTheDocument()
+  it('prints nothing for the unverified band, which still EXISTS', () => {
+    // ⚠️ THE BAND IS ALIVE. `partyAttention` still returns `unverified` for
+    // this exact party -- asserted here, not assumed -- and it still guards
+    // kindred#1982: a resolved `private` with no cabin behind it must not read
+    // as `settled`. What changed on 2026-08-27 is only that THIS PANEL stops
+    // printing it, on the owner's ruling that "Fit not verified" adds nothing
+    // beside a cabin name the reader is already looking at.
+    //
+    // Pinned as producer-plus-absence rather than absence alone, so a later
+    // reader can tell a HIDDEN band from a band that quietly stopped being
+    // produced -- the second would be the kindred#1982 regression.
+    const generic = party({ flags: { needs_accommodation: true } })
+    const answered = unit({ is_confirmed: true, has_power: true, power_coverage: 'all' })
+    expect(partyAttention(generic, answered).level).toBe('unverified')
+
+    render(<FamilyDetailsPanel party={generic} unit={answered} year={2026} onClose={vi.fn()} />, {
+      wrapper,
+    })
+
+    expect(screen.queryByText('Fit not verified')).not.toBeInTheDocument()
+  })
+
+  it('still prints the required band, which is not hidden', () => {
+    // The other two bands that reach this line are untouched. `unmet` is
+    // covered by "reports the fit verdict" above; this is `required`.
+    const mandatory = party({ flags: { accommodation_is_mandatory: true } })
+    expect(partyAttention(mandatory, unit()).level).toBe('required')
+
+    render(<FamilyDetailsPanel party={mandatory} unit={unit()} year={2026} onClose={vi.fn()} />, {
+      wrapper,
+    })
+
+    expect(screen.getByText('Needs Accommodation')).toBeInTheDocument()
+    expect(screen.getByText('Cannot attend without it')).toBeInTheDocument()
   })
 })
 

@@ -3,7 +3,7 @@
  * camper.
  *
  * The load-bearing tests here are the ABSENCES.
- * `docs/reference/weekend-card-vocabulary.md` §3 keeps three things off the
+ * `docs/reference/weekend-card-vocabulary.md` §3 keeps two things off the
  * card, each for a measured reason, and each is the kind of thing a later
  * session would helpfully add back (the citation used to read "spec §3.8" and
  * pointed at a gitignored file — kindred#2072 moved the record somewhere
@@ -12,10 +12,12 @@
  *   - request text: 12 of 232 contain health vocabulary including a named
  *     diagnosis, and the roster's medical-narrative exposure was accepted for
  *     opening ONE row at a time, not for printing it across 62 cards at once;
- *   - the medical affordance: true for 62 of 62 parties;
- *   - `needs_resolution`: true for 44 of 62.
+ *   - the medical affordance: true for 62 of 62 parties.
  *
- * A flag that is always on is not a flag.
+ * A flag that is always on is not a flag — which is also why a third item,
+ * `needs_resolution` (true for 44 of 62), no longer lives in this list: the
+ * owner removed the field outright on 2026-08-27 rather than merely keeping
+ * it off this card, so there is nothing left here to pin as an absence.
  *
  * Fictional data throughout.
  */
@@ -484,7 +486,6 @@ describe('FamilyCard — what it shows', () => {
             preference: 'no_share',
             proximity: [],
             request_text: '',
-            needs_resolution: false,
             eligibility: 'declined',
             eligibility_source: 'form',
           },
@@ -504,7 +505,6 @@ describe('FamilyCard — what it shows', () => {
             preference: 'no_share',
             proximity: [],
             request_text: '',
-            needs_resolution: false,
           },
         })}
         onOpen={vi.fn()}
@@ -532,7 +532,6 @@ describe('FamilyCard — what it shows', () => {
             preference: 'no_share',
             proximity: ['with'],
             request_text: '',
-            needs_resolution: false,
             eligibility: 'open',
             eligibility_source: 'form',
           },
@@ -679,7 +678,6 @@ describe('FamilyCard — weekend-card-vocabulary §3, what must stay off it', ()
             preference: 'yes_share',
             proximity: ['with'],
             request_text: REQUEST_TEXT,
-            needs_resolution: true,
           },
         })}
         onOpen={vi.fn()}
@@ -696,23 +694,6 @@ describe('FamilyCard — weekend-card-vocabulary §3, what must stay off it', ()
     // narrative belongs on FamilyDetailsPanel, one household at a time.
     render(<FamilyCard party={party()} onOpen={vi.fn()} />)
     expect(screen.queryByText(/Medical/i)).not.toBeInTheDocument()
-  })
-
-  it('never shows `needs_resolution`, which is true for 44 of 62', () => {
-    render(
-      <FamilyCard
-        party={party({
-          share: {
-            preference: 'yes_share',
-            proximity: [],
-            request_text: '',
-            needs_resolution: true,
-          },
-        })}
-        onOpen={vi.fn()}
-      />
-    )
-    expect(screen.queryByText(/Needs resolution/i)).not.toBeInTheDocument()
   })
 })
 
@@ -953,7 +934,6 @@ describe('FamilyCard — summer’s type scale', () => {
             preference: 'no_share',
             proximity: [],
             request_text: '',
-            needs_resolution: false,
             eligibility: 'declined',
             eligibility_source: 'form',
           },
@@ -1489,7 +1469,6 @@ describe('FamilyCard — the marks kindred#2072 STRUCK', () => {
             preference: 'no_share',
             proximity: [],
             request_text: '',
-            needs_resolution: false,
             eligibility: 'open',
             eligibility_source: 'form',
           },
@@ -1882,7 +1861,6 @@ describe('FamilyCard — Returning / First-time is a 20px icon, bottom right (R3
             preference: 'yes_share',
             proximity: ['near'],
             request_text: '',
-            needs_resolution: false,
           },
         })}
         onOpen={vi.fn()}

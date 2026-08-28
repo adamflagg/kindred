@@ -109,6 +109,10 @@ describe('shareEmphasis — which marks are hot (spec §1)', () => {
   const anchor = (state: ShareAnchorSpec['state']): ShareAnchorSpec => ({
     state,
     className: '',
+    // `label` added additively to `ShareAnchorSpec` for the panel-row rework
+    // (`shareMarks.ts`'s header comment) -- this fixture predates it and
+    // does not exercise it, so an empty string is enough to satisfy the type.
+    label: '',
     tooltip: '',
     ariaLabel: '',
   })

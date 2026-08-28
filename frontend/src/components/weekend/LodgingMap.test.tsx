@@ -158,7 +158,6 @@ function party(overrides: Partial<RosterPartyRow> = {}): RosterPartyRow {
       preference_raw: '',
       proximity: [],
       request_text: '',
-      needs_resolution: false,
     },
     flags: {
       needs_private_bathroom: false,
@@ -502,7 +501,6 @@ describe('LodgingMap', () => {
         preference_raw: '',
         proximity: [],
         request_text: '',
-        needs_resolution: false,
         eligibility: 'declined',
         eligibility_source: 'form',
       },
@@ -517,7 +515,6 @@ describe('LodgingMap', () => {
         preference_raw: '',
         proximity: ['with'],
         request_text: '',
-        needs_resolution: false,
         eligibility: 'open',
         eligibility_source: 'form',
       },
@@ -544,7 +541,6 @@ describe('LodgingMap', () => {
       preference_raw: '',
       proximity: [],
       request_text: '',
-      needs_resolution: false,
       eligibility: 'open' as const,
       eligibility_source: 'form' as const,
     }

@@ -5,11 +5,17 @@
  * distinction is what keeps the roster from being a list of names.
  *
  * Ranking only works on signals that discriminate. Measured against real 2026
- * data, `needs_resolution` is true for 44 of 62 parties and
- * `has_medical_narrative` was true for 62 of 62 — both are the normal state,
- * so neither escalates a row. The medical flag has since been deleted outright
- * (kindred#1889) for exactly that reason; `needs_resolution` survives because
- * it still discriminates elsewhere.
+ * data, `needs_resolution` was true for 44 of 62 parties and
+ * `has_medical_narrative` for 62 of 62 — both the normal state, so neither
+ * escalated a row. BOTH HAVE SINCE BEEN DELETED OUTRIGHT for exactly that
+ * reason: the medical flag by kindred#1889, and `needs_resolution` on
+ * 2026-08-27, once it was measured as `bool(request_text or blocks)` — true
+ * for every household carrying any request text at all, which is a constant
+ * wearing a badge rather than a signal.
+ *
+ * The pattern is worth keeping even though both subjects are gone: a flag that
+ * is true for most rows cannot rank them, and the way to find out is to count
+ * it against real data before building a surface on it.
  *
  * The state worth surfacing is a party whose cabin does not provide what they
  * asked for. Answering that needs the registry to record what each cabin HAS,

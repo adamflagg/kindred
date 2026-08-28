@@ -680,7 +680,6 @@ describe('buildBoard — consent flagging on ELIGIBILITY, not the gate', () => {
             preference: gate,
             proximity: [],
             request_text: '',
-            needs_resolution: false,
             eligibility,
             eligibility_source: 'form',
           },
@@ -801,7 +800,6 @@ describe('buildBoard — consent flagging on ELIGIBILITY, not the gate', () => {
           preference: 'unknown',
           proximity: [],
           request_text: '',
-          needs_resolution: false,
           eligibility: 'unknown',
           eligibility_source: 'form',
         },
@@ -1273,7 +1271,6 @@ describe('buildBoard — consent flag follows leaf overlap, not the card (task-1
         preference: 'unknown',
         proximity: [],
         request_text: '',
-        needs_resolution: false,
         eligibility: 'declined',
         eligibility_source: 'form',
       },
@@ -1365,7 +1362,6 @@ describe('buildBoard — consent flag follows leaf overlap, not the card (task-1
         preference: 'unknown',
         proximity: [],
         request_text: '',
-        needs_resolution: false,
         eligibility: 'declined',
         eligibility_source: 'form',
       },
@@ -1391,7 +1387,6 @@ describe('buildBoard — consent flag follows leaf overlap, not the card (task-1
             preference: 'unknown',
             proximity: [],
             request_text: '',
-            needs_resolution: false,
             eligibility: 'declined',
             eligibility_source: 'form',
           },
@@ -1405,7 +1400,6 @@ describe('buildBoard — consent flag follows leaf overlap, not the card (task-1
             preference: 'unknown',
             proximity: [],
             request_text: '',
-            needs_resolution: false,
             eligibility: 'declined',
             eligibility_source: 'form',
           },
@@ -1549,7 +1543,6 @@ describe('overlappingPartyKeys — a two-unit alias is ambiguous, not a confirme
           preference: 'unknown',
           proximity: [],
           request_text: '',
-          needs_resolution: false,
           // `declined` is the eligibility that DOES raise the flag once an
           // overlap is found, so a silent board here is the guard working
           // rather than the fixture having nothing to report.
@@ -1667,7 +1660,6 @@ describe('overlappingPartyKeys — a CONTAINER is ambiguous on the same terms as
           preference: 'unknown',
           proximity: [],
           request_text: '',
-          needs_resolution: false,
           // `declined` is the eligibility that DOES raise the flag once an
           // overlap is found, so a silent board is the guard working rather
           // than the fixture having nothing to report.

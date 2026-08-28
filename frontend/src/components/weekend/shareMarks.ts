@@ -80,6 +80,17 @@
  * Three of the four values happen to coincide (`Open to sharing` / `Only if
  * mutual` / `Will not share`) — only `unanswered` diverges between the two
  * maps, which is why splitting them beats keeping one map with a special case.
+ *
+ * ## `ShareAnchorSpec.label` (additive, spec 2026-08-27 panel-row mockup)
+ *
+ * `ShareRequestPanel`'s row-grammar rework needs the anchor's bare state
+ * wording — `"Yes, Share Cabin"`, not the tooltip's `preference`-appended
+ * `": <content>"` form — as a ROW HEADER LABEL, not a hover bubble. Restating
+ * `ANCHOR_TOOLTIP_PREFIX`'s four strings in that file would be a second copy
+ * of a LOCKED vocabulary, so `resolveShareAnchor` now also returns `label`,
+ * reading the exact same private map. This is the one authorised, additive
+ * edit to this module for that rework: no existing field changed shape, and
+ * `label` is inert to every caller that does not read it.
  */
 import { HeartHandshake, Milestone, UsersRound, type LucideIcon } from 'lucide-react'
 
@@ -98,6 +109,8 @@ export type ShareAnchorState = 'yes' | 'maybe' | 'no' | 'unanswered'
 export interface ShareAnchorSpec {
   readonly state: ShareAnchorState
   readonly className: string
+  /** The bare state wording (`ANCHOR_TOOLTIP_PREFIX[state]`), with no `preference_raw`/Shared-request append — see the header comment's "ShareAnchorSpec.label" section. */
+  readonly label: string
   readonly tooltip: string
   readonly ariaLabel: string
 }
@@ -263,6 +276,7 @@ export function resolveShareAnchor(party: RosterPartyRow): ShareAnchorSpec | nul
   return {
     state,
     className: ANCHOR_CLASS[state],
+    label: ANCHOR_TOOLTIP_PREFIX[state],
     tooltip,
     ariaLabel: `Share: ${ANCHOR_ARIA_LABEL[state]}`,
   }

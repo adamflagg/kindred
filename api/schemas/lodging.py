@@ -753,12 +753,6 @@ class ShareRequestSummary(BaseModel):
     # list: the join is lossy to reverse, since a request may itself contain the
     # separator. Slice 1 does not resolve names, so this is shown raw.
     request_text: str = ""
-    # True when there is request text but no resolution of the named families to
-    # households. Always true in slice 1 when text is present -- and "text" is
-    # `request_text` OR `request_blocks` (kindred#2330), because 32 rostered
-    # 2026 households carry their ask only in the bunking-CSV lane and so have
-    # a blank `request_text` with a real request beside it.
-    needs_resolution: bool = False
     # The SAME free text, split by source field and by answering child
     # (kindred#2330). Not a reformatting of `request_text` above -- it cannot
     # be, since the join is irreversible -- but a second read of the raw

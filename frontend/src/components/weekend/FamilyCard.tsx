@@ -7,7 +7,7 @@
  * this is a new component rather than a branch inside the 849-line
  * `BunkingBoardByArea.tsx`.
  *
- * ## Four things stay OFF this card, each measured
+ * ## Three things stay OFF this card, each measured
  *
  * Recorded in `docs/reference/weekend-card-vocabulary.md` §3. That citation
  * used to read "spec §3.8", pointing at
@@ -23,8 +23,11 @@
  *   which is what makes this a deferral rather than a loss.
  * - **The medical affordance.** `has_medical_narrative` was true for 62 of 62
  *   parties. A flag that is always on is not a flag — kindred#1889 agreed and
- *   deleted it; the narrative itself lives on `FamilyDetailsPanel`.
- * - **`needs_resolution`.** True for 44 of 62. Same reason.
+ *   deleted it; the narrative itself lives on `FamilyDetailsPanel`. The
+ *   share panel's `needs_resolution` marker (true for 44 of 62, same reason)
+ *   used to be a fourth item on this list; the owner removed that field
+ *   outright on 2026-08-27 rather than merely keeping it off this card, so
+ *   there is no longer anything here to keep off.
  * - **The `Needs Accommodation` chip, and any VIP-opt-out mark beside it.**
  *   Staff ruling: the VIP answer is ONE stored signal (`accommodation_is_
  *   mandatory`, its No pole — owner ruling 2026-08-22 retired the
@@ -36,7 +39,7 @@
  *   `AccessibilityFlagList` on `FamilyDetailsPanel` renders the mandatory
  *   row, the one place the answer is visible.
  *
- * `FamilyCard.test.tsx` pins all four as ABSENCES, because each is exactly
+ * `FamilyCard.test.tsx` pins all three as ABSENCES, because each is exactly
  * the kind of thing a later session adds back helpfully.
  *
  * What IS here: the children lead, bold, with truncated whole-year ages —

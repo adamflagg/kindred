@@ -495,7 +495,6 @@ describe('LodgingBoard — the consent flag', () => {
               preference: 'no_share',
               proximity: [],
               request_text: '',
-              needs_resolution: false,
               eligibility: 'declined',
               eligibility_source: 'form',
             },
@@ -509,7 +508,6 @@ describe('LodgingBoard — the consent flag', () => {
               preference: 'yes_share',
               proximity: ['with'],
               request_text: '',
-              needs_resolution: false,
               eligibility: 'open',
               eligibility_source: 'form',
             },
@@ -625,7 +623,6 @@ describe('LodgingBoard — the detail panel', () => {
               preference: 'yes_share',
               proximity: ['with'],
               request_text: 'Hoping for a cabin near the creek.',
-              needs_resolution: false,
             },
           }),
         ]}
