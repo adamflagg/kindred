@@ -42,6 +42,15 @@ export const queryKeys = {
   bunksForSession: (sessionId: string, agSessions: string[]) =>
     ['bunks', sessionId, agSessions.sort()] as const,
 
+  // Invalidation prefixes for the two roots the summer board reads through.
+  // `useSessionBunks` / `useSessionCampers` (hooks/session/useSessionData.ts)
+  // build their keys INLINE rather than from the factories above, with a
+  // different arity again — so a writer that knows only "the bunking data
+  // moved" has to invalidate by root or it matches nothing that is cached.
+  // See `invalidateBunkingQueries` (utils/queryInvalidation.ts).
+  bunksPrefix: () => ['bunks'] as const,
+  campersPrefix: () => ['campers'] as const,
+
   // Enrollment (Tier 1 - sync data)
   enrolledCampers: (personCmId: number, year: number) =>
     ['enrolled-campers', personCmId, year] as const,
@@ -290,6 +299,9 @@ export const queryKeys = {
     year: number,
     personCmIds: number[]
   ) => ['cohort-bunk-assignments', scenarioId, sessionCmId, year, personCmIds.toSorted()] as const,
+  // The invalidation prefix: the real key carries a scenario, a session, a year
+  // AND the exact cohort, none of which a sync-completion handler knows.
+  cohortBunkAssignmentsPrefix: () => ['cohort-bunk-assignments'] as const,
 
   // Camper Request Summary (Tier 2 - user data, used in expanded row)
   camperRequestSummary: (requesterCmId: number, year: number) =>
@@ -330,6 +342,9 @@ export const queryKeys = {
 
   // Staff (Tier 1 - sync data)
   bunkStaff: (year: number) => ['bunk-staff', year] as const,
+  // Prefix for invalidation: the bunk names this maps staff onto come out of
+  // the `bunks` table, which a bunking refresh rewrites.
+  bunkStaffPrefix: () => ['bunk-staff'] as const,
 
   // Geo Management (Tier 2 - user data)
   geoGapsPrefix: (category: string, year: number) => ['geo', 'gaps', category, year] as const,

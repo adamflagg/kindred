@@ -141,6 +141,17 @@ export interface SyncStatusResponse {
   // On-demand custom value syncs (expensive, 1 API call per entity)
   person_custom_values: SyncStatus
   household_custom_values: SyncStatus
+  // The BOUNDED daily family-camp custom-values pass (kindred#2482) — NOT the
+  // unrestricted pair above. These two are 13 of the family-camp refresh
+  // chain's 13 m 31 s, and they only became visible here in PR #2591; while
+  // they were absent from the backend's `statusSyncTypes` the client saw
+  // nothing running for thirteen minutes, stopped polling, and could never
+  // detect the cutover (kindred#2478 §4.2c).
+  person_custom_values_family_camp: SyncStatus
+  household_custom_values_family_camp: SyncStatus
+  // Published alongside them by PR #2591: a registered daily Process-phase job
+  // whose two neighbours (`bunk_requests`, `process_requests`) were already here.
+  reconcile_request_lifecycle: SyncStatus
   // Special flags
   _daily_sync_running?: boolean
   _historical_sync_running?: boolean
@@ -166,9 +177,30 @@ export interface SyncStatusResponse {
 // populated and consumers crashed at runtime when they accessed nested data.
 // `null` forces every call site to guard, which the compiler now enforces.
 
-export function useSyncStatusAPI(opts: { enabled?: boolean } = {}) {
+export function useSyncStatusAPI(
+  opts: {
+    enabled?: boolean
+    /**
+     * Poll every 3 s regardless of what the payload reports.
+     *
+     * For the ARMING GAP only (`useSyncSequenceRun`): between the POST that
+     * starts a targeted refresh returning `{"status":"started"}` and the
+     * orchestrator marking the chain's first job running, NOTHING in the
+     * payload says anything is happening — so the data-driven `refetchInterval`
+     * below returns `false`, polling never starts, and the run is never seen.
+     * The caller is responsible for dropping this again, which the hook that
+     * sets it does on a timeout as well as on the cutover.
+     *
+     * Each React Query OBSERVER owns its own refetch timer, so one consumer
+     * asking for this does not change the interval any other consumer of the
+     * same cache entry is on.
+     */
+    forcePolling?: boolean
+  } = {}
+) {
   const { isLoading } = useAuth()
   const outerEnabled = opts.enabled ?? true
+  const forcePolling = opts.forcePolling ?? false
   const queryClient = useQueryClient()
 
   // Fresh-login race: the very first /sync/status request can fire before
@@ -207,6 +239,11 @@ export function useSyncStatusAPI(opts: { enabled?: boolean } = {}) {
     },
     // Poll every 3 seconds if running or queue has items, stop polling otherwise
     refetchInterval: (query) => {
+      // The arming gap: a caller knows a run has been started that the payload
+      // cannot yet show. Checked before the no-data guard, because a caller
+      // that presses before the first status response needs polling too.
+      if (forcePolling) return 3000
+
       const data = query.state.data
       if (!data) return false // Don't poll if no data yet
 

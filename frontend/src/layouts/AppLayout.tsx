@@ -4,7 +4,7 @@ import { useTheme } from '../hooks/useTheme'
 import { useAuth } from '../contexts/AuthContext'
 import { useApiWithAuth } from '../hooks/useApiWithAuth'
 import { syncService } from '../services/sync'
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   RefreshCw,
   Loader2,
@@ -30,6 +30,10 @@ import { usePermissions } from '../hooks/usePermissions'
 import { Permission } from '../constants/permissions'
 import { useSyncStatusAPI } from '../hooks/useSyncStatusAPI'
 import { useWeekendShellSession } from '../hooks/useWeekendShellSession'
+import { useSyncSequenceRun, BUNKING_REFRESH_CHAIN } from '../hooks/useSyncSequenceRun'
+import { RefreshHousingButton } from '../components/weekend/RefreshHousingButton'
+import { invalidateBunkingQueries } from '../utils/queryInvalidation'
+import { queryKeys } from '../utils/queryKeys'
 import { format, formatDistanceToNow } from 'date-fns'
 import { useProgram } from '../contexts/ProgramContext'
 import { getProgramFromPath, getProgramHomeUrl } from '../utils/programUrls'
@@ -224,10 +228,37 @@ export const AppLayout = () => {
     void navigate(getProgramHomeUrl(program))
   }
 
+  /**
+   * kindred#2587 — the summer half of the same completion-detection primitive
+   * `Refresh Housing` uses.
+   *
+   * ⛔ THERE IS DELIBERATELY NO `onSuccess` ON THE MUTATION BELOW.
+   * `POST /refresh-bunking` answers `200 {"status":"started"}` immediately and
+   * `RunSyncSequence` then runs bunks -> bunk_plans -> bunk_assignments ->
+   * stranded_assignment_cleanup in a goroutine for ~4.7 s. An invalidation
+   * hung off the mutation resolving would fire within milliseconds, refetch the
+   * OLD rows and re-mark them fresh for another thirty minutes — worse than the
+   * bug it was meant to fix. The invalidation therefore hangs off the CUTOVER,
+   * which only the job statuses can report.
+   */
+  const queryClient = useQueryClient()
+  const bunkingRun = useSyncSequenceRun({
+    chain: BUNKING_REFRESH_CHAIN,
+    enabled: canSeeSync,
+    onComplete: (outcome) => {
+      if (outcome === 'failed') return
+      invalidateBunkingQueries(queryClient)
+      void queryClient.invalidateQueries({ queryKey: queryKeys.syncStatus() })
+    },
+  })
+
   // Refresh bunking mutation
   const refreshBunkingMutation = useMutation({
     mutationFn: () => syncService.refreshBunking(fetchWithAuth),
     onError: (error: Error) => {
+      // Nothing started, so the detector must not sit armed waiting for a
+      // cutover that will never come.
+      bunkingRun.abandon()
       toast.error(`Failed to refresh cabin assignments: ${error.message}`)
     },
   })
@@ -635,6 +666,7 @@ export const AppLayout = () => {
                         icon: '🔄',
                         duration: 2000,
                       })
+                      bunkingRun.start()
                       refreshBunkingMutation.mutate()
                     }}
                     disabled={refreshBunkingMutation.isPending}
@@ -668,6 +700,18 @@ export const AppLayout = () => {
                 <>
                   <CsvPipelineIndicator />
                   <BunkRequestsUpload label="Upload Bunk Notes" />
+                  {/*
+                    REFRESH HOUSING — kindred#2478 §4. Upload first, refresh
+                    second, mirroring summer's row above; each freshness line
+                    above is reset by the action beneath it.
+
+                    HIDDEN ON ADULT WEEKENDS, on the same condition as the
+                    `Housing synced` line (§5.1): `GetFamilyCampSessionCMIDs`
+                    filters `session_type = 'family'` exactly, so the chain
+                    skips both expensive jobs and would spend 13½ minutes
+                    refreshing nothing.
+                  */}
+                  {!isAdultWeekend && <RefreshHousingButton />}
                 </>
               )}
               {/* Export button removed from metrics nav - export functionality will move inside metrics page if needed */}
