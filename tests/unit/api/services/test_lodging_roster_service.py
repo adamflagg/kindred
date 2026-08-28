@@ -40,6 +40,7 @@ from api.services.lodging_roster_service import (
     _effective_sleeps,
     _party_child,
     _resolve_family_availability,
+    OwnWriteIn,
     _resolve_write_in_covers,
     write_in_covers,
 )
@@ -142,16 +143,39 @@ def _summary(code: str, **kwargs: Any) -> LodgingUnitSummary:
     return LodgingUnitSummary(unit_id=f"id-{code}", code=code, name=code.title(), **kwargs)
 
 
-def _written_ids(*codes: str) -> frozenset[str]:
-    """The `lodging_write_ins` rows, as the ids the walk is handed.
+def _written(units: list[LodgingUnitSummary], *codes: str) -> dict[str, list[OwnWriteIn]]:
+    """The `lodging_write_ins` rows, indexed the way the walk is handed them.
 
     WHICH UNITS HOLD A WRITE-IN IS AN INPUT since kindred#2382, not a value
     read off the summary. It used to be `family_available_override is
     False`, which was the only spelling occupancy had while it shared one
     boolean with the staff<->family role; the two are separate tables now,
     so the walk is given the occupancy source directly.
+
+    ONE ROW PER NAMED UNIT, read off that unit's own double. This was
+    `_written_ids(*codes) -> frozenset[str]`, which carried no row at all
+    because the cover walk read the occupant off `LodgingUnitSummary`'s flat
+    fields -- the singular assumption the multi-row change removes. The
+    double's `occupant_name` / `reason` / `party_size` still SAY what the row
+    holds, so the fixture reads exactly as it did; a test that wants TWO rows
+    on one unit builds the mapping itself, as `TestTwoWriteInRowsOnOneUnit`
+    does through the repository fixture.
+
+    `note`, not `reason`: the column is `note` and the API surfaces it as
+    `reason` (1500000118). `OwnWriteIn` is the column side of that
+    translation, `LodgingUnitSummary` the API side.
     """
-    return frozenset(f"id-{code}" for code in codes)
+    by_code = {unit.code: unit for unit in units}
+    return {
+        by_code[code].unit_id: [
+            OwnWriteIn(
+                occupant_name=by_code[code].occupant_name,
+                note=by_code[code].reason,
+                party_size=by_code[code].party_size,
+            )
+        ]
+        for code in codes
+    }
 
 
 def _repo(**overrides: Any) -> MagicMock:
@@ -5686,8 +5710,16 @@ class TestWriteInCovers:
     Resolved on READ rather than cascaded on write. Writing a row per leaf
     would duplicate a single fact across rows that then drift -- clear one room
     and the others still close the space -- and would leave orphans behind a
-    re-merge. There is still exactly ONE row; this decides which units it
-    covers.
+    re-merge. This decides which units a row covers, and nothing here writes
+    one.
+
+    ⚠️ "THERE IS STILL EXACTLY ONE ROW" USED TO STAND HERE, and it no longer
+    does. It was true because `idx_lodging_write_in_unique` made it true, and
+    the two-write-ins-per-shareable-unit work takes that guarantee away: a
+    unit's OWN rows are a list and each one gets a cover. Every fixture in
+    THIS class still builds one row per unit, because that is what the class
+    is about and because it is all production can hold today --
+    `TestTwoWriteInRowsOnOneUnit` is where the second row is exercised.
 
     Fictional data throughout.
     """
@@ -5704,12 +5736,12 @@ class TestWriteInCovers:
         units = [house, room, other]
         caps: dict[str, int | None] = {"house": 5, "room": 3, "other": 2}
 
-        covers = write_in_covers(units, _written_ids("room"), caps)
+        covers = write_in_covers(units, _written(units, "room"), caps)
         assert covers["room"][0].relation == "own"
         assert covers["house"][0].relation == "descendant"
         assert covers.get("other", []) == []
 
-        covers = write_in_covers(units, _written_ids("house"), caps)
+        covers = write_in_covers(units, _written(units, "house"), caps)
         assert covers["house"][0].relation == "own"
         assert covers["room"][0].relation == "ancestor"
         assert covers["other"][0].relation == "ancestor"
@@ -5718,7 +5750,7 @@ class TestWriteInCovers:
         house = _summary("house", is_container=True)
         room = _summary("room", parent_code="house", party_size=2)
 
-        covers = write_in_covers([house, room], _written_ids("room"), {"house": 5, "room": 3})
+        covers = write_in_covers([house, room], _written([house, room], "room"), {"house": 5, "room": 3})
 
         assert covers["room"][0].party_size == 2
         assert covers["house"][0].party_size == 2
@@ -5730,7 +5762,7 @@ class TestWriteInCovers:
         house = _summary("house", is_container=True)
         room = _summary("room", parent_code="house")
 
-        covers = write_in_covers([house, room], _written_ids("room"), {"house": 5, "room": 3})
+        covers = write_in_covers([house, room], _written([house, room], "room"), {"house": 5, "room": 3})
 
         assert covers["room"][0].party_size is None
 
@@ -5741,7 +5773,7 @@ class TestWriteInCovers:
         house = _summary("house", is_container=True)
         room = _summary("room", parent_code="house")
 
-        covers = write_in_covers([house, room], _written_ids("room"), {"house": 5, "room": 3})
+        covers = write_in_covers([house, room], _written([house, room], "room"), {"house": 5, "room": 3})
 
         assert covers["house"][0].unit_sleeps == 3
         assert covers["room"][0].unit_sleeps == 3
@@ -5763,7 +5795,7 @@ class TestWriteInCovers:
         # as `_effective_sleeps` returns it today.
         covers = write_in_covers(
             [house, retired_room],
-            _written_ids("house-a"),
+            _written([house, retired_room], "house-a"),
             {"house": 0, "house-a": 6},
         )
 
@@ -5784,7 +5816,7 @@ class TestWriteInCovers:
 
         covers = write_in_covers(
             [retired_leaf],
-            _written_ids("cedar-1"),
+            _written([retired_leaf], "cedar-1"),
             {"cedar-1": 6},
         )
 
@@ -5803,7 +5835,7 @@ class TestWriteInCovers:
         )
         room = _summary("house-a", parent_code="house")
 
-        covers = write_in_covers([house, room], _written_ids("house"), {})
+        covers = write_in_covers([house, room], _written([house, room], "house"), {})
 
         assert covers["house-a"][0].unit_code == "house"
         assert covers["house-a"][0].occupant_name == "Liam Garcia"
@@ -5816,7 +5848,9 @@ class TestWriteInCovers:
         written_room = _summary("house-a", parent_code="house", occupant_name="Liam Garcia")
         other_room = _summary("house-b", parent_code="house")
 
-        covers = write_in_covers([house, written_room, other_room], _written_ids("house-a"), {})
+        covers = write_in_covers(
+            [house, written_room, other_room], _written([house, written_room, other_room], "house-a"), {}
+        )
 
         assert covers["house"][0].unit_code == "house-a"
         assert covers["house"][0].occupant_name == "Liam Garcia"
@@ -5831,7 +5865,9 @@ class TestWriteInCovers:
         written_room = _summary("house-a", parent_code="house", occupant_name="Liam Garcia")
         other_room = _summary("house-b", parent_code="house")
 
-        covers = write_in_covers([house, written_room, other_room], _written_ids("house-a"), {})
+        covers = write_in_covers(
+            [house, written_room, other_room], _written([house, written_room, other_room], "house-a"), {}
+        )
 
         assert "house-b" not in covers
         assert covers["house"][0].unit_code == "house-a"
@@ -5840,7 +5876,7 @@ class TestWriteInCovers:
         house = _summary("house", is_container=True, occupant_name="Liam Garcia")
         room = _summary("house-a", parent_code="house", occupant_name="Ava Martinez")
 
-        covers = write_in_covers([house, room], _written_ids("house", "house-a"), {})
+        covers = write_in_covers([house, room], _written([house, room], "house", "house-a"), {})
 
         assert covers["house-a"][0].unit_code == "house-a"
         assert covers["house-a"][0].occupant_name == "Ava Martinez"
@@ -5859,7 +5895,7 @@ class TestWriteInCovers:
 
         covers = write_in_covers(
             [house, room_a, room_b],
-            _written_ids("house", "house-a", "house-b"),
+            _written([house, room_a, room_b], "house", "house-a", "house-b"),
             {"house": 8, "house-a": 3, "house-b": 3},
         )
 
@@ -5888,7 +5924,7 @@ class TestWriteInCovers:
 
         covers = write_in_covers(
             [house, room],
-            _written_ids("house", "house-a"),
+            _written([house, room], "house", "house-a"),
             {"house": 10, "house-a": 3},
         )
 
@@ -5914,7 +5950,7 @@ class TestWriteInCovers:
 
         covers = write_in_covers(
             [house, room],
-            _written_ids("house", "house-a"),
+            _written([house, room], "house", "house-a"),
             {"house": 10, "house-a": 3},
         )
 
@@ -5930,7 +5966,7 @@ class TestWriteInCovers:
 
         covers = write_in_covers(
             [house, room],
-            _written_ids("house", "house-a"),
+            _written([house, room], "house", "house-a"),
             {"house": 8, "house-a": 3},
         )
 
@@ -5948,7 +5984,7 @@ class TestWriteInCovers:
         )
         room = _summary("house-a", parent_code="house")
 
-        covers = write_in_covers([block, house, room], _written_ids("block", "house"), {})
+        covers = write_in_covers([block, house, room], _written([block, house, room], "block", "house"), {})
 
         assert covers["house-a"][0].unit_code == "house"
 
@@ -5962,7 +5998,7 @@ class TestWriteInCovers:
         house = _summary("house", is_container=True, inventory_class="staff_default", family_available_override=True)
         room = _summary("house-a", parent_code="house")
 
-        covers = write_in_covers([house, room], _written_ids(), {})
+        covers = write_in_covers([house, room], _written([house, room]), {})
 
         assert covers == {}
 
@@ -5979,10 +6015,10 @@ class TestWriteInCovers:
         house = _summary("house", is_container=True, family_available_override=False)
         room = _summary("house-a", parent_code="house")
 
-        assert write_in_covers([house, room], _written_ids(), {}) == {}
+        assert write_in_covers([house, room], _written([house, room]), {}) == {}
 
     def test_a_unit_with_nothing_on_its_path_is_absent(self) -> None:
-        assert write_in_covers([_summary("cedar-1")], _written_ids(), {}) == {}
+        assert write_in_covers([_summary("cedar-1")], _written([_summary("cedar-1")]), {}) == {}
 
     def test_a_parent_cycle_does_not_hang(self) -> None:
         # The server guards against writing one (#1899), but a cycle already in
@@ -5994,7 +6030,7 @@ class TestWriteInCovers:
         # product of the cycle rather than of a row -- an empty map is the only
         # right answer, and reaching it at all means both guards fired. Without
         # them this hangs rather than failing.
-        assert write_in_covers([a, b], _written_ids(), {}) == {}
+        assert write_in_covers([a, b], _written([a, b]), {}) == {}
 
     def test_a_blank_coded_unit_never_lends_its_cover_to_another(self) -> None:
         # "" is the same key `parent_code == ""` uses for "no parent", which is
@@ -6007,7 +6043,7 @@ class TestWriteInCovers:
         written = _summary("", occupant_name="Liam Garcia")
         other = LodgingUnitSummary(unit_id="id-other", code="", name="Other")
 
-        assert write_in_covers([written, other], _written_ids(""), {}) == {}
+        assert write_in_covers([written, other], _written([written, other], ""), {}) == {}
 
     def test_several_written_rooms_are_all_returned_in_code_order(self) -> None:
         # A building over two written-into rooms carries BOTH, in `code` order
@@ -6017,7 +6053,7 @@ class TestWriteInCovers:
         house = _summary("house", is_container=True, is_combined=True)
         room_b = _summary("house-b", parent_code="house", occupant_name="Ava Martinez")
         room_a = _summary("house-a", parent_code="house", occupant_name="Liam Garcia")
-        written = _written_ids("house-a", "house-b")
+        written = _written([house, room_a, room_b], "house-a", "house-b")
 
         for units in ([house, room_b, room_a], [house, room_a, room_b]):
             assert [cover.unit_code for cover in write_in_covers(units, written, {})["house"]] == [
@@ -6041,7 +6077,7 @@ class TestWriteInCovers:
             _summary("house-side", parent_code="house", occupant_name="Noah Chen"),
         ]
 
-        covers = write_in_covers([house, *rooms], _written_ids(*(room.code for room in rooms)), {})
+        covers = write_in_covers([house, *rooms], _written([house, *rooms], *(room.code for room in rooms)), {})
 
         assert [cover.occupant_name for cover in covers["house"]] == [
             "Emma Johnson",
@@ -6064,7 +6100,11 @@ class TestWriteInCovers:
         bed = _summary("house-a-1", parent_code="house-a", occupant_name="Liam Garcia")
         other_wing = _summary("house-b", parent_code="house", occupant_name="Olivia Martinez")
 
-        covers = write_in_covers([house, wing, bed, other_wing], _written_ids("house-a", "house-a-1", "house-b"), {})
+        covers = write_in_covers(
+            [house, wing, bed, other_wing],
+            _written([house, wing, bed, other_wing], "house-a", "house-a-1", "house-b"),
+            {},
+        )
 
         assert [cover.unit_code for cover in covers["house"]] == ["house-a", "house-b"]
 
@@ -6097,6 +6137,310 @@ def _caps(units: list[LodgingUnitSummary]) -> dict[str, int | None]:
     """
     index = _BathroomIndex.build(units)
     return {u.code: _effective_sleeps(u, index) for u in units if u.code}
+
+
+class TestTwoWriteInRowsOnOneUnit:
+    """N own write-in rows on one unit, end to end through `build_roster`.
+
+    DARK ON ARRIVAL, and deliberately. `idx_lodging_write_in_unique`
+    (session_cm_id, year, unit) and `idx_lodging_write_in_draft_unique`
+    (+ scenario) both still stand, so a second row on one unit-weekend is
+    schema-impossible in production today and every assertion below describes
+    a shape only a fixture can build. That is the point: this is the read
+    path's half of "two write-ins in one shareable cabin", landing ahead of
+    the index change that makes it reachable, exactly as kindred#2382 landed
+    its two empty tables ahead of the move into them.
+
+    WHY IT IS NOT MERELY MIS-RENDERED. Before this, three chained one-row
+    assumptions ate the second row rather than drawing it wrong: a
+    `dict[unit_id, row]` in `_build_units` kept whichever row the fetch
+    returned last, `written_in_unit_ids` reduced the rows to a `frozenset` of
+    unit ids, and `write_in_covers` built exactly ONE "own" cover per unit off
+    the summary's flat singular fields. A second occupant therefore vanished
+    from the payload, from `write_in_demand`, and from the stats bar -- not a
+    display bug but a silent loss.
+
+    Fictional occupant names throughout; the registry codes are real registry
+    data, not personal information.
+    """
+
+    @pytest.mark.asyncio
+    async def test_both_occupants_of_one_cabin_reach_the_payload(self) -> None:
+        """Two paper families in one shareable cabin, both drawn, in fetch order.
+
+        The plain shape the feature exists for: Ridge D sleeps 15 and is
+        classified `shareable`, so two households in it is not a contradiction
+        about who is in the cabin -- both names are the answer.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[_unit("u1", "ridge-d", "Ridge D", sleeps=15)],
+            fetch_write_ins=[
+                _rec(unit="u1", occupant_name="Liam Garcia", note="Paper registration", party_size=3),
+                _rec(unit="u1", occupant_name="Ava Martinez", note="Arriving late", party_size=4),
+            ],
+        )
+
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        unit = roster.units[0]
+        assert [cover.occupant_name for cover in unit.write_ins] == ["Liam Garcia", "Ava Martinez"]
+        assert [cover.note for cover in unit.write_ins] == ["Paper registration", "Arriving late"]
+        assert [cover.party_size for cover in unit.write_ins] == [3, 4]
+        # BOTH rows are the unit's OWN. `relation` is what tells the card an
+        # occupant is recorded here rather than inherited from the tree, and
+        # two own rows are two own covers -- not one own and one anything else.
+        assert [cover.relation for cover in unit.write_ins] == ["own", "own"]
+        assert {cover.unit_id for cover in unit.write_ins} == {"u1"}
+
+    @pytest.mark.asyncio
+    async def test_both_occupants_pay_for_their_spots(self) -> None:
+        """Seven people in a fifteen-spot cabin leave eight, not eleven.
+
+        The arithmetic is the reason the collapse mattered. `write_in_demand`
+        sums every cover, so a lost row is a party that consumes nothing: the
+        bar would have offered eleven spots in a cabin holding seven people
+        and the card above it would have named one of the two families.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[_unit("u1", "ridge-d", "Ridge D", sleeps=15)],
+            fetch_write_ins=[
+                _rec(unit="u1", occupant_name="Liam Garcia", note="", party_size=3),
+                _rec(unit="u1", occupant_name="Ava Martinez", note="", party_size=4),
+            ],
+        )
+
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.counts.spots_family_available == 8
+        assert roster.units[0].is_family_available is True
+
+    @pytest.mark.asyncio
+    async def test_an_unsized_second_row_still_closes_the_cabin(self) -> None:
+        """`party_size is None` means WHOLESALE, and one of two rows saying it is enough.
+
+        `None` is "this write-in takes the room", never "a party of nobody"
+        (`_i_or_none`). A cabin holding a measured party of three AND somebody
+        who claimed the whole space has no computable remainder, so it closes
+        -- the same 0 `free_family_spots` returns for any unmeasurable cover.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[_unit("u1", "ridge-d", "Ridge D", sleeps=15)],
+            fetch_write_ins=[
+                _rec(unit="u1", occupant_name="Liam Garcia", note="", party_size=3),
+                _rec(unit="u1", occupant_name="Ava Martinez", note="", party_size=0),
+            ],
+        )
+
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert [cover.party_size for cover in roster.units[0].write_ins] == [3, None]
+        assert roster.units[0].is_family_available is False
+
+    @pytest.mark.asyncio
+    async def test_the_summarys_flat_fields_report_the_first_own_row(self) -> None:
+        """OQ-5 held OPEN, at the conservative reading, and this pins which one it is.
+
+        `LodgingUnitSummary.occupant_name` / `.reason` / `.party_size` are
+        documented as "the unit's OWN write-in row", which stops being a total
+        answer the moment there are two. Deprecating them in favour of the
+        `write_ins` entries with `relation == "own"` is an api-types
+        regeneration plus every frontend reader, so this change keeps them and
+        pins them to the FIRST own row -- which is exactly what they hold today
+        when there is one, so nothing on the wire moves.
+
+        The multi-row answer is `write_ins`, and the test above is the one that
+        reads it.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[_unit("u1", "ridge-d", "Ridge D", sleeps=15)],
+            fetch_write_ins=[
+                _rec(unit="u1", occupant_name="Liam Garcia", note="Paper registration", party_size=3),
+                _rec(unit="u1", occupant_name="Ava Martinez", note="Arriving late", party_size=4),
+            ],
+        )
+
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        unit = roster.units[0]
+        assert unit.occupant_name == "Liam Garcia"
+        assert unit.reason == "Paper registration"
+        assert unit.party_size == 3
+
+    @pytest.mark.asyncio
+    async def test_two_sized_own_rows_still_do_not_subsume_a_written_into_room(self) -> None:
+        """The kindred#2540 rule, generalised: SIZED own rows assert a headcount.
+
+        A house whose own rows account for 2 + 1 people has not claimed the
+        whole house, so a room separately written into still contributes its
+        own cover beside them -- the same reason a single sized own row does.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("u-house", "house", "House", is_container=True, default_combined=True),
+                _unit("u-room", "house-a", "House A", sleeps=4, parent_unit="u-house"),
+            ],
+            fetch_write_ins=[
+                _rec(unit="u-house", occupant_name="Liam Garcia", note="", party_size=2),
+                _rec(unit="u-house", occupant_name="Ava Martinez", note="", party_size=1),
+                _rec(unit="u-room", occupant_name="Olivia Chen", note="", party_size=1),
+            ],
+        )
+
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        house = next(u for u in roster.units if u.code == "house")
+        assert [(c.occupant_name, c.relation) for c in house.write_ins] == [
+            ("Liam Garcia", "own"),
+            ("Ava Martinez", "own"),
+            ("Olivia Chen", "descendant"),
+        ]
+
+    @pytest.mark.asyncio
+    async def test_one_unsized_own_row_beside_a_sized_one_still_claims_the_whole_space(self) -> None:
+        """⚠️ OQ-4, ANSWERED AT THE SPEC'S OWN LEAN AND STILL THE OWNER'S TO RE-RULE.
+
+        kindred#2540 ruled "OWN BEATS DESCENDANT ONLY WHILE OWN IS UNSIZED":
+        an unsized own row is a WHOLESALE claim on the space and already covers
+        whatever is beneath it, where a sized one is a headcount that does not.
+        That rule branches on a single `party_size` and has no defined answer
+        for a unit holding one sized own row and one unsized one.
+
+        The rule generalises the only way that keeps an unsized row meaning
+        what it means: ANY unsized own row is a wholesale claim, so the unit's
+        own rows subsume its descendants unless EVERY one of them is sized.
+        The alternative -- a sized row beside it re-admitting the descendants
+        -- would let adding a measured party to a space somebody has claimed
+        whole make the space look larger.
+
+        IDENTICAL AT ONE ROW, which is what keeps this change dark: with a
+        single own row "every own row is sized" is exactly `party_size is not
+        None`, the expression it replaces.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("u-house", "house", "House", is_container=True, default_combined=True),
+                _unit("u-room", "house-a", "House A", sleeps=4, parent_unit="u-house"),
+            ],
+            fetch_write_ins=[
+                _rec(unit="u-house", occupant_name="Liam Garcia", note="", party_size=2),
+                _rec(unit="u-house", occupant_name="Ava Martinez", note="", party_size=0),
+                _rec(unit="u-room", occupant_name="Olivia Chen", note="", party_size=1),
+            ],
+        )
+
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        house = next(u for u in roster.units if u.code == "house")
+        assert [(c.occupant_name, c.relation) for c in house.write_ins] == [
+            ("Liam Garcia", "own"),
+            ("Ava Martinez", "own"),
+        ]
+
+    @pytest.mark.asyncio
+    async def test_two_rows_on_a_room_both_cover_the_building_above_them(self) -> None:
+        """A DESCENDANT cover per row, not per written-into unit.
+
+        A building's card stands in for its rooms when it is combined, so both
+        occupants of one room have to appear on it. Returning one cover per
+        written-into descendant is the same collapse one level up.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("u-house", "house", "House", is_container=True, default_combined=True),
+                _unit("u-room", "house-a", "House A", sleeps=6, parent_unit="u-house"),
+            ],
+            fetch_write_ins=[
+                _rec(unit="u-room", occupant_name="Liam Garcia", note="", party_size=2),
+                _rec(unit="u-room", occupant_name="Ava Martinez", note="", party_size=1),
+            ],
+        )
+
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        house = next(u for u in roster.units if u.code == "house")
+        assert [(c.occupant_name, c.relation) for c in house.write_ins] == [
+            ("Liam Garcia", "descendant"),
+            ("Ava Martinez", "descendant"),
+        ]
+
+    @pytest.mark.asyncio
+    async def test_two_rows_on_a_building_both_cover_the_rooms_beneath_it(self) -> None:
+        """An ANCESTOR cover per row, for the same reason.
+
+        A split building's rooms each draw a card for the rows the building
+        holds. Two whole-house lets recorded on the building are two occupants
+        every room has to name, or a room reports a space taken by somebody the
+        card does not show.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("u-house", "house", "House", is_container=True),
+                _unit("u-room", "house-a", "House A", sleeps=6, parent_unit="u-house"),
+            ],
+            fetch_write_ins=[
+                _rec(unit="u-house", occupant_name="Liam Garcia", note="", party_size=0),
+                _rec(unit="u-house", occupant_name="Ava Martinez", note="", party_size=0),
+            ],
+        )
+
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        room = next(u for u in roster.units if u.code == "house-a")
+        assert [(c.occupant_name, c.relation) for c in room.write_ins] == [
+            ("Liam Garcia", "ancestor"),
+            ("Ava Martinez", "ancestor"),
+        ]
+
+    @pytest.mark.asyncio
+    async def test_a_scenarios_two_draft_rows_both_reach_the_board(self) -> None:
+        """The draft twin collapses identically, and is fed from its own table.
+
+        `idx_lodging_write_in_draft_unique` carries `scenario` as a fourth
+        column, so it is a SECOND index this feature has to change -- and a
+        second read path that has to carry N rows before it can.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[_unit("u1", "ridge-d", "Ridge D", sleeps=15)],
+            fetch_write_ins=[],
+            fetch_draft_write_ins=[
+                _rec(unit="u1", occupant_name="Liam Garcia", note="", party_size=3),
+                _rec(unit="u1", occupant_name="Ava Martinez", note="", party_size=4),
+            ],
+        )
+
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001, scenario="scn_1")
+
+        assert [cover.occupant_name for cover in roster.units[0].write_ins] == ["Liam Garcia", "Ava Martinez"]
+
+    @pytest.mark.asyncio
+    async def test_the_lander_counts_both_occupants_too(self) -> None:
+        """`build_summary` runs its own copy of the pair, so it collapses its own way.
+
+        The two orchestrators have already drifted once on this seam
+        (kindred#2502), and the failure mode is the lander and the board
+        disagreeing about how many spots a weekend has free.
+        """
+        repo = _repo(
+            fetch_weekend_sessions=[FAMILY_SESSION],
+            fetch_units=[_unit("u1", "ridge-d", "Ridge D", sleeps=15)],
+            fetch_write_ins=[
+                _rec(unit="u1", occupant_name="Liam Garcia", note="", party_size=3),
+                _rec(unit="u1", occupant_name="Ava Martinez", note="", party_size=4),
+            ],
+        )
+
+        summary = await LodgingRosterService(repo).build_summary(2026)
+
+        assert summary.weekends[0].counts.spots_family_available == 8
 
 
 class TestFamilyAvailabilityIsResolvedOverTheTree:
@@ -6137,7 +6481,7 @@ class TestFamilyAvailabilityIsResolvedOverTheTree:
         ]
         units = [house, *rooms]
         caps = _caps(units)
-        written = _written_ids("back", "laundry", "loft", "side")
+        written = _written(units, "back", "laundry", "loft", "side")
         _resolve_write_in_covers(units, written, caps)
         free_by_unit = _resolve_family_availability(units, caps, written)
 
@@ -6161,7 +6505,7 @@ class TestFamilyAvailabilityIsResolvedOverTheTree:
         ]
         units = [house, *rooms]
         caps = _caps(units)
-        written = _written_ids("house", "back", "laundry", "loft", "side")
+        written = _written(units, "house", "back", "laundry", "loft", "side")
         _resolve_write_in_covers(units, written, caps)
         free_by_unit = _resolve_family_availability(units, caps, written)
 
@@ -6182,7 +6526,7 @@ class TestFamilyAvailabilityIsResolvedOverTheTree:
         units = [house, r1, r2, r3]
         caps = _caps(units)
         assert caps["house"] == 6  # r1 + r2 only -- r3 is excluded, same as production
-        written = _written_ids("r3")
+        written = _written(units, "r3")
         _resolve_write_in_covers(units, written, caps)
         free_by_unit = _resolve_family_availability(units, caps, written)
 
@@ -6201,7 +6545,7 @@ class TestFamilyAvailabilityIsResolvedOverTheTree:
         ]
         units = [house, *rooms]
         caps = _caps(units)
-        written = _written_ids("back")
+        written = _written(units, "back")
         _resolve_write_in_covers(units, written, caps)
         free_by_unit = _resolve_family_availability(units, caps, written)
 
@@ -6219,7 +6563,7 @@ class TestFamilyAvailabilityIsResolvedOverTheTree:
         ]
         units = [house, *rooms]
         caps = _caps(units)
-        written = _written_ids("house")
+        written = _written(units, "house")
         _resolve_write_in_covers(units, written, caps)
         _resolve_family_availability(units, caps, written)
 
@@ -6233,7 +6577,7 @@ class TestFamilyAvailabilityIsResolvedOverTheTree:
         unit = _summary("ridge-a", sleeps=5, family_available_override=False, party_size=2)
         units = [unit]
         caps = _caps(units)
-        written = _written_ids("ridge-a")
+        written = _written(units, "ridge-a")
         _resolve_write_in_covers(units, written, caps)
         free_by_unit = _resolve_family_availability(units, caps, written)
 
@@ -6265,7 +6609,7 @@ class TestFamilyAvailabilityIsResolvedOverTheTree:
         """
         unit = _summary("", sleeps=5, occupant_name="Liam Garcia")
         units = [unit]
-        written = _written_ids("")
+        written = _written(units, "")
         caps = _caps(units)
         _resolve_write_in_covers(units, written, caps)
         free_by_unit = _resolve_family_availability(units, caps, written)
@@ -6360,7 +6704,7 @@ class TestSpotsFamilyAvailableCountsFreeSpots:
         """
         index = _BathroomIndex.build(units)
         caps = _caps(units)
-        written = _written_ids(*written_in)
+        written = _written(units, *written_in)
         _resolve_write_in_covers(units, written, caps)
         free_by_unit = _resolve_family_availability(units, caps, written)
         return LodgingRosterService(_repo())._build_counts(units, [], 0, index, free_by_unit)
