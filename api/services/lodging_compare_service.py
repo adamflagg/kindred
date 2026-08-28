@@ -67,6 +67,13 @@ from api.services.lodging_write_service import LodgingWriteService
 # are rewritten daily from custom values up to seven days old.
 FAMILY_SESSION_TYPE = "family"
 
+# The sync job whose last successful run dates the mirror. `lodging_assignments`
+# is the transform that WRITES the table this compare reads as the mirror side,
+# and the last of the six-job chain -- the same service the weekend shell's
+# "Housing synced" line reads, so the footer here and that line can never name
+# two different runs.
+MIRROR_SYNC_SERVICE = "lodging_assignments"
+
 
 class NotAFamilyWeekendError(ValueError):
     """The weekend exists but is not family camp (owner ruling, §5.1).
@@ -167,6 +174,26 @@ class LodgingCompareService:
         if not scenario:
             raise ValueError("a compare requires a scenario -- the mirror cannot be compared against itself")
 
+        # BEFORE THE MIRROR READ, and that ordering is the whole guarantee.
+        # A `lodging_assignments` transform landing mid-request can only be on
+        # one side of this line. Read the age first and it names a run at or
+        # before the rows below, so the footer understates freshness and
+        # "anything staff changed since then is not here yet" stays true; read
+        # it after and the same transform makes the footer name a run whose
+        # output this comparison never saw. §5.4's own argument for putting
+        # the age on screen is that staff otherwise read a stale diff as a
+        # live one -- a footer that can overstate is that failure wearing the
+        # guard's clothes.
+        #
+        # `lodging_assignments` and no other job: it is the transform that
+        # writes the mirror table read below, and the same service §4's
+        # "Housing synced" line names, so the two readouts cannot drift.
+        #
+        # One indexed single-row read, paid on the adult-weekend path too --
+        # the scope gate below wants that path to cost one roster read rather
+        # than three, and this is not a roster read.
+        mirror_synced_at = await self.repository.fetch_last_successful_sync_end(MIRROR_SYNC_SERVICE)
+
         mirror_roster: Any = await self.roster.build_roster(year, session_cm_id, "")
         if mirror_roster.session_type != FAMILY_SESSION_TYPE:
             raise NotAFamilyWeekendError(
@@ -190,4 +217,5 @@ class LodgingCompareService:
             counts=_counts(verdicts),
             parties=[_report(v, children.get(v.key, [])) for v in verdicts],
             write_ins=preview.buildings,
+            mirror_synced_at=mirror_synced_at,
         )

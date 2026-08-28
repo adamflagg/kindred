@@ -290,18 +290,47 @@ describe('ScenarioCompareModal', () => {
   it('names the mirror and its age in the footer', async () => {
     // §5.4's honesty requirement: without the age statement staff read a
     // stale diff as a live one.
-    renderModal()
+    renderModal({ ...COMPARE, mirror_synced_at: new Date().toISOString() })
     const footer = await screen.findByTestId('compare-footer')
     expect(footer).toHaveTextContent(/CampMinder mirror/i)
     expect(footer).toHaveTextContent(/less than a minute ago/i)
   })
 
   it('says the mirror age is unknown rather than implying freshness', async () => {
-    mockSyncStatus.mockReturnValue({ data: null })
-    renderModal()
+    renderModal({ ...COMPARE, mirror_synced_at: '' })
     const footer = await screen.findByTestId('compare-footer')
     expect(footer).toHaveTextContent(/CampMinder mirror/i)
     expect(footer).toHaveTextContent(/unknown/i)
+  })
+
+  it('takes the age from the comparison, never from a second sync-status read', async () => {
+    // THE FOOTER MAY NOT OVERSTATE FRESHNESS. The age used to come from an
+    // independent `useSyncStatusAPI` read, which polls every 3 s while a sync
+    // runs and refetches on window focus, while the comparison itself does
+    // neither (`refetchOnWindowFocus` is false app-wide). A
+    // `lodging_assignments` transform landing with the modal open therefore
+    // walked the footer forward under a diff built from the rows BEFORE it --
+    // the one guard §5.4 rests on, claiming the mirror was newer than the
+    // data it described.
+    //
+    // The sync status here is deliberately fresher than the payload: if the
+    // second read ever comes back, this reads "less than a minute ago".
+    mockSyncStatus.mockReturnValue({
+      data: { lodging_assignments: { status: 'success', end_time: new Date().toISOString() } },
+    })
+
+    renderModal({
+      ...COMPARE,
+      mirror_synced_at: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
+    })
+
+    const footer = await screen.findByTestId('compare-footer')
+    expect(footer).toHaveTextContent(/about 3 hours ago/i)
+    expect(footer).not.toHaveTextContent(/less than a minute ago/i)
+    // Not merely unused — not read at all. The endpoint is gone from this
+    // modal, so a reviewer re-adding it fails here rather than at a footer
+    // that only misreports during a sync.
+    expect(mockSyncStatus).not.toHaveBeenCalled()
   })
 
   it('offers no action on any row — it reports and nothing more', async () => {

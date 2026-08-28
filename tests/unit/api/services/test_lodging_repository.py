@@ -2054,3 +2054,86 @@ class TestRegistryNameReads:
         await repo.fetch_unit_aliases()
 
         assert pb.collection.return_value.get_full_list.call_count == 2
+
+
+class TestFetchLastSuccessfulSyncEnd:
+    """The mirror's own age, read server-side from `sync_runs`.
+
+    The compare footer used to take this from an INDEPENDENT `/sync/status`
+    read in the browser, which could advance while the comparison on screen
+    did not -- a footer claiming the mirror was fresher than the data it
+    described. Reading it here lets the compare response carry the age it was
+    actually built against.
+    """
+
+    @pytest.mark.asyncio
+    async def test_reads_the_latest_successful_run_for_that_service(
+        self, repo: LodgingRepository, pb: MagicMock
+    ) -> None:
+        """SUCCESS ONLY, and newest first -- the same two rules the Go
+        rehydration in `sync_runs.go` applies. A failed run made nothing
+        fresh, so reporting its `ended` would be the freshness lie that
+        function's own docstring refuses.
+        """
+        pb.collection.return_value.get_list.return_value = MagicMock(items=[_record(ended="2026-08-23 10:16:08.257Z")])
+
+        ended = await repo.fetch_last_successful_sync_end("lodging_assignments")
+
+        pb.collection.assert_called_with("sync_runs")
+        call = pb.collection.return_value.get_list.call_args
+        assert call[0] == (1, 1)
+        params: dict[str, Any] = call[1]["query_params"]
+        assert params["filter"] == 'service = "lodging_assignments" && status = "success"'
+        # `-started,-id` rather than `-ended`: this is the ordering
+        # `Orchestrator.LastRecordedRuns` already uses to pick one row per
+        # service, and the two readouts must never disagree about which run
+        # is the last one.
+        assert params["sort"] == "-started,-id"
+        assert ended == "2026-08-23T10:16:08.257Z"
+
+    @pytest.mark.asyncio
+    async def test_one_row_is_read_not_the_whole_history(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        """`sync_runs` holds every service's run for the retention window, so
+        the whole-collection read `_page` performs would page in thousands of
+        rows to use one field of one of them.
+        """
+        pb.collection.return_value.get_list.return_value = MagicMock(items=[])
+
+        await repo.fetch_last_successful_sync_end("lodging_assignments")
+
+        assert pb.collection.return_value.get_full_list.call_count == 0
+
+    @pytest.mark.asyncio
+    async def test_a_pocketbase_timestamp_is_normalised_to_rfc3339(
+        self, repo: LodgingRepository, pb: MagicMock
+    ) -> None:
+        """PocketBase serialises a datetime SPACE-separated
+        ("2026-08-23 10:16:08.257Z"); the Go status endpoint this replaces
+        emitted Go's own RFC3339. `new Date()` parses the space form only by
+        engine leniency, so the footer would read "Invalid Date" wherever that
+        leniency runs out -- the separator is normalised here rather than in
+        the component.
+        """
+        pb.collection.return_value.get_list.return_value = MagicMock(items=[_record(ended="2026-08-23 10:16:08.257Z")])
+
+        assert await repo.fetch_last_successful_sync_end("lodging_assignments") == "2026-08-23T10:16:08.257Z"
+
+    @pytest.mark.asyncio
+    async def test_no_recorded_run_is_empty_rather_than_a_guess(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        """ "" is what the footer renders as "last sync time is unknown". A
+        service that has never recorded a successful run must not borrow a
+        neighbour's timestamp or invent `now`.
+        """
+        pb.collection.return_value.get_list.return_value = MagicMock(items=[])
+
+        assert await repo.fetch_last_successful_sync_end("lodging_assignments") == ""
+
+    @pytest.mark.asyncio
+    async def test_a_row_with_a_blank_end_is_empty(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        """`recordSyncRun` sets `ended` only from a completed run, and the
+        column's PocketBase default is "". A row that somehow carries none is
+        unknown, not the empty string rendered as a date.
+        """
+        pb.collection.return_value.get_list.return_value = MagicMock(items=[_record(ended="")])
+
+        assert await repo.fetch_last_successful_sync_end("lodging_assignments") == ""

@@ -479,6 +479,24 @@ class ScenarioCompareResponse(BaseModel):
     counts: ScenarioCompareCounts = Field(default_factory=ScenarioCompareCounts)
     parties: list[ComparePartyReport] = Field(default_factory=list)
     write_ins: list[PushBuildingReport] = Field(default_factory=list)
+    # WHEN THE MIRROR THIS REPORT WAS BUILT FROM WAS LAST REFRESHED --
+    # `lodging_assignments`' own last successful run, RFC3339, "" for never.
+    #
+    # It rides on the payload rather than being fetched alongside it because
+    # §5.4 makes the age this screen's honesty mechanism: "without the age on
+    # screen, staff read a stale diff as a live one." A browser asking
+    # `/api/custom/sync/status` separately gets an answer from a different
+    # instant -- that read polls every 3 s during a sync and refetches on
+    # window focus, while the comparison does neither -- so a transform
+    # landing with the modal open walked the footer forward under a diff built
+    # from the rows before it. The one guard the design rests on was the one
+    # thing that could overstate freshness.
+    #
+    # `compare_scenario` reads it BEFORE the mirror roster, which is what
+    # makes the remaining error one-directional: the age can name a run at or
+    # before the rows, never after them, so "anything staff changed since then
+    # is not here yet" stays true.
+    mirror_synced_at: str = ""
 
 
 class LodgingUnitSummary(BaseModel):

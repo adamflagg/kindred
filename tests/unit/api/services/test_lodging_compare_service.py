@@ -56,13 +56,18 @@ def _roster(parties: list[RosterParty], session_type: str = "family") -> Weekend
 
 
 class _Stubs(NamedTuple):
-    """The service under test and the two awaits it is composed of, so a test
+    """The service under test and the three awaits it is composed of, so a test
     can assert on the calls without reaching back through the instance (whose
     attributes mypy still types as the real bound methods)."""
 
     service: LodgingCompareService
     build_roster: AsyncMock
     preview_push: AsyncMock
+    sync_end: AsyncMock
+    #: Every stubbed await, in the order the service issued it. ORDER is the
+    #: whole correctness argument for the mirror-age read, so it needs to be
+    #: assertable rather than inferred from three separate call counts.
+    calls: list[str]
 
 
 def _service(
@@ -70,20 +75,34 @@ def _service(
     mirror: WeekendRosterResponse,
     scenario: WeekendRosterResponse,
     preview: PushPreviewResponse | None = None,
+    synced_at: str = "",
 ) -> _Stubs:
-    service = LodgingCompareService(MagicMock())
+    calls: list[str] = []
 
     async def build_roster(year: int, session_cm_id: int, scenario_id: str = "", **_: Any) -> Any:
+        calls.append("scenario_roster" if scenario_id else "mirror_roster")
         return scenario if scenario_id else mirror
 
+    async def sync_end(service_name: str) -> str:
+        calls.append(f"sync_end:{service_name}")
+        return synced_at
+
+    async def preview_push(*_: Any, **__: Any) -> PushPreviewResponse:
+        calls.append("preview_push")
+        return preview or PushPreviewResponse(
+            year=2026, session_cm_id=1000001, scenario="scn_1", digest="d", buildings=[]
+        )
+
+    repository = MagicMock()
+    sync_end_stub = AsyncMock(side_effect=sync_end)
+    repository.fetch_last_successful_sync_end = sync_end_stub
+
+    service = LodgingCompareService(repository)
     roster_stub = AsyncMock(side_effect=build_roster)
-    preview_stub = AsyncMock(
-        return_value=preview
-        or PushPreviewResponse(year=2026, session_cm_id=1000001, scenario="scn_1", digest="d", buildings=[])
-    )
+    preview_stub = AsyncMock(side_effect=preview_push)
     service.roster.build_roster = roster_stub  # type: ignore[method-assign]
     service.writes.preview_push = preview_stub  # type: ignore[method-assign]
-    return _Stubs(service, roster_stub, preview_stub)
+    return _Stubs(service, roster_stub, preview_stub, sync_end_stub, calls)
 
 
 class TestCompareScenario:
@@ -248,3 +267,85 @@ class TestComparePartyChildren:
         result = await stubs.service.compare_scenario(2026, 1000001, "plan-a")
 
         assert result.parties[0].children == []
+
+
+class TestMirrorAge:
+    """The footer's age travels WITH the comparison, not beside it.
+
+    §5.4 makes the age this screen's honesty mechanism: "without the age on
+    screen, staff read a stale diff as a live one." It used to be fetched by
+    the browser from `/api/custom/sync/status`, a read entirely independent of
+    the one that built the report -- so a `lodging_assignments` transform
+    landing between the two left the footer claiming the mirror was FRESHER
+    than the rows the comparison had actually run over. The guard staff rely
+    on was the one thing that could overstate.
+    """
+
+    @pytest.mark.asyncio
+    async def test_the_report_states_the_mirror_age_it_was_built_against(self) -> None:
+        stubs = _service(
+            mirror=_roster([_party(11, "The Alvarez Family", ("alpha-1",))]),
+            scenario=_roster([_party(11, "The Alvarez Family", ("beta-2",))]),
+            synced_at="2026-08-23T10:16:08.257Z",
+        )
+
+        report = await stubs.service.compare_scenario(2026, 1000001, "scn_1")
+
+        assert report.mirror_synced_at == "2026-08-23T10:16:08.257Z"
+
+    @pytest.mark.asyncio
+    async def test_the_age_read_names_the_transform_that_writes_the_mirror(self) -> None:
+        """`lodging_assignments` and no other job. It is the transform that
+        writes the table this compare reads as the mirror side, and the last
+        of the six-job chain -- the same service §4's "Housing synced" line
+        names, so the two readouts cannot drift apart.
+        """
+        stubs = _service(
+            mirror=_roster([_party(11, "The Alvarez Family", ("alpha-1",))]),
+            scenario=_roster([_party(11, "The Alvarez Family", ("alpha-1",))]),
+        )
+
+        await stubs.service.compare_scenario(2026, 1000001, "scn_1")
+
+        assert stubs.sync_end.await_args is not None
+        assert stubs.sync_end.await_args.args == ("lodging_assignments",)
+
+    @pytest.mark.asyncio
+    async def test_the_age_is_read_before_the_mirror_rows(self) -> None:
+        """THE ORDER IS THE GUARANTEE, and it is the entire fix.
+
+        A sync landing mid-request can only be in one of two places. Read the
+        timestamp FIRST and it belongs to a run at or before the rows, so the
+        footer understates freshness -- "anything staff changed since then is
+        not here yet" stays true. Read it after the rows and the same sync
+        makes the footer name a run whose output the comparison never saw,
+        which is the claim §5.4 exists to prevent.
+
+        Moving the read after `build_roster` would leave every assertion in
+        this class passing, so the ordering is pinned on its own.
+        """
+        stubs = _service(
+            mirror=_roster([_party(11, "The Alvarez Family", ("alpha-1",))]),
+            scenario=_roster([_party(11, "The Alvarez Family", ("beta-2",))]),
+            synced_at="2026-08-23T10:16:08.257Z",
+        )
+
+        await stubs.service.compare_scenario(2026, 1000001, "scn_1")
+
+        assert stubs.calls.index("sync_end:lodging_assignments") < stubs.calls.index("mirror_roster")
+
+    @pytest.mark.asyncio
+    async def test_a_mirror_that_never_synced_reports_no_age_rather_than_now(self) -> None:
+        """ "" is what the footer renders as "its last sync time is unknown".
+        A missing run must never be softened into a timestamp -- an unknown
+        age reads as a warning, and `now` reads as a guarantee.
+        """
+        stubs = _service(
+            mirror=_roster([_party(11, "The Alvarez Family", ("alpha-1",))]),
+            scenario=_roster([_party(11, "The Alvarez Family", ("alpha-1",))]),
+            synced_at="",
+        )
+
+        report = await stubs.service.compare_scenario(2026, 1000001, "scn_1")
+
+        assert report.mirror_synced_at == ""

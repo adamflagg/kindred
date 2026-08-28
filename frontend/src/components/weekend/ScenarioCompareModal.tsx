@@ -31,8 +31,18 @@
  * The comparison is against `lodging_assignments` — our CampMinder mirror,
  * refreshed by the daily transform — never against the CampMinder API. Without
  * the age on screen, staff read a stale diff as a live one. The age is the
- * `lodging_assignments` sync's own `end_time`, the same number §4's "Housing
- * synced" line reads.
+ * `lodging_assignments` sync's own end time, the same run §4's "Housing synced"
+ * line reads.
+ *
+ * ⚠️ IT RIDES ON THE COMPARISON, as `mirror_synced_at`, and is not fetched
+ * beside it. This screen's honesty rests on that line, so the line must not be
+ * able to overstate: an independent `/sync/status` read answers for a different
+ * instant — it polls every 3 s during a sync and refetches on window focus,
+ * while this comparison does neither — and a transform landing with the modal
+ * open walked the footer forward under a diff built from the rows before it.
+ * The server reads the age BEFORE the mirror rows, so the remaining error is
+ * one-directional: the footer can name a run older than the data, never newer.
+ * See `CompareFooter`.
  *
  * ⚠️ NO REFRESH CONTROL, deliberately. §5.4 wanted the footer to offer
  * `Refresh Housing`; that button does not exist yet — its own item shipped the
@@ -94,7 +104,6 @@ import { formatDistanceToNow } from 'date-fns'
 import { useMemo, useState } from 'react'
 
 import { useApiWithAuth } from '../../hooks/useApiWithAuth'
-import { useSyncStatusAPI } from '../../hooks/useSyncStatusAPI'
 import { useWeekendRoster } from '../../hooks/useWeekendRoster'
 import { fetchScenarioCompare } from '../../services/lodgingApi'
 import type { CompareParty, ScenarioCompare } from '../../types/lodging'
@@ -441,10 +450,33 @@ function WriteInSection({ buildings }: { buildings: readonly CompareWriteIn[] })
   )
 }
 
+/**
+ * The mirror's age, taken off the COMPARISON rather than asked for separately.
+ *
+ * `syncedAt` is `ScenarioCompareResponse.mirror_synced_at` —
+ * `lodging_assignments`' last successful run, read server-side BEFORE the
+ * mirror rows this report describes. That ordering is what makes the statement
+ * safe: the age can name a run at or before the data, never after it.
+ *
+ * It used to come from an independent `useSyncStatusAPI` read in this
+ * component. Two reads of two different instants, and the divergence was not
+ * hypothetical — `/sync/status` polls every 3 s while a sync runs and refetches
+ * on window focus, while this comparison does neither (`refetchOnWindowFocus`
+ * is false app-wide). A `lodging_assignments` transform landing with the modal
+ * open therefore walked this line forward under a diff built from the rows
+ * before it, so the footer claimed the mirror was fresher than the data it
+ * described. §5.4's whole argument for putting the age on screen is that staff
+ * otherwise read a stale diff as a live one; a footer that can overstate is
+ * that same failure wearing the guard's clothes.
+ *
+ * FALSY, not `=== undefined`: the field is absent on an older payload and `""`
+ * when no successful run has ever been recorded, and both are the same fact.
+ * An unknown age reads as a warning — a timestamp would read as a guarantee.
+ */
 function CompareFooter({ syncedAt }: { syncedAt: string | undefined }) {
   return (
     <p data-testid="compare-footer" className="text-muted-foreground text-xs">
-      {syncedAt === undefined
+      {!syncedAt
         ? 'Compared against the CampMinder mirror — its last sync time is unknown, so anything staff changed in CampMinder may not be here yet.'
         : `Compared against the CampMinder mirror, last synced ${formatDistanceToNow(new Date(syncedAt), { addSuffix: true })}. Anything staff changed in CampMinder since then is not here yet.`}
     </p>
@@ -453,12 +485,10 @@ function CompareFooter({ syncedAt }: { syncedAt: string | undefined }) {
 
 function CompareScreen({
   compare,
-  syncedAt,
   nameOnBoard,
   nameUnits,
 }: {
   compare: ScenarioCompare
-  syncedAt: string | undefined
   nameOnBoard: (codes: readonly string[]) => string
   nameUnits: (codes: readonly string[]) => string
 }) {
@@ -536,7 +566,7 @@ function CompareScreen({
         <WriteInSection buildings={compare.write_ins ?? []} />
       </div>
 
-      <CompareFooter syncedAt={syncedAt} />
+      <CompareFooter syncedAt={compare.mirror_synced_at} />
     </div>
   )
 }
@@ -557,20 +587,18 @@ export function ScenarioCompareModal({
   onClose,
 }: ScenarioCompareModalProps) {
   const { fetchWithAuth, isAuthLoading } = useApiWithAuth()
-  // The same number §4's "Housing synced" line reads: `lodging_assignments` is
-  // the transform that writes the mirror this compare is against, and it is
-  // the last job of the six-job chain. Fetched only while the modal is open —
-  // `useSyncStatusAPI` polls solely while a sync is running and costs nothing
-  // at rest.
-  // `!isAuthLoading` on BOTH reads, per `frontend/CLAUDE.md`: "useAuth().isLoading
-  // first. Always check isLoading before making authenticated API calls."
-  // `useApiWithAuth` reads `pb.authStore.token` at CALL time, so a query that
-  // fires mid-restore sends no Authorization header; both endpoints here are
-  // permission-gated, and the global 401 handler would clear auth and bounce
-  // the user to /login out of a modal they had just opened.
+  // `!isAuthLoading` on BOTH reads below, per `frontend/CLAUDE.md`:
+  // "useAuth().isLoading first. Always check isLoading before making
+  // authenticated API calls." `useApiWithAuth` reads `pb.authStore.token` at
+  // CALL time, so a query that fires mid-restore sends no Authorization
+  // header; both endpoints here are permission-gated, and the global 401
+  // handler would clear auth and bounce the user to /login out of a modal
+  // they had just opened.
+  //
+  // THE MIRROR'S AGE IS NOT READ HERE. It arrives on the comparison itself as
+  // `mirror_synced_at` — see `CompareFooter` for why a second, independently
+  // refreshing `/sync/status` read could make the footer overstate freshness.
   const ready = isOpen && !isAuthLoading
-  const { data: syncStatus } = useSyncStatusAPI({ enabled: ready })
-  const syncedAt = syncStatus?.lodging_assignments.end_time
 
   // THE BOARD'S OWN DOCUMENT, under the board's own query key -- see the module
   // doc. `sessionCmId` goes null until the modal is open so a closed modal
@@ -610,12 +638,7 @@ export function ScenarioCompareModal({
         label="comparison"
       >
         {(compare) => (
-          <CompareScreen
-            compare={compare}
-            syncedAt={syncedAt}
-            nameOnBoard={nameOnBoard}
-            nameUnits={nameUnits}
-          />
+          <CompareScreen compare={compare} nameOnBoard={nameOnBoard} nameUnits={nameUnits} />
         )}
       </QueryGuard>
     </Modal>

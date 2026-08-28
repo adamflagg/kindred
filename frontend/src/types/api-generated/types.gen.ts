@@ -5965,6 +5965,10 @@ export type ScenarioCompareResponse = {
    * Write Ins
    */
   write_ins?: Array<PushBuildingReport>
+  /**
+   * Mirror Synced At
+   */
+  mirror_synced_at?: string
 }
 
 /**
