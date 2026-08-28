@@ -29,6 +29,7 @@ import { useYear } from '../hooks/useCurrentYear'
 import { usePermissions } from '../hooks/usePermissions'
 import { Permission } from '../constants/permissions'
 import { useSyncStatusAPI } from '../hooks/useSyncStatusAPI'
+import { useWeekendShellSession } from '../hooks/useWeekendShellSession'
 import { format, formatDistanceToNow } from 'date-fns'
 import { useProgram } from '../contexts/ProgramContext'
 import { getProgramFromPath, getProgramHomeUrl } from '../utils/programUrls'
@@ -38,7 +39,7 @@ import { MANAGE_TABS, canSeeTab } from '../config/manageTabs'
 import { PROGRAM_BUTTONS } from '../config/programButtons'
 import { useTour } from '../hooks/useTour'
 import { FeedbackModal } from '../components/FeedbackModal'
-import type { SyncStatus } from '../hooks/useSyncStatusAPI'
+import type { SyncStatus, SyncStatusResponse } from '../hooks/useSyncStatusAPI'
 
 function buildSyncTooltip(kind: string, status: SyncStatus): string {
   const parts = [`Last ${kind} sync`]
@@ -55,6 +56,83 @@ function buildSyncTooltip(kind: string, status: SyncStatus): string {
     )
   }
   return parts.join(' • ')
+}
+
+/**
+ * The weekend surface's freshness pair — kindred#2570 (`Bunk notes uploaded`)
+ * and kindred#2478 §4 (`Housing synced` to its left).
+ *
+ * A four-for-four mirror of summer's pair in `AppLayout` below: Housing first,
+ * request text second, each verb naming its own noun. Same
+ * `text-xs`/`gap-3`/`whitespace-nowrap` grammar, same `h-3 w-3` icons, same
+ * relative-inline-with-absolute-in-tooltip rule from #1706. GREY ALWAYS — no
+ * amber threshold, no dot, no banner: these are conditions, not events.
+ *
+ * Extracted rather than inlined only because the two independent visibility
+ * conditions (adult weekend, and no-CSV-ever) do not compose into one readable
+ * JSX guard — `false ?? x` does not fall through, which an inline version got
+ * wrong first.
+ */
+function WeekendFreshness({
+  syncStatus,
+  isAdultWeekend,
+}: {
+  syncStatus: SyncStatusResponse
+  isAdultWeekend: boolean
+}) {
+  // HIDDEN ON ADULT WEEKENDS (kindred#2478 §5.1).
+  // `GetFamilyCampSessionCMIDs` filters `session_type = 'family'` exactly, so
+  // adult sessions are not in the bounded cohort at all; and
+  // `lodging_assignments` is a transform that runs daily for EVERYONE,
+  // rewriting adult rows from custom values up to SEVEN DAYS old. A line
+  // reading "Housing synced 11h ago" on an adult weekend is true about the JOB
+  // and false about the DATA.
+  const housingSyncedAt = isAdultWeekend ? undefined : syncStatus.lodging_assignments?.end_time
+  const upload = syncStatus._bunk_requests_upload
+
+  // No empty row: with neither half to show there is nothing to lay out.
+  if (housingSyncedAt === undefined && upload?.uploaded_at === undefined) return null
+
+  return (
+    <div className="text-muted-foreground flex items-center gap-3 text-xs">
+      {housingSyncedAt !== undefined && (
+        <span
+          className="flex items-center gap-1.5 whitespace-nowrap"
+          title={buildSyncTooltip('housing', syncStatus.lodging_assignments)}
+        >
+          <Home className="h-3 w-3" />
+          Housing synced {formatDistanceToNow(new Date(housingSyncedAt), { addSuffix: true })}
+        </span>
+      )}
+      {/*
+        "Bunk notes uploaded", NOT summer's "Requests uploaded", and the
+        difference is DELIBERATE (kindred#2570). One CSV, one
+        `_bunk_requests_upload` timestamp; each program reads a different
+        COLUMN of it, so each names what it reads. Do not tidy the two labels
+        into one string.
+
+        And NO FALLBACK, unlike summer's block below, which falls back to
+        "Requests synced" off `bunk_requests.end_time` when no CSV was ever
+        uploaded. `bunking_notes` arrives ONLY by CSV, so the hourly job's
+        `success created=0 updated=0 skipped=1732` is precisely the lie
+        kindred#2570 is about — it would report a job that RAN as data that
+        ARRIVED. Weekend renders the upload branch or nothing.
+      */}
+      {upload?.uploaded_at !== undefined && (
+        <span
+          className="flex items-center gap-1.5 whitespace-nowrap"
+          title={`Uploaded ${format(new Date(upload.uploaded_at), 'MMM d, h:mm a')} • ${
+            upload.filename
+          }`}
+        >
+          <Clock className="h-3 w-3" />
+          {/* #1706: relative-only inline; the absolute time lives in the tooltip */}
+          Bunk notes uploaded{' '}
+          {formatDistanceToNow(new Date(upload.uploaded_at), { addSuffix: true })}
+        </span>
+      )}
+    </div>
+  )
 }
 
 export const AppLayout = () => {
@@ -79,6 +157,10 @@ export const AppLayout = () => {
   const canSeeSync = hasPermission(Permission.BUNKING_MANAGE)
   const { data: syncStatus } = useSyncStatusAPI({ enabled: canSeeSync })
   const { tourId, replay } = useTour()
+  // Which weekend the shell is on, and whether it is an ADULT one — the shell
+  // is the parent route, so `useParams` gives it nothing and this reads the
+  // pathname. Costs no request: `WeekendRosterPage` already holds this query.
+  const { isAdultWeekend } = useWeekendShellSession()
 
   // Determine current program from URL if not set
   const urlProgram = getProgramFromPath(location.pathname)
@@ -439,6 +521,22 @@ export const AppLayout = () => {
                 </span>
                 <YearSelector />
               </div>
+              {/*
+                WEEKEND'S FRESHNESS STACK — kindred#2570 + kindred#2478 §4.
+                The four-for-four mirror of summer's pair below: Housing first,
+                request text second, each verb naming its own noun. Grey always,
+                same `text-xs`/`gap-3`/`whitespace-nowrap` grammar, same
+                relative-inline-with-absolute-in-tooltip rule from #1706 — these
+                are conditions, not events, so no amber threshold and no dot.
+
+                Gated on `canSeeSync` EXPLICITLY, unlike summer's block, which
+                leans on `useSyncStatusAPI` returning undefined while disabled.
+                Same outcome; stating the permission where the markup is read is
+                the small divergence worth having.
+              */}
+              {activeProgram === 'weekend' && canSeeSync && syncStatus && (
+                <WeekendFreshness syncStatus={syncStatus} isAdultWeekend={isAdultWeekend} />
+              )}
               {activeProgram === 'summer' &&
                 syncStatus &&
                 (syncStatus.bunk_assignments?.end_time ??
@@ -520,6 +618,25 @@ export const AppLayout = () => {
                     <span className="nav-text-short">Refresh</span>
                     <span className="nav-text-full">Refresh Bunking</span>
                   </button>
+                </>
+              )}
+              {/*
+                UPLOAD BUNK NOTES — kindred#2478 §4: "staff want to be able to
+                upload without moving out of the family app mode." The same
+                component summer renders, with the label threaded through both
+                the button AND its success toast.
+
+                `CsvPipelineIndicator` comes along because that toast points at
+                it ("the icon next to the Upload Bunk Notes button will update
+                when it's done") — mirroring the button without the icon it
+                names would ship a sentence about something not on the screen.
+                It is program-agnostic (one global CSV pipeline) and renders
+                null unless an import is in flight.
+              */}
+              {activeProgram === 'weekend' && hasPermission(Permission.BUNKING_MANAGE) && (
+                <>
+                  <CsvPipelineIndicator />
+                  <BunkRequestsUpload label="Upload Bunk Notes" />
                 </>
               )}
               {/* Export button removed from metrics nav - export functionality will move inside metrics page if needed */}

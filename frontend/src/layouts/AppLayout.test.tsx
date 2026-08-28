@@ -59,7 +59,15 @@ vi.mock('../hooks/useTheme', () => ({
 }))
 
 vi.mock('../services/sync', () => ({
-  syncService: { refreshBunking: vi.fn() },
+  syncService: { refreshBunking: vi.fn(), refreshFamilyCamp: vi.fn() },
+}))
+
+let mockWeekendShell: { session: unknown; isAdultWeekend: boolean } = {
+  session: undefined,
+  isAdultWeekend: false,
+}
+vi.mock('../hooks/useWeekendShellSession', () => ({
+  useWeekendShellSession: () => mockWeekendShell,
 }))
 
 vi.mock('../lib/pocketbase', () => ({
@@ -81,7 +89,12 @@ vi.mock('../components/CacheStatus', () => ({
 }))
 
 vi.mock('../components/BunkRequestsUpload', () => ({
-  default: () => null,
+  // The label goes in an ATTRIBUTE, not text: the fresh-login guard below
+  // asserts that no /Requests/ text renders when sync end_times are absent,
+  // and a mock that printed "Upload Requests" would break that unrelated test.
+  default: ({ label }: { label?: string }) => (
+    <div data-testid="bunk-requests-upload" data-label={label ?? '(default)'} />
+  ),
 }))
 
 vi.mock('../components/BrandedLogo', () => ({
@@ -99,11 +112,11 @@ vi.mock('../components/FeedbackModal', () => ({
 
 import { AppLayout } from './AppLayout'
 
-function renderAppLayout() {
+function renderAppLayout(route = '/') {
   const queryClient = new QueryClient()
   return render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter>
+      <MemoryRouter initialEntries={[route]}>
         <AppLayout />
       </MemoryRouter>
     </QueryClientProvider>
@@ -401,5 +414,160 @@ describe('AppLayout Manage nav link', () => {
     renderAppLayout()
     expect(screen.getAllByRole('link', { name: 'Manage' })).toHaveLength(1)
     expect(screen.queryByRole('link', { name: 'Admin' })).toBeNull()
+  })
+})
+
+/**
+ * The weekend freshness stack — kindred#2570 (the ingest-age indicator) and
+ * kindred#2478 §4 (the `Housing synced` line beside it and `Upload Bunk
+ * Notes`). Both edit the same group, which is why they are one change.
+ */
+describe('AppLayout weekend freshness stack', () => {
+  const housingIso = '2026-04-22T12:00:00.000Z'
+  const uploadedAt = '2026-04-04T14:13:00.000Z'
+
+  function mockWeekendSyncStatus(overrides: Partial<SyncStatusResponse> = {}) {
+    syncStatusSpy.mockImplementation(() => ({
+      data: {
+        lodging_assignments: {
+          status: 'success',
+          end_time: housingIso,
+          start_time: housingIso,
+          summary: { created: 1, updated: 2, skipped: 0, errors: 0 },
+        },
+        _bunk_requests_upload: {
+          filename: 'BunkRequests_2026-04-04.csv',
+          uploaded_at: uploadedAt,
+        },
+        ...overrides,
+      } as SyncStatusResponse,
+    }))
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockPerms = { hasPermission: (p: string) => p === 'bunking.manage', isAdmin: false }
+    mockWeekendShell = { session: undefined, isAdultWeekend: false }
+    mockWeekendSyncStatus()
+  })
+
+  it('renders "Housing synced ..." off lodging_assignments', () => {
+    renderAppLayout('/weekend/fc4')
+    const label = screen.getByText(/Housing synced/)
+    expect(label.textContent).toMatch(/ago/)
+  })
+
+  it('renders "Bunk notes uploaded ..." off the CSV upload timestamp (#2570)', () => {
+    renderAppLayout('/weekend/fc4')
+    const label = screen.getByText(/Bunk notes uploaded/)
+    expect(label.textContent).toMatch(/ago/)
+    // #1706: relative-only inline; the absolute time lives in the tooltip.
+    expect(label.textContent).not.toMatch(/Apr 4/)
+  })
+
+  it('puts Housing synced BEFORE Bunk notes uploaded, mirroring summer', () => {
+    renderAppLayout('/weekend/fc4')
+    const housing = screen.getByText(/Housing synced/)
+    const notes = screen.getByText(/Bunk notes uploaded/)
+    // Node.DOCUMENT_POSITION_FOLLOWING === 4
+    expect(housing.compareDocumentPosition(notes) & 4).toBeTruthy()
+  })
+
+  it('exposes the CSV filename and absolute upload time via tooltip', () => {
+    renderAppLayout('/weekend/fc4')
+    const label = screen.getByText(/Bunk notes uploaded/)
+    const tooltipHost = label.closest('[title]') as HTMLElement | null
+    expect(tooltipHost).not.toBeNull()
+    const title = tooltipHost?.getAttribute('title') ?? ''
+    expect(title).toContain('BunkRequests_2026-04-04.csv')
+    expect(title).toMatch(/Apr 4/)
+  })
+
+  it("does NOT render summer's own labels on the weekend surface", () => {
+    mockWeekendSyncStatus({
+      bunk_assignments: { status: 'success', end_time: housingIso },
+    } as Partial<SyncStatusResponse>)
+    renderAppLayout('/weekend/fc4')
+    expect(screen.queryByText(/Assignments synced/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Requests uploaded/)).not.toBeInTheDocument()
+  })
+
+  // kindred#2570: `bunking_notes` reaches Kindred ONLY by CSV, so summer's
+  // "Requests synced" fallback off bunk_requests.end_time would report the
+  // hourly job's `success created=0 updated=0 skipped=1732` as freshness —
+  // which is precisely the lie the issue is about.
+  it('renders NO bunk-notes line at all when no CSV has ever been uploaded', () => {
+    syncStatusSpy.mockImplementation(() => ({
+      data: {
+        lodging_assignments: { status: 'success', end_time: housingIso },
+        bunk_requests: { status: 'success', end_time: housingIso },
+      } as SyncStatusResponse,
+    }))
+    renderAppLayout('/weekend/fc4')
+    expect(screen.getByText(/Housing synced/)).toBeInTheDocument()
+    expect(screen.queryByText(/Bunk notes/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/synced.*ago/)).not.toHaveTextContent(/Requests/)
+    expect(screen.queryByText(/Requests synced/)).not.toBeInTheDocument()
+  })
+
+  it('renders nothing at all without bunking.manage', () => {
+    mockPerms = { hasPermission: () => false, isAdmin: false }
+    renderAppLayout('/weekend/fc4')
+    expect(screen.queryByText(/Housing synced/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Bunk notes uploaded/)).not.toBeInTheDocument()
+    expect(screen.queryByTestId('bunk-requests-upload')).toBeNull()
+  })
+
+  it("renders Upload Bunk Notes, not summer's Upload Requests", () => {
+    renderAppLayout('/weekend/fc4')
+    const upload = screen.getByTestId('bunk-requests-upload')
+    expect(upload.getAttribute('data-label')).toBe('Upload Bunk Notes')
+  })
+
+  it("leaves summer's upload label at its default", () => {
+    renderAppLayout('/summer/sessions')
+    const upload = screen.getByTestId('bunk-requests-upload')
+    expect(upload.getAttribute('data-label')).toBe('(default)')
+  })
+})
+
+/**
+ * kindred#2478 §5.1: on an ADULT weekend the housing half is hidden, because
+ * `GetFamilyCampSessionCMIDs` filters `session_type = 'family'` exactly — the
+ * adult sessions are not in the bounded cohort, and `lodging_assignments` is a
+ * transform that rewrites their rows from custom values up to seven days old.
+ * The CSV lane is program-agnostic and is NOT affected.
+ */
+describe('AppLayout adult weekend', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockPerms = { hasPermission: (p: string) => p === 'bunking.manage', isAdmin: false }
+    mockWeekendShell = { session: { session_type: 'adult' }, isAdultWeekend: true }
+    syncStatusSpy.mockImplementation(() => ({
+      data: {
+        lodging_assignments: { status: 'success', end_time: '2026-04-22T12:00:00.000Z' },
+        _bunk_requests_upload: {
+          filename: 'BunkRequests_2026-04-04.csv',
+          uploaded_at: '2026-04-04T14:13:00.000Z',
+        },
+      } as SyncStatusResponse,
+    }))
+  })
+
+  it('hides the Housing synced line', () => {
+    renderAppLayout('/weekend/ww')
+    expect(screen.queryByText(/Housing synced/)).not.toBeInTheDocument()
+  })
+
+  it('still renders Bunk notes uploaded — the CSV lane is program-agnostic', () => {
+    renderAppLayout('/weekend/ww')
+    expect(screen.getByText(/Bunk notes uploaded/)).toBeInTheDocument()
+  })
+
+  it('still renders Upload Bunk Notes', () => {
+    renderAppLayout('/weekend/ww')
+    expect(screen.getByTestId('bunk-requests-upload').getAttribute('data-label')).toBe(
+      'Upload Bunk Notes'
+    )
   })
 })
