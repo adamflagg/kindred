@@ -13,6 +13,7 @@ import type { RosterPartyRow } from '../../types/lodging'
 import { NEED_FILTER_OPTIONS } from './AccessibilityFlagList'
 import { HouseholdRosterTable } from './HouseholdRosterTable'
 import { NEED_GLYPHS } from './needGlyphs'
+import { partyAttention } from './rosterAttention'
 
 vi.mock('../../hooks/usePermissions', () => ({
   usePermissions: () => ({
@@ -164,6 +165,46 @@ describe('HouseholdRosterTable', () => {
     const nameCell = waitingNameEl?.closest('td')
     expect(nameCell?.className ?? '').not.toMatch(/border-l-\[3px\]/)
     expect(nameCell?.className ?? '').not.toMatch(/border-(red|amber|sky)-(400|500)/)
+  })
+
+  it('draws no heading for the unverified band, and still draws its rows', () => {
+    // ⚠️ THE BAND IS ALIVE and still guards kindred#1982 -- `partyAttention`
+    // is asserted to produce it right here, so a later reader can tell a
+    // HIDDEN heading from a band that quietly stopped being produced. Only
+    // the HEADING goes, on the owner's 2026-08-27 ruling.
+    //
+    // The parties themselves must not go with it. They render UNSECTIONED, in
+    // place, rather than folded into `Settled` -- see the component's own
+    // comment for why folding is the one option kindred#1982 forbids.
+    const unverified = party({
+      display_name: 'Unverified Family',
+      unit_name: 'Ridge B',
+      household_cm_id: 2000003,
+      flags: {
+        needs_private_bathroom: false,
+        needs_power: false,
+        needs_accommodation: true,
+        accommodation_is_mandatory: false,
+        has_infant: false,
+      },
+    })
+    expect(partyAttention(unverified).level).toBe('unverified')
+
+    render(
+      <HouseholdRosterTable
+        year={2026}
+        parties={[party({ display_name: 'Settled Family', unit_name: 'Ridge A' }), unverified]}
+      />,
+      { wrapper }
+    )
+
+    // The other sections keep their headings and their counts.
+    expect(screen.getByText('Settled')).toBeInTheDocument()
+    // The band's own heading is gone.
+    expect(screen.queryByText('Fit not verified')).not.toBeInTheDocument()
+    // Its party is not -- still one row per party, the unverified one included.
+    const names = screen.getAllByTestId('household-row-name').map((n) => n.textContent)
+    expect(names).toEqual(['Unverified Family', 'Settled Family'])
   })
 
   it('does not draw section headings when every party shares one state', () => {

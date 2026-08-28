@@ -303,7 +303,27 @@ export function HouseholdRosterTable({
 
             {sections.map((section) => (
               <tbody key={section.level}>
-                {showSectionHeads && (
+                {/* ⚠️ THE `unverified` SECTION LOSES ITS HEADING, NOT ITS ROWS,
+                    AND THE BAND ITSELF STILL EXISTS. Do not "restore" this
+                    heading as an oversight, and do not delete the band behind
+                    it — `rosterAttention.ts` still produces `unverified` and it
+                    still guards kindred#1982, a resolved `private` with no
+                    cabin behind it that must not read as `settled`. Only the
+                    display goes, on the owner's 2026-08-27 ruling.
+
+                    UNSECTIONED IN PLACE was the choice, over folding these
+                    parties into a neighbour, and the alternative is worth
+                    naming because it looks tidier. Folding DOWN into `settled`
+                    is the one thing kindred#1982 forbids outright: it would put
+                    a party whose fit nobody could check under a heading
+                    claiming it was checked, and grow a count staff read as
+                    "done". Folding UP into `unplaced` is simply false — these
+                    parties have a cabin. Leaving the rows where the order
+                    already puts them keeps every remaining heading's count
+                    exactly as honest as it was, and any residual misreading
+                    (the block sits under the section above it) errs toward
+                    MORE attention, which is the opposite of #1982's failure. */}
+                {showSectionHeads && section.level !== 'unverified' && (
                   <tr>
                     <th
                       scope="colgroup"

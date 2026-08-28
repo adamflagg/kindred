@@ -185,18 +185,33 @@ export function FamilyDetailsPanel({
             <span className="text-muted-foreground text-xs">{unit.area_name}</span>
           )}
         </div>
-        {/* "Unverified" no longer means "nobody has confirmed this cabin" —
-            kindred#2526 removed that gate, and every placed cabin is now graded
-            at face value. It survives for the two cases a cabin field genuinely
-            cannot settle: a GENERIC accommodation request, and a placement
-            whose cabin cannot be resolved. Both are honest verdicts, not bugs
-            to route around. */}
-        {attention.level !== 'settled' && attention.level !== 'unplaced' && (
-          <p className="text-muted-foreground flex flex-wrap items-baseline gap-1.5 text-xs">
-            <span className="font-medium">{ATTENTION_LABEL[attention.level]}</span>
-            {attention.reason.length > 0 && <span>{attention.reason}</span>}
-          </p>
-        )}
+        {/* ⚠️ `unverified` IS EXCLUDED HERE, AND THE BAND STILL EXISTS. Do not
+            "restore" this as an oversight, and do not delete the band it hides.
+
+            `rosterAttention.ts` still produces `unverified` and it still guards
+            kindred#1982: a resolved `private` with no cabin behind it must not
+            read as `settled`. kindred#2526 confirmed both live producers — a
+            GENERIC accommodation request no cabin field can settle, and a
+            placement whose unit cannot be resolved — after checking them.
+
+            What went is only the DISPLAY, and only here: owner ruling
+            2026-08-27, that "Fit not verified" adds nothing in this panel. The
+            reader is already looking at the cabin name, the merged badge and
+            the area on the line above, and the Housing needs section below
+            names the ask itself; a fourth line saying the fit was not checked
+            told them nothing they could act on.
+
+            `settled` and `unplaced` were already out — `settled` carries no
+            words and "No cabin yet" is printed above. `required` and `unmet`
+            still print, because both name something the reader must fix. */}
+        {attention.level !== 'settled' &&
+          attention.level !== 'unplaced' &&
+          attention.level !== 'unverified' && (
+            <p className="text-muted-foreground flex flex-wrap items-baseline gap-1.5 text-xs">
+              <span className="font-medium">{ATTENTION_LABEL[attention.level]}</span>
+              {attention.reason.length > 0 && <span>{attention.reason}</span>}
+            </p>
+          )}
       </Section>
 
       <Section title="Party">
