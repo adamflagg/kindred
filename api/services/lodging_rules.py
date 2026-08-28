@@ -1087,8 +1087,20 @@ def compare_party_key(grain: str, household_cm_id: int, person_cm_id: int, displ
     service emits `household_cm_id = 0` for a household whose record failed to
     resolve, so on a family weekend two such parties collide on the id alone --
     and a compare that collapses them hands one family the other's cabin. The
-    name is the last separator there is; two unresolved households sharing one
-    is the residue, and `partyKey` carries the identical residue by design.
+    name separates the half of that case which CAN be separated: a household
+    record that exists but carries no `cm_id` still supplies its own
+    `mailing_title`, so it keeps a name of its own.
+
+    BE PRECISE ABOUT THE RESIDUE, because the previous wording read as though
+    the name always separated them and it does not. Where the household record
+    is MISSING ENTIRELY, `_household_display_name(None, 0)` names every such
+    party "Household 0" -- so two of those share this key, `compare_placements`
+    keeps one and the other is simply absent from the report. It cannot hand
+    anyone the wrong cabin: `placement_by_household` is keyed on the same 0, so
+    both sides read both parties as unplaced, and the whole loss is one row and
+    one tick of `both_unassigned`. `partyKey` carries the identical residue by
+    design, and fixing it means giving `RosterParty` a real identity across
+    every weekend surface -- a decision, not a follow-up.
     """
     return f"{grain}-{household_cm_id or person_cm_id or display_name}"
 

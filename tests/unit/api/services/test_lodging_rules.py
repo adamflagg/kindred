@@ -1020,7 +1020,11 @@ class TestComparePlacements:
         so two of them collide on the id alone and `display_name` is the only
         thing left to separate them. Keyed on the id alone this returns ONE
         verdict for two families -- and whichever one lost would silently
-        inherit the other's cabin."""
+        inherit the other's cabin.
+
+        THIS IS THE HALF THE NAME CAN SEPARATE: a household record that exists
+        and carries no `cm_id` still has its own `mailing_title`. The half it
+        cannot is pinned by the test below."""
         mirror = [
             _compare_side(0, "Unresolved household A", ["alpha-1"]),
             _compare_side(0, "Unresolved household B"),
@@ -1035,6 +1039,31 @@ class TestComparePlacements:
             ("Unresolved household A", "match"),
             ("Unresolved household B", "add"),
         ]
+
+    def test_two_households_with_no_record_at_all_collapse_and_that_is_pinned(self):
+        """The residue the test above does NOT cover, pinned rather than fixed.
+
+        The case above is a household RECORD that exists with no `cm_id` -- it
+        still has a `mailing_title`, so the name separates it. Where the record
+        is missing entirely the roster names EVERY such party "Household 0"
+        (`_household_display_name(None, 0)`), so the name separates nothing and
+        two of them share one key.
+
+        What that costs is one row and one tick of `both_unassigned`, never a
+        wrong cabin: `placement_by_household` is keyed on the same 0, so both
+        sides read both parties as unplaced. Pinned here so the next reader
+        finds the residue in a test rather than in production, in the same
+        spirit `_last_token`'s wrong answer is pinned in the roster service.
+        Removing it means giving `RosterParty` a real identity across every
+        weekend surface -- a decision, not a follow-up.
+        """
+        side = [
+            _compare_side(0, "Household 0"),
+            _compare_side(0, "Household 0"),
+        ]
+        out = compare_placements(side, side)
+        assert len(out) == 1
+        assert (out[0].cls, out[0].both_unassigned) == ("match", True)
 
     def test_person_grain_and_household_grain_never_collide(self):
         mirror = [
