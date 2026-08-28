@@ -41,43 +41,43 @@
  * age and stops there until that button lands.
  *
  * ## THE BOARD NAMES THE PLACEMENTS, not the roster
-
-Owner ruling, 2026-08-28: "take the board's state label ... if staff splits
-[a house] on the board and reopens the modal, it should reflect the board
-state. right now board is the authority, roster tab has been neglected
-intentionally for a while." (The ruling named a real house; the bracket keeps
-`verify-no-hardcoded-lodging.sh` happy without rewording the owner.)
-
-`ComparePartyReport.*_unit_label` is `RosterParty.unit_name`, a pure function of
-the assignment row's arity -- one unit gives that unit's name, 2+ gives them
-joined. A family holding all of a combined house therefore arrived as `Delta 1
-+ Delta 2` while the board it describes draws ONE card headed `Delta House`.
-The label's own docstring gives the reason it is republished at all --
-"so the modal never rebuilds a name from codes and shows staff something the
-board does not" -- and that is an argument FOR taking the board's answer, not
-against it.
-
-So the name goes through `boardPlacementNamer`, the board's own roll-up
-(`cardCodeResolver`), fed from `useWeekendRoster` under the SAME query key the
-board renders from: in the page it is a cache hit on the board's own document,
-which is what makes "what the board shows" a fact rather than a re-derivation.
-It follows `is_combined`, so a split renames the placement to its rooms and a
-merge renames it back, and `useUnitMerge` already invalidates that key through
-`invalidateLodgingRegistryQueries`. `*_unit_label` stays as the FALLBACK for a
-cold open or a code the registry has never heard of.
-
-⚠️ BOTH SIDES ARE NAMED AT THE SCENARIO'S DRAW LEVEL, deliberately -- the
-mirror's placement is spelled in the vocabulary of the board staff are looking
-at, because a row whose two halves used different vocabularies would read as a
-move that never happened.
-
-⚠️ THE VERDICT IS UNTOUCHED. `_placement_verdict` is exact set equality on
-`unit_codes` by owner ruling, so a mirror row naming two rooms against a
-scenario row naming their combined house is still a `conflict` -- and now a
-conflict whose two labels both read `Delta House`. That is a question about what the
-comparison MEANS, not about what it is called, and it is the owner's to answer.
-
-## staleTime 0, opted down from the app's 30-minute default
+ *
+ * Owner ruling, 2026-08-28: "take the board's state label ... if staff splits
+ * [a house] on the board and reopens the modal, it should reflect the board
+ * state. right now board is the authority, roster tab has been neglected
+ * intentionally for a while." (The ruling named a real house; the bracket keeps
+ * `verify-no-hardcoded-lodging.sh` happy without rewording the owner.)
+ *
+ * `ComparePartyReport.*_unit_label` is `RosterParty.unit_name`, a pure function of
+ * the assignment row's arity -- one unit gives that unit's name, 2+ gives them
+ * joined. A family holding all of a combined house therefore arrived as `Delta 1
+ * + Delta 2` while the board it describes draws ONE card headed `Delta House`.
+ * The label's own docstring gives the reason it is republished at all --
+ * "so the modal never rebuilds a name from codes and shows staff something the
+ * board does not" -- and that is an argument FOR taking the board's answer, not
+ * against it.
+ *
+ * So the name goes through `boardPlacementNamer`, the board's own roll-up
+ * (`cardCodeResolver`), fed from `useWeekendRoster` under the SAME query key the
+ * board renders from: in the page it is a cache hit on the board's own document,
+ * which is what makes "what the board shows" a fact rather than a re-derivation.
+ * It follows `is_combined`, so a split renames the placement to its rooms and a
+ * merge renames it back, and `useUnitMerge` already invalidates that key through
+ * `invalidateLodgingRegistryQueries`. `*_unit_label` stays as the FALLBACK for a
+ * cold open or a code the registry has never heard of.
+ *
+ * ⚠️ BOTH SIDES ARE NAMED AT THE SCENARIO'S DRAW LEVEL, deliberately -- the
+ * mirror's placement is spelled in the vocabulary of the board staff are looking
+ * at, because a row whose two halves used different vocabularies would read as a
+ * move that never happened.
+ *
+ * ⚠️ THE VERDICT IS UNTOUCHED. `_placement_verdict` is exact set equality on
+ * `unit_codes` by owner ruling, so a mirror row naming two rooms against a
+ * scenario row naming their combined house is still a `conflict` -- and now a
+ * conflict whose two labels both read `Delta House`. That is a question about what the
+ * comparison MEANS, not about what it is called, and it is the owner's to answer.
+ *
+ * ## staleTime 0, opted down from the app's 30-minute default
  *
  * Same divergence and the same reason as `PushWriteInsModal`: this modal stays
  * mounted across opens (`ui/Modal`'s exit fade needs that), so there is no
