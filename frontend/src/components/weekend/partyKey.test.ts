@@ -13,7 +13,7 @@
  */
 import { describe, expect, it } from 'vitest'
 
-import type { RosterPartyRow } from '../../types/lodging'
+import type { CompareParty, RosterPartyRow } from '../../types/lodging'
 import { partyKey } from './partyKey'
 
 function party(overrides: Partial<RosterPartyRow> = {}): RosterPartyRow {
@@ -77,5 +77,54 @@ describe('partyKey', () => {
     delete base.household_cm_id
     delete base.person_cm_id
     expect(partyKey(base)).toBe('household-The Chen Family')
+  })
+})
+
+describe('partyKey over a compare row', () => {
+  // kindred#2478 §5.5. The compare payload carries NO key of its own — it
+  // publishes the same `grain` + both ids + `display_name` a roster party
+  // does, precisely so this one helper reads it. A second key spelled inside
+  // the modal is how four surfaces drifted into two variants last time, and
+  // one of them was wrong.
+  function compareRow(overrides: Partial<CompareParty> = {}): CompareParty {
+    return {
+      grain: 'household',
+      household_cm_id: 101,
+      person_cm_id: 0,
+      display_name: 'The Johnson Family',
+      cls: 'match',
+      both_unassigned: false,
+      scenario_unit_label: '',
+      scenario_unit_codes: [],
+      mirror_unit_label: '',
+      mirror_unit_codes: [],
+      ...overrides,
+    }
+  }
+
+  it('keys a compare row the same way it keys the roster row it describes', () => {
+    expect(partyKey(compareRow())).toBe('household-101')
+  })
+
+  it('keys two unresolved households apart on a family weekend', () => {
+    // THE landmine §5.5 names: the roster service emits `household_cm_id = 0`
+    // for a household whose record failed to resolve, and family-camp-only
+    // scope shrinks that blast radius without removing it. Collapsed onto one
+    // key these two families become one row — and whichever lost would be
+    // shown the other's cabin.
+    const first = compareRow({
+      household_cm_id: 0,
+      display_name: 'The Garcia Family',
+      cls: 'add',
+      scenario_unit_codes: ['alpha-1'],
+    })
+    const second = compareRow({
+      household_cm_id: 0,
+      display_name: 'The Chen Family',
+      cls: 'remove',
+      mirror_unit_codes: ['beta-2'],
+    })
+    expect(partyKey(first)).not.toBe(partyKey(second))
+    expect(partyKey(first)).toBe('household-The Garcia Family')
   })
 })

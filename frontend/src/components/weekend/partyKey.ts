@@ -17,10 +17,37 @@
  * `display_name` for a household whose record failed to resolve — the roster
  * service emits `household_cm_id = 0` for those too, so they collide the same
  * way and the name is the last thing left to tell them apart.
+ *
+ * ## Where the name runs out
+ *
+ * Only where the household RECORD exists and its `cm_id` does not: that row
+ * still carries its own `mailing_title`. Where the record is missing entirely
+ * the roster names every such party `Household 0`, so those DO still share a
+ * key — React reconciles them as one row, and the compare's Python twin
+ * (`compare_party_key`) drops the duplicate from its report. Both are always
+ * unplaced, so nothing is shown the wrong cabin, but do not read this helper
+ * as a guarantee that two unresolved households stay apart. Making it one
+ * means giving `RosterParty` a real identity across every weekend surface.
  */
 import type { RosterPartyRow } from '../../types/lodging'
 
-export function partyKey(party: RosterPartyRow): string {
+/**
+ * The four fields party identity is made of, and nothing else.
+ *
+ * The parameter is this shape rather than `RosterPartyRow` so that the
+ * scenario-vs-CampMinder compare rows (kindred#2478 §5) go through THIS
+ * helper instead of spelling the rule a second time — which is the exact
+ * drift the file exists to prevent. `RosterPartyRow` satisfies it
+ * structurally, so every existing call site is untouched.
+ */
+export interface PartyIdentity {
+  grain: RosterPartyRow['grain']
+  household_cm_id?: number
+  person_cm_id?: number
+  display_name?: string
+}
+
+export function partyKey(party: PartyIdentity): string {
   // The disable is the whole point: `prefer-nullish-coalescing` is WRONG here,
   // and taking its advice is the bug described above. Do not autofix this.
   // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- 0 is the real wire value for the unused grain, so `??` collides every party

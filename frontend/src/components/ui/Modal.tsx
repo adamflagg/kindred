@@ -364,8 +364,25 @@ export function Modal({
         aria-label={!resolvedLabelledBy ? ariaLabel : undefined}
         style={backdropInsetRight ? { right: backdropInsetRight } : undefined}
       >
-        {/* Backdrop — fills the (already-inset) dialog wrapper via inset-0,
-          so the wrapper's right offset is the single source of truth. */}
+        {/* Backdrop — FIXED, not absolute, and it carries `backdropInsetRight`
+          itself rather than inheriting the wrapper's box.
+
+          ⚠️ THIS IS A REAL DEFECT FIX, not tidying. Under `anchor="top"` the
+          wrapper above is the SCROLL CONTAINER (`overflow-y-auto py-[10vh]`),
+          and an `absolute inset-0` child resolves against that container's
+          padding box — so the backdrop covered exactly one viewport-height and
+          then scrolled up out of view. Reported on the scenario compare, whose
+          family list runs past the screen on a real weekend: scroll down and
+          the blur is gone, leaving sharp page content behind a dialog that
+          still claims to be modal.
+
+          `fixed` resolves against the viewport, so it stays put at any scroll
+          offset. Nothing else changes: wheel events over it still bubble to
+          the scrolling ancestor, so the dialog scrolls as before, and
+          click-to-close is the same element with the same handler. The right
+          inset moves onto this element because a fixed box no longer inherits
+          the wrapper's — and the wrapper is itself `fixed inset-0`, so the two
+          spellings describe the identical box. */}
         <TransitionChild
           as="div"
           data-testid="modal-backdrop"
@@ -374,8 +391,11 @@ export function Modal({
           // DOM for the fade, so this goes inert the same frame the background
           // is un-inerted — no one-frame gap where a dying overlay still
           // swallows the click that closed it (2530 review finding 1).
-          className={`${isOpen ? 'pointer-events-auto' : 'pointer-events-none'} absolute inset-0 backdrop-blur`}
-          style={{ backgroundColor: 'rgba(17, 26, 22, 0.42)' }}
+          className={`${isOpen ? 'pointer-events-auto' : 'pointer-events-none'} fixed inset-0 backdrop-blur`}
+          style={{
+            backgroundColor: 'rgba(17, 26, 22, 0.42)',
+            ...(backdropInsetRight ? { right: backdropInsetRight } : {}),
+          }}
           onClick={onClose}
           aria-hidden="true"
           enter="transition-opacity duration-200 ease-out"

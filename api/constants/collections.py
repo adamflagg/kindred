@@ -114,6 +114,15 @@ LODGING_SESSION_STATUS = "lodging_session_status"
 LODGING_FRIEND_GROUPS = "lodging_friend_groups"
 LODGING_FRIEND_GROUP_MEMBERS = "lodging_friend_group_members"
 
+# One row per finished sync job (1500000152). Written solely by the Go
+# orchestrator's `recordSyncRun`, which also prunes it to a retention window;
+# nothing on this side writes it. Read here for ONE fact -- when a service's
+# last successful run ended -- so a payload can carry the age of the data it
+# was built from instead of leaving the browser to ask a second endpoint.
+# `adminOnly` on every rule, which this API satisfies by authenticating as a
+# superuser (`api/dependencies.py`); a user token cannot read it directly.
+SYNC_RUNS = "sync_runs"
+
 # Pipeline debug
 DEBUG_PIPELINE_RUNS = "debug_pipeline_runs"
 DEBUG_PIPELINE_SUMMARY = "debug_pipeline_summary"

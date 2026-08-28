@@ -263,6 +263,32 @@ describe('Modal', () => {
       expect(close.className).not.toContain('top-4')
     })
 
+    it('pins the backdrop to the viewport so it cannot scroll away', () => {
+      /*
+       * A top-anchored dialog's WRAPPER is the scroll container
+       * (`overflow-y-auto py-[10vh]`), and the backdrop lives inside it. As
+       * `absolute inset-0` it resolved against that container's padding box,
+       * so it covered one viewport-height and then scrolled up out of the way
+       * — reported on the scenario compare, whose family list runs past the
+       * screen on a real weekend: scroll down and the blur is simply gone,
+       * leaving sharp page content behind a dialog that still claims to be
+       * modal.
+       *
+       * `fixed` resolves against the viewport instead, so it stays put at any
+       * scroll offset. Scrolling still works: wheel events over the backdrop
+       * bubble to the scrolling ancestor, and click-to-close is the same
+       * element with the same handler.
+       */
+      render(
+        <Modal isOpen={true} onClose={() => {}} anchor="top">
+          <p>Modal content</p>
+        </Modal>
+      )
+      const backdrop = screen.getByTestId('modal-backdrop')
+      expect(backdrop.className).toContain('fixed')
+      expect(backdrop.className).not.toContain('absolute')
+    })
+
     it('anchors it to the top when a caller opts out', () => {
       // The prop survives the default flip precisely so a header that wants
       // the old behaviour can still say so, rather than being re-litigated.
@@ -411,9 +437,25 @@ describe('Modal', () => {
       expect(dialog.style.right).toBe('28rem')
     })
 
-    it('leaves the backdrop without its own right offset', () => {
-      // Regression guard for the double-inset bug: the backdrop must rely on
-      // its parent's positioning, not duplicate the inset.
+    it('gives the backdrop its own right offset, because it is fixed', () => {
+      /*
+       * ⚠️ THIS TEST WAS INVERTED, deliberately. It read "leaves the backdrop
+       * without its own right offset" and guarded a DOUBLE-INSET bug: the
+       * backdrop was `absolute inset-0` inside an already-shrunk wrapper, so
+       * adding the offset here too would have inset it twice.
+       *
+       * The backdrop is now `fixed`, which fixed a different and worse bug —
+       * as `absolute` it scrolled away inside a top-anchored dialog's scroll
+       * container, leaving a modal with no backdrop below the fold. A fixed
+       * box resolves against the VIEWPORT, not the shrunk wrapper, so the
+       * double-inset hazard cannot arise: there is no inherited shrink to
+       * double. Carrying the offset is now REQUIRED rather than a defect, and
+       * the wrapper (`fixed inset-0` + the same right) describes the identical
+       * box, so the two still agree.
+       *
+       * What must stay true either way is what the option is FOR: the blur
+       * stops at the side panel's edge. That is what this asserts now.
+       */
       render(
         <Modal isOpen={true} onClose={() => {}} backdropInsetRight="28rem">
           <p>Content</p>
@@ -421,7 +463,9 @@ describe('Modal', () => {
       )
 
       const backdrop = screen.getByTestId('modal-backdrop')
-      expect(backdrop.style.right).toBe('')
+      expect(backdrop.className).toContain('fixed')
+      expect(backdrop.style.right).toBe('28rem')
+      expect(screen.getByRole('dialog').style.right).toBe('28rem')
     })
 
     it('does not inset the wrapper by default', () => {

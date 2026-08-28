@@ -83,6 +83,7 @@ from api.constants.collections import (
     LODGING_WRITE_INS_DRAFT,
     ORIGINAL_BUNK_REQUESTS,
     PERSON_CUSTOM_VALUES,
+    SYNC_RUNS,
 )
 from api.constants.filters import ACTIVE_ENROLLED_FILTER
 from api.dependencies import lodging_cache
@@ -1211,6 +1212,57 @@ class LodgingRepository:
             LODGING_INGEST_ISSUES,
             f'year = {year} && kind = "{UNRESOLVED_ALIAS_KIND}" && is_resolved = false',
         )
+
+    async def fetch_last_successful_sync_end(self, service: str) -> str:
+        """When `service`'s last SUCCESSFUL sync finished, RFC3339, or "".
+
+        The freshness half of a payload that wants to state the age of the
+        data it just read. A caller that reads this BEFORE the rows can only
+        understate freshness -- a sync landing mid-request belongs to a run
+        this timestamp predates -- whereas a browser asking a second endpoint
+        afterwards can overstate it, which is the failure this exists to make
+        impossible.
+
+        SUCCESS ONLY. A failed run refreshed nothing, so publishing its
+        `ended` would be the same lie `Orchestrator.LastRecordedRuns` refuses
+        in `pocketbase/sync/sync_runs.go`. The two must agree: that function
+        feeds the weekend shell's "Housing synced ..." line and this feeds the
+        compare footer, and one screen may not date the mirror two ways.
+
+        SORTED `-started,-id`, matching that function's
+        `ROW_NUMBER() OVER (PARTITION BY service ORDER BY started DESC, id DESC)`
+        exactly rather than sorting on `ended`. Stored timestamps are
+        millisecond precision and a fast transform can produce two within one,
+        so the id breaks the tie the same way on both sides.
+
+        ONE ROW, via `_count`'s `get_list` shape rather than `_page`:
+        `sync_runs` holds every service's run for the whole retention window,
+        and `get_full_list` would page thousands in to read one field.
+
+        "" for a service that has never recorded a success. The caller renders
+        that as "unknown", which is a warning; any invented timestamp would
+        read as a guarantee.
+        """
+        result = await asyncio.to_thread(
+            self.pb.collection(SYNC_RUNS).get_list,
+            1,
+            1,
+            query_params={
+                "filter": f'service = "{pb_escape(service)}" && status = "success"',
+                "sort": "-started,-id",
+                "fields": "ended",
+            },
+        )
+        items = list(result.items)
+        if not items:
+            return ""
+        ended = str(getattr(items[0], "ended", "") or "")
+        # PocketBase serialises a datetime SPACE-separated
+        # ("2026-08-23 10:16:08.257Z"). The Go status endpoint this replaces
+        # emitted Go's own RFC3339, and `new Date()` parses the space form
+        # only by engine leniency -- normalised here so the component never
+        # has to know which producer it is reading.
+        return ended.replace(" ", "T", 1)
 
     # ---------------------------------------------------------------- writes
     #

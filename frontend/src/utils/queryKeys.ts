@@ -496,6 +496,16 @@ export const queryKeys = {
   // the weekend nor the scenario, and every writer that moves a write-in
   // already goes through it — see the note on this key in that helper.
   pushPreviewPrefix: () => ['push-preview'] as const,
+  /**
+   * The scenario-vs-CampMinder comparison (kindred#2478 §5): where one
+   * family-camp weekend's scenario puts each enrolled family against where
+   * the mirror does. `scenario` is required for the same reason
+   * `weekendRoster` and `pushPreview` require it — the mirror cannot be
+   * compared against itself, and a call site that forgot it would read one
+   * scenario's comparison out of another's cache slot.
+   */
+  scenarioCompare: (year: number, sessionCmId: number, scenario: string) =>
+    ['scenario-compare', year, sessionCmId, scenario] as const,
   // Prefixes for invalidation. The lodging admin panels edit registry rows
   // that feed the roster, but know neither the year nor the weekend, so they
   // cannot build a full key — see `invalidateLodgingRegistryQueries`.

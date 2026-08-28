@@ -769,7 +769,19 @@ function isPlanningInventory(unit: LodgingUnitRow): boolean {
   return unit.inventory_class !== 'staff_default' || unit.is_family_available === true
 }
 
-function indexPayload(parties: RosterPartyRow[], units: LodgingUnitRow[]) {
+/**
+ * Which card currently REPRESENTS each named unit code, plus the cards this
+ * payload draws at all.
+ *
+ * Extracted out of `indexPayload`'s closure so the compare modal can name a
+ * placement the way the board draws it (`boardPlacementNamer` below) without a
+ * second walk of its own. It is returned as a closure over two indexes because
+ * building those is the expensive half and every caller asks repeatedly.
+ */
+export function cardCodeResolver(units: LodgingUnitRow[]): {
+  drawn: LodgingUnitRow[]
+  cardCodesFor: (named: string) => string[]
+} {
   const unitsByCode = indexUnitsByCode(units)
 
   // Which units get a card, at each tree's resolved level. Replaces the old
@@ -813,6 +825,79 @@ function indexPayload(parties: RosterPartyRow[], units: LodgingUnitRow[]) {
     // that is showing the very card representing it.
     return representingCodes(unit, units, new Set(drawnByCode.keys()))
   }
+
+  return { drawn: candidates, cardCodesFor }
+}
+
+/**
+ * What the BOARD calls a placement, given the codes it names.
+ *
+ * THE BOARD IS THE AUTHORITY on a placement's name (owner ruling, 2026-08-28).
+ * `RosterParty.unit_name` is a pure function of the assignment row's arity --
+ * one unit gives that unit's name, 2+ gives them joined with " + " -- so a
+ * family holding all of a combined house reads as `Delta 1 + Delta 2`
+ * while the board it is describing draws ONE card headed `Delta House`. Staff were
+ * shown the rooms for a house nobody had split.
+ *
+ * The answer runs through `cardCodeResolver`, the board's OWN roll-up, rather
+ * than a second rule of its own: name the cards the placement lands on, in the
+ * order it named them, joined the way the roster joins a merged slot. That
+ * makes it follow `is_combined` -- the resolved per-scenario draw level -- so
+ * splitting the house on the board renames the placement to its rooms, and
+ * merging it renames it back, which is exactly what the ruling asks for.
+ *
+ * "" means THE BOARD HAS NO ANSWER, not "unplaced": an empty `codes` and a code
+ * the registry has never heard of both land there, and the caller is expected
+ * to keep its own fallback for the second case.
+ */
+export function boardPlacementNamer(units: LodgingUnitRow[]): (codes: readonly string[]) => string {
+  const { cardCodesFor } = cardCodeResolver(units)
+  return joinUnitNames(units, cardCodesFor)
+}
+
+/**
+ * What a placement calls ITSELF -- the units it names, named, with no roll-up.
+ *
+ * `boardPlacementNamer` is the label; this is the footnote beside it. The two
+ * part company on exactly the case the compare modal has to explain: a mirror
+ * row naming two rooms and a scenario row naming their combined house roll up
+ * to the ONE card the board draws, so both sides read `Delta House` under a
+ * `Different cabin` pill. Naming the units each side actually holds is what
+ * says why. See `withDetail` in `ScenarioCompareModal`.
+ *
+ * It is the SAME derivation as the roll-up -- the same registry names, joined
+ * the same way -- differing only in the expansion, so the two can never spell
+ * one unit two ways. "" carries the same meaning it does above: the registry
+ * had no answer, not "unplaced".
+ */
+export function placementUnitNamer(units: LodgingUnitRow[]): (codes: readonly string[]) => string {
+  return joinUnitNames(units, (code) => [code])
+}
+
+/**
+ * The one derivation both namers run: expand each named code, name what comes
+ * back, join. Shared rather than written twice because a second copy is how a
+ * footnote starts punctuating a house differently from the label above it.
+ */
+function joinUnitNames(
+  units: LodgingUnitRow[],
+  expand: (code: string) => string[]
+): (codes: readonly string[]) => string {
+  const nameByCode = new Map(units.map((unit) => [unit.code, unit.name]))
+  return (codes: readonly string[]): string =>
+    // De-duplicated for the same reason `indexPayload` de-duplicates: a party
+    // naming two rooms of one combined house lands on that house ONCE, and a
+    // name of "Delta House + Delta House" would be the label form of drawing it twice.
+    [...new Set(codes.flatMap(expand))]
+      .map((code) => nameByCode.get(code) ?? '')
+      .filter((name) => name !== '')
+      // The separator the roster's own merged-slot label uses, so a fallback
+      // to `unit_name` never changes the punctuation under staff.
+      .join(' + ')
+}
+
+function indexPayload(parties: RosterPartyRow[], units: LodgingUnitRow[]) {
+  const { drawn: candidates, cardCodesFor } = cardCodeResolver(units)
 
   const partiesByCode = new Map<string, RosterPartyRow[]>()
   const unplaced: RosterPartyRow[] = []

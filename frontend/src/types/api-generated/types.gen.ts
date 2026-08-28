@@ -720,6 +720,77 @@ export type ClearScenarioRequest = {
 }
 
 /**
+ * ComparePartyReport
+ *
+ * One enrolled family's scenario-vs-CampMinder verdict (kindred#2478 §5).
+ *
+ * A wire rendering of `lodging_rules.ComparePartyVerdict`. `cls` is
+ * `classify_push`'s own four-word vocabulary (§5.3) -- the SAME words the
+ * write-in half of this modal already uses, one grain over -- and
+ * `both_unassigned` splits one of its members for the overview counts rather
+ * than widening it to five.
+ *
+ * THERE IS NO JOIN KEY ON THE WIRE, deliberately. The client derives it with
+ * `partyKey()` (frontend/src/components/weekend/partyKey.ts), which is the
+ * one definition of party identity on that side; publishing a second one
+ * from here is how four surfaces drifted into two variants last time.
+ * `household_cm_id`/`person_cm_id` are BOTH always present and the unused
+ * one is 0, exactly as `RosterParty` publishes them, so `partyKey` reads
+ * this row the same way it reads a roster row.
+ *
+ * `*_unit_label` is the roster's ALREADY-BUILT label for each side -- a
+ * merged slot's name included -- so the modal never rebuilds a name from
+ * codes and shows staff something the board does not. `*_unit_codes` is the
+ * placement itself, and is what the predicate compared.
+ */
+export type ComparePartyReport = {
+  /**
+   * Grain
+   */
+  grain: 'household' | 'person'
+  /**
+   * Household Cm Id
+   */
+  household_cm_id?: number
+  /**
+   * Person Cm Id
+   */
+  person_cm_id?: number
+  /**
+   * Display Name
+   */
+  display_name?: string
+  /**
+   * Cls
+   */
+  cls: 'add' | 'match' | 'conflict' | 'remove'
+  /**
+   * Both Unassigned
+   */
+  both_unassigned?: boolean
+  /**
+   * Children
+   */
+  children?: Array<PartyChild>
+  /**
+   * Scenario Unit Label
+   */
+  scenario_unit_label?: string
+  /**
+   * Scenario Unit Codes
+   */
+  scenario_unit_codes?: Array<string>
+  /**
+   * Mirror Unit Label
+   */
+  mirror_unit_label?: string
+  /**
+   * Mirror Unit Codes
+   */
+  mirror_unit_codes?: Array<string>
+}
+
+/**
  * ComparisonDelta
  *
  * Delta between two years.
@@ -5817,6 +5888,87 @@ export type ScenarioAssignmentUpdate = {
    * Updated By
    */
   updated_by?: string | null
+}
+
+/**
+ * ScenarioCompareCounts
+ *
+ * The overview (kindred#2478 §5.4). FIVE numbers over four verdicts.
+ *
+ * `match` is PLACED-IDENTICALLY ONLY. `both_unassigned` is the other half of
+ * the same verdict, and the split is the ruling -- summing the two back
+ * together in a caller undoes it.
+ */
+export type ScenarioCompareCounts = {
+  /**
+   * Match
+   */
+  match?: number
+  /**
+   * Both Unassigned
+   */
+  both_unassigned?: number
+  /**
+   * Conflict
+   */
+  conflict?: number
+  /**
+   * Add
+   */
+  add?: number
+  /**
+   * Remove
+   */
+  remove?: number
+}
+
+/**
+ * ScenarioCompareResponse
+ *
+ * A scenario against the CampMinder mirror, for one family-camp weekend
+ * (kindred#2478 §5).
+ *
+ * REPORT-ONLY, and the payload says so by what it does not carry: no digest
+ * to echo, no decision handle, nothing a client could post back. Owner
+ * ruling §5.6 -- two of the four verdicts cannot be actioned at all, because
+ * acting on `remove` means writing TOWARD the mirror and
+ * `api/services/lodging_write_service.py` forbids that outright; acting is
+ * gated on the promote/publish decision, which is its own issue.
+ *
+ * `write_ins` is `preview_push`'s own output, unaltered (§5.4). The write-in
+ * half of this screen and the Push Write-Ins review screen run the same
+ * classifier over the same rows, so they can never disagree.
+ */
+export type ScenarioCompareResponse = {
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * Session Cm Id
+   */
+  session_cm_id: number
+  /**
+   * Scenario
+   */
+  scenario: string
+  /**
+   * Session Name
+   */
+  session_name?: string
+  counts?: ScenarioCompareCounts
+  /**
+   * Parties
+   */
+  parties?: Array<ComparePartyReport>
+  /**
+   * Write Ins
+   */
+  write_ins?: Array<PushBuildingReport>
+  /**
+   * Mirror Synced At
+   */
+  mirror_synced_at?: string
 }
 
 /**
@@ -10939,6 +11091,52 @@ export type GetPushPreviewApiLodgingPushPreviewGetResponses = {
 
 export type GetPushPreviewApiLodgingPushPreviewGetResponse =
   GetPushPreviewApiLodgingPushPreviewGetResponses[keyof GetPushPreviewApiLodgingPushPreviewGetResponses]
+
+export type GetScenarioCompareApiLodgingCompareGetData = {
+  body?: never
+  path?: never
+  query: {
+    /**
+     * Year
+     *
+     * Year of the weekend
+     */
+    year: number
+    /**
+     * Session Cm Id
+     *
+     * CampMinder id of the weekend session
+     */
+    session_cm_id: number
+    /**
+     * Scenario
+     *
+     * Scenario whose placements are compared against the CampMinder mirror
+     */
+    scenario: string
+  }
+  url: '/api/lodging/compare'
+}
+
+export type GetScenarioCompareApiLodgingCompareGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type GetScenarioCompareApiLodgingCompareGetError =
+  GetScenarioCompareApiLodgingCompareGetErrors[keyof GetScenarioCompareApiLodgingCompareGetErrors]
+
+export type GetScenarioCompareApiLodgingCompareGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: ScenarioCompareResponse
+}
+
+export type GetScenarioCompareApiLodgingCompareGetResponse =
+  GetScenarioCompareApiLodgingCompareGetResponses[keyof GetScenarioCompareApiLodgingCompareGetResponses]
 
 export type ExecutePushApiLodgingPushPostData = {
   body: PushExecuteRequest

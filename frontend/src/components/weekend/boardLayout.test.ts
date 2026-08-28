@@ -16,10 +16,12 @@ import type {
 import {
   AREA_HUES,
   areaTokens,
+  boardPlacementNamer,
   buildBoard,
   countBoardSlots,
   overlappingPartyKeys,
   partySize,
+  placementUnitNamer,
   slotOccupancy,
   wholeBuildingHolders,
 } from './boardLayout'
@@ -1681,5 +1683,123 @@ describe('overlappingPartyKeys — a CONTAINER is ambiguous on the same terms as
     expect(board.areas.flatMap((area) => area.slots).some((slot) => slot.consent !== null)).toBe(
       true
     )
+  })
+})
+
+describe('boardPlacementNamer — a placement is named as the board draws it', () => {
+  /**
+   * A house and its two rooms. `is_combined` is the RESOLVED draw level for
+   * the requested scenario, so flipping it here is exactly what staff do when
+   * they merge or split the card.
+   */
+  function deltaHouse(combined: boolean): LodgingUnitRow[] {
+    return [
+      unit({
+        unit_id: 'dh',
+        code: 'delta-house',
+        name: 'Delta House',
+        is_container: true,
+        is_combined: combined,
+      }),
+      unit({ unit_id: 'd1', code: 'delta-1', name: 'Delta 1', parent_code: 'delta-house' }),
+      unit({ unit_id: 'd2', code: 'delta-2', name: 'Delta 2', parent_code: 'delta-house' }),
+    ]
+  }
+
+  it('names a whole combined house by the house, not by its rooms', () => {
+    // The owner's report: a party holding all of Delta House read as `Delta 1
+    // + Delta 2`, which is not what the board says — the board draws ONE
+    // card, headed `Delta House`, and rolls both rooms onto it.
+    const name = boardPlacementNamer(deltaHouse(true))
+    expect(name(['delta-1', 'delta-2'])).toBe('Delta House')
+  })
+
+  it('names the same rooms separately once staff split the house', () => {
+    // The other half of the ruling: the label follows the BOARD'S STATE. Split
+    // the card and the two rooms are two cards again, so the placement is two
+    // names again.
+    const name = boardPlacementNamer(deltaHouse(false))
+    expect(name(['delta-1', 'delta-2'])).toBe('Delta 1 + Delta 2')
+  })
+
+  it('names a placement written against the house itself by the house', () => {
+    // Staff dragging onto the merged card writes the CONTAINER code, where the
+    // CampMinder mirror writes the two leaves. Same physical placement, two
+    // spellings — and while the house is combined both must read `Delta House`.
+    const name = boardPlacementNamer(deltaHouse(true))
+    expect(name(['delta-house'])).toBe('Delta House')
+  })
+
+  it('fans a container placement down to the rooms actually drawn when split', () => {
+    // A row naming the house while the house is split: the house has no card,
+    // so the board draws the party on both rooms and the name must follow.
+    const name = boardPlacementNamer(deltaHouse(false))
+    expect(name(['delta-house'])).toBe('Delta 1 + Delta 2')
+  })
+
+  it('leaves two unrelated rooms joined, because the board draws two cards', () => {
+    // The merged-slot case that is NOT a container: kindred#1903 removed the
+    // rule that a merged slot must be some container's complete child set, so
+    // two unrelated cabins are a legal slot — and two cards.
+    const name = boardPlacementNamer([
+      unit({ unit_id: 'c1', code: 'cedar-1', name: 'Cedar 1' }),
+      unit({ unit_id: 'c2', code: 'cedar-2', name: 'Cedar 2' }),
+    ])
+    expect(name(['cedar-1', 'cedar-2'])).toBe('Cedar 1 + Cedar 2')
+  })
+
+  it('says nothing for an unplaced party', () => {
+    expect(boardPlacementNamer(deltaHouse(true))([])).toBe('')
+  })
+
+  it('says nothing rather than guessing when the registry does not hold the code', () => {
+    // "" is the caller's signal that the board has no answer, which is what
+    // lets the compare modal fall back to the roster's own label instead of
+    // rendering a blank where a cabin belongs.
+    expect(boardPlacementNamer(deltaHouse(true))(['larkspur-9'])).toBe('')
+  })
+})
+
+describe('placementUnitNamer — a placement named by the units it actually names', () => {
+  /** The same house and rooms, so the contrast with the roll-up is exact. */
+  function deltaHouse(combined: boolean): LodgingUnitRow[] {
+    return [
+      unit({
+        unit_id: 'dh',
+        code: 'delta-house',
+        name: 'Delta House',
+        is_container: true,
+        is_combined: combined,
+      }),
+      unit({ unit_id: 'd1', code: 'delta-1', name: 'Delta 1', parent_code: 'delta-house' }),
+      unit({ unit_id: 'd2', code: 'delta-2', name: 'Delta 2', parent_code: 'delta-house' }),
+    ]
+  }
+
+  it('names the rooms it was given rather than the card that represents them', () => {
+    // The whole point of the second namer: `boardPlacementNamer` answers
+    // `Delta House` here, which is right for the label and useless for saying
+    // WHY two colliding labels are a conflict.
+    const name = placementUnitNamer(deltaHouse(true))
+    expect(name(['delta-1', 'delta-2'])).toBe('Delta 1 + Delta 2')
+  })
+
+  it('names a container placement by the container', () => {
+    // The other side of the same conflict: a row written against the house is
+    // the house, and must not be fanned down to rooms it never named.
+    const name = placementUnitNamer(deltaHouse(true))
+    expect(name(['delta-house'])).toBe('Delta House')
+  })
+
+  it('says nothing for an unplaced party', () => {
+    expect(placementUnitNamer(deltaHouse(true))([])).toBe('')
+  })
+
+  it('drops a code the registry has never heard of rather than printing it', () => {
+    // A code on screen is worse than a shorter name: staff read cabin names,
+    // and `larkspur-9` is not one.
+    const name = placementUnitNamer(deltaHouse(true))
+    expect(name(['delta-1', 'larkspur-9'])).toBe('Delta 1')
+    expect(name(['larkspur-9'])).toBe('')
   })
 })

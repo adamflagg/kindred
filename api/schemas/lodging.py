@@ -393,6 +393,112 @@ class UnpushResponse(BaseModel):
     deleted: int = 0
 
 
+class ComparePartyReport(BaseModel):
+    """One enrolled family's scenario-vs-CampMinder verdict (kindred#2478 §5).
+
+    A wire rendering of `lodging_rules.ComparePartyVerdict`. `cls` is
+    `classify_push`'s own four-word vocabulary (§5.3) -- the SAME words the
+    write-in half of this modal already uses, one grain over -- and
+    `both_unassigned` splits one of its members for the overview counts rather
+    than widening it to five.
+
+    THERE IS NO JOIN KEY ON THE WIRE, deliberately. The client derives it with
+    `partyKey()` (frontend/src/components/weekend/partyKey.ts), which is the
+    one definition of party identity on that side; publishing a second one
+    from here is how four surfaces drifted into two variants last time.
+    `household_cm_id`/`person_cm_id` are BOTH always present and the unused
+    one is 0, exactly as `RosterParty` publishes them, so `partyKey` reads
+    this row the same way it reads a roster row.
+
+    `*_unit_label` is the roster's ALREADY-BUILT label for each side -- a
+    merged slot's name included -- so the modal never rebuilds a name from
+    codes and shows staff something the board does not. `*_unit_codes` is the
+    placement itself, and is what the predicate compared.
+    """
+
+    grain: PartyGrain
+    household_cm_id: int = 0
+    person_cm_id: int = 0
+    display_name: str = ""
+    cls: Literal["add", "match", "conflict", "remove"]
+    # TRUE only where `cls` is "match": both sides agree this party has no
+    # cabin yet. Counted apart from a placed match (§5.4) because 54 matches
+    # that are 37 placed-identically plus 17 both-unassigned are two different
+    # kinds of agreement, and one green number over the pair hides a barely
+    # worked scenario.
+    both_unassigned: bool = False
+    # The party's enrolled children, so the modal can NAME a family the way the
+    # board does -- `FamilyCard`'s bold line is the children's run, with
+    # `display_name` (CampMinder's mailing title) only the fallback beneath it.
+    # Published here rather than derived client-side because `compare_placements`
+    # is a placement predicate and has no roster row to hand; the SERVICE
+    # attaches these from the roster it already read. Empty for a party with no
+    # children, which is the signal the client falls back on.
+    children: list[PartyChild] = Field(default_factory=list)
+    scenario_unit_label: str = ""
+    scenario_unit_codes: list[str] = Field(default_factory=list)
+    mirror_unit_label: str = ""
+    mirror_unit_codes: list[str] = Field(default_factory=list)
+
+
+class ScenarioCompareCounts(BaseModel):
+    """The overview (kindred#2478 §5.4). FIVE numbers over four verdicts.
+
+    `match` is PLACED-IDENTICALLY ONLY. `both_unassigned` is the other half of
+    the same verdict, and the split is the ruling -- summing the two back
+    together in a caller undoes it.
+    """
+
+    match: int = 0
+    both_unassigned: int = 0
+    conflict: int = 0
+    add: int = 0
+    remove: int = 0
+
+
+class ScenarioCompareResponse(BaseModel):
+    """A scenario against the CampMinder mirror, for one family-camp weekend
+    (kindred#2478 §5).
+
+    REPORT-ONLY, and the payload says so by what it does not carry: no digest
+    to echo, no decision handle, nothing a client could post back. Owner
+    ruling §5.6 -- two of the four verdicts cannot be actioned at all, because
+    acting on `remove` means writing TOWARD the mirror and
+    `api/services/lodging_write_service.py` forbids that outright; acting is
+    gated on the promote/publish decision, which is its own issue.
+
+    `write_ins` is `preview_push`'s own output, unaltered (§5.4). The write-in
+    half of this screen and the Push Write-Ins review screen run the same
+    classifier over the same rows, so they can never disagree.
+    """
+
+    year: int
+    session_cm_id: int
+    scenario: str
+    session_name: str = ""
+    counts: ScenarioCompareCounts = Field(default_factory=ScenarioCompareCounts)
+    parties: list[ComparePartyReport] = Field(default_factory=list)
+    write_ins: list[PushBuildingReport] = Field(default_factory=list)
+    # WHEN THE MIRROR THIS REPORT WAS BUILT FROM WAS LAST REFRESHED --
+    # `lodging_assignments`' own last successful run, RFC3339, "" for never.
+    #
+    # It rides on the payload rather than being fetched alongside it because
+    # §5.4 makes the age this screen's honesty mechanism: "without the age on
+    # screen, staff read a stale diff as a live one." A browser asking
+    # `/api/custom/sync/status` separately gets an answer from a different
+    # instant -- that read polls every 3 s during a sync and refetches on
+    # window focus, while the comparison does neither -- so a transform
+    # landing with the modal open walked the footer forward under a diff built
+    # from the rows before it. The one guard the design rests on was the one
+    # thing that could overstate freshness.
+    #
+    # `compare_scenario` reads it BEFORE the mirror roster, which is what
+    # makes the remaining error one-directional: the age can name a run at or
+    # before the rows, never after them, so "anything staff changed since then
+    # is not here yet" stays true.
+    mirror_synced_at: str = ""
+
+
 class LodgingUnitSummary(BaseModel):
     """One row of the lodging registry, as the roster sees it."""
 
