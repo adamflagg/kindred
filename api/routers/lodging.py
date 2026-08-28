@@ -27,12 +27,14 @@ from api.schemas.lodging import (
     PushExecuteRequest,
     PushExecuteResponse,
     PushPreviewResponse,
+    ScenarioCompareResponse,
     SlotMergeRequest,
     UnpushResponse,
     WeekendRosterResponse,
     WeekendSessionListResponse,
     WeekendSummaryResponse,
 )
+from api.services.lodging_compare_service import LodgingCompareService, NotAFamilyWeekendError
 from api.services.lodging_repository import LodgingRepository
 from api.services.lodging_roster_service import LodgingRosterService, SessionNotFoundError
 from api.services.lodging_write_service import (
@@ -74,6 +76,10 @@ def _may_read_staff_notes(user: AuthUser) -> bool:
 
 def _writes() -> LodgingWriteService:
     return LodgingWriteService(LodgingRepository(pb))
+
+
+def _compare() -> LodgingCompareService:
+    return LodgingCompareService(LodgingRepository(pb))
 
 
 def _weekend_404(year: int, session_cm_id: int) -> HTTPException:
@@ -370,6 +376,46 @@ async def get_push_preview(
         return await _writes().preview_push(year, session_cm_id, scenario)
     except SessionNotFoundError as exc:
         raise _weekend_404(year, session_cm_id) from exc
+
+
+@router.get("/compare", response_model=ScenarioCompareResponse)
+async def get_scenario_compare(
+    year: int = Query(..., description="Year of the weekend", ge=2000, le=2100),
+    session_cm_id: int = Query(..., description="CampMinder id of the weekend session", gt=0),
+    scenario: str = Query(
+        ..., description="Scenario whose placements are compared against the CampMinder mirror", min_length=1
+    ),
+    user: AuthUser = Depends(require_permission(Permission.BUNKING_MANAGE)),
+) -> ScenarioCompareResponse:
+    """Compare a scenario's placements against the CampMinder mirror (kindred#2478 §5).
+
+    REPORT-ONLY, by owner ruling (§5.6). This reads and classifies; it offers
+    no take-CampMinder's / keep-mine action on any row and writes nothing.
+    Half the verdicts could not be actioned even if it did: acting on `remove`
+    means writing TOWARD `lodging_assignments`, which
+    `api/services/lodging_write_service.py` forbids outright. See
+    `api/services/lodging_compare_service.py`.
+
+    CLASSIFICATION IS SERVER-SIDE, the same argument `get_push_preview` above
+    documents one grain over: inside a scenario `/roster` replaces the mirror's
+    placements with the scenario's draft rows, so a client working inside one
+    never reads the live table and has nothing to diff against. This endpoint
+    is the one place both sides are read together.
+
+    `BUNKING_MANAGE`-gated exactly like `/push/preview`, and for the same
+    reason: it writes nothing, but reviewing a plan against CampMinder is part
+    of the same staff workflow placing families is.
+
+    A weekend that is not family camp is a 400, not an empty report -- owner
+    ruling §5.1 scopes this to family camp, and an empty report would read as
+    agreement rather than as a question this feature does not answer.
+    """
+    try:
+        return await _compare().compare_scenario(year, session_cm_id, scenario)
+    except SessionNotFoundError as exc:
+        raise _weekend_404(year, session_cm_id) from exc
+    except NotAFamilyWeekendError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.post("/push", response_model=PushExecuteResponse)

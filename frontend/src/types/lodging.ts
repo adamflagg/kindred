@@ -19,6 +19,7 @@
 
 import type {
   AccessibilityFlagSummary,
+  ComparePartyReport,
   HouseholdJourneyResponse,
   HouseholdJourneySession,
   HouseholdJourneyYear,
@@ -31,6 +32,8 @@ import type {
   RequestTextEntry,
   RosterCounts,
   RosterParty,
+  ScenarioCompareCounts,
+  ScenarioCompareResponse,
   ShareRequestSummary,
   WeekendRosterResponse,
   WeekendSessionListResponse,
@@ -53,6 +56,28 @@ export type WeekendSession = WeekendSessionSummary
 export type RosterPartyRow = RosterParty
 /** The honest-counts block. */
 export type RosterCountSummary = RosterCounts
+/**
+ * A scenario against the CampMinder mirror, for one family-camp weekend
+ * (kindred#2478 §5). REPORT-ONLY — there is no digest to echo and no decision
+ * handle, because half the verdicts could not be actioned even if there were
+ * (see `api/services/lodging_compare_service.py`).
+ */
+export type ScenarioCompare = ScenarioCompareResponse
+/**
+ * The overview: FIVE numbers over four verdicts. `match` is
+ * placed-identically ONLY — `both_unassigned` is the other half of the same
+ * verdict, split out because agreement on a cabin and agreement that nobody
+ * has one yet are two different kinds of agreement (§5.4). Summing them back
+ * together undoes the ruling.
+ */
+export type ScenarioCompareCountSummary = ScenarioCompareCounts
+/**
+ * One enrolled family's verdict. Carries `grain` + BOTH ids + `display_name`
+ * and no key of its own, deliberately: `partyKey()` is the one definition of
+ * party identity on this side, and it reads this row exactly as it reads a
+ * roster row.
+ */
+export type CompareParty = ComparePartyReport
 /** One row of the lodging registry as the roster sees it. */
 export type LodgingUnitRow = LodgingUnitSummary
 /**

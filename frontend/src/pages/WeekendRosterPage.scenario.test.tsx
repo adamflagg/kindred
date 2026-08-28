@@ -141,6 +141,14 @@ vi.mock('../components/weekend/PushWriteInsEntry', () => ({
   PushWriteInsEntry: () => null,
 }))
 
+// Same reasoning, and the same shape, for the compare entry (kindred#2478
+// §5): it mounts `ScenarioCompareModal`, which reads `useSyncStatusAPI` for
+// the mirror's age and so needs a real AuthProvider these layout tests do not
+// stand up. Its own suite is `components/weekend/ScenarioCompareEntry.test.tsx`.
+vi.mock('../components/weekend/ScenarioCompareEntry', () => ({
+  ScenarioCompareEntry: () => null,
+}))
+
 // The board mounts `useLodgingPlacement`, which mounts a real `useMutation` —
 // and that reaches for a QueryClient through react-query's own internals,
 // which the `useQueryClient` stub above does not satisfy. These files are

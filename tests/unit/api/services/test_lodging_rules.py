@@ -22,6 +22,7 @@ from api.services.lodging_rules import (
     BUNKING_CSV_REQUEST_TEXT_FIELDS,
     FAMILY_CAMP_REQUEST_TEXT_CM_IDS,
     REQUEST_TEXT_SOURCES,
+    ComparePartyPlacement,
     HousingNameResolver,
     PushRow,
     RegistryUnit,
@@ -30,6 +31,8 @@ from api.services.lodging_rules import (
     WriteInLoad,
     amenity_coverage,
     classify_push,
+    compare_party_key,
+    compare_placements,
     container_bathroom,
     effective_bathroom,
     free_family_spots,
@@ -934,3 +937,146 @@ class TestPushDigest:
         a = classify_push([], [_push_row("uc", "cedar-9", "A", ppl=None)], u)
         b = classify_push([], [_push_row("uc", "cedar-9", "A", ppl=2)], u)
         assert push_digest(a) != push_digest(b)
+
+
+# --------------------------------------------------- scenario-vs-mirror compare
+#
+# kindred#2478 §5. Unit codes here are invented (`alpha-1`, `beta-2`) rather
+# than sampled from the registry -- scripts/dev/verify-no-hardcoded-lodging.sh
+# scans tests too.
+
+
+def _compare_side(cm_id, name, codes=(), label="", grain="household", person_cm_id=0):
+    codes = tuple(codes)
+    return ComparePartyPlacement(
+        grain=grain,
+        household_cm_id=cm_id,
+        person_cm_id=person_cm_id,
+        display_name=name,
+        unit_codes=codes,
+        unit_label=label or " + ".join(codes),
+    )
+
+
+class TestComparePlacements:
+    """The RULED placement predicate (kindred#2478 §5.2): grain is the enrolled
+    party, compared on the EXACT unit set, in `classify_push`'s own four-word
+    vocabulary (§5.3)."""
+
+    def test_identical_unit_set_is_a_placed_match(self):
+        mirror = [_compare_side(11, "The Alvarez Family", ["alpha-1"])]
+        scenario = [_compare_side(11, "The Alvarez Family", ["alpha-1"])]
+        out = compare_placements(mirror, scenario)
+        assert [(v.cls, v.both_unassigned) for v in out] == [("match", False)]
+
+    def test_both_unassigned_is_a_match_flagged_apart(self):
+        """§5.4: "both unassigned" is agreement, but not the same KIND of
+        agreement as a placed match -- lumping them hides a barely-worked
+        scenario behind a green number. Same `cls`, separate flag."""
+        mirror = [_compare_side(12, "The Bhatt Family")]
+        scenario = [_compare_side(12, "The Bhatt Family")]
+        out = compare_placements(mirror, scenario)
+        assert [(v.cls, v.both_unassigned) for v in out] == [("match", True)]
+
+    def test_different_unit_is_a_conflict(self):
+        mirror = [_compare_side(13, "The Castellano Family", ["alpha-1"])]
+        scenario = [_compare_side(13, "The Castellano Family", ["beta-2"])]
+        out = compare_placements(mirror, scenario)
+        assert [(v.cls, v.both_unassigned) for v in out] == [("conflict", False)]
+        assert out[0].mirror_unit_codes == ("alpha-1",)
+        assert out[0].scenario_unit_codes == ("beta-2",)
+
+    def test_a_multi_room_difference_is_a_conflict_not_a_match(self):
+        """Owner ruling, §5.2: the comparison is on the EXACT unit set. No
+        building-level tolerance -- two rooms against one of the same two is a
+        conflict, and it is the only rule in §5 with no judgement in it."""
+        mirror = [_compare_side(14, "The Duarte Family", ["alpha-1"])]
+        scenario = [_compare_side(14, "The Duarte Family", ["alpha-1", "alpha-2"])]
+        out = compare_placements(mirror, scenario)
+        assert [v.cls for v in out] == ["conflict"]
+
+    def test_the_same_multi_room_set_in_a_different_order_is_a_match(self):
+        """SET equality, not sequence equality: `units` is a relation whose
+        stored order is a fact about how the row was written, not about where
+        the family sleeps."""
+        mirror = [_compare_side(15, "The Eze Family", ["alpha-2", "alpha-1"])]
+        scenario = [_compare_side(15, "The Eze Family", ["alpha-1", "alpha-2"])]
+        out = compare_placements(mirror, scenario)
+        assert [(v.cls, v.both_unassigned) for v in out] == [("match", False)]
+
+    def test_placed_only_in_the_scenario_is_an_add(self):
+        mirror = [_compare_side(16, "The Fontaine Family")]
+        scenario = [_compare_side(16, "The Fontaine Family", ["alpha-1"])]
+        assert [v.cls for v in compare_placements(mirror, scenario)] == ["add"]
+
+    def test_placed_only_in_campminder_is_a_remove(self):
+        mirror = [_compare_side(17, "The Grigoryan Family", ["alpha-1"])]
+        scenario = [_compare_side(17, "The Grigoryan Family")]
+        assert [v.cls for v in compare_placements(mirror, scenario)] == ["remove"]
+
+    def test_unresolved_households_keying_on_zero_stay_separate_rows(self):
+        """🚨 kindred#2478 §5.5's landmine, in Python. The roster service emits
+        `household_cm_id = 0` for a household whose record failed to resolve,
+        so two of them collide on the id alone and `display_name` is the only
+        thing left to separate them. Keyed on the id alone this returns ONE
+        verdict for two families -- and whichever one lost would silently
+        inherit the other's cabin."""
+        mirror = [
+            _compare_side(0, "Unresolved household A", ["alpha-1"]),
+            _compare_side(0, "Unresolved household B"),
+        ]
+        scenario = [
+            _compare_side(0, "Unresolved household A", ["alpha-1"]),
+            _compare_side(0, "Unresolved household B", ["beta-2"]),
+        ]
+        out = compare_placements(mirror, scenario)
+        assert len(out) == 2
+        assert [(v.display_name, v.cls) for v in out] == [
+            ("Unresolved household A", "match"),
+            ("Unresolved household B", "add"),
+        ]
+
+    def test_person_grain_and_household_grain_never_collide(self):
+        mirror = [
+            _compare_side(0, "P. Nakamura", ["alpha-1"], grain="person", person_cm_id=91),
+            _compare_side(91, "The Nakamura Family", ["beta-2"]),
+        ]
+        out = compare_placements(mirror, mirror)
+        assert len(out) == 2
+        assert {v.key for v in out} == {"person-91", "household-91"}
+
+    def test_rows_follow_the_scenario_order_then_mirror_only_parties(self):
+        """The scenario side is the roster's own order -- already filed on
+        `sort_name` -- so the modal lists families the way the board does
+        rather than in a second order of this classifier's invention."""
+        mirror = [
+            _compare_side(22, "The Rojas Family", ["alpha-1"]),
+            _compare_side(21, "The Quintero Family"),
+            _compare_side(23, "The Sorenson Family", ["beta-2"]),
+        ]
+        scenario = [
+            _compare_side(21, "The Quintero Family"),
+            _compare_side(22, "The Rojas Family", ["alpha-1"]),
+        ]
+        out = compare_placements(mirror, scenario)
+        assert [v.household_cm_id for v in out] == [21, 22, 23]
+        assert out[2].cls == "remove"
+
+    def test_the_display_label_of_each_side_is_carried_through(self):
+        mirror = [_compare_side(31, "The Terzian Family", ["alpha-1"], label="Alpha 1")]
+        scenario = [_compare_side(31, "The Terzian Family", ["alpha-1", "alpha-2"], label="Alpha 1 + Alpha 2")]
+        out = compare_placements(mirror, scenario)
+        assert out[0].mirror_unit_label == "Alpha 1"
+        assert out[0].scenario_unit_label == "Alpha 1 + Alpha 2"
+
+
+class TestComparePartyKey:
+    """The Python half of `frontend/src/components/weekend/partyKey.ts`'s rule,
+    spelled the same way on purpose (kindred#2478 §5.5)."""
+
+    def test_falls_through_zero_to_the_grain_that_is_set(self):
+        assert compare_party_key("person", 0, 91, "P. Nakamura") == "person-91"
+        assert compare_party_key("household", 44, 0, "The Ubeda Family") == "household-44"
+
+    def test_falls_through_to_the_display_name_when_both_ids_are_zero(self):
+        assert compare_party_key("household", 0, 0, "Unresolved household A") == ("household-Unresolved household A")

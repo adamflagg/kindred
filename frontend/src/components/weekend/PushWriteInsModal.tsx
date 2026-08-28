@@ -67,6 +67,7 @@ import { QueryGuard } from '../QueryGuard'
 import { Modal } from '../ui/Modal'
 import { PushDecisionDeck } from './PushDecisionDeck'
 import { decisionsNeeded, pushableRows } from './pushCounts'
+import { VERDICT_TONE } from './verdictTone'
 
 /** Which screen the modal is showing. */
 export type PushStage = 'report' | 'deck' | 'done'
@@ -142,33 +143,19 @@ export interface PushWriteInsModalProps {
 const CLASS_ORDER: ReadonlyArray<PushBuildingReport['cls']> = ['add', 'match', 'conflict', 'remove']
 
 /**
- * Label and accent per class, in the board's `rounded-2xl border-2` +
- * semantic-color vocabulary (`unitBadges.ts`'s amber conflict chip,
- * `CamperDetail.tsx`'s amber panel). `'remove'` reads "Not in scenario"
+ * Label per class. The accent comes from `verdictTone.ts` — shared with the
+ * scenario-vs-CampMinder compare (kindred#2478 §5), which renders the same
+ * four verdicts one grain over and must not drift onto a second palette for
+ * them. `'remove'` reads "Not in scenario"
  * rather than "Will remove": the scenario never asked to remove anything —
  * it simply carries no draft row for a building the live board still holds
  * one for, and pushing is what would turn that absence into a removal.
  */
 const TILE_META: Record<PushBuildingReport['cls'], { label: string; className: string }> = {
-  add: {
-    label: 'Will add',
-    className:
-      'border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-200',
-  },
-  match: {
-    label: 'Already matches',
-    className: 'border-border bg-muted/40 text-muted-foreground',
-  },
-  conflict: {
-    label: 'Conflicts',
-    className:
-      'border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-200',
-  },
-  remove: {
-    label: 'Not in scenario',
-    className:
-      'border-red-200 bg-red-50 text-red-900 dark:border-red-800 dark:bg-red-900/20 dark:text-red-200',
-  },
+  add: { label: 'Will add', className: VERDICT_TONE.add },
+  match: { label: 'Already matches', className: VERDICT_TONE.match },
+  conflict: { label: 'Conflicts', className: VERDICT_TONE.conflict },
+  remove: { label: 'Not in scenario', className: VERDICT_TONE.remove },
 }
 
 /**

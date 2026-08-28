@@ -24,10 +24,13 @@ from api.schemas.lodging import (
     PushExecuteResponse,
     PushPreviewResponse,
     RosterCounts,
+    ScenarioCompareCounts,
+    ScenarioCompareResponse,
     SlotMergeRequest,
     UnpushResponse,
     WeekendRosterResponse,
 )
+from api.services.lodging_compare_service import NotAFamilyWeekendError
 from api.services.lodging_roster_service import SessionNotFoundError
 from api.services.lodging_rules import push_digest
 from api.services.lodging_write_service import (
@@ -1992,3 +1995,89 @@ class TestUnpushEndpoint:
 
         assert response.status_code == 404
         assert "9999999" in response.json()["detail"]
+
+
+class TestScenarioCompareEndpoint:
+    """`GET /api/lodging/compare` (kindred#2478 §5).
+
+    Service-mocked for the same reason `TestPushPreviewEndpoint` is: the
+    classification is `compare_placements`' contract (test_lodging_rules.py)
+    and the composition is `LodgingCompareService`'s
+    (test_lodging_compare_service.py). What is checked here is the wiring --
+    the auth gate, the argument order, and the two error mappings.
+    """
+
+    URL = "/api/lodging/compare"
+    PARAMS: ClassVar[dict[str, int | str]] = {"year": 2026, "session_cm_id": 1000001, "scenario": "scn_1"}
+
+    def test_user_without_the_permission_gets_403(self, mock_pb: MagicMock) -> None:
+        """Same gate as `push/preview`, which also writes nothing: reviewing
+        what a plan says against CampMinder is part of the same staff workflow
+        placing families is."""
+        with patch("api.routers.lodging.pb", mock_pb):
+            app = _build_app(_plain_user(), mock_pb)
+            response = TestClient(app).get(self.URL, params=self.PARAMS)
+
+        assert response.status_code == 403
+        assert Permission.BUNKING_MANAGE in response.json()["detail"]
+
+    def test_bunking_staff_get_the_comparison(self, mock_pb: MagicMock) -> None:
+        report = ScenarioCompareResponse(
+            year=2026,
+            session_cm_id=1000001,
+            scenario="scn_1",
+            session_name="Family Weekend One",
+            counts=ScenarioCompareCounts(match=3, both_unassigned=2, conflict=1),
+        )
+        app = _build_app(_manage_user(), mock_pb)
+        with patch("api.routers.lodging.LodgingCompareService") as service_cls:
+            service_cls.return_value.compare_scenario = AsyncMock(return_value=report)
+            with patch("api.routers.lodging.pb", mock_pb):
+                response = TestClient(app).get(self.URL, params=self.PARAMS)
+
+        assert response.status_code == 200
+        assert response.json()["counts"] == {
+            "match": 3,
+            "both_unassigned": 2,
+            "conflict": 1,
+            "add": 0,
+            "remove": 0,
+        }
+        service_cls.return_value.compare_scenario.assert_awaited_once_with(2026, 1000001, "scn_1")
+
+    def test_an_unknown_weekend_is_404_not_500(self, mock_pb: MagicMock) -> None:
+        app = _build_app(_manage_user(), mock_pb)
+        with patch("api.routers.lodging.LodgingCompareService") as service_cls:
+            service_cls.return_value.compare_scenario = AsyncMock(
+                side_effect=SessionNotFoundError("no weekend 9999999")
+            )
+            with patch("api.routers.lodging.pb", mock_pb):
+                response = TestClient(app).get(self.URL, params={**self.PARAMS, "session_cm_id": 9999999})
+
+        assert response.status_code == 404
+        assert "9999999" in response.json()["detail"]
+
+    def test_an_adult_weekend_is_400_not_an_empty_report(self, mock_pb: MagicMock) -> None:
+        """Owner ruling §5.1 -- family camp only. An empty report would read as
+        "your scenario matches CampMinder", which on an adult weekend is a
+        claim about data the bounded refresh chain never fetched."""
+        app = _build_app(_manage_user(), mock_pb)
+        with patch("api.routers.lodging.LodgingCompareService") as service_cls:
+            service_cls.return_value.compare_scenario = AsyncMock(
+                side_effect=NotAFamilyWeekendError("Weekend 1000009 in 2026 is not a family camp session")
+            )
+            with patch("api.routers.lodging.pb", mock_pb):
+                response = TestClient(app).get(self.URL, params={**self.PARAMS, "session_cm_id": 1000009})
+
+        assert response.status_code == 400
+        assert "family camp" in response.json()["detail"]
+
+    def test_the_mirror_cannot_be_compared_against_itself(self, mock_pb: MagicMock) -> None:
+        """`scenario` is required and non-empty at the boundary, the same way
+        `push/preview` requires it: there is no meaningful comparison of the
+        mirror with the mirror."""
+        with patch("api.routers.lodging.pb", mock_pb):
+            app = _build_app(_manage_user(), mock_pb)
+            response = TestClient(app).get(self.URL, params={**self.PARAMS, "scenario": ""})
+
+        assert response.status_code == 422

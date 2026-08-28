@@ -1012,3 +1012,151 @@ def push_digest(buildings: Sequence[PushBuilding]) -> str:
         for b in sorted(buildings, key=lambda b: b.key)
     ]
     return hashlib.sha256(json.dumps(canonical, default=str).encode()).hexdigest()
+
+
+# --------------------------------------------- scenario-vs-CampMinder compare
+#
+# kindred#2478 §5. The RULED diff between where a scenario puts each enrolled
+# family and where the CampMinder mirror (`lodging_assignments`) does. Pure
+# rules only, exactly as `classify_push` above is: what agrees and what does
+# not, never how to fetch it -- and NEVER how to act on it. §5.6 rules this
+# report-only, because acting on `remove` would mean writing TOWARD the
+# mirror, which `api/services/lodging_write_service.py` forbids outright.
+#
+# THE VOCABULARY IS `classify_push`'s, deliberately (§5.3): "add", "match",
+# "conflict", "remove", meaning the same four things one grain over. A second
+# set of words for the same four verdicts is the thing this reuse exists to
+# prevent -- the write-in half of the same modal is `classify_push`'s own
+# output, and two vocabularies side by side in one screen would teach staff
+# that the two halves are different kinds of answer when they are not.
+
+
+@dataclass(frozen=True)
+class ComparePartyPlacement:
+    """Where ONE side of the compare puts one enrolled party.
+
+    `unit_codes` is the placement; `unit_label` is only what it is CALLED --
+    the roster's already-built label, carried through so the modal never has
+    to rebuild a merged slot's name from codes and get a different answer than
+    the board shows.
+    """
+
+    grain: str
+    household_cm_id: int
+    person_cm_id: int
+    display_name: str
+    unit_codes: tuple[str, ...]
+    unit_label: str
+
+
+@dataclass(frozen=True)
+class ComparePartyVerdict:
+    """One enrolled party's verdict, with both sides' placements beside it.
+
+    `both_unassigned` is TRUE only where `cls` is "match" -- it does not widen
+    the four-word vocabulary, it splits one of its members for the overview
+    counts (§5.4). 54 matches that are 37 placed-identically plus 17 both-
+    unassigned are two different kinds of agreement, and one green number over
+    the pair hides a barely-worked scenario.
+    """
+
+    key: str
+    grain: str
+    household_cm_id: int
+    person_cm_id: int
+    display_name: str
+    cls: Literal["add", "match", "conflict", "remove"]
+    both_unassigned: bool
+    scenario_unit_codes: tuple[str, ...]
+    scenario_unit_label: str
+    mirror_unit_codes: tuple[str, ...]
+    mirror_unit_label: str
+
+
+def compare_party_key(grain: str, household_cm_id: int, person_cm_id: int, display_name: str) -> str:
+    """The join key, spelled exactly as `partyKey` spells it in TypeScript
+    (`frontend/src/components/weekend/partyKey.ts`).
+
+    `or`, never a null-check: BOTH ids are always present and the unused one
+    is `0` (Pydantic `int = 0`), so a "which id is set" test written as a
+    None-check keys every household party to the same value. That is the same
+    trap `partyKey`'s `||`-not-`??` note describes, arriving here through a
+    different language's version of the same mistake.
+
+    THE FALLBACK TO `display_name` IS NOT DEFENSIVE PADDING. The roster
+    service emits `household_cm_id = 0` for a household whose record failed to
+    resolve, so on a family weekend two such parties collide on the id alone --
+    and a compare that collapses them hands one family the other's cabin. The
+    name is the last separator there is; two unresolved households sharing one
+    is the residue, and `partyKey` carries the identical residue by design.
+    """
+    return f"{grain}-{household_cm_id or person_cm_id or display_name}"
+
+
+def _placement_verdict(
+    mirror: ComparePartyPlacement | None, scenario: ComparePartyPlacement | None
+) -> tuple[Literal["add", "match", "conflict", "remove"], bool]:
+    """The RULED predicate (§5.2), on the EXACT unit set.
+
+    SET equality, not sequence equality: `units` is a relation whose stored
+    order records how a row was written, not where a family sleeps. But no
+    building-level tolerance either -- two rooms against one of the same two
+    is a `conflict`, owner ruling, and multi-room differences ARE a diff.
+    """
+    mirror_codes = frozenset(mirror.unit_codes) if mirror else frozenset()
+    scenario_codes = frozenset(scenario.unit_codes) if scenario else frozenset()
+    if not mirror_codes and not scenario_codes:
+        return "match", True
+    if not mirror_codes:
+        return "add", False
+    if not scenario_codes:
+        return "remove", False
+    return ("match", False) if mirror_codes == scenario_codes else ("conflict", False)
+
+
+def compare_placements(
+    mirror: Sequence[ComparePartyPlacement], scenario: Sequence[ComparePartyPlacement]
+) -> list[ComparePartyVerdict]:
+    """One verdict per enrolled party (kindred#2478 §5).
+
+    ORDER IS THE SCENARIO SIDE'S, then any party only the mirror knows. The
+    scenario side comes from the roster, which is already filed on `sort_name`
+    -- so the modal lists families the way the board does rather than in a
+    second order invented here. Both sides normally carry the SAME party set,
+    since a roster's parties are its enrolment and a scenario changes only
+    where they sleep; the mirror-only tail is what keeps the function total
+    if that ever stops being true.
+    """
+    mirror_by_key = {compare_party_key(p.grain, p.household_cm_id, p.person_cm_id, p.display_name): p for p in mirror}
+    scenario_by_key = {
+        compare_party_key(p.grain, p.household_cm_id, p.person_cm_id, p.display_name): p for p in scenario
+    }
+
+    ordered_keys = list(scenario_by_key)
+    ordered_keys += [key for key in mirror_by_key if key not in scenario_by_key]
+
+    out: list[ComparePartyVerdict] = []
+    for key in ordered_keys:
+        mirror_side = mirror_by_key.get(key)
+        scenario_side = scenario_by_key.get(key)
+        # Either side names the party identically; whichever exists will do.
+        identity = scenario_side or mirror_side
+        if identity is None:  # pragma: no cover -- keys come from these two dicts
+            continue
+        cls, both_unassigned = _placement_verdict(mirror_side, scenario_side)
+        out.append(
+            ComparePartyVerdict(
+                key=key,
+                grain=identity.grain,
+                household_cm_id=identity.household_cm_id,
+                person_cm_id=identity.person_cm_id,
+                display_name=identity.display_name,
+                cls=cls,
+                both_unassigned=both_unassigned,
+                scenario_unit_codes=scenario_side.unit_codes if scenario_side else (),
+                scenario_unit_label=scenario_side.unit_label if scenario_side else "",
+                mirror_unit_codes=mirror_side.unit_codes if mirror_side else (),
+                mirror_unit_label=mirror_side.unit_label if mirror_side else "",
+            )
+        )
+    return out

@@ -42,6 +42,7 @@ export type { ScenarioRef } from './weekendScenario'
 export { WeekendFriendGroups } from './WeekendFriendGroups'
 export { WeekendScenarioPicker } from './WeekendScenarioPicker'
 export { PushWriteInsEntry } from './PushWriteInsEntry'
+export { ScenarioCompareEntry } from './ScenarioCompareEntry'
 export { WeekendStatsBar } from './WeekendStatsBar'
 export {
   resolveWeekendRef,

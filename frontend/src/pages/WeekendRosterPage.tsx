@@ -48,6 +48,7 @@ import {
   WeekendScenarioPicker,
   WeekendStatsBar,
   PushWriteInsEntry,
+  ScenarioCompareEntry,
 } from '../components/weekend'
 import { useCurrentYear } from '../hooks/useCurrentYear'
 import { usePermissions } from '../hooks/usePermissions'
@@ -398,12 +399,29 @@ export default function WeekendRosterPage() {
                 spotsNeeded={spotsNeeded}
                 spacesUnmeasured={spacesUnmeasured}
                 trailing={
-                  <PushWriteInsEntry
-                    year={currentYear}
-                    sessionCmId={selectedCmId ?? 0}
-                    scenario={scenario}
-                    canManage={canManageLodging}
-                  />
+                  /* Two entries, one slot. Compare sits BEFORE push: it
+                     reports and changes nothing, so it is the safe thing to
+                     reach for first, and the push is the consequential one.
+                     Each hides itself where it would mean nothing, so the
+                     wrapper collapses to zero width when neither renders. */
+                  <div className="flex items-center gap-2">
+                    <ScenarioCompareEntry
+                      year={currentYear}
+                      sessionCmId={selectedCmId ?? 0}
+                      scenario={scenario}
+                      canManage={canManageLodging}
+                      sessionType={selectedSession?.session_type ?? ''}
+                    />
+                    {/* No `units` prop: kindred#2589 moved the badge's count
+                        onto `usePushPreview`, so the entry no longer needs the
+                        registry handed to it. */}
+                    <PushWriteInsEntry
+                      year={currentYear}
+                      sessionCmId={selectedCmId ?? 0}
+                      scenario={scenario}
+                      canManage={canManageLodging}
+                    />
+                  </div>
                 }
               />
             </div>

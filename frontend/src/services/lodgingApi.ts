@@ -12,6 +12,7 @@ import type {
   HouseholdJourney,
   HouseholdMedical,
   LodgingWriteResult,
+  ScenarioCompare,
   WeekendRoster,
   WeekendSessionList,
   WeekendSummary,
@@ -544,4 +545,28 @@ export async function unpushWriteIns(
   )
   if (!response.ok) throw await toPushError(response, 'Failed to unpush the write-ins')
   return response.json() as Promise<{ push_id: string; restored: number; deleted: number }>
+}
+
+/**
+ * Compare a scenario's placements against the CampMinder mirror
+ * (kindred#2478 §5), for one family-camp weekend.
+ *
+ * READ-ONLY, and there is deliberately no companion write call: the modal
+ * this feeds reports and nothing else (owner ruling §5.6). Acting on
+ * `remove` would mean writing toward `lodging_assignments`, which the write
+ * service forbids outright, and acting is gated on the promote/publish
+ * decision rather than on this screen.
+ *
+ * A weekend that is not family camp answers 400 — the feature is scoped to
+ * family camp, and an empty report would read as agreement.
+ */
+export async function fetchScenarioCompare(
+  fetchWithAuth: FetchWithAuth,
+  { year, sessionCmId, scenario }: { year: number; sessionCmId: number; scenario: string }
+): Promise<ScenarioCompare> {
+  const response = await fetchWithAuth(
+    `${API_BASE}/compare?year=${String(year)}&session_cm_id=${String(sessionCmId)}&scenario=${encodeURIComponent(scenario)}`
+  )
+  if (!response.ok) throw await toError(response, 'Failed to load the comparison')
+  return response.json() as Promise<ScenarioCompare>
 }
