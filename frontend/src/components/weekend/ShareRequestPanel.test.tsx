@@ -1133,4 +1133,31 @@ describe('a paired source field is not also rendered by the joined fallback', ()
     render(<ShareRequestPanel party={party({ request_text: ONE_ASK, request_blocks: [] })} />)
     expect(screen.queryAllByText(ONE_ASK)).toHaveLength(1)
   })
+
+  it('reports its fold state on the button, and the state tracks the click', () => {
+    // `aria-expanded` is the disclosure state the mockup's own `.mkbtn`
+    // carries and the spelling this repo already uses for a fold. Asserted
+    // through the accessible role rather than a class, so it also proves the
+    // whole row — not just the label — is one control.
+    render(
+      <ShareRequestPanel
+        party={party({
+          request_blocks: [
+            block('BunkingNotes Notes', [{ text: 'Open by default' }], 'staff'),
+            block('Internal Bunk Notes', [{ text: 'Closed by default' }], 'staff'),
+          ],
+        })}
+      />
+    )
+    const open = screen.getByRole('button', { name: /Bunking Notes/ })
+    const closed = screen.getByRole('button', { name: /Internal Bunk Notes/ })
+    expect(open).toHaveAttribute('aria-expanded', 'true')
+    expect(closed).toHaveAttribute('aria-expanded', 'false')
+
+    fireEvent.click(closed)
+    expect(screen.getByRole('button', { name: /Internal Bunk Notes/ })).toHaveAttribute(
+      'aria-expanded',
+      'true'
+    )
+  })
 })

@@ -372,8 +372,18 @@ function RequestBlock({
           exact label text still finds a staff-authored row's button. The
           chevron icon needs no such treatment — lucide already marks an
           icon with no a11y prop `aria-hidden` on its own. */}
+      {/* `aria-expanded` is NOT the accessibility scaffolding
+          `frontend/CLAUDE.md` rules out, and it is worth saying why so nobody
+          strips it in a later sweep. It is in the approved mockup's own
+          `.mkbtn` markup; it is already how this repo spells a disclosure
+          control (`LockGroupPanel`, `OptimizeBunksButton`,
+          `RequestRowDesktop`, `SeasonRollForwardPanel`, and both admin/geo
+          panels); and it is the fold state a test can assert without reaching
+          for a class name — the test-handle case that section explicitly
+          allows. Raised by CodeRabbit. */}
       <button
         type="button"
+        aria-expanded={expanded}
         onClick={() => {
           onToggle(sourceField)
         }}
