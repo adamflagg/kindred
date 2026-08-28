@@ -715,19 +715,6 @@ class TestFamilyCampParties:
 
         share = roster.parties[0].share
         assert share.request_text == "Near the Garcia family please"
-        assert share.needs_resolution is True
-
-    @pytest.mark.asyncio
-    async def test_no_request_text_is_not_outstanding_work(self) -> None:
-        repo = _repo(
-            fetch_session=FAMILY_SESSION,
-            fetch_households={"hh_1": _household()},
-            fetch_attendees_for_session=[_child()],
-            fetch_family_camp_registrations={"hh_1": _rec(request_text="")},
-        )
-        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
-
-        assert roster.parties[0].share.needs_resolution is False
 
     @pytest.mark.asyncio
     async def test_share_gate_and_proximity_are_read_not_reparsed(self) -> None:
@@ -7315,15 +7302,14 @@ class TestRequestProvenanceBlocks:
         assert entry.text == "A quiet corner"
 
     @pytest.mark.asyncio
-    async def test_a_csv_only_household_still_reads_as_needing_resolution(self) -> None:
+    async def test_a_csv_only_household_still_gets_its_blocks(self) -> None:
         """32 rostered 2026 households carry request text ONLY in the bunking-CSV
         lane, so `family_camp_registrations.request_text` is blank for them.
 
-        `needs_resolution` is what the panel's marker reads, and its contract
-        is "there is request text and no named family has been resolved yet".
-        Deriving it from `request_text` alone was correct while that column
-        WAS the text; now that blocks carry text the column never held, those
-        32 households would render their ask with no marker beside it.
+        Deriving anything from `request_text` alone was correct while that
+        column WAS the text; now that blocks carry text the column never held,
+        those 32 households would render as if they had asked nothing at all
+        if this surface only read the column.
         """
         repo = _repo(
             fetch_session=FAMILY_SESSION,
@@ -7337,19 +7323,6 @@ class TestRequestProvenanceBlocks:
         share = roster.parties[0].share
         assert share.request_text == ""
         assert [block.source_field for block in share.request_blocks] == ["Share Bunk With"]
-        assert share.needs_resolution is True
-
-    @pytest.mark.asyncio
-    async def test_a_household_with_no_text_at_all_needs_no_resolution(self) -> None:
-        repo = _repo(
-            fetch_session=FAMILY_SESSION,
-            fetch_households={"hh_1": _household()},
-            fetch_attendees_for_session=[_child()],
-            fetch_family_camp_registrations={"hh_1": _rec(request_text="")},
-        )
-        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
-
-        assert roster.parties[0].share.needs_resolution is False
 
     @pytest.mark.asyncio
     async def test_the_lander_summary_does_not_pay_for_the_raw_request_read(self) -> None:

@@ -6247,10 +6247,6 @@ export type ShareRequestSummary = {
    */
   request_text?: string
   /**
-   * Needs Resolution
-   */
-  needs_resolution?: boolean
-  /**
    * Request Blocks
    */
   request_blocks?: Array<RequestTextBlock>

@@ -92,7 +92,6 @@ function party(name: string): RosterPartyRow {
       preference_raw: '',
       proximity: [],
       request_text: '',
-      needs_resolution: false,
     },
     flags: {
       needs_private_bathroom: false,

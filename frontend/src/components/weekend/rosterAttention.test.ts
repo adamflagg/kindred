@@ -53,7 +53,6 @@ function party(overrides: Partial<RosterPartyRow> = {}): RosterPartyRow {
       preference_raw: '',
       proximity: [],
       request_text: '',
-      needs_resolution: false,
     },
     flags: {
       needs_private_bathroom: false,
@@ -484,11 +483,12 @@ describe('partyAttention — does the cabin provide what was asked for', () => {
     expect(partyAttention(party({ flags: { has_infant: true } }), unit()).level).toBe('settled')
   })
 
-  it('does NOT escalate on needs_resolution alone', () => {
-    const a = partyAttention(
-      party({ share: { needs_resolution: true, request_text: 'near the Garcia family' } }),
-      unit()
-    )
+  it('does NOT escalate on the share request alone', () => {
+    // `partyAttention` reads `party.flags`, never `party.share`. The guard is
+    // that a free-text ask cannot leak into triage on its own. It used to name
+    // `needs_resolution`, the field that carried the same point until it was
+    // removed for being true of 44 of 62 parties.
+    const a = partyAttention(party({ share: { request_text: 'near the Garcia family' } }), unit())
     expect(a.level).toBe('settled')
   })
 })

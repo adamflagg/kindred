@@ -3032,9 +3032,8 @@ class LodgingRosterService:
             # Blocks still travel. A household can have request text in the
             # bunking-CSV lane and no `family_camp_registrations` row at all
             # -- that lane is fed by a different sync and keyed through the
-            # requester person, not through this table. So does the marker:
-            # blank `request_text` is not evidence of nothing to resolve.
-            return ShareRequestSummary(request_blocks=blocks, needs_resolution=bool(blocks))
+            # requester person, not through this table.
+            return ShareRequestSummary(request_blocks=blocks)
 
         gate = _s(registration, "share_cabin_gate")
         # An unrecognised or empty value is "unknown", never a default of open.
@@ -3079,12 +3078,6 @@ class LodgingRosterService:
             proximity=proximity,
             wants_with_named=wants_with_named,
             request_text=request_text,
-            # Slice 1 resolves no names, so any free text is outstanding work.
-            # BLOCKS COUNT AS TEXT (kindred#2330): 32 rostered 2026 households
-            # carry their ask only in the bunking-CSV lane, so `request_text`
-            # is blank for them and reading this off that column alone would
-            # render their request with no marker beside it.
-            needs_resolution=bool(request_text or blocks),
             request_blocks=blocks,
             eligibility=eligibility,
             eligibility_source=eligibility_source,

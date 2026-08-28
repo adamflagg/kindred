@@ -131,7 +131,6 @@ function party(overrides: Partial<RosterPartyRow> = {}): RosterPartyRow {
       preference: 'yes_share',
       proximity: ['with'],
       request_text: REQUEST_TEXT,
-      needs_resolution: false,
     },
     flags: { needs_power: true },
     ...overrides,
