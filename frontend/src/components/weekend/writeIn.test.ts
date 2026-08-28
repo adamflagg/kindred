@@ -292,6 +292,80 @@ describe('a merged container over several written-into rooms', () => {
   })
 })
 
+describe('two write-ins on ONE unit', () => {
+  /*
+   * DARK ON ARRIVAL. `idx_lodging_write_in_unique` still forbids a second row
+   * per unit-weekend, so this payload is one only a fixture can build — the
+   * client half of "two write-ins in one shareable cabin", landing ahead of
+   * the index change that makes it reachable.
+   *
+   * WHY A KEY AT ALL. `LodgingUnitCard` and `MapUnitPopover` both drew their
+   * occupant lists with `key={entry.source.unitId}`, and the map additionally
+   * DEDUPED on it through a `Set` — so two occupants of one cabin were two
+   * React siblings sharing a key on the board (stale DOM reuse across
+   * re-renders, a correctness bug rather than a warning) and one occupant on
+   * the map. `entry.key` is what both read now.
+   *
+   * ⚠️ IT IS NOT THE ROW'S RECORD ID, deliberately. Publishing that is Design
+   * A of the addressing question (OQ-1), which is unanswered — so the key is
+   * composed from what the wire already carries: the unit, plus an occurrence
+   * number among covers sharing it. That makes it IDENTICAL to the old
+   * `source.unitId` wherever a unit contributes one cover, which is
+   * everywhere today.
+   */
+  const shared = unit({
+    unit_id: 'id-ridge-d',
+    code: 'ridge-d',
+    name: 'Ridge D',
+    sleeps: 15,
+    write_ins: [
+      cover({
+        unit_id: 'id-ridge-d',
+        unit_code: 'ridge-d',
+        unit_name: 'Ridge D',
+        occupant_name: 'Emma Johnson',
+        party_size: 3,
+      }),
+      cover({
+        unit_id: 'id-ridge-d',
+        unit_code: 'ridge-d',
+        unit_name: 'Ridge D',
+        occupant_name: 'Liam Garcia',
+        party_size: 4,
+      }),
+    ],
+  })
+
+  it('names both occupants, in the order the server sent them', () => {
+    expect(writeInEntries(shared).map((entry) => entry.occupant.name)).toEqual([
+      'Emma Johnson',
+      'Liam Garcia',
+    ])
+    expect(writeInEntries(shared).every((entry) => entry.source.isOwn)).toBe(true)
+  })
+
+  it('gives them distinct keys, so they are two React siblings and not one', () => {
+    const keys = writeInEntries(shared).map((entry) => entry.key)
+    expect(new Set(keys).size).toBe(2)
+  })
+
+  it('leaves a lone cover keyed exactly as it was, which is what keeps this dark', () => {
+    // The old key WAS `source.unitId`, and every production card has one cover
+    // per source unit. Anything else here would be a behaviour change dressed
+    // as a no-op.
+    const single = unit({
+      write_ins: [cover({ unit_id: 'u9', occupant_name: 'Ava Martinez' })],
+    })
+    expect(writeInEntries(single).map((entry) => entry.key)).toEqual(['u9'])
+  })
+
+  it('pays for both parties, so the cabin has eight beds left and not eleven', () => {
+    // `writeInDemand` never deduped — the collapse was upstream of it, in the
+    // payload. This pins that the pair arrives whole.
+    expect(writeInDemand(15, shared.write_ins ?? []).sized).toBe(7)
+  })
+})
+
 describe('writeInDemand', () => {
   // THE MIRROR of `write_in_demand` in api/services/lodging_rules.py. The same
   // cases in the same order, deliberately: this pair is what stops the card

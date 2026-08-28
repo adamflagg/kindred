@@ -1249,7 +1249,14 @@ const LodgingUnitCardInner = memo(function LodgingUnitCardInner({
             should EXTEND this rather than contradict it. */}
         {writeIns.map((entry) => (
           <WriteInCard
-            key={entry.source.unitId}
+            // ⚠️ `entry.key`, NOT `entry.source.unitId`, and the difference
+            // only ever shows on a unit holding two write-ins. Two covers
+            // naming one unit were two siblings sharing a key, which React
+            // treats as a reconciliation error rather than a warning: the
+            // second card's DOM gets reused for the first across re-renders.
+            // `entry.key` IS `source.unitId` wherever a unit contributes one
+            // cover -- see `WriteInEntry.key` -- so nothing moves today.
+            key={entry.key}
             occupant={entry.occupant}
             // WHOSE row it is, and undefined whenever it is this card's own —
             // so the common case says nothing extra. Restored during review of
@@ -1270,6 +1277,17 @@ const LodgingUnitCardInner = memo(function LodgingUnitCardInner({
             // meaningful: a delete never reaches `set_availability`'s
             // party-size upsert (`family_available is None` returns before
             // it), so this value is never read.
+            //
+            // ⚠️ THE ROW IS ADDRESSED BY ITS UNIT, and that is the half of
+            // "two write-ins in one shareable cabin" this change does NOT
+            // fix. `set_availability` resolves the target row by unit, so on
+            // a unit holding two rows both the × and the pencil would reach
+            // whichever the server finds first. Naming ONE of N rows needs an
+            // identifier the request model does not have -- the record id, or
+            // the occupant's name as a key -- and which of the two it should
+            // be is an open product decision (the spec's OQ-1). Unreachable
+            // while `idx_lodging_write_in_unique` stands, and deliberately
+            // left for the step that answers it rather than guessed at here.
             {...(canSetAvailability && onSetAvailability !== undefined
               ? {
                   onRemove: () => {

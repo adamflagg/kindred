@@ -1238,6 +1238,54 @@ describe('the write-in occupant card (kindred#2078)', () => {
     expect(screen.queryByText('Drop families here')).not.toBeInTheDocument()
   })
 
+  it('draws two occupants of one shareable cabin as two SEPARATE React siblings', () => {
+    /*
+     * DARK ON ARRIVAL — `idx_lodging_write_in_unique` still forbids the second
+     * row, so this payload is one only a fixture can build.
+     *
+     * The well mapped `writeIns` with `key={entry.source.unitId}`. Two covers
+     * naming one unit were therefore two siblings sharing a key, which React
+     * treats as a reconciliation error rather than a warning: the second
+     * card's DOM is reused for the first across re-renders, so a pencil opened
+     * on one occupant can redraw over the other. This asserts BOTH the render
+     * and the absence of React's own duplicate-key complaint — the render
+     * alone passed before, which is what made the bug invisible.
+     *
+     * The stacking itself is unchanged and deliberately so: `LodgingUnitCard`
+     * already rules that *"a shared space is not a new KIND of card; it is a
+     * card with two occupants in it"*. Nothing here invents a container for
+     * them.
+     */
+    const errors: unknown[] = []
+    const spy = vi.spyOn(console, 'error').mockImplementation((...args: unknown[]) => {
+      errors.push(args)
+    })
+    try {
+      render(
+        <LodgingUnitCard
+          slot={slot({
+            unit: unit({
+              sleeps: 15,
+              write_ins: [
+                cover({ occupant_name: 'Emma Johnson', party_size: 3 }),
+                cover({ occupant_name: 'Liam Garcia', party_size: 4 }),
+              ],
+              occupant_name: 'Emma Johnson',
+              is_family_available: true,
+            }),
+          })}
+          canPlace
+          onOpenParty={vi.fn()}
+        />
+      )
+      expect(screen.getByText('Emma Johnson')).toBeInTheDocument()
+      expect(screen.getByText('Liam Garcia')).toBeInTheDocument()
+      expect(errors.filter((entry) => JSON.stringify(entry).includes('same key'))).toEqual([])
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
   it('prints the occupant ONCE, not twice', () => {
     // 1500000148 moved every historical note into `occupant_name` and cleared
     // the column behind it precisely so one string cannot render as both the
