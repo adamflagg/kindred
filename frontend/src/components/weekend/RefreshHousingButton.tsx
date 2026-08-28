@@ -142,7 +142,7 @@ export function RefreshHousingButton() {
         title="Refresh housing from CampMinder"
         size="sm"
         footer={
-          <div className="flex justify-end gap-2">
+          <div className="flex justify-end gap-2 pt-4">
             <button
               onClick={() => setIsModalOpen(false)}
               className="btn-secondary px-4 py-2 text-sm"
@@ -174,8 +174,8 @@ export function RefreshHousingButton() {
               : 'Anything staff entered in CampMinder today is not here yet.'}
           </p>
           <p className="text-muted-foreground">
-            Pulling it in takes about {formatChainTotal(FAMILY_CAMP_REFRESH_SECONDS)}. You can carry
-            on working — the board keeps showing the current plan until it lands.
+            Pulling it in takes about {formatChainTotal(FAMILY_CAMP_REFRESH_SECONDS)}. You can keep
+            working — when it is done the housing will refresh itself.
           </p>
         </div>
       </Modal>

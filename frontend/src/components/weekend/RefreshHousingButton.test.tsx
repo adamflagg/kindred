@@ -125,6 +125,30 @@ describe('RefreshHousingButton — resting and the press modal', () => {
     expect(dialog.textContent).toMatch(/ago/)
   })
 
+  it('says what happens next in staff language, not board language', () => {
+    // Owner review: "the board keeps showing the current plan until it lands"
+    // is our vocabulary, not theirs. What staff need to know is that walking
+    // away is safe and that the screen updates itself — this dialog is the
+    // press half of a press-and-walk-away flow (kindred#2478 §4.2).
+    renderButton()
+    fireEvent.click(screen.getByRole('button', { name: /Refresh Housing/i }))
+    const dialog = screen.getByRole('dialog')
+    expect(dialog.textContent).toMatch(/keep working/i)
+    expect(dialog.textContent).toMatch(/refresh(es)? itself|automatically/i)
+    expect(dialog.textContent).not.toMatch(/current plan/i)
+  })
+
+  it('separates the body from the footer buttons', () => {
+    // Owner review: the last line ran straight into `Not now` / `Start
+    // refresh`. `ui/Modal` renders its footer with NO top spacing of its own,
+    // so every caller supplies it — `pt-4` is the established spelling
+    // (GroupConflictDialog, CreateRequestModal).
+    renderButton()
+    fireEvent.click(screen.getByRole('button', { name: /Refresh Housing/i }))
+    const footer = screen.getByTestId('modal-footer')
+    expect(footer.firstElementChild?.className).toMatch(/\bpt-4\b/)
+  })
+
   it('lists NO job or table names (kindred#2478 §4.1)', () => {
     renderButton()
     fireEvent.click(screen.getByRole('button', { name: /Refresh Housing/i }))
