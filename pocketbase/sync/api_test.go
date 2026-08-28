@@ -2192,3 +2192,88 @@ func TestHandleRunPhaseImmediateResponseExcludesFamilyCampBoundedJobs(t *testing
 		}
 	}
 }
+
+// TestHandleRefreshFamilyCampRejectsWhenUnrestrictedGroupmateRunning pins that the
+// refresh-family-camp front guard is collection-group-aware, not keyed on the six literal job
+// names.
+//
+// The chain contains "person_custom_values_family_camp" and
+// "household_custom_values_family_camp", which write the SAME PocketBase collections as the
+// unrestricted "person_custom_values" / "household_custom_values" jobs under different
+// registered names (kindred#2489, kindred#2491 Face A). A guard built from
+// orchestrator.IsRunning(job) over GetRefreshFamilyCampJobs() therefore does not see the
+// weekly unrestricted sweep -- or an operator's on-demand custom-values run -- as a writer of
+// the collections this chain is about to rewrite.
+//
+// That gap is not merely cosmetic. runSingleSyncInternal's own group-aware check (the deep
+// enforcement added by kindred#2519) DOES block the bounded job, so the chain aborts mid-way:
+// the handler has already answered 200 "started", attendees and persons have already run, and
+// family_camp_derived and lodging_assignments -- the board's roster and its cabin mirror --
+// never run at all. The operator is told the refresh started and the board silently keeps
+// yesterday's cabins. Answering 409 up front is the difference between "try again later" and a
+// half-applied refresh reported as success.
+func TestHandleRefreshFamilyCampRejectsWhenUnrestrictedGroupmateRunning(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name         string
+		runningJob   string
+		blockedByJob string
+	}{
+		{
+			name:         "unrestricted person sweep blocks the refresh",
+			runningJob:   "person_custom_values",
+			blockedByJob: "person_custom_values_family_camp",
+		},
+		{
+			name:         "unrestricted household sweep blocks the refresh",
+			runningJob:   "household_custom_values",
+			blockedByJob: "household_custom_values_family_camp",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			scheduler := NewScheduler(nil)
+			orchestrator := scheduler.GetOrchestrator()
+
+			// Register the whole chain so that, if the guard wrongly lets the request
+			// through, the failure is an observable 200 rather than an unregistered-service
+			// error from a different cause.
+			for _, job := range GetRefreshFamilyCampJobs() {
+				orchestrator.RegisterService(job, &MockService{name: job})
+			}
+
+			orchestrator.RegisterService(tc.runningJob, &MockService{name: tc.runningJob})
+			if err := orchestrator.MarkSyncRunning(tc.runningJob); err != nil {
+				t.Fatalf("MarkSyncRunning(%q): %v", tc.runningJob, err)
+			}
+
+			// None of the six literal job names is running, so a guard keyed on
+			// IsRunning(job) sees a clear field and answers 200.
+			for _, job := range GetRefreshFamilyCampJobs() {
+				if orchestrator.IsRunning(job) {
+					t.Fatalf("precondition: %q must not be running under its own name", job)
+				}
+			}
+			if !orchestrator.IsCustomValuesCollectionRunning(tc.blockedByJob) {
+				t.Fatalf("precondition: %q must be blocked by %q's collection group",
+					tc.blockedByJob, tc.runningJob)
+			}
+
+			re := &core.RequestEvent{}
+			re.Request = httptest.NewRequest(http.MethodPost, "/", http.NoBody)
+			rec := httptest.NewRecorder()
+			re.Response = rec
+
+			if err := handleRefreshFamilyCamp(re, scheduler); err != nil {
+				t.Fatalf("handler returned error: %v", err)
+			}
+
+			if rec.Code != http.StatusConflict {
+				t.Errorf("expected %d (a groupmate of %q is already writing the collection), got %d: %s",
+					http.StatusConflict, tc.blockedByJob, rec.Code, rec.Body.String())
+			}
+		})
+	}
+}

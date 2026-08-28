@@ -127,6 +127,12 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 			return handleRefreshBunking(e, scheduler)
 		}))
 
+	// Refresh family camp housing endpoint (kindred#2478)
+	e.Router.POST("/api/custom/sync/refresh-family-camp",
+		requirePermission("bunking.manage", func(e *core.RequestEvent) error {
+			return handleRefreshFamilyCamp(e, scheduler)
+		}))
+
 	// Bunk requests CSV upload endpoint (requires bunking.manage permission)
 	e.Router.POST("/api/custom/sync/bunk_requests_upload",
 		requirePermission("bunking.manage", func(e *core.RequestEvent) error {
@@ -640,6 +646,59 @@ func handleRefreshBunking(e *core.RequestEvent, scheduler *Scheduler) error {
 
 	return e.JSON(http.StatusOK, map[string]any{
 		"message": "Bunking refresh started (bunks, plans, assignments)",
+		"status":  "started",
+	})
+}
+
+// handleRefreshFamilyCamp triggers a full family-camp housing refresh: attendees ->
+// persons -> person_custom_values_family_camp -> household_custom_values_family_camp
+// -> family_camp_derived -> lodging_assignments (kindred#2478).
+//
+// The timeout is 25 minutes, not handleRefreshBunking's 10: measured against
+// sync_runs (production snapshot 2026-08-23, status='success'), this chain averages
+// 13m31s and has been seen at 17m39s — almost entirely the two bounded custom-values
+// jobs. 25 minutes leaves headroom above the worst observed run without risking a
+// truncated timeout on an ordinary one.
+func handleRefreshFamilyCamp(e *core.RequestEvent, scheduler *Scheduler) error {
+	orchestrator := scheduler.GetOrchestrator()
+
+	// Check if any family-camp-refresh-related sync is already running.
+	//
+	// Collection-group-aware (kindred#2491 Face A), not a plain IsRunning(job) over the six
+	// literal names: "person_custom_values_family_camp" and
+	// "household_custom_values_family_camp" write the same PocketBase collections as the
+	// unrestricted "person_custom_values" / "household_custom_values" jobs under different
+	// registered names (kindred#2489), so the literal check does not see the weekly sweep --
+	// or an operator's on-demand custom-values run -- as a writer of what this chain is about
+	// to rewrite. runSingleSyncInternal blocks the bounded job anyway, so the cost of missing
+	// it here is not a data race but a worse failure: this handler answers 200 "started",
+	// attendees and persons run, and then the sequence aborts before family_camp_derived and
+	// lodging_assignments -- leaving the board on yesterday's cabins while the operator has
+	// been told the refresh began. For the four jobs outside the group map this is exactly
+	// the check IsRunning makes.
+	for _, job := range GetRefreshFamilyCampJobs() {
+		if orchestrator.IsCustomValuesCollectionRunning(job) {
+			return e.JSON(http.StatusConflict, map[string]any{
+				"error":  "Family camp refresh already in progress",
+				"status": "running",
+			})
+		}
+	}
+
+	// Run attendees -> persons -> person_custom_values_family_camp ->
+	// household_custom_values_family_camp -> family_camp_derived -> lodging_assignments
+	// sequentially.
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 25*time.Minute)
+		defer cancel()
+
+		if err := orchestrator.RunSyncSequence(ctx, GetRefreshFamilyCampJobs()); err != nil {
+			e.App.Logger().Error("Refresh family camp failed", "error", err)
+		}
+	}()
+
+	return e.JSON(http.StatusOK, map[string]any{
+		"message": "Family camp housing refresh started (attendees, persons, custom values, derived, lodging assignments)",
 		"status":  "started",
 	})
 }

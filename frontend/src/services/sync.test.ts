@@ -5,6 +5,33 @@ import { describe, it, expect, vi } from 'vitest'
 import { syncService } from './sync'
 
 describe('syncService', () => {
+  describe('refreshFamilyCamp', () => {
+    it('should POST to the refresh-family-camp endpoint', async () => {
+      const mockFetchWithAuth = vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ message: 'started', status: 'started' }),
+      })
+
+      await syncService.refreshFamilyCamp(mockFetchWithAuth)
+
+      expect(mockFetchWithAuth).toHaveBeenCalledWith(
+        expect.stringContaining('/refresh-family-camp'),
+        expect.objectContaining({ method: 'POST' })
+      )
+    })
+
+    it('should throw on non-ok response', async () => {
+      const mockFetchWithAuth = vi.fn().mockResolvedValue({
+        ok: false,
+        json: () => Promise.resolve({ error: 'boom' }),
+      })
+
+      await expect(syncService.refreshFamilyCamp(mockFetchWithAuth)).rejects.toThrow(
+        'Failed to refresh family camp housing'
+      )
+    })
+  })
+
   describe('uploadBunkRequestsCSV', () => {
     it('should include year parameter in upload URL when provided', async () => {
       const mockFile = new File(['PersonID,Last Name,First Name\n123,Doe,John'], 'test.csv', {
