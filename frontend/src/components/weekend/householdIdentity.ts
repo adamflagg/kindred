@@ -134,7 +134,7 @@ export function namedAdults(party: RosterPartyRow): PartyAdultRow[] {
  * `party_size` became a BED count under kindred#1925/#2046: the server drops
  * blank and placeholder adult slots from it AND discounts a child under 18
  * months at session start, so it legitimately diverges from the names on the
- * card -- `boardLayout.partySize` and `rosterAttention.partyBeds` both need
+ * card -- `boardLayout.partySize` and `rosterAttention.partySpots` both need
  * that bed number for the fit check. A badge sitting next to the printed
  * list needs the OTHER number: whatever this function returns, so it can
  * never disagree with the names underneath it.

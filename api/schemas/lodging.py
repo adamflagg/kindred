@@ -1049,10 +1049,10 @@ class RosterCounts(BaseModel):
     # number never overstates what is placeable.
     #
     # Placed families are still NOT subtracted: this bar's numerator
-    # (`bedsNeeded`) already counts them, so subtracting here too would count
+    # (`spotsNeeded`) already counts them, so subtracting here too would count
     # a placed family on both sides. A write-in is on nobody's roster and
     # appears in neither, so its beds must leave the denominator instead.
-    beds_family_available: int = 0
+    spots_family_available: int = 0
     units_capacity_unknown: int = 0
     units_unconfirmed: int = 0
     # Units created without an explicit inventory_class. They match

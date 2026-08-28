@@ -5472,9 +5472,9 @@ export type RosterCounts = {
    */
   units_staff_housing?: number
   /**
-   * Beds Family Available
+   * Spots Family Available
    */
-  beds_family_available?: number
+  spots_family_available?: number
   /**
    * Units Capacity Unknown
    */

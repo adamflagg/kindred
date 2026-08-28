@@ -93,7 +93,7 @@ def is_family_available(inventory_class: str, override: bool | None, free: int |
     TWO FACTS, TWO QUESTIONS. `override` is the staff<->family ROLE -- is this
     unit family inventory this weekend at all -- and `free` is how many beds
     are left once the write-ins covering it are paid for
-    (`free_family_beds`). One boolean used to answer both, spelling an
+    (`free_family_spots`). One boolean used to answer both, spelling an
     occupancy as `override = False`; kindred#2382 split them.
 
     ⚠️ OCCUPANCY IS NOT ABSOLUTE, AND THIS PARAGRAPH USED TO SAY IT WAS.
@@ -109,7 +109,7 @@ def is_family_available(inventory_class: str, override: bool | None, free: int |
     different one for a shared space.
 
     `free is None` means NO OCCUPANCY, not "unmeasured" -- the same reading
-    `override: None` carries two lines above. `free_family_beds` returns 0, not
+    `override: None` carries two lines above. `free_family_spots` returns 0, not
     None, for a covered cabin nobody has measured.
 
     REQUIRED, never defaulted. A caller that has not thought about occupancy
@@ -156,14 +156,14 @@ class WriteInLoad(NamedTuple):
 class WriteInDemand(NamedTuple):
     """What the write-ins on one card take, and whether that is a fact.
 
-    `consumed` drives every bed statement. `sized` drives the card's NUMERATOR
+    `consumed` drives every spot statement. `sized` drives the card's NUMERATOR
     alone, and excludes both the wholesale fallback and an ancestor's size --
     see `write_in_demand`. `known` gates the drag-time marks kindred#2528
     built: a count that is not a fact supports neither the red figure nor the
     match wash.
 
     `sized` is deliberately UNCAPPED, unlike `consumed`. A hand-typed count
-    above the card's own beds is what drives kindred#2503's over-capacity red,
+    above the card's own spots is what drives kindred#2503's over-capacity red,
     so the numerator has to carry the true recorded figure -- clipping it to
     capacity would hide the very overage the card exists to show.
     """
@@ -174,7 +174,7 @@ class WriteInDemand(NamedTuple):
 
 
 def write_in_demand(capacity: int | None, loads: Sequence[WriteInLoad]) -> WriteInDemand:
-    """How many beds the write-ins covering one card take.
+    """How many spots the write-ins covering one card take.
 
     ONE DEFINITION, MIRRORED ONCE, in `writeInDemand`
     (`frontend/src/components/weekend/writeIn.ts`). The card's numerator, the
@@ -202,7 +202,7 @@ def write_in_demand(capacity: int | None, loads: Sequence[WriteInLoad]) -> Write
     different `sized`. The house was let whole and a room inside it is not
     separately lettable. The alternative -- each room subtracting the
     ancestor's size -- spends one party once per room, and would report a
-    seven-bed house holding four people as having five beds free.
+    seven-spot house holding four people as having five spots free.
 
     AN ANCESTOR CONTRIBUTES NOTHING TO `sized`, even carrying a count. That
     count is a fact about the house; printing it on both halves of a split
@@ -226,7 +226,7 @@ def write_in_demand(capacity: int | None, loads: Sequence[WriteInLoad]) -> Write
 
     if capacity is None:
         # Nothing to subtract from. `consumed` is meaningless here and callers
-        # must read `known` before using it; `free_family_beds` closes the unit
+        # must read `known` before using it; `free_family_spots` closes the unit
         # instead of reporting a number. `sized` survives regardless.
         return WriteInDemand(consumed=0, sized=sized, known=False)
 
@@ -253,8 +253,8 @@ def write_in_demand(capacity: int | None, loads: Sequence[WriteInLoad]) -> Write
     return WriteInDemand(consumed=min(consumed, capacity), sized=sized, known=known)
 
 
-def free_family_beds(capacity: int | None, loads: Sequence[WriteInLoad]) -> int | None:
-    """Beds left on this card once its write-ins are paid for.
+def free_family_spots(capacity: int | None, loads: Sequence[WriteInLoad]) -> int | None:
+    """Spots left on this card once its write-ins are paid for.
 
     THREE RETURNS, and the middle one is load-bearing:
 
@@ -274,22 +274,22 @@ def free_family_beds(capacity: int | None, loads: Sequence[WriteInLoad]) -> int 
     it will happily turn into a remainder, while the client's drag marks
     withhold on the same card because `writeInDemand`'s `known` is false. A
     container of 10 with one unsized written-into room of 3 and one sized cover
-    of 2 publishes FIVE free beds that the board itself declines to claim.
+    of 2 publishes FIVE free spots that the board itself declines to claim.
 
-    That divergence is the design, not a bug. `consumed` answers "how many beds
+    That divergence is the design, not a bug. `consumed` answers "how many spots
     are left", and the server has to answer it -- open/closed is the only thing
     the wire carries, and there is no third state. `known` gates a CLAIM the
     board makes to a staff member mid-drag, which is held to a higher bar
     because withholding it costs only a match the board might have drawn.
-    Making this withhold too would mean understating free beds, which is its
+    Making this withhold too would mean understating free spots, which is its
     own lie, on a state that needs somebody to have sized some write-ins and
     not others.
 
-    Placed families are NOT subtracted here. `beds_family_available` is paired
-    with `bedsNeeded` on the stats bar, and a placed family is counted in that
-    numerator; subtracting its beds too would count it on both sides. A
+    Placed families are NOT subtracted here. `spots_family_available` is paired
+    with `spotsNeeded` on the stats bar, and a placed family is counted in that
+    numerator; subtracting its spots too would count it on both sides. A
     write-in is on nobody's roster and appears in neither, which is exactly why
-    its beds have to leave the denominator.
+    its spots have to leave the denominator.
     """
     if not loads:
         return None

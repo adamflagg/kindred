@@ -18,7 +18,7 @@ function counts(overrides: Partial<RosterCountSummary> = {}): RosterCountSummary
     parties_unassigned: 6,
     units_total: 82,
     units_family_available: 79,
-    beds_family_available: 389,
+    spots_family_available: 389,
     units_capacity_unknown: 5,
     units_unconfirmed: 0,
     units_missing_allocation: 0,
@@ -39,21 +39,21 @@ describe('WeekendStatsBar', () => {
     // control to fill it. Pinned because it reads as a stray utility otherwise
     // and is the first thing a tidy-up would drop.
     const { container } = render(
-      <WeekendStatsBar counts={counts()} bedsNeeded={223} spacesUnmeasured={2} />
+      <WeekendStatsBar counts={counts()} spotsNeeded={223} spacesUnmeasured={2} />
     )
     expect(container.firstElementChild).toHaveClass('border-border/50', 'border-b', 'py-2.5')
     expect(container.firstElementChild?.firstElementChild).toHaveClass('min-h-10', 'text-sm')
   })
 
   it('reports placement as assigned over total', () => {
-    render(<WeekendStatsBar counts={counts()} bedsNeeded={223} spacesUnmeasured={2} />)
+    render(<WeekendStatsBar counts={counts()} spotsNeeded={223} spacesUnmeasured={2} />)
     expect(screen.getByText('56')).toBeInTheDocument()
     expect(screen.getByText('/62')).toBeInTheDocument()
     expect(screen.getByText('placed')).toBeInTheDocument()
   })
 
   it('leads capacity with spaces and their spare count', () => {
-    render(<WeekendStatsBar counts={counts()} bedsNeeded={223} spacesUnmeasured={2} />)
+    render(<WeekendStatsBar counts={counts()} spotsNeeded={223} spacesUnmeasured={2} />)
     expect(screen.getByText('79')).toBeInTheDocument()
     expect(screen.getByText('spaces')).toBeInTheDocument()
     expect(screen.getByText('(17 spare)')).toBeInTheDocument()
@@ -63,7 +63,7 @@ describe('WeekendStatsBar', () => {
     render(
       <WeekendStatsBar
         counts={counts({ parties_total: 85 })}
-        bedsNeeded={300}
+        spotsNeeded={300}
         spacesUnmeasured={0}
       />
     )
@@ -71,19 +71,19 @@ describe('WeekendStatsBar', () => {
   })
 
   it('keeps beds on the bar without letting them lead', () => {
-    render(<WeekendStatsBar counts={counts()} bedsNeeded={223} spacesUnmeasured={2} />)
+    render(<WeekendStatsBar counts={counts()} spotsNeeded={223} spacesUnmeasured={2} />)
     expect(screen.getByText('223')).toBeInTheDocument()
     expect(screen.getByText('/389')).toBeInTheDocument()
     expect(screen.getByText('beds')).toBeInTheDocument()
   })
 
   it('reports unmeasured spaces beside the beds they are missing from', () => {
-    render(<WeekendStatsBar counts={counts()} bedsNeeded={223} spacesUnmeasured={2} />)
+    render(<WeekendStatsBar counts={counts()} spotsNeeded={223} spacesUnmeasured={2} />)
     expect(screen.getByText('(2 unmeasured spaces)')).toBeInTheDocument()
   })
 
   it('singularises a lone unmeasured space', () => {
-    render(<WeekendStatsBar counts={counts()} bedsNeeded={223} spacesUnmeasured={1} />)
+    render(<WeekendStatsBar counts={counts()} spotsNeeded={223} spacesUnmeasured={1} />)
     expect(screen.getByText('(1 unmeasured space)')).toBeInTheDocument()
   })
 
@@ -108,7 +108,7 @@ describe('WeekendStatsBar', () => {
     render(
       <WeekendStatsBar
         counts={counts({ units_staff_housing: 3 })}
-        bedsNeeded={0}
+        spotsNeeded={0}
         spacesUnmeasured={0}
       />
     )
@@ -121,7 +121,7 @@ describe('WeekendStatsBar', () => {
     render(
       <WeekendStatsBar
         counts={counts({ units_staff_housing: 21 })}
-        bedsNeeded={223}
+        spotsNeeded={223}
         spacesUnmeasured={0}
       />
     )
@@ -147,7 +147,7 @@ describe('WeekendStatsBar', () => {
     render(
       <WeekendStatsBar
         counts={counts({ units_staff_housing: 21 })}
-        bedsNeeded={223}
+        spotsNeeded={223}
         spacesUnmeasured={0}
       />
     )
@@ -155,12 +155,12 @@ describe('WeekendStatsBar', () => {
   })
 
   it('says nothing about staff housing when there is none', () => {
-    render(<WeekendStatsBar counts={counts()} bedsNeeded={223} spacesUnmeasured={0} />)
+    render(<WeekendStatsBar counts={counts()} spotsNeeded={223} spacesUnmeasured={0} />)
     expect(screen.queryByText(/staff/)).not.toBeInTheDocument()
   })
 
   it('highlights parties still needing a cabin', () => {
-    render(<WeekendStatsBar counts={counts()} bedsNeeded={223} spacesUnmeasured={0} />)
+    render(<WeekendStatsBar counts={counts()} spotsNeeded={223} spacesUnmeasured={0} />)
     expect(screen.getByText('need a cabin')).toBeInTheDocument()
   })
 
@@ -168,7 +168,7 @@ describe('WeekendStatsBar', () => {
     render(
       <WeekendStatsBar
         counts={counts({ parties_assigned: 62, parties_unassigned: 0 })}
-        bedsNeeded={223}
+        spotsNeeded={223}
         spacesUnmeasured={0}
       />
     )
@@ -179,7 +179,7 @@ describe('WeekendStatsBar', () => {
     render(
       <WeekendStatsBar
         counts={counts({ units_total: 82, units_unconfirmed: 82 })}
-        bedsNeeded={223}
+        spotsNeeded={223}
         spacesUnmeasured={0}
       />
     )
@@ -190,7 +190,7 @@ describe('WeekendStatsBar', () => {
     render(
       <WeekendStatsBar
         counts={counts({ units_total: 82, units_unconfirmed: 11 })}
-        bedsNeeded={223}
+        spotsNeeded={223}
         spacesUnmeasured={0}
       />
     )
@@ -201,7 +201,7 @@ describe('WeekendStatsBar', () => {
     render(
       <WeekendStatsBar
         counts={counts({ unresolved_aliases: 3, units_missing_allocation: 2 })}
-        bedsNeeded={223}
+        spotsNeeded={223}
         spacesUnmeasured={0}
       />
     )
@@ -210,7 +210,7 @@ describe('WeekendStatsBar', () => {
   })
 
   it('treats absent count fields as zero rather than rendering undefined', () => {
-    render(<WeekendStatsBar counts={{}} bedsNeeded={0} spacesUnmeasured={0} />)
+    render(<WeekendStatsBar counts={{}} spotsNeeded={0} spacesUnmeasured={0} />)
     expect(screen.getByText('(0 spare)')).toBeInTheDocument()
   })
 
@@ -223,7 +223,7 @@ describe('WeekendStatsBar', () => {
     const { container } = render(
       <WeekendStatsBar
         counts={counts({})}
-        bedsNeeded={0}
+        spotsNeeded={0}
         spacesUnmeasured={0}
         trailing={<button type="button">Push write-ins</button>}
       />
@@ -237,7 +237,7 @@ describe('WeekendStatsBar', () => {
   it('renders no trailing wrapper when the slot is empty', () => {
     // Queried by NAME: the bar's own figures are tooltip buttons, so a bare
     // `queryByRole('button')` matches them and proves nothing about the slot.
-    render(<WeekendStatsBar counts={counts({})} bedsNeeded={0} spacesUnmeasured={0} />)
+    render(<WeekendStatsBar counts={counts({})} spotsNeeded={0} spacesUnmeasured={0} />)
     expect(screen.queryByRole('button', { name: 'Push write-ins' })).not.toBeInTheDocument()
   })
 })

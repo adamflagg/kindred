@@ -3,12 +3,14 @@
  * view uses (`SessionStatsCompact`): icon, bold figure, muted label, pipe
  * separators, one line.
  *
- * The unit is the SPACE, not the bed. A family holds a whole cabin whether or
- * not it fills it, so a cabin sleeping 8 housing a family of 3 leaves five
- * beds no other family can use — counting beds reports comfortable headroom
- * on a weekend that has run out of rooms. Beds still answer whether a
- * PARTICULAR family fits a PARTICULAR cabin, which is the board's question,
- * so they stay on the bar but never lead.
+ * The unit is the SPACE, not the spot. A family holds a whole cabin whether
+ * or not it fills it, so a cabin sleeping 8 housing a family of 3 leaves
+ * five spots no other family can use — counting spots reports comfortable
+ * headroom on a weekend that has run out of rooms. Spots still answer
+ * whether a PARTICULAR family fits a PARTICULAR cabin, which is the board's
+ * question, so they stay on the bar but never lead. (Still rendered as
+ * "beds" below — staff say that colloquially, and the code being
+ * unambiguous matters more than the label changing; kindred#2582.)
  *
  * The space count is provisional: merging or splitting cabins on the board
  * moves it, which the title on the spaces figure says.
@@ -21,7 +23,7 @@ import { Tooltip } from '../ui/Tooltip'
 
 export interface WeekendStatsBarProps {
   counts: RosterCountSummary
-  bedsNeeded: number
+  spotsNeeded: number
   /**
    * Family spaces whose capacity nobody has recorded. NOT
    * `counts.units_capacity_unknown`: that asks about the planning inventory,
@@ -45,7 +47,7 @@ const DIVIDER = <span className="text-border hidden sm:inline">|</span>
 
 export function WeekendStatsBar({
   counts,
-  bedsNeeded,
+  spotsNeeded,
   spacesUnmeasured,
   trailing,
 }: WeekendStatsBarProps) {
@@ -55,7 +57,7 @@ export function WeekendStatsBar({
   const spaces = counts.units_family_available ?? 0
   const unitsTotal = counts.units_total ?? 0
   const unitsStaffHousing = counts.units_staff_housing ?? 0
-  const beds = counts.beds_family_available ?? 0
+  const spots = counts.spots_family_available ?? 0
   const spare = spaces - partiesTotal
 
   const notes: string[] = []
@@ -148,8 +150,8 @@ export function WeekendStatsBar({
         <div className="flex items-center gap-2">
           <BedDouble className="text-muted-foreground h-4 w-4 flex-shrink-0" />
           <span className="tabular-nums">
-            <span className="font-semibold">{bedsNeeded}</span>
-            <span className="text-muted-foreground">/{beds}</span>
+            <span className="font-semibold">{spotsNeeded}</span>
+            <span className="text-muted-foreground">/{spots}</span>
           </span>
           <span className="text-muted-foreground">beds</span>
           {spacesUnmeasured > 0 && (

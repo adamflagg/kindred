@@ -205,7 +205,7 @@ export function buildMapModel(parties: RosterPartyRow[], units: LodgingUnitRow[]
         // what a second copy costs — the overlap rule was fixed at the slot
         // level and came straight back one level down in `FamilyCard`. Only
         // the `spanWidth` half is taken; the map's peek counts its own beds
-        // with `partyBeds`, which is the roster's number rather than the
+        // with `partySpots`, which is the roster's number rather than the
         // board's `partySize`.
         spanWidth: slotOccupancy(slot, units).spanWidth,
         // Non-null by hasCoordinates above; narrowed for the type checker.

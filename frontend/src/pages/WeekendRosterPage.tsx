@@ -38,7 +38,7 @@ import {
   countMapUnits,
   countUnmeasuredSpaces,
   HouseholdRosterTable,
-  partyBeds,
+  partySpots,
   resolveWeekendRef,
   scenarioForWeekend,
   shortWeekendName,
@@ -211,8 +211,8 @@ export default function WeekendRosterPage() {
   // ran twice per render of this page no matter which view was showing.
   const boardSlotCount = useMemo(() => countBoardSlots(parties, units), [parties, units])
   const mapUnitCount = useMemo(() => countMapUnits(parties, units), [parties, units])
-  const bedsNeeded = useMemo(
-    () => parties.reduce((sum, party) => sum + partyBeds(party), 0),
+  const spotsNeeded = useMemo(
+    () => parties.reduce((sum, party) => sum + partySpots(party), 0),
     [parties]
   )
   const spacesUnmeasured = useMemo(() => countUnmeasuredSpaces(units), [units])
@@ -395,7 +395,7 @@ export default function WeekendRosterPage() {
                   the band's bottom rule stopping short of the button. */}
               <WeekendStatsBar
                 counts={roster.counts ?? {}}
-                bedsNeeded={bedsNeeded}
+                spotsNeeded={spotsNeeded}
                 spacesUnmeasured={spacesUnmeasured}
                 trailing={
                   <PushWriteInsEntry

@@ -294,7 +294,7 @@ export function coveringWriteIns(unit: LodgingUnitRow): WriteInCoverRow[] {
  * ⚠️ THE MIRROR of `write_in_demand` in `api/services/lodging_rules.py`. Keep
  * the two in step — the card's numerator, the Assign modal's header and the
  * map peek read this one, while `is_family_available` and
- * `beds_family_available` read the other, and the pair sits on one screen.
+ * `spots_family_available` read the other, and the pair sits on one screen.
  * The same pairing discipline `effectiveSleeps` documents for
  * `_effective_sleeps`.
  *

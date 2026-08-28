@@ -980,7 +980,7 @@ class TestUnitsAndCounts:
         assert len(roster.units) == 3
         assert any(u.is_container for u in roster.units)
         assert roster.counts.units_total == 2
-        assert roster.counts.beds_family_available == 7  # 4 + 3, NOT 14
+        assert roster.counts.spots_family_available == 7  # 4 + 3, NOT 14
 
     @pytest.mark.asyncio
     async def test_sleeps_zero_is_unknown_not_zero(self) -> None:
@@ -997,7 +997,7 @@ class TestUnitsAndCounts:
         assert by_code["ridge-a"].sleeps is None
         assert by_code["ridge-b"].sleeps == 5
         assert roster.counts.units_capacity_unknown == 1
-        assert roster.counts.beds_family_available == 5
+        assert roster.counts.spots_family_available == 5
 
     @pytest.mark.asyncio
     async def test_a_unit_with_no_coordinates_reports_none_on_both_axes(self) -> None:
@@ -1128,7 +1128,7 @@ class TestUnitsAndCounts:
         assert roster.counts.units_total == 1
         assert roster.counts.units_family_available == 0
         assert roster.counts.units_staff_housing == 1
-        assert roster.counts.beds_family_available == 0
+        assert roster.counts.spots_family_available == 0
 
     @pytest.mark.asyncio
     async def test_a_write_in_on_a_building_reaches_the_rooms_beneath_it(self) -> None:
@@ -1371,7 +1371,7 @@ class TestCountsFollowTheDrawLevel:
 
         assert roster.counts.units_total == 1
         assert roster.counts.units_family_available == 1
-        assert roster.counts.beds_family_available == 13
+        assert roster.counts.spots_family_available == 13
 
     @pytest.mark.asyncio
     async def test_a_combined_containers_sleeps_is_a_delta_not_a_whole_house_total(self) -> None:
@@ -1394,7 +1394,7 @@ class TestCountsFollowTheDrawLevel:
         roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
 
         assert roster.counts.units_total == 1
-        assert roster.counts.beds_family_available == 9
+        assert roster.counts.spots_family_available == 9
 
     @pytest.mark.asyncio
     async def test_a_split_container_still_counts_its_rooms_and_not_itself(self) -> None:
@@ -1413,7 +1413,7 @@ class TestCountsFollowTheDrawLevel:
         roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
 
         assert roster.counts.units_total == 2
-        assert roster.counts.beds_family_available == 6
+        assert roster.counts.spots_family_available == 6
 
     @pytest.mark.asyncio
     async def test_a_combined_ancestor_swallows_an_intermediate_container(self) -> None:
@@ -1440,7 +1440,7 @@ class TestCountsFollowTheDrawLevel:
         roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
 
         assert roster.counts.units_total == 1
-        assert roster.counts.beds_family_available == 16
+        assert roster.counts.spots_family_available == 16
 
     @pytest.mark.asyncio
     async def test_a_container_with_an_unmeasured_room_is_unknown_not_a_confident_undercount(self) -> None:
@@ -1479,7 +1479,7 @@ class TestCountsFollowTheDrawLevel:
         assert roster.counts.units_total == 1
         # NOT 10. The house is not measured, so it contributes no bed count
         # and is flagged for measurement instead.
-        assert roster.counts.beds_family_available == 0
+        assert roster.counts.spots_family_available == 0
         assert roster.counts.units_capacity_unknown == 1
 
     @pytest.mark.asyncio
@@ -1502,7 +1502,7 @@ class TestCountsFollowTheDrawLevel:
         roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
 
         assert roster.counts.units_total == 1
-        assert roster.counts.beds_family_available == 10
+        assert roster.counts.spots_family_available == 10
         assert roster.counts.units_capacity_unknown == 0
 
     @pytest.mark.asyncio
@@ -1523,7 +1523,7 @@ class TestCountsFollowTheDrawLevel:
         roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
 
         assert roster.counts.units_total == 1
-        assert roster.counts.beds_family_available == 0
+        assert roster.counts.spots_family_available == 0
         assert roster.counts.units_capacity_unknown == 1
 
     @pytest.mark.asyncio
@@ -1547,7 +1547,7 @@ class TestCountsFollowTheDrawLevel:
 
         assert roster.counts.units_total == 1
         assert roster.counts.units_capacity_unknown == 0
-        assert roster.counts.beds_family_available == 4
+        assert roster.counts.spots_family_available == 4
 
     @pytest.mark.asyncio
     async def test_a_scenario_merge_moves_the_counts_the_same_way_the_default_does(self) -> None:
@@ -1567,7 +1567,7 @@ class TestCountsFollowTheDrawLevel:
         roster = await LodgingRosterService(repo).build_roster(2026, 1000001, scenario="scn_1")
 
         assert roster.counts.units_total == 1
-        assert roster.counts.beds_family_available == 13
+        assert roster.counts.spots_family_available == 13
 
     @pytest.mark.asyncio
     async def test_an_inactive_room_does_not_swell_a_combined_containers_total(self) -> None:
@@ -1588,7 +1588,7 @@ class TestCountsFollowTheDrawLevel:
         roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
 
         assert roster.counts.units_total == 1
-        assert roster.counts.beds_family_available == 8
+        assert roster.counts.spots_family_available == 8
 
 
 class TestSlotMergeTiers:
@@ -1848,7 +1848,7 @@ class TestSlotMergeTiers:
         roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
 
         assert roster.counts.units_family_available == 1
-        assert roster.counts.beds_family_available == 4
+        assert roster.counts.spots_family_available == 4
 
     @pytest.mark.asyncio
     async def test_unresolved_alias_and_unconfirmed_counts_are_surfaced(self) -> None:
@@ -5876,7 +5876,7 @@ class TestWriteInCovers:
         written into, so a room carrying its own SIZED row dropped the
         whole-house claim above it and reported the leftover beds as open.
         Room of 3 inside a house let whole, own count of 1 -> `consumed=1`,
-        `free_family_beds` -> 2, and the bar offered two beds in a room inside
+        `free_family_spots` -> 2, and the bar offered two beds in a room inside
         a house nobody else can enter.
 
         Harmless before this PR because occupancy was absolute; live the moment
@@ -5902,7 +5902,7 @@ class TestWriteInCovers:
         `party_size is not None` rather than applied to every own row.
 
         An unsized own row is ALREADY a wholesale claim on the whole card, so
-        `free_family_beds` is 0 with or without the ancestor beside it -- but
+        `free_family_spots` is 0 with or without the ancestor beside it -- but
         the two differ on `known`: a lone unsized own cover falls through to
         the wholesale branch and returns `known=False`, while an ancestor
         present short-circuits to `known=True`. Adding it would flip the
@@ -6259,7 +6259,7 @@ class TestFamilyAvailabilityIsResolvedOverTheTree:
         already carries two other blank-code tests.
 
         Resolved to 0 rather than to a bare `False`, so availability stays
-        derived from `free > 0` alone: 0 is `free_family_beds`' documented
+        derived from `free > 0` alone: 0 is `free_family_spots`' documented
         "covered, and the remainder is not computable", which is exactly what a
         cover the walk could not represent leaves behind.
         """
@@ -6283,7 +6283,7 @@ class TestFamilyAvailabilityIsResolvedOverTheTree:
         A blank-coded unit is drawn (`drawn_units` treats it as a root) and is
         planning inventory, so a wrong answer here is not cosmetic: it lands in
         `units_family_available` and puts its beds into
-        `beds_family_available`.
+        `spots_family_available`.
         """
         repo = _repo(
             fetch_session=FAMILY_SESSION,
@@ -6295,7 +6295,7 @@ class TestFamilyAvailabilityIsResolvedOverTheTree:
 
         assert roster.units[0].is_family_available is False
         assert roster.counts.units_family_available == 0
-        assert roster.counts.beds_family_available == 0
+        assert roster.counts.spots_family_available == 0
 
     @pytest.mark.asyncio
     async def test_the_roster_and_the_summary_agree_about_which_houses_are_free(self) -> None:
@@ -6333,22 +6333,22 @@ class TestFamilyAvailabilityIsResolvedOverTheTree:
         # A positive control: without it, two orchestrators that both counted
         # the house as open would agree just as loudly.
         assert roster.counts.units_family_available == 0
-        assert roster.counts.beds_family_available == 0
+        assert roster.counts.spots_family_available == 0
 
 
-class TestBedsFamilyAvailableCountsFreeBeds:
+class TestSpotsFamilyAvailableCountsFreeSpots:
     """kindred#2503 Task 5: the bar's denominator moves from whole cabins to
-    free beds. Task 4 made a written-into cabin with beds left AVAILABLE
+    free spots. Task 4 made a written-into cabin with spots left AVAILABLE
     again (`free > 0`); this is the other half -- once it is available, it
     must offer only what it has left, not its whole capacity.
 
-    Placed families are still NOT subtracted from `beds_family_available`,
+    Placed families are still NOT subtracted from `spots_family_available`,
     and the asymmetry is deliberate, not an oversight: the bar prints
-    `bedsNeeded / beds`. A placed family is already counted in `bedsNeeded`,
-    so subtracting its beds here too would count it on both sides. A
-    write-in is on nobody's roster and appears in neither `bedsNeeded` nor
-    (until now) the denominator, so its beds have to leave the denominator
-    or the bar over-promises.
+    `spotsNeeded / spots`. A placed family is already counted in
+    `spotsNeeded`, so subtracting its spots here too would count it on both
+    sides. A write-in is on nobody's roster and appears in neither
+    `spotsNeeded` nor (until now) the denominator, so its spots have to leave
+    the denominator or the bar over-promises.
     """
 
     @staticmethod
@@ -6365,24 +6365,24 @@ class TestBedsFamilyAvailableCountsFreeBeds:
         free_by_unit = _resolve_family_availability(units, caps, written)
         return LodgingRosterService(_repo())._build_counts(units, [], 0, index, free_by_unit)
 
-    def test_beds_family_available_counts_free_beds_not_whole_cabins(self) -> None:
-        """A fifteen-bed cabin with two people written into it offers thirteen.
+    def test_spots_family_available_counts_free_spots_not_whole_cabins(self) -> None:
+        """A fifteen-spot cabin with two people written into it offers thirteen.
 
         Placed families are still NOT subtracted, and the asymmetry is the point:
-        the stats bar prints `bedsNeeded/beds`, a placed family is counted in that
-        numerator, and subtracting its beds too would count it on both sides. A
-        write-in is on nobody's roster and appears in neither, so its beds have to
+        the stats bar prints `spotsNeeded/spots`, a placed family is counted in that
+        numerator, and subtracting its spots too would count it on both sides. A
+        write-in is on nobody's roster and appears in neither, so its spots have to
         leave the denominator or the bar over-promises.
         """
         counts = self._counts_for(
             units=[_summary("ridge-a", sleeps=15, party_size=2)],
             written_in=("ridge-a",),
         )
-        assert counts.beds_family_available == 13
+        assert counts.spots_family_available == 13
 
     def test_an_uncovered_cabin_still_contributes_its_whole_capacity(self) -> None:
         counts = self._counts_for(units=[_summary("ridge-a", sleeps=15)], written_in=())
-        assert counts.beds_family_available == 15
+        assert counts.spots_family_available == 15
 
 
 class TestWriteInsResolveFromTheirOwnTable:
@@ -6636,7 +6636,7 @@ class TestWriteInsResolveFromTheirOwnTable:
         counts = summary.weekends[0].counts
         assert counts.units_family_available == 1
         # The written-into cabin's five beds are NOT on offer; only the other unit's.
-        assert counts.beds_family_available == 4
+        assert counts.spots_family_available == 4
         assert counts == roster.counts
 
     @pytest.mark.asyncio
@@ -6664,14 +6664,14 @@ class TestWriteInsResolveFromTheirOwnTable:
     @pytest.mark.asyncio
     async def test_a_written_into_cabin_is_still_counted_as_reserved(self) -> None:
         """The stats bar must not move. `units_family_available` and
-        `beds_family_available` are the numbers staff read.
+        `spots_family_available` are the numbers staff read.
 
         They are derived from `is_family_available`, which is derived from
         `free` -- `family_available_override` has answered the staff<->family
         role alone since kindred#2382, and a write-in reaches this count
         through `free` instead. So a write-in that stopped spelling itself
         into `free` would silently return a closed cabin to the open count and
-        to `beds_family_available`. This write-in carries no `party_size`, so
+        to `spots_family_available`. This write-in carries no `party_size`, so
         it occupies wholesale (the schema's documented `None` state) rather
         than freeing any beds.
         """
@@ -6688,7 +6688,7 @@ class TestWriteInsResolveFromTheirOwnTable:
 
         assert roster.counts.units_total == 2
         assert roster.counts.units_family_available == 1
-        assert roster.counts.beds_family_available == 4
+        assert roster.counts.spots_family_available == 4
 
     @pytest.mark.asyncio
     async def test_a_write_in_on_a_building_still_reaches_the_rooms_beneath_it(self) -> None:
@@ -6723,7 +6723,7 @@ class TestWriteInsResolveFromTheirOwnTable:
         deliberate common space nobody measured, not "unknown" (its two rooms
         supply the rest of the answer). `capacity_by_code` has to be built
         from `_effective_sleeps`, the SAME walk `_build_counts` totals
-        `beds_family_available` with: reading the container's raw `sleeps`
+        `spots_family_available` with: reading the container's raw `sleeps`
         instead publishes 3 + 2 = 5 beds as 0 (or unmeasured), which is what
         this pins against.
         """
@@ -6829,7 +6829,7 @@ class TestTheWireStopsSpellingAnOccupancyAsFamilyAvailableFalse:
 
     @pytest.mark.asyncio
     async def test_the_counts_do_not_move_when_the_shim_comes_out(self) -> None:
-        """`units_family_available` and `beds_family_available` are what staff
+        """`units_family_available` and `spots_family_available` are what staff
         read.
 
         They are derived from `is_family_available`, which used to be derived
@@ -6850,7 +6850,7 @@ class TestTheWireStopsSpellingAnOccupancyAsFamilyAvailableFalse:
 
         assert roster.counts.units_total == 2
         assert roster.counts.units_family_available == 1
-        assert roster.counts.beds_family_available == 4
+        assert roster.counts.spots_family_available == 4
 
     @pytest.mark.asyncio
     async def test_a_stale_role_false_still_closes_the_unit_and_still_reports_itself(self) -> None:
@@ -7097,7 +7097,7 @@ class TestAScenariosWriteInsReplaceTheLiveOnes:
         counts = summary.weekends[0].counts
         assert counts.units_family_available == 1
         # The written-into cabin's five beds are NOT on offer; only the other unit's.
-        assert counts.beds_family_available == 4
+        assert counts.spots_family_available == 4
         assert counts == roster.counts
 
 

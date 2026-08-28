@@ -116,13 +116,13 @@ function occupiedLeafCodes(
  * placeholder `family_camp_adults` slots from the count, and discounts a
  * child under 18 months at session start. For the 26 households with an
  * infant this figure is deliberately one lower than the names printed beside
- * it — `slotOccupancy`, `partyBeds` and `bedsNeeded` all want beds, and the
+ * it — `slotOccupancy`, `partySpots` and `spotsNeeded` all want beds, and the
  * card's own names-chip is #2152's to split out.
  *
  * ⚠️ TWO COPIES OF THIS READ, not one. This doc comment once claimed it was
  * "deliberately the single place it is read"; that was false when written and
  * cost #2046 a re-sweep, so it is worth stating the count exactly. The other
- * is `rosterAttention.partyBeds`, whose body is identical. Change one, change
+ * is `rosterAttention.partySpots`, whose body is identical. Change one, change
  * both. (It said THREE until #2152: `FamilyDetailsPanel` held the third, and
  * that one turned out to want the PEOPLE number, not this one — it now calls
  * `partyHeadcount`. Deleting a copy by noticing it wanted a different number
