@@ -1009,9 +1009,21 @@ func resolveServiceStatuses(orchestrator *Orchestrator, syncTypes []string) map[
 //
 // EXTRACTED so the ordering and the coverage can be asserted in tests, the same
 // reason getDailySyncJobs is a function rather than a literal inside RunDailySync.
-// A job missing from this list is INVISIBLE to the client: `useSyncStatusAPI`'s
-// refetchInterval returns false when nothing reports running, so polling stops
-// while that job works and its completion is never detected.
+//
+// A job missing from this list has no per-job status the client can read, and on a
+// FLAG-LESS run path that is fatal to polling: `useSyncStatusAPI`'s refetchInterval
+// keeps polling while `_daily_sync_running`/`_historical_sync_running` is set OR some
+// per-job entry reports running/pending. RunDailySync and RunSyncWithOptions hold one
+// of those flags throughout, so a job missing here merely reads "idle" on the
+// dashboard. RunSyncSequence -- the Refresh Housing and Refresh Bunking path -- sets NO
+// flag, so there the per-job entry is the only signal, and a job absent from this list
+// means polling stops mid-run and the completion is never detected.
+//
+// Necessary, not sufficient, for a job to SHOW in the admin sync UI: SyncTab renders
+// cards from the frontend's own hand-maintained list (YEAR_SYNC_TYPES in
+// frontend/src/components/admin/syncTypes.ts) and useSyncCompletionToasts iterates
+// SYNC_DISPLAY_NAMES, neither of which is derived from this payload. Publishing a job
+// here fixes polling and completion detection; giving it a card is a separate edit.
 func statusSyncTypes() []string {
 	return []string{
 		// Weekly syncs - global definitions that rarely change
@@ -1019,10 +1031,10 @@ func statusSyncTypes() []string {
 		"custom_field_defs", // Global sync: custom field definitions
 		"staff_lookups",     // Global sync: positions, org_categories, program_areas
 		"financial_lookups", // Global sync: financial_categories, payment_methods
-		// Daily syncs (in dependency order)
+		"divisions",         // Global sync: division definitions -- GetWeeklySyncJobs, NOT daily
+		// Daily syncs, in the order getDailySyncJobs runs them
 		"session_groups",
 		"sessions",
-		"divisions", // Division definitions (runs before persons in daily sync)
 		"attendees",
 		"persons", // Combined sync: persons + households + person_tags (includes division relation)
 		"bunks",
@@ -1039,26 +1051,36 @@ func statusSyncTypes() []string {
 		// detect the cutover (kindred#2478 section 4.2c).
 		"person_custom_values_family_camp",
 		"household_custom_values_family_camp",
-		"family_camp_derived",         // Computed from person_custom_values, household_custom_values
-		"lodging_assignments",         // Derived: cabin custom fields -> lodging assignments
-		"staff_skills",                // Derived: staff skills extraction
-		"financial_aid_applications",  // Derived: FA applications computation
-		"household_demographics",      // Derived: household demographics computation
-		"camper_dietary",              // Derived: camper dietary extraction
-		"camper_transportation",       // Derived: camper transportation extraction
-		"quest_registrations",         // Derived: Quest program registration extraction
-		"staff_applications",          // Derived: staff applications extraction
-		"staff_vehicle_info",          // Derived: staff vehicle info extraction
-		"normalize_geographic",        // Derived: normalize state/country names
-		"enrollment_snapshots",        // Derived: daily enrollment snapshot capture
-		"stranded_assignment_cleanup", // Derived: auto-unassign stranded scenario-draft assignments
-		// Found by the coverage test below, not by report: it is a registered daily
-		// job in the Process phase whose two neighbors here were published while it
-		// was not. Same class of omission as the bounded pair above.
+		"family_camp_derived",        // Computed from person_custom_values, household_custom_values
+		"lodging_assignments",        // Derived: cabin custom fields -> lodging assignments
+		"staff_skills",               // Derived: staff skills extraction
+		"financial_aid_applications", // Derived: FA applications computation
+		"household_demographics",     // Derived: household demographics computation
+		"camper_dietary",             // Derived: camper dietary extraction
+		"camper_transportation",      // Derived: camper transportation extraction
+		"quest_registrations",        // Derived: Quest program registration extraction
+		"staff_applications",         // Derived: staff applications extraction
+		"staff_vehicle_info",         // Derived: staff vehicle info extraction
+		"normalize_geographic",       // Derived: normalize state/country names
+		"enrollment_snapshots",       // Derived: daily enrollment snapshot capture
+		// Found by the coverage test below, not by report: a registered daily job in the
+		// Process phase whose two neighbors here were published while it was not.
+		//
+		// Its omission was NOT the bounded pair's failure mode, and the distinction is
+		// worth keeping straight. Every path that runs this job -- RunDailySync and
+		// RunSyncWithOptions -- holds _daily_sync_running (or _historical_sync_running)
+		// for its whole duration, and refetchInterval polls on those flags alone, so
+		// polling never actually stopped for it. What was missing is per-job granularity:
+		// its dashboard row read "idle" while it ran. The bounded pair above is the
+		// genuinely invisible case, because RunSyncSequence -- the Refresh Housing path --
+		// sets no run-type flag at all, leaving the per-job entry as the only signal.
 		"reconcile_request_lifecycle",
 		"bunk_requests",
 		"process_requests",
 		"multi_workbook_export",
+		// Appended LAST by getDailySyncJobs, after bunk_plans is final (#1416, #1417) --
+		// listed last here to match, since orderedJobs is the source of truth for order.
+		"stranded_assignment_cleanup", // Derived: auto-unassign stranded scenario-draft assignments
 		// On-demand syncs (not part of daily sync)
 		"person_custom_values",
 		"household_custom_values",
@@ -1069,10 +1091,11 @@ func statusSyncTypes() []string {
 func handleSyncStatus(e *core.RequestEvent, scheduler *Scheduler) error {
 	orchestrator := scheduler.GetOrchestrator()
 
-	// Get status of all known sync types (in dependency order)
+	// Get status of all known sync types. The payload is a JSON object keyed by job
+	// name, so this order is documentation rather than protocol -- it is kept aligned
+	// with getDailySyncJobs so the list reads as the sequence it describes.
 	// Note: "persons" is a combined sync that populates persons, households, AND person_tags
 	// tables from a single API call - there are no separate households or person_tags syncs
-	// Note: "divisions" now runs in daily sync (before persons) rather than weekly
 	syncTypes := statusSyncTypes()
 
 	statuses := resolveServiceStatuses(orchestrator, syncTypes)
