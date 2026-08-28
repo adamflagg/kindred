@@ -103,16 +103,18 @@ down. Pinned negatively in `LodgingUnitCard.test.tsx` / `FamilyCard.test.tsx`.
 
 ### Older absences on the family card, still absent
 
-These three predate #2072 and are the reason `FamilyCard.tsx` cited a
+These two predate #2072 and are the reason `FamilyCard.tsx` cited a
 gitignored "spec §3.8". Repointed here so the citation lands somewhere
 readable; the reasoning is unchanged and each is pinned negatively in
-`FamilyCard.test.tsx`.
+`FamilyCard.test.tsx`. A third row, `needs_resolution` (true for 44 of 62,
+same reason), used to sit here too — the owner removed that field outright
+on 2026-08-27 rather than merely keeping it off this card, so there is
+nothing left to list an absence of.
 
 | Struck                 | Why                                                                                                                                                                                                         |
 | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Request text           | 12 of 232 request texts contain health vocabulary including a named diagnosis. The roster's exposure was accepted for opening ONE row at a time, not for printing it across 62 simultaneously-visible cards |
 | The medical affordance | `has_medical_narrative` was true for 62 of 62 parties. A flag that is always on is not a flag — kindred#1889 deleted it; the narrative lives on `FamilyDetailsPanel`                                        |
-| `needs_resolution`     | true for 44 of 62. Same reason                                                                                                                                                                              |
 
 ## 4. The bathroom axis — a correction worth keeping
 

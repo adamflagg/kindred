@@ -99,7 +99,6 @@ function party(overrides: Partial<RosterPartyRow> = {}): RosterPartyRow {
       preference_raw: '',
       proximity: [],
       request_text: '',
-      needs_resolution: false,
     },
     flags: {
       needs_private_bathroom: false,
@@ -199,7 +198,6 @@ describe('HouseholdRosterTable', () => {
               preference_raw: '',
               proximity: [],
               request_text: '',
-              needs_resolution: false,
             },
           }),
         ]}
@@ -235,7 +233,6 @@ describe('HouseholdRosterTable', () => {
               preference_raw: '',
               proximity: [],
               request_text: '',
-              needs_resolution: true,
               request_blocks: [
                 {
                   source_field: 'Share Bunk With',
@@ -468,7 +465,6 @@ describe('HouseholdRosterTable', () => {
               preference_raw: 'No, prefer not to share',
               proximity: [],
               request_text: '',
-              needs_resolution: false,
             },
           }),
         ]}
@@ -508,7 +504,6 @@ describe('HouseholdRosterTable', () => {
               preference_raw: 'No, prefer not to share',
               proximity: [],
               request_text: '',
-              needs_resolution: false,
             },
           }),
         ]}

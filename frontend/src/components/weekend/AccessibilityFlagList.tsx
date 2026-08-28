@@ -7,7 +7,7 @@
  *
  * Presentational, with no data access of its own. It used to also carry the
  * medical narrative behind a permission-checked reveal; kindred#1889 moved
- * that to `MedicalNarrative`, which only `FamilyDetailsPanel` renders. This
+ * that to `HousingNeedDetails`, which only `FamilyDetailsPanel` renders. This
  * component appears once per roster row, 62 to a page, so keeping it free of
  * the medical hook is what stops a later change from making 62 gated
  * requests.

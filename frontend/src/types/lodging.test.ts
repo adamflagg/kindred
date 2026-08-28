@@ -172,7 +172,6 @@ const _exhaustiveRosterParty: Required<RosterPartyRow> = {
     preference_raw: '',
     proximity: [],
     request_text: '',
-    needs_resolution: false,
     // kindred#2330. `RosterParty`'s own fixture writes an empty list, so it
     // proves nothing about the block shape — the two fixtures below are the
     // guard that a later regen dropping `source_field`, `authorship` or

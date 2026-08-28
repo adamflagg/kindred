@@ -16,12 +16,7 @@
 import { Clock, Repeat, Star } from 'lucide-react'
 import { Fragment } from 'react'
 
-import type {
-  AccessibilityFlags,
-  LodgingUnitRow,
-  RosterPartyRow,
-  ShareRequest,
-} from '../../types/lodging'
+import type { AccessibilityFlags, LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
 import { displayCampMinderAge } from '../../utils/age'
 import { Tooltip } from '../ui/Tooltip'
 import { AccessibilityFlagList } from './AccessibilityFlagList'
@@ -45,16 +40,6 @@ export interface HouseholdRosterRowProps {
    * routes to the identical panel on Housing and Map.
    */
   onOpen: (party: RosterPartyRow) => void
-}
-
-/** An unanswered request, used when the payload omits the block entirely. */
-const NO_SHARE_REQUEST: ShareRequest = {
-  preference: 'unknown',
-  preference_raw: '',
-  proximity: [],
-  request_text: '',
-  needs_resolution: false,
-  request_blocks: [],
 }
 
 const NO_FLAGS: AccessibilityFlags = {
@@ -276,7 +261,7 @@ export function HouseholdRosterRow({ party, showRequests, unit, onOpen }: Househ
 
       {showRequests && (
         <td className="py-3 pr-4">
-          <ShareRequestPanel share={party.share ?? NO_SHARE_REQUEST} />
+          <ShareRequestPanel party={party} />
         </td>
       )}
 

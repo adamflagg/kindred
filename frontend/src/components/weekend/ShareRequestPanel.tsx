@@ -12,6 +12,41 @@
  * this layer would lose, most importantly the guard that stops the modes
  * field's own "No requests" option reading as a hard decline.
  *
+ * ## Up to eight labelled rows, the same grammar as `HousingNeedDetails`' list
+ *
+ * Two choice rows (the radio, the checkboxes) plus up to six free-text note
+ * rows, one per `REQUEST_TEXT_SOURCES` entry (`api/services/lodging_rules.py`)
+ * that actually carries text. "Five labelled rows" was this section's count
+ * under an earlier, reverted design that fixed the note rows at three; it is
+ * not a ceiling any more.
+ *
+ * The owner's approved mockup (2026-08-27, share-request rework) supersedes
+ * the board-style chip row this panel briefly shipped with: the section is
+ * now one `<ul>` of rows, each an icon chip, a bold label and — when there is
+ * text — an indented paragraph under it, the SAME grammar
+ * `HousingNeedDetails` already uses for housing needs. `SharePreferenceChip`
+ * and the local `PROXIMITY` chip map were removed one rework ago; this pass
+ * removes the board-style Tooltip/capsule-row treatment that replaced them,
+ * because it never matched what the owner actually wanted here.
+ *
+ * Icons, colours, wording and order for the radio and the checkboxes are
+ * still entirely owned by `shareMarks.ts` — `resolveShareAnchor` (row 1) and
+ * `resolveShareCluster` (row 2) — this file only draws the row markup. The
+ * one addition `shareMarks.ts` picked up for this rework is additive:
+ * `ShareAnchorSpec.label`, the anchor's bare state wording
+ * (`"Yes, Share Cabin"` etc.), read once rather than restated here — see that
+ * module's header comment.
+ *
+ * Both resolvers gate on `party.grain !== 'household'` (an adult weekend has
+ * no share question), which is why this component takes `party` rather than
+ * `share` — computing the anchor/cluster in each caller and passing the
+ * results down would move that gate into two places and let them drift. Both
+ * callers (`FamilyDetailsPanel`, `HouseholdRosterRow`) already hold `party`.
+ * A household whose payload omits the `share` block entirely still falls
+ * back to `NO_SHARE_REQUEST` for the rest of this component's own logic
+ * (fold state, the free-text blocks below) — only the anchor/cluster read
+ * `party` directly, per `shareMarks.ts`'s own null/empty handling.
+ *
  * ## The free-text half is SPLIT, per source field and per child
  *
  * It used to arrive pre-joined and was never split, and that was the defect
@@ -27,11 +62,78 @@
  * fallback below if blocks ever come back empty against a non-empty join —
  * losing a family's ask is worse than losing its provenance.
  *
- * Layout is the owner's 2026-08-17 ruling, a hybrid of two mockup options:
- * blocks start EXPANDED, because a scanning eye must not miss request text,
- * and each is COLLAPSIBLE, because 9 of 382 rostered 2026 households render
- * four blocks and one renders seven entries inside them. The expectation was
- * explicitly that this would ship and get tuned against real staff use.
+ * ## A CHOICE and a NOTE are two different facts — owner ruling 2026-08-27,
+ * correcting a defect one rework introduced
+ *
+ * An earlier pass on this file lifted `Shared-request` and `COVID-19 Bunking
+ * Requests` out of the fold loop to PAIR their text under the radio/checkbox
+ * rows, and then tried composing one merged label for the result. Both
+ * shipped and both were wrong: merging a free-text note into a choice row is
+ * what let the SAME field (`COVID-19 Bunking Requests`) render under two
+ * different labels depending on an unrelated tick — 202 of 260 real
+ * households by the ticked marks' shorthand, 58 by the field's friendly name
+ * — and the composed-label fix that followed still merged the two facts into
+ * one row, which the owner found confusing to read. The ruling that stands:
+ * a SELECT's answer and a FREE-TEXT note are different facts, and each gets
+ * its own row. Never merge a note into a choice row again.
+ *
+ * 202/260/58 above is the PRODUCTION figure — `pocketbase/pb_data/data-prod.db`,
+ * not the sibling `data.db` (dev), a known trap — scoped exactly as the spec
+ * defines the cohort: `attendees.status_id = 2`, `camp_sessions.session_type
+ * = 'family'`, year 2026, 392 households. 260 of them carry
+ * `COVID-19 Bunking Requests` text; 202 with at least one multiselect tick,
+ * 58 with none. Re-derive against `data-prod.db` with that same scope if
+ * these numbers ever need checking again — a dev-DB measurement is not this
+ * repo's convention for a comment that ships.
+ *
+ * Rows 1-2 are the two SELECTS, and carry NO text underneath, ever:
+ *
+ *   - Row 1, the radio (`resolveShareAnchor`) — always renders for a
+ *     household-grain party, labelled with the anchor's own state wording
+ *     (`ShareAnchorSpec.label` — "Yes, Share Cabin", "Don't Share Cabin", …).
+ *   - Row 2, the checkboxes (`resolveShareCluster`) — renders ONLY when at
+ *     least one mark is ticked, labelled with the ticked marks' shorthands
+ *     joined `' · '` (`ShareClusterMark.ariaLabel`). With nothing ticked
+ *     there is nothing to show — no fallback icon, no fallback label; the
+ *     row simply does not render.
+ *
+ * `Shared-request` and `COVID-19 Bunking Requests` are ordinary NOTES now,
+ * flowing through the SAME fold loop as the other four source fields, under
+ * their own `DISPLAY_LABELS` names ("Reg Form Bunk Notes", "Fam Info Form
+ * Bunk Notes") — no special-casing, no filtering out of the block list.
+ * Server order (`REQUEST_TEXT_SOURCES`, `api/services/lodging_rules.py`)
+ * already puts them first, so this file does not re-sort anything.
+ *
+ * ⚠️ ONE BEHAVIOUR CHANGE, AND IT IS INTENDED: `Shared-request` used to be
+ * hard-gated to `preference` being `yes_share`/`maybe_mutual` — rule 3 in
+ * `shareMarks.ts`, "a value on no/unanswered is data drift, not a case to
+ * render". That gate does NOT transfer here — settled by the owner, not
+ * inferred: rule 3 is BOARD-tooltip-scoped, conflating the two fields was an
+ * artifact of how the board's tooltips happened to be built, and a
+ * standalone labelled row in this panel was never the case rule 3 was
+ * written to cover. Appending a request to a compact mark that says "won't
+ * share" is self-contradictory on that ONE glyph; a free-text row under its
+ * own field label contradicts nothing. `shareMarks.ts`'s own rule 3 is
+ * untouched and still governs `resolveShareAnchor`'s tooltip; only this
+ * panel stopped applying it to itself. Measured before this ruling: 102
+ * rostered 2026 households carried `Shared-request` text, 101 with the radio
+ * at yes/maybe and exactly 1 hidden by the gate regardless — that one
+ * family's actual written request is what this change surfaces.
+ *
+ * Also confirmed, not assumed: the no-empty-row principle ("a source field
+ * with no text renders NOTHING") still holds for these two fields now that
+ * the `show*Text` flags that used to enforce it are gone. `withText` (below)
+ * drops any block whose entries are all blank before the fold loop ever
+ * sees it, uniformly across all six source fields — a household with no
+ * `Shared-request` text gets no `Reg Form Bunk Notes` row at all, not an
+ * empty one. Pinned in `ShareRequestPanel.test.tsx`.
+ *
+ * Layout for the free-text rows (all six source fields, now uniform) is the
+ * owner's 2026-08-17 ruling, a hybrid of two mockup options: blocks start
+ * EXPANDED, because a scanning eye must not miss request text, and each is
+ * COLLAPSIBLE, because 9 of 382 rostered 2026 households render four blocks
+ * and one renders seven entries inside them. The expectation was explicitly
+ * that this would ship and get tuned against real staff use.
  *
  * kindred#2476 (owner ruling 2026-08-21) is that tuning: `Share Bunk With`
  * now starts COLLAPSED — see `DEFAULT_FOLDED` below — while every other
@@ -47,16 +149,28 @@
  * whole list of exceptions and the other three keep the raw CampMinder
  * spelling. Do not "improve" a label that is not already in that map.
  *
- * ## One treatment
+ * Each row — the two choice rows, and every free-text note — carries a small
+ * circular icon chip and a bold label. Every NOTE row additionally carries,
+ * pushed to the row's right edge, a chevron that rotates 90° open rather
+ * than swapping icons, per the mockup. The choice rows have no chevron
+ * (there is nothing to fold); only the note rows do.
  *
- * The amber blockquote is INHERITED, not invented: it is the same one the
- * camper details panel uses for parent request text, so a request reads the
- * same wherever staff meet one — and, after the owner's 2026-08-17 review of
- * the live panel, the same whoever wrote it. The two staff-authored fields
- * (`BunkingNotes Notes`, `Internal Bunk Notes`) briefly shipped on a grey rail
- * to keep an internal note from reading as a family's own ask; that is the one
- * thing the review reversed, and it also removes a weekend-only divergence
- * from summer, which renders its staff notes in amber too.
+ * ## One treatment — the row grammar, not a rail
+ *
+ * This section used to inherit the camper details panel's amber blockquote
+ * for every entry, reasoning that a request should read the same wherever
+ * staff meet one. The owner's approved mockup supersedes that reasoning here:
+ * every text in this section is now plain, indented, italic prose under its
+ * row's label — no border, no background, no "quoted" treatment at all. The
+ * owner looked at the live panel and named the amber rail itself as the
+ * defect, not merely its colour (a grey variant for the two staff fields was
+ * tried and reverted for the same underlying complaint before this rework).
+ * The ONE thing carried forward is that staff- and family-authored text still
+ * render identically — nothing here paints by `authorship` — because that
+ * distinction is a permission gate, not a colour: `block.authorship` still
+ * decides whether `/lodging/roster` sends a staff block to this client at
+ * all (`_may_read_staff_notes`, api/routers/lodging.py), and it is still
+ * surfaced as `data-authorship` below, plus a small "Staff" tag on the row.
  *
  * A source field with no text renders NOTHING — no "nothing applicable"
  * clutter, composing with kindred#2255's chip ruling in this same modal.
@@ -64,14 +178,14 @@
  * ## No permission gate on a FAMILY's own request text
  *
  * `request_text` and the family-authored blocks built from the same answers
- * have no permission check at all, while `MedicalNarrative` (rendered beside
- * them in `FamilyDetailsPanel`) is gated on `bunking.manage`. The split is
- * intentional: request text is a placement input — why a household wants a
- * particular cabin or setting is a legitimate placement concern for any
- * authenticated user to see, the same way the rest of the roster is. It is
- * free text a household wrote about where it wants to sleep, not the
+ * have no permission check at all, while `HousingNeedDetails` (rendered
+ * beside them in `FamilyDetailsPanel`) is gated on `bunking.manage`. The
+ * split is intentional: request text is a placement input — why a household
+ * wants a particular cabin or setting is a legitimate placement concern for
+ * any authenticated user to see, the same way the rest of the roster is. It
+ * is free text a household wrote about where it wants to sleep, not the
  * structured medical questionnaire, even though it sometimes contains health
- * detail. `MedicalNarrative` covers that questionnaire, and that one is
+ * detail. `HousingNeedDetails` covers that questionnaire, and that one is
  * screen-reduced behind `bunking.manage` (kindred#2312: it used to be a
  * separate `lodging.phi` permission, removed because RBAC here is
  * screen-reduction, not a data boundary, and every sibling endpoint on the
@@ -86,39 +200,51 @@
  * without it (`_may_read_staff_notes`, api/routers/lodging.py). Nothing is
  * hidden client-side: a block that arrives is a block staff may read. That
  * gate is the whole reason `authorship` still travels on the wire now that it
- * paints nothing — see `REQUEST_RAIL`.
+ * paints nothing.
  */
-import { AlertCircle, ChevronDown, ChevronRight, MapPin, Users } from 'lucide-react'
+import {
+  BedDouble,
+  ChevronRight,
+  Handshake,
+  Lock,
+  MessageSquare,
+  Tent,
+  type LucideIcon,
+} from 'lucide-react'
 import { useCallback, useState } from 'react'
 
-import type { ProximityKindValue, RequestTextBlockRow, ShareRequest } from '../../types/lodging'
-import { SharePreferenceChip } from './SharePreferenceChip'
+import type { RequestTextBlockRow, RosterPartyRow, ShareRequest } from '../../types/lodging'
+import { CAP_CLASSES, clusterCap, resolveShareAnchor, resolveShareCluster } from './shareMarks'
 
-const PROXIMITY: Record<ProximityKindValue, { label: string; icon: typeof MapPin }> = {
-  near: { label: 'Near another family', icon: MapPin },
-  with: { label: 'Same cabin as another family', icon: Users },
-  similar_ages: { label: 'With similarly-aged kids', icon: Users },
+/** An unanswered request, used when the payload omits the block entirely. */
+const NO_SHARE_REQUEST: ShareRequest = {
+  preference: 'unknown',
+  preference_raw: '',
+  proximity: [],
+  request_text: '',
+  request_blocks: [],
 }
 
+/** 22px icon-chip frame (mockup `.mkic`). No rounding baked in here, mirroring `shareMarks.ts`'s own `CAP_CLASSES` split — the anchor/cluster rows supply their corner via `CAP_CLASSES`, the note rows below hardcode `rounded-full` since they are always solo. */
+const ROW_ICON_FRAME = 'inline-flex h-[22px] w-[22px] flex-shrink-0 items-center justify-center'
+/** 13px icon glyph inside every row's chip (mockup `.mkic svg`). */
+const MARK_ICON = 'h-[13px] w-[13px]'
+/** The muted, always-solo chip for the three CSV-lane note rows (mockup `.mkic.nt`). */
+const NOTE_ICON_FRAME = `${ROW_ICON_FRAME} rounded-full bg-muted text-muted-foreground`
+
 /**
- * The camper details panel's treatment for parent request text, reused
- * verbatim. `break-words` is the one addition: the longest single 2026 answer
- * is 680 characters in a 416px panel, and an unbroken token — an email
- * address, a URL — would otherwise push the panel into a horizontal scroll.
- *
- * EVERY block gets this one, family-authored or staff-authored. The two staff
- * fields briefly had a grey variant; the owner's 2026-08-17 review of the live
- * panel standardised on amber instead. **The authorship distinction is not
- * gone — it is merely not painted.** `block.authorship` still decides whether
- * `/lodging/roster` sends a staff block to this client at all
- * (`_may_read_staff_notes`, api/routers/lodging.py: `BunkingNotes Notes` and
- * `Internal Bunk Notes` are `original_bunk_requests` rows, gated on
- * `bunking.manage`), and it is still surfaced as `data-authorship` below.
- * Deleting the field because nothing reads it for colour would reopen that
- * permission hole.
+ * Every text in this section (mockup `.mksay`): plain, 30px-indented,
+ * italic, `opacity-85`, no rail. `break-words` is the one addition beyond the
+ * mockup's literal CSS — the longest single 2026 answer is 680 characters in
+ * a 416px panel, and an unbroken token (an email address, a URL) would
+ * otherwise push the panel into a horizontal scroll; `whitespace-pre-wrap`
+ * keeps a family's own line breaks.
  */
-const REQUEST_RAIL =
-  'text-foreground rounded-r-lg border-l-2 border-amber-300 bg-amber-50/60 px-3 py-2 text-sm whitespace-pre-wrap break-words italic dark:border-amber-500/60 dark:bg-amber-900/20'
+const MK_SAY =
+  'text-foreground pl-[30px] text-[13px] italic whitespace-pre-wrap break-words opacity-[.85]'
+
+/** The small uppercase authorship tag on a note row (mockup `.who`). */
+const WHO_TAG = 'text-muted-foreground text-[9.5px] tracking-[.07em] uppercase opacity-75'
 
 /**
  * DISPLAY names. The key stays the CampMinder source-field identity — it is
@@ -147,6 +273,11 @@ const REQUEST_RAIL =
  * verbatim name. The other three fields stay verbatim, and the rule for the
  * next reader is **verbatim unless the owner named it**; silence is not a
  * rename. Do not "improve" a label here on your own judgement.
+ *
+ * All three entries are read as ordinary row labels now — `Shared-request`
+ * and `COVID-19 Bunking Requests` included, per the owner's 2026-08-27
+ * ruling that a free-text note is never merged into a choice row (see the
+ * file header). Nothing here is special-cased for them any more.
  */
 const DISPLAY_LABELS: Readonly<Record<string, string>> = {
   'BunkingNotes Notes': 'Bunking Notes',
@@ -154,8 +285,16 @@ const DISPLAY_LABELS: Readonly<Record<string, string>> = {
   'Shared-request': 'Reg Form Bunk Notes',
 }
 
+/** The row icon for each of the three CSV-lane notes (spec §6). Anything else — `FAM CAMP-Share Comments`, `Shared-request`, `COVID-19 Bunking Requests` — gets `DEFAULT_ROW_ICON`, the same muted note chip. */
+const ROW_ICON: Readonly<Record<string, LucideIcon>> = {
+  'BunkingNotes Notes': Tent,
+  'Internal Bunk Notes': Lock,
+  'Share Bunk With': BedDouble,
+}
+const DEFAULT_ROW_ICON: LucideIcon = MessageSquare
+
 export interface ShareRequestPanelProps {
-  share: ShareRequest
+  party: RosterPartyRow
 }
 
 /**
@@ -186,6 +325,15 @@ function withText(blocks: RequestTextBlockRow[]): RequestTextBlockRow[] {
     .filter((block) => block.entries.length > 0)
 }
 
+/** One row's paragraph of free text (mockup `.mksay`). No label here — a row's label lives in its own header, never as a caption above the text. */
+function RowText({ text }: { text: string }) {
+  return (
+    <p data-testid="request-entry" className={MK_SAY}>
+      {text}
+    </p>
+  )
+}
+
 function RequestBlock({
   block,
   expanded,
@@ -201,39 +349,57 @@ function RequestBlock({
   // not: the panel is never remounted between families (all three callsites
   // render `<FamilyDetailsPanel party={panelParty} …>` with no `key`, and
   // `usePanelParty` only swaps `selectedKey`), so a block keyed on its source
-  // field kept its instance — and its fold — across the click. 205 of 382
-  // rostered households share `COVID-19 Bunking Requests`, so the next
-  // family's request text arrived already hidden.
+  // field kept its instance — and its fold — across the click.
   const isStaff = block.authorship === 'staff'
   const sourceField = block.source_field ?? ''
   const label = DISPLAY_LABELS[sourceField] ?? sourceField
+  const RowIcon = ROW_ICON[sourceField] ?? DEFAULT_ROW_ICON
 
   return (
-    <section
+    <li
       data-testid="request-block"
       data-source-field={sourceField}
       data-authorship={isStaff ? 'staff' : 'family'}
-      className="flex flex-col gap-1"
+      className="flex flex-col gap-[3px]"
     >
+      {/* The WHOLE ROW is the click target (mockup `.mk.note .mkbtn`:
+          `all:unset; display:flex; width:100%`), not just the label — a
+          collapsed row used to leave the chevron and the Staff tag OUTSIDE
+          the button with no handler, so clicking the glyph staff actually
+          looked at did nothing. `aria-hidden` on the Staff tag keeps it out
+          of the button's accessible name (dom-accessibility-api excludes
+          aria-hidden descendants from "name from content"), so a query by
+          exact label text still finds a staff-authored row's button. The
+          chevron icon needs no such treatment — lucide already marks an
+          icon with no a11y prop `aria-hidden` on its own. */}
       <button
         type="button"
         onClick={() => {
           onToggle(sourceField)
         }}
-        className="text-muted-foreground hover:text-foreground flex w-full items-center gap-1 text-left transition-colors"
+        className="text-muted-foreground hover:text-foreground flex w-full items-center gap-1.5 text-left text-[13.5px] transition-colors"
       >
-        {expanded ? (
-          <ChevronDown className="h-3 w-3 flex-shrink-0" />
-        ) : (
-          <ChevronRight className="h-3 w-3 flex-shrink-0" />
-        )}
+        <span className={`${NOTE_ICON_FRAME}`}>
+          <RowIcon className={MARK_ICON} />
+        </span>
         {/* Deliberately NOT the section heading's uppercase/tracked style,
             which `FamilyDetailsPanel`'s `Section` already spends above this.
-            Repeating it would make a block read as a peer of "Share request"
-            rather than a child of it — and at 11px in a 416px panel, a
-            label as long as "Fam Info Form Bunk Notes" set in tracked
-            uppercase is both wider and harder to read. */}
-        <span className="text-xs font-semibold">{label}</span>
+            Repeating it would make a row read as a peer of "Share request"
+            rather than a child of it. */}
+        <span className="ml-0.5 font-semibold">{label}</span>
+        {/* `Staff` only — the mockup's `NOTE_SPEC.shareWith` also tags
+            `Share Bunk With` `who: 'CSV'`, but this app has no real CSV
+            vs. form provenance signal on the wire, only `authorship`
+            ('staff' | 'family'); inventing a label the data can't back is
+            worse than omitting it, so `Share Bunk With` renders no tag. */}
+        {isStaff && (
+          <span className={WHO_TAG} aria-hidden="true">
+            Staff
+          </span>
+        )}
+        <ChevronRight
+          className={`ml-auto h-3 w-3 flex-shrink-0 transition-transform ${expanded ? 'rotate-90' : ''}`}
+        />
       </button>
 
       {expanded &&
@@ -242,21 +408,21 @@ function RequestBlock({
             {(entry.contributors ?? []).length > 0 && (
               <span
                 data-testid="request-entry-contributors"
-                className="text-muted-foreground pl-4 text-[11px]"
+                className="text-muted-foreground pl-[30px] text-[11px]"
               >
                 {(entry.contributors ?? []).join(', ')}
               </span>
             )}
-            <blockquote data-testid="request-entry" className={REQUEST_RAIL}>
-              {entry.text}
-            </blockquote>
+            <RowText text={entry.text ?? ''} />
           </div>
         ))}
-    </section>
+    </li>
   )
 }
 
-export function ShareRequestPanel({ share }: ShareRequestPanelProps) {
+export function ShareRequestPanel({ party }: ShareRequestPanelProps) {
+  const share = party.share ?? NO_SHARE_REQUEST
+
   // Which source fields staff have folded away, and WHOSE. Held here rather
   // than inside each block because the panel outlives the household it is
   // showing: `usePanelParty` swaps `selectedKey` and the same
@@ -288,66 +454,83 @@ export function ShareRequestPanel({ share }: ShareRequestPanelProps) {
     })
   }, [])
 
-  const proximity = share.proximity ?? []
+  // The radio and the checkboxes, in the board's own vocabulary. Both read
+  // `party` directly (not `share`) so the grain gate lives in exactly one
+  // place — see the file header. NEITHER carries text underneath any more
+  // (owner ruling 2026-08-27): a choice row and a free-text note are
+  // different facts, and merging them is the defect this ruling removes.
+  const anchor = resolveShareAnchor(party)
+  const cluster = resolveShareCluster(party)
+
+  // ALL SIX source fields now flow through the ordinary fold loop, uniformly
+  // — `Shared-request` and `COVID-19 Bunking Requests` included. No field is
+  // lifted out or filtered any more, so `c39c5599`'s split between an
+  // unfiltered list (for the joined fallback) and a filtered one (for the
+  // rows) has nothing left to guard: there is only one list.
   const blocks = withText(share.request_blocks ?? [])
   const requestText = share.request_text ?? ''
   // The pre-split fallback. Reachable only if the raw values and the derived
   // column disagree — a state production should not produce, and one where
   // silently dropping the text would be the worse failure.
   const showJoinedFallback = blocks.length === 0 && requestText.length > 0
-  const needsResolution =
-    share.needs_resolution === true && (blocks.length > 0 || showJoinedFallback)
 
   return (
     <div className="flex flex-col gap-1.5">
-      <div className="flex flex-wrap items-center gap-1.5">
-        <SharePreferenceChip
-          preference={share.preference ?? 'unknown'}
-          raw={share.preference_raw}
-        />
-        {proximity.map((kind) => {
-          // An unmapped proximity value from a newer ingest renders as
-          // nothing rather than crashing the row.
-          if (!Object.hasOwn(PROXIMITY, kind)) return null
-          const entry = PROXIMITY[kind]
-          const Icon = entry.icon
-          return (
-            <span
-              key={kind}
-              className="bg-muted/60 text-foreground inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium"
-            >
-              <Icon className="h-3 w-3 flex-shrink-0" />
-              {entry.label}
-            </span>
-          )
-        })}
-      </div>
+      <ul className="flex flex-col gap-2">
+        {anchor && (
+          <li className="flex flex-col gap-[3px]">
+            <div className="flex items-center gap-1.5 text-[13.5px]">
+              <span
+                data-testid="share-anchor"
+                className={`${ROW_ICON_FRAME} ${anchor.className} ${CAP_CLASSES.solo}`}
+              >
+                <Handshake className={MARK_ICON} />
+              </span>
+              <span className="ml-0.5 font-semibold">{anchor.label}</span>
+            </div>
+          </li>
+        )}
 
-      {blocks.map((block) => (
-        <RequestBlock
-          key={block.source_field ?? ''}
-          block={block}
-          expanded={!folded.has(block.source_field ?? '')}
-          onToggle={toggleFold}
-        />
-      ))}
+        {cluster.length > 0 && (
+          <li className="flex flex-col gap-[3px]">
+            <div className="flex items-center gap-1.5 text-[13.5px]">
+              <div className="flex items-center">
+                {cluster.map((mark, index) => {
+                  const cap = CAP_CLASSES[clusterCap(index, cluster.length)]
+                  const Icon = mark.Icon
+                  return (
+                    <span
+                      key={mark.key}
+                      data-testid={`share-mark-${mark.key}`}
+                      className={`${ROW_ICON_FRAME} ${mark.className} ${cap}`}
+                    >
+                      <Icon className={MARK_ICON} />
+                    </span>
+                  )
+                })}
+              </div>
+              <span className="ml-0.5 font-semibold">
+                {cluster.map((mark) => mark.ariaLabel).join(' · ')}
+              </span>
+            </div>
+          </li>
+        )}
 
-      {showJoinedFallback && (
-        <blockquote data-testid="request-entry" className={REQUEST_RAIL}>
-          {requestText}
-        </blockquote>
-      )}
+        {blocks.map((block) => (
+          <RequestBlock
+            key={block.source_field ?? ''}
+            block={block}
+            expanded={!folded.has(block.source_field ?? '')}
+            onToggle={toggleFold}
+          />
+        ))}
 
-      {/* ONCE for the household, not once per block. It is a fact about the
-          request layer — no named family has been resolved to a household
-          yet — and repeating it under every block would read as a different
-          problem per source field. */}
-      {needsResolution && (
-        <span className="text-muted-foreground flex items-center gap-1 text-xs">
-          <AlertCircle className="h-3 w-3 flex-shrink-0" />
-          Needs resolution
-        </span>
-      )}
+        {showJoinedFallback && (
+          <li>
+            <RowText text={requestText} />
+          </li>
+        )}
+      </ul>
     </div>
   )
 }

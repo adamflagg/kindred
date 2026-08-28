@@ -21,7 +21,7 @@
 import { Baby, Clock, Home, Repeat, Star, Users, X } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 
-import type { LodgingUnitRow, RosterPartyRow, ShareRequest } from '../../types/lodging'
+import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
 import { displayCampMinderAge } from '../../utils/age'
 import { hasOpenModal } from '../ui/modalStack'
 import { Tooltip } from '../ui/Tooltip'
@@ -40,16 +40,6 @@ export interface FamilyDetailsPanelProps {
   /** Parent-driven animated close, as the summer board does. */
   requestClose?: boolean
   onClose: () => void
-}
-
-/** An unanswered request, used when the payload omits the block entirely. */
-const NO_SHARE_REQUEST: ShareRequest = {
-  preference: 'unknown',
-  preference_raw: '',
-  proximity: [],
-  request_text: '',
-  needs_resolution: false,
-  request_blocks: [],
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -313,7 +303,7 @@ export function FamilyDetailsPanel({
       </Section>
 
       <Section title="Share request">
-        <ShareRequestPanel share={party.share ?? NO_SHARE_REQUEST} />
+        <ShareRequestPanel party={party} />
       </Section>
 
       <Section title="Housing needs">
