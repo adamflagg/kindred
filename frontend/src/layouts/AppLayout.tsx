@@ -111,12 +111,15 @@ function WeekendFreshness({
         COLUMN of it, so each names what it reads. Do not tidy the two labels
         into one string.
 
-        And NO FALLBACK, unlike summer's block below, which falls back to
-        "Requests synced" off `bunk_requests.end_time` when no CSV was ever
-        uploaded. `bunking_notes` arrives ONLY by CSV, so the hourly job's
-        `success created=0 updated=0 skipped=1732` is precisely the lie
-        kindred#2570 is about — it would report a job that RAN as data that
-        ARRIVED. Weekend renders the upload branch or nothing.
+        And NO FALLBACK to `bunk_requests.end_time`. `bunking_notes` arrives
+        ONLY by CSV, so the daily job's `success created=0 updated=0
+        skipped=2354` is precisely the lie kindred#2570 is about — it would
+        report a job that RAN as data that ARRIVED. Render the upload branch or
+        nothing.
+
+        Summer's block below now follows the SAME rule (owner ruling
+        2026-08-28); it used to carry the fallback, and the reasoning that
+        removed it is written out at that site.
       */}
       {upload?.uploaded_at !== undefined && (
         <span
@@ -537,10 +540,25 @@ export const AppLayout = () => {
               {activeProgram === 'weekend' && canSeeSync && syncStatus && (
                 <WeekendFreshness syncStatus={syncStatus} isAdultWeekend={isAdultWeekend} />
               )}
+              {/*
+                SUMMER'S PAIR. `Assignments synced` reads `bunk_assignments`
+                and NOT the last job of GetRefreshBunkingJobs, even though that
+                group's terminator (`stranded_assignment_cleanup`) would be the
+                tidier "the whole chain finished" marker. They are not on the
+                same cadence: `hourlySyncJob = "bunk_assignments"`, so the
+                cleanup only runs in the daily sweep and in Refresh Bunking.
+                Measured on a dev snapshot, `bunk_assignments` had succeeded at
+                07:00 that morning while `stranded_assignment_cleanup` was from
+                10:14 the previous day — reading the terminator would have
+                reported a day stale. Each line names its own noun and reads the
+                job that writes that noun.
+
+                `bunk_requests.end_time` is DELIBERATELY ABSENT from this gate —
+                see the request-text span below.
+              */}
               {activeProgram === 'summer' &&
                 syncStatus &&
                 (syncStatus.bunk_assignments?.end_time ??
-                  syncStatus.bunk_requests?.end_time ??
                   syncStatus._bunk_requests_upload?.uploaded_at) && (
                   <div className="text-muted-foreground flex items-center gap-3 text-xs">
                     {syncStatus.bunk_assignments?.end_time && (
@@ -555,7 +573,33 @@ export const AppLayout = () => {
                         })}
                       </span>
                     )}
-                    {syncStatus._bunk_requests_upload?.uploaded_at ? (
+                    {/*
+                      ⛔ NO FALLBACK TO `bunk_requests.end_time`, ON EITHER
+                      SURFACE. This span used to fall back to "Requests synced
+                      {N} ago" off the sync job's completion, and that reported
+                      a JOB THAT RAN as TEXT THAT ARRIVED. Request text reaches
+                      Kindred only by CSV upload (`csvFieldMap`,
+                      pocketbase/sync/bunk_requests.go); the job re-processes
+                      the same file on the daily cron and reports success every
+                      time. Measured on a dev snapshot: the last three runs were
+                      `created=0 updated=0 skipped=2354`, so the line read
+                      "Requests synced 1 day ago" while the newest text was
+                      eight days old. That is precisely the lie kindred#2481 and
+                      kindred#2570 were filed about, told by the indicator meant
+                      to reveal it.
+
+                      Rejected alternative: read the last run that actually
+                      changed rows (`created_count + updated_count > 0`). It is
+                      a proxy that is wrong in both directions — re-uploading an
+                      unchanged CSV changes no rows though text did arrive, and
+                      a processor fix changes rows though none did.
+                      `uploaded_at` is the direct signal, and it is a file in
+                      DataDir rather than orchestrator memory, so it already
+                      survives a restart and needs no fallback of its own.
+
+                      Render the upload branch or NOTHING.
+                    */}
+                    {syncStatus._bunk_requests_upload?.uploaded_at && (
                       <span
                         className="flex items-center gap-1.5 whitespace-nowrap"
                         title={`Uploaded ${format(
@@ -574,19 +618,6 @@ export const AppLayout = () => {
                           { addSuffix: true }
                         )}
                       </span>
-                    ) : (
-                      syncStatus.bunk_requests?.end_time && (
-                        <span
-                          className="flex items-center gap-1.5 whitespace-nowrap"
-                          title={buildSyncTooltip('bunk requests', syncStatus.bunk_requests)}
-                        >
-                          <Clock className="h-3 w-3" />
-                          Requests synced{' '}
-                          {formatDistanceToNow(new Date(syncStatus.bunk_requests.end_time), {
-                            addSuffix: true,
-                          })}
-                        </span>
-                      )
                     )}
                   </div>
                 )}

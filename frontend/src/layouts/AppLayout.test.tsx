@@ -254,6 +254,14 @@ describe('AppLayout sync-status labels', () => {
           start_time: iso,
           summary: { created: 3, updated: 4, skipped: 1, errors: 0 },
         },
+        // The request-text span reads the UPLOAD timestamp and nothing else —
+        // a `bunk_requests` run on its own renders no line at all (see the
+        // no-fallback test below). The sync summary above still reaches the
+        // TOOLTIP, which is what the hover test asserts on.
+        _bunk_requests_upload: {
+          uploaded_at: iso,
+          filename: 'BunkRequests_2026-04-22.csv',
+        },
       } as SyncStatusResponse,
     }))
   })
@@ -263,14 +271,18 @@ describe('AppLayout sync-status labels', () => {
     expect(screen.getByText(/Assignments synced/)).toBeInTheDocument()
   })
 
-  it('renders "Requests synced ..." label with lowercase synced', () => {
+  // WAS: 'renders "Requests synced ..." label'. The fallback that produced that
+  // label is gone — see the no-fallback test at the end of this describe — so the
+  // request-text span now only ever renders the UPLOAD wording.
+  it('renders "Requests uploaded ..." label off the CSV upload timestamp', () => {
     renderAppLayout()
-    expect(screen.getByText(/Requests synced/)).toBeInTheDocument()
+    expect(screen.getByText(/Requests uploaded/)).toBeInTheDocument()
+    expect(screen.queryByText(/Requests synced/)).not.toBeInTheDocument()
   })
 
-  it('Requests sync label exposes richer detail via tooltip on hover', () => {
+  it('Requests label exposes richer detail via tooltip on hover', () => {
     renderAppLayout()
-    const requestsLabel = screen.getByText(/Requests synced/)
+    const requestsLabel = screen.getByText(/Requests uploaded/)
     const tooltipHost = requestsLabel.closest('[title]') as HTMLElement | null
     expect(tooltipHost).not.toBeNull()
     const title = tooltipHost?.getAttribute('title') ?? ''
@@ -341,20 +353,46 @@ describe('AppLayout requests upload label', () => {
     expect(title).toMatch(/Apr 4/)
   })
 
-  it('falls back to "Requests synced" wording when upload metadata is missing', () => {
+  // WAS: 'falls back to "Requests synced" wording when upload metadata is
+  // missing'. That fallback was REMOVED by owner ruling 2026-08-28, and this
+  // test is its inverse rather than its deletion.
+  //
+  // Request text reaches Kindred only by CSV upload; the `bunk_requests` job
+  // re-processes the same file on the daily cron and reports success every
+  // time. Measured on a dev snapshot, its last three runs were
+  // `created=0 updated=0 skipped=2354`, so this branch rendered "Requests
+  // synced 1 day ago" while the newest text on disk was eight days old — a job
+  // that RAN reported as text that ARRIVED, which is the exact lie kindred#2481
+  // and kindred#2570 were filed about. Weekend never had the fallback
+  // (kindred#2570 ruled it out); summer now matches.
+  it('renders NO request-text line when no CSV has ever been uploaded, even with a successful bunk_requests run', () => {
     syncStatusSpy.mockImplementation(() => ({
       data: {
         bunk_requests: {
           status: 'success',
           end_time: syncIso,
           start_time: syncIso,
-          summary: { created: 0, updated: 0, skipped: 0, errors: 0 },
+          summary: { created: 0, updated: 0, skipped: 2354, errors: 0 },
         },
       } as SyncStatusResponse,
     }))
     renderAppLayout()
-    expect(screen.getByText(/Requests synced/)).toBeInTheDocument()
+    expect(screen.queryByText(/Requests synced/)).not.toBeInTheDocument()
     expect(screen.queryByText(/Requests uploaded/)).not.toBeInTheDocument()
+  })
+
+  // The other half of the same rule: the ASSIGNMENTS line is unaffected and must
+  // still render off `bunk_assignments`, so removing the request-text fallback
+  // cannot silently take the whole group down with it.
+  it('still renders the assignments line when only bunk_assignments has run', () => {
+    syncStatusSpy.mockImplementation(() => ({
+      data: {
+        bunk_assignments: { status: 'success', end_time: syncIso, start_time: syncIso },
+      } as SyncStatusResponse,
+    }))
+    renderAppLayout()
+    expect(screen.getByText(/Assignments synced/)).toBeInTheDocument()
+    expect(screen.queryByText(/Requests/)).not.toBeInTheDocument()
   })
 })
 

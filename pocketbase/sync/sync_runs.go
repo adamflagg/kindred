@@ -263,7 +263,7 @@ type syncRunRow struct {
 	Duration                 int    `db:"duration"`
 }
 
-// LastRecordedRuns returns the most recent recorded run per service, as Status values.
+// LastRecordedRuns returns the most recent SUCCESSFUL run per service, as Status values.
 //
 // THIS IS THE READ HALF OF kindred#2284, and it was missing. This file's header says the
 // table exists because lastCompletedStatus "was an in-memory map wiped on every container
@@ -290,6 +290,18 @@ func (o *Orchestrator) LastRecordedRuns() map[string]*Status {
 		return out
 	}
 
+	// SUCCESSFUL RUNS ONLY, and that is the whole point rather than a filter for tidiness.
+	// The caller renders "<noun> synced {N} ago" off EndTime, and only a run that succeeded
+	// made anything fresh. Rehydrating the last run regardless of outcome would take a
+	// nightly failure at 02:00, a restart, and a staff member opening the app at 09:00, and
+	// tell them the data was refreshed seven hours ago when it never arrived — the same
+	// class of lie as reporting a no-op CSV re-process as "Requests synced".
+	//
+	// The cost, stated so it is a decision: a failure that happened before the restart is not
+	// resurrected here. That is acceptable because it is not actionable from this endpoint
+	// once the process is gone, and `sync_runs` still holds it for anything that wants run
+	// history rather than data freshness.
+	//
 	// ROW_NUMBER over (service ORDER BY started DESC) rather than a bare GROUP BY: SQLite's
 	// bare-column-with-max() extension would also work, but it is a SQLite-specific guarantee
 	// that silently returns an arbitrary row if the aggregate is ever changed. `id DESC`
@@ -304,8 +316,9 @@ func (o *Orchestrator) LastRecordedRuns() map[string]*Status {
 		FROM (
 			SELECT *, ROW_NUMBER() OVER (PARTITION BY service ORDER BY started DESC, id DESC) AS rn
 			FROM ` + syncRunsCollection + `
+			WHERE status = {:success}
 		)
-		WHERE rn = 1`)
+		WHERE rn = 1`).Bind(dbx.Params{"success": statusSuccess})
 	if err := query.All(&rows); err != nil {
 		slog.Warn("Failed to read sync_runs history; status falls back to idle", "error", err)
 		return out

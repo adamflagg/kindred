@@ -1204,6 +1204,58 @@ func TestLastRecordedRunsSurvivesRestart(t *testing.T) {
 	}
 }
 
+// TestLastRecordedRunsIgnoresAFailedNewerRun is the reason the query filters on success.
+//
+// The caller renders "<noun> synced {N} ago" off EndTime. A nightly run that FAILED at 02:00,
+// followed by a restart, followed by staff opening the app at 09:00, must not report the data
+// as seven hours fresh — it never arrived. The honest answer is the older successful run.
+func TestLastRecordedRunsIgnoresAFailedNewerRun(t *testing.T) {
+	t.Parallel()
+
+	app := newSyncRunsApp(t)
+	col, err := app.FindCollectionByNameOrId(syncRunsCollection)
+	if err != nil {
+		t.Fatalf("find collection: %v", err)
+	}
+
+	older := time.Now().Add(-24 * time.Hour)
+	newer := time.Now().Add(-2 * time.Hour)
+	for _, row := range []struct {
+		status string
+		at     time.Time
+	}{
+		{statusSuccess, older},
+		{statusFailed, newer},
+	} {
+		rec := core.NewRecord(col)
+		rec.Set("service", "lodging_assignments")
+		rec.Set("year", 2026)
+		rec.Set("status", row.status)
+		rec.Set("trigger", triggerDaily)
+		rec.Set("batch_id", "b-"+row.status)
+		rec.Set("started", row.at)
+		rec.Set("ended", row.at)
+		if err := app.Save(rec); err != nil {
+			t.Fatalf("save %s row: %v", row.status, err)
+		}
+	}
+
+	got, ok := NewOrchestrator(app).LastRecordedRuns()["lodging_assignments"]
+	if !ok {
+		t.Fatal("no entry for lodging_assignments — the older SUCCESSFUL run should still answer")
+	}
+	if got.Status != statusSuccess {
+		t.Errorf("Status = %q, want %q — a failed run must not be reported as freshness", got.Status, statusSuccess)
+	}
+	if got.EndTime == nil {
+		t.Fatal("EndTime is nil")
+	}
+	if got.EndTime.After(newer.Add(-time.Minute)) {
+		t.Errorf("EndTime = %s, want the OLDER successful run (~%s) — the failed 02:00 run won and the "+
+			"line would claim the data is two hours fresh when it never arrived", got.EndTime, older)
+	}
+}
+
 // TestLastRecordedRunsTakesTheMostRecentRow: a service runs many times, and the freshness
 // line must read the newest run, not whichever row the query happened to return first.
 func TestLastRecordedRunsTakesTheMostRecentRow(t *testing.T) {
