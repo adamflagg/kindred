@@ -403,7 +403,6 @@ export default function WeekendRosterPage() {
                     sessionCmId={selectedCmId ?? 0}
                     scenario={scenario}
                     canManage={canManageLodging}
-                    units={units}
                   />
                 }
               />

@@ -22,23 +22,14 @@
  * that need one before handing them to `PushDecisionDeck`, which is what
  * actually writes into it via `onDecide`.
  *
- * ## The digest, not a staleTime tier — but staleTime IS 0, deliberately
+ * ## The report comes from `usePushPreview`, shared with the board's badge
  *
- * `useQuery` sets `staleTime: 0` alongside `refetchOnMount: 'always'`. This
- * is a real divergence from the app's 30-minute default (CLAUDE.md §4's
- * "Family Camp Models Summer" caching row), and it earns it: this modal
- * STAYS MOUNTED across opens — `LodgingBoard` renders it unconditionally,
- * gated only by `isOpen` — so there is no fresh "mount" for
- * `refetchOnMount: 'always'` to catch on reopen, only an existing observer's
- * `enabled` flipping true again. Under the 30-minute default that reopen
- * would keep serving the FIRST open's cached report until the digest 409
- * bounced a stale push, which defeats the point of a "look right before you
- * act" screen. `staleTime: 0` is what makes every open actually re-ask.
- * `PushPreview.digest` remains the correctness backstop regardless —
- * `executeWriteInPush` echoes it back and the server refuses a push made
- * against a report the live board or the scenario has since moved past —
- * but the freshness of what staff SEE on open is this staleTime, not the
- * digest; the digest only catches what slips through.
+ * The fetch lives in `hooks/usePushPreview.ts` because the board's "Push
+ * write-ins" badge reads the same report to count what a push would write
+ * (owner ruling 2026-08-28). One cache slot, two observers: what the badge
+ * summarises is what this modal renders. That hook's doc carries why it opts
+ * down to `staleTime: 0` — in short, this modal stays mounted across opens,
+ * so `refetchOnMount: 'always'` alone can never make a reopen re-ask.
  *
  * ## 409 stale is not an error
  *
@@ -57,14 +48,14 @@
  * board. `pushResult.push_id` is the only handle Unpush needs, and it only
  * exists once a push has actually run in this session.
  */
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
 
 import { useApiWithAuth } from '../../hooks/useApiWithAuth'
+import { usePushPreview } from '../../hooks/usePushPreview'
 import {
   executeWriteInPush,
-  fetchPushPreview,
   LodgingApiError,
   unpushWriteIns,
   type PushBuildingReport,
@@ -75,6 +66,7 @@ import { invalidateLodgingRegistryQueries, queryKeys } from '../../utils/queryKe
 import { QueryGuard } from '../QueryGuard'
 import { Modal } from '../ui/Modal'
 import { PushDecisionDeck } from './PushDecisionDeck'
+import { decisionsNeeded, pushableRows } from './pushCounts'
 
 /** Which screen the modal is showing. */
 export type PushStage = 'report' | 'deck' | 'done'
@@ -105,6 +97,38 @@ function defaultDecisionsFor(buildings: readonly PushBuildingReport[]): Record<s
     else if (building.cls === 'remove') decisions[building.key] = 'remove'
   }
   return decisions
+}
+
+/** Who a push created and who it deleted, named. */
+interface PushedNames {
+  added: string[]
+  removed: string[]
+}
+
+/**
+ * The occupants a push is about to create and delete, read off the report it
+ * is being made against (owner ruling 2026-08-24, visual round 2, item 5:
+ * the success screen names WHO, not just how many).
+ *
+ * Computed at PUSH time and carried through the mutation, because the push
+ * invalidates its own preview on success — see `pushedNames` state.
+ *
+ * `add` buildings always write their draft rows unconditionally; `remove`
+ * buildings only write a removal when staff decided 'remove' (their
+ * actionable default, but staff may have flipped it to 'keep').
+ * `conflict`-class replacements are deliberately NOT named — the ruling
+ * scopes naming to unconditional creates and deletes, not to a resolved
+ * conflict, which the deck has already shown both sides of.
+ */
+function pushedNamesFor(preview: PushPreview, decisions: Record<string, Decision>): PushedNames {
+  return {
+    added: preview.buildings
+      .filter((b) => b.cls === 'add')
+      .flatMap((b) => b.draft.map((row) => row.occupant_name)),
+    removed: preview.buildings
+      .filter((b) => b.cls === 'remove' && decisions[b.key] === 'remove')
+      .flatMap((b) => b.live.map((row) => row.occupant_name)),
+  }
 }
 
 export interface PushWriteInsModalProps {
@@ -217,17 +241,14 @@ function ReportScreen({
   }
   for (const building of preview.buildings) byClass[building.cls].push(building)
 
-  // What staff must decide before a push can apply — a conflicting occupant
-  // or a building the scenario no longer covers. Add/match need no decision
-  // and are never counted here, matching the "shown for audit, never queued"
-  // rule above.
-  const decisionCount = byClass.conflict.length + byClass.remove.length
-  // What a push with NO decisions to make would actually write. `add`-class
-  // draft rows only: `execute_push`'s `match` branch writes NOTHING — it
-  // only increments `matched` in the result, never extends `adds` or
-  // `removes` — and matches are the common case, not the exception, so
-  // summing every building's draft rows overcounted almost every push.
-  const pushCount = byClass.add.reduce((total, building) => total + building.draft.length, 0)
+  // Both from `pushCounts.ts`, which the board's badge counts with too — one
+  // definition of what needs deciding and what a decision-free push writes,
+  // rather than the same arithmetic spelled out on either side of the modal
+  // boundary. `decisionsNeeded` is buildings (a deck card settles a whole
+  // building); `pushableRows` is add-class draft rows only, because
+  // `execute_push`'s `match` branch writes nothing at all.
+  const decisionCount = decisionsNeeded(preview.buildings)
+  const pushCount = pushableRows(preview.buildings)
 
   return (
     <div className="flex flex-col gap-4">
@@ -406,6 +427,13 @@ export function PushWriteInsModal({
   const [stage, setStage] = useState<PushStage>('report')
   const [decisions, setDecisions] = useState<Record<string, Decision>>({})
   const [pushResult, setPushResult] = useState<PushResult | null>(null)
+  // Who the push created and who it deleted, SNAPSHOT at push time rather
+  // than re-derived from `query.data` on the success screen. The push's own
+  // `invalidateLodgingRegistryQueries` now reaches the push-preview key —
+  // that is what drops the board's badge to 0 the moment a push lands — so
+  // by the time this screen renders, the cached report has been replaced by
+  // one in which everything matches and there is nobody left to name.
+  const [pushedNames, setPushedNames] = useState<PushedNames | null>(null)
   const [unpushResult, setUnpushResult] = useState<{ restored: number; deleted: number } | null>(
     null
   )
@@ -435,23 +463,14 @@ export function PushWriteInsModal({
         defaultDecisionsFor(queryClient.getQueryData<PushPreview>(previewKey)?.buildings ?? [])
       )
       setPushResult(null)
+      setPushedNames(null)
       setUnpushResult(null)
       setDriftBuildings(null)
       setStaleNotice(false)
     }
   }
 
-  const query = useQuery<PushPreview>({
-    queryKey: previewKey,
-    queryFn: () => fetchPushPreview(fetchWithAuth, { year, sessionCmId, scenario }),
-    enabled: isOpen,
-    // staleTime 0 (opted DOWN from the app's 30-minute default) plus
-    // refetchOnMount: 'always' — see the module doc's "digest, not a
-    // staleTime tier — but staleTime IS 0" section for why the mount-based
-    // option alone can't do this modal's job.
-    staleTime: 0,
-    refetchOnMount: 'always',
-  })
+  const query = usePushPreview({ year, sessionCmId, scenario, enabled: isOpen })
 
   // The other half of "re-derive from the fresh preview": whenever a NEW
   // preview object lands for this key — the first successful fetch, a
@@ -470,7 +489,7 @@ export function PushWriteInsModal({
   const pushMutation = useMutation<
     PushResult,
     Error,
-    { digest: string; decisions: Record<string, Decision> }
+    { digest: string; decisions: Record<string, Decision>; names: PushedNames }
   >({
     mutationFn: (vars) =>
       executeWriteInPush(fetchWithAuth, {
@@ -480,8 +499,9 @@ export function PushWriteInsModal({
         digest: vars.digest,
         decisions: vars.decisions,
       }),
-    onSuccess: (result) => {
+    onSuccess: (result, vars) => {
       setPushResult(result)
+      setPushedNames(vars.names)
       setUnpushResult(null)
       setDriftBuildings(null)
       setStage('done')
@@ -559,7 +579,11 @@ export function PushWriteInsModal({
         {(preview) => {
           const handlePush = () => {
             setStaleNotice(false)
-            pushMutation.mutate({ digest: preview.digest, decisions })
+            pushMutation.mutate({
+              digest: preview.digest,
+              decisions,
+              names: pushedNamesFor(preview, decisions),
+            })
           }
 
           if (stage === 'report') {
@@ -619,27 +643,11 @@ export function PushWriteInsModal({
             )
           }
           if (pushResult === null) return null
-          // Named from the SAME `preview`/`decisions` the push was made
-          // with — `invalidateLodgingRegistryQueries` never touches the
-          // push-preview key, so `preview` is still the exact report that
-          // was pushed (owner ruling 2026-08-24, visual round 2, item 5).
-          // `add` buildings always write their draft rows unconditionally;
-          // `remove` buildings only write a removal when staff decided
-          // 'remove' (their actionable default, but staff may have flipped
-          // it to 'keep'). `conflict`-class replacements are deliberately
-          // NOT named here — the ruling scopes naming to unconditional
-          // creates/deletes, not to a resolved conflict.
-          const addedNames = preview.buildings
-            .filter((b) => b.cls === 'add')
-            .flatMap((b) => b.draft.map((row) => row.occupant_name))
-          const removedNames = preview.buildings
-            .filter((b) => b.cls === 'remove' && decisions[b.key] === 'remove')
-            .flatMap((b) => b.live.map((row) => row.occupant_name))
           return (
             <PushSuccessScreen
               result={pushResult}
-              addedNames={addedNames}
-              removedNames={removedNames}
+              addedNames={pushedNames?.added ?? []}
+              removedNames={pushedNames?.removed ?? []}
               driftBuildings={driftBuildings}
               isUnpushing={unpushMutation.isPending}
               onUnpush={() => {
