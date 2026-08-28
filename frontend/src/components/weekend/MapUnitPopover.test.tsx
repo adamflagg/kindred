@@ -1238,6 +1238,61 @@ describe('MapUnitPopover — a container, master-detail (kindred#2183)', () => {
     expect(screen.getByText('5 of 7')).toBeInTheDocument()
   })
 
+  it('draws both occupants of a LONE written-into unit as two separate keys', () => {
+    /*
+     * THE SINGLE-UNIT PATH, which the cluster test above cannot reach: one
+     * unit renders `DetailCard`, and `DetailCard` draws its occupants through
+     * `writeInOccupants` rather than through `summaryWriteIns`. Caught by
+     * CodeRabbit on the PR that fixed the other three key sites, and the miss
+     * is instructive -- the cluster fixture needs TWO units by construction,
+     * so a test written against it can never exercise the lone-unit helper.
+     */
+    const errors: unknown[] = []
+    const spy = vi.spyOn(console, 'error').mockImplementation((...args: unknown[]) => {
+      errors.push(args)
+    })
+    try {
+      render(
+        <MapUnitPopover
+          units={[
+            mapUnit(
+              row({
+                unit_id: 'rd',
+                code: 'shared-1',
+                name: 'Shared 1',
+                sleeps: 15,
+                write_ins: [
+                  cover({
+                    unit_id: 'rd',
+                    unit_code: 'shared-1',
+                    unit_name: 'Shared 1',
+                    occupant_name: 'Emma Johnson',
+                    party_size: 3,
+                    unit_sleeps: 15,
+                  }),
+                  cover({
+                    unit_id: 'rd',
+                    unit_code: 'shared-1',
+                    unit_name: 'Shared 1',
+                    occupant_name: 'Liam Garcia',
+                    party_size: 4,
+                    unit_sleeps: 15,
+                  }),
+                ],
+              })
+            ),
+          ]}
+          hue={HUE}
+          onOpenParty={vi.fn()}
+        />
+      )
+      expect(screen.getAllByTestId('map-popover-writein')).toHaveLength(2)
+      expect(errors.filter((entry) => JSON.stringify(entry).includes('same key'))).toEqual([])
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
   it('lists BOTH occupants of one shareable cabin, and counts both', () => {
     /*
      * DARK ON ARRIVAL — `idx_lodging_write_in_unique` still forbids the second

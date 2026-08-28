@@ -245,7 +245,11 @@ function partyPeopleLabel(party: RosterPartyRow): string {
 function writeInOccupants(entries: WriteInEntry[]): ReactNode {
   return entries.map((entry) => (
     <span
-      key={entry.source.unitId}
+      // `entry.key`, the same identity `summaryWriteIns` dedupes on -- two
+      // occupants of one cabin are two rows. THIS IS THE LONE-UNIT PATH:
+      // `DetailCard` draws through here, and the cluster's own list draws
+      // through `summaryWriteIns`, so the two have to agree.
+      key={entry.key}
       data-testid="map-popover-writein"
       className="text-foreground text-right text-xs"
     >
