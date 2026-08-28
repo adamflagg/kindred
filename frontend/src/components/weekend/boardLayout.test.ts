@@ -1694,14 +1694,14 @@ describe('boardPlacementNamer — a placement is named as the board draws it', (
   function deltaHouse(combined: boolean): LodgingUnitRow[] {
     return [
       unit({
-        unit_id: 'w',
+        unit_id: 'dh',
         code: 'delta-house',
         name: 'Delta House',
         is_container: true,
         is_combined: combined,
       }),
-      unit({ unit_id: 'wf', code: 'delta-1', name: 'Delta 1', parent_code: 'delta-house' }),
-      unit({ unit_id: 'wb', code: 'delta-2', name: 'Delta 2', parent_code: 'delta-house' }),
+      unit({ unit_id: 'd1', code: 'delta-1', name: 'Delta 1', parent_code: 'delta-house' }),
+      unit({ unit_id: 'd2', code: 'delta-2', name: 'Delta 2', parent_code: 'delta-house' }),
     ]
   }
 
