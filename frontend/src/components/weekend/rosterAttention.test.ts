@@ -30,7 +30,7 @@ import {
   attentionSections,
   countUnmeasuredSpaces,
   partyAttention,
-  partyBeds,
+  partySpots,
   resolvePartyUnit,
 } from './rosterAttention'
 
@@ -845,9 +845,9 @@ describe('partyAttention + resolvePartyUnit — the roster row / card / panel pi
   })
 })
 
-describe('partyBeds', () => {
+describe('partySpots', () => {
   it('uses the reported party size', () => {
-    expect(partyBeds(party({ party_size: 4 }))).toBe(4)
+    expect(partySpots(party({ party_size: 4 }))).toBe(4)
   })
 
   it('falls back to counting people when party_size is absent', () => {
@@ -859,7 +859,7 @@ describe('partyBeds', () => {
       children: [{ person_cm_id: 1, display_name: 'Olivia Chen' }],
     })
     delete withoutSize.party_size
-    expect(partyBeds(withoutSize)).toBe(3)
+    expect(partySpots(withoutSize)).toBe(3)
   })
 
   it('does not recount a placeholder adult in the fallback', () => {
@@ -875,23 +875,23 @@ describe('partyBeds', () => {
       ],
       children: [{ person_cm_id: 1, display_name: 'Liam Garcia' }],
     })
-    expect(partyBeds(reportedZero)).toBe(2)
+    expect(partySpots(reportedZero)).toBe(2)
   })
 
   /*
    * THE TWO NUMBERS MUST NOT CONVERGE.
    *
-   * `partyBeds` is BEDS; `partyHeadcount` is PEOPLE. Since #2046 the server
-   * discounts a child under 18 months at session start, so for the 24
-   * households with an infant the bed figure is deliberately one BELOW the
-   * names printed beside it. kindred#2152 exists because a badge reached for
-   * the bed number where it wanted the people number.
+   * `partySpots` is spots consumed; `partyHeadcount` is raw PEOPLE. Since
+   * #2046 the server discounts a child under 18 months at session start, so
+   * for the 24 households with an infant the spots figure is deliberately
+   * one BELOW the names printed beside it. kindred#2152 exists because a
+   * badge reached for the spots number where it wanted the people number.
    *
    * Asserting BOTH on one party is the point — a test that pinned only
-   * `partyBeds` would stay green if someone "tidied" this into
+   * `partySpots` would stay green if someone "tidied" this into
    * `partyHeadcount`, which is exactly the collapse that re-creates the bug.
    */
-  it('stays the bed number for an infant household, one below the headcount', () => {
+  it('stays the spots number for an infant household, one below the headcount', () => {
     const infantHousehold = party({
       // Server-reported: 1 adult + 1 school-age child. The infant is discounted.
       party_size: 2,
@@ -908,21 +908,21 @@ describe('partyBeds', () => {
         has_infant: true,
       },
     })
-    expect(partyBeds(infantHousehold)).toBe(2)
+    expect(partySpots(infantHousehold)).toBe(2)
     expect(partyHeadcount(infantHousehold)).toBe(3)
   })
 
   /*
    * The FALLBACK arm — and only the fallback arm — is `partyHeadcount`.
    *
-   * With nothing reported there is no bed figure to honour, and the client
+   * With nothing reported there is no spots figure to honour, and the client
    * cannot re-derive the infant discount (`PartyChild.age` is CampMinder's
    * `yy.mm`, the field #2046 forbids thresholding). Counting the bodies
    * over-states, which is the safe direction here. This pins that the two
    * agree ONLY when `party_size` is absent, so the delegation is provably the
    * common part rather than a collapse of the whole function.
    */
-  it('equals the headcount only when no bed count was reported', () => {
+  it('equals the headcount only when no spots count was reported', () => {
     const unreported = party({
       adults: [{ adult_number: 1, display_name: 'Olivia Chen', relationship: 'Mother' }],
       children: [
@@ -931,8 +931,8 @@ describe('partyBeds', () => {
       ],
     })
     delete unreported.party_size
-    expect(partyBeds(unreported)).toBe(partyHeadcount(unreported))
-    expect(partyBeds(unreported)).toBe(3)
+    expect(partySpots(unreported)).toBe(partyHeadcount(unreported))
+    expect(partySpots(unreported)).toBe(3)
   })
 })
 
@@ -987,7 +987,7 @@ describe('countUnmeasuredSpaces', () => {
     // THE MIRROR of `_effective_sleeps` in
     // `api/services/lodging_roster_service.py`, which returns None for exactly
     // this shape. `WeekendStatsBar` prints the backend's
-    // `beds_family_available` on the same line as this count, so if the two
+    // `spots_family_available` on the same line as this count, so if the two
     // disagree the bar reports beds for a house it simultaneously calls
     // measured.
     expect(

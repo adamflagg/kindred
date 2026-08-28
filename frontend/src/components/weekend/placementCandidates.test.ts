@@ -299,7 +299,7 @@ describe('capacityVerdict — the row grades the beds LEFT (owner ruling 2026-08
    *
    * The header above these rows answers "will they fit in what is LEFT" (the
    * 2026-08-19 ruling: it prints "2 of 4 beds free"). The row graded
-   * `partyBeds <= effectiveSleeps` — the room's whole capacity — and never saw
+   * `partySpots <= effectiveSleeps` — the room's whole capacity — and never saw
    * the occupants the header had just counted. Aspen sleeps 4 and already
    * holds 2; a three-bed household's row printed a bold green `fits`, and
    * clicking it made the card behind the dialog read 5/4 in red.

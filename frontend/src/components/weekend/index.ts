@@ -29,7 +29,7 @@ export {
   countUnmeasuredSpaces,
   indexUnitsByCode,
   partyAttention,
-  partyBeds,
+  partySpots,
 } from './rosterAttention'
 export type { AttentionLevel, AttentionSection, PartyAttention } from './rosterAttention'
 export { formatSessionDates } from './sessionDates'

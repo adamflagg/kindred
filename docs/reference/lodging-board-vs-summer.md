@@ -242,7 +242,7 @@ deliberately never ingested.
 
 ⚠️ **There is no "one definition".** This section used to say `partySize` lived
 in `boardLayout.ts` as the single read site, "so #1925 is one edit rather than a
-hunt". That was false when written: `rosterAttention.partyBeds` is a
+hunt". That was false when written: `rosterAttention.partySpots` is a
 byte-identical copy and `FamilyDetailsPanel` holds a third, inline — and the
 third was spelled `??` where the other two used `> 0`, so a reported `0`
 rendered "0 people" on one surface while the board beside it counted bodies.

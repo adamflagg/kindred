@@ -93,7 +93,7 @@ import {
   placementCandidates,
   type PlacementCandidate,
 } from './placementCandidates'
-import { effectiveSleeps, partyBeds } from './rosterAttention'
+import { effectiveSleeps, partySpots } from './rosterAttention'
 import { PARTY_SIZE_CHOICES, coveringWriteIns, writeInDemand } from './writeIn'
 
 export interface AssignFamilyModalProps {
@@ -1117,7 +1117,7 @@ export function AssignFamilyModal({
                         </span>
                         <span className="text-muted-foreground inline-flex flex-shrink-0 items-center gap-0.5 text-xs tabular-nums">
                           <Users className="h-3 w-3" />
-                          {partyBeds(party)}
+                          {partySpots(party)}
                         </span>
                       </span>
 

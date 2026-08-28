@@ -32,7 +32,7 @@ from api.services.lodging_rules import (
     classify_push,
     container_bathroom,
     effective_bathroom,
-    free_family_beds,
+    free_family_spots,
     is_family_available,
     push_building_key,
     push_digest,
@@ -70,7 +70,7 @@ class TestIsFamilyAvailable:
     unrelated facts -- the staff<->family ROLE and whether somebody is IN the
     room -- and split them. `override` is the role; `free` is how many beds are
     left once the write-ins covering the unit are paid for, resolved by
-    `free_family_beds` from the occupancy source rather than from the role
+    `free_family_spots` from the occupancy source rather than from the role
     column. This function is where the two meet, and the only place they do.
     """
 
@@ -134,7 +134,7 @@ class TestIsFamilyAvailable:
     def test_none_free_means_no_occupancy_and_not_unmeasured(self) -> None:
         """`None` mirrors `override: None` -- "there is no row, ask the role".
         An unmeasured cabin that somebody IS written into resolves to 0 in
-        `free_family_beds`, never to None."""
+        `free_family_spots`, never to None."""
         assert is_family_available("family_pool", None, free=None) is True
         assert is_family_available("staff_default", None, free=None) is False
 
@@ -644,7 +644,7 @@ class TestHousingNameResolver:
 
 
 class TestWriteInDemand:
-    """How many beds the write-ins covering one card take, and how many of
+    """How many spots the write-ins covering one card take, and how many of
     those the board actually knows about.
 
     TWO SUMS, and collapsing them is the mistake this class exists to stop.
@@ -673,7 +673,7 @@ class TestWriteInDemand:
 
     def test_descendants_consume_their_own_capacity_not_the_card_s(self) -> None:
         """A combined house whose four rooms are each written into. Each room
-        contributes ITS beds, not the house's."""
+        contributes ITS spots, not the house's."""
         loads = [
             WriteInLoad("descendant", None, 3),
             WriteInLoad("descendant", None, 1),
@@ -744,8 +744,8 @@ class TestWriteInDemand:
         assert write_in_demand(4, [WriteInLoad("ancestor", 2, 7)]).known is True
 
     def test_consumption_is_capped_at_the_card(self) -> None:
-        """A hand-typed count above the cabin's beds is over capacity, which is
-        a real state the card reddens -- but it cannot take MORE beds than
+        """A hand-typed count above the cabin's spots is over capacity, which is
+        a real state the card reddens -- but it cannot take MORE spots than
         exist, or a container's arithmetic would go negative. `sized` is NOT
         capped the same way: kindred#2503's over-capacity red needs the true
         recorded count, so the numerator must show 9, not a clipped 4."""
@@ -770,7 +770,7 @@ class TestWriteInDemand:
         assert write_in_demand(None, [WriteInLoad("own", 2, None)]).sized == 2
 
 
-class TestFreeFamilyBeds:
+class TestFreeFamilySpots:
     """THREE returns, and the middle one is the one this design nearly shipped
     without.
 
@@ -782,19 +782,19 @@ class TestFreeFamilyBeds:
     """
 
     def test_no_covers_is_no_occupancy(self) -> None:
-        assert free_family_beds(15, []) is None
+        assert free_family_spots(15, []) is None
 
     def test_covered_and_unmeasurable_is_closed(self) -> None:
-        assert free_family_beds(None, [WriteInLoad("own", 2, None)]) == 0
+        assert free_family_spots(None, [WriteInLoad("own", 2, None)]) == 0
 
     def test_a_sized_write_in_leaves_the_remainder(self) -> None:
-        """A fifteen-bed cabin; two people written in leaves thirteen. Since
+        """A fifteen-spot cabin; two people written in leaves thirteen. Since
         kindred#2432 the board will accept a family there, so the bar must
         agree with it."""
-        assert free_family_beds(15, [WriteInLoad("own", 2, 15)]) == 13
+        assert free_family_spots(15, [WriteInLoad("own", 2, 15)]) == 13
 
     def test_a_wholesale_write_in_leaves_nothing(self) -> None:
-        assert free_family_beds(15, [WriteInLoad("own", None, 15)]) == 0
+        assert free_family_spots(15, [WriteInLoad("own", None, 15)]) == 0
 
     def test_a_fully_covered_house_leaves_nothing(self) -> None:
         loads = [
@@ -803,12 +803,12 @@ class TestFreeFamilyBeds:
             WriteInLoad("descendant", None, 2),
             WriteInLoad("descendant", None, 2),
         ]
-        assert free_family_beds(8, loads) == 0
+        assert free_family_spots(8, loads) == 0
 
     def test_a_partly_covered_house_keeps_the_rest(self) -> None:
         """Owner ruling 2026-08-20: a room-level write-in does not make the
         rest of the house unavailable."""
-        assert free_family_beds(8, [WriteInLoad("descendant", None, 3)]) == 5
+        assert free_family_spots(8, [WriteInLoad("descendant", None, 3)]) == 5
 
 
 def _push_unit(id, code, name=None, container=False, parent=""):

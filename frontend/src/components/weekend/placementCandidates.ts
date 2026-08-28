@@ -79,7 +79,7 @@ import { unplacedFilterGroup, type UnplacedFilterKey } from './unplacedFilters'
 import { partyIdentityLabel } from './householdIdentity'
 import { resolveNeedGlyphs } from './needGlyphs'
 import { worseOf, type NeedsFit } from './needsFit'
-import { effectiveSleeps, partyBeds } from './rosterAttention'
+import { effectiveSleeps, partySpots } from './rosterAttention'
 import { coveringWriteIns, writeInDemand } from './writeIn'
 
 /** The picker's verdict for one party against one space. `needsFit`'s vocabulary. */
@@ -110,7 +110,7 @@ interface DimensionVerdict {
  *
  * ANNOTATED, NEVER REFUSED — the owner was explicit: drag permits an
  * over-capacity placement today, so the picker must too. Beds, not people:
- * `partyBeds` is the roster's own reading, which already drops blank and
+ * `partySpots` is the roster's own reading, which already drops blank and
  * placeholder adult slots and discounts a child under 18 months.
  *
  * `effectiveSleeps` rather than `unit.sleeps`, so a combined house is judged
@@ -193,14 +193,14 @@ function capacityVerdict(
   // a written-into cabin is graded, not exempted, the moment its occupancy
   // is a fact rather than a guess.
   if (!known) return { fit: 'fits', note: null }
-  const beds = partyBeds(party)
+  const spots = partySpots(party)
   // `Math.max(0, …)` for the same reason the header does it: a room already
-  // over its capacity has nothing left, never a negative number of beds.
+  // over its capacity has nothing left, never a negative number of spots.
   const free = Math.max(0, capacity - occupied - consumed)
-  if (beds <= free) return { fit: 'fits', note: null }
+  if (spots <= free) return { fit: 'fits', note: null }
   return {
     fit: 'unmet',
-    note: `Over capacity · needs ${String(beds)}, ${String(free)} free`,
+    note: `Over capacity · needs ${String(spots)}, ${String(free)} free`,
   }
 }
 

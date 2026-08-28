@@ -110,26 +110,26 @@ function occupiedLeafCodes(
 }
 
 /**
- * How many BEDS a party consumes.
+ * How many SPOTS a party consumes.
  *
- * Beds, not bodies, since #1925 and #2046: the server drops blank and
+ * Spots, not bodies, since #1925 and #2046: the server drops blank and
  * placeholder `family_camp_adults` slots from the count, and discounts a
  * child under 18 months at session start. For the 26 households with an
  * infant this figure is deliberately one lower than the names printed beside
- * it — `slotOccupancy`, `partyBeds` and `bedsNeeded` all want beds, and the
- * card's own names-chip is #2152's to split out.
+ * it — `slotOccupancy`, `partySpots` and `spotsNeeded` all want spots, and
+ * the card's own names-chip is #2152's to split out.
  *
  * ⚠️ TWO COPIES OF THIS READ, not one. This doc comment once claimed it was
  * "deliberately the single place it is read"; that was false when written and
  * cost #2046 a re-sweep, so it is worth stating the count exactly. The other
- * is `rosterAttention.partyBeds`, whose body is identical. Change one, change
+ * is `rosterAttention.partySpots`, whose body is identical. Change one, change
  * both. (It said THREE until #2152: `FamilyDetailsPanel` held the third, and
  * that one turned out to want the PEOPLE number, not this one — it now calls
  * `partyHeadcount`. Deleting a copy by noticing it wanted a different number
  * is the only good way to lose one.)
  *
  * ⚠️ DO NOT COLLAPSE THIS INTO `partyHeadcount`. Only the FALLBACK arm is
- * shared. The reported `party_size` is a BED count and must survive: since
+ * shared. The reported `party_size` is a SPOT count and must survive: since
  * #1925/#2046 the server drops blank and placeholder adult slots from it AND
  * discounts a child under 18 months, so for a household with an infant it is
  * deliberately one BELOW the headcount. Making the two agree re-creates
@@ -139,7 +139,7 @@ function occupiedLeafCodes(
  * A reported 0 means NOT STATED, not "nobody" — hence the fall back to the
  * people actually named. That 0 is newly reachable now that the server
  * discounts: a household whose only adult slot holds a placeholder and whose
- * only child is an infant reports zero beds. Recounting the bodies there
+ * only child is an infant reports zero spots. Recounting the bodies there
  * over-states, which is the safe direction on this surface — it reads as
  * "look at this", where 0 reads as "nothing here".
  *
@@ -147,7 +147,7 @@ function occupiedLeafCodes(
  * by (`namedAdults`), plus every child. It cannot apply the infant rule:
  * `PartyChild` carries `age` as CampMinder's `yy.mm`, which is exactly the
  * field #2046 forbids thresholding, and no birthdate reaches the client. So
- * with nothing reported the bed number and the headcount coincide — that
+ * with nothing reported the spots number and the headcount coincide — that
  * coincidence is the shared part, and the whole of it.
  */
 export function partySize(party: RosterPartyRow): number {

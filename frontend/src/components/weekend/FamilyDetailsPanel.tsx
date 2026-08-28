@@ -158,7 +158,7 @@ export function FamilyDetailsPanel({
   // (kindred#2152).
   //
   // Named `headcount`, NOT `partySize`: "party size" is the bed number now
-  // (`boardLayout.partySize`, `rosterAttention.partyBeds`), and a local of
+  // (`boardLayout.partySize`, `rosterAttention.partySpots`), and a local of
   // that name holding the other figure is the exact confusion this issue
   // exists to end.
   const headcount = partyHeadcount(party)

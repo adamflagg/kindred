@@ -63,7 +63,7 @@ from api.services.lodging_rules import (
     amenity_coverage,
     container_bathroom,
     effective_bathroom,
-    free_family_beds,
+    free_family_spots,
     is_family_available,
     ramp_coverage,
     request_text_authorship,
@@ -1038,9 +1038,9 @@ def _resolve_family_availability(
 ) -> dict[str, int | None]:
     """Recompute `is_family_available` from the RESOLVED covers, in place.
 
-    RETURNS the free-bed map it had to compute anyway (unit_id -> free beds),
-    which `_build_counts` sums rather than deriving a second time. Two
-    derivations of "how many beds are free" are two answers to the question
+    RETURNS the free-spot map it had to compute anyway (unit_id -> free
+    spots), which `_build_counts` sums rather than deriving a second time. Two
+    derivations of "how many spots are free" are two answers to the question
     this whole seam exists to make single -- and the second one would have to
     rebuild the same capacity index over the same units to get there.
 
@@ -1048,7 +1048,7 @@ def _resolve_family_availability(
     amenity resolvers write `*_coverage` fields that only `units` carries, so
     running them on one orchestrator and not the other was invisible until
     kindred#2502; this one moves `units_family_available`,
-    `beds_family_available` and the lander's per-weekend numbers, so an
+    `spots_family_available` and the lander's per-weekend numbers, so an
     asymmetry here is a page disagreeing with the page it links to.
 
     MUST RUN AFTER `_resolve_write_in_covers`. `_build_units` cannot decide
@@ -1061,10 +1061,10 @@ def _resolve_family_availability(
     build-once discipline `_BathroomIndex` follows, and for the same reason.
     It is `_effective_sleeps` rather than `unit.sleeps` so a combined house is
     judged on its whole-house total and a written-into ROOM on the room's own
-    beds; reading `unit.sleeps` here would judge all fifteen production
+    spots; reading `unit.sleeps` here would judge all fifteen production
     containers at `sleeps = 0`. That is the CARD's OWN capacity
     (`capacity_by_code.get(unit.code)`) only -- each LOAD's capacity (the
-    beds the covering unit itself claims) reads `cover.unit_sleeps` instead
+    spots the covering unit itself claims) reads `cover.unit_sleeps` instead
     of a second `capacity_by_code` lookup, so a source `write_in_covers` has
     already zeroed (a retired unit, kindred#2540 FINDING 5) cannot be
     re-inflated here by looking the same code up a second, unclamped way.
@@ -1081,7 +1081,7 @@ def _resolve_family_availability(
     remove. `_build_units` used to close it by reading the row directly.
 
     So a unit whose id is in the write-in source and which the walk gave no
-    cover resolves to 0, not None. It is the same 0 `free_family_beds` returns
+    cover resolves to 0, not None. It is the same 0 `free_family_spots` returns
     for a covered cabin nobody has measured -- "covered, and the remainder is
     not computable" -- which keeps availability derived from `free > 0` alone
     rather than growing a second boolean path. Not live (0 of 118 production
@@ -1109,7 +1109,7 @@ def _resolve_family_availability(
             )
             for cover in unit.write_ins
         ]
-        free = free_family_beds(capacity_by_code.get(unit.code), loads)
+        free = free_family_spots(capacity_by_code.get(unit.code), loads)
         if free is None and unit.unit_id in write_in_unit_ids:
             # A row the code-keyed walk could not represent -- see the
             # docstring's blank-code paragraph. Covered, and unmeasurable.
@@ -1273,7 +1273,7 @@ def _effective_sleeps(unit: LodgingUnitSummary, unit_index: _BathroomIndex) -> i
     #      `frontend/src/components/weekend/rosterAttention.ts`, which
     #      `countUnmeasuredSpaces` reads to answer the same "has anyone
     #      measured this?" question for the chip `WeekendStatsBar`
-    #      prints beside `beds_family_available`.
+    #      prints beside `spots_family_available`.
     #   2. `derivedWholeHouseSleeps` in
     #      `frontend/src/components/admin/lodging/derivedCapacity.ts`
     #      (kindred#2079), the read-only whole-house figure shown beside
@@ -1295,7 +1295,7 @@ def _effective_sleeps(unit: LodgingUnitSummary, unit_index: _BathroomIndex) -> i
     # combined container's own DELTA -- 0 on all 15 production containers --
     # as its cover's `unit_sleeps`, which is not "unmeasured", it is "the
     # wrong number": `write_in_demand` clamps `consumed` to it and reports a
-    # five-bed house as full.
+    # five-spot house as full.
     if not unit.is_container:
         return unit.sleeps
     leaf_sleeps = [
@@ -1304,16 +1304,16 @@ def _effective_sleeps(unit: LodgingUnitSummary, unit_index: _BathroomIndex) -> i
         if (leaf := unit_index.units_by_code.get(code)) is not None and leaf.is_active
     ]
     # ACTIVE leaves only, in both directions: a retired room adds no
-    # beds, and equally must not drag its whole house into "unknown".
+    # spots, and equally must not drag its whole house into "unknown".
     #
     # NOT additionally filtered by `_is_planning_inventory`, and that
     # is deliberate rather than an oversight. Six active
     # `staff_default` leaves sit under active containers in production
     # (44 family_pool + 6 staff_default under 15 containers), and the
-    # SUM below has counted their beds since kindred#2041 -- a family
+    # SUM below has counted their spots since kindred#2041 -- a family
     # holding the whole house holds that room too, which is what
     # "combined" means. Gating the unknown on a narrower leaf set than
-    # the sum reads from would let a room's beds count while its
+    # the sum reads from would let a room's spots count while its
     # missing measurement did not.
     if any(s is None for s in leaf_sleeps):
         return None
@@ -1333,7 +1333,7 @@ def _capacity_by_code(units: list[LodgingUnitSummary], unit_index: _BathroomInde
     (kindred#2041's delta rule). Keyed the same way `write_in_covers` keys
     `by_code` internally -- a blank code is excluded here too, for the same
     collision `by_code` guards against. `_effective_sleeps` is the SAME walk
-    `_build_counts` totals `beds_family_available` with, over the SAME
+    `_build_counts` totals `spots_family_available` with, over the SAME
     `unit_index`: two derivations of one unit's capacity are two things that
     can disagree about one cabin, which is exactly what reading raw `u.sleeps`
     did -- it published a combined container's own DELTA (0 on every
@@ -1982,7 +1982,7 @@ class LodgingRosterService:
         # takes the id set as well as the covers: a blank-coded unit is dropped
         # from the code-keyed cover map on purpose, and the set is what still
         # closes it. See the resolver's own blank-code paragraph.
-        free_beds_by_unit = _resolve_family_availability(unit_summaries, capacity_by_code, write_in_ids)
+        free_spots_by_unit = _resolve_family_availability(unit_summaries, capacity_by_code, write_in_ids)
         housing_names = housing_names_task.result()
         parties = self._build_parties(
             session_type=session_type,
@@ -2008,7 +2008,7 @@ class LodgingRosterService:
             assignments=placements_task.result(),
             unit_index=unit_index,
         )
-        counts = self._build_counts(unit_summaries, parties, aliases_task.result(), unit_index, free_beds_by_unit)
+        counts = self._build_counts(unit_summaries, parties, aliases_task.result(), unit_index, free_spots_by_unit)
 
         return WeekendRosterResponse(
             year=year,
@@ -2216,7 +2216,7 @@ class LodgingRosterService:
             capacity_by_code = _capacity_by_code(unit_summaries, unit_index)
             write_in_ids = written_in_unit_ids(write_ins_task.result())
             _resolve_write_in_covers(unit_summaries, write_in_ids, capacity_by_code)
-            free_beds_by_unit = _resolve_family_availability(unit_summaries, capacity_by_code, write_in_ids)
+            free_spots_by_unit = _resolve_family_availability(unit_summaries, capacity_by_code, write_in_ids)
             parties = self._build_parties(
                 session_type=_s(session, "session_type"),
                 # THIS weekend's start. The six year-scoped fetches above are
@@ -2233,7 +2233,7 @@ class LodgingRosterService:
             )
             return WeekendSummaryEntry(
                 session=self._session_summary(session, statuses),
-                counts=self._build_counts(unit_summaries, parties, unresolved_aliases, unit_index, free_beds_by_unit),
+                counts=self._build_counts(unit_summaries, parties, unresolved_aliases, unit_index, free_spots_by_unit),
             )
 
         async with asyncio.TaskGroup() as tg:
@@ -3177,14 +3177,14 @@ class LodgingRosterService:
         parties: list[RosterParty],
         unresolved_aliases: int,
         unit_index: _BathroomIndex,
-        free_beds_by_unit: dict[str, int | None],
+        free_spots_by_unit: dict[str, int | None],
     ) -> RosterCounts:
-        # `free_beds_by_unit` is `_resolve_family_availability`'s return, keyed
-        # by unit_id: how many beds each card has left once the write-ins
-        # covering it are paid for. `beds_family_available` below sums THAT --
-        # free beds, not whole cabins (kindred#2503 Task 5) -- rather than
+        # `free_spots_by_unit` is `_resolve_family_availability`'s return, keyed
+        # by unit_id: how many spots each card has left once the write-ins
+        # covering it are paid for. `spots_family_available` below sums THAT --
+        # free spots, not whole cabins (kindred#2503 Task 5) -- rather than
         # re-deriving it, for the reason that resolver's docstring gives: two
-        # derivations of "how many beds are free" are two answers to the
+        # derivations of "how many spots are free" are two answers to the
         # question the seam exists to make single. Re-deriving here would also
         # need its own capacity index over ALL units, since a descendant
         # cover's capacity belongs to a room that is not in `bookable` (a room
@@ -3198,11 +3198,11 @@ class LodgingRosterService:
         #
         # A NON-combined container is still excluded, for the original reason:
         # it carries a whole-building aggregate its rooms already report, and
-        # counting both double-counts beds (408 vs a true 389). What changed is
+        # counting both double-counts spots (408 vs a true 389). What changed is
         # that "container" stopped being the same question as "not drawn".
         #
         # Owner ruling, kindred#2041: a container's `sleeps` is a DELTA over
-        # its rooms -- the beds in space belonging to no single room, e.g. a
+        # its rooms -- the spots in space belonging to no single room, e.g. a
         # futon on a landing -- never a whole-house total. A drawn combined
         # container's true capacity is its own `sleeps` PLUS every LEAF
         # beneath it, walked past any intermediate container via
@@ -3220,7 +3220,7 @@ class LodgingRosterService:
         # `units_capacity_unknown` and let a half-measured house report a
         # confident undercount. Latent when fixed -- 0 of 15 active production
         # containers had an unmeasured active leaf, so no reported number moved
-        # -- and live the moment staff add a room with no bed count under a
+        # -- and live the moment staff add a room with no spot count under a
         # combined house.
         drawn = [u for u in drawn_units(units) if u.is_active]
         bookable = [u for u in drawn if _is_planning_inventory(u)]
@@ -3237,9 +3237,9 @@ class LodgingRosterService:
             units_total=len(bookable),
             units_family_available=len(available),
             units_staff_housing=len(staff_housing),
-            # FREE beds, not whole cabins. `free[...]` is None on the uncovered
+            # FREE spots, not whole cabins. `free[...]` is None on the uncovered
             # majority (no occupancy at all), where the whole capacity is the
-            # right answer -- see `free_family_beds`'s three returns.
+            # right answer -- see `free_family_spots`'s three returns.
             #
             # The `0` arm of that contract cannot currently arrive HERE: `available`
             # is already filtered to `u.is_family_available`, and
@@ -3248,13 +3248,13 @@ class LodgingRosterService:
             # same `free` from the same loop. So `f is not None` is live only for
             # positive remainders on this call site today; the `0` branch is
             # unreachable dead code for now, kept for CONTRACT FIDELITY with
-            # `free_family_beds` rather than as live defence. It stops being
+            # `free_family_spots` rather than as live defence. It stops being
             # unreachable the moment anything sums over a wider set than
             # `available` -- e.g. a future total across ALL bookable units rather
             # than only the open ones -- so removing the guard would be removing a
             # correctness fix that just has no test today.
-            beds_family_available=sum(
-                f if (f := free_beds_by_unit.get(u.unit_id)) is not None else s
+            spots_family_available=sum(
+                f if (f := free_spots_by_unit.get(u.unit_id)) is not None else s
                 for u in available
                 if (s := effective_sleeps[u.unit_id]) is not None
             ),

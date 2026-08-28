@@ -29,7 +29,7 @@ import { namedAdults, partyIdentityLabel } from './householdIdentity'
 import { CONSENT_AMBER } from './mapColors'
 import type { MapUnit } from './mapModel'
 import { partyKey } from './partyKey'
-import { partyAttention, partyBeds } from './rosterAttention'
+import { partyAttention, partySpots } from './rosterAttention'
 import { reservationBadge, shareabilityBadge, writeInBadgeApplies } from './unitBadges'
 import {
   coveringWriteIns,
@@ -300,7 +300,7 @@ function DetailCard({ entry, hue, onOpenParty, wholeBuildingKeys }: DetailCardPr
   // row closes its rooms and vice versa) and ordered by the server — so the
   // two surfaces answer "who is in this room" from one place.
   const writeIns = writeInEntries(unit)
-  const bedsNeeded = parties.reduce((sum, party) => sum + partyBeds(party), 0)
+  const spotsNeeded = parties.reduce((sum, party) => sum + partySpots(party), 0)
   /*
    * What the write-ins covering THIS room add to the FIGURE (kindred#2503) —
    * `writeInDemand`'s own doc in `writeIn.ts` carries the full arithmetic;
@@ -335,7 +335,7 @@ function DetailCard({ entry, hue, onOpenParty, wholeBuildingKeys }: DetailCardPr
    * ZERO parties span the 2026 registry after #2040, so nothing on screen moves
    * today. This is a guard on a reachable state.
    *
-   * `bedsNeeded + writeInSized`, deliberately uncapped (kindred#2503): a
+   * `spotsNeeded + writeInSized`, deliberately uncapped (kindred#2503): a
    * hand-typed write-in count above the room's own beds drives this same
    * red figure, the way an over-full placement always has. A surface that
    * PRINTS an over-capacity figure without reddening contradicts itself, so
@@ -343,7 +343,7 @@ function DetailCard({ entry, hue, onOpenParty, wholeBuildingKeys }: DetailCardPr
    * `consumed` (which folds in the wholesale fallback and is capped at
    * `capacity` — a number this popover never shows).
    */
-  const overCapacity = capacityKnown && spanWidth === 0 && bedsNeeded + writeInSized > capacity
+  const overCapacity = capacityKnown && spanWidth === 0 && spotsNeeded + writeInSized > capacity
 
   // Only the ACTIONABLE levels. `unverified` no longer means "nobody has
   // confirmed this cabin" — kindred#2526 removed that gate and `partyAttention`
@@ -391,8 +391,9 @@ function DetailCard({ entry, hue, onOpenParty, wholeBuildingKeys }: DetailCardPr
             "counts every adult in the household whether or not they attend,
             so it runs high" — no longer true since #1925 and #2046: the
             server drops blank and placeholder `family_camp_adults` slots and
-            discounts a child under 18 months, so `partyBeds` is BEDS. Still a
-            hint rather than a verdict, because the adult list is a five-slot
+            discounts a child under 18 months, so `partySpots` is spots
+            consumed, not a raw headcount. Still a hint rather than a
+            verdict, because the adult list is a five-slot
             scrape staff transpose by hand and 16–22 households a year carry
             adults it never receives (#1925's accepted cost) — the error now
             runs in both directions instead of only high. Shown only against a
@@ -409,7 +410,7 @@ function DetailCard({ entry, hue, onOpenParty, wholeBuildingKeys }: DetailCardPr
           <div className="flex justify-between gap-3">
             <dt className="text-muted-foreground">Beds</dt>
             <dd className={overCapacity ? 'font-semibold text-amber-700' : ''}>
-              {`${String(bedsNeeded + writeInSized)} of ${String(capacity)}`}
+              {`${String(spotsNeeded + writeInSized)} of ${String(capacity)}`}
             </dd>
           </div>
         )}
@@ -684,7 +685,7 @@ function ClusterSummary({
   //
   // PLUS every DISTINCT write-in ROW's recorded count (kindred#2540, and its
   // CodeRabbit follow-up), mirroring `DetailCard`'s own
-  // `bedsNeeded + writeInSized` for a room that carries no ancestor cover.
+  // `spotsNeeded + writeInSized` for a room that carries no ancestor cover.
   //
   // The first cut of this summed `writeInDemand(...).sized` PER UNIT — right
   // for a room's own card, where `sized` deliberately excludes an ancestor
@@ -709,7 +710,7 @@ function ClusterSummary({
     (total, { occupant }) => total + (occupant.partySize ?? 0),
     0
   )
-  const placed = families.reduce((total, { party }) => total + partyBeds(party), 0) + writeInSized
+  const placed = families.reduce((total, { party }) => total + partySpots(party), 0) + writeInSized
 
   return (
     <div className="flex min-w-[11rem] flex-col gap-1.5">

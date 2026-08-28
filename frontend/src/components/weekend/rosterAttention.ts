@@ -121,20 +121,21 @@ const ROSTER_NEED_WORDING: Record<(typeof ROSTER_NEEDS)[number], { asked: string
   }
 
 /**
- * How many beds the party consumes. Adult weekends enrol one person.
+ * How many spots the party consumes. Adult weekends enrol one person.
  *
  * ONE OF TWO COPIES of this read — `boardLayout.partySize` carries the full
  * account of the rule and of the newly-reachable reported 0. Change one,
  * change both. (It was three until #2152; `FamilyDetailsPanel`'s copy wanted
  * the PEOPLE number and now calls `partyHeadcount`.)
  *
- * ⚠️ BEDS, NOT PEOPLE — do not collapse this into `partyHeadcount`. Only the
- * fallback arm is shared: the reported `party_size` already has blank and
- * placeholder adult slots dropped and a child under 18 months discounted
- * (#1925/#2046), so for an infant household it sits one BELOW the headcount
- * on purpose. `rosterAttention.test` asserts both numbers on one such party.
+ * ⚠️ SPOTS CONSUMED, NOT HEADCOUNT — do not collapse this into
+ * `partyHeadcount`. Only the fallback arm is shared: the reported
+ * `party_size` already has blank and placeholder adult slots dropped and a
+ * child under 18 months discounted (#1925/#2046), so for an infant household
+ * it sits one BELOW the headcount on purpose. `rosterAttention.test` asserts
+ * both numbers on one such party.
  */
-export function partyBeds(party: RosterPartyRow): number {
+export function partySpots(party: RosterPartyRow): number {
   const reported = party.party_size ?? 0
   if (reported > 0) return reported
   return partyHeadcount(party)
@@ -519,7 +520,7 @@ export { indexUnitsByCode } from './unitLevel'
  * of `lodging_availability` by 1500000162).
  *
  * It sits beside the BED count on the stats bar, and beds there are
- * `beds_family_available`, so the available-only reading is the one that
+ * `spots_family_available`, so the available-only reading is the one that
  * matches its neighbour.
  */
 export function countUnmeasuredSpaces(units: LodgingUnitRow[]): number {
@@ -537,7 +538,7 @@ export function countUnmeasuredSpaces(units: LodgingUnitRow[]): number {
   // measured even though no room beneath it had ever been counted. The backend
   // made the second mistake too, and the two were fixed together — they cannot
   // be allowed to disagree, because `WeekendStatsBar` prints this number on
-  // the same line as the backend's `beds_family_available`.
+  // the same line as the backend's `spots_family_available`.
   return drawnUnits(units).filter(
     (unit) => unit.is_family_available === true && effectiveSleeps(unit, units) === null
   ).length

@@ -1659,7 +1659,7 @@ describe('MapUnitPopover write-in occupants (kindred#2499)', () => {
  */
 describe('MapUnitPopover write-in party size in the peek figure (kindred#2503)', () => {
   it('counts written-in people in the peek figure', () => {
-    // bedsNeeded (3, from `party('Johnson')`) + sized (2, the cover's own
+    // spotsNeeded (3, from `party('Johnson')`) + sized (2, the cover's own
     // recorded count).
     render(
       <MapUnitPopover
@@ -1707,7 +1707,7 @@ describe('MapUnitPopover write-in party size in the peek figure (kindred#2503)',
   })
 
   it('reddens on the same UNCAPPED sized figure it prints, not the capped `consumed`', () => {
-    // No placed party (bedsNeeded=0), capacity 3, one write-in with a
+    // No placed party (spotsNeeded=0), capacity 3, one write-in with a
     // hand-typed count of 5 — well above the room's own beds. `sized` is
     // deliberately uncapped (`writeInDemand`'s doc), so the figure prints the
     // true "5 of 3" rather than clamping to capacity, exactly as
