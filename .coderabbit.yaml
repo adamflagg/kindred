@@ -31,28 +31,57 @@ reviews:
     issue_assessment:
       mode: "off"
 
-  # AUTO-REVIEW IS OFF, DELIBERATELY. Reviews are opt-in per PR via an
-  # `@coderabbitai review` comment.
+  # AUTO-REVIEW IS ON; INCREMENTAL RE-REVIEW IS OFF. One review per PR, when it
+  # opens. Reviews are no longer opt-in per PR (they were, 2026-08-06 .. 2026-08-28).
   #
-  # Why: the plan enforces a ROLLING volume limit, not a per-window quota that
-  # resets on a clock. On 2026-08-06 a batch of twelve PRs went up inside an
-  # hour and ten of them came back with a rate-limit notice instead of a review
-  # — and a rate-limit notice is indistinguishable from "this PR is clean"
-  # unless you read the comment body. Six hours later the limit had only
-  # partially recovered. So auto-review does not spend the quota evenly, it
-  # spends it on whichever PRs happen to be first, which is uncorrelated with
-  # which PRs are worth reviewing.
+  # The limit that matters. The Fair Usage Limits Policy is an ADAPTIVE ROLLING
+  # model, not a clock-reset quota: sustained volume lowers the hourly refill
+  # rate. Pro's baseline is 5/hr. CodeRabbit prints the live figure in its
+  # walkthrough ("Included review availability: N reviews ... your current
+  # allowance at M reviews per hour"), and nine of those printed on this repo fit
+  # one curve exactly, with no inversions:
   #
-  # Opting in puts the quota where it is pointed. `scripts/../.claude/skills/scan-it`
-  # asks per PR whether to use CodeRabbit and posts the comment when the answer
-  # is yes.
+  #     <=23 reviews/7d -> 5/hr      31-37 -> 3/hr      45+ -> 1/hr
+  #     24-30           -> 4/hr      38-44 -> 2/hr
+  #
+  # That is far tighter than the docs' headline "60 in 7 days -> 1/hr" (which the
+  # same curve reproduces at its floor). The practical free ceiling is ~32
+  # reviews/week, NOT 60. Do not plan against the documented number.
+  #
+  # Why incremental is off. Measured 2026-08-06..28: 272 PRs took 651 pushes
+  # (one CI run per push). Incremental ON therefore costs ~655 reviews/3wk
+  # = ~210/wk, 6.5x the free ceiling — and it spends the excess re-reviewing
+  # scan-it fixup commits, the least valuable pass. OFF costs 272 = ~87/wk.
+  #
+  # Why auto is back on. Volume here is bimodal, not high. Over 203 days from
+  # 2026-02-01, 48% of days sat at or under the free ceiling and the quiet
+  # quartile ran 5 PRs/week (Jun 1 - Jul 25 never exceeded 15). On those weeks
+  # auto-review is free coverage we were declining to collect. The opt-in
+  # regime it replaces reviewed only 90 of 272 PRs, and 15 PRs asked for a
+  # review and silently never got one.
+  #
+  # The accepted trade. 38% of days — every one of them inside a triage-attack
+  # wave — exceed 45 PRs/week and drive the allowance to its 1/hr floor. During
+  # a wave auto-review spends the quota on ARRIVAL ORDER, so a deliberate
+  # `@coderabbitai review` from scan-it will lose to whichever PR opened first.
+  # This is a known, deliberate cost: outside waves the coverage is worth more
+  # than the targeting is during them. A rate-limit notice still renders as a
+  # PASSING check, so scan-it must keep verifying that a review actually landed
+  # (`**Actionable comments posted:**`) rather than trusting the green tick.
+  #
+  # Usage-based add-on: declined 2026-08-28. Billing past the limit is
+  # $0.25/file; at this volume incremental-off would bill ~136 of 272 reviews
+  # (~1,159 files) for ~$400/month, and coverage still saturates near 44/week
+  # because the throttle keeps adapting to included usage. Paying does not buy
+  # past the throttle, it only pays per review beyond it.
   #
   # `base_branches: [".*"]` is retained BECAUSE it is still load-bearing for
-  # stacked PRs: a manually-triggered review on a PR targeting another feature
-  # branch would otherwise be declined. drafts stays false — we don't open
-  # drafts (see CLAUDE.md global-preferences).
+  # stacked PRs: a review on a PR targeting another feature branch would
+  # otherwise be declined. drafts stays false — we don't open drafts (see
+  # CLAUDE.md global-preferences).
   auto_review:
-    enabled: false
+    enabled: true
+    auto_incremental_review: false
     drafts: false
     base_branches:
       - ".*"
