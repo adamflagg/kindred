@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
 from datetime import date
 from typing import TYPE_CHECKING, Any, Literal, NamedTuple, cast
 
@@ -778,25 +779,77 @@ def resolve_combined(*, default: bool, override: bool | None, session_override: 
     return default
 
 
-def written_in_unit_ids(write_ins: list[Any]) -> frozenset[str]:
-    """The unit ids the chosen write-in source names, for `write_in_covers` to walk.
+@dataclass(frozen=True)
+class OwnWriteIn:
+    """One `lodging_write_ins` row, reduced to what a cover needs to say.
+
+    A NORMALISED PROJECTION of the raw PocketBase record, not the record: the
+    two column-vs-API translations this table carries (`note` surfaced as
+    `reason`, and `_i_or_none`'s 0 -> None for `party_size`) happen ONCE, here,
+    rather than at each of the two places that used to read the row.
+
+    ⚠️ `party_size = None` MEANS WHOLESALE, never zero. PocketBase declares
+    number columns `NUMERIC DEFAULT 0 NOT NULL`, so an unwritten count stores 0
+    and `_i_or_none` maps it back to "nobody recorded a count" -- which every
+    layer reads as "this write-in takes the room". A party of nobody would
+    consume no spots; those are opposite answers.
+    """
+
+    occupant_name: str
+    note: str
+    party_size: int | None
+
+
+def write_in_rows_by_unit(write_ins: list[Any]) -> dict[str, list[OwnWriteIn]]:
+    """The chosen write-in source, indexed by the unit each row names.
 
     WHICHEVER source the request resolved to -- `lodging_write_ins` on the live
     board, `lodging_write_ins_draft` inside a scenario (kindred#2382). The
     caller has already made that choice, and a scenario REPLACES, so this walks
     exactly one scope's rows.
 
-    Built ONCE per request and threaded, rather than re-derived inside the
-    cover walk: `_build_units` already consumes the same rows on the way to the
-    payload, and two derivations of "which units hold a write-in" are two
-    things that can disagree about one cabin.
+    ⚠️ A LIST PER UNIT, and the arity is the point. This was
+    `written_in_unit_ids`, a `frozenset[str]` -- cardinality discarded by
+    construction, so two rows on one unit produced one element and the second
+    occupant left the payload entirely, taking their `party_size` out of
+    `write_in_demand` and the stats bar with them. `_build_units` collapsed the
+    same way through a `dict[unit_id, row]` that kept whichever row the fetch
+    returned last. Both are gone; this is the one index both sides read.
+
+    DARK UNTIL THE INDEX MOVES. `idx_lodging_write_in_unique` (session_cm_id,
+    year, unit) and `idx_lodging_write_in_draft_unique` (+ scenario) still make
+    a second row per unit-weekend schema-impossible, so every list this returns
+    holds exactly one entry in production today and nothing downstream can
+    observe the difference. That is deliberate: this is the read path landing
+    ahead of the switch, the way kindred#2382 landed two empty tables ahead of
+    the move into them.
+
+    ORDER IS THE FETCH'S. `fetch_write_ins` sorts, and two occupants of one
+    cabin have no other natural sequence -- so the board draws them in the
+    order the table returns them rather than in one this function invents.
+
+    ONE DEFINITION, read on both sides of the build: `_build_units` consumes it
+    on the way to the payload's flat fields and the cover walk consumes it for
+    the covers themselves. It is a pure function of the rows, so the two
+    readings cannot disagree about a cabin the way two separate derivations
+    could -- which is what the `frozenset` version's own docstring warned about
+    and what it nonetheless was.
     """
-    return frozenset(_s(row, "unit") for row in write_ins)
+    rows_by_unit: dict[str, list[OwnWriteIn]] = {}
+    for row in write_ins:
+        rows_by_unit.setdefault(_s(row, "unit"), []).append(
+            OwnWriteIn(
+                occupant_name=_s(row, "occupant_name"),
+                note=_s(row, "note"),
+                party_size=_i_or_none(row, "party_size"),
+            )
+        )
+    return rows_by_unit
 
 
 def write_in_covers(
     units: list[LodgingUnitSummary],
-    write_in_unit_ids: frozenset[str],
+    write_in_rows: Mapping[str, list[OwnWriteIn]],
     capacity_by_code: dict[str, int | None],
 ) -> dict[str, list[WriteInCover]]:
     """Which write-ins close each unit's space, keyed by unit code.
@@ -832,9 +885,21 @@ def write_in_covers(
     arity fix. A merged container draws in place of its rooms, so returning the
     first match dropped every other occupant off the board -- four of them on
     the one 2026 container that carries four -- and made each clear look like a
-    failed click as the card re-resolved to the next room. The first two steps
-    stay single-answer: an own row is one row, and an ancestor chain has exactly
-    one nearest member.
+    failed click as the card re-resolved to the next room.
+
+    ⚠️ AND SO DOES THE OWN STEP, WHICH THIS DOCSTRING USED TO CALL
+    SINGLE-ANSWER. "An own row is one row" was true only because
+    `idx_lodging_write_in_unique` said so, and the two-write-ins-per-shareable
+    -unit work removes that guarantee: a unit's OWN rows are now a list, one
+    cover each, in the source's order. The ANCESTOR step really is
+    single-answer -- an ancestor chain has exactly one NEAREST member -- but
+    that nearest member may itself hold several rows, and every one of them
+    covers the unit below.
+
+    ⇒ ONE COVER PER ROW, at every relation. `pairs` names the SOURCE UNITS and
+    their relations; the covers are the cross product of that with each
+    source's rows. A source in `pairs` is written-into by construction, so its
+    row list is never empty.
 
     Per-branch NEAREST, not every descendant. A written-into bed inside a
     written-into wing is already inside that wing's space, so the wing's row
@@ -884,7 +949,11 @@ def write_in_covers(
         bucket.sort(key=lambda child: child.code)
 
     def _is_written_in(unit: LodgingUnitSummary) -> bool:
-        return unit.unit_id in write_in_unit_ids
+        # `write_in_rows` never holds an empty list -- `write_in_rows_by_unit`
+        # only creates a key when a row named the unit -- so membership and
+        # "holds at least one row" are the same question, and the walk below
+        # keeps asking the cheap one.
+        return unit.unit_id in write_in_rows
 
     def _nearest_ancestor(unit: LodgingUnitSummary) -> LodgingUnitSummary | None:
         seen = {unit.code}
@@ -930,7 +999,29 @@ def write_in_covers(
         pairs: list[tuple[LodgingUnitSummary, Literal["own", "ancestor", "descendant"]]]
         if _is_written_in(unit):
             pairs = [(unit, "own")]
-            if unit.party_size is not None:
+            # ⚠️ EVERY OWN ROW SIZED, not `unit.party_size is not None`, and
+            # the generalisation is a RULING rather than a refactor (the
+            # two-write-ins spec's OQ-4, answered at its own lean and open to
+            # the owner re-ruling it).
+            #
+            # kindred#2540 ruled "OWN BEATS DESCENDANT ONLY WHILE OWN IS
+            # UNSIZED": an unsized own row is a WHOLESALE claim on the space
+            # and already covers whatever is beneath it, where a sized one
+            # asserts a headcount and does not. That branches on ONE
+            # `party_size`, and a unit holding one sized own row beside one
+            # unsized one has no answer under it.
+            #
+            # An unsized row means the same thing whatever sits beside it, so
+            # ANY unsized own row is still a wholesale claim: the own rows
+            # subsume the descendants unless EVERY one of them is sized. The
+            # alternative -- a sized row beside it re-admitting the
+            # descendants -- would make adding a measured party to a space
+            # somebody has claimed whole report the space as LARGER.
+            #
+            # IDENTICAL AT ONE ROW, which is what keeps this dark: with a
+            # single own row `all(... is not None)` is exactly
+            # `unit.party_size is not None`, the expression it replaces.
+            if all(row.party_size is not None for row in write_in_rows[unit.unit_id]):
                 # SIZED, not wholesale -- see the docstring's "OWN BEATS
                 # EVERYTHING ELSE ONLY WHILE OWN IS UNSIZED". The own row
                 # asserts a headcount rather than a claim on the whole space,
@@ -964,9 +1055,17 @@ def write_in_covers(
                 unit_id=source.unit_id,
                 unit_code=source.code,
                 unit_name=source.name,
-                occupant_name=source.occupant_name,
-                note=source.reason,
-                party_size=source.party_size,
+                # ⚠️ OFF THE ROW, NOT OFF THE SOURCE SUMMARY. These three used
+                # to read `source.occupant_name` / `.reason` / `.party_size` --
+                # `LodgingUnitSummary`'s FLAT fields, which hold one row's worth
+                # by construction and are populated from the FIRST of them in
+                # `_build_units`. Reading them here made a second occupant
+                # unrepresentable no matter what the walk found, and kept the
+                # wire's occupancy answer split between a singular projection
+                # and the list beside it.
+                occupant_name=row.occupant_name,
+                note=row.note,
+                party_size=row.party_size,
                 relation=relation,
                 # 0, not the raw lookup, when the SOURCE is retired AND the
                 # cover is not the unit's OWN row (kindred#2540 fix-round
@@ -1011,13 +1110,17 @@ def write_in_covers(
                 unit_sleeps=(capacity_by_code.get(source.code) if source.is_active or relation == "own" else 0),
             )
             for source, relation in pairs
+            # ONE COVER PER ROW -- see the docstring. Every source in `pairs`
+            # passed `_is_written_in`, so this inner loop always runs at least
+            # once and a source can never silently drop out of the result.
+            for row in write_in_rows[source.unit_id]
         ]
     return covers
 
 
 def _resolve_write_in_covers(
     units: list[LodgingUnitSummary],
-    write_in_unit_ids: frozenset[str],
+    write_in_rows: Mapping[str, list[OwnWriteIn]],
     capacity_by_code: dict[str, int | None],
 ) -> None:
     """Attach each unit's resolved write-in cover, in place.
@@ -1026,7 +1129,7 @@ def _resolve_write_in_covers(
     `_resolve_power_coverage`: the pure function is what the tests reason
     about, and this is the one line the response path calls.
     """
-    covers = write_in_covers(units, write_in_unit_ids, capacity_by_code)
+    covers = write_in_covers(units, write_in_rows, capacity_by_code)
     for unit in units:
         unit.write_ins = covers.get(unit.code, [])
 
@@ -1034,7 +1137,7 @@ def _resolve_write_in_covers(
 def _resolve_family_availability(
     units: list[LodgingUnitSummary],
     capacity_by_code: dict[str, int | None],
-    write_in_unit_ids: frozenset[str],
+    write_in_rows: Mapping[str, list[OwnWriteIn]],
 ) -> dict[str, int | None]:
     """Recompute `is_family_available` from the RESOLVED covers, in place.
 
@@ -1069,8 +1172,11 @@ def _resolve_family_availability(
     already zeroed (a retired unit, kindred#2540 FINDING 5) cannot be
     re-inflated here by looking the same code up a second, unclamped way.
 
-    ⚠️ `write_in_unit_ids` IS THE BLANK-CODE BACKSTOP, and it is why this takes
-    a third argument rather than reading covers alone. Everything above is
+    ⚠️ `write_in_rows` IS THE BLANK-CODE BACKSTOP, and it is why this takes
+    a third argument rather than reading covers alone. Only MEMBERSHIP is read
+    off it here -- the rows themselves are the cover walk's business -- but it
+    is the SAME index that walk is handed rather than a second derivation of
+    "which units hold a write-in", which is what the pair used to be. Everything above is
     keyed by CODE, and `write_in_covers` deliberately drops a blank-coded unit
     from both sides of its map -- "" is the key `parent_code == ""` uses for
     "no parent", so one blank-coded row would otherwise hand its occupant to
@@ -1110,7 +1216,7 @@ def _resolve_family_availability(
             for cover in unit.write_ins
         ]
         free = free_family_spots(capacity_by_code.get(unit.code), loads)
-        if free is None and unit.unit_id in write_in_unit_ids:
+        if free is None and unit.unit_id in write_in_rows:
             # A row the code-keyed walk could not represent -- see the
             # docstring's blank-code paragraph. Covered, and unmeasurable.
             free = 0
@@ -1975,14 +2081,14 @@ class LodgingRosterService:
         # so this pairing is identical in `build_summary._entry` by
         # construction rather than by review.
         capacity_by_code = _capacity_by_code(unit_summaries, unit_index)
-        write_in_ids = written_in_unit_ids(write_ins)
-        _resolve_write_in_covers(unit_summaries, write_in_ids, capacity_by_code)
+        write_in_index = write_in_rows_by_unit(write_ins)
+        _resolve_write_in_covers(unit_summaries, write_in_index, capacity_by_code)
         # SIXTH RESOLVER, AND `build_summary._entry` RUNS IT TOO -- it must, or
         # the lander and the board disagree about which houses are free. It
         # takes the id set as well as the covers: a blank-coded unit is dropped
         # from the code-keyed cover map on purpose, and the set is what still
         # closes it. See the resolver's own blank-code paragraph.
-        free_spots_by_unit = _resolve_family_availability(unit_summaries, capacity_by_code, write_in_ids)
+        free_spots_by_unit = _resolve_family_availability(unit_summaries, capacity_by_code, write_in_index)
         housing_names = housing_names_task.result()
         parties = self._build_parties(
             session_type=session_type,
@@ -2214,9 +2320,9 @@ class LodgingRosterService:
             # the two orchestrators cannot drift on the map that feeds both
             # write-in resolvers.
             capacity_by_code = _capacity_by_code(unit_summaries, unit_index)
-            write_in_ids = written_in_unit_ids(write_ins_task.result())
-            _resolve_write_in_covers(unit_summaries, write_in_ids, capacity_by_code)
-            free_spots_by_unit = _resolve_family_availability(unit_summaries, capacity_by_code, write_in_ids)
+            write_in_index = write_in_rows_by_unit(write_ins_task.result())
+            _resolve_write_in_covers(unit_summaries, write_in_index, capacity_by_code)
+            free_spots_by_unit = _resolve_family_availability(unit_summaries, capacity_by_code, write_in_index)
             parties = self._build_parties(
                 session_type=_s(session, "session_type"),
                 # THIS weekend's start. The six year-scoped fetches above are
@@ -2536,7 +2642,14 @@ class LodgingRosterService:
         # what arrives here is the whole occupancy answer for the scope that
         # was asked for, and nothing below merges a second source into it.
         role_row_by_unit = {_s(row, "unit"): row for row in availability}
-        write_in_row_by_unit = {_s(row, "unit"): row for row in write_ins}
+        # N ROWS PER UNIT, through the same index the cover walk reads. This
+        # was `{_s(row, "unit"): row for row in write_ins}` -- a dict keyed on
+        # unit id, so two rows on one unit silently collapsed to whichever the
+        # fetch returned LAST and the other left the payload altogether. The
+        # role table above keeps its singular shape on purpose: a RELEASE
+        # names no occupant, so there is nothing to have two of, and
+        # `idx_lodging_avail_unique` is not moving.
+        write_in_rows = write_in_rows_by_unit(write_ins)
 
         # id -> code, so the parent relation can be published as a code.
         code_by_id = {_s(unit, "id"): _s(unit, "code") for unit in units}
@@ -2572,7 +2685,15 @@ class LodgingRosterService:
             inventory_class = _s(unit, "inventory_class")
             unit_id = _s(unit, "id")
             role_row = role_row_by_unit.get(unit_id)
-            write_in_row = write_in_row_by_unit.get(unit_id)
+            # THE FIRST OWN ROW, and the three flat fields below say so. The
+            # multi-row answer is `write_ins` on the summary, resolved by the
+            # cover walk from the same index; these stay as they are because
+            # deprecating them is an api-types regeneration plus every
+            # frontend reader, and because with one row -- which is all the
+            # unique indexes permit today -- "the first" and "the" are the
+            # same row and nothing on the wire moves.
+            own_rows = write_in_rows.get(unit_id, [])
+            write_in_row = own_rows[0] if own_rows else None
             # TWO FIELDS, TWO QUESTIONS, since PR 4 of kindred#2382 took the
             # compat shim out. `family_available_override` is now the ROLE row
             # and nothing else -- a staff cabin opened to families for the
@@ -2684,7 +2805,10 @@ class LodgingRosterService:
                     # row names nobody, so a count on it would be a headcount
                     # for no one. `_i_or_none` is total over `None`, so the
                     # no-write-in case needs no separate guard.
-                    party_size=_i_or_none(write_in_row, "party_size"),
+                    # Already normalised by `OwnWriteIn` -- `_i_or_none` ran
+                    # on the raw record in `write_in_rows_by_unit`, so the 0 ->
+                    # None mapping happens once rather than at each reader.
+                    party_size=write_in_row.party_size if write_in_row is not None else None,
                     # ROLE ONLY, ON PURPOSE, AND OVERWRITTEN BELOW.
                     #
                     # `free=None` is a deliberate spelling of "no occupancy

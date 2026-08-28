@@ -245,7 +245,11 @@ function partyPeopleLabel(party: RosterPartyRow): string {
 function writeInOccupants(entries: WriteInEntry[]): ReactNode {
   return entries.map((entry) => (
     <span
-      key={entry.source.unitId}
+      // `entry.key`, the same identity `summaryWriteIns` dedupes on -- two
+      // occupants of one cabin are two rows. THIS IS THE LONE-UNIT PATH:
+      // `DetailCard` draws through here, and the cluster's own list draws
+      // through `summaryWriteIns`, so the two have to agree.
+      key={entry.key}
       data-testid="map-popover-writein"
       className="text-foreground text-right text-xs"
     >
@@ -586,9 +590,17 @@ interface SummaryFamily {
  *
  * A building's row closes each of its rooms, so the same cover comes back
  * once per drawn unit; listing it per room would name one occupant four
- * times for one building. Keyed on `source.unitId` — the row — rather than
- * the occupant's name, because two rooms can genuinely hold two different
- * people who happen to share a name, and collapsing those would hide one.
+ * times for one building. Deduped on the ROW rather than on the occupant's
+ * name, because two rooms can genuinely hold two different people who happen
+ * to share a name, and collapsing those would hide one.
+ *
+ * ⚠️ THAT COMMENT USED TO SAY `source.unitId` *IS* THE ROW, and it stopped
+ * being true. It was true only because `idx_lodging_write_in_unique` allowed
+ * one row per unit-weekend; with two occupants in one shareable cabin, a
+ * `Set` on the unit id introduced exactly the hiding the paragraph above
+ * fears — the second occupant vanished from the cluster's list AND from the
+ * headcount beneath it. `entry.key` is the row, and it EQUALS `source.unitId`
+ * wherever a unit contributes one cover, so this dedupes identically today.
  *
  * Server order is preserved, as `writeInEntries` requires.
  */
@@ -597,8 +609,8 @@ function summaryWriteIns(resolved: { writeIns: WriteInEntry[] }[]): WriteInEntry
   const seen = new Set<string>()
   for (const entry of resolved) {
     for (const writeIn of entry.writeIns) {
-      if (seen.has(writeIn.source.unitId)) continue
-      seen.add(writeIn.source.unitId)
+      if (seen.has(writeIn.key)) continue
+      seen.add(writeIn.key)
       out.push(writeIn)
     }
   }
@@ -767,7 +779,9 @@ function ClusterSummary({
                 same trade `WriteInCard` makes on the board — so an occupant
                 reads as an occupant without reading as a button. */}
             {writeIns.map((entry) => (
-              <li key={entry.source.unitId}>
+              // `entry.key`, for the reason `summaryWriteIns` above dedupes on
+              // it: two occupants of one cabin are two rows, not one.
+              <li key={entry.key}>
                 <div
                   data-testid="map-popover-writein"
                   style={{ borderColor: hue }}

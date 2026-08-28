@@ -1238,6 +1238,117 @@ describe('MapUnitPopover — a container, master-detail (kindred#2183)', () => {
     expect(screen.getByText('5 of 7')).toBeInTheDocument()
   })
 
+  it('draws both occupants of a LONE written-into unit as two separate keys', () => {
+    /*
+     * THE SINGLE-UNIT PATH, which the cluster test above cannot reach: one
+     * unit renders `DetailCard`, and `DetailCard` draws its occupants through
+     * `writeInOccupants` rather than through `summaryWriteIns`. Caught by
+     * CodeRabbit on the PR that fixed the other three key sites, and the miss
+     * is instructive -- the cluster fixture needs TWO units by construction,
+     * so a test written against it can never exercise the lone-unit helper.
+     */
+    const errors: unknown[] = []
+    const spy = vi.spyOn(console, 'error').mockImplementation((...args: unknown[]) => {
+      errors.push(args)
+    })
+    try {
+      render(
+        <MapUnitPopover
+          units={[
+            mapUnit(
+              row({
+                unit_id: 'rd',
+                code: 'shared-1',
+                name: 'Shared 1',
+                sleeps: 15,
+                write_ins: [
+                  cover({
+                    unit_id: 'rd',
+                    unit_code: 'shared-1',
+                    unit_name: 'Shared 1',
+                    occupant_name: 'Emma Johnson',
+                    party_size: 3,
+                    unit_sleeps: 15,
+                  }),
+                  cover({
+                    unit_id: 'rd',
+                    unit_code: 'shared-1',
+                    unit_name: 'Shared 1',
+                    occupant_name: 'Liam Garcia',
+                    party_size: 4,
+                    unit_sleeps: 15,
+                  }),
+                ],
+              })
+            ),
+          ]}
+          hue={HUE}
+          onOpenParty={vi.fn()}
+        />
+      )
+      expect(screen.getAllByTestId('map-popover-writein')).toHaveLength(2)
+      expect(errors.filter((entry) => JSON.stringify(entry).includes('same key'))).toEqual([])
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
+  it('lists BOTH occupants of one shareable cabin, and counts both', () => {
+    /*
+     * DARK ON ARRIVAL — `idx_lodging_write_in_unique` still forbids the second
+     * row. `summaryWriteIns` deduped the cluster's covers through a `Set` on
+     * `source.unitId`, and its own comment already feared exactly this
+     * failure: *"two rooms can genuinely hold two different people who happen
+     * to share a name, and collapsing those would hide one."* It then
+     * introduced the same hiding through the id, because one unit meant one
+     * row. Two occupants of one shareable cabin were ONE chip and one
+     * headcount.
+     *
+     * The dedupe is still needed and still right — a building's ancestor row
+     * comes back once per drawn room and listing it per room would name one
+     * occupant four times. What changed is that it keys on the ROW
+     * (`entry.key`) rather than on the unit.
+     */
+    const shared = [
+      // TWO units, because a lone unit draws `DetailCard` and it is
+      // `ClusterSummary` that holds `summaryWriteIns`. The second is empty and
+      // contributes capacity only.
+      mapUnit(row({ unit_id: 're', code: 'ridge-e', name: 'Ridge E', sleeps: 5 })),
+      mapUnit(
+        row({
+          unit_id: 'rd',
+          code: 'ridge-d',
+          name: 'Ridge D',
+          sleeps: 15,
+          write_ins: [
+            cover({
+              unit_id: 'rd',
+              unit_code: 'ridge-d',
+              unit_name: 'Ridge D',
+              occupant_name: 'Emma Johnson',
+              party_size: 3,
+              unit_sleeps: 15,
+            }),
+            cover({
+              unit_id: 'rd',
+              unit_code: 'ridge-d',
+              unit_name: 'Ridge D',
+              occupant_name: 'Liam Garcia',
+              party_size: 4,
+              unit_sleeps: 15,
+            }),
+          ],
+        })
+      ),
+    ]
+    render(<MapUnitPopover units={shared} hue={HUE} onOpenParty={vi.fn()} />)
+    expect(screen.getAllByTestId('map-popover-writein')).toHaveLength(2)
+    expect(screen.getByText('Emma Johnson')).toBeInTheDocument()
+    expect(screen.getByText('Liam Garcia')).toBeInTheDocument()
+    // 3 + 4 of 15 + 5 — neither party dropped by the dedupe.
+    expect(screen.getByText('7 of 20')).toBeInTheDocument()
+  })
+
   it('counts an ancestor cover and a room’s own cover separately in one cluster', () => {
     // The mixed case: deduping by row identity must not collapse two
     // DIFFERENT rows into one, nor drop the own-cover figure the pre-existing

@@ -1234,6 +1234,87 @@ describe('AssignFamilyModal — Enter saves from a FIELD, never from the search 
     })
   })
 
+  describe('the overwrite warning', () => {
+    /*
+     * ⚠️ A LIVE DATA-LOSS PATH, and it is not the one the feature was framed
+     * around. `set_availability` resolves a write-in BY UNIT and upserts, so
+     * typing a second occupant into a cabin that already holds one UPDATES the
+     * first family's row — their name and their recorded party size are gone,
+     * with no warning of any kind, on all 118 units.
+     *
+     * kindred#2432 struck the `!writtenInto` gate that used to refuse the box
+     * on an occupied card, so that a family could share a cabin with a
+     * write-in, and nothing replaced it on the write-in side of the modal. The
+     * gate MUST NOT COME BACK — that removal is a ruled behaviour and the card
+     * says so in capitals. What this adds is a warning on the overwrite, which
+     * is the other coherent fix and the one that needs no schema change.
+     *
+     * It goes away on its own once a unit may hold two rows: the write stops
+     * replacing and starts adding. Until then this is the whole of the
+     * protection.
+     */
+    const OWN = {
+      unit_id: 'u1',
+      unit_code: 'ridge-1',
+      unit_name: 'Ridge 1',
+      occupant_name: 'Emma Johnson',
+      note: '',
+    }
+
+    it('says whose row the write-in would replace', () => {
+      renderModal({ unit: unit({ write_ins: [OWN] }) })
+      fireEvent.change(searchBox(), { target: { value: 'Burst pipe' } })
+      const region = screen.getByTestId('write-in-region')
+      expect(region).toHaveTextContent(/replace/i)
+      expect(region).toHaveTextContent('Emma Johnson')
+    })
+
+    it('still OFFERS the write-in — a warning, never a refusal (kindred#2432)', () => {
+      const { props } = renderModal({ unit: unit({ write_ins: [OWN] }) })
+      fireEvent.change(searchBox(), { target: { value: 'Burst pipe' } })
+      fireEvent.click(screen.getByRole('button', { name: /^write in$/i }))
+      expect(props.onWriteIn).toHaveBeenCalledWith({
+        occupantName: 'Burst pipe',
+        note: '',
+        partySize: null,
+      })
+    })
+
+    it('says nothing about replacing an empty cabin', () => {
+      renderModal()
+      fireEvent.change(searchBox(), { target: { value: 'Burst pipe' } })
+      expect(screen.getByTestId('write-in-region')).not.toHaveTextContent(/replace/i)
+    })
+
+    it('says nothing when the only occupant is INHERITED from another unit', () => {
+      /*
+       * The distinction is the whole correctness of the warning. A merged
+       * container draws its rooms' write-ins, and a room draws its building's
+       * — those covers name a DIFFERENT row. `set_availability` writes to the
+       * card's own unit, so a write-in here CREATES a row and replaces
+       * nobody. Warning about it would train staff to ignore the sentence in
+       * the case that matters.
+       */
+      renderModal({
+        unit: unit({
+          write_ins: [{ ...OWN, unit_id: 'u2', unit_code: 'ridge-1-a', unit_name: 'Ridge 1A' }],
+        }),
+      })
+      fireEvent.change(searchBox(), { target: { value: 'Burst pipe' } })
+      expect(screen.getByTestId('write-in-region')).not.toHaveTextContent(/replace/i)
+    })
+
+    it('names the unnamed occupant it would replace rather than saying nothing', () => {
+      // A blank `occupant_name` is legal and reachable (the write schema is
+      // permissive where the control is not). The row is still somebody.
+      renderModal({ unit: unit({ write_ins: [{ ...OWN, occupant_name: '' }] }) })
+      fireEvent.change(searchBox(), { target: { value: 'Burst pipe' } })
+      const region = screen.getByTestId('write-in-region')
+      expect(region).toHaveTextContent(/replace/i)
+      expect(region).toHaveTextContent('Occupant not named')
+    })
+  })
+
   it('writes in from the Write in button', () => {
     const { props } = renderModal()
     fireEvent.change(searchBox(), { target: { value: 'Burst pipe' } })

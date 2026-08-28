@@ -94,7 +94,13 @@ import {
   type PlacementCandidate,
 } from './placementCandidates'
 import { effectiveSleeps, partySpots } from './rosterAttention'
-import { PARTY_SIZE_CHOICES, coveringWriteIns, writeInDemand } from './writeIn'
+import {
+  PARTY_SIZE_CHOICES,
+  coveringWriteIns,
+  writeInDemand,
+  writeInEntries,
+  writeInOccupantLabel,
+} from './writeIn'
 
 export interface AssignFamilyModalProps {
   isOpen: boolean
@@ -610,6 +616,37 @@ export function AssignFamilyModal({
    */
   const offersWriteIn = onWriteIn !== undefined && trimmed !== '' && candidates.length === 0
 
+  /**
+   * ⚠️ WHO A WRITE-IN FROM THIS BOX WOULD DESTROY, or `null` for nobody.
+   *
+   * `set_availability` resolves a write-in BY UNIT and upserts
+   * (`find_write_in` -> `_upsert_row`'s `if existing is not None: update(...)`),
+   * and this modal's `onWriteIn` targets the card's own unit unconditionally.
+   * So on a cabin that already holds its OWN row, typing a second name and
+   * clicking "Write in" REPLACES the first occupant — their name, their note
+   * and the party size somebody recorded — silently, on all 118 units.
+   *
+   * ⚠️ THE ANSWER IS A WARNING, NOT A REFUSAL, and that is a ruling rather
+   * than a preference. kindred#2432 deliberately struck the `!writtenInto`
+   * gate that used to refuse this box on an occupied card, so that a family
+   * and a write-in can share a space in either order —
+   * `LodgingUnitCard.tsx` marks the two struck gates in capitals and says
+   * NEITHER MAY COME BACK. Re-gating `offersWriteIn` above would undo it.
+   *
+   * OWN ROWS ONLY. A merged container draws its rooms' write-ins and a room
+   * draws its building's; those covers name a DIFFERENT row, so a write-in
+   * here CREATES one and replaces nobody. Warning about an inherited
+   * occupant would teach staff to read past the sentence in the case that
+   * matters.
+   *
+   * IT RETIRES ITSELF. Once a unit may hold two write-in rows this write
+   * stops replacing and starts adding, and this whole block goes with it.
+   */
+  const replacedOccupant = useMemo(() => {
+    const own = writeInEntries(unit).find((entry) => entry.source.isOwn)
+    return own === undefined ? null : writeInOccupantLabel(own.occupant)
+  }, [unit])
+
   const choose = (party: RosterPartyRow) => {
     onSelect(party)
     setQuery('')
@@ -914,6 +951,20 @@ export function AssignFamilyModal({
               <p className="text-sm font-medium text-amber-700 dark:text-amber-400">
                 {`No family matches “${trimmed}” — this will be written in.`}
               </p>
+              {/* THE OVERWRITE WARNING — see `replacedOccupant`. One line,
+                  in the region that already swapped, so the fixed-height
+                  region absorbs it and nothing above or below moves (W3).
+                  No new visual language: the same sentence weight as the line
+                  above it, in the destructive colour the board already uses
+                  for a removal. */}
+              {replacedOccupant !== null && (
+                <p
+                  data-testid="write-in-replaces"
+                  className="text-sm font-medium text-red-700 dark:text-red-400"
+                >
+                  {`${unit.name} already holds ${replacedOccupant} — writing in will replace them.`}
+                </p>
+              )}
               {/* ONE ROW, People then Note (owner ruling 2026-08-23). They
                   were stacked; a select needs ~5.5rem and the note wants the
                   rest, so the pair costs one field's height instead of two.

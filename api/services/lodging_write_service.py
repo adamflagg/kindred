@@ -42,6 +42,7 @@ is choosing, which is the board. Not here, and not in the ingest.
 from __future__ import annotations
 
 import json
+from collections import Counter
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
@@ -1423,12 +1424,17 @@ class LodgingWriteService:
         off `fresh.buildings[*].live`) -- that model is a separate Pydantic
         class with no `tuple_key()` method of its own, so the shape is
         reproduced rather than a second definition of it invented. `live_by_unit`
-        (kindred#2555 scan fix-round, M) is the same fetch keyed on unit_id
-        alone instead -- safe because `idx_lodging_write_in_unique` (unit,
-        session_cm_id, year) already forces at most one live row per unit --
-        which is what lets the add-side check ask "is this unit's CURRENT
-        occupant, if any, one of the rows this push's own removes will
+        (kindred#2555 scan fix-round, M) is the same fetch grouped by unit_id
+        instead, which is what lets the add-side check ask "is EVERY current
+        occupant of this unit one of the rows this push's own removes will
         delete?" without a second read.
+
+        ⚠️ BOTH ARE LISTS PER KEY, and this paragraph used to argue from
+        `idx_lodging_write_in_unique` by name that they need not be -- "at
+        most one live row per unit, so keying on unit_id alone is safe". The
+        two-write-ins-per-shareable-unit work removes that guarantee, and a
+        `dict` built from a list eats a duplicate key without a word. Both
+        loops reduce to exactly what they were while the index still stands.
 
         `party_size` IS EXPLICIT ALWAYS ON THE CREATE PAYLOAD, `None` included.
         This method is the "fifth producer" kindred#2540's data-loss guard
@@ -1505,24 +1511,52 @@ class LodgingWriteService:
         # symmetric check -- a live row appearing on an add's target unit
         # between the entry re-classify and the apply would otherwise collide
         # AFTER the ledger row already exists, making the ledger lie about
-        # what actually landed. At most one live row per unit
-        # (`idx_lodging_write_in_unique`), so keying on unit_id alone is safe.
+        # what actually landed.
         live_rows_with_ids = await self._live_rows_with_ids(request.year, request.session_cm_id)
-        live_ids = {r.tuple_key(): str(getattr(row, "id", "") or "") for row, r in live_rows_with_ids}
-        live_by_unit = {r.unit_id: str(getattr(row, "id", "") or "") for row, r in live_rows_with_ids}
+        # ⚠️ A LIST PER KEY ON BOTH, because a `dict` built from a list drops a
+        # duplicate key SILENTLY and both of these keys can repeat once a unit
+        # may hold more than one write-in. `live_ids` used to map the tuple to
+        # one record id, so two live rows sharing a full four-field tuple --
+        # two unsized `TBD` placeholders is the realistic case -- resolved
+        # BOTH removes to the same id, and the second `delete_write_in` 404'd
+        # mid-apply, after the ledger row promising both was already written.
+        # `live_by_unit` used to map the unit to one record id, so which of
+        # two occupants the add-side check examined was decided by fetch order.
+        #
+        # DARK TODAY: `idx_lodging_write_in_unique` still forces at most one
+        # live row per (unit, session_cm_id, year), so every list here holds
+        # exactly one entry and both loops below reduce to what they were.
+        live_ids: dict[tuple[str, str, str, int | None], list[str]] = {}
+        live_by_unit: dict[str, list[str]] = {}
+        # `live_row`, not `r`: the `for r in removes` / `for r in adds` loops
+        # below bind the same name to a `PushRowPayload`, and one variable
+        # holding two shapes is a type error rather than a style point.
+        for row, live_row in live_rows_with_ids:
+            record_id = str(getattr(row, "id", "") or "")
+            live_ids.setdefault(live_row.tuple_key(), []).append(record_id)
+            live_by_unit.setdefault(live_row.unit_id, []).append(record_id)
 
         remove_ids: list[str] = []
         for r in removes:
-            rid = live_ids.get((r.unit_id, r.occupant_name.strip(), r.note.strip(), r.party_size))
-            if rid is None:
+            # POP, not peek: two removes naming the same tuple must resolve to
+            # two DIFFERENT records, or `remove_ids` holds one id twice.
+            # `live_ids` is consumed as it resolves and is not read again.
+            ids = live_ids.get((r.unit_id, r.occupant_name.strip(), r.note.strip(), r.party_size))
+            if not ids:
                 stale = await self.preview_push(request.year, request.session_cm_id, request.scenario)
                 raise PushDigestStaleError(stale)
-            remove_ids.append(rid)
+            remove_ids.append(ids.pop(0))
 
         removing = set(remove_ids)
         for r in adds:
-            occupant_id = live_by_unit.get(r.unit_id)
-            if occupant_id is not None and occupant_id not in removing:
+            # EVERY occupant, not the one a collapsing dict happened to keep.
+            # Conservative on purpose: an unrelated co-occupant on a shareable
+            # cabin may well be legitimate once two rows are legal, but
+            # "refuse the whole push on any drift" is the owner's 2026-08-22
+            # ruling and narrowing it is a product decision nobody has made
+            # (the two-write-ins spec's OQ-3). Identical while a unit can hold
+            # one row.
+            if any(occupant_id not in removing for occupant_id in live_by_unit.get(r.unit_id, ())):
                 stale = await self.preview_push(request.year, request.session_cm_id, request.scenario)
                 raise PushDigestStaleError(stale)
 
@@ -1685,41 +1719,68 @@ class LodgingWriteService:
         changes: list[dict[str, Any]] = _json_list(event, "changes")
 
         live = await self._live_rows_with_ids(year, session_cm_id)
-        # A dict keyed on `tuple_key()` collapses a duplicate key silently --
-        # safe here only because `idx_lodging_write_in_unique` (unit,
-        # session_cm_id, year) makes two live rows sharing a tuple on the
-        # SAME side schema-impossible: the unit_id alone already forces at
-        # most one live row per unit, so `by_tuple` can never lose one.
-        by_tuple = {r.tuple_key(): str(getattr(row, "id", "") or "") for row, r in live}
-        # unit_id -> that unit's live tuple, for the `remove` check below.
-        # Keying on unit_id alone is safe for the identical reason `by_tuple`
-        # is: the unique index already forces at most one live row per unit.
-        by_unit = {r.tuple_key()[0]: r.tuple_key() for _row, r in live}
+        # ⚠️ A LIST PER KEY ON BOTH. This comment used to argue from
+        # `idx_lodging_write_in_unique` by name -- "two live rows sharing a
+        # tuple on the SAME side are schema-impossible: the unit_id alone
+        # already forces at most one live row per unit" -- which is exactly
+        # the guarantee the two-write-ins work removes. A collapsing dict
+        # would have made one of two rows invisible to the revert: `by_tuple`
+        # would delete one record twice, and `by_unit` would let whichever
+        # occupant the fetch returned last decide whether the drift guard
+        # fires at all.
+        #
+        # DARK TODAY: the index still stands, so every list holds one entry
+        # and both checks below reduce to what they were.
+        by_tuple: dict[tuple[str, str, str, int | None], list[str]] = {}
+        by_unit: dict[str, list[tuple[str, str, str, int | None]]] = {}
+        for row, live_row in live:
+            by_tuple.setdefault(live_row.tuple_key(), []).append(str(getattr(row, "id", "") or ""))
+            by_unit.setdefault(live_row.tuple_key()[0], []).append(live_row.tuple_key())
 
         def change_tuple(c: dict[str, Any]) -> tuple[str, str, str, int | None]:
             return (c["unit"], c["occupant_name"].strip(), c["note"].strip(), c["party_size"])
 
         # The tuples THIS push's own `add` changes name -- phase 1 below
         # deletes every one of them, so a `remove` change whose target unit
-        # currently holds exactly one of these is not drift: it is the
-        # pushed row, still waiting for phase 1 to vacate it.
-        own_add_tuples = {change_tuple(c) for c in changes if c["action"] == "add"}
+        # currently holds only these is not drift: they are the pushed rows,
+        # still waiting for phase 1 to vacate the unit.
+        #
+        # COUNTED, not a set. Two identical `add` changes clear two rows, and
+        # one clears one -- so a unit holding two copies of a tuple the push
+        # added ONCE still has an occupant phase 1 will leave standing.
+        own_add_counts = Counter(change_tuple(c) for c in changes if c["action"] == "add")
+
+        # Resolved HERE rather than looked up again in phase 1, so each `add`
+        # change claims its OWN record: two identical adds must delete two
+        # records, and re-reading `by_tuple` per change would delete one of
+        # them twice. Only meaningful once two rows can share a tuple; today
+        # it is one id per change either way.
+        add_ids: list[str] = []
+        unclaimed = {key: list(ids) for key, ids in by_tuple.items()}
 
         drifted: list[str] = []
         for c in changes:
             if c["action"] == "add":
-                if change_tuple(c) not in by_tuple:
+                ids = unclaimed.get(change_tuple(c))
+                if not ids:
                     drifted.append(c["unit_code"])  # the row the push added was edited/removed
+                    continue
+                add_ids.append(ids.pop(0))
             elif c["action"] == "remove":
                 # kindred#2555 scan fix-round (M): drift is not "the ORIGINAL
                 # removed tuple is back" alone -- ANY occupant on this unit
                 # that phase 1 will not itself clear is a row phase 2's
-                # recreate would collide with on idx_lodging_write_in_unique
-                # (unit, session_cm_id, year). The recreate-target unit must
-                # hold nothing, or only a row this push's own adds account
-                # for.
-                occupant = by_unit.get(c["unit"])
-                if occupant is not None and occupant not in own_add_tuples:
+                # recreate would collide with. The recreate-target unit must
+                # hold nothing, or only rows this push's own adds account for.
+                #
+                # EVERY occupant, by multiset difference, rather than the one
+                # a unit-keyed dict happened to keep -- see the class of bug
+                # the index change opens. Deliberately NOT narrowed to "only
+                # the tuple this push removed": refuse-wholesale is the
+                # owner's 2026-08-22 ruling, and whether a legitimate
+                # co-occupant on a shareable cabin should still refuse is
+                # OQ-3, unanswered.
+                if Counter(by_unit.get(c["unit"], ())) - own_add_counts:
                     drifted.append(c["unit_code"])
         if drifted:
             raise UnpushDriftError(sorted(set(drifted)))
@@ -1730,10 +1791,12 @@ class LodgingWriteService:
         # docstring. Vacates every unit the push occupied before phase 2
         # tries to recreate a row on any of them.
         try:
-            for c in changes:
-                if c["action"] == "add":
-                    await self.repository.delete_write_in(by_tuple[change_tuple(c)])
-                    deleted += 1
+            # `add_ids` is in `changes` order and holds one record per `add`
+            # change, resolved above -- see the comment there for why phase 1
+            # cannot re-read `by_tuple` itself.
+            for record_id in add_ids:
+                await self.repository.delete_write_in(record_id)
+                deleted += 1
         except ClientResponseError as exc:
             raise pb_error_to_http(exc) from exc
         # PHASE 2: every create, only now that phase 1 has freed whichever

@@ -2876,6 +2876,180 @@ class TestUnpush:
         repo.update_push_event.assert_not_called()
 
 
+class TestPushAndUnpushCarryNRowsPerUnit:
+    """The push ledger's half of "two write-ins in one shareable cabin".
+
+    DARK ON ARRIVAL, like the read path beside it: both unique indexes still
+    stand, so none of the shapes below can exist in production yet and none
+    of these paths behaves differently for the one-row data that can. What
+    they fix is a set of dicts that would eat a second row the moment the
+    index moves.
+
+    FOUR SITES, not the three a name-grep for `idx_lodging_write_in_unique`
+    returns. `execute_push` keys `live_by_unit` on unit id and `live_ids` on
+    the four-field `PushRow.tuple_key()`; `unpush` keys `by_unit` on unit id
+    and `by_tuple` on the same four-field tuple. Every one of them is a
+    `dict` built from a list, so a duplicate key collapses SILENTLY -- one
+    row disappears from the ledger's view of the board, and the two-phase
+    apply then either 404s mid-revert on a record id it has already deleted
+    or recreates a row on top of an occupant nobody checked for.
+
+    ⚠️ OQ-3 IS LEFT OPEN ON PURPOSE. "Any occupant on a recreate-target unit
+    that this push will not itself clear is drift, and drift refuses the
+    WHOLE push" is the owner's own ruling (2026-08-22). With shareable cabins
+    an unrelated co-occupant may be perfectly legitimate, and narrowing the
+    guard to the tuple is a product decision nobody has made. So these change
+    the guards from "the ONE occupant" to "EVERY occupant" -- identical while
+    a unit can hold one, and conservative rather than permissive if it ever
+    holds two.
+
+    Fictional occupant names throughout.
+    """
+
+    @pytest.mark.asyncio
+    async def test_two_identical_live_rows_resolve_to_two_record_ids_on_a_push(self) -> None:
+        """`live_ids` maps the four-field tuple to ONE record id.
+
+        Two live rows on one unit sharing an identical
+        `(unit, occupant, note, party_size)` -- two unsized `TBD` placeholders
+        is the realistic case -- collapse to a single entry, so a push
+        removing both resolves BOTH to the same id. `remove_ids` then holds
+        that id twice, the first `delete_write_in` succeeds and the second
+        404s MID-APPLY, after the ledger row claiming both is already
+        written.
+        """
+        live_pair = [_wi("uc", "TBD", id="wi_a"), _wi("uc", "TBD", id="wi_b")]
+        repo = _repo(
+            fetch_units=[_u("uc", "cedar-9")],
+            fetch_write_ins=live_pair,
+            fetch_draft_write_ins=[_wi("uc", "H. Osei", ppl=2, id="wd_1")],
+            create_push_event=SimpleNamespace(id="push_1"),
+        )
+        svc = LodgingWriteService(repo)
+        preview = await svc.preview_push(2026, 1309001, "scn_1")
+        req = PushExecuteRequest(
+            year=2026,
+            session_cm_id=1309001,
+            scenario="scn_1",
+            digest=preview.digest,
+            decisions={"cedar-9": "scenario"},
+        )
+
+        out = await svc.execute_push(req, pushed_by="user_1")
+
+        assert out.removed == 2
+        deleted = [call.args[0] for call in repo.delete_write_in.call_args_list]
+        assert sorted(deleted) == ["wi_a", "wi_b"]
+
+    @pytest.mark.asyncio
+    async def test_an_unaccounted_co_occupant_on_an_adds_target_still_refuses(self) -> None:
+        """`live_by_unit` maps a unit to ONE record id, and the add-side
+        pre-check asks whether THAT id is one this push will delete.
+
+        With two live rows on the target unit the dict keeps whichever the
+        fetch returned last, so ordering alone decides whether the check
+        sees the row this push clears or the foreign one beside it. The
+        fixture puts the CLEARED row last, which is the arrangement that
+        passes the check today and then collides on the create.
+
+        Every occupant has to be accounted for, not the one the dict happened
+        to keep. That is the conservative reading and it deliberately does
+        not narrow the refuse-wholesale ruling -- see the class docstring's
+        OQ-3 note.
+        """
+        classified = [_wi("uc", "G. Whitfield", id="wi_1")]
+        # `wi_1` LAST: `live_by_unit` keeps the last writer, so the collapsed
+        # dict holds the very row this push removes and the check passes.
+        at_apply = [_wi("uc", "Foreign Party", ppl=1, id="wi_foreign"), _wi("uc", "G. Whitfield", id="wi_1")]
+        repo = _repo(
+            fetch_units=[_u("uc", "cedar-9")],
+            fetch_draft_write_ins=[_wi("uc", "H. Osei", ppl=2, id="wd_1")],
+            create_push_event=SimpleNamespace(id="push_1"),
+        )
+        # 1st: this test's own preview (for the digest). 2nd: execute_push's
+        # internal re-preview -- same state, so the digest agrees. 3rd:
+        # `_live_rows_with_ids`, by which point a co-occupant has appeared.
+        # 4th: the fresh report the refusal carries.
+        repo.fetch_write_ins = AsyncMock(side_effect=[classified, classified, at_apply, at_apply])
+        svc = LodgingWriteService(repo)
+        preview = await svc.preview_push(2026, 1309001, "scn_1")
+        req = PushExecuteRequest(
+            year=2026,
+            session_cm_id=1309001,
+            scenario="scn_1",
+            digest=preview.digest,
+            decisions={"cedar-9": "scenario"},
+        )
+
+        with pytest.raises(PushDigestStaleError):
+            await svc.execute_push(req, pushed_by="user_1")
+        repo.create_push_event.assert_not_called()
+        repo.delete_write_in.assert_not_called()
+        repo.create_write_in.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_an_unpush_deletes_both_of_two_identical_added_rows(self) -> None:
+        """`by_tuple` maps the four-field tuple to ONE record id, and its own
+        comment says it is *"safe here only because"* the unique index makes
+        two live rows sharing a tuple schema-impossible.
+
+        A push that added two identical rows therefore reverts by deleting
+        one record twice: the second `delete_write_in` 404s and the other row
+        is orphaned live with `unpushed_at` never stamped.
+        """
+        repo = _repo(
+            find_push_event=_ledger([CH_ADD, CH_ADD]),
+            fetch_units=[_u("uc", "cedar-9")],
+            fetch_write_ins=[_wi("uc", "H. Osei", ppl=2, id="wi_a"), _wi("uc", "H. Osei", ppl=2, id="wi_b")],
+        )
+        svc = LodgingWriteService(repo)
+
+        out = await svc.unpush("push_1", 2026, 1309001)
+
+        assert out.deleted == 2
+        deleted = [call.args[0] for call in repo.delete_write_in.call_args_list]
+        assert sorted(deleted) == ["wi_a", "wi_b"]
+
+    @pytest.mark.asyncio
+    async def test_a_co_occupant_beside_an_accounted_row_still_drifts_an_unpush(self) -> None:
+        """`by_unit` maps a unit to ONE live tuple, and the `remove` drift
+        check asks whether THAT tuple is one this push's own adds account for.
+
+        The recreate-target unit here holds two rows: one this push added (so
+        phase 1 will clear it) and one foreign. The fixture puts the ACCOUNTED
+        row last, which is what the collapsing dict keeps -- so the guard sees
+        nothing to worry about, phase 1 deletes the add, and phase 2's
+        recreate lands on top of the foreign occupant.
+
+        Ordering deciding whether a guard fires is the tell. Every occupant
+        on the unit has to be accounted for.
+        """
+        add_on_the_remove_target = {
+            "action": "add",
+            "unit": "uc2",
+            "unit_code": "fern-1",
+            "occupant_name": "H. Osei",
+            "note": "",
+            "party_size": 2,
+        }
+        repo = _repo(
+            find_push_event=_ledger([add_on_the_remove_target, CH_REM]),
+            fetch_units=[_u("uc2", "fern-1")],
+            fetch_write_ins=[
+                _wi("uc2", "Foreign Party", ppl=3, id="wi_foreign"),
+                _wi("uc2", "H. Osei", ppl=2, id="wi_added"),
+            ],
+        )
+        svc = LodgingWriteService(repo)
+
+        with pytest.raises(UnpushDriftError) as exc:
+            await svc.unpush("push_1", 2026, 1309001)
+        assert "fern-1" in exc.value.buildings
+        repo.delete_write_in.assert_not_called()
+        repo.create_write_in.assert_not_called()
+        repo.update_push_event.assert_not_called()
+
+
 class _StatefulWriteInRepo:
     """A minimal STATEFUL fake standing in for PocketBase's own
     `idx_lodging_write_in_unique` on `lodging_write_ins` (unit,

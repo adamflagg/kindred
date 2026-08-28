@@ -167,6 +167,26 @@ export interface WriteInOccupant {
 export interface WriteInEntry {
   occupant: WriteInOccupant
   source: WriteInSource
+  /**
+   * A key for THIS entry, unique within the unit's list and stable across
+   * re-renders — what the two surfaces that draw an occupant list read for
+   * their React `key`, and what `MapUnitPopover` dedupes a cluster on.
+   *
+   * ⚠️ IT IS NOT THE ROW'S RECORD ID. Publishing that is Design A of the
+   * write-in addressing question, which is unanswered, so this is composed
+   * from what the wire already carries: `source.unitId`, plus an occurrence
+   * number among the covers of this unit that share it.
+   *
+   * ⇒ IDENTICAL TO `source.unitId` wherever a unit contributes ONE cover,
+   * which — while `idx_lodging_write_in_unique` stands — is everywhere. That
+   * is deliberate: `source.unitId` is exactly what both call sites used, and
+   * anything else here would be a behaviour change dressed as a no-op.
+   *
+   * The occurrence number, not the position in the list, so a key does not
+   * move when an unrelated cover is added above it; and not the occupant's
+   * name, so renaming an occupant does not remount their card mid-edit.
+   */
+  key: string
 }
 
 /**
@@ -222,8 +242,16 @@ export function writeInOccupantLabel(occupant: WriteInOccupant): string {
  * places deciding the sequence is two places that can disagree about it.
  */
 export function writeInEntries(unit: LodgingUnitRow): WriteInEntry[] {
+  // How many covers naming this unit have been seen already, so the second
+  // one gets a key of its own — see `WriteInEntry.key`. Empty for every card
+  // in production today, because the unique index still forbids the second
+  // row.
+  const seenPerUnit = new Map<string, number>()
   return coveringWriteIns(unit).map((cover) => {
     const unitCode = cover.unit_code ?? ''
+    const unitId = cover.unit_id ?? ''
+    const seen = seenPerUnit.get(unitId) ?? 0
+    seenPerUnit.set(unitId, seen + 1)
     return {
       occupant: {
         name: (cover.occupant_name ?? '').trim(),
@@ -231,11 +259,12 @@ export function writeInEntries(unit: LodgingUnitRow): WriteInEntry[] {
         partySize: cover.party_size ?? null,
       },
       source: {
-        unitId: cover.unit_id ?? '',
+        unitId,
         unitCode,
         unitName: cover.unit_name ?? '',
         isOwn: unitCode === unit.code,
       },
+      key: seen === 0 ? unitId : `${unitId}#${String(seen)}`,
     }
   })
 }
