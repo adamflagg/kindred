@@ -756,6 +756,7 @@ describe('AppLayout Refresh Bunking staleness (kindred#2587)', () => {
     replay()
 
     // Refetching HERE would re-mark the old rows fresh for another 30 minutes.
+    await new Promise((r) => setTimeout(r, 100))
     await waitFor(() => expect(screen.getByTestId('board-bunks').textContent).toBe('Bunk 4'))
   })
 

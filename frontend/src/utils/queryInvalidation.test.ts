@@ -30,6 +30,16 @@ const BOARD_READER_KEYS: Array<[string, readonly unknown[]]> = [
   ['bunksForSession', queryKeys.bunksForSession('sess-1', [])],
   ['cohortBunkAssignments', queryKeys.cohortBunkAssignments(null, SESSION_CM_ID, YEAR, [1, 2])],
   ['bunkStaff', queryKeys.bunkStaff(YEAR)],
+  // The social graph's bunk picker and label fallback (hooks/useBunkNames.ts).
+  // An inline key again, and it reads `bunk_plans` + `bunks` — two of the three
+  // tables the chain rewrites. Sweeping the graph's EDGES but not the names it
+  // draws them under is the half-invalidation this list exists to prevent.
+  ['useBunkNames', ['bunk-names', SESSION_CM_ID, YEAR]],
+  // The camper details panel's current-year bunk (hooks/camper/useCamperEnrollment.ts).
+  ['enrolledCampers', queryKeys.enrolledCampers(9001, YEAR)],
+  // Gates the AG tab on whether the linked AG session has bunk_plans yet — so a
+  // refresh that creates them must be what makes the tab appear.
+  ['linkedAgSession', queryKeys.linkedAgSession(SESSION_CM_ID, YEAR)],
   // Derived from assignments — the same set `invalidateAssignmentDerivedQueries`
   // already covers for drag-drop and solver applies.
   ['socialGraph', queryKeys.socialGraph(SESSION_CM_ID, YEAR)],

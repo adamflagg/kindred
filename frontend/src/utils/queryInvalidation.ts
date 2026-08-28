@@ -47,6 +47,17 @@ export function invalidateBunkingQueries(qc: QueryClient): void {
   // The bunk-staff map is keyed on bunk names out of the `bunks` table, which
   // the first job of the chain rewrites.
   void qc.invalidateQueries({ queryKey: queryKeys.bunkStaffPrefix() })
+  // The social graph's bunk picker and label fallback (`useBunkNames`), which
+  // reads `bunk_plans` then `bunks`. Sweeping the graph's EDGES below without
+  // sweeping the names it draws them under would leave the same component half
+  // refreshed — the exact half-invalidation this helper exists to prevent.
+  void qc.invalidateQueries({ queryKey: queryKeys.bunkNamesPrefix() })
+  // The camper details panel's current-year bunk, read straight out of
+  // `bunk_assignments`.
+  void qc.invalidateQueries({ queryKey: queryKeys.enrolledCampersPrefix() })
+  // The AG tab's gate: it exists only once the linked AG session has bunk_plans,
+  // which the chain's second job is what writes.
+  void qc.invalidateQueries({ queryKey: queryKeys.linkedAgSessionPrefix() })
   // Graph borders, satisfaction and the post-check report are all computed from
   // assignments — the same set drag-drop and solver applies already sweep.
   invalidateAssignmentDerivedQueries(qc)

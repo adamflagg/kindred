@@ -50,10 +50,17 @@ export const queryKeys = {
   // See `invalidateBunkingQueries` (utils/queryInvalidation.ts).
   bunksPrefix: () => ['bunks'] as const,
   campersPrefix: () => ['campers'] as const,
+  // `useBunkNames` (hooks/useBunkNames.ts) — the social graph's bunk picker and
+  // its label fallback. Inline key again, and it reads `bunk_plans` and `bunks`.
+  bunkNamesPrefix: () => ['bunk-names'] as const,
 
   // Enrollment (Tier 1 - sync data)
   enrolledCampers: (personCmId: number, year: number) =>
     ['enrolled-campers', personCmId, year] as const,
+  // The invalidation prefix: the camper details panel reads the CURRENT year's
+  // `bunk_assignments` through this, and a sync-completion handler knows no
+  // person. See `invalidateBunkingQueries`.
+  enrolledCampersPrefix: () => ['enrolled-campers'] as const,
   // Enrolled attendee cm_ids for a whole session — used to exclude staff from
   // scenario-comparison counts (staff hold assignments but no attendee row, #1791).
   enrolledAttendeeCmIds: (sessionCmId: number, year: number) =>
@@ -339,6 +346,10 @@ export const queryKeys = {
   // AG session linked to a main session (resolved via parent_id + bunk_plans).
   linkedAgSession: (mainSessionCmId: number, year: number) =>
     ['linked-ag-session', mainSessionCmId, year] as const,
+  // The invalidation prefix. This query answers "does the linked AG session have
+  // bunk_plans yet", so a bunking refresh that CREATES them is exactly what has
+  // to make the AG tab appear — see `invalidateBunkingQueries`.
+  linkedAgSessionPrefix: () => ['linked-ag-session'] as const,
 
   // Staff (Tier 1 - sync data)
   bunkStaff: (year: number) => ['bunk-staff', year] as const,

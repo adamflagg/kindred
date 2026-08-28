@@ -268,6 +268,44 @@ describe('useSyncSequenceRun', () => {
     expect(result.current.progress).toBeLessThan(1)
   })
 
+  /**
+   * The readout has to advance on its own, because NOTHING ELSE MOVES.
+   *
+   * `person_custom_values_family_camp` runs 536.7 s and its status payload is
+   * byte-identical for the whole of it — `Status.Summary` is written only at
+   * completion (pocketbase/sync/orchestrator.go), so `status`, `start_time` and
+   * every other field are fixed while it runs. React Query's structural sharing
+   * then hands the observer the SAME `data` reference on every poll, and an
+   * observer that tracks only `data` is not notified. Measured with a real
+   * QueryClient: 15 identical polls produced ZERO additional renders.
+   *
+   * So a `remainingSeconds` computed only during render does not merely sit
+   * still for nine minutes — it sits on the value it had when the job STARTED,
+   * i.e. "about 14 min left" at the point four minutes actually remain.
+   */
+  it('advances the remaining-time estimate while the status payload is unchanged', () => {
+    setStatus(
+      idleStatus({
+        person_custom_values_family_camp: {
+          status: 'running',
+          start_time: '2026-04-22T10:00:00.000Z',
+        },
+      })
+    )
+    const { result } = renderHook(() =>
+      useSyncSequenceRun({ chain: FAMILY_CAMP_REFRESH_CHAIN, enabled: true })
+    )
+    const atStart = result.current.remainingSeconds
+
+    // Two minutes pass. The server says exactly what it said before.
+    act(() => {
+      vi.advanceTimersByTime(120_000)
+    })
+
+    expect(result.current.remainingSeconds).toBeLessThan(atStart - 100)
+    expect(result.current.progress).toBeGreaterThan(0)
+  })
+
   it('never reads the status endpoint while auth is still resolving', () => {
     renderHook(() => useSyncSequenceRun({ chain: FAMILY_CAMP_REFRESH_CHAIN, enabled: false }))
     expect(syncStatusSpy).toHaveBeenLastCalledWith({ enabled: false, forcePolling: false })

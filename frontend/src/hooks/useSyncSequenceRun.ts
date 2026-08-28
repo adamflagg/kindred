@@ -265,6 +265,21 @@ export function useSyncSequenceRun({
     return () => clearTimeout(timer)
   }, [phase, isActive, reset])
 
+  // A TICK OF ITS OWN, because nothing else moves. `person_custom_values_family_camp`
+  // runs 536.7 s and its status payload is identical for the whole of it —
+  // `Status.Summary` is written only at completion — so React Query's structural
+  // sharing hands this observer the SAME `data` reference on every poll and never
+  // notifies it. Measured with a real QueryClient: 15 identical polls, ZERO extra
+  // renders. Without this the readout would not merely sit still for nine minutes,
+  // it would sit on the value it had when that job STARTED — "about 14 min left"
+  // with four minutes to go. This re-renders; it starts no network request.
+  const [, setTick] = useState(0)
+  useEffect(() => {
+    if (phase === 'idle') return
+    const timer = setInterval(() => setTick((t) => t + 1), 5000)
+    return () => clearInterval(timer)
+  }, [phase])
+
   const totalSeconds = chain.reduce((sum, job) => sum + job.seconds, 0)
   let doneSeconds = 0
   if (isActive) {
