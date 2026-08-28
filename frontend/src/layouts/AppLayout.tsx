@@ -246,7 +246,15 @@ export const AppLayout = () => {
     chain: BUNKING_REFRESH_CHAIN,
     enabled: canSeeSync,
     onComplete: (outcome) => {
-      if (outcome === 'failed') return
+      if (outcome === 'failed') {
+        // The press already promised "Refreshing bunks & assignments for ...".
+        // Returning in silence leaves that promise standing over pre-refresh
+        // rows. Nothing landed, so there is nothing to invalidate — but there
+        // is something to say. `RefreshHousingButton` says the same thing in
+        // the same case, and weekend models summer rather than the reverse.
+        toast.error('Refreshing cabin assignments failed. The board still shows the previous data.')
+        return
+      }
       invalidateBunkingQueries(queryClient)
       void queryClient.invalidateQueries({ queryKey: queryKeys.syncStatus() })
     },
@@ -669,11 +677,16 @@ export const AppLayout = () => {
                       bunkingRun.start()
                       refreshBunkingMutation.mutate()
                     }}
-                    disabled={refreshBunkingMutation.isPending}
+                    // `POST /refresh-bunking` answers in milliseconds while the
+                    // chain runs for ~4.7 s, so `isPending` drops long before
+                    // there is anything to come back to. Gating on it alone
+                    // re-arms the button mid-run and a second press starts a
+                    // second chain over the same three tables.
+                    disabled={refreshBunkingMutation.isPending || bunkingRun.isRunning}
                     className="btn-primary nav-btn-icon-only px-4 py-2"
                     title="Refresh bunks, plans & assignments from CampMinder"
                   >
-                    {refreshBunkingMutation.isPending ? (
+                    {refreshBunkingMutation.isPending || bunkingRun.isRunning ? (
                       <Loader2 className="h-4 w-4 flex-shrink-0 animate-spin" />
                     ) : (
                       <RefreshCw className="h-4 w-4 flex-shrink-0" />

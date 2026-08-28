@@ -53,6 +53,16 @@ export const queryKeys = {
   // `useBunkNames` (hooks/useBunkNames.ts) — the social graph's bunk picker and
   // its label fallback. Inline key again, and it reads `bunk_plans` and `bunks`.
   bunkNamesPrefix: () => ['bunk-names'] as const,
+  // Three more inline `bunk_plans` readers, none of which the two roots above
+  // reach: a prefix matches from the FIRST element, so `['bunks']` does not
+  // match `['session-bunks', …]`. All three sit behind the app default 30
+  // minute staleTime like everything else on this list.
+  //   `AllCampersView`      — the camper table's bunk filter
+  //   `BunkSocialGraphModal`— the graph's own bunk navigation
+  //   `useSessionHierarchy` — gates which child sessions are offered at all
+  allBunksWithPlansPrefix: () => ['all-bunks-with-plans'] as const,
+  sessionBunksPrefix: () => ['session-bunks'] as const,
+  sessionBunkPlanCountsPrefix: () => ['session-bunk-plan-counts'] as const,
 
   // Enrollment (Tier 1 - sync data)
   enrolledCampers: (personCmId: number, year: number) =>

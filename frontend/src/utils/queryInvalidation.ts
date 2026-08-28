@@ -58,6 +58,14 @@ export function invalidateBunkingQueries(qc: QueryClient): void {
   // The AG tab's gate: it exists only once the linked AG session has bunk_plans,
   // which the chain's second job is what writes.
   void qc.invalidateQueries({ queryKey: queryKeys.linkedAgSessionPrefix() })
+  // Three further inline `bunk_plans` readers. A prefix matches from the FIRST
+  // element, so none of them is reached by `bunksPrefix()` above however much
+  // the names look alike — `['bunks']` does not match `['session-bunks', …]`.
+  // The camper table's bunk filter, the social graph's own bunk navigation, and
+  // the gate deciding which child sessions are offered at all.
+  void qc.invalidateQueries({ queryKey: queryKeys.allBunksWithPlansPrefix() })
+  void qc.invalidateQueries({ queryKey: queryKeys.sessionBunksPrefix() })
+  void qc.invalidateQueries({ queryKey: queryKeys.sessionBunkPlanCountsPrefix() })
   // Graph borders, satisfaction and the post-check report are all computed from
   // assignments — the same set drag-drop and solver applies already sweep.
   invalidateAssignmentDerivedQueries(qc)
