@@ -222,6 +222,37 @@ describe('useSyncSequenceRun', () => {
     expect(onComplete).toHaveBeenCalledWith('success')
   })
 
+  /**
+   * The press can land before the FIRST status response — a cold load, or a
+   * press inside the first poll interval. `start()` then has nothing to
+   * snapshot, so the baseline stays uncaptured. Nothing downstream captured it
+   * either: the `phase === 'idle'` branch is skipped (phase is `arming`) and
+   * the `isActive` branch only moved the phase. `terminalMoved` could then
+   * never become true, so a perfectly successful chain ended in a silent stall
+   * timeout with no invalidation — the exact staleness kindred#2587 is about.
+   */
+  it('still completes when the press lands before the first status response', () => {
+    const onComplete = vi.fn()
+    setStatus(undefined)
+    const { result, rerender } = renderHook(() =>
+      useSyncSequenceRun({ chain: BUNKING_REFRESH_CHAIN, enabled: true, onComplete })
+    )
+    act(() => result.current.start())
+
+    setStatus(idleStatus({ bunks: { status: 'running', start_time: '2026-04-22T10:00:01.000Z' } }))
+    rerender()
+    expect(result.current.isRunning).toBe(true)
+
+    setStatus(
+      idleStatus({
+        stranded_assignment_cleanup: { status: 'success', end_time: '2026-04-22T10:00:06.000Z' },
+      })
+    )
+    rerender()
+    expect(onComplete).toHaveBeenCalledTimes(1)
+    expect(onComplete).toHaveBeenCalledWith('success')
+  })
+
   it('gives up arming, silently, if nothing ever starts', () => {
     const onComplete = vi.fn()
     const { result } = renderHook(() =>

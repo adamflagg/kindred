@@ -513,8 +513,30 @@ describe('AppLayout weekend freshness stack', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockPerms = { hasPermission: (p: string) => p === 'bunking.manage', isAdmin: false }
-    mockWeekendShell = { session: undefined, isAdultWeekend: false }
+    // A RESOLVED family weekend. `session: undefined` with `isAdultWeekend:
+    // false` is the LOADING state, not a family one — the hook computes
+    // `session?.session_type === 'adult'`, so an unresolved session and a
+    // family session are indistinguishable on that flag alone. These tests
+    // mean "a family weekend, loaded", which is this.
+    mockWeekendShell = { session: { session_type: 'family' }, isAdultWeekend: false }
     mockWeekendSyncStatus()
+  })
+
+  /**
+   * The loading window is an ADULT weekend's window too. `isAdultWeekend` is
+   * `false` until `session` resolves, so gating on it alone renders both
+   * housing controls for every weekend for as long as the session takes to
+   * load — including the adult weekends §5.1 says must never see them.
+   */
+  it('renders neither housing control until the session resolves', () => {
+    mockWeekendShell = { session: undefined, isAdultWeekend: false }
+    renderAppLayout('/weekend/fc4')
+    expect(screen.queryByText(/Housing synced/i)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Refresh Housing/i })).not.toBeInTheDocument()
+    // The program-agnostic CSV lane is unaffected — it does not depend on the
+    // session's type at all, so this proves the gate is targeted rather than
+    // hiding the whole weekend action group during loading.
+    expect(screen.getByTestId('bunk-requests-upload')).toBeInTheDocument()
   })
 
   it('renders "Housing synced ..." off lodging_assignments', () => {

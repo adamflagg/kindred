@@ -234,6 +234,14 @@ export function useSyncSequenceRun({
     }
 
     if (isActive) {
+      // The press can land before the first status response, leaving `start()`
+      // nothing to snapshot. This is the same capture the `idle` branch above
+      // makes for a run picked up mid-flight, and it is correct for the same
+      // reason: a chain job is running, so the terminal job has NOT finished,
+      // and its current end_time is a baseline to wait for a change against.
+      // Without it `terminalMoved` can never become true and a successful chain
+      // ends in a silent stall timeout with no invalidation.
+      if (baselineRef.current === undefined) baselineRef.current = terminalEndTime
       if (phase !== 'running') setPhase('running')
       return
     }

@@ -27,8 +27,13 @@ vi.mock('../../services/sync', () => ({
   syncService: { refreshFamilyCamp: (...a: unknown[]) => refreshFamilyCamp(...a) },
 }))
 
+// A STABLE sentinel, not a fresh `vi.fn()` per call: the auth-contract test
+// below asserts the component hands THIS function to the service, which is what
+// proves `/refresh-family-camp` goes out authenticated. A new mock per call
+// would make that identity check unwritable.
+const fetchWithAuth = vi.fn()
 vi.mock('../../hooks/useApiWithAuth', () => ({
-  useApiWithAuth: () => ({ fetchWithAuth: vi.fn(), isAuthenticated: true, isAuthLoading: false }),
+  useApiWithAuth: () => ({ fetchWithAuth, isAuthenticated: true, isAuthLoading: false }),
 }))
 
 const toastSuccess = vi.fn()
@@ -171,6 +176,25 @@ describe('RefreshHousingButton — resting and the press modal', () => {
     fireEvent.click(screen.getByRole('button', { name: /Start refresh/i }))
     await waitFor(() => expect(refreshFamilyCamp).toHaveBeenCalledTimes(1))
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  })
+
+  /**
+   * `POST /refresh-family-camp` is gated on `bunking.manage`, so it must go out
+   * through `fetchWithAuth` — the repo rule is that a protected endpoint carries
+   * a header-assert test (`frontend/CLAUDE.md`).
+   *
+   * Every other test here mocks BOTH the service and `useApiWithAuth`, so none
+   * of them can see the wiring between the two: swapping `fetchWithAuth` for a
+   * bare `fetch` would leave them all green and every request unauthenticated.
+   * This asserts the identity of the function handed to the service, which is
+   * the seam those mocks otherwise hide.
+   */
+  it('sends the request through fetchWithAuth, not a bare fetch', async () => {
+    renderButton()
+    fireEvent.click(screen.getByRole('button', { name: /Refresh Housing/i }))
+    fireEvent.click(screen.getByRole('button', { name: /Start refresh/i }))
+    await waitFor(() => expect(refreshFamilyCamp).toHaveBeenCalledTimes(1))
+    expect(refreshFamilyCamp).toHaveBeenCalledWith(fetchWithAuth)
   })
 })
 

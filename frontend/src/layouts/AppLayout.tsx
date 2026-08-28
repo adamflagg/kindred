@@ -167,7 +167,7 @@ export const AppLayout = () => {
   // Which weekend the shell is on, and whether it is an ADULT one — the shell
   // is the parent route, so `useParams` gives it nothing and this reads the
   // pathname. Costs no request: `WeekendRosterPage` already holds this query.
-  const { isAdultWeekend } = useWeekendShellSession()
+  const { session: weekendSession, isAdultWeekend } = useWeekendShellSession()
 
   // Determine current program from URL if not set
   const urlProgram = getProgramFromPath(location.pathname)
@@ -577,7 +577,10 @@ export const AppLayout = () => {
                 the small divergence worth having.
               */}
               {activeProgram === 'weekend' && canSeeSync && syncStatus && (
-                <WeekendFreshness syncStatus={syncStatus} isAdultWeekend={isAdultWeekend} />
+                <WeekendFreshness
+                  syncStatus={syncStatus}
+                  isAdultWeekend={isAdultWeekend || !weekendSession}
+                />
               )}
               {/*
                 SUMMER'S PAIR. `Assignments synced` reads `bunk_assignments`
@@ -724,7 +727,14 @@ export const AppLayout = () => {
                     skips both expensive jobs and would spend 13½ minutes
                     refreshing nothing.
                   */}
-                  {!isAdultWeekend && <RefreshHousingButton />}
+                  {/*
+                    `useWeekendShellSession` returns `isAdultWeekend: false`
+                    while `session` is undefined, so `!isAdultWeekend` alone
+                    renders the button through the whole loading window — on an
+                    adult weekend too, where it must never appear. Wait for the
+                    session to resolve before deciding.
+                  */}
+                  {weekendSession && !isAdultWeekend && <RefreshHousingButton />}
                 </>
               )}
               {/* Export button removed from metrics nav - export functionality will move inside metrics page if needed */}
