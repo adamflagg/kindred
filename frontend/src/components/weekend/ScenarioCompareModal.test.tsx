@@ -15,7 +15,7 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { ScenarioCompare } from '../../types/lodging'
+import type { LodgingUnitRow, ScenarioCompare } from '../../types/lodging'
 import { ScenarioCompareModal } from './ScenarioCompareModal'
 
 const mockFetchWithAuth = vi.fn()
@@ -35,6 +35,25 @@ const mockSyncStatus = vi.fn()
 vi.mock('../../hooks/useSyncStatusAPI', () => ({
   useSyncStatusAPI: () => mockSyncStatus() as unknown,
 }))
+
+/**
+ * The board's own roster payload, which the modal reads for the registry it
+ * names placements from. A PLAIN MODULE VARIABLE rather than a `vi.fn()`: the
+ * describe blocks below each call `vi.clearAllMocks()`, and a default set with
+ * `mockReturnValue` in one block is not obviously safe from another's reset.
+ * `undefined` is the resting state -- no units, so every test that predates
+ * this reads the server's own labels, exactly as it did before.
+ */
+let mockRosterUnits: LodgingUnitRow[] | undefined
+vi.mock('../../hooks/useWeekendRoster', () => ({
+  useWeekendRoster: () => ({
+    data: mockRosterUnits === undefined ? undefined : { units: mockRosterUnits },
+  }),
+}))
+
+function unitRow(over: Partial<LodgingUnitRow> & Pick<LodgingUnitRow, 'code' | 'name'>) {
+  return { unit_id: over.code, is_active: true, ...over } as LodgingUnitRow
+}
 
 function ok(body: unknown) {
   return { ok: true, status: 200, json: () => Promise.resolve(body) }
@@ -516,5 +535,180 @@ describe('ScenarioCompareModal — the write-in half mirrors the family half', (
     await userEvent.click(screen.getByRole('button', { name: /matching write-in/i }))
     const after = await screen.findAllByTestId('compare-write-in-row')
     expect(after.map((r) => r.textContent).some((t) => t?.includes('Gamma 2'))).toBe(true)
+  })
+})
+
+describe('ScenarioCompareModal — an arrow means the two sides differ', () => {
+  // This block stands on its own rather than borrowing the first describe's
+  // beforeEach: a sibling block that leans on a neighbour's mock setup passes
+  // in a full run and dies under `vitest -t`, which is exactly how a mutation
+  // check gets a green it did not earn.
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockSyncStatus.mockReturnValue({
+      data: { lodging_assignments: { status: 'success', end_time: new Date().toISOString() } },
+    })
+  })
+
+  /** `&rarr;` and `&mdash;` as the DOM actually holds them. */
+  const ARROW = '→'
+  const DASH = '—'
+
+  async function matchRowSaying(fragment: string): Promise<string> {
+    await screen.findAllByTestId('compare-difference-row')
+    await userEvent.click(screen.getByRole('button', { name: /matching famil/i }))
+    const rows = await screen.findAllByTestId('compare-match-row')
+    const row = rows.map((r) => r.textContent).find((t) => t.includes(fragment))
+    expect(row).toBeDefined()
+    return row ?? ''
+  }
+
+  it('names a matched cabin once instead of pointing an arrow at itself', async () => {
+    // Owner report: a match rendered `Alpha 1 -> Alpha 1 · Same cabin`, which
+    // spends a row's width restating agreement. The two sides ARE the same
+    // unit on a match -- that is what the verdict means -- so the row states
+    // it once and lets the pill carry the rest.
+    renderModal()
+    const johnson = await matchRowSaying('The Johnson Family')
+    expect((johnson.match(/Alpha 1/g) ?? []).length).toBe(1)
+    expect(johnson).not.toContain(ARROW)
+    expect(johnson).toContain('Same cabin')
+  })
+
+  it('still reads as Both unassigned when neither side placed the family', async () => {
+    // The other half of `match` (§5.4), and the one an over-eager collapse
+    // would break: there is no unit on either side, so there is nothing to
+    // state once -- but the row must still SAY that agreement, not go blank.
+    renderModal()
+    const chen = await matchRowSaying('The Chen Family')
+    expect(chen).toContain('Both unassigned')
+    expect(chen).not.toContain(ARROW)
+    expect(chen).toContain(DASH)
+  })
+
+  it('keeps the arrow where the two boards genuinely disagree', async () => {
+    // A `conflict` is the only family verdict with two answers, so it is the
+    // only one that spells `scenario -> CampMinder`.
+    renderModal()
+    const rows = await differenceRows()
+    const okafor = rows.find((text) => text.includes('Rowan (9) Okafor')) ?? ''
+    expect(okafor).toContain(ARROW)
+    expect(okafor).toContain('Beta 1 + Beta 2')
+  })
+
+  it('keeps the one-sided arrow on add and remove, where the dash is the point', async () => {
+    // `Beta 3 -> —` and `— -> Alpha 3` are not restatements: the dash is the
+    // half of the comparison that holds nobody, and it only reads as an
+    // absence next to the side that does.
+    renderModal()
+    const rows = await differenceRows()
+    const novak = rows.find((text) => text.includes('The Novak Family')) ?? ''
+    const ferraro = rows.find((text) => text.includes('The Ferraro Family')) ?? ''
+    expect(novak).toContain(`Beta 3${ARROW}${DASH}`)
+    expect(ferraro).toContain(`${DASH}${ARROW}Alpha 3`)
+  })
+
+  it('names a matching write-in once too, keeping the halves in step', async () => {
+    // The write-in row carries the same `draft -> live` shape, so a matched
+    // building must not restate its occupants either.
+    renderModal()
+    await screen.findAllByTestId('compare-write-in-row')
+    await userEvent.click(screen.getByRole('button', { name: /matching write-in/i }))
+    const rows = await screen.findAllByTestId('compare-write-in-row')
+    const delacroix = rows.map((r) => r.textContent).find((t) => t.includes('Delacroix')) ?? ''
+    expect((delacroix.match(/Delacroix/g) ?? []).length).toBe(1)
+    expect(delacroix).not.toContain(ARROW)
+  })
+})
+
+describe('ScenarioCompareModal — a placement is named the way the board draws it', () => {
+  /**
+   * A house and its two rooms, at whichever draw level the test wants. Owner
+   * ruling, 2026-08-28: "take the board's state label ... if staff splits
+   * wawona on the board and reopens the modal, it should reflect the board
+   * state. right now board is the authority."
+   */
+  function wawona(combined: boolean): LodgingUnitRow[] {
+    return [
+      unitRow({ code: 'wawona', name: 'Wawona', is_container: true, is_combined: combined }),
+      unitRow({ code: 'wawona-front', name: 'Wawona Front', parent_code: 'wawona' }),
+      unitRow({ code: 'wawona-back', name: 'Wawona Back', parent_code: 'wawona' }),
+    ]
+  }
+
+  /** One family, placed on the whole house in the plan and nowhere in CampMinder. */
+  const WHOLE_HOUSE: ScenarioCompare = {
+    ...COMPARE,
+    counts: { match: 0, both_unassigned: 0, conflict: 0, add: 1, remove: 0 },
+    parties: [
+      {
+        grain: 'household',
+        household_cm_id: 201,
+        person_cm_id: 0,
+        display_name: 'The Adeyemi Family',
+        cls: 'add',
+        both_unassigned: false,
+        scenario_unit_label: 'Wawona Front + Wawona Back',
+        scenario_unit_codes: ['wawona-front', 'wawona-back'],
+        mirror_unit_label: '',
+        mirror_unit_codes: [],
+      },
+    ],
+    write_ins: [],
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockSyncStatus.mockReturnValue({
+      data: { lodging_assignments: { status: 'success', end_time: new Date().toISOString() } },
+    })
+  })
+
+  afterEach(() => {
+    mockRosterUnits = undefined
+  })
+
+  it('names a whole combined house by the house, as the board heads its card', async () => {
+    // The owner's report. `unit_name` joins the rooms because the assignment
+    // row names two units, but the board draws ONE card headed `Wawona` and
+    // rolls both rooms onto it -- so the modal was showing staff a placement
+    // spelled a way the board never spells it.
+    mockRosterUnits = wawona(true)
+    renderModal(WHOLE_HOUSE)
+    const rows = await differenceRows()
+    expect(rows.some((t) => t.includes('Wawona'))).toBe(true)
+    expect(rows.some((t) => t.includes('Wawona Front'))).toBe(false)
+  })
+
+  it('follows the board when staff split the house', async () => {
+    // The half that makes this the BOARD'S label rather than a prettier one of
+    // our own: split the card and the rooms are two cards again, so the same
+    // placement must read as two rooms again.
+    mockRosterUnits = wawona(false)
+    renderModal(WHOLE_HOUSE)
+    const rows = await differenceRows()
+    expect(rows.some((t) => t.includes('Wawona Front + Wawona Back'))).toBe(true)
+  })
+
+  it("keeps the roster's own label when the board's registry is not loaded", async () => {
+    // The modal reads the board's payload out of the SAME query key the board
+    // renders from, so in the page it is a cache hit -- but a cold open, or a
+    // code the registry has never heard of, must still name the cabin rather
+    // than render a blank where one belongs.
+    mockRosterUnits = undefined
+    renderModal(WHOLE_HOUSE)
+    const rows = await differenceRows()
+    expect(rows.some((t) => t.includes('Wawona Front + Wawona Back'))).toBe(true)
+  })
+
+  it('still says nothing for the side that holds nobody', async () => {
+    // An `add` has an empty mirror side, and "" there means UNPLACED -- it must
+    // keep reading as the em-dash, never as a name the board failed to supply.
+    mockRosterUnits = wawona(true)
+    renderModal(WHOLE_HOUSE)
+    const rows = await differenceRows()
+    // The whole `add` row, exactly: the house the board draws, the arrow, and
+    // the em-dash for the side CampMinder never placed.
+    expect(rows.some((t) => t.includes('Wawona\u2192\u2014'))).toBe(true)
   })
 })

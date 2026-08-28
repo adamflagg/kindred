@@ -40,7 +40,43 @@
  * affordance here would be the second place to build it. The footer states the
  * age and stops there until that button lands.
  *
- * ## staleTime 0, opted down from the app's 30-minute default
+ * ## THE BOARD NAMES THE PLACEMENTS, not the roster
+
+Owner ruling, 2026-08-28: "take the board's state label ... if staff splits
+wawona on the board and reopens the modal, it should reflect the board state.
+right now board is the authority, roster tab has been neglected intentionally
+for a while."
+
+`ComparePartyReport.*_unit_label` is `RosterParty.unit_name`, a pure function of
+the assignment row's arity -- one unit gives that unit's name, 2+ gives them
+joined. A family holding all of a combined house therefore arrived as `Wawona
+Front + Wawona Back` while the board it describes draws ONE card headed
+`Wawona`. The label's own docstring gives the reason it is republished at all --
+"so the modal never rebuilds a name from codes and shows staff something the
+board does not" -- and that is an argument FOR taking the board's answer, not
+against it.
+
+So the name goes through `boardPlacementNamer`, the board's own roll-up
+(`cardCodeResolver`), fed from `useWeekendRoster` under the SAME query key the
+board renders from: in the page it is a cache hit on the board's own document,
+which is what makes "what the board shows" a fact rather than a re-derivation.
+It follows `is_combined`, so a split renames the placement to its rooms and a
+merge renames it back, and `useUnitMerge` already invalidates that key through
+`invalidateLodgingRegistryQueries`. `*_unit_label` stays as the FALLBACK for a
+cold open or a code the registry has never heard of.
+
+⚠️ BOTH SIDES ARE NAMED AT THE SCENARIO'S DRAW LEVEL, deliberately -- the
+mirror's placement is spelled in the vocabulary of the board staff are looking
+at, because a row whose two halves used different vocabularies would read as a
+move that never happened.
+
+⚠️ THE VERDICT IS UNTOUCHED. `_placement_verdict` is exact set equality on
+`unit_codes` by owner ruling, so a mirror row naming two rooms against a
+scenario row naming their combined house is still a `conflict` -- and now a
+conflict whose two labels both read `Wawona`. That is a question about what the
+comparison MEANS, not about what it is called, and it is the owner's to answer.
+
+## staleTime 0, opted down from the app's 30-minute default
  *
  * Same divergence and the same reason as `PushWriteInsModal`: this modal stays
  * mounted across opens (`ui/Modal`'s exit fade needs that), so there is no
@@ -51,16 +87,18 @@
  */
 import { useQuery } from '@tanstack/react-query'
 import { formatDistanceToNow } from 'date-fns'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 
 import { useApiWithAuth } from '../../hooks/useApiWithAuth'
 import { useSyncStatusAPI } from '../../hooks/useSyncStatusAPI'
+import { useWeekendRoster } from '../../hooks/useWeekendRoster'
 import { fetchScenarioCompare } from '../../services/lodgingApi'
 import type { CompareParty, ScenarioCompare } from '../../types/lodging'
 import { displayTruncatedAge } from '../../utils/age'
 import { queryKeys } from '../../utils/queryKeys'
 import { QueryGuard } from '../QueryGuard'
 import { Modal } from '../ui/Modal'
+import { boardPlacementNamer } from './boardLayout'
 import { childrenRunLabel } from './householdIdentity'
 import { partyKey } from './partyKey'
 import { VERDICT_TONE, type Verdict } from './verdictTone'
@@ -161,8 +199,52 @@ function partyLabel(party: CompareParty): string {
   return run === '' ? (party.display_name ?? '') : run
 }
 
-function PartyRow({ party, testId }: { party: CompareParty; testId: string }) {
+/**
+ * One side's placement, as the BOARD names it, falling back to the roster's own
+ * label. See the module doc's "THE BOARD NAMES THE PLACEMENTS" section.
+ *
+ * The empty-codes case returns "" BEFORE asking the board, and the two are not
+ * the same "": no codes is genuinely unplaced -- `UnitLabel`'s em-dash -- where
+ * an empty answer from the namer means the registry could not place the codes
+ * and the roster's label is the better thing to show.
+ */
+function sideLabel(
+  codes: readonly string[] | undefined,
+  rosterLabel: string | undefined,
+  nameOnBoard: (codes: readonly string[]) => string
+): string {
+  const named = codes ?? []
+  if (named.length === 0) return ''
+  return nameOnBoard(named) || (rosterLabel ?? '')
+}
+
+/**
+ * AN ARROW MEANS THE TWO SIDES DIFFER, so a `match` does not get one.
+ *
+ * A match rendered `Alpha 1 -> Alpha 1 · Same cabin`, pointing an arrow at
+ * itself and spending the row's width restating the pill. Agreement on a unit
+ * IS what the verdict means, so the row states the unit once and lets the pill
+ * carry the rest. `scenario || mirror` picks the side that has it, the same way
+ * `WriteInRow` below picks `draft || live` -- on a match the two are the same
+ * unit set by construction, and when neither side placed the family both are
+ * "" and `UnitLabel`'s em-dash stands in, under a `Both unassigned` pill.
+ *
+ * `add` and `remove` KEEP the arrow, and that is not an inconsistency: their
+ * em-dash is the half of the comparison holding nobody, and it only reads as an
+ * absence next to the side that does.
+ */
+function PartyRow({
+  party,
+  testId,
+  nameOnBoard,
+}: {
+  party: CompareParty
+  testId: string
+  nameOnBoard: (codes: readonly string[]) => string
+}) {
   const verdict = party.cls
+  const scenario = sideLabel(party.scenario_unit_codes, party.scenario_unit_label, nameOnBoard)
+  const mirror = sideLabel(party.mirror_unit_codes, party.mirror_unit_label, nameOnBoard)
   return (
     <div
       data-testid={testId}
@@ -170,9 +252,15 @@ function PartyRow({ party, testId }: { party: CompareParty; testId: string }) {
     >
       <span className="min-w-48 flex-1 text-sm font-semibold">{partyLabel(party)}</span>
       <span className="flex items-baseline gap-2 text-sm">
-        <UnitLabel label={party.scenario_unit_label ?? ''} />
-        <span className="text-muted-foreground">&rarr;</span>
-        <UnitLabel label={party.mirror_unit_label ?? ''} />
+        {verdict === 'match' ? (
+          <UnitLabel label={scenario || mirror} />
+        ) : (
+          <>
+            <UnitLabel label={scenario} />
+            <span className="text-muted-foreground">&rarr;</span>
+            <UnitLabel label={mirror} />
+          </>
+        )}
       </span>
       <span
         className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${VERDICT_TONE[verdict]}`}
@@ -196,8 +284,13 @@ function PartyRow({ party, testId }: { party: CompareParty; testId: string }) {
  * `tileSummaryLines` picks one: an `add` exists only in the scenario's draft, a
  * `remove` only on the live board, and a `match` is the same row either way. A
  * `conflict` is the only one with two answers, so it is the only one that
- * renders an arrow -- mirroring the family row directly above it, where
- * `scenario -> CampMinder` is spelled the same way.
+ * renders an arrow.
+ *
+ * That is the SAME rule `PartyRow` follows on a match -- neither half points an
+ * arrow at itself. The two part company on `add`/`remove`: a family row still
+ * arrows to an em-dash there, because the unit is the thing being compared and
+ * the absence has to be shown; a write-in already carries its building in its
+ * own column, so the occupants have nothing to be absent from.
  *
  * `party_size` is OMITTED when null rather than printed as 0: null means
  * "occupies wholesale, never zero" (kindred#2540), and a 0 on screen would be a
@@ -312,9 +405,11 @@ function CompareFooter({ syncedAt }: { syncedAt: string | undefined }) {
 function CompareScreen({
   compare,
   syncedAt,
+  nameOnBoard,
 }: {
   compare: ScenarioCompare
   syncedAt: string | undefined
+  nameOnBoard: (codes: readonly string[]) => string
 }) {
   const [showMatches, setShowMatches] = useState(false)
   const parties = compare.parties ?? []
@@ -349,7 +444,12 @@ function CompareScreen({
         ) : (
           <section className="flex flex-col">
             {differing.map((party) => (
-              <PartyRow key={partyKey(party)} party={party} testId="compare-difference-row" />
+              <PartyRow
+                key={partyKey(party)}
+                party={party}
+                testId="compare-difference-row"
+                nameOnBoard={nameOnBoard}
+              />
             ))}
           </section>
         )}
@@ -368,7 +468,12 @@ function CompareScreen({
             {showMatches && (
               <div className="flex flex-col">
                 {matching.map((party) => (
-                  <PartyRow key={partyKey(party)} party={party} testId="compare-match-row" />
+                  <PartyRow
+                    key={partyKey(party)}
+                    party={party}
+                    testId="compare-match-row"
+                    nameOnBoard={nameOnBoard}
+                  />
                 ))}
               </div>
             )}
@@ -414,6 +519,15 @@ export function ScenarioCompareModal({
   const { data: syncStatus } = useSyncStatusAPI({ enabled: ready })
   const syncedAt = syncStatus?.lodging_assignments.end_time
 
+  // THE BOARD'S OWN DOCUMENT, under the board's own query key -- see the module
+  // doc. `sessionCmId` goes null until the modal is open so a closed modal
+  // never fetches; on the weekend page the board already holds this entry, so
+  // opening costs a cache read rather than `build_roster`'s eleven fetches.
+  const { data: roster } = useWeekendRoster(year, ready ? sessionCmId : null, scenario)
+  // `?? []` INSIDE the memo (frontend/CLAUDE.md): a bare one mints a new array
+  // every render and defeats the dependency list.
+  const nameOnBoard = useMemo(() => boardPlacementNamer(roster?.units ?? []), [roster])
+
   const query = useQuery<ScenarioCompare>({
     queryKey: queryKeys.scenarioCompare(year, sessionCmId, scenario),
     queryFn: () => fetchScenarioCompare(fetchWithAuth, { year, sessionCmId, scenario }),
@@ -441,7 +555,9 @@ export function ScenarioCompareModal({
         data={query.data}
         label="comparison"
       >
-        {(compare) => <CompareScreen compare={compare} syncedAt={syncedAt} />}
+        {(compare) => (
+          <CompareScreen compare={compare} syncedAt={syncedAt} nameOnBoard={nameOnBoard} />
+        )}
       </QueryGuard>
     </Modal>
   )

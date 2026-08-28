@@ -16,6 +16,7 @@ import type {
 import {
   AREA_HUES,
   areaTokens,
+  boardPlacementNamer,
   buildBoard,
   countBoardSlots,
   overlappingPartyKeys,
@@ -1681,5 +1682,79 @@ describe('overlappingPartyKeys — a CONTAINER is ambiguous on the same terms as
     expect(board.areas.flatMap((area) => area.slots).some((slot) => slot.consent !== null)).toBe(
       true
     )
+  })
+})
+
+describe('boardPlacementNamer — a placement is named as the board draws it', () => {
+  /**
+   * A house and its two rooms. `is_combined` is the RESOLVED draw level for
+   * the requested scenario, so flipping it here is exactly what staff do when
+   * they merge or split the card.
+   */
+  function wawona(combined: boolean): LodgingUnitRow[] {
+    return [
+      unit({
+        unit_id: 'w',
+        code: 'wawona',
+        name: 'Wawona',
+        is_container: true,
+        is_combined: combined,
+      }),
+      unit({ unit_id: 'wf', code: 'wawona-front', name: 'Wawona Front', parent_code: 'wawona' }),
+      unit({ unit_id: 'wb', code: 'wawona-back', name: 'Wawona Back', parent_code: 'wawona' }),
+    ]
+  }
+
+  it('names a whole combined house by the house, not by its rooms', () => {
+    // The owner's report: a party holding all of Wawona read as `Wawona Front
+    // + Wawona Back`, which is not what the board says — the board draws ONE
+    // card, headed `Wawona`, and rolls both rooms onto it.
+    const name = boardPlacementNamer(wawona(true))
+    expect(name(['wawona-front', 'wawona-back'])).toBe('Wawona')
+  })
+
+  it('names the same rooms separately once staff split the house', () => {
+    // The other half of the ruling: the label follows the BOARD'S STATE. Split
+    // the card and the two rooms are two cards again, so the placement is two
+    // names again.
+    const name = boardPlacementNamer(wawona(false))
+    expect(name(['wawona-front', 'wawona-back'])).toBe('Wawona Front + Wawona Back')
+  })
+
+  it('names a placement written against the house itself by the house', () => {
+    // Staff dragging onto the merged card writes the CONTAINER code, where the
+    // CampMinder mirror writes the two leaves. Same physical placement, two
+    // spellings — and while the house is combined both must read `Wawona`.
+    const name = boardPlacementNamer(wawona(true))
+    expect(name(['wawona'])).toBe('Wawona')
+  })
+
+  it('fans a container placement down to the rooms actually drawn when split', () => {
+    // A row naming the house while the house is split: the house has no card,
+    // so the board draws the party on both rooms and the name must follow.
+    const name = boardPlacementNamer(wawona(false))
+    expect(name(['wawona'])).toBe('Wawona Front + Wawona Back')
+  })
+
+  it('leaves two unrelated rooms joined, because the board draws two cards', () => {
+    // The merged-slot case that is NOT a container: kindred#1903 removed the
+    // rule that a merged slot must be some container's complete child set, so
+    // two unrelated cabins are a legal slot — and two cards.
+    const name = boardPlacementNamer([
+      unit({ unit_id: 'c1', code: 'cedar-1', name: 'Cedar 1' }),
+      unit({ unit_id: 'c2', code: 'cedar-2', name: 'Cedar 2' }),
+    ])
+    expect(name(['cedar-1', 'cedar-2'])).toBe('Cedar 1 + Cedar 2')
+  })
+
+  it('says nothing for an unplaced party', () => {
+    expect(boardPlacementNamer(wawona(true))([])).toBe('')
+  })
+
+  it('says nothing rather than guessing when the registry does not hold the code', () => {
+    // "" is the caller's signal that the board has no answer, which is what
+    // lets the compare modal fall back to the roster's own label instead of
+    // rendering a blank where a cabin belongs.
+    expect(boardPlacementNamer(wawona(true))(['larkspur-9'])).toBe('')
   })
 })
