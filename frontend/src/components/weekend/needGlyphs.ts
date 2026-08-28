@@ -363,6 +363,14 @@ export function needExplainTexts(
  * `has_power = false` means *nobody has said*, so marking it would assert
  * something about a space nobody has measured.
  *
+ * ⚠️ THAT WORKED EXAMPLE IS HISTORICAL AND CAN NO LONGER OCCUR. kindred#2526
+ * removed the `is_confirmed` gate, so an unconfirmed `has_power = false` is now
+ * read at face value as "there is no power" and never reaches `unknown` at all.
+ * The example is left as written because it is what the 2026-08-20 argument
+ * actually said; today `unknown` arises from a blank field, a container with no
+ * active room left, or an unresolved `bathroom`. The RULING below is unaffected
+ * — it turns on what `fits` asserts, not on where `unknown` came from.
+ *
  * The argument is kept because it is half right, and because seeing it is what
  * stops it being re-adopted. What it missed: `fits` IS NOT SILENCE. It is the
  * glyph in its full hue, and that asserts the cabin MEETS the need — a claim
@@ -375,11 +383,16 @@ export function needExplainTexts(
  *    its unconfirmed information."
  *
  * It agrees with the same owner on 2026-08-19 — *"if something's unconfirmed,
- * I'm always going to want to know"* — and it closes the asymmetry that made
- * BATHROOM the only one of the four able to go red on an unconfirmed cabin:
- * its supply is resolved server-side without the `is_confirmed` gate the other
- * three pass through, so the others reported `unknown` and stayed silent while
- * it spoke. Now all four speak.
+ * I'm always going to want to know"*.
+ *
+ * ⚠️ THE ASYMMETRY IT WAS PARTLY ARGUED FROM IS GONE, AT THE SOURCE. Bathroom
+ * used to be the only one of the four able to go red on an unconfirmed cabin,
+ * because its supply was resolved server-side without the `is_confirmed` gate
+ * the other three passed through. kindred#2526 deleted that gate rather than
+ * extending it — the four coverage resolvers now agree with `_resolve_bathroom`
+ * — so `unknown` no longer means "nobody has reconfirmed this cabin" on any of
+ * them. The ruling below is unaffected: what reaches it is an EMPTY
+ * aggregation or a blank `has_ramp`, and `fits` would still be a claim.
  *
  * ⚠️ AN UNPLACED PARTY IS A DIFFERENT CASE AND IS NOT GRADED HERE. No unit
  * means nothing to be unconfirmed ABOUT; `resolveNeedGlyphs` short-circuits to

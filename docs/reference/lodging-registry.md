@@ -352,14 +352,16 @@ change, and applying that would write a code into a relation field.
 
 ### What confirming a unit gates across the system
 
-Marking a unit `is_confirmed: true` gates the following behavior. **8 behavioral gates**
-determine whether staff see confirmation prompts and whether the system judges amenity
-compliance. **6 write sites** modify the flag:
+Marking a unit `is_confirmed: true` gates the following behavior. **7 behavioral gates**
+determine whether staff see confirmation prompts. **6 write sites** modify the flag:
 
-**Fit-verification gate (core)** — `rosterAttention.ts:105` evaluates whether a party's
-accommodation needs (power, private bathroom) are satisfied **only for confirmed units**.
-On unconfirmed units, an unset `has_power: false` means "nobody has said", not "there
-is no power", so the check reports `unverified` and stays silent.
+⛔ **There is no longer a fit-verification gate, and it used to be the core one.**
+`partyAttention` evaluated a party's accommodation needs **only for confirmed units**,
+reporting `unverified` otherwise on the reasoning that an unset `has_power: false` means
+"nobody has said". **kindred#2526 removed it**: registry values are taken at FACE VALUE
+and `is_confirmed` judges nothing. What survives is the staff work-down list — which
+cabins still need walking this season. That is the whole of the flag's job, and every
+gate below is an instance of it.
 
 **Capacity-suggestion gate** — `capacityFlag.ts:52` offers to fill a unit's `sleeps`
 when it differs from bed count — **only when unconfirmed**. Confirming a unit suppresses
@@ -406,11 +408,16 @@ this for the current season" bit resets. This walks back an earlier design
 (#2029) that made confirmation carry forward permanently — see #2500 for the
 reasoning.
 
-### Lighting up the fit check locally
+### Clearing the reconfirm marks locally
 
-The loader writes `is_confirmed: false` on everything, so the fit check is
-dark until staff confirm cabins. `scripts/dev/confirm_lodging_units.py` flips
-the flag on a **local** database so the surface can be developed against. It
+⚠️ **This section used to be called "Lighting up the fit check locally", and the fit
+check is no longer dark.** Since kindred#2526 it grades every placed cabin at face
+value, confirmed or not, so nothing needs confirming to make it speak.
+
+What the loader's `is_confirmed: false` still produces is a full work-down list —
+`Reconfirm space` on every card, the admin `Unconfirmed` badge on every row.
+`scripts/dev/confirm_lodging_units.py` flips the flag on a **local** database so those
+surfaces can be developed against in their cleared state. It
 refuses a non-loopback URL unless explicitly overridden: bulk confirmation on
 real data asserts to staff that every cabin was checked when none was.
 

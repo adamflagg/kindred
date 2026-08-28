@@ -1456,6 +1456,9 @@ def _resolve_power_coverage(units: list[LodgingUnitSummary], index: _BathroomInd
     Rooms that are `is_active = False` do not answer for their building -- the
     same filter `_effective_sleeps` applies when totalling a combined
     container's rooms, and for the same reason: nobody can be placed there.
+    `is_confirmed = False` is NOT such a filter and has not been since
+    kindred#2526: a room's recorded value answers whether or not staff have
+    reconfirmed it. See `_resolve_amenity_coverage` for why.
 
     A LEAF answers for itself: it has nothing beneath it to inherit from, so
     its own row is the only fact there is. A CONTAINER never does, and that
@@ -1489,10 +1492,9 @@ def _resolve_fridge_coverage(units: list[LodgingUnitSummary], index: _BathroomIn
     The twin of `_resolve_power_coverage` above, and it shares that function's
     walk rather than repeating it, because two walks over one tree are free to
     drift. Every word of its docstring applies here unchanged: a container's
-    registry row describes the CONTAINER, an unconfirmed row means "nobody has
-    said", a deactivated room does not answer for its building, and a container
-    with no active room left reports `unknown` rather than falling back to its
-    own flag.
+    registry row describes the CONTAINER, a deactivated room does not answer
+    for its building, and a container with no active room left reports
+    `unknown` rather than falling back to its own flag.
 
     ONE thing is this function's own, and it is the owner ruling of 2026-08-15:
     A SHARED FRIDGE IS A FRIDGE. `has_shared_fridge` NARROWS `has_fridge` --
@@ -1525,11 +1527,11 @@ def _resolve_ramp_coverage(units: list[LodgingUnitSummary], index: _BathroomInde
 
     The third resolver over the one leaf walk, and every rule
     `_resolve_power_coverage` established applies here unchanged: a container's
-    registry row describes the CONTAINER, an unconfirmed row means "nobody has
-    said", a deactivated room does not answer for its building, and a container
-    with no active room left reports `unknown` rather than falling back to its
-    own flag. One of the 14 production assessments IS on a container, and it is
-    ignored for exactly that reason.
+    registry row describes the CONTAINER, a deactivated room does not answer
+    for its building, and a container with no active room left reports
+    `unknown` rather than falling back to its own flag. One of the 14
+    production assessments IS on a container, and it is ignored for exactly
+    that reason.
 
     TWO things are this function's own, and both come from `has_ramp` being a
     three-value select rather than a bool:
@@ -1538,13 +1540,14 @@ def _resolve_ramp_coverage(units: list[LodgingUnitSummary], index: _BathroomInde
        `ramp_coverage` rather than `amenity_coverage` and carries a fifth
        grade, `partial`. See that function for why `partial` folds into neither
        `none` nor `some`.
-    2. BLANK IS NOT `no`. `_resolve_power_coverage`'s `None` case covers only
-       the unconfirmed ROW; here the field itself can be unanswered on a
-       confirmed row, and 104 of 118 production units are. So blank maps to
-       `None` — not assessed — and the building reports `unknown`. Reading it
-       as `no` would mark almost the whole registry step-free-hostile on
-       evidence nobody recorded, which is the inversion migration 1500000131
-       made the column a select to prevent.
+    2. BLANK IS NOT `no`. The boolean amenities have no way to be unanswered
+       -- a bool is a bool -- while here the field itself can be blank, and
+       104 of 118 production units are. So blank maps to `None` — not
+       assessed — and the building reports `unknown`. Reading it as `no`
+       would mark almost the whole registry step-free-hostile on evidence
+       nobody recorded, which is the inversion migration 1500000131 made the
+       column a select to prevent. (`has_ramp`'s three-value handling is
+       kindred#2327's, and untouched by kindred#2526.)
 
     An unrecognised string maps to `None` too — see `_ramp_assessment` for the
     two directions that can produce one, neither of which is the registry
@@ -1658,9 +1661,22 @@ def _resolve_amenity_coverage[Answer](
     Parameterised on WHICH flag a room answers with and WHICH field receives
     the verdict, so a second amenity is a call site rather than a second
     traversal. The rules — leaves answer for themselves, containers never do,
-    inactive rooms do not answer, unconfirmed rooms answer `None` — live here
-    once; the reasoning for each lives in `_resolve_power_coverage`, which is
-    the function that established them.
+    inactive rooms do not answer — live here once; the reasoning for each
+    lives in `_resolve_power_coverage`, which is the function that
+    established them.
+
+    ⚠️ `is_confirmed` IS NOT ONE OF THEM, and it used to be: an unconfirmed
+    room answered `None` here, so its recorded value was discarded and the
+    whole slot graded `unknown`. That gate came out under kindred#2526 —
+    registry values are taken AT FACE VALUE and `is_confirmed` is a staff
+    work-down checklist (`LodgingUnitCard`'s `needsReconfirm`) rather than an
+    input to any verdict. Two things settled it. `_resolve_bathroom`, the
+    fifth resolver over this same tree, NEVER had the gate, so the four that
+    did were the odd ones out; and kindred#2500 carries the VALUES forward
+    across a season roll while clearing only the flag, so an unconfirmed row
+    holds last season's confirmed value rather than a guess. Suppressing it
+    would assert nothing about 118 cabins that demonstrably have power while
+    hiding what staff did record.
 
     `Answer` is the vocabulary a ROOM answers in — `bool` for the boolean
     flags, `str` for `has_ramp`'s three-value select — and `grade` is
@@ -1677,15 +1693,7 @@ def _resolve_amenity_coverage[Answer](
             if (leaf := index.units_by_code.get(code)) is not None and leaf.is_active
         ]
         answering = rooms if unit.is_container else [unit]
-        setattr(
-            unit,
-            target,
-            # `None` where nobody has confirmed the row: an unconfirmed
-            # `has_power = False` means "nobody has said", never "there is
-            # no power" -- the same gate `rosterAttention` already applies
-            # to the roster's own fit check.
-            grade([answer(room) if room.is_confirmed else None for room in answering]),
-        )
+        setattr(unit, target, grade([answer(room) for room in answering]))
 
 
 class LodgingRosterService:

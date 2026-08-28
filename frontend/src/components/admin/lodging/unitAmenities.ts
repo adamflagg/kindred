@@ -2,10 +2,14 @@
  * What "Amenities confirmed by staff" asserts, and the glyphs that report it.
  *
  * The flags travel as ONE object because a single checkbox confirms all of
- * them at once: until `is_confirmed` is true the roster reads `has_power:
- * false` as "nobody has said", not "there is no power". Keeping the flags and
- * the assertion over them in one value is what stops the form saving one
- * without the other.
+ * them at once — `is_confirmed` asserts that a human has walked the cabin and
+ * checked these ten. Keeping the flags and the assertion over them in one
+ * value is what stops the form saving one without the other.
+ *
+ * ⚠️ THE ASSERTION NO LONGER GATES ANYTHING DOWNSTREAM (kindred#2526). It
+ * used to: an unconfirmed row's `has_power: false` read as "nobody has said"
+ * and the roster refused to grade it. Values are taken at face value now, and
+ * `is_confirmed` drives the `Reconfirm space` work-down list alone.
  *
  * ONE registry, two surfaces. The form renders `AMENITY_FLAGS` as checkboxes
  * and the units table renders the same entries as row glyphs, so an amenity
@@ -77,14 +81,18 @@ export const AMENITY_FLAGS: readonly { key: AmenityFlag; label: string; icon: Lu
 /**
  * `shareability` is DELIBERATELY NOT in this object (kindred#2026).
  *
- * Everything here is governed by the one `is_confirmed` checkbox: until it is
- * true, the roster reads `has_power: false` as "nobody has said" rather than
- * "there is no power". Shareability is not like that. It is a policy
- * classification, and the read path (`unit_shareability`, lodging_rules.py)
- * treats it as authoritative the moment it is stored — so riding in this bag
- * would put a value the board trusts immediately next to values the board
- * discounts, saved by the same click and confirmed by the same checkbox that
- * does not apply to it.
+ * Everything here is governed by the one `is_confirmed` checkbox, which
+ * asserts that a human walked the cabin and checked these ten physical
+ * facts. Shareability is not one: it is a POLICY classification, decided at a
+ * desk rather than observed in a doorway, so a walk-through cannot confirm it
+ * and the checkbox does not apply to it.
+ *
+ * ⚠️ THE ORIGINAL ARGUMENT HERE WAS A DIFFERENT ONE and no longer holds:
+ * "the board trusts shareability immediately and discounts these until
+ * confirmed". kindred#2526 took the discount away — every value is read at
+ * face value — so the separation now rests on the observed/decided
+ * distinction above, which is what it was really about. The ruling is
+ * unchanged; only its reason had to move.
  *
  * It lives in its own `useState` in `LodgingUnitForm`, alongside the other
  * policy classifications (`inventoryClass`, `isContainer`, `combined`), and is

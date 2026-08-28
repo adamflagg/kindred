@@ -580,10 +580,32 @@ describe('FamilyDetailsPanel — current placement', () => {
   })
 
   it('reports the fit verdict', () => {
+    // ⚠️ THE VERDICT MOVED WITH kindred#2526, not the assertion's point. The
+    // fixture cabin is unconfirmed with no resolved power coverage, which
+    // used to short-circuit to `Fit not verified` on `is_confirmed` alone.
+    // Confirmation no longer gates the check, so the panel now grades the
+    // cabin and reports what it found.
     render(
       <FamilyDetailsPanel
         party={party({ flags: { needs_power: true } })}
         unit={unit()}
+        year={2026}
+        onClose={vi.fn()}
+      />,
+      { wrapper }
+    )
+    expect(screen.getByText("Cabin doesn't fit the request")).toBeInTheDocument()
+  })
+
+  it('still reports "not verified" for a generic accommodation request', () => {
+    // The `unverified` band's surviving producer, pinned at the panel: no
+    // cabin field settles `needs_accommodation`, so a fully-answered cabin
+    // still cannot verify it. kindred#2526 removed the "cabin unconfirmed"
+    // fallthrough and nothing else.
+    render(
+      <FamilyDetailsPanel
+        party={party({ flags: { needs_accommodation: true } })}
+        unit={unit({ is_confirmed: true, has_power: true, power_coverage: 'all' })}
         year={2026}
         onClose={vi.fn()}
       />,

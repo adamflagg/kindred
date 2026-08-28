@@ -166,10 +166,11 @@ export async function reactivateLodgingUnit(id: string): Promise<LodgingUnitReco
 /**
  * Confirm a set of units in one staff action.
  *
- * Confirming is what lets the roster judge a housing need against a cabin at
- * all — on an unconfirmed row `has_power: false` means "nobody has said", not
- * "there is no power". With every unit seeded unconfirmed, doing this one form
- * at a time is the difference between the fit check working and not.
+ * Confirming records that staff have WALKED the cabin this season. It stopped
+ * gating any verdict under kindred#2526 — the roster grades every placed
+ * cabin at face value — so this is the work-down list's tick, not a switch
+ * that turns the fit check on. Doing it one form at a time over a whole
+ * season roll is what makes the bulk action worth having.
  *
  * Every write is attempted even if one fails: aborting half way through a
  * 40-unit selection leaves a state nobody can reason about. Returns how many

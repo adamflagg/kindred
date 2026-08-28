@@ -9,16 +9,17 @@
  * triage.
  *
  * The state that matters most is a party whose cabin does not provide what
- * they asked for. That is computed only against a CONFIRMED cabin, because an
- * unset `has_power` means "nobody has said" rather than "there is no power" —
- * so an unconfirmed cabin reports "not verified" instead of flagging every
- * constrained family off unset amenity defaults.
+ * they asked for. That is computed against EVERY placed cabin, at face value
+ * (owner ruling, kindred#2526): `is_confirmed` no longer gates the check on a
+ * single unit or on a merge's members, because kindred#2500 carries values
+ * forward across a season roll and clears only the flag, so an unconfirmed
+ * row holds last season's confirmed value rather than a guess.
  *
- * That gate is now OPEN. This paragraph used to say "all 82 cabins are
- * `is_confirmed: false` today", and production is 118/118 confirmed as of
- * 2026-08-09 — the unconfirmed fixtures below are the fallback branch, not
- * the state of the registry. Corrected alongside the same claim in
- * `rosterAttention.ts` under kindred#2180.
+ * ⚠️ THE UNCONFIRMED FIXTURES BELOW NO LONGER TEST A FALLBACK BRANCH. They
+ * pin that confirmation is inert — the same cabin grades the same way either
+ * way — which is the whole content of the ruling. The `unverified` band is
+ * still live, and its two surviving producers are pinned: a generic
+ * accommodation request, and a placement whose cabin cannot be resolved.
  */
 import { describe, expect, it } from 'vitest'
 
@@ -273,15 +274,42 @@ describe('partyAttention — does the cabin provide what was asked for', () => {
     expect(a.level).toBe('unmet')
   })
 
-  it('still routes an UNCONFIRMED cabin to unverified, never to unmet', () => {
-    // The gate that predates all of this (kindred#1982) and is untouched by
-    // the 2026-08-20 ruling: an unconfirmed cabin is an absence of data, and
-    // the roster says so in its own band rather than borrowing the unmet one.
-    const a = partyAttention(
+  it('grades an UNCONFIRMED cabin exactly as it grades a confirmed one', () => {
+    /*
+     * ⚠️ REVERSES kindred#1982's gate (owner ruling, kindred#2526). This used
+     * to route to `unverified` on the strength of `is_confirmed: false`
+     * alone, whatever the registry recorded. Registry values are taken AT
+     * FACE VALUE now: confirmation is a staff work-down checklist
+     * (`LodgingUnitCard`'s `needsReconfirm`) and never an input to a verdict.
+     *
+     * The 2026-08-20 ruling this pins alongside is UNAFFECTED — `unknown`
+     * still reads as `unmet`. What changed is where `unknown` can come from:
+     * only an empty aggregation or a blank `has_ramp`, never "nobody has
+     * reconfirmed this cabin".
+     */
+    const confirmed = partyAttention(
+      party({ flags: { needs_power: true } }),
+      unit({ is_confirmed: true, power_coverage: 'unknown' })
+    )
+    const unconfirmed = partyAttention(
       party({ flags: { needs_power: true } }),
       unit({ is_confirmed: false, power_coverage: 'unknown' })
     )
-    expect(a.level).toBe('unverified')
+    expect(unconfirmed).toEqual(confirmed)
+    expect(unconfirmed.level).toBe('unmet')
+  })
+
+  it('credits an UNCONFIRMED cabin that has what was asked for', () => {
+    // The direction staff actually see move: kindred#2500 carries the VALUES
+    // forward across a season roll and clears only the flag, so an
+    // unconfirmed row holds last season's confirmed value. Suppressing it
+    // said "we cannot tell whether this cabin has power" about 118 cabins
+    // that demonstrably have it.
+    const a = partyAttention(
+      party({ flags: { needs_power: true } }),
+      unit({ is_confirmed: false, has_power: true, power_coverage: 'all' })
+    )
+    expect(a.level).toBe('settled')
   })
 
   /*
@@ -304,16 +332,17 @@ describe('partyAttention — does the cabin provide what was asked for', () => {
     expect(a.level).toBe('settled')
   })
 
-  it('reports "not verified" when the cabin amenities are unconfirmed', () => {
-    // The live state: every cabin is unconfirmed, so `has_power: false` means
-    // "nobody has said", not "there is no power". Treating that as unmet would
-    // flag every constrained family on false evidence.
+  it('flags an unmet need on an unconfirmed cabin that records not having it', () => {
+    // The mirror of the credit above, and the reason "unconfirmed ⇒ no" was
+    // rejected as the general rule while THIS case still reports unmet: the
+    // cabin is not being read as lacking power because nobody reconfirmed it,
+    // it is being read as lacking power because the registry says so.
     const a = partyAttention(
       party({ flags: { needs_power: true } }),
-      unit({ is_confirmed: false, has_power: false })
+      unit({ is_confirmed: false, has_power: false, power_coverage: 'none' })
     )
-    expect(a.level).toBe('unverified')
-    expect(a.reason).toBe('Power')
+    expect(a.level).toBe('unmet')
+    expect(a.reason).toBe('No power')
   })
 
   it('reports "not verified" when the assigned cabin cannot be found', () => {
@@ -391,14 +420,15 @@ describe('partyAttention — does the cabin provide what was asked for', () => {
 
   it('never infers settled from a missing bathroom_group, even unconfirmed', () => {
     // The "8 containers whose every child carries no group" gap the issue
-    // calls out: no group to test exclusivity against means "we don't
-    // know", not "private" — and an unconfirmed cabin on top of that must
-    // stay unverified, never settled on the strength of unset data.
+    // calls out: no group to test exclusivity against means "we don't know",
+    // not "private". It lands in `unmet` rather than `unverified` since
+    // kindred#2526 dropped the confirmation gate — the band moved, the point
+    // did not: an unresolvable bathroom is never settled.
     const a = partyAttention(
       party({ flags: { needs_private_bathroom: true }, effective_bathroom: 'unknown' }),
       unit({ is_confirmed: false })
     )
-    expect(a.level).toBe('unverified')
+    expect(a.level).toBe('unmet')
   })
 
   it('cannot verify a generic accommodation request even on a confirmed cabin', () => {
@@ -425,15 +455,27 @@ describe('partyAttention — does the cabin provide what was asked for', () => {
     expect(a.reason).toBe('Accommodation')
   })
 
-  it('keeps the specific needs in the reason while the cabin is unconfirmed', () => {
-    // The mirror of the case above: without confirmation nothing is verified,
-    // so both the specific need and the generic accommodation are outstanding.
+  it('answers the specific need on an unconfirmed cabin and leaves only the generic one', () => {
+    // The mirror of the case above, and it MOVED with kindred#2526: the
+    // reason used to carry `Power · Accommodation`, because confirmation
+    // gated the whole check. An unconfirmed cabin the registry records as
+    // powered has answered "Power"; only the generic request is outstanding.
     const a = partyAttention(
       party({ flags: { needs_power: true, needs_accommodation: true } }),
       unit({ is_confirmed: false, has_power: true, power_coverage: 'all' })
     )
     expect(a.level).toBe('unverified')
-    expect(a.reason).toBe('Power · Accommodation')
+    expect(a.reason).toBe('Accommodation')
+  })
+
+  it('keeps the unverified band alive for a generic request on an UNRESOLVABLE cabin', () => {
+    // ⚠️ THE BAND IS NOT DEAD. kindred#2526 removed the "cabin unconfirmed"
+    // fallthrough, and `unverified` has TWO live producers left: a generic
+    // accommodation no cabin field can settle (above and here), and a
+    // placement whose unit cannot be resolved at all.
+    const a = partyAttention(party({ flags: { needs_accommodation: true } }), undefined)
+    expect(a.level).toBe('unverified')
+    expect(a.reason).toBe('Accommodation')
   })
 
   it('does not escalate on an infant, which is context rather than a request', () => {
@@ -482,9 +524,12 @@ describe('resolvePartyUnit', () => {
     expect(resolved?.is_confirmed).toBe(true)
   })
 
-  it('refuses to treat a merge as evidence while ANY member is unconfirmed', () => {
-    const a = unit({ code: 'tioga-1', is_confirmed: true })
-    const b = unit({ code: 'tioga-2', is_confirmed: false })
+  it('resolves a merge whose members are unconfirmed, at the worst of them', () => {
+    // ⚠️ REVERSES the all-or-nothing confirmation bar (kindred#2526). The
+    // WORST-OF fold is untouched and is what still protects the family: a
+    // room without power is surfaced whether or not staff reconfirmed it.
+    const a = unit({ code: 'tioga-1', is_confirmed: false, power_coverage: 'all' })
+    const b = unit({ code: 'tioga-2', is_confirmed: false, power_coverage: 'none' })
     const resolved = resolvePartyUnit(
       party({ unit_code: '', unit_codes: ['tioga-1', 'tioga-2'], is_merged_slot: true }),
       new Map([
@@ -492,7 +537,7 @@ describe('resolvePartyUnit', () => {
         ['tioga-2', b],
       ])
     )
-    expect(resolved).toBeUndefined()
+    expect(resolved?.power_coverage).toBe('none')
   })
 
   it('refuses to treat a merge as evidence when a member code cannot be found', () => {
@@ -777,8 +822,11 @@ describe('partyAttention + resolvePartyUnit — the roster row / card / panel pi
     expect(attention.level).toBe('settled')
   })
 
-  it('mutation guard: one unconfirmed member of the merge keeps it unverified', () => {
-    const a = unit({ code: 'tioga-1', bathroom: 'shared', is_confirmed: true })
+  it('credits an UNCONFIRMED whole-house merge as settled end to end', () => {
+    // The same pipeline with the confirmation bar gone (kindred#2526). It
+    // used to land in `unverified` on `is_confirmed: false` alone, while the
+    // server had already resolved the merge as `private`.
+    const a = unit({ code: 'tioga-1', bathroom: 'shared', is_confirmed: false })
     const b = unit({ code: 'tioga-2', bathroom: 'shared', is_confirmed: false })
     const mergedParty = party({
       flags: { needs_private_bathroom: true },
@@ -793,7 +841,7 @@ describe('partyAttention + resolvePartyUnit — the roster row / card / panel pi
       ['tioga-2', b],
     ])
     const attention = partyAttention(mergedParty, resolvePartyUnit(mergedParty, unitsByCode))
-    expect(attention.level).toBe('unverified')
+    expect(attention.level).toBe('settled')
   })
 })
 

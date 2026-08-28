@@ -192,10 +192,14 @@ export function hasNoRoom(party: RosterPartyRow, capacity: DragCapacity): boolea
  *    walked the leaves — a few blank containers have rooms that answer for
  *    them. Quote 102 wherever the figure feeds the hatched-pairs arithmetic
  *    (`weekend-card-vocabulary.md`), 104 for the raw assessment gap. This
- *    reads the RESOLVED value, so 102 is the number that reaches here. And
- *    kindred#2526
- *    may remove the state entirely, at which point this branch stops being
- *    reachable rather than stops being correct.
+ *    reads the RESOLVED value, so 102 is the number that reaches here.
+ *
+ *    ⚠️ kindred#2526 DID NOT REMOVE THIS BRANCH, which this paragraph used to
+ *    forecast it might. It removed one SOURCE of `unknown` — "nobody has
+ *    reconfirmed this cabin" — and left two live: a blank `has_ramp`, which
+ *    is the 102 above and is `has_ramp`'s own question (kindred#2327), and an
+ *    empty aggregation, where a container has no active leaf to answer at
+ *    all. The branch is as reachable as it ever was.
  *
  * 3. CAPACITY GATES THE MATCH AND NEVER CAUSES A CONFLICT. A full cabin is not
  *    a bad cabin, it is a cabin with nothing left in it. Measured before it was

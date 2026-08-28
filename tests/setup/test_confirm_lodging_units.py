@@ -2,8 +2,13 @@
 
 The only thing worth pinning here is the guard. `is_confirmed` asserts that a
 human has checked a specific cabin; setting it in bulk on a real database tells
-staff that 93 cabins were verified when none were, and the roster's fit check
-would then judge housing needs against amenity columns nobody filled in.
+staff that every cabin was verified when none were, and silently clears the
+work-down list that says which ones still need walking.
+
+⚠️ The older reason — that the fit check "would then judge housing needs against
+amenity columns nobody filled in" — no longer holds: kindred#2526 grades every
+placed cabin at face value, so it judges them either way. The lie told to staff
+is the reason that survives, and it is sufficient on its own.
 """
 
 from __future__ import annotations

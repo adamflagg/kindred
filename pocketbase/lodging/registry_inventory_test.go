@@ -20,10 +20,11 @@ import (
 // It matters because containers are never bookable, nothing resolves amenities
 // up the parent chain (lodging_roster_service.py reads them straight off the
 // unit), and the fit check judges non-container units. So every room in that
-// building reports has_power:false meaning "nobody has said" -- the exact
-// blindness the inventory exists to end. Worse, it is invisible until staff
-// confirm the cabins, at which point rosterAttention.ts stops reading false as
-// "unknown" and starts reading it as "we checked, there is none".
+// building reports has_power:false, which the fit check now reads at FACE VALUE
+// as "there is no power" -- the exact blindness the inventory exists to end.
+// Since kindred#2526 that misreading is immediate rather than deferred: it used
+// to be invisible until staff confirmed the cabins, and there is no longer a
+// confirmation step standing between a blank column and a stated verdict.
 //
 // Counting cannot see it. Reconciling amenity totals against the sheet counts
 // each row exactly once whether it sits on the container or on the rooms, so

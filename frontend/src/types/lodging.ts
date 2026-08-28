@@ -314,12 +314,18 @@ export interface LodgingUnitRecord extends PocketBaseRecordBase {
    */
   shareability: ShareabilityStoredValue
   /**
-   * Whether staff have actually verified this row's amenities.
+   * Whether staff have walked this cabin THIS season (kindred#2500).
    *
-   * Load-bearing: the roster only judges a household's housing need against a
-   * CONFIRMED cabin. On an unconfirmed row `has_power: false` means "nobody has
-   * said", not "there is no power", so confirming a cabin is what switches the
-   * met/unmet fit check on for it.
+   * ⚠️ IT GATES NO VERDICT (kindred#2526). It used to: the roster judged a
+   * household's need only against a confirmed cabin, and an unconfirmed
+   * `has_power: false` read as "nobody has said". It no longer does — every
+   * placed cabin is graded at FACE VALUE, so `has_power: false` means there is
+   * no power, confirmed or not.
+   *
+   * What it drives now is the staff WORK-DOWN LIST — which cabins still need
+   * walking this season. That is the `Reconfirm space` mark, the admin
+   * `Unconfirmed` badge and sort, and `units_unconfirmed`. Nothing else reads
+   * it.
    */
   is_confirmed: boolean
   is_active: boolean

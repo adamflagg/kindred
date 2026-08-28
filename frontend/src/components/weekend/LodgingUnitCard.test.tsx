@@ -2600,8 +2600,9 @@ describe('LodgingUnitCard — T2: the amenities ride the TITLE row', () => {
   })
 
   it('says nothing about AC nobody has recorded', () => {
-    // `unknown` is "nobody has said", and the mark asserts presence — the same
-    // reading the bathroom and power marks beside it take.
+    // `unknown` is "nothing answers" — a blank field or a container with no
+    // active room left, NOT an unconfirmed row (kindred#2526) — and the mark
+    // asserts presence, the same reading the bathroom and power marks take.
     const { container } = renderUnit({ has_ac: true, ac_coverage: 'unknown' })
     expect(container.querySelector('[data-testid="amenity-ac"]')).toBeNull()
   })
