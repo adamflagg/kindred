@@ -964,6 +964,47 @@ func handleBunkRequestsUpload(e *core.RequestEvent, scheduler *Scheduler) error 
 	})
 }
 
+// resolveServiceStatuses answers for every service, preferring live orchestrator state and
+// falling back to the last run recorded in `sync_runs`.
+//
+// The fallback is the read half of kindred#2284. lastCompletedStatus is wiped on every
+// container restart — that is why the table was created — but nothing read it back, so this
+// endpoint reported every service `idle` after a restart with a full history on disk. The app
+// shell renders its freshness lines off `end_time` ("Assignments synced …" on summer,
+// "Housing synced …" on weekend), so those lines vanished entirely rather than going stale,
+// until the next sync repopulated memory. A mid-morning deploy meant no freshness readout
+// until the 3am cron.
+//
+// PRECEDENCE IS LIVE-FIRST AND IT MATTERS: memory is the only source that knows about a run
+// happening right now, and the table only ever holds completed runs. Reading the table first
+// would replace a `running` job with its previous completion and stall the client's polling.
+//
+// The history is fetched ONCE for the whole loop rather than per service — see
+// LastRecordedRuns, which also explains why this does not live inside GetStatus.
+func resolveServiceStatuses(orchestrator *Orchestrator, syncTypes []string) map[string]any {
+	recorded := orchestrator.LastRecordedRuns()
+
+	statuses := make(map[string]any, len(syncTypes))
+	for _, syncType := range syncTypes {
+		// ONE GetStatus call per service, held in a local. Calling it twice — once to test
+		// and once to use — takes the status mutex twice and leaves a window in which a run
+		// can finish between them, so the test and the value disagree.
+		live := orchestrator.GetStatus(syncType)
+		switch {
+		case live != nil:
+			statuses[syncType] = live
+		case recorded[syncType] != nil:
+			statuses[syncType] = recorded[syncType]
+		default:
+			// Never run, or pruned past the retention window. Genuinely nothing to say.
+			statuses[syncType] = map[string]string{
+				"status": "idle",
+			}
+		}
+	}
+	return statuses
+}
+
 // handleSyncStatus returns the status of all sync jobs
 func handleSyncStatus(e *core.RequestEvent, scheduler *Scheduler) error {
 	orchestrator := scheduler.GetOrchestrator()
@@ -1010,16 +1051,7 @@ func handleSyncStatus(e *core.RequestEvent, scheduler *Scheduler) error {
 		"household_custom_values",
 	}
 
-	statuses := make(map[string]any)
-	for _, syncType := range syncTypes {
-		if status := orchestrator.GetStatus(syncType); status != nil {
-			statuses[syncType] = status
-		} else {
-			statuses[syncType] = map[string]string{
-				"status": "idle",
-			}
-		}
-	}
+	statuses := resolveServiceStatuses(orchestrator, syncTypes)
 
 	// Add daily sync status
 	statuses["_daily_sync_running"] = orchestrator.IsDailySyncRunning()

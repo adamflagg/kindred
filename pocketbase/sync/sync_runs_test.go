@@ -1154,3 +1154,186 @@ func TestYearTakingHandlersPassTheirYear(t *testing.T) {
 			"stopped covering the rest", checked, call)
 	}
 }
+
+// --- The READ half of kindred#2284 -------------------------------------------------------
+//
+// This file's header records why the table exists: lastCompletedStatus "was an in-memory map
+// wiped on every container restart". The table fixed the WRITE side. Nothing wired the READ
+// side back, so `GET /api/custom/sync/status` still answered purely from the in-memory map
+// and reported every service `idle` after a restart, with the history sitting in the table.
+// The app shell's freshness lines ("Assignments synced …" on summer, "Housing synced …" on
+// weekend) render off `end_time`, so they vanished until the next sync repopulated memory.
+// Observed on a dev worktree: a successful lodging_assignments run from the previous day, and
+// the endpoint still answered `{"status": "idle"}` for it.
+
+// TestLastRecordedRunsSurvivesRestart is the core guard: a fresh Orchestrator over an app
+// that already holds history answers from the table, not with nothing.
+func TestLastRecordedRunsSurvivesRestart(t *testing.T) {
+	t.Parallel()
+
+	app := newSyncRunsApp(t)
+	o := NewOrchestrator(app)
+	o.RegisterService("lodging_assignments", &MockService{
+		name: "lodging_assignments", stats: Stats{Created: 4, Updated: 2},
+	})
+
+	if err := o.RunSingleSync(context.Background(), "lodging_assignments"); err != nil {
+		t.Fatalf("RunSingleSync: %v", err)
+	}
+	waitForSyncRuns(t, app, 1)
+
+	// The restart: a brand-new Orchestrator over the same app. Its in-memory maps are empty,
+	// exactly as they are the moment the container comes back up.
+	restarted := NewOrchestrator(app)
+	if got := restarted.GetStatus("lodging_assignments"); got != nil {
+		t.Fatalf("GetStatus after restart = %+v, want nil — this test's premise is that memory is empty", got)
+	}
+
+	got, ok := restarted.LastRecordedRuns()["lodging_assignments"]
+	if !ok {
+		t.Fatal("no entry for lodging_assignments — the freshness line stays blank after every restart")
+	}
+	if got.Status != statusSuccess {
+		t.Errorf("Status = %q, want %q", got.Status, statusSuccess)
+	}
+	if got.EndTime == nil || got.EndTime.IsZero() {
+		t.Error("EndTime is nil/zero — this is the field the freshness lines render, so a nil here IS the bug")
+	}
+	if got.Summary.Created != 4 || got.Summary.Updated != 2 {
+		t.Errorf("Summary = %+v, want Created=4 Updated=2", got.Summary)
+	}
+}
+
+// TestLastRecordedRunsTakesTheMostRecentRow: a service runs many times, and the freshness
+// line must read the newest run, not whichever row the query happened to return first.
+func TestLastRecordedRunsTakesTheMostRecentRow(t *testing.T) {
+	t.Parallel()
+
+	app := newSyncRunsApp(t)
+	o := NewOrchestrator(app)
+	o.RegisterService("bunk_assignments", &MockService{name: "bunk_assignments", stats: Stats{Created: 1}})
+	if err := o.RunSingleSync(context.Background(), "bunk_assignments"); err != nil {
+		t.Fatalf("first run: %v", err)
+	}
+	waitForSyncRuns(t, app, 1)
+
+	o.RegisterService("bunk_assignments", &MockService{name: "bunk_assignments", stats: Stats{Created: 99}})
+	if err := o.RunSingleSync(context.Background(), "bunk_assignments"); err != nil {
+		t.Fatalf("second run: %v", err)
+	}
+	waitForSyncRuns(t, app, 2)
+
+	got, ok := NewOrchestrator(app).LastRecordedRuns()["bunk_assignments"]
+	if !ok {
+		t.Fatal("no entry for bunk_assignments")
+	}
+	if got.Summary.Created != 99 {
+		t.Errorf("Created = %d, want 99 — an older row won over the newest", got.Summary.Created)
+	}
+}
+
+// TestLastRecordedRunsNeverReportsInFlight is a safety guard, not a nicety. The client polls
+// every 3 s for as long as ANY service reports running or pending, and stops otherwise. A
+// rehydrated status claiming "running" for a run that ended before the restart would poll
+// forever against a job that can never complete.
+func TestLastRecordedRunsNeverReportsInFlight(t *testing.T) {
+	t.Parallel()
+
+	app := newSyncRunsApp(t)
+	col, err := app.FindCollectionByNameOrId(syncRunsCollection)
+	if err != nil {
+		t.Fatalf("find collection: %v", err)
+	}
+	// A row left behind by a process killed mid-run is the realistic way this arises. The
+	// collection's own select field rejects a non-terminal value, so the guard is exercised
+	// through rehydratedStatus directly as well as through the query below.
+	rec := core.NewRecord(col)
+	rec.Set("service", "persons")
+	rec.Set("year", 2026)
+	rec.Set("status", statusFailed)
+	rec.Set("trigger", triggerManual)
+	rec.Set("batch_id", "b1")
+	rec.Set("started", time.Now().Add(-time.Hour))
+	rec.Set("ended", time.Now().Add(-time.Hour))
+	if err := app.Save(rec); err != nil {
+		t.Fatalf("save row: %v", err)
+	}
+
+	for name, status := range NewOrchestrator(app).LastRecordedRuns() {
+		if status.Status == statusRunning || status.Status == statusPending {
+			t.Errorf("%s rehydrated as %q — the client would poll forever", name, status.Status)
+		}
+	}
+
+	for _, stored := range []string{statusRunning, statusPending, ""} {
+		if got := rehydratedStatus(stored); got == statusRunning || got == statusPending {
+			t.Errorf("rehydratedStatus(%q) = %q, want a terminal status", stored, got)
+		}
+	}
+}
+
+// TestResolveServiceStatusesPrefersLiveState pins the merge the handler performs: live
+// orchestrator state wins, the table fills the gaps, and a service with neither stays idle.
+func TestResolveServiceStatusesPrefersLiveState(t *testing.T) {
+	t.Parallel()
+
+	app := newSyncRunsApp(t)
+	o := NewOrchestrator(app)
+	o.RegisterService("persons", &MockService{name: "persons", stats: Stats{Created: 3}})
+	if err := o.RunSingleSync(context.Background(), "persons"); err != nil {
+		t.Fatalf("RunSingleSync: %v", err)
+	}
+	waitForSyncRuns(t, app, 1)
+
+	// The restart, with `persons` now RUNNING again. Live and recorded must be
+	// distinguishable or this pins nothing: the table can only ever hold the completed run,
+	// so `running` is the one state that proves which source won.
+	restarted := NewOrchestrator(app)
+	restarted.RegisterService("persons", &MockService{name: "persons"})
+	if err := restarted.MarkSyncRunning("persons"); err != nil {
+		t.Fatalf("MarkSyncRunning: %v", err)
+	}
+
+	got := resolveServiceStatuses(restarted, []string{"persons", "staff"})
+
+	live, ok := got["persons"].(*Status)
+	if !ok {
+		t.Fatalf("persons = %T, want the live *Status from memory", got["persons"])
+	}
+	if live.Status != statusRunning {
+		t.Errorf("persons status = %q, want %q — the completed row in sync_runs masked the run "+
+			"happening right now, which also stops the client polling for its completion", live.Status, statusRunning)
+	}
+
+	idle, ok := got["staff"].(map[string]string)
+	if !ok {
+		t.Fatalf("staff = %#v, want the idle map — a service that never ran must stay idle", got["staff"])
+	}
+	if idle["status"] != "idle" {
+		t.Errorf("staff status = %q, want idle", idle["status"])
+	}
+}
+
+// TestResolveServiceStatusesUsesHistoryAfterRestart is the end-to-end shape of the defect:
+// the handler's own merge, over an orchestrator whose memory is empty.
+func TestResolveServiceStatusesUsesHistoryAfterRestart(t *testing.T) {
+	t.Parallel()
+
+	app := newSyncRunsApp(t)
+	o := NewOrchestrator(app)
+	o.RegisterService("lodging_assignments", &MockService{name: "lodging_assignments"})
+	if err := o.RunSingleSync(context.Background(), "lodging_assignments"); err != nil {
+		t.Fatalf("RunSingleSync: %v", err)
+	}
+	waitForSyncRuns(t, app, 1)
+
+	got := resolveServiceStatuses(NewOrchestrator(app), []string{"lodging_assignments"})
+
+	status, ok := got["lodging_assignments"].(*Status)
+	if !ok {
+		t.Fatalf("lodging_assignments = %#v, want a *Status rehydrated from sync_runs — an idle map here is the bug", got["lodging_assignments"])
+	}
+	if status.EndTime == nil {
+		t.Error("EndTime is nil — the freshness line renders off this field and would show nothing")
+	}
+}
