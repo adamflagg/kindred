@@ -74,8 +74,11 @@
  * ⚠️ THE VERDICT IS UNTOUCHED. `_placement_verdict` is exact set equality on
  * `unit_codes` by owner ruling, so a mirror row naming two rooms against a
  * scenario row naming their combined house is still a `conflict` -- and now a
- * conflict whose two labels both read `Delta House`. That is a question about what the
- * comparison MEANS, not about what it is called, and it is the owner's to answer.
+ * conflict whose two labels both read `Delta House`. Owner ruling on that:
+ * disambiguate the DISPLAY, leave the predicate alone. A row whose two rolled-up
+ * labels collide states the units each side actually names beside the card that
+ * represents them; nothing else moves -- no verdict, no count, and no
+ * parenthetical on the conflicts that already read clearly. See `withDetail`.
  *
  * ## staleTime 0, opted down from the app's 30-minute default
  *
@@ -99,7 +102,7 @@ import { displayTruncatedAge } from '../../utils/age'
 import { queryKeys } from '../../utils/queryKeys'
 import { QueryGuard } from '../QueryGuard'
 import { Modal } from '../ui/Modal'
-import { boardPlacementNamer } from './boardLayout'
+import { boardPlacementNamer, placementUnitNamer } from './boardLayout'
 import { childrenRunLabel } from './householdIdentity'
 import { partyKey } from './partyKey'
 import { VERDICT_TONE, type Verdict } from './verdictTone'
@@ -220,6 +223,36 @@ function sideLabel(
 }
 
 /**
+ * A footnote on a side whose label does not explain itself.
+ *
+ * The roll-up that makes this modal speak the board's vocabulary has one
+ * consequence. A family the mirror holds in two rooms and the scenario holds in
+ * their combined house is a `conflict` -- exact set inequality on `unit_codes`,
+ * the owner's ruling and untouched here -- but both sides roll up to the one
+ * card the board draws, so the row read `Delta House -> Delta House · Different
+ * cabin`. Same name on both halves under a pill saying they differ, which looks
+ * like a bug and is not one.
+ *
+ * Owner ruling: disambiguate the DISPLAY. So a colliding side states the units
+ * it actually names beside the card representing them -- `Delta House (Delta 1 +
+ * Delta 2)` -- and ONLY then. A conflict whose two labels already differ says
+ * what happened on its own, and a parenthetical on every conflict row would
+ * spend the common case on the rare one.
+ *
+ * WHICH SIDE gets it falls out of comparing the two strings rather than counting
+ * codes: the side that named the house has nothing to add, because its own units
+ * ARE the card. Both sides get it when both need it -- two different rooms of
+ * one house -- with no separate rule for the symmetric case.
+ *
+ * "" from the namer means the registry could not name the units, and an empty
+ * parenthetical is worse than none, so it degrades to the bare label. There is
+ * no branch that prints a code.
+ */
+function withDetail(label: string, detail: string): string {
+  return detail === '' || detail === label ? label : `${label} (${detail})`
+}
+
+/**
  * AN ARROW MEANS THE TWO SIDES DIFFER, so a `match` does not get one.
  *
  * A match rendered `Alpha 1 -> Alpha 1 · Same cabin`, pointing an arrow at
@@ -238,14 +271,29 @@ function PartyRow({
   party,
   testId,
   nameOnBoard,
+  nameUnits,
 }: {
   party: CompareParty
   testId: string
   nameOnBoard: (codes: readonly string[]) => string
+  nameUnits: (codes: readonly string[]) => string
 }) {
   const verdict = party.cls
   const scenario = sideLabel(party.scenario_unit_codes, party.scenario_unit_label, nameOnBoard)
   const mirror = sideLabel(party.mirror_unit_codes, party.mirror_unit_label, nameOnBoard)
+  // Two halves rolled onto one card under a verdict that says they differ --
+  // the only row that needs a footnote. `sideLabel` again, with the namer that
+  // does not roll up, so the footnote can never be derived a second way.
+  const collides = verdict !== 'match' && scenario !== '' && scenario === mirror
+  const scenarioText = collides
+    ? withDetail(
+        scenario,
+        sideLabel(party.scenario_unit_codes, party.scenario_unit_label, nameUnits)
+      )
+    : scenario
+  const mirrorText = collides
+    ? withDetail(mirror, sideLabel(party.mirror_unit_codes, party.mirror_unit_label, nameUnits))
+    : mirror
   return (
     <div
       data-testid={testId}
@@ -254,12 +302,12 @@ function PartyRow({
       <span className="min-w-48 flex-1 text-sm font-semibold">{partyLabel(party)}</span>
       <span className="flex items-baseline gap-2 text-sm">
         {verdict === 'match' ? (
-          <UnitLabel label={scenario || mirror} />
+          <UnitLabel label={scenarioText || mirrorText} />
         ) : (
           <>
-            <UnitLabel label={scenario} />
+            <UnitLabel label={scenarioText} />
             <span className="text-muted-foreground">&rarr;</span>
-            <UnitLabel label={mirror} />
+            <UnitLabel label={mirrorText} />
           </>
         )}
       </span>
@@ -407,10 +455,12 @@ function CompareScreen({
   compare,
   syncedAt,
   nameOnBoard,
+  nameUnits,
 }: {
   compare: ScenarioCompare
   syncedAt: string | undefined
   nameOnBoard: (codes: readonly string[]) => string
+  nameUnits: (codes: readonly string[]) => string
 }) {
   const [showMatches, setShowMatches] = useState(false)
   const parties = compare.parties ?? []
@@ -450,6 +500,7 @@ function CompareScreen({
                 party={party}
                 testId="compare-difference-row"
                 nameOnBoard={nameOnBoard}
+                nameUnits={nameUnits}
               />
             ))}
           </section>
@@ -474,6 +525,7 @@ function CompareScreen({
                     party={party}
                     testId="compare-match-row"
                     nameOnBoard={nameOnBoard}
+                    nameUnits={nameUnits}
                   />
                 ))}
               </div>
@@ -528,6 +580,7 @@ export function ScenarioCompareModal({
   // `?? []` INSIDE the memo (frontend/CLAUDE.md): a bare one mints a new array
   // every render and defeats the dependency list.
   const nameOnBoard = useMemo(() => boardPlacementNamer(roster?.units ?? []), [roster])
+  const nameUnits = useMemo(() => placementUnitNamer(roster?.units ?? []), [roster])
 
   const query = useQuery<ScenarioCompare>({
     queryKey: queryKeys.scenarioCompare(year, sessionCmId, scenario),
@@ -557,7 +610,12 @@ export function ScenarioCompareModal({
         label="comparison"
       >
         {(compare) => (
-          <CompareScreen compare={compare} syncedAt={syncedAt} nameOnBoard={nameOnBoard} />
+          <CompareScreen
+            compare={compare}
+            syncedAt={syncedAt}
+            nameOnBoard={nameOnBoard}
+            nameUnits={nameUnits}
+          />
         )}
       </QueryGuard>
     </Modal>

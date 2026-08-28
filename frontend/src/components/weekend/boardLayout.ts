@@ -852,12 +852,43 @@ export function cardCodeResolver(units: LodgingUnitRow[]): {
  */
 export function boardPlacementNamer(units: LodgingUnitRow[]): (codes: readonly string[]) => string {
   const { cardCodesFor } = cardCodeResolver(units)
+  return joinUnitNames(units, cardCodesFor)
+}
+
+/**
+ * What a placement calls ITSELF -- the units it names, named, with no roll-up.
+ *
+ * `boardPlacementNamer` is the label; this is the footnote beside it. The two
+ * part company on exactly the case the compare modal has to explain: a mirror
+ * row naming two rooms and a scenario row naming their combined house roll up
+ * to the ONE card the board draws, so both sides read `Delta House` under a
+ * `Different cabin` pill. Naming the units each side actually holds is what
+ * says why. See `withDetail` in `ScenarioCompareModal`.
+ *
+ * It is the SAME derivation as the roll-up -- the same registry names, joined
+ * the same way -- differing only in the expansion, so the two can never spell
+ * one unit two ways. "" carries the same meaning it does above: the registry
+ * had no answer, not "unplaced".
+ */
+export function placementUnitNamer(units: LodgingUnitRow[]): (codes: readonly string[]) => string {
+  return joinUnitNames(units, (code) => [code])
+}
+
+/**
+ * The one derivation both namers run: expand each named code, name what comes
+ * back, join. Shared rather than written twice because a second copy is how a
+ * footnote starts punctuating a house differently from the label above it.
+ */
+function joinUnitNames(
+  units: LodgingUnitRow[],
+  expand: (code: string) => string[]
+): (codes: readonly string[]) => string {
   const nameByCode = new Map(units.map((unit) => [unit.code, unit.name]))
   return (codes: readonly string[]): string =>
     // De-duplicated for the same reason `indexPayload` de-duplicates: a party
     // naming two rooms of one combined house lands on that house ONCE, and a
     // name of "Delta House + Delta House" would be the label form of drawing it twice.
-    [...new Set(codes.flatMap(cardCodesFor))]
+    [...new Set(codes.flatMap(expand))]
       .map((code) => nameByCode.get(code) ?? '')
       .filter((name) => name !== '')
       // The separator the roster's own merged-slot label uses, so a fallback

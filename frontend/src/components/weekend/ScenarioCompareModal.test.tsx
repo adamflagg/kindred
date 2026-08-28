@@ -15,7 +15,7 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { LodgingUnitRow, ScenarioCompare } from '../../types/lodging'
+import type { CompareParty, LodgingUnitRow, ScenarioCompare } from '../../types/lodging'
 import { ScenarioCompareModal } from './ScenarioCompareModal'
 
 const mockFetchWithAuth = vi.fn()
@@ -717,5 +717,189 @@ describe('ScenarioCompareModal — a placement is named the way the board draws 
     // The whole `add` row, exactly: the house the board draws, the arrow, and
     // the em-dash for the side CampMinder never placed.
     expect(rows.some((t) => t.includes('Delta House\u2192\u2014'))).toBe(true)
+  })
+
+  /**
+   * The collision the roll-up creates. CampMinder holds the family in the two
+   * rooms and the plan holds them in the combined house: the verdict is a
+   * `conflict` -- exact set inequality on the codes, the owner's ruling and
+   * untouched here -- but both sides roll up to the one card the board draws,
+   * so the row read `Delta House -> Delta House · Different cabin`.
+   */
+  const OKAFOR_CONFLICT: CompareParty = {
+    grain: 'household',
+    household_cm_id: 301,
+    person_cm_id: 0,
+    display_name: 'The Okafor Family',
+    cls: 'conflict',
+    both_unassigned: false,
+    scenario_unit_label: 'Delta House',
+    scenario_unit_codes: ['delta-house'],
+    mirror_unit_label: 'Delta 1 + Delta 2',
+    mirror_unit_codes: ['delta-1', 'delta-2'],
+  }
+
+  const COLLIDING: ScenarioCompare = {
+    ...COMPARE,
+    counts: { match: 1, both_unassigned: 0, conflict: 1, add: 0, remove: 0 },
+    parties: [
+      OKAFOR_CONFLICT,
+      {
+        grain: 'household',
+        household_cm_id: 302,
+        person_cm_id: 0,
+        display_name: 'The Adeyemi Family',
+        cls: 'match',
+        both_unassigned: false,
+        scenario_unit_label: 'Delta 1 + Delta 2',
+        scenario_unit_codes: ['delta-1', 'delta-2'],
+        mirror_unit_label: 'Delta 1 + Delta 2',
+        mirror_unit_codes: ['delta-1', 'delta-2'],
+      },
+    ],
+    write_ins: [],
+  }
+
+  it('spells out the rooms when both sides roll up to the same card', async () => {
+    mockRosterUnits = deltaHouse(true)
+    renderModal(COLLIDING)
+    const rows = await differenceRows()
+    expect(rows.some((t) => t.includes('Delta House→Delta House (Delta 1 + Delta 2)'))).toBe(true)
+  })
+
+  it('leaves the side that named the house alone', async () => {
+    // Only the half that needs explaining gets it. The scenario named the
+    // house, the board draws the house, and `Delta House (Delta House)` would
+    // be noise on the side that never disagreed with its own label.
+    mockRosterUnits = deltaHouse(true)
+    renderModal(COLLIDING)
+    const rows = await differenceRows()
+    const okafor = rows.find((t) => t.includes('The Okafor Family')) ?? ''
+    expect(okafor).not.toContain('(Delta House)')
+  })
+
+  it('gives BOTH sides the detail when both of them need it', async () => {
+    // Two different rooms of one combined house is the symmetric case: neither
+    // label explains itself, so neither is left bare.
+    mockRosterUnits = deltaHouse(true)
+    renderModal({
+      ...COLLIDING,
+      counts: { match: 0, both_unassigned: 0, conflict: 1, add: 0, remove: 0 },
+      parties: [
+        {
+          ...OKAFOR_CONFLICT,
+          scenario_unit_label: 'Delta 1',
+          scenario_unit_codes: ['delta-1'],
+          mirror_unit_label: 'Delta 2',
+          mirror_unit_codes: ['delta-2'],
+        },
+      ],
+    })
+    const rows = await differenceRows()
+    expect(rows.some((t) => t.includes('Delta House (Delta 1)→Delta House (Delta 2)'))).toBe(true)
+  })
+
+  it('adds nothing to a conflict whose two labels already differ', async () => {
+    // The guard that keeps this out of every other conflict row: two houses
+    // named apart say what happened on their own, and a parenthetical there
+    // would spend the common case on the rare one. Both sides WOULD have a
+    // footnote to write -- each is a merged house named by its rooms -- so
+    // this fails the moment the collision test stops gating it.
+    mockRosterUnits = [
+      ...deltaHouse(true),
+      unitRow({ code: 'echo-house', name: 'Echo House', is_container: true, is_combined: true }),
+      unitRow({ code: 'echo-1', name: 'Echo 1', parent_code: 'echo-house' }),
+      unitRow({ code: 'echo-2', name: 'Echo 2', parent_code: 'echo-house' }),
+    ]
+    renderModal({
+      ...COLLIDING,
+      counts: { match: 0, both_unassigned: 0, conflict: 1, add: 0, remove: 0 },
+      parties: [
+        {
+          ...OKAFOR_CONFLICT,
+          scenario_unit_label: 'Delta 1 + Delta 2',
+          scenario_unit_codes: ['delta-1', 'delta-2'],
+          mirror_unit_label: 'Echo 1 + Echo 2',
+          mirror_unit_codes: ['echo-1', 'echo-2'],
+        },
+      ],
+    })
+    const rows = await differenceRows()
+    const okafor = rows.find((t) => t.includes('The Okafor Family')) ?? ''
+    expect(okafor).toContain('Delta House→Echo House')
+    expect(okafor).not.toContain('(')
+  })
+
+  it('adds nothing to a match, whose one label is the agreement', async () => {
+    // A match states its unit ONCE and the pill carries the rest. Its roster
+    // label differs from the board's here -- rooms against the house -- and
+    // that difference is not a disagreement to explain.
+    mockRosterUnits = deltaHouse(true)
+    renderModal(COLLIDING)
+    await screen.findAllByTestId('compare-difference-row')
+    await userEvent.click(screen.getByRole('button', { name: /matching famil/i }))
+    const rows = await screen.findAllByTestId('compare-match-row')
+    const adeyemi =
+      rows.map((r) => r.textContent).find((t) => t.includes('The Adeyemi Family')) ?? ''
+    expect(adeyemi).toContain('Delta House')
+    expect(adeyemi).not.toContain('(')
+  })
+
+  it('keeps the em-dash when the board can draw neither side', async () => {
+    // A container whose rooms have fallen out of the payload is placed but
+    // undrawable (`boardLayout`'s invariant 2), so the board has no name for it
+    // -- and "" there means UNPLACED to `UnitLabel`. The footnote must not turn
+    // that em-dash into a stray ` (Delta House)`.
+    mockRosterUnits = [
+      unitRow({ code: 'delta-house', name: 'Delta House', is_container: true, is_combined: false }),
+    ]
+    renderModal({
+      ...COLLIDING,
+      counts: { match: 0, both_unassigned: 0, conflict: 1, add: 0, remove: 0 },
+      parties: [
+        {
+          ...OKAFOR_CONFLICT,
+          scenario_unit_label: '',
+          scenario_unit_codes: ['delta-house'],
+          mirror_unit_label: '',
+          mirror_unit_codes: ['larkspur-9'],
+        },
+      ],
+    })
+    const rows = await differenceRows()
+    const okafor = rows.find((t) => t.includes('The Okafor Family')) ?? ''
+    expect(okafor).toContain('—→—')
+    expect(okafor).not.toContain('(')
+  })
+
+  it('writes no empty parenthetical when the registry cannot name the units', async () => {
+    // The rooms are in the payload but carry no name of their own, so the
+    // footnote has nothing to say. It degrades to the bare label -- never to
+    // `Delta House ()`, and never to the codes.
+    mockRosterUnits = [
+      unitRow({ code: 'delta-house', name: 'Delta House', is_container: true, is_combined: true }),
+      unitRow({ code: 'delta-1', name: '', parent_code: 'delta-house' }),
+      unitRow({ code: 'delta-2', name: '', parent_code: 'delta-house' }),
+    ]
+    renderModal({
+      ...COLLIDING,
+      counts: { match: 0, both_unassigned: 0, conflict: 1, add: 0, remove: 0 },
+      parties: [{ ...OKAFOR_CONFLICT, mirror_unit_label: '' }],
+    })
+    const rows = await differenceRows()
+    const okafor = rows.find((t) => t.includes('The Okafor Family')) ?? ''
+    expect(okafor).toContain('Delta House→Delta House')
+    expect(okafor).not.toContain('(')
+  })
+
+  it("says nothing extra when the board's registry is not loaded", async () => {
+    // Cold open: neither side is rolled up, so the roster's own labels stand
+    // and they already differ. Nothing collides, nothing is spelled out.
+    mockRosterUnits = undefined
+    renderModal(COLLIDING)
+    const rows = await differenceRows()
+    const okafor = rows.find((t) => t.includes('The Okafor Family')) ?? ''
+    expect(okafor).toContain('Delta House→Delta 1 + Delta 2')
+    expect(okafor).not.toContain('(')
   })
 })

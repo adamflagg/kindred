@@ -21,6 +21,7 @@ import {
   countBoardSlots,
   overlappingPartyKeys,
   partySize,
+  placementUnitNamer,
   slotOccupancy,
   wholeBuildingHolders,
 } from './boardLayout'
@@ -1756,5 +1757,49 @@ describe('boardPlacementNamer — a placement is named as the board draws it', (
     // lets the compare modal fall back to the roster's own label instead of
     // rendering a blank where a cabin belongs.
     expect(boardPlacementNamer(deltaHouse(true))(['larkspur-9'])).toBe('')
+  })
+})
+
+describe('placementUnitNamer — a placement named by the units it actually names', () => {
+  /** The same house and rooms, so the contrast with the roll-up is exact. */
+  function deltaHouse(combined: boolean): LodgingUnitRow[] {
+    return [
+      unit({
+        unit_id: 'dh',
+        code: 'delta-house',
+        name: 'Delta House',
+        is_container: true,
+        is_combined: combined,
+      }),
+      unit({ unit_id: 'd1', code: 'delta-1', name: 'Delta 1', parent_code: 'delta-house' }),
+      unit({ unit_id: 'd2', code: 'delta-2', name: 'Delta 2', parent_code: 'delta-house' }),
+    ]
+  }
+
+  it('names the rooms it was given rather than the card that represents them', () => {
+    // The whole point of the second namer: `boardPlacementNamer` answers
+    // `Delta House` here, which is right for the label and useless for saying
+    // WHY two colliding labels are a conflict.
+    const name = placementUnitNamer(deltaHouse(true))
+    expect(name(['delta-1', 'delta-2'])).toBe('Delta 1 + Delta 2')
+  })
+
+  it('names a container placement by the container', () => {
+    // The other side of the same conflict: a row written against the house is
+    // the house, and must not be fanned down to rooms it never named.
+    const name = placementUnitNamer(deltaHouse(true))
+    expect(name(['delta-house'])).toBe('Delta House')
+  })
+
+  it('says nothing for an unplaced party', () => {
+    expect(placementUnitNamer(deltaHouse(true))([])).toBe('')
+  })
+
+  it('drops a code the registry has never heard of rather than printing it', () => {
+    // A code on screen is worse than a shorter name: staff read cabin names,
+    // and `larkspur-9` is not one.
+    const name = placementUnitNamer(deltaHouse(true))
+    expect(name(['delta-1', 'larkspur-9'])).toBe('Delta 1')
+    expect(name(['larkspur-9'])).toBe('')
   })
 })
