@@ -195,12 +195,12 @@ export function FamilyDetailsPanel({
             <span className="text-muted-foreground text-xs">{unit.area_name}</span>
           )}
         </div>
-        {/* "Unverified" is the honest verdict for a constrained party whose
-            cabin nobody has confirmed — an unset `has_power` means "nobody has
-            said", not "there is no power". Not a bug to route around, and no
-            longer the universal case this used to claim: it said "0 of 93
-            units are confirmed today", and production is 118/118 confirmed as
-            of 2026-08-09. */}
+        {/* "Unverified" no longer means "nobody has confirmed this cabin" —
+            kindred#2526 removed that gate, and every placed cabin is now graded
+            at face value. It survives for the two cases a cabin field genuinely
+            cannot settle: a GENERIC accommodation request, and a placement
+            whose cabin cannot be resolved. Both are honest verdicts, not bugs
+            to route around. */}
         {attention.level !== 'settled' && attention.level !== 'unplaced' && (
           <p className="text-muted-foreground flex flex-wrap items-baseline gap-1.5 text-xs">
             <span className="font-medium">{ATTENTION_LABEL[attention.level]}</span>

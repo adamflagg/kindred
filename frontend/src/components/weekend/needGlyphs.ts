@@ -363,6 +363,14 @@ export function needExplainTexts(
  * `has_power = false` means *nobody has said*, so marking it would assert
  * something about a space nobody has measured.
  *
+ * ⚠️ THAT WORKED EXAMPLE IS HISTORICAL AND CAN NO LONGER OCCUR. kindred#2526
+ * removed the `is_confirmed` gate, so an unconfirmed `has_power = false` is now
+ * read at face value as "there is no power" and never reaches `unknown` at all.
+ * The example is left as written because it is what the 2026-08-20 argument
+ * actually said; today `unknown` arises from a blank field, a container with no
+ * active room left, or an unresolved `bathroom`. The RULING below is unaffected
+ * — it turns on what `fits` asserts, not on where `unknown` came from.
+ *
  * The argument is kept because it is half right, and because seeing it is what
  * stops it being re-adopted. What it missed: `fits` IS NOT SILENCE. It is the
  * glyph in its full hue, and that asserts the cabin MEETS the need — a claim

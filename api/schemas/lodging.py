@@ -165,7 +165,9 @@ RampAssessment = Literal["", "yes", "no", "partial"]
 #   some     at least one is, but not all
 #   partial  NO room is, but at least one has a qualified ramp
 #   none     every answering room answered `no`
-#   unknown  nothing answers -- blank, unconfirmed, or no active room left
+#   unknown  nothing answers -- a blank `has_ramp`, or no active room left.
+#            NOT unconfirmed: since kindred#2526 a row is read at face value
+#            whether or not staff have walked it.
 #
 # See `ramp_coverage` in `api/services/lodging_rules.py` for why `partial`
 # folds into neither of its neighbours.
