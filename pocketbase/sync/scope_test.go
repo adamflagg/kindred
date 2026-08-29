@@ -26,6 +26,10 @@ func TestJobScopeAndBase(t *testing.T) {
 		{"person_custom_values_family_camp", ScopeFamilyCamp, "person_custom_values"},
 		{"household_custom_values_family_camp", ScopeFamilyCamp, "household_custom_values"},
 		{"attendees", ScopeAll, "attendees"},
+		// Registry miss: an id absent from syncJobMeta must fall back to ScopeAll / itself,
+		// not panic or silently mis-scope. Both fallback branches (scope.go's JobScope and
+		// JobBase) are otherwise unpinned by this table.
+		{"nonexistent_job", ScopeAll, "nonexistent_job"},
 	}
 	for _, c := range cases {
 		if got := JobScope(c.id); got != c.wantScope {
