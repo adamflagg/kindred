@@ -71,7 +71,14 @@ const notPending = { mutate: vi.fn(), isPending: false }
 
 vi.mock('../../hooks/useRunIndividualSync', () => ({ useRunIndividualSync: () => notPending }))
 vi.mock('../../hooks/useRunOnDemandSync', () => ({ useRunOnDemandSync: () => notPending }))
-vi.mock('../../hooks/useUnifiedSync', () => ({ useUnifiedSync: () => notPending }))
+// kindred#2593's year-change reset needs its own spy: `syncService` is React state, and a
+// controlled <select> whose value matches no <option> reports the FIRST option ("all") in the
+// DOM either way -- so reading select.value cannot tell a reset apart from a stale selection.
+// What the stale selection actually costs is the request, so assert the request.
+const unifiedSyncMutate = vi.hoisted(() => vi.fn())
+vi.mock('../../hooks/useUnifiedSync', () => ({
+  useUnifiedSync: () => ({ mutate: unifiedSyncMutate, isPending: false }),
+}))
 vi.mock('../../hooks/useProcessRequests', () => ({ useProcessRequests: () => notPending }))
 vi.mock('../../hooks/useFamilyCampDerivedSync', () => ({
   useFamilyCampDerivedSync: () => notPending,
@@ -506,25 +513,34 @@ describe('SyncTab service dropdown offers only triggerable jobs (kindred#2593)',
 // is not merely stale: the option disappears from the <select> while `syncService` still holds
 // it, so Run Sync POSTs a current-year-only service against a historical year.
 describe('SyncTab clears a current-year-only service on year change (kindred#2593)', () => {
-  it('falls back to All Services when the selected service is current-year-only', () => {
+  function selectHistoricalYear() {
+    const yearSelect = screen.getByRole('option', { name: '2026' }).closest('select')
+    fireEvent.change(yearSelect as HTMLSelectElement, { target: { value: '2026' } })
+  }
+
+  it('submits All Services when the selected service was current-year-only', () => {
+    unifiedSyncMutate.mockClear()
     renderSyncTab()
 
     fireEvent.change(getServiceSelect(), { target: { value: 'bunk_requests' } })
-    expect(getServiceSelect().value).toBe('bunk_requests')
+    selectHistoricalYear()
+    fireEvent.click(screen.getByRole('button', { name: /run sync/i }))
 
-    const yearSelect = screen.getByRole('option', { name: '2026' }).closest('select')
-    fireEvent.change(yearSelect as HTMLSelectElement, { target: { value: '2026' } })
-
-    expect(getServiceSelect().value).toBe('all')
+    expect(unifiedSyncMutate).toHaveBeenCalledWith(
+      expect.objectContaining({ year: 2026, service: 'all' })
+    )
   })
 
   it('keeps a service that is valid for historical years', () => {
+    unifiedSyncMutate.mockClear()
     renderSyncTab()
 
     fireEvent.change(getServiceSelect(), { target: { value: 'persons' } })
-    const yearSelect = screen.getByRole('option', { name: '2026' }).closest('select')
-    fireEvent.change(yearSelect as HTMLSelectElement, { target: { value: '2026' } })
+    selectHistoricalYear()
+    fireEvent.click(screen.getByRole('button', { name: /run sync/i }))
 
-    expect(getServiceSelect().value).toBe('persons')
+    expect(unifiedSyncMutate).toHaveBeenCalledWith(
+      expect.objectContaining({ year: 2026, service: 'persons' })
+    )
   })
 })
