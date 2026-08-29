@@ -327,6 +327,43 @@ describe('useSyncSequenceRun', () => {
   })
 
   /**
+   * kindred#2595 follow-up, found reviewing #2596. `useSyncStatusAPI`'s queryFn
+   * SWALLOWS a 401 and returns `null` (pb.afterSend has already cleared auth),
+   * and React Query treats that as a perfectly successful fetch: `setData`
+   * dispatches `'success'` and stamps a fresh `dataUpdatedAt`. So a
+   * payload-less reading satisfies the freshness gate while carrying no
+   * terminal `end_time` at all — `jobStatus(null, …)` is undefined, so the
+   * baseline would be captured as `null`. Every later reading that DOES carry
+   * data then differs from `null`, and reads as our chain completing.
+   *
+   * `start()` used to guard precisely this, with
+   * `baselineRef.current = syncStatus ? terminalEndTime : undefined`. Moving
+   * the capture into the effect has to move that guard with it — a reading
+   * that post-dates the press is not the same thing as a reading that says
+   * anything.
+   */
+  it('does not take a payload-less (401) reading as the baseline', () => {
+    const onComplete = vi.fn()
+    const { result, rerender } = renderHook(() =>
+      useSyncSequenceRun({ chain: BUNKING_REFRESH_CHAIN, enabled: true, onComplete })
+    )
+    act(() => result.current.start())
+
+    // The invalidation's own refetch 401s. Fresh `dataUpdatedAt`, no payload.
+    setStatus(null)
+    rerender()
+    expect(onComplete).not.toHaveBeenCalled()
+
+    // Auth catches up (useSyncStatusAPI invalidates on the invalid→valid
+    // transition) and the next reading carries a real payload — byte-identical
+    // to the one cached before the press. Nothing has moved.
+    setStatus(idleStatus())
+    rerender()
+    expect(onComplete).not.toHaveBeenCalled()
+    expect(result.current.isRunning).toBe(true)
+  })
+
+  /**
    * The press can land before the FIRST status response — a cold load, or a
    * press inside the first poll interval. `start()` then has nothing to
    * snapshot, so the baseline stays uncaptured. Nothing downstream captured it
@@ -357,15 +394,29 @@ describe('useSyncSequenceRun', () => {
     expect(onComplete).toHaveBeenCalledWith('success')
   })
 
-  it('gives up arming, silently, if nothing ever starts', () => {
+  /**
+   * Pinned to ARMING_TIMEOUT_MS EXACTLY (60 s), not merely to "eventually".
+   * Advancing past STALL_TIMEOUT_MS (120 s) instead would pass just as well
+   * with the `phase === 'arming' ? … : …` branch deleted — and a real press
+   * would then sit spinning for two minutes rather than one. The arming
+   * timeout is the user-visible exit for an armed run that never sees its
+   * chain, so the constant is load-bearing.
+   */
+  it('gives up arming, silently, at 60 s if nothing ever starts', () => {
     const onComplete = vi.fn()
     const { result } = renderHook(() =>
       useSyncSequenceRun({ chain: BUNKING_REFRESH_CHAIN, enabled: true, onComplete })
     )
     act(() => result.current.start())
     expect(result.current.isRunning).toBe(true)
+
     act(() => {
-      vi.advanceTimersByTime(120_000)
+      vi.advanceTimersByTime(59_999)
+    })
+    expect(result.current.isRunning).toBe(true)
+
+    act(() => {
+      vi.advanceTimersByTime(1)
     })
     expect(result.current.isRunning).toBe(false)
     expect(onComplete).not.toHaveBeenCalled()
@@ -411,12 +462,22 @@ describe('useSyncSequenceRun', () => {
    * completion (pocketbase/sync/orchestrator.go), so `status`, `start_time` and
    * every other field are fixed while it runs. React Query's structural sharing
    * then hands the observer the SAME `data` reference on every poll, and an
-   * observer that tracks only `data` is not notified. Measured with a real
-   * QueryClient: 15 identical polls produced ZERO additional renders.
+   * observer that tracks only `data` is not notified: measured against
+   * query-core 5.101.4, 15 identical refetches 3 s apart re-rendered a
+   * `const { data }` observer exactly ONCE.
    *
    * So a `remainingSeconds` computed only during render does not merely sit
    * still for nine minutes — it sits on the value it had when the job STARTED,
    * i.e. "about 14 min left" at the point four minutes actually remain.
+   *
+   * ⚠️ Since kindred#2595 the hook also reads `dataUpdatedAt`, which TRACKS
+   * that key and so does get notified on an identical poll — the same 15
+   * refetches re-render a `const { data, dataUpdatedAt }` observer 15 times.
+   * The tick is therefore no longer the only thing that would move the
+   * readout during those nine minutes. It is still the only thing that moves
+   * when polling is not running at all, which is what this test pins: the
+   * query layer is mocked out entirely here, so nothing but the tick can
+   * advance anything.
    */
   it('advances the remaining-time estimate while the status payload is unchanged', () => {
     setStatus(

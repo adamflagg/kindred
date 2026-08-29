@@ -164,6 +164,28 @@ export function useSyncSequenceRun({
   const queryClient = useQueryClient()
   const [phase, setPhase] = useState<'idle' | 'arming' | 'running'>('idle')
 
+  // ⚠️ READING `dataUpdatedAt` HERE IS NOT FREE, and the cost is the reason it
+  // is read here rather than imperatively. React Query hands `useQuery`'s
+  // result through a tracking Proxy (`QueryObserver#trackResult`), so every
+  // key this line touches joins `#trackedProps` — and the observer is then
+  // notified whenever THAT key changes, not only when `data` does.
+  // `dataUpdatedAt` is a fresh `Date.now()` on every resolved fetch, so this
+  // observer now re-renders on every poll, including the polls whose payload
+  // is byte-identical to the one before.
+  //
+  // Measured against the installed query-core 5.101.4 — one observer, 15
+  // identical refetches 3 s apart: `const { data }` re-rendered ONCE,
+  // `const { data, dataUpdatedAt }` re-rendered FIFTEEN times.
+  //
+  // That notification is exactly what the freshness gate below needs: the
+  // whole point is to react to a refetch that returns the same bytes. Read
+  // imperatively instead (`queryClient.getQueryState(...)`) and nothing would
+  // re-render on such a poll, so the baseline would not be captured until the
+  // 5 s readout tick — and a ~4.7 s bunking chain would then finish inside the
+  // window this hook cannot detect. The cost is one extra render of this
+  // hook's consumer per poll while any sync is running; `AppLayout` mounts one
+  // of these for the whole session, so that is the app shell. Accepted
+  // deliberately, and pinned by `useSyncSequenceRun.integration.test.tsx`.
   const { data: syncStatus, dataUpdatedAt } = useSyncStatusAPI({
     enabled,
     forcePolling: phase === 'arming',
@@ -274,8 +296,18 @@ export function useSyncSequenceRun({
     // anything "moved", whether the difference from the pre-press cache is an
     // unrelated run that finished while we were idle, or our own chain
     // finishing between the press and this very first response.
+    //
+    // `syncStatus &&` is the second half of the same condition, and it is not
+    // decoration: `useSyncStatusAPI`'s queryFn SWALLOWS a 401 and returns
+    // `null`, which React Query stamps a fresh `dataUpdatedAt` for like any
+    // other successful fetch. A reading that post-dates the press is therefore
+    // not necessarily a reading that SAYS anything — and capturing `null` as
+    // the baseline would make the next reading that does carry data differ
+    // from it, i.e. read as our chain completing. `start()` used to carry this
+    // guard as `syncStatus ? terminalEndTime : undefined`; it moves with the
+    // capture.
     if (awaitingBaselineRef.current) {
-      if (dataUpdatedAt !== pressDataUpdatedAtRef.current) {
+      if (syncStatus && dataUpdatedAt !== pressDataUpdatedAtRef.current) {
         baselineRef.current = terminalEndTime
         awaitingBaselineRef.current = false
       }
@@ -319,14 +351,24 @@ export function useSyncSequenceRun({
     return () => clearTimeout(timer)
   }, [phase, isActive, reset])
 
-  // A TICK OF ITS OWN, because nothing else moves. `person_custom_values_family_camp`
-  // runs 536.7 s and its status payload is identical for the whole of it —
-  // `Status.Summary` is written only at completion — so React Query's structural
-  // sharing hands this observer the SAME `data` reference on every poll and never
-  // notifies it. Measured with a real QueryClient: 15 identical polls, ZERO extra
-  // renders. Without this the readout would not merely sit still for nine minutes,
-  // it would sit on the value it had when that job STARTED — "about 14 min left"
-  // with four minutes to go. This re-renders; it starts no network request.
+  // A TICK OF ITS OWN. `person_custom_values_family_camp` runs 536.7 s and its
+  // status payload is identical for the whole of it — `Status.Summary` is
+  // written only at completion — so React Query's structural sharing hands this
+  // observer the SAME `data` reference on every poll of those nine minutes.
+  // Without a tick the readout would not merely sit still: it would sit on the
+  // value it had when that job STARTED, "about 14 min left" with four minutes
+  // to go. This re-renders; it starts no network request.
+  //
+  // ⚠️ The measurement this comment used to cite — "15 identical polls, ZERO
+  // extra renders" — was true of `const { data } = useSyncStatusAPI(...)` and
+  // is NO LONGER true of this hook: tracking `dataUpdatedAt` (see the note at
+  // the destructure above) means an identical poll now does notify, so the
+  // readout would advance on the 3 s poll even without this. The tick STAYS
+  // anyway, and not out of caution: it is the only thing that moves when
+  // polling itself is not running, and it is what keeps the readout honest if
+  // the freshness gate above is ever changed to read `dataUpdatedAt` without
+  // tracking it. `advances the remaining-time estimate while the status
+  // payload is unchanged` pins it directly, with the query layer mocked out.
   const [, setTick] = useState(0)
   useEffect(() => {
     if (phase === 'idle') return
