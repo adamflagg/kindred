@@ -4,8 +4,13 @@
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest'
 import { renderHook } from '@testing-library/react'
 import toast from 'react-hot-toast'
-import { formatStatsText, useSyncCompletionToasts } from './useSyncCompletionToasts'
+import {
+  formatStatsText,
+  useSyncCompletionToasts,
+  SYNC_DISPLAY_NAMES,
+} from './useSyncCompletionToasts'
 import type { SyncStatusResponse } from './useSyncStatusAPI'
+import { getBackendSyncJobIds } from '../test/backendSyncJobIds'
 
 vi.mock('react-hot-toast', () => ({
   default: Object.assign(vi.fn(), {
@@ -282,5 +287,17 @@ describe('useSyncCompletionToasts renders the values-skipped segment in the real
 
     const [message] = (toast.success as Mock).mock.calls[0] as [string, unknown]
     expect(message).not.toContain('values skipped')
+  })
+})
+
+// kindred#2593: the completion loop iterates Object.keys(SYNC_DISPLAY_NAMES), not the
+// payload -- a job absent from this map gets no completion toast AND no invalidateSyncData()
+// call on completion. Anchored to the backend's own statusSyncTypes() (pocketbase/sync/api.go)
+// rather than to the other frontend lists, which would drift in lockstep and prove nothing.
+describe('SYNC_DISPLAY_NAMES backend coverage (kindred#2593)', () => {
+  it('has a display name for every job the backend publishes on the sync-status payload', () => {
+    const backendIds = getBackendSyncJobIds().slice().sort()
+    const displayNameIds = Object.keys(SYNC_DISPLAY_NAMES).sort()
+    expect(displayNameIds).toEqual(backendIds)
   })
 })

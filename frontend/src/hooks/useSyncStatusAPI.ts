@@ -121,7 +121,6 @@ export interface SyncStatusResponse {
   financial_transactions: SyncStatus
   staff_lookups: SyncStatus
   financial_lookups: SyncStatus
-  google_sheets_export: SyncStatus
   // Transform phase (derived tables)
   family_camp_derived: SyncStatus
   lodging_assignments: SyncStatus

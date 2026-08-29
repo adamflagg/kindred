@@ -11,6 +11,7 @@ import { fireEvent, render, screen, within } from '@testing-library/react'
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { SyncTab } from './SyncTab'
+import { hasManualTrigger, YEAR_SYNC_TYPES } from './syncTypes'
 
 vi.mock('../../hooks/useCurrentYear', () => ({
   useYear: () => 2027,
@@ -70,7 +71,14 @@ const notPending = { mutate: vi.fn(), isPending: false }
 
 vi.mock('../../hooks/useRunIndividualSync', () => ({ useRunIndividualSync: () => notPending }))
 vi.mock('../../hooks/useRunOnDemandSync', () => ({ useRunOnDemandSync: () => notPending }))
-vi.mock('../../hooks/useUnifiedSync', () => ({ useUnifiedSync: () => notPending }))
+// kindred#2593's year-change reset needs its own spy: `syncService` is React state, and a
+// controlled <select> whose value matches no <option> reports the FIRST option ("all") in the
+// DOM either way -- so reading select.value cannot tell a reset apart from a stale selection.
+// What the stale selection actually costs is the request, so assert the request.
+const unifiedSyncMutate = vi.hoisted(() => vi.fn())
+vi.mock('../../hooks/useUnifiedSync', () => ({
+  useUnifiedSync: () => ({ mutate: unifiedSyncMutate, isPending: false }),
+}))
 vi.mock('../../hooks/useProcessRequests', () => ({ useProcessRequests: () => notPending }))
 vi.mock('../../hooks/useFamilyCampDerivedSync', () => ({
   useFamilyCampDerivedSync: () => notPending,
@@ -115,13 +123,25 @@ function renderSyncTab() {
   )
 }
 
-function getCardRunButton(cardName: string) {
+function getCard(cardName: string) {
   // The sync-year <select> also has an <option> with the same text as some card names
   // (e.g. "Lodging Assignments"), so scope to the card's title <div> specifically.
   const heading = screen.getByText(cardName, { selector: 'div' })
   const card = heading.closest('.flex.flex-col')
   if (!card) throw new Error(`could not find card for ${cardName}`)
-  return within(card as HTMLElement).getByRole('button', { name: /run/i })
+  return card as HTMLElement
+}
+
+function getCardRunButton(cardName: string) {
+  return within(getCard(cardName)).getByRole('button', { name: /run/i })
+}
+
+// The Full-mode service <select>; identified by its own "All Services" option so it is never
+// confused with the sync-year <select> beside it.
+function getServiceSelect() {
+  const select = screen.getByRole('option', { name: 'All Services' }).closest('select')
+  if (!select) throw new Error('could not find the service select')
+  return select as HTMLSelectElement
 }
 
 describe('SyncTab generic card pending guard (#1881)', () => {
@@ -412,5 +432,115 @@ describe('SyncTab skipped-values badge (kindred#2356)', () => {
     renderSyncTab()
 
     expect(within(transportationCard()).queryByText(/val skip/)).not.toBeInTheDocument()
+  })
+})
+
+// kindred#2593: three jobs the backend runs only via daily cron -- never through any
+// individual POST route -- get status-visible cards, but their Run button would throw
+// "Unknown sync type" (or, if that check were bypassed, 404 against a route that does not
+// exist) the moment it was clicked. Giving them the generic Run button back would be a new
+// bug, not a fix, so their cards render without one.
+describe('SyncTab jobs with no manual trigger (kindred#2593)', () => {
+  it('renders a card for the bounded family-camp person custom-values job with no Run button', () => {
+    renderSyncTab()
+
+    const card = getCard('Person CV (FC)')
+    expect(within(card).queryByRole('button', { name: /run/i })).not.toBeInTheDocument()
+  })
+
+  it('renders a card for the bounded family-camp household custom-values job with no Run button', () => {
+    renderSyncTab()
+
+    const card = getCard('Household CV (FC)')
+    expect(within(card).queryByRole('button', { name: /run/i })).not.toBeInTheDocument()
+  })
+
+  it('renders a card for reconcile_request_lifecycle with no Run button', () => {
+    renderSyncTab()
+
+    const card = getCard('Reconcile Lifecycle')
+    expect(within(card).queryByRole('button', { name: /run/i })).not.toBeInTheDocument()
+  })
+})
+
+// kindred#2593: YEAR_SYNC_TYPES had zero entries with `phase: 'export'`, so the Export phase
+// section rendered nothing at all -- `getSyncTypesByPhase('export', ...)` always returned []
+// and SyncTab's phase loop returns null for an empty phase (`if (types.length === 0) return
+// null`). multi_workbook_export had a working POST route and toast/invalidation coverage the
+// whole time; it just never got a card. This is the regression test for the section existing
+// and its Run button actually working (unlike the three no-manual-trigger jobs above).
+describe('SyncTab Export phase now has a card (kindred#2593)', () => {
+  it('renders a Sheets Export card with an enabled Run button', () => {
+    renderSyncTab()
+
+    expect(getCardRunButton('Sheets Export')).not.toBeDisabled()
+  })
+})
+
+// kindred#2593: removing the card's Run button is only half a "no manual trigger" -- the same
+// page's Full-mode service <select> is the other half, and it POSTs
+// /api/custom/sync/run?service=<id>, which has no service whitelist at all (handleUnifiedSync,
+// pocketbase/sync/api.go). person_custom_values_family_camp and its household sibling ARE
+// registered services (orchestrator.go), so an option for either would really run the bounded
+// family-camp cohort that phaseExecutionJobs deliberately drops from an admin-triggered run
+// (#2489/#2491 Face C, ~11.5 min of rate-limited CampMinder quota re-spent on values the daily
+// cron refreshed minutes earlier).
+describe('SyncTab service dropdown offers only triggerable jobs (kindred#2593)', () => {
+  it('omits every job whose card has no Run button', () => {
+    renderSyncTab()
+
+    const optionValues = [...getServiceSelect().options].map((o) => o.value)
+    const noManualTrigger = YEAR_SYNC_TYPES.filter((t) => !hasManualTrigger(t)).map((t) => t.id)
+
+    expect(noManualTrigger.length).toBeGreaterThan(0)
+    for (const id of noManualTrigger) {
+      expect(optionValues).not.toContain(id)
+    }
+  })
+
+  it('still offers the jobs that do have a route, including the newly carded export', () => {
+    renderSyncTab()
+
+    const optionValues = [...getServiceSelect().options].map((o) => o.value)
+    expect(optionValues).toContain('all')
+    expect(optionValues).toContain('multi_workbook_export')
+    expect(optionValues).toContain('persons')
+  })
+})
+
+// kindred#2593: the year-change reset named bunk_requests/process_requests literally, while
+// five YEAR_SYNC_TYPES entries now carry currentYearOnly. A selection that survives the switch
+// is not merely stale: the option disappears from the <select> while `syncService` still holds
+// it, so Run Sync POSTs a current-year-only service against a historical year.
+describe('SyncTab clears a current-year-only service on year change (kindred#2593)', () => {
+  function selectHistoricalYear() {
+    const yearSelect = screen.getByRole('option', { name: '2026' }).closest('select')
+    fireEvent.change(yearSelect as HTMLSelectElement, { target: { value: '2026' } })
+  }
+
+  it('submits All Services when the selected service was current-year-only', () => {
+    unifiedSyncMutate.mockClear()
+    renderSyncTab()
+
+    fireEvent.change(getServiceSelect(), { target: { value: 'bunk_requests' } })
+    selectHistoricalYear()
+    fireEvent.click(screen.getByRole('button', { name: /run sync/i }))
+
+    expect(unifiedSyncMutate).toHaveBeenCalledWith(
+      expect.objectContaining({ year: 2026, service: 'all' })
+    )
+  })
+
+  it('keeps a service that is valid for historical years', () => {
+    unifiedSyncMutate.mockClear()
+    renderSyncTab()
+
+    fireEvent.change(getServiceSelect(), { target: { value: 'persons' } })
+    selectHistoricalYear()
+    fireEvent.click(screen.getByRole('button', { name: /run sync/i }))
+
+    expect(unifiedSyncMutate).toHaveBeenCalledWith(
+      expect.objectContaining({ year: 2026, service: 'persons' })
+    )
   })
 })

@@ -8,8 +8,11 @@ import {
 } from './useSyncStatusAPI'
 import { invalidateSyncData } from '../utils/queryClient'
 
-// Map sync type IDs to display names
-const SYNC_DISPLAY_NAMES: Record<string, string> = {
+// Map sync type IDs to display names. Exported so kindred#2593's coverage guard
+// (useSyncCompletionToasts.test.ts) can compare its keys against the backend's own
+// statusSyncTypes() (pocketbase/sync/api.go) -- a job absent from this map gets no
+// completion toast and no invalidateSyncData() call on completion.
+export const SYNC_DISPLAY_NAMES: Record<string, string> = {
   // Global sync types (cross-year)
   person_tag_defs: 'Tag Definitions',
   custom_field_defs: 'Field Definitions',
@@ -26,6 +29,12 @@ const SYNC_DISPLAY_NAMES: Record<string, string> = {
   bunk_assignments: 'Assignments',
   staff: 'Staff',
   financial_transactions: 'Financial Transactions',
+  // Daily-cron-only jobs (kindred#2591/#2593): no manual trigger, but their status still
+  // transitions running -> success/failed on the payload, so they still need a display name
+  // for the toast and still need invalidateSyncData() to fire on completion.
+  person_custom_values_family_camp: 'Person CV (Family Camp)',
+  household_custom_values_family_camp: 'Household CV (Family Camp)',
+  reconcile_request_lifecycle: 'Reconcile Request Lifecycle',
   bunk_requests: 'Intake Requests',
   process_requests: 'Process Requests',
   // Transform phase (derived tables)
@@ -41,6 +50,10 @@ const SYNC_DISPLAY_NAMES: Record<string, string> = {
   staff_vehicle_info: 'Staff Vehicles',
   normalize_geographic: 'Normalize Geo',
   enrollment_snapshots: 'Enrollment Snapshots',
+  // kindred#2593: pre-existing gap the coverage guard below caught -- present as a card
+  // (syncTypes.ts) with a working Run button since #1416/#1417, but never listed here, so it
+  // has never fired a completion toast or an invalidateSyncData() call on its own.
+  stranded_assignment_cleanup: 'Stranded Assignment Cleanup',
   // Export phase
   multi_workbook_export: 'Sheets Export',
   // On-demand sync types

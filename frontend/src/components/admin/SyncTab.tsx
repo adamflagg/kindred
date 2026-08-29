@@ -40,6 +40,8 @@ import {
   GLOBAL_SYNC_TYPES,
   CURRENT_YEAR_SYNC_TYPES,
   getYearSyncTypes,
+  hasManualTrigger,
+  isCurrentYearOnly,
   Globe,
   SYNC_PHASES,
   getSyncTypesByPhase,
@@ -143,14 +145,34 @@ export function SyncTab() {
     [syncYear, currentYear]
   )
 
+  // The Full-mode service dropdown is a manual trigger like any other: picking an entry and
+  // pressing Run Sync POSTs /api/custom/sync/run?service=<id>, and handleUnifiedSync applies no
+  // service whitelist -- it hands the name straight to RunSyncWithOptions. So a job the backend
+  // exposes no individual route for must be left out of the option list as well as off the
+  // card, or "no manual trigger" is only true of the button (kindred#2593). It matters most for
+  // the two bounded family-camp custom-values jobs, which ARE registered services: an option
+  // for either would really re-run the cohort phaseExecutionJobs deliberately drops from an
+  // admin-triggered phase run (#2489/#2491 Face C). The cards themselves still render from
+  // availableSyncTypes, because being un-triggerable is not a reason to be invisible -- that
+  // was the bug this PR set out to fix.
+  const runnableSyncServices = useMemo(
+    () => availableSyncTypes.filter(hasManualTrigger),
+    [availableSyncTypes]
+  )
+
   // Handle year change - reset service if it becomes unavailable
   const handleYearChange = (year: number) => {
     setSyncYear(year)
-    // Reset service if it's a current-year-only type and we're switching to historical
-    if (
-      year !== currentYear &&
-      (syncService === 'bunk_requests' || syncService === 'process_requests')
-    ) {
+    // Reset a current-year-only selection when switching to a historical year. Derived from the
+    // flag rather than a hand-written list of ids: the literal pair this used to name was
+    // already two short of the five entries carrying currentYearOnly, and a stale selection is
+    // not merely cosmetic -- the option vanishes from the <select> while syncService still holds
+    // it, so Run Sync submits a current-year-only service against a historical year.
+    // Looked up in the unfiltered list, not `availableSyncTypes`: that memo is still keyed to
+    // the year being navigated away from, and the question here is only "is the selected
+    // service current-year-only", which does not depend on the year at all.
+    const selected = CURRENT_YEAR_SYNC_TYPES.find((t) => t.id === syncService)
+    if (year !== currentYear && selected && isCurrentYearOnly(selected)) {
       setSyncService('all')
     }
   }
@@ -325,8 +347,16 @@ export function SyncTab() {
           )}
         </div>
 
-        {/* Run button - special handling for process_requests */}
-        {syncType.id === 'process_requests' ? (
+        {/* Run button - special handling for process_requests, and none at all for jobs
+            the backend never exposes an individual POST route for (kindred#2593) */}
+        {!hasManualTrigger(syncType) ? (
+          <div
+            className="text-muted-foreground/70 bg-muted/30 mt-3 flex w-full items-center justify-center rounded-lg py-2 text-xs sm:text-sm"
+            title="No individual run endpoint — this job runs as part of the daily sync"
+          >
+            No manual run
+          </div>
+        ) : syncType.id === 'process_requests' ? (
           <div className="mt-3 flex gap-2">
             <button
               onClick={handleRun}
@@ -445,7 +475,7 @@ export function SyncTab() {
                   disabled={unifiedSync.isPending}
                 >
                   <option value="all">All Services</option>
-                  {availableSyncTypes.map((type) => (
+                  {runnableSyncServices.map((type) => (
                     <option key={type.id} value={type.id}>
                       {type.name}
                     </option>
