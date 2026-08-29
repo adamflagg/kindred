@@ -1994,10 +1994,17 @@ class LodgingWriteService:
         # unit alone it asked "is anybody else in this cabin", which was the
         # same question only while a cabin could hold one person.
         by_unit_occupant: dict[tuple[str, str], list[tuple[str, str, str, int | None]]] = {}
+        # ⚠️ THE UNIT GRAIN SURVIVES AS A PRE-STEP-8 BRIDGE, and it is the
+        # STEP 8 PR'S TO DELETE together with its use below. The narrowed key
+        # above describes the index step 8 will create; this one describes
+        # the index in the tree, which is what phase 2's recreate is actually
+        # checked against until then.
+        by_unit: dict[str, list[tuple[str, str, str, int | None]]] = {}
         for row, live_row in live:
             key = live_row.tuple_key()
             by_tuple.setdefault(key, []).append(str(getattr(row, "id", "") or ""))
             by_unit_occupant.setdefault((key[0], key[1]), []).append(key)
+            by_unit.setdefault(key[0], []).append(key)
 
         def change_tuple(c: dict[str, Any]) -> tuple[str, str, str, int | None]:
             return (c["unit"], c["occupant_name"].strip(), c["note"].strip(), c["party_size"])
@@ -2058,8 +2065,26 @@ class LodgingWriteService:
                 # a different count -- is NOT subtracted, and still drifts,
                 # because phase 1 never deletes it and phase 2 would collide
                 # with it.
-                colliding = by_unit_occupant.get((c["unit"], c["occupant_name"].strip()), ())
-                if Counter(colliding) - own_add_counts:
+                colliding = Counter(by_unit_occupant.get((c["unit"], c["occupant_name"].strip()), ())) - own_add_counts
+                # ⚠️ PRE-STEP-8 BRIDGE, AND THE ONLY REASON THIS PR IS DARK
+                # ON THIS PATH. The narrowing above is right about the index
+                # step 8 WILL create and wrong about the one in the tree:
+                # `idx_lodging_write_in_unique` is still
+                # `(session_cm_id, year, unit)` (1500000161:208), so a
+                # co-occupant with a different name DOES collide with phase
+                # 2's recreate today. Keyed on the tuple alone the guard
+                # waves that revert through, phase 1's deletes land, and the
+                # recreate throws mid-apply with `unpushed_at` never stamped
+                # -- a half-reverted push whose retry can only throw again.
+                # That is precisely the kindred#2555 failure this guard was
+                # written to close, and the refusal it replaces was a clean
+                # 409 naming the building.
+                #
+                # ⇒ DELETE THIS AND `by_unit` IN THE STEP 8 PR, in the same
+                # change that narrows the index. The line above is the ruled
+                # OQ-3 shape and is what remains.
+                on_the_unit = Counter(by_unit.get(c["unit"], ())) - own_add_counts
+                if colliding or on_the_unit:
                     drifted.append(c["unit_code"])
         if drifted:
             raise UnpushDriftError(sorted(set(drifted)))

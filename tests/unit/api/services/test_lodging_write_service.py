@@ -3566,11 +3566,17 @@ class TestPushAndUnpushCarryNRowsPerUnit:
     (owner, 2026-08-22) is untouched: it says what to do WHEN there is drift,
     not what counts as drift.
 
+    ⚠️ ITS EFFECT IS HELD BACK TO STEP 8 by a unit-grain bridge beside the
+    narrowed key: the index in the tree is still `(session_cm_id, year,
+    unit)`, so the co-occupant the ruled shape waves through still collides
+    with phase 2's recreate today. The narrowed key is what remains once the
+    bridge goes; see `TestTheDriftGuardStaysConservativeUntilTheIndexNarrows`.
+
     `execute_push`'s add-side check is DELIBERATELY NOT narrowed with it, and
     that asymmetry is stated rather than accidental -- see its own comment.
     It asks a different question (should a row that appeared mid-flight stop
-    a push at all), no ruling covers that one, and it is dark either way
-    until step 8.
+    a push at all), and it is conservative rather than permissive, so unlike
+    the unpush half it needs no bridge.
 
     Fictional occupant names throughout.
     """
@@ -3719,24 +3725,34 @@ class TestPushAndUnpushCarryNRowsPerUnit:
         repo.update_push_event.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_an_unrelated_co_occupant_on_a_recreate_target_no_longer_drifts(self) -> None:
-        """★ OQ-3, ANSWERED 2026-08-29: DRIFT KEYS ON THE TUPLE, NOT THE UNIT.
+    async def test_an_unrelated_co_occupant_still_refuses_until_step_8_narrows_the_index(self) -> None:
+        """★ OQ-3, ANSWERED 2026-08-29 -- AND ITS EFFECT BELONGS TO STEP 8.
 
-        The guard existed for a mechanical reason: under the one-row-per-unit
-        index, a recreate into an occupied unit was rejected mid-apply and
-        left a half-reverted push. Under the narrowed
-        `(session_cm_id, year, unit, occupant_name)` index a recreate beside a
-        DIFFERENT occupant no longer collides, so the old test refused a case
-        that would in fact have succeeded.
+        The ruled shape is that drift keys on the tuple rather than the unit,
+        because under the narrowed
+        `(session_cm_id, year, unit, occupant_name)` index a recreate beside
+        a DIFFERENT occupant no longer collides, and refusing over it refuses
+        a revert that would in fact have succeeded.
 
-        THE 2026-08-22 REFUSE-WHOLESALE RULING IS UNTOUCHED. It governs what
-        happens WHEN there is drift -- nothing is reverted and the buildings
-        are named -- not what counts as drift. What narrows is the definition,
-        and it narrows onto exactly the collision the guard was protecting.
+        ⚠️ THAT INDEX DOES NOT EXIST YET. The tree still carries
+        `(session_cm_id, year, unit)` (`1500000161:208`); step 8 is the
+        on-switch and lands last. Under the index that IS deployed the
+        neighbour below collides with phase 2's recreate, so letting the
+        revert proceed deletes the push's adds and then throws mid-apply with
+        `unpushed_at` never stamped -- the kindred#2555 failure this guard
+        exists to close, reached through the guard itself. Reproduced against
+        a store that models the real index in
+        `TestTheDriftGuardStaysConservativeUntilTheIndexNarrows`.
 
-        Here fern-1 holds an unrelated paper family recorded since the push.
-        Recreating E. Sandoval beside her is legal on a shareable cabin, and
-        it is the feature: two write-ins in one unit.
+        So the narrowed key is in place and pinned by the two tests above,
+        with a unit-grain bridge beside it that keeps the ANSWER conservative
+        until the schema catches up. ⇒ THIS TEST IS THE STEP 8 PR'S TO FLIP,
+        in the same change that deletes the bridge: `restored == 1`, the
+        neighbour untouched.
+
+        THE 2026-08-22 REFUSE-WHOLESALE RULING IS UNTOUCHED EITHER WAY. It
+        governs what happens WHEN there is drift -- nothing reverted, the
+        buildings named -- not what counts as drift.
         """
         repo = _repo(
             find_push_event=_ledger([CH_REM]),
@@ -3745,16 +3761,13 @@ class TestPushAndUnpushCarryNRowsPerUnit:
         )
         svc = LodgingWriteService(repo)
 
-        out = await svc.unpush("push_1", 2026, 1309001)
+        with pytest.raises(UnpushDriftError) as exc:
+            await svc.unpush("push_1", 2026, 1309001)
 
-        assert (out.deleted, out.restored) == (0, 1)
+        assert exc.value.buildings == ["fern-1"]
+        repo.create_write_in.assert_not_called()
         repo.delete_write_in.assert_not_called()
-        recreated = repo.create_write_in.call_args.args[0]
-        assert recreated["occupant_name"] == "E. Sandoval"
-        # The neighbour is still there: nothing about a revert removes a row
-        # this push never touched.
-        assert "wi_neighbour" not in [call.args[0] for call in repo.delete_write_in.call_args_list]
-        repo.update_push_event.assert_called_once()
+        repo.update_push_event.assert_not_called()
 
 
 class _StatefulWriteInRepo:
@@ -3897,3 +3910,89 @@ class TestUnpushDeletesTheAddsBeforeItRecreatesTheRemoves:
         restored_row = next(iter(repo._store.values()))
         assert restored_row.occupant_name == "G. Whitfield"
         assert restored_row.unit == "uc"
+
+
+class TestTheDriftGuardStaysConservativeUntilTheIndexNarrows:
+    """OQ-3's narrowing is a STEP 8 change, and shipping its effect early
+    re-opens the kindred#2555 failure it was written to close.
+
+    The ruled shape is right: once `idx_lodging_write_in_unique` is
+    `(session_cm_id, year, unit, occupant_name)`, a recreate BESIDE a
+    different occupant no longer collides, so refusing over that co-occupant
+    refuses a revert that would in fact have succeeded.
+
+    But the index in the tree is still `(session_cm_id, year, unit)`
+    (`1500000161:208`) and step 8 is deliberately not in this PR. Under THAT
+    index the co-occupant does collide, so a guard that keys on the recreated
+    row's own `(unit, occupant_name)` waves the revert through, phase 1's
+    deletes land, and phase 2's `create_write_in` throws mid-apply with
+    `unpushed_at` never stamped -- a half-reverted push whose retry can only
+    throw again. The old unit-grain reading refused cleanly and named the
+    building, which is what staff can act on.
+
+    So the narrowed key stays (it is the ruled shape, and the tests above pin
+    it), with a pre-step-8 bridge beside it that keeps the guard unit-grain
+    until the schema catches up. ⚠️ THE BRIDGE IS THE STEP 8 PR'S TO DELETE,
+    together with `by_unit`; the narrowed key beside it is what remains.
+
+    `MagicMock` cannot see any of this -- it accepts every create -- so these
+    run against `_StatefulWriteInRepo`, which models the real index and is
+    the instrument kindred#2477 Task 10's live-PocketBase pass produced.
+    """
+
+    @staticmethod
+    def _repo_with_a_neighbour_on_the_recreate_target() -> _StatefulWriteInRepo:
+        """The push added H. Osei to cedar-9 and removed E. Sandoval from
+        fern-1. Since then somebody wrote an unrelated paper family into
+        fern-1 -- legal today, because the push had left it empty."""
+        push_event = _ledger([CH_ADD, CH_REM])
+        return _StatefulWriteInRepo(
+            push_event=push_event,
+            units=[_u("uc", "cedar-9"), _u("uc2", "fern-1")],
+            write_ins={
+                "wi_pushed": SimpleNamespace(
+                    id="wi_pushed",
+                    unit="uc",
+                    occupant_name="H. Osei",
+                    note="",
+                    party_size=2,
+                    session_cm_id=1309001,
+                    year=2026,
+                ),
+                "wi_neighbour": SimpleNamespace(
+                    id="wi_neighbour",
+                    unit="uc2",
+                    occupant_name="Olivia Chen",
+                    note="",
+                    party_size=3,
+                    session_cm_id=1309001,
+                    year=2026,
+                ),
+            },
+        )
+
+    @pytest.mark.asyncio
+    async def test_a_co_occupant_the_current_index_would_collide_with_still_refuses(self) -> None:
+        repo = self._repo_with_a_neighbour_on_the_recreate_target()
+        svc = LodgingWriteService(repo)  # type: ignore[arg-type]
+
+        with pytest.raises(UnpushDriftError) as exc:
+            await svc.unpush("push_1", 2026, 1309001)
+
+        assert exc.value.buildings == ["fern-1"]
+
+    @pytest.mark.asyncio
+    async def test_nothing_is_written_when_it_refuses(self) -> None:
+        """The whole point of a PRE-check. A refusal after phase 1 has run is
+        a half-reverted push, and `unpushed_at` is never stamped, so a retry
+        finds the adds already gone and can only throw again."""
+        repo = self._repo_with_a_neighbour_on_the_recreate_target()
+        svc = LodgingWriteService(repo)  # type: ignore[arg-type]
+
+        with pytest.raises(UnpushDriftError):
+            await svc.unpush("push_1", 2026, 1309001)
+
+        assert repo.delete_write_in_calls == []
+        assert repo.create_write_in_calls == []
+        assert sorted(repo._store) == ["wi_neighbour", "wi_pushed"]
+        assert repo._push_event.unpushed_at == ""
