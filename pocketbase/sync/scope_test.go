@@ -54,3 +54,41 @@ func TestScopedJobs(t *testing.T) {
 		}
 	}
 }
+
+// TestCustomValuesCollectionGroupDerived pins the mutual-exclusion grouping (kindred#2491):
+// a scoped variant must land in the SAME group as its base, because they write the same
+// PocketBase collection under different registered names. person_custom_values and
+// household_custom_values must stay in SEPARATE groups -- RunCustomValuesSync documents
+// running them in parallel as safe because they write independent collections via
+// independent CampMinder endpoints, and this map must not widen the lock across that line.
+func TestCustomValuesCollectionGroupDerived(t *testing.T) {
+	want := map[string]string{
+		"person_custom_values":                "person_custom_values",
+		"person_custom_values_family_camp":    "person_custom_values",
+		"household_custom_values":             "household_custom_values",
+		"household_custom_values_family_camp": "household_custom_values",
+	}
+	if len(customValuesCollectionGroup) != len(want) {
+		t.Fatalf("group map has %d entries, want %d: %v",
+			len(customValuesCollectionGroup), len(want), customValuesCollectionGroup)
+	}
+	for k, v := range want {
+		if got := customValuesCollectionGroup[k]; got != v {
+			t.Errorf("group[%q] = %q, want %q", k, got, v)
+		}
+	}
+}
+
+// TestFamilyCampBoundedSetDerived pins the phaseExecutionJobs exclusion set (kindred#2489)
+// as exactly the family-camp-scoped rows -- no more, no less.
+func TestFamilyCampBoundedSetDerived(t *testing.T) {
+	if len(familyCampBoundedCustomValuesJobs) != 2 {
+		t.Fatalf("exclusion set has %d entries, want 2: %v",
+			len(familyCampBoundedCustomValuesJobs), familyCampBoundedCustomValuesJobs)
+	}
+	for _, id := range ScopedJobs(ScopeFamilyCamp) {
+		if !familyCampBoundedCustomValuesJobs[id] {
+			t.Errorf("scoped job %q missing from the phase-run exclusion set", id)
+		}
+	}
+}

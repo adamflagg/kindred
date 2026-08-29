@@ -725,11 +725,20 @@ func (o *Orchestrator) IsRunning(syncType string) bool {
 // RunCustomValuesSync documents running them in parallel as safe because they write
 // independent collections via independent CampMinder endpoints, and this map must not widen
 // the lock across that boundary.
-var customValuesCollectionGroup = map[string]string{
-	"person_custom_values":                "person_custom_values",
-	"person_custom_values_family_camp":    "person_custom_values",
-	"household_custom_values":             "household_custom_values",
-	"household_custom_values_family_camp": "household_custom_values",
+var customValuesCollectionGroup = buildCustomValuesCollectionGroups()
+
+// buildCustomValuesCollectionGroups derives the group map from syncJobMeta: every
+// custom-values job maps to its Base (itself, for a base job), so a scoped variant shares a
+// group with the unrestricted job it narrows without either name being typed here.
+func buildCustomValuesCollectionGroups() map[string]string {
+	groups := make(map[string]string)
+	for _, m := range syncJobMeta {
+		if m.Phase != PhaseExpensive {
+			continue
+		}
+		groups[m.ID] = JobBase(m.ID)
+	}
+	return groups
 }
 
 // customValuesGroupRunningLocked reports whether any currently running job shares syncType's

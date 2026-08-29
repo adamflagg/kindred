@@ -2289,10 +2289,7 @@ func handleHouseholdDemographicsSync(e *core.RequestEvent, scheduler *Scheduler)
 
 // familyCampBoundedCustomValuesJobs names the two daily-cron-only custom-values instances
 // (kindred#2489) that phaseExecutionJobs excludes from an admin-triggered PhaseExpensive run.
-var familyCampBoundedCustomValuesJobs = map[string]bool{
-	"person_custom_values_family_camp":    true,
-	"household_custom_values_family_camp": true,
-}
+var familyCampBoundedCustomValuesJobs = buildScopedJobSet(ScopeFamilyCamp)
 
 // phaseExecutionJobs returns the jobs actually run for phase -- the list handleRunPhase and
 // processQueuedSyncs iterate to start syncs, as opposed to GetJobsForPhase's classification
