@@ -34,6 +34,7 @@ from api.schemas.lodging import (
     PlacementWriteRequest,
     PushExecuteRequest,
     SlotMergeRequest,
+    WriteInDeleteRequest,
 )
 from api.services.lodging_roster_service import SessionNotFoundError
 from api.services.lodging_write_service import (
@@ -68,6 +69,12 @@ def _repo(**overrides: Any) -> MagicMock:
         # kindred#2382. `lodging_availability` keeps only the staff<->family
         # ROLE override; somebody being IN a room is written here.
         "find_write_in": None,
+        # The UNIT-grain read the clear verbs use (kindred#2583 step 7).
+        # `find_write_in` answers about one occupant; this answers about the
+        # whole cabin, which is what `family_available: null` and a release
+        # both have to clear.
+        "fetch_write_ins_on_unit": [],
+        "fetch_draft_write_ins_on_unit": [],
         "create_write_in": SimpleNamespace(id="write_in_new"),
         "update_write_in": SimpleNamespace(id="write_in_existing"),
         "delete_write_in": None,
@@ -121,10 +128,29 @@ def _availability_request(**overrides: Any) -> AvailabilityWriteRequest:
         "session_cm_id": 1000001,
         "unit_id": "u1",
         "family_available": False,
+        # FIXTURE CORRECTED (kindred#2583 step 6). This default used to carry
+        # no occupant at all, which described a row the staff write path can
+        # no longer produce: under Design B the occupant's name IS the row's
+        # address, so an occupancy write without one is unaddressable and the
+        # request model refuses it. The clear and release halves still accept
+        # a blank -- they name no occupant -- and the tests that exercise
+        # those override this back to "".
+        "occupant_name": "Olivia Chen",
         "reason": "Burst pipe",
     }
     fields.update(overrides)
     return AvailabilityWriteRequest(**fields)
+
+
+def _write_in_delete_request(**overrides: Any) -> WriteInDeleteRequest:
+    fields: dict[str, Any] = {
+        "year": 2026,
+        "session_cm_id": 1000001,
+        "unit_id": "u1",
+        "occupant_name": "Olivia Chen",
+    }
+    fields.update(overrides)
+    return WriteInDeleteRequest(**fields)
 
 
 def _slot_merge_request(**overrides: Any) -> SlotMergeRequest:
@@ -2353,6 +2379,399 @@ class TestAWriteInInsideAScenarioIsWrittenToTheDraftTable:
         repo.update_write_in.assert_not_called()
 
 
+class TestAWriteInIsAddressedByItsUnitAndItsOccupant:
+    """kindred#2583 step 6, Design B (RULED 2026-08-29).
+
+    Owner: *"lets go with the identity of unit and occupant."* The request
+    model keeps its shape -- no record id round-trips to the client -- and
+    `(unit_id, occupant_name)` is the key. That single decision settles the
+    create-vs-update question this class covers: a write naming an occupant
+    the unit already carries is an EDIT of that row; a write naming anybody
+    else is a NEW row beside it.
+
+    Before this, `set_availability` resolved the target row BY UNIT and
+    `_upsert_row` updated it, so writing a second family into an occupied
+    cabin silently overwrote the first -- live in production on all 118
+    units, with no warning anywhere on the path.
+
+    DARK UNTIL STEP 8. `idx_lodging_write_in_unique` still forces at most one
+    live row per (unit, session_cm_id, year), so the second create these
+    tests describe is refused by the schema in production today. What they
+    pin is that the API asks the right question the moment the index moves.
+    """
+
+    @staticmethod
+    def _occupied_by(name: str, record_id: str) -> AsyncMock:
+        """A finder that answers about ONE occupant, as the narrowed index does."""
+        rows = {name: SimpleNamespace(id=record_id)}
+        return AsyncMock(side_effect=lambda year, session_cm_id, unit, occupant: rows.get(occupant))
+
+    @pytest.mark.asyncio
+    async def test_the_live_lookup_carries_the_occupant_name(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        await write_service.set_availability(_availability_request(occupant_name="Olivia Chen"))
+
+        repo.find_write_in.assert_awaited_once_with(2026, 1000001, "u1", "Olivia Chen")
+
+    @pytest.mark.asyncio
+    async def test_the_draft_lookup_carries_the_occupant_name(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        await write_service.set_availability(_availability_request(scenario="scn_1", occupant_name="Olivia Chen"))
+
+        repo.find_draft_write_in.assert_awaited_once_with(2026, 1000001, "scn_1", "u1", "Olivia Chen")
+
+    @pytest.mark.asyncio
+    async def test_a_second_occupant_on_an_occupied_unit_is_created_not_an_edit_of_the_first(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        """THE BUG THIS FEATURE EXISTS TO FIX, at the write path.
+
+        Ridge D sleeps 15 and is classified `shareable`. It already holds
+        Olivia Chen. A staff member writes in Emma Johnson. The occupant-keyed
+        finder does not see Chen's row, so the write CREATES beside it rather
+        than overwriting it.
+        """
+        repo.find_write_in = self._occupied_by("Olivia Chen", "wi_chen")
+
+        await write_service.set_availability(_availability_request(occupant_name="Emma Johnson"))
+
+        repo.create_write_in.assert_called_once()
+        repo.update_write_in.assert_not_called()
+        assert repo.create_write_in.call_args[0][0]["occupant_name"] == "Emma Johnson"
+
+    @pytest.mark.asyncio
+    async def test_rewriting_the_same_occupant_still_updates_rather_than_duplicating(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        """The surviving half of the old index's intent.
+
+        Two rows describing the SAME occupant differently -- a party of 3 and
+        a party of 5, both called Chen -- are a contradiction, not a share.
+        The narrowed index still forbids them, and this is the write path
+        agreeing with it: editing Chen's count edits Chen's row.
+        """
+        repo.find_write_in = self._occupied_by("Olivia Chen", "wi_chen")
+
+        await write_service.set_availability(_availability_request(occupant_name="Olivia Chen", party_size=5))
+
+        repo.update_write_in.assert_called_once()
+        assert repo.update_write_in.call_args[0][0] == "wi_chen"
+        assert repo.update_write_in.call_args[0][1]["party_size"] == 5
+        repo.create_write_in.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_the_lost_race_recovery_re_reads_with_the_same_occupant(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        """`_upsert_row`'s recovery survives Design B unchanged.
+
+        Two staff writing the SAME occupant into the same unit for the same
+        weekend both find no row, both create, and the narrowed index rejects
+        the loser -- so the loser re-reads and updates the winner's row, which
+        by construction is still the row this call wanted: same weekend, same
+        unit, same occupant. The re-read has to carry the occupant term too,
+        or it adopts a neighbour instead of the winner.
+        """
+        repo.find_write_in = AsyncMock(side_effect=[None, SimpleNamespace(id="wi_winner")])
+        repo.create_write_in = AsyncMock(
+            side_effect=ClientResponseError(
+                "unique constraint", status=400, data={}, url="", is_abort=False, original_error=None
+            )
+        )
+
+        await write_service.set_availability(_availability_request(occupant_name="Olivia Chen"))
+
+        assert repo.find_write_in.await_args_list[-1].args == (2026, 1000001, "u1", "Olivia Chen")
+        repo.update_write_in.assert_called_once()
+        assert repo.update_write_in.call_args[0][0] == "wi_winner"
+
+
+class TestABlankOccupantIsRefusedOnTheStaffWritePath:
+    """kindred#2583 step 6's sub-task, handed down with the Design B ruling.
+
+    `occupant_name` is `Field("", max_length=500)` -- permissive so an ingest
+    or a fixture with no author can write, and so the two halves that name
+    nobody (a release, a clear) need not invent one. Under the narrowed index
+    that permissiveness becomes a collision: two blank-named rows on one unit
+    share a key, and neither is addressable by the delete or the edit.
+
+    RULED HERE: refuse a blank on the OCCUPANCY half alone. That is the staff
+    write path -- `PUT /api/lodging/availability` is its only caller -- while
+    every ingest-shaped writer (`_seed_write_ins`'s two copy paths,
+    `execute_push`'s creates, `unpush`'s recreates) goes straight to the
+    repository and never builds one of these requests. So the requirement
+    lands exactly where a human is typing and nowhere else.
+    """
+
+    def test_an_occupancy_write_with_no_occupant_is_refused(self) -> None:
+        with pytest.raises(ValidationError, match="occupant_name"):
+            _availability_request(occupant_name="")
+
+    def test_whitespace_is_not_a_name(self) -> None:
+        """`"   "` addresses nothing. Trimmed, it is the blank above."""
+        with pytest.raises(ValidationError, match="occupant_name"):
+            _availability_request(occupant_name="   ")
+
+    def test_a_release_still_names_nobody(self) -> None:
+        """`family_available: true` is the staff<->family ROLE for the
+        weekend, stored in `lodging_availability`, which has no occupant to
+        name. Requiring one here would refuse every release."""
+        request = _availability_request(family_available=True, occupant_name="")
+        assert request.occupant_name == ""
+
+    def test_a_clear_still_names_nobody(self) -> None:
+        """`family_available: null` DELETES, so it sends neither field."""
+        request = _availability_request(family_available=None, occupant_name="")
+        assert request.occupant_name == ""
+
+    def test_the_ingest_shaped_writers_are_untouched(self, write_service: LodgingWriteService) -> None:
+        """The requirement is on the REQUEST model, not on the column.
+
+        `_seed_write_ins` copies whatever the source row carries and
+        `execute_push`/`unpush` write from a ledger, none of which builds an
+        `AvailabilityWriteRequest`. A blank-named row already in the database
+        therefore still copies, still pushes and still reverts.
+        """
+        assert not hasattr(write_service, "_require_occupant_name")
+
+
+class TestClearingAUnitClearsEveryOccupantOnIt:
+    """kindred#2583 step 7. `family_available: null` stays the
+    CLEAR-THIS-UNIT-ENTIRELY verb.
+
+    With one row that is exactly what it means today, so the boundary does
+    not move. With N it must delete them ALL: deleting an arbitrary one would
+    leave the cabin half-cleared, and coupling the role row's fate to
+    whichever occupancy row the finder happened to return is worse still.
+
+    The same argument covers a RELEASE. `family_available: true` advertises
+    the unit to families; leaving one of two occupants standing under it
+    would publish a cabin as open with somebody in it.
+
+    ⚠️ OQ-8 is an owner-confirmable decision. This is the spec's recommended
+    shape -- verify against staff expectation -- and it stays cheap to revise
+    because the whole feature is dark until step 8.
+    """
+
+    @pytest.mark.asyncio
+    async def test_a_clear_deletes_every_occupancy_row_on_the_unit(self) -> None:
+        repo = _repo(
+            fetch_write_ins_on_unit=[SimpleNamespace(id="wi_chen"), SimpleNamespace(id="wi_johnson")],
+            find_availability_override=SimpleNamespace(id="avail_1"),
+        )
+        service = LodgingWriteService(repo)
+
+        response = await service.set_availability(_availability_request(family_available=None))
+
+        deleted = [call.args[0] for call in repo.delete_write_in.call_args_list]
+        assert sorted(deleted) == ["wi_chen", "wi_johnson"]
+        repo.delete_availability.assert_called_once_with("avail_1")
+        assert response.deleted is True
+
+    @pytest.mark.asyncio
+    async def test_a_clear_inside_a_scenario_clears_that_scenarios_rows_only(self) -> None:
+        repo = _repo(
+            fetch_draft_write_ins_on_unit=[SimpleNamespace(id="wd_chen"), SimpleNamespace(id="wd_johnson")],
+        )
+        service = LodgingWriteService(repo)
+
+        await service.set_availability(_availability_request(family_available=None, scenario="scn_1"))
+
+        deleted = [call.args[0] for call in repo.delete_draft_write_in.call_args_list]
+        assert sorted(deleted) == ["wd_chen", "wd_johnson"]
+        repo.delete_write_in.assert_not_called()
+        repo.fetch_draft_write_ins_on_unit.assert_awaited_once_with(2026, 1000001, "scn_1", "u1")
+
+    @pytest.mark.asyncio
+    async def test_a_release_drops_every_occupant_it_opens_the_unit_over(self) -> None:
+        repo = _repo(fetch_write_ins_on_unit=[SimpleNamespace(id="wi_chen"), SimpleNamespace(id="wi_johnson")])
+        service = LodgingWriteService(repo)
+
+        await service.set_availability(_availability_request(family_available=True, occupant_name=""))
+
+        deleted = [call.args[0] for call in repo.delete_write_in.call_args_list]
+        assert sorted(deleted) == ["wi_chen", "wi_johnson"]
+        repo.create_availability.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_the_clear_never_asks_the_occupant_keyed_finder(self) -> None:
+        """The tell that this is a UNIT-grain verb.
+
+        `find_write_in` answers "is THIS occupant here?"; a clear does not
+        name one. Routing a clear through it is how one of two occupants
+        survives a cleared cabin.
+        """
+        repo = _repo(fetch_write_ins_on_unit=[SimpleNamespace(id="wi_chen")])
+        service = LodgingWriteService(repo)
+
+        await service.set_availability(_availability_request(family_available=None))
+
+        repo.find_write_in.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_clearing_a_unit_that_holds_nothing_is_still_not_an_error(self) -> None:
+        repo = _repo()
+        service = LodgingWriteService(repo)
+
+        response = await service.set_availability(_availability_request(family_available=None))
+
+        assert response.deleted is False
+        assert response.record_id == ""
+        repo.delete_write_in.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_a_delete_race_partway_through_a_clear_is_not_an_error(self) -> None:
+        """Two staff clearing the same cabin. ONLY 404 is swallowed, per
+        `_clear_row`, and one row vanishing must not abandon the rest."""
+        repo = _repo(fetch_write_ins_on_unit=[SimpleNamespace(id="wi_chen"), SimpleNamespace(id="wi_johnson")])
+        repo.delete_write_in = AsyncMock(
+            side_effect=[
+                ClientResponseError("gone", status=404, data={}, url="", is_abort=False, original_error=None),
+                None,
+            ]
+        )
+        service = LodgingWriteService(repo)
+
+        response = await service.set_availability(_availability_request(family_available=None))
+
+        assert [call.args[0] for call in repo.delete_write_in.call_args_list] == ["wi_chen", "wi_johnson"]
+        assert response.deleted is True
+
+    @pytest.mark.asyncio
+    async def test_a_refused_delete_during_a_clear_keeps_its_status(self) -> None:
+        repo = _repo(fetch_write_ins_on_unit=[SimpleNamespace(id="wi_chen")])
+        repo.delete_write_in = AsyncMock(
+            side_effect=ClientResponseError("forbidden", status=403, data={}, url="", is_abort=False, original_error=None)
+        )
+        service = LodgingWriteService(repo)
+
+        with pytest.raises(HTTPException) as exc:
+            await service.set_availability(_availability_request(family_available=None))
+        assert exc.value.status_code == 403
+
+
+class TestRemovingOneOccupantLeavesTheRestAlone:
+    """kindred#2583 step 7's other half: the ROW-ADDRESSED delete.
+
+    `family_available: null` clears the unit. "Take Chen out of Ridge D and
+    leave Johnson where she is" needs a verb that names the row, and under
+    Design B that name is `(unit_id, occupant_name)`.
+
+    Shaped on `DELETE /api/lodging/placements` (kindred#1974): a
+    body-carrying DELETE on the collection, addressed by identity rather than
+    by a resource id the client does not hold.
+
+    ⚠️ OQ-8. The spec marks this "verify against staff expectation before
+    building"; this is the recommended shape and it is cheap to revise while
+    the feature is dark.
+    """
+
+    @pytest.mark.asyncio
+    async def test_the_addressed_row_is_deleted(self) -> None:
+        repo = _repo(find_write_in=SimpleNamespace(id="wi_chen"))
+        service = LodgingWriteService(repo)
+
+        response = await service.remove_write_in(_write_in_delete_request(occupant_name="Olivia Chen"))
+
+        repo.find_write_in.assert_awaited_once_with(2026, 1000001, "u1", "Olivia Chen")
+        repo.delete_write_in.assert_called_once_with("wi_chen")
+        assert response.record_id == "wi_chen"
+        assert response.deleted is True
+
+    @pytest.mark.asyncio
+    async def test_the_role_row_is_left_standing(self) -> None:
+        """Removing an occupant is not releasing the cabin.
+
+        A staff<->family role override is a fact about the WEEKEND; taking
+        one paper family out of a shared cabin says nothing about it. Only
+        `family_available: null` clears both.
+        """
+        repo = _repo(find_write_in=SimpleNamespace(id="wi_chen"), find_availability_override=SimpleNamespace(id="av_1"))
+        service = LodgingWriteService(repo)
+
+        await service.remove_write_in(_write_in_delete_request())
+
+        repo.delete_availability.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_a_co_occupant_is_left_standing(self) -> None:
+        """The occupant-keyed finder is the whole mechanism: it resolves one
+        record id, and only that record is deleted."""
+        repo = _repo(find_write_in=SimpleNamespace(id="wi_chen"))
+        service = LodgingWriteService(repo)
+
+        await service.remove_write_in(_write_in_delete_request(occupant_name="Olivia Chen"))
+
+        assert [call.args[0] for call in repo.delete_write_in.call_args_list] == ["wi_chen"]
+        repo.fetch_write_ins_on_unit.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_a_scenario_removes_from_the_draft_table(self) -> None:
+        repo = _repo(find_draft_write_in=SimpleNamespace(id="wd_chen"))
+        service = LodgingWriteService(repo)
+
+        await service.remove_write_in(_write_in_delete_request(scenario="scn_1"))
+
+        repo.find_draft_write_in.assert_awaited_once_with(2026, 1000001, "scn_1", "u1", "Olivia Chen")
+        repo.delete_draft_write_in.assert_called_once_with("wd_chen")
+        repo.delete_write_in.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_removing_an_occupant_who_is_not_there_is_not_an_error(self) -> None:
+        """Idempotent, the same way `unplace_party` is: the absence of the row
+        IS the state the caller asked for."""
+        repo = _repo()
+        service = LodgingWriteService(repo)
+
+        response = await service.remove_write_in(_write_in_delete_request())
+
+        assert (response.record_id, response.deleted) == ("", False)
+        repo.delete_write_in.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_a_delete_race_is_swallowed_the_same_way_a_clear_is(self) -> None:
+        repo = _repo(find_write_in=SimpleNamespace(id="wi_chen"))
+        repo.delete_write_in = AsyncMock(
+            side_effect=ClientResponseError("gone", status=404, data={}, url="", is_abort=False, original_error=None)
+        )
+        service = LodgingWriteService(repo)
+
+        response = await service.remove_write_in(_write_in_delete_request())
+
+        assert response.deleted is False
+        assert response.record_id == "wi_chen"
+
+    @pytest.mark.asyncio
+    async def test_a_refused_delete_keeps_its_status(self) -> None:
+        repo = _repo(find_write_in=SimpleNamespace(id="wi_chen"))
+        repo.delete_write_in = AsyncMock(
+            side_effect=ClientResponseError("forbidden", status=403, data={}, url="", is_abort=False, original_error=None)
+        )
+        service = LodgingWriteService(repo)
+
+        with pytest.raises(HTTPException) as exc:
+            await service.remove_write_in(_write_in_delete_request())
+        assert exc.value.status_code == 403
+
+    def test_the_request_refuses_a_blank_occupant(self) -> None:
+        """A blank name addresses nothing, so this verb cannot be spelled
+        without one. `family_available: null` is the verb that names no
+        occupant."""
+        with pytest.raises(ValidationError):
+            _write_in_delete_request(occupant_name="")
+
+    def test_the_request_refuses_a_whitespace_occupant(self) -> None:
+        with pytest.raises(ValidationError):
+            _write_in_delete_request(occupant_name="  ")
+
+    def test_a_blank_scenario_is_the_live_board(self) -> None:
+        """Same steering as every other write on this surface: blank is a
+        scope in its own right, not a missing value."""
+        assert _write_in_delete_request().scenario == ""
+
+
 def _wi(unit: str, occ: str, note: str = "", ppl: int | None = None, id: str = "wi_x") -> SimpleNamespace:
     return SimpleNamespace(
         id=id, unit=unit, occupant_name=occ, note=note, party_size=ppl, session_cm_id=1309001, year=2026
@@ -2812,25 +3231,27 @@ class TestUnpush:
         repo.create_write_in.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_a_foreign_occupant_on_the_removed_units_target_refuses_wholesale(self) -> None:
-        """kindred#2555 scan fix-round (M). The old guard only checked whether
-        the ORIGINAL removed tuple was back -- if staff wrote a DIFFERENT
-        write-in into that unit after the push, the guard saw no drift, phase
-        1 deleted the push's adds, and phase 2's `create_write_in` collided
-        with the foreign occupant on `idx_lodging_write_in_unique` (unit,
-        session_cm_id, year): a bare mid-revert 500 with `unpushed_at` never
-        stamped -- exactly what the refuse-wholesale guard exists to prevent.
-        A `remove` change's target unit must hold NOTHING, or only a row this
-        push's own `add` changes account for (phase 1 deletes those) --
-        anything else drifts the building.
+    async def test_a_row_that_would_collide_with_the_recreate_refuses_wholesale(self) -> None:
+        """kindred#2555 scan fix-round (M), NARROWED by OQ-3 (2026-08-29).
+
+        The original guard only checked whether the ORIGINAL removed tuple
+        was back. If staff wrote a different-tuple row into that unit after
+        the push, the guard saw no drift, phase 1 deleted the push's adds,
+        and phase 2's `create_write_in` collided on
+        `idx_lodging_write_in_unique`: a bare mid-revert 500 with
+        `unpushed_at` never stamped.
+
+        What COLLIDES is now the narrowed index's key. A live row sharing
+        `(unit, occupant_name)` with the row phase 2 recreates -- here the
+        removed occupant written back by hand with a different count -- still
+        refuses the whole push, because the recreate would still be rejected.
         """
         repo = _repo(
             find_push_event=_ledger([CH_REM]),
             fetch_units=[_u("uc2", "fern-1")],
-            # a DIFFERENT write-in was recorded on fern-1 after the push --
-            # not the original removed occupant, and not one of this push's
-            # own adds:
-            fetch_write_ins=[_wi("uc2", "Foreign Party", ppl=3, id="wi_foreign")],
+            # the removed occupant, written back onto fern-1 by hand with a
+            # different party size -- a different TUPLE, the same index KEY:
+            fetch_write_ins=[_wi("uc2", "E. Sandoval", ppl=3, id="wi_back")],
         )
         svc = LodgingWriteService(repo)
         with pytest.raises(UnpushDriftError) as exc:
@@ -2894,14 +3315,20 @@ class TestPushAndUnpushCarryNRowsPerUnit:
     apply then either 404s mid-revert on a record id it has already deleted
     or recreates a row on top of an occupant nobody checked for.
 
-    ⚠️ OQ-3 IS LEFT OPEN ON PURPOSE. "Any occupant on a recreate-target unit
-    that this push will not itself clear is drift, and drift refuses the
-    WHOLE push" is the owner's own ruling (2026-08-22). With shareable cabins
-    an unrelated co-occupant may be perfectly legitimate, and narrowing the
-    guard to the tuple is a product decision nobody has made. So these change
-    the guards from "the ONE occupant" to "EVERY occupant" -- identical while
-    a unit can hold one, and conservative rather than permissive if it ever
-    holds two.
+    ★ OQ-3 IS ANSWERED (2026-08-29): DRIFT KEYS ON THE TUPLE, NOT THE UNIT --
+    for `unpush`'s recreate guard. "Any occupant on a recreate-target unit
+    that this push will not itself clear is drift" was written when a recreate
+    into an occupied unit was schema-impossible; under the narrowed index a
+    recreate beside a DIFFERENT occupant succeeds, so the unit-grain reading
+    refused a case that would have worked. The refuse-wholesale ruling
+    (owner, 2026-08-22) is untouched: it says what to do WHEN there is drift,
+    not what counts as drift.
+
+    `execute_push`'s add-side check is DELIBERATELY NOT narrowed with it, and
+    that asymmetry is stated rather than accidental -- see its own comment.
+    It asks a different question (should a row that appeared mid-flight stop
+    a push at all), no ruling covers that one, and it is dark either way
+    until step 8.
 
     Fictional occupant names throughout.
     """
@@ -3011,18 +3438,18 @@ class TestPushAndUnpushCarryNRowsPerUnit:
         assert sorted(deleted) == ["wi_a", "wi_b"]
 
     @pytest.mark.asyncio
-    async def test_a_co_occupant_beside_an_accounted_row_still_drifts_an_unpush(self) -> None:
-        """`by_unit` maps a unit to ONE live tuple, and the `remove` drift
-        check asks whether THAT tuple is one this push's own adds account for.
+    async def test_a_colliding_row_beside_an_accounted_one_still_drifts_an_unpush(self) -> None:
+        """Ordering must not decide whether the guard fires.
 
-        The recreate-target unit here holds two rows: one this push added (so
-        phase 1 will clear it) and one foreign. The fixture puts the ACCOUNTED
-        row last, which is what the collapsing dict keeps -- so the guard sees
-        nothing to worry about, phase 1 deletes the add, and phase 2's
-        recreate lands on top of the foreign occupant.
+        The recreate-target unit holds two rows: one this push added (so
+        phase 1 will clear it) and one that shares the RECREATED row's
+        `(unit, occupant_name)` key. A dict keyed on the unit alone keeps
+        whichever the fetch returned last -- the fixture puts the ACCOUNTED
+        row last, the arrangement that used to pass the check and then
+        collide on the create.
 
-        Ordering deciding whether a guard fires is the tell. Every occupant
-        on the unit has to be accounted for.
+        Every row on the key has to be accounted for, not the one the dict
+        happened to keep.
         """
         add_on_the_remove_target = {
             "action": "add",
@@ -3036,7 +3463,7 @@ class TestPushAndUnpushCarryNRowsPerUnit:
             find_push_event=_ledger([add_on_the_remove_target, CH_REM]),
             fetch_units=[_u("uc2", "fern-1")],
             fetch_write_ins=[
-                _wi("uc2", "Foreign Party", ppl=3, id="wi_foreign"),
+                _wi("uc2", "E. Sandoval", ppl=3, id="wi_collides"),
                 _wi("uc2", "H. Osei", ppl=2, id="wi_added"),
             ],
         )
@@ -3048,6 +3475,44 @@ class TestPushAndUnpushCarryNRowsPerUnit:
         repo.delete_write_in.assert_not_called()
         repo.create_write_in.assert_not_called()
         repo.update_push_event.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_an_unrelated_co_occupant_on_a_recreate_target_no_longer_drifts(self) -> None:
+        """★ OQ-3, ANSWERED 2026-08-29: DRIFT KEYS ON THE TUPLE, NOT THE UNIT.
+
+        The guard existed for a mechanical reason: under the one-row-per-unit
+        index, a recreate into an occupied unit was rejected mid-apply and
+        left a half-reverted push. Under the narrowed
+        `(session_cm_id, year, unit, occupant_name)` index a recreate beside a
+        DIFFERENT occupant no longer collides, so the old test refused a case
+        that would in fact have succeeded.
+
+        THE 2026-08-22 REFUSE-WHOLESALE RULING IS UNTOUCHED. It governs what
+        happens WHEN there is drift -- nothing is reverted and the buildings
+        are named -- not what counts as drift. What narrows is the definition,
+        and it narrows onto exactly the collision the guard was protecting.
+
+        Here fern-1 holds an unrelated paper family recorded since the push.
+        Recreating E. Sandoval beside her is legal on a shareable cabin, and
+        it is the feature: two write-ins in one unit.
+        """
+        repo = _repo(
+            find_push_event=_ledger([CH_REM]),
+            fetch_units=[_u("uc2", "fern-1")],
+            fetch_write_ins=[_wi("uc2", "Olivia Chen", ppl=3, id="wi_neighbour")],
+        )
+        svc = LodgingWriteService(repo)
+
+        out = await svc.unpush("push_1", 2026, 1309001)
+
+        assert (out.deleted, out.restored) == (0, 1)
+        repo.delete_write_in.assert_not_called()
+        recreated = repo.create_write_in.call_args.args[0]
+        assert recreated["occupant_name"] == "E. Sandoval"
+        # The neighbour is still there: nothing about a revert removes a row
+        # this push never touched.
+        assert "wi_neighbour" not in [call.args[0] for call in repo.delete_write_in.call_args_list]
+        repo.update_push_event.assert_called_once()
 
 
 class _StatefulWriteInRepo:
