@@ -370,7 +370,7 @@ export const CURRENT_YEAR_SYNC_TYPES = YEAR_SYNC_TYPES
 // every entry has. `id` is required so TypeScript's weak-type check still applies: a bare
 // `{ manualTrigger?: ... }` parameter shares no property with the entries that omit the flag,
 // and TS rejects the call rather than reading it as `undefined`.
-type SyncTypeFlags = {
+interface SyncTypeFlags {
   readonly id: string
   readonly manualTrigger?: boolean
   readonly currentYearOnly?: boolean

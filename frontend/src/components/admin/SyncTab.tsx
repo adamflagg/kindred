@@ -346,7 +346,7 @@ export function SyncTab() {
 
         {/* Run button - special handling for process_requests, and none at all for jobs
             the backend never exposes an individual POST route for (kindred#2593) */}
-        {'manualTrigger' in syncType && syncType.manualTrigger === false ? (
+        {!hasManualTrigger(syncType) ? (
           <div
             className="text-muted-foreground/70 bg-muted/30 mt-3 flex w-full items-center justify-center rounded-lg py-2 text-xs sm:text-sm"
             title="No individual run endpoint — this job runs as part of the daily sync"
