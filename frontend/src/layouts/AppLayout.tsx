@@ -4,7 +4,7 @@ import { useTheme } from '../hooks/useTheme'
 import { useAuth } from '../contexts/AuthContext'
 import { useApiWithAuth } from '../hooks/useApiWithAuth'
 import { syncService } from '../services/sync'
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   RefreshCw,
   Loader2,
@@ -30,6 +30,10 @@ import { usePermissions } from '../hooks/usePermissions'
 import { Permission } from '../constants/permissions'
 import { useSyncStatusAPI } from '../hooks/useSyncStatusAPI'
 import { useWeekendShellSession } from '../hooks/useWeekendShellSession'
+import { useSyncSequenceRun, BUNKING_REFRESH_CHAIN } from '../hooks/useSyncSequenceRun'
+import { RefreshHousingButton } from '../components/weekend/RefreshHousingButton'
+import { invalidateBunkingQueries } from '../utils/queryInvalidation'
+import { queryKeys } from '../utils/queryKeys'
 import { format, formatDistanceToNow } from 'date-fns'
 import { useProgram } from '../contexts/ProgramContext'
 import { getProgramFromPath, getProgramHomeUrl } from '../utils/programUrls'
@@ -163,7 +167,7 @@ export const AppLayout = () => {
   // Which weekend the shell is on, and whether it is an ADULT one — the shell
   // is the parent route, so `useParams` gives it nothing and this reads the
   // pathname. Costs no request: `WeekendRosterPage` already holds this query.
-  const { isAdultWeekend } = useWeekendShellSession()
+  const { session: weekendSession, isAdultWeekend } = useWeekendShellSession()
 
   // Determine current program from URL if not set
   const urlProgram = getProgramFromPath(location.pathname)
@@ -224,10 +228,45 @@ export const AppLayout = () => {
     void navigate(getProgramHomeUrl(program))
   }
 
+  /**
+   * kindred#2587 — the summer half of the same completion-detection primitive
+   * `Refresh Housing` uses.
+   *
+   * ⛔ THERE IS DELIBERATELY NO `onSuccess` ON THE MUTATION BELOW.
+   * `POST /refresh-bunking` answers `200 {"status":"started"}` immediately and
+   * `RunSyncSequence` then runs bunks -> bunk_plans -> bunk_assignments ->
+   * stranded_assignment_cleanup in a goroutine for ~4.7 s. An invalidation
+   * hung off the mutation resolving would fire within milliseconds, refetch the
+   * OLD rows and re-mark them fresh for another thirty minutes — worse than the
+   * bug it was meant to fix. The invalidation therefore hangs off the CUTOVER,
+   * which only the job statuses can report.
+   */
+  const queryClient = useQueryClient()
+  const bunkingRun = useSyncSequenceRun({
+    chain: BUNKING_REFRESH_CHAIN,
+    enabled: canSeeSync,
+    onComplete: (outcome) => {
+      if (outcome === 'failed') {
+        // The press already promised "Refreshing bunks & assignments for ...".
+        // Returning in silence leaves that promise standing over pre-refresh
+        // rows. Nothing landed, so there is nothing to invalidate — but there
+        // is something to say. `RefreshHousingButton` says the same thing in
+        // the same case, and weekend models summer rather than the reverse.
+        toast.error('Refreshing cabin assignments failed. The board still shows the previous data.')
+        return
+      }
+      invalidateBunkingQueries(queryClient)
+      void queryClient.invalidateQueries({ queryKey: queryKeys.syncStatus() })
+    },
+  })
+
   // Refresh bunking mutation
   const refreshBunkingMutation = useMutation({
     mutationFn: () => syncService.refreshBunking(fetchWithAuth),
     onError: (error: Error) => {
+      // Nothing started, so the detector must not sit armed waiting for a
+      // cutover that will never come.
+      bunkingRun.abandon()
       toast.error(`Failed to refresh cabin assignments: ${error.message}`)
     },
   })
@@ -538,7 +577,10 @@ export const AppLayout = () => {
                 the small divergence worth having.
               */}
               {activeProgram === 'weekend' && canSeeSync && syncStatus && (
-                <WeekendFreshness syncStatus={syncStatus} isAdultWeekend={isAdultWeekend} />
+                <WeekendFreshness
+                  syncStatus={syncStatus}
+                  isAdultWeekend={isAdultWeekend || !weekendSession}
+                />
               )}
               {/*
                 SUMMER'S PAIR. `Assignments synced` reads `bunk_assignments`
@@ -635,13 +677,19 @@ export const AppLayout = () => {
                         icon: '🔄',
                         duration: 2000,
                       })
+                      bunkingRun.start()
                       refreshBunkingMutation.mutate()
                     }}
-                    disabled={refreshBunkingMutation.isPending}
+                    // `POST /refresh-bunking` answers in milliseconds while the
+                    // chain runs for ~4.7 s, so `isPending` drops long before
+                    // there is anything to come back to. Gating on it alone
+                    // re-arms the button mid-run and a second press starts a
+                    // second chain over the same three tables.
+                    disabled={refreshBunkingMutation.isPending || bunkingRun.isRunning}
                     className="btn-primary nav-btn-icon-only px-4 py-2"
                     title="Refresh bunks, plans & assignments from CampMinder"
                   >
-                    {refreshBunkingMutation.isPending ? (
+                    {refreshBunkingMutation.isPending || bunkingRun.isRunning ? (
                       <Loader2 className="h-4 w-4 flex-shrink-0 animate-spin" />
                     ) : (
                       <RefreshCw className="h-4 w-4 flex-shrink-0" />
@@ -668,6 +716,25 @@ export const AppLayout = () => {
                 <>
                   <CsvPipelineIndicator />
                   <BunkRequestsUpload label="Upload Bunk Notes" />
+                  {/*
+                    REFRESH HOUSING — kindred#2478 §4. Upload first, refresh
+                    second, mirroring summer's row above; each freshness line
+                    above is reset by the action beneath it.
+
+                    HIDDEN ON ADULT WEEKENDS, on the same condition as the
+                    `Housing synced` line (§5.1): `GetFamilyCampSessionCMIDs`
+                    filters `session_type = 'family'` exactly, so the chain
+                    skips both expensive jobs and would spend 13½ minutes
+                    refreshing nothing.
+                  */}
+                  {/*
+                    `useWeekendShellSession` returns `isAdultWeekend: false`
+                    while `session` is undefined, so `!isAdultWeekend` alone
+                    renders the button through the whole loading window — on an
+                    adult weekend too, where it must never appear. Wait for the
+                    session to resolve before deciding.
+                  */}
+                  {weekendSession && !isAdultWeekend && <RefreshHousingButton />}
                 </>
               )}
               {/* Export button removed from metrics nav - export functionality will move inside metrics page if needed */}

@@ -42,9 +42,35 @@ export const queryKeys = {
   bunksForSession: (sessionId: string, agSessions: string[]) =>
     ['bunks', sessionId, agSessions.sort()] as const,
 
+  // Invalidation prefixes for the two roots the summer board reads through.
+  // `useSessionBunks` / `useSessionCampers` (hooks/session/useSessionData.ts)
+  // build their keys INLINE rather than from the factories above, with a
+  // different arity again — so a writer that knows only "the bunking data
+  // moved" has to invalidate by root or it matches nothing that is cached.
+  // See `invalidateBunkingQueries` (utils/queryInvalidation.ts).
+  bunksPrefix: () => ['bunks'] as const,
+  campersPrefix: () => ['campers'] as const,
+  // `useBunkNames` (hooks/useBunkNames.ts) — the social graph's bunk picker and
+  // its label fallback. Inline key again, and it reads `bunk_plans` and `bunks`.
+  bunkNamesPrefix: () => ['bunk-names'] as const,
+  // Three more inline `bunk_plans` readers, none of which the two roots above
+  // reach: a prefix matches from the FIRST element, so `['bunks']` does not
+  // match `['session-bunks', …]`. All three sit behind the app default 30
+  // minute staleTime like everything else on this list.
+  //   `AllCampersView`      — the camper table's bunk filter
+  //   `BunkSocialGraphModal`— the graph's own bunk navigation
+  //   `useSessionHierarchy` — gates which child sessions are offered at all
+  allBunksWithPlansPrefix: () => ['all-bunks-with-plans'] as const,
+  sessionBunksPrefix: () => ['session-bunks'] as const,
+  sessionBunkPlanCountsPrefix: () => ['session-bunk-plan-counts'] as const,
+
   // Enrollment (Tier 1 - sync data)
   enrolledCampers: (personCmId: number, year: number) =>
     ['enrolled-campers', personCmId, year] as const,
+  // The invalidation prefix: the camper details panel reads the CURRENT year's
+  // `bunk_assignments` through this, and a sync-completion handler knows no
+  // person. See `invalidateBunkingQueries`.
+  enrolledCampersPrefix: () => ['enrolled-campers'] as const,
   // Enrolled attendee cm_ids for a whole session — used to exclude staff from
   // scenario-comparison counts (staff hold assignments but no attendee row, #1791).
   enrolledAttendeeCmIds: (sessionCmId: number, year: number) =>
@@ -290,6 +316,9 @@ export const queryKeys = {
     year: number,
     personCmIds: number[]
   ) => ['cohort-bunk-assignments', scenarioId, sessionCmId, year, personCmIds.toSorted()] as const,
+  // The invalidation prefix: the real key carries a scenario, a session, a year
+  // AND the exact cohort, none of which a sync-completion handler knows.
+  cohortBunkAssignmentsPrefix: () => ['cohort-bunk-assignments'] as const,
 
   // Camper Request Summary (Tier 2 - user data, used in expanded row)
   camperRequestSummary: (requesterCmId: number, year: number) =>
@@ -327,9 +356,16 @@ export const queryKeys = {
   // AG session linked to a main session (resolved via parent_id + bunk_plans).
   linkedAgSession: (mainSessionCmId: number, year: number) =>
     ['linked-ag-session', mainSessionCmId, year] as const,
+  // The invalidation prefix. This query answers "does the linked AG session have
+  // bunk_plans yet", so a bunking refresh that CREATES them is exactly what has
+  // to make the AG tab appear — see `invalidateBunkingQueries`.
+  linkedAgSessionPrefix: () => ['linked-ag-session'] as const,
 
   // Staff (Tier 1 - sync data)
   bunkStaff: (year: number) => ['bunk-staff', year] as const,
+  // Prefix for invalidation: the bunk names this maps staff onto come out of
+  // the `bunks` table, which a bunking refresh rewrites.
+  bunkStaffPrefix: () => ['bunk-staff'] as const,
 
   // Geo Management (Tier 2 - user data)
   geoGapsPrefix: (category: string, year: number) => ['geo', 'gaps', category, year] as const,

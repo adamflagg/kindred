@@ -1,7 +1,7 @@
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { MemoryRouter } from 'react-router'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query'
 import type { SyncStatusResponse } from '../hooks/useSyncStatusAPI'
 
 // Mock all heavy dependencies before importing AppLayout
@@ -110,7 +110,18 @@ vi.mock('../components/FeedbackModal', () => ({
     isOpen ? <div data-testid="feedback-modal">Feedback Modal</div> : null,
 }))
 
+const toastError = vi.fn()
+const toastSuccess = vi.fn()
+const toastPlain = vi.fn()
+vi.mock('react-hot-toast', () => ({
+  default: Object.assign((...a: unknown[]) => toastPlain(...a), {
+    success: (...a: unknown[]) => toastSuccess(...a),
+    error: (...a: unknown[]) => toastError(...a),
+  }),
+}))
+
 import { AppLayout } from './AppLayout'
+import { syncService } from '../services/sync'
 
 function renderAppLayout(route = '/') {
   const queryClient = new QueryClient()
@@ -214,11 +225,27 @@ describe('AppLayout sync-status polling', () => {
     syncStatusSpy.mockImplementation(() => ({ data: null }))
   })
 
-  it('passes enabled: false when user lacks bunking.manage', () => {
+  /**
+   * The shell is no longer the only consumer of this query: `useSyncSequenceRun`
+   * subscribes to the same cache entry for the two refresh chains
+   * (kindred#2478 §4, kindred#2587), and `RefreshHousingButton` reads it for the
+   * modal's last-refreshed line. So the assertion is over EVERY call rather than
+   * the last one — the spec being pinned is that NO consumer in the shell reads
+   * the protected endpoint without `bunking.manage`, which is stronger than what
+   * a single-call assertion said.
+   */
+  function resolvedEnabledFlags(): boolean[] {
+    return syncStatusSpy.mock.calls.map(
+      (call) => (call[0] as { enabled?: boolean } | undefined)?.enabled ?? true
+    )
+  }
+
+  it('passes enabled: false to every consumer when user lacks bunking.manage', () => {
     mockPerms = { hasPermission: () => false, isAdmin: false }
     renderAppLayout()
-    const lastCall = syncStatusSpy.mock.calls.at(-1)
-    expect(lastCall?.[0]).toEqual({ enabled: false })
+    const flags = resolvedEnabledFlags()
+    expect(flags.length).toBeGreaterThan(0)
+    expect(flags.every((enabled) => enabled === false)).toBe(true)
   })
 
   it('passes enabled: true when user has bunking.manage', () => {
@@ -227,8 +254,9 @@ describe('AppLayout sync-status polling', () => {
       isAdmin: false,
     }
     renderAppLayout()
-    const lastCall = syncStatusSpy.mock.calls.at(-1)
-    expect(lastCall?.[0]).toEqual({ enabled: true })
+    const flags = resolvedEnabledFlags()
+    expect(flags.length).toBeGreaterThan(0)
+    expect(flags.every((enabled) => enabled === true)).toBe(true)
   })
 })
 
@@ -485,8 +513,30 @@ describe('AppLayout weekend freshness stack', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockPerms = { hasPermission: (p: string) => p === 'bunking.manage', isAdmin: false }
-    mockWeekendShell = { session: undefined, isAdultWeekend: false }
+    // A RESOLVED family weekend. `session: undefined` with `isAdultWeekend:
+    // false` is the LOADING state, not a family one — the hook computes
+    // `session?.session_type === 'adult'`, so an unresolved session and a
+    // family session are indistinguishable on that flag alone. These tests
+    // mean "a family weekend, loaded", which is this.
+    mockWeekendShell = { session: { session_type: 'family' }, isAdultWeekend: false }
     mockWeekendSyncStatus()
+  })
+
+  /**
+   * The loading window is an ADULT weekend's window too. `isAdultWeekend` is
+   * `false` until `session` resolves, so gating on it alone renders both
+   * housing controls for every weekend for as long as the session takes to
+   * load — including the adult weekends §5.1 says must never see them.
+   */
+  it('renders neither housing control until the session resolves', () => {
+    mockWeekendShell = { session: undefined, isAdultWeekend: false }
+    renderAppLayout('/weekend/fc4')
+    expect(screen.queryByText(/Housing synced/i)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Refresh Housing/i })).not.toBeInTheDocument()
+    // The program-agnostic CSV lane is unaffected — it does not depend on the
+    // session's type at all, so this proves the gate is targeted rather than
+    // hiding the whole weekend action group during loading.
+    expect(screen.getByTestId('bunk-requests-upload')).toBeInTheDocument()
   })
 
   it('renders "Housing synced ..." off lodging_assignments', () => {
@@ -606,6 +656,270 @@ describe('AppLayout adult weekend', () => {
     renderAppLayout('/weekend/ww')
     expect(screen.getByTestId('bunk-requests-upload').getAttribute('data-label')).toBe(
       'Upload Bunk Notes'
+    )
+  })
+})
+
+/**
+ * kindred#2478 §4 — `Refresh Housing` in the weekend action row.
+ *
+ * Placement mirrors summer four for four: the upload action, then the refresh
+ * action. Hidden on adult weekends for the same reason the `Housing synced`
+ * line is (§5.1), and hidden without `bunking.manage` like everything else in
+ * the row.
+ */
+describe('AppLayout Refresh Housing', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockPerms = { hasPermission: (p: string) => p === 'bunking.manage', isAdmin: false }
+    mockWeekendShell = { session: { session_type: 'family' }, isAdultWeekend: false }
+    syncStatusSpy.mockImplementation(() => ({
+      data: {
+        lodging_assignments: { status: 'success', end_time: '2026-04-22T12:00:00.000Z' },
+      } as SyncStatusResponse,
+    }))
+  })
+
+  it('renders on a family weekend, after the upload action', () => {
+    renderAppLayout('/weekend/fc4')
+    const upload = screen.getByTestId('bunk-requests-upload')
+    const refresh = screen.getByRole('button', { name: /Refresh Housing/i })
+    // Node.DOCUMENT_POSITION_FOLLOWING === 4
+    expect(upload.compareDocumentPosition(refresh) & 4).toBeTruthy()
+  })
+
+  it('is hidden on an adult weekend — the chain would refresh nothing (§5.1)', () => {
+    mockWeekendShell = { session: { session_type: 'adult' }, isAdultWeekend: true }
+    renderAppLayout('/weekend/ww')
+    expect(screen.queryByRole('button', { name: /Refresh Housing/i })).not.toBeInTheDocument()
+    // The CSV lane is program-agnostic and stays.
+    expect(screen.getByTestId('bunk-requests-upload')).toBeInTheDocument()
+  })
+
+  it('is hidden without bunking.manage', () => {
+    mockPerms = { hasPermission: () => false, isAdmin: false }
+    renderAppLayout('/weekend/fc4')
+    expect(screen.queryByRole('button', { name: /Refresh Housing/i })).not.toBeInTheDocument()
+  })
+
+  it('does not appear on the summer surface', () => {
+    renderAppLayout('/summer/sessions')
+    expect(screen.queryByRole('button', { name: /Refresh Housing/i })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Refresh Bunking/i })).toBeInTheDocument()
+  })
+})
+
+/**
+ * kindred#2587 — `Refresh Bunking` used to leave the summer board stale for up
+ * to thirty minutes: `refreshBunkingMutation` had `onError` and nothing else,
+ * and `hooks/session/useSessionData.ts` inherits the app default 30 minute
+ * `staleTime`.
+ *
+ * ⛔ The obvious fix is harmful and the issue says so: `POST /refresh-bunking`
+ * returns `200 {"status":"started"}` immediately while `RunSyncSequence` runs
+ * in a goroutine for ~4.7 s, so an `onSuccess` invalidation would refetch the
+ * OLD rows and re-mark them fresh for another thirty minutes. The invalidation
+ * must hang off COMPLETION DETECTION, which is what these two tests separate.
+ */
+describe('AppLayout Refresh Bunking staleness (kindred#2587)', () => {
+  const CLEANUP_BASELINE = '2026-04-22T09:00:05.000Z'
+  /** Approved fictional CampMinder id — see tests/CLAUDE.md. */
+  const SESSION_CM_ID = 1000001
+  let bunksFromServer = 'Bunk 4'
+
+  function bunkingStatus(overrides: Record<string, unknown> = {}): SyncStatusResponse {
+    return {
+      bunks: { status: 'success', end_time: '2026-04-22T09:00:01.000Z' },
+      bunk_plans: { status: 'success', end_time: '2026-04-22T09:00:02.000Z' },
+      bunk_assignments: { status: 'success', end_time: '2026-04-22T09:00:03.000Z' },
+      stranded_assignment_cleanup: { status: 'success', end_time: CLEANUP_BASELINE },
+      ...overrides,
+    } as unknown as SyncStatusResponse
+  }
+
+  /**
+   * What the bunking board renders, on the real inline key from useSessionBunks.
+   *
+   * `bunksFetches` counts the QUERY FUNCTION, not the render. Asserting on the
+   * rendered text cannot detect a wrongful invalidation: React Query keeps
+   * serving the cached value until the refetch it triggers settles, so the
+   * board still reads `Bunk 4` for the whole of an in-flight refetch. The fetch
+   * count moves the instant the invalidation happens.
+   */
+  const bunksFetches = vi.fn()
+  function BunksProbe() {
+    const { data } = useQuery({
+      queryKey: ['bunks', '1000001', SESSION_CM_ID, []],
+      queryFn: () => {
+        bunksFetches()
+        return Promise.resolve(bunksFromServer)
+      },
+    })
+    return <div data-testid="board-bunks">{data ?? 'loading'}</div>
+  }
+
+  function renderSummerShell() {
+    // The app's REAL cache policy — this bug only exists because of it.
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: {
+          staleTime: 30 * 60 * 1000,
+          gcTime: 60 * 60 * 1000,
+          refetchOnWindowFocus: false,
+          retry: false,
+        },
+      },
+    })
+    // A FRESH element every time. Re-rendering the same element reference lets
+    // React bail out of reconciliation, so the component never re-reads the
+    // mocked status and a state the test set up is silently never observed.
+    const build = () => (
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={['/summer/sessions']}>
+          <BunksProbe />
+          <AppLayout />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+    const utils = render(build())
+    return { ...utils, replay: () => utils.rerender(build()) }
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockPerms = { hasPermission: (p: string) => p === 'bunking.manage', isAdmin: false }
+    mockWeekendShell = { session: undefined, isAdultWeekend: false }
+    bunksFromServer = 'Bunk 4'
+    syncStatusSpy.mockImplementation(() => ({ data: bunkingStatus() }))
+  })
+
+  it('does NOT invalidate when the endpoint merely answers "started"', async () => {
+    const { replay } = renderSummerShell()
+    await screen.findByText('Bunk 4')
+    expect(bunksFetches).toHaveBeenCalledTimes(1)
+
+    fireEvent.click(screen.getByRole('button', { name: /Refresh Bunking/i }))
+    // The chain is still running; the server has not written anything yet.
+    bunksFromServer = 'Bunk 7'
+    syncStatusSpy.mockImplementation(() => ({
+      data: bunkingStatus({ bunks: { status: 'running', start_time: '2026-04-22T10:00:01.000Z' } }),
+    }))
+    replay()
+
+    // Refetching HERE would re-mark the old rows fresh for another 30 minutes.
+    // A SECOND queryFn call is the failure, whether or not the render caught up.
+    await new Promise((r) => setTimeout(r, 100))
+    expect(bunksFetches).toHaveBeenCalledTimes(1)
+    expect(screen.getByTestId('board-bunks').textContent).toBe('Bunk 4')
+  })
+
+  it('lands the refreshed bunks on the board at the cutover', async () => {
+    const { replay } = renderSummerShell()
+    await screen.findByText('Bunk 4')
+
+    fireEvent.click(screen.getByRole('button', { name: /Refresh Bunking/i }))
+    bunksFromServer = 'Bunk 7'
+    syncStatusSpy.mockImplementation(() => ({
+      data: bunkingStatus({
+        stranded_assignment_cleanup: { status: 'success', end_time: '2026-04-22T10:00:06.000Z' },
+      }),
+    }))
+    replay()
+
+    // WITHOUT the invalidation this stays "Bunk 4" for thirty minutes.
+    await waitFor(() => expect(screen.getByTestId('board-bunks').textContent).toBe('Bunk 7'))
+  })
+
+  /**
+   * The press emits "Refreshing bunks & assignments for ...". If the chain then
+   * aborts, the handler used to `return` in silence: the board kept its
+   * pre-refresh rows and nothing said why. `RefreshHousingButton` toasts the
+   * error in exactly this case, and weekend models summer rather than the
+   * reverse — so the silence was summer's gap, not weekend's addition.
+   */
+  it('says so when the chain fails, instead of leaving the board silently stale', async () => {
+    const { replay } = renderSummerShell()
+    await screen.findByText('Bunk 4')
+
+    fireEvent.click(screen.getByRole('button', { name: /Refresh Bunking/i }))
+    // The first job must actually be OBSERVED running, because a failed
+    // outcome is reported off the furthest job seen — a chain that goes
+    // straight from armed to failed reports nothing at all. Flush before
+    // moving it on, or the running poll is never rendered.
+    syncStatusSpy.mockImplementation(() => ({
+      data: bunkingStatus({ bunks: { status: 'running', start_time: '2026-04-22T10:00:01.000Z' } }),
+    }))
+    replay()
+    await act(async () => {})
+
+    bunksFromServer = 'Bunk 7'
+    syncStatusSpy.mockImplementation(() => ({
+      data: bunkingStatus({
+        bunks: { status: 'failed', end_time: '2026-04-22T10:00:02.000Z', error: 'CampMinder 502' },
+      }),
+    }))
+    replay()
+
+    await waitFor(() => expect(toastError).toHaveBeenCalledTimes(1))
+    // Nothing landed, so the board must NOT be swept — a failed chain that
+    // refetched would re-mark the old rows fresh for another thirty minutes.
+    expect(bunksFetches).toHaveBeenCalledTimes(1)
+    expect(screen.getByTestId('board-bunks').textContent).toBe('Bunk 4')
+  })
+
+  /**
+   * `POST /refresh-bunking` answers `{"status":"started"}` in milliseconds while
+   * the chain runs for ~4.7 s, so `isPending` goes false long before the chain
+   * is done. Gating the button on the mutation alone re-arms it mid-run and a
+   * second press starts a second chain against the same tables.
+   */
+  it('stays disabled after the endpoint answers, until the chain actually finishes', async () => {
+    // The POST is held open so the test, not a race, decides when `isPending`
+    // drops. `waitFor` alone cannot pin this: it resolves on its first check,
+    // which lands while the mutation is still pending and the button is
+    // therefore disabled for the WRONG reason.
+    let answerPost: () => void = () => {}
+    vi.mocked(syncService.refreshBunking).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          answerPost = () => resolve({ status: 'started' })
+        })
+    )
+
+    const { replay } = renderSummerShell()
+    await screen.findByText('Bunk 4')
+
+    fireEvent.click(screen.getByRole('button', { name: /Refresh Bunking/i }))
+    syncStatusSpy.mockImplementation(() => ({
+      data: bunkingStatus({ bunks: { status: 'running', start_time: '2026-04-22T10:00:01.000Z' } }),
+    }))
+    replay()
+
+    // React Query calls `mutationFn` on a later tick, so `answerPost` is still
+    // the no-op default immediately after the click. Resolving it before the
+    // real promise exists leaves the POST open forever and the button disabled
+    // for the wrong reason — which is exactly what this test must not do.
+    await waitFor(() => expect(vi.mocked(syncService.refreshBunking)).toHaveBeenCalled())
+
+    // From here `isPending` is false for the rest of the test, so anything that
+    // keeps the button disabled is the CHAIN, which is the whole point.
+    await act(async () => {
+      answerPost()
+    })
+    replay()
+
+    expect(screen.getByRole('button', { name: /Refresh Bunking/i })).toBeDisabled()
+
+    // ... and released once the terminal job moves.
+    syncStatusSpy.mockImplementation(() => ({
+      data: bunkingStatus({
+        stranded_assignment_cleanup: { status: 'success', end_time: '2026-04-22T10:00:06.000Z' },
+      }),
+    }))
+    replay()
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /Refresh Bunking/i })).not.toBeDisabled()
     )
   })
 })
