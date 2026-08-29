@@ -85,55 +85,63 @@ type JobMeta struct {
 	ID          string
 	Phase       Phase
 	Description string
+	// Base names the unscoped job a scoped variant narrows; "" for a base job. Two rows
+	// sharing a Base write the same PocketBase collections under different registered
+	// names, which is what the mutual-exclusion check keys on (kindred#2491).
+	Base string
+	// Scope is the cohort this row covers. See the Scope type.
+	Scope Scope
 }
 
 // syncJobMeta defines the phase and metadata for all sync jobs
 // Jobs are listed in execution order within their phase
 var syncJobMeta = []JobMeta{
 	// Source phase - CampMinder API calls
-	{"session_groups", PhaseSource, "Session groups from CampMinder"},
-	{"sessions", PhaseSource, "Sessions from CampMinder"},
-	{"attendees", PhaseSource, "Attendees from CampMinder"},
-	{"persons", PhaseSource, "Persons + households from CampMinder"},
-	{"bunks", PhaseSource, "Bunks from CampMinder"},
-	{"bunk_plans", PhaseSource, "Bunk plans from CampMinder"},
-	{"bunk_assignments", PhaseSource, "Bunk assignments from CampMinder"},
-	{"staff", PhaseSource, "Staff from CampMinder"},
-	{"financial_transactions", PhaseSource, "Financial transactions from CampMinder"},
+	{ID: "session_groups", Phase: PhaseSource, Description: "Session groups from CampMinder"},
+	{ID: "sessions", Phase: PhaseSource, Description: "Sessions from CampMinder"},
+	{ID: "attendees", Phase: PhaseSource, Description: "Attendees from CampMinder"},
+	{ID: "persons", Phase: PhaseSource, Description: "Persons + households from CampMinder"},
+	{ID: "bunks", Phase: PhaseSource, Description: "Bunks from CampMinder"},
+	{ID: "bunk_plans", Phase: PhaseSource, Description: "Bunk plans from CampMinder"},
+	{ID: "bunk_assignments", Phase: PhaseSource, Description: "Bunk assignments from CampMinder"},
+	{ID: "staff", Phase: PhaseSource, Description: "Staff from CampMinder"},
+	{ID: "financial_transactions", Phase: PhaseSource, Description: "Financial transactions from CampMinder"},
 
 	// Expensive phase - Custom values (on-demand, rate limited)
-	{"person_custom_values", PhaseExpensive, "Person custom field values"},
-	{"household_custom_values", PhaseExpensive, "Household custom field values"},
+	{ID: "person_custom_values", Phase: PhaseExpensive, Description: "Person custom field values"},
+	{ID: "household_custom_values", Phase: PhaseExpensive, Description: "Household custom field values"},
 	// Bounded daily family-camp pass (kindred#2482): same API cost per entity as the two
 	// above, scoped to family-camp attendees (any status) and run as part of the daily
 	// cron -- see getDailySyncJobs.
-	{"person_custom_values_family_camp", PhaseExpensive,
-		"Person custom field values -- bounded daily pass, family-camp attendees, any status"},
-	{"household_custom_values_family_camp", PhaseExpensive,
-		"Household custom field values -- bounded daily pass, family-camp attendees, any status"},
+	{ID: "person_custom_values_family_camp", Phase: PhaseExpensive,
+		Description: "Person custom field values -- bounded daily pass, family-camp attendees, any status",
+		Base:        "person_custom_values", Scope: ScopeFamilyCamp},
+	{ID: "household_custom_values_family_camp", Phase: PhaseExpensive,
+		Description: "Household custom field values -- bounded daily pass, family-camp attendees, any status",
+		Base:        "household_custom_values", Scope: ScopeFamilyCamp},
 
 	// Transform phase - PocketBase → PocketBase
-	{"family_camp_derived", PhaseTransform, "Compute family camp tables from custom values"},
-	{"lodging_assignments", PhaseTransform, "Derive lodging assignments from CampMinder cabin fields"},
-	{"staff_skills", PhaseTransform, "Extract staff skills from person_custom_values"},
-	{"financial_aid_applications", PhaseTransform, "Extract FA applications from person_custom_values"},
-	{"household_demographics", PhaseTransform, "Compute household demographics from custom values"},
-	{"camper_dietary", PhaseTransform, "Extract camper dietary/allergy info from custom values"},
-	{"camper_transportation", PhaseTransform, "Extract camper transportation info from custom values"},
-	{"quest_registrations", PhaseTransform, "Extract Quest program registration info from custom values"},
-	{"staff_applications", PhaseTransform, "Extract staff application info from custom values"},
-	{"staff_vehicle_info", PhaseTransform, "Extract staff vehicle info from custom values"},
-	{"normalize_geographic", PhaseTransform, "Normalize geographic data (cities, schools, congregations)"},
-	{"enrollment_snapshots", PhaseTransform, "Capture daily enrollment counts per session"},
-	{"stranded_assignment_cleanup", PhaseTransform, "Auto-unassign scenario drafts stranded by bunk or cancellation"},
+	{ID: "family_camp_derived", Phase: PhaseTransform, Description: "Compute family camp tables from custom values"},
+	{ID: "lodging_assignments", Phase: PhaseTransform, Description: "Derive lodging assignments from CampMinder cabin fields"},
+	{ID: "staff_skills", Phase: PhaseTransform, Description: "Extract staff skills from person_custom_values"},
+	{ID: "financial_aid_applications", Phase: PhaseTransform, Description: "Extract FA applications from person_custom_values"},
+	{ID: "household_demographics", Phase: PhaseTransform, Description: "Compute household demographics from custom values"},
+	{ID: "camper_dietary", Phase: PhaseTransform, Description: "Extract camper dietary/allergy info from custom values"},
+	{ID: "camper_transportation", Phase: PhaseTransform, Description: "Extract camper transportation info from custom values"},
+	{ID: "quest_registrations", Phase: PhaseTransform, Description: "Extract Quest program registration info from custom values"},
+	{ID: "staff_applications", Phase: PhaseTransform, Description: "Extract staff application info from custom values"},
+	{ID: "staff_vehicle_info", Phase: PhaseTransform, Description: "Extract staff vehicle info from custom values"},
+	{ID: "normalize_geographic", Phase: PhaseTransform, Description: "Normalize geographic data (cities, schools, congregations)"},
+	{ID: "enrollment_snapshots", Phase: PhaseTransform, Description: "Capture daily enrollment counts per session"},
+	{ID: "stranded_assignment_cleanup", Phase: PhaseTransform, Description: "Auto-unassign scenario drafts stranded by bunk or cancellation"},
 
 	// Process phase - CSV + AI
-	{"reconcile_request_lifecycle", PhaseProcess, "Mark moved-requester OBRs for reprocessing"},
-	{"bunk_requests", PhaseProcess, "Import bunk request CSV"},
-	{"process_requests", PhaseProcess, "AI processing of bunk requests"},
+	{ID: "reconcile_request_lifecycle", Phase: PhaseProcess, Description: "Mark moved-requester OBRs for reprocessing"},
+	{ID: "bunk_requests", Phase: PhaseProcess, Description: "Import bunk request CSV"},
+	{ID: "process_requests", Phase: PhaseProcess, Description: "AI processing of bunk requests"},
 
 	// Export phase - Google Sheets
-	{"multi_workbook_export", PhaseExport, "Export to Google Sheets"},
+	{ID: "multi_workbook_export", Phase: PhaseExport, Description: "Export to Google Sheets"},
 }
 
 // GetJobMeta returns the sync job metadata array
