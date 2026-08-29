@@ -1356,6 +1356,49 @@ describe('AssignFamilyModal — Enter saves from a FIELD, never from the search 
 
       expect(onWriteIn).not.toHaveBeenCalled()
     })
+
+    /*
+     * ⚠️ ONE KEYPRESS IS ONE WRITE, and the two handlers that both answer to
+     * `Enter` are what make that worth pinning. `Note` and `People` carry the
+     * ruling's other half — bare `Enter` SAVES from a field — and neither
+     * looks at the modifiers, so a chord pressed in one of them ran the
+     * field's `writeIn()` and then bubbled to the container's and ran it
+     * again. Two `onWriteIn` calls, two round trips and two `onClose()`s from
+     * one keystroke, on the commonest path there is: the caret ends up in
+     * `Note` because that is the last thing staff fill in.
+     *
+     * The existing chord tests could not see it — they assert
+     * `toHaveBeenCalledWith`, which a duplicate satisfies.
+     */
+    it('fires ONCE from the Note field, not once per handler', () => {
+      const { props } = renderModal()
+      fireEvent.change(searchBox(), { target: { value: 'Burst pipe' } })
+      fireEvent.change(screen.getByLabelText(/note/i), { target: { value: 'back Monday' } })
+
+      fireEvent.keyDown(screen.getByLabelText(/note/i), { key: 'Enter', ctrlKey: true })
+
+      expect(props.onWriteIn).toHaveBeenCalledTimes(1)
+    })
+
+    it('fires ONCE from the People select too', () => {
+      const { props } = renderModal()
+      fireEvent.change(searchBox(), { target: { value: 'Burst pipe' } })
+
+      fireEvent.keyDown(screen.getByLabelText('People'), { key: 'Enter', metaKey: true })
+
+      expect(props.onWriteIn).toHaveBeenCalledTimes(1)
+    })
+
+    it('still saves on BARE Enter from a field, exactly once', () => {
+      // The other half of the ruling, and the thing the fix must not cost:
+      // an unmodified `Enter` in a field is still the field's own commit.
+      const { props } = renderModal()
+      fireEvent.change(searchBox(), { target: { value: 'Burst pipe' } })
+
+      fireEvent.keyDown(screen.getByLabelText(/note/i), { key: 'Enter' })
+
+      expect(props.onWriteIn).toHaveBeenCalledTimes(1)
+    })
   })
 
   describe('the overwrite warning', () => {

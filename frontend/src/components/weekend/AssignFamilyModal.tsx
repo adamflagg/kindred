@@ -844,6 +844,15 @@ export function AssignFamilyModal({
            own bare-`Enter` handlers below are untouched and still run first
            for the unmodified key.
 
+           ⚠️ AND THE FIELDS HAND THE CHORD UP RATHER THAN ANSWERING IT.
+           Bubbling cuts both ways: `Note` and `People` also answer `Enter`,
+           so while they ignored the modifiers a Ctrl/Cmd+Enter pressed in
+           one of them committed there AND again here — two `onWriteIn`
+           calls, two round trips and two `onClose()`s from one keystroke, on
+           the commonest path there is, since `Note` is the last thing staff
+           fill in. Each field now returns on a held modifier, so the chord
+           has exactly one handler wherever it is pressed.
+
            IT CALLS `writeIn()`, which is the `Write in` button's own
            onClick. That is deliberate rather than incidental: `writeIn`
            starts `if (!offersWriteIn) return`, so the chord inherits every
@@ -1034,6 +1043,17 @@ export function AssignFamilyModal({
                       // half of the keybinding rule it takes
                       // (weekend-card-vocabulary.md §6).
                       if (event.key !== 'Enter') return
+                      // ⚠️ THE CHORD IS NOT THIS HANDLER'S, and leaving it
+                      // here made one keypress two writes. `keydown` bubbles,
+                      // so a Ctrl/Cmd+Enter pressed in this field ran the
+                      // commit HERE and then ran it again on the container --
+                      // two `onWriteIn` calls, two round trips and two
+                      // `onClose()`s, on the commonest path there is. The
+                      // container owns the chord (see the region's own
+                      // comment); this field owns the BARE key. One handler
+                      // per keystroke, and the guard is spelled the same way
+                      // in both places so the split reads as deliberate.
+                      if (event.ctrlKey || event.metaKey) return
                       event.preventDefault()
                       writeIn()
                     }}
@@ -1067,6 +1087,11 @@ export function AssignFamilyModal({
                       // ↵ SAVES FROM A FIELD. This is the other half of the
                       // ruling above, and the half that makes it usable.
                       if (event.key !== 'Enter') return
+                      // THE CHORD BELONGS TO THE CONTAINER, for the reason
+                      // `People` beside it spells out: `keydown` bubbles, so
+                      // handling it here too turned one Ctrl/Cmd+Enter into
+                      // two write-ins.
+                      if (event.ctrlKey || event.metaKey) return
                       event.preventDefault()
                       writeIn()
                     }}

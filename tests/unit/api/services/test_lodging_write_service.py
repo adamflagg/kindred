@@ -2703,6 +2703,68 @@ class TestARenameNamesTheRowItIsRenaming:
             _availability_request(family_available=None, occupant_name="", previous_occupant_name="Olivia Chen")
 
 
+class TestTheStaffWritePathStoresTheNameItWillLaterBeAddressedBy:
+    """The stored occupant name is the TRIMMED one, because that is the only
+    string a card can ever send back.
+
+    Found by CodeRabbit on kindred#2603. `writeInEntries` trims what the
+    server sent (`writeIn.ts`: `(cover.occupant_name ?? '').trim()`), so
+    `entry.occupant.name` -- the string the pencil's `previousOccupantName`
+    and the ×'s row-addressed delete are both built from -- is trimmed
+    whatever the column holds. Store `" Chen "` and the card can address it
+    only as `"Chen"`: the compare-and-swap answers 409 and the delete answers
+    `deleted: false`, on a row drawn right in front of the staff member.
+
+    ⚠️ AND STEP 8 MAKES IT WORSE RATHER THAN MOOT. The narrowed
+    `(session_cm_id, year, unit, occupant_name)` index compares raw strings,
+    so `"Chen"` and `" Chen"` are two DIFFERENT keys -- two rows the index
+    happily admits, drawn identically on the card because the read trims, and
+    neither reliably addressable from it. Normalising on the way in is what
+    makes the index's key and the card's address the same string.
+
+    kindred#2598 deferred this in `_an_occupancy_names_its_occupant`'s
+    docstring (*"the stored value is NOT trimmed -- normalising what staff
+    typed is a separate decision this change does not make"*). Step 4 is the
+    change that makes the decision, because step 4 is where the name stops
+    being a label and starts being an address.
+
+    THE STAFF WRITE PATH ONLY, exactly as the blank refusal below.
+    `AvailabilityWriteRequest` and `WriteInDeleteRequest` are what a human
+    types into; every ingest-shaped writer (`_seed_write_ins`, `execute_push`,
+    `unpush`) goes straight to the repository and is untouched, so a row that
+    arrived with padding still copies, pushes and reverts. Those two already
+    `.strip()` before matching (`PushRow.tuple_key`), so nothing downstream
+    has to learn about this.
+    """
+
+    def test_the_occupant_name_is_stored_trimmed(self) -> None:
+        assert _availability_request(occupant_name="  Olivia Chen  ").occupant_name == "Olivia Chen"
+
+    def test_a_previous_name_is_trimmed_so_it_matches_what_was_stored(self) -> None:
+        """The other end of the same address. Both halves compare the same
+        string or the compare-and-swap is comparing two spellings."""
+        request = _availability_request(occupant_name="Olivia Reyes", previous_occupant_name="  Olivia Chen  ")
+        assert request.previous_occupant_name == "Olivia Chen"
+
+    def test_a_whitespace_only_previous_name_addresses_the_unnamed_row(self) -> None:
+        """`"   "` names nobody, which is what `""` already means here -- the
+        row on this unit whose occupant is unnamed. It stays a REAL address
+        rather than collapsing to `None`, because `None` is the create."""
+        request = _availability_request(occupant_name="Olivia Chen", previous_occupant_name="   ")
+        assert request.previous_occupant_name == ""
+
+    def test_no_previous_name_still_renames_nobody(self) -> None:
+        """`None` survives the trim as `None`. It is the Assign modal's
+        create, and turning it into `""` would make every create a
+        compare-and-swap against the unnamed row."""
+        assert _availability_request(occupant_name="Olivia Chen").previous_occupant_name is None
+
+    def test_the_removal_addresses_the_trimmed_row(self) -> None:
+        """The ×'s half. `WriteInDeleteRequest.occupant_name` is the whole
+        address, and the card can only ever build it from the trimmed read."""
+        assert _write_in_delete_request(occupant_name="  Olivia Chen  ").occupant_name == "Olivia Chen"
+
+
 class TestABlankOccupantIsRefusedOnTheStaffWritePath:
     """kindred#2583 step 6's sub-task, handed down with the Design B ruling.
 

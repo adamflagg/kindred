@@ -27,7 +27,7 @@ the wire.
 
 from typing import Literal, Self
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 # The ONE import from the service layer, and it is a vocabulary rather than
 # behaviour: `lodging_rules` is the pure-rules module (no I/O, no PocketBase,
@@ -1627,6 +1627,51 @@ class AvailabilityWriteRequest(BaseModel):
     # fallback, needing no migration and re-opening no index decision.
     previous_occupant_name: str | None = Field(None, max_length=500)
 
+    @field_validator("occupant_name", "previous_occupant_name")
+    @classmethod
+    def _an_address_is_stored_the_way_a_card_can_send_it_back(cls, value: str | None) -> str | None:
+        """Trim both halves of the Design B address (kindred#2583 step 4).
+
+        ⚠️ THE READ ALREADY TRIMS, so the write has to. `writeInEntries`
+        (`frontend/src/components/weekend/writeIn.ts`) builds every drawn
+        occupant as `(cover.occupant_name ?? "").trim()`, and BOTH row-addressed
+        controls are built from that string -- the pencil's
+        `previousOccupantName` and the ×'s `occupant_name`. Store `" Chen "`
+        and the card can only ever ask about `"Chen"`: the compare-and-swap
+        answers 409 and the removal answers `deleted: false`, about a row drawn
+        directly in front of the staff member. Found by CodeRabbit on
+        kindred#2603.
+
+        AND STEP 8 SHARPENS IT RATHER THAN RETIRING IT. The narrowed
+        `(session_cm_id, year, unit, occupant_name)` index compares the raw
+        column, so `"Chen"` and `" Chen"` are two DIFFERENT keys: two rows the
+        index admits, drawn identically because the read trims, and neither
+        reliably addressable from the card. Normalising here is what keeps the
+        index's key and the card's address the same string.
+
+        kindred#2598 deferred exactly this -- *"the stored value is NOT
+        trimmed; normalising what staff typed is a separate decision this
+        change does not make"* -- and step 4 is the change that makes it,
+        because step 4 is where the name stops being a label and becomes an
+        address.
+
+        `None` SURVIVES AS `None`. It is the create, and collapsing it to `""`
+        would turn every Assign-modal write into a compare-and-swap against the
+        unnamed row. `"   "` does collapse to `""`, which is not a loss: `""`
+        is already the unnamed row's real address, and whitespace names exactly
+        as much as nothing does -- the same reading
+        `_an_occupancy_names_its_occupant` below and `WriteInDeleteRequest`
+        already apply.
+
+        THE STAFF WRITE PATH ONLY, the same split the blank refusal below
+        makes. Every ingest-shaped writer (`_seed_write_ins`, `execute_push`,
+        `unpush`) goes straight to `LodgingRepository` and never builds one of
+        these, so a row that arrived with padding still copies, pushes and
+        reverts -- and those paths already `.strip()` before matching
+        (`PushRow.tuple_key`), so nothing downstream has to learn about this.
+        """
+        return value if value is None else value.strip()
+
     @model_validator(mode="after")
     def _an_occupancy_names_its_occupant(self) -> Self:
         """A write-in must name somebody. A release and a clear need not.
@@ -1656,10 +1701,12 @@ class AvailabilityWriteRequest(BaseModel):
         here"; this validator is where "through the control" now lives on the
         server as well as in the UI.
 
-        TRIMMED, because `"   "` addresses exactly as much as `""` does. The
-        stored value is NOT trimmed -- normalising what staff typed is a
-        separate decision this change does not make, and `PushRow.tuple_key()`
-        already strips for matching.
+        TRIMMED, because `"   "` addresses exactly as much as `""` does --
+        and since kindred#2583 step 4 the field validator above has already
+        trimmed it, so this check reads a value that is `""` by the time it
+        gets here. The `.strip()` stays rather than being deleted: it is the
+        statement of what this refusal means, and it must not depend on which
+        validator ran first.
         """
         if self.family_available is False and not self.occupant_name.strip():
             raise ValueError("occupant_name is required when writing somebody in")
@@ -1715,9 +1762,26 @@ class WriteInDeleteRequest(BaseModel):
     unit_id: str = Field(..., min_length=1)
     occupant_name: str = Field(..., min_length=1, max_length=500)
 
+    @field_validator("occupant_name")
+    @classmethod
+    def _the_address_is_the_one_the_card_can_send(cls, value: str) -> str:
+        """Trimmed, for the reason `AvailabilityWriteRequest` gives at length.
+
+        The card builds this string from `writeInEntries`, which trims what the
+        server sent, so an untrimmed stored name is one the × can never name.
+        Both ends of the Design B address are normalised in the same place so
+        they cannot drift apart.
+        """
+        return value.strip()
+
     @model_validator(mode="after")
     def _the_occupant_is_the_address(self) -> Self:
-        """`"   "` names nobody. `min_length` alone would accept it."""
+        """`"   "` names nobody. `min_length` alone would accept it.
+
+        The field validator above has already trimmed by the time this runs,
+        so `"   "` arrives here as `""`. The `.strip()` stays as the statement
+        of what the refusal means rather than as a dependency on ordering.
+        """
         if not self.occupant_name.strip():
             raise ValueError("occupant_name names the row to remove and cannot be blank")
         return self
