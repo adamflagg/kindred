@@ -265,6 +265,27 @@ export interface AvailabilityWrite {
    * count on any write that omitted it.
    */
   partySize: number | null
+  /**
+   * WHICH ROW an edit is about, when the edit changes the occupant's own name
+   * (kindred#2583 step 4). A COMPARE-AND-SWAP: the server resolves the row by
+   * this name and writes `occupantName` onto it.
+   *
+   * `null` means THIS WRITE RENAMES NOBODY — the Assign modal's create, which
+   * addresses by `occupantName` exactly as it did before. A string, including
+   * `''`, names the row the form was opened against. Sent rather than omitted
+   * for the reason every other field here is: a key dropped on the way out is
+   * indistinguishable from a key nobody set, and here the two are different
+   * verbs.
+   *
+   * ⚠️ `''` IS A NAME, not an absence. An unnamed write-in is real (the ingest
+   * path is deliberately permissive) and renaming it is the only edit its
+   * pencil can make, since the form refuses to save a blank.
+   *
+   * A previous name that resolves nothing answers 409 rather than creating a
+   * row: falling through to a create is what turns one rename into two rows
+   * the moment step 8 narrows the unique index.
+   */
+  previousOccupantName: string | null
 }
 
 /**
@@ -294,6 +315,7 @@ export async function setUnitAvailability(
     occupantName,
     reason,
     partySize,
+    previousOccupantName,
   }: AvailabilityWrite
 ): Promise<LodgingWriteResult> {
   const response = await fetchWithAuth(`${API_BASE}/availability`, {
@@ -308,9 +330,73 @@ export async function setUnitAvailability(
       occupant_name: occupantName,
       reason,
       party_size: partySize,
+      previous_occupant_name: previousOccupantName,
     }),
   })
   if (!response.ok) throw await toError(response, 'Failed to update availability')
+  return response.json() as Promise<LodgingWriteResult>
+}
+
+/** Taking ONE occupant out of one unit, leaving whoever else is in it. */
+export interface WriteInDelete {
+  year: number
+  sessionCmId: number
+  /** `''` is the live board, a scenario id that scenario's own draft row. */
+  scenario: string
+  /**
+   * The unit that HOLDS the row, which is not always the card it was clicked
+   * on — a room can inherit its building's write-in and a merged building one
+   * of its rooms'. Same target `AvailabilityWrite.unitId` carries, and for the
+   * same reason.
+   */
+  unitId: string
+  /**
+   * WHICH occupant. The other half of the Design B address, and required:
+   * there is no "remove the unnamed one" here, which is what the clear verb
+   * is for.
+   */
+  occupantName: string
+}
+
+/**
+ * Remove ONE occupant from one unit, leaving everything else standing.
+ *
+ * kindred#2583 step 7's verb, wired to the card's corner × by step 4. The ×
+ * used to send `setUnitAvailability` with `familyAvailable: null`, which is
+ * the CLEAR-THIS-UNIT-ENTIRELY verb — the role row and every occupancy row on
+ * the unit. That is identical while a cabin can hold one write-in, and the
+ * moment step 8 narrows the unique index it means one click on one occupant's
+ * card deletes the co-occupant too.
+ *
+ * A BODY-CARRYING DELETE, exactly as `unplaceParty` above and for the same
+ * reason: the row is named by values the client already holds — weekend,
+ * year, scenario, unit, occupant — and none of them is a resource id. Design
+ * A, which would have published the row's record id for the client to
+ * round-trip, was declined (kindred#2583, RULED 2026-08-29).
+ *
+ * THE ROLE ROW IS NOT TOUCHED. A staff↔family override is a fact about the
+ * weekend, and taking one paper family out of a cabin says nothing about it;
+ * only the clear verb reaches both tables.
+ *
+ * IDEMPOTENT: removing somebody who is not there answers 200 with
+ * `deleted: false`, as `unplaceParty` does for a party that was never placed.
+ */
+export async function deleteWriteIn(
+  fetchWithAuth: FetchWithAuth,
+  { year, sessionCmId, scenario, unitId, occupantName }: WriteInDelete
+): Promise<LodgingWriteResult> {
+  const response = await fetchWithAuth(`${API_BASE}/write-ins`, {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      year,
+      session_cm_id: sessionCmId,
+      scenario,
+      unit_id: unitId,
+      occupant_name: occupantName,
+    }),
+  })
+  if (!response.ok) throw await toError(response, 'Failed to remove the write-in')
   return response.json() as Promise<LodgingWriteResult>
 }
 

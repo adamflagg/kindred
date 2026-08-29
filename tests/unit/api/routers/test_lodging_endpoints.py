@@ -1445,6 +1445,62 @@ class TestAvailabilityWrites:
         assert "scenario" not in payload
         assert "state" not in payload
 
+    def test_a_rename_whose_previous_occupant_is_gone_is_a_409(self, mock_pb: MagicMock) -> None:
+        """kindred#2583 step 4. `previous_occupant_name` is a compare-and-swap,
+        and a failed swap is a CONFLICT rather than a create.
+
+        The generic mock answers every non-session read with `[]`, so the row
+        this edit was opened against is not there -- which is exactly the
+        state a second staff member removing it produces. A create here would
+        be the two-rows-from-one-rename failure the field exists to prevent,
+        and once step 8 narrows the index it would SUCCEED, silently.
+
+        409 rather than 404: the request is well formed and the weekend
+        resolves; what has moved is the row underneath it, which is the same
+        reading `/placements/copy` and `unpush` already give a 409.
+        """
+        with patch("api.routers.lodging.pb", mock_pb):
+            client = _write_client(_manage_user(), mock_pb)
+            response = client.put(
+                "/api/lodging/availability",
+                json={
+                    "year": 2026,
+                    "session_cm_id": 1000001,
+                    "unit_id": "u1",
+                    "family_available": False,
+                    "occupant_name": "Olivia Reyes",
+                    "previous_occupant_name": "Olivia Chen",
+                    "reason": "",
+                },
+            )
+
+        assert response.status_code == 409
+        # The message IS the client's whole conflict handling -- a toast
+        # telling staff the row moved and to reopen the card. There is no
+        # merge dialog and no retry flow, deliberately (owner, 2026-08-29).
+        assert "Olivia Chen" in response.json()["detail"]
+        mock_pb.collection.return_value.create.assert_not_called()
+
+    def test_a_release_may_not_carry_a_previous_occupant(self, mock_pb: MagicMock) -> None:
+        """422 at the model, not a silently ignored field: `lodging_availability`
+        has no occupant column to resolve a swap against."""
+        with patch("api.routers.lodging.pb", mock_pb):
+            client = _write_client(_manage_user(), mock_pb)
+            response = client.put(
+                "/api/lodging/availability",
+                json={
+                    "year": 2026,
+                    "session_cm_id": 1000001,
+                    "unit_id": "u1",
+                    "family_available": True,
+                    "occupant_name": "",
+                    "previous_occupant_name": "Olivia Chen",
+                    "reason": "",
+                },
+            )
+
+        assert response.status_code == 422
+
     def test_writing_somebody_in_from_a_scenario_creates_a_draft_occupancy_row(self, mock_pb: MagicMock) -> None:
         """kindred#2382 PR 4: the write follows the board staff are looking at.
 

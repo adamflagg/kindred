@@ -46,6 +46,7 @@ from api.services.lodging_write_service import (
     PushNotFoundError,
     ScenarioNotEmptyError,
     UnpushDriftError,
+    WriteInRenameConflictError,
 )
 from bunking.auth_middleware import AuthUser, get_current_user
 from bunking.rbac.dependencies import require_permission
@@ -337,11 +338,29 @@ async def set_availability(
     `family_available: null` clears the override, which is spelled as the
     ABSENCE of a row -- in BOTH tables. There is no value meaning "normal", and
     writing one would pin the unit against a later change to its role.
+
+    `previous_occupant_name` RENAMES one row, and is a compare-and-swap
+    (kindred#2583 step 4). Under Design B the occupant's name is the row's
+    address, so an edit that changes that name cannot address itself -- the
+    form sends the name it loaded, this resolves that row, and `occupant_name`
+    is written onto it. A previous name that resolves nothing answers **409**:
+    the row moved under the card, and falling through to a create is what
+    turns one rename into two rows the moment step 8 narrows the index.
     """
     try:
         return await _writes().set_availability(request)
     except SessionNotFoundError as exc:
         raise _weekend_404(request.year, request.session_cm_id) from exc
+    except WriteInRenameConflictError as exc:
+        # kindred#2583 step 4. `previous_occupant_name` is a compare-and-swap
+        # and this is the failed swap: the request is well formed and the
+        # weekend resolves, but the ROW the card was opened against is gone.
+        # 409 is the reading `/placements/copy` and `unpush` already give that
+        # shape. The message is the entire client-side handling -- a toast
+        # saying the row moved and to reopen the card (owner, 2026-08-29:
+        # staff each work their own weekend async, so this fires essentially
+        # never and buys correctness rather than a conflict UI).
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @router.delete("/write-ins", response_model=LodgingWriteResponse)

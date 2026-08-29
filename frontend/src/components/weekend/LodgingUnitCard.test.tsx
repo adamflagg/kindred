@@ -2332,6 +2332,11 @@ describe('LodgingUnitCard — placing a family from the space itself (kindred#20
       occupantName: 'Burst pipe',
       reason: 'back Monday',
       partySize: null,
+      // kindred#2583 step 4. A CREATE renames nobody, and says so rather than
+      // leaving the field off: the pencil's edit is the one that carries a
+      // name here, and a producer that forgets the field would turn that
+      // compare-and-swap into the create this one legitimately is.
+      previousOccupantName: null,
     })
   })
 
@@ -2355,6 +2360,7 @@ describe('LodgingUnitCard — placing a family from the space itself (kindred#20
       occupantName: 'Burst pipe',
       reason: '',
       partySize: 2,
+      previousOccupantName: null,
     })
   })
 
@@ -2390,6 +2396,12 @@ describe('LodgingUnitCard — placing a family from the space itself (kindred#20
       occupantName: 'Emma Johnson',
       reason: '',
       partySize: 3,
+      // THE ROW THE PENCIL LOADED (kindred#2583 step 4). Same value as
+      // `occupantName` because this edit did not change the name — and it is
+      // sent anyway, deliberately: an unchanged name is still a
+      // compare-and-swap, which is what makes the save refuse when the row
+      // moved under the card instead of quietly writing a new one.
+      previousOccupantName: 'Emma Johnson',
     })
   })
 

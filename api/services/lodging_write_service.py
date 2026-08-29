@@ -148,6 +148,38 @@ class AlreadyUnpushedError(RuntimeError):
     """
 
 
+class WriteInRenameConflictError(RuntimeError):
+    """A rename named a row that is not on the unit (kindred#2583 step 4).
+
+    `previous_occupant_name` is a COMPARE-AND-SWAP: the edit form sends the
+    name it loaded, the service resolves that row, and the new name is written
+    onto it. A miss means the row this edit was opened against is gone --
+    somebody removed it, or renamed it first.
+
+    ⚠️ A FAILED SWAP IS A CONFLICT, NEVER A CREATE, and that is the whole
+    reason this class exists rather than a fall-through. Creating instead is
+    precisely the two-rows-from-one-rename failure the field was added to
+    stop, reached through the guard meant to stop it -- and once step 8
+    narrows the index the create SUCCEEDS, so the failure would be silent
+    rather than merely wrong.
+
+    CHEAP BY RULING. Staff are each assigned their own weekend and work async
+    on it (owner, 2026-08-29: *"there isnt going to realistically be an
+    overlap... but sure, build it safer if possible"*), so this is insurance
+    on a path that should essentially never fire. The router answers 409 and
+    the client raises the message in a toast; there is no merge dialog, no
+    retry flow and no conflict UI, deliberately.
+    """
+
+    def __init__(self, occupant_name: str, unit_id: str) -> None:
+        super().__init__(
+            f"the write-in for {occupant_name or 'the unnamed occupant'} is no longer on this unit -- "
+            "somebody changed it. Reopen the card and try again."
+        )
+        self.occupant_name = occupant_name
+        self.unit_id = unit_id
+
+
 class UnpushDriftError(RuntimeError):
     """RULED refuse-wholesale (owner 2026-08-22): `unpush` checks EVERY unit
     the push touched against the push's own after-state before it reverts
@@ -1073,6 +1105,19 @@ class LodgingWriteService:
         recovery, `by_tuple`'s safety and the index's own "who is in this
         cabin?" intent, all of which key on a name the client already has.
 
+        ★ AND A RENAME NAMES BOTH ENDS (kindred#2583 step 4, owner ruling
+        2026-08-29). If the occupant's name IS the address, changing it is the
+        one edit that cannot address itself: a write carrying only the new
+        name misses the finder, and once step 8 narrows the index that miss is
+        a CREATE -- one rename, two rows, the old occupant still in the cabin.
+        `previous_occupant_name` is the compare-and-swap that closes it. It is
+        `str | None`, and `""` is a NAME rather than an absence: an unnamed
+        row is real (the ingest path stays permissive) and its pencil can make
+        no other edit, so a blank-as-absent sentinel would leave exactly that
+        row doing the bare rename the field exists to forbid. A swap that
+        resolves nothing raises `WriteInRenameConflictError` -> 409, never a
+        create.
+
         ⚠️ TWO VERBS, TWO GRAINS, and confusing them is how a shared cabin
         gets half cleared. A WRITE names an occupant, so it resolves ONE row.
         A CLEAR and a RELEASE name none, so they resolve EVERY occupancy row
@@ -1105,29 +1150,42 @@ class LodgingWriteService:
         # a create on the live one writes the right row in the wrong scope, and
         # the board it was made on still does not show it.
         in_scenario = request.scenario != ""
+
         # ADDRESSED BY (unit, occupant_name) SINCE kindred#2583 STEP 6.
         # Design B, RULED 2026-08-29 (owner: *"lets go with the identity of
         # unit and occupant"*). This lambda used to bind the unit alone, which
         # made a write into an occupied cabin resolve SOMEBODY ELSE'S row and
         # hand it to `_upsert_row` to overwrite -- live in production on all
         # 118 units, with no warning on the path.
-        find_occupancy: Callable[[], Awaitable[Any | None]] = (
-            (
-                lambda: self.repository.find_draft_write_in(
+        def occupancy_finder(occupant_name: str) -> Callable[[], Awaitable[Any | None]]:
+            """One occupant's row on this unit, on whichever grain this call is about.
+
+            A FACTORY rather than a bound lambda since kindred#2583 step 4,
+            because two different names now have to be looked up through the
+            same grain: `occupant_name` for an ordinary create-or-update, and
+            `previous_occupant_name` for the rename's compare-and-swap. Two
+            hand-written copies of the live/draft branch is exactly the drift
+            the "bound as a group" rule above exists to stop -- a find on the
+            draft grain paired with an update on the live one writes the right
+            row in the wrong scope, and the board it was made on still does
+            not show it.
+            """
+            if in_scenario:
+                return lambda: self.repository.find_draft_write_in(
                     request.year,
                     request.session_cm_id,
                     request.scenario,
                     request.unit_id,
-                    request.occupant_name,
+                    occupant_name,
                 )
+            return lambda: self.repository.find_write_in(
+                request.year, request.session_cm_id, request.unit_id, occupant_name
             )
-            if in_scenario
-            else (
-                lambda: self.repository.find_write_in(
-                    request.year, request.session_cm_id, request.unit_id, request.occupant_name
-                )
-            )
-        )
+
+        # THE NAME BEING WRITTEN, which is the create-vs-update question of
+        # step 6 and the re-read `recover_occupancy` makes. A rename resolves
+        # a DIFFERENT name and is handled at the occupancy branch below.
+        find_occupancy: Callable[[], Awaitable[Any | None]] = occupancy_finder(request.occupant_name)
         # THE UNIT GRAIN, bound into the same group and for the same reason.
         # A clear and a release are facts about the CABIN and name no
         # occupant, so neither may go through the occupant-keyed finder above:
@@ -1264,14 +1322,32 @@ class LodgingWriteService:
             # have.
             await self._clear_every_row(await find_every_occupancy(), delete_occupancy)
         else:
+            # WHICH ROW THIS WRITE IS ABOUT, and there are two questions
+            # behind it (kindred#2583, steps 6 and 4).
+            #
+            # `previous_occupant_name is None` -- the Assign modal's create.
+            # ONE occupant's row, resolved by the Design B key. A miss here is
+            # a CREATE beside whoever else is in the cabin, which is the whole
+            # feature: two paper families in one shareable cabin are two rows,
+            # not one row with both names crammed into it.
+            #
+            # A PREVIOUS NAME -- the pencil's edit, which may be changing the
+            # very field the row is addressed by. COMPARE-AND-SWAP: resolve
+            # the row the form was opened against, write the new name onto it.
+            # ⚠️ A MISS IS A CONFLICT, NEVER A FALL-THROUGH TO THE CREATE. The
+            # create is what turns one rename into two rows the moment step 8
+            # narrows the index, and it is exactly the failure this address
+            # exists to prevent -- reached through the guard meant to prevent
+            # it. `WriteInRenameConflictError` carries the reasoning.
+            if request.previous_occupant_name is None:
+                existing_occupancy = await find_occupancy()
+            else:
+                existing_occupancy = await occupancy_finder(request.previous_occupant_name)()
+                if existing_occupancy is None:
+                    raise WriteInRenameConflictError(request.previous_occupant_name, request.unit_id)
             record = await self._upsert_row(
                 what="write-in",
-                # ONE occupant's row, resolved by the Design B key. A miss
-                # here is a CREATE beside whoever else is in the cabin, which
-                # is the whole feature: two paper families in one shareable
-                # cabin are two rows, not one row with both names crammed
-                # into it.
-                existing=await find_occupancy(),
+                existing=existing_occupancy,
                 data={
                     **data,
                     "party_size": request.party_size,

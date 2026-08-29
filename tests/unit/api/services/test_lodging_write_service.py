@@ -45,6 +45,7 @@ from api.services.lodging_write_service import (
     PushNotFoundError,
     ScenarioNotEmptyError,
     UnpushDriftError,
+    WriteInRenameConflictError,
 )
 from bunking.logging_config import ISO8601Formatter
 
@@ -2493,6 +2494,213 @@ class TestAWriteInIsAddressedByItsUnitAndItsOccupant:
         assert repo.find_write_in.await_args_list[-1].args == (2026, 1000001, "u1", "Olivia Chen")
         repo.update_write_in.assert_called_once()
         assert repo.update_write_in.call_args[0][0] == "wi_winner"
+
+
+class TestARenameNamesTheRowItIsRenaming:
+    """kindred#2583 step 4. `previous_occupant_name` is a COMPARE-AND-SWAP.
+
+    Owner ruling, 2026-08-29. Under Design B the occupant's name IS the row's
+    address, so changing that name is the one edit that cannot address itself:
+    a write carrying only the NEW name misses the occupant-keyed finder, and
+    the moment step 8 narrows the index that miss becomes a CREATE -- one
+    rename silently leaving two rows, the old occupant still in the cabin.
+    The spec forbids offering a bare in-place rename for exactly that reason.
+
+    THE EDIT FORM ALREADY KNOWS THE NAME IT LOADED, so it sends it:
+    `previous_occupant_name` resolves the row, `occupant_name` is written onto
+    it. Two rows in one shareable cabin stay individually editable, because
+    the request now names WHICH of them the edit is about.
+
+    ⚠️ A MISS IS A CONFLICT, NEVER A CREATE, and that is the half worth
+    getting right. Falling through to a create is how one rename becomes two
+    rows -- the identical failure the guard exists to stop, reached through
+    the guard itself. A failed compare-and-swap is a 409: the row this edit
+    was opened against is not there any more, so nothing is written and the
+    staff member reopens the card.
+
+    THE FIELD IS `str | None`, NOT `str`, and the distinction is load-bearing
+    rather than stylistic. `None` means "this write renames nobody" -- the
+    Assign modal's create, which addresses by `occupant_name` exactly as it
+    does today. `""` means "the row on this unit whose occupant is unnamed",
+    which is a real, reachable row (`occupant_name` is permissive for the
+    ingest path) and the ONE row a blank-as-absent sentinel could never
+    address. Collapsing the two would leave the pencil on an unnamed row
+    doing the bare rename this class exists to forbid.
+
+    DARK UNTIL STEP 8, and provably: while the unit-grain index stands a
+    rename resolved through the previous name UPDATES the same row the
+    unit-grain recovery in `recover_occupancy` reaches today, so the end state
+    is byte-identical -- one row, the new name on it. What moves is the route
+    (one update instead of create-collide-re-read-update) and the answer when
+    the row is GONE.
+    """
+
+    @staticmethod
+    def _occupied_by(name: str, record_id: str) -> AsyncMock:
+        """A finder that answers about ONE occupant, as the narrowed index does."""
+        rows = {name: SimpleNamespace(id=record_id)}
+        return AsyncMock(side_effect=lambda year, session_cm_id, unit, occupant: rows.get(occupant))
+
+    @staticmethod
+    def _draft_occupied_by(name: str, record_id: str) -> AsyncMock:
+        rows = {name: SimpleNamespace(id=record_id)}
+        return AsyncMock(side_effect=lambda year, session_cm_id, scenario, unit, occupant: rows.get(occupant))
+
+    @pytest.mark.asyncio
+    async def test_the_row_is_resolved_by_the_previous_name(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        """The lookup asks about who is there now, not who is being written."""
+        repo.find_write_in = self._occupied_by("Olivia Chen", "wi_chen")
+
+        await write_service.set_availability(
+            _availability_request(occupant_name="Olivia Reyes", previous_occupant_name="Olivia Chen")
+        )
+
+        assert repo.find_write_in.await_args_list[0].args == (2026, 1000001, "u1", "Olivia Chen")
+
+    @pytest.mark.asyncio
+    async def test_the_new_name_is_written_onto_that_row(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        repo.find_write_in = self._occupied_by("Olivia Chen", "wi_chen")
+
+        await write_service.set_availability(
+            _availability_request(occupant_name="Olivia Reyes", previous_occupant_name="Olivia Chen")
+        )
+
+        repo.update_write_in.assert_called_once()
+        assert repo.update_write_in.call_args[0][0] == "wi_chen"
+        assert repo.update_write_in.call_args[0][1]["occupant_name"] == "Olivia Reyes"
+        repo.create_write_in.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_a_rename_leaves_the_co_occupant_alone(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        """THE FEATURE, at the edit path. Two paper families in one shareable
+        cabin; renaming one resolves that one row and never the other."""
+        rows = {"Olivia Chen": SimpleNamespace(id="wi_chen"), "Emma Johnson": SimpleNamespace(id="wi_johnson")}
+        repo.find_write_in = AsyncMock(side_effect=lambda year, session_cm_id, unit, occupant: rows.get(occupant))
+
+        await write_service.set_availability(
+            _availability_request(occupant_name="Emma Johnston", previous_occupant_name="Emma Johnson")
+        )
+
+        assert repo.update_write_in.call_args[0][0] == "wi_johnson"
+
+    @pytest.mark.asyncio
+    async def test_a_previous_name_that_resolves_nothing_is_a_conflict(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        """A failed compare-and-swap. The row the card was opened against is
+        gone -- somebody removed it, or renamed it first -- so this edit has
+        nothing to swap and must not invent a row instead."""
+        repo.find_write_in = AsyncMock(return_value=None)
+
+        with pytest.raises(WriteInRenameConflictError):
+            await write_service.set_availability(
+                _availability_request(occupant_name="Olivia Reyes", previous_occupant_name="Olivia Chen")
+            )
+
+    @pytest.mark.asyncio
+    async def test_a_failed_swap_writes_nothing(self, write_service: LodgingWriteService, repo: MagicMock) -> None:
+        """The refusal is the whole point: a create here is the two-rows bug.
+
+        The ROLE row is not touched either -- `set_availability`'s occupancy
+        branch drops a release after the write lands, and a write that never
+        landed drops nothing.
+        """
+        repo.find_write_in = AsyncMock(return_value=None)
+        repo.find_availability_override = AsyncMock(return_value=SimpleNamespace(id="role_1"))
+
+        with pytest.raises(WriteInRenameConflictError):
+            await write_service.set_availability(
+                _availability_request(occupant_name="Olivia Reyes", previous_occupant_name="Olivia Chen")
+            )
+
+        repo.create_write_in.assert_not_called()
+        repo.update_write_in.assert_not_called()
+        repo.delete_availability.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_the_conflict_names_the_occupant_it_could_not_find(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        """The message is the whole of the client's conflict handling: staff
+        are each assigned their own weekend and work async, so this fires
+        essentially never -- it buys correctness, not a merge dialog."""
+        repo.find_write_in = AsyncMock(return_value=None)
+
+        with pytest.raises(WriteInRenameConflictError, match="Olivia Chen"):
+            await write_service.set_availability(
+                _availability_request(occupant_name="Olivia Reyes", previous_occupant_name="Olivia Chen")
+            )
+
+    @pytest.mark.asyncio
+    async def test_an_unnamed_row_is_addressable_as_the_blank_previous_name(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        """`""` is a NAME here, not a missing value.
+
+        A row written by the ingest path with no author is legal and drawn on
+        the board as "Occupant not named". Naming it is a rename like any
+        other, and it is the only edit its pencil can make -- the form refuses
+        to save a blank. A blank-as-absent sentinel would send this write
+        keyed on the NEW name, miss, and create a second row beside the
+        unnamed one the moment step 8 lands.
+        """
+        repo.find_write_in = self._occupied_by("", "wi_unnamed")
+
+        await write_service.set_availability(
+            _availability_request(occupant_name="Olivia Chen", previous_occupant_name="")
+        )
+
+        assert repo.find_write_in.await_args_list[0].args == (2026, 1000001, "u1", "")
+        assert repo.update_write_in.call_args[0][0] == "wi_unnamed"
+
+    @pytest.mark.asyncio
+    async def test_no_previous_name_addresses_by_the_occupant_exactly_as_before(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        """`None` is the Assign modal's create, and step 6's behaviour is
+        untouched by this change: resolve by the name being written, create
+        when it is nobody the unit already holds."""
+        repo.find_write_in = self._occupied_by("Olivia Chen", "wi_chen")
+
+        await write_service.set_availability(_availability_request(occupant_name="Emma Johnson"))
+
+        assert repo.find_write_in.await_args_list[0].args == (2026, 1000001, "u1", "Emma Johnson")
+        repo.create_write_in.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_the_draft_grain_renames_through_the_draft_finder(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        """Bound as a GROUP with the create/update/delete trio, the invariant
+        `set_availability` spells out at length: a find on one grain paired
+        with an update on the other writes the right row in the wrong scope,
+        and the board it was made on still does not show it."""
+        repo.find_draft_write_in = self._draft_occupied_by("Olivia Chen", "wd_chen")
+
+        await write_service.set_availability(
+            _availability_request(scenario="scn_1", occupant_name="Olivia Reyes", previous_occupant_name="Olivia Chen")
+        )
+
+        assert repo.find_draft_write_in.await_args_list[0].args == (2026, 1000001, "scn_1", "u1", "Olivia Chen")
+        assert repo.update_draft_write_in.call_args[0][0] == "wd_chen"
+        repo.update_write_in.assert_not_called()
+
+    def test_a_release_may_not_carry_a_previous_occupant(self) -> None:
+        """A release names no occupant, so it renames none. Accepting the
+        field here would leave a second, silent way to spell an edit."""
+        with pytest.raises(ValidationError, match="previous_occupant_name"):
+            _availability_request(family_available=True, occupant_name="", previous_occupant_name="Olivia Chen")
+
+    def test_a_clear_may_not_carry_a_previous_occupant(self) -> None:
+        """A clear DELETES every occupancy row on the unit and names nobody."""
+        with pytest.raises(ValidationError, match="previous_occupant_name"):
+            _availability_request(family_available=None, occupant_name="", previous_occupant_name="Olivia Chen")
 
 
 class TestABlankOccupantIsRefusedOnTheStaffWritePath:

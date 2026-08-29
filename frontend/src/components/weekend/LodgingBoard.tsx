@@ -66,7 +66,7 @@ import { FloatingUnplacedBadge } from './FloatingUnplacedBadge'
 import { LodgingUnitCard } from './LodgingUnitCard'
 import { partyKey } from './partyKey'
 import { resolvePartyUnit } from './rosterAttention'
-import type { UnitAvailabilityWrite } from './writeIn'
+import type { UnitAvailabilityWrite, WriteInRemoval } from './writeIn'
 import { writeInEntries } from './writeIn'
 
 export interface LodgingBoardProps {
@@ -358,7 +358,11 @@ export function LodgingBoard({
   // `canSetAvailability` above spells out: it TARGETS the write rather than
   // gating it. An occupancy lands on this board (blank being the live one); a
   // release ignores it server-side, being a fact about the weekend.
-  const { setAvailability, pendingUnitId } = useUnitAvailability({ year, sessionCmId, scenario })
+  const { setAvailability, removeWriteIn, pendingUnitId } = useUnitAvailability({
+    year,
+    sessionCmId,
+    scenario,
+  })
   // `scenario` here is the same prop `useLodgingPlacement` gets — on the
   // mirror that is `''`, and the hook now sends it rather than refusing, per
   // `canMergeUnits` above.
@@ -583,9 +587,40 @@ export function LodgingBoard({
         // (a typed count, a preserved one, or `null`), and this glue is not
         // the place to collapse them.
         partySize: write.partySize,
+        // Straight through for the same reason (kindred#2583 step 4). Only the
+        // card that opened the form knows the name the row was LOADED with, so
+        // dropping it here turns the pencil's compare-and-swap into a create —
+        // and the create is what leaves two rows behind one rename the moment
+        // step 8 narrows the index. `''` is a real address (the row nobody
+        // named), so nothing on this hop may collapse it into `null`.
+        previousOccupantName: write.previousOccupantName,
       }).catch(() => undefined)
     },
     [setAvailability]
+  )
+
+  /*
+   * The corner × on one occupant's card — kindred#2583 step 4, sending step
+   * 7's row-addressed delete.
+   *
+   * A SECOND GLUE rather than a branch inside `writeAvailability`, because it
+   * is a different verb on a different endpoint. `familyAvailable: null` still
+   * means CLEAR THIS UNIT ENTIRELY and still has a caller: the × on a row
+   * whose occupant nobody named, which has no address to delete by.
+   */
+  const removeWriteInRow = useCallback(
+    (removal: WriteInRemoval) => {
+      // The rejection path is the hook's, exactly as above.
+      void removeWriteIn({
+        // FROM THE REMOVAL, not from the card: an inherited write-in is
+        // removed at the unit that HOLDS the row, which may have no card of
+        // its own.
+        unitId: removal.unitId,
+        unitName: removal.unitName,
+        occupantName: removal.occupantName,
+      }).catch(() => undefined)
+    },
+    [removeWriteIn]
   )
 
   // `openParty`/`closePanel`/`panelParty` come from `usePanelParty` above —
@@ -726,6 +761,7 @@ export function LodgingBoard({
                                 ))
                             }
                             onSetAvailability={writeAvailability}
+                            onRemoveWriteIn={removeWriteInRow}
                             canMerge={canMergeUnits}
                             mergeSourceUnit={draggingMergeUnit}
                             // The FAMILY in flight (#1912), broadcast to

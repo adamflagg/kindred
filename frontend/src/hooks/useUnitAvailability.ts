@@ -60,7 +60,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useCallback } from 'react'
 import toast from 'react-hot-toast'
 
-import { setUnitAvailability } from '../services/lodgingApi'
+import { deleteWriteIn, setUnitAvailability } from '../services/lodgingApi'
 import { invalidateLodgingRegistryQueries } from '../utils/queryKeys'
 import { useApiWithAuth } from './useApiWithAuth'
 
@@ -109,10 +109,47 @@ export interface AvailabilityIntent {
    * full producer-by-producer accounting lives.
    */
   partySize: number | null
+  /**
+   * WHICH ROW this edit is about, when it changes the occupant's own name
+   * (kindred#2583 step 4). `null` renames nobody — the Assign modal's create,
+   * addressed by `occupantName` as before. A string, `''` included, is the
+   * name the pencil LOADED, and the server compare-and-swaps on it.
+   *
+   * ⚠️ FORWARDED, never re-derived and never collapsed. `?? null`, `|| null`
+   * or a truthiness test here turns `''` — the unnamed row's real address —
+   * back into "no rename", which is the one row the field exists for. And
+   * dropping the key entirely reads as `null` on the wire, so an ordinary
+   * rename would silently create a second row the moment step 8 lands.
+   */
+  previousOccupantName: string | null
+}
+
+/** Taking ONE occupant out of one unit, as the card's corner × states it. */
+export interface WriteInRemovalIntent {
+  /**
+   * The unit that HOLDS the row, which is not always the card it was clicked
+   * on — the same target `AvailabilityIntent.unitId` carries.
+   */
+  unitId: string
+  /** For the error message only — the removal names the unit by id. */
+  unitName: string
+  /** WHICH occupant. The other half of the Design B address, and required. */
+  occupantName: string
 }
 
 export interface UseUnitAvailabilityReturn {
   setAvailability: (intent: AvailabilityIntent) => Promise<void>
+  /**
+   * Remove ONE occupant, leaving whoever else is in the cabin (kindred#2583
+   * step 7's verb, wired up by step 4).
+   *
+   * A SECOND MUTATION rather than a branch inside `setAvailability`, because
+   * it is a different verb on a different endpoint: `PUT /availability` with
+   * `familyAvailable: null` still means CLEAR THIS UNIT ENTIRELY — the role
+   * row and every occupancy row — and that meaning is unchanged. What moved
+   * is which of the two the × sends.
+   */
+  removeWriteIn: (intent: WriteInRemovalIntent) => Promise<void>
   /**
    * The unit id currently being written, or `''`.
    *
@@ -141,6 +178,10 @@ export function useUnitAvailability({
         occupantName: intent.occupantName,
         reason: intent.reason,
         partySize: intent.partySize,
+        // Straight through, like `partySize` beside it. This glue is not the
+        // place to decide whether a write renames anybody — the card that
+        // opened the form is the only thing that knows the name it loaded.
+        previousOccupantName: intent.previousOccupantName,
       })
     },
 
@@ -153,6 +194,38 @@ export function useUnitAvailability({
     // `set_availability`'s own lost-race recovery can fail after the create
     // landed. Refetching is what makes the board agree with the server either
     // way.
+    onSettled: () => {
+      invalidateLodgingRegistryQueries(queryClient)
+    },
+  })
+
+  /*
+   * THE ROW-ADDRESSED REMOVAL, kept beside the write rather than in a hook of
+   * its own: they share the weekend, the scenario, the invalidation and the
+   * one `pendingUnitId` every corner control on the board keys off. Two hooks
+   * would be two answers to "is this card waiting", and the card would have
+   * to merge them.
+   */
+  const removal = useMutation({
+    mutationFn: async (intent: WriteInRemovalIntent) => {
+      await deleteWriteIn(fetchWithAuth, {
+        year,
+        sessionCmId,
+        scenario,
+        unitId: intent.unitId,
+        occupantName: intent.occupantName,
+      })
+    },
+
+    onError: (error) => {
+      toast.error(error.message)
+    },
+
+    // The same both-outcomes invalidation the write makes, for the same
+    // reason and with the same reach: a removal made inside one draft has to
+    // refresh the mirror and every other draft of the weekend, or a board
+    // somewhere keeps drawing an occupant who is gone for the 30 minutes the
+    // weekend queries stay fresh.
     onSettled: () => {
       invalidateLodgingRegistryQueries(queryClient)
     },
@@ -172,8 +245,30 @@ export function useUnitAvailability({
     [mutateAsync, sessionCmId]
   )
 
+  const { mutateAsync: removeAsync } = removal
+  const removeWriteIn = useCallback(
+    async (intent: WriteInRemovalIntent) => {
+      // The same pre-write refusal, spelled once per verb rather than shared:
+      // the message names the thing the staff member was doing.
+      if (sessionCmId <= 0) {
+        throw new Error('Select a weekend before changing availability.')
+      }
+      await removeAsync(intent)
+    },
+    [removeAsync, sessionCmId]
+  )
+
   return {
     setAvailability,
-    pendingUnitId: mutation.isPending ? mutation.variables.unitId : '',
+    removeWriteIn,
+    // ONE answer covering both verbs. The board disables a card's corner
+    // controls on this id, and a removal that did not report itself would
+    // leave the × live for its whole round trip. Only one can be in flight
+    // from a given card, because the first click disables the rest.
+    pendingUnitId: mutation.isPending
+      ? mutation.variables.unitId
+      : removal.isPending
+        ? removal.variables.unitId
+        : '',
   }
 }

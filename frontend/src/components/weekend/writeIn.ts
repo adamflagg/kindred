@@ -119,6 +119,66 @@ export interface UnitAvailabilityWrite {
    * widen "2 of 5 beds" into "the whole cabin".
    */
   partySize: number | null
+  /**
+   * WHICH ROW this write is about, when it changes the occupant's own name
+   * (kindred#2583 step 4, owner ruling 2026-08-29).
+   *
+   * `null` RENAMES NOBODY — the Assign modal's create, resolved by
+   * `occupantName` exactly as it was. A string is the name the pencil LOADED,
+   * and the server compare-and-swaps on it: it resolves that row, writes
+   * `occupantName` onto it, and answers 409 if the row is not there rather
+   * than falling through to a create.
+   *
+   * WHY IT EXISTS. Under Design B `(unitId, occupantName)` IS the row's
+   * address, so a rename is the one edit that cannot address itself. A write
+   * carrying only the new name misses the occupant-keyed finder, and the
+   * moment step 8 narrows the unique index that miss becomes a CREATE — one
+   * rename leaving two rows, the old occupant still in the cabin, and nothing
+   * on screen saying so. #2583's ruling names the two ways out
+   * (`previous_occupant_name`, or a delete-then-create dance) and forbids this
+   * step's UI from offering a bare in-place rename without one of them.
+   *
+   * ⚠️ `''` IS A NAME, NOT AN ABSENCE, which is why this is `string | null`
+   * and not a blank-defaulted string. A write-in whose occupant nobody named
+   * is real and drawn on the board as `UNNAMED_OCCUPANT`, and naming it is the
+   * ONLY edit its pencil can make — `WriteInCard.trySubmit` refuses to save a
+   * blank. Collapsing `''` into "no rename" would leave exactly that row on
+   * the bare-rename path this field closes.
+   */
+  previousOccupantName: string | null
+}
+
+/**
+ * What the card's corner × asks the server to remove.
+ *
+ * DELIBERATELY NOT a `UnitAvailabilityWrite` with a flag. The × used to send
+ * `familyAvailable: null`, which is the CLEAR-THIS-UNIT-ENTIRELY verb — the
+ * staff↔family role row AND every occupancy row on the unit. That is the same
+ * thing as "remove this occupant" only while a cabin can hold one write-in;
+ * the moment step 8 narrows the unique index, one click on one occupant's card
+ * deletes the co-occupant beside them. `DELETE /api/lodging/write-ins`
+ * (kindred#2583 step 7) is the verb that names its row, and this is what a
+ * component hands it.
+ *
+ * The clear verb is unchanged and still reachable — see `LodgingUnitCard`'s
+ * own well, where an occupant NOBODY NAMED still uses it, because a blank name
+ * addresses no row.
+ */
+export interface WriteInRemoval {
+  /**
+   * The unit that HOLDS the row, not the card it was clicked on — the same
+   * target `UnitAvailabilityWrite.unitId` carries, and for the same reason: a
+   * room can inherit its building's write-in and the building may have no card
+   * of its own.
+   */
+  unitId: string
+  /** That unit's name, for the error message. */
+  unitName: string
+  /**
+   * WHICH occupant. The other half of the Design B address. Never blank here:
+   * a blank name addresses nothing, and the card sends the clear verb instead.
+   */
+  occupantName: string
 }
 
 export interface WriteInOccupant {

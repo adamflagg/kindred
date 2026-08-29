@@ -36,6 +36,7 @@ import {
   writeInDemand,
   writeInEntries,
   type UnitAvailabilityWrite,
+  type WriteInRemoval,
 } from './writeIn'
 import { WriteInCard } from './WriteInCard'
 
@@ -177,6 +178,20 @@ export interface LodgingUnitCardProps {
    */
   onSetAvailability?: (write: UnitAvailabilityWrite) => void
   /**
+   * Remove ONE occupant, leaving whoever else is in the cabin — kindred#2583
+   * step 4, sending step 7's `DELETE /api/lodging/write-ins`.
+   *
+   * A SECOND CHANNEL rather than a shape on `onSetAvailability`, because it is
+   * a different verb on a different endpoint. `familyAvailable: null` still
+   * means CLEAR THIS UNIT ENTIRELY and still has a caller here — the × on a
+   * row whose occupant nobody named, which has no row-addressed delete.
+   *
+   * NO UNIT PARAMETER, for the reason `onSetAvailability` above gives: the
+   * removal NAMES the unit that holds the row, which for an inherited write-in
+   * is not this card.
+   */
+  onRemoveWriteIn?: (removal: WriteInRemoval) => void
+  /**
    * Merge/split is writable: the user holds `bunking.manage` and a weekend is
    * selected.
    *
@@ -306,6 +321,7 @@ const LodgingUnitCardInner = memo(function LodgingUnitCardInner({
   canSetAvailability = false,
   savingAvailability = false,
   onSetAvailability,
+  onRemoveWriteIn,
   canMerge = false,
   // NOT destructured here: `mergeSourceUnit` is the SHELL's input — the body
   // receives the two facts derived from it (`mergeDragActive`,
@@ -1278,28 +1294,60 @@ const LodgingUnitCardInner = memo(function LodgingUnitCardInner({
             // party-size upsert (`family_available is None` returns before
             // it), so this value is never read.
             //
-            // ⚠️ THE ROW IS ADDRESSED BY ITS UNIT, and that is the half of
-            // "two write-ins in one shareable cabin" this change does NOT
-            // fix. `set_availability` resolves the target row by unit, so on
-            // a unit holding two rows both the × and the pencil would reach
-            // whichever the server finds first. Naming ONE of N rows needs an
-            // identifier the request model does not have -- the record id, or
-            // the occupant's name as a key -- and which of the two it should
-            // be is an open product decision (the spec's OQ-1). Unreachable
-            // while `idx_lodging_write_in_unique` stands, and deliberately
-            // left for the step that answers it rather than guessed at here.
+            // ★ THE ROW IS ADDRESSED BY `(unit, occupant_name)` — kindred#2583's
+            // OQ-1, RULED 2026-08-29 (owner: *"lets go with the identity of
+            // unit and occupant"*). Design A, publishing the row's record id
+            // for the client to round-trip, was declined twice; a variant
+            // CALCULATING a stable id from the name first entered was declined
+            // with it, because an id derived from a name inherits that name's
+            // collision surface permanently and then degrades. This comment
+            // used to say the question was open, and both controls beneath it
+            // reached whichever row the server resolved first.
+            //
+            // ⚠️ THE × NO LONGER SENDS THE CLEAR VERB. `familyAvailable: null`
+            // means CLEAR THIS UNIT ENTIRELY — the staff↔family role row AND
+            // every occupancy row on the unit. Identical to "remove this
+            // occupant" while a cabin can hold one write-in, which is how it
+            // survived this long; the moment step 8 narrows the unique index,
+            // one click on one occupant's card takes the co-occupant with it.
+            // `onRemoveWriteIn` sends `DELETE /api/lodging/write-ins`, which
+            // names its row and leaves the role row alone.
+            //
+            // AN OCCUPANT NOBODY NAMED KEEPS THE CLEAR VERB, and that is a
+            // BOOKED COST of Design B rather than an oversight: a blank name
+            // addresses no row, so there is no row-addressed delete for it and
+            // `WriteInDeleteRequest` refuses one. Zero such rows exist in the
+            // 2026 data — the staff write path has refused a blank occupant
+            // since kindred#2598, so only an ingest or a fixture can make one
+            // — and the pencil can NAME it (`previousOccupantName: ''` is a
+            // real address), after which it has a row-addressed delete like
+            // any other.
             {...(canSetAvailability && onSetAvailability !== undefined
               ? {
-                  onRemove: () => {
-                    onSetAvailability({
-                      unitId: entry.source.unitId,
-                      unitName: entry.source.unitName,
-                      familyAvailable: null,
-                      occupantName: '',
-                      reason: '',
-                      partySize: null,
-                    })
-                  },
+                  onRemove:
+                    entry.occupant.name !== '' && onRemoveWriteIn !== undefined
+                      ? () => {
+                          onRemoveWriteIn({
+                            unitId: entry.source.unitId,
+                            unitName: entry.source.unitName,
+                            // THE ROW'S OWN NAME, untrimmed — `writeInEntries`
+                            // already trimmed what the server sent, and the
+                            // server stores and looks up raw, so this is the
+                            // string the row is addressed by.
+                            occupantName: entry.occupant.name,
+                          })
+                        }
+                      : () => {
+                          onSetAvailability({
+                            unitId: entry.source.unitId,
+                            unitName: entry.source.unitName,
+                            familyAvailable: null,
+                            occupantName: '',
+                            reason: '',
+                            partySize: null,
+                            previousOccupantName: null,
+                          })
+                        },
                   // BOUND TO THIS ROW for the same reason `onRemove` is — kindred#2430.
                   // `familyAvailable: false` is the write-in "hold" value, never
                   // `null`: `set_availability` upserts a write-in
@@ -1333,6 +1381,26 @@ const LodgingUnitCardInner = memo(function LodgingUnitCardInner({
                       occupantName: write.occupantName,
                       reason: write.reason,
                       partySize: write.partySize,
+                      // ★ THE NAME THIS ROW WAS LOADED WITH (kindred#2583
+                      // step 4), which is what makes an edit address ONE of a
+                      // cabin's occupants. The form seeds its Occupant field
+                      // from `entry.occupant` and lets it be edited, so the
+                      // name in `write` may not be the name the row is
+                      // addressed by any more — and a write carrying only the
+                      // new name misses the occupant-keyed finder and CREATES
+                      // the moment step 8 narrows the index. One rename, two
+                      // rows, the old occupant still in the cabin.
+                      //
+                      // SENT ON EVERY EDIT, not only when the name changed.
+                      // An unchanged name is still a compare-and-swap, and
+                      // that is the point: if the row moved under the card the
+                      // server answers 409 instead of quietly writing a new
+                      // one. Deriving "did it change" here would put the
+                      // create back on the commonest path.
+                      //
+                      // `''` IS A REAL ADDRESS — the row nobody named — and
+                      // the one edit its pencil can make is to name it.
+                      previousOccupantName: entry.occupant.name,
                     })
                   },
                 }
@@ -1524,6 +1592,14 @@ const LodgingUnitCardInner = memo(function LodgingUnitCardInner({
                     occupantName: write.occupantName,
                     reason: write.note,
                     partySize: write.partySize,
+                    // THIS WRITE RENAMES NOBODY (kindred#2583 step 4). A
+                    // create is addressed by the name it carries, exactly as
+                    // it was: a name the cabin already holds edits that row,
+                    // and any other name creates beside it. Stated rather than
+                    // left off, so a producer that forgets the field is a type
+                    // error rather than a silent fall-through to the create
+                    // path the pencil must never take.
+                    previousOccupantName: null,
                   })
                 },
               }

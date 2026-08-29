@@ -1588,6 +1588,44 @@ class AvailabilityWriteRequest(BaseModel):
     # staff<->family role for the weekend, stored in `lodging_availability`,
     # and names no occupant -- `set_availability` must not put a count on it.
     party_size: int | None = Field(None, ge=1)
+    # WHICH ROW THIS EDIT IS ABOUT, when the edit changes the occupant's own
+    # name (kindred#2583 step 4, owner ruling 2026-08-29). A COMPARE-AND-SWAP:
+    # the row is resolved by this name and `occupant_name` is written onto it.
+    #
+    # WHY THE FIELD EXISTS AT ALL. Under Design B the occupant's name IS the
+    # row's address, so a rename is the one edit that cannot address itself --
+    # a write carrying only the new name misses the occupant-keyed finder, and
+    # once step 8 narrows the index that miss is a CREATE. One rename, two
+    # rows, the old occupant still in the cabin and nothing on the path saying
+    # so. #2583's Design B ruling names the two ways out, `previous_occupant_name`
+    # or a delete-then-create dance, and forbids step 4's UI from offering a
+    # bare in-place rename without one of them.
+    #
+    # ⚠️ `None` IS NOT `""`. `None` means "this write renames nobody" -- the
+    # Assign modal's create, addressed by `occupant_name` exactly as it is
+    # today. `""` means "the row on this unit whose occupant is UNNAMED",
+    # which is a real and reachable row: `occupant_name` above stays
+    # permissive so an ingest with no author can write, and the pencil on such
+    # a row can only ever rename it (the form refuses to save a blank). A
+    # blank-as-absent sentinel would leave that one row doing the bare rename
+    # this field exists to stop.
+    #
+    # THE OCCUPANCY HALF ONLY, enforced below. A release and a clear name no
+    # occupant, so they rename none; accepting it there would be a second,
+    # silent spelling of an edit.
+    #
+    # NOT A RECORD ID, and Design A stays declined (RULED twice, 2026-08-29).
+    # A variant -- a stable id CALCULATED from the name first entered, with a
+    # mutable display name beside it -- was rejected on its own terms: an id
+    # derived from a name inherits that name's collision surface permanently
+    # and then degrades, because a renamed row keeps `f(original_name)` while
+    # a new occupant entered under the original name collides with it
+    # invisibly. If a stable id is ever wanted it is PocketBase's own record
+    # id, published on `WriteInCover` (which today carries `unit_id`,
+    # `unit_code`, `unit_name`, `occupant_name`, `note` and `party_size`, and
+    # no row id) -- an optional `write_in_id` with this name path as the
+    # fallback, needing no migration and re-opening no index decision.
+    previous_occupant_name: str | None = Field(None, max_length=500)
 
     @model_validator(mode="after")
     def _an_occupancy_names_its_occupant(self) -> Self:
@@ -1625,6 +1663,21 @@ class AvailabilityWriteRequest(BaseModel):
         """
         if self.family_available is False and not self.occupant_name.strip():
             raise ValueError("occupant_name is required when writing somebody in")
+        return self
+
+    @model_validator(mode="after")
+    def _only_an_occupancy_renames_anybody(self) -> Self:
+        """A release and a clear name no occupant, so they rename none.
+
+        kindred#2583 step 4. `previous_occupant_name` is an occupancy-only
+        address, the same split `party_size` above already makes and for the
+        same reason: `lodging_availability` has no occupant column to resolve
+        against, and a clear DELETES every occupancy row on the unit rather
+        than resolving one. Accepting the field on either would leave a second
+        way to spell an edit that neither table could honour.
+        """
+        if self.previous_occupant_name is not None and self.family_available is not False:
+            raise ValueError("previous_occupant_name belongs to a write-in, which is family_available: false")
         return self
 
 

@@ -50,6 +50,17 @@
  *   and a write-in is silent about having been the wrong thing to do. The
  *   keystroke that commits lives in a field the staff member moved to on
  *   purpose. The list rows are real buttons, so a keyboard still has a path.
+ * - AMENDED 2026-08-29: `Ctrl`/`Cmd`+`Enter` commits the write-in from
+ *   ANYWHERE in the dialog, the search box included (owner: *"a small thing,
+ *   but ctrl/cmd enter on the write in modal should submit just like clicking
+ *   'write in'"*). This does not weaken the rule above, because what the rule
+ *   protects against is an ACCIDENTAL commit: bare `Enter` is one keystroke
+ *   away from every character of a name being typed, and a modifier chord is
+ *   not reachable by accident. Bare `Enter` in the box stays swallowed, and
+ *   the chord commits nothing the `Write in` button would refuse — it calls
+ *   the button's own handler rather than re-deriving its conditions, so a
+ *   matched family still means the offer is a PLACEMENT and the chord is
+ *   inert.
  *
  * The `People` field W3 draws is kindred#2503, and it IS BUILT, in the slot
  * the layout always reserved for it: it stacks above `Note` in the write-in
@@ -821,7 +832,38 @@ export function AssignFamilyModal({
           `pt-1` was the lower half of a 4 + rule + 4 split that no longer
           exists, and leaving it would make the one distance §3.3 ruled 13px
           instead of 9. */}
-      <div className="flex flex-col gap-[9px] px-3.5 pt-0 pb-[9px]">
+      <div
+        className="flex flex-col gap-[9px] px-3.5 pt-0 pb-[9px]"
+        /* ⌘/CTRL + ↵ COMMITS THE WRITE-IN, from anywhere in this region —
+           the search box included, which bare `Enter` deliberately never does
+           (see the amended ruling in the module docstring).
+
+           ON THE CONTAINER, not on each field: the point is that it works
+           wherever the caret happens to be, and three copies of one chord is
+           three places for it to drift. `keydown` bubbles, so the fields'
+           own bare-`Enter` handlers below are untouched and still run first
+           for the unmodified key.
+
+           IT CALLS `writeIn()`, which is the `Write in` button's own
+           onClick. That is deliberate rather than incidental: `writeIn`
+           starts `if (!offersWriteIn) return`, so the chord inherits every
+           condition the button has — a name was typed, no family still
+           matches (with a match the offer is a PLACEMENT, and writing in over
+           it is the exact mistyped-name failure the ruling exists to stop),
+           and the caller offers a write-in path at all. A shortcut that can
+           commit what the button refuses is a bug, so there is no second copy
+           of those conditions here.
+
+           `isSaving` IS the one thing `writeIn` does not check, because the
+           button spells it as `disabled` instead. */
+        onKeyDown={(event) => {
+          if (event.key !== 'Enter') return
+          if (!event.ctrlKey && !event.metaKey) return
+          if (isSaving) return
+          event.preventDefault()
+          writeIn()
+        }}
+      >
         {/* THE ONE LIVE INPUT, and it is also the occupant name. It is never
             disabled by the flip and never remounted by it — it is rendered
             outside the swap region below precisely so React keeps the same
