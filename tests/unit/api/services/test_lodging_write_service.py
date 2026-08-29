@@ -2773,6 +2773,23 @@ class TestRemovingOneOccupantLeavesTheRestAlone:
         with pytest.raises(ValidationError):
             _write_in_delete_request(occupant_name="  ")
 
+    @pytest.mark.asyncio
+    async def test_an_unknown_weekend_is_a_404_not_a_quiet_no_op(self) -> None:
+        """The same guard `unplace_party` makes, for the same reason.
+
+        Nothing on this path needs the session's PocketBase id -- every
+        lookup keys on `session_cm_id` (kindred#2042). But an unknown or
+        non-weekend cm_id must be refused rather than reported as "there was
+        nothing to remove", which is the answer every other outcome here
+        gives and would be indistinguishable from success.
+        """
+        repo = _repo(fetch_session=None)
+        service = LodgingWriteService(repo)
+
+        with pytest.raises(SessionNotFoundError):
+            await service.remove_write_in(_write_in_delete_request())
+        repo.delete_write_in.assert_not_called()
+
     def test_a_blank_scenario_is_the_live_board(self) -> None:
         """Same steering as every other write on this surface: blank is a
         scope in its own right, not a missing value."""

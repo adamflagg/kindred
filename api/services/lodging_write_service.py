@@ -1295,6 +1295,14 @@ class LodgingWriteService:
         revise: every path here is unreachable in production until step 8
         narrows the unique index.
         """
+        # The RESULT is discarded, the call is not -- exactly as in
+        # `unplace_party`. Nothing below needs the session's PocketBase id
+        # (kindred#2042 moved every lookup onto `session_cm_id`), but an
+        # unknown or non-weekend cm_id has to 404 before this answers
+        # "nothing to remove", which is what every other outcome here says
+        # and would be indistinguishable from success.
+        await self._resolve_session_pb_id(request.year, request.session_cm_id)
+
         in_scenario = request.scenario != ""
         existing = (
             await self.repository.find_draft_write_in(

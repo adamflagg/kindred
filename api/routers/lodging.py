@@ -374,7 +374,10 @@ async def delete_write_in(
     was never placed. The absence of the row IS the state the caller asked
     for.
     """
-    return await _writes().remove_write_in(request)
+    try:
+        return await _writes().remove_write_in(request)
+    except SessionNotFoundError as exc:
+        raise _weekend_404(request.year, request.session_cm_id) from exc
 
 
 @router.get("/push/preview", response_model=PushPreviewResponse)

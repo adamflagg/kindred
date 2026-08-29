@@ -1916,6 +1916,25 @@ class TestTheRowAddressedWriteInDelete:
         assert response.status_code == 200, response.text
         assert response.json()["deleted"] is False
 
+    def test_an_unknown_weekend_is_404_not_a_quiet_no_op(self, mock_pb: MagicMock) -> None:
+        """Every other outcome here answers 200, so an unresolvable weekend
+        has to be told apart from "there was nothing to remove"."""
+        with patch("api.routers.lodging.pb", mock_pb):
+            client = _write_client(_manage_user(), mock_pb)
+            mock_pb.collection.return_value.get_full_list.side_effect = lambda **_: []
+            response = client.request(
+                "DELETE",
+                "/api/lodging/write-ins",
+                json={
+                    "year": 2026,
+                    "session_cm_id": 9999999,
+                    "unit_id": "u1",
+                    "occupant_name": "Olivia Chen",
+                },
+            )
+
+        assert response.status_code == 404, response.text
+
     def test_a_blank_occupant_is_refused(self, mock_pb: MagicMock) -> None:
         """A blank name addresses nothing. `family_available: null` is the
         verb that names no occupant."""
