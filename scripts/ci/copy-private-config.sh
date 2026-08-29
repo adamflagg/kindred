@@ -92,31 +92,60 @@ fi
 # would put the writes below outside DEST_ROOT with the allowlist looking
 # perfectly ordinary. Not reachable from CI -- GITHUB_WORKSPACE is a fresh
 # checkout -- but it is reachable in a dev worktree, where local/assets really
-# is a symlink into kindred-local. Pinned by TEST 16.
-DEST_ROOT_REAL=$(cd "$DEST_ROOT" && pwd -P)
+# is a symlink into kindred-local. Pinned by TESTs 16-19.
+DEST_ROOT_REAL=$(realpath "$DEST_ROOT")
+SRC_ROOT_REAL=$(realpath "$SRC_ROOT")
 
-# Validated in a separate pass, before anything is removed: the copy loop below
-# deletes each destination first, so a bad path discovered halfway through
-# would already have mutated the workspace on behalf of the paths before it.
-# Creating the parents here is safe to do early -- mkdir -p destroys nothing --
-# and it is what makes the containment check possible at all.
+# `realpath -m` resolves the symlinks it finds and treats the rest lexically,
+# so containment is decided WITHOUT creating anything first, and on the WHOLE
+# destination rather than its parent. Both halves matter. An earlier cut
+# validated `dirname "$DEST_ROOT/$p"`, and `dirname` discards a trailing
+# slash -- so "docs/camp/" left the final component unresolved while
+# `rm -rf` still followed it, one character past the guard. Pinned by TEST 18. An earlier cut
+# ran `mkdir -p` to make the parent resolvable, which created directories
+# through a symlinked component before rejecting the path -- a write outside
+# DEST_ROOT performed by the check that exists to prevent writes outside
+# DEST_ROOT. Pinned by TEST 19.
+#
+# Whole pass runs before the copy loop: that loop deletes each destination
+# first, so a bad path found halfway through would already have mutated the
+# workspace on behalf of every path ahead of it. Pinned by TEST 17.
+inside() {
+  # $1 candidate, $2 root -- both already resolved
+  [[ $1 == "$2" || $1 == "$2"/* ]]
+}
+
 for p in "${paths[@]}"; do
-  parent=$(dirname "$DEST_ROOT/$p")
-  mkdir -p "$parent"
-  parent_real=$(cd "$parent" && pwd -P)
-  case "$parent_real/" in
-    "$DEST_ROOT_REAL"/*) : ;;
-    *) die "destination for '$p' resolves to $parent_real, outside $DEST_ROOT_REAL" ;;
-  esac
+  dest_real=$(realpath -m "$DEST_ROOT/$p")
+  inside "$dest_real" "$DEST_ROOT_REAL" \
+    || die "destination for '$p' resolves to $dest_real, outside $DEST_ROOT_REAL"
+
+  # The source is a fresh kindred-local clone and therefore trusted, so this
+  # is defence in depth -- but the depth is worth having: in cd.yml the GHCR
+  # login runs BEFORE this action, and Dockerfile.caddy bakes
+  # config/branding*.json into a pushed image. An allowlisted path that is
+  # itself a symlink out of the clone would otherwise land in the workspace
+  # under a name the workflow believes it chose. Pinned by TEST 20.
+  #
+  # This checks the REQUESTED path only. A symlink nested inside a requested
+  # directory is still dereferenced by `cp -RL` below and is not covered;
+  # guarding that would mean walking every copied tree, which is not worth it
+  # against a source we control.
+  src_real=$(realpath "$SRC_ROOT/$p")
+  inside "$src_real" "$SRC_ROOT_REAL" \
+    || die "source for '$p' resolves to $src_real, outside $SRC_ROOT_REAL"
 done
 
 for p in "${paths[@]}"; do
   dest="$DEST_ROOT/$p"
-  # Clear first so a re-run cannot leave a stale copy, and so copying a
-  # directory replaces it rather than nesting inside it.
+  mkdir -p "$(dirname "$dest")"
+  # Clear first so a re-run cannot leave a stale copy, and -- the case a file
+  # destination does not exercise, because `cp` overwrites a file anyway --
+  # so that re-copying a DIRECTORY replaces it instead of nesting a second
+  # copy inside the first. Pinned by TEST 9.
   rm -rf "$dest"
-  # -L dereferences: a dev checkout's config/ is symlinks into kindred-local,
-  # and a dangling one must fail here rather than ship a broken link onward.
+  # -L dereferences, so a symlink nested inside a copied directory arrives as
+  # content rather than as a link that dangles once the clone is deleted.
   cp -RL "$SRC_ROOT/$p" "$dest"
   echo "  copied $p"
 done

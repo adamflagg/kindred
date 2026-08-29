@@ -158,8 +158,12 @@ fi
 new_fixture
 echo 'OUTSIDE' > "$WORK/escape.txt"
 run_copy '../escape.txt'
+# Asserting only non-zero passes without the guard too: the containment check
+# rejects '../escape.txt' independently, and its own die message echoes $p
+# verbatim, which satisfies a bare grep for '..' for an unrelated reason. The
+# assertion is on the REASON, as TEST 6 does.
 if [[ $STATUS -ne 0 ]] \
-   && printf '%s' "$OUT" | grep -q '\.\.' \
+   && printf '%s' "$OUT" | grep -qF "'..' segment" \
    && [[ -f "$WORK/escape.txt" ]] \
    && grep -q 'OUTSIDE' "$WORK/escape.txt"; then
   check "TEST 7: '..' traversal is refused and writes nothing outside the roots" ok
@@ -187,14 +191,32 @@ fi
 # --- TEST 9: re-running over an existing destination overwrites cleanly -----
 # Composite actions can run twice in one job; a second pass must not fail on
 # "file exists" nor leave a stale first-pass copy behind.
+#
+# A FILE destination proves nothing about `rm -rf "$dest"`: `cp` overwrites a
+# file whether or not it was cleared first. The directory half is the half
+# that pins it -- without the clear, `cp -RL src dir` copies INTO the existing
+# directory and the second run leaves local/assets/assets/. `local/assets` is
+# a live allowlist value in cd.yml and release.yml, so this is the real shape.
 new_fixture
 run_copy 'config/staff_list.json'
 echo 'STALE' > "$DEST/config/staff_list.json"
 run_copy 'config/staff_list.json'
-if [[ $STATUS -eq 0 ]] && grep -q '"staff":true' "$DEST/config/staff_list.json"; then
-  check "TEST 9: a second run overwrites a stale copy" ok
+file_ok=no
+[[ $STATUS -eq 0 ]] && grep -q '"staff":true' "$DEST/config/staff_list.json" && file_ok=yes
+
+new_fixture
+run_copy 'local/assets'
+run_copy 'local/assets'
+dir_ok=no
+if [[ $STATUS -eq 0 && -f "$DEST/local/assets/camp-logo.png" \
+   && ! -e "$DEST/local/assets/assets" ]]; then
+  dir_ok=yes
+fi
+
+if [[ $file_ok == yes && $dir_ok == yes ]]; then
+  check "TEST 9: a second run replaces a stale file AND does not nest a directory" ok
 else
-  check "TEST 9: a second run overwrites a stale copy (status=$STATUS) $OUT" no
+  check "TEST 9: a second run replaces a stale file AND does not nest a directory (file=$file_ok dir=$dir_ok status=$STATUS) $OUT" no
 fi
 
 # --- TEST 10: every copied path is announced --------------------------------
@@ -254,6 +276,60 @@ else
   check "TEST 17: an escaping path aborts before any earlier path is copied (status=$STATUS) $OUT" no
 fi
 
+# --- TEST 18: a trailing slash cannot walk past the containment check -------
+# `dirname` discards a trailing slash, so validating the PARENT left the final
+# component unresolved while `rm -rf "$dest/"` still followed it. One
+# character past the guard TEST 16 exists for, and destructive: reproduced
+# against the repo's own shape, where docs/camp is a live symlink into
+# kindred-local under a real docs/ parent.
+new_fixture
+mkdir -p "$WORK/priv_slash/camp" "$DEST/docs"
+echo 'PRIVATE' > "$WORK/priv_slash/camp/plan.md"
+mkdir -p "$SRC/docs/camp"; echo 'new' > "$SRC/docs/camp/note.md"
+ln -s "$WORK/priv_slash/camp" "$DEST/docs/camp"
+run_copy 'docs/camp/'
+if [[ $STATUS -ne 0 ]] \
+   && [[ -f "$WORK/priv_slash/camp/plan.md" ]] \
+   && grep -q 'PRIVATE' "$WORK/priv_slash/camp/plan.md"; then
+  check "TEST 18: a trailing slash does not bypass containment" ok
+else
+  check "TEST 18: a trailing slash does not bypass containment (status=$STATUS) $OUT" no
+fi
+
+# --- TEST 19: the containment check creates nothing on the way to failing ---
+# An earlier cut ran `mkdir -p` to make the parent resolvable before testing
+# it, which created directories THROUGH the symlinked component -- a write
+# outside DEST_ROOT performed by the check that exists to prevent writes
+# outside DEST_ROOT. `realpath -m` decides it without touching the disk.
+new_fixture
+mkdir -p "$WORK/outside_mkdir" "$SRC/config/sub"
+echo '{}' > "$SRC/config/sub/staff_list.json"
+rm -rf "$DEST/config"
+ln -s "$WORK/outside_mkdir" "$DEST/config"
+run_copy 'config/sub/staff_list.json'
+if [[ $STATUS -ne 0 && ! -e "$WORK/outside_mkdir/sub" ]]; then
+  check "TEST 19: a rejected path creates no directories outside DEST_ROOT" ok
+else
+  check "TEST 19: a rejected path creates no directories outside DEST_ROOT (status=$STATUS) $OUT" no
+fi
+
+# --- TEST 20: a requested path that leaves SRC_ROOT is refused --------------
+# Defence in depth -- kindred-local is ours -- but the blast radius earns it:
+# in cd.yml the GHCR login runs BEFORE this action, and Dockerfile.caddy bakes
+# config/branding*.json into a pushed image, so outside content arriving under
+# an allowlisted name would ship.
+new_fixture
+mkdir -p "$WORK/elsewhere"
+echo 'OUTSIDE-CONTENT' > "$WORK/elsewhere/secret"
+rm -f "$SRC/config/branding.local.json"
+ln -s "$WORK/elsewhere/secret" "$SRC/config/branding.local.json"
+run_copy 'config/branding.local.json'
+if [[ $STATUS -ne 0 && ! -e "$DEST/config/branding.local.json" ]]; then
+  check "TEST 20: a source path resolving outside SRC_ROOT is refused" ok
+else
+  check "TEST 20: a source path resolving outside SRC_ROOT is refused (status=$STATUS) $OUT" no
+fi
+
 # --- TEST 11: every consumer of the action passes a `paths` allowlist -------
 # A SOURCE-GREP anchor, in the spirit of scripts/dev/test-verify-no-hardcoded-lodging.sh.
 # The script above cannot see a workflow that forgets the input; the action
@@ -263,7 +339,10 @@ fi
 REPO_ROOT=$(git rev-parse --show-toplevel)
 CI_WORKFLOW="$REPO_ROOT/.github/workflows/ci.yml"
 offenders=$(
-  for wf in "$REPO_ROOT"/.github/workflows/*.yml; do
+  # *.yml AND *.yaml: there are no .yaml workflows today, but a filter that
+  # silently skips one is the failure this test exists to catch.
+  for wf in "$REPO_ROOT"/.github/workflows/*.yml "$REPO_ROOT"/.github/workflows/*.yaml; do
+    [[ -f "$wf" ]] || continue
     awk -v file="$wf" '
       /uses:[[:space:]]*\.\/\.github\/actions\/clone-kindred-local/ {
         found = 0
@@ -336,17 +415,31 @@ if ! grep -qF 'run: ./scripts/ci/test-copy-private-config.sh' "$CI_WORKFLOW"; th
   # asserted below, so a bare filename grep stays green after the step that
   # EXECUTES the suite is deleted -- suite listed, suite never run.
   check "TEST 14: ci.yml never runs this self-test" no
-elif ! grep -qF -- "- '.github/actions/**'" "$CI_WORKFLOW"; then
-  check "TEST 14: ci.yml's guardSelfTests filter does not watch .github/actions" no
-elif ! grep -qF -- "- 'scripts/ci/copy-private-config.sh'" "$CI_WORKFLOW"; then
-  check "TEST 14: ci.yml's guardSelfTests filter does not watch the copy script" no
-elif ! grep -qF -- "- '.github/workflows/**'" "$CI_WORKFLOW"; then
-  # TEST 11 scans EVERY workflow, so a filter watching only ci.yml lets an
-  # allowlist change in cd.yml or release.yml merge untested.
-  check "TEST 14: ci.yml's guardSelfTests filter does not watch all workflows" no
 else
-  check "TEST 14: this suite is wired into ci.yml and its filter watches its subjects" ok
+  # The filter greps MUST be scoped to the guardSelfTests block. ci.yml has a
+  # separate `actions:` filter group that legitimately lists
+  # '.github/workflows/**' and '.github/actions/**' for the security-lint job,
+  # so an unscoped grep matches THOSE and stays green after both lines are
+  # deleted from guardSelfTests -- which is precisely the widening this PR
+  # made, left unpinned by the test written to hold it.
+  gsf=$(awk '/^          guardSelfTests:/{f=1;next} /^          [a-zA-Z]+:/{f=0} f' "$CI_WORKFLOW")
+  if [[ -z "$gsf" ]]; then
+    check "TEST 14: could not locate the guardSelfTests filter block in ci.yml" no
+  elif ! printf '%s\n' "$gsf" | grep -qF -- "- 'scripts/ci/copy-private-config.sh'"; then
+    check "TEST 14: guardSelfTests does not watch the copy script" no
+  elif ! printf '%s\n' "$gsf" | grep -qF -- "- 'scripts/ci/test-copy-private-config.sh'"; then
+    check "TEST 14: guardSelfTests does not watch this self-test" no
+  elif ! printf '%s\n' "$gsf" | grep -qF -- "- '.github/workflows/**'"; then
+    # TEST 11 scans EVERY workflow, so a filter watching only ci.yml lets an
+    # allowlist change in cd.yml or release.yml merge untested.
+    check "TEST 14: guardSelfTests does not watch all workflows" no
+  elif ! printf '%s\n' "$gsf" | grep -qF -- "- '.github/actions/**'"; then
+    check "TEST 14: guardSelfTests does not watch .github/actions" no
+  else
+    check "TEST 14: this suite is wired into ci.yml and its filter watches its subjects" ok
+  fi
 fi
+
 
 # --- TEST 15: the deploy key is isolated, and cleanup precedes the write ----
 # Two properties of the action's key handling, both raised in review on the PR
@@ -360,8 +453,17 @@ fi
 #     `set -euo pipefail` to this action (this PR did) means any failure
 #     between the write and the clone exits with the private key still on disk
 #     unless the trap is already armed.
-if grep -qE '>[[:space:]]*~/\.ssh/id_ed25519' "$ACTION_YML"; then
-  check "TEST 15: action.yml writes the deploy key over ~/.ssh/id_ed25519" no
+# A negative grep for one SPELLING is not an isolation check: setting
+# KEY_FILE=~/.ssh/id_ed25519 and writing to "$KEY_FILE" passes it while the
+# key lands in exactly the file the test forbids. The assertion is positive --
+# the key file must come from mktemp -- with the negative grep kept as a
+# cheap second net.
+if ! grep -qE '^[[:space:]]*KEY_FILE=\$\(mktemp\)' "$ACTION_YML"; then
+  check "TEST 15: the deploy key file does not come from mktemp" no
+elif grep -vE '^[[:space:]]*#' "$ACTION_YML" | grep -qF '/.ssh/id_ed25519'; then
+  # Comments stripped first: action.yml explains in prose why the key does NOT
+  # go there, and that sentence must not trip its own check.
+  check "TEST 15: action.yml still names ~/.ssh/id_ed25519 outside a comment" no
 elif ! awk '
     /trap cleanup EXIT/         { trap_line = NR }
     /> "\$KEY_FILE"/            { write_line = NR }

@@ -335,13 +335,16 @@ jobs:
         # close is kindred#1867's -- a guard reporting clean on a scan that did
         # not really happen -- one level up.
         #
-        # GATE 1: the registry must have ARRIVED. clone-kindred-local copies
-        # with `cp ... 2>/dev/null || true`, so a rename or move on the
-        # kindred-local side makes the file simply not appear: the guard then
-        # runs its 15-term fallback sample, exits 0, and CI stays green
-        # forever, with the deploy-key cost paid for nothing.
+        # GATE 1: the registry must have ARRIVED. Since kindred#2575 the action
+        # itself hard-fails on a missing requested path, so the `|| true`
+        # silence this gate was written against is gone and a rename in
+        # kindred-local now goes red one step earlier. Keep the gate anyway: it
+        # is the only check that the file is readable HERE, in this job's
+        # workspace, which is what the guard below actually reads. A future
+        # rewiring -- a changed allowlist, a copy landing somewhere else, a
+        # permissions problem -- reaches the guard without touching the action.
         if [ "$HAVE_DEPLOY_KEY" = "true" ] && [ ! -r config/lodging_registry.json ]; then
-          echo "::error::this run has the kindred-local deploy key, but config/lodging_registry.json never arrived. clone-kindred-local copies with '|| true', so a rename or move in kindred-local degrades this guard to its 15-term fallback sample silently. Fix the copy - do not delete this check."
+          echo "::error::this run has the kindred-local deploy key, but config/lodging_registry.json is not readable in the workspace. The guard would silently fall back to its 15-term sample. Check the 'paths' allowlist passed to clone-kindred-local, and the copy step's output - do not delete this check."
           exit 1
         fi
 

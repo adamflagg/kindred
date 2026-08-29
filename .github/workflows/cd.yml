@@ -593,10 +593,11 @@ jobs:
             dockerfile: docker/Dockerfile.api
             should_build: ${{ needs.detect-changes.outputs.build_api }}
             # bunking/branding.py, staff_name_detector.py and nickname_groups.py
-            # are the only Python readers of a private config file. The lodging
-            # registry has NO Python reader -- it was reaching this image only
-            # because both this action and Dockerfile.api were copying by
-            # directory rather than by name.
+            # are the only readers PACKAGED INTO THIS IMAGE -- scripts/ has
+            # several more, but Dockerfile.api never copies scripts/. The
+            # lodging registry has no reader here at all; it was reaching this
+            # image only because both this action and Dockerfile.api were
+            # copying by directory rather than by name.
             private_paths: |
               config/branding.local.json
               config/staff_list.json
