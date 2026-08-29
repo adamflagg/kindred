@@ -3,21 +3,22 @@
  *
  * Every other test of this hook mocks `useSyncStatusAPI` outright, which means
  * the thing the completion gate actually rests on has never been exercised:
- * that a refetch returning a BYTE-IDENTICAL payload still reaches the hook.
- * Two library behaviours have to hold for that, and neither is ours —
- * measured against the installed `@tanstack/query-core` 5.101.4:
+ * that a refetch returning a BYTE-IDENTICAL payload still reaches the hook and
+ * still moves the baseline on. That rests on a library behaviour that is not
+ * ours — `Query#setData` stamps a fresh `dataUpdatedAt` on EVERY resolved
+ * fetch, whatever the payload (`successState`: `dataUpdatedAt ?? Date.now()`,
+ * query-core 5.101.4) — and on structural sharing handing `data` back
+ * unchanged across such a fetch, so `data` alone could never have carried the
+ * signal.
  *
- *  1. `Query#setData` stamps a fresh `dataUpdatedAt` on every resolved fetch,
- *     whatever the payload (`successState`: `dataUpdatedAt ?? Date.now()`).
- *  2. Reading `dataUpdatedAt` off the `useQuery` result TRACKS it, so the
- *     observer is notified on that stamp alone. Measured over 15 identical
- *     polls 3 s apart, one observer: `const { data }` re-rendered ONCE,
- *     `const { data, dataUpdatedAt }` re-rendered 15 times.
+ * If that stopped holding, every mocked suite here would stay green: they all
+ * feed `dataUpdatedAt` by hand. This one does not mock the query layer, so it
+ * is the only place the assumption is actually checked.
  *
- * If either stopped holding, the mocked suites would stay green while the
- * armed run captured no baseline until the 5 s readout tick — and a ~4.7 s
- * bunking chain would then land inside the window it cannot detect. This test
- * is the guard for that, and it is why it does not mock the query layer.
+ * What it deliberately does NOT pin is the tracked-props re-render cost noted
+ * at the hook's destructure — the flow still completes when `dataUpdatedAt` is
+ * read untracked, because other things re-render this hook too. That cost is a
+ * measurement, recorded there, not a behaviour under test here.
  */
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest'
 import { renderHook, act, waitFor } from '@testing-library/react'

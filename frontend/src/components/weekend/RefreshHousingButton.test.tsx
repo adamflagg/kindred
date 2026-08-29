@@ -306,6 +306,55 @@ describe('RefreshHousingButton — the cutover', () => {
     expect(message).not.toMatch(/\d/)
   })
 
+  /**
+   * The PRESS path, end to end — every other cutover test here mounts with a
+   * chain job already running, so the hook takes its `phase === 'idle'` pickup
+   * branch and `start()` is never called at all. That left the weekend surface
+   * with no coverage of the arming path #2596 rewrote, while summer's
+   * equivalent (`lands the refreshed bunks on the board at the cutover`, in
+   * AppLayout.test.tsx) has had it throughout. Weekend models summer.
+   *
+   * The middle step is the one that matters: the first reading after the press
+   * is what CONFIRMS the baseline, and until it lands there are no grounds to
+   * call anything moved (kindred#2595).
+   */
+  it('LANDS THE NEW PLACEMENTS after a PRESS, not just after a mid-run pickup', async () => {
+    setStatus(status())
+    const { rerender, client } = renderButton()
+    await screen.findByText('Tamarack 1')
+
+    fireEvent.click(screen.getByRole('button', { name: /Refresh Housing/i }))
+    fireEvent.click(screen.getByRole('button', { name: /Start refresh/i }))
+    await waitFor(() => expect(refreshFamilyCamp).toHaveBeenCalledTimes(1))
+
+    const replay = () =>
+      rerender(
+        <QueryClientProvider client={client}>
+          <RosterProbe />
+          <RefreshHousingButton />
+        </QueryClientProvider>
+      )
+
+    // The invalidation's own refetch lands in the arming gap: nothing has moved
+    // yet, and this is what makes the baseline genuinely post-press.
+    setStatus(status())
+    replay()
+    expect(toastSuccess).not.toHaveBeenCalled()
+    expect(screen.getByTestId('roster').textContent).toBe('Tamarack 1')
+
+    // The chain finishes: CampMinder's newer placement is now what the roster
+    // endpoint returns, and the terminal job's end_time has moved.
+    rosterFromServer = 'Tamarack 2'
+    setStatus(
+      status({ lodging_assignments: { status: 'success', end_time: '2026-04-22T10:30:00.000Z' } })
+    )
+    replay()
+
+    // WITHOUT the invalidation this stays "Tamarack 1" for thirty minutes.
+    await waitFor(() => expect(screen.getByTestId('roster').textContent).toBe('Tamarack 2'))
+    expect(toastSuccess).toHaveBeenCalledTimes(1)
+  })
+
   it('returns to the resting button after the cutover', async () => {
     setStatus(
       status({ family_camp_derived: { status: 'running', start_time: new Date().toISOString() } })

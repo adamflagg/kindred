@@ -164,28 +164,31 @@ export function useSyncSequenceRun({
   const queryClient = useQueryClient()
   const [phase, setPhase] = useState<'idle' | 'arming' | 'running'>('idle')
 
-  // ⚠️ READING `dataUpdatedAt` HERE IS NOT FREE, and the cost is the reason it
-  // is read here rather than imperatively. React Query hands `useQuery`'s
-  // result through a tracking Proxy (`QueryObserver#trackResult`), so every
-  // key this line touches joins `#trackedProps` — and the observer is then
+  // ⚠️ READING `dataUpdatedAt` HERE IS NOT FREE. React Query hands `useQuery`'s
+  // result through a tracking Proxy (`QueryObserver#trackResult`), so every key
+  // this line touches joins `#trackedProps` — and the observer is thereafter
   // notified whenever THAT key changes, not only when `data` does.
   // `dataUpdatedAt` is a fresh `Date.now()` on every resolved fetch, so this
-  // observer now re-renders on every poll, including the polls whose payload
+  // observer is now notified on every poll, including the polls whose payload
   // is byte-identical to the one before.
   //
-  // Measured against the installed query-core 5.101.4 — one observer, 15
+  // MEASURED against the installed query-core 5.101.4 — one observer, 15
   // identical refetches 3 s apart: `const { data }` re-rendered ONCE,
-  // `const { data, dataUpdatedAt }` re-rendered FIFTEEN times.
+  // `const { data, dataUpdatedAt }` re-rendered FIFTEEN times. `AppLayout`
+  // mounts one of these for the whole session, so the price is one render of
+  // the app shell per poll for as long as anything is syncing. (`<Outlet/>`
+  // hands back the same element from route context, so the routed page below
+  // it bails out; it is the nav shell that re-renders, not the board.) Note
+  // `#trackedProps` is only ever ADDED to, so this cannot be narrowed by
+  // reading the key conditionally — one read arms it for the observer's life.
   //
-  // That notification is exactly what the freshness gate below needs: the
-  // whole point is to react to a refetch that returns the same bytes. Read
-  // imperatively instead (`queryClient.getQueryState(...)`) and nothing would
-  // re-render on such a poll, so the baseline would not be captured until the
-  // 5 s readout tick — and a ~4.7 s bunking chain would then finish inside the
-  // window this hook cannot detect. The cost is one extra render of this
-  // hook's consumer per poll while any sync is running; `AppLayout` mounts one
-  // of these for the whole session, so that is the app shell. Accepted
-  // deliberately, and pinned by `useSyncSequenceRun.integration.test.tsx`.
+  // Paid deliberately: the gate below has to notice a refetch that changes
+  // NOTHING, and that is precisely the notification tracked props buy. Reading
+  // it untracked instead (`queryClient.getQueryState(...)`) leaves the capture
+  // to whatever else happens to re-render — the 5 s readout tick, another
+  // consumer's state change — which makes the timing incidental rather than
+  // prompt, against a ~4.7 s bunking chain and a 60 s arming budget.
+  // kindred#2599 tracks the redesign that would remove the need for the read.
   const { data: syncStatus, dataUpdatedAt } = useSyncStatusAPI({
     enabled,
     forcePolling: phase === 'arming',
