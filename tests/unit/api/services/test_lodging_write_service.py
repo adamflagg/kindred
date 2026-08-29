@@ -1345,7 +1345,14 @@ class TestTheAvailabilityWriteShape:
 
     def test_a_write_needs_no_scenario(self) -> None:
         request = AvailabilityWriteRequest(
-            year=2026, session_cm_id=1000001, unit_id="u1", family_available=False, reason="Burst pipe"
+            year=2026,
+            session_cm_id=1000001,
+            unit_id="u1",
+            family_available=False,
+            # An occupancy names its occupant since kindred#2583 step 6 -- the
+            # name is the row's address, not a decoration on it.
+            occupant_name="Olivia Chen",
+            reason="Burst pipe",
         )
 
         assert request.family_available is False
@@ -1511,7 +1518,7 @@ class TestTheAvailabilityWriteShape:
         """`family_available: null` DELETES the row; the delete path takes no
         payload and is untouched by the count.
         """
-        repo.find_write_in = AsyncMock(return_value=SimpleNamespace(id="write_in_1"))
+        repo.fetch_write_ins_on_unit = AsyncMock(return_value=[SimpleNamespace(id="write_in_1")])
 
         await write_service.set_availability(_availability_request(family_available=None, party_size=None))
 
@@ -2057,7 +2064,7 @@ class TestAWriteInIsStoredAsAnOccupancyNotAnAvailability:
         self, write_service: LodgingWriteService, repo: MagicMock
     ) -> None:
         """The mirror of the write-in case, and the half a sweep would miss."""
-        repo.find_write_in = AsyncMock(return_value=SimpleNamespace(id="write_in_1"))
+        repo.fetch_write_ins_on_unit = AsyncMock(return_value=[SimpleNamespace(id="write_in_1")])
 
         await write_service.set_availability(_availability_request(family_available=True, reason="Director away"))
 
@@ -2072,7 +2079,7 @@ class TestAWriteInIsStoredAsAnOccupancyNotAnAvailability:
         "normal". With two tables it means delete BOTH rows: leaving either one
         would have a clear silently do nothing on whichever fact it missed.
         """
-        repo.find_write_in = AsyncMock(return_value=SimpleNamespace(id="write_in_1"))
+        repo.fetch_write_ins_on_unit = AsyncMock(return_value=[SimpleNamespace(id="write_in_1")])
         repo.find_availability_override = AsyncMock(return_value=SimpleNamespace(id="avail_1"))
 
         response = await write_service.set_availability(_availability_request(family_available=None))
@@ -2102,7 +2109,7 @@ class TestAWriteInIsStoredAsAnOccupancyNotAnAvailability:
         swallowed, exactly as it is on every other delete in this module: "the
         delete was refused" must not read as "there was nothing to delete".
         """
-        repo.find_write_in = AsyncMock(return_value=SimpleNamespace(id="write_in_1"))
+        repo.fetch_write_ins_on_unit = AsyncMock(return_value=[SimpleNamespace(id="write_in_1")])
         repo.delete_write_in = AsyncMock(
             side_effect=ClientResponseError("gone", status=404, data={}, url="", is_abort=False, original_error=None)
         )
@@ -2117,7 +2124,7 @@ class TestAWriteInIsStoredAsAnOccupancyNotAnAvailability:
     async def test_a_refused_write_in_delete_keeps_its_status(
         self, write_service: LodgingWriteService, repo: MagicMock, status: int
     ) -> None:
-        repo.find_write_in = AsyncMock(return_value=SimpleNamespace(id="write_in_1"))
+        repo.fetch_write_ins_on_unit = AsyncMock(return_value=[SimpleNamespace(id="write_in_1")])
         repo.delete_write_in = AsyncMock(
             side_effect=ClientResponseError(
                 "refused", status=status, data={}, url="", is_abort=False, original_error=None
@@ -2195,7 +2202,7 @@ class TestAWriteInIsStoredAsAnOccupancyNotAnAvailability:
         """
         await write_service.set_availability(_availability_request())
 
-        repo.find_write_in.assert_awaited_once_with(2026, 1000001, "u1")
+        repo.find_write_in.assert_awaited_once_with(2026, 1000001, "u1", "Olivia Chen")
 
 
 class TestAWriteInInsideAScenarioIsWrittenToTheDraftTable:
@@ -2281,7 +2288,7 @@ class TestAWriteInInsideAScenarioIsWrittenToTheDraftTable:
         """
         await write_service.set_availability(_availability_request(scenario="scn_1"))
 
-        repo.find_draft_write_in.assert_awaited_once_with(2026, 1000001, "scn_1", "u1")
+        repo.find_draft_write_in.assert_awaited_once_with(2026, 1000001, "scn_1", "u1", "Olivia Chen")
         repo.find_write_in.assert_not_called()
 
     @pytest.mark.asyncio
@@ -2331,7 +2338,7 @@ class TestAWriteInInsideAScenarioIsWrittenToTheDraftTable:
         live table from inside a scenario would clear a fact nobody on this
         board is looking at.
         """
-        repo.find_draft_write_in = AsyncMock(return_value=SimpleNamespace(id="draft_write_in_1"))
+        repo.fetch_draft_write_ins_on_unit = AsyncMock(return_value=[SimpleNamespace(id="draft_write_in_1")])
 
         await write_service.set_availability(
             _availability_request(scenario="scn_1", family_available=True, reason="Director away")
@@ -2345,7 +2352,7 @@ class TestAWriteInInsideAScenarioIsWrittenToTheDraftTable:
     async def test_clearing_inside_a_scenario_deletes_the_draft_row_and_the_role_row(
         self, write_service: LodgingWriteService, repo: MagicMock
     ) -> None:
-        repo.find_draft_write_in = AsyncMock(return_value=SimpleNamespace(id="draft_write_in_1"))
+        repo.fetch_draft_write_ins_on_unit = AsyncMock(return_value=[SimpleNamespace(id="draft_write_in_1")])
         repo.find_availability_override = AsyncMock(return_value=SimpleNamespace(id="avail_1"))
 
         response = await write_service.set_availability(_availability_request(scenario="scn_1", family_available=None))

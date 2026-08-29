@@ -1589,6 +1589,86 @@ class AvailabilityWriteRequest(BaseModel):
     # and names no occupant -- `set_availability` must not put a count on it.
     party_size: int | None = Field(None, ge=1)
 
+    @model_validator(mode="after")
+    def _an_occupancy_names_its_occupant(self) -> Self:
+        """A write-in must name somebody. A release and a clear need not.
+
+        kindred#2583 step 6, decided with the Design B ruling of 2026-08-29.
+        `(unit_id, occupant_name)` is a write-in's ADDRESS, so a blank name is
+        not merely uninformative -- it is unaddressable. The row cannot be
+        edited (nothing names it), cannot be removed by the row-addressed
+        delete, and a second blank-named row on the same unit collides with
+        the first under the narrowed
+        `(session_cm_id, year, unit, occupant_name)` index.
+
+        WHY THE FIELD ITSELF STAYS PERMISSIVE, rather than gaining
+        `min_length=1`. Two of this request's three verbs legitimately name
+        nobody: `family_available: true` is the staff<->family ROLE for the
+        weekend and has no occupant, and `family_available: null` DELETES and
+        sends neither text field. A field-level requirement would refuse both.
+
+        WHY THIS IS THE STAFF WRITE PATH AND ONLY THAT.
+        `PUT /api/lodging/availability` is this model's sole caller, and it is
+        the only path a human types into. Every ingest-shaped writer --
+        `_seed_write_ins`'s two copy paths, `execute_push`'s creates,
+        `unpush`'s recreates -- goes straight to `LodgingRepository` and never
+        builds one of these, so a row written with no author still copies,
+        pushes and reverts. That split is the whole reason the field's own
+        docstring above calls it "REQUIRED through the control and permissive
+        here"; this validator is where "through the control" now lives on the
+        server as well as in the UI.
+
+        TRIMMED, because `"   "` addresses exactly as much as `""` does. The
+        stored value is NOT trimmed -- normalising what staff typed is a
+        separate decision this change does not make, and `PushRow.tuple_key()`
+        already strips for matching.
+        """
+        if self.family_available is False and not self.occupant_name.strip():
+            raise ValueError("occupant_name is required when writing somebody in")
+        return self
+
+
+class WriteInDeleteRequest(BaseModel):
+    """Remove ONE occupant from one unit, leaving everything else standing.
+
+    kindred#2583 step 7. `PUT /availability` with `family_available: null`
+    stays the CLEAR-THIS-UNIT-ENTIRELY verb -- it drops the role row and every
+    occupancy row on the unit, which is exactly what it means today while a
+    unit can hold one. This is the other half: "take Chen out of Ridge D and
+    leave Johnson where she is."
+
+    ADDRESSED BY IDENTITY, NOT BY RECORD ID, following
+    `PlacementDeleteRequest` and `DELETE /api/lodging/placements`: the row is
+    named by values the client already holds, and a write-in's record id is
+    not among them (Design A, which would have published one, was declined).
+    Under Design B `(unit_id, occupant_name)` is that identity.
+
+    `occupant_name` is REQUIRED here, unlike on the write request above,
+    because it is the whole address rather than a payload field. There is no
+    "remove the unnamed one" — that is what the clear verb is for.
+
+    ⚠️ OQ-8. The spec marks this shape "verify against staff expectation
+    before building". It is the recommended one and stays cheap to revise
+    while the feature is dark behind the unique index.
+    """
+
+    year: int = Field(..., ge=2000, le=2100)
+    session_cm_id: int = Field(..., gt=0)
+    # Blank is the LIVE board, the same steering `AvailabilityWriteRequest`
+    # uses -- a scope in its own right rather than a missing value. A removal
+    # made inside a scenario must reach that scenario's own draft row and
+    # nothing else.
+    scenario: str = Field(default="", description="saved_scenarios record id; blank is the live board")
+    unit_id: str = Field(..., min_length=1)
+    occupant_name: str = Field(..., min_length=1, max_length=500)
+
+    @model_validator(mode="after")
+    def _the_occupant_is_the_address(self) -> Self:
+        """`"   "` names nobody. `min_length` alone would accept it."""
+        if not self.occupant_name.strip():
+            raise ValueError("occupant_name names the row to remove and cannot be blank")
+        return self
+
 
 class SlotMergeRequest(BaseModel):
     """Set one container's draw level, at a scenario or at the weekend.

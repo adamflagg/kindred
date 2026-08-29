@@ -1362,42 +1362,117 @@ class LodgingRepository:
     async def delete_availability(self, record_id: str) -> None:
         await asyncio.to_thread(self.pb.collection(LODGING_AVAILABILITY).delete, record_id)
 
-    async def find_write_in(self, year: int, session_cm_id: int, unit_pb_id: str) -> Any | None:
-        """The one LIVE write-in for a unit this weekend, or None.
+    async def find_write_in(
+        self, year: int, session_cm_id: int, unit_pb_id: str, occupant_name: str
+    ) -> Any | None:
+        """The LIVE write-in naming this occupant in this unit, or None.
 
-        Keyed exactly as `idx_lodging_write_in_unique` is
-        (session_cm_id, year, unit), so the lookup either finds the row the
-        next write would collide with or there is none -- the same argument
-        `find_availability_override` makes for the table this half moves off.
+        Keyed exactly as `idx_lodging_write_in_unique` is once kindred#2583
+        step 8 narrows it: (session_cm_id, year, unit, occupant_name). So the
+        lookup either finds the row the next write would collide with or there
+        is none -- the same argument `find_availability_override` makes for
+        the table this half moves off.
 
-        `unit_pb_id` arrives in the request body and is escaped. Unescaped, an
-        injected `||` would return some OTHER weekend's row, which the caller
-        then updates or deletes.
+        ⚠️ THE OCCUPANT TERM IS LOAD-BEARING, NOT DECORATIVE, and this
+        docstring used to argue from the (session_cm_id, year, unit) key --
+        "the one LIVE write-in for a unit this weekend". `unit` alone stopped
+        being an address the moment a shareable cabin was allowed two rows:
+        a lookup keyed on it hands `set_availability` an arbitrary neighbour
+        to overwrite, which is the silent data-loss path kindred#2583 exists
+        to close. Design B (RULED 2026-08-29, owner: *"lets go with the
+        identity of unit and occupant"*) makes `(unit, occupant_name)` the
+        key, and this filter is where that decision is spelled.
+
+        WHAT IT COSTS, stated rather than rediscovered: two genuinely
+        different households typed as the same display string collapse into
+        one row, and the second write edits the first. Real, uncommon, and
+        strictly rarer than the failure this replaces.
+
+        DARK UNTIL STEP 8. The index still forbids the second row, so this
+        finder returns exactly what the unit-keyed one did for every row that
+        can exist in production today.
+
+        `unit_pb_id` and `occupant_name` both arrive in the request body and
+        are both escaped. Unescaped, an injected `||` would return some OTHER
+        weekend's or unit's row, which the caller then updates or deletes.
         """
         rows = await self._page(
+            LODGING_WRITE_INS,
+            query_params={
+                "filter": (
+                    f"session_cm_id = {session_cm_id} && year = {year} "
+                    f'&& unit = "{pb_escape(unit_pb_id)}" && occupant_name = "{pb_escape(occupant_name)}"'
+                ),
+                "sort": STABLE_SORT,
+            },
+        )
+        return rows[0] if rows else None
+
+    async def find_draft_write_in(
+        self, year: int, session_cm_id: int, scenario_id: str, unit_pb_id: str, occupant_name: str
+    ) -> Any | None:
+        """The write-in naming this occupant in this unit, in one scenario.
+
+        The live key plus `scenario`, matching
+        `idx_lodging_write_in_draft_unique` -- two scenarios may hold
+        contradicting write-ins for one unit without colliding, which is the
+        whole point of the draft grain. `scenario` is RETAINED under
+        kindred#2583's narrowing: it is a legitimate second axis, and dropping
+        it would let two scenarios' rows collide.
+
+        THREE client-supplied strings reach this filter now, not two:
+        `scenario_id` off the `?scenario=` query parameter, `unit_pb_id` from
+        the request body, and `occupant_name` -- the Design B addressing key,
+        typed by a staff member. Every one is escaped: any one unescaped
+        widens the predicate past its own scoping, and on a lookup the caller
+        updates or deletes what comes back.
+        """
+        rows = await self._page(
+            LODGING_WRITE_INS_DRAFT,
+            query_params={
+                "filter": (
+                    f"session_cm_id = {session_cm_id} && year = {year} "
+                    f'&& scenario = "{pb_escape(scenario_id)}" && unit = "{pb_escape(unit_pb_id)}" '
+                    f'&& occupant_name = "{pb_escape(occupant_name)}"'
+                ),
+                "sort": STABLE_SORT,
+            },
+        )
+        return rows[0] if rows else None
+
+    async def fetch_write_ins_on_unit(self, year: int, session_cm_id: int, unit_pb_id: str) -> list[Any]:
+        """EVERY live occupancy row on one unit this weekend.
+
+        The UNIT-grain read, and it exists because the two finders above are
+        no longer one (kindred#2583 step 7). `family_available: null` clears a
+        unit entirely and a release opens it to families; both are facts about
+        the CABIN, not about an occupant, so neither may go through a lookup
+        that names one. Routed through `find_write_in` a clear would delete
+        whichever row came back first and leave the rest standing -- a cleared
+        cabin still occupied, or a released one advertised as open with
+        somebody in it.
+
+        `unit_pb_id` arrives in the request body and is escaped, for the
+        reason `find_write_in` spells out.
+        """
+        return await self._page(
             LODGING_WRITE_INS,
             query_params={
                 "filter": (f'session_cm_id = {session_cm_id} && year = {year} && unit = "{pb_escape(unit_pb_id)}"'),
                 "sort": STABLE_SORT,
             },
         )
-        return rows[0] if rows else None
 
-    async def find_draft_write_in(self, year: int, session_cm_id: int, scenario_id: str, unit_pb_id: str) -> Any | None:
-        """The one write-in for a unit in a scenario, or None.
+    async def fetch_draft_write_ins_on_unit(
+        self, year: int, session_cm_id: int, scenario_id: str, unit_pb_id: str
+    ) -> list[Any]:
+        """EVERY draft occupancy row on one unit, inside one scenario.
 
-        The live key plus `scenario`, matching
-        `idx_lodging_write_in_draft_unique` -- two scenarios may hold
-        contradicting write-ins for one unit without colliding, which is the
-        whole point of the draft grain.
-
-        TWO client-supplied strings reach this filter, `scenario_id` off the
-        `?scenario=` query parameter and `unit_pb_id` from the request body,
-        and both are escaped: either one unescaped widens the predicate past
-        its own scoping, and on a lookup the caller updates or deletes what
-        comes back.
+        The draft twin of `fetch_write_ins_on_unit`. `scenario` is not
+        optional here: a clear made inside one plan must not reach another's
+        rows, and the live board's rows are a third scope again.
         """
-        rows = await self._page(
+        return await self._page(
             LODGING_WRITE_INS_DRAFT,
             query_params={
                 "filter": (
@@ -1407,7 +1482,6 @@ class LodgingRepository:
                 "sort": STABLE_SORT,
             },
         )
-        return rows[0] if rows else None
 
     async def create_write_in(self, data: dict[str, Any]) -> Any:
         return await asyncio.to_thread(self.pb.collection(LODGING_WRITE_INS).create, data)

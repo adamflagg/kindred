@@ -64,6 +64,7 @@ from api.schemas.lodging import (
     PushRowPayload,
     SlotMergeRequest,
     UnpushResponse,
+    WriteInDeleteRequest,
 )
 from api.services.lodging_roster_service import (
     SessionNotFoundError,
@@ -853,6 +854,33 @@ class LodgingWriteService:
             raise pb_error_to_http(exc) from exc
         return record_id, True
 
+    async def _clear_every_row(
+        self, rows: list[Any], delete: Callable[[str], Awaitable[None]]
+    ) -> tuple[str, bool]:
+        """Drop every row in a unit's occupancy list, and say what happened.
+
+        The unit-grain twin of `_clear_row`, and it delegates to it rather
+        than re-spelling the swallow-only-404 rule -- two copies of that rule
+        is two chances to widen one of them, which is the argument `_clear_row`
+        itself already makes for being shared by both halves of the split.
+
+        DOES NOT STOP AT THE FIRST FAILURE-TO-FIND. A 404 partway through is
+        the ordinary two-staff race, and abandoning the rest would leave a
+        cabin the caller asked to clear half occupied. A refusal that is NOT
+        a 404 still propagates, from `_clear_row`.
+
+        The FIRST row's id is what the response names. A response can only
+        carry one, and the first is the one the board's own ordering put at
+        the top of the well.
+        """
+        first_id = ""
+        deleted_any = False
+        for row in rows:
+            record_id, deleted = await self._clear_row(row, delete)
+            first_id = first_id or record_id
+            deleted_any = deleted_any or deleted
+        return first_id, deleted_any
+
     async def _upsert_row(
         self,
         *,
@@ -867,11 +895,22 @@ class LodgingWriteService:
         """Create or update one row, recovering a lost unique-index race.
 
         The find and the create are two round trips, so they RACE: two staff
-        writing the same unit for the same weekend both find no row, both
+        writing the SAME ROW for the same weekend both find no row, both
         create, and the unique index rejects the loser. Unguarded that is a
         400 out of `pb_error_to_http` for a write the board is entitled to
         make, so the loser re-reads and updates the winner's row -- which by
-        construction is the row this call wanted, same weekend and same unit.
+        construction is the row this call wanted.
+
+        "THE SAME ROW" MEANS WHATEVER THE CALLER'S OWN `find` MEANS, and that
+        is why this recovery survived kindred#2583's Design B unchanged. On
+        the role half it is still "same weekend, same unit". On the occupancy
+        half it is now "same weekend, same unit, SAME OCCUPANT" -- the
+        narrowed `(session_cm_id, year, unit, occupant_name)` key -- because
+        that is the finder `set_availability` binds and it is the key the
+        index will reject on. Two staff writing "Chen" into Ridge D at the
+        same moment still lose one create and still adopt the winner's row;
+        two staff writing two DIFFERENT families into it now produce two rows,
+        which is the feature rather than a race.
 
         `REFUSAL_STATUSES` are re-raised rather than retried: a 401/403 is an
         answer, not a race, and re-reading would turn "you may not" into a
@@ -1019,6 +1058,37 @@ class LodgingWriteService:
         With two tables it deletes BOTH, or a clear would silently do nothing
         to whichever fact it missed.
 
+        ★ WHICH ROW A WRITE MEANS IS `(unit_id, occupant_name)` (kindred#2583
+        step 6, Design B, RULED 2026-08-29 -- owner: *"lets go with the
+        identity of unit and occupant"*). This method used to resolve the
+        occupancy row BY UNIT and hand it to `_upsert_row`, which UPDATES when
+        a row exists -- so writing a second family into an occupied cabin
+        overwrote the first, silently, on every one of the 118 units. The
+        request model is unchanged; what changed is that the finder carries
+        the occupant. A write naming somebody the unit already holds EDITS
+        that row; a write naming anybody else CREATES beside it.
+
+        WHY NOT A RECORD ID ON THE WIRE. Design A -- publish the row's id and
+        let the client round-trip it -- was declined. It would have survived
+        two households typed as the same display string, which Design B does
+        not; the trade was made knowingly, and it buys back the lost-race
+        recovery, `by_tuple`'s safety and the index's own "who is in this
+        cabin?" intent, all of which key on a name the client already has.
+
+        ⚠️ TWO VERBS, TWO GRAINS, and confusing them is how a shared cabin
+        gets half cleared. A WRITE names an occupant, so it resolves ONE row.
+        A CLEAR and a RELEASE name none, so they resolve EVERY occupancy row
+        on the unit -- `fetch_write_ins_on_unit` rather than `find_write_in`.
+        `family_available: null` still means "clear this unit entirely",
+        which is exactly what it means today while a cabin can hold one row,
+        so nothing at the boundary moves. Removing ONE occupant from a shared
+        cabin is `DELETE /api/lodging/write-ins` (`remove_write_in`), which is
+        the verb that names its row.
+
+        DARK UNTIL STEP 8. Both unique indexes still forbid the second row, so
+        every path above resolves exactly what the unit-keyed one did for
+        every row that can exist in production today.
+
         `reason` is written to the `note` COLUMN. This and `_build_units` are
         still the only two places that translate -- the fact moved tables and
         did not gain a third translation site.
@@ -1037,29 +1107,67 @@ class LodgingWriteService:
         # a create on the live one writes the right row in the wrong scope, and
         # the board it was made on still does not show it.
         in_scenario = request.scenario != ""
+        # ADDRESSED BY (unit, occupant_name) SINCE kindred#2583 STEP 6.
+        # Design B, RULED 2026-08-29 (owner: *"lets go with the identity of
+        # unit and occupant"*). This lambda used to bind the unit alone, which
+        # made a write into an occupied cabin resolve SOMEBODY ELSE'S row and
+        # hand it to `_upsert_row` to overwrite -- live in production on all
+        # 118 units, with no warning on the path.
         find_occupancy: Callable[[], Awaitable[Any | None]] = (
             (
                 lambda: self.repository.find_draft_write_in(
+                    request.year,
+                    request.session_cm_id,
+                    request.scenario,
+                    request.unit_id,
+                    request.occupant_name,
+                )
+            )
+            if in_scenario
+            else (
+                lambda: self.repository.find_write_in(
+                    request.year, request.session_cm_id, request.unit_id, request.occupant_name
+                )
+            )
+        )
+        # THE UNIT GRAIN, bound into the same group and for the same reason.
+        # A clear and a release are facts about the CABIN and name no
+        # occupant, so neither may go through the occupant-keyed finder above:
+        # on a shareable cabin it answers about one row and would leave the
+        # other standing -- a cleared cabin still occupied, or a released one
+        # advertised as open with somebody in it.
+        find_every_occupancy: Callable[[], Awaitable[list[Any]]] = (
+            (
+                lambda: self.repository.fetch_draft_write_ins_on_unit(
                     request.year, request.session_cm_id, request.scenario, request.unit_id
                 )
             )
             if in_scenario
-            else (lambda: self.repository.find_write_in(request.year, request.session_cm_id, request.unit_id))
+            else (
+                lambda: self.repository.fetch_write_ins_on_unit(
+                    request.year, request.session_cm_id, request.unit_id
+                )
+            )
         )
         create_occupancy = self.repository.create_draft_write_in if in_scenario else self.repository.create_write_in
         update_occupancy = self.repository.update_draft_write_in if in_scenario else self.repository.update_write_in
         delete_occupancy = self.repository.delete_draft_write_in if in_scenario else self.repository.delete_write_in
 
-        # BOTH lookups on every call, because every branch has to know about
-        # the fact it is NOT writing: an occupancy has a release to drop, a
-        # release has an occupancy to drop, and a clear has both.
+        # The ROLE lookup on every call, because every branch has to know
+        # about the fact it is NOT writing: an occupancy has a release to
+        # drop, a release has an occupancy to drop, and a clear has both.
         existing_role = await self.repository.find_availability_override(
             request.year, request.session_cm_id, request.unit_id
         )
-        existing_write_in = await find_occupancy()
 
         if request.family_available is None:
-            write_in_id, write_in_deleted = await self._clear_row(existing_write_in, delete_occupancy)
+            # EVERY occupancy row, not the first one a finder returns. The
+            # verb means "clear this unit entirely", which is what it already
+            # means while a unit can hold one row -- so the boundary does not
+            # move and the shareable case stops being a coin flip.
+            write_in_id, write_in_deleted = await self._clear_every_row(
+                await find_every_occupancy(), delete_occupancy
+            )
             role_id, role_deleted = await self._clear_row(existing_role, self.repository.delete_availability)
             # The occupancy id is reported in preference to the role id when
             # both were there. It is the one the board was almost certainly
@@ -1092,6 +1200,11 @@ class LodgingWriteService:
         # truthiness, because the one place that starts is the place a later
         # edit folds a write-in into a clear.
         if request.family_available is True:
+            # The occupancy rows this release will drop, read BEFORE the role
+            # row is written -- see the ORDER paragraph in the docstring: the
+            # new fact lands first, and the drop that follows must be of the
+            # state this call actually looked at.
+            occupied_by = await find_every_occupancy()
             record = await self._upsert_row(
                 what="availability",
                 existing=existing_role,
@@ -1105,11 +1218,18 @@ class LodgingWriteService:
                 session_cm_id=request.session_cm_id,
                 unit_id=request.unit_id,
             )
-            await self._clear_row(existing_write_in, delete_occupancy)
+            # EVERY occupant, for the reason the clear branch above states:
+            # a cabin advertised to families with somebody still in it is the
+            # worst of the three outcomes available here.
+            await self._clear_every_row(occupied_by, delete_occupancy)
         else:
             record = await self._upsert_row(
                 what="write-in",
-                existing=existing_write_in,
+                # ONE occupant's row, resolved by the Design B key. A miss
+                # here is a CREATE beside whoever else is in the cabin, which
+                # is the whole feature: two paper families in Ridge D are two
+                # rows, not one row with both names crammed into it.
+                existing=await find_occupancy(),
                 data={
                     **data,
                     "party_size": request.party_size,
@@ -1130,6 +1250,64 @@ class LodgingWriteService:
             await self._clear_row(existing_role, self.repository.delete_availability)
 
         return LodgingWriteResponse(record_id=str(getattr(record, "id", "")))
+
+    async def remove_write_in(self, request: WriteInDeleteRequest) -> LodgingWriteResponse:
+        """Remove ONE occupant from one unit, leaving everything else standing.
+
+        kindred#2583 step 7. `set_availability` with `family_available: null`
+        stays the CLEAR-THIS-UNIT-ENTIRELY verb -- role row plus every
+        occupancy row -- which is exactly what it means today while a cabin
+        can hold one write-in, so the boundary does not move. This is the
+        other half: "take Chen out of Ridge D and leave Johnson where she is."
+
+        WHY A SEPARATE VERB rather than a narrower `null`. The clear answers
+        about a UNIT and names no occupant; on a shareable cabin it cannot be
+        made to mean "one of these" without inventing an address for it, which
+        is the very thing Design B provides here instead. Two verbs, each
+        unambiguous, beats one verb whose meaning depends on how many rows
+        happen to be there.
+
+        ADDRESSED BY `(unit_id, occupant_name)`, the Design B key (RULED
+        2026-08-29). `DELETE /api/lodging/placements` is the shape precedent:
+        a body-carrying DELETE addressed by identity, because the row is named
+        by values the client already holds and its record id is not among them
+        -- Design A, which would have published one, was declined.
+
+        THE ROLE ROW IS NOT TOUCHED, deliberately. A staff<->family override
+        is a fact about the WEEKEND (owner: "a known 'were moving staff to X
+        for weekend Y'"); taking one paper family out of a shared cabin says
+        nothing about it. Clearing it here would make this verb a quiet
+        second spelling of `family_available: null`, and the two would drift.
+
+        `scenario` STEERS, exactly as it does on the write: blank is the live
+        board and a scenario id is that scenario's own draft row. The find and
+        the delete are bound as a GROUP for the reason `set_availability`
+        spells out at length -- a find on one grain paired with a delete on
+        the other removes the right row from the wrong scope.
+
+        IDEMPOTENT. A row that is not there reads as `deleted: False` rather
+        than a 404, the same answer `unplace_party` gives: the absence of the
+        row IS the state the caller asked for. `_clear_row` swallows only a
+        404 on the delete itself, so a refusal keeps its status.
+
+        ⚠️ OQ-8. The spec marks this shape "verify against staff expectation
+        before building". It is the recommended one, and it stays cheap to
+        revise: every path here is unreachable in production until step 8
+        narrows the unique index.
+        """
+        in_scenario = request.scenario != ""
+        existing = (
+            await self.repository.find_draft_write_in(
+                request.year, request.session_cm_id, request.scenario, request.unit_id, request.occupant_name
+            )
+            if in_scenario
+            else await self.repository.find_write_in(
+                request.year, request.session_cm_id, request.unit_id, request.occupant_name
+            )
+        )
+        delete_occupancy = self.repository.delete_draft_write_in if in_scenario else self.repository.delete_write_in
+        record_id, deleted = await self._clear_row(existing, delete_occupancy)
+        return LodgingWriteResponse(record_id=record_id, deleted=deleted)
 
     async def set_slot_merge(self, request: SlotMergeRequest) -> LodgingWriteResponse:
         """Set one container's draw level, at a scenario or at the weekend.
@@ -1550,12 +1728,22 @@ class LodgingWriteService:
         removing = set(remove_ids)
         for r in adds:
             # EVERY occupant, not the one a collapsing dict happened to keep.
-            # Conservative on purpose: an unrelated co-occupant on a shareable
-            # cabin may well be legitimate once two rows are legal, but
-            # "refuse the whole push on any drift" is the owner's 2026-08-22
-            # ruling and narrowing it is a product decision nobody has made
-            # (the two-write-ins spec's OQ-3). Identical while a unit can hold
-            # one row.
+            #
+            # ★ OQ-3 IS ANSWERED (2026-08-29) -- FOR `unpush`, AND THIS SITE
+            # IS DELIBERATELY NOT NARROWED WITH IT. The ruling is that
+            # `unpush`'s recreate guard keys on the tuple rather than the
+            # unit, because a recreate beside a different occupant no longer
+            # collides under the narrowed index. This check is a different
+            # question: not "would the write collide" but "should a row that
+            # appeared BETWEEN the re-classify and the apply stop the push at
+            # all". No ruling covers that one, and the conservative answer --
+            # refuse, and let the staff member re-preview a board that has
+            # moved under them -- is the one already in force. Narrowing it
+            # would let a push land silently beside a write-in its own preview
+            # never showed.
+            #
+            # Identical while a unit can hold one row, and unreachable in
+            # production either way until step 8 narrows the index.
             if any(occupant_id not in removing for occupant_id in live_by_unit.get(r.unit_id, ())):
                 stale = await self.preview_push(request.year, request.session_cm_id, request.scenario)
                 raise PushDigestStaleError(stale)
@@ -1687,6 +1875,16 @@ class LodgingWriteService:
         tries to occupy it again, independent of whatever order `changes`
         happens to store its two kinds in.
 
+        ⚠️ THE ORDERING IS NOT RELAXED BY THE NARROWED INDEX, and the
+        temptation to relax it is why this says so. Once kindred#2583 step 8
+        keys the index on `(…, unit, occupant_name)`, a "take scenario"
+        conflict whose remove and add name DIFFERENT occupants no longer
+        collides -- but one whose remove and add name the same occupant with
+        different details still does, and that is an ordinary edit rather
+        than an exotic case. The phases stay. What narrowed is the DRIFT
+        GUARD above, which asks a different question (OQ-3, answered
+        2026-08-29).
+
         `unpushed_at` is stamped only once BOTH phases have actually run, so
         a crash before this line leaves the ledger row still claiming "not
         yet unpushed" rather than a row that says it was reverted when it was
@@ -1725,17 +1923,23 @@ class LodgingWriteService:
         # already forces at most one live row per unit" -- which is exactly
         # the guarantee the two-write-ins work removes. A collapsing dict
         # would have made one of two rows invisible to the revert: `by_tuple`
-        # would delete one record twice, and `by_unit` would let whichever
-        # occupant the fetch returned last decide whether the drift guard
-        # fires at all.
+        # would delete one record twice, and `by_unit_occupant` would let
+        # whichever row the fetch returned last decide whether the drift
+        # guard fires at all.
         #
         # DARK TODAY: the index still stands, so every list holds one entry
         # and both checks below reduce to what they were.
         by_tuple: dict[tuple[str, str, str, int | None], list[str]] = {}
-        by_unit: dict[str, list[tuple[str, str, str, int | None]]] = {}
+        # KEYED ON `(unit_id, occupant_name)` SINCE OQ-3 WAS ANSWERED
+        # (2026-08-29) -- the narrowed index's own key, so the drift check
+        # below asks exactly "would phase 2's recreate collide". Keyed on the
+        # unit alone it asked "is anybody else in this cabin", which was the
+        # same question only while a cabin could hold one person.
+        by_unit_occupant: dict[tuple[str, str], list[tuple[str, str, str, int | None]]] = {}
         for row, live_row in live:
-            by_tuple.setdefault(live_row.tuple_key(), []).append(str(getattr(row, "id", "") or ""))
-            by_unit.setdefault(live_row.tuple_key()[0], []).append(live_row.tuple_key())
+            key = live_row.tuple_key()
+            by_tuple.setdefault(key, []).append(str(getattr(row, "id", "") or ""))
+            by_unit_occupant.setdefault((key[0], key[1]), []).append(key)
 
         def change_tuple(c: dict[str, Any]) -> tuple[str, str, str, int | None]:
             return (c["unit"], c["occupant_name"].strip(), c["note"].strip(), c["party_size"])
@@ -1767,20 +1971,37 @@ class LodgingWriteService:
                     continue
                 add_ids.append(ids.pop(0))
             elif c["action"] == "remove":
-                # kindred#2555 scan fix-round (M): drift is not "the ORIGINAL
-                # removed tuple is back" alone -- ANY occupant on this unit
-                # that phase 1 will not itself clear is a row phase 2's
-                # recreate would collide with. The recreate-target unit must
-                # hold nothing, or only rows this push's own adds account for.
+                # ★ OQ-3, ANSWERED 2026-08-29: DRIFT KEYS ON THE TUPLE, NOT
+                # THE UNIT.
                 #
-                # EVERY occupant, by multiset difference, rather than the one
-                # a unit-keyed dict happened to keep -- see the class of bug
-                # the index change opens. Deliberately NOT narrowed to "only
-                # the tuple this push removed": refuse-wholesale is the
-                # owner's 2026-08-22 ruling, and whether a legitimate
-                # co-occupant on a shareable cabin should still refuse is
-                # OQ-3, unanswered.
-                if Counter(by_unit.get(c["unit"], ())) - own_add_counts:
+                # kindred#2555 scan fix-round (M) widened this from "the
+                # ORIGINAL removed tuple is back" to "ANY occupant on this
+                # unit that phase 1 will not itself clear", because under the
+                # one-row-per-unit index a recreate into an occupied unit was
+                # rejected mid-apply and left a half-reverted push. That
+                # mechanical reason is exactly what the narrowed
+                # `(session_cm_id, year, unit, occupant_name)` index removes:
+                # a recreate BESIDE a different occupant no longer collides,
+                # so the unit-grain reading refuses a revert that would in
+                # fact succeed -- and on a shareable cabin the co-occupant it
+                # refuses over is the feature working.
+                #
+                # THE 2026-08-22 REFUSE-WHOLESALE RULING IS UNTOUCHED. It
+                # governs what happens WHEN there is drift -- nothing is
+                # reverted, the buildings are named -- not what counts as
+                # drift. Only the definition narrows, and it narrows onto the
+                # collision the guard was protecting all along.
+                #
+                # STILL A MULTISET DIFFERENCE, and still EVERY row on the key
+                # rather than the one a collapsing dict happened to keep: two
+                # identical adds clear two rows and one clears one. A live row
+                # sharing the recreate's `(unit, occupant_name)` but not its
+                # full tuple -- the removed occupant written back by hand with
+                # a different count -- is NOT subtracted, and still drifts,
+                # because phase 1 never deletes it and phase 2 would collide
+                # with it.
+                colliding = by_unit_occupant.get((c["unit"], c["occupant_name"].strip()), ())
+                if Counter(colliding) - own_add_counts:
                     drifted.append(c["unit_code"])
         if drifted:
             raise UnpushDriftError(sorted(set(drifted)))
