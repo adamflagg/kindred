@@ -259,6 +259,16 @@ const _exhaustiveAvailabilityWriteRequest: Required<AvailabilityWriteRequest> = 
   // are non-rostered staff and `null` (the common case) takes the cabin
   // wholesale. The occupancy half only; a release carries no count.
   party_size: 2,
+  // kindred#2583 step 4. `null` RENAMES NOBODY — the create path, addressed
+  // by `occupant_name` as before. A string, `''` included, is the name the
+  // edit form LOADED, and the server compare-and-swaps on it rather than
+  // falling through to a create: under Design B the occupant's name IS the
+  // row's address, so a rename is the one edit that cannot address itself.
+  //
+  // `string | null` and not a blank-defaulted string, because `''` is a real
+  // address — the row whose occupant nobody named — and collapsing it into
+  // "no rename" would leave exactly that row creating a second one.
+  previous_occupant_name: null,
 }
 void _exhaustiveAvailabilityWriteRequest
 

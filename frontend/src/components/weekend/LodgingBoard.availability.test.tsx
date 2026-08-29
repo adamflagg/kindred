@@ -52,12 +52,13 @@ vi.mock('../../hooks/useApiWithAuth', () => ({
 }))
 
 const setAvailability = vi.fn((_intent: unknown) => Promise.resolve())
+const removeWriteIn = vi.fn((_intent: unknown) => Promise.resolve())
 let availabilityOptions: unknown[] = []
 let pendingUnitId = ''
 vi.mock('../../hooks/useUnitAvailability', () => ({
   useUnitAvailability: (...args: unknown[]) => {
     availabilityOptions.push(args[0])
-    return { setAvailability, pendingUnitId }
+    return { setAvailability, removeWriteIn, pendingUnitId }
   },
 }))
 
@@ -234,6 +235,11 @@ describe('LodgingBoard — the control becomes a write', () => {
       // has the width for the field, so the first write carries it.
       reason: 'paper registration',
       partySize: 3,
+      // kindred#2583 step 4. A create RENAMES NOBODY, and says so rather than
+      // leaving the field off: `undefined` and `null` reach the server as the
+      // same thing here, but a producer that forgets the field is exactly how
+      // the pencil's rename would silently become a create.
+      previousOccupantName: null,
     })
   })
 
@@ -276,14 +282,34 @@ describe('LodgingBoard — removing a write-in this card inherited', () => {
 
     await user.click(screen.getByRole('button', { name: 'Remove write-in Liam Garcia' }))
 
-    expect(setAvailability).toHaveBeenCalledWith({
+    expect(removeWriteIn).toHaveBeenCalledWith({
       unitId: 'u-house',
       unitName: 'House',
-      familyAvailable: null,
-      occupantName: '',
-      reason: '',
-      partySize: null,
+      occupantName: 'Liam Garcia',
     })
+  })
+
+  it('does NOT send the clear verb, which would take the whole cabin', async () => {
+    /*
+     * kindred#2583 step 4, and the obligation #2598 handed down by name.
+     *
+     * `family_available: null` is CLEAR THIS UNIT ENTIRELY — the staff↔family
+     * ROLE row and EVERY occupancy row on the unit. That is identical to
+     * "remove this occupant" while a cabin can hold one write-in, which is
+     * exactly why it survived this long unnoticed; the moment step 8 narrows
+     * the unique index, one click on one occupant's × deletes the co-occupant
+     * beside them and the release the cabin was carrying.
+     *
+     * Asserted as "the clear verb is not sent at all" rather than as a
+     * different payload, so re-introducing it fails here rather than passing
+     * with new field values.
+     */
+    const user = userEvent.setup()
+    renderBoard({ units: [room] })
+
+    await user.click(screen.getByRole('button', { name: 'Remove write-in Liam Garcia' }))
+
+    expect(setAvailability).not.toHaveBeenCalled()
   })
 
   it('disables the card while the row it points at is being written', () => {
@@ -297,5 +323,183 @@ describe('LodgingBoard — removing a write-in this card inherited', () => {
     renderBoard({ units: [room] })
 
     expect(screen.getByRole('button', { name: 'Remove write-in Liam Garcia' })).toBeDisabled()
+  })
+})
+
+describe('LodgingBoard — two occupants in one shareable cabin', () => {
+  /*
+   * THE STATE THE WHOLE OF kindred#2583 PART 2 EXISTS FOR, and it is
+   * UNREACHABLE IN PRODUCTION TODAY: `idx_lodging_write_in_unique` still keys
+   * on `(session_cm_id, year, unit)`, so a second row on one unit cannot be
+   * created until step 8 narrows it. These tests build the payload the server
+   * will publish the moment it does, and pin that the card's two controls
+   * address two DIFFERENT rows rather than both reaching whichever the server
+   * happened to return first.
+   *
+   * A `shareable` leaf sleeping 15 holding two paper families is the concrete
+   * case: the model says the cabin may hold two, and until now the card could
+   * only ever name one of them.
+   */
+  const SHARED = unit({
+    unit_id: 'u-cedar3',
+    code: 'cedar-3',
+    name: 'Cedar 3',
+    sleeps: 15,
+    write_ins: [
+      {
+        unit_id: 'u-cedar3',
+        unit_code: 'cedar-3',
+        unit_name: 'Cedar 3',
+        occupant_name: 'Olivia Chen',
+        note: '',
+        party_size: 3,
+      },
+      {
+        unit_id: 'u-cedar3',
+        unit_code: 'cedar-3',
+        unit_name: 'Cedar 3',
+        occupant_name: 'Emma Johnson',
+        note: '',
+        party_size: 4,
+      },
+    ],
+  })
+
+  it('draws one card per occupant', () => {
+    renderBoard({ units: [SHARED] })
+
+    expect(screen.getByText('Olivia Chen')).toBeInTheDocument()
+    expect(screen.getByText('Emma Johnson')).toBeInTheDocument()
+  })
+
+  it('removes the occupant whose × was clicked, and only that one', async () => {
+    const user = userEvent.setup()
+    renderBoard({ units: [SHARED] })
+
+    await user.click(screen.getByRole('button', { name: 'Remove write-in Emma Johnson' }))
+
+    expect(removeWriteIn).toHaveBeenCalledTimes(1)
+    expect(removeWriteIn).toHaveBeenCalledWith({
+      unitId: 'u-cedar3',
+      unitName: 'Cedar 3',
+      occupantName: 'Emma Johnson',
+    })
+  })
+
+  it('edits the occupant whose pencil was clicked, naming the row it loaded', async () => {
+    // The pencil's save is a COMPARE-AND-SWAP on the name the form opened
+    // with. Without it the write is keyed on the NEW name, misses the
+    // occupant-keyed finder, and creates a third row beside the two already
+    // there — one rename, two occupants called Chen, and the board says
+    // nothing.
+    const user = userEvent.setup()
+    renderBoard({ units: [SHARED] })
+
+    await user.click(screen.getByRole('button', { name: 'Edit write-in Olivia Chen' }))
+    const field = screen.getByLabelText('Occupant')
+    await user.clear(field)
+    await user.type(field, 'Olivia Reyes')
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+
+    expect(setAvailability).toHaveBeenCalledWith({
+      unitId: 'u-cedar3',
+      unitName: 'Cedar 3',
+      familyAvailable: false,
+      occupantName: 'Olivia Reyes',
+      reason: '',
+      partySize: 3,
+      previousOccupantName: 'Olivia Chen',
+    })
+  })
+
+  it('names the loaded row even when the edit changes nothing about the name', async () => {
+    // An unchanged name is still a swap, deliberately: it is what makes the
+    // edit refuse when the row moved under the card, instead of quietly
+    // writing a new one. Sending it only on a detected change would put the
+    // create back on the path a staff member is most likely to take.
+    const user = userEvent.setup()
+    renderBoard({ units: [SHARED] })
+
+    await user.click(screen.getByRole('button', { name: 'Edit write-in Emma Johnson' }))
+    await user.type(screen.getByLabelText('Note (optional)'), 'back Monday')
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+
+    expect(setAvailability).toHaveBeenCalledWith(
+      expect.objectContaining({
+        occupantName: 'Emma Johnson',
+        previousOccupantName: 'Emma Johnson',
+        reason: 'back Monday',
+      })
+    )
+  })
+})
+
+describe('LodgingBoard — an occupant nobody named', () => {
+  /*
+   * `occupant_name` is permissive at the schema so an ingest or a fixture with
+   * no author can write, and a row predating 1500000148 with an empty note
+   * backfilled to nothing. ZERO such rows exist in the 2026 data; this is a
+   * reachable state rather than an observed one.
+   *
+   * ⚠️ IT HAS NO ROW-ADDRESSED DELETE, and that is a BOOKED COST of Design B
+   * rather than an oversight: `(unit_id, occupant_name)` is the address, and
+   * a blank name addresses nothing — `WriteInDeleteRequest` refuses one. So
+   * the × keeps sending the clear verb here, which is exactly what it did for
+   * every row before this change.
+   */
+  const UNNAMED = unit({
+    unit_id: 'u-cedar4',
+    code: 'cedar-4',
+    name: 'Cedar 4',
+    write_ins: [
+      {
+        unit_id: 'u-cedar4',
+        unit_code: 'cedar-4',
+        unit_name: 'Cedar 4',
+        occupant_name: '',
+        note: '',
+      },
+    ],
+  })
+
+  it('falls back to the clear verb, because a blank name addresses no row', async () => {
+    const user = userEvent.setup()
+    renderBoard({ units: [UNNAMED] })
+
+    await user.click(screen.getByRole('button', { name: 'Remove write-in Occupant not named' }))
+
+    expect(removeWriteIn).not.toHaveBeenCalled()
+    expect(setAvailability).toHaveBeenCalledWith({
+      unitId: 'u-cedar4',
+      unitName: 'Cedar 4',
+      familyAvailable: null,
+      occupantName: '',
+      reason: '',
+      partySize: null,
+      // A clear renames nobody, and the server refuses the field on this half
+      // outright — `previous_occupant_name` is occupancy-only.
+      previousOccupantName: null,
+    })
+  })
+
+  it('lets the pencil NAME it, addressing the row by its blank name', async () => {
+    // The escape hatch, and the reason `previousOccupantName` is `string | null`
+    // rather than a blank-means-absent string: `''` is a NAME here. Naming the
+    // occupant is the only edit this row's pencil can make — the form refuses
+    // to save a blank — and once named it has a row-addressed delete like any
+    // other.
+    const user = userEvent.setup()
+    renderBoard({ units: [UNNAMED] })
+
+    await user.click(screen.getByRole('button', { name: 'Edit write-in Occupant not named' }))
+    await user.type(screen.getByLabelText('Occupant'), 'Olivia Chen')
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+
+    expect(setAvailability).toHaveBeenCalledWith(
+      expect.objectContaining({
+        occupantName: 'Olivia Chen',
+        previousOccupantName: '',
+      })
+    )
   })
 })

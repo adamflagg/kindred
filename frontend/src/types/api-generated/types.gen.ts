@@ -203,6 +203,10 @@ export type AvailabilityWriteRequest = {
    * Party Size
    */
   party_size?: number | null
+  /**
+   * Previous Occupant Name
+   */
+  previous_occupant_name?: string | null
 }
 
 /**

@@ -9,6 +9,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
 import {
+  deleteWriteIn,
   executeWriteInPush,
   fetchHouseholdMedical,
   fetchPushPreview,
@@ -222,6 +223,7 @@ describe('setUnitAvailability', () => {
       occupantName: 'Emma Johnson',
       reason: 'Kitchen lead, Fri–Sun',
       partySize: null,
+      previousOccupantName: null,
     })
 
     const [url, options] = mockFetch.mock.calls[0] as [string, RequestInit]
@@ -247,6 +249,12 @@ describe('setUnitAvailability', () => {
       occupant_name: 'Emma Johnson',
       reason: 'Kitchen lead, Fri–Sun',
       party_size: null,
+      // kindred#2583 step 4. `null` is "this write renames nobody" and is the
+      // create path's answer; a string is the pencil's compare-and-swap. Sent
+      // rather than omitted for the reason every other field here is: a key
+      // dropped on the way out is indistinguishable from a key nobody set,
+      // and here the two mean different verbs.
+      previous_occupant_name: null,
     })
     expect(result).toEqual({ record_id: 'r1', deleted: false })
   })
@@ -260,6 +268,7 @@ describe('setUnitAvailability', () => {
       occupantName: 'Emma Johnson',
       reason: '',
       partySize: 3,
+      previousOccupantName: null,
     })
 
     const body = JSON.parse((mockFetch.mock.calls[0] as [string, RequestInit])[1].body as string)
@@ -280,6 +289,7 @@ describe('setUnitAvailability', () => {
       occupantName: 'Emma Johnson',
       reason: '',
       partySize: null,
+      previousOccupantName: null,
     })
 
     const body = JSON.parse((mockFetch.mock.calls[0] as [string, RequestInit])[1].body as string)
@@ -301,6 +311,7 @@ describe('setUnitAvailability', () => {
       occupantName: 'Emma Johnson',
       reason: '',
       partySize: null,
+      previousOccupantName: null,
     })
 
     const body = JSON.parse((mockFetch.mock.calls[0] as [string, RequestInit])[1].body as string)
@@ -321,6 +332,7 @@ describe('setUnitAvailability', () => {
       occupantName: '',
       reason: '',
       partySize: null,
+      previousOccupantName: null,
     })
 
     const body = JSON.parse((mockFetch.mock.calls[0] as [string, RequestInit])[1].body as string)
@@ -345,8 +357,117 @@ describe('setUnitAvailability', () => {
         occupantName: '',
         reason: 'Overflow',
         partySize: null,
+        previousOccupantName: null,
       })
     ).rejects.toMatchObject({ status: 403, message: 'Permission required: bunking.manage' })
+  })
+})
+
+describe('setUnitAvailability — renaming one occupant', () => {
+  const WEEKEND = { year: 2026, sessionCmId: 1000001, unitId: 'u1', scenario: '' }
+
+  it('sends the name the form LOADED, so the server resolves that row', async () => {
+    // kindred#2583 step 4. Under Design B the occupant's name IS the row's
+    // address, so an edit that changes it cannot address itself: a write
+    // carrying only the new name misses the occupant-keyed finder, and the
+    // moment step 8 narrows the index that miss is a CREATE — one rename
+    // leaving two rows with the old occupant still in the cabin.
+    const mockFetch = vi.fn().mockResolvedValue(okResponse({ record_id: 'r1', deleted: false }))
+
+    await setUnitAvailability(mockFetch, {
+      ...WEEKEND,
+      familyAvailable: false,
+      occupantName: 'Emma Johnston',
+      reason: '',
+      partySize: null,
+      previousOccupantName: 'Emma Johnson',
+    })
+
+    const body = JSON.parse((mockFetch.mock.calls[0] as [string, RequestInit])[1].body as string)
+    expect(body.previous_occupant_name).toBe('Emma Johnson')
+    expect(body.occupant_name).toBe('Emma Johnston')
+  })
+
+  it('sends a BLANK previous name as a name, not as an absence', async () => {
+    // `''` addresses the row whose occupant is unnamed — real and reachable,
+    // because the ingest path stays permissive — and its pencil can make no
+    // other edit, since the form refuses to save a blank name. A
+    // blank-as-absent sentinel would leave exactly that row doing the bare
+    // rename this field exists to forbid.
+    const mockFetch = vi.fn().mockResolvedValue(okResponse({ record_id: 'r1', deleted: false }))
+
+    await setUnitAvailability(mockFetch, {
+      ...WEEKEND,
+      familyAvailable: false,
+      occupantName: 'Emma Johnson',
+      reason: '',
+      partySize: null,
+      previousOccupantName: '',
+    })
+
+    const body = JSON.parse((mockFetch.mock.calls[0] as [string, RequestInit])[1].body as string)
+    expect(body.previous_occupant_name).toBe('')
+  })
+})
+
+describe('deleteWriteIn', () => {
+  const WEEKEND = { year: 2026, sessionCmId: 1000001, scenario: '' }
+
+  it('DELETEs the row addressed by its unit and its occupant', async () => {
+    // kindred#2583 step 7's verb, wired up by step 4. `PUT /availability`
+    // with `family_available: null` stays CLEAR-THIS-UNIT-ENTIRELY — role row
+    // plus every occupancy row — which is why the corner × cannot send it any
+    // more: the moment step 8 narrows the index, one click would take the
+    // co-occupant with it.
+    //
+    // DELETE with a body, as `unplaceParty` above: the row is named by values
+    // the client already holds and its record id is not among them (Design A,
+    // which would have published one, was declined).
+    const mockFetch = vi.fn().mockResolvedValue(okResponse({ record_id: 'wi1', deleted: true }))
+
+    const result = await deleteWriteIn(mockFetch, {
+      ...WEEKEND,
+      unitId: 'u1',
+      occupantName: 'Emma Johnson',
+    })
+
+    const [url, options] = mockFetch.mock.calls[0] as [string, RequestInit]
+    expect(url).toBe('/api/lodging/write-ins')
+    expect(options.method).toBe('DELETE')
+    expect(JSON.parse(options.body as string)).toEqual({
+      year: 2026,
+      session_cm_id: 1000001,
+      scenario: '',
+      unit_id: 'u1',
+      occupant_name: 'Emma Johnson',
+    })
+    expect(result).toEqual({ record_id: 'wi1', deleted: true })
+  })
+
+  it('sends the scenario staff are looking at, so the removal lands on that board', async () => {
+    const mockFetch = vi.fn().mockResolvedValue(okResponse({ record_id: 'wd1', deleted: true }))
+
+    await deleteWriteIn(mockFetch, {
+      ...WEEKEND,
+      scenario: 'scn7x2k9qw3mnbv',
+      unitId: 'u1',
+      occupantName: 'Emma Johnson',
+    })
+
+    const body = JSON.parse((mockFetch.mock.calls[0] as [string, RequestInit])[1].body as string)
+    expect(body.scenario).toBe('scn7x2k9qw3mnbv')
+  })
+
+  it('surfaces the failure detail', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 404,
+      json: async () => ({ detail: 'Weekend 1000001 not found for 2026' }),
+    })
+
+    await expect(
+      deleteWriteIn(mockFetch, { ...WEEKEND, unitId: 'u1', occupantName: 'Emma Johnson' })
+    ).rejects.toThrow(/Weekend 1000001 not found/)
   })
 })
 

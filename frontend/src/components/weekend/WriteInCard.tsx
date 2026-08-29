@@ -140,7 +140,30 @@ export interface WriteInCardProps {
    * the row, which is what makes "save without touching People" and "clear
    * People to blank" distinguishable on the wire.
    */
-  onEdit?: (write: { occupantName: string; reason: string; partySize: number | null }) => void
+  onEdit?: (write: {
+    occupantName: string
+    reason: string
+    partySize: number | null
+    /**
+     * ⚠️ THE NAME THIS FORM OPENED WITH, captured at `openEdit` and reported
+     * back out — kindred#2583 step 4's compare-and-swap address.
+     *
+     * IT COMES FROM HERE RATHER THAN FROM THE CALLER'S OWN `occupant` PROP,
+     * and that is the whole reason it is on this payload. The caller's `onEdit`
+     * closure sees the CURRENT render; this form sees the render it was opened
+     * on, and the two diverge in exactly the window the swap exists for. The
+     * drafts are seeded once at `openEdit` and never re-seeded, and the well
+     * keys its cards on the unit id rather than the occupant's name precisely
+     * so a rename does not remount a card mid-edit — so a roster refetch
+     * carrying somebody else's rename leaves the form showing what was loaded
+     * while the props already carry the new name. Swapping on the fresh one
+     * resolves the OTHER staff member's row and overwrites their rename, which
+     * is the silent double-write the 409 exists to refuse.
+     *
+     * `''` is a real address — the row nobody named — not an absence.
+     */
+    previousOccupantName: string
+  }) => void
   /**
    * True while a write this card's controls are waiting on is in flight.
    *
@@ -172,9 +195,15 @@ export function WriteInCard({ occupant, onRemove, onEdit, isSaving = false }: Wr
     occupant.partySize === null ? '' : String(occupant.partySize)
   )
   const [wantsName, setWantsName] = useState(false)
+  // THE ADDRESS THIS FORM IS EDITING, frozen at open (kindred#2583 step 4).
+  // Seeded and re-seeded exactly where `draftName` is, because it is the same
+  // read at the same instant: what `draftName` STARTED as. See `onEdit`'s own
+  // doc for why the caller cannot compute this for itself.
+  const [loadedName, setLoadedName] = useState(occupant.name)
 
   const openEdit = () => {
     setDraftName(occupant.name)
+    setLoadedName(occupant.name)
     setDraftNote(occupant.note)
     setDraftPeople(occupant.partySize === null ? '' : String(occupant.partySize))
     setWantsName(false)
@@ -220,7 +249,16 @@ export function WriteInCard({ occupant, onRemove, onEdit, isSaving = false }: Wr
       setWantsName(true)
       return
     }
-    onEdit?.({ occupantName: trimmedName, reason: draftNote.trim(), partySize: draftPartySize })
+    onEdit?.({
+      occupantName: trimmedName,
+      reason: draftNote.trim(),
+      partySize: draftPartySize,
+      // UNTRIMMED, unlike the name being written: this is an ADDRESS and has
+      // to be the string the row actually carries. The server trims what it
+      // stores (kindred#2603), so a loaded name is already trimmed and
+      // trimming again would only ever hide a mismatch worth failing on.
+      previousOccupantName: loadedName,
+    })
     closeEdit()
   }
 

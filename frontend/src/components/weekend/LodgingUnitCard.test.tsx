@@ -2332,6 +2332,11 @@ describe('LodgingUnitCard — placing a family from the space itself (kindred#20
       occupantName: 'Burst pipe',
       reason: 'back Monday',
       partySize: null,
+      // kindred#2583 step 4. A CREATE renames nobody, and says so rather than
+      // leaving the field off: the pencil's edit is the one that carries a
+      // name here, and a producer that forgets the field would turn that
+      // compare-and-swap into the create this one legitimately is.
+      previousOccupantName: null,
     })
   })
 
@@ -2355,6 +2360,7 @@ describe('LodgingUnitCard — placing a family from the space itself (kindred#20
       occupantName: 'Burst pipe',
       reason: '',
       partySize: 2,
+      previousOccupantName: null,
     })
   })
 
@@ -2390,7 +2396,74 @@ describe('LodgingUnitCard — placing a family from the space itself (kindred#20
       occupantName: 'Emma Johnson',
       reason: '',
       partySize: 3,
+      // THE ROW THE PENCIL LOADED (kindred#2583 step 4). Same value as
+      // `occupantName` because this edit did not change the name — and it is
+      // sent anyway, deliberately: an unchanged name is still a
+      // compare-and-swap, which is what makes the save refuse when the row
+      // moved under the card instead of quietly writing a new one.
+      previousOccupantName: 'Emma Johnson',
     })
+  })
+
+  it('swaps on the name the form OPENED with, not on the one the row has grown since', async () => {
+    /*
+     * ⚠️ THE COMPARE-AND-SWAP'S ONE JOB, and reading the live prop at submit
+     * time hands it back. Every comment on this path says
+     * `previousOccupantName` is "the name the pencil LOADED"; the closure read
+     * `entry.occupant.name` from the CURRENT render instead, and the two are
+     * only the same string while nothing moves underneath.
+     *
+     * The window is real and is the exact one the field exists for. `WriteInCard`
+     * seeds its drafts at `openEdit` and never re-seeds, and the well keys its
+     * cards on `entry.key` (the unit id) rather than on the occupant's name --
+     * stated there so "renaming an occupant does not remount their card
+     * mid-edit". Any board mutation calls `invalidateLodgingRegistryQueries`, so
+     * a refetch can deliver a rename while the pencil is open: the form still
+     * shows what was loaded, the props already carry the new name.
+     *
+     * Reading the fresh one made the swap resolve the OTHER staff member's row
+     * and overwrite their rename, which is the silent double-write the 409
+     * exists to refuse. The loaded name comes back out of the form that loaded
+     * it instead.
+     */
+    const user = userEvent.setup()
+    const onSetAvailability = vi.fn()
+    const { rerender } = render(
+      <LodgingUnitCard
+        slot={slot({ unit: unit({ write_ins: [cover({ occupant_name: 'Emma Johnson' })] }) })}
+        canPlace={true}
+        unplacedParties={[unplaced]}
+        onPlaceParty={vi.fn()}
+        onOpenParty={vi.fn()}
+        canSetAvailability={true}
+        onSetAvailability={onSetAvailability}
+      />
+    )
+    await user.click(screen.getByRole('button', { name: 'Edit write-in Emma Johnson' }))
+
+    // Somebody else renames the row, and the roster refetch lands while this
+    // form is open. The card does not remount, so the draft survives.
+    rerender(
+      <LodgingUnitCard
+        slot={slot({ unit: unit({ write_ins: [cover({ occupant_name: 'Emma Johnston' })] }) })}
+        canPlace={true}
+        unplacedParties={[unplaced]}
+        onPlaceParty={vi.fn()}
+        onOpenParty={vi.fn()}
+        canSetAvailability={true}
+        onSetAvailability={onSetAvailability}
+      />
+    )
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+
+    expect(onSetAvailability).toHaveBeenCalledWith(
+      expect.objectContaining({
+        occupantName: 'Emma Johnson',
+        // The name the form LOADED. It no longer resolves, which is the
+        // point: the server answers 409 and nobody's rename is lost.
+        previousOccupantName: 'Emma Johnson',
+      })
+    )
   })
 
   it('is PRESENT on a written-into space, so a second occupant can be added either way round', () => {

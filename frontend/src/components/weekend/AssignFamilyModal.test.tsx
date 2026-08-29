@@ -1234,6 +1234,173 @@ describe('AssignFamilyModal — Enter saves from a FIELD, never from the search 
     })
   })
 
+  describe('and Ctrl/Cmd+Enter commits from anywhere, including the box', () => {
+    /*
+     * AN AMENDMENT TO THE RULING ABOVE, not a hole in it (owner, 2026-08-29:
+     * *"a small thing, but ctrl/cmd enter on the write in modal should submit
+     * just like clicking 'write in'"*).
+     *
+     * What the ruling protects against is an ACCIDENTAL commit: a family name
+     * one character off matches nothing, bare `Enter` is one keystroke away
+     * from every character of it, and a write-in is silent about having been
+     * the wrong thing to do. A modifier chord is not reachable by accident —
+     * nobody holds Ctrl or Cmd mid-name — so it buys the shortcut back without
+     * spending the protection. Bare `Enter` in the box stays swallowed, and
+     * the tests above still say so.
+     *
+     * BOTH MODIFIERS, never one: this is a desktop product used on either
+     * platform, and picking one leaves half the staff without the shortcut.
+     */
+    it('writes in on Ctrl+Enter in the search box', () => {
+      const { props } = renderModal()
+      fireEvent.change(searchBox(), { target: { value: 'Burst pipe' } })
+
+      fireEvent.keyDown(searchBox(), { key: 'Enter', ctrlKey: true })
+
+      expect(props.onWriteIn).toHaveBeenCalledWith({
+        occupantName: 'Burst pipe',
+        note: '',
+        partySize: null,
+      })
+    })
+
+    it('writes in on Cmd+Enter too', () => {
+      const { props } = renderModal()
+      fireEvent.change(searchBox(), { target: { value: 'Burst pipe' } })
+
+      fireEvent.keyDown(searchBox(), { key: 'Enter', metaKey: true })
+
+      expect(props.onWriteIn).toHaveBeenCalledTimes(1)
+    })
+
+    it('carries the People and Note the staff member filled in', () => {
+      const { props } = renderModal()
+      fireEvent.change(searchBox(), { target: { value: 'Burst pipe' } })
+      fireEvent.change(screen.getByLabelText(/note/i), { target: { value: 'back Monday' } })
+      fireEvent.change(screen.getByLabelText('People'), { target: { value: '3' } })
+
+      fireEvent.keyDown(screen.getByLabelText(/note/i), { key: 'Enter', ctrlKey: true })
+
+      expect(props.onWriteIn).toHaveBeenCalledWith({
+        occupantName: 'Burst pipe',
+        note: 'back Monday',
+        partySize: 3,
+      })
+    })
+
+    it('is INERT while a family candidate still matches', () => {
+      /*
+       * ⚠️ THE HALF THAT WOULD BE A BUG. What the box offers with a match
+       * showing is a PLACEMENT, and the chord must not quietly write in over
+       * it — that is the same mistyped-name failure the ruling exists to stop,
+       * reached through the shortcut instead of through bare Enter. Guarded by
+       * reusing `writeIn()`'s own `offersWriteIn` check rather than a second
+       * copy of the conditions, so the chord can never commit what the button
+       * refuses.
+       */
+      const { props } = renderModal()
+      fireEvent.change(searchBox(), { target: { value: 'Nguy' } })
+
+      fireEvent.keyDown(searchBox(), { key: 'Enter', ctrlKey: true })
+
+      expect(props.onWriteIn).not.toHaveBeenCalled()
+      expect(props.onSelect).not.toHaveBeenCalled()
+    })
+
+    it('is INERT on an empty box, exactly as the button is', () => {
+      const { props } = renderModal()
+
+      fireEvent.keyDown(searchBox(), { key: 'Enter', ctrlKey: true })
+
+      expect(props.onWriteIn).not.toHaveBeenCalled()
+    })
+
+    it('is INERT where the caller offers no write-in path at all', () => {
+      // `onWriteIn` undefined is the reader who may not write one. The button
+      // is not rendered at all in that state, so the chord must do nothing.
+      const onSelect = vi.fn()
+      renderModal({ onWriteIn: undefined, onSelect })
+      fireEvent.change(searchBox(), { target: { value: 'Burst pipe' } })
+
+      fireEvent.keyDown(searchBox(), { key: 'Enter', ctrlKey: true })
+
+      expect(onSelect).not.toHaveBeenCalled()
+    })
+
+    it('is INERT while a save is already in flight', () => {
+      // The button carries `disabled={isSaving}`. A shortcut that can commit
+      // what the button refuses is a duplicate write nobody asked for.
+      //
+      // TYPED FIRST, THEN THE FLAG FLIPPED, which is the only shape that
+      // pins the guard: a modal rendered `isSaving` from the start has a
+      // DISABLED search box, so nothing can be typed into it, `offersWriteIn`
+      // is false anyway and the assertion would pass with the guard deleted.
+      // That is the state a real second click lands in — the first write is
+      // in flight and the box still holds what was typed.
+      const onWriteIn = vi.fn()
+      const props = {
+        isOpen: true,
+        onClose: vi.fn(),
+        unit: unit(),
+        parties: [party(), NGUYEN],
+        units: [],
+        occupants: 2,
+        onSelect: vi.fn(),
+        onWriteIn,
+      }
+      const { rerender } = render(<AssignFamilyModal {...props} />)
+      fireEvent.change(searchBox(), { target: { value: 'Burst pipe' } })
+      rerender(<AssignFamilyModal {...props} isSaving={true} />)
+
+      fireEvent.keyDown(searchBox(), { key: 'Enter', ctrlKey: true })
+
+      expect(onWriteIn).not.toHaveBeenCalled()
+    })
+
+    /*
+     * ⚠️ ONE KEYPRESS IS ONE WRITE, and the two handlers that both answer to
+     * `Enter` are what make that worth pinning. `Note` and `People` carry the
+     * ruling's other half — bare `Enter` SAVES from a field — and neither
+     * looks at the modifiers, so a chord pressed in one of them ran the
+     * field's `writeIn()` and then bubbled to the container's and ran it
+     * again. Two `onWriteIn` calls, two round trips and two `onClose()`s from
+     * one keystroke, on the commonest path there is: the caret ends up in
+     * `Note` because that is the last thing staff fill in.
+     *
+     * The existing chord tests could not see it — they assert
+     * `toHaveBeenCalledWith`, which a duplicate satisfies.
+     */
+    it('fires ONCE from the Note field, not once per handler', () => {
+      const { props } = renderModal()
+      fireEvent.change(searchBox(), { target: { value: 'Burst pipe' } })
+      fireEvent.change(screen.getByLabelText(/note/i), { target: { value: 'back Monday' } })
+
+      fireEvent.keyDown(screen.getByLabelText(/note/i), { key: 'Enter', ctrlKey: true })
+
+      expect(props.onWriteIn).toHaveBeenCalledTimes(1)
+    })
+
+    it('fires ONCE from the People select too', () => {
+      const { props } = renderModal()
+      fireEvent.change(searchBox(), { target: { value: 'Burst pipe' } })
+
+      fireEvent.keyDown(screen.getByLabelText('People'), { key: 'Enter', metaKey: true })
+
+      expect(props.onWriteIn).toHaveBeenCalledTimes(1)
+    })
+
+    it('still saves on BARE Enter from a field, exactly once', () => {
+      // The other half of the ruling, and the thing the fix must not cost:
+      // an unmodified `Enter` in a field is still the field's own commit.
+      const { props } = renderModal()
+      fireEvent.change(searchBox(), { target: { value: 'Burst pipe' } })
+
+      fireEvent.keyDown(screen.getByLabelText(/note/i), { key: 'Enter' })
+
+      expect(props.onWriteIn).toHaveBeenCalledTimes(1)
+    })
+  })
+
   describe('the overwrite warning', () => {
     /*
      * ⚠️ A LIVE DATA-LOSS PATH, and it is not the one the feature was framed
