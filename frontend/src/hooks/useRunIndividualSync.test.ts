@@ -14,4 +14,20 @@ describe('SYNC_TYPE_NAMES', () => {
     const endpoint = id.replace(/_/g, '-')
     expect(endpoint).toBe('stranded-assignment-cleanup')
   })
+
+  // kindred#2593: syncTypes.ts gains a card for multi_workbook_export (the Export phase
+  // previously had zero cards at all, since no job in YEAR_SYNC_TYPES declared
+  // `phase: 'export'`). A card with no entry here would throw "Unknown sync type" the
+  // moment its Run button is clicked -- SyncTab's handleRun falls through to
+  // runIndividualSync.mutate(syncType.id) for any id without its own switch case, and that
+  // mutation validates against this map before sending the request.
+  it('includes multi_workbook_export, whose card gets a real POST route (/multi-workbook-export)', () => {
+    expect(SYNC_TYPE_NAMES['multi_workbook_export']).toBeDefined()
+  })
+
+  it('maps multi_workbook_export to kebab-case endpoint segment', () => {
+    const id = 'multi_workbook_export'
+    const endpoint = id.replace(/_/g, '-')
+    expect(endpoint).toBe('multi-workbook-export')
+  })
 })

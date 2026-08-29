@@ -8,6 +8,7 @@ import { renderHook, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import React, { type ReactNode } from 'react'
 import { useSyncStatusAPI } from './useSyncStatusAPI'
+import { getBackendSyncJobIds } from '../test/backendSyncJobIds'
 
 // authChangeListeners simulates pb.authStore.onChange — tests can call them
 // to drive the auto-refetch behavior on auth-state transitions.
@@ -126,7 +127,9 @@ describe('useSyncStatusAPI', () => {
         financial_transactions: { status: 'idle' as const },
         staff_lookups: { status: 'idle' as const },
         financial_lookups: { status: 'idle' as const },
-        google_sheets_export: { status: 'idle' as const },
+        person_custom_values_family_camp: { status: 'idle' as const },
+        household_custom_values_family_camp: { status: 'idle' as const },
+        reconcile_request_lifecycle: { status: 'idle' as const },
         family_camp_derived: { status: 'idle' as const },
         staff_skills: { status: 'idle' as const },
         financial_aid_applications: { status: 'idle' as const },
@@ -232,5 +235,37 @@ describe('useSyncStatusAPI', () => {
 
       expect(pb.send).toHaveBeenCalled()
     })
+  })
+})
+
+// kindred#2593: SyncStatusResponse is hand-written and drifted BOTH ways -- it lacked the
+// three jobs #2591 published, and it still declared `google_sheets_export`, which no Go code
+// emits (renamed `multi_workbook_export`). TypeScript can't catch either direction on its
+// own: an extra runtime key is structurally fine, and a declared-but-absent key just reads
+// as `undefined`. An interface has no runtime representation to inspect, so this reads the
+// per-job field names straight out of the source text -- the same source-grep pattern other
+// tests in this suite already use (see reference_frontend_source_grep_tests) -- and compares
+// them to the backend's own statusSyncTypes() (pocketbase/sync/api.go) rather than to the
+// other hand-maintained frontend lists, which would drift in lockstep and prove nothing.
+describe('SyncStatusResponse backend coverage (kindred#2593)', () => {
+  it('declares exactly one field per job the backend publishes -- no more, no fewer', () => {
+    const sourceCode = readFileSync(resolve(__dirname, 'useSyncStatusAPI.ts'), 'utf-8')
+
+    const interfaceStart = sourceCode.indexOf('export interface SyncStatusResponse {')
+    expect(interfaceStart).toBeGreaterThan(-1)
+    const interfaceEnd = sourceCode.indexOf('\n}', interfaceStart)
+    expect(interfaceEnd).toBeGreaterThan(-1)
+    const body = sourceCode.slice(interfaceStart, interfaceEnd)
+
+    // Per-job fields are declared `  <id>: SyncStatus`, optionally followed by a trailing
+    // "// ..." comment (e.g. `persons: SyncStatus // Combined sync: ...`) -- the special
+    // `_`-prefixed meta fields (e.g. `_queue?: QueuedSyncItem[]`) use different types and/or
+    // are optional, so this pattern excludes them without needing to name each one.
+    const jobFieldIds = [...body.matchAll(/^ {2}(\w+): SyncStatus\s*(?:\/\/.*)?$/gm)].map(
+      (m) => m[1]
+    )
+
+    const backendIds = getBackendSyncJobIds().slice().sort()
+    expect(jobFieldIds.slice().sort()).toEqual(backendIds)
   })
 })

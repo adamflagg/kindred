@@ -29,6 +29,7 @@ import {
   Car,
   MapPin,
   Camera,
+  RefreshCw,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -192,6 +193,34 @@ export const YEAR_SYNC_TYPES = [
     color: 'text-orange-500',
     phase: 'expensive' as SyncPhase,
   },
+  // The bounded daily family-camp custom-values pass (kindred#2482/#2489), published on the
+  // status payload by #2591 but never given a card until #2593. No manualTrigger: the
+  // backend registers no individual POST route for either -- they run only inside
+  // getDailySyncJobs, always covered minutes earlier by the daily cron, so there is nothing
+  // for a Run button to call (phaseExecutionJobs deliberately excludes them from an
+  // admin-triggered PhaseExpensive run too, to avoid re-fetching a cohort already fresh).
+  // currentYearOnly: the daily cron always targets the configured season, never a historical
+  // year, matching bunk_requests/process_requests below.
+  {
+    id: 'person_custom_values_family_camp',
+    name: 'Person CV (FC)',
+    description: 'Daily cron only',
+    icon: User,
+    color: 'text-violet-300',
+    phase: 'expensive' as SyncPhase,
+    manualTrigger: false,
+    currentYearOnly: true,
+  },
+  {
+    id: 'household_custom_values_family_camp',
+    name: 'Household CV (FC)',
+    description: 'Daily cron only',
+    icon: Home,
+    color: 'text-orange-300',
+    phase: 'expensive' as SyncPhase,
+    manualTrigger: false,
+    currentYearOnly: true,
+  },
   // Transform phase - derived tables
   {
     id: 'family_camp_derived',
@@ -286,6 +315,19 @@ export const YEAR_SYNC_TYPES = [
     phase: 'transform' as SyncPhase,
   },
   // Process phase - CSV + AI (current year only)
+  // No POST route registered (published on the status payload by #2591, carded by #2593):
+  // it runs only inside getDailySyncJobs/ResolveUnifiedSyncServices' current-year branch,
+  // immediately before bunk_requests -- the same position it holds here.
+  {
+    id: 'reconcile_request_lifecycle',
+    name: 'Reconcile Lifecycle',
+    description: 'Daily cron only',
+    icon: RefreshCw,
+    color: 'text-teal-500',
+    phase: 'process' as SyncPhase,
+    manualTrigger: false,
+    currentYearOnly: true,
+  },
   {
     id: 'bunk_requests',
     name: 'Intake Requests',
@@ -301,6 +343,17 @@ export const YEAR_SYNC_TYPES = [
     color: 'text-teal-600',
     phase: 'process' as SyncPhase,
     currentYearOnly: true,
+  },
+  // Export phase - Google Sheets. Was published on the status payload and had toast +
+  // invalidation coverage the whole time; it just had no card, because YEAR_SYNC_TYPES had
+  // zero entries with `phase: 'export'`, so getSyncTypesByPhase('export', ...) always
+  // returned [] and the phase section silently rendered nothing at all (#2593).
+  {
+    id: 'multi_workbook_export',
+    name: 'Sheets Export',
+    icon: FileSpreadsheet,
+    color: 'text-fuchsia-600',
+    phase: 'export' as SyncPhase,
   },
 ] as const
 

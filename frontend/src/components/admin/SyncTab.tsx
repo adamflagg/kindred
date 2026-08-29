@@ -325,8 +325,16 @@ export function SyncTab() {
           )}
         </div>
 
-        {/* Run button - special handling for process_requests */}
-        {syncType.id === 'process_requests' ? (
+        {/* Run button - special handling for process_requests, and none at all for jobs
+            the backend never exposes an individual POST route for (kindred#2593) */}
+        {'manualTrigger' in syncType && syncType.manualTrigger === false ? (
+          <div
+            className="text-muted-foreground/70 bg-muted/30 mt-3 flex w-full items-center justify-center rounded-lg py-2 text-xs sm:text-sm"
+            title="This job runs only as part of the daily sync -- there is no manual trigger"
+          >
+            Daily sync only
+          </div>
+        ) : syncType.id === 'process_requests' ? (
           <div className="mt-3 flex gap-2">
             <button
               onClick={handleRun}

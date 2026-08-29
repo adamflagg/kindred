@@ -414,3 +414,52 @@ describe('SyncTab skipped-values badge (kindred#2356)', () => {
     expect(within(transportationCard()).queryByText(/val skip/)).not.toBeInTheDocument()
   })
 })
+
+// kindred#2593: three jobs the backend runs only via daily cron -- never through any
+// individual POST route -- get status-visible cards, but their Run button would throw
+// "Unknown sync type" (or, if that check were bypassed, 404 against a route that does not
+// exist) the moment it was clicked. Giving them the generic Run button back would be a new
+// bug, not a fix, so their cards render without one.
+describe('SyncTab jobs with no manual trigger (kindred#2593)', () => {
+  function cardFor(name: string) {
+    const heading = screen.getByText(name, { selector: 'div' })
+    const card = heading.closest('.flex.flex-col')
+    if (!card) throw new Error(`could not find card for ${name}`)
+    return card as HTMLElement
+  }
+
+  it('renders a card for the bounded family-camp person custom-values job with no Run button', () => {
+    renderSyncTab()
+
+    const card = cardFor('Person CV (FC)')
+    expect(within(card).queryByRole('button', { name: /run/i })).not.toBeInTheDocument()
+  })
+
+  it('renders a card for the bounded family-camp household custom-values job with no Run button', () => {
+    renderSyncTab()
+
+    const card = cardFor('Household CV (FC)')
+    expect(within(card).queryByRole('button', { name: /run/i })).not.toBeInTheDocument()
+  })
+
+  it('renders a card for reconcile_request_lifecycle with no Run button', () => {
+    renderSyncTab()
+
+    const card = cardFor('Reconcile Lifecycle')
+    expect(within(card).queryByRole('button', { name: /run/i })).not.toBeInTheDocument()
+  })
+})
+
+// kindred#2593: YEAR_SYNC_TYPES had zero entries with `phase: 'export'`, so the Export phase
+// section rendered nothing at all -- `getSyncTypesByPhase('export', ...)` always returned []
+// and SyncTab's phase loop returns null for an empty phase (`if (types.length === 0) return
+// null`). multi_workbook_export had a working POST route and toast/invalidation coverage the
+// whole time; it just never got a card. This is the regression test for the section existing
+// and its Run button actually working (unlike the three no-manual-trigger jobs above).
+describe('SyncTab Export phase now has a card (kindred#2593)', () => {
+  it('renders a Sheets Export card with an enabled Run button', () => {
+    renderSyncTab()
+
+    expect(getCardRunButton('Sheets Export')).not.toBeDisabled()
+  })
+})
