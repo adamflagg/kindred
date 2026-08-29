@@ -229,6 +229,8 @@ jobs:
             # these three lines, gutting the allowlist would not run the suite
             # that pins it -- the same unwired-guard shape as the line above.
             - 'scripts/ci/copy-private-config.sh'
+            # TEST 21 asserts over .dockerignore's never-ship denylist.
+            - '.dockerignore'
             - 'scripts/ci/test-copy-private-config.sh'
             - '.github/actions/**'
           docker:

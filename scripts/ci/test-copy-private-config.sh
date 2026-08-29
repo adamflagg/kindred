@@ -28,6 +28,10 @@ if [[ ! -x "$COPY_SCRIPT" ]]; then
   exit 1
 fi
 
+REPO_ROOT=$(git rev-parse --show-toplevel)
+CI_WORKFLOW="$REPO_ROOT/.github/workflows/ci.yml"
+ACTION_YML="$REPO_ROOT/.github/actions/clone-kindred-local/action.yml"
+
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
 
@@ -330,14 +334,47 @@ else
   check "TEST 20: a source path resolving outside SRC_ROOT is refused (status=$STATUS) $OUT" no
 fi
 
+# --- TEST 21: .dockerignore keeps the never-ship files out of every context --
+# kindred#2575 narrowed each Dockerfile to copy config/ by name, so these do
+# not reach an image today. The denylist is the layer that does not depend on
+# getting a COPY glob right -- a future config/branding.prod.json would be
+# swept up by Dockerfile.api's `config/branding*.json` with nobody noticing.
+# It lives in this suite because this suite is the one that owns "private
+# files must not reach places that publish them", and because a guard nothing
+# runs is the failure this whole PR is about.
+#
+# Checks the literal lines, not full .dockerignore pattern semantics: the
+# realistic regressions are a deleted line or a `!` negation added later.
+DOCKERIGNORE="$REPO_ROOT/.dockerignore"
+never_ship=(
+  config/google_sheets.json
+  config/lodging_registry.json
+  config/sheets_sharing.local.json
+)
+di_problem=""
+if [[ ! -f "$DOCKERIGNORE" ]]; then
+  di_problem="no .dockerignore at $DOCKERIGNORE"
+else
+  di_active=$(grep -vE '^[[:space:]]*(#|$)' "$DOCKERIGNORE")
+  for f in "${never_ship[@]}"; do
+    printf '%s\n' "$di_active" | grep -qxF "$f" \
+      || di_problem="$di_problem not-excluded:$f"
+    printf '%s\n' "$di_active" | grep -qxF "!$f" \
+      && di_problem="$di_problem re-included:$f"
+  done
+fi
+if [[ -z "$di_problem" ]]; then
+  check "TEST 21: .dockerignore excludes the service-account key, registry and sharing config" ok
+else
+  check "TEST 21: .dockerignore excludes the service-account key, registry and sharing config ($di_problem)" no
+fi
+
 # --- TEST 11: every consumer of the action passes a `paths` allowlist -------
 # A SOURCE-GREP anchor, in the spirit of scripts/dev/test-verify-no-hardcoded-lodging.sh.
 # The script above cannot see a workflow that forgets the input; the action
 # fails such a job at runtime, but only on a run that reaches it -- and the
 # whole point of kindred#2575 is that over-broad copying is invisible until it
 # is not. This catches it at PR time instead.
-REPO_ROOT=$(git rev-parse --show-toplevel)
-CI_WORKFLOW="$REPO_ROOT/.github/workflows/ci.yml"
 offenders=$(
   # *.yml AND *.yaml: there are no .yaml workflows today, but a filter that
   # silently skips one is the failure this test exists to catch.
@@ -370,7 +407,6 @@ fi
 # enforce it -- so the action validates the input itself. If someone reverts
 # either half, "copy everything" becomes reachable again by simply omitting
 # the input, which is the exact state kindred#2575 was filed about.
-ACTION_YML="$REPO_ROOT/.github/actions/clone-kindred-local/action.yml"
 # shellcheck disable=SC2016  # the literal ${{ }} below is the thing being matched
 if [[ ! -f "$ACTION_YML" ]]; then
   check "TEST 12: action.yml not found at $ACTION_YML" no
@@ -435,6 +471,10 @@ else
     check "TEST 14: guardSelfTests does not watch all workflows" no
   elif ! printf '%s\n' "$gsf" | grep -qF -- "- '.github/actions/**'"; then
     check "TEST 14: guardSelfTests does not watch .github/actions" no
+  elif ! printf '%s\n' "$gsf" | grep -qF -- "- '.dockerignore'"; then
+    # TEST 21 asserts over .dockerignore, so editing it alone must run this
+    # suite -- otherwise the denylist is a guard nothing checks.
+    check "TEST 14: guardSelfTests does not watch .dockerignore" no
   else
     check "TEST 14: this suite is wired into ci.yml and its filter watches its subjects" ok
   fi
