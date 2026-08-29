@@ -50,13 +50,23 @@ runs:
           exit 0
         fi
 
-        mkdir -p ~/.ssh
-        echo "$DEPLOY_KEY" > ~/.ssh/id_ed25519
-        chmod 600 ~/.ssh/id_ed25519
-        ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null
-
-        cleanup() { rm -rf /tmp/kindred-local ~/.ssh/id_ed25519; }
+        # The key goes to its own mktemp file (0600 by creation), never to
+        # ~/.ssh/id_ed25519: clobbering the runner's default identity is only
+        # harmless because these jobs run on ephemeral GitHub-hosted runners,
+        # and that is a property of the runner, not of this action.
+        #
+        # The trap is installed BEFORE the key is written. With `set -e`, any
+        # failure between the write and the clone -- ssh-keyscan reaching the
+        # network, most obviously -- would otherwise exit with the private key
+        # still on disk.
+        KEY_FILE=$(mktemp)
+        cleanup() { rm -f "$KEY_FILE"; rm -rf /tmp/kindred-local; }
         trap cleanup EXIT
+
+        printf '%s\n' "$DEPLOY_KEY" > "$KEY_FILE"
+
+        mkdir -p ~/.ssh
+        ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null
 
         # The copy lives in the calling repo, so a job that uses this action
         # before actions/checkout would otherwise fail with a bare
@@ -68,7 +78,8 @@ runs:
           exit 1
         fi
 
-        git clone --depth 1 git@github.com:adamflagg/kindred-local.git /tmp/kindred-local
+        GIT_SSH_COMMAND="ssh -i '$KEY_FILE' -o IdentitiesOnly=yes" \
+          git clone --depth 1 git@github.com:adamflagg/kindred-local.git /tmp/kindred-local
 
         "$COPY_SCRIPT" /tmp/kindred-local "$GITHUB_WORKSPACE"
 

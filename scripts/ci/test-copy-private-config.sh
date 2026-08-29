@@ -297,8 +297,36 @@ elif ! grep -qF -- "- '.github/actions/**'" "$CI_WORKFLOW"; then
   check "TEST 14: ci.yml's guardSelfTests filter does not watch .github/actions" no
 elif ! grep -qF -- "- 'scripts/ci/copy-private-config.sh'" "$CI_WORKFLOW"; then
   check "TEST 14: ci.yml's guardSelfTests filter does not watch the copy script" no
+elif ! grep -qF -- "- '.github/workflows/**'" "$CI_WORKFLOW"; then
+  # TEST 11 scans EVERY workflow, so a filter watching only ci.yml lets an
+  # allowlist change in cd.yml or release.yml merge untested.
+  check "TEST 14: ci.yml's guardSelfTests filter does not watch all workflows" no
 else
   check "TEST 14: this suite is wired into ci.yml and its filter watches its subjects" ok
+fi
+
+# --- TEST 15: the deploy key is isolated, and cleanup precedes the write ----
+# Two properties of the action's key handling, both raised in review on the PR
+# that introduced this suite:
+#
+#   * The key goes to its own mktemp file, not ~/.ssh/id_ed25519. Clobbering
+#     the runner's default identity is harmless only because these jobs run on
+#     ephemeral GitHub-hosted runners -- a property of the runner, not of this
+#     action, and not one to depend on.
+#   * The cleanup trap is installed BEFORE the key is written. Adding
+#     `set -euo pipefail` to this action (this PR did) means any failure
+#     between the write and the clone exits with the private key still on disk
+#     unless the trap is already armed.
+if grep -qE '>[[:space:]]*~/\.ssh/id_ed25519' "$ACTION_YML"; then
+  check "TEST 15: action.yml writes the deploy key over ~/.ssh/id_ed25519" no
+elif ! awk '
+    /trap cleanup EXIT/         { trap_line = NR }
+    /> "\$KEY_FILE"/            { write_line = NR }
+    END { exit !(trap_line && write_line && trap_line < write_line) }
+  ' "$ACTION_YML"; then
+  check "TEST 15: the cleanup trap is not installed before the key is written" no
+else
+  check "TEST 15: the deploy key is isolated and the cleanup trap precedes it" ok
 fi
 
 echo

@@ -210,7 +210,13 @@ jobs:
           # scripts/dev/ or ci.yml, misattributed to the wrong change.
           guardSelfTests:
             - 'scripts/dev/**'
-            - '.github/workflows/ci.yml'
+            # kindred#2575: ALL workflows, not just ci.yml. TEST 11 of
+            # test-copy-private-config.sh scans every workflow for a
+            # clone-kindred-local call that forgot its allowlist, so watching
+            # only ci.yml would let an allowlist change in cd.yml or
+            # release.yml merge without ever running the test that checks it --
+            # the same unwired-guard shape this filter exists to prevent.
+            - '.github/workflows/**'
             - 'pocketbase/pb_migrations/**'
             # test-worktree-guard.sh lives under scripts/dev/ but its subject
             # is .claude/hooks/worktree-guard.sh. Without this line, editing
