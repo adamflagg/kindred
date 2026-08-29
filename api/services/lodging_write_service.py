@@ -177,6 +177,12 @@ class WriteInRenameConflictError(RuntimeError):
             "somebody changed it. Reopen the card and try again."
         )
         self.occupant_name = occupant_name
+        # UNREAD today, and kept deliberately: the router turns this into a
+        # 409 carrying only `str(exc)`. Both attributes exist so a caller can
+        # tell WHICH swap failed without parsing the sentence -- which is what
+        # a retry or a log line would want -- and `unit_id` is the half a
+        # message naming the cabin would use. Stated rather than left to be
+        # read as an oversight (kindred#2603 review).
         self.unit_id = unit_id
 
 

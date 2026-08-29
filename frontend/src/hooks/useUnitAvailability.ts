@@ -86,7 +86,11 @@ export interface UseUnitAvailabilityOptions {
 /** One unit's availability for this weekend, as the card states it. */
 export interface AvailabilityIntent {
   unitId: string
-  /** For the confirmation only — the write names the unit by id. */
+  /**
+   * The unit's name. ⚠️ UNREAD — the write forwards `unitId` and there is no
+   * confirmation step; corrected on the kindred#2603 review rather than left
+   * asserting a caller that does not exist.
+   */
   unitName: string
   /**
    * `false` writes an occupant into the unit, `true` releases it, `null`
@@ -131,7 +135,13 @@ export interface WriteInRemovalIntent {
    * on — the same target `AvailabilityIntent.unitId` carries.
    */
   unitId: string
-  /** For the error message only — the removal names the unit by id. */
+  /**
+   * The unit's name. ⚠️ UNREAD, exactly as `AvailabilityIntent.unitName`
+   * above is — this comment claimed an error message that does not exist
+   * (kindred#2603 review). The removal forwards `unitId` and `occupantName`
+   * to `deleteWriteIn`; `onError` raises the server's own message. Carried to
+   * keep the two intents the same shape, with the claim corrected.
+   */
   unitName: string
   /** WHICH occupant. The other half of the Design B address, and required. */
   occupantName: string

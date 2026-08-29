@@ -172,7 +172,18 @@ export interface WriteInRemoval {
    * of its own.
    */
   unitId: string
-  /** That unit's name, for the error message. */
+  /**
+   * That unit's name.
+   *
+   * ⚠️ NOTHING READS IT TODAY, and the comment here used to claim an error
+   * message that does not exist (kindred#2603 review). `useUnitAvailability`'s
+   * removal forwards only `unitId` and `occupantName` to `deleteWriteIn`, and
+   * its `onError` raises the server's own message. It is carried because
+   * `UnitAvailabilityWrite.unitName` beside it is carried — the two describe
+   * the same target and diverging their shapes would be the worse of the two
+   * costs — and it is the field a message naming the cabin would use. Kept
+   * with the claim corrected rather than deleted from one of the pair.
+   */
   unitName: string
   /**
    * WHICH occupant. The other half of the Design B address. Never blank here:

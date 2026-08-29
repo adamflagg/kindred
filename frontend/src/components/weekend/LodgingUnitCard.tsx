@@ -1373,6 +1373,13 @@ const LodgingUnitCardInner = memo(function LodgingUnitCardInner({
                     occupantName: string
                     reason: string
                     partySize: number | null
+                    // Kept in step with `WriteInCardProps['onEdit']`, which is
+                    // where this shape is stated. Annotated here rather than
+                    // inferred so the spread below stays readable; the cost is
+                    // that a widening there is a type error here, which is the
+                    // right direction — kindred#2603 added this field and the
+                    // build caught the omission.
+                    previousOccupantName: string
                   }) => {
                     onSetAvailability({
                       unitId: entry.source.unitId,
@@ -1400,7 +1407,17 @@ const LodgingUnitCardInner = memo(function LodgingUnitCardInner({
                       //
                       // `''` IS A REAL ADDRESS — the row nobody named — and
                       // the one edit its pencil can make is to name it.
-                      previousOccupantName: entry.occupant.name,
+                      //
+                      // ⚠️ FROM THE FORM, NOT FROM `entry` (kindred#2603). This
+                      // closure sees the CURRENT render; the form saw the one
+                      // it was opened on. A roster refetch carrying somebody
+                      // else's rename lands while the pencil is open — the card
+                      // does not remount, so the draft survives — and reading
+                      // `entry.occupant.name` here then swapped on the NEW name,
+                      // resolved their row and overwrote their rename. That is
+                      // the silent double-write the swap exists to refuse,
+                      // reached through the swap itself.
+                      previousOccupantName: write.previousOccupantName,
                     })
                   },
                 }

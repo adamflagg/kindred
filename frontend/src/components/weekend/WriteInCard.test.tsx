@@ -296,6 +296,11 @@ describe('the corner control that edits THIS write-in (kindred#2430)', () => {
       // The row this test seeds carries no recorded count, so the untouched
       // People field sends `null` — kindred#2503's edit form, task 10.
       partySize: null,
+      // THE NAME THE FORM OPENED WITH (kindred#2583 step 4, addressing fixed
+      // in kindred#2603): the compare-and-swap address, reported out of the
+      // form that loaded it rather than re-read from the caller's props. It
+      // is the OLD name here, because this edit is a rename.
+      previousOccupantName: 'Liam Garcia',
     })
     expect(screen.queryByRole('textbox', { name: 'Occupant' })).not.toBeInTheDocument()
   })
@@ -506,6 +511,7 @@ describe("the pencil's People field, kindred#2503", () => {
       occupantName: 'Liam Garcia',
       reason: '',
       partySize: 3,
+      previousOccupantName: 'Liam Garcia',
     })
   })
 
@@ -523,6 +529,7 @@ describe("the pencil's People field, kindred#2503", () => {
       occupantName: 'Liam Garcia',
       reason: '',
       partySize: null,
+      previousOccupantName: 'Liam Garcia',
     })
   })
 
@@ -540,6 +547,7 @@ describe("the pencil's People field, kindred#2503", () => {
       occupantName: 'Liam Garcia',
       reason: '',
       partySize: 4,
+      previousOccupantName: 'Liam Garcia',
     })
   })
 
@@ -572,6 +580,7 @@ describe("the pencil's People field, kindred#2503", () => {
       occupantName: 'Liam Garcia',
       reason: '',
       partySize: 2,
+      previousOccupantName: 'Liam Garcia',
     })
   })
 })
