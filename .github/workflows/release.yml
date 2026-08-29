@@ -337,6 +337,12 @@ jobs:
       uses: ./.github/actions/clone-kindred-local
       with:
         deploy-key: ${{ secrets.KINDRED_LOCAL_DEPLOY_KEY }}
+        # kindred#2575: this job rebuilds kindred-caddy and nothing else, so it
+        # needs what Dockerfile.caddy reads and no more -- not the staff list,
+        # not the lodging registry, not the private Vite dev-server config.
+        paths: |
+          config/branding.local.json
+          local/assets
 
     - name: Prepare local assets for Docker build
       run: |

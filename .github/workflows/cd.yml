@@ -499,10 +499,13 @@ jobs:
       with:
         persist-credentials: false
 
-    - name: Clone private config
-      uses: ./.github/actions/clone-kindred-local
-      with:
-        deploy-key: ${{ secrets.KINDRED_LOCAL_DEPLOY_KEY }}
+    # kindred#2575: this job used to clone the private config here. It reads
+    # none of it. Its two checks are `import bunking; import api` -- and
+    # get_branding() is @lru_cache'd on CALL, so an import touches no branding
+    # file -- and `npm run type-check`, whose tsconfig.node.json includes the
+    # committed vite.config.local.EXAMPLE.ts, not the private override (which
+    # vite.config.ts reaches for behind a @ts-ignore, so it type-checks the
+    # same present or absent). The step was pure surplus: deleted, not scoped.
 
     - name: Setup Python
       uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -559,18 +562,41 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # kindred#2575: `private_paths` is each image's allowlist -- what its
+          # Dockerfile actually reads out of kindred-local, and nothing more.
+          # Every runner used to receive the whole private tree regardless of
+          # which image it was building. An empty value skips the clone step
+          # entirely, which is the honest answer for two of the four.
           - image: kindred-caddy
             dockerfile: docker/Dockerfile.caddy
             should_build: ${{ needs.detect-changes.outputs.build_caddy }}
+            # Dockerfile.caddy: `COPY config/branding*.json` (Vite injects it)
+            # and `COPY local/ /pb_public/local/` (logos served to the browser).
+            private_paths: |
+              config/branding.local.json
+              local/assets
           - image: kindred-pocketbase
             dockerfile: docker/Dockerfile.pocketbase
             should_build: ${{ needs.detect-changes.outputs.build_pocketbase }}
+            # No `COPY config/` at all. The lodging registry this binary reads
+            # arrives at runtime on the /config volume, not in the image.
+            private_paths: ''
           - image: kindred-api
             dockerfile: docker/Dockerfile.api
             should_build: ${{ needs.detect-changes.outputs.build_api }}
+            # bunking/branding.py, staff_name_detector.py and nickname_groups.py
+            # are the only Python readers of a private config file. The lodging
+            # registry has NO Python reader -- it was reaching this image only
+            # because both this action and Dockerfile.api were copying by
+            # directory rather than by name.
+            private_paths: |
+              config/branding.local.json
+              config/staff_list.json
+              config/nicknames_override.json
           - image: kindred-init
             dockerfile: docker/Dockerfile.init
             should_build: ${{ needs.detect-changes.outputs.build_init }}
+            private_paths: ''
     steps:
     - name: Harden runner
       uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
@@ -649,10 +675,11 @@ jobs:
         persist-credentials: false
 
     - name: Clone private config for branding assets
-      if: matrix.should_build == 'true'
+      if: matrix.should_build == 'true' && matrix.private_paths != ''
       uses: ./.github/actions/clone-kindred-local
       with:
         deploy-key: ${{ secrets.KINDRED_LOCAL_DEPLOY_KEY }}
+        paths: ${{ matrix.private_paths }}
 
     - name: Prepare local assets for Docker build
       if: matrix.should_build == 'true'

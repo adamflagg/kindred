@@ -29,8 +29,28 @@ COPY --link --from=python-builder /app/.venv /app/.venv
 ENV PATH="/app/.venv/bin:$PATH"
 ENV VIRTUAL_ENV="/app/.venv"
 
-# Application source
-COPY --link --chown=65532:65532 config/ ./config/
+# Application source.
+#
+# kindred#2575: config/ is copied BY NAME, not by directory. Copying the whole
+# directory meant this image shipped every private file that happened to be in
+# the build context -- the lodging registry (which has no Python reader at all;
+# the Go binary gets it from the /config volume at runtime) and, on a local
+# `docker build`, the gitignored Google service-account key. Only branding,
+# the staff list, the nickname overrides and the AI prompts are read here:
+# bunking/branding.py, staff_name_detector.py, nickname_groups.py, and the two
+# prompt loaders (bunking/.../prompts/loader.py, api/routers/debug.py).
+#
+# Each glob below is anchored on a COMMITTED file -- branding.json,
+# staff_list.example.json, nicknames_override.example.json -- so it always
+# matches something. That matters because the private files are optional:
+# scripts/build/docker-build.sh deletes their symlinks when kindred-local is
+# absent, and a COPY whose glob matches nothing fails the build outright.
+COPY --link --chown=65532:65532 config/prompts/ ./config/prompts/
+COPY --link --chown=65532:65532 \
+     config/branding*.json \
+     config/staff_list*.json \
+     config/nicknames_override*.json \
+     ./config/
 COPY --link --chown=65532:65532 campminder/ ./campminder/
 COPY --link --chown=65532:65532 api/ ./api/
 COPY --link --chown=65532:65532 bunking/ ./bunking/

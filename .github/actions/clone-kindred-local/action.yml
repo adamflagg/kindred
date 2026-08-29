@@ -1,9 +1,25 @@
 name: Clone kindred-local
-description: Clone private config repo and copy branding assets to expected locations
+description: Copy an explicit allowlist of files from the private kindred-local repo into the workspace
+
+# kindred#2575. This action used to clone kindred-local and then copy the
+# WHOLE private config/ and local/ trees into the calling job's workspace,
+# whatever that job actually needed. adamflagg/kindred is public, and CI's
+# lodging-guard job was taking staff names, branding and camp logos in order
+# to read one JSON file. Callers now name the paths they need and get exactly
+# those; anything else stays in the clone and is deleted with it.
 
 inputs:
   deploy-key:
     description: SSH deploy key for kindred-local repo
+    required: true
+  paths:
+    description: >
+      Newline-separated allowlist of kindred-local-relative paths to copy into
+      the workspace, e.g. "config/branding.local.json". Each path must exist in
+      kindred-local or the action fails -- a rename on that side is a red
+      build, never a silently degraded one. Required: there is no
+      copy-everything default, because that default is the bug this input
+      exists to fix.
     required: true
 
 runs:
@@ -13,21 +29,47 @@ runs:
       shell: bash
       env:
         DEPLOY_KEY: ${{ inputs.deploy-key }}
+        PRIVATE_CONFIG_PATHS: ${{ inputs.paths }}
       run: |
-        if [ -n "$DEPLOY_KEY" ]; then
-          mkdir -p ~/.ssh
-          echo "$DEPLOY_KEY" > ~/.ssh/id_ed25519
-          chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null
-          git clone --depth 1 git@github.com:adamflagg/kindred-local.git /tmp/kindred-local
+        set -euo pipefail
 
-          # Copy files to expected locations
-          cp /tmp/kindred-local/config/* config/ 2>/dev/null || true
-          cp -r /tmp/kindred-local/local . 2>/dev/null || true
-          cp /tmp/kindred-local/frontend/vite.config.local.ts frontend/ 2>/dev/null || true
-
-          rm -rf /tmp/kindred-local ~/.ssh/id_ed25519
-          echo "Private config loaded"
-        else
-          echo "Deploy key not provided - using default branding"
+        # A job that names no paths has misconfigured itself. Checked before
+        # the key is even looked at, so the mistake surfaces on fork and
+        # Dependabot PRs too -- where the key is empty and the copy would
+        # otherwise be skipped, hiding the error until the next run on main.
+        if [ -z "${PRIVATE_CONFIG_PATHS//[[:space:]]/}" ]; then
+          echo "::error::clone-kindred-local requires a non-empty 'paths' input naming the private files this job needs."
+          exit 1
         fi
+
+        if [ -z "$DEPLOY_KEY" ]; then
+          # Expected on fork PRs and Dependabot PRs: neither receives Actions
+          # secrets. Consumers must degrade gracefully or assert for
+          # themselves, as ci.yml's lodging-guard does.
+          echo "Deploy key not provided - using default branding"
+          exit 0
+        fi
+
+        mkdir -p ~/.ssh
+        echo "$DEPLOY_KEY" > ~/.ssh/id_ed25519
+        chmod 600 ~/.ssh/id_ed25519
+        ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null
+
+        cleanup() { rm -rf /tmp/kindred-local ~/.ssh/id_ed25519; }
+        trap cleanup EXIT
+
+        # The copy lives in the calling repo, so a job that uses this action
+        # before actions/checkout would otherwise fail with a bare
+        # "No such file or directory" after having already cloned the private
+        # repo onto the runner.
+        COPY_SCRIPT="$GITHUB_WORKSPACE/scripts/ci/copy-private-config.sh"
+        if [ ! -x "$COPY_SCRIPT" ]; then
+          echo "::error::$COPY_SCRIPT not found or not executable - check out the repository before using this action."
+          exit 1
+        fi
+
+        git clone --depth 1 git@github.com:adamflagg/kindred-local.git /tmp/kindred-local
+
+        "$COPY_SCRIPT" /tmp/kindred-local "$GITHUB_WORKSPACE"
+
+        echo "Private config loaded"

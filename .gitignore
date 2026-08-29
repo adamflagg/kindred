@@ -226,6 +226,7 @@ tmp/
 !.claude/settings.json
 !**/sample_*.csv
 !config/staff_list.example.json
+!config/nicknames_override.example.json
 !config/sheets_export.example.json
 !config/sheets_sharing.example.json
 !config/branding.json
