@@ -2887,7 +2887,6 @@ def _indexed_write_in_repo(
     unused.
     """
     store = list(rows)
-    key = "u1"
 
     def collides(data: dict[str, Any]) -> bool:
         for row in store:
@@ -2938,7 +2937,6 @@ def _indexed_write_in_repo(
         repo.fetch_write_ins_on_unit = AsyncMock(side_effect=_fetch_on_unit)
         repo.create_write_in = AsyncMock(side_effect=_create)
         repo.update_write_in = AsyncMock(side_effect=_update)
-    assert key == "u1"
     return repo, store
 
 
@@ -3067,7 +3065,7 @@ class TestTheOccupantKeyDoesNotBreakTheUnitGrainIndexItStillRunsUnder:
         first = repo.find_write_in.side_effect
         calls = {"n": 0}
 
-        async def _miss_once(*args: Any) -> SimpleNamespace | None:
+        async def _miss_once(*args: Any) -> Any:
             calls["n"] += 1
             if calls["n"] == 1:
                 return None
