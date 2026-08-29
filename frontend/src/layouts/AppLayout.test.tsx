@@ -743,11 +743,22 @@ describe('AppLayout Refresh Bunking staleness (kindred#2587)', () => {
    * the stale cache it can no longer trust — it must advance on every
    * simulated poll here, not stay fixed like the bare `{ data }` this file
    * mocked before.
+   *
+   * It advances ONCE PER SIMULATED FETCH — per call to this function — and is
+   * then frozen for every render that reads it, which is React Query's real
+   * semantics: `Query#setData` stamps a fresh `dataUpdatedAt` on each resolved
+   * fetch and nothing else touches it, and structural sharing hands renders
+   * back the same `data` reference in between. Returning a freshly-computed
+   * value from inside `mockImplementation` instead would advance it on every
+   * RENDER, which no real query does — and would silently defeat the very gate
+   * these tests exercise: the "arming gap" step below stops being load-bearing,
+   * verified by deleting it and watching the cutover test still pass.
    */
   let statusVersion = 0
-  function withStatus(overrides: Record<string, unknown> = {}) {
+  function setStatus(overrides: Record<string, unknown> = {}) {
     statusVersion += 1
-    return { data: bunkingStatus(overrides), dataUpdatedAt: statusVersion }
+    const reading = { data: bunkingStatus(overrides), dataUpdatedAt: statusVersion }
+    syncStatusSpy.mockImplementation(() => reading)
   }
 
   /**
@@ -804,7 +815,38 @@ describe('AppLayout Refresh Bunking staleness (kindred#2587)', () => {
     mockPerms = { hasPermission: (p: string) => p === 'bunking.manage', isAdmin: false }
     mockWeekendShell = { session: undefined, isAdultWeekend: false }
     bunksFromServer = 'Bunk 4'
-    syncStatusSpy.mockImplementation(() => withStatus())
+    setStatus()
+  })
+
+  /** The `dataUpdatedAt` the hook last read, off the spy's own return value. */
+  function lastReadVersion(): number {
+    const results = syncStatusSpy.mock.results
+    return (results[results.length - 1]?.value as { dataUpdatedAt: number }).dataUpdatedAt
+  }
+
+  /**
+   * Pins the mock's fidelity, because the freshness gate under test is only as
+   * honest as the `dataUpdatedAt` it is fed. React Query stamps a fresh one
+   * inside `Query#setData`, on a RESOLVED FETCH and nothing else — a re-render
+   * that reads the same cache entry gets the same number. A helper that
+   * computed a new version inside `mockImplementation` would advance it on
+   * every render instead, and the post-press gate would then be satisfied by
+   * `replay()` alone: measured by deleting the arming-gap step from the
+   * cutover test below, which kept passing until this helper was corrected.
+   */
+  it('advances dataUpdatedAt on a simulated poll only, never on a bare rerender', async () => {
+    const { replay } = renderSummerShell()
+    await screen.findByText('Bunk 4')
+
+    const atRest = lastReadVersion()
+    replay()
+    await act(async () => {})
+    expect(lastReadVersion()).toBe(atRest)
+
+    setStatus()
+    replay()
+    await act(async () => {})
+    expect(lastReadVersion()).toBe(atRest + 1)
   })
 
   it('does NOT invalidate when the endpoint merely answers "started"', async () => {
@@ -815,9 +857,7 @@ describe('AppLayout Refresh Bunking staleness (kindred#2587)', () => {
     fireEvent.click(screen.getByRole('button', { name: /Refresh Bunking/i }))
     // The chain is still running; the server has not written anything yet.
     bunksFromServer = 'Bunk 7'
-    syncStatusSpy.mockImplementation(() =>
-      withStatus({ bunks: { status: 'running', start_time: '2026-04-22T10:00:01.000Z' } })
-    )
+    setStatus({ bunks: { status: 'running', start_time: '2026-04-22T10:00:01.000Z' } })
     replay()
 
     // Refetching HERE would re-mark the old rows fresh for another 30 minutes.
@@ -838,16 +878,14 @@ describe('AppLayout Refresh Bunking staleness (kindred#2587)', () => {
     // post-press (kindred#2595) — a chain that landed here, on the very first
     // post-press reading, would be indistinguishable from an unrelated run
     // that moved the terminal end_time while the page sat idle.
-    syncStatusSpy.mockImplementation(() => withStatus())
+    setStatus()
     replay()
 
     // The chain finishes between this poll and the next one.
     bunksFromServer = 'Bunk 7'
-    syncStatusSpy.mockImplementation(() =>
-      withStatus({
-        stranded_assignment_cleanup: { status: 'success', end_time: '2026-04-22T10:00:06.000Z' },
-      })
-    )
+    setStatus({
+      stranded_assignment_cleanup: { status: 'success', end_time: '2026-04-22T10:00:06.000Z' },
+    })
     replay()
 
     // WITHOUT the invalidation this stays "Bunk 4" for thirty minutes.
@@ -870,18 +908,14 @@ describe('AppLayout Refresh Bunking staleness (kindred#2587)', () => {
     // outcome is reported off the furthest job seen — a chain that goes
     // straight from armed to failed reports nothing at all. Flush before
     // moving it on, or the running poll is never rendered.
-    syncStatusSpy.mockImplementation(() =>
-      withStatus({ bunks: { status: 'running', start_time: '2026-04-22T10:00:01.000Z' } })
-    )
+    setStatus({ bunks: { status: 'running', start_time: '2026-04-22T10:00:01.000Z' } })
     replay()
     await act(async () => {})
 
     bunksFromServer = 'Bunk 7'
-    syncStatusSpy.mockImplementation(() =>
-      withStatus({
-        bunks: { status: 'failed', end_time: '2026-04-22T10:00:02.000Z', error: 'CampMinder 502' },
-      })
-    )
+    setStatus({
+      bunks: { status: 'failed', end_time: '2026-04-22T10:00:02.000Z', error: 'CampMinder 502' },
+    })
     replay()
 
     await waitFor(() => expect(toastError).toHaveBeenCalledTimes(1))
@@ -914,9 +948,7 @@ describe('AppLayout Refresh Bunking staleness (kindred#2587)', () => {
     await screen.findByText('Bunk 4')
 
     fireEvent.click(screen.getByRole('button', { name: /Refresh Bunking/i }))
-    syncStatusSpy.mockImplementation(() =>
-      withStatus({ bunks: { status: 'running', start_time: '2026-04-22T10:00:01.000Z' } })
-    )
+    setStatus({ bunks: { status: 'running', start_time: '2026-04-22T10:00:01.000Z' } })
     replay()
 
     // React Query calls `mutationFn` on a later tick, so `answerPost` is still
@@ -935,11 +967,9 @@ describe('AppLayout Refresh Bunking staleness (kindred#2587)', () => {
     expect(screen.getByRole('button', { name: /Refresh Bunking/i })).toBeDisabled()
 
     // ... and released once the terminal job moves.
-    syncStatusSpy.mockImplementation(() =>
-      withStatus({
-        stranded_assignment_cleanup: { status: 'success', end_time: '2026-04-22T10:00:06.000Z' },
-      })
-    )
+    setStatus({
+      stranded_assignment_cleanup: { status: 'success', end_time: '2026-04-22T10:00:06.000Z' },
+    })
     replay()
 
     await waitFor(() =>

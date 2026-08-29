@@ -311,6 +311,19 @@ describe('useSyncSequenceRun', () => {
     rerender()
     expect(onComplete).not.toHaveBeenCalled()
     expect(result.current.isRunning).toBe(true)
+
+    // ...and it does not sit armed for ever either. This is the OTHER reading
+    // of the same payload — CodeRabbit read it on #2596 as "our own chain
+    // finished before the first post-press response, so completion is now
+    // lost" — and the two are not separable on the data (see the docstring
+    // above). What IS guaranteed either way is that the run is BOUNDED: the
+    // arming timeout retires it silently rather than leaving a spinner and a
+    // disabled button standing for ever.
+    act(() => {
+      vi.advanceTimersByTime(60_000)
+    })
+    expect(result.current.isRunning).toBe(false)
+    expect(onComplete).not.toHaveBeenCalled()
   })
 
   /**
