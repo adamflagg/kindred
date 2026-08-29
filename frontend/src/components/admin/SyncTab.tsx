@@ -168,7 +168,10 @@ export function SyncTab() {
     // already two short of the five entries carrying currentYearOnly, and a stale selection is
     // not merely cosmetic -- the option vanishes from the <select> while syncService still holds
     // it, so Run Sync submits a current-year-only service against a historical year.
-    const selected = availableSyncTypes.find((t) => t.id === syncService)
+    // Looked up in the unfiltered list, not `availableSyncTypes`: that memo is still keyed to
+    // the year being navigated away from, and the question here is only "is the selected
+    // service current-year-only", which does not depend on the year at all.
+    const selected = CURRENT_YEAR_SYNC_TYPES.find((t) => t.id === syncService)
     if (year !== currentYear && selected && isCurrentYearOnly(selected)) {
       setSyncService('all')
     }
