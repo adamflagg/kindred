@@ -1820,7 +1820,7 @@ class TestAvailabilityWrites:
 class TestTheRowAddressedWriteInDelete:
     """`DELETE /api/lodging/write-ins` (kindred#2583 step 7).
 
-    "Take Chen out of Ridge D and leave Johnson where she is." The verb that
+    "Take Chen out of the shared cabin and leave Johnson where she is." The verb that
     exists today -- `family_available: null` -- clears the whole unit, which
     is right when a cabin holds one occupant and unacceptably broad when it
     holds two.

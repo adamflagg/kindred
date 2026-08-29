@@ -1634,8 +1634,8 @@ class WriteInDeleteRequest(BaseModel):
     kindred#2583 step 7. `PUT /availability` with `family_available: null`
     stays the CLEAR-THIS-UNIT-ENTIRELY verb -- it drops the role row and every
     occupancy row on the unit, which is exactly what it means today while a
-    unit can hold one. This is the other half: "take Chen out of Ridge D and
-    leave Johnson where she is."
+    unit can hold one. This is the other half: "take Chen out of the shared
+    cabin and leave Johnson where she is."
 
     ADDRESSED BY IDENTITY, NOT BY RECORD ID, following
     `PlacementDeleteRequest` and `DELETE /api/lodging/placements`: the row is

@@ -2435,10 +2435,10 @@ class TestAWriteInIsAddressedByItsUnitAndItsOccupant:
     ) -> None:
         """THE BUG THIS FEATURE EXISTS TO FIX, at the write path.
 
-        Ridge D sleeps 15 and is classified `shareable`. It already holds
-        Olivia Chen. A staff member writes in Emma Johnson. The occupant-keyed
-        finder does not see Chen's row, so the write CREATES beside it rather
-        than overwriting it.
+        A cabin sleeping 15 and classified `shareable` already holds Olivia
+        Chen. A staff member writes in Emma Johnson. The occupant-keyed finder
+        does not see Chen's row, so the write CREATES beside it rather than
+        overwriting it.
         """
         repo.find_write_in = self._occupied_by("Olivia Chen", "wi_chen")
 
@@ -2664,9 +2664,9 @@ class TestClearingAUnitClearsEveryOccupantOnIt:
 class TestRemovingOneOccupantLeavesTheRestAlone:
     """kindred#2583 step 7's other half: the ROW-ADDRESSED delete.
 
-    `family_available: null` clears the unit. "Take Chen out of Ridge D and
-    leave Johnson where she is" needs a verb that names the row, and under
-    Design B that name is `(unit_id, occupant_name)`.
+    `family_available: null` clears the unit. "Take Chen out of the shared
+    cabin and leave Johnson where she is" needs a verb that names the row, and
+    under Design B that name is `(unit_id, occupant_name)`.
 
     Shaped on `DELETE /api/lodging/placements` (kindred#1974): a
     body-carrying DELETE on the collection, addressed by identity rather than

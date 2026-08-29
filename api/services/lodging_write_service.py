@@ -905,7 +905,7 @@ class LodgingWriteService:
         half it is now "same weekend, same unit, SAME OCCUPANT" -- the
         narrowed `(session_cm_id, year, unit, occupant_name)` key -- because
         that is the finder `set_availability` binds and it is the key the
-        index will reject on. Two staff writing "Chen" into Ridge D at the
+        index will reject on. Two staff writing "Chen" into one cabin at the
         same moment still lose one create and still adopt the winner's row;
         two staff writing two DIFFERENT families into it now produce two rows,
         which is the feature rather than a race.
@@ -1219,8 +1219,9 @@ class LodgingWriteService:
                 what="write-in",
                 # ONE occupant's row, resolved by the Design B key. A miss
                 # here is a CREATE beside whoever else is in the cabin, which
-                # is the whole feature: two paper families in Ridge D are two
-                # rows, not one row with both names crammed into it.
+                # is the whole feature: two paper families in one shareable
+                # cabin are two rows, not one row with both names crammed
+                # into it.
                 existing=await find_occupancy(),
                 data={
                     **data,
@@ -1250,7 +1251,8 @@ class LodgingWriteService:
         stays the CLEAR-THIS-UNIT-ENTIRELY verb -- role row plus every
         occupancy row -- which is exactly what it means today while a cabin
         can hold one write-in, so the boundary does not move. This is the
-        other half: "take Chen out of Ridge D and leave Johnson where she is."
+        other half: "take Chen out of the shared cabin and leave Johnson
+        where she is."
 
         WHY A SEPARATE VERB rather than a narrower `null`. The clear answers
         about a UNIT and names no occupant; on a shareable cabin it cannot be
