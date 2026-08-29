@@ -86,9 +86,32 @@ if [[ ${#missing[@]} -gt 0 ]]; then
   die "a rename or move in kindred-local must fail this build, not degrade it silently"
 fi
 
+# The string validation above covers what the allowlist SAYS; this covers where
+# the filesystem sends it. `rm -rf` does not follow a symlinked FILE, but it
+# does follow a symlinked DIRECTORY component, so a linked "$DEST_ROOT/config"
+# would put the writes below outside DEST_ROOT with the allowlist looking
+# perfectly ordinary. Not reachable from CI -- GITHUB_WORKSPACE is a fresh
+# checkout -- but it is reachable in a dev worktree, where local/assets really
+# is a symlink into kindred-local. Pinned by TEST 16.
+DEST_ROOT_REAL=$(cd "$DEST_ROOT" && pwd -P)
+
+# Validated in a separate pass, before anything is removed: the copy loop below
+# deletes each destination first, so a bad path discovered halfway through
+# would already have mutated the workspace on behalf of the paths before it.
+# Creating the parents here is safe to do early -- mkdir -p destroys nothing --
+# and it is what makes the containment check possible at all.
+for p in "${paths[@]}"; do
+  parent=$(dirname "$DEST_ROOT/$p")
+  mkdir -p "$parent"
+  parent_real=$(cd "$parent" && pwd -P)
+  case "$parent_real/" in
+    "$DEST_ROOT_REAL"/*) : ;;
+    *) die "destination for '$p' resolves to $parent_real, outside $DEST_ROOT_REAL" ;;
+  esac
+done
+
 for p in "${paths[@]}"; do
   dest="$DEST_ROOT/$p"
-  mkdir -p "$(dirname "$dest")"
   # Clear first so a re-run cannot leave a stale copy, and so copying a
   # directory replaces it rather than nesting inside it.
   rm -rf "$dest"

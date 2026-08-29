@@ -211,6 +211,49 @@ else
   check "TEST 10: each copied path is named in the output (status=$STATUS) $OUT" no
 fi
 
+# --- TEST 16: a symlinked destination directory cannot be escaped through ----
+# TESTs 6-7 validate the allowlist STRING, which a symlinked intermediate
+# directory sidesteps entirely: with DEST/config linked elsewhere,
+# "$DEST_ROOT/config/x" resolves outside DEST_ROOT, and `rm -rf` follows a
+# symlinked DIRECTORY component even though it would not follow a symlinked
+# file. This is not reachable from CI -- GITHUB_WORKSPACE is a fresh checkout
+# with no symlinked directories -- but it is reachable in a dev worktree,
+# where `local/assets` really is a symlink into kindred-local, so a stray
+# invocation could delete out of the private repo itself.
+new_fixture
+mkdir -p "$WORK/outside_dest"
+echo 'EXTERNAL' > "$WORK/outside_dest/lodging_registry.json"
+rm -rf "$DEST/config"
+ln -s "$WORK/outside_dest" "$DEST/config"
+run_copy 'config/lodging_registry.json'
+if [[ $STATUS -ne 0 ]] \
+   && [[ -f "$WORK/outside_dest/lodging_registry.json" ]] \
+   && grep -q 'EXTERNAL' "$WORK/outside_dest/lodging_registry.json"; then
+  check "TEST 16: a symlinked destination directory is refused, target untouched" ok
+else
+  check "TEST 16: a symlinked destination directory is refused, target untouched (status=$STATUS) $OUT" no
+fi
+
+# --- TEST 17: a bad path late in the list mutates nothing before it ----------
+# The copy loop clears each destination before writing it, so validating
+# inside that loop would let every path BEFORE the offender take effect --
+# a half-applied allowlist, which for a destructive step is the worst outcome.
+new_fixture
+mkdir -p "$WORK/outside_late"
+echo 'EXTERNAL' > "$WORK/outside_late/staff_list.json"
+printf 'PRE-EXISTING' > "$DEST/marker.json"
+rm -rf "$DEST/config"
+ln -s "$WORK/outside_late" "$DEST/config"
+run_copy 'local/assets
+config/staff_list.json'
+if [[ $STATUS -ne 0 ]] \
+   && [[ ! -e "$DEST/local/assets/camp-logo.png" ]] \
+   && grep -q 'EXTERNAL' "$WORK/outside_late/staff_list.json"; then
+  check "TEST 17: an escaping path aborts before any earlier path is copied" ok
+else
+  check "TEST 17: an escaping path aborts before any earlier path is copied (status=$STATUS) $OUT" no
+fi
+
 # --- TEST 11: every consumer of the action passes a `paths` allowlist -------
 # A SOURCE-GREP anchor, in the spirit of scripts/dev/test-verify-no-hardcoded-lodging.sh.
 # The script above cannot see a workflow that forgets the input; the action

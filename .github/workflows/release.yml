@@ -340,6 +340,12 @@ jobs:
         # kindred#2575: this job rebuilds kindred-caddy and nothing else, so it
         # needs what Dockerfile.caddy reads and no more -- not the staff list,
         # not the lodging registry, not the private Vite dev-server config.
+        #
+        # Listing local/assets makes it REQUIRED, deliberately: a tagged
+        # release that shipped generic branding because the assets were renamed
+        # should fail here, not succeed quietly. Do not make it optional to
+        # keep the fallback below reachable -- that fallback is for the
+        # no-deploy-key case, where nothing is copied at all.
         paths: |
           config/branding.local.json
           local/assets

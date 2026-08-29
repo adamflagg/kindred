@@ -572,6 +572,14 @@ jobs:
             should_build: ${{ needs.detect-changes.outputs.build_caddy }}
             # Dockerfile.caddy: `COPY config/branding*.json` (Vite injects it)
             # and `COPY local/ /pb_public/local/` (logos served to the browser).
+            #
+            # Both are REQUIRED on purpose: the action fails if a listed path
+            # is missing from kindred-local, and that is the point -- a release
+            # that quietly ships generic branding because the assets moved is
+            # the silent degrade #2575 set out to remove. The "Prepare local
+            # assets" step below still has a no-assets branch, and it still
+            # fires, but only in the case it was always really for: no deploy
+            # key at all (fork PRs), where nothing is copied.
             private_paths: |
               config/branding.local.json
               local/assets
