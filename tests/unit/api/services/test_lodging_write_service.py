@@ -3639,11 +3639,12 @@ class TestPushAndUnpushCarryNRowsPerUnit:
     with phase 2's recreate today. The narrowed key is what remains once the
     bridge goes; see `TestTheDriftGuardStaysConservativeUntilTheIndexNarrows`.
 
-    `execute_push`'s add-side check is DELIBERATELY NOT narrowed with it, and
-    that asymmetry is stated rather than accidental -- see its own comment.
-    It asks a different question (should a row that appeared mid-flight stop
-    a push at all), and it is conservative rather than permissive, so unlike
-    the unpush half it needs no bridge.
+    `execute_push`'s add-side check is NOT narrowed with it, and that is a
+    sequencing call rather than a disagreement: the Design B ruling names
+    that site too, and it re-keys in the STEP 8 PR. It errs the other way
+    from this one -- unit-grain it refuses MORE than the index requires, and
+    the refusal is a re-preview rather than a half-apply -- so it needs no
+    bridge, only the same landing slot. See its own comment.
 
     Fictional occupant names throughout.
     """

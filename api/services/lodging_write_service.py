@@ -1746,14 +1746,11 @@ class LodgingWriteService:
         # AFTER the ledger row already exists, making the ledger lie about
         # what actually landed.
         #
-        # ⚠️ ITS REACH DELIBERATELY EXCEEDS THE COLLISION once kindred#2583
-        # step 8 narrows the index: a mid-flight arrival with a DIFFERENT
-        # occupant name would then create cleanly beside the add, so this
-        # would no longer be strictly a collision guard. It stays unit-grain
-        # anyway, because the question it answers is "should a push land on a
-        # board that moved after its own preview" -- and nobody has ruled that
-        # it should. OQ-3's answer is scoped to `unpush`'s recreate guard; see
-        # the comment at the check itself.
+        # ⚠️ ITS REACH WILL EXCEED THE COLLISION once kindred#2583 step 8
+        # narrows the index: a mid-flight arrival with a DIFFERENT occupant
+        # name would then create cleanly beside the add, so this would stop
+        # being strictly a collision guard. ⇒ RE-KEY IT IN THE STEP 8 PR, on
+        # `(unit_id, occupant_name)`; see the comment at the check itself.
         live_rows_with_ids = await self._live_rows_with_ids(request.year, request.session_cm_id)
         # ⚠️ A LIST PER KEY ON BOTH, because a `dict` built from a list drops a
         # duplicate key SILENTLY and both of these keys can repeat once a unit
@@ -1793,21 +1790,29 @@ class LodgingWriteService:
         for r in adds:
             # EVERY occupant, not the one a collapsing dict happened to keep.
             #
-            # ★ OQ-3 IS ANSWERED (2026-08-29) -- FOR `unpush`, AND THIS SITE
-            # IS DELIBERATELY NOT NARROWED WITH IT. The ruling is that
-            # `unpush`'s recreate guard keys on the tuple rather than the
-            # unit, because a recreate beside a different occupant no longer
-            # collides under the narrowed index. This check is a different
-            # question: not "would the write collide" but "should a row that
-            # appeared BETWEEN the re-classify and the apply stop the push at
-            # all". No ruling covers that one, and the conservative answer --
-            # refuse, and let the staff member re-preview a board that has
-            # moved under them -- is the one already in force. Narrowing it
-            # would let a push land silently beside a write-in its own preview
-            # never showed.
+            # ⚠️ UNIT-GRAIN UNTIL STEP 8, AND THAT IS A SEQUENCING CALL RATHER
+            # THAN A DISAGREEMENT. kindred#2583's Design B ruling names this
+            # site in its own mechanical table -- *"`execute_push.live_by_unit`
+            # re-keys to `dict[tuple[str, str], str]` -- the index's own key,
+            # so the add-side pre-check keeps asking exactly 'would this
+            # create collide'"* -- and the spec's 6.5 says the same. So the
+            # destination is ruled; what is left is WHEN.
             #
-            # Identical while a unit can hold one row, and unreachable in
-            # production either way until step 8 narrows the index.
+            # THE ANSWER IS "WITH THE INDEX", because of which way this guard
+            # errs. Keyed on the unit it refuses MORE than the deployed index
+            # requires, and its whole failure mode is a `PushDigestStaleError`
+            # the client answers by re-previewing -- no half-apply, no lost
+            # row, no lying ledger. Under the index actually in the tree,
+            # `(session_cm_id, year, unit)` (1500000161:208), it is not even
+            # over-broad: it IS the collision check. Narrowed early it would
+            # instead let a push land silently beside a write-in its own
+            # preview never showed, and that error does not undo itself.
+            # `unpush`'s recreate guard errs the other way, which is why that
+            # one carries an explicit pre-step-8 bridge.
+            #
+            # ⇒ RE-KEY THIS ON `(unit_id, occupant_name)` IN THE STEP 8 PR,
+            # in the same change that narrows the index and deletes `unpush`'s
+            # bridge. Not before, and not left behind.
             if any(occupant_id not in removing for occupant_id in live_by_unit.get(r.unit_id, ())):
                 stale = await self.preview_push(request.year, request.session_cm_id, request.scenario)
                 raise PushDigestStaleError(stale)
