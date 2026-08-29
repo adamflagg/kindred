@@ -79,9 +79,9 @@ func TestCustomValuesCollectionGroupDerived(t *testing.T) {
 	}
 }
 
-// TestFamilyCampBoundedSetDerived pins the phaseExecutionJobs exclusion set (kindred#2489)
+// TestScopeFamilyCampSetDerived pins the phaseExecutionJobs exclusion set (kindred#2489)
 // as exactly the family-camp-scoped rows -- no more, no less.
-func TestFamilyCampBoundedSetDerived(t *testing.T) {
+func TestScopeFamilyCampSetDerived(t *testing.T) {
 	if len(familyCampBoundedCustomValuesJobs) != 2 {
 		t.Fatalf("exclusion set has %d entries, want 2: %v",
 			len(familyCampBoundedCustomValuesJobs), familyCampBoundedCustomValuesJobs)

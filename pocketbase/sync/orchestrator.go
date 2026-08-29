@@ -945,8 +945,8 @@ func GetRefreshFamilyCampJobs() []string {
 	return []string{
 		"attendees",
 		"persons",
-		"person_custom_values_family_camp",
-		"household_custom_values_family_camp",
+		scopedID("person_custom_values", ScopeFamilyCamp),
+		scopedID("household_custom_values", ScopeFamilyCamp),
 		"family_camp_derived",
 		"lodging_assignments",
 	}
@@ -2523,15 +2523,16 @@ func (o *Orchestrator) InitializeSyncServices() error {
 	o.RegisterService("household_custom_values", NewHouseholdCustomFieldValuesSync(o.app, client))
 
 	// Bounded daily family-camp custom-values pass (kindred#2482) -- distinct service
-	// instances from the two above, scoped via FamilyCampBounded to family-camp attendees
-	// (any status) rather than Session. Part of the daily cron: see getDailySyncJobs.
-	familyCampPersonValues := NewPersonCustomFieldValuesSync(o.app, client)
-	familyCampPersonValues.FamilyCampBounded = true
-	o.RegisterService("person_custom_values_family_camp", familyCampPersonValues)
-
-	familyCampHouseholdValues := NewHouseholdCustomFieldValuesSync(o.app, client)
-	familyCampHouseholdValues.FamilyCampBounded = true
-	o.RegisterService("household_custom_values_family_camp", familyCampHouseholdValues)
+	// instances from the two above, scoped to family-camp attendees (any status) rather
+	// than Session. Part of the daily cron: see getDailySyncJobs. The registered names come
+	// from scopedID so they cannot drift from syncJobMeta's rows.
+	for base, svc := range map[string]scopedService{
+		"person_custom_values":    NewPersonCustomFieldValuesSync(o.app, client),
+		"household_custom_values": NewHouseholdCustomFieldValuesSync(o.app, client),
+	} {
+		svc.SetScope(ScopeFamilyCamp)
+		o.RegisterService(scopedID(base, ScopeFamilyCamp), svc)
+	}
 
 	// Family camp derived tables (computes from custom values - on-demand)
 	o.RegisterService("family_camp_derived", NewFamilyCampDerivedSync(o.app))

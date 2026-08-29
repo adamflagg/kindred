@@ -77,3 +77,9 @@ func buildScopedJobSet(scope Scope) map[string]bool {
 	}
 	return set
 }
+
+// scopedService is a Service whose cohort can be narrowed at registration time.
+type scopedService interface {
+	Service
+	SetScope(Scope)
+}

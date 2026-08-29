@@ -224,12 +224,12 @@ func TestGetFamilyCampIDsAnyStatus_SpansWeekendsExcludesOtherSessions(t *testing
 	}
 }
 
-// TestPersonCustomFieldValuesSync_FamilyCampBounded pins the bounded-mode
-// wiring on the sync service itself: when FamilyCampBounded is set,
+// TestPersonCustomFieldValuesSync_ScopeFamilyCamp pins the bounded-mode
+// wiring on the sync service itself: when ScopeFamilyCamp is set,
 // getPersonIDsToSync must use the any-status family-camp cohort instead of
 // the Session filter or the year-wide fallback, and the plain Session=""
 // (unbounded) behavior must be untouched.
-func TestPersonCustomFieldValuesSync_FamilyCampBounded(t *testing.T) {
+func TestPersonCustomFieldValuesSync_ScopeFamilyCamp(t *testing.T) {
 	t.Parallel()
 	app := cadenceTestApp(t)
 	const year = 2026
@@ -247,7 +247,7 @@ func TestPersonCustomFieldValuesSync_FamilyCampBounded(t *testing.T) {
 	cadenceAddAttendee(t, app, pSummer, summerSession, "enrolled", 802, statusIDActiveEnrolled, year)
 
 	sync := NewPersonCustomFieldValuesSync(app, nil)
-	sync.FamilyCampBounded = true
+	sync.Scope = ScopeFamilyCamp
 
 	ids, err := sync.getPersonIDsToSync(year)
 	if err != nil {
@@ -259,7 +259,7 @@ func TestPersonCustomFieldValuesSync_FamilyCampBounded(t *testing.T) {
 	}
 }
 
-func TestHouseholdCustomFieldValuesSync_FamilyCampBounded(t *testing.T) {
+func TestHouseholdCustomFieldValuesSync_ScopeFamilyCamp(t *testing.T) {
 	t.Parallel()
 	app := cadenceTestApp(t)
 	const year = 2026
@@ -277,7 +277,7 @@ func TestHouseholdCustomFieldValuesSync_FamilyCampBounded(t *testing.T) {
 	cadenceAddAttendee(t, app, pSummer, summerSession, "enrolled", 802, statusIDActiveEnrolled, year)
 
 	sync := NewHouseholdCustomFieldValuesSync(app, nil)
-	sync.FamilyCampBounded = true
+	sync.Scope = ScopeFamilyCamp
 
 	ids, err := sync.getHouseholdIDsToSync(year)
 	if err != nil {
@@ -288,14 +288,14 @@ func TestHouseholdCustomFieldValuesSync_FamilyCampBounded(t *testing.T) {
 	}
 }
 
-// TestGetDailySyncJobs_FamilyCampBoundedPassBetweenSourceAndTransform pins
+// TestGetDailySyncJobs_ScopeFamilyCampPassBetweenSourceAndTransform pins
 // the ordering ruled in kindred#2482: the bounded daily custom-values pass
 // must sit strictly after financial_transactions (the last source job) and
 // strictly before family_camp_derived (the first transform job that reads
 // custom values). A future edit to the hardcoded job list must not silently
 // undo this -- that is the entire point of the ruling, since the daily job
 // not honoring its own phase order is the bug this fixes.
-func TestGetDailySyncJobs_FamilyCampBoundedPassBetweenSourceAndTransform(t *testing.T) {
+func TestGetDailySyncJobs_ScopeFamilyCampPassBetweenSourceAndTransform(t *testing.T) {
 	t.Parallel()
 	jobs := getDailySyncJobs()
 
@@ -340,11 +340,11 @@ func TestGetDailySyncJobs_FamilyCampBoundedPassBetweenSourceAndTransform(t *test
 	}
 }
 
-// TestSyncJobMeta_FamilyCampBoundedJobsAreExpensivePhase asserts the new
+// TestSyncJobMeta_ScopeFamilyCampJobsAreExpensivePhase asserts the new
 // bounded jobs are registered in syncJobMeta as PhaseExpensive, consistent
 // with the unrestricted person_custom_values/household_custom_values jobs
 // they sit alongside -- both make 1 CampMinder API call per entity.
-func TestSyncJobMeta_FamilyCampBoundedJobsAreExpensivePhase(t *testing.T) {
+func TestSyncJobMeta_ScopeFamilyCampJobsAreExpensivePhase(t *testing.T) {
 	t.Parallel()
 	for _, id := range []string{"person_custom_values_family_camp", "household_custom_values_family_camp"} {
 		if got := GetPhaseForJob(id); got != PhaseExpensive {

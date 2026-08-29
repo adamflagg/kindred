@@ -236,7 +236,7 @@ func TestHouseholdCustomFieldValuesTrackingMatchesOrphanLookup(t *testing.T) {
 }
 
 // TestHouseholdCustomFieldValuesSync_LogJobName is the household twin of
-// TestPersonCustomFieldValuesSync_LogJobName -- see that test's comment for the full rationale
+// TestLogJobNameFollowsScope -- see that test's comment for the full rationale
 // (kindred#2491 Face D).
 func TestHouseholdCustomFieldValuesSync_LogJobName(t *testing.T) {
 	t.Parallel()
@@ -246,14 +246,14 @@ func TestHouseholdCustomFieldValuesSync_LogJobName(t *testing.T) {
 		t.Errorf("logJobName() (unbounded) = %q, want %q", got, want)
 	}
 
-	bounded := &HouseholdCustomFieldValuesSync{FamilyCampBounded: true}
+	bounded := &HouseholdCustomFieldValuesSync{Scope: ScopeFamilyCamp}
 	if got, want := bounded.logJobName(), "household_custom_values_family_camp"; got != want {
-		t.Errorf("logJobName() (FamilyCampBounded) = %q, want %q -- must match orchestrator.go's "+
+		t.Errorf("logJobName() (Scope=ScopeFamilyCamp) = %q, want %q -- must match orchestrator.go's "+
 			"RegisterService(\"household_custom_values_family_camp\", ...) name", got, want)
 	}
 
 	if got, want := bounded.Name(), serviceNameHouseholdCustomValues; got != want {
-		t.Errorf("Name() must stay %q regardless of FamilyCampBounded, got %q", want, got)
+		t.Errorf("Name() must stay %q regardless of Scope, got %q", want, got)
 	}
 }
 
@@ -286,7 +286,7 @@ func TestHouseholdCustomFieldValuesSync_CompletionLogUsesBoundedJobName(t *testi
 	}
 
 	s := NewHouseholdCustomFieldValuesSync(app, client)
-	s.FamilyCampBounded = true
+	s.Scope = ScopeFamilyCamp
 
 	logs := captureSweepLogs(t)
 

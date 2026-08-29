@@ -2295,7 +2295,7 @@ var familyCampBoundedCustomValuesJobs = buildScopedJobSet(ScopeFamilyCamp)
 // processQueuedSyncs iterate to start syncs, as opposed to GetJobsForPhase's classification
 // list (used for phase metadata/UI in handleGetPhases and pinned as including all four
 // custom-values jobs by family_camp_daily_cadence_test.go's TestSyncJobMeta_
-// FamilyCampBoundedJobsAreExpensivePhase).
+// ScopeFamilyCampJobsAreExpensivePhase).
 //
 // For PhaseExpensive specifically, it drops the two bounded family-camp jobs
 // (kindred#2489): they are always covered minutes earlier by the daily cron

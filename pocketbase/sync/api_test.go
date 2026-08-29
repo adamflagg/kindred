@@ -2012,12 +2012,12 @@ func TestNormalizeSession(t *testing.T) {
 // unbounded ones but not their lock, phase slot, or log label. Face A + Face C below.
 // =============================================================================
 
-// TestHandleCustomValuesSyncRejectsWhenFamilyCampBoundedGroupmateRunning pins Face A's
+// TestHandleCustomValuesSyncRejectsWhenScopeFamilyCampGroupmateRunning pins Face A's
 // original report: handleCustomValuesSync's front guard used to check only the literal names
 // "person_custom_values" / "household_custom_values" via orchestrator.IsRunning, so it did not
 // see the bounded daily family-camp jobs (kindred#2489) as writers of the same collections and
 // would return 200 "Custom values sync triggered" while one was still in flight.
-func TestHandleCustomValuesSyncRejectsWhenFamilyCampBoundedGroupmateRunning(t *testing.T) {
+func TestHandleCustomValuesSyncRejectsWhenScopeFamilyCampGroupmateRunning(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
@@ -2089,7 +2089,7 @@ func TestHandleCustomValuesSyncAllowsRunWhenNothingRunning(t *testing.T) {
 	}
 }
 
-// TestPhaseExecutionJobsExcludesFamilyCampBoundedForExpensivePhase pins Face C: an admin
+// TestPhaseExecutionJobsExcludesScopeFamilyCampForExpensivePhase pins Face C: an admin
 // running the "Custom Values" (PhaseExpensive) phase used to re-run the two bounded family-camp
 // jobs alongside the unrestricted ones, because GetJobsForPhase(PhaseExpensive) -- built from
 // syncJobMeta -- lists all four jobs. The bounded jobs are always covered by the daily cron
@@ -2098,11 +2098,11 @@ func TestHandleCustomValuesSyncAllowsRunWhenNothingRunning(t *testing.T) {
 // already fresh.
 //
 // GetJobsForPhase itself is deliberately left untouched (see TestSyncJobMeta_
-// FamilyCampBoundedJobsAreExpensivePhase in family_camp_daily_cadence_test.go, which pins the
+// ScopeFamilyCampJobsAreExpensivePhase in family_camp_daily_cadence_test.go, which pins the
 // two bounded jobs' classification as PhaseExpensive) -- phaseExecutionJobs filters the
 // *execution* list at the two call sites that actually run a phase (handleRunPhase,
 // processQueuedSyncs) without changing what GetJobsForPhase reports for phase metadata/UI.
-func TestPhaseExecutionJobsExcludesFamilyCampBoundedForExpensivePhase(t *testing.T) {
+func TestPhaseExecutionJobsExcludesScopeFamilyCampForExpensivePhase(t *testing.T) {
 	t.Parallel()
 
 	jobs := phaseExecutionJobs(PhaseExpensive)
@@ -2130,7 +2130,7 @@ func TestPhaseExecutionJobsExcludesFamilyCampBoundedForExpensivePhase(t *testing
 	}
 
 	// GetJobsForPhase itself must be untouched -- family_camp_daily_cadence_test.go's
-	// TestSyncJobMeta_FamilyCampBoundedJobsAreExpensivePhase pins that it still lists all four.
+	// TestSyncJobMeta_ScopeFamilyCampJobsAreExpensivePhase pins that it still lists all four.
 	classified := GetJobsForPhase(PhaseExpensive)
 	if len(classified) != 4 {
 		t.Errorf("GetJobsForPhase(PhaseExpensive) = %v, expected phaseExecutionJobs to filter "+
@@ -2156,10 +2156,10 @@ func TestPhaseExecutionJobsExcludesFamilyCampBoundedForExpensivePhase(t *testing
 	}
 }
 
-// TestHandleRunPhaseImmediateResponseExcludesFamilyCampBoundedJobs is the HTTP-level half of
+// TestHandleRunPhaseImmediateResponseExcludesScopeFamilyCampJobs is the HTTP-level half of
 // Face C: the "jobs" field handleRunPhase echoes back (and actually iterates to run) for
 // ?phase=expensive must not list the two bounded family-camp jobs.
-func TestHandleRunPhaseImmediateResponseExcludesFamilyCampBoundedJobs(t *testing.T) {
+func TestHandleRunPhaseImmediateResponseExcludesScopeFamilyCampJobs(t *testing.T) {
 	t.Parallel()
 	scheduler := NewScheduler(nil)
 
