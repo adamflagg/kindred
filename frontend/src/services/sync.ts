@@ -22,13 +22,6 @@ export interface UploadError {
   file_size?: number
 }
 
-export interface GoogleSheetsExportResponse {
-  message: string
-  status: string
-  syncType: string
-  spreadsheet_id: string
-}
-
 export const syncService = {
   /**
    * Refresh bunking assignments from CampMinder
@@ -90,38 +83,6 @@ export const syncService = {
     if (!response.ok) {
       const error = await response.json()
       throw error as UploadError
-    }
-    return response.json()
-  },
-
-  /**
-   * Export data to Google Sheets
-   * @param fetchWithAuth - Authenticated fetch function
-   * @param years - Optional array of years to export (defaults to current year if not specified)
-   * @param includeGlobals - Whether to include global tables in the export (default: false)
-   */
-  async exportToGoogleSheets(
-    fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>,
-    years?: number[],
-    includeGlobals?: boolean
-  ): Promise<GoogleSheetsExportResponse> {
-    const params = new URLSearchParams()
-    if (years?.length) {
-      params.set('years', years.join(','))
-    }
-    if (includeGlobals) {
-      params.set('includeGlobals', 'true')
-    }
-    const queryString = params.toString()
-    const url = queryString
-      ? `${API_BASE}/google-sheets-export?${queryString}`
-      : `${API_BASE}/google-sheets-export`
-    const response = await fetchWithAuth(url, {
-      method: 'POST',
-    })
-    if (!response.ok) {
-      const error = await response.json()
-      throw new Error(error.error ?? 'Failed to export to Google Sheets')
     }
     return response.json()
   },

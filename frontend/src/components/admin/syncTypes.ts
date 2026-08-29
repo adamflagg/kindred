@@ -206,7 +206,7 @@ export const YEAR_SYNC_TYPES = [
     name: 'Person CV (FC)',
     description: 'Daily cron only',
     icon: User,
-    color: 'text-violet-300',
+    color: 'text-violet-500',
     phase: 'expensive' as SyncPhase,
     manualTrigger: false,
     currentYearOnly: true,
@@ -216,7 +216,7 @@ export const YEAR_SYNC_TYPES = [
     name: 'Household CV (FC)',
     description: 'Daily cron only',
     icon: Home,
-    color: 'text-orange-300',
+    color: 'text-orange-500',
     phase: 'expensive' as SyncPhase,
     manualTrigger: false,
     currentYearOnly: true,
@@ -321,7 +321,10 @@ export const YEAR_SYNC_TYPES = [
   {
     id: 'reconcile_request_lifecycle',
     name: 'Reconcile Lifecycle',
-    description: 'Daily cron only',
+    // Not "daily cron only" like the bounded pair above: it has no individual POST route
+    // either, but GetJobsForPhase classifies it PhaseProcess and phaseExecutionJobs filters
+    // only PhaseExpensive, so this section's Run Phase button really does start it.
+    description: 'Daily cron · Process phase',
     icon: RefreshCw,
     color: 'text-teal-500',
     phase: 'process' as SyncPhase,
@@ -363,11 +366,39 @@ export const SYNC_TYPES = [...GLOBAL_SYNC_TYPES, ...YEAR_SYNC_TYPES] as const
 // Backward compatibility alias
 export const CURRENT_YEAR_SYNC_TYPES = YEAR_SYNC_TYPES
 
+// The two optional flags a GLOBAL_SYNC_TYPES/YEAR_SYNC_TYPES entry may carry, plus the `id`
+// every entry has. `id` is required so TypeScript's weak-type check still applies: a bare
+// `{ manualTrigger?: ... }` parameter shares no property with the entries that omit the flag,
+// and TS rejects the call rather than reading it as `undefined`.
+type SyncTypeFlags = {
+  readonly id: string
+  readonly manualTrigger?: boolean
+  readonly currentYearOnly?: boolean
+}
+
+// True when the backend registers no individual POST route for this job, so the admin UI must
+// not offer any way to trigger it on its own (kindred#2593). Read in two places -- the card's
+// Run button and the Full-mode service dropdown, which is just as much a manual trigger since
+// it POSTs /api/custom/sync/run?service=<id>. syncTypes.test.ts pins the flag against the route
+// table parsed out of pocketbase/sync/api.go, so it cannot be forgotten on a routeless job or
+// left behind on one that later gains a route.
+export function hasManualTrigger(syncType: SyncTypeFlags): boolean {
+  return syncType.manualTrigger !== false
+}
+
+// True for a sync type that only applies to the configured season, never a historical replay.
+// The single reading of the flag: the card grid, the service dropdown and SyncTab's
+// year-change reset all go through here rather than naming ids by hand (kindred#2593 -- the
+// reset previously listed two of the five entries that carry the flag).
+export function isCurrentYearOnly(syncType: SyncTypeFlags): boolean {
+  return syncType.currentYearOnly === true
+}
+
 // Get sync types available for a given year
 // For historical years (year < currentYear), excludes types with currentYearOnly flag
 export function getYearSyncTypes(year: number, currentYear: number) {
   if (year === currentYear) return YEAR_SYNC_TYPES
-  return YEAR_SYNC_TYPES.filter((t) => !('currentYearOnly' in t))
+  return YEAR_SYNC_TYPES.filter((t) => !isCurrentYearOnly(t))
 }
 
 // Get sync types for a specific phase and year
@@ -375,7 +406,7 @@ export function getYearSyncTypes(year: number, currentYear: number) {
 export function getSyncTypesByPhase(phase: SyncPhase, year: number, currentYear: number) {
   return YEAR_SYNC_TYPES.filter((t) => {
     if (t.phase !== phase) return false
-    if ('currentYearOnly' in t && year !== currentYear) return false
+    if (isCurrentYearOnly(t) && year !== currentYear) return false
     return true
   })
 }

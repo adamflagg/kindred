@@ -11,6 +11,7 @@ import { fireEvent, render, screen, within } from '@testing-library/react'
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { SyncTab } from './SyncTab'
+import { hasManualTrigger, YEAR_SYNC_TYPES } from './syncTypes'
 
 vi.mock('../../hooks/useCurrentYear', () => ({
   useYear: () => 2027,
@@ -115,13 +116,25 @@ function renderSyncTab() {
   )
 }
 
-function getCardRunButton(cardName: string) {
+function getCard(cardName: string) {
   // The sync-year <select> also has an <option> with the same text as some card names
   // (e.g. "Lodging Assignments"), so scope to the card's title <div> specifically.
   const heading = screen.getByText(cardName, { selector: 'div' })
   const card = heading.closest('.flex.flex-col')
   if (!card) throw new Error(`could not find card for ${cardName}`)
-  return within(card as HTMLElement).getByRole('button', { name: /run/i })
+  return card as HTMLElement
+}
+
+function getCardRunButton(cardName: string) {
+  return within(getCard(cardName)).getByRole('button', { name: /run/i })
+}
+
+// The Full-mode service <select>; identified by its own "All Services" option so it is never
+// confused with the sync-year <select> beside it.
+function getServiceSelect() {
+  const select = screen.getByRole('option', { name: 'All Services' }).closest('select')
+  if (!select) throw new Error('could not find the service select')
+  return select as HTMLSelectElement
 }
 
 describe('SyncTab generic card pending guard (#1881)', () => {
@@ -421,31 +434,24 @@ describe('SyncTab skipped-values badge (kindred#2356)', () => {
 // exist) the moment it was clicked. Giving them the generic Run button back would be a new
 // bug, not a fix, so their cards render without one.
 describe('SyncTab jobs with no manual trigger (kindred#2593)', () => {
-  function cardFor(name: string) {
-    const heading = screen.getByText(name, { selector: 'div' })
-    const card = heading.closest('.flex.flex-col')
-    if (!card) throw new Error(`could not find card for ${name}`)
-    return card as HTMLElement
-  }
-
   it('renders a card for the bounded family-camp person custom-values job with no Run button', () => {
     renderSyncTab()
 
-    const card = cardFor('Person CV (FC)')
+    const card = getCard('Person CV (FC)')
     expect(within(card).queryByRole('button', { name: /run/i })).not.toBeInTheDocument()
   })
 
   it('renders a card for the bounded family-camp household custom-values job with no Run button', () => {
     renderSyncTab()
 
-    const card = cardFor('Household CV (FC)')
+    const card = getCard('Household CV (FC)')
     expect(within(card).queryByRole('button', { name: /run/i })).not.toBeInTheDocument()
   })
 
   it('renders a card for reconcile_request_lifecycle with no Run button', () => {
     renderSyncTab()
 
-    const card = cardFor('Reconcile Lifecycle')
+    const card = getCard('Reconcile Lifecycle')
     expect(within(card).queryByRole('button', { name: /run/i })).not.toBeInTheDocument()
   })
 })
@@ -461,5 +467,64 @@ describe('SyncTab Export phase now has a card (kindred#2593)', () => {
     renderSyncTab()
 
     expect(getCardRunButton('Sheets Export')).not.toBeDisabled()
+  })
+})
+
+// kindred#2593: removing the card's Run button is only half a "no manual trigger" -- the same
+// page's Full-mode service <select> is the other half, and it POSTs
+// /api/custom/sync/run?service=<id>, which has no service whitelist at all (handleUnifiedSync,
+// pocketbase/sync/api.go). person_custom_values_family_camp and its household sibling ARE
+// registered services (orchestrator.go), so an option for either would really run the bounded
+// family-camp cohort that phaseExecutionJobs deliberately drops from an admin-triggered run
+// (#2489/#2491 Face C, ~11.5 min of rate-limited CampMinder quota re-spent on values the daily
+// cron refreshed minutes earlier).
+describe('SyncTab service dropdown offers only triggerable jobs (kindred#2593)', () => {
+  it('omits every job whose card has no Run button', () => {
+    renderSyncTab()
+
+    const optionValues = [...getServiceSelect().options].map((o) => o.value)
+    const noManualTrigger = YEAR_SYNC_TYPES.filter((t) => !hasManualTrigger(t)).map((t) => t.id)
+
+    expect(noManualTrigger.length).toBeGreaterThan(0)
+    for (const id of noManualTrigger) {
+      expect(optionValues).not.toContain(id)
+    }
+  })
+
+  it('still offers the jobs that do have a route, including the newly carded export', () => {
+    renderSyncTab()
+
+    const optionValues = [...getServiceSelect().options].map((o) => o.value)
+    expect(optionValues).toContain('all')
+    expect(optionValues).toContain('multi_workbook_export')
+    expect(optionValues).toContain('persons')
+  })
+})
+
+// kindred#2593: the year-change reset named bunk_requests/process_requests literally, while
+// five YEAR_SYNC_TYPES entries now carry currentYearOnly. A selection that survives the switch
+// is not merely stale: the option disappears from the <select> while `syncService` still holds
+// it, so Run Sync POSTs a current-year-only service against a historical year.
+describe('SyncTab clears a current-year-only service on year change (kindred#2593)', () => {
+  it('falls back to All Services when the selected service is current-year-only', () => {
+    renderSyncTab()
+
+    fireEvent.change(getServiceSelect(), { target: { value: 'bunk_requests' } })
+    expect(getServiceSelect().value).toBe('bunk_requests')
+
+    const yearSelect = screen.getByRole('option', { name: '2026' }).closest('select')
+    fireEvent.change(yearSelect as HTMLSelectElement, { target: { value: '2026' } })
+
+    expect(getServiceSelect().value).toBe('all')
+  })
+
+  it('keeps a service that is valid for historical years', () => {
+    renderSyncTab()
+
+    fireEvent.change(getServiceSelect(), { target: { value: 'persons' } })
+    const yearSelect = screen.getByRole('option', { name: '2026' }).closest('select')
+    fireEvent.change(yearSelect as HTMLSelectElement, { target: { value: '2026' } })
+
+    expect(getServiceSelect().value).toBe('persons')
   })
 })

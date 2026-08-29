@@ -110,41 +110,16 @@ describe('useSyncStatusAPI', () => {
     })
 
     it('should handle successful response', async () => {
-      const mockResponse = {
-        session_groups: { status: 'idle' as const },
-        sessions: { status: 'idle' as const },
-        attendees: { status: 'idle' as const },
-        person_tag_defs: { status: 'idle' as const },
-        custom_field_defs: { status: 'idle' as const },
-        persons: { status: 'idle' as const },
-        bunks: { status: 'idle' as const },
-        bunk_plans: { status: 'idle' as const },
-        bunk_assignments: { status: 'idle' as const },
-        bunk_requests: { status: 'idle' as const },
-        process_requests: { status: 'idle' as const },
-        divisions: { status: 'idle' as const },
-        staff: { status: 'idle' as const },
-        financial_transactions: { status: 'idle' as const },
-        staff_lookups: { status: 'idle' as const },
-        financial_lookups: { status: 'idle' as const },
-        person_custom_values_family_camp: { status: 'idle' as const },
-        household_custom_values_family_camp: { status: 'idle' as const },
-        reconcile_request_lifecycle: { status: 'idle' as const },
-        family_camp_derived: { status: 'idle' as const },
-        staff_skills: { status: 'idle' as const },
-        financial_aid_applications: { status: 'idle' as const },
-        household_demographics: { status: 'idle' as const },
-        camper_dietary: { status: 'idle' as const },
-        camper_transportation: { status: 'idle' as const },
-        quest_registrations: { status: 'idle' as const },
-        staff_applications: { status: 'idle' as const },
-        staff_vehicle_info: { status: 'idle' as const },
-        normalize_geographic: { status: 'idle' as const },
-        enrollment_snapshots: { status: 'idle' as const },
-        multi_workbook_export: { status: 'idle' as const },
-        person_custom_values: { status: 'idle' as const },
-        household_custom_values: { status: 'idle' as const },
-      }
+      // Built from the backend's own statusSyncTypes() rather than typed out by hand.
+      // kindred#2593: the hand-written copy this replaces had drifted the same way the three
+      // production lists had -- it declared `google_sheets_export`, which no Go code emits, and
+      // omitted `lodging_assignments` and `stranded_assignment_cleanup`. Nothing caught it,
+      // because the object is untyped and the assertion below compares the response to itself.
+      // A fixture that claims to be "the sync-status payload" and is not is the same trap one
+      // file over from the guard that exists to close it.
+      const mockResponse = Object.fromEntries(
+        getBackendSyncJobIds().map((id) => [id, { status: 'idle' as const }])
+      )
       ;(pb.send as Mock).mockResolvedValue(mockResponse)
 
       const { result } = renderHook(() => useSyncStatusAPI(), { wrapper: createWrapper() })
