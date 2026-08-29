@@ -239,7 +239,7 @@ func TestPersonCustomFieldValuesTrackingMatchesOrphanLookup(t *testing.T) {
 
 // TestLogJobNameFollowsScope pins kindred#2491 Face D: the bounded pass logs under its own
 // registered name so an operator can tell the nightly family-camp pass apart from the weekly
-// unrestricted sweep. Derived from Scope now, so a new scope gets the behaviour for free.
+// unrestricted sweep. Derived from Scope now, so a new scope gets the behavior for free.
 func TestLogJobNameFollowsScope(t *testing.T) {
 	t.Parallel()
 

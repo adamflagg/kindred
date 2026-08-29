@@ -42,7 +42,7 @@ func JobScope(id string) Scope {
 }
 
 // JobBase returns the unscoped job a scoped variant narrows, or the id itself for a base job.
-// This is what makes two variants recognisable as writers of the same PocketBase collection.
+// This is what makes two variants recognizable as writers of the same PocketBase collection.
 func JobBase(id string) string {
 	for _, m := range syncJobMeta {
 		if m.ID == id {

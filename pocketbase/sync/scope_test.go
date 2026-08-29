@@ -6,6 +6,8 @@ import "testing"
 // needs a scoped id must call this rather than spelling the string, because the id is what
 // sync_runs, runningJobs, lastCompletedStatus and the status payload are all keyed by.
 func TestScopedID(t *testing.T) {
+	t.Parallel()
+
 	if got := scopedID("person_custom_values", ScopeAll); got != "person_custom_values" {
 		t.Errorf("ScopeAll must not appear in an id, got %q", got)
 	}
@@ -17,6 +19,8 @@ func TestScopedID(t *testing.T) {
 
 // TestJobScopeAndBase pins the reverse lookups against the real registry.
 func TestJobScopeAndBase(t *testing.T) {
+	t.Parallel()
+
 	cases := []struct {
 		id        string
 		wantScope Scope
@@ -43,6 +47,8 @@ func TestJobScopeAndBase(t *testing.T) {
 
 // TestScopedJobs pins the family-camp pair as the only scoped variants, in registry order.
 func TestScopedJobs(t *testing.T) {
+	t.Parallel()
+
 	got := ScopedJobs(ScopeFamilyCamp)
 	want := []string{"person_custom_values_family_camp", "household_custom_values_family_camp"}
 	if len(got) != len(want) {
@@ -62,6 +68,8 @@ func TestScopedJobs(t *testing.T) {
 // running them in parallel as safe because they write independent collections via
 // independent CampMinder endpoints, and this map must not widen the lock across that line.
 func TestCustomValuesCollectionGroupDerived(t *testing.T) {
+	t.Parallel()
+
 	want := map[string]string{
 		"person_custom_values":                "person_custom_values",
 		"person_custom_values_family_camp":    "person_custom_values",
@@ -82,6 +90,8 @@ func TestCustomValuesCollectionGroupDerived(t *testing.T) {
 // TestScopeFamilyCampSetDerived pins the phaseExecutionJobs exclusion set (kindred#2489)
 // as exactly the family-camp-scoped rows -- no more, no less.
 func TestScopeFamilyCampSetDerived(t *testing.T) {
+	t.Parallel()
+
 	if len(familyCampBoundedCustomValuesJobs) != 2 {
 		t.Fatalf("exclusion set has %d entries, want 2: %v",
 			len(familyCampBoundedCustomValuesJobs), familyCampBoundedCustomValuesJobs)

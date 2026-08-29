@@ -30,7 +30,7 @@ type PersonCustomFieldValuesSync struct {
 
 	// Scope selects the cohort. ScopeFamilyCamp uses the bounded daily family-camp cohort
 	// (any attendee status, via SessionResolver.GetFamilyCampPersonIDsAnyStatus) instead of
-	// Session or the year-wide fallback; ScopeAll leaves the existing behaviour untouched.
+	// Session or the year-wide fallback; ScopeAll leaves the existing behavior untouched.
 	// Set only on the dedicated scoped instance registered for the daily cron (kindred#2482).
 	Scope Scope
 }
