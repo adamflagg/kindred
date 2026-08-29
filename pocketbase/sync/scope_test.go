@@ -1,6 +1,11 @@
 package sync
 
-import "testing"
+import (
+	"os"
+	"regexp"
+	"strings"
+	"testing"
+)
 
 // TestScopedID pins the one rule that generates a scoped service name. Every other site that
 // needs a scoped id must call this rather than spelling the string, because the id is what
@@ -101,4 +106,138 @@ func TestScopeFamilyCampSetDerived(t *testing.T) {
 			t.Errorf("scoped job %q missing from the phase-run exclusion set", id)
 		}
 	}
+}
+
+// TestScopedVariantContract pins everything kindred#2482/#2489/#2491/#2591 established about
+// a scoped custom-values variant, so a THIRD one cannot be added half-wired. Each clause has
+// a distinct failure mode that has actually happened:
+//
+//	daily membership   -- the whole point of the bounded pass (#2482)
+//	daily ordering     -- after source, before the transforms that read it (#2482)
+//	not in full/phase  -- re-fetching a fresh cohort costs ~11.5 min of quota (#2489)
+//	in statusSyncTypes -- RunSyncSequence sets no run-type flag, so the per-job entry is the
+//	                      client's ONLY completion signal; without it the Refresh Housing
+//	                      cutover is undetectable (#2591)
+//	no POST route      -- "no manual trigger" must be true of the server, not just the button
+//	collection mapping -- without it the bounded pass's writes are dropped from the export
+//	                      skip-optimization and the fresh data never reaches Sheets (#2491)
+func TestScopedVariantContract(t *testing.T) {
+	t.Parallel()
+
+	scoped := ScopedJobs(ScopeFamilyCamp)
+	if len(scoped) == 0 {
+		t.Fatal("no scoped jobs found -- every clause below would pass vacuously")
+	}
+
+	daily := getDailySyncJobs()
+	full := GetDefaultUnifiedSyncJobs(true)
+	phaseRun := phaseExecutionJobs(PhaseExpensive)
+	status := statusSyncTypes()
+	routes := postRouteSegments(t)
+
+	for _, id := range scoped {
+		base := JobBase(id)
+
+		if GetPhaseForJob(id) != GetPhaseForJob(base) {
+			t.Errorf("%s: phase %q != base %s's phase %q",
+				id, GetPhaseForJob(id), base, GetPhaseForJob(base))
+		}
+		if !sliceContains(daily, id) {
+			t.Errorf("%s: missing from the daily queue (#2482)", id)
+		}
+		if i, j := indexOf(daily, id), indexOf(daily, "financial_transactions"); i <= j {
+			t.Errorf("%s at daily[%d] must run AFTER the last source job at [%d] (#2482)", id, i, j)
+		}
+		if i, j := indexOf(daily, id), indexOf(daily, "family_camp_derived"); i >= j {
+			t.Errorf("%s at daily[%d] must run BEFORE family_camp_derived at [%d] (#2482)", id, i, j)
+		}
+		if sliceContains(full, id) {
+			t.Errorf("%s: must not be in a full run (#2489)", id)
+		}
+		if sliceContains(phaseRun, id) {
+			t.Errorf("%s: must not be in an admin-triggered phase run (#2489)", id)
+		}
+		if !sliceContains(status, id) {
+			t.Errorf("%s: must be published on the status payload (#2591)", id)
+		}
+		if sliceContains(routes, strings.ReplaceAll(id, "_", "-")) {
+			t.Errorf("%s: must have no individual POST route", id)
+		}
+		if got, want := SyncJobToCollections[id], SyncJobToCollections[base]; !equalStrings(got, want) {
+			t.Errorf("%s: SyncJobToCollections = %v, want its base's %v (#2491)", id, got, want)
+		}
+	}
+}
+
+// sliceContains reports whether ids contains id. Named to avoid colliding with
+// persons_test.go's contains(haystack, needle string) bool -- a substring check with a
+// different signature -- since Go has no overloading and the two cannot share a name in one
+// package.
+func sliceContains(ids []string, id string) bool {
+	return indexOf(ids, id) != -1
+}
+
+// indexOf returns the index of id within ids, or -1 if absent.
+func indexOf(ids []string, id string) int {
+	for i, v := range ids {
+		if v == id {
+			return i
+		}
+	}
+	return -1
+}
+
+// equalStrings reports whether a and b hold the same elements in the same order.
+func equalStrings(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// postRouteSegments regex-scans api.go for every path segment registered as an
+// individual-sync POST route under /api/custom/sync/, mirroring
+// frontend/src/test/backendSyncJobIds.ts's getBackendSyncPostRouteSegments on the other side
+// of the language boundary -- both parsers exist because nothing else crosses the language
+// boundary to catch drift between the frontend's and backend's job-id lists.
+//
+// Like that parser, it Fatals rather than returning a plausible-but-wrong set: three clauses
+// of TestScopedVariantContract are anchored to this output, and a parser that silently found
+// the wrong routes (or none at all) would turn them green while pinning nothing.
+func postRouteSegments(t *testing.T) []string {
+	t.Helper()
+
+	src := readSource(t, "api.go")
+	re := regexp.MustCompile(`e\.Router\.POST\(\s*"/api/custom/sync/([a-z0-9_-]+)"`)
+	matches := re.FindAllStringSubmatch(src, -1)
+	// 40 individual-sync routes are registered as of this writing; 30 is comfortably below
+	// that but well above what a broken or over-narrow regex would still fluke-match, so a
+	// genuine parse failure fails loudly here instead of silently returning a partial set.
+	if len(matches) < 30 {
+		t.Fatalf("postRouteSegments: parsed only %d POST route(s) out of api.go -- "+
+			"the regex is broken or api.go's route registration shape changed; update it "+
+			"to match rather than trust a partial result", len(matches))
+	}
+
+	segments := make([]string, 0, len(matches))
+	for _, m := range matches {
+		segments = append(segments, m[1])
+	}
+	return segments
+}
+
+// readSource reads a file from this package's directory, t.Fatal on failure. Tests run with
+// the package directory as the working directory, so a bare filename is correct.
+func readSource(t *testing.T, name string) string {
+	t.Helper()
+	data, err := os.ReadFile(name)
+	if err != nil {
+		t.Fatalf("readSource(%q): %v", name, err)
+	}
+	return string(data)
 }
