@@ -15,9 +15,12 @@ import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-quer
 import type { SyncStatusResponse } from '../../hooks/useSyncStatusAPI'
 import { queryKeys } from '../../utils/queryKeys'
 
-const syncStatusSpy = vi.fn((_opts?: unknown): { data: SyncStatusResponse | null | undefined } => ({
-  data: undefined,
-}))
+const syncStatusSpy = vi.fn(
+  (_opts?: unknown): { data: SyncStatusResponse | null | undefined; dataUpdatedAt: number } => ({
+    data: undefined,
+    dataUpdatedAt: 0,
+  })
+)
 vi.mock('../../hooks/useSyncStatusAPI', () => ({
   useSyncStatusAPI: (...args: unknown[]) => syncStatusSpy(...args),
 }))
@@ -64,8 +67,16 @@ function status(overrides: Record<string, unknown> = {}): SyncStatusResponse {
   } as unknown as SyncStatusResponse
 }
 
+/**
+ * `dataUpdatedAt` is what `useSyncSequenceRun`'s `start()` now waits on
+ * (kindred#2595) to tell a genuinely post-press status reading apart from the
+ * stale cache it can no longer trust — it must advance on every simulated
+ * poll here, not stay fixed like the bare `{ data }` this file mocked before.
+ */
+let statusVersion = 0
 function setStatus(s: SyncStatusResponse) {
-  syncStatusSpy.mockImplementation(() => ({ data: s }))
+  statusVersion += 1
+  syncStatusSpy.mockImplementation(() => ({ data: s, dataUpdatedAt: statusVersion }))
 }
 
 /** The app's real cache policy — 30 minutes stale, no refetch on focus. */

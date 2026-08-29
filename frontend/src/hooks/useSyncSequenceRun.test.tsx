@@ -12,9 +12,12 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import type { SyncStatusResponse } from './useSyncStatusAPI'
 
-const syncStatusSpy = vi.fn((_opts?: unknown): { data: SyncStatusResponse | null | undefined } => ({
-  data: undefined,
-}))
+const syncStatusSpy = vi.fn(
+  (_opts?: unknown): { data: SyncStatusResponse | null | undefined; dataUpdatedAt: number } => ({
+    data: undefined,
+    dataUpdatedAt: 0,
+  })
+)
 vi.mock('./useSyncStatusAPI', () => ({
   useSyncStatusAPI: (...args: unknown[]) => syncStatusSpy(...args),
 }))
@@ -52,8 +55,21 @@ function idleStatus(overrides: Record<string, unknown> = {}): SyncStatusResponse
   } as unknown as SyncStatusResponse
 }
 
+/**
+ * A monotonic stand-in for React Query's `dataUpdatedAt`: it advances on every
+ * simulated FETCH (every call to `setStatus`), never on a re-render that
+ * merely reads the same cached mock return. That is the real semantics too —
+ * verified against the installed `@tanstack/query-core` (5.101.4):
+ * `Query#setData` unconditionally dispatches a `'success'` action that stamps
+ * a fresh `dataUpdatedAt`, on every resolved fetch, regardless of whether the
+ * data it carries is structurally identical to what came before. `start()`
+ * relies on exactly that to tell a genuinely post-press response apart from
+ * the stale cache it can no longer trust (kindred#2595).
+ */
+let statusVersion = 0
 function setStatus(status: SyncStatusResponse | null | undefined) {
-  syncStatusSpy.mockImplementation(() => ({ data: status }))
+  statusVersion += 1
+  syncStatusSpy.mockImplementation(() => ({ data: status, dataUpdatedAt: statusVersion }))
 }
 
 describe('useSyncSequenceRun — chain shape', () => {
@@ -81,6 +97,7 @@ describe('useSyncSequenceRun — chain shape', () => {
 describe('useSyncSequenceRun', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    statusVersion = 0
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-04-22T10:00:00.000Z'))
     setStatus(idleStatus())
@@ -205,14 +222,37 @@ describe('useSyncSequenceRun', () => {
     expect(result.current.isRunning).toBe(false)
   })
 
-  it('completes even if every poll missed the run (a 4.7 s chain against a 3 s poll)', () => {
+  /**
+   * A 4.7 s chain against a 3 s poll: no poll ever catches a chain job
+   * actually running. Reshaped for kindred#2595 — under the freshness rule
+   * the FIRST reading after `start()` is always trusted as the baseline, on
+   * pain of being unable to tell a stale cache from a fast chain (see the
+   * test above and the module docstring's "Why the naive fix does not work").
+   * So a chain that finishes before that first post-press response is, by
+   * construction, undetectable — that response IS the new baseline, not a
+   * completion. What this test now proves is the case that IS detectable:
+   * the chain finishes between the (unmoved) first post-press response and
+   * the next poll 3 s later, which is what production actually gives it —
+   * `start()`'s own invalidation resolves in well under a second, long before
+   * a 4.7 s chain can finish.
+   */
+  it('completes once a later poll catches the chain done, even though the first post-press response missed it entirely (a 4.7 s chain against a 3 s poll)', () => {
     const onComplete = vi.fn()
     const { result, rerender } = renderHook(() =>
       useSyncSequenceRun({ chain: BUNKING_REFRESH_CHAIN, enabled: true, onComplete })
     )
     act(() => result.current.start())
-    // No poll ever caught a running job; the first one back shows the terminal
-    // job already finished with a new end_time.
+
+    // The invalidation's own refetch lands first, in the arming gap: no chain
+    // job has been observed running, and the terminal end_time has not moved.
+    // This is what confirms the baseline as genuinely post-press.
+    setStatus(idleStatus())
+    rerender()
+    expect(onComplete).not.toHaveBeenCalled()
+
+    // The chain runs and finishes entirely between this poll and the last one
+    // — no poll ever caught a job running — but the baseline is now trusted,
+    // so the moved end_time alone is enough.
     setStatus(
       idleStatus({
         stranded_assignment_cleanup: { status: 'success', end_time: '2026-04-22T10:00:05.000Z' },
@@ -220,6 +260,57 @@ describe('useSyncSequenceRun', () => {
     )
     rerender()
     expect(onComplete).toHaveBeenCalledWith('success')
+  })
+
+  /**
+   * kindred#2595. `start()` cannot snapshot the baseline from the CACHED
+   * payload: polling stops entirely while the hook is at rest, so the cache
+   * can be arbitrarily old. If an unrelated run moved the terminal job's
+   * `end_time` during that idle window, the stale cache never saw it — so the
+   * refetch `start()` triggers reveals a value that differs from whatever was
+   * cached at press time, even though OUR chain has not been observed running
+   * at all yet. That must not read as our chain completing.
+   *
+   * The naive fix — capture the baseline from the first response after
+   * `start()` instead of the cache — is not sufficient by itself: this test
+   * and the reshaped "misses every poll" test above are what a fetched
+   * baseline gets on ITS first read too, and they must not be told apart by
+   * data alone. What tells them apart is that a still-arming run has no
+   * grounds YET to call anything "moved" — the first post-press reading is
+   * always trusted as the new baseline, never compared against the old one.
+   */
+  it('does not report success from a stale cached baseline when an unrelated run moved the terminal end_time while idle', () => {
+    const onComplete = vi.fn()
+    // Mounted at rest: the cache holds the DEFAULT idle status from
+    // `beforeEach`, terminal end_time 09:00:05 — nothing has polled since, so
+    // this is what `start()` would see if it read the cache.
+    const { result, rerender } = renderHook(() =>
+      useSyncSequenceRun({ chain: BUNKING_REFRESH_CHAIN, enabled: true, onComplete })
+    )
+    act(() => result.current.start())
+
+    // The invalidation's refetch resolves. It reveals a DIFFERENT terminal
+    // end_time — but this is an unrelated run that finished before the press,
+    // not our chain: no chain job has ever been observed running.
+    setStatus(
+      idleStatus({
+        stranded_assignment_cleanup: { status: 'success', end_time: '2026-04-22T09:59:50.000Z' },
+      })
+    )
+    rerender()
+    expect(onComplete).not.toHaveBeenCalled()
+    expect(result.current.isRunning).toBe(true)
+
+    // A further poll shows nothing has changed since — our own chain has
+    // neither started nor finished.
+    setStatus(
+      idleStatus({
+        stranded_assignment_cleanup: { status: 'success', end_time: '2026-04-22T09:59:50.000Z' },
+      })
+    )
+    rerender()
+    expect(onComplete).not.toHaveBeenCalled()
+    expect(result.current.isRunning).toBe(true)
   })
 
   /**
