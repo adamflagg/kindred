@@ -400,14 +400,24 @@ class TestLodgingReadsKeyOnTheCampMinderSessionId:
                 id="fetch_draft_write_ins",
             ),
             pytest.param(
-                lambda r, s: r.find_write_in(2026, s, "u1"),
+                lambda r, s: r.find_write_in(2026, s, "u1", "Olivia Chen"),
                 "lodging_write_ins",
                 id="find_write_in",
             ),
             pytest.param(
-                lambda r, s: r.find_draft_write_in(2026, s, "scn_1", "u1"),
+                lambda r, s: r.find_draft_write_in(2026, s, "scn_1", "u1", "Olivia Chen"),
                 "lodging_write_ins_draft",
                 id="find_draft_write_in",
+            ),
+            pytest.param(
+                lambda r, s: r.fetch_write_ins_on_unit(2026, s, "u1"),
+                "lodging_write_ins",
+                id="fetch_write_ins_on_unit",
+            ),
+            pytest.param(
+                lambda r, s: r.fetch_draft_write_ins_on_unit(2026, s, "scn_1", "u1"),
+                "lodging_write_ins_draft",
+                id="fetch_draft_write_ins_on_unit",
             ),
         ],
     )
@@ -448,8 +458,15 @@ class TestLodgingReadsKeyOnTheCampMinderSessionId:
             pytest.param(lambda r, s: r.find_slot_merge(2026, s, "u1", "scn_1"), id="find_slot_merge"),
             pytest.param(lambda r, s: r.fetch_write_ins(2026, s), id="fetch_write_ins"),
             pytest.param(lambda r, s: r.fetch_draft_write_ins(2026, s, "scn_1"), id="fetch_draft_write_ins"),
-            pytest.param(lambda r, s: r.find_write_in(2026, s, "u1"), id="find_write_in"),
-            pytest.param(lambda r, s: r.find_draft_write_in(2026, s, "scn_1", "u1"), id="find_draft_write_in"),
+            pytest.param(lambda r, s: r.find_write_in(2026, s, "u1", "Olivia Chen"), id="find_write_in"),
+            pytest.param(
+                lambda r, s: r.find_draft_write_in(2026, s, "scn_1", "u1", "Olivia Chen"), id="find_draft_write_in"
+            ),
+            pytest.param(lambda r, s: r.fetch_write_ins_on_unit(2026, s, "u1"), id="fetch_write_ins_on_unit"),
+            pytest.param(
+                lambda r, s: r.fetch_draft_write_ins_on_unit(2026, s, "scn_1", "u1"),
+                id="fetch_draft_write_ins_on_unit",
+            ),
         ],
     )
     async def test_the_session_term_is_never_compared_to_a_string(
@@ -618,22 +635,59 @@ class TestClientSuppliedValuesAreEscaped:
 
     @pytest.mark.asyncio
     async def test_find_write_in_escapes_the_unit_id(self, repo: LodgingRepository, pb: MagicMock) -> None:
-        await repo.find_write_in(2026, 1000001, 'u1" || id != "')
+        await repo.find_write_in(2026, 1000001, 'u1" || id != "', "Olivia Chen")
 
         filter_str = _last_query(pb)["filter"]
         assert 'unit = "u1\\" || id != \\""' in filter_str
         assert '" || id != "' not in filter_str
 
     @pytest.mark.asyncio
-    async def test_find_draft_write_in_escapes_both_client_values(self, repo: LodgingRepository, pb: MagicMock) -> None:
-        """TWO client-supplied strings reach this one filter, not one.
+    async def test_find_write_in_escapes_the_occupant_name(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        """The occupant name is the SECOND client string on this filter now.
 
-        `unit_pb_id` arrives in the request body and `scenario_id` off the
-        `?scenario=` query parameter, and either one unescaped widens the
+        Design B (kindred#2583, ruled 2026-08-29) addresses a write-in by
+        `(unit, occupant_name)`, so a name typed by a staff member reaches
+        the predicate. Unescaped, an injected `||` would return some other
+        unit's row -- which `set_availability` then updates, or the
+        row-addressed delete removes.
+        """
+        await repo.find_write_in(2026, 1000001, "u1", self.INJECTION)
+
+        filter_str = _last_query(pb)["filter"]
+        assert f'occupant_name = "{self.ESCAPED}"' in filter_str
+        assert '" || id != "' not in filter_str
+
+    @pytest.mark.asyncio
+    async def test_find_draft_write_in_escapes_every_client_value(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        """THREE client-supplied strings reach this one filter now.
+
+        `unit_pb_id` arrives in the request body, `scenario_id` off the
+        `?scenario=` query parameter, and `occupant_name` is the Design B
+        addressing key typed by a staff member. Any one unescaped widens the
         predicate past its own scoping -- which on this lookup means the
         caller updates or deletes another scenario's write-in.
         """
-        await repo.find_draft_write_in(2026, 1000001, self.INJECTION, 'u1" || id != "')
+        await repo.find_draft_write_in(2026, 1000001, self.INJECTION, 'u1" || id != "', self.INJECTION)
+
+        filter_str = _last_query(pb)["filter"]
+        assert f'scenario = "{self.ESCAPED}"' in filter_str
+        assert 'unit = "u1\\" || id != \\""' in filter_str
+        assert f'occupant_name = "{self.ESCAPED}"' in filter_str
+        assert '" || id != "' not in filter_str
+
+    @pytest.mark.asyncio
+    async def test_fetch_write_ins_on_unit_escapes_the_unit_id(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        await repo.fetch_write_ins_on_unit(2026, 1000001, 'u1" || id != "')
+
+        filter_str = _last_query(pb)["filter"]
+        assert 'unit = "u1\\" || id != \\""' in filter_str
+        assert '" || id != "' not in filter_str
+
+    @pytest.mark.asyncio
+    async def test_fetch_draft_write_ins_on_unit_escapes_both_client_values(
+        self, repo: LodgingRepository, pb: MagicMock
+    ) -> None:
+        await repo.fetch_draft_write_ins_on_unit(2026, 1000001, self.INJECTION, 'u1" || id != "')
 
         filter_str = _last_query(pb)["filter"]
         assert f'scenario = "{self.ESCAPED}"' in filter_str
@@ -759,35 +813,42 @@ class TestWriteInReads:
         assert "||" not in params["filter"]
 
     @pytest.mark.asyncio
-    async def test_find_write_in_keys_the_live_unique_index(self, repo: LodgingRepository, pb: MagicMock) -> None:
-        """Matches `idx_lodging_write_in_unique` (session_cm_id, year, unit).
+    async def test_find_write_in_keys_the_narrowed_live_unique_index(
+        self, repo: LodgingRepository, pb: MagicMock
+    ) -> None:
+        """Matches the NARROWED `idx_lodging_write_in_unique`
+        (session_cm_id, year, unit, occupant_name).
 
-        Mirrors `find_availability_override` against the table the write-in
-        half moves to: without a lookup of exactly the index's shape a unit
-        could carry two contradicting rows for one weekend and "who is in
-        this cabin?" would stop being a question with an answer.
+        Design B (kindred#2583, ruled 2026-08-29): a write-in is addressed by
+        `(unit, occupant_name)`. `unit` alone is no longer the key -- on a
+        shareable cabin it names as many rows as staff have written -- so a
+        lookup keyed on it would hand `_upsert_row` an arbitrary neighbour to
+        overwrite. The occupant term is what makes "which of these rows did
+        this write mean?" a question with an answer.
         """
-        await repo.find_write_in(2026, 1000001, "u1")
+        await repo.find_write_in(2026, 1000001, "u1", "Olivia Chen")
 
         pb.collection.assert_called_with("lodging_write_ins")
         filter_str = _last_query(pb)["filter"]
         assert "session_cm_id = 1000001" in filter_str
         assert "year = 2026" in filter_str
         assert 'unit = "u1"' in filter_str
+        assert 'occupant_name = "Olivia Chen"' in filter_str
         assert "scenario" not in filter_str
 
     @pytest.mark.asyncio
-    async def test_find_draft_write_in_keys_the_draft_unique_index(
+    async def test_find_draft_write_in_keys_the_narrowed_draft_unique_index(
         self, repo: LodgingRepository, pb: MagicMock
     ) -> None:
-        """The draft index carries `scenario` as a fourth term.
+        """The draft key is the live key plus `scenario`, both narrowed.
 
         `lodging_assignments_draft`'s partial indexes do the same
         (1500000132/1500000147): the draft key is the live key plus the
         scenario, so two scenarios may hold contradicting rows for one unit
-        and neither collides with the other.
+        and neither collides with the other. `scenario` is RETAINED under the
+        narrowing -- dropping it would let two scenarios' rows collide.
         """
-        await repo.find_draft_write_in(2026, 1000001, "scn_1", "u1")
+        await repo.find_draft_write_in(2026, 1000001, "scn_1", "u1", "Olivia Chen")
 
         pb.collection.assert_called_with("lodging_write_ins_draft")
         filter_str = _last_query(pb)["filter"]
@@ -795,6 +856,26 @@ class TestWriteInReads:
         assert "year = 2026" in filter_str
         assert 'unit = "u1"' in filter_str
         assert 'scenario = "scn_1"' in filter_str
+        assert 'occupant_name = "Olivia Chen"' in filter_str
+
+    @pytest.mark.asyncio
+    async def test_a_finder_keyed_on_one_occupant_does_not_see_another(
+        self, repo: LodgingRepository, pb: MagicMock
+    ) -> None:
+        """The whole point of the narrowing, stated as a filter fact.
+
+        Two occupants on one shareable cabin differ in exactly one term, so
+        the predicate that finds one must NAME that term. Without the
+        occupant clause both lookups return the same first row and the second
+        family's write overwrites the first -- the live data-loss path
+        kindred#2583 exists to close.
+        """
+        await repo.find_write_in(2026, 1000001, "u1", "Emma Johnson")
+        first = _last_query(pb)["filter"]
+        await repo.find_write_in(2026, 1000001, "u1", "Liam Garcia")
+        second = _last_query(pb)["filter"]
+
+        assert first != second
 
     @pytest.mark.asyncio
     async def test_find_write_in_returns_none_when_there_is_no_row(
@@ -802,16 +883,69 @@ class TestWriteInReads:
     ) -> None:
         pb.collection.return_value.get_full_list.return_value = []
 
-        assert await repo.find_write_in(2026, 1000001, "u1") is None
-        assert await repo.find_draft_write_in(2026, 1000001, "scn_1", "u1") is None
+        assert await repo.find_write_in(2026, 1000001, "u1", "Olivia Chen") is None
+        assert await repo.find_draft_write_in(2026, 1000001, "scn_1", "u1", "Olivia Chen") is None
 
     @pytest.mark.asyncio
     async def test_find_write_in_returns_the_single_row(self, repo: LodgingRepository, pb: MagicMock) -> None:
         row = _record(id="wi_1")
         pb.collection.return_value.get_full_list.return_value = [row]
 
-        assert await repo.find_write_in(2026, 1000001, "u1") is row
-        assert await repo.find_draft_write_in(2026, 1000001, "scn_1", "u1") is row
+        assert await repo.find_write_in(2026, 1000001, "u1", "Olivia Chen") is row
+        assert await repo.find_draft_write_in(2026, 1000001, "scn_1", "u1", "Olivia Chen") is row
+
+
+class TestEveryOccupancyRowOnOneUnit:
+    """The unit-grain read the CLEAR verbs need (kindred#2583 step 7).
+
+    `family_available: null` clears the unit ENTIRELY and a release
+    (`family_available: true`) drops whatever occupies the unit it opens.
+    Both are unit-grain facts, so neither can go through the occupant-keyed
+    finder above: on a shareable cabin that finder answers about one row and
+    would leave the other standing -- a cleared cabin still occupied, or a
+    released one advertised as open with somebody in it.
+    """
+
+    @pytest.mark.asyncio
+    async def test_the_live_read_is_keyed_on_the_unit_and_names_no_occupant(
+        self, repo: LodgingRepository, pb: MagicMock
+    ) -> None:
+        await repo.fetch_write_ins_on_unit(2026, 1000001, "u1")
+
+        pb.collection.assert_called_with("lodging_write_ins")
+        filter_str = _last_query(pb)["filter"]
+        assert "session_cm_id = 1000001" in filter_str
+        assert "year = 2026" in filter_str
+        assert 'unit = "u1"' in filter_str
+        assert "occupant_name" not in filter_str
+        assert "scenario" not in filter_str
+
+    @pytest.mark.asyncio
+    async def test_the_draft_read_is_scoped_to_one_scenario(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        await repo.fetch_draft_write_ins_on_unit(2026, 1000001, "scn_1", "u1")
+
+        pb.collection.assert_called_with("lodging_write_ins_draft")
+        filter_str = _last_query(pb)["filter"]
+        assert 'unit = "u1"' in filter_str
+        assert 'scenario = "scn_1"' in filter_str
+        assert "occupant_name" not in filter_str
+        # No fall-through: a clear inside one scenario must not reach another's.
+        assert "||" not in filter_str
+
+    @pytest.mark.asyncio
+    async def test_every_row_comes_back_not_only_the_first(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        rows = [_record(id="wi_1"), _record(id="wi_2")]
+        pb.collection.return_value.get_full_list.return_value = rows
+
+        assert await repo.fetch_write_ins_on_unit(2026, 1000001, "u1") == rows
+        assert await repo.fetch_draft_write_ins_on_unit(2026, 1000001, "scn_1", "u1") == rows
+
+    @pytest.mark.asyncio
+    async def test_an_empty_unit_reads_as_an_empty_list(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        pb.collection.return_value.get_full_list.return_value = []
+
+        assert await repo.fetch_write_ins_on_unit(2026, 1000001, "u1") == []
+        assert await repo.fetch_draft_write_ins_on_unit(2026, 1000001, "scn_1", "u1") == []
 
 
 class TestWriteInWrites:

@@ -33,6 +33,7 @@ from api.schemas.lodging import (
     WeekendRosterResponse,
     WeekendSessionListResponse,
     WeekendSummaryResponse,
+    WriteInDeleteRequest,
 )
 from api.services.lodging_compare_service import LodgingCompareService, NotAFamilyWeekendError
 from api.services.lodging_repository import LodgingRepository
@@ -339,6 +340,42 @@ async def set_availability(
     """
     try:
         return await _writes().set_availability(request)
+    except SessionNotFoundError as exc:
+        raise _weekend_404(request.year, request.session_cm_id) from exc
+
+
+@router.delete("/write-ins", response_model=LodgingWriteResponse)
+async def delete_write_in(
+    request: WriteInDeleteRequest,
+    user: AuthUser = Depends(require_permission(Permission.BUNKING_MANAGE)),
+) -> LodgingWriteResponse:
+    """Remove ONE occupant from one unit, leaving everything else standing.
+
+    kindred#2583 step 7. `PUT /availability` with `family_available: null`
+    stays the CLEAR-THIS-UNIT-ENTIRELY verb -- it drops the role row and every
+    occupancy row on the unit, which is exactly what it means today while a
+    cabin can hold one write-in, so nothing at that boundary moves. This is
+    the other half: "take one paper family out of a shared cabin and leave the
+    other where she is."
+
+    Takes a BODY rather than path parameters, exactly as `DELETE /placements`
+    does and for the same reason: the row is identified by values the client
+    already holds -- weekend, year, scenario, unit, occupant -- and none of
+    them is a resource id. Under Design B (kindred#2583, RULED 2026-08-29)
+    `(unit_id, occupant_name)` is that identity; Design A, which would have
+    published the record id for the client to round-trip, was declined.
+
+    The ROLE row is left alone. A staff<->family override is a fact about the
+    weekend and taking an occupant out of a cabin says nothing about it; only
+    the clear verb touches both tables.
+
+    Idempotent: removing somebody who is not there answers 200 with
+    `deleted: false`, the same as `DELETE /placements` does for a party that
+    was never placed. The absence of the row IS the state the caller asked
+    for.
+    """
+    try:
+        return await _writes().remove_write_in(request)
     except SessionNotFoundError as exc:
         raise _weekend_404(request.year, request.session_cm_id) from exc
 

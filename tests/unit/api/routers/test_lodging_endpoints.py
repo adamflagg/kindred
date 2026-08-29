@@ -29,6 +29,7 @@ from api.schemas.lodging import (
     SlotMergeRequest,
     UnpushResponse,
     WeekendRosterResponse,
+    WriteInDeleteRequest,
 )
 from api.services.lodging_compare_service import NotAFamilyWeekendError
 from api.services.lodging_roster_service import SessionNotFoundError
@@ -611,8 +612,21 @@ WRITE_ENDPOINTS: list[tuple[str, str, str, dict[str, Any]]] = [
             "session_cm_id": 1000001,
             "unit_id": "u1",
             "family_available": False,
+            # REQUIRED on the occupancy half since kindred#2583 step 6: the
+            # occupant's name is the row's address under Design B, so a
+            # write-in without one is unaddressable and 422s. Without this the
+            # row would refuse before the permission gate ever ran, and the
+            # auth contract would look covered for a write that never happened
+            # -- the exact failure the shape guard below was written for.
+            "occupant_name": "Olivia Chen",
             "reason": "Burst pipe",
         },
+    ),
+    (
+        "DELETE",
+        "/api/lodging/write-ins",
+        "/api/lodging/write-ins",
+        {"year": 2026, "session_cm_id": 1000001, "unit_id": "u1", "occupant_name": "Olivia Chen"},
     ),
     (
         "POST",
@@ -662,6 +676,7 @@ WRITE_MODELS: dict[tuple[str, str], type[BaseModel]] = {
     ("POST", "/api/lodging/placements"): PlacementWriteRequest,
     ("DELETE", "/api/lodging/placements"): PlacementDeleteRequest,
     ("PUT", "/api/lodging/availability"): AvailabilityWriteRequest,
+    ("DELETE", "/api/lodging/write-ins"): WriteInDeleteRequest,
     ("POST", "/api/lodging/placements/copy"): PlacementCopyRequest,
     ("PUT", "/api/lodging/merge"): SlotMergeRequest,
     ("POST", "/api/lodging/push"): PushExecuteRequest,
@@ -1406,6 +1421,7 @@ class TestAvailabilityWrites:
                     "session_cm_id": 1000001,
                     "unit_id": "u1",
                     "family_available": False,
+                    "occupant_name": "Olivia Chen",
                     "reason": "Burst pipe",
                 },
             )
@@ -1675,6 +1691,7 @@ class TestAvailabilityWrites:
                     "session_cm_id": 1000001,
                     "unit_id": "u1",
                     "family_available": False,
+                    "occupant_name": "Olivia Chen",
                     "reason": "Burst pipe",
                 },
             )
@@ -1706,6 +1723,7 @@ class TestAvailabilityWrites:
                     "session_cm_id": 1000001,
                     "unit_id": "u1",
                     "family_available": False,
+                    "occupant_name": "Olivia Chen",
                     "reason": "Burst pipe",
                 },
             )
@@ -1749,6 +1767,7 @@ class TestAvailabilityWrites:
                     "session_cm_id": 1000001,
                     "unit_id": "u1",
                     "family_available": False,
+                    "occupant_name": "Olivia Chen",
                     "reason": "Burst pipe",
                 },
             )
@@ -1787,6 +1806,7 @@ class TestAvailabilityWrites:
                     "session_cm_id": 1000001,
                     "unit_id": "u1",
                     "family_available": False,
+                    "occupant_name": "Olivia Chen",
                     "reason": "Burst pipe",
                 },
             )
@@ -1795,6 +1815,187 @@ class TestAvailabilityWrites:
         # Same guard as the sibling above: the recovery path must actually
         # have been walked, not skipped by a lookup that answered too early.
         mock_pb.collection.return_value.create.assert_called_once()
+
+
+class TestTheRowAddressedWriteInDelete:
+    """`DELETE /api/lodging/write-ins` (kindred#2583 step 7).
+
+    "Take Chen out of the shared cabin and leave Johnson where she is." The verb that
+    exists today -- `family_available: null` -- clears the whole unit, which
+    is right when a cabin holds one occupant and unacceptably broad when it
+    holds two.
+
+    A body-carrying DELETE on the collection, following
+    `DELETE /api/lodging/placements`: the row is identified by values the
+    client already has (weekend, year, scenario, unit, occupant) and none of
+    them is a resource id it holds.
+
+    ⚠️ OQ-8. The spec marks this "verify against staff expectation before
+    building". It is the recommended shape and stays cheap to revise while
+    the feature is dark behind the unique index.
+    """
+
+    def test_the_addressed_row_is_deleted(self, mock_pb: MagicMock) -> None:
+        def reads(**kwargs: Any) -> list[Any]:
+            query_filter = kwargs.get("query_params", {}).get("filter", "")
+            if 'occupant_name = "Olivia Chen"' in query_filter:
+                return [_rec(id="wi_chen")]
+            return _session_lookup(**kwargs)
+
+        with patch("api.routers.lodging.pb", mock_pb):
+            client = _write_client(_manage_user(), mock_pb)
+            mock_pb.collection.return_value.get_full_list.side_effect = reads
+            response = client.request(
+                "DELETE",
+                "/api/lodging/write-ins",
+                json={
+                    "year": 2026,
+                    "session_cm_id": 1000001,
+                    "unit_id": "u1",
+                    "occupant_name": "Olivia Chen",
+                },
+            )
+
+        assert response.status_code == 200, response.text
+        mock_pb.collection.assert_any_call("lodging_write_ins")
+        mock_pb.collection.return_value.delete.assert_called_once_with("wi_chen")
+        assert response.json() == {"record_id": "wi_chen", "deleted": True}
+
+    def test_the_role_row_is_not_touched(self, mock_pb: MagicMock) -> None:
+        """Removing one occupant says nothing about the cabin's staff<->family
+        role. Only `family_available: null` clears both."""
+        with patch("api.routers.lodging.pb", mock_pb):
+            client = _write_client(_manage_user(), mock_pb)
+            response = client.request(
+                "DELETE",
+                "/api/lodging/write-ins",
+                json={
+                    "year": 2026,
+                    "session_cm_id": 1000001,
+                    "unit_id": "u1",
+                    "occupant_name": "Olivia Chen",
+                },
+            )
+
+        assert response.status_code == 200, response.text
+        assert call("lodging_availability") not in mock_pb.collection.call_args_list
+
+    def test_a_scenario_addresses_the_draft_table(self, mock_pb: MagicMock) -> None:
+        with patch("api.routers.lodging.pb", mock_pb):
+            client = _write_client(_manage_user(), mock_pb)
+            response = client.request(
+                "DELETE",
+                "/api/lodging/write-ins",
+                json={
+                    "year": 2026,
+                    "session_cm_id": 1000001,
+                    "scenario": "scn_1",
+                    "unit_id": "u1",
+                    "occupant_name": "Olivia Chen",
+                },
+            )
+
+        assert response.status_code == 200, response.text
+        mock_pb.collection.assert_any_call("lodging_write_ins_draft")
+        assert call("lodging_write_ins") not in mock_pb.collection.call_args_list
+
+    def test_removing_an_occupant_who_is_not_there_is_not_an_error(self, mock_pb: MagicMock) -> None:
+        with patch("api.routers.lodging.pb", mock_pb):
+            client = _write_client(_manage_user(), mock_pb)
+            response = client.request(
+                "DELETE",
+                "/api/lodging/write-ins",
+                json={
+                    "year": 2026,
+                    "session_cm_id": 1000001,
+                    "unit_id": "u1",
+                    "occupant_name": "Olivia Chen",
+                },
+            )
+
+        assert response.status_code == 200, response.text
+        assert response.json()["deleted"] is False
+
+    def test_an_unknown_weekend_is_404_not_a_quiet_no_op(self, mock_pb: MagicMock) -> None:
+        """Every other outcome here answers 200, so an unresolvable weekend
+        has to be told apart from "there was nothing to remove"."""
+        with patch("api.routers.lodging.pb", mock_pb):
+            client = _write_client(_manage_user(), mock_pb)
+            mock_pb.collection.return_value.get_full_list.side_effect = lambda **_: []
+            response = client.request(
+                "DELETE",
+                "/api/lodging/write-ins",
+                json={
+                    "year": 2026,
+                    "session_cm_id": 9999999,
+                    "unit_id": "u1",
+                    "occupant_name": "Olivia Chen",
+                },
+            )
+
+        assert response.status_code == 404, response.text
+
+    def test_a_blank_occupant_is_refused(self, mock_pb: MagicMock) -> None:
+        """A blank name addresses nothing. `family_available: null` is the
+        verb that names no occupant."""
+        with patch("api.routers.lodging.pb", mock_pb):
+            client = _write_client(_manage_user(), mock_pb)
+            response = client.request(
+                "DELETE",
+                "/api/lodging/write-ins",
+                json={"year": 2026, "session_cm_id": 1000001, "unit_id": "u1", "occupant_name": ""},
+            )
+
+        assert response.status_code == 422
+
+
+class TestAnOccupancyWriteMustNameItsOccupant:
+    """kindred#2583 step 6's sub-task: a blank name is refused on the STAFF
+    write path, and only there.
+
+    Under Design B `(unit, occupant_name)` is the address, so a blank-named
+    row is unaddressable by the edit and by the delete alike, and two of them
+    on one unit collide under the narrowed index. The ingest-shaped writers
+    never build one of these requests, so the requirement lands where a human
+    is typing and nowhere else.
+    """
+
+    def test_writing_somebody_in_without_a_name_is_refused(self, mock_pb: MagicMock) -> None:
+        with patch("api.routers.lodging.pb", mock_pb):
+            client = _write_client(_manage_user(), mock_pb)
+            response = client.put(
+                "/api/lodging/availability",
+                json={
+                    "year": 2026,
+                    "session_cm_id": 1000001,
+                    "unit_id": "u1",
+                    "family_available": False,
+                    "reason": "Burst pipe",
+                },
+            )
+
+        assert response.status_code == 422
+        mock_pb.collection.return_value.create.assert_not_called()
+
+    def test_a_release_still_needs_no_name(self, mock_pb: MagicMock) -> None:
+        with patch("api.routers.lodging.pb", mock_pb):
+            client = _write_client(_manage_user(), mock_pb)
+            response = client.put(
+                "/api/lodging/availability",
+                json={"year": 2026, "session_cm_id": 1000001, "unit_id": "u1", "family_available": True},
+            )
+
+        assert response.status_code == 200, response.text
+
+    def test_a_clear_still_needs_no_name(self, mock_pb: MagicMock) -> None:
+        with patch("api.routers.lodging.pb", mock_pb):
+            client = _write_client(_manage_user(), mock_pb)
+            response = client.put(
+                "/api/lodging/availability",
+                json={"year": 2026, "session_cm_id": 1000001, "unit_id": "u1", "family_available": None},
+            )
+
+        assert response.status_code == 200, response.text
 
 
 class TestPushPreviewEndpoint:

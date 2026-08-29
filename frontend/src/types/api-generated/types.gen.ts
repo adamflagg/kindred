@@ -7789,6 +7789,56 @@ export type WriteInCover = {
 }
 
 /**
+ * WriteInDeleteRequest
+ *
+ * Remove ONE occupant from one unit, leaving everything else standing.
+ *
+ * kindred#2583 step 7. `PUT /availability` with `family_available: null`
+ * stays the CLEAR-THIS-UNIT-ENTIRELY verb -- it drops the role row and every
+ * occupancy row on the unit, which is exactly what it means today while a
+ * unit can hold one. This is the other half: "take Chen out of the shared
+ * cabin and leave Johnson where she is."
+ *
+ * ADDRESSED BY IDENTITY, NOT BY RECORD ID, following
+ * `PlacementDeleteRequest` and `DELETE /api/lodging/placements`: the row is
+ * named by values the client already holds, and a write-in's record id is
+ * not among them (Design A, which would have published one, was declined).
+ * Under Design B `(unit_id, occupant_name)` is that identity.
+ *
+ * `occupant_name` is REQUIRED here, unlike on the write request above,
+ * because it is the whole address rather than a payload field. There is no
+ * "remove the unnamed one" — that is what the clear verb is for.
+ *
+ * ⚠️ OQ-8. The spec marks this shape "verify against staff expectation
+ * before building". It is the recommended one and stays cheap to revise
+ * while the feature is dark behind the unique index.
+ */
+export type WriteInDeleteRequest = {
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * Session Cm Id
+   */
+  session_cm_id: number
+  /**
+   * Scenario
+   *
+   * saved_scenarios record id; blank is the live board
+   */
+  scenario?: string
+  /**
+   * Unit Id
+   */
+  unit_id: string
+  /**
+   * Occupant Name
+   */
+  occupant_name: string
+}
+
+/**
  * YearEnrollment
  *
  * Enrollment breakdown for a single year.
@@ -11045,6 +11095,33 @@ export type SetAvailabilityApiLodgingAvailabilityPutResponses = {
 
 export type SetAvailabilityApiLodgingAvailabilityPutResponse =
   SetAvailabilityApiLodgingAvailabilityPutResponses[keyof SetAvailabilityApiLodgingAvailabilityPutResponses]
+
+export type DeleteWriteInApiLodgingWriteInsDeleteData = {
+  body: WriteInDeleteRequest
+  path?: never
+  query?: never
+  url: '/api/lodging/write-ins'
+}
+
+export type DeleteWriteInApiLodgingWriteInsDeleteErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type DeleteWriteInApiLodgingWriteInsDeleteError =
+  DeleteWriteInApiLodgingWriteInsDeleteErrors[keyof DeleteWriteInApiLodgingWriteInsDeleteErrors]
+
+export type DeleteWriteInApiLodgingWriteInsDeleteResponses = {
+  /**
+   * Successful Response
+   */
+  200: LodgingWriteResponse
+}
+
+export type DeleteWriteInApiLodgingWriteInsDeleteResponse =
+  DeleteWriteInApiLodgingWriteInsDeleteResponses[keyof DeleteWriteInApiLodgingWriteInsDeleteResponses]
 
 export type GetPushPreviewApiLodgingPushPreviewGetData = {
   body?: never
