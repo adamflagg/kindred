@@ -90,6 +90,28 @@ describe('parseSyncJobIds rejects what it cannot parse (kindred#2593)', () => {
     expect(() => parseSyncJobIds(src)).toThrow(/renamed or removed/)
   })
 
+  // The remaining false-GREEN hole after the shape check, found by CodeRabbit on this PR: the
+  // literal search started at the function but was not bounded by it. Let statusSyncTypes()
+  // return a helper's result and the search runs on into the NEXT function's slice literal,
+  // parsing a plausible-looking wrong set that the three coverage guards then validate against.
+  it("throws rather than reading a later function's slice literal", () => {
+    const src = [
+      'package sync',
+      '',
+      'func statusSyncTypes() []string {',
+      '\treturn buildStatusSyncTypes()',
+      '}',
+      '',
+      'func unrelatedNames() []string {',
+      '\treturn []string{',
+      '\t\t"not_a_job",',
+      '\t}',
+      '}',
+      '',
+    ].join('\n')
+    expect(() => parseSyncJobIds(src)).toThrow(/no longer returns a/)
+  })
+
   it('throws on an empty list rather than returning one', () => {
     expect(() => parseSyncJobIds(wrap('\t\t// nothing here yet'))).toThrow(/zero job IDs/)
   })

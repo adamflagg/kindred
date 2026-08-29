@@ -5,6 +5,9 @@ const API_GO_PATH = resolve(__dirname, '../../../pocketbase/sync/api.go')
 
 const FUNC_START_MARKER = 'func statusSyncTypes() []string {'
 const LITERAL_START_MARKER = 'return []string{'
+// statusSyncTypes()'s own closing brace: the first "}" alone at column 0 after the signature.
+// The slice literal's closing "}" one line above it is indented with a tab, so it never matches.
+const FUNC_END_MARKER = '\n}'
 // The slice literal's closing brace is the first "}" indented one tab on its own line -- the
 // function's own closing brace sits at column 0, one line further down.
 const LITERAL_END_MARKER = '\n\t}'
@@ -54,8 +57,18 @@ export function parseSyncJobIds(source: string): string[] {
     )
   }
 
+  // Every search below is bounded by the function's own closing brace -- the first "}" at
+  // column 0 after the signature. Without that bound, a statusSyncTypes() that returned a
+  // helper's result (`return buildStatusSyncTypes()`) would send the literal search running on
+  // into the NEXT function's `[]string{...}`, and the three coverage guards would then validate
+  // the frontend against a plausible-looking wrong set instead of failing.
+  const funcEnd = source.indexOf(FUNC_END_MARKER, funcStart)
+  if (funcEnd === -1) {
+    throw new Error('Could not find the end of statusSyncTypes() in pocketbase/sync/api.go')
+  }
+
   const literalStart = source.indexOf(LITERAL_START_MARKER, funcStart)
-  if (literalStart === -1) {
+  if (literalStart === -1 || literalStart >= funcEnd) {
     throw new Error(
       `statusSyncTypes() no longer returns a ${JSON.stringify(LITERAL_START_MARKER)} literal ` +
         `-- this parser (kindred#2593) needs updating to match`
@@ -63,7 +76,7 @@ export function parseSyncJobIds(source: string): string[] {
   }
 
   const literalEnd = source.indexOf(LITERAL_END_MARKER, literalStart)
-  if (literalEnd === -1) {
+  if (literalEnd === -1 || literalEnd >= funcEnd) {
     throw new Error('Could not find the end of statusSyncTypes()`s slice literal in api.go')
   }
 
