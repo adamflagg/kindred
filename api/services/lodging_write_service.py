@@ -1147,6 +1147,49 @@ class LodgingWriteService:
         update_occupancy = self.repository.update_draft_write_in if in_scenario else self.repository.update_write_in
         delete_occupancy = self.repository.delete_draft_write_in if in_scenario else self.repository.delete_write_in
 
+        async def recover_occupancy() -> Any | None:
+            """The re-read `_upsert_row` makes after a create the INDEX refused.
+
+            THE OCCUPANT KEY FIRST, which is the genuine lost race and the
+            whole of this once step 8 lands: two staff writing the same
+            occupant into the same cabin, the loser adopting the winner's row.
+
+            ⚠️ THE UNIT-GRAIN FALLBACK IS WHAT MAKES STEP 6 ACTUALLY DARK,
+            rather than merely claiming to be. `idx_lodging_write_in_unique`
+            is still `(session_cm_id, year, unit)` (`1500000161:208`) and its
+            draft twin still `(…, unit, scenario)` -- step 8 is the on-switch
+            and lands last. So while the finder above asks "is THIS occupant
+            here", the index refuses a create over ANY occupant: a write
+            naming somebody the unit does not already hold misses the finder,
+            creates, collides, finds nothing bearing that name to adopt, and
+            answers 400 for a write that succeeded before this change.
+
+            TWO ORDINARY STAFF ACTIONS REACH IT, and neither is exotic:
+            renaming an occupant from `WriteInCard`'s pencil (it seeds its
+            Occupant field from the row and lets the field be edited), and the
+            acknowledged replace from `AssignFamilyModal`, which kindred#2594
+            step 0 deliberately ruled *a warning, not a refusal* following
+            kindred#2432. Adopting the unit's row is exactly what the
+            unit-keyed resolver did before this step, so the boundary really
+            does not move.
+
+            SELF-RETIRING, provably rather than by intention. Once step 8 keys
+            the index on `(unit, occupant_name)`, the only create it can
+            refuse is one bearing a name the finder above WOULD have returned
+            -- so this branch becomes unreachable, not merely unused, and the
+            second occupant creates beside the first. Pinned both ways by
+            `TestTheOccupantKeyDoesNotBreakTheUnitGrainIndexItStillRunsUnder`.
+
+            A 401/403 never arrives here: `REFUSAL_STATUSES` short-circuit
+            inside `_upsert_row` before any re-read, so this cannot turn "you
+            may not" into an adopted neighbour.
+            """
+            raced = await find_occupancy()
+            if raced is not None:
+                return raced
+            on_the_unit = await find_every_occupancy()
+            return on_the_unit[0] if on_the_unit else None
+
         # The ROLE lookup on every call, because every branch has to know
         # about the fact it is NOT writing: an occupancy has a release to
         # drop, a release has an occupancy to drop, and a clear has both.
@@ -1232,7 +1275,11 @@ class LodgingWriteService:
                     # one.
                     **({"scenario": request.scenario} if in_scenario else {}),
                 },
-                find=find_occupancy,
+                # NOT `find_occupancy`: the re-read runs only after the index
+                # has already refused a create, and until step 8 narrows it
+                # the index refuses over a name this finder cannot see. See
+                # `recover_occupancy`.
+                find=recover_occupancy,
                 create=create_occupancy,
                 update=update_occupancy,
                 year=request.year,

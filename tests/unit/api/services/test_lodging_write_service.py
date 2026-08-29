@@ -2800,6 +2800,220 @@ class TestRemovingOneOccupantLeavesTheRestAlone:
         assert _write_in_delete_request().scenario == ""
 
 
+def _indexed_write_in_repo(
+    rows: list[SimpleNamespace], *, narrowed: bool = False, draft: bool = False
+) -> tuple[MagicMock, list[SimpleNamespace]]:
+    """A `_repo()` whose write-in table actually ENFORCES the unique index.
+
+    The `MagicMock` repo the rest of this file uses enforces nothing, which
+    is the blind spot kindred#2477's Task 10 found with a live PocketBase and
+    which `_StatefulWriteInRepo` below already closes for `unpush`. The staff
+    write path needs the same instrument for the same reason: whether
+    `set_availability` resolves a row it must UPDATE is only answerable
+    against a store that refuses the create it would otherwise fall back on.
+
+    `narrowed=False` is TODAY'S index, `(session_cm_id, year, unit)` --
+    `1500000161:208`, still in the tree because kindred#2583 step 8 is the
+    on-switch and has not landed. `narrowed=True` is what step 8 makes it,
+    `(session_cm_id, year, unit, occupant_name)`, and it is here so the
+    pre-step-8 behaviour below can be shown to RETIRE rather than merely be
+    unused.
+    """
+    store = list(rows)
+    key = "u1"
+
+    def collides(data: dict[str, Any]) -> bool:
+        for row in store:
+            if row.unit != data["unit"]:
+                continue
+            if narrowed and row.occupant_name != data["occupant_name"]:
+                continue
+            return True
+        return False
+
+    async def _find(*args: Any) -> SimpleNamespace | None:
+        unit, occupant = args[-2], args[-1]
+        return next((r for r in store if r.unit == unit and r.occupant_name == occupant), None)
+
+    async def _fetch_on_unit(*args: Any) -> list[SimpleNamespace]:
+        return [r for r in store if r.unit == args[-1]]
+
+    async def _create(data: dict[str, Any]) -> SimpleNamespace:
+        if collides(data):
+            raise ClientResponseError(
+                "validation_not_unique", status=400, data={}, url="", is_abort=False, original_error=None
+            )
+        row = SimpleNamespace(
+            id=f"wi_new_{len(store)}",
+            unit=data["unit"],
+            occupant_name=data["occupant_name"],
+            note=data["note"],
+            party_size=data.get("party_size"),
+        )
+        store.append(row)
+        return row
+
+    async def _update(record_id: str, data: dict[str, Any]) -> SimpleNamespace:
+        row = next(r for r in store if r.id == record_id)
+        row.occupant_name = data["occupant_name"]
+        row.note = data["note"]
+        row.party_size = data.get("party_size")
+        return row
+
+    repo = _repo()
+    if draft:
+        repo.find_draft_write_in = AsyncMock(side_effect=_find)
+        repo.fetch_draft_write_ins_on_unit = AsyncMock(side_effect=_fetch_on_unit)
+        repo.create_draft_write_in = AsyncMock(side_effect=_create)
+        repo.update_draft_write_in = AsyncMock(side_effect=_update)
+    else:
+        repo.find_write_in = AsyncMock(side_effect=_find)
+        repo.fetch_write_ins_on_unit = AsyncMock(side_effect=_fetch_on_unit)
+        repo.create_write_in = AsyncMock(side_effect=_create)
+        repo.update_write_in = AsyncMock(side_effect=_update)
+    assert key == "u1"
+    return repo, store
+
+
+class TestTheOccupantKeyDoesNotBreakTheUnitGrainIndexItStillRunsUnder:
+    """kindred#2583 step 6 is only DARK if the still-unnarrowed index agrees.
+
+    Step 6 re-keys the occupancy lookup onto `(unit, occupant_name)` while
+    `idx_lodging_write_in_unique` is still `(session_cm_id, year, unit)`
+    (`1500000161:208`) -- step 8 is the on-switch and lands last. Between the
+    two, a write whose occupant name does NOT match the unit's one row misses
+    the lookup, CREATES, and the unit-grain index refuses the create. There
+    is no second row for the occupant-keyed re-read to adopt, so
+    `_upsert_row` re-raises and a write that worked yesterday answers 400.
+
+    TWO STAFF ACTIONS REACH THAT, and neither is exotic:
+
+    1. RENAMING an occupant -- `WriteInCard`'s pencil seeds its Occupant
+       field from the row and lets a staff member edit it, and correcting a
+       typed name is the ordinary use of an edit form.
+    2. The ACKNOWLEDGED REPLACE -- `AssignFamilyModal` writing a different
+       family into an occupied cabin. kindred#2594 step 0 ruled that a
+       WARNING naming who would be replaced, explicitly *"a warning, not a
+       refusal"*, following kindred#2432. A bare 400 makes it a refusal, and
+       an opaque one.
+
+    So these pin the boundary the PR claims not to move. `MagicMock` alone
+    cannot: it accepts every create, so the collision never happens and the
+    tests go green on a path production answers 400 on.
+    """
+
+    @pytest.mark.asyncio
+    async def test_renaming_the_occupant_of_the_only_row_still_edits_that_row(self) -> None:
+        repo, store = _indexed_write_in_repo(
+            [SimpleNamespace(id="wi_chen", unit="u1", occupant_name="Olivia Chen", note="", party_size=3)]
+        )
+        service = LodgingWriteService(repo)
+
+        await service.set_availability(_availability_request(occupant_name="Olivia Chen-Whitfield", party_size=3))
+
+        assert [(r.id, r.occupant_name) for r in store] == [("wi_chen", "Olivia Chen-Whitfield")]
+
+    @pytest.mark.asyncio
+    async def test_the_acknowledged_replace_still_lands_rather_than_answering_400(self) -> None:
+        """kindred#2594 step 0's warning stays a warning."""
+        repo, store = _indexed_write_in_repo(
+            [SimpleNamespace(id="wi_chen", unit="u1", occupant_name="Olivia Chen", note="", party_size=3)]
+        )
+        service = LodgingWriteService(repo)
+
+        await service.set_availability(_availability_request(occupant_name="Emma Johnson", party_size=2))
+
+        assert [(r.id, r.occupant_name, r.party_size) for r in store] == [("wi_chen", "Emma Johnson", 2)]
+
+    @pytest.mark.asyncio
+    async def test_renaming_inside_a_scenario_still_edits_the_draft_row(self) -> None:
+        """`idx_lodging_write_in_draft_unique` is the same shape plus
+        `scenario` (`1500000161:251`), so the draft half breaks identically
+        and has to be fixed by the same bound group."""
+        repo, store = _indexed_write_in_repo(
+            [SimpleNamespace(id="wd_chen", unit="u1", occupant_name="Olivia Chen", note="", party_size=3)], draft=True
+        )
+        service = LodgingWriteService(repo)
+
+        await service.set_availability(
+            _availability_request(scenario="scn_1", occupant_name="Olivia Chen-Whitfield", party_size=3)
+        )
+
+        assert [(r.id, r.occupant_name) for r in store] == [("wd_chen", "Olivia Chen-Whitfield")]
+
+    @pytest.mark.asyncio
+    async def test_a_refusal_during_the_recovery_is_still_a_refusal(self) -> None:
+        """The bridge must not turn a 401/403 into an adopted neighbour.
+
+        `REFUSAL_STATUSES` short-circuit before any re-read, and widening the
+        recovery must not reach past them.
+        """
+        repo, _ = _indexed_write_in_repo(
+            [SimpleNamespace(id="wi_chen", unit="u1", occupant_name="Olivia Chen", note="", party_size=3)]
+        )
+        repo.create_write_in = AsyncMock(
+            side_effect=ClientResponseError(
+                "forbidden", status=403, data={}, url="", is_abort=False, original_error=None
+            )
+        )
+        service = LodgingWriteService(repo)
+
+        with pytest.raises(HTTPException) as exc:
+            await service.set_availability(_availability_request(occupant_name="Emma Johnson"))
+        assert exc.value.status_code == 403
+        repo.update_write_in.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_under_the_narrowed_index_a_new_occupant_creates_beside_the_first(self) -> None:
+        """AND THE BRIDGE RETIRES ITSELF, which is what makes it safe to add.
+
+        Once step 8 keys the index on `(unit, occupant_name)`, the only
+        create it can refuse is one bearing a name the occupant-keyed lookup
+        would already have found -- so the unit-grain fallback is
+        unreachable, not merely unused. Here the create succeeds outright and
+        the neighbour is untouched: two write-ins in one shareable cabin,
+        which is the feature.
+        """
+        repo, store = _indexed_write_in_repo(
+            [SimpleNamespace(id="wi_chen", unit="u1", occupant_name="Olivia Chen", note="", party_size=3)],
+            narrowed=True,
+        )
+        service = LodgingWriteService(repo)
+
+        await service.set_availability(_availability_request(occupant_name="Emma Johnson", party_size=2))
+
+        assert sorted((r.occupant_name, r.party_size) for r in store) == [
+            ("Emma Johnson", 2),
+            ("Olivia Chen", 3),
+        ]
+        repo.update_write_in.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_under_the_narrowed_index_the_same_occupant_still_recovers_a_lost_race(self) -> None:
+        """The genuine race the recovery was written for, unchanged."""
+        repo, store = _indexed_write_in_repo(
+            [SimpleNamespace(id="wi_chen", unit="u1", occupant_name="Olivia Chen", note="", party_size=3)],
+            narrowed=True,
+        )
+        # The find misses (the winner's row lands between the find and the
+        # create), the create then collides, and the re-read adopts it.
+        first = repo.find_write_in.side_effect
+        calls = {"n": 0}
+
+        async def _miss_once(*args: Any) -> SimpleNamespace | None:
+            calls["n"] += 1
+            if calls["n"] == 1:
+                return None
+            return await first(*args)
+
+        repo.find_write_in = AsyncMock(side_effect=_miss_once)
+        service = LodgingWriteService(repo)
+
+        await service.set_availability(_availability_request(occupant_name="Olivia Chen", party_size=5))
+
+        assert [(r.id, r.party_size) for r in store] == [("wi_chen", 5)]
+
+
 def _wi(unit: str, occ: str, note: str = "", ppl: int | None = None, id: str = "wi_x") -> SimpleNamespace:
     return SimpleNamespace(
         id=id, unit=unit, occupant_name=occ, note=note, party_size=ppl, session_cm_id=1309001, year=2026
