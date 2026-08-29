@@ -1,0 +1,6 @@
+{
+    "_comment": "Copy this file to nicknames_override.json and add camp-specific name mappings. Keys beginning with _ are ignored by the loader.",
+    "_format": "canonical name -> list of variations. Matching is case-insensitive and bidirectional, so either side resolves to the other.",
+    "samuel": ["sam", "sammy"],
+    "olivia": ["liv", "livvy"]
+}

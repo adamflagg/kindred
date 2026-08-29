@@ -56,6 +56,25 @@ logs/
 *.sqlite
 csv_history/
 
+# Private config that no image reads (kindred#2575)
+#
+# kindred#2575 narrowed each Dockerfile to copy config/ BY NAME, so none of
+# these reaches an image today. They are excluded from the build CONTEXT as
+# well because that is the layer that does not depend on getting a COPY glob
+# right: a future `config/branding.prod.json` would be picked up by
+# Dockerfile.api's `config/branding*.json` without anyone noticing, and the
+# three files below are the ones where that would actually matter.
+#
+# google_sheets.json is the Google SERVICE-ACCOUNT KEY. It is gitignored and
+# absent from CI, but it is a real file in a dev checkout, which is the whole
+# reason it is named first.
+config/google_sheets.json
+# Read by the Go binary from the /config volume at runtime, never from an
+# image -- Dockerfile.pocketbase copies no config at all.
+config/lodging_registry.json
+# No code reader anywhere in the repo; only the symlink setup scripts.
+config/sheets_sharing.local.json
+
 # Test and docs
 scripts/test/
 docs/

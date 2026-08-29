@@ -210,13 +210,29 @@ jobs:
           # scripts/dev/ or ci.yml, misattributed to the wrong change.
           guardSelfTests:
             - 'scripts/dev/**'
-            - '.github/workflows/ci.yml'
+            # kindred#2575: ALL workflows, not just ci.yml. TEST 11 of
+            # test-copy-private-config.sh scans every workflow for a
+            # clone-kindred-local call that forgot its allowlist, so watching
+            # only ci.yml would let an allowlist change in cd.yml or
+            # release.yml merge without ever running the test that checks it --
+            # the same unwired-guard shape this filter exists to prevent.
+            - '.github/workflows/**'
             - 'pocketbase/pb_migrations/**'
             # test-worktree-guard.sh lives under scripts/dev/ but its subject
             # is .claude/hooks/worktree-guard.sh. Without this line, editing
             # the hook alone would not run the suite that pins its behavior --
             # the exact unwired-guard shape kindred#2370 was about.
             - '.claude/hooks/**'
+            # kindred#2575: test-copy-private-config.sh lives under scripts/ci/
+            # (it is CI infrastructure, not a dev guard) and its TESTs 11-14
+            # assert over the action and the workflows that call it. Without
+            # these three lines, gutting the allowlist would not run the suite
+            # that pins it -- the same unwired-guard shape as the line above.
+            - 'scripts/ci/copy-private-config.sh'
+            # TEST 21 asserts over .dockerignore's never-ship denylist.
+            - '.dockerignore'
+            - 'scripts/ci/test-copy-private-config.sh'
+            - '.github/actions/**'
           docker:
             - 'docker/**'
             - 'docker-compose*.yml'
@@ -293,6 +309,13 @@ jobs:
       uses: ./.github/actions/clone-kindred-local
       with:
         deploy-key: ${{ secrets.KINDRED_LOCAL_DEPLOY_KEY }}
+        # kindred#2575: the registry and nothing else. This job used to
+        # receive the whole private config/ and local/ trees -- staff names,
+        # branding, camp logos -- to read this one file, in a PUBLIC repo's
+        # workspace. GATE 1 below still runs: this input makes a MISSING
+        # registry a hard failure, but only the guard's own output can show
+        # that the registry was actually USED.
+        paths: config/lodging_registry.json
 
     - name: No hardcoded lodging unit names
       env:
@@ -314,13 +337,16 @@ jobs:
         # close is kindred#1867's -- a guard reporting clean on a scan that did
         # not really happen -- one level up.
         #
-        # GATE 1: the registry must have ARRIVED. clone-kindred-local copies
-        # with `cp ... 2>/dev/null || true`, so a rename or move on the
-        # kindred-local side makes the file simply not appear: the guard then
-        # runs its 15-term fallback sample, exits 0, and CI stays green
-        # forever, with the deploy-key cost paid for nothing.
+        # GATE 1: the registry must have ARRIVED. Since kindred#2575 the action
+        # itself hard-fails on a missing requested path, so the `|| true`
+        # silence this gate was written against is gone and a rename in
+        # kindred-local now goes red one step earlier. Keep the gate anyway: it
+        # is the only check that the file is readable HERE, in this job's
+        # workspace, which is what the guard below actually reads. A future
+        # rewiring -- a changed allowlist, a copy landing somewhere else, a
+        # permissions problem -- reaches the guard without touching the action.
         if [ "$HAVE_DEPLOY_KEY" = "true" ] && [ ! -r config/lodging_registry.json ]; then
-          echo "::error::this run has the kindred-local deploy key, but config/lodging_registry.json never arrived. clone-kindred-local copies with '|| true', so a rename or move in kindred-local degrades this guard to its 15-term fallback sample silently. Fix the copy - do not delete this check."
+          echo "::error::this run has the kindred-local deploy key, but config/lodging_registry.json is not readable in the workspace. The guard would silently fall back to its 15-term sample. Check the 'paths' allowlist passed to clone-kindred-local, and the copy step's output - do not delete this check."
           exit 1
         fi
 
@@ -399,6 +425,13 @@ jobs:
 
     - name: Worktree guard self-test
       run: ./scripts/dev/test-worktree-guard.sh
+
+    # kindred#2575. Needs only bash, awk and coreutils, and builds its fixtures
+    # in a mktemp dir -- no Go, no PocketBase, no private repo. TESTs 11-14 are
+    # source-grep anchors over .github/, which is why the filter below watches
+    # .github/actions/** as well as scripts/.
+    - name: Private config copy self-test
+      run: ./scripts/ci/test-copy-private-config.sh
 
   # Python linting (parallel with other lint jobs)
   python-lint:
