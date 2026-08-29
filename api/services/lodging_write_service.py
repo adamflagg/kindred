@@ -854,9 +854,7 @@ class LodgingWriteService:
             raise pb_error_to_http(exc) from exc
         return record_id, True
 
-    async def _clear_every_row(
-        self, rows: list[Any], delete: Callable[[str], Awaitable[None]]
-    ) -> tuple[str, bool]:
+    async def _clear_every_row(self, rows: list[Any], delete: Callable[[str], Awaitable[None]]) -> tuple[str, bool]:
         """Drop every row in a unit's occupancy list, and say what happened.
 
         The unit-grain twin of `_clear_row`, and it delegates to it rather
@@ -1143,11 +1141,7 @@ class LodgingWriteService:
                 )
             )
             if in_scenario
-            else (
-                lambda: self.repository.fetch_write_ins_on_unit(
-                    request.year, request.session_cm_id, request.unit_id
-                )
-            )
+            else (lambda: self.repository.fetch_write_ins_on_unit(request.year, request.session_cm_id, request.unit_id))
         )
         create_occupancy = self.repository.create_draft_write_in if in_scenario else self.repository.create_write_in
         update_occupancy = self.repository.update_draft_write_in if in_scenario else self.repository.update_write_in
@@ -1165,9 +1159,7 @@ class LodgingWriteService:
             # verb means "clear this unit entirely", which is what it already
             # means while a unit can hold one row -- so the boundary does not
             # move and the shareable case stops being a coin flip.
-            write_in_id, write_in_deleted = await self._clear_every_row(
-                await find_every_occupancy(), delete_occupancy
-            )
+            write_in_id, write_in_deleted = await self._clear_every_row(await find_every_occupancy(), delete_occupancy)
             role_id, role_deleted = await self._clear_row(existing_role, self.repository.delete_availability)
             # The occupancy id is reported in preference to the role id when
             # both were there. It is the one the board was almost certainly
@@ -1698,6 +1690,15 @@ class LodgingWriteService:
         # between the entry re-classify and the apply would otherwise collide
         # AFTER the ledger row already exists, making the ledger lie about
         # what actually landed.
+        #
+        # ⚠️ ITS REACH DELIBERATELY EXCEEDS THE COLLISION once kindred#2583
+        # step 8 narrows the index: a mid-flight arrival with a DIFFERENT
+        # occupant name would then create cleanly beside the add, so this
+        # would no longer be strictly a collision guard. It stays unit-grain
+        # anyway, because the question it answers is "should a push land on a
+        # board that moved after its own preview" -- and nobody has ruled that
+        # it should. OQ-3's answer is scoped to `unpush`'s recreate guard; see
+        # the comment at the check itself.
         live_rows_with_ids = await self._live_rows_with_ids(request.year, request.session_cm_id)
         # ⚠️ A LIST PER KEY ON BOTH, because a `dict` built from a list drops a
         # duplicate key SILENTLY and both of these keys can repeat once a unit

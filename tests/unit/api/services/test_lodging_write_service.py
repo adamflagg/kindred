@@ -2650,7 +2650,9 @@ class TestClearingAUnitClearsEveryOccupantOnIt:
     async def test_a_refused_delete_during_a_clear_keeps_its_status(self) -> None:
         repo = _repo(fetch_write_ins_on_unit=[SimpleNamespace(id="wi_chen")])
         repo.delete_write_in = AsyncMock(
-            side_effect=ClientResponseError("forbidden", status=403, data={}, url="", is_abort=False, original_error=None)
+            side_effect=ClientResponseError(
+                "forbidden", status=403, data={}, url="", is_abort=False, original_error=None
+            )
         )
         service = LodgingWriteService(repo)
 
@@ -2754,7 +2756,9 @@ class TestRemovingOneOccupantLeavesTheRestAlone:
     async def test_a_refused_delete_keeps_its_status(self) -> None:
         repo = _repo(find_write_in=SimpleNamespace(id="wi_chen"))
         repo.delete_write_in = AsyncMock(
-            side_effect=ClientResponseError("forbidden", status=403, data={}, url="", is_abort=False, original_error=None)
+            side_effect=ClientResponseError(
+                "forbidden", status=403, data={}, url="", is_abort=False, original_error=None
+            )
         )
         service = LodgingWriteService(repo)
 

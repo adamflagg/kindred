@@ -1362,9 +1362,7 @@ class LodgingRepository:
     async def delete_availability(self, record_id: str) -> None:
         await asyncio.to_thread(self.pb.collection(LODGING_AVAILABILITY).delete, record_id)
 
-    async def find_write_in(
-        self, year: int, session_cm_id: int, unit_pb_id: str, occupant_name: str
-    ) -> Any | None:
+    async def find_write_in(self, year: int, session_cm_id: int, unit_pb_id: str, occupant_name: str) -> Any | None:
         """The LIVE write-in naming this occupant in this unit, or None.
 
         Keyed exactly as `idx_lodging_write_in_unique` is once kindred#2583
