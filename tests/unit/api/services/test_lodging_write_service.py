@@ -2533,15 +2533,51 @@ class TestABlankOccupantIsRefusedOnTheStaffWritePath:
         request = _availability_request(family_available=None, occupant_name="")
         assert request.occupant_name == ""
 
-    def test_the_ingest_shaped_writers_are_untouched(self, write_service: LodgingWriteService) -> None:
-        """The requirement is on the REQUEST model, not on the column.
+    @pytest.mark.asyncio
+    async def test_a_blank_named_row_still_copies_into_a_scenario(self) -> None:
+        """The requirement is on the REQUEST model, not on the column, and
+        this is the half that has to be EXERCISED rather than asserted about.
 
-        `_seed_write_ins` copies whatever the source row carries and
-        `execute_push`/`unpush` write from a ledger, none of which builds an
-        `AvailabilityWriteRequest`. A blank-named row already in the database
-        therefore still copies, still pushes and still reverts.
+        `_seed_write_ins` copies whatever the source row carries and never
+        builds an `AvailabilityWriteRequest`, so a legacy row with no author
+        still seeds a scenario. Written as a call rather than as an assertion
+        about the service's attributes: a shape check would pass with the
+        validator deleted, and would therefore pin nothing.
         """
-        assert not hasattr(write_service, "_require_occupant_name")
+        repo = _repo()
+        service = LodgingWriteService(repo)
+
+        copied = await service._seed_write_ins(
+            rows=[SimpleNamespace(unit="u1", occupant_name="", note="", party_size=None)],
+            session_pb_id="sess_1",
+            session_cm_id=1000001,
+            year=2026,
+            scenario="scn_1",
+        )
+
+        assert copied == 1
+        assert repo.create_draft_write_in.call_args[0][0]["occupant_name"] == ""
+
+    @pytest.mark.asyncio
+    async def test_a_blank_named_row_still_pushes(self) -> None:
+        """`execute_push` writes from the ledger it just classified, not
+        through the request model, so the same legacy row still reaches the
+        live board."""
+        repo = _repo(
+            fetch_units=[_u("uc", "cedar-9")],
+            fetch_draft_write_ins=[_wi("uc", "", ppl=None, id="wd_blank")],
+            create_push_event=SimpleNamespace(id="push_1"),
+        )
+        svc = LodgingWriteService(repo)
+        preview = await svc.preview_push(2026, 1309001, "scn_1")
+
+        out = await svc.execute_push(
+            PushExecuteRequest(year=2026, session_cm_id=1309001, scenario="scn_1", digest=preview.digest, decisions={}),
+            pushed_by="user_1",
+        )
+
+        assert out.added == 1
+        assert repo.create_write_in.call_args[0][0]["occupant_name"] == ""
 
 
 class TestClearingAUnitClearsEveryOccupantOnIt:
@@ -2601,6 +2637,37 @@ class TestClearingAUnitClearsEveryOccupantOnIt:
         deleted = [call.args[0] for call in repo.delete_write_in.call_args_list]
         assert sorted(deleted) == ["wi_chen", "wi_johnson"]
         repo.create_availability.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_a_release_reads_the_occupants_after_the_role_row_lands(self) -> None:
+        """The read-to-drop window is where a cabin ends up advertised to
+        families with somebody in it -- "the worst of the three outcomes
+        available here", by this branch's own comment.
+
+        A write-in created between the read and the drop survives the
+        release, so the read belongs AFTER the role write rather than before
+        it: everything the release is responsible for opening is then in
+        front of it, and the window is the drop alone rather than the whole
+        role round trip plus the drop.
+        """
+        order: list[str] = []
+
+        async def _role(data: dict[str, Any]) -> SimpleNamespace:
+            order.append("role")
+            return SimpleNamespace(id="av_1")
+
+        async def _read(*_args: Any) -> list[Any]:
+            order.append("read")
+            return []
+
+        repo = _repo()
+        repo.create_availability = AsyncMock(side_effect=_role)
+        repo.fetch_write_ins_on_unit = AsyncMock(side_effect=_read)
+        service = LodgingWriteService(repo)
+
+        await service.set_availability(_availability_request(family_available=True, occupant_name=""))
+
+        assert order == ["role", "read"]
 
     @pytest.mark.asyncio
     async def test_the_clear_never_asks_the_occupant_keyed_finder(self) -> None:

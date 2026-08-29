@@ -1235,11 +1235,6 @@ class LodgingWriteService:
         # truthiness, because the one place that starts is the place a later
         # edit folds a write-in into a clear.
         if request.family_available is True:
-            # The occupancy rows this release will drop, read BEFORE the role
-            # row is written -- see the ORDER paragraph in the docstring: the
-            # new fact lands first, and the drop that follows must be of the
-            # state this call actually looked at.
-            occupied_by = await find_every_occupancy()
             record = await self._upsert_row(
                 what="availability",
                 existing=existing_role,
@@ -1256,7 +1251,18 @@ class LodgingWriteService:
             # EVERY occupant, for the reason the clear branch above states:
             # a cabin advertised to families with somebody still in it is the
             # worst of the three outcomes available here.
-            await self._clear_every_row(occupied_by, delete_occupancy)
+            #
+            # READ AFTER THE ROLE ROW LANDS, not before it. That is the ORDER
+            # paragraph in the docstring taken to its conclusion: the new fact
+            # goes first, and everything this release is responsible for
+            # opening is then in FRONT of the read. Read beforehand, a
+            # write-in created while the role round trip was in flight is
+            # invisible to the drop and survives under an advertised-open
+            # cabin -- the exact outcome the sentence above calls the worst
+            # available. The remaining window is the drop alone, which is as
+            # narrow as this can be without a transaction the client does not
+            # have.
+            await self._clear_every_row(await find_every_occupancy(), delete_occupancy)
         else:
             record = await self._upsert_row(
                 what="write-in",
