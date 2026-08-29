@@ -181,17 +181,24 @@ function capacityVerdict(
   if (capacity === null) return { fit: 'fits', note: null }
   // A written-into room has an occupant `occupied` never counts — a write-in
   // is not a party (kindred#2439) — so its beds have to come from
-  // `writeInDemand`, the SAME reading the card's own drag marks fold in
-  // (`writeInKnown` in `LodgingUnitCard`, since kindred#2503) and the Assign
-  // modal's header states as "N of M beds free". `known` is what decides
-  // whether there is a fact to grade against, not `hasWriteIn`: a fully- or
-  // partly-unsized cover still asserts an occupant nothing has counted, so
-  // this row falls back to the unmeasured-capacity reading above rather than
-  // claim a number it does not have. Once every cover on the card carries a
-  // recorded `party_size` (or an ancestor's whole-card claim), `consumed`
-  // folds into `occupied` exactly as a placed party's own beds already do —
-  // a written-into cabin is graded, not exempted, the moment its occupancy
-  // is a fact rather than a guess.
+  // `writeInDemand`, the same rule the Assign modal's header states as "N of M
+  // beds free". `known` is what decides whether there is a fact to grade
+  // against, not `hasWriteIn`: a fully- or partly-unsized cover still asserts
+  // an occupant nothing has counted, so this row falls back to the
+  // unmeasured-capacity reading above rather than claim a number it does not
+  // have. Once every cover on the card carries a recorded `party_size` (or an
+  // ancestor's whole-card claim), `consumed` folds into `occupied` exactly as
+  // a placed party's own beds already do — a written-into cabin is graded, not
+  // exempted, the moment its occupancy is a fact rather than a guess.
+  //
+  // ⚠️ THE BOARD NO LONGER GRADES THIS WAY, and the divergence is deliberate
+  // (kindred#2543, owner ruling 2026-08-29). The card's own drag marks read
+  // `writeInDemand`'s `usable` rather than `known`, so a partly-sized cabin
+  // reddens and matches off the FLOOR its write-ins leave, agreeing with the
+  // free-spot count the stats bar publishes. The ruling was about those two
+  // surfaces; this modal states facts ("2 of 5 beds free", "needs 3, 2 free")
+  // rather than floors, and was left where it stands. Moving it is an owner
+  // call, not a tidy-up.
   if (!known) return { fit: 'fits', note: null }
   const spots = partySpots(party)
   // `Math.max(0, …)` for the same reason the header does it: a room already

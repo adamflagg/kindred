@@ -661,18 +661,18 @@ class TestWriteInDemand:
     """
 
     def test_no_covers_is_no_demand(self) -> None:
-        assert write_in_demand(15, []) == WriteInDemand(consumed=0, sized=0, known=True)
+        assert write_in_demand(15, []) == WriteInDemand(consumed=0, sized=0, known=True, usable=True)
 
     def test_an_own_sized_cover_consumes_its_size(self) -> None:
         loads = [WriteInLoad("own", 2, 15)]
-        assert write_in_demand(15, loads) == WriteInDemand(consumed=2, sized=2, known=True)
+        assert write_in_demand(15, loads) == WriteInDemand(consumed=2, sized=2, known=True, usable=True)
 
     def test_an_unsized_cover_consumes_the_unit_it_names_but_is_not_sized(self) -> None:
         """The wholesale fallback: `null` means "occupies the room", which is
         what the card's em dash has always asserted. It reaches `consumed` and
         must never reach `sized`."""
         loads = [WriteInLoad("own", None, 15)]
-        assert write_in_demand(15, loads) == WriteInDemand(consumed=15, sized=0, known=False)
+        assert write_in_demand(15, loads) == WriteInDemand(consumed=15, sized=0, known=False, usable=True)
 
     def test_descendants_consume_their_own_capacity_not_the_card_s(self) -> None:
         """A combined house whose four rooms are each written into. Each room
@@ -683,20 +683,21 @@ class TestWriteInDemand:
             WriteInLoad("descendant", None, 2),
             WriteInLoad("descendant", None, 2),
         ]
-        assert write_in_demand(8, loads) == WriteInDemand(consumed=8, sized=0, known=False)
+        assert write_in_demand(8, loads) == WriteInDemand(consumed=8, sized=0, known=False, usable=True)
 
     def test_a_mixture_sums_both_ways_and_is_not_known(self) -> None:
-        """One room counted, three not. `consumed` is exact enough to place
-        against; `known` is false because a partial count is a lower bound, and
-        kindred#2528's rule is that a count which is not a fact supports no
-        claim."""
+        """One room counted, three not. `known` is false because nobody sized
+        every party -- but `usable` is true, and since kindred#2543 that is
+        what the board's own marks read: 7 is a FLOOR on what the write-ins
+        take, so 1 free is a number both surfaces may state. `known` still
+        gates the Assign modal, which states facts rather than floors."""
         loads = [
             WriteInLoad("descendant", 2, 3),
             WriteInLoad("descendant", None, 1),
             WriteInLoad("descendant", None, 2),
             WriteInLoad("descendant", None, 2),
         ]
-        assert write_in_demand(8, loads) == WriteInDemand(consumed=7, sized=2, known=False)
+        assert write_in_demand(8, loads) == WriteInDemand(consumed=7, sized=2, known=False, usable=True)
 
     def test_an_ancestor_takes_the_whole_card_and_contributes_no_sized_people(self) -> None:
         """A house written into whole, then split. Each room is inside a house
@@ -707,7 +708,9 @@ class TestWriteInDemand:
         `known` is TRUE: "the whole card is taken" is a fact, unlike a
         wholesale guess about a room that may be shared.
         """
-        assert write_in_demand(4, [WriteInLoad("ancestor", 2, 7)]) == WriteInDemand(consumed=4, sized=0, known=True)
+        assert write_in_demand(4, [WriteInLoad("ancestor", 2, 7)]) == WriteInDemand(
+            consumed=4, sized=0, known=True, usable=True
+        )
 
     def test_an_ancestor_answers_the_same_regardless_of_load_order(self) -> None:
         """Fix-round finding, reviewer-verified repro: the ancestor branch
@@ -724,7 +727,7 @@ class TestWriteInDemand:
         ancestor = WriteInLoad("ancestor", 2, 7)
         forward = write_in_demand(4, [unsized_descendant, ancestor])
         backward = write_in_demand(4, [ancestor, unsized_descendant])
-        assert forward == backward == WriteInDemand(consumed=4, sized=0, known=True)
+        assert forward == backward == WriteInDemand(consumed=4, sized=0, known=True, usable=True)
 
     def test_an_unmeasured_card_is_not_known_even_with_an_ancestor_cover(self) -> None:
         """An ancestor cover only tells you the whole card is taken, not how
@@ -760,7 +763,7 @@ class TestWriteInDemand:
         """An unsized cover on a unit nobody measured cannot be bounded, so
         nothing on this card is offerable."""
         demand = write_in_demand(8, [WriteInLoad("descendant", None, None)])
-        assert demand == WriteInDemand(consumed=8, sized=0, known=False)
+        assert demand == WriteInDemand(consumed=8, sized=0, known=False, usable=True)
 
     def test_unknown_card_capacity_is_never_known(self) -> None:
         assert write_in_demand(None, [WriteInLoad("own", 2, None)]).known is False
@@ -771,6 +774,91 @@ class TestWriteInDemand:
         must print 2/-, not -/- -- no capacity guard may discard a count
         somebody actually wrote down."""
         assert write_in_demand(None, [WriteInLoad("own", 2, None)]).sized == 2
+
+    # ------------------------------------------------------------------
+    # `usable` -- kindred#2543, owner ruling 2026-08-29.
+    #
+    # `known=False` MEANS THREE DIFFERENT THINGS, and only one of them makes
+    # `consumed` meaningless. `known` answers "did somebody size every party";
+    # `usable` answers "is `consumed` a number you may PUBLISH". The card was
+    # reading the first to decide the second, which is why the stats bar
+    # published a remainder the board declined to claim.
+    #
+    #   1. nobody measured the card      -> consumed is 0 and meaningless
+    #   2. an unsized cover on an unmeasured LEAF -> consumed is the whole card
+    #   3. an unsized cover on a measured leaf    -> consumed is a real FLOOR
+    #
+    # Only (1) withholds. (2) and (3) both publish, because a party cannot
+    # exceed the leaf it sleeps in: the remainder can only understate
+    # availability, never overstate it.
+    # ------------------------------------------------------------------
+
+    def test_a_partly_sized_card_is_not_known_but_its_consumption_is_usable(self) -> None:
+        """CASE 3, and the case this ruling exists for. A container of 10, one
+        cover sized at 2, one unsized cover on a measured room of 3. Nobody
+        sized every party, so `known` is false -- but 5 is a FLOOR on what the
+        write-ins take, because the unsized party cannot be bigger than the
+        room it is sleeping in. The card may print that floor, and must,
+        because it is the number the stats bar already publishes.
+        """
+        loads = [WriteInLoad("descendant", 2, 3), WriteInLoad("descendant", None, 3)]
+        demand = write_in_demand(10, loads)
+        assert demand.consumed == 5
+        assert demand.known is False
+        assert demand.usable is True
+
+    def test_an_unbounded_wholesale_claim_is_still_usable(self) -> None:
+        """CASE 2. An unsized cover on a leaf nobody measured takes the whole
+        card, which is a bound rather than a guess: `consumed == capacity`
+        leaves nothing, and 0 free is exactly what `free_family_spots`
+        publishes. The card agrees with it instead of going quiet.
+        """
+        demand = write_in_demand(8, [WriteInLoad("descendant", None, None)])
+        assert demand.consumed == 8
+        assert demand.known is False
+        assert demand.usable is True
+
+    def test_an_unmeasured_card_is_the_one_thing_that_is_not_usable(self) -> None:
+        """CASE 1, and the trap. `consumed` is returned as 0 there and means
+        nothing at all -- there was no capacity to subtract it from. A card
+        that read `usable` as "not `known`" would offer an unmeasured cabin
+        somebody is written into as wholly free, which is the defect
+        `free_family_spots`' `capacity is None` branch exists to stop.
+        """
+        assert write_in_demand(None, [WriteInLoad("own", 2, None)]).usable is False
+        assert write_in_demand(None, [WriteInLoad("own", None, 3)]).usable is False
+        assert write_in_demand(None, [WriteInLoad("ancestor", 2, 7)]).usable is False
+
+    def test_an_uncovered_card_is_usable_only_once_somebody_has_measured_it(self) -> None:
+        """`known` is vacuously TRUE with no covers -- there is no unsized
+        party to spoil it -- and that is true whether or not anybody has
+        measured the card. `usable` must not inherit that: `writeInDemand(null,
+        [])` answering "yes, publish 0" is how an unmeasured, uncovered room
+        would read as a known zero. The card used to fold `capacityKnown` back
+        in by hand for exactly this; the rule now answers it itself.
+        """
+        assert write_in_demand(None, []).known is True
+        assert write_in_demand(None, []).usable is False
+        assert write_in_demand(15, []).usable is True
+
+    def test_usable_is_exactly_whether_the_card_was_measured(self) -> None:
+        """The whole rule, over every branch: `consumed` is publishable if and
+        only if there was a capacity to subtract it from. Stated once here so
+        a new branch that makes `consumed` meaningless again has to break this
+        test rather than a caller's re-derivation of it.
+        """
+        shapes = [
+            [],
+            [WriteInLoad("own", 2, 15)],
+            [WriteInLoad("own", None, 15)],
+            [WriteInLoad("own", None, None)],
+            [WriteInLoad("ancestor", 2, 7)],
+            [WriteInLoad("descendant", 2, 3), WriteInLoad("descendant", None, 3)],
+            [WriteInLoad("descendant", None, None), WriteInLoad("descendant", 2, 3)],
+        ]
+        for loads in shapes:
+            assert write_in_demand(9, loads).usable is True, loads
+            assert write_in_demand(None, loads).usable is False, loads
 
 
 class TestFreeFamilySpots:
@@ -812,6 +900,25 @@ class TestFreeFamilySpots:
         """Owner ruling 2026-08-20: a room-level write-in does not make the
         rest of the house unavailable."""
         assert free_family_spots(8, [WriteInLoad("descendant", None, 3)]) == 5
+
+    def test_the_remainder_it_publishes_is_the_one_the_card_may_claim(self) -> None:
+        """kindred#2543, owner ruling 2026-08-29: *"it should subsume its leaf
+        as it does today, but also reflect that in the stats bar."*
+
+        THE DIVERGENCE THIS PAIR USED TO CARRY IS GONE. This function has
+        always turned a partly-sized card's `consumed` into a remainder while
+        the board withheld any claim about the same card, because the board
+        gated on `known`. The card now gates on `usable`, so the two surfaces
+        state one number.
+
+        `known` IS STILL NOT READ HERE and must not be (owner ruling
+        2026-08-23) -- the card moved toward this function, not the reverse.
+        """
+        loads = [WriteInLoad("descendant", 2, 3), WriteInLoad("descendant", None, 3)]
+        demand = write_in_demand(10, loads)
+        assert demand.known is False
+        assert demand.usable is True
+        assert free_family_spots(10, loads) == 10 - demand.consumed == 5
 
 
 def _push_unit(id, code, name=None, container=False, parent=""):

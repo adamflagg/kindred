@@ -99,15 +99,19 @@ export type DragFit =
  * What the card already knows about its own beds, passed in rather than
  * re-derived.
  *
- * `known` is NOT simply `effectiveSleeps(...) !== null` any more
- * (kindred#2503). An unmeasured cabin is still one way to get `known:
- * false`, but a fully-measured cabin covered by a write-in withholds too,
- * unless EVERY cover on it is a fact — a recorded size, or an ancestor's
- * whole-card claim (the house was let whole, so a room inside it has no room
- * of its own to offer). A wholesale guess and a partly-sized card (some
- * covers recorded, one not) both withhold, the same as before this task.
- * See `LodgingUnitCard`'s `writeInKnown` for the caller that builds this
- * value, and `writeInDemand` (`writeIn.ts`) for the underlying rule.
+ * `known` is "there is a free-spot number to stand behind here", and
+ * kindred#2543 narrowed it back to that. Between kindred#2503 and that ruling
+ * it also required every write-in cover to be SIZED, so a fully-measured cabin
+ * with one uncounted occupant withheld both marks — while the stats bar
+ * published a free-spot count for the same cabin. The card now publishes what
+ * the server does: an unsized cover is charged the whole capacity of the unit
+ * it names, so the remainder is a FLOOR and can only understate what is free.
+ *
+ * What still withholds: a cabin nobody MEASURED, where `writeInDemand`'s
+ * `consumed` means nothing at all, and a card whose party straddles beyond it.
+ * See `LodgingUnitCard`'s `writeInSpotsUsable` for the caller that builds this
+ * value, and `writeInDemand` (`writeIn.ts`) for the underlying rule and the
+ * three meanings of its `known`.
  *
  * `free` is capacity minus placed occupants minus write-in consumption
  * (`capacity − occupants − writeInConsumed`, plus the dragged party's own
@@ -144,10 +148,10 @@ export const NEUTRAL: DragFit = { state: 'neutral', severity: 'fits' }
  *
  * `known: false` yields FALSE, not true. A count that is not a fact cannot
  * support the claim "you will not fit here" any more than it can support a
- * match — the caller withholds `known` for an unmeasured cabin, a straddling
- * party, and a write-in card where any cover is unsized — wholesale or only
- * partly sized (kindred#2503) — and all three mean the same thing here:
- * nothing to say.
+ * match — the caller withholds `known` for an unmeasured cabin and for a
+ * straddling party, and both mean the same thing here: nothing to say. An
+ * unsized write-in is NO LONGER one of those cases (kindred#2543): it is
+ * charged its leaf's whole capacity, which is a floor rather than an absence.
  *
  * The boundary is `<`, so a party that exactly fills a cabin FITS.
  */
