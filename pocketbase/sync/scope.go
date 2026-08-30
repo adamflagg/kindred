@@ -22,7 +22,10 @@ const (
 )
 
 // scopedID returns the registered service name for a base job at a scope. This is the ONLY
-// place a scoped job id is spelled; nothing else may concatenate the suffix by hand.
+// place the scope suffix is constructed; nothing else may concatenate it by hand. The
+// hand-maintained lists elsewhere in the package (syncJobMeta's rows, orchestrator.go's
+// registration loop, api.go, table_exporter.go) still spell the full id -- Stage 2 of this
+// refactor removes those.
 func scopedID(base string, scope Scope) string {
 	if scope == ScopeAll {
 		return base

@@ -13,11 +13,11 @@ import (
 func TestScopedID(t *testing.T) {
 	t.Parallel()
 
-	if got := scopedID("person_custom_values", ScopeAll); got != "person_custom_values" {
+	if got := scopedID(serviceNamePersonCustomValues, ScopeAll); got != serviceNamePersonCustomValues {
 		t.Errorf("ScopeAll must not appear in an id, got %q", got)
 	}
 	want := "person_custom_values_family_camp"
-	if got := scopedID("person_custom_values", ScopeFamilyCamp); got != want {
+	if got := scopedID(serviceNamePersonCustomValues, ScopeFamilyCamp); got != want {
 		t.Errorf("scopedID(family_camp) = %q, want %q", got, want)
 	}
 }
@@ -97,12 +97,12 @@ func TestCustomValuesCollectionGroupDerived(t *testing.T) {
 func TestScopeFamilyCampSetDerived(t *testing.T) {
 	t.Parallel()
 
-	if len(familyCampBoundedCustomValuesJobs) != 2 {
+	if len(scopeFamilyCampJobs) != 2 {
 		t.Fatalf("exclusion set has %d entries, want 2: %v",
-			len(familyCampBoundedCustomValuesJobs), familyCampBoundedCustomValuesJobs)
+			len(scopeFamilyCampJobs), scopeFamilyCampJobs)
 	}
 	for _, id := range ScopedJobs(ScopeFamilyCamp) {
-		if !familyCampBoundedCustomValuesJobs[id] {
+		if !scopeFamilyCampJobs[id] {
 			t.Errorf("scoped job %q missing from the phase-run exclusion set", id)
 		}
 	}
