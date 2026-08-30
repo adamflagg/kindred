@@ -167,3 +167,51 @@ func TestDerivedQueuesMatchTodaysLists(t *testing.T) {
 		assertSeq(t, string(p)+" phase run", phaseExecutionJobs(p), GetJobsForPhase(p))
 	}
 }
+
+// assertSeqIgnoring delegates to assertSeq after dropping `ignore` from got. Built for
+// TestDailyQueueDerivation: multi_workbook_export's presence depends on google.IsEnabled(),
+// which this test does not control, so its membership is left out of the pinned sequence
+// rather than asserted here.
+func assertSeqIgnoring(t *testing.T, label string, got, want []string, ignore ...string) {
+	t.Helper()
+	filtered := make([]string, 0, len(got))
+	for _, id := range got {
+		if !slices.Contains(ignore, id) {
+			filtered = append(filtered, id)
+		}
+	}
+	assertSeq(t, label, filtered, want)
+}
+
+// TestDailyQueueDerivation pins the daily cron's exact sequence. Literal on purpose: this is
+// the derivation most likely to silently reorder, and the ordering is load-bearing (#2482
+// wants the bounded pass between source and transform; #1416/#1417 want the cleanup last).
+func TestDailyQueueDerivation(t *testing.T) {
+	t.Setenv("IS_DOCKER", "true")
+	want := []string{
+		"session_groups", "sessions", "attendees", "persons", "bunks", "bunk_plans",
+		"bunk_assignments", "staff", "financial_transactions",
+		"person_custom_values_family_camp", "household_custom_values_family_camp",
+		"family_camp_derived", "lodging_assignments", "staff_skills",
+		"financial_aid_applications", "household_demographics", "camper_dietary",
+		"camper_transportation", "quest_registrations", "staff_applications",
+		"staff_vehicle_info", "normalize_geographic", "enrollment_snapshots",
+		"reconcile_request_lifecycle", "bunk_requests", "process_requests",
+		// multi_workbook_export lands before the cleanup only when google.IsEnabled();
+		// ignored here and asserted by TestDailyQueueGate instead.
+		"stranded_assignment_cleanup",
+	}
+	assertSeqIgnoring(t, "daily", getDailySyncJobs(), want, "multi_workbook_export")
+}
+
+// TestDailyQueueGate pins that a closed gate removes exactly one job.
+func TestDailyQueueGate(t *testing.T) {
+	t.Setenv("IS_DOCKER", "")
+	if slices.Contains(getDailySyncJobs(), "process_requests") {
+		t.Error("process_requests must be gated out when IS_DOCKER is unset")
+	}
+	t.Setenv("IS_DOCKER", "true")
+	if !slices.Contains(getDailySyncJobs(), "process_requests") {
+		t.Error("process_requests must be present when IS_DOCKER=true")
+	}
+}

@@ -115,33 +115,51 @@ type JobMeta struct {
 // Jobs are listed in execution order within their phase
 var syncJobMeta = []JobMeta{
 	// Source phase - CampMinder API calls
+	//
+	// The daily ordering below (getDailySyncJobs = cadenceQueue(CadenceDaily)) walks these
+	// rows in declaration order, so each row's dependency comment doubles as the reason it
+	// sits where it does relative to its neighbors. person_tag_defs, custom_field_defs and
+	// divisions are NOT among them -- those are global definitions that run on the weekly
+	// cron (GetWeeklySyncJobs) instead, since they rarely change; they join this table in
+	// Stage 3 (see TestDerivedQueuesMatchTodaysLists's "weekly" skip).
+	//
+	// No dependencies -- sync first so its session_group relation exists for sessions.
 	{ID: "session_groups", Phase: PhaseSource,
 		Description: "Session groups from CampMinder",
 		Cadences:    CadenceDaily, Triggers: TriggerIndividualRoute | TriggerPhaseRun | TriggerFullRun},
+	// Depends on session_groups (for the session_group relation).
 	{ID: "sessions", Phase: PhaseSource,
 		Description: "Sessions from CampMinder",
 		Cadences:    CadenceDaily, Triggers: TriggerIndividualRoute | TriggerPhaseRun | TriggerFullRun},
+	// Depends on sessions.
 	{ID: "attendees", Phase: PhaseSource,
 		Description: "Attendees from CampMinder",
 		Cadences:    CadenceDaily, Triggers: TriggerIndividualRoute | TriggerPhaseRun | TriggerFullRun},
+	// Depends on attendees and divisions. Combined sync: a single CampMinder API call
+	// populates both the persons and households tables (tags are stored as a multi-select
+	// relation on persons).
 	{ID: "persons", Phase: PhaseSource,
 		Description: "Persons + households from CampMinder",
 		Cadences:    CadenceDaily, Triggers: TriggerIndividualRoute | TriggerPhaseRun | TriggerFullRun},
+	// No dependencies.
 	{ID: "bunks", Phase: PhaseSource,
 		Description: "Bunks from CampMinder",
 		Cadences:    CadenceDaily, Triggers: TriggerIndividualRoute | TriggerPhaseRun | TriggerFullRun},
+	// Depends on sessions and bunks.
 	{ID: "bunk_plans", Phase: PhaseSource,
 		Description: "Bunk plans from CampMinder",
 		Cadences:    CadenceDaily, Triggers: TriggerIndividualRoute | TriggerPhaseRun | TriggerFullRun},
 	// bunk_assignments is the ONLY job on two crons: the hourly refresh (RunHourlySync)
 	// as well as the daily sweep, which is what CadenceHourly's bitset exists to express
-	// without listing this row twice.
+	// without listing this row twice. Depends on sessions, persons, bunks.
 	{ID: "bunk_assignments", Phase: PhaseSource,
 		Description: "Bunk assignments from CampMinder",
 		Cadences:    CadenceHourly | CadenceDaily, Triggers: TriggerIndividualRoute | TriggerPhaseRun | TriggerFullRun},
+	// Staff sync: depends on divisions, bunks, persons.
 	{ID: "staff", Phase: PhaseSource,
 		Description: "Staff from CampMinder",
 		Cadences:    CadenceDaily, Triggers: TriggerIndividualRoute | TriggerPhaseRun | TriggerFullRun},
+	// Source data: depends on sessions, persons, households, divisions.
 	{ID: "financial_transactions", Phase: PhaseSource,
 		Description: "Financial transactions from CampMinder",
 		Cadences:    CadenceDaily, Triggers: TriggerIndividualRoute | TriggerPhaseRun | TriggerFullRun},
@@ -155,12 +173,18 @@ var syncJobMeta = []JobMeta{
 	{ID: "household_custom_values", Phase: PhaseExpensive,
 		Description: "Household custom field values",
 		Cadences:    CadenceWeeklyCustomValues, Triggers: TriggerIndividualRoute | TriggerPhaseRun | TriggerFullRun},
-	// Bounded daily family-camp pass (kindred#2482): same API cost per entity as the two
-	// above, scoped to family-camp attendees (any status) and run as part of the daily
-	// cron -- see getDailySyncJobs. No Triggers: neither has an individual POST route
-	// (they run only inside the daily cron), and phaseExecutionJobs deliberately excludes
-	// them from an admin-triggered PhaseExpensive run, and they must never join a full run
-	// (#2489) -- so all three trigger bits stay unset, matching the frontend's
+	// Bounded daily family-camp pass (kindred#2482), scheduled here in the registry's own
+	// declaration order -- between the source jobs above and the transform jobs below -- so
+	// the transform phase (below) sees today's cabin answers instead of up to 7 days stale
+	// ones. Same API cost per entity as the two rows above; scoped to family-camp attendees
+	// (any status, via SessionResolver's attendees-backed cohort) so it stays cheap: ~11.5
+	// min for ~450 households against the weekly sweep's ~43 min for everyone. The weekly
+	// unrestricted sweep (Scheduler, cron "0 4 * * 0", the two rows above) is UNCHANGED and
+	// still refreshes every other custom-values consumer -- dietary, transportation,
+	// financial aid, staff skills, and so on. No Triggers: neither has an individual POST
+	// route (they run only inside the daily cron), and phaseExecutionJobs deliberately
+	// excludes them from an admin-triggered PhaseExpensive run, and they must never join a
+	// full run (#2489) -- so all three trigger bits stay unset, matching the frontend's
 	// manualTrigger: false.
 	{ID: "person_custom_values_family_camp", Phase: PhaseExpensive,
 		Description: "Person custom field values -- bounded daily pass, family-camp attendees, any status",
@@ -171,10 +195,14 @@ var syncJobMeta = []JobMeta{
 		Base:        "household_custom_values", Scope: ScopeFamilyCamp,
 		Cadences: CadenceDaily, CurrentYearOnly: true},
 
-	// Transform phase - PocketBase → PocketBase
+	// Transform phase - PocketBase → PocketBase. On the daily cron, these run using the
+	// freshest source data above, plus today's family-camp custom values (the bounded pass
+	// immediately above) and every other custom value from the most recent weekly sync. New
+	// enrollments, session changes, etc. are reflected immediately.
 	{ID: "family_camp_derived", Phase: PhaseTransform,
 		Description: "Compute family camp tables from custom values",
 		Cadences:    CadenceDaily, Triggers: TriggerIndividualRoute | TriggerPhaseRun | TriggerFullRun},
+	// Also records lodging_value_history alongside the current-state table.
 	{ID: "lodging_assignments", Phase: PhaseTransform,
 		Description: "Derive lodging assignments from CampMinder cabin fields",
 		Cadences:    CadenceDaily, Triggers: TriggerIndividualRoute | TriggerPhaseRun | TriggerFullRun},
@@ -221,6 +249,7 @@ var syncJobMeta = []JobMeta{
 	{ID: "reconcile_request_lifecycle", Phase: PhaseProcess,
 		Description: "Mark moved-requester OBRs for reprocessing",
 		Cadences:    CadenceDaily, Triggers: TriggerPhaseRun | TriggerFullRun, CurrentYearOnly: true},
+	// Depends on persons.
 	{ID: "bunk_requests", Phase: PhaseProcess,
 		Description: "Import bunk request CSV",
 		Cadences:    CadenceDaily, Triggers: TriggerIndividualRoute | TriggerPhaseRun | TriggerFullRun,
@@ -1418,78 +1447,12 @@ func (o *Orchestrator) checkGlobalTablesEmpty() bool {
 	return len(records) == 0
 }
 
-// getDailySyncJobs returns the ordered list of jobs the daily sync runs,
-// respecting inter-job dependencies. stranded_assignment_cleanup is always appended last:
-// it must run after bunk_plans is final so it can sweep scenario drafts left
-// stranded by bunk-plan reorganizations (#1416, #1417). Extracted from
-// RunDailySync so the ordering can be asserted in tests.
-func getDailySyncJobs() []string {
-	// Define sync order (respecting dependencies)
-	// Note: person_tag_defs, custom_field_defs, and divisions run in weekly sync
-	// since they're global definitions that rarely change
-	// Note: "persons" is a combined sync that populates persons and households
-	// tables from a single API call (tags are stored as multi-select relation on persons)
-	orderedJobs := []string{
-		"session_groups",         // No dependencies - sync first for group data
-		"sessions",               // Depends on session_groups (for session_group relation)
-		"attendees",              // Depends on sessions
-		"persons",                // Depends on attendees and divisions (combined sync: persons + households)
-		"bunks",                  // No dependencies
-		"bunk_plans",             // Depends on sessions and bunks
-		"bunk_assignments",       // Depends on sessions, persons, bunks
-		"staff",                  // Staff sync: depends on divisions, bunks, persons
-		"financial_transactions", // Source data: depends on sessions, persons, households, divisions
-		// Bounded daily family-camp custom-values pass (kindred#2482), inserted here --
-		// between the source jobs above and the transform jobs below -- so the transform
-		// phase sees today's cabin answers instead of up to 7 days stale ones. Scoped to
-		// family-camp attendees (any status, via SessionResolver's attendees-backed
-		// cohort) so it stays cheap: ~11.5 min for ~450 households against the weekly
-		// sweep's ~43 min for everyone. The weekly unrestricted sweep (Scheduler, cron
-		// "0 4 * * 0") is UNCHANGED and still refreshes every other custom-values
-		// consumer -- dietary, transportation, financial aid, staff skills, and so on.
-		"person_custom_values_family_camp",
-		"household_custom_values_family_camp",
-		// Transform phase: derived tables run daily using the freshest source data, plus
-		// today's family-camp custom values (the bounded pass immediately above) and every
-		// other custom value from the most recent weekly sync. New enrollments, session
-		// changes, etc. are reflected immediately.
-		"family_camp_derived",
-		"lodging_assignments", // Derived: cabin custom fields -> lodging_assignments (+ history)
-		"staff_skills",
-		"financial_aid_applications",
-		"household_demographics",
-		"camper_dietary",
-		"camper_transportation",
-		"quest_registrations",
-		"staff_applications",
-		"staff_vehicle_info",
-		"normalize_geographic",
-		"enrollment_snapshots",
-		"reconcile_request_lifecycle", // Detect session moves; marks OBRs for reprocessing
-		"bunk_requests",               // CSV import, depends on persons
-	}
-
-	// Only include process_requests in production (Docker) mode
-	// In development, skip AI processing to avoid unnecessary API costs
-	// Process requests can be triggered manually when needed
-	if os.Getenv("IS_DOCKER") == boolTrueStr {
-		orderedJobs = append(orderedJobs, "process_requests")
-	} else {
-		slog.Info("Skipping process_requests in development mode (set IS_DOCKER=true to enable)")
-	}
-
-	// Add Google Sheets multi-workbook export if enabled (runs after all data syncs complete)
-	if google.IsEnabled() {
-		orderedJobs = append(orderedJobs, "multi_workbook_export")
-	}
-
-	// Stranded assignment cleanup runs last — after bunk_plans is final, it
-	// sweeps scenario drafts left stranded by bunk-plan reorganizations
-	// (#1416, #1417).
-	orderedJobs = append(orderedJobs, "stranded_assignment_cleanup")
-
-	return orderedJobs
-}
+// getDailySyncJobs returns the ordered list of jobs the daily sync runs.
+//
+// Derived from the registry: every job carrying CadenceDaily, in phase order then declaration
+// order, minus any whose environment gate is closed, with stranded_assignment_cleanup moved
+// last (see orderQueue). Extracted from RunDailySync so the ordering can be asserted in tests.
+func getDailySyncJobs() []string { return cadenceQueue(CadenceDaily) }
 
 // RunHourlySync runs the hourly refresh — cadenceQueue(CadenceHourly), which today is the
 // single service bunk_assignments — and waits for each to finish.
