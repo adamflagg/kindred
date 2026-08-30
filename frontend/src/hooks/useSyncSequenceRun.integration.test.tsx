@@ -1,24 +1,20 @@
 /**
  * `useSyncSequenceRun` against a REAL React Query cache.
  *
- * Every other test of this hook mocks `useSyncStatusAPI` outright, which means
- * the thing the completion gate actually rests on has never been exercised:
- * that a refetch returning a BYTE-IDENTICAL payload still reaches the hook and
- * still moves the baseline on. That rests on a library behaviour that is not
- * ours — `Query#setData` stamps a fresh `dataUpdatedAt` on EVERY resolved
- * fetch, whatever the payload (`successState`: `dataUpdatedAt ?? Date.now()`,
- * query-core 5.101.4) — and on structural sharing handing `data` back
- * unchanged across such a fetch, so `data` alone could never have carried the
- * signal.
+ * Every other test of this hook mocks `useSyncStatusAPI` (and the query client
+ * under it) outright, which means the thing the completion gate actually rests
+ * on has never been exercised: that `invalidateQueries()`' own promise resolves
+ * only once the refetch it triggered has SETTLED, and that the cache it leaves
+ * behind therefore holds a reading which post-dates the press — even when that
+ * reading is byte-identical to the one already there, which is the normal case
+ * during the arming gap and the one `data` alone could never have carried.
  *
- * If that stopped holding, every mocked suite here would stay green: they all
- * feed `dataUpdatedAt` by hand. This one does not mock the query layer, so it
- * is the only place the assumption is actually checked.
- *
- * What it deliberately does NOT pin is the tracked-props re-render cost noted
- * at the hook's destructure — the flow still completes when `dataUpdatedAt` is
- * read untracked, because other things re-render this hook too. That cost is a
- * measurement, recorded there, not a behaviour under test here.
+ * That rests on library behaviour that is not ours (`refetchQueries` returns
+ * `Promise.all` of the refetches; `Query#setData` bumps `dataUpdateCount` on
+ * every resolved fetch whatever the payload, query-core 5.101.4), and on the
+ * two ways that promise can lie — see kindred#2599's hazards. If any of it
+ * stopped holding, every mocked suite would stay green, because they all model
+ * the cache by hand. This one does not.
  */
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest'
 import { renderHook, act, waitFor } from '@testing-library/react'
@@ -71,9 +67,8 @@ describe('useSyncSequenceRun against a real QueryClient', () => {
 
   it('captures the baseline from a refetch whose payload is byte-identical, and still detects the cutover', async () => {
     let terminal = CLEANUP_BASELINE
-    // A couple of milliseconds of "network" so two successive fetches cannot
-    // share a `Date.now()` millisecond — which is the only way `dataUpdatedAt`
-    // could repeat, and would defer the capture by a whole poll.
+    // A couple of milliseconds of "network", so nothing here can resolve
+    // synchronously and hide an ordering mistake.
     ;(pb.send as Mock).mockImplementation(async () => {
       await new Promise((r) => setTimeout(r, 2))
       return idlePayload(terminal)
@@ -88,22 +83,20 @@ describe('useSyncSequenceRun against a real QueryClient', () => {
 
     await waitFor(() => expect(pb.send).toHaveBeenCalledTimes(1))
 
-    // The press. `start()` invalidates; the refetch returns a payload
-    // IDENTICAL to the one already cached, so `data` keeps its reference and
-    // only `dataUpdatedAt` moves. That reading is what has to arrive.
+    // The press. `start()` invalidates and AWAITS; the refetch returns a
+    // payload IDENTICAL to the one already cached, so `data` keeps its
+    // reference and nothing about the rendered result changes. The promise
+    // resolving is the whole signal that a post-press reading has landed.
     await act(async () => {
-      result.current.start()
+      await result.current.start()
     })
-    await waitFor(() => expect(pb.send).toHaveBeenCalledTimes(2))
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 5))
-    })
+    expect(pb.send).toHaveBeenCalledTimes(2)
     expect(result.current.isRunning).toBe(true)
     expect(onComplete).not.toHaveBeenCalled()
 
     // The chain runs and finishes. No poll ever caught a job running — the
     // terminal end_time moving is the whole signal, and it is only readable
-    // against a baseline the step above must have captured.
+    // against the baseline the step above must have captured.
     terminal = '2026-04-22T10:00:06.000Z'
     await act(async () => {
       await qc.invalidateQueries({ queryKey: queryKeys.syncStatus() })
@@ -111,5 +104,72 @@ describe('useSyncSequenceRun against a real QueryClient', () => {
 
     await waitFor(() => expect(onComplete).toHaveBeenCalledWith('success'))
     expect(onComplete).toHaveBeenCalledTimes(1)
+  })
+
+  /**
+   * kindred#2599, hazard 2 — deduplication onto a fetch that predates the press.
+   *
+   * `Query#fetch` hands back the EXISTING retryer promise when a fetch is
+   * already in flight and `state.data` is still undefined: `cancelRefetch`,
+   * which `refetchQueries` passes by default, can only cancel a refetch that
+   * has something to revert to. So a press landing while the FIRST status
+   * request is outstanding would await a promise that settles with an answer
+   * the server decided before the press — and an unrelated run that finished in
+   * between is then invisible to the baseline and arrives on the next poll,
+   * reading as our chain completing.
+   *
+   * `start()` cancels first, which makes "the reading I trust was requested
+   * after the press" true by construction. Deleting that `cancelQueries` call
+   * turns the last assertion here into `onComplete('success')`.
+   */
+  it('does not adopt a baseline from a poll that was already in flight when the press landed', async () => {
+    const MOVED_BY_AN_UNRELATED_RUN = '2026-04-22T09:59:50.000Z'
+    let terminal = CLEANUP_BASELINE
+    let issued = 0
+    let releasePrePressPoll: (() => void) | undefined
+    ;(pb.send as Mock).mockImplementation(() => {
+      // The server decides its answer when the request goes out. That is what
+      // makes an in-flight poll's payload pre-date anything that happens next.
+      const answer = idlePayload(terminal)
+      issued += 1
+      if (issued === 1) {
+        return new Promise((resolve) => {
+          releasePrePressPoll = () => resolve(answer)
+        })
+      }
+      return Promise.resolve(answer)
+    })
+
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const onComplete = vi.fn()
+    const { result } = renderHook(
+      () => useSyncSequenceRun({ chain: BUNKING_REFRESH_CHAIN, enabled: true, onComplete }),
+      { wrapper: wrapper(qc) }
+    )
+
+    // The first status request is outstanding: nothing is in the cache yet.
+    await waitFor(() => expect(pb.send).toHaveBeenCalledTimes(1))
+    expect(qc.getQueryData(queryKeys.syncStatus())).toBeUndefined()
+
+    // An unrelated run finishes while it is still in flight, and that poll
+    // answers a moment later carrying the value from BEFORE the move.
+    terminal = MOVED_BY_AN_UNRELATED_RUN
+    setTimeout(() => releasePrePressPoll?.(), 5)
+
+    await act(async () => {
+      await result.current.start()
+    })
+
+    // A further poll. Our chain has not started, let alone finished, so the
+    // only thing that has "moved" is what the press should already have seen.
+    await act(async () => {
+      await qc.invalidateQueries({ queryKey: queryKeys.syncStatus() })
+    })
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 20))
+    })
+
+    expect(onComplete).not.toHaveBeenCalled()
+    expect(result.current.isRunning).toBe(true)
   })
 })

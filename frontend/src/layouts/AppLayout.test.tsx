@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { MemoryRouter } from 'react-router'
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query'
 import type { SyncStatusResponse } from '../hooks/useSyncStatusAPI'
+import { queryKeys } from '../utils/queryKeys'
 
 // Mock all heavy dependencies before importing AppLayout
 vi.mock('../contexts/AuthContext', () => ({
@@ -738,28 +739,17 @@ describe('AppLayout Refresh Bunking staleness (kindred#2587)', () => {
   }
 
   /**
-   * `dataUpdatedAt` is what `useSyncSequenceRun`'s `start()` now waits on
-   * (kindred#2595) to tell a genuinely post-press status reading apart from
-   * the stale cache it can no longer trust — it must advance on every
-   * simulated poll here, not stay fixed like the bare `{ data }` this file
-   * mocked before.
+   * What `GET /api/custom/sync/status` would answer right now.
    *
-   * It advances ONCE PER SIMULATED FETCH — per call to this function — and is
-   * then frozen for every render that reads it, which is React Query's real
-   * semantics: `Query#setData` stamps a fresh `dataUpdatedAt` on each resolved
-   * fetch and nothing else touches it, and structural sharing hands renders
-   * back the same `data` reference in between. Returning a freshly-computed
-   * value from inside `mockImplementation` instead would advance it on every
-   * RENDER, which no real query does — and would silently defeat the very gate
-   * these tests exercise: the "arming gap" step below stops being load-bearing,
-   * verified by deleting it and watching the cutover test still pass.
+   * The mocked `useSyncStatusAPI` below is a REAL `useQuery` on the real
+   * `['sync-status']` key, so this drives one cache entry rather than a
+   * hand-fed hook return. `useSyncSequenceRun.start()` takes its baseline from
+   * the reading `invalidateQueries()`' own promise waits for (kindred#2599), so
+   * a mock that never reaches the cache would leave the press with no baseline
+   * at all — and this file used to synthesise an advancing `dataUpdatedAt` by
+   * hand precisely because the old gate could not be exercised any other way.
    */
-  let statusVersion = 0
-  function setStatus(overrides: Record<string, unknown> = {}) {
-    statusVersion += 1
-    const reading = { data: bunkingStatus(overrides), dataUpdatedAt: statusVersion }
-    syncStatusSpy.mockImplementation(() => reading)
-  }
+  let currentStatus: SyncStatusResponse = bunkingStatus()
 
   /**
    * What the bunking board renders, on the real inline key from useSessionBunks.
@@ -794,10 +784,11 @@ describe('AppLayout Refresh Bunking staleness (kindred#2587)', () => {
         },
       },
     })
-    // A FRESH element every time. Re-rendering the same element reference lets
-    // React bail out of reconciliation, so the component never re-reads the
-    // mocked status and a state the test set up is silently never observed.
-    const build = () => (
+    // A WARM cache and no polling, which is the state a page at rest is in —
+    // and the state kindred#2595 is about. Seeding it rather than letting the
+    // mount fetch also keeps the first render synchronous.
+    queryClient.setQueryData(queryKeys.syncStatus(), currentStatus)
+    render(
       <QueryClientProvider client={queryClient}>
         <MemoryRouter initialEntries={['/summer/sessions']}>
           <BunksProbe />
@@ -805,60 +796,51 @@ describe('AppLayout Refresh Bunking staleness (kindred#2587)', () => {
         </MemoryRouter>
       </QueryClientProvider>
     )
-    const utils = render(build())
-    return { ...utils, replay: () => utils.rerender(build()) }
+    return { client: queryClient }
+  }
+
+  /** One 3 s poll landing, through the real cache. */
+  async function poll(client: QueryClient, overrides: Record<string, unknown> = {}) {
+    currentStatus = bunkingStatus(overrides)
+    await act(async () => {
+      await client.invalidateQueries({ queryKey: queryKeys.syncStatus() })
+    })
+  }
+
+  /**
+   * Settle the press: `start()` cancels any in-flight poll, invalidates, and
+   * awaits the refetch before it has a baseline to measure the run against.
+   */
+  async function settlePress() {
+    await act(async () => {})
   }
 
   beforeEach(() => {
     vi.clearAllMocks()
-    statusVersion = 0
     mockPerms = { hasPermission: (p: string) => p === 'bunking.manage', isAdmin: false }
     mockWeekendShell = { session: undefined, isAdultWeekend: false }
     bunksFromServer = 'Bunk 4'
-    setStatus()
-  })
-
-  /** The `dataUpdatedAt` the hook last read, off the spy's own return value. */
-  function lastReadVersion(): number {
-    const results = syncStatusSpy.mock.results
-    return (results[results.length - 1]?.value as { dataUpdatedAt: number }).dataUpdatedAt
-  }
-
-  /**
-   * Pins the mock's fidelity, because the freshness gate under test is only as
-   * honest as the `dataUpdatedAt` it is fed. React Query stamps a fresh one
-   * inside `Query#setData`, on a RESOLVED FETCH and nothing else — a re-render
-   * that reads the same cache entry gets the same number. A helper that
-   * computed a new version inside `mockImplementation` would advance it on
-   * every render instead, and the post-press gate would then be satisfied by
-   * `replay()` alone: measured by deleting the arming-gap step from the
-   * cutover test below, which kept passing until this helper was corrected.
-   */
-  it('advances dataUpdatedAt on a simulated poll only, never on a bare rerender', async () => {
-    const { replay } = renderSummerShell()
-    await screen.findByText('Bunk 4')
-
-    const atRest = lastReadVersion()
-    replay()
-    await act(async () => {})
-    expect(lastReadVersion()).toBe(atRest)
-
-    setStatus()
-    replay()
-    await act(async () => {})
-    expect(lastReadVersion()).toBe(atRest + 1)
+    currentStatus = bunkingStatus()
+    syncStatusSpy.mockImplementation(
+      (opts?: unknown) =>
+        useQuery({
+          queryKey: queryKeys.syncStatus(),
+          queryFn: () => Promise.resolve(currentStatus),
+          enabled: (opts as { enabled?: boolean } | undefined)?.enabled ?? true,
+        }) as unknown as { data: SyncStatusResponse | null }
+    )
   })
 
   it('does NOT invalidate when the endpoint merely answers "started"', async () => {
-    const { replay } = renderSummerShell()
+    const { client } = renderSummerShell()
     await screen.findByText('Bunk 4')
     expect(bunksFetches).toHaveBeenCalledTimes(1)
 
     fireEvent.click(screen.getByRole('button', { name: /Refresh Bunking/i }))
+    await settlePress()
     // The chain is still running; the server has not written anything yet.
     bunksFromServer = 'Bunk 7'
-    setStatus({ bunks: { status: 'running', start_time: '2026-04-22T10:00:01.000Z' } })
-    replay()
+    await poll(client, { bunks: { status: 'running', start_time: '2026-04-22T10:00:01.000Z' } })
 
     // Refetching HERE would re-mark the old rows fresh for another 30 minutes.
     // A SECOND queryFn call is the failure, whether or not the render caught up.
@@ -868,25 +850,24 @@ describe('AppLayout Refresh Bunking staleness (kindred#2587)', () => {
   })
 
   it('lands the refreshed bunks on the board at the cutover', async () => {
-    const { replay } = renderSummerShell()
+    const { client } = renderSummerShell()
     await screen.findByText('Bunk 4')
 
     fireEvent.click(screen.getByRole('button', { name: /Refresh Bunking/i }))
 
-    // The invalidation's own refetch lands first, in the arming gap: nothing
-    // has moved yet. This is what confirms the baseline as genuinely
-    // post-press (kindred#2595) — a chain that landed here, on the very first
-    // post-press reading, would be indistinguishable from an unrelated run
-    // that moved the terminal end_time while the page sat idle.
-    setStatus()
-    replay()
+    // The press's OWN invalidation refetches and settles here, in the arming
+    // gap: nothing has moved yet, and that reading is what becomes the baseline
+    // (kindred#2595, kindred#2599). A chain that landed on this very reading
+    // would be indistinguishable from an unrelated run that moved the terminal
+    // end_time while the page sat idle, which is why it is trusted, not
+    // compared.
+    await settlePress()
 
-    // The chain finishes between this poll and the next one.
+    // The chain finishes between this poll and the last one.
     bunksFromServer = 'Bunk 7'
-    setStatus({
+    await poll(client, {
       stranded_assignment_cleanup: { status: 'success', end_time: '2026-04-22T10:00:06.000Z' },
     })
-    replay()
 
     // WITHOUT the invalidation this stays "Bunk 4" for thirty minutes.
     await waitFor(() => expect(screen.getByTestId('board-bunks').textContent).toBe('Bunk 7'))
@@ -900,23 +881,20 @@ describe('AppLayout Refresh Bunking staleness (kindred#2587)', () => {
    * reverse — so the silence was summer's gap, not weekend's addition.
    */
   it('says so when the chain fails, instead of leaving the board silently stale', async () => {
-    const { replay } = renderSummerShell()
+    const { client } = renderSummerShell()
     await screen.findByText('Bunk 4')
 
     fireEvent.click(screen.getByRole('button', { name: /Refresh Bunking/i }))
+    await settlePress()
     // The first job must actually be OBSERVED running, because a failed
     // outcome is reported off the furthest job seen — a chain that goes
-    // straight from armed to failed reports nothing at all. Flush before
-    // moving it on, or the running poll is never rendered.
-    setStatus({ bunks: { status: 'running', start_time: '2026-04-22T10:00:01.000Z' } })
-    replay()
-    await act(async () => {})
+    // straight from armed to failed reports nothing at all.
+    await poll(client, { bunks: { status: 'running', start_time: '2026-04-22T10:00:01.000Z' } })
 
     bunksFromServer = 'Bunk 7'
-    setStatus({
+    await poll(client, {
       bunks: { status: 'failed', end_time: '2026-04-22T10:00:02.000Z', error: 'CampMinder 502' },
     })
-    replay()
 
     await waitFor(() => expect(toastError).toHaveBeenCalledTimes(1))
     // Nothing landed, so the board must NOT be swept — a failed chain that
@@ -944,12 +922,12 @@ describe('AppLayout Refresh Bunking staleness (kindred#2587)', () => {
         })
     )
 
-    const { replay } = renderSummerShell()
+    const { client } = renderSummerShell()
     await screen.findByText('Bunk 4')
 
     fireEvent.click(screen.getByRole('button', { name: /Refresh Bunking/i }))
-    setStatus({ bunks: { status: 'running', start_time: '2026-04-22T10:00:01.000Z' } })
-    replay()
+    await settlePress()
+    await poll(client, { bunks: { status: 'running', start_time: '2026-04-22T10:00:01.000Z' } })
 
     // React Query calls `mutationFn` on a later tick, so `answerPost` is still
     // the no-op default immediately after the click. Resolving it before the
@@ -962,15 +940,13 @@ describe('AppLayout Refresh Bunking staleness (kindred#2587)', () => {
     await act(async () => {
       answerPost()
     })
-    replay()
 
     expect(screen.getByRole('button', { name: /Refresh Bunking/i })).toBeDisabled()
 
     // ... and released once the terminal job moves.
-    setStatus({
+    await poll(client, {
       stranded_assignment_cleanup: { status: 'success', end_time: '2026-04-22T10:00:06.000Z' },
     })
-    replay()
 
     await waitFor(() =>
       expect(screen.getByRole('button', { name: /Refresh Bunking/i })).not.toBeDisabled()

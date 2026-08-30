@@ -677,7 +677,7 @@ export const AppLayout = () => {
                         icon: '🔄',
                         duration: 2000,
                       })
-                      bunkingRun.start()
+                      void bunkingRun.start()
                       refreshBunkingMutation.mutate()
                     }}
                     // `POST /refresh-bunking` answers in milliseconds while the
