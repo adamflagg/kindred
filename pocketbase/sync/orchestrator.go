@@ -1867,10 +1867,43 @@ func (o *Orchestrator) RunCustomValuesSync(ctx context.Context) error {
 // in this file (RunHourlySync, RunDailySync, RunWeeklySync, RunCustomValuesSync,
 // RunSyncWithOptions) and both of api.go's queued-run handlers route through this one
 // function, so wiring it here is what makes it "the queue" rather than any one caller.
+//
+// A YearSetter service gets origin.year the same way, for the identical reason: it too is a
+// per-run parameter the queue owns, not the job. origin.year == 0 means "the current season"
+// (runOrigin's own doc comment) and resolves via ParseSeasonYear(); a non-zero origin.year (a
+// historical replay, or an explicit-year phase/individual run) sets that exact year directly.
+//
+// This replaces two narrower fixes that used to live in RunSyncWithOptions alone (an explicit
+// SetYear(opts.Year) in its historical branch, and a mirrored current-year branch added right
+// after it): both were per-call-site patches for a problem that is actually structural --
+// MultiWorkbookExport is a long-lived singleton whose year has to be set by whichever queue is
+// about to read it, every time, or it silently carries the last queue's value into this one.
+// Putting it here instead covers every queue uniformly, including RunWeeklySync and
+// RunDailySync (which had the identical exposure and no fix at all -- the weekly one matters
+// most, since CadenceWeeklyGlobal is what makes the export reachable from that queue at all),
+// and any future queue that never gets its own copy of this logic to forget.
+//
+// An unresolvable season for the current-season case is NOT treated as fatal to the whole
+// batch: the year is simply left unset on this one service (its own internal resolution, if
+// it has one, hits the identical ParseSeasonYear() call and fails the identical way -- see
+// e.g. MultiWorkbookExport.Sync() and FamilyCampDerivedSync.Sync()), and every other job in
+// the batch runs normally. Aborting an entire ~27-service run because one job's year can't be
+// resolved would be the wrong blast radius (fix round 2, Important #4) -- that ruling was
+// right for RunSingleSync, where the one service IS the whole run, but does not transfer here.
 func (o *Orchestrator) runSyncAndWait(ctx context.Context, syncType string, origin runOrigin) error {
 	if svc := o.GetService(syncType); svc != nil {
 		if changedAware, ok := svc.(ChangedCollectionsAware); ok {
 			changedAware.SetChangedCollections(o.batchChangedCollections(origin.batchID))
+		}
+		if yearSetter, ok := svc.(YearSetter); ok {
+			if origin.year != 0 {
+				yearSetter.SetYear(origin.year)
+			} else if resolved, err := ParseSeasonYear(); err == nil {
+				yearSetter.SetYear(resolved)
+			} else {
+				slog.Warn("runSyncAndWait: could not resolve current season, leaving year unset",
+					"syncType", syncType, "error", err)
+			}
 		}
 	}
 
@@ -2254,49 +2287,7 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 			o.mu.Unlock()
 		}()
 
-		// multi_workbook_export is not among the services re-registered above -- it stays
-		// the same long-lived singleton every trigger shares (originalServices never
-		// captures it, so the defer above never touches it either). Since Task 13 it runs
-		// as an ordinary queued job through Sync(), which reads m.year directly rather than
-		// taking a year parameter the way the deleted epilogue's
-		// SyncForYears(ctx, []int{opts.Year}, ...) call did. Without this explicit SetYear,
-		// a historical replay would export against whatever year the singleton already
-		// held -- almost certainly the current season, not the year being replayed
-		// (TestHistoricalRunSetsTheExportsYear is the regression guard).
-		//
-		// The else branch below sets it for the current-year case too, for the identical
-		// reason: the field is shared state, and "whoever ran before us probably set it
-		// correctly" is exactly the assumption that fails once ANYTHING can pin the
-		// singleton away from the current season -- which this very branch now can. Left
-		// asymmetric, a historical replay would pin the export to, say, 2020, and the very
-		// next current-year daily/full run would read m.year == 2020 in Sync(), export the
-		// 2020 workbook instead of the current one, and silently skip globals too (Sync()'s
-		// gate is `m.year == currentSeason`) -- with no error, just quietly stale data
-		// (TestCurrentYearRunResetsAStaleExportYear is the regression guard).
-		if svc := o.GetService("multi_workbook_export"); svc != nil {
-			if yearSetter, ok := svc.(YearSetter); ok {
-				yearSetter.SetYear(opts.Year)
-			}
-		}
-
 		slog.Info("Running sync with year override", "year", opts.Year)
-	} else {
-		// Current-year mode re-registers nothing above (the default-registered services
-		// already target the current season), but multi_workbook_export still needs an
-		// explicit reset -- see the historical branch's comment just above for why "not
-		// setting" is not good enough for this particular field. Fails closed on an
-		// unresolvable season, matching handleIndividualSync, the "unified" queue branch,
-		// RunSingleSync, and Sync() itself: exporting -- or silently skipping globals for --
-		// an unknown year is worse than refusing to run at all.
-		if svc := o.GetService("multi_workbook_export"); svc != nil {
-			if yearSetter, ok := svc.(YearSetter); ok {
-				year, err := ParseSeasonYear()
-				if err != nil {
-					return fmt.Errorf("resolving current season for multi_workbook_export: %w", err)
-				}
-				yearSetter.SetYear(year)
-			}
-		}
 	}
 
 	// Run services

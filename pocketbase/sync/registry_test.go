@@ -846,6 +846,101 @@ func TestQueueScopesChangedCollectionsToItsBatch(t *testing.T) {
 	}
 }
 
+// yearSetterSpy is a minimal Service + YearSetter fake, mirroring changedCollectionsSpy's
+// shape for the identical reason: distinguishing "never called" from "called with 0".
+type yearSetterSpy struct {
+	name       string
+	year       int
+	yearWasSet bool
+}
+
+func (s *yearSetterSpy) Sync(context.Context) error { return nil }
+func (s *yearSetterSpy) Name() string               { return s.name }
+func (s *yearSetterSpy) GetStats() Stats            { return Stats{} }
+func (s *yearSetterSpy) SetYear(year int) {
+	s.year = year
+	s.yearWasSet = true
+}
+
+// TestRunSyncAndWaitSetsYearFromOrigin pins the structural fix (Task 13 fix round 2):
+// runSyncAndWait -- the one function every queue in this file routes through -- sets a
+// YearSetter service's year from origin.year before Sync() runs, the same way it already
+// sets a ChangedCollectionsAware service's changed-collections filter from the same origin.
+// 0 means "the current season" (runOrigin.year's own doc comment) and resolves via
+// ParseSeasonYear(); a non-zero origin.year (a historical replay, or an explicit-year
+// phase/individual run) sets that exact year directly. This is what makes the fix apply
+// uniformly to every queue -- including RunWeeklySync and RunDailySync, which had the
+// identical exposure and no fix at all before this -- instead of needing a matching call at
+// each one.
+//
+// Registered in serialGroups: CAMPMINDER_SEASON_ID is t.Setenv.
+func TestRunSyncAndWaitSetsYearFromOrigin(t *testing.T) {
+	t.Setenv("CAMPMINDER_SEASON_ID", "2025")
+	o := newTestOrchestrator(t)
+
+	t.Run("origin.year == 0 resolves to the current season", func(t *testing.T) {
+		spy := &yearSetterSpy{name: "current_spy"}
+		o.RegisterService("current_spy", spy)
+		origin := newBatch(triggerManual)
+		o.registerBatch(origin.batchID)
+		if err := o.runSyncAndWait(context.Background(), "current_spy", origin); err != nil {
+			t.Fatalf("runSyncAndWait: %v", err)
+		}
+		if !spy.yearWasSet || spy.year != 2025 {
+			t.Errorf("expected SetYear(2025), got yearWasSet=%v year=%d", spy.yearWasSet, spy.year)
+		}
+	})
+
+	t.Run("origin.year != 0 sets that exact year", func(t *testing.T) {
+		spy := &yearSetterSpy{name: "historical_spy"}
+		o.RegisterService("historical_spy", spy)
+		origin := newBatch(triggerHistorical).forYear(2020)
+		o.registerBatch(origin.batchID)
+		if err := o.runSyncAndWait(context.Background(), "historical_spy", origin); err != nil {
+			t.Fatalf("runSyncAndWait: %v", err)
+		}
+		if !spy.yearWasSet || spy.year != 2020 {
+			t.Errorf("expected SetYear(2020), got yearWasSet=%v year=%d", spy.yearWasSet, spy.year)
+		}
+	})
+}
+
+// TestWeeklySyncResetsAStaleExportYear pins the fifth stale-year path fix round 2 found:
+// RunWeeklySync (the Sunday-2am cron) reaches Sync() through runSyncAndWait exactly like
+// RunSyncWithOptions does, and before this fix nothing set the export's year there either.
+// This is the exposure this task itself created -- CadenceWeeklyGlobal is what makes the
+// export reachable from this queue at all, and the first thing a stale year kills is exactly
+// the globals export that bit exists to add (Sync()'s globals gate is `m.year ==
+// currentSeason`).
+//
+// Registered in serialGroups: GOOGLE_SHEETS_ENABLED and newExportWithFakeWriter's
+// CAMPMINDER_SEASON_ID are both t.Setenv.
+func TestWeeklySyncResetsAStaleExportYear(t *testing.T) {
+	t.Setenv("GOOGLE_SHEETS_ENABLED", "true")
+
+	app := newDryRunTestApp(t)
+	o := NewOrchestrator(app)
+	o.SetJobSpacing(0)
+
+	exp := newExportWithFakeWriter(t) // constructed at year 2025 (CAMPMINDER_SEASON_ID)
+	exp.SetYear(2020)                 // simulate a prior historical replay's leftover pin
+	o.RegisterService("multi_workbook_export", exp)
+	// divisions, not person_tag_defs -- see TestCurrentYearRunResetsAStaleExportYear's
+	// identical note on why.
+	o.RegisterService("divisions", &MockService{name: "divisions", stats: Stats{Created: 1}})
+
+	if err := o.RunWeeklySync(context.Background()); err != nil {
+		t.Fatalf("RunWeeklySync: %v", err)
+	}
+
+	if exp.year != 2025 {
+		t.Errorf("the weekly-global cron must reset a stale export year, got %d, want 2025", exp.year)
+	}
+	if !fakeWriterGlobalsWritten(exp) {
+		t.Error("expected globals to be exported once the year was correctly reset to the current season")
+	}
+}
+
 // TestRunSingleSyncWithServiceRecordsBatchChange pins applyCompletionStatus call site 2:
 // RunSingleSyncWithService must route its completion through recordBatchChange exactly like
 // runSingleSyncInternal does, or a request-scoped run (kindred#1881/#2105's pattern) silently

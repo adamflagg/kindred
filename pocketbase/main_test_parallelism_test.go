@@ -276,6 +276,16 @@ var serialGroups = []struct {
 	},
 	{
 		pkg:    "sync",
+		reason: "t.Setenv: CAMPMINDER_SEASON_ID drives runSyncAndWait's own season resolution",
+		tests:  []string{"TestRunSyncAndWaitSetsYearFromOrigin"},
+	},
+	{
+		pkg:    "sync",
+		reason: "t.Setenv: GOOGLE_SHEETS_ENABLED and newExportWithFakeWriter's CAMPMINDER_SEASON_ID",
+		tests:  []string{"TestWeeklySyncResetsAStaleExportYear"},
+	},
+	{
+		pkg:    "sync",
 		reason: "t.Setenv: GOOGLE_SHEETS_ENABLED drives multi_workbook_export's Gate in GetWeeklySyncJobs",
 		tests: []string{
 			"TestWeeklySyncJobsGatesExportOnGoogleEnabled",
