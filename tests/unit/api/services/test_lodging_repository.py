@@ -14,6 +14,7 @@ from api.services.lodging_repository import (
     PAGE_SIZE,
     WEEKEND_SESSION_TYPES,
     LodgingRepository,
+    _attendee_weekend_session_filter,
 )
 
 
@@ -1305,9 +1306,14 @@ class TestFetchHouseholdFamilyAttendees:
       SAME year's households record, so a PB-id filter can only ever match
       one year. `household_id` is the CampMinder id, which is the identity
       thread across seasons (CLAUDE.md section 1).
-    * `session.session_type = "family"`. Adult weekends are person-grain and
-      enrol the adult directly; letting them through would put a parent's own
-      weekend into their children's journey.
+    * BOTH weekend types, family and adult (kindred#2516). Of 2026's 425
+      enrolled family-camp registrations, 391 hold an enrolled child on a
+      family session and the other 34 are enrolled only on an ADULT weekend;
+      a family-only read drops those 34 households' year. The pairing comes
+      from `_attendee_weekend_session_filter()` so this read cannot drift
+      from the canonical one. ⚠️ The caller SPLITS on `session_type` -- an
+      adult weekend is person-grain and enrols the adult directly, so an
+      undifferentiated walk puts a parent into their children's journey.
     * `status_id = 2`. 2020 has 1,264 family attendee rows and not one
       enrolled -- the whole season cancelled -- and without this filter that
       year renders as a normal one.
@@ -1317,12 +1323,19 @@ class TestFetchHouseholdFamilyAttendees:
     async def test_filters_on_the_campminder_household_id_across_every_year(
         self, repo: LodgingRepository, pb: MagicMock
     ) -> None:
-        await repo.fetch_household_family_attendees(2000001)
+        await repo.fetch_household_weekend_attendees(2000001)
 
         pb.collection.assert_called_with("attendees")
         params = _last_query(pb)
         assert "person.household_id = 2000001" in params["filter"]
+        # BOTH weekend types (kindred#2516), and the adult half is what the
+        # 34 adult-weekend-only households of 2026 are rescued by.
         assert 'session.session_type = "family"' in params["filter"]
+        assert 'session.session_type = "adult"' in params["filter"]
+        # Parenthesised, or the `||` between the two types would swallow the
+        # household and status predicates and read every enrolled attendee at
+        # camp -- an OR at the top level of the filter.
+        assert f"({_attendee_weekend_session_filter()})" in params["filter"]
         assert "status_id = 2" in params["filter"]
         # No year predicate at all -- the sweep IS every year on file.
         assert "year =" not in params["filter"]
@@ -1337,7 +1350,7 @@ class TestFetchHouseholdFamilyAttendees:
         `household_cm_id = 0`. `person.household_id = 0` is a real predicate
         that matches whatever rows carry a zero, so this must never be issued.
         """
-        result = await repo.fetch_household_family_attendees(0)
+        result = await repo.fetch_household_weekend_attendees(0)
 
         assert result == []
         pb.collection.assert_not_called()

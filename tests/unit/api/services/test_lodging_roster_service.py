@@ -225,7 +225,7 @@ def _repo(**overrides: Any) -> MagicMock:
         # default -- a first-time family is the shape the journey must handle,
         # and a bare MagicMock would return an un-awaitable attribute instead
         # of failing where the mistake is.
-        "fetch_household_family_attendees": [],
+        "fetch_household_weekend_attendees": [],
         "fetch_household_adults_by_year": {},
         "fetch_household_registration_years": set(),
         "fetch_family_camp_adults": {},
@@ -304,7 +304,7 @@ def _child(
     birthdate: str = "",
     session: Any | None = None,
 ) -> SimpleNamespace:
-    """An attendee row, `expand`ed the way `fetch_household_family_attendees`
+    """An attendee row, `expand`ed the way `fetch_household_weekend_attendees`
     hands one back. `session` (kindred#2420) is the family-camp session THIS
     attendee row is enrolled in -- omitted by default because most fixtures
     here do not care, which is also the `as_of=None` / "keep the stored
@@ -5124,16 +5124,25 @@ class TestHouseholdJourney:
     3. 2026 -- about 16% placed. A blank there is a genuine to-do, not a gap
        in the record, and the two must not read alike.
     4. 2020 -- 1,264 family attendee rows and not one with `status_id = 2`.
-       The season was cancelled.
-    5. 2021 -- no family attendee rows AT ALL despite 247 registrations and 7
-       family sessions, while `family_camp_adults` carries 647 rows across 351
-       households. So 2021 shows adults and no children.
+       Camp cancelled the season after families had already enrolled, so
+       every row reads `Cancelled`.
+    5. 2021 -- no family attendee rows AT ALL. Camp cancelled in advance and
+       nobody ever enrolled: verified against the CampMinder API itself,
+       which returns 3,568 enrollment rows for 2021 and ZERO on all seven
+       family sessions. The 247 `family_camp_registrations` rows carry no
+       cabin and no enrollment behind them.
+
+    ⇒ STATES 4 AND 5 NO LONGER RENDER AT ALL (kindred#2516). A year appears
+    only where the household was actually ENROLLED, exactly as summer does --
+    `fetchCamperJourney` filters `status = "enrolled"`. Registration and
+    `family_camp_adults` rows stop being year sources of their own and become
+    qualifiers on an adult weekend; see `test_an_adult_weekend_...` below.
     """
 
     @pytest.mark.asyncio
     async def test_a_placed_year_carries_the_staff_written_cabin(self) -> None:
         repo = _journey_repo(
-            fetch_household_family_attendees=[_rec(year=2025, **vars(_child()))],
+            fetch_household_weekend_attendees=[_rec(year=2025, **vars(_child()))],
             cabins_by_year={2025: {2000001: "Cedar Lodge - Room 2"}},
         )
 
@@ -5150,7 +5159,7 @@ class TestHouseholdJourney:
         who went unhoused.
         """
         repo = _journey_repo(
-            fetch_household_family_attendees=[_rec(year=2019, **vars(_child()))],
+            fetch_household_weekend_attendees=[_rec(year=2019, **vars(_child()))],
             cabins_by_year={},
         )
 
@@ -5166,7 +5175,7 @@ class TestHouseholdJourney:
         absence rather than an unrecorded one.
         """
         repo = _journey_repo(
-            fetch_household_family_attendees=[_rec(year=2026, **vars(_child()))],
+            fetch_household_weekend_attendees=[_rec(year=2026, **vars(_child()))],
             cabins_by_year={2026: {2000999: "Pine Cabin"}},
         )
 
@@ -5176,38 +5185,194 @@ class TestHouseholdJourney:
         assert journey.years[0].cabin_name == ""
 
     @pytest.mark.asyncio
-    async def test_a_cancelled_season_leaves_the_year_registered_with_no_enrollment(self) -> None:
-        """State 4. Every 2020 attendee row is cancelled, so `status_id = 2`
-        removes them all -- the year still happened on the registration and
-        must not vanish, and it is not a childless family.
+    async def test_a_cancelled_season_does_not_render_the_year_at_all(self) -> None:
+        """State 4, REVERSED by kindred#2516. Every 2020 attendee row is
+        cancelled, so `status_id = 2` removes them all -- and a household
+        that did not attend must not carry the year at all. A registration
+        row is a form somebody filled in, not attendance.
+
+        This is the defect staff reported: a family waitlisted or cancelled
+        for a weekend still showed that year in the journey, indistinguishable
+        from a year they were actually with us.
         """
         repo = _journey_repo(
-            fetch_household_family_attendees=[],
+            fetch_household_weekend_attendees=[],
             fetch_household_registration_years={2020},
         )
 
         journey = await LodgingRosterService(repo).build_household_journey(2000001)
 
-        assert [y.year for y in journey.years] == [2020]
-        assert journey.years[0].enrollment == "none_on_file"
-        assert journey.years[0].children == []
+        assert journey.years == []
 
     @pytest.mark.asyncio
-    async def test_a_year_with_adults_and_no_attendee_rows_still_lists_the_adults(self) -> None:
-        """State 5. 2021 has no family attendee rows at all, so the ONLY
-        representation of that year's party is `family_camp_adults` -- adults
-        who have no `persons` row anywhere.
+    async def test_a_year_with_adults_and_no_enrolled_attendee_does_not_render(self) -> None:
+        """State 5, REVERSED by kindred#2516. `family_camp_adults` rows are
+        registration-form answers, so they say a household FILLED THE FORM,
+        never that it turned up. 2021 is the vivid case: 647 adult rows across
+        351 households and not one enrolled attendee anywhere in the year,
+        because camp cancelled in advance.
+
+        The read itself SURVIVES -- it is still the only source of a
+        discovered year's adults, since a family-camp adult has no `persons`
+        row anywhere. It just stops discovering years by itself.
         """
         repo = _journey_repo(
-            fetch_household_family_attendees=[],
+            fetch_household_weekend_attendees=[],
             fetch_household_adults_by_year={2021: [_adult(name="Olivia Johnson")]},
         )
 
         journey = await LodgingRosterService(repo).build_household_journey(2000001)
 
-        assert [y.year for y in journey.years] == [2021]
-        assert [a.display_name for a in journey.years[0].adults] == ["Olivia Johnson"]
-        assert journey.years[0].enrollment == "none_on_file"
+        assert journey.years == []
+
+    @staticmethod
+    def _weekend_session(cm_id: int, name: str, start_date: str, session_type: str) -> SimpleNamespace:
+        """A `camp_sessions` row as the journey's attendee read expands one.
+
+        `session_type` is the field the split turns on, so it is a parameter
+        here rather than hard-coded: an ADULT weekend enrols the adult
+        directly and is person-grain, a FAMILY weekend is the household's.
+        """
+        return _rec(
+            id=f"sess_{cm_id}",
+            cm_id=cm_id,
+            name=name,
+            session_type=session_type,
+            year=int(start_date[:4]),
+            start_date=start_date,
+            end_date="",
+            sort_order=0,
+        )
+
+    @pytest.mark.asyncio
+    async def test_an_adult_weekend_rescues_the_year_for_a_family_camp_household(self) -> None:
+        """kindred#2516's rescue clause, and the reason adult weekends are
+        read at all.
+
+        Measured on the production snapshot: of 2026's 425 enrolled
+        registrations, 391 have an enrolled child on a FAMILY session and the
+        remaining 34 are enrolled only on an ADULT weekend -- zero are
+        invisible to `attendees`. Discovering from family sessions alone would
+        drop those 34 households' year even though they were with us.
+        """
+        adult_weekend = self._weekend_session(3000009, "Women's Weekend", "2026-03-06", "adult")
+        repo = _journey_repo(
+            fetch_household_weekend_attendees=[
+                _rec(year=2026, **vars(_child(cm_id=1000001, first="Sofia", last="Martinez", session=adult_weekend))),
+            ],
+            fetch_household_registration_years={2026},
+        )
+
+        journey = await LodgingRosterService(repo).build_household_journey(2000001)
+
+        assert [y.year for y in journey.years] == [2026]
+
+    @pytest.mark.asyncio
+    async def test_an_adult_weekend_attendee_never_becomes_a_child(self) -> None:
+        """THE HAZARD THE SPLIT EXISTS FOR. An adult weekend is person-grain:
+        it enrols the adult directly, so the attendee row expands to a real
+        `persons` record. Letting that row through the member walk would file
+        a parent's own weekend under their children -- a headcount overstated
+        by one and a parent rendered as a camper.
+
+        The year is contributed; the person is not. The year's adults still
+        come from `family_camp_adults`, which is where a family-camp adult
+        lives.
+        """
+        adult_weekend = self._weekend_session(3000009, "Women's Weekend", "2026-03-06", "adult")
+        repo = _journey_repo(
+            fetch_household_weekend_attendees=[
+                _rec(year=2026, **vars(_child(cm_id=1000001, first="Sofia", last="Martinez", session=adult_weekend))),
+            ],
+            fetch_household_registration_years={2026},
+            fetch_household_adults_by_year={2026: [_adult(name="Sofia Martinez")]},
+        )
+
+        journey = await LodgingRosterService(repo).build_household_journey(2000001)
+
+        assert journey.years[0].children == []
+        assert [a.display_name for a in journey.years[0].adults] == ["Sofia Martinez"]
+
+    @pytest.mark.asyncio
+    async def test_an_adult_weekend_alone_does_not_invent_a_family_camp_year(self) -> None:
+        """The rescue is SCOPED, and this is the measurement that scopes it.
+
+        Reading adult weekends as a year source in their own right would add
+        944 household-years across 2022-2026 that render nothing today --
+        every one of them a household that went to an adult retreat and has
+        no family-camp trace that year, so the row would carry no children, no
+        adults, no cabin and no weekend. #2516's own justification counts
+        inside the REGISTRANT population, never camp-wide.
+
+        ⇒ an adult weekend contributes a year only where the household also
+        has a family-camp trace (a registration or an adults row) that year.
+        """
+        adult_weekend = self._weekend_session(3000009, "Women's Weekend", "2026-03-06", "adult")
+        repo = _journey_repo(
+            fetch_household_weekend_attendees=[
+                _rec(year=2026, **vars(_child(cm_id=1000001, first="Sofia", last="Martinez", session=adult_weekend))),
+            ],
+        )
+
+        journey = await LodgingRosterService(repo).build_household_journey(2000001)
+
+        assert journey.years == []
+
+    @pytest.mark.asyncio
+    async def test_an_adults_row_also_qualifies_an_adult_weekend_year(self) -> None:
+        """The qualifier is EITHER family-camp trace, not the registration
+        alone. 14 household-years across 2022-2024 hold a `family_camp_adults`
+        row and no registration row while carrying adult-weekend enrollment;
+        keying only on registrations would drop them.
+        """
+        adult_weekend = self._weekend_session(3000009, "Women's Weekend", "2024-03-08", "adult")
+        repo = _journey_repo(
+            fetch_household_weekend_attendees=[
+                _rec(year=2024, **vars(_child(cm_id=1000001, first="Sofia", last="Martinez", session=adult_weekend))),
+            ],
+            fetch_household_adults_by_year={2024: [_adult(name="Sofia Martinez")]},
+        )
+
+        journey = await LodgingRosterService(repo).build_household_journey(2000001)
+
+        assert [y.year for y in journey.years] == [2024]
+
+    @pytest.mark.asyncio
+    async def test_an_adult_weekend_is_not_published_as_a_family_weekend(self) -> None:
+        """`HouseholdJourneySession` is a FAMILY weekend, and the cabin is
+        pinned to it only when the household attended exactly one (#2393's
+        refusal, mirrored from the Go ingest). An adult retreat entering that
+        list would both mislabel the weekend and silently un-pin the cabin by
+        making the count two.
+        """
+        family_weekend = self._weekend_session(3000001, "Family Camp 2", "2026-08-21", "family")
+        adult_weekend = self._weekend_session(3000009, "Women's Weekend", "2026-03-06", "adult")
+        repo = _journey_repo(
+            fetch_household_weekend_attendees=[
+                _rec(year=2026, **vars(_child(cm_id=1000001, first="Emma", last="Johnson", session=family_weekend))),
+                _rec(year=2026, **vars(_child(cm_id=1000002, first="Sofia", last="Martinez", session=adult_weekend))),
+            ],
+            cabins_by_year={2026: {2000001: "Pine Cabin"}},
+        )
+
+        journey = await LodgingRosterService(repo).build_household_journey(2000001)
+
+        assert [s.session_cm_id for s in journey.years[0].sessions] == [3000001]
+        assert journey.years[0].housing_session_cm_id == 3000001
+
+    @pytest.mark.asyncio
+    async def test_the_journey_row_no_longer_publishes_an_enrollment_state(self) -> None:
+        """kindred#2305, INVERTED by #2516's ruling. The field existed to word
+        a "No enrollment" chip; with a non-enrolled year no longer rendering
+        at all, every remaining row would report the same constant. A field
+        that can only hold one value is not information, and a chip that can
+        never fire is dead code on a staff surface.
+        """
+        repo = _journey_repo(fetch_household_weekend_attendees=[_rec(year=2025, **vars(_child()))])
+
+        journey = await LodgingRosterService(repo).build_household_journey(2000001)
+
+        assert not hasattr(journey.years[0], "enrollment")
 
     @pytest.mark.asyncio
     async def test_the_party_is_derived_per_year_never_carried_forward(self) -> None:
@@ -5216,7 +5381,7 @@ class TestHouseholdJourney:
         each year's members come from that year's rows and no other's.
         """
         repo = _journey_repo(
-            fetch_household_family_attendees=[
+            fetch_household_weekend_attendees=[
                 _rec(year=2024, **vars(_child(cm_id=1000001, first="Ava", last="Martinez"))),
                 _rec(year=2025, **vars(_child(cm_id=1000001, first="Ava", last="Martinez"))),
                 _rec(year=2025, **vars(_child(cm_id=1000002, first="Liam", last="Martinez"))),
@@ -5251,7 +5416,7 @@ class TestHouseholdJourney:
         the identity the wire already keys the child by.
         """
         repo = _journey_repo(
-            fetch_household_family_attendees=[
+            fetch_household_weekend_attendees=[
                 _rec(year=2026, **vars(_child(cm_id=1000001, first="Emma", last="Johnson", age=9))),
                 _rec(year=2026, **vars(_child(cm_id=1000001, first="Emma", last="Johnson", age=9))),
                 _rec(year=2026, **vars(_child(cm_id=1000002, first="Liam", last="Johnson", age=7))),
@@ -5264,22 +5429,27 @@ class TestHouseholdJourney:
 
     @pytest.mark.asyncio
     async def test_years_run_newest_first_and_span_every_trace(self) -> None:
-        """The window is DISCOVERED, not chosen. A hard-coded floor would
-        either invent empty rows or truncate a long-standing family, and the
-        three traces disagree about which years exist -- attendance reaches
-        further back than housing, and registration reaches years that carry
-        neither a child nor an adult.
+        """The window is DISCOVERED, not chosen -- but it is discovered from
+        ENROLLMENT alone (kindred#2516). A hard-coded floor would either
+        invent empty rows or truncate a long-standing family; a registration
+        trace invents a year the household never attended.
+
+        Attendance still reaches further back than housing, which is the half
+        of the original argument that survives: 2018 renders with no cabin.
         """
         repo = _journey_repo(
-            fetch_household_family_attendees=[_rec(year=2018, **vars(_child()))],
+            fetch_household_weekend_attendees=[
+                _rec(year=2018, **vars(_child())),
+                _rec(year=2024, **vars(_child())),
+            ],
             fetch_household_adults_by_year={2021: [_adult()]},
-            fetch_household_registration_years={2024},
+            fetch_household_registration_years={2021},
             cabins_by_year={2024: {2000001: "Pine Cabin"}},
         )
 
         journey = await LodgingRosterService(repo).build_household_journey(2000001)
 
-        assert [y.year for y in journey.years] == [2024, 2021, 2018]
+        assert [y.year for y in journey.years] == [2024, 2018]
 
     @pytest.mark.asyncio
     async def test_the_cabin_read_is_issued_once_per_traced_year(self) -> None:
@@ -5289,7 +5459,7 @@ class TestHouseholdJourney:
         the household actually appears in.
         """
         repo = _journey_repo(
-            fetch_household_family_attendees=[
+            fetch_household_weekend_attendees=[
                 _rec(year=2024, **vars(_child())),
                 _rec(year=2025, **vars(_child())),
             ],
@@ -5316,8 +5486,13 @@ class TestHouseholdJourney:
         server publishes every `family_camp_adults` row and only the COUNT is
         filtered, so the client can still see what was declined. The client
         applies `isAttendingAdultName` at render time.
+
+        The enrolled child is what puts 2025 on the journey at all since
+        kindred#2516 -- an adults row no longer discovers a year by itself.
+        This test is about what the year PUBLISHES, so it needs a year.
         """
         repo = _journey_repo(
+            fetch_household_weekend_attendees=[_rec(year=2025, **vars(_child()))],
             fetch_household_adults_by_year={2025: [_adult(name="Olivia Johnson"), _adult(adult_number=2, name="NA")]},
         )
 
@@ -5334,7 +5509,7 @@ class TestHouseholdJourney:
         takes the UNION of these across years, so it needs the same column.
         """
         repo = _journey_repo(
-            fetch_household_family_attendees=[
+            fetch_household_weekend_attendees=[
                 _rec(year=2025, **vars(_child(first="Ava", last="Martinez Garcia"))),
             ],
         )
@@ -5386,7 +5561,7 @@ class TestHouseholdJourney:
             sort_order=1,
         )
         child = _child(cm_id=1000001, first="Ava", last="Chen", age=17.04, birthdate="2010-08-01", session=session_2019)
-        repo = _journey_repo(fetch_household_family_attendees=[_rec(year=2019, **vars(child))])
+        repo = _journey_repo(fetch_household_weekend_attendees=[_rec(year=2019, **vars(child))])
 
         journey = await LodgingRosterService(repo).build_household_journey(2000001)
 
@@ -5410,7 +5585,7 @@ class TestHouseholdJourney:
             sort_order=1,
         )
         child = _child(cm_id=1000001, age=17.04, birthdate="", session=session_2019)
-        repo = _journey_repo(fetch_household_family_attendees=[_rec(year=2019, **vars(child))])
+        repo = _journey_repo(fetch_household_weekend_attendees=[_rec(year=2019, **vars(child))])
 
         journey = await LodgingRosterService(repo).build_household_journey(2000001)
 
@@ -5450,7 +5625,7 @@ class TestHouseholdJourney:
             sort_order=4,
         )
         child = _child(cm_id=1000001, first="Ava", last="Chen", age=17.04, birthdate="2010-08-01", session=session_late)
-        repo = _journey_repo(fetch_household_family_attendees=[_rec(year=2019, **vars(child))])
+        repo = _journey_repo(fetch_household_weekend_attendees=[_rec(year=2019, **vars(child))])
 
         journey = await LodgingRosterService(repo).build_household_journey(2000001)
 
@@ -5504,7 +5679,7 @@ class TestHouseholdJourneySessionGrain:
         fc1 = self._session(3000001, "Family Camp 1: Memorial Day Weekend", "2025-05-23")
         fc4 = self._session(3000004, "Family Camp 4", "2025-09-19")
         repo = _journey_repo(
-            fetch_household_family_attendees=[
+            fetch_household_weekend_attendees=[
                 _rec(year=2025, **vars(_child(cm_id=1000001, first="Emma", session=fc1))),
                 _rec(year=2025, **vars(_child(cm_id=1000001, first="Emma", session=fc4))),
             ],
@@ -5525,7 +5700,7 @@ class TestHouseholdJourneySessionGrain:
         the size of the family."""
         fc1 = self._session(3000001, "Family Camp 1", "2025-05-23")
         repo = _journey_repo(
-            fetch_household_family_attendees=[
+            fetch_household_weekend_attendees=[
                 _rec(year=2025, **vars(_child(cm_id=1000001, first="Emma", session=fc1))),
                 _rec(year=2025, **vars(_child(cm_id=1000002, first="Liam", session=fc1))),
             ],
@@ -5542,7 +5717,7 @@ class TestHouseholdJourneySessionGrain:
         fc1 = self._session(3000001, "Family Camp 1", "2025-05-23")
         fc4 = self._session(3000004, "Family Camp 4", "2025-09-19")
         repo = _journey_repo(
-            fetch_household_family_attendees=[
+            fetch_household_weekend_attendees=[
                 _rec(year=2025, **vars(_child(cm_id=1000001, first="Emma", session=fc4))),
                 _rec(year=2025, **vars(_child(cm_id=1000002, first="Liam", session=fc1))),
             ],
@@ -5561,7 +5736,7 @@ class TestHouseholdJourneySessionGrain:
         fc1 = self._session(3000001, "Family Camp 1", "2025-05-23")
         fc4 = self._session(3000004, "Family Camp 4", "2025-09-19")
         repo = _journey_repo(
-            fetch_household_family_attendees=[
+            fetch_household_weekend_attendees=[
                 _rec(year=2025, **vars(_child(cm_id=1000001, first="Emma", session=fc1))),
                 _rec(year=2025, **vars(_child(cm_id=1000001, first="Emma", session=fc4))),
                 _rec(year=2025, **vars(_child(cm_id=1000002, first="Liam", session=fc1))),
@@ -5578,7 +5753,7 @@ class TestHouseholdJourneySessionGrain:
         fc1 = self._session(3000001, "Family Camp 1", "2025-05-23")
         fc4 = self._session(3000004, "Family Camp 4", "2025-09-19")
         repo = _journey_repo(
-            fetch_household_family_attendees=[
+            fetch_household_weekend_attendees=[
                 _rec(year=2025, **vars(_child(cm_id=1000001, first="Emma", session=fc4))),
                 _rec(year=2025, **vars(_child(cm_id=1000001, first="Emma", session=fc1))),
             ],
@@ -5592,7 +5767,7 @@ class TestHouseholdJourneySessionGrain:
     async def test_one_weekend_and_a_cabin_pins_the_cabin_to_that_weekend(self) -> None:
         fc1 = self._session(3000001, "Family Camp 1", "2025-05-23")
         repo = _journey_repo(
-            fetch_household_family_attendees=[_rec(year=2025, **vars(_child(session=fc1)))],
+            fetch_household_weekend_attendees=[_rec(year=2025, **vars(_child(session=fc1)))],
             cabins_by_year={2025: {2000001: "Cedar Lodge - Room 2"}},
         )
 
@@ -5608,7 +5783,7 @@ class TestHouseholdJourneySessionGrain:
         fc1 = self._session(3000001, "Family Camp 1", "2025-05-23")
         fc4 = self._session(3000004, "Family Camp 4", "2025-09-19")
         repo = _journey_repo(
-            fetch_household_family_attendees=[
+            fetch_household_weekend_attendees=[
                 _rec(year=2025, **vars(_child(cm_id=1000001, first="Emma", session=fc1))),
                 _rec(year=2025, **vars(_child(cm_id=1000001, first="Emma", session=fc4))),
             ],
@@ -5626,7 +5801,7 @@ class TestHouseholdJourneySessionGrain:
         would read as "housed in FC1" on a household nobody placed."""
         fc1 = self._session(3000001, "Family Camp 1", "2025-05-23")
         repo = _journey_repo(
-            fetch_household_family_attendees=[_rec(year=2025, **vars(_child(session=fc1)))],
+            fetch_household_weekend_attendees=[_rec(year=2025, **vars(_child(session=fc1)))],
             cabins_by_year={2025: {2000009: "Cedar Lodge - Room 2"}},
         )
 
@@ -5640,7 +5815,7 @@ class TestHouseholdJourneySessionGrain:
         """The pre-kindred#2420 shape, and the one every older fixture here
         still uses. No weekend is knowable, so none is claimed -- and the
         client renders the row exactly as it does today."""
-        repo = _journey_repo(fetch_household_family_attendees=[_rec(year=2025, **vars(_child()))])
+        repo = _journey_repo(fetch_household_weekend_attendees=[_rec(year=2025, **vars(_child()))])
 
         journey = await LodgingRosterService(repo).build_household_journey(2000001)
 
@@ -5653,7 +5828,7 @@ class TestHouseholdJourneySessionGrain:
         """`cm_id` is the identity the client tabs on. A zero would collapse
         every unidentified weekend onto one tab."""
         broken = self._session(0, "Family Camp 1", "2025-05-23", pb_id="sess_broken")
-        repo = _journey_repo(fetch_household_family_attendees=[_rec(year=2025, **vars(_child(session=broken)))])
+        repo = _journey_repo(fetch_household_weekend_attendees=[_rec(year=2025, **vars(_child(session=broken)))])
 
         journey = await LodgingRosterService(repo).build_household_journey(2000001)
 
@@ -5667,7 +5842,7 @@ class TestHouseholdJourneySessionGrain:
         fc1_2024 = self._session(3000101, "Family Camp 1", "2024-05-24")
         fc4_2025 = self._session(3000004, "Family Camp 4", "2025-09-19")
         repo = _journey_repo(
-            fetch_household_family_attendees=[
+            fetch_household_weekend_attendees=[
                 _rec(year=2024, **vars(_child(session=fc1_2024))),
                 _rec(year=2025, **vars(_child(session=fc4_2025))),
             ],
@@ -7779,7 +7954,7 @@ class TestHousingRendersInTodaysLanguage:
     @pytest.mark.asyncio
     async def test_the_journey_renames_a_prior_year_into_the_current_registry(self) -> None:
         repo = _journey_repo(
-            fetch_household_family_attendees=[_rec(year=2022, **vars(_child()))],
+            fetch_household_weekend_attendees=[_rec(year=2022, **vars(_child()))],
             cabins_by_year={2022: {2000001: "Old Meadow 1"}},
             fetch_all_units=[_unit("u1", "meadow-1", "Meadow House 1")],
             fetch_unit_aliases=[_alias_row("Old Meadow 1", "u1")],
@@ -7796,7 +7971,7 @@ class TestHousingRendersInTodaysLanguage:
         because the journey is the surface whose whole job is the record.
         """
         repo = _journey_repo(
-            fetch_household_family_attendees=[_rec(year=2022, **vars(_child()))],
+            fetch_household_weekend_attendees=[_rec(year=2022, **vars(_child()))],
             cabins_by_year={2022: {2000001: "Old Meadow 1"}},
             fetch_all_units=[_unit("u1", "meadow-1", "Meadow House 1")],
             fetch_unit_aliases=[_alias_row("Old Meadow 1", "u1")],
@@ -7812,7 +7987,7 @@ class TestHousingRendersInTodaysLanguage:
         (kindred#2392). What staff wrote beats a blank.
         """
         repo = _journey_repo(
-            fetch_household_family_attendees=[_rec(year=2022, **vars(_child()))],
+            fetch_household_weekend_attendees=[_rec(year=2022, **vars(_child()))],
             cabins_by_year={2022: {2000001: "Ridge 2"}},
             fetch_all_units=[_unit("u1", "meadow-1", "Meadow House 1")],
         )
@@ -7825,7 +8000,7 @@ class TestHousingRendersInTodaysLanguage:
     @pytest.mark.asyncio
     async def test_a_year_with_no_cabin_carries_neither_a_name_nor_a_raw_string(self) -> None:
         repo = _journey_repo(
-            fetch_household_family_attendees=[_rec(year=2019, **vars(_child()))],
+            fetch_household_weekend_attendees=[_rec(year=2019, **vars(_child()))],
             fetch_all_units=[_unit("u1", "meadow-1", "Meadow House 1")],
         )
 
@@ -7842,7 +8017,7 @@ class TestHousingRendersInTodaysLanguage:
         row that ought to rename silently keeps its raw spelling.
         """
         repo = _journey_repo(
-            fetch_household_family_attendees=[
+            fetch_household_weekend_attendees=[
                 _rec(year=2023, **vars(_child())),
                 _rec(year=2026, **vars(_child())),
             ],

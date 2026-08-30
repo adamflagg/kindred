@@ -2414,14 +2414,21 @@ class LodgingRosterService:
     async def build_household_journey(self, household_cm_id: int) -> HouseholdJourneyResponse:
         """A household's family-camp record, year by year (kindred#2073).
 
-        THE WINDOW IS DISCOVERED, NOT CHOSEN. A year appears when the
-        household has a trace in it, and the three traces disagree about which
-        years exist: attendance reaches back to 2017, housing only to 2022,
-        and between 24 and 89 registrations a year carry neither an enrolled
-        child nor an adult row. Taking their union is what makes the view
-        honest about a four-year housing window sitting inside a longer
-        attendance one -- and a hard-coded floor would either invent empty
-        rows or truncate a long-standing family.
+        THE WINDOW IS DISCOVERED, NOT CHOSEN, AND ENROLLMENT IS WHAT
+        DISCOVERS IT (kindred#2516). A year appears when camp actually had
+        this household -- an enrolled attendee on one of its weekends -- which
+        is how summer answers the same question (`fetchCamperJourney` filters
+        `status = "enrolled"`). Discovery still floats: attendance reaches
+        back to 2017 while housing only reaches 2022, so the view stays honest
+        about a shorter housing window sitting inside a longer attendance one,
+        and a hard-coded floor would still either invent empty rows or
+        truncate a long-standing family.
+
+        WHAT IT NO LONGER DOES is take the UNION of three traces. The other
+        two fire on a form being filled in, not on anybody turning up, so a
+        cancelled or waitlisted family carried a year identical to one they
+        attended -- the defect staff reported. The rule and its scoping are
+        stated at `years` below.
 
         The cabin comes from kindred#2075's helper, once per traced year. That
         helper takes a plain year precisely so this can sweep, and composing
@@ -2447,7 +2454,7 @@ class LodgingRosterService:
             return HouseholdJourneyResponse(household_cm_id=household_cm_id)
 
         attendees, adults_by_year, registration_years = await asyncio.gather(
-            self.repository.fetch_household_family_attendees(household_cm_id),
+            self.repository.fetch_household_weekend_attendees(household_cm_id),
             self.repository.fetch_household_adults_by_year(household_cm_id),
             self.repository.fetch_household_registration_years(household_cm_id),
         )
@@ -2490,14 +2497,39 @@ class LodgingRosterService:
         # give.
         sessions_by_year: dict[int, dict[int, HouseholdJourneySession]] = {}
         child_sessions_by_year: dict[int, dict[Any, set[int]]] = {}
+        # THE YEARS AN ADULT WEEKEND CAN ONLY QUALIFY, NEVER OPEN (#2516).
+        # Kept apart from `children_by_year` because an adult-session row is
+        # the ONE row in this read that must contribute its year without
+        # contributing its person -- see the `session_type` split below.
+        adult_weekend_years: set[int] = set()
         for attendee in attendees:
             expand = getattr(attendee, "expand", None) or {}
             person = expand.get("person")
             if person is None:
                 continue
             year = _i(attendee, "year")
-            identity = _child_identity(person)
             session = expand.get("session")
+            # AN ADULT WEEKEND IS PERSON-GRAIN, and that is the whole reason
+            # this branch exists rather than a wider filter upstream. The
+            # weekend enrols the ADULT directly, so the row expands to a real
+            # `persons` record exactly as a child's does -- walking it on
+            # would list a parent among their own children, overstate the
+            # headcount by one, and publish a retreat as a family weekend in
+            # `sessions` (which would also un-pin the cabin, by making
+            # `housing_session_cm_id`'s "exactly one weekend" count two).
+            #
+            # It still says the household was ENROLLED that year, which is
+            # the fact year discovery turns on, so the year is banked here and
+            # nothing else about the row is read -- not even its identity.
+            #
+            # A row whose `session` did not expand falls through to the family
+            # path rather than here. That is the safe direction: an unexpanded
+            # relation must not silently reclassify a child's weekend as an
+            # adult's and drop them from their own year.
+            if _s(session, "session_type") == "adult":
+                adult_weekend_years.add(year)
+                continue
+            identity = _child_identity(person)
             start = _as_date(_s(session, "start_date")) if session is not None else None
             if identity and start is not None:
                 starts = session_start_by_year.setdefault(year, {})
@@ -2530,12 +2562,41 @@ class LodgingRosterService:
                 seen.add(identity)
             children_by_year.setdefault(year, []).append(person)
 
+        # ENROLLMENT DISCOVERS THE YEAR -- registration does not (#2516).
+        #
+        # A journey year says "camp had this household", so it is discovered
+        # the way summer discovers one: from enrollment alone, matching
+        # `fetchCamperJourney`'s `status = "enrolled"` filter. Until #2516
+        # this was the UNION of three traces, and the other two both fire on
+        # a form being filled in rather than on anybody turning up --
+        # `family_camp_registrations` and `family_camp_adults` are derived
+        # from custom values keyed on household and year, so a waitlisted or
+        # cancelled family still has both. That is the defect staff reported:
+        # a year they were never with us, rendered indistinguishably from a
+        # year they were. Measured on the production snapshot, it drops 2,264
+        # household-years, 56 of them in 2026.
+        #
+        # THE TWO OTHER TRACES SURVIVE AS QUALIFIERS, and the scoping is the
+        # part to keep. Reading adult weekends as a year source in their own
+        # right would ADD 944 household-years across 2022-2026 that render
+        # nothing today -- households at an adult retreat with no family-camp
+        # trace, so no children, no adults, no cabin, no weekend. #2516's own
+        # justification for reading adult weekends counts inside the
+        # REGISTRANT population (34 of 2026's 425 enrolled registrations are
+        # enrolled only on an adult weekend), never camp-wide. So an adult
+        # weekend contributes a year only where the household also has a
+        # family-camp trace that year.
+        #
+        # ⇒ the result is a strict SUBSET of the old union, by construction:
+        # every year kept is one the union already had. This can remove a
+        # year, never invent one.
+        family_camp_trace = set(adults_by_year) | set(registration_years)
         # Year 0 is not a year. A row whose `year` column never populated
         # would otherwise open the journey with a blank heading.
         years = [
             year
             for year in sorted(
-                set(children_by_year) | set(adults_by_year) | set(registration_years),
+                set(children_by_year) | (adult_weekend_years & family_camp_trace),
                 reverse=True,
             )
             if year > 0
@@ -2585,11 +2646,6 @@ class LodgingRosterService:
                     housing_session_cm_id=(
                         year_sessions_ordered[0].session_cm_id if cabin and len(year_sessions_ordered) == 1 else None
                     ),
-                    # An empty child list is NOT a childless family: 2020 was
-                    # cancelled outright and 2021 has no family attendee rows
-                    # at all. Naming the state here is what stops the client
-                    # rendering either as an error or as a family with no kids.
-                    enrollment="enrolled" if children else "none_on_file",
                     adults=[_party_adult(adult) for adult in adults_by_year.get(year, [])],
                     children=[
                         # Each child's OWN attended session start

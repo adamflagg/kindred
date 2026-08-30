@@ -2146,10 +2146,6 @@ export type HouseholdJourneyYear = {
    */
   housing_session_cm_id?: number | null
   /**
-   * Enrollment
-   */
-  enrollment?: 'enrolled' | 'none_on_file'
-  /**
    * Adults
    */
   adults?: Array<PartyAdult>

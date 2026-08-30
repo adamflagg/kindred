@@ -30,7 +30,6 @@ function _row(overrides: Partial<HouseholdJourneyRow> = {}): HouseholdJourneyRow
     year: 2025,
     housing: 'placed',
     cabin_name: 'Cedar Lodge - Room 2',
-    enrollment: 'enrolled',
     adults: [{ adult_number: 1, display_name: 'Olivia Johnson', relationship: 'Parent' }],
     children: [
       {
@@ -143,27 +142,17 @@ describe('the party for one year', () => {
   })
 })
 
-describe('a year with no enrollment on file', () => {
-  it('says so instead of rendering a childless family', () => {
+describe('a year with adults and no children', () => {
+  // kindred#2516 deleted the "no enrolled child on file" note along with the
+  // state that drove it: a year with no enrollment behind it is no longer
+  // published at all, so the note could only render on a row that cannot
+  // reach this modal. What survives is the SHAPE it used to explain — a year
+  // with adults and no children — which is now an ADULT weekend rather than a
+  // cancelled season, and which must still list its adults.
+  it('lists the adults, who are the only members on file for that year', () => {
     open(
       _row({
-        year: 2021,
-        enrollment: 'none_on_file',
-        children: [],
-        adults: [{ adult_number: 1, display_name: 'Olivia Johnson', relationship: 'Parent' }],
-      })
-    )
-
-    expect(screen.getByTestId('year-members-no-enrollment').textContent).toContain(
-      'No enrolled child on file for 2021'
-    )
-  })
-
-  it('still lists the adults, who are the only record of that year', () => {
-    open(
-      _row({
-        year: 2021,
-        enrollment: 'none_on_file',
+        year: 2026,
         children: [],
         adults: [{ adult_number: 1, display_name: 'Olivia Johnson', relationship: 'Parent' }],
       })
@@ -172,8 +161,8 @@ describe('a year with no enrollment on file', () => {
     expect(screen.getByTestId('year-members-adults').textContent).toContain('Olivia Johnson')
   })
 
-  it('does not claim a missing enrollment on a year that has one', () => {
-    open(_row())
+  it('never renders a no-enrollment note, on any row', () => {
+    open(_row({ year: 2026, children: [] }))
 
     expect(screen.queryByTestId('year-members-no-enrollment')).not.toBeInTheDocument()
   })

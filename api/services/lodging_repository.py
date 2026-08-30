@@ -597,14 +597,14 @@ class LodgingRepository:
             },
         )
 
-    async def fetch_household_family_attendees(self, household_cm_id: int) -> list[Any]:
-        """One household's enrolled family-camp children, across EVERY year.
+    async def fetch_household_weekend_attendees(self, household_cm_id: int) -> list[Any]:
+        """One household's ENROLLED weekend attendees, across EVERY year.
 
         The cross-year read behind the household journey (kindred#2073). The
         year is deliberately NOT a parameter here -- unlike every other read
         in this file -- because the journey's window is not chosen, it is
         discovered: the years a household appears in are exactly the years it
-        has a trace, and a hard-coded floor would either invent empty rows or
+        was enrolled, and a hard-coded floor would either invent empty rows or
         silently truncate a long-standing family's history.
 
         ⚠️ `person.household_id`, NOT `person.household`. Both exist on
@@ -616,18 +616,37 @@ class LodgingRepository:
         match one season. `household_id` is the CampMinder id, which is the
         identity thread across seasons (CLAUDE.md section 1).
 
-        `session.session_type = "family"` because an adult weekend is
-        person-grain: it enrols the adult directly, and letting those rows
-        through would file a parent's own weekend under their children.
+        BOTH weekend types, family AND adult (kindred#2516), through the
+        canonical `_attendee_weekend_session_filter()` rather than a second
+        spelling of the pairing. This read was family-only until #2516, and
+        the reason it widened is measured: of 2026's 425 enrolled family-camp
+        registrations, 391 have an enrolled child on a family session and the
+        remaining 34 are enrolled only on an ADULT weekend. Family-only
+        discovery drops those 34 households' year even though camp had them.
 
-        `status_id = 2` for the reason it is everywhere else, with one year
-        that makes it vivid: 2020 has 1,264 family attendee rows and not one
-        enrolled -- the season was cancelled outright -- so an unfiltered read
-        renders 2020 as an ordinary year.
+        ⚠️ THE CALLER MUST SPLIT THE RESULT BY `session_type`, and the
+        family-only predicate that used to live here is why. An adult weekend
+        is person-grain -- it enrols the adult directly, so the row expands to
+        a real `persons` record -- and walking these rows undifferentiated
+        files a parent's own weekend under their children. The rows are
+        returned together because they answer one question (which years was
+        this household enrolled in) off one round trip; deciding what a row
+        MEANS is `build_household_journey`'s job, and it does it on
+        `session.session_type`.
+
+        `status_id = 2` for the reason it is everywhere else, with two years
+        that make it vivid. 2020 has 1,264 family attendee rows and not one
+        enrolled: camp cancelled the season after families had enrolled, so
+        every row reads `Cancelled`. 2021 has no rows at all: camp cancelled
+        in advance and nobody ever enrolled -- confirmed against the
+        CampMinder API itself, which returns 3,568 enrollment rows for 2021
+        and zero on all seven family sessions, so this is the upstream truth
+        rather than a sync gap. An unfiltered read renders both as ordinary
+        years the household attended.
 
         NOT cached. `lodging_cache` is keyed by year and this read has no
         year; it is also per-household rather than per-season, so it is small
-        (one family's children) and there is no year-scoped sharing to win.
+        (one family's members) and there is no year-scoped sharing to win.
         """
         # Never issue the query for an unresolvable household.
         # `_build_household_parties` gives one `household_cm_id = 0`, and
@@ -640,15 +659,19 @@ class LodgingRepository:
             query_params={
                 "filter": (
                     f"person.household_id = {household_cm_id} "
-                    f'&& session.session_type = "family" && {ACTIVE_ENROLLED_FILTER}'
+                    f"&& ({_attendee_weekend_session_filter()}) && {ACTIVE_ENROLLED_FILTER}"
                 ),
                 # `session` alongside `person` (kindred#2420): the journey
-                # needs to know WHICH family session this attendee row is
-                # enrolled in, to compute that child's age at that specific
-                # session's start rather than at the year's earliest
-                # camp-wide family session -- a season runs several, months
-                # apart, and a household does not necessarily attend the
-                # first one.
+                # needs to know WHICH session this attendee row is enrolled
+                # in, to compute that child's age at that specific session's
+                # start rather than at the year's earliest camp-wide family
+                # session -- a season runs several, months apart, and a
+                # household does not necessarily attend the first one.
+                #
+                # Since kindred#2516 it carries a second load: `session_type`
+                # is what the caller splits family from adult on, so an
+                # unexpanded `session` would not merely lose an age, it would
+                # make an adult weekend indistinguishable from a family one.
                 "expand": "person,session",
                 "sort": STABLE_SORT,
             },
@@ -788,7 +811,7 @@ class LodgingRepository:
 
         Bridged through `person.household_id` (the CampMinder id) rather than
         `person.household` (the PocketBase relation): this is a cross-YEAR
-        read, exactly like `fetch_household_family_attendees`, and
+        read, exactly like `fetch_household_weekend_attendees`, and
         `household` is a relation into the year-scoped `households` table --
         it can only ever match one season. `household_id` is the identity
         thread across seasons (CLAUDE.md section 1).

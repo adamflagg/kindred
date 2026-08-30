@@ -210,17 +210,6 @@ export type WeekendSessionStatusValue = NonNullable<WeekendSessionSummary['statu
  */
 export type HousingStateValue = NonNullable<HouseholdJourneyYear['housing']>
 
-/**
- * Whether a journey year has an enrolled child on file.
- *
- * `none_on_file` is NOT "a childless family". 2020's whole season was
- * cancelled (1,264 family attendee rows, none enrolled) and 2021 has no
- * family attendee rows at all despite 247 registrations — while
- * `family_camp_adults` carries adults for both. Both are real attendance the
- * enrollment tables cannot describe, and neither is an error.
- */
-export type EnrollmentStateValue = NonNullable<HouseholdJourneyYear['enrollment']>
-
 /** `unknown` means the amenity was never recorded, NOT "no bathroom". */
 export type BathroomValue = NonNullable<LodgingUnitSummary['bathroom']>
 
