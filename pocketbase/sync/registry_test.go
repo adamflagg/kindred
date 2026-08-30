@@ -1240,6 +1240,54 @@ func TestExportRunsExactlyOnceInAFullRun(t *testing.T) {
 	}
 }
 
+// TestDryRunFullRunSkipsExportVisibly is the regression guard for fix round 2, Important #5.
+// Before this fix, MultiWorkbookExport implemented no SetDryRun/DryRunnable, so a dry_run=true
+// full sync 400'd wherever Google Sheets was enabled: UnsupportedDryRunServices rejected the
+// whole request the moment the export -- TriggerFullRun since this task -- was part of the
+// service list. It worked before this task because the export was never in that list at all.
+//
+// The fix is not a silent no-op (the plan's own text warned against exactly that): dry_run
+// against the export now skips the actual write but reports the skip VISIBLY, via
+// Stats.Skipped, so a sync_runs row and the completion toast read as "skipped", distinct from
+// both "exported" and an ordinary silent no-op.
+//
+// Registered in serialGroups: newExportWithFakeWriter's CAMPMINDER_SEASON_ID is t.Setenv.
+func TestDryRunFullRunSkipsExportVisibly(t *testing.T) {
+	t.Setenv("GOOGLE_SHEETS_ENABLED", "true")
+
+	app := newDryRunTestApp(t)
+	o := NewOrchestrator(app)
+	o.SetJobSpacing(0)
+
+	exp := newExportWithFakeWriter(t)
+	o.RegisterService("multi_workbook_export", exp)
+
+	// The synchronous check handleUnifiedSync performs before either the immediate or queued
+	// path starts -- this is what used to 400 a dry-run full sync once the export joined the
+	// service list.
+	if unsupported := o.UnsupportedDryRunServices([]string{"multi_workbook_export"}); len(unsupported) != 0 {
+		t.Fatalf("multi_workbook_export must be DryRunnable, got unsupported: %v", unsupported)
+	}
+
+	if err := o.RunSyncWithOptions(context.Background(), Options{
+		Year:     0,
+		Services: []string{"multi_workbook_export"},
+		DryRun:   true,
+	}); err != nil {
+		t.Fatalf("RunSyncWithOptions: %v", err)
+	}
+
+	if got := fakeWriterSheetsWritten(exp); got != 0 {
+		t.Errorf("dry run must write nothing, got %d sheets written", got)
+	}
+	if exp.Stats.Skipped == 0 {
+		t.Error("expected Stats.Skipped to reflect the dry-run skip, so the sync_runs row and toast read as skipped")
+	}
+	if !exp.SyncSuccessful {
+		t.Error("a dry run must still report success, not failure")
+	}
+}
+
 // TestEveryExportedCollectionHasASyncJob pins the invariant changed-only silently depends on.
 // If an ExportConfig names a collection no job writes, that sheet becomes permanently
 // unexportable and the only symptom is a "Skipping export - no sync changes" log line.
@@ -1263,34 +1311,6 @@ func TestEveryExportedCollectionHasASyncJob(t *testing.T) {
 			t.Errorf("exported collection %q is written by no sync job: changed-only export "+
 				"will skip it forever", cfg.Collection)
 		}
-	}
-}
-
-// TestFullRunWithGoogleEnabledRejectsDryRun is the C4 mechanism check: once
-// multi_workbook_export carries TriggerFullRun, a dry_run=true request against a full run
-// must still be rejected outright, never silently skip the export, because MultiWorkbookExport
-// implements no SetDryRun (DryRunnable) method. UnsupportedDryRunServices -- called
-// synchronously by handleUnifiedSync before either the immediate or queued path starts, and
-// again as RunSyncWithOptions' own defense-in-depth backstop -- is what stops it: this test
-// pins that multi_workbook_export shows up in its result once it's actually part of the
-// full-run service list, which it only is when Google Sheets is enabled.
-func TestFullRunWithGoogleEnabledRejectsDryRun(t *testing.T) {
-	t.Setenv("IS_DOCKER", "true")
-	t.Setenv("GOOGLE_SHEETS_ENABLED", "true")
-
-	o := NewOrchestrator(nil)
-	// A MockService implements Service but not DryRunnable -- the same shape
-	// *MultiWorkbookExport has (it declares no SetDryRun method).
-	o.RegisterService("multi_workbook_export", &MockService{name: "multi_workbook_export"})
-
-	services := ResolveUnifiedSyncServices(DefaultService, true, true)
-	if !slices.Contains(services, "multi_workbook_export") {
-		t.Fatal("multi_workbook_export must be part of a full run when Google Sheets is enabled")
-	}
-
-	got := o.UnsupportedDryRunServices(services)
-	if !slices.Contains(got, "multi_workbook_export") {
-		t.Errorf("expected multi_workbook_export in UnsupportedDryRunServices(full run), got %v", got)
 	}
 }
 

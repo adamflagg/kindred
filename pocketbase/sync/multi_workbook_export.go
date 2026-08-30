@@ -39,6 +39,12 @@ type MultiWorkbookExport struct {
 	// ChangedCollectionsAware's doc comment (orchestrator.go) for why nil and an empty map
 	// are different answers.
 	changed map[string]bool
+	// dryRun implements DryRunnable. There is no partial "compute what would export without
+	// writing" mode for a spreadsheet write -- the write IS the work -- so dry_run=true skips
+	// the export outright. Sync() reports the skip visibly (Stats.Skipped, logged) rather than
+	// silently doing nothing while still reporting success: kindred#2606-series Task 13 fix
+	// round 2, Important #5.
+	dryRun bool
 }
 
 // NewMultiWorkbookExport creates a new multi-workbook export service.
@@ -89,10 +95,28 @@ func (m *MultiWorkbookExport) SetYear(year int) {
 	m.year = year
 }
 
+// SetDryRun implements DryRunnable. The orchestrator calls this before Sync() the same way it
+// calls SetYear and SetChangedCollections above -- see Sync()'s own comment on why dry_run
+// means skipping outright rather than computing a preview.
+func (m *MultiWorkbookExport) SetDryRun(dryRun bool) {
+	m.dryRun = dryRun
+}
+
 // Sync implements the Service interface. One entry point for every trigger: the hardcoded
 // epilogues RunSyncWithOptions used to run after its service loop are gone, so a full or
 // historical run now produces a sync_runs row, a status transition and a completion toast
 // like any other job -- and the daily cron inherits the changed-collections skip it never had.
+//
+// dry_run skips outright rather than computing a preview: there is no partial "compute what
+// would export without writing" mode for a spreadsheet write, unlike the PocketBase-writing
+// services elsewhere in this package (see e.g. sessions.go's SetDryRun) where dry_run means
+// "query CampMinder and compute Stats as usual, skip only the App.Save calls". Skipping had to
+// become VISIBLE, not a silent no-op: a dry-run full sync used to 400 outright, because
+// MultiWorkbookExport implemented no DryRunnable at all -- kindred#2606-series Task 13 fix
+// round 2, Important #5. Stats.Skipped carries the count of sheets that would have been
+// considered, so both the sync_runs row and the completion toast read as "skipped", distinct
+// from an ordinary no-op (Created/Updated/Deleted/Errors all zero, Skipped also zero) and from
+// a real export. Pinned by TestDryRunFullRunSkipsExportVisibly.
 //
 // Globals go to the shared workbook on the current year only: a historical replay writing
 // its year's workbook has no business touching the one shared globals workbook, which the
@@ -121,6 +145,16 @@ func (m *MultiWorkbookExport) Sync(ctx context.Context) error {
 	start := time.Now()
 	m.Stats = Stats{}
 	m.SyncSuccessful = false
+
+	if m.dryRun {
+		skipped := len(GetReadableGlobalExports()) + len(GetReadableYearExports())
+		slog.Info("Dry run: skipping Google Sheets export",
+			"year", m.year, "sheets_would_have_run", skipped)
+		m.Stats.Skipped = skipped
+		m.Stats.Duration = int(time.Since(start).Seconds())
+		m.SyncSuccessful = true
+		return nil
+	}
 
 	currentSeason, err := ParseSeasonYear()
 	if err != nil {
