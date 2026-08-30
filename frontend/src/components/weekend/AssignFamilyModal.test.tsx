@@ -120,12 +120,18 @@ describe('AssignFamilyModal — the header states beds FREE (owner ruling 2026-0
     expect(screen.getByTestId('assign-capacity')).toHaveTextContent('2 of 4 beds free')
   })
 
-  it('states no free-bed count for a room somebody is written into', () => {
-    // The rows below this header refuse a capacity claim on a written-into
-    // room (a write-in is not a party, so every occupancy figure reads it as
-    // empty — `capacityVerdict`). A header asserting "N of M beds free" over
-    // rows that decline the same arithmetic is the modal disagreeing with
-    // itself about the same cabin.
+  it('states 0 free for a room whose unsized write-in takes the whole card', () => {
+    // ⚠️ REVERSED BY THE OWNER, 2026-08-29 (kindred#2543): *"sure modal can
+    // follow the floor, roll that fix in as well."* This asserted
+    // `Sleeps 4 · occupancy not counted (write-in)` — the header declining to
+    // state any remainder because nobody had sized the cover. Rewritten FROM
+    // THE RULING rather than to match the new code; that sentence no longer
+    // exists anywhere, because the only state that produced it now publishes.
+    //
+    // An unsized cover is charged the WHOLE capacity of the unit it NAMES, and
+    // this cover publishes no `unit_sleeps`, so the charge is the whole card.
+    // Zero is a bound, not a guess: `free_family_spots` closes the same cabin
+    // and the stats bar has always said 0 for it. The header now agrees.
     renderModal({
       unit: unit({
         sleeps: 4,
@@ -141,10 +147,8 @@ describe('AssignFamilyModal — the header states beds FREE (owner ruling 2026-0
       }),
       occupants: 0,
     })
-    expect(screen.getByTestId('assign-capacity')).toHaveTextContent(
-      'Sleeps 4 · occupancy not counted (write-in)'
-    )
-    expect(screen.getByTestId('assign-capacity')).not.toHaveTextContent('beds free')
+    expect(screen.getByTestId('assign-capacity')).toHaveTextContent('0 of 4 beds free')
+    expect(screen.getByTestId('assign-capacity')).not.toHaveTextContent('not counted')
   })
 
   it('states the real remainder once every write-in is counted (kindred#2503)', () => {
@@ -172,39 +176,77 @@ describe('AssignFamilyModal — the header states beds FREE (owner ruling 2026-0
     expect(screen.getByTestId('assign-capacity')).toHaveTextContent('2 of 4 beds free')
   })
 
-  it('still refuses on a PARTLY-counted card — one sized cover is not every cover', () => {
-    // NIT E. `writeInDemand`'s `known` is false whenever even one covering
-    // write-in lacks a recorded size, pinned at that function's own level in
-    // Task 7's tests — this pins it where the narrowing ruling actually
-    // lives: the header a staff member reads. A card with one counted write-in
-    // and one uncounted one is a LOWER bound, not a fact, and must still
-    // decline rather than print a number that undercounts the room.
+  it('states the FLOOR a partly-counted card leaves', () => {
+    // ⚠️ ALSO REVERSED 2026-08-29 (kindred#2543). This was NIT E, and it
+    // asserted the header still declined whenever even one cover lacked a
+    // recorded size — "a LOWER bound, not a fact". The owner ruled the lower
+    // bound is exactly what the header should state, so all four surfaces
+    // answer one cabin the same way. Rewritten from the ruling.
+    //
+    // kindred#2543's worked example: a container of 10, one cover sized at 2,
+    // one unsized cover on a MEASURED 3-bed room. 5 charged, 5 free.
+    //
+    // ⚠️ IT IS A FLOOR PRINTED IN A SENTENCE THAT READS LIKE A FACT, and that
+    // is the cost the owner accepted rather than one this test overlooked:
+    // reported free ≤ true free, so "5 of 10 beds free" may understate a cabin
+    // where the unsized occupant is one person and 7 are really free. Verbatim:
+    // *"if that slightly undercounts 'real' availability, staff will know that
+    // when looking over the shared cabins."* It can never OVERSTATE, which is
+    // the direction that would place a family into a bed that is not there.
     renderModal({
       unit: unit({
-        sleeps: 6,
+        sleeps: 10,
         write_ins: [
           {
-            unit_id: 'u1',
-            unit_code: 'ridge-1',
-            unit_name: 'Ridge 1',
+            unit_id: 'u2',
+            unit_code: 'ridge-1a',
+            unit_name: 'Ridge 1A',
             occupant_name: 'Liam Garcia',
             note: '',
+            relation: 'descendant',
             party_size: 2,
+            unit_sleeps: 3,
           },
+          {
+            unit_id: 'u3',
+            unit_code: 'ridge-1b',
+            unit_name: 'Ridge 1B',
+            occupant_name: 'Emma Johnson',
+            note: '',
+            relation: 'descendant',
+            party_size: null,
+            unit_sleeps: 3,
+          },
+        ],
+      }),
+      occupants: 0,
+    })
+    expect(screen.getByTestId('assign-capacity')).toHaveTextContent('5 of 10 beds free')
+  })
+
+  it('still records nothing for a written-into cabin nobody has measured', () => {
+    // CASE 1 of kindred#2543, and the one state the ruling did NOT move.
+    // `writeInDemand`'s `consumed` is 0 there and means nothing — no capacity
+    // to subtract it from — so a header reading it would advertise an
+    // unmeasured, written-into cabin as wholly free. `usable` is what tells
+    // that apart from the two floors above.
+    renderModal({
+      unit: unit({
+        sleeps: null,
+        write_ins: [
           {
             unit_id: 'u1',
             unit_code: 'ridge-1',
             unit_name: 'Ridge 1',
             occupant_name: 'Emma Johnson',
             note: '',
+            party_size: 2,
           },
         ],
       }),
       occupants: 0,
     })
-    expect(screen.getByTestId('assign-capacity')).toHaveTextContent(
-      'Sleeps 6 · occupancy not counted (write-in)'
-    )
+    expect(screen.getByTestId('assign-capacity')).toHaveTextContent('Capacity not recorded')
     expect(screen.getByTestId('assign-capacity')).not.toHaveTextContent('beds free')
   })
 

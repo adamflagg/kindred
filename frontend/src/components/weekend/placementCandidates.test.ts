@@ -197,13 +197,22 @@ describe('candidateFit', () => {
     expect(result.notes).toContain('Over capacity · needs 6, 4 free')
   })
 
-  it('says nothing about a room somebody is written into', () => {
-    // A write-in is not a party (kindred#2439), so it contributes nothing to
-    // any occupancy figure a caller could thread in — the free-bed count on a
-    // written-into room is the WHOLE cabin, a number the card itself refuses
-    // to assert (it prints an em dash). The row must not claim "fits" off
-    // that number, nor "does not fit" off its equally-false complement: no
-    // count, no claim, exactly the unmeasured-capacity reading above.
+  it('closes a room somebody is written into, rather than saying nothing about it', () => {
+    // ⚠️ REVERSED BY THE OWNER, 2026-08-29 (kindred#2543): *"sure modal can
+    // follow the floor, roll that fix in as well."* This asserted `fits` for
+    // BOTH a two- and a six-person party — "no count, no claim". Rewritten
+    // from the ruling rather than to match the new code.
+    //
+    // Its first premise still holds: a write-in is not a party (kindred#2439),
+    // so it contributes nothing to any occupancy figure a caller threads in.
+    // What failed is the next step. The free-bed count is not unknown — it
+    // comes from `writeInDemand`, and an unsized cover is charged the WHOLE
+    // capacity of the unit it NAMES. This cover publishes no `unit_sleeps`, so
+    // it takes the 5-bed card entire and nothing is left.
+    //
+    // Zero free is therefore a BOUND, not the "equally-false complement" this
+    // comment used to call it, and `free_family_spots` has always closed this
+    // same cabin.
     const writtenInto = unit({
       write_ins: [
         {
@@ -216,11 +225,11 @@ describe('candidateFit', () => {
       ],
     })
     const small = candidateFit(party({ party_size: 2 }), writtenInto, [])
-    expect(small.fit).toBe('fits')
-    expect(small.notes).toEqual([])
+    expect(small.fit).toBe('unmet')
+    expect(small.notes).toEqual(['Over capacity · needs 2, 0 free'])
     const large = candidateFit(party({ party_size: 6 }), writtenInto, [])
-    expect(large.fit).toBe('fits')
-    expect(large.notes).toEqual([])
+    expect(large.fit).toBe('unmet')
+    expect(large.notes).toEqual(['Over capacity · needs 6, 0 free'])
   })
 
   it('says nothing about capacity nobody has recorded', () => {
@@ -390,8 +399,27 @@ describe('capacityVerdict — a sized write-in folds into the beds graded (fix-w
    * kept right on refusing to grade. This closes that gap: `capacityVerdict`
    * now reads the same `writeInDemand` the header and the card read, and
    * declines only when it is not `known` — never on `hasWriteIn` alone.
+   *
+   * ⚠️ THE GATE MOVED FROM `known` TO `usable`, owner ruling 2026-08-29
+   * (kindred#2543): *"sure modal can follow the floor, roll that fix in as
+   * well."* An unsized cover is charged the WHOLE capacity of the unit it
+   * NAMES and a party cannot exceed the leaf it sleeps in, so what is left is
+   * a FLOOR — reported free ≤ true free — and a floor is publishable where an
+   * absence is not. All four surfaces now answer one cabin the same way: the
+   * stats bar, the board card's drag marks, this modal's header, and these
+   * rows. The tests below that asserted the old withholding were REWRITTEN
+   * FROM THE RULING, and say so at each site.
    */
-  it('still refuses an unsized cover — no fact to grade against', () => {
+  it('closes a card whose unsized cover names a leaf nobody measured', () => {
+    // ⚠️ REVERSED BY THE OWNER, 2026-08-29 (kindred#2543). This asserted
+    // `fits` with no note — the row declining to grade at all, because no
+    // human had sized the cover. Rewritten FROM THE RULING rather than to
+    // match the new code: the modal follows the floor, so a row states the
+    // remainder the write-ins leave instead of standing mute over it.
+    //
+    // Here that remainder is ZERO, and it is a bound rather than a guess: the
+    // cover publishes no `unit_sleeps`, so the unit it names is unmeasured and
+    // the charge is the whole card. `free_family_spots` closes the same cabin.
     const unsized = unit({
       sleeps: 5,
       write_ins: [
@@ -405,8 +433,8 @@ describe('capacityVerdict — a sized write-in folds into the beds graded (fix-w
       ],
     })
     const result = candidateFit(party({ party_size: 2 }), unsized, [])
-    expect(result.fit).toBe('fits')
-    expect(result.notes).toEqual([])
+    expect(result.fit).toBe('unmet')
+    expect(result.notes).toEqual(['Over capacity · needs 2, 0 free'])
   })
 
   it('grades a sized cover, and counts its beds against the room', () => {
@@ -433,9 +461,68 @@ describe('capacityVerdict — a sized write-in folds into the beds graded (fix-w
     expect(unmet.notes).toEqual(['Over capacity · needs 4, 3 free'])
   })
 
-  it('refuses a partly-sized card — one unsized cover is enough to withhold the claim', () => {
+  it('grades a partly-sized card against the FLOOR its write-ins leave', () => {
+    // ⚠️ ALSO REVERSED 2026-08-29. This asserted `fits` for a one-person party
+    // — one unsized cover withheld the claim for the whole card, whatever the
+    // other covers said. Rewritten from the ruling.
+    //
+    // kindred#2543's own worked example: a container of 10, one cover sized at
+    // 2, one unsized cover on a MEASURED 3-bed room. 5 spots are charged, so 5
+    // are published.
+    //
+    // ⚠️ THE TWO VERDICTS ARE NOT EQUALLY SAFE, and the asymmetry is why this
+    // needed a ruling rather than being obvious. `fits` off a floor is
+    // unfalsifiable — reported free ≤ true free, so `spots ≤ reported` implies
+    // `spots ≤ true`, and the row can never green-light a party that will not
+    // fit. `unmet` is merely CONSERVATIVE: if the unsized occupant is one
+    // person, 7 spots are really free and the six-person party below would
+    // have fit. The owner accepted exactly that undercount — *"if that
+    // slightly undercounts 'real' availability, staff will know that when
+    // looking over the shared cabins"* — and the row is advisory: it orders
+    // and annotates the list, it never removes a party from it.
     const partlySized = unit({
-      sleeps: 6,
+      sleeps: 10,
+      write_ins: [
+        {
+          unit_id: 'u2',
+          unit_code: 'cedar-1a',
+          unit_name: 'Cedar 1A',
+          occupant_name: 'Liam Garcia',
+          note: '',
+          relation: 'descendant',
+          party_size: 2,
+          unit_sleeps: 3,
+        },
+        {
+          unit_id: 'u3',
+          unit_code: 'cedar-1b',
+          unit_name: 'Cedar 1B',
+          occupant_name: 'Noah Smith',
+          note: '',
+          relation: 'descendant',
+          party_size: null,
+          unit_sleeps: 3,
+        },
+      ],
+    })
+    const fits = candidateFit(party({ party_size: 5 }), partlySized, [])
+    expect(fits.fit).toBe('fits')
+    expect(fits.notes).toEqual([])
+
+    const unmet = candidateFit(party({ party_size: 6 }), partlySized, [])
+    expect(unmet.fit).toBe('unmet')
+    expect(unmet.notes).toEqual(['Over capacity · needs 6, 5 free'])
+  })
+
+  it('still says nothing about a card nobody measured, written into or not', () => {
+    // CASE 1 of kindred#2543, and the ONE thing the ruling did not move.
+    // `writeInDemand`'s `consumed` comes back as 0 on an unmeasured card and
+    // means nothing at all — there was no capacity to subtract it from — so a
+    // row reading it would offer an unmeasured, written-into cabin as wholly
+    // free. `usable` is what separates that from the two cases above, and it
+    // is the whole reason the gate is not simply `known === false` inverted.
+    const unmeasured = unit({
+      sleeps: null,
       write_ins: [
         {
           unit_id: 'u1',
@@ -445,16 +532,9 @@ describe('capacityVerdict — a sized write-in folds into the beds graded (fix-w
           note: '',
           party_size: 2,
         },
-        {
-          unit_id: 'u1',
-          unit_code: 'cedar-1',
-          unit_name: 'Cedar 1',
-          occupant_name: 'Noah Smith',
-          note: '',
-        },
       ],
     })
-    const result = candidateFit(party({ party_size: 1 }), partlySized, [])
+    const result = candidateFit(party({ party_size: 9 }), unmeasured, [])
     expect(result.fit).toBe('fits')
     expect(result.notes).toEqual([])
   })

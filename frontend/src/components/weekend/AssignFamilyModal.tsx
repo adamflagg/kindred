@@ -289,20 +289,6 @@ function capacitySentence(
   spanWidth: number
 ): string {
   const capacity = effectiveSleeps(unit, units)
-  if (capacity === null) return 'Capacity not recorded'
-  // ⚠️ THE REFUSAL NARROWS, IT DOES NOT DISAPPEAR (kindred#2503). A
-  // written-into room used to have NO occupancy figure at all — `occupants`
-  // never counts a write-in (kindred#2439), so a free-bed number here would
-  // be one the card itself refused to print (it shows an em dash).
-  // `writeInDemand` supplies a real headcount wherever every cover on this
-  // card recorded a `party_size`, so the refusal applies only to the case
-  // that still has none — `known` is false. A partly-counted card is a lower
-  // bound (`writeInDemand`'s own doc), and this header states facts.
-  // Candidate rows below now read the SAME `writeInDemand` and grade a
-  // written-into card exactly this way (`capacityVerdict`, fix-wave
-  // 2026-08-22) — the two used to disagree the moment any size was recorded,
-  // this header stating a real remainder while every row beneath it still
-  // declined to grade against it.
   // ⚠️ `consumed`, NOT `sized` — DELIBERATE, and the same reviewer who
   // flagged it agreed once the reasoning was in front of them (kindred#2540
   // fix-round FINDING 7, declined by the owner 2026-08-22). The card
@@ -327,15 +313,39 @@ function capacitySentence(
   // different questions, not two copies of one answer that drifted. Do NOT
   // "harmonise" this to `sized` — that is precisely the change the owner
   // declined.
-  const { consumed, known } = writeInDemand(capacity, coveringWriteIns(unit))
-  // `!known` ALONE (kindred#2540 final scan, FINDING 9). `writeInDemand`
-  // returns `known: true` unconditionally when nothing covers the card, and
-  // `hasWriteIn` IS `coveringWriteIns(unit).length > 0` -- so `!known` already
-  // implies it, and the second conjunct only re-read `unit.write_ins` to
-  // re-answer a question the first had settled.
-  if (!known) {
-    return `Sleeps ${String(capacity)} · occupancy not counted (write-in)`
-  }
+  const { consumed, usable } = writeInDemand(capacity, coveringWriteIns(unit))
+  // ⚠️ THE WRITE-IN REFUSAL IS GONE, NOT NARROWED AGAIN — kindred#2543, owner
+  // ruling 2026-08-29: *"sure modal can follow the floor, roll that fix in as
+  // well."* This header carried a sentence of its own,
+  // `Sleeps N · occupancy not counted (write-in)`, for a card whose covers were
+  // not all sized. That sentence is DELETED rather than left unreachable: the
+  // only state that produced it now publishes a number, and the stats bar, the
+  // board card's drag marks and the candidate rows beneath this line all
+  // publish the same one. The narrowing this replaces was kindred#2503's, and
+  // its own comment promised the refusal would narrow rather than disappear —
+  // the owner has now struck the remainder of it.
+  //
+  // `usable`, NOT `known`. `known` asks *"did a human size every party"*;
+  // `usable` asks *"was there a capacity this was subtracted from"*, and only
+  // the second decides whether a number may be printed. An unsized cover is
+  // charged the WHOLE capacity of the unit it NAMES and a party cannot exceed
+  // the leaf it sleeps in, so what is left is a FLOOR: reported free ≤ true
+  // free. It can only understate, never overstate — and overstating is the
+  // direction that would seat a family in a bed that is not there.
+  //
+  // ⚠️ SO "5 of 10 beds free" MAY BE A FLOOR PRINTED IN A SENTENCE THAT READS
+  // AS A FACT, which is the accepted cost rather than an oversight: an unsized
+  // occupant who turns out to be one person leaves 7. Verbatim — *"if that
+  // slightly undercounts 'real' availability, staff will know that when looking
+  // over the shared cabins."* The card's own occupant list names who is in the
+  // room, which is where a staff member goes to check.
+  //
+  // `capacity === null` IS `usable === false` today, in every branch, and both
+  // are spelled because only the first narrows `capacity` for the arithmetic
+  // below. Reading `usable` rather than re-deriving it is what makes a future
+  // branch that renders `consumed` meaningless say so once, in `writeInDemand`,
+  // instead of in each of its callers.
+  if (capacity === null || !usable) return 'Capacity not recorded'
   // The card's own gate, mirrored — see `spanWidth`'s doc. A spanning
   // placement keeps its figure and loses the claim. `consumed` folds the
   // write-in headcount into `taken` exactly the way `occupants` already did

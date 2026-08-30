@@ -537,10 +537,57 @@ describe('writeInDemand', () => {
     expect(writeInDemand(null, [demandCover({ relation: 'own', party_size: 2 })]).usable).toBe(
       false
     )
+    // The UNSIZED cover on a measured leaf, at an unmeasured card. Python's
+    // `test_an_unmeasured_card_is_the_one_thing_that_is_not_usable` asserts all
+    // three and this side asserted two (kindred#2604 review). It is the middle
+    // one that pins the guard ORDER: a leaf of 3 is exactly the shape case 3
+    // publishes a floor from, and it must still withhold when the CARD itself
+    // is unmeasured, because there is no capacity to subtract the 3 from.
+    expect(
+      writeInDemand(null, [demandCover({ relation: 'own', party_size: null, unit_sleeps: 3 })])
+        .usable
+    ).toBe(false)
     expect(
       writeInDemand(null, [demandCover({ relation: 'ancestor', party_size: 2, unit_sleeps: 7 })])
         .usable
     ).toBe(false)
+  })
+
+  it('is exactly whether the card was measured, over every branch', () => {
+    // MIRROR of Python's `test_usable_is_exactly_whether_the_card_was_measured`,
+    // and the case this side was missing (kindred#2604 review). The whole rule
+    // stated once over every branch of it: `consumed` is publishable if and
+    // only if there was a capacity to subtract it from. A new branch that makes
+    // `consumed` meaningless again has to break THIS test, rather than a
+    // caller's re-derivation of the rule.
+    //
+    // ⚠️ IT GUARDS MORE HERE THAN IT DOES IN PYTHON, which is why its absence
+    // mattered. `write_in_demand`'s `usable` has no production consumer at all
+    // -- `free_family_spots` reads `.consumed` -- while THIS one is the board's
+    // gate: `LodgingUnitCard`'s `writeInSpotsUsable` feeds `DragCapacity.known`,
+    // which `hasNoRoom` reddens the N/M figure from and `resolveDragFit` washes
+    // the match from. The exhaustive guard existed only on the side where a
+    // regression is invisible and harmless.
+    const shapes: WriteInCoverRow[][] = [
+      [],
+      [demandCover({ relation: 'own', party_size: 2, unit_sleeps: 15 })],
+      [demandCover({ relation: 'own', party_size: null, unit_sleeps: 15 })],
+      [demandCover({ relation: 'own', party_size: null, unit_sleeps: null })],
+      [demandCover({ relation: 'ancestor', party_size: 2, unit_sleeps: 7 })],
+      [
+        demandCover({ relation: 'descendant', party_size: 2, unit_sleeps: 3 }),
+        demandCover({ relation: 'descendant', party_size: null, unit_sleeps: 3 }),
+      ],
+      [
+        demandCover({ relation: 'descendant', party_size: null, unit_sleeps: null }),
+        demandCover({ relation: 'descendant', party_size: 2, unit_sleeps: 3 }),
+      ],
+    ]
+    for (const covers of shapes) {
+      const shape = JSON.stringify(covers.map((c) => [c.relation, c.party_size, c.unit_sleeps]))
+      expect(writeInDemand(9, covers).usable, shape).toBe(true)
+      expect(writeInDemand(null, covers).usable, shape).toBe(false)
+    }
   })
 
   it('does not inherit `known`’s vacuous truth on an uncovered card', () => {

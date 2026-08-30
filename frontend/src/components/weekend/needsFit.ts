@@ -149,9 +149,30 @@ export const NEUTRAL: DragFit = { state: 'neutral', severity: 'fits' }
  * `known: false` yields FALSE, not true. A count that is not a fact cannot
  * support the claim "you will not fit here" any more than it can support a
  * match — the caller withholds `known` for an unmeasured cabin and for a
- * straddling party, and both mean the same thing here: nothing to say. An
- * unsized write-in is NO LONGER one of those cases (kindred#2543): it is
- * charged its leaf's whole capacity, which is a floor rather than an absence.
+ * straddling party, and both mean the same thing here: nothing to say.
+ *
+ * ⚠️ AN UNSIZED WRITE-IN IS NO LONGER ONE OF THOSE CASES (kindred#2543), AND
+ * THE REASON IS ASYMMETRIC BETWEEN THE TWO MARKS. A shorter draft of this
+ * paragraph gave one reason for both and lost the asymmetry the sentence above
+ * had just named. An unsized cover is charged its leaf's WHOLE capacity and a
+ * party cannot exceed the leaf it sleeps in, so `free` is a FLOOR — reported
+ * free ≤ true free — and a floor is not symmetric across `<` and `>=`.
+ * `resolveDragFit`'s match fires on `free >= partySize`, where reported ≥ party
+ * implies true ≥ party: the floor cannot manufacture a match, so that half is
+ * safe on the arithmetic alone. THIS function fires on `free < partySize`, and
+ * reported < party does NOT imply true < party. A container of 10 with one
+ * cover sized 2 and one unsized cover on a measured 3-bed room reports `free`
+ * 5; if that occupant is one person, 7 really are free, and a family of 6 is
+ * reddened off a cabin that fits them.
+ *
+ * So the red is CONSERVATIVE rather than safe, and it is conservative BY
+ * RULING: kindred#2543's divergence section names `hasNoRoom` and directs both
+ * marks to stop withholding, accepting the undercount verbatim — *"if that
+ * slightly undercounts 'real' availability, staff will know that when looking
+ * over the shared cabins."* It costs a MARK, never a placement: `dragPlacement`
+ * has refused nothing on a written-into card since kindred#2432, so the drop
+ * still lands on the cabin the red is wrong about. Do not re-narrow this to
+ * `known`.
  *
  * The boundary is `<`, so a party that exactly fills a cabin FITS.
  */
