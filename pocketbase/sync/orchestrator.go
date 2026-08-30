@@ -2140,6 +2140,17 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 		servicesToRun = ResolveUnifiedSyncServices(DefaultService, opts.IncludeCustomValues, opts.Year == 0)
 	}
 
+	// A run of exactly one service is not a queue: nothing else in this run could have
+	// completed before it to change anything, so a ChangedCollectionsAware job in it must get
+	// the same "export everything" answer RunSingleSync's explicit standalone case gets --
+	// batchChangedCollections(unregistered) == nil, not the non-nil empty map a registered-
+	// but-untouched batch would hand back ("nothing has changed *yet*"). Skipping
+	// registerBatch here, rather than special-casing multi_workbook_export, makes this a rule
+	// about what a queue *is*: two or more services that can hand each other real state.
+	// (Final-review Critical C1: POST .../sync/run?service=multi_workbook_export resolves to
+	// exactly this shape and used to write zero sheets while reporting success.)
+	isQueueRun := len(servicesToRun) > 1
+
 	// Set up sync tracking based on year mode. The batch carries the year explicitly:
 	// o.currentSyncYear below is process-global and stays set for this sync's whole
 	// duration, so a run started by any other queue in the meantime would otherwise be
@@ -2147,7 +2158,9 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 	var batch runOrigin
 	if opts.Year > 0 {
 		batch = newBatch(triggerHistorical).forYear(opts.Year)
-		o.registerBatch(batch.batchID)
+		if isQueueRun {
+			o.registerBatch(batch.batchID)
+		}
 
 		// Historical sync tracking
 		o.mu.Lock()
@@ -2168,7 +2181,9 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 		}()
 	} else {
 		batch = newBatch(triggerDaily)
-		o.registerBatch(batch.batchID)
+		if isQueueRun {
+			o.registerBatch(batch.batchID)
+		}
 
 		// Current year sync - use daily sync tracking so UI shows progress
 		o.mu.Lock()

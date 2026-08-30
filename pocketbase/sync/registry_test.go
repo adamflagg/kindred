@@ -1240,6 +1240,37 @@ func TestExportRunsExactlyOnceInAFullRun(t *testing.T) {
 	}
 }
 
+// TestSingleServiceUnifiedRunExportsEverything pins the final-review Critical C1:
+// POST .../sync/run?service=multi_workbook_export -- SyncTab's "Sheets Export" dropdown plus
+// Run Sync -- resolves to Options{Services: []string{"multi_workbook_export"}} and goes
+// through RunSyncWithOptions, which used to registerBatch unconditionally. A batch of one has
+// nothing that could have run before it to change anything, so it must behave exactly like
+// RunSingleSync's standalone case and receive a nil filter ("export everything"), not the
+// non-nil empty map a registered-but-untouched batch produces ("export nothing"). At bcceb6e6
+// this wrote 0 of 18 sheets while returning nil and reporting success -- a regression from
+// ba27120a, where the same request exported everything.
+//
+// Registered in serialGroups: newExportWithFakeWriter's CAMPMINDER_SEASON_ID is t.Setenv.
+func TestSingleServiceUnifiedRunExportsEverything(t *testing.T) {
+	app := newDryRunTestApp(t)
+	o := NewOrchestrator(app)
+	o.SetJobSpacing(0)
+
+	exp := newExportWithFakeWriter(t)
+	o.RegisterService("multi_workbook_export", exp)
+
+	if err := o.RunSyncWithOptions(context.Background(), Options{
+		Year:     0,
+		Services: []string{"multi_workbook_export"},
+	}); err != nil {
+		t.Fatalf("RunSyncWithOptions: %v", err)
+	}
+
+	if got := fakeWriterSheetsWritten(exp); got == 0 {
+		t.Error("a single-service unified run of the export must write all sheets, wrote 0")
+	}
+}
+
 // TestDryRunFullRunSkipsExportVisibly is the regression guard for fix round 2, Important #5.
 // Before this fix, MultiWorkbookExport implemented no SetDryRun/DryRunnable, so a dry_run=true
 // full sync 400'd wherever Google Sheets was enabled: UnsupportedDryRunServices rejected the
