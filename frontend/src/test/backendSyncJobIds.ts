@@ -190,7 +190,7 @@ export function assertStatusPayloadDerivesFromRegistry(source: string): void {
         `parser (kindred#2593) needs updating to match`
     )
   }
-  if (STATUS_SYNC_TYPES_DERIVED.test(source)) return
+  if (STATUS_SYNC_TYPES_DERIVED.test(source.slice(signatureAt))) return
 
   throw new Error(
     `statusSyncTypes() no longer returns allJobIDs(), so syncJobMeta is no longer what the ` +
