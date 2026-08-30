@@ -123,7 +123,7 @@ func fakeWriterGlobalsWritten(export *MultiWorkbookExport) bool {
 //	nil       -> export everything   (what a standalone Run button means)
 //	empty map -> export NOTHING      (a real, different answer: "this batch changed nothing")
 //
-// GetChangedCollections() returns make(map[string]bool) and is never nil, so getting this
+// batchChangedCollections returns a non-nil map for any registered batch, so getting this
 // backwards silently writes zero sheets and still reports success.
 func TestExportFilterNilVersusEmpty(t *testing.T) {
 	all := newExportWithFakeWriter(t)

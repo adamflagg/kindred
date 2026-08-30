@@ -338,7 +338,7 @@ func TestNoUnexpectedSiteUsesTheRejectedCounter(t *testing.T) {
 // otherwise just fall out of the diff.
 //
 // Stats.IsNoOp tests Created, Updated, Deleted and Errors, and it gates
-// GetChangedCollections, which is what lets the Google Sheets export skip
+// recordBatchChange, which is what lets the Google Sheets export skip
 // collections whose data did not move. Before this PR the 30 reject sites
 // incremented Errors, so a run that rejected 500 records and wrote nothing was
 // non-no-op and forced an export. After it, that run is a no-op and the export is

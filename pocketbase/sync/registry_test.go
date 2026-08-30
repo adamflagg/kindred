@@ -684,10 +684,11 @@ func newTestOrchestrator(t *testing.T) *Orchestrator {
 
 // TestBatchScopedChangedCollections pins the filter to the BATCH, not the process.
 //
-// GetChangedCollections reads lastCompletedStatus -- every service's most recent completion
-// since process START. A collection stays marked changed until its job completes again as a
-// no-op, so on a long-lived container most of the 18 sheets are rewritten on most runs and
-// "only if changed" does not mean it. Batch-scoping is where the API-cost saving lands.
+// The process-lifetime approach this replaces (the deleted GetChangedCollections) read
+// lastCompletedStatus -- every service's most recent completion since process START. A
+// collection stayed marked changed until its job completed again as a no-op, so on a
+// long-lived container most of the 18 sheets were rewritten on most runs and "only if changed"
+// did not mean it. Batch-scoping is where the API-cost saving lands.
 //
 // registerBatch is called first for both batches -- fix-round-1 correction: recordBatchChange
 // now only writes into a batch registerBatch initialized, so an un-registered batchID is

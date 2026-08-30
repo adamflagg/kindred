@@ -426,10 +426,10 @@ type YearSetter interface {
 //
 // nil and an empty map are DIFFERENT answers: SyncGlobalsOnly and SyncYearData skip on
 // `changed != nil && !changed[c]`, so an empty-but-non-nil map exports NOTHING while nil
-// exports everything. GetChangedCollections() returns make(map[string]bool) and is never
-// nil, so a caller that hands that through unconditionally -- instead of clearing it for a
-// standalone run -- silently writes zero sheets and still reports success. See
-// TestExportFilterNilVersusEmpty (multi_workbook_export_changed_test.go).
+// exports everything. batchChangedCollections returns a non-nil map for any REGISTERED batch
+// (see its own doc comment), so a caller that hands that through unconditionally -- instead of
+// clearing it for a standalone run -- silently writes zero sheets and still reports success.
+// See TestExportFilterNilVersusEmpty (multi_workbook_export_changed_test.go).
 type ChangedCollectionsAware interface {
 	SetChangedCollections(changed map[string]bool)
 }
@@ -990,26 +990,6 @@ func (o *Orchestrator) IsWeeklySyncRunning() bool {
 	return o.weeklySyncRunning
 }
 
-// GetChangedCollections returns a set of collections that had changes in the last sync run.
-// Collections not in the returned map should skip export since their data hasn't changed.
-// The mapping uses SyncJobToCollections to translate sync job names to collection names.
-func (o *Orchestrator) GetChangedCollections() map[string]bool {
-	o.mu.RLock()
-	defer o.mu.RUnlock()
-
-	changed := make(map[string]bool)
-	for syncType, status := range o.lastCompletedStatus {
-		if !status.Summary.IsNoOp() {
-			if collections, ok := SyncJobToCollections[syncType]; ok {
-				for _, col := range collections {
-					changed[col] = true
-				}
-			}
-		}
-	}
-	return changed
-}
-
 // registerBatch marks batchID as a live queue batch, initializing its changed-collections set
 // to a non-nil, empty map. A queue must call this before any of its jobs can complete, or
 // recordBatchChange has nothing to write into and silently drops that job's changes.
@@ -1041,11 +1021,12 @@ func (o *Orchestrator) registerBatch(batchID string) {
 // it actually ran in. An unregistered batchID (a batch of one: RunSingleSync,
 // RunSingleSyncWithService, RunSyncSequence) is a no-op here, not an error -- see registerBatch.
 //
-// This is the fix for GetChangedCollections' own limitation: that method reads
-// lastCompletedStatus, which is keyed by service name and overwritten on every completion --
-// not scoped to any one run -- so a collection stays "changed" until its job completes again
-// as a no-op. batchChangedCollections reads this map instead and answers only for the batch
-// asked about (spec 2026-08-29-sync-job-registry-design.md §5, "Batch-scoping the filter").
+// This is the fix for the process-lifetime approach's limitation (the deleted
+// GetChangedCollections, which read lastCompletedStatus -- keyed by service name and
+// overwritten on every completion, not scoped to any one run -- so a collection stayed
+// "changed" until its job completed again as a no-op). batchChangedCollections reads this map
+// instead and answers only for the batch asked about (spec
+// 2026-08-29-sync-job-registry-design.md §5, "Batch-scoping the filter").
 //
 // A no-op completion (stats.IsNoOp()) must not mark its collections changed.
 //
@@ -1074,7 +1055,7 @@ func (o *Orchestrator) recordBatchChange(batchID, service string, stats Stats) {
 
 // batchChangedCollections returns the collections changed so far within batchID -- the
 // changed-collections filter scoped to one queue's own run rather than the process's whole
-// history (GetChangedCollections).
+// history (the deleted GetChangedCollections' approach).
 //
 // The nil-versus-empty distinction is load-bearing and mirrors ChangedCollectionsAware's own
 // (Task 11): an UNREGISTERED batchID returns nil, meaning "export everything" -- correct for a
