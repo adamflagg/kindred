@@ -1070,7 +1070,12 @@ func GetRefreshFamilyCampJobs() []string {
 // GetCustomValuesSyncJobs returns the services the Sunday-4am custom-values cron runs.
 // Derived from the registry: these are the unrestricted (ScopeAll) custom-values jobs. The
 // bounded family-camp variants carry CadenceDaily instead and are deliberately absent.
-func GetCustomValuesSyncJobs() []string { return jobsWithCadence(CadenceWeeklyCustomValues) }
+//
+// cadenceQueue, not jobsWithCadence directly, so this shares available()'s Gate filtering and
+// orderQueue's ordering rule with every other derived queue -- a no-op today (neither
+// custom-values job carries a Gate, and stranded_assignment_cleanup is not one of them), but a
+// future Gate on a custom-values row would otherwise be silently ignored here.
+func GetCustomValuesSyncJobs() []string { return cadenceQueue(CadenceWeeklyCustomValues) }
 
 // RunSyncSequence runs multiple sync services sequentially, waiting for each
 // to complete before starting the next. Unlike RunSyncWithOptions, this is
