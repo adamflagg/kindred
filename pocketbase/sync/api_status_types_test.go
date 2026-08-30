@@ -114,7 +114,7 @@ func TestStatusSyncTypesHasNoDuplicates(t *testing.T) {
 // it moves exactly one job (stranded_assignment_cleanup, dead-last, #1416/#1417). Dropping
 // that one job from both sides therefore leaves an assertion that still fails if any OTHER
 // job's position diverges -- which is what a second orderQueue exception, or a registry row
-// moved without moving its neighbours, would look like. orderQueue's own doc comment says a
+// moved without moving its neighbors, would look like. orderQueue's own doc comment says a
 // second exception must never be added; this is the test that notices if one is.
 func TestStatusSyncTypesMatchesDailySyncOrder(t *testing.T) {
 	t.Parallel()

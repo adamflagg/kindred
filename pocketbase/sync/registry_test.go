@@ -371,7 +371,7 @@ const frontendSyncTypesPath = "../../frontend/src/components/admin/syncTypes.ts"
 // TypeScript one across a language boundary nothing else crosses.
 //
 // Like postRouteSegments (scope_test.go) and the mirror-image parser on the TypeScript side
-// (frontend/src/test/backendSyncJobIds.ts), it FATALS on anything it does not recognise
+// (frontend/src/test/backendSyncJobIds.ts), it FATALS on anything it does not recognize
 // rather than returning a plausible-but-wrong set. TestCurrentYearOnlyMatchesTheFrontend is
 // anchored to what this returns, so a parser that silently missed a flagged entry would turn
 // that assertion green over exactly the drift it exists to catch -- the two sides would
@@ -613,8 +613,9 @@ func TestTriggerIndividualRouteMatchesTheRouteTable(t *testing.T) {
 	// Routes are hyphenated and ids underscored, so the comparison is made in the route
 	// spelling. A job whose route were registered underscored would fail here rather than
 	// match, which is correct: useRunIndividualSync.ts POSTs the hyphenated form.
-	var declared []string
-	for _, id := range jobsWithTrigger(TriggerIndividualRoute) {
+	withRoute := jobsWithTrigger(TriggerIndividualRoute)
+	declared := make([]string, 0, len(withRoute))
+	for _, id := range withRoute {
 		declared = append(declared, strings.ReplaceAll(id, "_", "-"))
 	}
 	var routed []string
