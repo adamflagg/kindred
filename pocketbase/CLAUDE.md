@@ -115,10 +115,13 @@ Format: `2026-01-06T14:05:52Z [pocketbase] LEVEL message key=value...`. `LOG_LEV
 
 1. **Sync order matters.** `syncJobMeta`'s declaration order in `sync/orchestrator.go` is the
    source of truth — the daily and full-run queues both walk it in that order (see
-   `sync/registry.go`'s `cadenceQueue`/`GetDefaultUnifiedSyncJobs`); the
-   source phase runs `session_groups → sessions → attendees → persons → bunks → bunk_plans →
-   bunk_assignments → staff → financial_transactions`, then the transform phase (derived tables),
-   then `process_requests`. **`session_groups` runs first** — `sessions` reads it for the
+   `sync/registry.go`'s `cadenceQueue`/`GetDefaultUnifiedSyncJobs`), with one exception:
+   `orderQueue` moves `stranded_assignment_cleanup` to the end of every queue regardless of
+   where its row sits (#1416, #1417). Nothing sorts by phase at run time — the table is
+   *grouped* by phase as a convention, so a row placed in the wrong group runs in the wrong
+   place. The source phase runs `session_groups → sessions → attendees → persons → bunks →
+   bunk_plans → bunk_assignments → staff → financial_transactions`, then the transform phase
+   (derived tables), then `process_requests`. **`session_groups` runs first** — `sessions` reads it for the
    group-ID mapping, so a job inserted ahead of it sees no groups. Full phase table:
    `docs/architecture/sync-layer.md` § "Sync Dependencies".
 2. **Year-aware:** sync filters by `CAMPMINDER_SEASON_ID` env var (set in `.env`; see "Year invariant" above)

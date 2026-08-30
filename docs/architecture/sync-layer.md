@@ -183,7 +183,8 @@ If your sync reads from tables populated by OTHER syncs (not CampMinder directly
 
 | Consideration | Action |
 |---------------|--------|
-| `syncJobMeta` declaration position | Place the new row AFTER all dependency syncs' rows — the daily and full-run queues both walk `syncJobMeta` in declaration order, so physical position IS execution order (see the comment above the Source-phase block in `orchestrator.go`) |
+| `syncJobMeta` declaration position | Place the new row AFTER all dependency syncs' rows — the daily and full-run queues both walk `syncJobMeta` in declaration order, so physical position IS execution order, subject to `orderQueue` (see below). Nothing sorts by phase at run time: the table is *grouped* by phase as a convention, so a row placed in the wrong group runs in the wrong place (see the comment above the Source-phase block in `orchestrator.go`) |
+| `orderQueue`'s one exception | `stranded_assignment_cleanup` is moved to the END of every derived queue regardless of where its row sits, because it sweeps scenario drafts stranded by bunk-plan reorganizations and must run after `bunk_plans` is final (#1416, #1417). It is the only such exception; a second one means the registry ORDER is wrong and the rows should move instead |
 | Custom values dependency | If needs `person_custom_values` or `household_custom_values`, these run weekly - sync will use existing data in daily runs |
 | Historical with custom values | When `IncludeCustomValues=true`, ensure your row is declared AFTER the custom-values rows so `GetDefaultUnifiedSyncJobs` derives it in the right order |
 
