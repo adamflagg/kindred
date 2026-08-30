@@ -1,10 +1,16 @@
 package sync
 
 import (
+	"context"
 	"regexp"
 	"slices"
 	"strings"
 	"testing"
+	"testing/synctest"
+	"time"
+
+	"github.com/camp/kindred/pocketbase/campminder"
+	pbtests "github.com/pocketbase/pocketbase/tests"
 )
 
 // TestRegistryIntegrity pins the structural rules every row must satisfy. It is the guard
@@ -223,10 +229,14 @@ func TestDerivedQueuesMatchTodaysLists(t *testing.T) {
 
 	t.Run("weekly", func(t *testing.T) {
 		t.Parallel()
-		assertSeq(t, "weekly", GetWeeklySyncJobs(), []string{
+		// multi_workbook_export's presence depends on google.IsEnabled(), which a t.Parallel()
+		// test with a t.Parallel() ancestor cannot pin via t.Setenv -- ignored here rather than
+		// asserted, the same way TestDailyQueueDerivation ignores it from the daily queue.
+		// TestWeeklySyncJobsGatesExportOnGoogleEnabled/Disabled pin its conditional membership.
+		assertSeqIgnoring(t, "weekly", GetWeeklySyncJobs(), []string{
 			"person_tag_defs", "custom_field_defs", "staff_lookups",
 			"financial_lookups", "divisions",
-		})
+		}, "multi_workbook_export")
 	})
 	assertSeq(t, "custom values", GetCustomValuesSyncJobs(), []string{
 		"person_custom_values", "household_custom_values",
@@ -288,24 +298,6 @@ func TestDailyQueueGate(t *testing.T) {
 	}
 }
 
-// TestMultiWorkbookExportWithholdsFullRunTrigger pins ruling F4: multi_workbook_export must
-// NOT carry TriggerFullRun while RunSyncWithOptions' hardcoded Google Sheets export epilogue
-// still fires on every unified run -- setting the bit before Stage 4 removes that epilogue
-// would export twice per run. Asserts the raw bit rather than derived-queue membership:
-// available() also filters multi_workbook_export on google.IsEnabled, so with Google disabled
-// in this environment the job would be absent from the full-run queue for the WRONG reason,
-// and a membership check could not tell a withheld bit from a closed gate.
-//
-// Stage 4's Task 13 deletes this assertion in the same commit that deletes the epilogue and
-// sets TriggerFullRun on this row for real.
-func TestMultiWorkbookExportWithholdsFullRunTrigger(t *testing.T) {
-	t.Parallel()
-	if hasTrigger("multi_workbook_export", TriggerFullRun) {
-		t.Fatal("multi_workbook_export must not carry TriggerFullRun until Stage 4 removes " +
-			"RunSyncWithOptions' export epilogue, or a unified run double-exports Google Sheets")
-	}
-}
-
 // TestUnifiedRunDerivation pins the full run, including both conditionals and the ordering
 // change this task makes: stranded_assignment_cleanup now runs dead-last on a full run,
 // matching the daily cron, instead of mid-Transform (#1416, #1417).
@@ -314,6 +306,13 @@ func TestMultiWorkbookExportWithholdsFullRunTrigger(t *testing.T) {
 // serialGroups.
 func TestUnifiedRunDerivation(t *testing.T) {
 	t.Setenv("IS_DOCKER", "")
+	// Pinned true (production's actual setting) rather than left to the ambient
+	// environment -- see the assertSeq below, which used to read (in its own comment) "this
+	// test never sets GOOGLE_SHEETS_ENABLED, so available()'s Gate keeps it out of dockerFull
+	// regardless": that was true only because CI never sets the variable, and the same
+	// derivation run on a configured machine put multi_workbook_export in the list the
+	// assertion did not expect.
+	t.Setenv("GOOGLE_SHEETS_ENABLED", "true")
 
 	full := ResolveUnifiedSyncServices(DefaultService, true, true)
 	for _, id := range []string{"person_custom_values", "household_custom_values"} {
@@ -364,9 +363,11 @@ func TestUnifiedRunDerivation(t *testing.T) {
 	// cron's: as a literal derived from syncJobMeta by hand, not from GetDefaultUnifiedSyncJobs
 	// itself. This is the one queue this branch actually reorders (stranded_assignment_cleanup
 	// moves from mid-Transform to dead-last), and until now only its membership and last
-	// element were asserted anywhere. multi_workbook_export needs no ignore-list entry here:
-	// it carries no TriggerFullRun (TestMultiWorkbookExportWithholdsFullRunTrigger pins that),
-	// so it can never appear in dockerFull regardless of its Gate.
+	// element were asserted anywhere. multi_workbook_export is now explicitly IN this list,
+	// right before stranded_assignment_cleanup: it carries TriggerFullRun (Task 13) and
+	// GOOGLE_SHEETS_ENABLED is pinned true above, so available()'s Gate (google.IsEnabled) lets
+	// it into dockerFull the way it does in production -- see TestExportRunsExactlyOnceInAFullRun
+	// for the "runs exactly once, including through the fresh-DB bootstrap" half of this.
 	assertSeq(t, "current-year full run", dockerFull, []string{
 		"session_groups", "sessions", "attendees", "persons", "bunks", "bunk_plans",
 		"bunk_assignments", "staff", "financial_transactions",
@@ -376,7 +377,7 @@ func TestUnifiedRunDerivation(t *testing.T) {
 		"camper_transportation", "quest_registrations", "staff_applications",
 		"staff_vehicle_info", "normalize_geographic", "enrollment_snapshots",
 		"reconcile_request_lifecycle", "bunk_requests", "process_requests",
-		"stranded_assignment_cleanup",
+		"multi_workbook_export", "stranded_assignment_cleanup",
 	})
 }
 
@@ -680,4 +681,935 @@ func TestTriggerIndividualRouteMatchesTheRouteTable(t *testing.T) {
 		t.Fatalf("nothing to compare: %d declared, %d routed", len(declared), len(routed))
 	}
 	assertSameSet(t, "TriggerIndividualRoute vs api.go's POST route table", declared, routed)
+}
+
+// =============================================================================
+// Task 12: Batch-scoped changed collections
+// =============================================================================
+
+// newTestOrchestrator builds a bare Orchestrator for tests that only need in-memory batch
+// bookkeeping -- no PocketBase app, matching the NewOrchestrator(nil) pattern used throughout
+// orchestrator_test.go.
+func newTestOrchestrator(t *testing.T) *Orchestrator {
+	t.Helper()
+	return NewOrchestrator(nil)
+}
+
+// TestBatchScopedChangedCollections pins the filter to the BATCH, not the process.
+//
+// The process-lifetime approach this replaces (the deleted GetChangedCollections) read
+// lastCompletedStatus -- every service's most recent completion since process START. A
+// collection stayed marked changed until its job completed again as a no-op, so on a
+// long-lived container most of the 18 sheets were rewritten on most runs and "only if changed"
+// did not mean it. Batch-scoping is where the API-cost saving lands.
+//
+// registerBatch is called first for both batches -- fix-round-1 correction: recordBatchChange
+// now only writes into a batch registerBatch initialized, so an un-registered batchID is
+// silently dropped (see registerBatch's doc comment for why: closing the leak that a fresh,
+// never-cleaned-up batch id -- RunSingleSync, RunSingleSyncWithService, RunSyncSequence --
+// otherwise accumulated into forever).
+func TestBatchScopedChangedCollections(t *testing.T) {
+	t.Parallel()
+	o := newTestOrchestrator(t)
+
+	o.registerBatch("batch-a")
+	o.registerBatch("batch-b")
+
+	o.recordBatchChange("batch-a", "persons", Stats{Created: 1})
+	o.recordBatchChange("batch-b", "bunks", Stats{Updated: 2})
+	o.recordBatchChange("batch-a", "staff", Stats{}) // no-op: must not mark
+
+	gotA := o.batchChangedCollections("batch-a")
+	for _, c := range []string{"persons", "households"} { // the persons job writes both
+		if !gotA[c] {
+			t.Errorf("batch A missing %s", c)
+		}
+	}
+	if gotA["bunks"] {
+		t.Error("batch A must not see batch B's changes")
+	}
+	if gotA["staff"] {
+		t.Error("a no-op completion must not mark its collections changed")
+	}
+}
+
+// TestStandaloneRunClearsTheFilter pins that a manual click exports everything. The service
+// instance is long-lived, so not-setting is not enough -- it would carry the previous queue's
+// filter into the click.
+//
+// Registered in serialGroups (main_test_parallelism_test.go): newExportWithFakeWriter calls
+// t.Setenv.
+func TestStandaloneRunClearsTheFilter(t *testing.T) {
+	o := newTestOrchestrator(t)
+	exp := newExportWithFakeWriter(t)
+	o.RegisterService("multi_workbook_export", exp)
+
+	exp.SetChangedCollections(map[string]bool{"persons": true}) // leftover from a queue
+	if err := o.RunSingleSync(context.Background(), "multi_workbook_export"); err != nil {
+		t.Fatal(err)
+	}
+	if exp.changed != nil {
+		t.Errorf("RunSingleSync must CLEAR the filter, got %v", exp.changed)
+	}
+
+	// RunSingleSync never waits for its background Sync() to finish (see runSingleSyncInternal),
+	// and newExportWithFakeWriter's throwaway app registers t.Cleanup(app.Cleanup). Without this
+	// wait, the test can return and let that cleanup tear the app down concurrently with the
+	// still-running Sync() reading it -- a real, -race-catchable hazard, not merely theoretical
+	// (reproduced empirically while writing this test).
+	waitForSyncToFinish(t, o, "multi_workbook_export")
+}
+
+// TestStandaloneRunResetsYear is TestStandaloneRunClearsTheFilter's twin for YearSetter -- the
+// controller correction requiring RunSingleSync to set BOTH the filter and the year
+// explicitly, not just the changed-collections filter. MultiWorkbookExport is reachable both
+// from the dedicated multi-workbook-export button (fixed by
+// TestHandleMultiWorkbookExportDefaultBranchResetsYear) and from the generic "run any single
+// sync service" endpoint (api.go's handleIndividualSync, which calls
+// orchestrator.RunSingleSync directly) -- this is that second, previously-unfixed read path.
+//
+// Registered in serialGroups: newExportWithFakeWriter calls t.Setenv.
+func TestStandaloneRunResetsYear(t *testing.T) {
+	o := newTestOrchestrator(t)
+	exp := newExportWithFakeWriter(t) // CAMPMINDER_SEASON_ID=2025, exp.year starts at 2025
+
+	exp.SetYear(2019) // leftover historical year from a prior queued run
+	o.RegisterService("multi_workbook_export", exp)
+
+	if err := o.RunSingleSync(context.Background(), "multi_workbook_export"); err != nil {
+		t.Fatal(err)
+	}
+	if exp.year != 2025 {
+		t.Errorf("RunSingleSync must reset the year to the current season (2025), got %d", exp.year)
+	}
+
+	// See TestStandaloneRunClearsTheFilter's identical wait for why this is needed.
+	waitForSyncToFinish(t, o, "multi_workbook_export")
+}
+
+// waitForSyncToFinish blocks until syncType's currently-running background sync (as started by
+// RunSingleSync, which never waits for its own goroutine) completes, polling the orchestrator's
+// own mutex-guarded IsRunning rather than sleeping blind. RunSingleSync returns as soon as it
+// has spawned the goroutine; a t.Setenv/t.Cleanup test that returns before that goroutine
+// finishes lets the harness's cleanup (env restore, or here app.Cleanup() tearing down the
+// throwaway PocketBase app) race the still-running Sync() against the very state it reads --
+// exactly the class of bug TestHandleMultiWorkbookExportDefaultBranchResetsYear's
+// signalingWorkbookManager exists to avoid for the same reason.
+func waitForSyncToFinish(t *testing.T, o *Orchestrator, syncType string) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for o.IsRunning(syncType) {
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for %s's background sync to finish", syncType)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+// changedCollectionsSpy is a minimal Service + ChangedCollectionsAware fake that records what
+// the orchestrator passed into SetChangedCollections before Sync() ran, distinguishing "never
+// called" from "called with an empty map" -- the same nil-vs-empty distinction
+// ChangedCollectionsAware's own doc comment is about.
+type changedCollectionsSpy struct {
+	name          string
+	changed       map[string]bool
+	changedWasSet bool
+}
+
+func (s *changedCollectionsSpy) Sync(context.Context) error { return nil }
+func (s *changedCollectionsSpy) Name() string               { return s.name }
+func (s *changedCollectionsSpy) GetStats() Stats            { return Stats{} }
+func (s *changedCollectionsSpy) SetChangedCollections(changed map[string]bool) {
+	s.changed = changed
+	s.changedWasSet = true
+}
+
+// TestQueueScopesChangedCollectionsToItsBatch drives two real completions through the same
+// batch via runSyncAndWait -- the function every queue in this file (and both of api.go's
+// queued-run handlers) routes through -- and proves two things at once: that
+// runSingleSyncInternal's completion path (applyCompletionStatus call site 1) records the
+// first job's change into the batch, and that runSyncAndWait then hands exactly that batch's
+// own set, not the process's whole history, to the next ChangedCollectionsAware job in the
+// same batch.
+func TestQueueScopesChangedCollectionsToItsBatch(t *testing.T) {
+	t.Parallel()
+	o := newTestOrchestrator(t)
+
+	o.RegisterService("persons", &MockService{name: "persons", stats: Stats{Created: 2}})
+	spy := &changedCollectionsSpy{name: "export_spy"}
+	o.RegisterService("export_spy", spy)
+
+	// registerBatch simulates what a real queue function does before its first job runs (see
+	// registerBatch's doc comment) -- runSyncAndWait itself never registers, since it's shared
+	// by both real queues and RunSingleSync-style batches of one that must NOT accumulate.
+	origin := newBatch(triggerManual)
+	o.registerBatch(origin.batchID)
+	if err := o.runSyncAndWait(context.Background(), "persons", origin); err != nil {
+		t.Fatalf("persons: %v", err)
+	}
+	if err := o.runSyncAndWait(context.Background(), "export_spy", origin); err != nil {
+		t.Fatalf("export_spy: %v", err)
+	}
+
+	if !spy.changedWasSet {
+		t.Fatal("expected SetChangedCollections to be called before Sync")
+	}
+	if !spy.changed["persons"] || !spy.changed["households"] {
+		t.Errorf("expected the batch's own change (persons job writes persons+households), got %v", spy.changed)
+	}
+}
+
+// yearSetterSpy is a minimal Service + YearSetter fake, mirroring changedCollectionsSpy's
+// shape for the identical reason: distinguishing "never called" from "called with 0".
+type yearSetterSpy struct {
+	name       string
+	year       int
+	yearWasSet bool
+}
+
+func (s *yearSetterSpy) Sync(context.Context) error { return nil }
+func (s *yearSetterSpy) Name() string               { return s.name }
+func (s *yearSetterSpy) GetStats() Stats            { return Stats{} }
+func (s *yearSetterSpy) SetYear(year int) {
+	s.year = year
+	s.yearWasSet = true
+}
+
+// TestRunSyncAndWaitSetsYearFromOrigin pins the structural fix (Task 13 fix round 2):
+// runSyncAndWait -- the one function every queue in this file routes through -- sets a
+// YearSetter service's year from origin.year before Sync() runs, the same way it already
+// sets a ChangedCollectionsAware service's changed-collections filter from the same origin.
+// 0 means "the current season" (runOrigin.year's own doc comment) and resolves via
+// ParseSeasonYear(); a non-zero origin.year (a historical replay, or an explicit-year
+// phase/individual run) sets that exact year directly. This is what makes the fix apply
+// uniformly to every queue -- including RunWeeklySync and RunDailySync, which had the
+// identical exposure and no fix at all before this -- instead of needing a matching call at
+// each one.
+//
+// Registered in serialGroups: CAMPMINDER_SEASON_ID is t.Setenv.
+func TestRunSyncAndWaitSetsYearFromOrigin(t *testing.T) {
+	t.Setenv("CAMPMINDER_SEASON_ID", "2025")
+	o := newTestOrchestrator(t)
+
+	t.Run("origin.year == 0 resolves to the current season", func(t *testing.T) {
+		spy := &yearSetterSpy{name: "current_spy"}
+		o.RegisterService("current_spy", spy)
+		origin := newBatch(triggerManual)
+		o.registerBatch(origin.batchID)
+		if err := o.runSyncAndWait(context.Background(), "current_spy", origin); err != nil {
+			t.Fatalf("runSyncAndWait: %v", err)
+		}
+		if !spy.yearWasSet || spy.year != 2025 {
+			t.Errorf("expected SetYear(2025), got yearWasSet=%v year=%d", spy.yearWasSet, spy.year)
+		}
+	})
+
+	t.Run("origin.year != 0 sets that exact year", func(t *testing.T) {
+		spy := &yearSetterSpy{name: "historical_spy"}
+		o.RegisterService("historical_spy", spy)
+		origin := newBatch(triggerHistorical).forYear(2020)
+		o.registerBatch(origin.batchID)
+		if err := o.runSyncAndWait(context.Background(), "historical_spy", origin); err != nil {
+			t.Fatalf("runSyncAndWait: %v", err)
+		}
+		if !spy.yearWasSet || spy.year != 2020 {
+			t.Errorf("expected SetYear(2020), got yearWasSet=%v year=%d", spy.yearWasSet, spy.year)
+		}
+	})
+}
+
+// TestRunSyncAndWaitLeavesYearUnsetRatherThanAbortingTheBatch is the regression guard for fix
+// round 2's Important #4 ruling (final-review Minor, item 7's last sub-item): when
+// ParseSeasonYear() cannot resolve the current season, runSyncAndWait must leave that one
+// YearSetter's year unset and let its OWN Sync() fail closed on the identical
+// ParseSeasonYear() call (see MultiWorkbookExport.Sync()) -- not abort the rest of the batch.
+// Aborting ~27 services because one gated optional job cannot resolve its year would be the
+// wrong blast radius; that ruling was right for RunSingleSync, where the one service IS the
+// whole run, but does not transfer to a queue. Before this ruling, nothing pinned it as
+// behavior rather than as prose in the ledger -- a revert to a whole-batch abort would not
+// have been caught.
+//
+// Registered in serialGroups: CAMPMINDER_SEASON_ID is t.Setenv'd unresolvable.
+func TestRunSyncAndWaitLeavesYearUnsetRatherThanAbortingTheBatch(t *testing.T) {
+	t.Setenv("CAMPMINDER_SEASON_ID", "") // ParseSeasonYear() now fails closed
+	o := NewOrchestrator(nil)
+
+	yearSpy := &yearSetterSpy{name: "export_spy"}
+	o.RegisterService("export_spy", yearSpy)
+	other := &MockService{name: "other_service"}
+	o.RegisterService("other_service", other)
+
+	origin := newBatch(triggerManual) // origin.year == 0: current-season mode
+	o.registerBatch(origin.batchID)
+
+	if err := o.runSyncAndWait(context.Background(), "export_spy", origin); err != nil {
+		t.Fatalf("runSyncAndWait for the unresolvable-season job must not itself error, got: %v", err)
+	}
+	if yearSpy.yearWasSet {
+		t.Errorf("expected the year to be left unset when the season cannot be resolved, got SetYear(%d)", yearSpy.year)
+	}
+
+	// The rest of the batch must not be aborted by the first job's unresolvable season.
+	if err := o.runSyncAndWait(context.Background(), "other_service", origin); err != nil {
+		t.Fatalf("runSyncAndWait for a later job in the same batch: %v", err)
+	}
+	if got := other.callCount.Load(); got != 1 {
+		t.Errorf("expected the next job in the batch to still run, callCount=%d", got)
+	}
+}
+
+// TestWeeklySyncResetsAStaleExportYear pins the fifth stale-year path fix round 2 found:
+// RunWeeklySync (the Sunday-2am cron) reaches Sync() through runSyncAndWait exactly like
+// RunSyncWithOptions does, and before this fix nothing set the export's year there either.
+// This is the exposure this task itself created -- CadenceWeeklyGlobal is what makes the
+// export reachable from this queue at all, and the first thing a stale year kills is exactly
+// the globals export that bit exists to add (Sync()'s globals gate is `m.year ==
+// currentSeason`).
+//
+// Registered in serialGroups: GOOGLE_SHEETS_ENABLED and newExportWithFakeWriter's
+// CAMPMINDER_SEASON_ID are both t.Setenv.
+func TestWeeklySyncResetsAStaleExportYear(t *testing.T) {
+	t.Setenv("GOOGLE_SHEETS_ENABLED", "true")
+
+	app := newDryRunTestApp(t)
+	o := NewOrchestrator(app)
+	o.SetJobSpacing(0)
+
+	exp := newExportWithFakeWriter(t) // constructed at year 2025 (CAMPMINDER_SEASON_ID)
+	exp.SetYear(2020)                 // simulate a prior historical replay's leftover pin
+	o.RegisterService("multi_workbook_export", exp)
+	// divisions, not person_tag_defs -- see TestCurrentYearRunResetsAStaleExportYear's
+	// identical note on why.
+	o.RegisterService("divisions", &MockService{name: "divisions", stats: Stats{Created: 1}})
+
+	if err := o.RunWeeklySync(context.Background()); err != nil {
+		t.Fatalf("RunWeeklySync: %v", err)
+	}
+
+	if exp.year != 2025 {
+		t.Errorf("the weekly-global cron must reset a stale export year, got %d, want 2025", exp.year)
+	}
+	if !fakeWriterGlobalsWritten(exp) {
+		t.Error("expected globals to be exported once the year was correctly reset to the current season")
+	}
+}
+
+// TestRunSingleSyncWithServiceRecordsBatchChange pins applyCompletionStatus call site 2:
+// RunSingleSyncWithService must route its completion through recordBatchChange exactly like
+// runSingleSyncInternal does, or a request-scoped run (kindred#1881/#2105's pattern) silently
+// under-reports its own batch's changes.
+func TestRunSingleSyncWithServiceRecordsBatchChange(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		o := NewOrchestrator(nil)
+
+		// Registered explicitly: this test is about whether site 2 records correctly INTO a
+		// real queue batch, which is a distinct question from whether an unregistered
+		// RunSingleSyncWithService caller leaks (see
+		// TestRunSingleSyncWithServiceDoesNotLeakIntoBatchChanged for that).
+		svc := &mockYearService{name: "sessions", stats: Stats{Created: 4}}
+		origin := newBatch(triggerManual)
+		o.registerBatch(origin.batchID)
+		if err := o.RunSingleSyncWithService(context.Background(), "sessions", svc, origin); err != nil {
+			t.Fatalf("RunSingleSyncWithService: %v", err)
+		}
+		time.Sleep(50 * time.Millisecond)
+
+		got := o.batchChangedCollections(origin.batchID)
+		if !got["camp_sessions"] {
+			t.Errorf("expected camp_sessions recorded via RunSingleSyncWithService's completion path, got %v", got)
+		}
+	})
+}
+
+// TestFinalizeSyncStatusRecordsBatchChange pins applyCompletionStatus call site 3.
+// FinalizeSyncStatus is the odd one out: unlike the other two call sites it runs entirely
+// under o.mu (see publishCompletedLocked), so recordBatchChange -- which takes the lock
+// itself -- has to fire after the unlock. Getting that placement wrong deadlocks this test
+// rather than merely failing an assertion.
+func TestFinalizeSyncStatusRecordsBatchChange(t *testing.T) {
+	t.Parallel()
+	o := NewOrchestrator(nil)
+
+	const batchID = "finalize-test-batch"
+	o.registerBatch(batchID) // simulates the owning queue having registered it at start
+	o.mu.Lock()
+	o.runningJobs["persons"] = &Status{
+		Type:      "persons",
+		Status:    statusRunning,
+		StartTime: time.Now(),
+		BatchID:   batchID,
+	}
+	o.mu.Unlock()
+
+	o.FinalizeSyncStatus("persons", Stats{Created: 3}, nil)
+
+	got := o.batchChangedCollections(batchID)
+	if !got["persons"] || !got["households"] {
+		t.Errorf("expected persons+households recorded via FinalizeSyncStatus's completion path, got %v", got)
+	}
+}
+
+// TestBatchChangedEntryDeletedWhenQueueCompletes pins C4: each queue's defer must delete its
+// own batch's entry from batchChanged, or the map grows without bound in a long-lived
+// container -- a smaller version of the exact problem this task exists to fix. Every subtest
+// registers one real job name (so recordBatchChange has something to write) and asserts the
+// map is empty again once the queue function returns.
+func TestBatchChangedEntryDeletedWhenQueueCompletes(t *testing.T) {
+	t.Parallel()
+
+	assertEmpty := func(t *testing.T, o *Orchestrator) {
+		t.Helper()
+		o.mu.RLock()
+		n := len(o.batchChanged)
+		o.mu.RUnlock()
+		if n != 0 {
+			t.Errorf("expected batchChanged empty after the queue completed, got %d entries", n)
+		}
+	}
+
+	t.Run("RunHourlySync", func(t *testing.T) {
+		t.Parallel()
+		// RunHourlySync has no *SyncRunning flag/defer of its own to piggyback on (see its
+		// doc comment), so its batchChanged cleanup is a standalone defer added specifically
+		// for this -- worth its own subtest rather than trusting it by association with the
+		// other four.
+		o := NewOrchestrator(nil)
+		o.RegisterService("bunk_assignments", &MockService{name: "bunk_assignments", stats: Stats{Updated: 1}})
+
+		if err := o.RunHourlySync(context.Background()); err != nil {
+			t.Fatalf("RunHourlySync: %v", err)
+		}
+		assertEmpty(t, o)
+	})
+
+	t.Run("RunWeeklySync", func(t *testing.T) {
+		t.Parallel()
+		o := NewOrchestrator(nil)
+		o.SetJobSpacing(0)
+		o.RegisterService("person_tag_defs", &MockService{name: "person_tag_defs", stats: Stats{Created: 1}})
+
+		if err := o.RunWeeklySync(context.Background()); err != nil {
+			t.Fatalf("RunWeeklySync: %v", err)
+		}
+		assertEmpty(t, o)
+	})
+
+	t.Run("RunCustomValuesSync", func(t *testing.T) {
+		t.Parallel()
+		o := NewOrchestrator(nil)
+		o.SetJobSpacing(0)
+		// Both jobs run in parallel (see RunCustomValuesSync's doc comment) and its errors
+		// are errors.Join'd rather than logged-and-continued like the other queues, so both
+		// need a registered service or the run itself returns a non-nil error.
+		o.RegisterService("person_custom_values", &MockService{name: "person_custom_values", stats: Stats{Created: 1}})
+		o.RegisterService("household_custom_values", &MockService{name: "household_custom_values", stats: Stats{}})
+
+		if err := o.RunCustomValuesSync(context.Background()); err != nil {
+			t.Fatalf("RunCustomValuesSync: %v", err)
+		}
+		assertEmpty(t, o)
+	})
+
+	t.Run("RunDailySync", func(t *testing.T) {
+		t.Parallel()
+		// newDryRunTestApp seeds person_tag_defs so checkGlobalTablesEmpty's weekly-sync
+		// bootstrap doesn't also fire and complicate the assertion.
+		app := newDryRunTestApp(t)
+		o := NewOrchestrator(app)
+		o.SetJobSpacing(0)
+		o.RegisterService("sessions", &MockService{name: "sessions", stats: Stats{Created: 1}})
+
+		if err := o.RunDailySync(context.Background()); err != nil {
+			t.Fatalf("RunDailySync: %v", err)
+		}
+		assertEmpty(t, o)
+	})
+
+	t.Run("RunSyncWithOptions current-year mode", func(t *testing.T) {
+		t.Parallel()
+		app := newDryRunTestApp(t)
+		o := NewOrchestrator(app)
+		o.SetJobSpacing(0)
+		o.RegisterService("sessions", &MockService{name: "sessions", stats: Stats{Created: 1}})
+
+		if err := o.RunSyncWithOptions(context.Background(), Options{
+			Year:     0,
+			Services: []string{"sessions"},
+		}); err != nil {
+			t.Fatalf("RunSyncWithOptions: %v", err)
+		}
+		assertEmpty(t, o)
+	})
+
+	// The historical branch (opts.Year > 0) is not exercised here: it requires a non-nil
+	// baseClient, which no other test in this suite sets up either (see
+	// TestRunSyncWithOptionsHonorsDryRun's "skips the nil-baseClient year-override branch").
+	// Its defer adds delete(o.batchChanged, batch.batchID) in the exact same shape as the
+	// current-year branch just above -- verified by code inspection, not a live test.
+}
+
+// =============================================================================
+// Task 12 fix round 1: close the batchChanged leak, fail closed on the season
+// =============================================================================
+
+// TestRunSingleSyncDoesNotLeakIntoBatchChanged pins fix-round-1 correction #1 (Critical).
+// applyCompletionStatus's three callers all route through recordBatchChange, so every
+// completion -- not just a queue's -- used to write into batchChanged. RunSingleSync mints a
+// fresh batch id (batch of one) per call and never registers or cleans it up, so before this
+// fix every standalone run leaked one entry forever: the exact unbounded-growth bug this task
+// exists to fix, reintroduced through the one path C4's "each queue's existing defer" wording
+// excluded. registerBatch's gate is what closes it: recordBatchChange is now a no-op for any
+// batch nothing registered.
+func TestRunSingleSyncDoesNotLeakIntoBatchChanged(t *testing.T) {
+	t.Parallel()
+	o := newTestOrchestrator(t)
+	o.RegisterService("sessions", &MockService{name: "sessions", stats: Stats{Created: 1}})
+
+	if err := o.RunSingleSync(context.Background(), "sessions"); err != nil {
+		t.Fatalf("RunSingleSync: %v", err)
+	}
+	waitForSyncToFinish(t, o, "sessions")
+
+	o.mu.RLock()
+	n := len(o.batchChanged)
+	o.mu.RUnlock()
+	if n != 0 {
+		t.Errorf("expected batchChanged to hold no entries after a non-queue completion, got %d", n)
+	}
+}
+
+// TestRunSingleSyncWithServiceDoesNotLeakIntoBatchChanged is
+// TestRunSingleSyncDoesNotLeakIntoBatchChanged's twin for applyCompletionStatus call site 2 --
+// the correction named RunSingleSyncWithService explicitly ("12+ call sites across api.go").
+func TestRunSingleSyncWithServiceDoesNotLeakIntoBatchChanged(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		o := NewOrchestrator(nil)
+
+		svc := &mockYearService{name: "sessions", stats: Stats{Created: 4}}
+		origin := newBatch(triggerManual) // deliberately never registered
+		if err := o.RunSingleSyncWithService(context.Background(), "sessions", svc, origin); err != nil {
+			t.Fatalf("RunSingleSyncWithService: %v", err)
+		}
+		time.Sleep(50 * time.Millisecond)
+
+		o.mu.RLock()
+		n := len(o.batchChanged)
+		o.mu.RUnlock()
+		if n != 0 {
+			t.Errorf("expected batchChanged to hold no entries after a non-queue completion, got %d", n)
+		}
+	})
+}
+
+// TestStandaloneRunFailsClosedOnUnresolvableSeason pins fix-round-1 correction #2 (Important).
+// Swallowing ParseSeasonYear()'s error and proceeding would leave a YearSetter service pinned
+// to whatever year a prior queue left on it -- the exact insufficiency Task 11 established as
+// not good enough, and the reason RunSingleSync resets the year explicitly at all. A run that
+// can't resolve the current season must refuse outright, matching every other season-resolving
+// caller in this file (handleIndividualSync, the "unified" queue branch) and
+// MultiWorkbookExport.Sync() itself.
+func TestStandaloneRunFailsClosedOnUnresolvableSeason(t *testing.T) {
+	o := newTestOrchestrator(t)
+	exp := newExportWithFakeWriter(t) // sets CAMPMINDER_SEASON_ID=2025 momentarily; exp.year=2025
+	o.RegisterService("multi_workbook_export", exp)
+
+	exp.SetYear(2019)                    // leftover historical year from a prior queued run
+	t.Setenv("CAMPMINDER_SEASON_ID", "") // now unresolvable
+
+	err := o.RunSingleSync(context.Background(), "multi_workbook_export")
+	if err == nil {
+		t.Fatal("expected RunSingleSync to refuse when the current season can't be resolved")
+	}
+	if exp.year != 2019 {
+		t.Errorf("a refused run must not touch the stale year, got %d, want 2019", exp.year)
+	}
+	if o.IsRunning("multi_workbook_export") {
+		t.Error("a refused run must never start -- IsRunning should be false")
+	}
+}
+
+// =============================================================================
+// Task 13: delete the epilogue, queue the export
+// =============================================================================
+
+// TestExportRunsExactlyOnceInAFullRun is the regression guard for this task's sharpest risk:
+// the deleted epilogue plus the new TriggerFullRun membership would double-export.
+//
+// GOOGLE_SHEETS_ENABLED must be set: multi_workbook_export's Gate (google.IsEnabled) is
+// applied by available() inside GetDefaultUnifiedSyncJobs like every other gated row, so
+// without it the job is filtered out of the full-run queue entirely and the count assertion
+// below would be vacuously satisfied by n=0, not by the exactly-once property it's meant to
+// pin.
+func TestExportRunsExactlyOnceInAFullRun(t *testing.T) {
+	t.Setenv("IS_DOCKER", "")
+	t.Setenv("GOOGLE_SHEETS_ENABLED", "true")
+	n := 0
+	for _, id := range ResolveUnifiedSyncServices(DefaultService, true, true) {
+		if id == "multi_workbook_export" {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Errorf("multi_workbook_export appears %d times in a full run's service LIST, want 1", n)
+	}
+	src := readSourceFile(t, "orchestrator.go")
+	if strings.Contains(src, "Sync with options: Exporting to Google Sheets") {
+		t.Error("the hardcoded current-year export epilogue is still in RunSyncWithOptions")
+	}
+	if strings.Contains(src, "Historical sync: Exporting to Google Sheets") {
+		t.Error("the hardcoded historical export epilogue is still in RunSyncWithOptions")
+	}
+
+	// List membership cannot see a second execution path: checkGlobalTablesEmpty's
+	// weekly-sync bootstrap (called from both RunDailySync and RunSyncWithOptions, on any
+	// database with an empty person_tag_defs table -- a fresh deploy, or a database reset
+	// mid-season) used to run RunWeeklySync, whose job list is GetWeeklySyncJobs() --
+	// exactly the list multi_workbook_export joined via CadenceWeeklyGlobal this task added.
+	// A fresh-DB full run would export once from the bootstrap and once from its own
+	// service list -- two Sync() calls, invisible to the membership count above. Drive a
+	// REAL run against a database with NO person_tag_defs rows (so the bootstrap actually
+	// fires) and count executions directly, via a spy registered under the export's name
+	// rather than the real *MultiWorkbookExport -- the derivation functions only care about
+	// the registered NAME, not the concrete type.
+	app, err := pbtests.NewTestApp()
+	if err != nil {
+		t.Fatalf("NewTestApp: %v", err)
+	}
+	t.Cleanup(app.Cleanup)
+
+	o := NewOrchestrator(app)
+	o.SetJobSpacing(0)
+
+	spy := &MockService{name: "multi_workbook_export"}
+	o.RegisterService("multi_workbook_export", spy)
+
+	if err := o.RunSyncWithOptions(context.Background(), Options{Year: 0}); err != nil {
+		t.Fatalf("RunSyncWithOptions: %v", err)
+	}
+
+	if got := spy.callCount.Load(); got != 1 {
+		t.Errorf("multi_workbook_export.Sync() ran %d times in a full run, want 1 "+
+			"(checkGlobalTablesEmpty's bootstrap must not export -- spec §3)", got)
+	}
+}
+
+// TestExportRunsExactlyOnceInADailyRun is TestExportRunsExactlyOnceInAFullRun's twin for the
+// OTHER checkGlobalTablesEmpty call site (final-review Important I4). Both RunDailySync
+// (orchestrator.go) and RunSyncWithOptions call runGlobalTableBootstrap on a fresh, unseeded
+// database -- fixed at the same time, in the same commit -- but the existing regression guard
+// only drives RunSyncWithOptions. Reverting RunDailySync's call back to RunWeeklySync(ctx)
+// would reintroduce the fresh-DB double export on the NIGHTLY path with no test noticing.
+// multi_workbook_export carries CadenceDaily (google.IsEnabled-gated), so it is a member of
+// getDailySyncJobs() too -- a fresh-DB daily run would export once from the bootstrap and once
+// from its own place in that queue.
+func TestExportRunsExactlyOnceInADailyRun(t *testing.T) {
+	t.Setenv("GOOGLE_SHEETS_ENABLED", "true")
+
+	app, err := pbtests.NewTestApp()
+	if err != nil {
+		t.Fatalf("NewTestApp: %v", err)
+	}
+	t.Cleanup(app.Cleanup)
+
+	o := NewOrchestrator(app)
+	o.SetJobSpacing(0)
+
+	spy := &MockService{name: "multi_workbook_export"}
+	o.RegisterService("multi_workbook_export", spy)
+
+	if err := o.RunDailySync(context.Background()); err != nil {
+		t.Fatalf("RunDailySync: %v", err)
+	}
+
+	if got := spy.callCount.Load(); got != 1 {
+		t.Errorf("multi_workbook_export.Sync() ran %d times in a daily run, want 1 "+
+			"(checkGlobalTablesEmpty's bootstrap must not export -- spec §3)", got)
+	}
+}
+
+// TestSingleServiceUnifiedRunExportsEverything pins the final-review Critical C1:
+// POST .../sync/run?service=multi_workbook_export -- SyncTab's "Sheets Export" dropdown plus
+// Run Sync -- resolves to Options{Services: []string{"multi_workbook_export"}} and goes
+// through RunSyncWithOptions, which used to registerBatch unconditionally. A batch of one has
+// nothing that could have run before it to change anything, so it must behave exactly like
+// RunSingleSync's standalone case and receive a nil filter ("export everything"), not the
+// non-nil empty map a registered-but-untouched batch produces ("export nothing"). At bcceb6e6
+// this wrote 0 of 18 sheets while returning nil and reporting success -- a regression from
+// ba27120a, where the same request exported everything.
+//
+// Registered in serialGroups: newExportWithFakeWriter's CAMPMINDER_SEASON_ID is t.Setenv.
+func TestSingleServiceUnifiedRunExportsEverything(t *testing.T) {
+	app := newDryRunTestApp(t)
+	o := NewOrchestrator(app)
+	o.SetJobSpacing(0)
+
+	exp := newExportWithFakeWriter(t)
+	o.RegisterService("multi_workbook_export", exp)
+
+	if err := o.RunSyncWithOptions(context.Background(), Options{
+		Year:     0,
+		Services: []string{"multi_workbook_export"},
+	}); err != nil {
+		t.Fatalf("RunSyncWithOptions: %v", err)
+	}
+
+	if got := fakeWriterSheetsWritten(exp); got == 0 {
+		t.Error("a single-service unified run of the export must write all sheets, wrote 0")
+	}
+}
+
+// TestDryRunFullRunSkipsExportVisibly is the regression guard for fix round 2, Important #5.
+// Before this fix, MultiWorkbookExport implemented no SetDryRun/DryRunnable, so a dry_run=true
+// full sync 400'd wherever Google Sheets was enabled: UnsupportedDryRunServices rejected the
+// whole request the moment the export -- TriggerFullRun since this task -- was part of the
+// service list. It worked before this task because the export was never in that list at all.
+//
+// The fix is not a silent no-op (the plan's own text warned against exactly that): dry_run
+// against the export now skips the actual write but reports the skip VISIBLY, via
+// Stats.Skipped, so a sync_runs row and the completion toast read as "skipped", distinct from
+// both "exported" and an ordinary silent no-op.
+//
+// Registered in serialGroups: newExportWithFakeWriter's CAMPMINDER_SEASON_ID is t.Setenv.
+func TestDryRunFullRunSkipsExportVisibly(t *testing.T) {
+	t.Setenv("GOOGLE_SHEETS_ENABLED", "true")
+
+	app := newDryRunTestApp(t)
+	o := NewOrchestrator(app)
+	o.SetJobSpacing(0)
+
+	exp := newExportWithFakeWriter(t)
+	o.RegisterService("multi_workbook_export", exp)
+
+	// The synchronous check handleUnifiedSync performs before either the immediate or queued
+	// path starts -- this is what used to 400 a dry-run full sync once the export joined the
+	// service list.
+	if unsupported := o.UnsupportedDryRunServices([]string{"multi_workbook_export"}); len(unsupported) != 0 {
+		t.Fatalf("multi_workbook_export must be DryRunnable, got unsupported: %v", unsupported)
+	}
+
+	if err := o.RunSyncWithOptions(context.Background(), Options{
+		Year:     0,
+		Services: []string{"multi_workbook_export"},
+		DryRun:   true,
+	}); err != nil {
+		t.Fatalf("RunSyncWithOptions: %v", err)
+	}
+
+	if got := fakeWriterSheetsWritten(exp); got != 0 {
+		t.Errorf("dry run must write nothing, got %d sheets written", got)
+	}
+	if exp.Stats.Skipped == 0 {
+		t.Error("expected Stats.Skipped to reflect the dry-run skip, so the sync_runs row and toast read as skipped")
+	}
+	if !exp.SyncSuccessful {
+		t.Error("a dry run must still report success, not failure")
+	}
+}
+
+// TestEveryExportedCollectionHasASyncJob pins the invariant changed-only silently depends on.
+// If an ExportConfig names a collection no job writes, that sheet becomes permanently
+// unexportable and the only symptom is a "Skipping export - no sync changes" log line.
+//
+// The reverse is NOT required: staff_lookups maps to no exported collection, and that is
+// correct -- it feeds lookups nothing exports.
+func TestEveryExportedCollectionHasASyncJob(t *testing.T) {
+	t.Parallel()
+	written := map[string]bool{}
+	for _, cols := range SyncJobToCollections {
+		for _, c := range cols {
+			written[c] = true
+		}
+	}
+	configs := append(GetReadableGlobalExports(), GetReadableYearExports()...)
+	if len(configs) == 0 {
+		t.Fatal("no export configs -- this test would pass vacuously")
+	}
+	for _, cfg := range configs {
+		if !written[cfg.Collection] {
+			t.Errorf("exported collection %q is written by no sync job: changed-only export "+
+				"will skip it forever", cfg.Collection)
+		}
+	}
+}
+
+// TestHistoricalRunSetsTheExportsYear pins a regression this task's own change would
+// otherwise introduce. The OLD hardcoded historical epilogue never touched the exporter's own
+// .year field -- it called exporter.SyncForYears(ctx, []int{opts.Year}, false, changed), which
+// takes the year as an explicit parameter. Sync(), the queued-job entry point used since this
+// task, has no such parameter: it reads m.year directly for both the year-data export and the
+// globals gate. RunSyncWithOptions' historical re-registration block re-registers a long list
+// of services with year-specific clients, but never multi_workbook_export -- it stays the
+// same long-lived singleton every other trigger shares -- so without an explicit SetYear call
+// here, a historical replay of, say, 2020 would export against whatever year the singleton's
+// .year field already held (almost certainly the current season), not the year being replayed.
+//
+// Registered in serialGroups: CAMPMINDER_PRIMARY_KEY and newExportWithFakeWriter's
+// CAMPMINDER_SEASON_ID are both t.Setenv.
+func TestHistoricalRunSetsTheExportsYear(t *testing.T) {
+	t.Setenv("CAMPMINDER_PRIMARY_KEY", "test-key")
+
+	app := newDryRunTestApp(t)
+	o := NewOrchestrator(app)
+	o.SetJobSpacing(0)
+
+	client, err := campminder.NewClient(&campminder.Config{APIKey: "k", ClientID: "c", SeasonID: 2025})
+	if err != nil {
+		t.Fatalf("campminder.NewClient: %v", err)
+	}
+	o.baseClient = client
+
+	exp := newExportWithFakeWriter(t) // constructed at year 2025 (CAMPMINDER_SEASON_ID)
+	o.RegisterService("multi_workbook_export", exp)
+
+	if err := o.RunSyncWithOptions(context.Background(), Options{
+		Year:     2020,
+		Services: []string{"multi_workbook_export"},
+	}); err != nil {
+		t.Fatalf("RunSyncWithOptions: %v", err)
+	}
+
+	if exp.year != 2020 {
+		t.Errorf("a historical run must target the replayed year, got %d, want 2020", exp.year)
+	}
+}
+
+// TestCurrentYearRunResetsAStaleExportYear is TestHistoricalRunSetsTheExportsYear's symmetric
+// twin, pinning the risk that fix itself introduced (Task 13 fix round 1). The historical
+// branch's SetYear(opts.Year) pins the shared, long-lived singleton away from the current
+// season -- and before this fix, nothing in the current-year branch ever set it back. So the
+// very next current-year unified run would read m.year still holding the stale historical
+// year, export that year's workbook instead of the current one, and silently skip globals too
+// (Sync()'s gate is `m.year == currentSeason`) -- with no error, just quietly stale data. This
+// is the fourth instance of one hazard in this stage: a long-lived singleton with a read path
+// that does not set (Task 11's standalone handler, Task 12's RunSingleSync, the historical
+// branch, and now this) -- "whoever ran before us probably set it" is the assumption that
+// failed every time.
+//
+// Drives it the way production actually would: pin the singleton to a historical year first
+// (simulating a prior historical replay), then run a current-year unified sync that also
+// writes a real change to a global collection (divisions) so the changed-collections
+// filter doesn't itself suppress the globals write this test checks for -- an empty-but-non-nil
+// filter means "export nothing", same as ChangedCollectionsAware's own nil-vs-empty contract.
+//
+// Registered in serialGroups: CAMPMINDER_PRIMARY_KEY and newExportWithFakeWriter's
+// CAMPMINDER_SEASON_ID are both t.Setenv.
+func TestCurrentYearRunResetsAStaleExportYear(t *testing.T) {
+	t.Setenv("CAMPMINDER_PRIMARY_KEY", "test-key")
+
+	app := newDryRunTestApp(t)
+	o := NewOrchestrator(app)
+	o.SetJobSpacing(0)
+
+	client, err := campminder.NewClient(&campminder.Config{APIKey: "k", ClientID: "c", SeasonID: 2025})
+	if err != nil {
+		t.Fatalf("campminder.NewClient: %v", err)
+	}
+	o.baseClient = client
+
+	exp := newExportWithFakeWriter(t) // constructed at year 2025 (CAMPMINDER_SEASON_ID)
+	exp.SetYear(2020)                 // simulate a prior historical replay's leftover pin
+	o.RegisterService("multi_workbook_export", exp)
+	// divisions, not person_tag_defs: newExportSchemaApp only seeds a "divisions" collection
+	// on the export's own throwaway app (its ExportConfig.Filter is "", so an unfiltered
+	// query against a fieldless, rowless collection still succeeds and writes a sheet with
+	// zero records) -- person_tag_defs isn't seeded there, so querying it errors and the
+	// write is skipped regardless of the changed-collections filter, which would make this
+	// assertion fail for a reason unrelated to what it's checking.
+	o.RegisterService("divisions", &MockService{name: "divisions", stats: Stats{Created: 1}})
+
+	if err := o.RunSyncWithOptions(context.Background(), Options{
+		Year:     0, // current-year mode
+		Services: []string{"divisions", "multi_workbook_export"},
+	}); err != nil {
+		t.Fatalf("RunSyncWithOptions: %v", err)
+	}
+
+	if exp.year != 2025 {
+		t.Errorf("a current-year run must reset a stale export year, got %d, want 2025", exp.year)
+	}
+	if !fakeWriterGlobalsWritten(exp) {
+		t.Error("expected globals to be exported once the year was correctly reset to the current season")
+	}
+}
+
+// TestWeeklySyncJobsGatesExportOnGoogleEnabled and its sibling below pin a gap this task's
+// change exposes: GetWeeklySyncJobs (orchestrator.go) reads jobsWithCadence directly instead
+// of going through cadenceQueue, so it skips available()'s Gate filtering entirely. That was a
+// no-op until now -- none of the five PhaseGlobal rows carries a Gate -- but multi_workbook_export
+// gaining CadenceWeeklyGlobal makes it live: left unfixed, a google-disabled environment would
+// have the Sunday-2am cron try to run an unregistered "multi_workbook_export" every week and
+// log "sync service not found", exactly the failure available()'s own doc comment says
+// uniform Gate filtering exists to prevent.
+func TestWeeklySyncJobsGatesExportOnGoogleEnabled(t *testing.T) {
+	t.Setenv("GOOGLE_SHEETS_ENABLED", "true")
+	if !slices.Contains(GetWeeklySyncJobs(), "multi_workbook_export") {
+		t.Error("expected multi_workbook_export in the weekly-global queue when Google Sheets is enabled")
+	}
+}
+
+func TestWeeklySyncJobsGatesExportOnGoogleDisabled(t *testing.T) {
+	t.Setenv("GOOGLE_SHEETS_ENABLED", "")
+	if slices.Contains(GetWeeklySyncJobs(), "multi_workbook_export") {
+		t.Error("expected multi_workbook_export gated OUT of the weekly-global queue when Google Sheets is disabled")
+	}
+}
+
+// TestBatchChangedCollectionsEmptyWhenRegisteredButUntouched preserves a property the deleted
+// TestOrchestrator_GetChangedCollections pinned ("empty when no completed syncs"): a batch
+// nothing has recorded a change into yet answers with an empty, non-nil map -- never nil,
+// which means something entirely different per ChangedCollectionsAware's own doc comment
+// ("export everything").
+func TestBatchChangedCollectionsEmptyWhenRegisteredButUntouched(t *testing.T) {
+	t.Parallel()
+	o := newTestOrchestrator(t)
+	o.registerBatch("batch-empty")
+
+	got := o.batchChangedCollections("batch-empty")
+	if got == nil {
+		t.Fatal("a registered batch must answer with a non-nil map, not nil")
+	}
+	if len(got) != 0 {
+		t.Errorf("expected no changes recorded, got %v", got)
+	}
+}
+
+// TestRecordBatchChangeIgnoresUnknownSyncType preserves a property the deleted
+// TestOrchestrator_GetChangedCollections pinned ("handles unknown sync type gracefully"): a
+// service name with no SyncJobToCollections entry must not panic and must contribute nothing.
+func TestRecordBatchChangeIgnoresUnknownSyncType(t *testing.T) {
+	t.Parallel()
+	o := newTestOrchestrator(t)
+	o.registerBatch("batch-unknown")
+
+	o.recordBatchChange("batch-unknown", "unknown_sync_type", Stats{Created: 5})
+
+	got := o.batchChangedCollections("batch-unknown")
+	if len(got) != 0 {
+		t.Errorf("expected an unmapped sync type to contribute nothing, got %v", got)
+	}
+}
+
+// TestRecordBatchChangeMapsFamilyCampVariantsToSharedCollections preserves a property the
+// deleted TestOrchestrator_GetChangedCollections pinned: the bounded daily family-camp jobs
+// (kindred#2489) write the exact same person_custom_values/household_custom_values
+// collections as their unrestricted counterparts, under distinct registered names --
+// SyncJobToCollections has entries for both, and recordBatchChange must resolve them the same
+// way the deleted GetChangedCollections used to.
+func TestRecordBatchChangeMapsFamilyCampVariantsToSharedCollections(t *testing.T) {
+	t.Parallel()
+	o := newTestOrchestrator(t)
+	o.registerBatch("batch-fc")
+
+	o.recordBatchChange("batch-fc", "person_custom_values_family_camp", Stats{Created: 3, Updated: 1})
+	o.recordBatchChange("batch-fc", "household_custom_values_family_camp", Stats{Created: 2})
+
+	got := o.batchChangedCollections("batch-fc")
+	if !got["person_custom_values"] {
+		t.Error("expected person_custom_values recorded via the bounded family-camp job's completion")
+	}
+	if !got["household_custom_values"] {
+		t.Error("expected household_custom_values recorded via the bounded family-camp job's completion")
+	}
 }

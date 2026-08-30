@@ -59,6 +59,17 @@ var serialGroups = []struct {
 			"TestParseSeasonYear_AboveRange",
 			"TestParseSeasonYear_Boundaries",
 			"TestActiveSeasonYearFailsClosedWhenUnset",
+			"TestExportFilterNilVersusEmpty",
+			"TestExportGlobalsOnCurrentYearOnly",
+			"TestSyncGlobalsFailureIsSoftYearDataFailureIsHard",
+			"TestHandleMultiWorkbookExportDefaultBranchResetsYear",
+			"TestHandleMultiWorkbookExportDefaultBranchClearsFilter",
+			"TestHandleMultiWorkbookExportDefaultBranchResetsDryRun",
+			"TestHandleMultiWorkbookExportDefaultBranchUsesTheSeasonNotTheWallClock",
+			"TestHandleMultiWorkbookExportYearsValidationBoundsBySeasonNotWallClock",
+			"TestStandaloneRunClearsTheFilter",
+			"TestStandaloneRunResetsYear",
+			"TestStandaloneRunFailsClosedOnUnresolvableSeason",
 		},
 	},
 	{
@@ -249,7 +260,56 @@ var serialGroups = []struct {
 	{
 		pkg:    "sync",
 		reason: "t.Setenv: IS_DOCKER drives the process_requests Gate in cadenceQueue",
-		tests:  []string{"TestDailyQueueDerivation", "TestDailyQueueGate", "TestUnifiedRunDerivation"},
+		tests:  []string{"TestDailyQueueDerivation", "TestDailyQueueGate"},
+	},
+	{
+		pkg:    "sync",
+		reason: "t.Setenv: IS_DOCKER and GOOGLE_SHEETS_ENABLED drive Gate filtering in the derived queues themselves",
+		tests:  []string{"TestExportRunsExactlyOnceInAFullRun", "TestUnifiedRunDerivation"},
+	},
+	{
+		pkg:    "sync",
+		reason: "t.Setenv: newExportWithFakeWriter's CAMPMINDER_SEASON_ID",
+		tests:  []string{"TestSingleServiceUnifiedRunExportsEverything"},
+	},
+	{
+		pkg:    "sync",
+		reason: "t.Setenv: GOOGLE_SHEETS_ENABLED drives Gate filtering in the derived daily queue",
+		tests:  []string{"TestExportRunsExactlyOnceInADailyRun"},
+	},
+	{
+		pkg:    "sync",
+		reason: "t.Setenv: CAMPMINDER_PRIMARY_KEY (campminder.NewClient) and newExportWithFakeWriter's CAMPMINDER_SEASON_ID",
+		tests: []string{
+			"TestHistoricalRunSetsTheExportsYear",
+			"TestCurrentYearRunResetsAStaleExportYear",
+		},
+	},
+	{
+		pkg:    "sync",
+		reason: "t.Setenv: CAMPMINDER_SEASON_ID drives runSyncAndWait's own season resolution",
+		tests: []string{
+			"TestRunSyncAndWaitSetsYearFromOrigin",
+			"TestRunSyncAndWaitLeavesYearUnsetRatherThanAbortingTheBatch",
+		},
+	},
+	{
+		pkg:    "sync",
+		reason: "t.Setenv: GOOGLE_SHEETS_ENABLED and newExportWithFakeWriter's CAMPMINDER_SEASON_ID",
+		tests: []string{
+			"TestWeeklySyncResetsAStaleExportYear",
+			"TestDryRunFullRunSkipsExportVisibly",
+		},
+	},
+	{
+		pkg:    "sync",
+		reason: "t.Setenv: GOOGLE_SHEETS_ENABLED drives multi_workbook_export's Gate in GetWeeklySyncJobs",
+		tests: []string{
+			"TestWeeklySyncJobsGatesExportOnGoogleEnabled",
+			"TestWeeklySyncJobsGatesExportOnGoogleDisabled",
+			"TestWeeklySyncJobsCount",
+			"TestWeeklySyncServices",
+		},
 	},
 	{
 		// captureStdout redirects the process's os.Stdout; captureLogs swaps

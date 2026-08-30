@@ -64,11 +64,23 @@ cadence and no trigger -- nothing can ever run it"), which is loud, but it does 
 daily-cron, full-run-eligible job carries `Cadences: CadenceDaily, Triggers:
 TriggerIndividualRoute | TriggerPhaseRun | TriggerFullRun`.
 
-**Still to come, not yet true of every job:** `multi_workbook_export` carries no `TriggerFullRun`
-bit and still exports via a hardcoded epilogue in `RunSyncWithOptions` on a unified run, not via
-the derived full-run queue, until Stage 4 removes that epilogue and sets the bit for real
-(`TestMultiWorkbookExportWithholdsFullRunTrigger` in `registry_test.go` pins the withheld bit
-and names the commit that deletes the assertion).
+**`multi_workbook_export` is an ordinary queued job, not an epilogue.** As of Stage 4
+(kindred#2606-series Task 13), it carries `Cadences: CadenceDaily | CadenceWeeklyGlobal` and
+`Triggers: TriggerIndividualRoute | TriggerPhaseRun | TriggerFullRun` like any other row — the
+hardcoded `RunSyncWithOptions` epilogue that used to run it after a unified run's service loop
+is deleted. A full or historical run now produces a `sync_runs` row, a status transition, and a
+completion toast for the export, same as any other job; the daily cron's changed-collections
+skip now applies to the export at every trigger, not only the daily one; and the Sunday-2am
+global cron (`CadenceWeeklyGlobal`) now exports the four global tables it just refreshed, which
+nothing did before.
+
+**Four exported tables, five global jobs — both numbers are right.** `GetReadableGlobalExports()`
+returns four `ExportConfig`s (`person_tag_defs`, `custom_field_defs`, `financial_categories`,
+`divisions`) while five jobs carry `CadenceWeeklyGlobal`. The gap is `staff_lookups`, which
+refreshes positions, org categories and program areas — lookups nothing exports. That is
+correct, not an omission: `TestEveryExportedCollectionHasASyncJob` pins the direction that
+matters (every exported collection must be written by some job, or its sheet becomes
+permanently unexportable), and deliberately does not pin the reverse.
 
 **The five global definition tables are ordinary rows now.** `person_tag_defs`,
 `custom_field_defs`, `staff_lookups`, `financial_lookups` and `divisions` are rows in

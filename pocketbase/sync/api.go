@@ -1694,10 +1694,25 @@ func handleMultiWorkbookExport(e *core.RequestEvent, scheduler *Scheduler) error
 		includeGlobals = includeGlobalsParam == boolTrueStr || includeGlobalsParam == "1"
 	}
 
+	// currentSeason anchors both the manual-years validation bound below and the default
+	// branch's explicit SetYear below -- resolved via ParseSeasonYear(), the same clock
+	// Sync()'s globals gate reads (m.year == currentSeason, multi_workbook_export.go), so the
+	// two can never disagree. time.Now().Year() used to anchor this instead: it agrees with
+	// ParseSeasonYear() in ordinary operation, which is exactly why that divergence went
+	// unnoticed -- off-season, or while preparing next season (the ordinary reason
+	// CAMPMINDER_SEASON_ID exists to differ from the wall clock), it sent this button the
+	// wrong year's workbook and silently dropped globals. Fail closed, as every neighboring
+	// path does (e.g. RunSingleSync), rather than falling back to the wall clock.
+	currentSeason, err := ParseSeasonYear()
+	if err != nil {
+		return e.JSON(http.StatusInternalServerError, map[string]any{
+			"error": fmt.Sprintf("Cannot resolve current season: %v", err),
+		})
+	}
+
 	// Validate years if provided
 	if len(years) > 0 {
-		currentYear := time.Now().Year()
-		if err := ValidateExportYears(years, currentYear); err != nil {
+		if err := ValidateExportYears(years, currentSeason); err != nil {
 			return e.JSON(http.StatusBadRequest, map[string]any{
 				"error": err.Error(),
 			})
@@ -1740,8 +1755,28 @@ func handleMultiWorkbookExport(e *core.RequestEvent, scheduler *Scheduler) error
 				slog.Error("Multi-workbook export failed", "error", err, "years", years)
 			}
 		} else {
-			// Default: full export (globals + current year)
-			slog.Info("Starting multi-workbook export for current year")
+			// Default: full export (globals + current year). multiExport is the orchestrator's
+			// long-lived singleton, also reachable from other call sites that mutate one of
+			// its fields and never reset it -- three generic YearSetter sites (a queued
+			// "Run Phase -> Export", a queued individual run, the synchronous phase-run
+			// handler) for year and the changed-collections filter, and RunSyncWithOptions'
+			// dry-run loop for dryRun. This standalone button is none of those runs, so it
+			// cannot assume the instance still holds what a plain click means.
+			//
+			// THE RULE, stated once so it does not have to be rediscovered a fourth time:
+			// every field Sync() reads gets set explicitly, right here, in this one block.
+			// This has been found the hard way three separate times -- year (fix round 2
+			// Critical #3, TestHandleMultiWorkbookExportDefaultBranchResetsYear), the
+			// changed-collections filter (fix round 2 Critical #3, ...ClearsFilter), and
+			// dryRun (final-review Important I2, ...ResetsDryRun) -- and each was found in a
+			// separate round because the first two fixes did not say this out loud.
+			multiExport.SetYear(currentSeason)
+			// nil means "export everything" (ChangedCollectionsAware's doc comment) -- spec
+			// §5's one entry point that must mean it.
+			multiExport.SetChangedCollections(nil)
+			// A dry-run full sync's SetDryRun(true) must not silently skip this button's write.
+			multiExport.SetDryRun(false)
+			slog.Info("Starting multi-workbook export for current year", "year", currentSeason)
 			if err := multiExport.Sync(ctx); err != nil {
 				slog.Error("Multi-workbook export failed", "error", err)
 			}

@@ -465,9 +465,16 @@ func TestIsWeeklySyncRunning(t *testing.T) {
 	}
 }
 
-// TestWeeklySyncServices tests that weekly sync includes expected global services
+// TestWeeklySyncServices tests that weekly sync includes expected global services.
+//
+// multi_workbook_export also joins GetWeeklySyncJobs() when google.IsEnabled() (see
+// TestWeeklySyncJobsGatesExportOnGoogleEnabled/Disabled, which pin that conditional
+// membership directly), so this test -- about the five tables that are unconditionally
+// there -- pins GOOGLE_SHEETS_ENABLED off rather than leaving it to whatever the ambient
+// environment happens to be. It used to pass only because CI never sets the variable;
+// running it on a configured machine (production's actual setting) failed.
 func TestWeeklySyncServices(t *testing.T) {
-	t.Parallel()
+	t.Setenv("GOOGLE_SHEETS_ENABLED", "")
 	// Weekly sync should include global definition tables that rarely change
 	// Divisions is included here since it's a global table (no year field)
 	expectedServices := []string{
@@ -1058,9 +1065,13 @@ func TestHistoricalSyncExcludesDivisions(t *testing.T) {
 	}
 }
 
-// TestWeeklySyncJobsCount verifies the expected count of weekly sync jobs
+// TestWeeklySyncJobsCount verifies the expected count of weekly sync jobs.
+//
+// Pins GOOGLE_SHEETS_ENABLED off for the same reason TestWeeklySyncServices does: this count
+// is about the five unconditional global tables, and multi_workbook_export's own conditional
+// membership is TestWeeklySyncJobsGatesExportOnGoogleEnabled/Disabled's job, not this one's.
 func TestWeeklySyncJobsCount(t *testing.T) {
-	t.Parallel()
+	t.Setenv("GOOGLE_SHEETS_ENABLED", "")
 	jobs := GetWeeklySyncJobs()
 
 	// Weekly sync should have: person_tag_defs, custom_field_defs, staff_lookups,
@@ -1261,7 +1272,7 @@ func TestRunSyncWithOptionsChecksGlobalTables(t *testing.T) {
 		// The check is located in RunDailySync at lines 349-354:
 		//   if o.checkGlobalTablesEmpty() {
 		//       slog.Info("Global tables empty - running weekly sync first")
-		//       if err := o.RunWeeklySync(ctx); err != nil {
+		//       if err := o.runGlobalTableBootstrap(ctx); err != nil {
 		//           slog.Error("Weekly sync failed, continuing with daily", "error", err)
 		//       }
 		//   }
@@ -1937,6 +1948,13 @@ func TestUnsupportedDryRunServices(t *testing.T) {
 // bunk_requests and request_processor stay correctly unsupported. stranded_assignment_cleanup
 // does not embed BaseSyncService at all -- it is a from-scratch DryRun field and two gated
 // app.Save calls threaded through reconcileStrandedAssignments/reconcileLodgingOrphans.
+// multi_workbook_export (kindred#2606-series final review, Important I3) is a from-scratch
+// DryRun field, like stranded_assignment_cleanup -- MultiWorkbookExport does not embed
+// BaseSyncService. Its "write" is a Google Sheets API call rather than an app.Save/Delete, so
+// dry_run means skipping the export outright (see Sync()'s own comment); it was omitted from
+// all three of these registries when it was made DryRunnable, leaving
+// TestRealServicesSetDryRunStoresTheFlag's own "every name the orchestrator hands
+// SetDryRun(true) must be covered here" invariant silently false.
 var dryRunCapableRealServices = []string{
 	"camper_dietary", "quest_registrations", "household_demographics",
 	"financial_aid_applications", "lodging_assignments", "camper_transportation",
@@ -1944,7 +1962,7 @@ var dryRunCapableRealServices = []string{
 	"staff_applications", "staff_skills",
 	"session_groups", "sessions", "bunks", "bunk_plans", "bunk_assignments", "staff",
 	"financial_transactions", "attendees", "persons", "person_custom_values",
-	"household_custom_values", "stranded_assignment_cleanup",
+	"household_custom_values", "stranded_assignment_cleanup", "multi_workbook_export",
 }
 
 // Compile-time guarantee that the real production types stay wired to DryRunnable. If any of
@@ -1975,6 +1993,7 @@ var (
 	_ DryRunnable = (*PersonCustomFieldValuesSync)(nil)
 	_ DryRunnable = (*HouseholdCustomFieldValuesSync)(nil)
 	_ DryRunnable = (*StrandedAssignmentCleanupSync)(nil)
+	_ DryRunnable = (*MultiWorkbookExport)(nil)
 )
 
 // TestRealServicesHonorDryRunThroughUnifiedEndpoint proves the wiring against the actual
@@ -2041,11 +2060,11 @@ func TestRealServicesHonorDryRunThroughUnifiedEndpoint(t *testing.T) {
 
 // TestRunSyncWithOptionsDryRunSkipsTheWeeklyBootstrap covers the one write inside
 // RunSyncWithOptions that the DryRunnable plumbing never sees. Before any service runs,
-// RunSyncWithOptions checks whether the global tables are empty and, if so, runs a full
-// weekly sync -- real CampMinder fetches, real writes to person_tag_defs / custom_field_defs
-// / divisions -- through RunWeeklySync, which takes no Options and so cannot know a dry run
-// was asked for. A dry_run=true request landing on an unseeded database therefore wrote,
-// while the 200 body told the operator "dry_run": true (kindred#2334).
+// RunSyncWithOptions checks whether the global tables are empty and, if so, runs the bootstrap
+// repair -- real CampMinder fetches, real writes to person_tag_defs / custom_field_defs /
+// divisions -- through runGlobalTableBootstrap, which takes no Options and so cannot know a
+// dry run was asked for. A dry_run=true request landing on an unseeded database therefore
+// wrote, while the 200 body told the operator "dry_run": true (kindred#2334).
 func TestRunSyncWithOptionsDryRunSkipsTheWeeklyBootstrap(t *testing.T) {
 	t.Parallel()
 
@@ -2118,6 +2137,13 @@ func TestRunSyncWithOptionsDryRunSkipsTheWeeklyBootstrap(t *testing.T) {
 func TestRealServicesSetDryRunStoresTheFlag(t *testing.T) {
 	t.Parallel()
 
+	// year=2025 avoids ParseSeasonYear()'s CAMPMINDER_SEASON_ID read -- this test only needs
+	// the DryRun field to exist and respond to SetDryRun, never calls Sync().
+	multiWorkbookExport, err := NewMultiWorkbookExport(nil, nil, nil, 2025)
+	if err != nil {
+		t.Fatalf("NewMultiWorkbookExport: %v", err)
+	}
+
 	services := map[string]DryRunnable{
 		"camper_dietary":              NewCamperDietarySync(nil),
 		"quest_registrations":         NewQuestRegistrationsSync(nil),
@@ -2143,6 +2169,7 @@ func TestRealServicesSetDryRunStoresTheFlag(t *testing.T) {
 		"person_custom_values":        NewPersonCustomFieldValuesSync(nil, nil),
 		"household_custom_values":     NewHouseholdCustomFieldValuesSync(nil, nil),
 		"stranded_assignment_cleanup": NewStrandedAssignmentCleanupSync(nil),
+		"multi_workbook_export":       multiWorkbookExport,
 	}
 
 	// Every name the orchestrator will hand SetDryRun(true) must be covered here, or a
@@ -2504,10 +2531,6 @@ func TestStats_IsNoOp(t *testing.T) {
 		})
 	}
 }
-
-// =============================================================================
-// Orchestrator.GetChangedCollections Tests
-// =============================================================================
 
 // =============================================================================
 // Sync Phase Architecture Tests
@@ -2940,198 +2963,6 @@ func TestJobMeta_NoDuplicateIDs(t *testing.T) {
 	}
 }
 
-// =============================================================================
-// GetChangedCollections Tests
-// =============================================================================
-
-// TestOrchestrator_GetChangedCollections tests the GetChangedCollections method
-func TestOrchestrator_GetChangedCollections(t *testing.T) {
-	t.Parallel()
-	t.Run("empty when no completed syncs", func(t *testing.T) {
-		o := NewOrchestrator(nil)
-
-		changed := o.GetChangedCollections()
-		if len(changed) != 0 {
-			t.Errorf("expected empty map, got %d entries", len(changed))
-		}
-	})
-
-	t.Run("includes collections from syncs with changes", func(t *testing.T) {
-		o := NewOrchestrator(nil)
-
-		// Simulate completed sync with changes
-		now := time.Now()
-		o.mu.Lock()
-		o.lastCompletedStatus["sessions"] = &Status{
-			Type:    "sessions",
-			Status:  statusCompleted,
-			EndTime: &now,
-			Summary: Stats{Created: 5, Updated: 2},
-		}
-		o.mu.Unlock()
-
-		changed := o.GetChangedCollections()
-
-		// sessions sync should map to camp_sessions collection
-		if !changed["camp_sessions"] {
-			t.Error("expected camp_sessions to be in changed collections")
-		}
-	})
-
-	t.Run("excludes collections from no-op syncs", func(t *testing.T) {
-		o := NewOrchestrator(nil)
-
-		// Simulate completed sync with NO changes (no-op)
-		now := time.Now()
-		o.mu.Lock()
-		o.lastCompletedStatus["sessions"] = &Status{
-			Type:    "sessions",
-			Status:  statusCompleted,
-			EndTime: &now,
-			Summary: Stats{Created: 0, Updated: 0, Deleted: 0, Errors: 0, Skipped: 100},
-		}
-		o.mu.Unlock()
-
-		changed := o.GetChangedCollections()
-
-		// sessions should NOT be in changed collections since it was a no-op
-		if changed["camp_sessions"] {
-			t.Error("expected camp_sessions NOT to be in changed collections for no-op sync")
-		}
-	})
-
-	t.Run("handles sync that maps to multiple collections", func(t *testing.T) {
-		o := NewOrchestrator(nil)
-
-		// persons sync maps to both persons and households
-		now := time.Now()
-		o.mu.Lock()
-		o.lastCompletedStatus["persons"] = &Status{
-			Type:    "persons",
-			Status:  statusCompleted,
-			EndTime: &now,
-			Summary: Stats{Created: 10, Updated: 5},
-		}
-		o.mu.Unlock()
-
-		changed := o.GetChangedCollections()
-
-		// Both persons and households should be marked as changed
-		if !changed["persons"] {
-			t.Error("expected persons to be in changed collections")
-		}
-		if !changed["households"] {
-			t.Error("expected households to be in changed collections")
-		}
-	})
-
-	t.Run("combines multiple syncs correctly", func(t *testing.T) {
-		o := NewOrchestrator(nil)
-
-		now := time.Now()
-		o.mu.Lock()
-		// sessions had changes
-		o.lastCompletedStatus["sessions"] = &Status{
-			Type:    "sessions",
-			Status:  statusCompleted,
-			EndTime: &now,
-			Summary: Stats{Created: 5},
-		}
-		// attendees had no changes
-		o.lastCompletedStatus["attendees"] = &Status{
-			Type:    "attendees",
-			Status:  statusCompleted,
-			EndTime: &now,
-			Summary: Stats{Skipped: 50},
-		}
-		// bunks had changes
-		o.lastCompletedStatus["bunks"] = &Status{
-			Type:    "bunks",
-			Status:  statusCompleted,
-			EndTime: &now,
-			Summary: Stats{Updated: 3},
-		}
-		o.mu.Unlock()
-
-		changed := o.GetChangedCollections()
-
-		// camp_sessions should be changed
-		if !changed["camp_sessions"] {
-			t.Error("expected camp_sessions to be in changed collections")
-		}
-		// attendees should NOT be changed (no-op)
-		if changed["attendees"] {
-			t.Error("expected attendees NOT to be in changed collections")
-		}
-		// bunks should be changed
-		if !changed["bunks"] {
-			t.Error("expected bunks to be in changed collections")
-		}
-	})
-
-	t.Run("handles unknown sync type gracefully", func(t *testing.T) {
-		o := NewOrchestrator(nil)
-
-		now := time.Now()
-		o.mu.Lock()
-		o.lastCompletedStatus["unknown_sync_type"] = &Status{
-			Type:    "unknown_sync_type",
-			Status:  statusCompleted,
-			EndTime: &now,
-			Summary: Stats{Created: 5},
-		}
-		o.mu.Unlock()
-
-		// Should not panic, just return empty for unknown types
-		changed := o.GetChangedCollections()
-		// unknown_sync_type has no mapping, so nothing added
-		if len(changed) != 0 {
-			t.Errorf("expected empty map for unknown sync type, got %d entries", len(changed))
-		}
-	})
-
-	// The bounded family-camp jobs (kindred#2489) write the exact same person_custom_values /
-	// household_custom_values collections as their unrestricted counterparts, but
-	// SyncJobToCollections (table_exporter.go) never gained entries for their registered names
-	// -- a code-review finding on kindred#2491 (the same "new job name unrecognized by an
-	// identity-keyed map" root cause this issue's own three faces are about, just a fourth
-	// consumer). Without this, GetChangedCollections() -- which iterates ALL of
-	// o.lastCompletedStatus, not just the current run's jobs -- silently drops the bounded
-	// pass's real changes, and the Sheets export skip-optimization skips exporting
-	// person_custom_values/household_custom_values even though the daily cron just wrote fresh
-	// data to them.
-	t.Run("bounded family-camp jobs map to the same collections as their unrestricted siblings", func(t *testing.T) {
-		o := NewOrchestrator(nil)
-
-		now := time.Now()
-		o.mu.Lock()
-		o.lastCompletedStatus["person_custom_values_family_camp"] = &Status{
-			Type:    "person_custom_values_family_camp",
-			Status:  statusCompleted,
-			EndTime: &now,
-			Summary: Stats{Created: 3, Updated: 1},
-		}
-		o.lastCompletedStatus["household_custom_values_family_camp"] = &Status{
-			Type:    "household_custom_values_family_camp",
-			Status:  statusCompleted,
-			EndTime: &now,
-			Summary: Stats{Created: 2},
-		}
-		o.mu.Unlock()
-
-		changed := o.GetChangedCollections()
-
-		if !changed["person_custom_values"] {
-			t.Error("expected person_custom_values to be in changed collections after the " +
-				"bounded family-camp pass completed with real changes")
-		}
-		if !changed["household_custom_values"] {
-			t.Error("expected household_custom_values to be in changed collections after the " +
-				"bounded family-camp pass completed with real changes")
-		}
-	})
-}
-
 // TestDailySyncDoesNotIncludeTransformPhase tests that daily sync excludes all transform jobs
 func TestUnifiedSyncAlwaysIncludesTransformPhase(t *testing.T) {
 	t.Parallel()
@@ -3225,6 +3056,18 @@ func TestRunSyncWithOptionsPhaseOrdering(t *testing.T) {
 		// The unified sync job order (without CV) should match the daily sync order
 		// for all shared jobs: source → transform
 		jobs := GetDefaultUnifiedSyncJobs(false, false)
+
+		// multi_workbook_export's presence depends on google.IsEnabled(), which this test
+		// cannot pin via t.Setenv (its top-level parent calls t.Parallel()) -- filtered out
+		// rather than asserted, the same way TestDailyQueueDerivation ignores it from the
+		// daily queue it is being compared against here.
+		filtered := make([]string, 0, len(jobs))
+		for _, j := range jobs {
+			if j != "multi_workbook_export" {
+				filtered = append(filtered, j)
+			}
+		}
+		jobs = filtered
 
 		expectedOrder := []string{
 			// Source phase

@@ -284,14 +284,19 @@ var syncJobMeta = []JobMeta{
 		Gate:            func() bool { return os.Getenv("IS_DOCKER") == boolTrueStr }},
 
 	// Export phase - Google Sheets
-	// No TriggerFullRun: today a full run exports via the hardcoded epilogue in
-	// RunSyncWithOptions (orchestrator.go), not by queuing this job. Setting the bit now
-	// would run the export twice per unified run once Task 8 derives the full-run queue
-	// from this table. Stage 4 sets it in the same PR that deletes the epilogue.
+	// TriggerFullRun (Stage 4/Task 13): a full or historical run now queues this job like any
+	// other instead of going through RunSyncWithOptions' old hardcoded epilogue (deleted this
+	// task), so it finally produces a sync_runs row, a status transition and a completion
+	// toast. CadenceWeeklyGlobal is new too: the Sunday-2am global cron now exports the four
+	// global tables it just refreshed, which nothing did before. Both were deliberately
+	// withheld until this task -- setting TriggerFullRun earlier would have double-exported on
+	// every unified run while the epilogue still fired (TestExportRunsExactlyOnceInAFullRun is
+	// the regression guard).
 	{ID: "multi_workbook_export", Phase: PhaseExport,
 		Description: "Export to Google Sheets",
-		Cadences:    CadenceDaily, Triggers: TriggerIndividualRoute | TriggerPhaseRun,
-		Gate: google.IsEnabled},
+		Cadences:    CadenceDaily | CadenceWeeklyGlobal,
+		Triggers:    TriggerIndividualRoute | TriggerPhaseRun | TriggerFullRun,
+		Gate:        google.IsEnabled},
 }
 
 // GetJobMeta returns the sync job metadata array
@@ -408,6 +413,28 @@ type DryRunnable interface {
 // correct year from handleRunPhase before execution.
 type YearSetter interface {
 	SetYear(year int)
+}
+
+// ChangedCollectionsAware is an optional interface for services that can skip work for
+// collections a run did not touch. The orchestrator calls it before Sync(), the same way it
+// calls SetDryRun and SetYear -- a Service cannot reach back into the orchestrator itself.
+//
+// The filter belongs to the QUEUE that owns the run, never to the job:
+//
+//	daily / full / historical / weekly-global queue -> that batch's changed set
+//	standalone Run button, Run Phase -> Export      -> nil, meaning "export everything"
+//	unified run resolving to ONE service            -> nil, for the same reason: a batch of
+//	                                                   one is not a queue, so nothing ran
+//	                                                   before it that could have changed
+//
+// nil and an empty map are DIFFERENT answers: SyncGlobalsOnly and SyncYearData skip on
+// `changed != nil && !changed[c]`, so an empty-but-non-nil map exports NOTHING while nil
+// exports everything. batchChangedCollections returns a non-nil map for any REGISTERED batch
+// (see its own doc comment), so a caller that hands that through unconditionally -- instead of
+// clearing it for a standalone run -- silently writes zero sheets and still reports success.
+// See TestExportFilterNilVersusEmpty (multi_workbook_export_changed_test.go).
+type ChangedCollectionsAware interface {
+	SetChangedCollections(changed map[string]bool)
 }
 
 // Status represents the status of a sync operation
@@ -654,11 +681,15 @@ type Options struct {
 
 // Orchestrator manages sync service execution
 type Orchestrator struct {
-	app                     core.App
-	services                map[string]Service
-	mu                      sync.RWMutex
-	runningJobs             map[string]*Status
-	lastCompletedStatus     map[string]*Status // Store last completed status for each job
+	app                 core.App
+	services            map[string]Service
+	mu                  sync.RWMutex
+	runningJobs         map[string]*Status
+	lastCompletedStatus map[string]*Status // Store last completed status for each job
+	// batchChanged accumulates each in-flight batch's own changed-collections set, keyed by
+	// BatchID -- the batch-scoped counterpart to lastCompletedStatus's process-lifetime view.
+	// See recordBatchChange and batchChangedCollections.
+	batchChanged            map[string]map[string]bool
 	jobSpacing              time.Duration
 	baseClient              *campminder.Client // Base client for year overrides
 	currentSyncYear         int                // Year being synced (0 = current year from env)
@@ -683,6 +714,7 @@ func NewOrchestrator(app core.App) *Orchestrator {
 		services:            make(map[string]Service),
 		runningJobs:         make(map[string]*Status),
 		lastCompletedStatus: make(map[string]*Status),
+		batchChanged:        make(map[string]map[string]bool),
 		jobSpacing:          2 * time.Second, // Default 2 seconds between jobs
 	}
 }
@@ -701,9 +733,11 @@ func NewOrchestrator(app core.App) *Orchestrator {
 // stale and leaves it stuck there permanently.
 //
 // A previous revision justified restore-over-clear by citing two nesting sites. Neither
-// nests: RunDailySync calls RunWeeklySync *before* opening its own batch, and
-// RunSyncWithOptions does the same. No beginBatch nesting existed anywhere in the tree, so
-// the only thing the shared slot ever did was let concurrent runs corrupt each other.
+// nests: RunDailySync calls runGlobalTableBootstrap *before* opening its own batch, and
+// RunSyncWithOptions does the same (both called RunWeeklySync directly for this at the time --
+// see runGlobalTableBootstrap's own doc comment for why that changed). No beginBatch nesting
+// existed anywhere in the tree, so the only thing the shared slot ever did was let concurrent
+// runs corrupt each other.
 type runOrigin struct {
 	// trigger is one of the trigger constants above. Persisted verbatim to
 	// sync_runs.trigger, whose select values must match that list exactly.
@@ -961,24 +995,96 @@ func (o *Orchestrator) IsWeeklySyncRunning() bool {
 	return o.weeklySyncRunning
 }
 
-// GetChangedCollections returns a set of collections that had changes in the last sync run.
-// Collections not in the returned map should skip export since their data hasn't changed.
-// The mapping uses SyncJobToCollections to translate sync job names to collection names.
-func (o *Orchestrator) GetChangedCollections() map[string]bool {
+// registerBatch marks batchID as a live queue batch, initializing its changed-collections set
+// to a non-nil, empty map. A queue must call this before any of its jobs can complete, or
+// recordBatchChange has nothing to write into and silently drops that job's changes.
+//
+// This is the fix-round-1 correction to the original design: recordBatchChange used to write
+// into ANY batchID unconditionally, including the fresh one-off batches RunSingleSync,
+// RunSingleSyncWithService and RunSyncSequence each mint per call and never clean up --
+// exactly the unbounded-leak bug this task exists to fix, reintroduced through the paths
+// nothing was cleaning up. Gating on registration closes the whole class at once: a batch
+// nobody registered gets no entry, so there is nothing for a caller to forget to delete.
+//
+// registerBatch is deliberately NOT called by RunSingleSync/RunSingleSyncWithService/
+// RunSyncSequence, nor by a unified run that resolves to a SINGLE service. None of those is a
+// queue: nothing ran before the job that could have changed anything, so there is no set worth
+// accumulating and the job correctly receives nil -- "export everything". Registering one
+// would be worse than useless: the export would receive a non-nil EMPTY filter and write zero
+// sheets while reporting success (final-review Critical C1).
+func (o *Orchestrator) registerBatch(batchID string) {
+	if batchID == "" {
+		return
+	}
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.batchChanged[batchID] = make(map[string]bool)
+}
+
+// recordBatchChange unions service's collections (via SyncJobToCollections) into batchID's
+// own changed set, but only when the completion made a real change AND batchID was registered
+// by registerBatch. Called from the single completion path every queue routes through --
+// applyCompletionStatus's three callers (runSingleSyncInternal, RunSingleSyncWithService,
+// FinalizeSyncStatus) -- so it sees every job's completion exactly once, scoped to the batch
+// it actually ran in. An unregistered batchID (a batch of one: RunSingleSync,
+// RunSingleSyncWithService, RunSyncSequence, or a unified run resolving to a single service) is
+// a no-op here, not an error -- see registerBatch.
+//
+// This is the fix for the process-lifetime approach's limitation (the deleted
+// GetChangedCollections, which read lastCompletedStatus -- keyed by service name and
+// overwritten on every completion, not scoped to any one run -- so a collection stayed
+// "changed" until its job completed again as a no-op). batchChangedCollections reads this map
+// instead and answers only for the batch asked about (spec
+// 2026-08-29-sync-job-registry-design.md §5, "Batch-scoping the filter").
+//
+// A no-op completion (stats.IsNoOp()) must not mark its collections changed.
+//
+//nolint:gocritic // hugeParam: Stats grew past 80B with ProdAuditWarnings; signature refactor out of scope for #1439
+func (o *Orchestrator) recordBatchChange(batchID, service string, stats Stats) {
+	if batchID == "" || stats.IsNoOp() {
+		return
+	}
+	collections, ok := SyncJobToCollections[service]
+	if !ok {
+		return
+	}
+
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if _, registered := o.batchChanged[batchID]; !registered {
+		// Not a queue batch -- nothing is waiting on this filter, and nothing will ever
+		// delete an entry created here, so creating one would be exactly the leak this
+		// registration gate exists to prevent.
+		return
+	}
+	for _, col := range collections {
+		o.batchChanged[batchID][col] = true
+	}
+}
+
+// batchChangedCollections returns the collections changed so far within batchID -- the
+// changed-collections filter scoped to one queue's own run rather than the process's whole
+// history (the deleted GetChangedCollections' approach).
+//
+// The nil-versus-empty distinction is load-bearing and mirrors ChangedCollectionsAware's own
+// (Task 11): an UNREGISTERED batchID returns nil, meaning "export everything" -- correct for a
+// batch nothing ever set up tracking for, such as a bug that somehow reached here with a
+// one-off batch id. A REGISTERED batchID that has recorded no real change yet returns a
+// non-nil, empty map, meaning "export nothing" -- the ordinary case of asking early in a
+// queue's run, or after every job in it turned out to be a no-op.
+func (o *Orchestrator) batchChangedCollections(batchID string) map[string]bool {
 	o.mu.RLock()
 	defer o.mu.RUnlock()
 
-	changed := make(map[string]bool)
-	for syncType, status := range o.lastCompletedStatus {
-		if !status.Summary.IsNoOp() {
-			if collections, ok := SyncJobToCollections[syncType]; ok {
-				for _, col := range collections {
-					changed[col] = true
-				}
-			}
-		}
+	existing, registered := o.batchChanged[batchID]
+	if !registered {
+		return nil
 	}
-	return changed
+	result := make(map[string]bool, len(existing))
+	for col := range existing {
+		result[col] = true
+	}
+	return result
 }
 
 // IsCustomValuesSyncRunning returns whether a custom values sync sequence is in progress
@@ -1041,11 +1147,18 @@ func (o *Orchestrator) IsAnyJobRunning() bool {
 	return false
 }
 
-// GetWeeklySyncJobs returns the list of services that run in the weekly sync. These are the
-// PhaseGlobal rows: definition tables that rarely change and don't need daily updates.
-// Derived from the registry in declaration order via jobsWithCadence.
+// GetWeeklySyncJobs returns the list of services that run in the weekly sync: the five
+// PhaseGlobal rows (definition tables that rarely change and don't need daily updates) plus,
+// since Task 13, multi_workbook_export -- CadenceWeeklyGlobal means the Sunday-2am cron now
+// also exports the four global tables it just refreshed.
+//
+// cadenceQueue, not jobsWithCadence directly, so this shares available()'s Gate filtering with
+// every other derived queue. That was a no-op for the five PhaseGlobal rows (none carries a
+// Gate) but is load-bearing now: multi_workbook_export's Gate is google.IsEnabled, and without
+// it a google-disabled environment would have this list name a service that was never
+// registered, and RunWeeklySync would log "sync service not found" every week.
 func GetWeeklySyncJobs() []string {
-	return jobsWithCadence(CadenceWeeklyGlobal)
+	return cadenceQueue(CadenceWeeklyGlobal)
 }
 
 // GetRefreshBunkingJobs returns the services needed for a full bunking refresh.
@@ -1129,8 +1242,41 @@ func (o *Orchestrator) RunSyncSequence(ctx context.Context, services []string) e
 //
 // Every caller is an operator action against one service — an API handler, or a test — so the
 // run is manual and forms a batch of one. A queue that wants its jobs grouped calls
-// runSyncAndWait with its own batch instead.
+// runSyncAndWait with its own batch instead. Its batch id is never registered (see
+// registerBatch), so completions routed through it never write into batchChanged -- a
+// standalone run has no export waiting on the filter, and nothing would ever clean the entry
+// up if it did.
+//
+// The registered service is a long-lived singleton, and two optional interfaces let earlier
+// runs leave state on it that a standalone run must not inherit: a ChangedCollectionsAware
+// service (see MultiWorkbookExport) may still hold a queue's changed-collections filter, and a
+// YearSetter service (task 11's fix round 2, kindred#2606-series) may still hold a historical
+// year from a prior "Run Phase -> Export". Both are cleared explicitly, before the run starts
+// -- not-setting is not enough for either, because the batch id this function mints below is
+// fresh and would otherwise leave the field exactly as some earlier caller left it.
+//
+// Fails closed, before starting anything, if the current season can't be resolved for a
+// YearSetter service: proceeding would leave the singleton pinned to whatever year a prior
+// queue set it to, silently reproducing the exact stale-year hazard this function exists to
+// fix (kindred#2606-series task 11). MultiWorkbookExport.Sync() itself takes the same position
+// -- "exporting globals against an unknown year is worse than refusing to run at all" -- and
+// every other caller in this file that resolves the season (handleIndividualSync, the
+// "unified" queue branch) fails closed on it too; swallowing the error here would be the one
+// exception, not a neutral default.
 func (o *Orchestrator) RunSingleSync(parentCtx context.Context, syncType string) error {
+	if svc := o.GetService(syncType); svc != nil {
+		if yearSetter, ok := svc.(YearSetter); ok {
+			year, err := ParseSeasonYear()
+			if err != nil {
+				return fmt.Errorf("resolving current season for %s: %w", syncType, err)
+			}
+			yearSetter.SetYear(year)
+		}
+		if changedAware, ok := svc.(ChangedCollectionsAware); ok {
+			changedAware.SetChangedCollections(nil)
+		}
+	}
+
 	_, err := o.runSingleSyncInternal(parentCtx, syncType, newBatch(triggerManual))
 	return err
 }
@@ -1243,6 +1389,7 @@ func (o *Orchestrator) runSingleSyncInternal(
 		completed.Summary = stats
 
 		applyCompletionStatus(&completed, &stats, err)
+		o.recordBatchChange(completed.BatchID, syncType, stats)
 
 		if completed.Year == 0 {
 			if completed.Status == statusFailed {
@@ -1279,6 +1426,10 @@ func (o *Orchestrator) runSingleSyncInternal(
 // for it. That year has to arrive here too — the service reading 2019 while the row says
 // 2026 makes the run unfindable from the year it belongs to, and `year` is what this table is
 // grouped and filtered by.
+//
+// None of the 12+ call sites register origin.batchID (see registerBatch), so a completion
+// routed through here never writes into batchChanged -- a request-scoped run has no export
+// waiting on the filter, and there is no queue defer here to ever clean an entry up.
 func (o *Orchestrator) RunSingleSyncWithService(
 	parentCtx context.Context, syncType string, service Service, origin runOrigin,
 ) error {
@@ -1345,6 +1496,7 @@ func (o *Orchestrator) RunSingleSyncWithService(
 		completed.Summary = stats
 
 		applyCompletionStatus(&completed, &stats, err)
+		o.recordBatchChange(completed.BatchID, syncType, stats)
 
 		if completed.Status == statusFailed {
 			slog.Error("Sync failed", "syncType", syncType, "error", completed.Error)
@@ -1440,10 +1592,17 @@ func (o *Orchestrator) FinalizeSyncStatus(syncType string, stats Stats, err erro
 	snapshot := o.publishCompletedLocked(&completed)
 	o.mu.Unlock()
 
+	// recordBatchChange takes o.mu itself, so it must run after the unlock above -- calling it
+	// while the lock from the critical section is still held would deadlock. completed and
+	// stats are both local copies by this point, so reading them here is safe.
+	o.recordBatchChange(completed.BatchID, syncType, stats)
+
 	o.recordSyncRun(&snapshot)
 
-	// Read the outcome off the snapshot: &completed is in the map now, so reading its
-	// fields would be reading memory other goroutines can reach.
+	// Read the outcome off snapshot, not completed: reading completed directly would still
+	// be safe (it is a local copy, per the comment above recordBatchChange), but snapshot is
+	// the exact Status this run's sync_runs row is about to be written from, so reading it
+	// from anywhere else risks drifting from what actually got recorded.
 	finalStatus, finalError := snapshot.Status, snapshot.Error
 
 	if finalStatus == statusFailed {
@@ -1454,7 +1613,12 @@ func (o *Orchestrator) FinalizeSyncStatus(syncType string, stats Stats, err erro
 }
 
 // checkGlobalTablesEmpty checks if essential global tables have been synced.
-// Returns true if global tables are empty and weekly sync should run first.
+// Returns true if global tables are empty and the global-table bootstrap should run first.
+//
+// Its callers run runGlobalTableBootstrap, NOT RunWeeklySync: since the Sheets export joined
+// the weekly-global cadence, running the whole weekly queue here would export as well as
+// repair, and a fresh-DB run would then export twice. The bootstrap is a repair path, not a
+// membership question.
 func (o *Orchestrator) checkGlobalTablesEmpty() bool {
 	// Quick check on person_tag_defs - if empty, globals haven't run
 	records, _ := o.app.FindRecordsByFilter("person_tag_defs", "", "", 1, 0)
@@ -1482,6 +1646,17 @@ func getDailySyncJobs() []string { return cadenceQueue(CadenceDaily) }
 // method here. Both callers already run it on their own goroutine.
 func (o *Orchestrator) RunHourlySync(ctx context.Context) error {
 	batch := newBatch(triggerHourly)
+	o.registerBatch(batch.batchID)
+	// Unlike the other queues below, this one has no *SyncRunning flag/defer of its own to
+	// piggyback on -- but it accumulates into batchChanged exactly like they do (bunk_assignments
+	// is CadenceHourly's one job, and it does map to a collection in SyncJobToCollections), so
+	// without this the map leaks one entry every hour, forever, in a long-lived container. Same
+	// reasoning as RunDailySync's identical cleanup.
+	defer func() {
+		o.mu.Lock()
+		delete(o.batchChanged, batch.batchID)
+		o.mu.Unlock()
+	}()
 	for _, job := range cadenceQueue(CadenceHourly) {
 		if err := o.runSyncAndWait(ctx, job, batch); err != nil {
 			return err
@@ -1492,12 +1667,13 @@ func (o *Orchestrator) RunHourlySync(ctx context.Context) error {
 
 // RunDailySync runs all base data syncs in the correct order
 func (o *Orchestrator) RunDailySync(ctx context.Context) error {
-	// Check if global tables are empty - if so, run weekly sync first
+	// Check if global tables are empty - if so, repair them first (the five PhaseGlobal
+	// tables only -- never the export; see runGlobalTableBootstrap).
 	// This ensures fresh DB setups have required global definitions before daily sync
 	if o.checkGlobalTablesEmpty() {
-		slog.Info("Global tables empty - running weekly sync first")
-		if err := o.RunWeeklySync(ctx); err != nil {
-			slog.Error("Weekly sync failed, continuing with daily", "error", err)
+		slog.Info("Global tables empty - running the bootstrap repair first")
+		if err := o.runGlobalTableBootstrap(ctx); err != nil {
+			slog.Error("Global table bootstrap failed, continuing with daily", "error", err)
 		}
 	}
 
@@ -1506,6 +1682,7 @@ func (o *Orchestrator) RunDailySync(ctx context.Context) error {
 	// Minted here, after the weekly prologue above: the two are sequential queues, not
 	// nested ones, and each files its own jobs under its own trigger.
 	batch := newBatch(triggerDaily)
+	o.registerBatch(batch.batchID)
 
 	// Set daily sync flag and queue
 	o.mu.Lock()
@@ -1514,12 +1691,15 @@ func (o *Orchestrator) RunDailySync(ctx context.Context) error {
 	o.currentRunIndex = 0 // Reset index at start
 	o.mu.Unlock()
 
-	// Ensure flag and queue are cleared on exit
+	// Ensure flag and queue are cleared on exit. delete(o.batchChanged, batch.batchID) here
+	// is what keeps that map from growing without bound in a long-lived container -- the
+	// same shape of bug recordBatchChange itself exists to fix, one level up.
 	defer func() {
 		o.mu.Lock()
 		o.dailySyncRunning = false
 		o.dailySyncQueue = nil
 		o.currentRunIndex = 0
+		delete(o.batchChanged, batch.batchID)
 		o.mu.Unlock()
 	}()
 
@@ -1562,12 +1742,42 @@ func (o *Orchestrator) RunDailySync(ctx context.Context) error {
 // RunWeeklySync runs global data syncs that are too expensive for daily sync.
 // These services require N API calls (one per entity) and run once per week.
 //
+// This is the REAL Sunday-2am cron path (scheduler.go): GetWeeklySyncJobs() is every
+// CadenceWeeklyGlobal row, multi_workbook_export included since this task. Do not call this
+// from checkGlobalTablesEmpty's bootstrap -- see runGlobalTableBootstrap, which is that path's
+// job list instead, deliberately excluding the export (spec §3: "a repair path, not a
+// membership question").
+//
 //nolint:dupl // Similar pattern to RunCustomValuesSync, intentional for sync orchestration
 func (o *Orchestrator) RunWeeklySync(ctx context.Context) error {
-	// Get the weekly sync jobs
-	weeklyJobs := GetWeeklySyncJobs()
+	return o.runWeeklyJobs(ctx, GetWeeklySyncJobs())
+}
 
+// runGlobalTableBootstrap is checkGlobalTablesEmpty's repair path, called by RunDailySync and
+// RunSyncWithOptions when a fresh or freshly-reset database has no person_tag_defs rows. It
+// refills exactly the five PhaseGlobal tables (GetJobsForPhase(PhaseGlobal), gated the same
+// way every derived queue is) and nothing else.
+//
+// Deliberately NOT GetWeeklySyncJobs(): that list also carries multi_workbook_export
+// (CadenceWeeklyGlobal, since this task), and this bootstrap is a repair path, not a
+// membership question (spec §3) -- it must refill the definition tables a database is missing,
+// and must never trigger an export as a side effect of doing so. Before this function existed,
+// both callers ran RunWeeklySync directly, so a fresh-DB full run exported once from the
+// bootstrap and once from its own service list (TestExportRunsExactlyOnceInAFullRun is the
+// regression guard).
+//
+// Uses the SAME triggerWeekly batch trigger and the SAME weeklySyncRunning/weeklySyncQueue UI
+// flags as RunWeeklySync -- this is still, semantically, "the weekly sync ran early because the
+// globals were missing," just scoped to the five tables that repair path actually owns.
+func (o *Orchestrator) runGlobalTableBootstrap(ctx context.Context) error {
+	return o.runWeeklyJobs(ctx, available(GetJobsForPhase(PhaseGlobal)))
+}
+
+// runWeeklyJobs is RunWeeklySync's and runGlobalTableBootstrap's shared body, parameterized on
+// the job list so the two can differ only in which jobs run, never in how the batch is tracked.
+func (o *Orchestrator) runWeeklyJobs(ctx context.Context, weeklyJobs []string) error {
 	batch := newBatch(triggerWeekly)
+	o.registerBatch(batch.batchID)
 
 	// Set weekly sync flag and queue
 	o.mu.Lock()
@@ -1576,12 +1786,14 @@ func (o *Orchestrator) RunWeeklySync(ctx context.Context) error {
 	o.currentRunIndex = 0 // Reset index at start
 	o.mu.Unlock()
 
-	// Ensure flag and queue are cleared on exit
+	// Ensure flag and queue are cleared on exit. See RunDailySync's identical defer for why
+	// batchChanged is cleaned up here too.
 	defer func() {
 		o.mu.Lock()
 		o.weeklySyncRunning = false
 		o.weeklySyncQueue = nil
 		o.currentRunIndex = 0
+		delete(o.batchChanged, batch.batchID)
 		o.mu.Unlock()
 	}()
 
@@ -1630,6 +1842,7 @@ func (o *Orchestrator) RunCustomValuesSync(ctx context.Context) error {
 	customValuesJobs := GetCustomValuesSyncJobs()
 
 	batch := newBatch(triggerCustomValues)
+	o.registerBatch(batch.batchID)
 
 	// Set custom values sync flag and queue
 	// Note: currentRunIndex is 0 for parallel syncs (all jobs run simultaneously)
@@ -1639,12 +1852,14 @@ func (o *Orchestrator) RunCustomValuesSync(ctx context.Context) error {
 	o.currentRunIndex = 0
 	o.mu.Unlock()
 
-	// Ensure flag and queue are cleared on exit
+	// Ensure flag and queue are cleared on exit. See RunDailySync's identical defer for why
+	// batchChanged is cleaned up here too.
 	defer func() {
 		o.mu.Lock()
 		o.customValuesSyncRunning = false
 		o.customValuesSyncQueue = nil
 		o.currentRunIndex = 0
+		delete(o.batchChanged, batch.batchID)
 		o.mu.Unlock()
 	}()
 
@@ -1691,7 +1906,58 @@ func (o *Orchestrator) RunCustomValuesSync(ctx context.Context) error {
 }
 
 // runSyncAndWait runs a sync as part of `origin`'s batch and waits for it to complete.
+//
+// A ChangedCollectionsAware service (see MultiWorkbookExport) receives the batch's own
+// changed-collections set so far -- batchChangedCollections(origin.batchID). This is nil,
+// meaning "export everything", whenever origin.batchID was never registered with
+// registerBatch: RunSingleSync's explicit standalone case, an operator-named single-service
+// RunSyncWithOptions run (final-review Critical C1 -- a batch of one has nothing that could
+// have changed anything before it), the synchronous phase-run handler (api.go's
+// handleRunPhase), and both of api.go's queued-run handlers, none of which register a batch
+// of their own. Every REGISTERED queue in this file (RunHourlySync, RunDailySync,
+// RunWeeklySync, RunCustomValuesSync, a multi-service RunSyncWithOptions run) routes through
+// this one function too, so wiring it here is what makes it "the queue" rather than any one
+// caller, for both the nil and the real-filter case.
+//
+// A YearSetter service gets origin.year the same way, for the identical reason: it too is a
+// per-run parameter the queue owns, not the job. origin.year == 0 means "the current season"
+// (runOrigin's own doc comment) and resolves via ParseSeasonYear(); a non-zero origin.year (a
+// historical replay, or an explicit-year phase/individual run) sets that exact year directly.
+//
+// This replaces two narrower fixes that used to live in RunSyncWithOptions alone (an explicit
+// SetYear(opts.Year) in its historical branch, and a mirrored current-year branch added right
+// after it): both were per-call-site patches for a problem that is actually structural --
+// MultiWorkbookExport is a long-lived singleton whose year has to be set by whichever queue is
+// about to read it, every time, or it silently carries the last queue's value into this one.
+// Putting it here instead covers every queue uniformly, including RunWeeklySync and
+// RunDailySync (which had the identical exposure and no fix at all -- the weekly one matters
+// most, since CadenceWeeklyGlobal is what makes the export reachable from that queue at all),
+// and any future queue that never gets its own copy of this logic to forget.
+//
+// An unresolvable season for the current-season case is NOT treated as fatal to the whole
+// batch: the year is simply left unset on this one service (its own internal resolution, if
+// it has one, hits the identical ParseSeasonYear() call and fails the identical way -- see
+// e.g. MultiWorkbookExport.Sync() and FamilyCampDerivedSync.Sync()), and every other job in
+// the batch runs normally. Aborting an entire ~27-service run because one job's year can't be
+// resolved would be the wrong blast radius (fix round 2, Important #4) -- that ruling was
+// right for RunSingleSync, where the one service IS the whole run, but does not transfer here.
 func (o *Orchestrator) runSyncAndWait(ctx context.Context, syncType string, origin runOrigin) error {
+	if svc := o.GetService(syncType); svc != nil {
+		if changedAware, ok := svc.(ChangedCollectionsAware); ok {
+			changedAware.SetChangedCollections(o.batchChangedCollections(origin.batchID))
+		}
+		if yearSetter, ok := svc.(YearSetter); ok {
+			if origin.year != 0 {
+				yearSetter.SetYear(origin.year)
+			} else if resolved, err := ParseSeasonYear(); err == nil {
+				yearSetter.SetYear(resolved)
+			} else {
+				slog.Warn("runSyncAndWait: could not resolve current season, leaving year unset",
+					"syncType", syncType, "error", err)
+			}
+		}
+	}
+
 	// Start the sync and capture the token directly from the return value.
 	// This eliminates the race where the goroutine completes before we can
 	// read the token from runningJobs (issue #789).
@@ -1863,11 +2129,11 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 		o.mu.Unlock()
 	}()
 
-	// Check if global tables are empty - if so, run weekly sync first
+	// Check if global tables are empty - if so, run the bootstrap repair first
 	// This ensures fresh DB setups have required global definitions before any sync
 	// The check is quick (1 DB query) so we do it regardless of year.
 	//
-	// Never on a dry run. RunWeeklySync fetches and writes person_tag_defs,
+	// Never on a dry run. runGlobalTableBootstrap fetches and writes person_tag_defs,
 	// custom_field_defs and divisions for real, and it does not go through the
 	// DryRunnable plumbing below, so a dry_run=true request that happened to land on an
 	// unseeded database would write anyway -- an operator told "dry_run": true while the
@@ -1879,9 +2145,9 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 			slog.Warn("Dry run: global tables are empty and the weekly-sync bootstrap is " +
 				"skipped -- results are computed against an unseeded database")
 		} else {
-			slog.Info("Global tables empty - running weekly sync first")
-			if err := o.RunWeeklySync(ctx); err != nil {
-				slog.Error("Weekly sync failed, continuing with sync", "error", err)
+			slog.Info("Global tables empty - running the bootstrap repair first")
+			if err := o.runGlobalTableBootstrap(ctx); err != nil {
+				slog.Error("Global table bootstrap failed, continuing with sync", "error", err)
 			}
 		}
 	}
@@ -1895,6 +2161,17 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 		servicesToRun = ResolveUnifiedSyncServices(DefaultService, opts.IncludeCustomValues, opts.Year == 0)
 	}
 
+	// A run of exactly one service is not a queue: nothing else in this run could have
+	// completed before it to change anything, so a ChangedCollectionsAware job in it must get
+	// the same "export everything" answer RunSingleSync's explicit standalone case gets --
+	// batchChangedCollections(unregistered) == nil, not the non-nil empty map a registered-
+	// but-untouched batch would hand back ("nothing has changed *yet*"). Skipping
+	// registerBatch here, rather than special-casing multi_workbook_export, makes this a rule
+	// about what a queue *is*: two or more services that can hand each other real state.
+	// (Final-review Critical C1: POST .../sync/run?service=multi_workbook_export resolves to
+	// exactly this shape and used to write zero sheets while reporting success.)
+	isQueueRun := len(servicesToRun) > 1
+
 	// Set up sync tracking based on year mode. The batch carries the year explicitly:
 	// o.currentSyncYear below is process-global and stays set for this sync's whole
 	// duration, so a run started by any other queue in the meantime would otherwise be
@@ -1902,6 +2179,9 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 	var batch runOrigin
 	if opts.Year > 0 {
 		batch = newBatch(triggerHistorical).forYear(opts.Year)
+		if isQueueRun {
+			o.registerBatch(batch.batchID)
+		}
 
 		// Historical sync tracking
 		o.mu.Lock()
@@ -1917,10 +2197,14 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 			o.historicalSyncQueue = nil
 			o.historicalSyncYear = 0
 			o.currentRunIndex = 0
+			delete(o.batchChanged, batch.batchID)
 			o.mu.Unlock()
 		}()
 	} else {
 		batch = newBatch(triggerDaily)
+		if isQueueRun {
+			o.registerBatch(batch.batchID)
+		}
 
 		// Current year sync - use daily sync tracking so UI shows progress
 		o.mu.Lock()
@@ -1934,6 +2218,7 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 			o.dailySyncRunning = false
 			o.dailySyncQueue = nil
 			o.currentRunIndex = 0
+			delete(o.batchChanged, batch.batchID)
 			o.mu.Unlock()
 		}()
 	}
@@ -2175,56 +2460,12 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 		}
 	}
 
-	// After historical sync completes, trigger Google Sheets export for that year only (no globals).
-	//
-	// Not on a dry run: SyncForYears writes spreadsheets and the master index for real, and
-	// GetChangedCollections would happily nominate collections a dry run only *computed*
-	// (the dry-run branches still populate Stats.Created, so IsNoOp() is false). "dry_run
-	// writes nothing" has to mean the Google side too (kindred#2334).
-	if opts.Year > 0 && !opts.DryRun && google.IsEnabled() {
-		o.mu.RLock()
-		sheetsService := o.services["multi_workbook_export"]
-		o.mu.RUnlock()
-
-		if sheetsService != nil {
-			if exporter, ok := sheetsService.(*MultiWorkbookExport); ok {
-				// Get collections that had changes to skip unchanged exports
-				changedCollections := o.GetChangedCollections()
-				slog.Info("Historical sync: Exporting to Google Sheets",
-					"year", opts.Year,
-					"changed_collections", len(changedCollections))
-				if err := exporter.SyncForYears(ctx, []int{opts.Year}, false, changedCollections); err != nil {
-					slog.Error("Historical sync: Google Sheets export failed", "year", opts.Year, "error", err)
-				} else {
-					slog.Info("Historical sync: Google Sheets export completed", "year", opts.Year)
-				}
-			}
-		}
-	}
-
-	// After current year sync completes, trigger Google Sheets export (globals + current year).
-	// Skipped on a dry run for the same reason as the historical export above.
-	if opts.Year == 0 && !opts.DryRun && google.IsEnabled() {
-		o.mu.RLock()
-		sheetsService := o.services["multi_workbook_export"]
-		o.mu.RUnlock()
-
-		if sheetsService != nil {
-			if exporter, ok := sheetsService.(*MultiWorkbookExport); ok {
-				// Get collections that had changes to skip unchanged exports
-				changedCollections := o.GetChangedCollections()
-				slog.Info("Sync with options: Exporting to Google Sheets",
-					"changed_collections", len(changedCollections))
-				// Use SyncForYears with exporter's year to benefit from skip optimization
-				// exporter.year is already resolved from CAMPMINDER_SEASON_ID env var
-				if err := exporter.SyncForYears(ctx, []int{exporter.year}, true, changedCollections); err != nil {
-					slog.Error("Sync with options: Google Sheets export failed", "error", err)
-				} else {
-					slog.Info("Sync with options: Google Sheets export completed")
-				}
-			}
-		}
-	}
+	// multi_workbook_export is now an ordinary queued job (Stage 4/Task 13): its registry row
+	// carries TriggerFullRun and CadenceWeeklyGlobal, so servicesToRun above already includes
+	// it wherever it used to run via this function's two hardcoded epilogues (a full or
+	// historical run, current-year and historical alike -- see the runSyncAndWait loop above),
+	// and it gets its batch's own changed-collections filter and dry-run rejection the same
+	// way every other job in servicesToRun does. Nothing to trigger here anymore.
 
 	return nil
 }

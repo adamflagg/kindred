@@ -387,10 +387,13 @@ func TestHourlySyncRecordsHourlyTrigger(t *testing.T) {
 //
 // The shared trigger/batch slot was justified by "these genuinely nest: RunDailySync calls
 // RunWeeklySync first when the global tables are empty, and RunSyncWithOptions does the
-// same". Neither nests. Both call RunWeeklySync *before* opening their own batch — the calls
-// are at orchestrator.go's weekly-prologue and the batch is minted after it — and no nesting
-// existed anywhere else in the tree either. The two queues are sequential, and each files its
-// own jobs under its own trigger and its own batch id.
+// same". Neither nests. Both called RunWeeklySync *before* opening their own batch at the
+// time -- the calls were at orchestrator.go's weekly-prologue and the batch was minted after
+// it, and no nesting existed anywhere else in the tree either -- and both now call
+// runGlobalTableBootstrap there instead (see its own doc comment for why: the bootstrap
+// repairs the five global TABLES, not the weekly queue's membership, so it must not also
+// export). The two queues are sequential, and each files its own jobs under its own trigger
+// and its own batch id.
 func TestBatchesAreSequentialNotNested(t *testing.T) {
 	t.Parallel()
 
