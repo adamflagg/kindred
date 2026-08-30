@@ -376,7 +376,7 @@ func TestHandleMultiWorkbookExportDefaultBranchResetsDryRun(t *testing.T) {
 		t.Fatal("timed out waiting for the background export to finish")
 	}
 
-	if export.dryRun {
+	if export.DryRun {
 		t.Error("expected the default branch to clear the leftover dryRun flag")
 	}
 	if got := fakeWriterSheetsWritten(export); got != 2 {

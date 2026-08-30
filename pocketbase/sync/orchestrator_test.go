@@ -1937,6 +1937,13 @@ func TestUnsupportedDryRunServices(t *testing.T) {
 // bunk_requests and request_processor stay correctly unsupported. stranded_assignment_cleanup
 // does not embed BaseSyncService at all -- it is a from-scratch DryRun field and two gated
 // app.Save calls threaded through reconcileStrandedAssignments/reconcileLodgingOrphans.
+// multi_workbook_export (kindred#2606-series final review, Important I3) is a from-scratch
+// DryRun field, like stranded_assignment_cleanup -- MultiWorkbookExport does not embed
+// BaseSyncService. Its "write" is a Google Sheets API call rather than an app.Save/Delete, so
+// dry_run means skipping the export outright (see Sync()'s own comment); it was omitted from
+// all three of these registries when it was made DryRunnable, leaving
+// TestRealServicesSetDryRunStoresTheFlag's own "every name the orchestrator hands
+// SetDryRun(true) must be covered here" invariant silently false.
 var dryRunCapableRealServices = []string{
 	"camper_dietary", "quest_registrations", "household_demographics",
 	"financial_aid_applications", "lodging_assignments", "camper_transportation",
@@ -1944,7 +1951,7 @@ var dryRunCapableRealServices = []string{
 	"staff_applications", "staff_skills",
 	"session_groups", "sessions", "bunks", "bunk_plans", "bunk_assignments", "staff",
 	"financial_transactions", "attendees", "persons", "person_custom_values",
-	"household_custom_values", "stranded_assignment_cleanup",
+	"household_custom_values", "stranded_assignment_cleanup", "multi_workbook_export",
 }
 
 // Compile-time guarantee that the real production types stay wired to DryRunnable. If any of
@@ -1975,6 +1982,7 @@ var (
 	_ DryRunnable = (*PersonCustomFieldValuesSync)(nil)
 	_ DryRunnable = (*HouseholdCustomFieldValuesSync)(nil)
 	_ DryRunnable = (*StrandedAssignmentCleanupSync)(nil)
+	_ DryRunnable = (*MultiWorkbookExport)(nil)
 )
 
 // TestRealServicesHonorDryRunThroughUnifiedEndpoint proves the wiring against the actual
@@ -2118,6 +2126,13 @@ func TestRunSyncWithOptionsDryRunSkipsTheWeeklyBootstrap(t *testing.T) {
 func TestRealServicesSetDryRunStoresTheFlag(t *testing.T) {
 	t.Parallel()
 
+	// year=2025 avoids ParseSeasonYear()'s CAMPMINDER_SEASON_ID read -- this test only needs
+	// the DryRun field to exist and respond to SetDryRun, never calls Sync().
+	multiWorkbookExport, err := NewMultiWorkbookExport(nil, nil, nil, 2025)
+	if err != nil {
+		t.Fatalf("NewMultiWorkbookExport: %v", err)
+	}
+
 	services := map[string]DryRunnable{
 		"camper_dietary":              NewCamperDietarySync(nil),
 		"quest_registrations":         NewQuestRegistrationsSync(nil),
@@ -2143,6 +2158,7 @@ func TestRealServicesSetDryRunStoresTheFlag(t *testing.T) {
 		"person_custom_values":        NewPersonCustomFieldValuesSync(nil, nil),
 		"household_custom_values":     NewHouseholdCustomFieldValuesSync(nil, nil),
 		"stranded_assignment_cleanup": NewStrandedAssignmentCleanupSync(nil),
+		"multi_workbook_export":       multiWorkbookExport,
 	}
 
 	// Every name the orchestrator will hand SetDryRun(true) must be covered here, or a

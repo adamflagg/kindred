@@ -39,12 +39,17 @@ type MultiWorkbookExport struct {
 	// ChangedCollectionsAware's doc comment (orchestrator.go) for why nil and an empty map
 	// are different answers.
 	changed map[string]bool
-	// dryRun implements DryRunnable. There is no partial "compute what would export without
+	// DryRun implements DryRunnable. There is no partial "compute what would export without
 	// writing" mode for a spreadsheet write -- the write IS the work -- so dry_run=true skips
 	// the export outright. Sync() reports the skip visibly (Stats.Skipped, logged) rather than
 	// silently doing nothing while still reporting success: kindred#2606-series Task 13 fix
 	// round 2, Important #5.
-	dryRun bool
+	//
+	// Exported (unlike changed and year above) so TestRealServicesSetDryRunStoresTheFlag's
+	// reflection-based guard can reach it the same way it reaches every other DryRunnable
+	// service's field (final-review Important I3) -- this service is otherwise structured
+	// like the rest of the package, where DryRun is always exported.
+	DryRun bool
 }
 
 // NewMultiWorkbookExport creates a new multi-workbook export service.
@@ -99,7 +104,7 @@ func (m *MultiWorkbookExport) SetYear(year int) {
 // calls SetYear and SetChangedCollections above -- see Sync()'s own comment on why dry_run
 // means skipping outright rather than computing a preview.
 func (m *MultiWorkbookExport) SetDryRun(dryRun bool) {
-	m.dryRun = dryRun
+	m.DryRun = dryRun
 }
 
 // Sync implements the Service interface. One entry point for every trigger: the hardcoded
@@ -146,7 +151,7 @@ func (m *MultiWorkbookExport) Sync(ctx context.Context) error {
 	m.Stats = Stats{}
 	m.SyncSuccessful = false
 
-	if m.dryRun {
+	if m.DryRun {
 		skipped := len(GetReadableGlobalExports()) + len(GetReadableYearExports())
 		slog.Info("Dry run: skipping Google Sheets export",
 			"year", m.year, "sheets_would_have_run", skipped)
