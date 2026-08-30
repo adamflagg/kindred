@@ -131,9 +131,18 @@ export interface SyncSequenceRun {
   /**
    * Arm the detector. Call it alongside the POST that starts the chain.
    *
-   * The arming itself is SYNCHRONOUS; the promise settles once the baseline
-   * this run will be measured against has been captured. Callers are free to
-   * ignore it (`void run.start()`) or to await it before firing the POST.
+   * The arming itself is SYNCHRONOUS; the promise settles once the ATTEMPT to
+   * capture a baseline has finished — which is not the same as having captured
+   * one. Three of its four exit paths capture nothing: a second press has
+   * replaced this one, the invalidation resolved without fetching, or the
+   * reading carried no payload. So awaiting this is not a guarantee that a
+   * baseline is in hand; what it guarantees is that nothing further will be
+   * attempted for this run. That degradation is the documented safe one — a
+   * chain that starts is caught by the observed-running capture instead, and
+   * one that never starts expires on the arming timeout.
+   *
+   * Callers are free to ignore it (`void run.start()`) or to await it before
+   * firing the POST.
    */
   start: () => Promise<void>
   /** Drop an armed run without announcing anything — for a POST that failed. */

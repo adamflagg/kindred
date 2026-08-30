@@ -46,6 +46,14 @@ let invalidationRefetches = true
 /** Hold the invalidation open, so a test can act between the press and it. */
 let holdInvalidation = false
 let releaseInvalidation: () => void = () => {}
+/**
+ * Hold the CANCEL open, so a test can act inside the window a SECOND press
+ * opens: its synchronous re-arm has already cleared the baseline, but its own
+ * reading has not landed yet. An earlier press's invalidation resolving in
+ * exactly that window is what the run token exists to refuse.
+ */
+let holdCancel = false
+let releaseCancel: () => void = () => {}
 
 /**
  * One resolved fetch: the cache entry and what the hook RENDERS move together,
@@ -58,7 +66,12 @@ function landFetch(status: SyncStatusResponse | null | undefined) {
   syncStatusSpy.mockImplementation(() => ({ data: status }))
 }
 
-const cancelQueries = vi.fn(() => Promise.resolve())
+const cancelQueries = vi.fn(() => {
+  if (!holdCancel) return Promise.resolve()
+  return new Promise<void>((resolve) => {
+    releaseCancel = resolve
+  })
+})
 const invalidateQueries = vi.fn(() => {
   if (invalidationRefetches) landFetch(served)
   if (holdInvalidation) {
@@ -158,6 +171,7 @@ describe('useSyncSequenceRun', () => {
     cache = { data: undefined, dataUpdateCount: 0 }
     invalidationRefetches = true
     holdInvalidation = false
+    holdCancel = false
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-04-22T10:00:00.000Z'))
     setStatus(idleStatus())
@@ -578,12 +592,19 @@ describe('useSyncSequenceRun', () => {
   })
 
   /**
-   * `abandon()` (or a completed run) between the press and the invalidation
-   * resolving must not leave a baseline behind for the NEXT run to inherit:
-   * `start()` clears it, and a late promise writing over that would leave the
-   * next press comparing against a reading from the previous one.
+   * The end-to-end statement about `abandon()`: a press abandoned before its
+   * invalidation resolves announces NOTHING, however late that promise lands.
+   *
+   * ⚠️ This does NOT pin the run-token guard, and did not when it was named as
+   * if it did. With `runTokenRef` deleted the stale continuation still reaches
+   * `captureBaseline` and still writes a baseline here — but `abandon()` has
+   * put the phase back to `idle`, and the `phase === 'idle'` branch of the
+   * state machine never reads a baseline; it only ever overwrites one when a
+   * chain job is seen running. So `isRunning === false` and a silent
+   * `onComplete` hold either way. What makes the write observable is a SECOND
+   * press inheriting it, which is the sibling test below.
    */
-  it('does not let an abandoned press write its baseline after the fact', async () => {
+  it('announces nothing when a press is abandoned before its invalidation resolves', async () => {
     const onComplete = vi.fn()
     const { result, rerender } = renderHook(() =>
       useSyncSequenceRun({ chain: BUNKING_REFRESH_CHAIN, enabled: true, onComplete })
@@ -614,6 +635,77 @@ describe('useSyncSequenceRun', () => {
     )
     rerender()
     expect(onComplete).not.toHaveBeenCalled()
+  })
+
+  /**
+   * The run token, pinned — a SECOND press racing a first that is still
+   * pending. This is the case its own docstring names ("an `abandon()`, a
+   * cutover or a second press in between"), and the only one of the three in
+   * which the stale write is observable.
+   *
+   * `abandon()` re-enables the button the moment a POST fails, so a second
+   * press can land while the first press's invalidation is still in flight.
+   * Press #2 clears the baseline synchronously; if press #1's continuation
+   * then resolves before press #2's own reading has landed, it finds the
+   * baseline `undefined` and WINS the never-overwrite race in `captureBaseline`
+   * — with a reading taken before press #2 existed. Press #2's own reading is
+   * then discarded as a no-op.
+   *
+   * The damage is kindred#2595 reintroduced: an unrelated run that moved the
+   * terminal `end_time` between the two presses is invisible to the baseline
+   * run #2 is left holding, so run #2 announces success on its first poll,
+   * before its chain has done anything.
+   */
+  it('does not let a still-pending press supply the baseline for the press that replaced it', async () => {
+    const onComplete = vi.fn()
+    const { result, rerender } = renderHook(() =>
+      useSyncSequenceRun({ chain: BUNKING_REFRESH_CHAIN, enabled: true, onComplete })
+    )
+
+    // PRESS #1. Its invalidation refetches — a reading byte-identical to the
+    // cached one, terminal end_time 09:00:05 — but the promise is held open,
+    // so `start()` has not reached its capture.
+    holdInvalidation = true
+    let firstPress: Promise<void> = Promise.resolve()
+    await act(async () => {
+      firstPress = result.current.start()
+      // Let `cancelQueries` settle so the held invalidation is actually entered.
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    // The POST failed. `abandon()` re-enables the button — which is what makes
+    // a second press possible while the first is still in flight.
+    act(() => result.current.abandon())
+    expect(result.current.isRunning).toBe(false)
+
+    // An unrelated run finishes while the operator reaches for the button
+    // again. No poll carried it; only a new fetch can see it.
+    const moved = idleStatus({
+      stranded_assignment_cleanup: { status: 'success', end_time: '2026-04-22T09:59:50.000Z' },
+    })
+    serveOnly(moved)
+
+    // PRESS #2, with press #1's invalidation resolving INSIDE it: after the
+    // synchronous re-arm has cleared the baseline, before press #2's own
+    // reading has landed. Holding the cancel is what pins that ordering.
+    holdInvalidation = false
+    holdCancel = true
+    let secondPress: Promise<void> = Promise.resolve()
+    await act(async () => {
+      secondPress = result.current.start()
+      releaseInvalidation()
+      await firstPress
+      releaseCancel()
+      await secondPress
+    })
+
+    // Press #2's own reading is the only one that may be the baseline, and it
+    // already carries the unrelated run's end_time. Nothing has moved since,
+    // so run #2 is still arming — not complete.
+    rerender()
+    expect(onComplete).not.toHaveBeenCalled()
+    expect(result.current.isRunning).toBe(true)
   })
 
   it('estimates the remaining time from the measured per-job durations', () => {
