@@ -1,5 +1,11 @@
 package sync
 
+import (
+	"github.com/pocketbase/pocketbase/core"
+
+	"github.com/camp/kindred/pocketbase/campminder"
+)
+
 // Scope narrows the cohort a job covers.
 //
 // ScopeAll is the unrestricted default and never appears in a job id. Every other scope
@@ -23,9 +29,11 @@ const (
 
 // scopedID returns the registered service name for a base job at a scope. This is the ONLY
 // place the scope suffix is constructed; nothing else may concatenate it by hand. The
-// hand-maintained lists elsewhere in the package (syncJobMeta's rows, orchestrator.go's
-// registration loop, api.go, table_exporter.go) still spell the full id -- Stage 2 of this
-// refactor removes those.
+// hand-maintained lists elsewhere in the package still spell the full id -- syncJobMeta's own
+// rows, orchestrator.go's getDailySyncJobs, api.go's statusSyncTypes and table_exporter.go's
+// SyncJobToCollections. Stage 2 of this refactor removes those. InitializeSyncServices'
+// registration loop is NOT one of them: it spells only the base, via
+// scopedServiceRegistrations, and lets scopedID build the rest.
 func scopedID(base string, scope Scope) string {
 	if scope == ScopeAll {
 		return base
@@ -58,9 +66,19 @@ func JobBase(id string) string {
 	return id
 }
 
-// ScopedJobs returns every job registered under scope, in registry order.
+// ScopedJobs returns every job registered under scope, in registry order -- with one
+// deliberate exception: it returns nil for ScopeAll rather than the ~28 unscoped rows.
+// ScopeAll is the ABSENCE of a scope, not a cohort, and every caller wants "the variants",
+// so returning the whole registry there would silently widen an exclusion set
+// (buildScopedJobSet feeds phaseExecutionJobs) into excluding everything.
+//
+// It composes badly with JobScope's registry-miss fallback and that is worth knowing before
+// writing `for range ScopedJobs(JobScope(id))`: JobScope returns ScopeAll both for a base job
+// and for an id absent from syncJobMeta, so such a loop yields an empty body in both cases
+// without distinguishing them. Ask JobBase (or look the row up) if the difference matters.
 func ScopedJobs(scope Scope) []string {
 	if scope == ScopeAll {
+		// See the doc comment: ScopeAll is "unscoped", so there are no variants to return.
 		return nil
 	}
 	var ids []string
@@ -85,4 +103,33 @@ func buildScopedJobSet(scope Scope) map[string]bool {
 type scopedService interface {
 	Service
 	SetScope(Scope)
+}
+
+// scopedServiceRegistration pairs the base service name a scoped instance narrows with the
+// instance itself.
+type scopedServiceRegistration struct {
+	base  string
+	scope Scope
+	svc   scopedService
+}
+
+// scopedServiceRegistrations returns every scoped service instance InitializeSyncServices
+// registers, in registration order. It is a function rather than an inline literal so that
+// the registration list and TestScopedVariantContract's "is registered as a service" clause
+// read the SAME table: a syncJobMeta row carrying a Scope that nothing here constructs is a
+// queue entry that fails at run time, and no test in the package could otherwise see the gap.
+//
+// A slice (not a map) keeps registration order -- and so the boot-log line order --
+// deterministic across runs. scopedID constructs only the registered name's suffix; the base
+// half is spelled with the same serviceName{PersonCustomValues,HouseholdCustomValues}
+// constants each Service's own logJobName() builds from, and that is what keeps the two in
+// sync, not scopedID.
+func scopedServiceRegistrations(app core.App, client *campminder.Client) []scopedServiceRegistration {
+	return []scopedServiceRegistration{
+		// Bounded daily family-camp custom-values pass (kindred#2482) -- distinct service
+		// instances from the unrestricted pair, scoped to family-camp attendees (any
+		// status) rather than Session. Part of the daily cron: see getDailySyncJobs.
+		{serviceNamePersonCustomValues, ScopeFamilyCamp, NewPersonCustomFieldValuesSync(app, client)},
+		{serviceNameHouseholdCustomValues, ScopeFamilyCamp, NewHouseholdCustomFieldValuesSync(app, client)},
+	}
 }

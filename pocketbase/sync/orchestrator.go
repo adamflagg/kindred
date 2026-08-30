@@ -89,7 +89,13 @@ type JobMeta struct {
 	// sharing a Base write the same PocketBase collections under different registered
 	// names, which is what the mutual-exclusion check keys on (kindred#2491).
 	Base string
-	// Scope is the cohort this row covers. See the Scope type.
+	// Scope marks this row as a SCOPED VARIANT: a narrower-cohort instance of the job
+	// named by Base, registered under scopedID(Base, Scope). It is structural, not
+	// topical -- a row that merely concerns family camp (family_camp_derived,
+	// lodging_assignments) is its own job and leaves this empty. Setting it drags the row
+	// into TestScopedVariantContract, which would then fail on wiring that row never
+	// needed. "" (ScopeAll) for every job that is not a variant of another. See the Scope
+	// type.
 	Scope Scope
 }
 
@@ -980,8 +986,8 @@ func GetRefreshFamilyCampJobs() []string {
 	return []string{
 		"attendees",
 		"persons",
-		scopedID("person_custom_values", ScopeFamilyCamp),
-		scopedID("household_custom_values", ScopeFamilyCamp),
+		scopedID(serviceNamePersonCustomValues, ScopeFamilyCamp),
+		scopedID(serviceNameHouseholdCustomValues, ScopeFamilyCamp),
 		"family_camp_derived",
 		"lodging_assignments",
 	}
@@ -2557,24 +2563,10 @@ func (o *Orchestrator) InitializeSyncServices() error {
 	o.RegisterService("person_custom_values", NewPersonCustomFieldValuesSync(o.app, client))
 	o.RegisterService("household_custom_values", NewHouseholdCustomFieldValuesSync(o.app, client))
 
-	// Bounded daily family-camp custom-values pass (kindred#2482) -- distinct service
-	// instances from the two above, scoped to family-camp attendees (any status) rather
-	// than Session. Part of the daily cron: see getDailySyncJobs. scopedID constructs only
-	// the registered name's suffix; the base half is still hand-spelled here, same as
-	// syncJobMeta's rows -- see scope.go's package comment. Using the same
-	// serviceName{PersonCustomValues,HouseholdCustomValues} constants each Service's own
-	// logJobName() builds from is what keeps this base in sync with those, not scopedID.
-	// A slice (not a map) keeps registration order -- and so the boot-log line order --
-	// deterministic across runs.
-	for _, fc := range []struct {
-		base string
-		svc  scopedService
-	}{
-		{serviceNamePersonCustomValues, NewPersonCustomFieldValuesSync(o.app, client)},
-		{serviceNameHouseholdCustomValues, NewHouseholdCustomFieldValuesSync(o.app, client)},
-	} {
-		fc.svc.SetScope(ScopeFamilyCamp)
-		o.RegisterService(scopedID(fc.base, ScopeFamilyCamp), fc.svc)
+	// Scoped variants of the two services above -- see scopedServiceRegistrations.
+	for _, reg := range scopedServiceRegistrations(o.app, client) {
+		reg.svc.SetScope(reg.scope)
+		o.RegisterService(scopedID(reg.base, reg.scope), reg.svc)
 	}
 
 	// Family camp derived tables (computes from custom values - on-demand)
