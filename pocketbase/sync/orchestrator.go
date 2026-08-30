@@ -97,19 +97,30 @@ type JobMeta struct {
 // Jobs are listed in execution order within their phase
 var syncJobMeta = []JobMeta{
 	// Source phase - CampMinder API calls
-	{ID: "session_groups", Phase: PhaseSource, Description: "Session groups from CampMinder"},
-	{ID: "sessions", Phase: PhaseSource, Description: "Sessions from CampMinder"},
-	{ID: "attendees", Phase: PhaseSource, Description: "Attendees from CampMinder"},
-	{ID: "persons", Phase: PhaseSource, Description: "Persons + households from CampMinder"},
-	{ID: "bunks", Phase: PhaseSource, Description: "Bunks from CampMinder"},
-	{ID: "bunk_plans", Phase: PhaseSource, Description: "Bunk plans from CampMinder"},
-	{ID: "bunk_assignments", Phase: PhaseSource, Description: "Bunk assignments from CampMinder"},
-	{ID: "staff", Phase: PhaseSource, Description: "Staff from CampMinder"},
-	{ID: "financial_transactions", Phase: PhaseSource, Description: "Financial transactions from CampMinder"},
+	{ID: "session_groups", Phase: PhaseSource,
+		Description: "Session groups from CampMinder"},
+	{ID: "sessions", Phase: PhaseSource,
+		Description: "Sessions from CampMinder"},
+	{ID: "attendees", Phase: PhaseSource,
+		Description: "Attendees from CampMinder"},
+	{ID: "persons", Phase: PhaseSource,
+		Description: "Persons + households from CampMinder"},
+	{ID: "bunks", Phase: PhaseSource,
+		Description: "Bunks from CampMinder"},
+	{ID: "bunk_plans", Phase: PhaseSource,
+		Description: "Bunk plans from CampMinder"},
+	{ID: "bunk_assignments", Phase: PhaseSource,
+		Description: "Bunk assignments from CampMinder"},
+	{ID: "staff", Phase: PhaseSource,
+		Description: "Staff from CampMinder"},
+	{ID: "financial_transactions", Phase: PhaseSource,
+		Description: "Financial transactions from CampMinder"},
 
 	// Expensive phase - Custom values (on-demand, rate limited)
-	{ID: "person_custom_values", Phase: PhaseExpensive, Description: "Person custom field values"},
-	{ID: "household_custom_values", Phase: PhaseExpensive, Description: "Household custom field values"},
+	{ID: "person_custom_values", Phase: PhaseExpensive,
+		Description: "Person custom field values"},
+	{ID: "household_custom_values", Phase: PhaseExpensive,
+		Description: "Household custom field values"},
 	// Bounded daily family-camp pass (kindred#2482): same API cost per entity as the two
 	// above, scoped to family-camp attendees (any status) and run as part of the daily
 	// cron -- see getDailySyncJobs.
@@ -121,27 +132,44 @@ var syncJobMeta = []JobMeta{
 		Base:        "household_custom_values", Scope: ScopeFamilyCamp},
 
 	// Transform phase - PocketBase → PocketBase
-	{ID: "family_camp_derived", Phase: PhaseTransform, Description: "Compute family camp tables from custom values"},
-	{ID: "lodging_assignments", Phase: PhaseTransform, Description: "Derive lodging assignments from CampMinder cabin fields"},
-	{ID: "staff_skills", Phase: PhaseTransform, Description: "Extract staff skills from person_custom_values"},
-	{ID: "financial_aid_applications", Phase: PhaseTransform, Description: "Extract FA applications from person_custom_values"},
-	{ID: "household_demographics", Phase: PhaseTransform, Description: "Compute household demographics from custom values"},
-	{ID: "camper_dietary", Phase: PhaseTransform, Description: "Extract camper dietary/allergy info from custom values"},
-	{ID: "camper_transportation", Phase: PhaseTransform, Description: "Extract camper transportation info from custom values"},
-	{ID: "quest_registrations", Phase: PhaseTransform, Description: "Extract Quest program registration info from custom values"},
-	{ID: "staff_applications", Phase: PhaseTransform, Description: "Extract staff application info from custom values"},
-	{ID: "staff_vehicle_info", Phase: PhaseTransform, Description: "Extract staff vehicle info from custom values"},
-	{ID: "normalize_geographic", Phase: PhaseTransform, Description: "Normalize geographic data (cities, schools, congregations)"},
-	{ID: "enrollment_snapshots", Phase: PhaseTransform, Description: "Capture daily enrollment counts per session"},
-	{ID: "stranded_assignment_cleanup", Phase: PhaseTransform, Description: "Auto-unassign scenario drafts stranded by bunk or cancellation"},
+	{ID: "family_camp_derived", Phase: PhaseTransform,
+		Description: "Compute family camp tables from custom values"},
+	{ID: "lodging_assignments", Phase: PhaseTransform,
+		Description: "Derive lodging assignments from CampMinder cabin fields"},
+	{ID: "staff_skills", Phase: PhaseTransform,
+		Description: "Extract staff skills from person_custom_values"},
+	{ID: "financial_aid_applications", Phase: PhaseTransform,
+		Description: "Extract FA applications from person_custom_values"},
+	{ID: "household_demographics", Phase: PhaseTransform,
+		Description: "Compute household demographics from custom values"},
+	{ID: "camper_dietary", Phase: PhaseTransform,
+		Description: "Extract camper dietary/allergy info from custom values"},
+	{ID: "camper_transportation", Phase: PhaseTransform,
+		Description: "Extract camper transportation info from custom values"},
+	{ID: "quest_registrations", Phase: PhaseTransform,
+		Description: "Extract Quest program registration info from custom values"},
+	{ID: "staff_applications", Phase: PhaseTransform,
+		Description: "Extract staff application info from custom values"},
+	{ID: "staff_vehicle_info", Phase: PhaseTransform,
+		Description: "Extract staff vehicle info from custom values"},
+	{ID: "normalize_geographic", Phase: PhaseTransform,
+		Description: "Normalize geographic data (cities, schools, congregations)"},
+	{ID: "enrollment_snapshots", Phase: PhaseTransform,
+		Description: "Capture daily enrollment counts per session"},
+	{ID: "stranded_assignment_cleanup", Phase: PhaseTransform,
+		Description: "Auto-unassign scenario drafts stranded by bunk or cancellation"},
 
 	// Process phase - CSV + AI
-	{ID: "reconcile_request_lifecycle", Phase: PhaseProcess, Description: "Mark moved-requester OBRs for reprocessing"},
-	{ID: "bunk_requests", Phase: PhaseProcess, Description: "Import bunk request CSV"},
-	{ID: "process_requests", Phase: PhaseProcess, Description: "AI processing of bunk requests"},
+	{ID: "reconcile_request_lifecycle", Phase: PhaseProcess,
+		Description: "Mark moved-requester OBRs for reprocessing"},
+	{ID: "bunk_requests", Phase: PhaseProcess,
+		Description: "Import bunk request CSV"},
+	{ID: "process_requests", Phase: PhaseProcess,
+		Description: "AI processing of bunk requests"},
 
 	// Export phase - Google Sheets
-	{ID: "multi_workbook_export", Phase: PhaseExport, Description: "Export to Google Sheets"},
+	{ID: "multi_workbook_export", Phase: PhaseExport,
+		Description: "Export to Google Sheets"},
 }
 
 // GetJobMeta returns the sync job metadata array
@@ -733,6 +761,13 @@ var customValuesCollectionGroup = buildCustomValuesCollectionGroups()
 func buildCustomValuesCollectionGroups() map[string]string {
 	groups := make(map[string]string)
 	for _, m := range syncJobMeta {
+		// Phase == PhaseExpensive is today's proxy for "writes a shared custom-values
+		// collection" -- every row in that phase is one of the two custom-values jobs or a
+		// scoped variant of one. A future PhaseExpensive job that is NOT a custom-values
+		// writer would still land here and map to itself (JobBase falls back to m.ID for an
+		// unscoped row), but that is inert: customValuesGroupRunningLocked's
+		// `name == syncType` branch already covers a job self-excluding, so the entry adds
+		// no cross-job exclusion that was not already true.
 		if m.Phase != PhaseExpensive {
 			continue
 		}
@@ -2524,14 +2559,22 @@ func (o *Orchestrator) InitializeSyncServices() error {
 
 	// Bounded daily family-camp custom-values pass (kindred#2482) -- distinct service
 	// instances from the two above, scoped to family-camp attendees (any status) rather
-	// than Session. Part of the daily cron: see getDailySyncJobs. The registered names come
-	// from scopedID so they cannot drift from syncJobMeta's rows.
-	for base, svc := range map[string]scopedService{
-		"person_custom_values":    NewPersonCustomFieldValuesSync(o.app, client),
-		"household_custom_values": NewHouseholdCustomFieldValuesSync(o.app, client),
+	// than Session. Part of the daily cron: see getDailySyncJobs. scopedID constructs only
+	// the registered name's suffix; the base half is still hand-spelled here, same as
+	// syncJobMeta's rows -- see scope.go's package comment. Using the same
+	// serviceName{PersonCustomValues,HouseholdCustomValues} constants each Service's own
+	// logJobName() builds from is what keeps this base in sync with those, not scopedID.
+	// A slice (not a map) keeps registration order -- and so the boot-log line order --
+	// deterministic across runs.
+	for _, fc := range []struct {
+		base string
+		svc  scopedService
+	}{
+		{serviceNamePersonCustomValues, NewPersonCustomFieldValuesSync(o.app, client)},
+		{serviceNameHouseholdCustomValues, NewHouseholdCustomFieldValuesSync(o.app, client)},
 	} {
-		svc.SetScope(ScopeFamilyCamp)
-		o.RegisterService(scopedID(base, ScopeFamilyCamp), svc)
+		fc.svc.SetScope(ScopeFamilyCamp)
+		o.RegisterService(scopedID(fc.base, ScopeFamilyCamp), fc.svc)
 	}
 
 	// Family camp derived tables (computes from custom values - on-demand)
