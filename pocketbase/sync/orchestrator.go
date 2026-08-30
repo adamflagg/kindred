@@ -284,14 +284,19 @@ var syncJobMeta = []JobMeta{
 		Gate:            func() bool { return os.Getenv("IS_DOCKER") == boolTrueStr }},
 
 	// Export phase - Google Sheets
-	// No TriggerFullRun: today a full run exports via the hardcoded epilogue in
-	// RunSyncWithOptions (orchestrator.go), not by queuing this job. Setting the bit now
-	// would run the export twice per unified run once Task 8 derives the full-run queue
-	// from this table. Stage 4 sets it in the same PR that deletes the epilogue.
+	// TriggerFullRun (Stage 4/Task 13): a full or historical run now queues this job like any
+	// other instead of going through RunSyncWithOptions' old hardcoded epilogue (deleted this
+	// task), so it finally produces a sync_runs row, a status transition and a completion
+	// toast. CadenceWeeklyGlobal is new too: the Sunday-2am global cron now exports the four
+	// global tables it just refreshed, which nothing did before. Both were deliberately
+	// withheld until this task -- setting TriggerFullRun earlier would have double-exported on
+	// every unified run while the epilogue still fired (TestExportRunsExactlyOnceInAFullRun is
+	// the regression guard).
 	{ID: "multi_workbook_export", Phase: PhaseExport,
 		Description: "Export to Google Sheets",
-		Cadences:    CadenceDaily, Triggers: TriggerIndividualRoute | TriggerPhaseRun,
-		Gate: google.IsEnabled},
+		Cadences:    CadenceDaily | CadenceWeeklyGlobal,
+		Triggers:    TriggerIndividualRoute | TriggerPhaseRun | TriggerFullRun,
+		Gate:        google.IsEnabled},
 }
 
 // GetJobMeta returns the sync job metadata array
@@ -1152,11 +1157,18 @@ func (o *Orchestrator) IsAnyJobRunning() bool {
 	return false
 }
 
-// GetWeeklySyncJobs returns the list of services that run in the weekly sync. These are the
-// PhaseGlobal rows: definition tables that rarely change and don't need daily updates.
-// Derived from the registry in declaration order via jobsWithCadence.
+// GetWeeklySyncJobs returns the list of services that run in the weekly sync: the five
+// PhaseGlobal rows (definition tables that rarely change and don't need daily updates) plus,
+// since Task 13, multi_workbook_export -- CadenceWeeklyGlobal means the Sunday-2am cron now
+// also exports the four global tables it just refreshed.
+//
+// cadenceQueue, not jobsWithCadence directly, so this shares available()'s Gate filtering with
+// every other derived queue. That was a no-op for the five PhaseGlobal rows (none carries a
+// Gate) but is load-bearing now: multi_workbook_export's Gate is google.IsEnabled, and without
+// it a google-disabled environment would have this list name a service that was never
+// registered, and RunWeeklySync would log "sync service not found" every week.
 func GetWeeklySyncJobs() []string {
-	return jobsWithCadence(CadenceWeeklyGlobal)
+	return cadenceQueue(CadenceWeeklyGlobal)
 }
 
 // GetRefreshBunkingJobs returns the services needed for a full bunking refresh.
@@ -2261,6 +2273,21 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 			o.mu.Unlock()
 		}()
 
+		// multi_workbook_export is not among the services re-registered above -- it stays
+		// the same long-lived singleton every trigger shares (originalServices never
+		// captures it, so the defer above never touches it either). Since Task 13 it runs
+		// as an ordinary queued job through Sync(), which reads m.year directly rather than
+		// taking a year parameter the way the deleted epilogue's
+		// SyncForYears(ctx, []int{opts.Year}, ...) call did. Without this explicit SetYear,
+		// a historical replay would export against whatever year the singleton already
+		// held -- almost certainly the current season, not the year being replayed
+		// (TestHistoricalRunSetsTheExportsYear is the regression guard).
+		if svc := o.GetService("multi_workbook_export"); svc != nil {
+			if yearSetter, ok := svc.(YearSetter); ok {
+				yearSetter.SetYear(opts.Year)
+			}
+		}
+
 		slog.Info("Running sync with year override", "year", opts.Year)
 	}
 
@@ -2368,56 +2395,12 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 		}
 	}
 
-	// After historical sync completes, trigger Google Sheets export for that year only (no globals).
-	//
-	// Not on a dry run: SyncForYears writes spreadsheets and the master index for real, and
-	// GetChangedCollections would happily nominate collections a dry run only *computed*
-	// (the dry-run branches still populate Stats.Created, so IsNoOp() is false). "dry_run
-	// writes nothing" has to mean the Google side too (kindred#2334).
-	if opts.Year > 0 && !opts.DryRun && google.IsEnabled() {
-		o.mu.RLock()
-		sheetsService := o.services["multi_workbook_export"]
-		o.mu.RUnlock()
-
-		if sheetsService != nil {
-			if exporter, ok := sheetsService.(*MultiWorkbookExport); ok {
-				// Get collections that had changes to skip unchanged exports
-				changedCollections := o.GetChangedCollections()
-				slog.Info("Historical sync: Exporting to Google Sheets",
-					"year", opts.Year,
-					"changed_collections", len(changedCollections))
-				if err := exporter.SyncForYears(ctx, []int{opts.Year}, false, changedCollections); err != nil {
-					slog.Error("Historical sync: Google Sheets export failed", "year", opts.Year, "error", err)
-				} else {
-					slog.Info("Historical sync: Google Sheets export completed", "year", opts.Year)
-				}
-			}
-		}
-	}
-
-	// After current year sync completes, trigger Google Sheets export (globals + current year).
-	// Skipped on a dry run for the same reason as the historical export above.
-	if opts.Year == 0 && !opts.DryRun && google.IsEnabled() {
-		o.mu.RLock()
-		sheetsService := o.services["multi_workbook_export"]
-		o.mu.RUnlock()
-
-		if sheetsService != nil {
-			if exporter, ok := sheetsService.(*MultiWorkbookExport); ok {
-				// Get collections that had changes to skip unchanged exports
-				changedCollections := o.GetChangedCollections()
-				slog.Info("Sync with options: Exporting to Google Sheets",
-					"changed_collections", len(changedCollections))
-				// Use SyncForYears with exporter's year to benefit from skip optimization
-				// exporter.year is already resolved from CAMPMINDER_SEASON_ID env var
-				if err := exporter.SyncForYears(ctx, []int{exporter.year}, true, changedCollections); err != nil {
-					slog.Error("Sync with options: Google Sheets export failed", "error", err)
-				} else {
-					slog.Info("Sync with options: Google Sheets export completed")
-				}
-			}
-		}
-	}
+	// multi_workbook_export is now an ordinary queued job (Stage 4/Task 13): its registry row
+	// carries TriggerFullRun and CadenceWeeklyGlobal, so servicesToRun above already includes
+	// it wherever it used to run via this function's two hardcoded epilogues (a full or
+	// historical run, current-year and historical alike -- see the runSyncAndWait loop above),
+	// and it gets its batch's own changed-collections filter and dry-run rejection the same
+	// way every other job in servicesToRun does. Nothing to trigger here anymore.
 
 	return nil
 }

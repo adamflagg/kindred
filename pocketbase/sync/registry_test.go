@@ -8,6 +8,8 @@ import (
 	"testing"
 	"testing/synctest"
 	"time"
+
+	"github.com/camp/kindred/pocketbase/campminder"
 )
 
 // TestRegistryIntegrity pins the structural rules every row must satisfy. It is the guard
@@ -291,24 +293,6 @@ func TestDailyQueueGate(t *testing.T) {
 	}
 }
 
-// TestMultiWorkbookExportWithholdsFullRunTrigger pins ruling F4: multi_workbook_export must
-// NOT carry TriggerFullRun while RunSyncWithOptions' hardcoded Google Sheets export epilogue
-// still fires on every unified run -- setting the bit before Stage 4 removes that epilogue
-// would export twice per run. Asserts the raw bit rather than derived-queue membership:
-// available() also filters multi_workbook_export on google.IsEnabled, so with Google disabled
-// in this environment the job would be absent from the full-run queue for the WRONG reason,
-// and a membership check could not tell a withheld bit from a closed gate.
-//
-// Stage 4's Task 13 deletes this assertion in the same commit that deletes the epilogue and
-// sets TriggerFullRun on this row for real.
-func TestMultiWorkbookExportWithholdsFullRunTrigger(t *testing.T) {
-	t.Parallel()
-	if hasTrigger("multi_workbook_export", TriggerFullRun) {
-		t.Fatal("multi_workbook_export must not carry TriggerFullRun until Stage 4 removes " +
-			"RunSyncWithOptions' export epilogue, or a unified run double-exports Google Sheets")
-	}
-}
-
 // TestUnifiedRunDerivation pins the full run, including both conditionals and the ordering
 // change this task makes: stranded_assignment_cleanup now runs dead-last on a full run,
 // matching the daily cron, instead of mid-Transform (#1416, #1417).
@@ -368,8 +352,9 @@ func TestUnifiedRunDerivation(t *testing.T) {
 	// itself. This is the one queue this branch actually reorders (stranded_assignment_cleanup
 	// moves from mid-Transform to dead-last), and until now only its membership and last
 	// element were asserted anywhere. multi_workbook_export needs no ignore-list entry here:
-	// it carries no TriggerFullRun (TestMultiWorkbookExportWithholdsFullRunTrigger pins that),
-	// so it can never appear in dockerFull regardless of its Gate.
+	// it now carries TriggerFullRun (Task 13), but this test never sets GOOGLE_SHEETS_ENABLED,
+	// so available()'s Gate (google.IsEnabled) keeps it out of dockerFull regardless -- see
+	// TestExportRunsExactlyOnceInAFullRun for the Gate-open case.
 	assertSeq(t, "current-year full run", dockerFull, []string{
 		"session_groups", "sessions", "attendees", "persons", "bunks", "bunk_plans",
 		"bunk_assignments", "staff", "financial_transactions",
@@ -1093,5 +1078,210 @@ func TestStandaloneRunFailsClosedOnUnresolvableSeason(t *testing.T) {
 	}
 	if o.IsRunning("multi_workbook_export") {
 		t.Error("a refused run must never start -- IsRunning should be false")
+	}
+}
+
+// =============================================================================
+// Task 13: delete the epilogue, queue the export
+// =============================================================================
+
+// TestExportRunsExactlyOnceInAFullRun is the regression guard for this task's sharpest risk:
+// the deleted epilogue plus the new TriggerFullRun membership would double-export.
+//
+// GOOGLE_SHEETS_ENABLED must be set: multi_workbook_export's Gate (google.IsEnabled) is
+// applied by available() inside GetDefaultUnifiedSyncJobs like every other gated row, so
+// without it the job is filtered out of the full-run queue entirely and the count assertion
+// below would be vacuously satisfied by n=0, not by the exactly-once property it's meant to
+// pin.
+func TestExportRunsExactlyOnceInAFullRun(t *testing.T) {
+	t.Setenv("IS_DOCKER", "")
+	t.Setenv("GOOGLE_SHEETS_ENABLED", "true")
+	n := 0
+	for _, id := range ResolveUnifiedSyncServices(DefaultService, true, true) {
+		if id == "multi_workbook_export" {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Errorf("multi_workbook_export appears %d times in a full run, want 1", n)
+	}
+	src := readSourceFile(t, "orchestrator.go")
+	if strings.Contains(src, "Sync with options: Exporting to Google Sheets") {
+		t.Error("the hardcoded export epilogue is still in RunSyncWithOptions")
+	}
+}
+
+// TestEveryExportedCollectionHasASyncJob pins the invariant changed-only silently depends on.
+// If an ExportConfig names a collection no job writes, that sheet becomes permanently
+// unexportable and the only symptom is a "Skipping export - no sync changes" log line.
+//
+// The reverse is NOT required: staff_lookups maps to no exported collection, and that is
+// correct -- it feeds lookups nothing exports.
+func TestEveryExportedCollectionHasASyncJob(t *testing.T) {
+	t.Parallel()
+	written := map[string]bool{}
+	for _, cols := range SyncJobToCollections {
+		for _, c := range cols {
+			written[c] = true
+		}
+	}
+	configs := append(GetReadableGlobalExports(), GetReadableYearExports()...)
+	if len(configs) == 0 {
+		t.Fatal("no export configs -- this test would pass vacuously")
+	}
+	for _, cfg := range configs {
+		if !written[cfg.Collection] {
+			t.Errorf("exported collection %q is written by no sync job: changed-only export "+
+				"will skip it forever", cfg.Collection)
+		}
+	}
+}
+
+// TestFullRunWithGoogleEnabledRejectsDryRun is the C4 mechanism check: once
+// multi_workbook_export carries TriggerFullRun, a dry_run=true request against a full run
+// must still be rejected outright, never silently skip the export, because MultiWorkbookExport
+// implements no SetDryRun (DryRunnable) method. UnsupportedDryRunServices -- called
+// synchronously by handleUnifiedSync before either the immediate or queued path starts, and
+// again as RunSyncWithOptions' own defense-in-depth backstop -- is what stops it: this test
+// pins that multi_workbook_export shows up in its result once it's actually part of the
+// full-run service list, which it only is when Google Sheets is enabled.
+func TestFullRunWithGoogleEnabledRejectsDryRun(t *testing.T) {
+	t.Setenv("IS_DOCKER", "true")
+	t.Setenv("GOOGLE_SHEETS_ENABLED", "true")
+
+	o := NewOrchestrator(nil)
+	// A MockService implements Service but not DryRunnable -- the same shape
+	// *MultiWorkbookExport has (it declares no SetDryRun method).
+	o.RegisterService("multi_workbook_export", &MockService{name: "multi_workbook_export"})
+
+	services := ResolveUnifiedSyncServices(DefaultService, true, true)
+	if !slices.Contains(services, "multi_workbook_export") {
+		t.Fatal("multi_workbook_export must be part of a full run when Google Sheets is enabled")
+	}
+
+	got := o.UnsupportedDryRunServices(services)
+	if !slices.Contains(got, "multi_workbook_export") {
+		t.Errorf("expected multi_workbook_export in UnsupportedDryRunServices(full run), got %v", got)
+	}
+}
+
+// TestHistoricalRunSetsTheExportsYear pins a regression this task's own change would
+// otherwise introduce. The OLD hardcoded historical epilogue never touched the exporter's own
+// .year field -- it called exporter.SyncForYears(ctx, []int{opts.Year}, false, changed), which
+// takes the year as an explicit parameter. Sync(), the queued-job entry point used since this
+// task, has no such parameter: it reads m.year directly for both the year-data export and the
+// globals gate. RunSyncWithOptions' historical re-registration block re-registers a long list
+// of services with year-specific clients, but never multi_workbook_export -- it stays the
+// same long-lived singleton every other trigger shares -- so without an explicit SetYear call
+// here, a historical replay of, say, 2020 would export against whatever year the singleton's
+// .year field already held (almost certainly the current season), not the year being replayed.
+//
+// Registered in serialGroups: CAMPMINDER_PRIMARY_KEY and newExportWithFakeWriter's
+// CAMPMINDER_SEASON_ID are both t.Setenv.
+func TestHistoricalRunSetsTheExportsYear(t *testing.T) {
+	t.Setenv("CAMPMINDER_PRIMARY_KEY", "test-key")
+
+	app := newDryRunTestApp(t)
+	o := NewOrchestrator(app)
+	o.SetJobSpacing(0)
+
+	client, err := campminder.NewClient(&campminder.Config{APIKey: "k", ClientID: "c", SeasonID: 2025})
+	if err != nil {
+		t.Fatalf("campminder.NewClient: %v", err)
+	}
+	o.baseClient = client
+
+	exp := newExportWithFakeWriter(t) // constructed at year 2025 (CAMPMINDER_SEASON_ID)
+	o.RegisterService("multi_workbook_export", exp)
+
+	if err := o.RunSyncWithOptions(context.Background(), Options{
+		Year:     2020,
+		Services: []string{"multi_workbook_export"},
+	}); err != nil {
+		t.Fatalf("RunSyncWithOptions: %v", err)
+	}
+
+	if exp.year != 2020 {
+		t.Errorf("a historical run must target the replayed year, got %d, want 2020", exp.year)
+	}
+}
+
+// TestWeeklySyncJobsGatesExportOnGoogleEnabled and its sibling below pin a gap this task's
+// change exposes: GetWeeklySyncJobs (orchestrator.go) reads jobsWithCadence directly instead
+// of going through cadenceQueue, so it skips available()'s Gate filtering entirely. That was a
+// no-op until now -- none of the five PhaseGlobal rows carries a Gate -- but multi_workbook_export
+// gaining CadenceWeeklyGlobal makes it live: left unfixed, a google-disabled environment would
+// have the Sunday-2am cron try to run an unregistered "multi_workbook_export" every week and
+// log "sync service not found", exactly the failure available()'s own doc comment says
+// uniform Gate filtering exists to prevent.
+func TestWeeklySyncJobsGatesExportOnGoogleEnabled(t *testing.T) {
+	t.Setenv("GOOGLE_SHEETS_ENABLED", "true")
+	if !slices.Contains(GetWeeklySyncJobs(), "multi_workbook_export") {
+		t.Error("expected multi_workbook_export in the weekly-global queue when Google Sheets is enabled")
+	}
+}
+
+func TestWeeklySyncJobsGatesExportOnGoogleDisabled(t *testing.T) {
+	t.Setenv("GOOGLE_SHEETS_ENABLED", "")
+	if slices.Contains(GetWeeklySyncJobs(), "multi_workbook_export") {
+		t.Error("expected multi_workbook_export gated OUT of the weekly-global queue when Google Sheets is disabled")
+	}
+}
+
+// TestBatchChangedCollectionsEmptyWhenRegisteredButUntouched preserves a property the deleted
+// TestOrchestrator_GetChangedCollections pinned ("empty when no completed syncs"): a batch
+// nothing has recorded a change into yet answers with an empty, non-nil map -- never nil,
+// which means something entirely different per ChangedCollectionsAware's own doc comment
+// ("export everything").
+func TestBatchChangedCollectionsEmptyWhenRegisteredButUntouched(t *testing.T) {
+	t.Parallel()
+	o := newTestOrchestrator(t)
+	o.registerBatch("batch-empty")
+
+	got := o.batchChangedCollections("batch-empty")
+	if got == nil {
+		t.Fatal("a registered batch must answer with a non-nil map, not nil")
+	}
+	if len(got) != 0 {
+		t.Errorf("expected no changes recorded, got %v", got)
+	}
+}
+
+// TestRecordBatchChangeIgnoresUnknownSyncType preserves a property the deleted
+// TestOrchestrator_GetChangedCollections pinned ("handles unknown sync type gracefully"): a
+// service name with no SyncJobToCollections entry must not panic and must contribute nothing.
+func TestRecordBatchChangeIgnoresUnknownSyncType(t *testing.T) {
+	t.Parallel()
+	o := newTestOrchestrator(t)
+	o.registerBatch("batch-unknown")
+
+	o.recordBatchChange("batch-unknown", "unknown_sync_type", Stats{Created: 5})
+
+	got := o.batchChangedCollections("batch-unknown")
+	if len(got) != 0 {
+		t.Errorf("expected an unmapped sync type to contribute nothing, got %v", got)
+	}
+}
+
+// TestRecordBatchChangeMapsFamilyCampVariantsToSharedCollections preserves a property the
+// deleted TestOrchestrator_GetChangedCollections pinned: the bounded daily family-camp jobs
+// (kindred#2489) write the exact same person_custom_values/household_custom_values
+// collections as their unrestricted counterparts, under distinct registered names --
+// SyncJobToCollections has entries for both, and recordBatchChange must resolve them the same
+// way the deleted GetChangedCollections used to.
+func TestRecordBatchChangeMapsFamilyCampVariantsToSharedCollections(t *testing.T) {
+	t.Parallel()
+	o := newTestOrchestrator(t)
+	o.registerBatch("batch-fc")
+
+	o.recordBatchChange("batch-fc", "person_custom_values_family_camp", Stats{Created: 3, Updated: 1})
+	o.recordBatchChange("batch-fc", "household_custom_values_family_camp", Stats{Created: 2})
+
+	got := o.batchChangedCollections("batch-fc")
+	if !got["person_custom_values"] {
+		t.Error("expected person_custom_values recorded via the bounded family-camp job's completion")
+	}
+	if !got["household_custom_values"] {
+		t.Error("expected household_custom_values recorded via the bounded family-camp job's completion")
 	}
 }

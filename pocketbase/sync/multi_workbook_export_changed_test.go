@@ -204,9 +204,11 @@ func TestSyncGlobalsFailureIsSoftYearDataFailureIsHard(t *testing.T) {
 // :1420, :2440) that call SetYear on whatever service a queued or phase run hands them --
 // and never reset it afterward. A historical "Run Phase -> Export" at, say, last year
 // permanently pins the singleton to that year. Two live read paths then take whatever the
-// instance happens to hold: the epilogue (still present, calls SyncForYears(exporter.year))
-// and the plain admin "Run" button -- handleMultiWorkbookExport's default branch (no `years`
-// query param), which calls multiExport.Sync(ctx) directly.
+// instance happens to hold: the queued job path (Task 13 -- multi_workbook_export now runs
+// via the daily/full/historical/weekly-global queues instead of RunSyncWithOptions' old
+// hardcoded epilogue, which called SyncForYears(exporter.year) and is deleted) and the plain
+// admin "Run" button -- handleMultiWorkbookExport's default branch (no `years` query param),
+// which calls multiExport.Sync(ctx) directly.
 //
 // This test drives that default branch exactly as production does: register a
 // MultiWorkbookExport already pinned to a historical year (simulating the prior queued run),

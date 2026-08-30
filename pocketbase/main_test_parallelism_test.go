@@ -259,6 +259,27 @@ var serialGroups = []struct {
 		tests:  []string{"TestDailyQueueDerivation", "TestDailyQueueGate", "TestUnifiedRunDerivation"},
 	},
 	{
+		pkg:    "sync",
+		reason: "t.Setenv: IS_DOCKER and GOOGLE_SHEETS_ENABLED drive Gate filtering in the derived queues themselves",
+		tests: []string{
+			"TestExportRunsExactlyOnceInAFullRun",
+			"TestFullRunWithGoogleEnabledRejectsDryRun",
+		},
+	},
+	{
+		pkg:    "sync",
+		reason: "t.Setenv: CAMPMINDER_PRIMARY_KEY (campminder.NewClient) and newExportWithFakeWriter's CAMPMINDER_SEASON_ID",
+		tests:  []string{"TestHistoricalRunSetsTheExportsYear"},
+	},
+	{
+		pkg:    "sync",
+		reason: "t.Setenv: GOOGLE_SHEETS_ENABLED drives multi_workbook_export's Gate in GetWeeklySyncJobs",
+		tests: []string{
+			"TestWeeklySyncJobsGatesExportOnGoogleEnabled",
+			"TestWeeklySyncJobsGatesExportOnGoogleDisabled",
+		},
+	},
+	{
 		// captureStdout redirects the process's os.Stdout; captureLogs swaps
 		// slog's default handler. Both are process-global, so a parallel test
 		// would capture some other test's output instead of its own.
