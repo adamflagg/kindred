@@ -1504,8 +1504,9 @@ func getDailySyncJobs() []string {
 // Unlike RunSingleSync this blocks until the run completes, matching every other Run*Sync
 // method here. Both callers already run it on their own goroutine.
 func (o *Orchestrator) RunHourlySync(ctx context.Context) error {
+	batch := newBatch(triggerHourly)
 	for _, job := range cadenceQueue(CadenceHourly) {
-		if err := o.runSyncAndWait(ctx, job, newBatch(triggerHourly)); err != nil {
+		if err := o.runSyncAndWait(ctx, job, batch); err != nil {
 			return err
 		}
 	}
