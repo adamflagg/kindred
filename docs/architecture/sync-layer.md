@@ -45,15 +45,33 @@ When implementing a new sync job, ALL of these steps must be completed. Missing 
 
 ### 2. Orchestrator Registration (`orchestrator.go`)
 
+`syncJobMeta` is the single declaration every sync queue derives from — the daily cron, the
+hourly cron, the weekly custom-values cron, an admin-triggered phase run, and a unified full
+run are all *computed* from this table's rows, not separately registered. The helpers that do
+the deriving (`cadenceQueue`, `inPhaseWithTrigger`, `jobsWithTrigger`, `hasTrigger`,
+`available`, `orderQueue`) live in `sync/registry.go`.
+
 | Location | Action |
 |----------|--------|
 | `InitializeSyncServices()` | Register service with `RegisterService()` in dependency order |
-| `RunDailySync()` orderedJobs | Add job ID string in correct position (respects dependencies) |
-| `RunSyncWithOptions()` servicesToRun | Add to default services list for historical syncs |
 | `RunSyncWithOptions()` re-registration | Add `NewXxxSync(o.app, yearClient)` call in historical re-registration block (~line 1966) |
-| `syncJobMeta` | Add a keyed `{ID: …, Phase: …, Description: …}` entry (plus Base/Scope for a scoped variant — see scope.go) — this is what drives phase grouping and the status UI |
+| `syncJobMeta` | Add ONE row: `{ID, Phase, Description, Cadences, Triggers, CurrentYearOnly, Gate}` (plus `Base`/`Scope` for a scoped variant — see scope.go). `Cadences` puts the job on the crons it should run on (`CadenceDaily`, `CadenceHourly`, `CadenceWeeklyGlobal`, `CadenceWeeklyCustomValues` — a bitset, so a job can carry more than one). `Triggers` says which operator-facing entry points may start it (`TriggerIndividualRoute`, `TriggerPhaseRun`, `TriggerFullRun`). `CurrentYearOnly: true` excludes it from a historical replay. `Gate` is an optional `func() bool` environment check (see `process_requests`' `IS_DOCKER` gate or `multi_workbook_export`'s `google.IsEnabled` for the pattern). Physical position in the slice matters too — see §9 below. |
 
-**Common mistake**: Registering the service but forgetting to add to `orderedJobs` - job won't run in daily sync!
+**Common mistake**: Registering the service but leaving its `syncJobMeta` row with no `Cadences`
+and no `Triggers` set — `TestRegistryIntegrity` (`registry_test.go`) fails immediately ("no
+cadence and no trigger -- nothing can ever run it"), which is loud, but it does not tell you
+*which* bits to set. Copy the shape of a comparable existing row rather than guessing; a normal
+daily-cron, full-run-eligible job carries `Cadences: CadenceDaily, Triggers:
+TriggerIndividualRoute | TriggerPhaseRun | TriggerFullRun`.
+
+**Still to come, not yet true of every job:** the five global definition tables
+(`person_tag_defs`, `custom_field_defs`, `staff_lookups`, `financial_lookups`, `divisions`) are
+**not yet** rows in `syncJobMeta` — they still come from the hand-written `GetWeeklySyncJobs()`
+until Stage 3 folds them in. `multi_workbook_export` carries no `TriggerFullRun` bit and still
+exports via a hardcoded epilogue in `RunSyncWithOptions` on a unified run, not via the derived
+full-run queue, until Stage 4 removes that epilogue and sets the bit for real
+(`TestMultiWorkbookExportWithholdsFullRunTrigger` in `registry_test.go` pins the withheld bit
+and names the commit that deletes the assertion).
 
 **Exception — a SCOPED VARIANT skips several steps below.** A scoped variant (`Base` + `Scope`
 set, e.g. `person_custom_values_family_camp`) is a narrower-cohort instance of an existing
@@ -61,29 +79,33 @@ service, registered under `scopedID(base, scope)`. It is cron-driven only:
 
 | Step | A scoped variant instead |
 |------|--------------------------|
-| §2 `RunSyncWithOptions()` servicesToRun | **Omit.** It must not appear in a full or historical run — the daily cron already covers it, and re-running the cohort burns rate-limited CampMinder quota for values that are already fresh (#2489). |
+| §2 `syncJobMeta` `Triggers` | **Leave unset (0).** Today's two scoped rows (the family-camp custom-values pair) carry no `Triggers` bits at all — no `TriggerFullRun` (must not appear in a full or historical run — the daily cron already covers it, and re-running the cohort burns rate-limited CampMinder quota for values that are already fresh, #2489), no `TriggerPhaseRun` (must not appear in an admin-triggered phase run either, #2489), no `TriggerIndividualRoute` (no Run button — see the route row below). This is a fact `TestScopedVariantContract` verifies about the current rows, not a structural guarantee the type system enforces — see that test's comment on the `TriggerPhaseRun` clause. |
 | §2 `RunSyncWithOptions()` re-registration | **Known gap, not a rule.** The scoped instances are the one place the current implementation diverges from this checklist: they are never re-registered against a year client, so a historical run silently uses the current-year instance. Tracked at #2608 — out of scope for the declaration refactor, which is zero-behavior-change. |
 | §3 Register route | **Omit — no individual POST route.** There is no Run button to call. Note this is a *convention*, not something the server enforces: `ResolveUnifiedSyncServices` returns any explicitly named `?service=` straight through without consulting a route table, so `POST /api/custom/sync/run?service=person_custom_values_family_camp` really does run the bounded pass on demand. What holds the convention today is `TestScopedVariantContract` plus the frontend's `manualTrigger: false` guard; the server-side whitelist is planned for the registry refactor's next stage (#2608). |
 | §3 Add to status endpoint | **Still required.** A targeted refresh sets no run-type flag, so the per-job status entry is the client's only completion signal (#2591). |
 | §5 `syncTypes.ts` | Card still required, but with `manualTrigger: false` — pinned to the backend route table by `syncTypes.test.ts`. |
 
-`TestScopedVariantContract` (`scope_test.go`) enforces the servicesToRun, route and status
-rows, plus the `SyncJobToCollections` requirement below. The `syncTypes.ts` row is enforced on
-the frontend side instead, by `syncTypes.test.ts`. The re-registration row is enforced by
+`TestScopedVariantContract` (`scope_test.go`) enforces the full-run/phase-run exclusion, route
+and status rows, plus the `SyncJobToCollections` requirement below. The `syncTypes.ts` row is
+enforced on the frontend side instead, by `syncTypes.test.ts`. The re-registration row is enforced by
 nothing — that is what makes it a gap.
 
 It does still need its `SyncJobToCollections` entry, mapped to the **same collections as its
 base**, or its writes are dropped from the export skip-optimisation (#2491).
 
-### 2b. Orchestrator Test (`orchestrator_test.go`) — REQUIRED, and easy to miss
+### 2b. Orchestrator Test (`orchestrator_test.go`) — still needs updating, but registers nothing
 
-`TestRunSyncWithOptionsPhaseOrdering` pins the unified job list **exhaustively** via its
-`expectedOrder` slice. A new job that is registered correctly everywhere else still fails the suite
-with a job-count mismatch (`expected 22 jobs, got 23`) until it is added there, in the same position
-as in `orderedJobs`.
+`TestRunSyncWithOptionsPhaseOrdering` pins the unified historical job list **exhaustively** via
+its `expectedOrder` slice (`isCurrentYear=false`). A new job carrying `TriggerFullRun` and no
+`CurrentYearOnly` still fails the suite with a job-count mismatch (`expected 22 jobs, got 23`)
+until it is added there, in the position `GetDefaultUnifiedSyncJobs` derives for it.
 
-This is a genuine registration site, not a test that "happens to break" — it is the only thing
-asserting the daily and historical lists stay in step.
+Unlike before this branch, this is **not** a registration site — the `syncJobMeta` row's
+`Triggers`/`CurrentYearOnly` bits are what actually make the job run in a unified sync; this
+test only asserts the derived result stays what it was. It is the same closed-suite pattern as
+`TestDailyQueueDerivation` and `TestUnifiedRunDerivation` (`registry_test.go`) use for the
+daily cron and the full run: skipping the update fails the suite, but nothing here wires
+anything up.
 
 ### 3. API Endpoint (`api.go`)
 
@@ -161,15 +183,15 @@ If your sync reads from tables populated by OTHER syncs (not CampMinder directly
 
 | Consideration | Action |
 |---------------|--------|
-| orderedJobs position | Place AFTER all dependency syncs in the array |
+| `syncJobMeta` declaration position | Place the new row AFTER all dependency syncs' rows — the daily and full-run queues both walk `syncJobMeta` in declaration order, so physical position IS execution order (see the comment above the Source-phase block in `orchestrator.go`) |
 | Custom values dependency | If needs `person_custom_values` or `household_custom_values`, these run weekly - sync will use existing data in daily runs |
-| Historical with custom values | When `IncludeCustomValues=true`, ensure your sync is listed AFTER custom values syncs in `RunSyncWithOptions()` |
+| Historical with custom values | When `IncludeCustomValues=true`, ensure your row is declared AFTER the custom-values rows so `GetDefaultUnifiedSyncJobs` derives it in the right order |
 
-Example: `family_camp_derived` depends on `person_custom_values` and `household_custom_values`, so it's added to `servicesToRun` after the custom values syncs when `opts.IncludeCustomValues` is true.
+Example: `family_camp_derived` depends on `person_custom_values` and `household_custom_values`, so its `syncJobMeta` row is declared after theirs, and it is derived into the queue after them whenever `opts.IncludeCustomValues` is true.
 
 ### Quick Reference: Sync ID Conventions
 
-- Go: `job_name` (snake_case in orderedJobs, maps to `job-name` endpoint)
+- Go: `job_name` (snake_case, declared as the `ID` in `syncJobMeta`, maps to `job-name` endpoint)
 - Frontend: `job_name` in syncTypes.ts (auto-converted to `job-name` for API)
 - API: `/api/custom/sync/job-name` (kebab-case)
 
@@ -189,11 +211,11 @@ After implementation, verify ALL of these work:
 
 | Mistake | Consequence | Prevention |
 |---------|-------------|------------|
-| Service registered but not in `orderedJobs` | Won't run in daily sync | Always add to both places |
+| Service registered but its `syncJobMeta` row has no `Cadences`/`Triggers` | Fails loud: `TestRegistryIntegrity` rejects it ("no cadence and no trigger") | Set at least one `Cadence` and the `Triggers` the job needs; copy a comparable row |
 | Missing from `handleSyncStatus()` syncTypes | GUI never shows stats (always "idle") | Add to syncTypes array in api.go:711 |
 | Year-param endpoint without custom hook | Frontend errors on "Run" button | Check if API handler has `year` query param |
 | Missing historical re-registration | Won't run in historical imports | Add `NewXxxSync()` call in `RunSyncWithOptions()` block |
-| Derived table before dependencies | Empty results, relation errors | Map dependency chain, place after deps in orderedJobs |
+| Derived table before dependencies | Empty results, relation errors | Map dependency chain, place its `syncJobMeta` row after its deps' rows |
 | Global table in historical sync | Unnecessary re-sync of static data | Check if table has `year` field - if not, it's global |
 | Missing `SyncJobToCollections` entry | Sheet always re-exported even when no changes | Add sync job to mapping in `table_exporter.go` |
 

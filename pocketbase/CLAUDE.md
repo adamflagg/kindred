@@ -113,7 +113,9 @@ Format: `2026-01-06T14:05:52Z [pocketbase] LEVEL message key=value...`. `LOG_LEV
 
 ## Sync invariants
 
-1. **Sync order matters.** `orderedJobs` in `sync/orchestrator.go` is the source of truth; the
+1. **Sync order matters.** `syncJobMeta`'s declaration order in `sync/orchestrator.go` is the
+   source of truth — the daily and full-run queues both walk it in that order (see
+   `sync/registry.go`'s `cadenceQueue`/`GetDefaultUnifiedSyncJobs`); the
    source phase runs `session_groups → sessions → attendees → persons → bunks → bunk_plans →
    bunk_assignments → staff → financial_transactions`, then the transform phase (derived tables),
    then `process_requests`. **`session_groups` runs first** — `sessions` reads it for the
