@@ -2305,10 +2305,18 @@ func handleGetPhases(e *core.RequestEvent) error {
 	phases := GetAllPhases()
 
 	type PhaseInfo struct {
-		ID          string   `json:"id"`
-		Name        string   `json:"name"`
-		Description string   `json:"description"`
-		Jobs        []string `json:"jobs"`
+		ID          string `json:"id"`
+		Name        string `json:"name"`
+		Description string `json:"description"`
+		// Jobs is what the phase CONTAINS -- the classification list (GetJobsForPhase), used
+		// for the header count and the card grid.
+		Jobs []string `json:"jobs"`
+		// RunJobs is what the Run Phase button STARTS (phaseExecutionJobs) -- a subset of
+		// Jobs: the two bounded family-camp custom-values jobs are members of the Expensive
+		// phase but are never started by an admin phase run (kindred#2489). A count beside a
+		// button must describe what that button starts, not merely what the phase contains
+		// (kindred#2600).
+		RunJobs []string `json:"run_jobs"`
 	}
 
 	// Build phase info with human-readable names and descriptions
@@ -2335,6 +2343,7 @@ func handleGetPhases(e *core.RequestEvent) error {
 			Name:        phaseNames[phase],
 			Description: phaseDescriptions[phase],
 			Jobs:        GetJobsForPhase(phase),
+			RunJobs:     phaseExecutionJobs(phase),
 		})
 	}
 

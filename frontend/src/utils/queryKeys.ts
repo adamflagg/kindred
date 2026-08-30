@@ -115,6 +115,9 @@ export const queryKeys = {
   // Sync Status (Tier 2 - frequently updated)
   syncStatus: () => ['sync-status'] as const,
   syncStatusForService: (service: string) => ['sync-status', service] as const,
+  // Sync Phases (Tier 1 - changes only when someone edits syncJobMeta in code, i.e. on
+  // deploy) -- inherits the app default staleTime rather than sync-status's polling cadence.
+  syncPhases: () => ['sync-phases'] as const,
   csvPipelineStatus: () => ['csv-pipeline-status'] as const,
   lastUploadSummary: () => ['lastUploadSummary'] as const,
   // sessionCmIds is sorted so cache identity is stable regardless of the

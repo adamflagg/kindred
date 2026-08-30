@@ -2268,6 +2268,83 @@ func TestHandleRunPhaseImmediateResponseExcludesScopeFamilyCampJobs(t *testing.T
 	}
 }
 
+// TestPhasesPayloadPublishesBothLists pins kindred#2600 item 1. Membership and execution are
+// deliberately distinct facts (GetJobsForPhase vs phaseExecutionJobs); the bug was that the
+// /api/custom/sync/phases payload published only the first, so the Sync tab's header count
+// ("(4 jobs)") sat above a Run Phase button that only starts 2. The naive fix -- keying the
+// button's count off the frontend's own manualTrigger flag -- would be wrong on the facts:
+// reconcile_request_lifecycle carries no individual route but IS started by a phase run via
+// TriggerPhaseRun, so a manualTrigger-derived count would trade one false statement for
+// another. Only the backend knows phaseExecutionJobs, so the payload must publish both lists
+// and let the frontend read the one that matches what it is labeling.
+func TestPhasesPayloadPublishesBothLists(t *testing.T) {
+	t.Parallel()
+
+	re := &core.RequestEvent{}
+	re.Request = httptest.NewRequest(http.MethodGet, "/api/custom/sync/phases", http.NoBody)
+	rec := httptest.NewRecorder()
+	re.Response = rec
+
+	if err := handleGetPhases(re); err != nil {
+		t.Fatalf("handler returned error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected %d, got %d: %s", http.StatusOK, rec.Code, rec.Body.String())
+	}
+
+	var body struct {
+		Phases []struct {
+			ID      string   `json:"id"`
+			Jobs    []string `json:"jobs"`
+			RunJobs []string `json:"run_jobs"`
+		} `json:"phases"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+
+	scopedFamilyCampJobs := []string{"person_custom_values_family_camp", "household_custom_values_family_camp"}
+
+	foundExpensive := false
+	for _, phase := range body.Phases {
+		if phase.ID != string(PhaseExpensive) {
+			if len(phase.Jobs) != len(phase.RunJobs) {
+				t.Errorf("phase %q: jobs = %v (%d), run_jobs = %v (%d), expected equal for a "+
+					"phase where membership and execution do not diverge",
+					phase.ID, phase.Jobs, len(phase.Jobs), phase.RunJobs, len(phase.RunJobs))
+				continue
+			}
+			for i := range phase.Jobs {
+				if phase.Jobs[i] != phase.RunJobs[i] {
+					t.Errorf("phase %q: jobs[%d] = %q, run_jobs[%d] = %q, expected equal",
+						phase.ID, i, phase.Jobs[i], i, phase.RunJobs[i])
+				}
+			}
+			continue
+		}
+
+		foundExpensive = true
+		if len(phase.Jobs) != 4 {
+			t.Errorf("PhaseExpensive jobs = %v, expected 4 entries", phase.Jobs)
+		}
+		if len(phase.RunJobs) != 2 {
+			t.Errorf("PhaseExpensive run_jobs = %v, expected 2 entries", phase.RunJobs)
+		}
+		for _, excluded := range scopedFamilyCampJobs {
+			for _, j := range phase.RunJobs {
+				if j == excluded {
+					t.Errorf("PhaseExpensive run_jobs = %v, must not include %q -- Run Phase "+
+						"never starts the bounded family-camp variants", phase.RunJobs, excluded)
+				}
+			}
+		}
+	}
+
+	if !foundExpensive {
+		t.Fatalf("phases payload = %v, missing PhaseExpensive (%q)", body.Phases, PhaseExpensive)
+	}
+}
+
 // TestHandleRefreshFamilyCampRejectsWhenUnrestrictedGroupmateRunning pins that the
 // refresh-family-camp front guard is collection-group-aware, not keyed on the six literal job
 // names.
