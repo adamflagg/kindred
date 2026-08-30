@@ -215,3 +215,35 @@ func TestDailyQueueGate(t *testing.T) {
 		t.Error("process_requests must be present when IS_DOCKER=true")
 	}
 }
+
+// TestUnifiedRunDerivation pins the full run, including both conditionals and the ordering
+// change this task makes: stranded_assignment_cleanup now runs dead-last on a full run,
+// matching the daily cron, instead of mid-Transform (#1416, #1417).
+//
+// t.Setenv, so this cannot run t.Parallel() -- see main_test_parallelism_test.go's
+// serialGroups.
+func TestUnifiedRunDerivation(t *testing.T) {
+	t.Setenv("IS_DOCKER", "")
+
+	full := ResolveUnifiedSyncServices(DefaultService, true, true)
+	for _, id := range []string{"person_custom_values", "household_custom_values"} {
+		if !slices.Contains(full, id) {
+			t.Errorf("includeCustomValues=true must include %s", id)
+		}
+	}
+	noCV := ResolveUnifiedSyncServices(DefaultService, false, true)
+	for _, id := range []string{"person_custom_values", "household_custom_values"} {
+		if slices.Contains(noCV, id) {
+			t.Errorf("includeCustomValues=false must exclude %s", id)
+		}
+	}
+	historical := ResolveUnifiedSyncServices(DefaultService, true, false)
+	for _, id := range []string{"reconcile_request_lifecycle", "bunk_requests", "process_requests"} {
+		if slices.Contains(historical, id) {
+			t.Errorf("%s is CurrentYearOnly and must not be in a historical replay", id)
+		}
+	}
+	if got := full[len(full)-1]; got != "stranded_assignment_cleanup" {
+		t.Errorf("full run ends with %q, want stranded_assignment_cleanup", got)
+	}
+}

@@ -310,64 +310,43 @@ func GetPhaseForJob(jobID string) Phase {
 	return ""
 }
 
-// GetDefaultUnifiedSyncJobs returns the default job list for a unified sync
-// (when no specific services are requested). The includeCustomValues flag
-// controls whether expensive custom values API syncs are included.
-// Transform phase jobs always run using existing custom values data.
-func GetDefaultUnifiedSyncJobs(includeCustomValues bool) []string {
-	// Source phase: CampMinder API syncs
-	jobs := []string{
-		"session_groups",
-		"sessions",
-		"attendees",
-		"persons",
-		"bunks",
-		"bunk_plans",
-		"bunk_assignments",
-		"staff",
-		"financial_transactions",
+// GetDefaultUnifiedSyncJobs returns the jobs a unified ("all services") sync runs.
+//
+// Derived from the registry: every job carrying TriggerFullRun, minus CurrentYearOnly jobs on
+// a historical replay (isCurrentYear must mean what RunSyncWithOptions's opts.Year == 0 means),
+// minus the whole Expensive phase unless includeCustomValues (the flag has always gated the
+// phase, not per-job opinions), minus closed environment gates (process_requests' IS_DOCKER
+// check runs here via its Gate), ordered by orderQueue -- so stranded_assignment_cleanup now
+// runs dead-last, matching the daily cron, instead of mid-Transform (#1416, #1417).
+func GetDefaultUnifiedSyncJobs(includeCustomValues, isCurrentYear bool) []string {
+	var ids []string
+	for _, m := range syncJobMeta {
+		if m.Triggers&TriggerFullRun == 0 {
+			continue
+		}
+		if m.CurrentYearOnly && !isCurrentYear {
+			continue
+		}
+		if m.Phase == PhaseExpensive && !includeCustomValues {
+			continue
+		}
+		ids = append(ids, m.ID)
 	}
-
-	// Expensive phase: Custom values (1 API call per entity)
-	if includeCustomValues {
-		jobs = append(jobs,
-			"person_custom_values", "household_custom_values")
-	}
-
-	// Transform phase: Always run using existing custom values data
-	// (same as daily sync behavior)
-	jobs = append(jobs,
-		"family_camp_derived", "lodging_assignments", "staff_skills",
-		"financial_aid_applications", "household_demographics",
-		"camper_dietary", "camper_transportation", "quest_registrations",
-		"staff_applications", "staff_vehicle_info", "normalize_geographic",
-		"enrollment_snapshots", "stranded_assignment_cleanup")
-
-	return jobs
+	return orderQueue(available(ids))
 }
 
 // ResolveUnifiedSyncServices returns the concrete service names a unified sync with these
 // parameters will run. handleUnifiedSync calls this to validate dry_run support *before*
 // responding, and RunSyncWithOptions calls it to decide what to actually run -- one function so
 // the two can never quietly drift apart (kindred#2334: a validator that resolves a different
-// list than the one that actually runs is worse than no validator).
-//
-// isCurrentYear must mean what RunSyncWithOptions's opts.Year == 0 means: true for the
-// live/current-year run (which also picks up reconcile_request_lifecycle, bunk_requests, and,
-// in Docker, process_requests), false for a historical replay.
+// list than the one that actually runs is worse than no validator). For DefaultService it
+// delegates straight to GetDefaultUnifiedSyncJobs, so the two can never resolve different
+// lists either.
 func ResolveUnifiedSyncServices(service string, includeCustomValues, isCurrentYear bool) []string {
 	if service != DefaultService {
 		return []string{service}
 	}
-
-	services := GetDefaultUnifiedSyncJobs(includeCustomValues)
-	if isCurrentYear {
-		services = append(services, "reconcile_request_lifecycle", "bunk_requests")
-		if os.Getenv("IS_DOCKER") == boolTrueStr {
-			services = append(services, "process_requests")
-		}
-	}
-	return services
+	return GetDefaultUnifiedSyncJobs(includeCustomValues, isCurrentYear)
 }
 
 // Service defines the interface for sync services

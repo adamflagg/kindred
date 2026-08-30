@@ -31,8 +31,8 @@ func everySyncSequence() map[string][]string {
 		"GetRefreshBunkingJobs":     GetRefreshBunkingJobs(),
 		"GetRefreshFamilyCampJobs":  GetRefreshFamilyCampJobs(),
 		"GetCustomValuesSyncJobs":   GetCustomValuesSyncJobs(),
-		"UnifiedSyncJobs":           GetDefaultUnifiedSyncJobs(true),
-		"UnifiedSyncJobsNoCustom":   GetDefaultUnifiedSyncJobs(false),
+		"UnifiedSyncJobs":           GetDefaultUnifiedSyncJobs(true, true),
+		"UnifiedSyncJobsNoCustom":   GetDefaultUnifiedSyncJobs(false, true),
 		"ResolveUnifiedCurrentYear": ResolveUnifiedSyncServices(DefaultService, true, true),
 		"ResolveUnifiedHistorical":  ResolveUnifiedSyncServices(DefaultService, true, false),
 	}

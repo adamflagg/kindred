@@ -247,7 +247,7 @@ var serialGroups = []struct {
 	{
 		pkg:    "sync",
 		reason: "t.Setenv: IS_DOCKER drives the process_requests Gate in cadenceQueue",
-		tests:  []string{"TestDailyQueueDerivation", "TestDailyQueueGate"},
+		tests:  []string{"TestDailyQueueDerivation", "TestDailyQueueGate", "TestUnifiedRunDerivation"},
 	},
 	{
 		// captureStdout redirects the process's os.Stdout; captureLogs swaps

@@ -900,9 +900,12 @@ func TestCamperHistoryServiceFullyRemoved(t *testing.T) {
 	}
 
 	for _, includeCV := range []bool{true, false} {
-		for _, job := range GetDefaultUnifiedSyncJobs(includeCV) {
-			if job == removedID {
-				t.Errorf("GetDefaultUnifiedSyncJobs(%v) still includes camper_history", includeCV)
+		for _, isCurrentYear := range []bool{true, false} {
+			for _, job := range GetDefaultUnifiedSyncJobs(includeCV, isCurrentYear) {
+				if job == removedID {
+					t.Errorf("GetDefaultUnifiedSyncJobs(%v, %v) still includes camper_history",
+						includeCV, isCurrentYear)
+				}
 			}
 		}
 	}
@@ -3134,7 +3137,7 @@ func TestUnifiedSyncAlwaysIncludesTransformPhase(t *testing.T) {
 	transformJobs := GetJobsForPhase(PhaseTransform)
 
 	t.Run("without custom values", func(t *testing.T) {
-		jobs := GetDefaultUnifiedSyncJobs(false)
+		jobs := GetDefaultUnifiedSyncJobs(false, false)
 		jobSet := make(map[string]bool)
 		for _, j := range jobs {
 			jobSet[j] = true
@@ -3148,7 +3151,7 @@ func TestUnifiedSyncAlwaysIncludesTransformPhase(t *testing.T) {
 	})
 
 	t.Run("with custom values", func(t *testing.T) {
-		jobs := GetDefaultUnifiedSyncJobs(true)
+		jobs := GetDefaultUnifiedSyncJobs(true, false)
 		jobSet := make(map[string]bool)
 		for _, j := range jobs {
 			jobSet[j] = true
@@ -3168,7 +3171,7 @@ func TestRunSyncWithOptionsPhaseOrdering(t *testing.T) {
 	t.Run("with custom values - CV before transform", func(t *testing.T) {
 		// When IncludeCustomValues=true, phases should be:
 		// Source → Expensive (CV) → Transform → (Process added separately)
-		jobs := GetDefaultUnifiedSyncJobs(true)
+		jobs := GetDefaultUnifiedSyncJobs(true, false)
 
 		// Find positions of CV and transform jobs
 		posMap := make(map[string]int)
@@ -3188,7 +3191,7 @@ func TestRunSyncWithOptionsPhaseOrdering(t *testing.T) {
 	t.Run("without custom values - transform still runs after source", func(t *testing.T) {
 		// When IncludeCustomValues=false, transform jobs should still be present
 		// and come after source jobs
-		jobs := GetDefaultUnifiedSyncJobs(false)
+		jobs := GetDefaultUnifiedSyncJobs(false, false)
 
 		posMap := make(map[string]int)
 		for i, j := range jobs {
@@ -3217,7 +3220,7 @@ func TestRunSyncWithOptionsPhaseOrdering(t *testing.T) {
 	t.Run("order matches daily sync", func(t *testing.T) {
 		// The unified sync job order (without CV) should match the daily sync order
 		// for all shared jobs: source → transform
-		jobs := GetDefaultUnifiedSyncJobs(false)
+		jobs := GetDefaultUnifiedSyncJobs(false, false)
 
 		expectedOrder := []string{
 			// Source phase
@@ -3248,8 +3251,8 @@ func TestRunSyncWithOptionsPhaseOrdering(t *testing.T) {
 // not whether transform phase runs.
 func TestUnifiedSyncCustomValuesOnlyAffectsCVJobs(t *testing.T) {
 	t.Parallel()
-	withCV := GetDefaultUnifiedSyncJobs(true)
-	withoutCV := GetDefaultUnifiedSyncJobs(false)
+	withCV := GetDefaultUnifiedSyncJobs(true, false)
+	withoutCV := GetDefaultUnifiedSyncJobs(false, false)
 
 	// The only difference should be the 2 CV jobs
 	withCVSet := make(map[string]bool)
@@ -3298,8 +3301,8 @@ func TestRunSyncWithOptionsHistoricalMode(t *testing.T) {
 	t.Parallel()
 	t.Run("transform phase runs regardless of CV flag", func(t *testing.T) {
 		// Both with and without CV, transform jobs should be present
-		withCV := GetDefaultUnifiedSyncJobs(true)
-		withoutCV := GetDefaultUnifiedSyncJobs(false)
+		withCV := GetDefaultUnifiedSyncJobs(true, false)
+		withoutCV := GetDefaultUnifiedSyncJobs(false, false)
 
 		transformJobs := GetJobsForPhase(PhaseTransform)
 		for _, tj := range transformJobs {

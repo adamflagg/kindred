@@ -169,7 +169,7 @@ func TestScopedVariantContract(t *testing.T) {
 		t.Fatal("no scoped rows in syncJobMeta -- every clause below would pass vacuously")
 	}
 
-	full := GetDefaultUnifiedSyncJobs(true)
+	full := GetDefaultUnifiedSyncJobs(true, true)
 	status := statusSyncTypes()
 	routes := postRouteSegments(t)
 
