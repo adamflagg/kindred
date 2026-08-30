@@ -1251,9 +1251,11 @@ func handleUnifiedSync(e *core.RequestEvent, scheduler *Scheduler) error {
 		DryRun:              dryRun,
 	}
 
-	// Set services to sync
+	// Set services to sync. services was already resolved above (and validated non-nil), and
+	// for the named-service branch ResolveUnifiedSyncServices returns exactly []string{service}
+	// -- reuse it rather than rebuilding the same one-element slice a second time.
 	if service != DefaultService {
-		opts.Services = []string{service}
+		opts.Services = services
 	}
 
 	// Run in background with queue processing on completion
