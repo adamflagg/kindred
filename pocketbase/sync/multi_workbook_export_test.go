@@ -458,9 +458,13 @@ func TestMultiWorkbookExport_Name(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
+	// Deliberately a literal, not serviceNameMultiWorkbook: Name() RETURNS that constant, so
+	// asserting against it would compare the constant to itself. This pins the wire name --
+	// the id sync_runs, runningJobs and the status payload are all keyed by.
+	const wantName = "multi_workbook_export"
 	name := export.Name()
-	if name != "multi_workbook_export" {
-		t.Errorf("Name() = %q, want %q", name, "multi_workbook_export")
+	if name != wantName {
+		t.Errorf("Name() = %q, want %q", name, wantName)
 	}
 }
 
