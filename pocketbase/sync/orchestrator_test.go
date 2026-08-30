@@ -939,7 +939,7 @@ func TestCamperHistoryServiceFullyRemoved(t *testing.T) {
 // TestDailySyncExcludesDivisions verifies divisions is NOT in daily sync
 func TestDailySyncExcludesDivisions(t *testing.T) {
 	t.Parallel()
-	// Daily sync jobs that would be in orderedJobs (excluding divisions)
+	// Daily sync jobs that would be in getDailySyncJobs()'s derived queue (excluding divisions)
 	// Note: This tests the expected behavior - divisions should NOT be here
 	dailyJobs := []string{
 		"session_groups",

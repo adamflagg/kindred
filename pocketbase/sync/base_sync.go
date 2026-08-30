@@ -80,8 +80,8 @@ type BaseSyncService struct {
 	//
 	// Deliberately NOT paired with a promoted SetDryRun method here. BaseSyncService is
 	// embedded by several services outside kindred#2351's twelve -- bunk_requests (which
-	// ResolveUnifiedSyncServices appends to "all" for the current year, so it IS reachable
-	// through the unified dry_run endpoint) and request_processor (whose Sync() delegates to
+	// carries CurrentYearOnly in syncJobMeta, so it IS reachable through the unified
+	// dry_run endpoint on a current-year run) and request_processor (whose Sync() delegates to
 	// a remote FastAPI call this field cannot gate at all) among them. An exported SetDryRun
 	// on this type would be PROMOTED to every one of those embedders automatically, making
 	// each silently satisfy DryRunnable whether or not its own writes are actually gated --

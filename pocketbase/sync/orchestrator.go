@@ -242,10 +242,10 @@ var syncJobMeta = []JobMeta{
 
 	// Process phase - CSV + AI
 	// reconcile_request_lifecycle has no individual POST route (it runs only inside the
-	// daily cron and ResolveUnifiedSyncServices' current-year branch), but GetJobsForPhase
-	// classifies it PhaseProcess and phaseExecutionJobs only filters PhaseExpensive, so a
-	// Run Phase button on the Process phase really does start it -- TriggerPhaseRun stays
-	// set even though TriggerIndividualRoute does not.
+	// daily cron and a current-year unified run, via its CurrentYearOnly bit), but
+	// GetJobsForPhase classifies it PhaseProcess and phaseExecutionJobs only filters
+	// PhaseExpensive, so a Run Phase button on the Process phase really does start it --
+	// TriggerPhaseRun stays set even though TriggerIndividualRoute does not.
 	{ID: "reconcile_request_lifecycle", Phase: PhaseProcess,
 		Description: "Mark moved-requester OBRs for reprocessing",
 		Cadences:    CadenceDaily, Triggers: TriggerPhaseRun | TriggerFullRun, CurrentYearOnly: true},

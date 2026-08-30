@@ -1079,7 +1079,8 @@ func statusSyncTypes() []string {
 		"process_requests",
 		"multi_workbook_export",
 		// Appended LAST by getDailySyncJobs, after bunk_plans is final (#1416, #1417) --
-		// listed last here to match, since orderedJobs is the source of truth for order.
+		// listed last here to match, since syncJobMeta's declaration order (via orderQueue)
+		// is the source of truth for order.
 		"stranded_assignment_cleanup", // Derived: auto-unassign stranded scenario-draft assignments
 		// On-demand syncs (not part of daily sync)
 		"person_custom_values",
