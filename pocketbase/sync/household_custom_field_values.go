@@ -273,10 +273,15 @@ func (s *HouseholdCustomFieldValuesSync) preloadFieldDefMapping() (map[int]strin
 
 // getHouseholdIDsToSync returns the list of household CampMinder IDs to sync based on session filter
 func (s *HouseholdCustomFieldValuesSync) getHouseholdIDsToSync(year int) ([]int, error) {
-	// Bounded daily family-camp pass (kindred#2482): any attendee status, across every
-	// family-camp weekend, resolved via attendees rather than Session so it can span
-	// multiple weekend sessions in one run.
-	if s.Scope == ScopeFamilyCamp {
+	// Exhaustive on purpose. An unhandled scope must NOT fall through: the constructor sets
+	// Session to DefaultSession, so the session guard below is false and control would reach
+	// the year-wide filter -- the ~29-minute unrestricted sweep of every household in the
+	// year, run on the daily cron under a bounded-sounding registered id.
+	switch s.Scope {
+	case ScopeFamilyCamp:
+		// Bounded daily family-camp pass (kindred#2482): any attendee status, across every
+		// family-camp weekend, resolved via attendees rather than Session so it can span
+		// multiple weekend sessions in one run.
 		resolver := NewSessionResolver(s.App)
 		householdIDs, err := resolver.GetFamilyCampHouseholdIDsAnyStatus(year)
 		if err != nil {
@@ -288,6 +293,11 @@ func (s *HouseholdCustomFieldValuesSync) getHouseholdIDsToSync(year int) ([]int,
 			"year", year)
 
 		return householdIDs, nil
+	case ScopeAll:
+		// Unscoped -- the Session and year-wide selection below is the whole behavior.
+	default:
+		return nil, fmt.Errorf("getHouseholdIDsToSync: unhandled scope %q -- give it a case "+
+			"here before registering a service under it", s.Scope)
 	}
 
 	// Use session resolver if session filter is specified
