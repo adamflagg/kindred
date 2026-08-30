@@ -269,7 +269,10 @@ var serialGroups = []struct {
 	{
 		pkg:    "sync",
 		reason: "t.Setenv: CAMPMINDER_PRIMARY_KEY (campminder.NewClient) and newExportWithFakeWriter's CAMPMINDER_SEASON_ID",
-		tests:  []string{"TestHistoricalRunSetsTheExportsYear"},
+		tests: []string{
+			"TestHistoricalRunSetsTheExportsYear",
+			"TestCurrentYearRunResetsAStaleExportYear",
+		},
 	},
 	{
 		pkg:    "sync",

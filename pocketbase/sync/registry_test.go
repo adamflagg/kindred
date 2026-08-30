@@ -1207,6 +1207,65 @@ func TestHistoricalRunSetsTheExportsYear(t *testing.T) {
 	}
 }
 
+// TestCurrentYearRunResetsAStaleExportYear is TestHistoricalRunSetsTheExportsYear's symmetric
+// twin, pinning the risk that fix itself introduced (Task 13 fix round 1). The historical
+// branch's SetYear(opts.Year) pins the shared, long-lived singleton away from the current
+// season -- and before this fix, nothing in the current-year branch ever set it back. So the
+// very next current-year unified run would read m.year still holding the stale historical
+// year, export that year's workbook instead of the current one, and silently skip globals too
+// (Sync()'s gate is `m.year == currentSeason`) -- with no error, just quietly stale data. This
+// is the fourth instance of one hazard in this stage: a long-lived singleton with a read path
+// that does not set (Task 11's standalone handler, Task 12's RunSingleSync, the historical
+// branch, and now this) -- "whoever ran before us probably set it" is the assumption that
+// failed every time.
+//
+// Drives it the way production actually would: pin the singleton to a historical year first
+// (simulating a prior historical replay), then run a current-year unified sync that also
+// writes a real change to a global collection (divisions) so the changed-collections
+// filter doesn't itself suppress the globals write this test checks for -- an empty-but-non-nil
+// filter means "export nothing", same as ChangedCollectionsAware's own nil-vs-empty contract.
+//
+// Registered in serialGroups: CAMPMINDER_PRIMARY_KEY and newExportWithFakeWriter's
+// CAMPMINDER_SEASON_ID are both t.Setenv.
+func TestCurrentYearRunResetsAStaleExportYear(t *testing.T) {
+	t.Setenv("CAMPMINDER_PRIMARY_KEY", "test-key")
+
+	app := newDryRunTestApp(t)
+	o := NewOrchestrator(app)
+	o.SetJobSpacing(0)
+
+	client, err := campminder.NewClient(&campminder.Config{APIKey: "k", ClientID: "c", SeasonID: 2025})
+	if err != nil {
+		t.Fatalf("campminder.NewClient: %v", err)
+	}
+	o.baseClient = client
+
+	exp := newExportWithFakeWriter(t) // constructed at year 2025 (CAMPMINDER_SEASON_ID)
+	exp.SetYear(2020)                 // simulate a prior historical replay's leftover pin
+	o.RegisterService("multi_workbook_export", exp)
+	// divisions, not person_tag_defs: newExportSchemaApp only seeds a "divisions" collection
+	// on the export's own throwaway app (its ExportConfig.Filter is "", so an unfiltered
+	// query against a fieldless, rowless collection still succeeds and writes a sheet with
+	// zero records) -- person_tag_defs isn't seeded there, so querying it errors and the
+	// write is skipped regardless of the changed-collections filter, which would make this
+	// assertion fail for a reason unrelated to what it's checking.
+	o.RegisterService("divisions", &MockService{name: "divisions", stats: Stats{Created: 1}})
+
+	if err := o.RunSyncWithOptions(context.Background(), Options{
+		Year:     0, // current-year mode
+		Services: []string{"divisions", "multi_workbook_export"},
+	}); err != nil {
+		t.Fatalf("RunSyncWithOptions: %v", err)
+	}
+
+	if exp.year != 2025 {
+		t.Errorf("a current-year run must reset a stale export year, got %d, want 2025", exp.year)
+	}
+	if !fakeWriterGlobalsWritten(exp) {
+		t.Error("expected globals to be exported once the year was correctly reset to the current season")
+	}
+}
+
 // TestWeeklySyncJobsGatesExportOnGoogleEnabled and its sibling below pin a gap this task's
 // change exposes: GetWeeklySyncJobs (orchestrator.go) reads jobsWithCadence directly instead
 // of going through cadenceQueue, so it skips available()'s Gate filtering entirely. That was a

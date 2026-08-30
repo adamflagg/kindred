@@ -2263,6 +2263,16 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 		// a historical replay would export against whatever year the singleton already
 		// held -- almost certainly the current season, not the year being replayed
 		// (TestHistoricalRunSetsTheExportsYear is the regression guard).
+		//
+		// The else branch below sets it for the current-year case too, for the identical
+		// reason: the field is shared state, and "whoever ran before us probably set it
+		// correctly" is exactly the assumption that fails once ANYTHING can pin the
+		// singleton away from the current season -- which this very branch now can. Left
+		// asymmetric, a historical replay would pin the export to, say, 2020, and the very
+		// next current-year daily/full run would read m.year == 2020 in Sync(), export the
+		// 2020 workbook instead of the current one, and silently skip globals too (Sync()'s
+		// gate is `m.year == currentSeason`) -- with no error, just quietly stale data
+		// (TestCurrentYearRunResetsAStaleExportYear is the regression guard).
 		if svc := o.GetService("multi_workbook_export"); svc != nil {
 			if yearSetter, ok := svc.(YearSetter); ok {
 				yearSetter.SetYear(opts.Year)
@@ -2270,6 +2280,23 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 		}
 
 		slog.Info("Running sync with year override", "year", opts.Year)
+	} else {
+		// Current-year mode re-registers nothing above (the default-registered services
+		// already target the current season), but multi_workbook_export still needs an
+		// explicit reset -- see the historical branch's comment just above for why "not
+		// setting" is not good enough for this particular field. Fails closed on an
+		// unresolvable season, matching handleIndividualSync, the "unified" queue branch,
+		// RunSingleSync, and Sync() itself: exporting -- or silently skipping globals for --
+		// an unknown year is worse than refusing to run at all.
+		if svc := o.GetService("multi_workbook_export"); svc != nil {
+			if yearSetter, ok := svc.(YearSetter); ok {
+				year, err := ParseSeasonYear()
+				if err != nil {
+					return fmt.Errorf("resolving current season for multi_workbook_export: %w", err)
+				}
+				yearSetter.SetYear(year)
+			}
+		}
 	}
 
 	// Run services
