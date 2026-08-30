@@ -61,6 +61,7 @@ var serialGroups = []struct {
 			"TestActiveSeasonYearFailsClosedWhenUnset",
 			"TestExportFilterNilVersusEmpty",
 			"TestExportGlobalsOnCurrentYearOnly",
+			"TestSyncGlobalsFailureIsSoftYearDataFailureIsHard",
 		},
 	},
 	{
