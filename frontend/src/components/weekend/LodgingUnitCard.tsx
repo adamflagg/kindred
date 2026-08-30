@@ -776,10 +776,20 @@ const LodgingUnitCardInner = memo(function LodgingUnitCardInner({
    * `known: false`'s three meanings, and the only one the ruling leaves
    * alone; `writeInDemand`'s own doc carries the other two.
    *
-   * ⚠️ `known` HAS NOT BECOME UNUSED — the Assign modal's header
+   * ⚠️ `writeInDemand`'s `known` HAS NOW BECOME UNUSED, and this paragraph
+   * said the opposite until the review — it claimed the Assign modal's header
    * (`capacitySentence`) and its candidate rows (`capacityVerdict`) still read
-   * it, deliberately: those state facts ("2 of 5 beds free") rather than
-   * floors, and the ruling was about the BOARD agreeing with the stats bar.
+   * it deliberately, because those state facts rather than floors. The owner
+   * extended the ruling to them mid-review: *"sure modal can follow the floor,
+   * roll that fix in as well."* Both read `usable` now, so all four surfaces —
+   * stats bar, this card, the modal header, the candidate rows — answer one
+   * cabin the same way, and `writeInDemand`'s `known` gates nothing in
+   * production. It is kept as the only answer to "did a human count these
+   * people"; see its own doc.
+   *
+   * `DragCapacity.known` just below is a DIFFERENT field and is very much
+   * used — it is this card's own drag-time gate, and it is built FROM
+   * `usable`.
    *
    * Built ONCE, and both drag-time capacity marks read it: `resolveDragFit`
    * gates the match on it, and `hasNoRoom` reddens the figure from it. They

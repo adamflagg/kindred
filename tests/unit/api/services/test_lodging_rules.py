@@ -689,8 +689,14 @@ class TestWriteInDemand:
         """One room counted, three not. `known` is false because nobody sized
         every party -- but `usable` is true, and since kindred#2543 that is
         what the board's own marks read: 7 is a FLOOR on what the write-ins
-        take, so 1 free is a number both surfaces may state. `known` still
-        gates the Assign modal, which states facts rather than floors."""
+        take, so 1 free is a number both surfaces may state.
+
+        This docstring used to end *"`known` still gates the Assign modal,
+        which states facts rather than floors"*, and that stopped being true
+        inside kindred#2543's own review: the owner extended the ruling to the
+        modal (*"sure modal can follow the floor, roll that fix in as well"*),
+        so its header and its candidate rows read `usable` too and `known`
+        gates nothing in production."""
         loads = [
             WriteInLoad("descendant", 2, 3),
             WriteInLoad("descendant", None, 1),
