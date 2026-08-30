@@ -75,6 +75,9 @@ const (
 	PhaseProcess Phase = "process"
 	// PhaseExport - PocketBase → Google Sheets
 	PhaseExport Phase = "export"
+	// PhaseGlobal is a classification, NOT an execution phase: see GetAllPhases. Cross-year
+	// definition tables, refreshed by the Sunday-2am cron (CadenceWeeklyGlobal).
+	PhaseGlobal Phase = "global"
 )
 
 // JobMeta contains metadata about a sync job
@@ -114,14 +117,28 @@ type JobMeta struct {
 // syncJobMeta defines the phase and metadata for all sync jobs
 // Jobs are listed in execution order within their phase
 var syncJobMeta = []JobMeta{
+	// Global phase -- cross-year definition tables, refreshed by the Sunday-2am cron.
+	// PhaseGlobal is a classification, NOT an execution phase: see GetAllPhases. These carry
+	// only CadenceWeeklyGlobal and TriggerIndividualRoute, so they appear in no daily,
+	// phase-run or full-run queue and cannot perturb any derived ordering below.
+	{ID: "person_tag_defs", Phase: PhaseGlobal, Description: "Tag definitions",
+		Cadences: CadenceWeeklyGlobal, Triggers: TriggerIndividualRoute},
+	{ID: "custom_field_defs", Phase: PhaseGlobal, Description: "Custom field definitions",
+		Cadences: CadenceWeeklyGlobal, Triggers: TriggerIndividualRoute},
+	{ID: "staff_lookups", Phase: PhaseGlobal, Description: "Positions, org categories, program areas",
+		Cadences: CadenceWeeklyGlobal, Triggers: TriggerIndividualRoute},
+	{ID: "financial_lookups", Phase: PhaseGlobal, Description: "Financial categories, payment methods",
+		Cadences: CadenceWeeklyGlobal, Triggers: TriggerIndividualRoute},
+	{ID: "divisions", Phase: PhaseGlobal, Description: "Division definitions (no year field)",
+		Cadences: CadenceWeeklyGlobal, Triggers: TriggerIndividualRoute},
+
 	// Source phase - CampMinder API calls
 	//
 	// The daily ordering below (getDailySyncJobs = cadenceQueue(CadenceDaily)) walks these
 	// rows in declaration order, so each row's dependency comment doubles as the reason it
 	// sits where it does relative to its neighbors. person_tag_defs, custom_field_defs and
-	// divisions are NOT among them -- those are global definitions that run on the weekly
-	// cron (GetWeeklySyncJobs) instead, since they rarely change; they join this table in
-	// Stage 3 (see TestDerivedQueuesMatchTodaysLists's "weekly" skip).
+	// divisions are NOT among them -- those are PhaseGlobal rows above that run on the
+	// weekly cron (GetWeeklySyncJobs) instead, since they rarely change.
 	//
 	// No dependencies -- sync first so its session_group relation exists for sessions.
 	{ID: "session_groups", Phase: PhaseSource,
@@ -242,10 +259,14 @@ var syncJobMeta = []JobMeta{
 
 	// Process phase - CSV + AI
 	// reconcile_request_lifecycle has no individual POST route (it runs only inside the
-	// daily cron and a current-year unified run, via its CurrentYearOnly bit), but
-	// GetJobsForPhase classifies it PhaseProcess and phaseExecutionJobs only filters
-	// PhaseExpensive, so a Run Phase button on the Process phase really does start it --
-	// TriggerPhaseRun stays set even though TriggerIndividualRoute does not.
+	// daily cron and a current-year unified run, via its CurrentYearOnly bit), but a Run
+	// Phase button on the Process phase really does start it, so TriggerPhaseRun stays set
+	// even though TriggerIndividualRoute does not.
+	//
+	// The bit is now what decides that. phaseExecutionJobs is inPhaseWithTrigger(phase,
+	// TriggerPhaseRun), which reads the Triggers field for EVERY phase -- it no longer
+	// special-cases PhaseExpensive, as it did when it filtered a scope-derived exclusion
+	// set by hand.
 	{ID: "reconcile_request_lifecycle", Phase: PhaseProcess,
 		Description: "Mark moved-requester OBRs for reprocessing",
 		Cadences:    CadenceDaily, Triggers: TriggerPhaseRun | TriggerFullRun, CurrentYearOnly: true},
@@ -336,14 +357,28 @@ func GetDefaultUnifiedSyncJobs(includeCustomValues, isCurrentYear bool) []string
 }
 
 // ResolveUnifiedSyncServices returns the concrete service names a unified sync with these
-// parameters will run. handleUnifiedSync calls this to validate dry_run support *before*
-// responding, and RunSyncWithOptions calls it to decide what to actually run -- one function so
-// the two can never quietly drift apart (kindred#2334: a validator that resolves a different
-// list than the one that actually runs is worse than no validator). For DefaultService it
-// delegates straight to GetDefaultUnifiedSyncJobs, so the two can never resolve different
-// lists either.
+// parameters will run, or nil if the named service may not be started individually.
+// handleUnifiedSync calls this to validate dry_run support *before* responding, and
+// RunSyncWithOptions calls it to decide what to actually run -- one function so the two can
+// never quietly drift apart (kindred#2334: a validator that resolves a different list than the
+// one that actually runs is worse than no validator). For DefaultService it delegates straight
+// to GetDefaultUnifiedSyncJobs, so the two can never resolve different lists either.
+//
+// A named service is whitelisted against the registry (spec §4: a job may be named
+// individually only if it declares a route). Before this, any ?service= string was passed
+// straight through, so POST /api/custom/sync/run?service=reconcile_request_lifecycle started a
+// real sync from an endpoint that never advertised it, and a typo started a run of one
+// nonexistent service. The whitelist waited for Stage 3 because the five PhaseGlobal jobs are
+// routed and runnable but had no registry row until Task 9 -- deriving it any earlier would
+// have rejected all five (Stage 2 ledger, ruling F5).
+//
+// nil, not an empty slice: an unresolvable service is a 400 in handleUnifiedSync, never a run
+// of nothing. Callers that distinguish must check for nil explicitly.
 func ResolveUnifiedSyncServices(service string, includeCustomValues, isCurrentYear bool) []string {
 	if service != DefaultService {
+		if !hasTrigger(service, TriggerIndividualRoute) {
+			return nil
+		}
 		return []string{service}
 	}
 	return GetDefaultUnifiedSyncJobs(includeCustomValues, isCurrentYear)
@@ -1006,16 +1041,11 @@ func (o *Orchestrator) IsAnyJobRunning() bool {
 	return false
 }
 
-// GetWeeklySyncJobs returns the list of services that run in the weekly sync.
-// These are global definition tables that rarely change and don't need daily updates.
+// GetWeeklySyncJobs returns the list of services that run in the weekly sync. These are the
+// PhaseGlobal rows: definition tables that rarely change and don't need daily updates.
+// Derived from the registry in declaration order via jobsWithCadence.
 func GetWeeklySyncJobs() []string {
-	return []string{
-		"person_tag_defs",
-		"custom_field_defs",
-		"staff_lookups",     // Global: positions, org_categories, program_areas
-		"financial_lookups", // Global: financial_categories, payment_methods
-		"divisions",         // Global: division definitions (no year field)
-	}
+	return jobsWithCadence(CadenceWeeklyGlobal)
 }
 
 // GetRefreshBunkingJobs returns the services needed for a full bunking refresh.

@@ -146,15 +146,21 @@ export function SyncTab() {
   )
 
   // The Full-mode service dropdown is a manual trigger like any other: picking an entry and
-  // pressing Run Sync POSTs /api/custom/sync/run?service=<id>, and handleUnifiedSync applies no
-  // service whitelist -- it hands the name straight to RunSyncWithOptions. So a job the backend
-  // exposes no individual route for must be left out of the option list as well as off the
-  // card, or "no manual trigger" is only true of the button (kindred#2593). It matters most for
-  // the two bounded family-camp custom-values jobs, which ARE registered services: an option
-  // for either would really re-run the cohort phaseExecutionJobs deliberately drops from an
-  // admin-triggered phase run (#2489/#2491 Face C). The cards themselves still render from
-  // availableSyncTypes, because being un-triggerable is not a reason to be invisible -- that
-  // was the bug this PR set out to fix.
+  // pressing Run Sync POSTs /api/custom/sync/run?service=<id>. So a job the backend exposes no
+  // individual route for must be left out of the option list as well as off the card, or "no
+  // manual trigger" is only true of the button (kindred#2593).
+  //
+  // This filter used to be the ONLY thing standing between the dropdown and a real run:
+  // handleUnifiedSync applied no service whitelist and handed the name straight to
+  // RunSyncWithOptions, so an option for either bounded family-camp custom-values job -- both
+  // ARE registered services -- would have re-run the cohort phaseExecutionJobs deliberately
+  // drops from an admin-triggered phase run (#2489/#2491 Face C). The server now whitelists
+  // ?service= against the job registry and answers 400 for a job declaring no route (#2608),
+  // so that is no longer the last line of defence. The filter stays, and for the original
+  // reason: a user should never be offered an option that can only fail.
+  //
+  // The cards themselves still render from availableSyncTypes, because being un-triggerable is
+  // not a reason to be invisible -- that was the bug this PR set out to fix.
   const runnableSyncServices = useMemo(
     () => availableSyncTypes.filter(hasManualTrigger),
     [availableSyncTypes]

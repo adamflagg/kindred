@@ -479,12 +479,17 @@ describe('SyncTab Export phase now has a card (kindred#2593)', () => {
 
 // kindred#2593: removing the card's Run button is only half a "no manual trigger" -- the same
 // page's Full-mode service <select> is the other half, and it POSTs
-// /api/custom/sync/run?service=<id>, which has no service whitelist at all (handleUnifiedSync,
-// pocketbase/sync/api.go). person_custom_values_family_camp and its household sibling ARE
-// registered services (orchestrator.go), so an option for either would really run the bounded
-// family-camp cohort that phaseExecutionJobs deliberately drops from an admin-triggered run
-// (#2489/#2491 Face C, ~11.5 min of rate-limited CampMinder quota re-spent on values the daily
-// cron refreshed minutes earlier).
+// /api/custom/sync/run?service=<id>.
+//
+// When this was written that endpoint had no service whitelist at all, so this filter was the
+// only thing stopping it: person_custom_values_family_camp and its household sibling ARE
+// registered services (orchestrator.go), and an option for either would really have run the
+// bounded family-camp cohort that phaseExecutionJobs deliberately drops from an
+// admin-triggered run (#2489/#2491 Face C, ~11.5 min of rate-limited CampMinder quota re-spent
+// on values the daily cron refreshed minutes earlier). handleUnifiedSync now rejects a job
+// declaring no TriggerIndividualRoute with a 400 (#2608), which makes this defence in depth
+// rather than the only defence -- and still worth asserting, because offering a user an option
+// that can only fail is its own bug.
 describe('SyncTab service dropdown offers only triggerable jobs (kindred#2593)', () => {
   it('omits every job whose card has no Run button', () => {
     renderSyncTab()

@@ -1005,88 +1005,38 @@ func resolveServiceStatuses(orchestrator *Orchestrator, syncTypes []string) map[
 	return statuses
 }
 
-// statusSyncTypes is every sync job GET /api/custom/sync/status reports on.
+// statusSyncTypes returns every job the sync-status payload reports on.
 //
-// EXTRACTED so the ordering and the coverage can be asserted in tests, the same
-// reason getDailySyncJobs is a function rather than a literal inside RunDailySync.
+// Derived from the registry, because the failure mode of a hand-written list here is severe
+// and has happened twice: the two bounded family-camp jobs were absent, so useSyncStatusAPI
+// saw nothing running during a 13-minute refresh, stopped polling, and could never detect the
+// cutover (kindred#2591); reconcile_request_lifecycle was absent, so its dashboard row read
+// "idle" while it ran (kindred#2593). The payload is what the client can SEE.
 //
-// A job missing from this list has no per-job status the client can read, and on a
-// FLAG-LESS run path that is fatal to polling: `useSyncStatusAPI`'s refetchInterval
-// keeps polling while `_daily_sync_running`/`_historical_sync_running` is set OR some
-// per-job entry reports running/pending. RunDailySync and RunSyncWithOptions hold one
-// of those flags throughout, so a job missing here merely reads "idle" on the
-// dashboard. RunSyncSequence -- the Refresh Housing and Refresh Bunking path -- sets NO
-// flag, so there the per-job entry is the only signal, and a job absent from this list
-// means polling stops mid-run and the completion is never detected.
+// A job missing from this list has no per-job status the client can read, and on a FLAG-LESS
+// run path that is fatal to polling: useSyncStatusAPI's refetchInterval keeps polling while
+// `_daily_sync_running`/`_historical_sync_running` is set OR some per-job entry reports
+// running/pending. RunDailySync and RunSyncWithOptions hold one of those flags throughout, so
+// a job missing here merely reads "idle" on the dashboard. RunSyncSequence -- the Refresh
+// Housing and Refresh Bunking path -- sets NO flag, so there the per-job entry is the only
+// signal, and a job absent from this list means polling stops mid-run and the completion is
+// never detected.
 //
-// Necessary, not sufficient, for a job to SHOW in the admin sync UI: SyncTab renders
-// cards from the frontend's own hand-maintained list (YEAR_SYNC_TYPES in
+// Necessary, not sufficient, for a job to SHOW in the admin sync UI: SyncTab renders cards
+// from the frontend's own hand-maintained list (YEAR_SYNC_TYPES in
 // frontend/src/components/admin/syncTypes.ts) and useSyncCompletionToasts iterates
-// SYNC_DISPLAY_NAMES, neither of which is derived from this payload. Publishing a job
-// here fixes polling and completion detection; giving it a card is a separate edit.
-func statusSyncTypes() []string {
-	return []string{
-		// Weekly syncs - global definitions that rarely change
-		"person_tag_defs",   // Global sync: tag definitions
-		"custom_field_defs", // Global sync: custom field definitions
-		"staff_lookups",     // Global sync: positions, org_categories, program_areas
-		"financial_lookups", // Global sync: financial_categories, payment_methods
-		"divisions",         // Global sync: division definitions -- GetWeeklySyncJobs, NOT daily
-		// Daily syncs, in the order getDailySyncJobs runs them
-		"session_groups",
-		"sessions",
-		"attendees",
-		"persons", // Combined sync: persons + households + person_tags (includes division relation)
-		"bunks",
-		"bunk_plans",
-		"bunk_assignments",
-		"staff",                  // Year-scoped staff records (depends on divisions, bunks, persons)
-		"financial_transactions", // Year-scoped financial data (depends on sessions, persons, households)
-		// Bounded daily family-camp custom-values pass (kindred#2482), in the same
-		// position getDailySyncJobs runs it: after the source jobs, before the
-		// transform phase that reads what it wrote. Published here because the
-		// STATUS PAYLOAD IS WHAT THE CLIENT CAN SEE -- these two are 13 of the
-		// family-camp refresh chain's 13.5 minutes, and while they were absent
-		// `useSyncStatusAPI` saw nothing running, stopped polling, and could never
-		// detect the cutover (kindred#2478 section 4.2c).
-		"person_custom_values_family_camp",
-		"household_custom_values_family_camp",
-		"family_camp_derived",        // Computed from person_custom_values, household_custom_values
-		"lodging_assignments",        // Derived: cabin custom fields -> lodging assignments
-		"staff_skills",               // Derived: staff skills extraction
-		"financial_aid_applications", // Derived: FA applications computation
-		"household_demographics",     // Derived: household demographics computation
-		"camper_dietary",             // Derived: camper dietary extraction
-		"camper_transportation",      // Derived: camper transportation extraction
-		"quest_registrations",        // Derived: Quest program registration extraction
-		"staff_applications",         // Derived: staff applications extraction
-		"staff_vehicle_info",         // Derived: staff vehicle info extraction
-		"normalize_geographic",       // Derived: normalize state/country names
-		"enrollment_snapshots",       // Derived: daily enrollment snapshot capture
-		// Found by the coverage test below, not by report: a registered daily job in the
-		// Process phase whose two neighbors here were published while it was not.
-		//
-		// Its omission was NOT the bounded pair's failure mode, and the distinction is
-		// worth keeping straight. Every path that runs this job -- RunDailySync and
-		// RunSyncWithOptions -- holds _daily_sync_running (or _historical_sync_running)
-		// for its whole duration, and refetchInterval polls on those flags alone, so
-		// polling never actually stopped for it. What was missing is per-job granularity:
-		// its dashboard row read "idle" while it ran. The bounded pair above is the
-		// genuinely invisible case, because RunSyncSequence -- the Refresh Housing path --
-		// sets no run-type flag at all, leaving the per-job entry as the only signal.
-		"reconcile_request_lifecycle",
-		"bunk_requests",
-		"process_requests",
-		"multi_workbook_export",
-		// Appended LAST by getDailySyncJobs, after bunk_plans is final (#1416, #1417) --
-		// listed last here to match, since syncJobMeta's declaration order (via orderQueue)
-		// is the source of truth for order.
-		"stranded_assignment_cleanup", // Derived: auto-unassign stranded scenario-draft assignments
-		// On-demand syncs (not part of daily sync)
-		"person_custom_values",
-		"household_custom_values",
-	}
-}
+// SYNC_DISPLAY_NAMES, neither of which is derived from this payload. Publishing a job here
+// fixes polling and completion detection; giving it a card is a separate edit -- one
+// syncTypes.test.ts pins against this function via the registry (see
+// frontend/src/test/backendSyncJobIds.ts).
+//
+// Order is registry declaration order, NOT execution order, and nothing observes it: the
+// payload is a JSON object keyed by job name (see handleSyncStatus), so the sequence does not
+// survive serialization at all -- the client reads entries by key. The frontend coverage tests
+// that compare this list against their own sort both sides first. getDailySyncJobs
+// additionally applies orderQueue, which is why stranded_assignment_cleanup runs last there
+// but is listed mid-Transform here.
+func statusSyncTypes() []string { return allJobIDs() }
 
 // handleSyncStatus returns the status of all sync jobs
 func handleSyncStatus(e *core.RequestEvent, scheduler *Scheduler) error {
@@ -1226,6 +1176,19 @@ func handleUnifiedSync(e *core.RequestEvent, scheduler *Scheduler) error {
 		requestedBy = e.Auth.GetString("email")
 	}
 
+	// Reject an unknown or cron-only ?service= up front, before either the immediate or the
+	// queued path can start. ResolveUnifiedSyncServices returns nil -- distinct from empty --
+	// for a service the registry does not declare as individually routable, and that must be a
+	// 400: resolving it to a run of nothing would answer 200 for a sync that never happens, and
+	// passing it through (what this endpoint did until Stage 3) starts a real run of a job with
+	// no route, or of a service that does not exist at all.
+	services := ResolveUnifiedSyncServices(service, includeCustomValues, year == currentYear)
+	if services == nil {
+		return e.JSON(http.StatusBadRequest, map[string]any{
+			"error": fmt.Sprintf("Unknown sync service: %s", service),
+		})
+	}
+
 	orchestrator := scheduler.GetOrchestrator()
 
 	// Reject up front, before either the immediate or the queued path can start, if dry_run
@@ -1235,7 +1198,6 @@ func handleUnifiedSync(e *core.RequestEvent, scheduler *Scheduler) error {
 	// log line, never the 400 an operator actually needs to see (kindred#2334's ruled fix
 	// direction is "either honor it or reject the request", never a silent partial write).
 	if dryRun {
-		services := ResolveUnifiedSyncServices(service, includeCustomValues, year == currentYear)
 		if unsupported := orchestrator.UnsupportedDryRunServices(services); len(unsupported) > 0 {
 			return e.JSON(http.StatusBadRequest, map[string]any{
 				"error": fmt.Sprintf("dry_run is not supported for: %s",
@@ -1291,9 +1253,11 @@ func handleUnifiedSync(e *core.RequestEvent, scheduler *Scheduler) error {
 		DryRun:              dryRun,
 	}
 
-	// Set services to sync
+	// Set services to sync. services was already resolved above (and validated non-nil), and
+	// for the named-service branch ResolveUnifiedSyncServices returns exactly []string{service}
+	// -- reuse it rather than rebuilding the same one-element slice a second time.
 	if service != DefaultService {
-		opts.Services = []string{service}
+		opts.Services = services
 	}
 
 	// Run in background with queue processing on completion

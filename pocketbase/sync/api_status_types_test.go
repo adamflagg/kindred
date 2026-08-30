@@ -1,6 +1,9 @@
 package sync
 
-import "testing"
+import (
+	"slices"
+	"testing"
+)
 
 // The status payload is what the client can SEE. A job missing from it has no per-job
 // entry, and on a run path that sets no run-type flag that is fatal: `useSyncStatusAPI`'s
@@ -62,8 +65,22 @@ func TestStatusSyncTypesCoversEverySequence(t *testing.T) {
 
 // statusSyncTypes must not list a name no service is registered under -- a typo here is
 // silent, showing as a row stuck permanently at "idle" rather than as any kind of error.
-// The five weekly global-definition jobs are exempt: they are real registered services but
-// are deliberately absent from syncJobMeta, which classifies only the phased jobs.
+//
+// Since Stage 3, statusSyncTypes is allJobIDs() over the very same syncJobMeta this test
+// builds `known` from, so the comparison below is structurally unable to fail: an orphan row
+// (one naming no RegisterService call) is present in both `known` and statusSyncTypes() by
+// construction, and this test passes right over it. It is retained as a tripwire against that
+// identity changing -- which TestStatusSyncTypesIsTheWholeRegistry (registry_test.go) and
+// assertStatusPayloadDerivesFromRegistry (frontend/src/test/backendSyncJobIds.ts) are what
+// actually guard -- and the check that catches an orphan row today is
+// TestRegistryIDsAreRegisteredServices (registry_test.go), which pins spec §7 test 1's
+// registered-service half against the real RegisterService call sites.
+//
+// The GetWeeklySyncJobs union below is likewise not a second, independent spelling of the
+// same claim: GetWeeklySyncJobs() is jobsWithCadence(CadenceWeeklyGlobal) over this same
+// syncJobMeta table, so every id it contributes to `known` is already there. It dates from
+// when the five global definition jobs had no syncJobMeta row and were exempted for that
+// reason; they gained one in Stage 3 Task 9, which is what made the union inert.
 func TestStatusSyncTypesHasNoUnknownJobs(t *testing.T) {
 	t.Parallel()
 	known := make(map[string]bool)
@@ -102,6 +119,33 @@ func TestStatusSyncTypesHasNoDuplicates(t *testing.T) {
 // lookups made it fragile in the way that matters: a missing key reads as index 0, so if
 // an anchor name ever went stale the comparison silently stopped firing and the test
 // passed through a severe misplacement. Comparing whole subsequences needs no anchors.
+//
+// Since statusSyncTypes became allJobIDs() the two sides are no longer a hand-written list
+// and a derivation, but two views of one table, and this test IS NARROWER than the version
+// above it. That narrowing is structural, not a choice: filtering the payload to daily
+// membership reproduces available(jobsWithCadence(CadenceDaily)) in registry order by
+// construction, so no reshape could have preserved the old coverage. What is left to pin is
+// the DIFFERENCE between the two views, which is orderQueue -- getDailySyncJobs applies it,
+// the payload does not, and it moves exactly one job (stranded_assignment_cleanup, dead-last,
+// #1416/#1417).
+//
+// So be exact about what this does and does not catch. Verified by mutation, each run against
+// the real tree:
+//
+//	CAUGHT  statusSyncTypes ceasing to publish in registry declaration order -- sorting its
+//	        output fails the sequence comparison below.
+//	CAUGHT  orderQueue's exception changing identity or disappearing -- the t.Fatal below,
+//	        which is what stops the exemption from quietly excusing the wrong job.
+//	CAUGHT  a SECOND orderQueue exception, when it genuinely reorders a job relative to
+//	        registry order (moving "sessions" last fails this). Not caught when the second
+//	        exception is a no-op on the daily queue, e.g. a job the gates already leave last.
+//	NOT     a registry row moved relative to its neighbors. Both sides move together, and the
+//	CAUGHT  test still passes. TestDailyQueueDerivation's literal sequence (registry_test.go)
+//	        is what catches that, and it does -- swapping camper_dietary and
+//	        camper_transportation fails it and TestUnifiedRunDerivation, not this.
+//
+// orderQueue's own doc comment says a second exception must never be added. This test notices
+// most of the ways one could be; the literal daily sequence is the guard that notices the rest.
 func TestStatusSyncTypesMatchesDailySyncOrder(t *testing.T) {
 	t.Parallel()
 	daily := getDailySyncJobs()
@@ -121,14 +165,17 @@ func TestStatusSyncTypesMatchesDailySyncOrder(t *testing.T) {
 		t.Fatalf("statusSyncTypes covers %d of the %d daily jobs; "+
 			"TestStatusSyncTypesCoversEverySequence names which are missing", len(got), len(daily))
 	}
-	for i := range daily {
-		if got[i] != daily[i] {
-			t.Errorf("daily job order diverges at position %d: statusSyncTypes has %q, "+
-				"getDailySyncJobs runs %q.\n  statusSyncTypes (daily subset): %v\n  getDailySyncJobs:              %v",
-				i, got[i], daily[i], got, daily)
-			break
-		}
+
+	const movedByOrderQueue = "stranded_assignment_cleanup"
+	if daily[len(daily)-1] != movedByOrderQueue {
+		t.Fatalf("getDailySyncJobs no longer ends with %s, so orderQueue is not the only "+
+			"difference between the two orders and this test's exemption is wrong; got %q",
+			movedByOrderQueue, daily[len(daily)-1])
 	}
+	wantOrder := slices.DeleteFunc(slices.Clone(daily), func(id string) bool {
+		return id == movedByOrderQueue
+	})
+	assertSeqIgnoring(t, "daily subset of the status payload", got, wantOrder, movedByOrderQueue)
 }
 
 // The bounded pair's placement is the one ordering fact with a stated reason, so it is

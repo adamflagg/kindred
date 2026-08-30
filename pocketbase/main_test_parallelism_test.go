@@ -148,6 +148,8 @@ var serialGroups = []struct {
 		reason: "t.Setenv: CAMPMINDER_SEASON_ID makes handleUnifiedSync's year resolution deterministic",
 		tests: []string{
 			"TestHandleUnifiedSyncRejectsUnsupportedDryRun",
+			"TestHandleUnifiedSyncRejectsUnroutedService",
+			"TestHandleUnifiedSyncAcceptsARoutedService",
 			"TestHandleUnifiedSyncImmediatePathEchoesDryRun",
 			"TestHandleUnifiedSyncQueuedPathEchoesDryRun",
 			"TestProcessQueuedSyncsUnifiedHonorsDryRun",
