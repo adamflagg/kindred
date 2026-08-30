@@ -64,6 +64,8 @@ var serialGroups = []struct {
 			"TestSyncGlobalsFailureIsSoftYearDataFailureIsHard",
 			"TestHandleMultiWorkbookExportDefaultBranchResetsYear",
 			"TestHandleMultiWorkbookExportDefaultBranchClearsFilter",
+			"TestHandleMultiWorkbookExportDefaultBranchUsesTheSeasonNotTheWallClock",
+			"TestHandleMultiWorkbookExportYearsValidationBoundsBySeasonNotWallClock",
 			"TestStandaloneRunClearsTheFilter",
 			"TestStandaloneRunResetsYear",
 			"TestStandaloneRunFailsClosedOnUnresolvableSeason",
@@ -263,6 +265,11 @@ var serialGroups = []struct {
 		pkg:    "sync",
 		reason: "t.Setenv: IS_DOCKER and GOOGLE_SHEETS_ENABLED drive Gate filtering in the derived queues themselves",
 		tests:  []string{"TestExportRunsExactlyOnceInAFullRun"},
+	},
+	{
+		pkg:    "sync",
+		reason: "t.Setenv: newExportWithFakeWriter's CAMPMINDER_SEASON_ID",
+		tests:  []string{"TestSingleServiceUnifiedRunExportsEverything"},
 	},
 	{
 		pkg:    "sync",

@@ -327,3 +327,118 @@ func TestHandleMultiWorkbookExportDefaultBranchClearsFilter(t *testing.T) {
 			"cleared, got %d", got)
 	}
 }
+
+// TestHandleMultiWorkbookExportDefaultBranchUsesTheSeasonNotTheWallClock pins the final-review
+// Critical C2. The default branch used to call multiExport.SetYear(time.Now().Year()) while
+// Sync()'s globals gate compares m.year against ParseSeasonYear() (multi_workbook_export.go:
+// "m.year == currentSeason"). The two clocks are the same value in ordinary operation, which
+// is exactly why TestHandleMultiWorkbookExportDefaultBranchResetsYear and ...ClearsFilter --
+// both of which pin CAMPMINDER_SEASON_ID to time.Now().Year() -- cannot see the bug: a test
+// that pins the bug's own precondition to the safe value is worth less than no test. The real
+// divergence is the off-season, or preparing next year, which is the ordinary reason
+// CAMPMINDER_SEASON_ID exists to be set ahead of the wall clock. This test pins the season a
+// year ahead of time.Now().Year() and asserts the button follows the season, not the clock --
+// both for which year's workbook gets written and for whether globals are included at all.
+func TestHandleMultiWorkbookExportDefaultBranchUsesTheSeasonNotTheWallClock(t *testing.T) {
+	now := time.Now().Year()
+	season := now + 1 // e.g. preparing next year's workbook before the calendar turns over
+
+	t.Setenv("CAMPMINDER_SEASON_ID", strconv.Itoa(season))
+	t.Setenv("GOOGLE_SHEETS_ENABLED", "true")
+
+	writer := NewMockSheetsWriter()
+	manager := newSignalingWorkbookManager()
+
+	export, err := NewMultiWorkbookExport(newExportSchemaApp(t), writer, manager, season)
+	if err != nil {
+		t.Fatalf("NewMultiWorkbookExport: %v", err)
+	}
+
+	scheduler := NewScheduler(nil)
+	orchestrator := scheduler.GetOrchestrator()
+	orchestrator.RegisterService("multi_workbook_export", export)
+
+	re := &core.RequestEvent{}
+	re.Request = httptest.NewRequest(http.MethodPost, "/", http.NoBody)
+	rec := httptest.NewRecorder()
+	re.Response = rec
+
+	if err := handleMultiWorkbookExport(re, scheduler); err != nil {
+		t.Fatalf("handler returned error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	select {
+	case <-manager.done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("timed out waiting for the background export to finish")
+	}
+
+	if export.year != season {
+		t.Errorf("expected the button to follow CAMPMINDER_SEASON_ID (%d), got %d (wall-clock year is %d)",
+			season, export.year, now)
+	}
+	if _, gotSeason := manager.YearWorkbookIDs[season]; !gotSeason {
+		t.Errorf("expected the season's (%d) workbook to be requested, got %v", season, manager.YearWorkbookIDs)
+	}
+	if _, gotWallClock := manager.YearWorkbookIDs[now]; gotWallClock {
+		t.Errorf("must not have exported the wall-clock year %d instead of the season, requested %v",
+			now, manager.YearWorkbookIDs)
+	}
+	if !fakeWriterGlobalsWritten(export) {
+		t.Error("globals must still be exported when the season and the wall clock diverge -- " +
+			"Sync()'s gate is m.year == currentSeason, and the wall clock is not that")
+	}
+}
+
+// TestHandleMultiWorkbookExportYearsValidationBoundsBySeasonNotWallClock pins C2's second
+// half: ValidateExportYears(years, currentYear) at api.go used time.Now().Year() as the
+// manual `?years=` parameter's upper bound, the same wall-clock/season confusion as SetYear
+// above. While preparing next season, an operator asking to export the CONFIGURED season
+// (already current in CampMinder, just not yet the wall-clock year) would get rejected as
+// "in the future" through this branch even though it is the season the rest of the system is
+// running against.
+func TestHandleMultiWorkbookExportYearsValidationBoundsBySeasonNotWallClock(t *testing.T) {
+	now := time.Now().Year()
+	season := now + 1
+
+	t.Setenv("CAMPMINDER_SEASON_ID", strconv.Itoa(season))
+	t.Setenv("GOOGLE_SHEETS_ENABLED", "true")
+
+	writer := NewMockSheetsWriter()
+	manager := newSignalingWorkbookManager()
+
+	export, err := NewMultiWorkbookExport(newExportSchemaApp(t), writer, manager, season)
+	if err != nil {
+		t.Fatalf("NewMultiWorkbookExport: %v", err)
+	}
+
+	scheduler := NewScheduler(nil)
+	orchestrator := scheduler.GetOrchestrator()
+	orchestrator.RegisterService("multi_workbook_export", export)
+
+	re := &core.RequestEvent{}
+	re.Request = httptest.NewRequest(http.MethodPost, "/?years="+strconv.Itoa(season), http.NoBody)
+	rec := httptest.NewRecorder()
+	re.Response = rec
+
+	if err := handleMultiWorkbookExport(re, scheduler); err != nil {
+		t.Fatalf("handler returned error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected the configured season (%d) to be exportable even though the wall "+
+			"clock is still %d, got %d: %s", season, now, rec.Code, rec.Body.String())
+	}
+
+	// The years branch also runs its export in a background goroutine (SyncForYears, which
+	// -- like Sync() -- ends in workbookManager.UpdateMasterIndex). Wait for it the same way
+	// TestHandleMultiWorkbookExportDefaultBranchResetsYear does, or t.Cleanup(app.Cleanup)
+	// tears the throwaway app down while that goroutine is still mid-query underneath it.
+	select {
+	case <-manager.done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("timed out waiting for the background export to finish")
+	}
+}
