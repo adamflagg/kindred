@@ -1694,9 +1694,12 @@ func handleMultiWorkbookExport(e *core.RequestEvent, scheduler *Scheduler) error
 		includeGlobals = includeGlobalsParam == boolTrueStr || includeGlobalsParam == "1"
 	}
 
+	// currentYear anchors both the manual-years validation bound below and the default
+	// branch's explicit SetYear below -- computed once, unconditionally, so both uses agree.
+	currentYear := time.Now().Year()
+
 	// Validate years if provided
 	if len(years) > 0 {
-		currentYear := time.Now().Year()
 		if err := ValidateExportYears(years, currentYear); err != nil {
 			return e.JSON(http.StatusBadRequest, map[string]any{
 				"error": err.Error(),
@@ -1740,8 +1743,18 @@ func handleMultiWorkbookExport(e *core.RequestEvent, scheduler *Scheduler) error
 				slog.Error("Multi-workbook export failed", "error", err, "years", years)
 			}
 		} else {
-			// Default: full export (globals + current year)
-			slog.Info("Starting multi-workbook export for current year")
+			// Default: full export (globals + current year). multiExport is the orchestrator's
+			// long-lived singleton, also reachable from three generic YearSetter call sites
+			// (a queued "Run Phase -> Export", a queued individual run, and the synchronous
+			// phase-run handler) that pin its year and never reset it. Nothing here can assume
+			// the instance still holds the current year -- a prior historical run may have left
+			// it behind -- so this standalone entry point sets it explicitly rather than
+			// inheriting whatever the instance happens to hold. Load-bearing: delete this and a
+			// previous historical Run Phase silently pins the plain Run button (and the current
+			// year's own globals gate, m.year == currentSeason in Sync()) to that stale year.
+			// See TestHandleMultiWorkbookExportDefaultBranchResetsYear.
+			multiExport.SetYear(currentYear)
+			slog.Info("Starting multi-workbook export for current year", "year", currentYear)
 			if err := multiExport.Sync(ctx); err != nil {
 				slog.Error("Multi-workbook export failed", "error", err)
 			}

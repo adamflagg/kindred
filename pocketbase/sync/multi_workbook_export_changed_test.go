@@ -3,28 +3,26 @@ package sync
 import (
 	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
+	"strconv"
 	"testing"
+	"time"
 
 	"github.com/pocketbase/pocketbase/core"
 	pbtests "github.com/pocketbase/pocketbase/tests"
 )
 
-// newExportWithFakeWriter builds a MultiWorkbookExport on the package's existing
-// MockSheetsWriter/MockWorkbookManager fakes (google_sheets_test.go,
-// multi_workbook_export_test.go) plus a throwaway PocketBase app carrying just enough
-// schema to reach WriteToSheet: "divisions" for one global export (its ExportConfig.Filter
-// is "", so an unfiltered query against a fieldless collection succeeds) and "bunks" for one
-// year export (SyncYearData filters on "year = N", so it needs a year field). Every other
-// configured collection is absent, which is fine -- queryCollection's error on a missing
-// collection is caught and skipped, exactly like a real deploy skipping a collection that
-// legitimately had no rows.
-//
-// CAMPMINDER_SEASON_ID is set to 2025 so Sync()'s season resolution (see Sync's doc comment)
-// always succeeds, and the export is constructed at year 2025 to match -- a caller that wants
-// a non-current year calls SetYear itself.
-func newExportWithFakeWriter(t *testing.T) *MultiWorkbookExport {
+// newExportSchemaApp builds the throwaway PocketBase app newExportWithFakeWriter (and any
+// variant needing a non-default WorkbookManagerInterface) shares: just enough schema to reach
+// WriteToSheet -- "divisions" for one global export (its ExportConfig.Filter is "", so an
+// unfiltered query against a fieldless collection succeeds) and "bunks" for one year export
+// (SyncYearData filters on "year = N", so it needs a year field). Every other configured
+// collection is absent, which is fine -- queryCollection's error on a missing collection is
+// caught and skipped, exactly like a real deploy skipping a collection that legitimately had
+// no rows.
+func newExportSchemaApp(t *testing.T) core.App {
 	t.Helper()
-	t.Setenv("CAMPMINDER_SEASON_ID", "2025")
 
 	app, err := pbtests.NewTestApp()
 	if err != nil {
@@ -43,14 +41,52 @@ func newExportWithFakeWriter(t *testing.T) *MultiWorkbookExport {
 		t.Fatalf("save bunks: %v", saveErr)
 	}
 
+	return app
+}
+
+// newExportWithFakeWriter builds a MultiWorkbookExport on the package's existing
+// MockSheetsWriter/MockWorkbookManager fakes (google_sheets_test.go,
+// multi_workbook_export_test.go) plus newExportSchemaApp's throwaway app.
+//
+// CAMPMINDER_SEASON_ID is set to 2025 so Sync()'s season resolution (see Sync's doc comment)
+// always succeeds, and the export is constructed at year 2025 to match -- a caller that wants
+// a non-current year calls SetYear itself.
+func newExportWithFakeWriter(t *testing.T) *MultiWorkbookExport {
+	t.Helper()
+	t.Setenv("CAMPMINDER_SEASON_ID", "2025")
+
 	writer := NewMockSheetsWriter()
 	manager := NewMockWorkbookManager()
 
-	export, err := NewMultiWorkbookExport(app, writer, manager, 2025)
+	export, err := NewMultiWorkbookExport(newExportSchemaApp(t), writer, manager, 2025)
 	if err != nil {
 		t.Fatalf("NewMultiWorkbookExport: %v", err)
 	}
 	return export
+}
+
+// signalingWorkbookManager wraps the existing MockWorkbookManager (multi_workbook_export_test.go)
+// to close a channel after UpdateMasterIndex returns -- the last step of Sync()'s own body
+// (see multi_workbook_export.go) -- so a test driving Sync() through a background goroutine
+// (as handleMultiWorkbookExport's default branch does, in production) has a real
+// happens-before edge to synchronize on. Polling the mock's fields on a sleep loop instead
+// would be exactly the kind of unsynchronized cross-goroutine access -race exists to catch.
+type signalingWorkbookManager struct {
+	*MockWorkbookManager
+	done chan struct{}
+}
+
+func newSignalingWorkbookManager() *signalingWorkbookManager {
+	return &signalingWorkbookManager{
+		MockWorkbookManager: NewMockWorkbookManager(),
+		done:                make(chan struct{}),
+	}
+}
+
+func (s *signalingWorkbookManager) UpdateMasterIndex(ctx context.Context) error {
+	err := s.MockWorkbookManager.UpdateMasterIndex(ctx)
+	close(s.done)
+	return err
 }
 
 // fakeWriterSheetsWritten counts the distinct sheet tabs the fake writer received a
@@ -159,5 +195,75 @@ func TestSyncGlobalsFailureIsSoftYearDataFailureIsHard(t *testing.T) {
 	}
 	if yearFails.SyncSuccessful {
 		t.Error("a year-data failure must leave SyncSuccessful false")
+	}
+}
+
+// TestHandleMultiWorkbookExportDefaultBranchResetsYear pins the Critical finding from task
+// 11's fix round 2: MultiWorkbookExport is a long-lived singleton, and implementing
+// YearSetter (this task) made it reachable from three generic call sites (api.go:1383,
+// :1420, :2440) that call SetYear on whatever service a queued or phase run hands them --
+// and never reset it afterward. A historical "Run Phase -> Export" at, say, last year
+// permanently pins the singleton to that year. Two live read paths then take whatever the
+// instance happens to hold: the epilogue (still present, calls SyncForYears(exporter.year))
+// and the plain admin "Run" button -- handleMultiWorkbookExport's default branch (no `years`
+// query param), which calls multiExport.Sync(ctx) directly.
+//
+// This test drives that default branch exactly as production does: register a
+// MultiWorkbookExport already pinned to a historical year (simulating the prior queued run),
+// POST with no years param, and confirm the run still targets the CURRENT year and still
+// includes globals -- both of which silently fail if the handler's explicit SetYear(currentYear)
+// is missing, since Sync()'s globals gate is `m.year == currentSeason` (task 11 fix round 1).
+func TestHandleMultiWorkbookExportDefaultBranchResetsYear(t *testing.T) {
+	now := time.Now().Year()
+	historicalYear := now - 1
+
+	t.Setenv("CAMPMINDER_SEASON_ID", strconv.Itoa(now))
+	t.Setenv("GOOGLE_SHEETS_ENABLED", "true")
+
+	writer := NewMockSheetsWriter()
+	manager := newSignalingWorkbookManager()
+
+	export, err := NewMultiWorkbookExport(newExportSchemaApp(t), writer, manager, now)
+	if err != nil {
+		t.Fatalf("NewMultiWorkbookExport: %v", err)
+	}
+	// Simulate the prior queued run: a generic YearSetter call site pinned the singleton to a
+	// historical year and never reset it.
+	export.SetYear(historicalYear)
+
+	scheduler := NewScheduler(nil)
+	orchestrator := scheduler.GetOrchestrator()
+	orchestrator.RegisterService("multi_workbook_export", export)
+
+	re := &core.RequestEvent{}
+	re.Request = httptest.NewRequest(http.MethodPost, "/", http.NoBody)
+	rec := httptest.NewRecorder()
+	re.Response = rec
+
+	if err := handleMultiWorkbookExport(re, scheduler); err != nil {
+		t.Fatalf("handler returned error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	select {
+	case <-manager.done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("timed out waiting for the background export to finish")
+	}
+
+	if export.year != now {
+		t.Errorf("expected the default branch to reset the pinned year to %d, got %d", now, export.year)
+	}
+	if _, gotCurrent := manager.YearWorkbookIDs[now]; !gotCurrent {
+		t.Errorf("expected the current year (%d) workbook to be requested, got %v", now, manager.YearWorkbookIDs)
+	}
+	if _, gotHistorical := manager.YearWorkbookIDs[historicalYear]; gotHistorical {
+		t.Errorf("must not have exported the pinned historical year %d, requested %v",
+			historicalYear, manager.YearWorkbookIDs)
+	}
+	if !fakeWriterGlobalsWritten(export) {
+		t.Error("a standalone run must still include globals")
 	}
 }
