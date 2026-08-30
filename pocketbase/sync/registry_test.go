@@ -1240,6 +1240,40 @@ func TestExportRunsExactlyOnceInAFullRun(t *testing.T) {
 	}
 }
 
+// TestExportRunsExactlyOnceInADailyRun is TestExportRunsExactlyOnceInAFullRun's twin for the
+// OTHER checkGlobalTablesEmpty call site (final-review Important I4). Both RunDailySync
+// (orchestrator.go) and RunSyncWithOptions call runGlobalTableBootstrap on a fresh, unseeded
+// database -- fixed at the same time, in the same commit -- but the existing regression guard
+// only drives RunSyncWithOptions. Reverting RunDailySync's call back to RunWeeklySync(ctx)
+// would reintroduce the fresh-DB double export on the NIGHTLY path with no test noticing.
+// multi_workbook_export carries CadenceDaily (google.IsEnabled-gated), so it is a member of
+// getDailySyncJobs() too -- a fresh-DB daily run would export once from the bootstrap and once
+// from its own place in that queue.
+func TestExportRunsExactlyOnceInADailyRun(t *testing.T) {
+	t.Setenv("GOOGLE_SHEETS_ENABLED", "true")
+
+	app, err := pbtests.NewTestApp()
+	if err != nil {
+		t.Fatalf("NewTestApp: %v", err)
+	}
+	t.Cleanup(app.Cleanup)
+
+	o := NewOrchestrator(app)
+	o.SetJobSpacing(0)
+
+	spy := &MockService{name: "multi_workbook_export"}
+	o.RegisterService("multi_workbook_export", spy)
+
+	if err := o.RunDailySync(context.Background()); err != nil {
+		t.Fatalf("RunDailySync: %v", err)
+	}
+
+	if got := spy.callCount.Load(); got != 1 {
+		t.Errorf("multi_workbook_export.Sync() ran %d times in a daily run, want 1 "+
+			"(checkGlobalTablesEmpty's bootstrap must not export -- spec §3)", got)
+	}
+}
+
 // TestSingleServiceUnifiedRunExportsEverything pins the final-review Critical C1:
 // POST .../sync/run?service=multi_workbook_export -- SyncTab's "Sheets Export" dropdown plus
 // Run Sync -- resolves to Options{Services: []string{"multi_workbook_export"}} and goes

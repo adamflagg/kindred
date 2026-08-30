@@ -274,6 +274,11 @@ var serialGroups = []struct {
 	},
 	{
 		pkg:    "sync",
+		reason: "t.Setenv: GOOGLE_SHEETS_ENABLED drives Gate filtering in the derived daily queue",
+		tests:  []string{"TestExportRunsExactlyOnceInADailyRun"},
+	},
+	{
+		pkg:    "sync",
 		reason: "t.Setenv: CAMPMINDER_PRIMARY_KEY (campminder.NewClient) and newExportWithFakeWriter's CAMPMINDER_SEASON_ID",
 		tests: []string{
 			"TestHistoricalRunSetsTheExportsYear",
