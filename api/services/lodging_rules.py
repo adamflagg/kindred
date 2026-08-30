@@ -169,13 +169,20 @@ class WriteInDemand(NamedTuple):
     for the second is the defect kindred#2543 was filed for (owner ruling
     2026-08-29).
 
-    * `known` -- did somebody record a size for EVERY party on this card. It is
-      the ASSIGN MODAL's gate: the modal's header states facts ("2 of 5 beds
-      free") and its candidate rows grade against them, so a card holding a
-      party nobody counted gets "occupancy not counted" rather than a number.
-    * `usable` -- may `consumed` be PUBLISHED. It is the BOARD's gate, and the
-      stats bar's own arithmetic (`free_family_spots`) agrees with it by
-      construction.
+    * `known` -- did somebody record a size for EVERY party on this card.
+      ⚠️ IT GATES NOTHING IN PRODUCTION ANY MORE. This bullet used to say it
+      was the ASSIGN MODAL's gate, so a card holding a party nobody counted
+      read "occupancy not counted (write-in)" rather than a number -- and that
+      stopped being true inside this issue's own review, when the owner
+      extended the ruling to the modal: *"sure modal can follow the floor, roll
+      that fix in as well."* Its header and its candidate rows now read
+      `usable` like the board does. `known` is KEPT because it is still the
+      only answer to "did a human count these people", a different question
+      from "may this number be printed".
+    * `usable` -- may `consumed` be PUBLISHED. It is the gate on EVERY surface
+      that prints a remainder -- the board card's drag marks, the Assign
+      modal's header, its candidate rows -- and the stats bar's own arithmetic
+      (`free_family_spots`) agrees with it by construction.
 
     `known=False` means three different things, and only ONE of them makes
     `consumed` meaningless:

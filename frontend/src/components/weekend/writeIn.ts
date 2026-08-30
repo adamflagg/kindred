@@ -424,8 +424,19 @@ export function coveringWriteIns(unit: LodgingUnitRow): WriteInCoverRow[] {
  * `known` asks whether every party on this card was SIZED by a human. A
  * recorded size is a fact; an ancestor taking the whole card is a fact (the
  * house is let whole); a wholesale guess about a room that may be shared is
- * not. It gates the Assign modal's header and its candidate rows, which state
- * facts rather than floors.
+ * not.
+ *
+ * ⚠️ IT GATES NOTHING IN PRODUCTION ANY MORE, and that is a ruling rather than
+ * an oversight — this paragraph used to end *"it gates the Assign modal's
+ * header and its candidate rows, which state facts rather than floors"*, and
+ * that stopped being true inside kindred#2543's own review. The owner extended
+ * the ruling to the modal: *"sure modal can follow the floor, roll that fix in
+ * as well."* `capacitySentence` and `capacityVerdict` now read `usable` like
+ * the board does, and the header's `occupancy not counted (write-in)` sentence
+ * is deleted. `known` is KEPT because it is still the only answer to *"did a
+ * human count these people"* — a different question from *"may this number be
+ * printed"* — and because it is half of the mirror: `write_in_demand` returns
+ * it too, with the same paragraph.
  *
  * ⚠️ `usable` IS A DIFFERENT QUESTION, and reading `known` for it is the
  * defect kindred#2543 was filed for (owner ruling 2026-08-29). It asks whether
