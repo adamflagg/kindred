@@ -138,10 +138,22 @@ func TestScopedVariantContract(t *testing.T) {
 	for _, id := range scoped {
 		base := JobBase(id)
 
-		// Phase parity is not named in the doc comment above and has no mutation: it is
-		// structurally guaranteed by JobBase/GetPhaseForJob's shared syncJobMeta lookup
-		// (Tasks 1-3), not an independently falsifiable property the way the seven clauses
-		// below are. Left in as a cheap sanity check, not a proof.
+		// Phase parity and the phase-run clause below are not named in the doc comment above
+		// and have no mutation: phase parity is structurally guaranteed by
+		// JobBase/GetPhaseForJob's shared syncJobMeta lookup (Tasks 1-3), not an
+		// independently falsifiable property the way the eight clauses below are. The
+		// phase-run clause ("must not be in an admin-triggered phase run", #2489) is
+		// tautological today for a related reason: phaseExecutionJobs(PhaseExpensive)
+		// filters against buildScopedJobSet(ScopeFamilyCamp), the exact same
+		// ScopedJobs(ScopeFamilyCamp) call this loop iterates over as `scoped` -- so the
+		// assertion is "a set built by removing X excludes X," which cannot fail. It becomes
+		// genuinely falsifiable once Stage 2 replaces phaseExecutionJobs' body with
+		// inPhaseWithTrigger(p, TriggerPhaseRun), driven by the Triggers bitset rather than
+		// by Scope: a row could then carry both a Scope and TriggerPhaseRun, and this clause
+		// would catch that real wiring mistake. Both are left in as cheap sanity checks, not
+		// proofs -- the real coverage for the phase-run property today lives at
+		// api_test.go:2110 (TestPhaseExecutionJobsExcludesScopeFamilyCampForExpensivePhase),
+		// which asserts it against literal names instead of the derived set.
 		if GetPhaseForJob(id) != GetPhaseForJob(base) {
 			t.Errorf("%s: phase %q != base %s's phase %q",
 				id, GetPhaseForJob(id), base, GetPhaseForJob(base))
@@ -149,11 +161,16 @@ func TestScopedVariantContract(t *testing.T) {
 		if !sliceContains(daily, id) {
 			t.Errorf("%s: missing from the daily queue (#2482)", id)
 		}
-		if i, j := indexOf(daily, id), indexOf(daily, "financial_transactions"); i <= j {
-			t.Errorf("%s at daily[%d] must run AFTER the last source job at [%d] (#2482)", id, i, j)
+		di, fi, fd := indexOf(daily, id), indexOf(daily, "financial_transactions"), indexOf(daily, "family_camp_derived")
+		if di == -1 || fi == -1 || fd == -1 {
+			t.Fatalf("daily ordering anchors missing: %s=%d financial_transactions=%d family_camp_derived=%d",
+				id, di, fi, fd)
 		}
-		if i, j := indexOf(daily, id), indexOf(daily, "family_camp_derived"); i >= j {
-			t.Errorf("%s at daily[%d] must run BEFORE family_camp_derived at [%d] (#2482)", id, i, j)
+		if di <= fi {
+			t.Errorf("%s at daily[%d] must run AFTER the last source job at [%d] (#2482)", id, di, fi)
+		}
+		if di >= fd {
+			t.Errorf("%s at daily[%d] must run BEFORE family_camp_derived at [%d] (#2482)", id, di, fd)
 		}
 		if sliceContains(full, id) {
 			t.Errorf("%s: must not be in a full run (#2489)", id)
