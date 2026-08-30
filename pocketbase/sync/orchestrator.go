@@ -259,10 +259,14 @@ var syncJobMeta = []JobMeta{
 
 	// Process phase - CSV + AI
 	// reconcile_request_lifecycle has no individual POST route (it runs only inside the
-	// daily cron and a current-year unified run, via its CurrentYearOnly bit), but
-	// GetJobsForPhase classifies it PhaseProcess and phaseExecutionJobs only filters
-	// PhaseExpensive, so a Run Phase button on the Process phase really does start it --
-	// TriggerPhaseRun stays set even though TriggerIndividualRoute does not.
+	// daily cron and a current-year unified run, via its CurrentYearOnly bit), but a Run
+	// Phase button on the Process phase really does start it, so TriggerPhaseRun stays set
+	// even though TriggerIndividualRoute does not.
+	//
+	// The bit is now what decides that. phaseExecutionJobs is inPhaseWithTrigger(phase,
+	// TriggerPhaseRun), which reads the Triggers field for EVERY phase -- it no longer
+	// special-cases PhaseExpensive, as it did when it filtered a scope-derived exclusion
+	// set by hand.
 	{ID: "reconcile_request_lifecycle", Phase: PhaseProcess,
 		Description: "Mark moved-requester OBRs for reprocessing",
 		Cadences:    CadenceDaily, Triggers: TriggerPhaseRun | TriggerFullRun, CurrentYearOnly: true},

@@ -1030,10 +1030,12 @@ func resolveServiceStatuses(orchestrator *Orchestrator, syncTypes []string) map[
 // syncTypes.test.ts pins against this function via the registry (see
 // frontend/src/test/backendSyncJobIds.ts).
 //
-// Order is registry declaration order, NOT execution order: the payload is a JSON object
-// keyed by job name (see handleSyncStatus), and every frontend consumer sorts before
-// comparing. getDailySyncJobs additionally applies orderQueue, which is why
-// stranded_assignment_cleanup runs last there but is listed mid-Transform here.
+// Order is registry declaration order, NOT execution order, and nothing observes it: the
+// payload is a JSON object keyed by job name (see handleSyncStatus), so the sequence does not
+// survive serialization at all -- the client reads entries by key. The frontend coverage tests
+// that compare this list against their own sort both sides first. getDailySyncJobs
+// additionally applies orderQueue, which is why stranded_assignment_cleanup runs last there
+// but is listed mid-Transform here.
 func statusSyncTypes() []string { return allJobIDs() }
 
 // handleSyncStatus returns the status of all sync jobs
