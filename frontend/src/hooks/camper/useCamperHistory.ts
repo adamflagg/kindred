@@ -9,6 +9,7 @@ import { filterEnrollmentsByStatus, toDisplayList } from '../../utils/enrollment
 import { fetchCamperJourney, fetchParentMainSessions } from './fetchCamperJourney'
 import { byYearThenChronological } from './journeyOrder'
 import { useHouseholdJourney } from '../useWeekendRoster'
+import { useAuth } from '../../contexts/AuthContext'
 import type { Camper } from '../../types/app-types'
 import type { CampSessionsResponse } from '../../types/pocketbase-types'
 import type { HistoricalRecord } from './types'
@@ -97,7 +98,12 @@ export function useCamperHistory(
   // Camper (kindred#2073's household grain) — `null` for a camper with no
   // household on file, which disables the query rather than fetching a
   // meaningless id.
-  const { data: householdJourney } = useHouseholdJourney(camper?.household_id ?? null)
+  // ⚠️ Gated on `isAuthLoading` as well as the id -- `useHouseholdJourney`
+  // reads a protected endpoint and its own `enabled` checks only the id.
+  const { isLoading: isAuthLoading } = useAuth()
+  const { data: householdJourney } = useHouseholdJourney(
+    isAuthLoading ? null : (camper?.household_id ?? null)
+  )
 
   const {
     data: camperHistory = [],

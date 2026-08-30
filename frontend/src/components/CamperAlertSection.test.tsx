@@ -306,6 +306,14 @@ vi.mock('../hooks/useWeekendRoster', () => ({
   useHouseholdJourney: () => ({ data: undefined }),
 }))
 
+// Same reason, one layer up: CamperDetailsPanel gates that household read on
+// `useAuth().isLoading` (frontend/CLAUDE.md: "useAuth().isLoading first"), and
+// these tests render it with no AuthProvider, so the real `useAuth` throws.
+// `isLoading: false` is the settled-auth case; none of these tests concern auth.
+vi.mock('../contexts/AuthContext', () => ({
+  useAuth: () => ({ isLoading: false }),
+}))
+
 vi.mock('../hooks/useCurrentYear', () => ({
   useYear: () => 2025,
 }))

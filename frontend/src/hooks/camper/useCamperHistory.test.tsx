@@ -26,6 +26,16 @@ vi.mock('../useWeekendRoster', () => ({
   useHouseholdJourney: (...args: unknown[]) => mockUseHouseholdJourney(...args),
 }))
 
+// The hook gates the household read on `useAuth().isLoading` (frontend/CLAUDE.md:
+// "useAuth().isLoading first"), and `createWrapper()` provides no AuthProvider,
+// so the real `useAuth` would throw here. `isLoading: false` is the settled-auth
+// case every assertion below is written against; the loading case is covered by
+// its own test.
+const mockUseAuth = vi.fn(() => ({ isLoading: false }))
+vi.mock('../../contexts/AuthContext', () => ({
+  useAuth: () => mockUseAuth(),
+}))
+
 const YEAR = 2026
 
 function currentCamper(opts: {
@@ -62,6 +72,9 @@ describe('useCamperHistory', () => {
     mockFetchCamperJourney.mockResolvedValue([])
     mockFetchParentMainSessions.mockResolvedValue(new Map())
     mockUseHouseholdJourney.mockReturnValue({ data: undefined })
+    // `vi.clearAllMocks()` clears CALLS, not implementations -- without this the
+    // auth-loading test below would leak `isLoading: true` into every later test.
+    mockUseAuth.mockReturnValue({ isLoading: false })
   })
 
   // kindred#2466
@@ -76,20 +89,20 @@ describe('useCamperHistory', () => {
     })
 
     it("threads the household's CampMinder id into useHouseholdJourney", async () => {
-      const camper = currentCamper({ sessionCmId: 500, sessionType: 'main', householdId: 4200001 })
+      const camper = currentCamper({ sessionCmId: 500, sessionType: 'main', householdId: 1000001 })
       const { result } = renderHook(() => useCamperHistory(12887873, YEAR, camper, [camper]), {
         wrapper: createWrapper(),
       })
       await waitFor(() => expect(result.current.isLoading).toBe(false))
-      expect(mockUseHouseholdJourney).toHaveBeenCalledWith(4200001)
+      expect(mockUseHouseholdJourney).toHaveBeenCalledWith(1000001)
     })
 
     it('threads the resolved household journey years into fetchCamperJourney', async () => {
       const years = [
         { year: 2024, housing: 'placed', cabin_name: 'Cedar Lodge', housing_session_cm_id: 900 },
       ]
-      mockUseHouseholdJourney.mockReturnValue({ data: { household_cm_id: 4200001, years } })
-      const camper = currentCamper({ sessionCmId: 500, sessionType: 'main', householdId: 4200001 })
+      mockUseHouseholdJourney.mockReturnValue({ data: { household_cm_id: 1000001, years } })
+      const camper = currentCamper({ sessionCmId: 500, sessionType: 'main', householdId: 1000001 })
       const { result } = renderHook(() => useCamperHistory(12887873, YEAR, camper, [camper]), {
         wrapper: createWrapper(),
       })
@@ -98,12 +111,27 @@ describe('useCamperHistory', () => {
     })
 
     it('threads an empty array into fetchCamperJourney when no household journey has resolved yet', async () => {
-      const camper = currentCamper({ sessionCmId: 500, sessionType: 'main', householdId: 4200001 })
+      const camper = currentCamper({ sessionCmId: 500, sessionType: 'main', householdId: 1000001 })
       const { result } = renderHook(() => useCamperHistory(12887873, YEAR, camper, [camper]), {
         wrapper: createWrapper(),
       })
       await waitFor(() => expect(result.current.isLoading).toBe(false))
       expect(mockFetchCamperJourney).toHaveBeenCalledWith(12887873, YEAR, [])
+    })
+
+    // `useHouseholdJourney` reads a PROTECTED endpoint through `fetchWithAuth`,
+    // and its own `enabled` checks the household id alone -- so without this
+    // gate the request can fire before auth is ready. frontend/CLAUDE.md:
+    // "useAuth().isLoading first."
+    it('withholds the household id from useHouseholdJourney while auth is still loading', async () => {
+      mockUseAuth.mockReturnValue({ isLoading: true })
+      const camper = currentCamper({ sessionCmId: 500, sessionType: 'main', householdId: 1000001 })
+      const { result } = renderHook(() => useCamperHistory(12887873, YEAR, camper, [camper]), {
+        wrapper: createWrapper(),
+      })
+      await waitFor(() => expect(result.current.isLoading).toBe(false))
+      expect(mockUseHouseholdJourney).toHaveBeenCalledWith(null)
+      expect(mockUseHouseholdJourney).not.toHaveBeenCalledWith(1000001)
     })
   })
 

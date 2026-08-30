@@ -17,6 +17,7 @@ import {
 import { ParentStaffDivider, AgePreferenceDivider } from './camper/RequestSectionDividers'
 import FirstPickBadge from './camper/FirstPickBadge'
 import { pb } from '../lib/pocketbase'
+import { useAuth } from '../contexts/AuthContext'
 import { StatusBadge } from './StatusBadge'
 import {
   getGenderIdentityDisplay,
@@ -389,7 +390,15 @@ export default function CamperDetailsPanel({
   // (the resolved cabin, mirroring the weekend board's own
   // HouseholdJourneyCard) rather than the CampMinder day group. `null` when
   // the person has no household on file, which disables the query.
-  const { data: householdJourney } = useHouseholdJourney(person?.household_id ?? null)
+  // ⚠️ Gated on `isAuthLoading`, not only on the id. `useHouseholdJourney`
+  // reads a PROTECTED endpoint through `fetchWithAuth`, and its own `enabled`
+  // checks the household id alone -- so an ungated call can fire before auth
+  // is ready and lose the housing for the render (frontend/CLAUDE.md:
+  // "useAuth().isLoading first").
+  const { isLoading: isAuthLoading } = useAuth()
+  const { data: householdJourney } = useHouseholdJourney(
+    isAuthLoading ? null : (person?.household_id ?? null)
+  )
 
   // Fetch historical journey via the shared enrollment-sourced fetcher.
   const { data: historicalData = [] } = useQuery<HistoricalRecord[]>({

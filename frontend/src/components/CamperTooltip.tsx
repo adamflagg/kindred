@@ -22,7 +22,7 @@ interface CamperTooltipProps {
 
 export default function CamperTooltip({ camper, isVisible, position }: CamperTooltipProps) {
   const currentYear = useYear()
-  const { user } = useAuth()
+  const { user, isLoading: isAuthLoading } = useAuth()
 
   // Query for age preference social requests
   const { data: agePreferenceRequests = [] } = useQuery<BunkRequestsResponse[]>({
@@ -45,7 +45,11 @@ export default function CamperTooltip({ camper, isVisible, position }: CamperToo
   // kindred#2466: a family-camp row shows the household's ACTUAL HOUSING
   // (the resolved cabin) rather than the CampMinder day group. `null` when
   // the camper has no household on file, which disables the query.
-  const { data: householdJourney } = useHouseholdJourney(camper.household_id ?? null)
+  // ⚠️ Gated on `isAuthLoading` as well as the id -- `useHouseholdJourney`
+  // reads a protected endpoint and its own `enabled` checks only the id.
+  const { data: householdJourney } = useHouseholdJourney(
+    isAuthLoading ? null : (camper.household_id ?? null)
+  )
 
   // Fetch the prior-year journey via the shared enrollment-sourced fetcher,
   // limited to the 3 most recent years for the compact tooltip. Routing through

@@ -323,7 +323,7 @@ describe('CamperDetailsPanel', () => {
       first_name: 'Noah',
       last_name: 'Smith',
       year: 2025,
-      household_id: 4200001,
+      household_id: 1000001,
     })
 
     // A prior-year (2024 < currentYear 2025) family-camp enrollment.

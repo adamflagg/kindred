@@ -70,7 +70,7 @@ describe('CamperTooltip mini-journey', () => {
 describe('CamperTooltip mini-journey — family-camp housing (kindred#2466)', () => {
   const camperWithHousehold = {
     person_cm_id: 12887873,
-    household_id: 4200001,
+    household_id: 1000001,
     name: 'Emma Johnson',
     grade: 11,
     gender: 'F',
@@ -95,7 +95,7 @@ describe('CamperTooltip mini-journey — family-camp housing (kindred#2466)', ()
     const years = [
       { year: 2024, housing: 'placed', cabin_name: 'Cedar Lodge', housing_session_cm_id: 900 },
     ]
-    mockUseHouseholdJourney.mockReturnValue({ data: { household_cm_id: 4200001, years } })
+    mockUseHouseholdJourney.mockReturnValue({ data: { household_cm_id: 1000001, years } })
     mockFetchCamperJourney.mockResolvedValue([
       { year: 2024, sessionName: 'Family Camp 2', sessionType: 'family', bunkName: 'Cedar Lodge' },
     ])
@@ -103,7 +103,7 @@ describe('CamperTooltip mini-journey — family-camp housing (kindred#2466)', ()
     renderTooltipWithHousehold()
 
     expect(await screen.findByText(/Cedar Lodge/)).toBeInTheDocument()
-    expect(mockUseHouseholdJourney).toHaveBeenCalledWith(4200001)
+    expect(mockUseHouseholdJourney).toHaveBeenCalledWith(1000001)
     expect(mockFetchCamperJourney).toHaveBeenCalledWith(12887873, 2026, years)
   })
 })
