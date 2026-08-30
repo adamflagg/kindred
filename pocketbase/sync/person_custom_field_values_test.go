@@ -244,8 +244,8 @@ func TestLogJobNameFollowsScope(t *testing.T) {
 	t.Parallel()
 
 	base := NewPersonCustomFieldValuesSync(nil, nil)
-	if got := base.logJobName(); got != "person_custom_values" {
-		t.Errorf("unscoped logJobName() = %q, want person_custom_values", got)
+	if got := base.logJobName(); got != serviceNamePersonCustomValues {
+		t.Errorf("unscoped logJobName() = %q, want %q", got, serviceNamePersonCustomValues)
 	}
 
 	bounded := NewPersonCustomFieldValuesSync(nil, nil)
@@ -265,7 +265,7 @@ func TestScopedServiceInterface(t *testing.T) {
 }
 
 // TestPersonCustomFieldValuesSync_CompletionLogUsesBoundedJobName is the sibling gap
-// TestPersonCustomFieldValuesSync_LogJobName does not reach: logJobName is correct, but before
+// TestLogJobNameFollowsScope does not reach: logJobName is correct, but before
 // this test Sync()'s two LogSyncComplete call sites (the "nothing to sync" early return and the
 // end-of-run summary) still passed the hardcoded literal "PersonCustomFieldValues" instead of
 // jobName. That is the exact ambiguity kindred#2491 Face D's problem statement names -- "an
