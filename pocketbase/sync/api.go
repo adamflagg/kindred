@@ -1754,6 +1754,17 @@ func handleMultiWorkbookExport(e *core.RequestEvent, scheduler *Scheduler) error
 			// year's own globals gate, m.year == currentSeason in Sync()) to that stale year.
 			// See TestHandleMultiWorkbookExportDefaultBranchResetsYear.
 			multiExport.SetYear(currentYear)
+			// Same reasoning, same instance, a different field (fix round 2, Critical #3): a
+			// queued batch (runSyncAndWait) sets the changed-collections filter from ITS OWN
+			// origin before every run it owns, but this standalone button is not one of those
+			// runs and was never asked the same question the year line above already answers.
+			// Left unset, this button would inherit whatever the last cron's batch left behind
+			// -- exporting only that cron's subset, or (if the last batch touched nothing)
+			// writing ZERO sheets while still reporting success. nil is what "export
+			// everything" means to Sync() (ChangedCollectionsAware's own doc comment), and this
+			// is the one entry point spec §5 names as the one that must mean it.
+			// See TestHandleMultiWorkbookExportDefaultBranchClearsFilter.
+			multiExport.SetChangedCollections(nil)
 			slog.Info("Starting multi-workbook export for current year", "year", currentYear)
 			if err := multiExport.Sync(ctx); err != nil {
 				slog.Error("Multi-workbook export failed", "error", err)

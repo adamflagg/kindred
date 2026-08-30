@@ -269,3 +269,61 @@ func TestHandleMultiWorkbookExportDefaultBranchResetsYear(t *testing.T) {
 		t.Error("a standalone run must still include globals")
 	}
 }
+
+// TestHandleMultiWorkbookExportDefaultBranchClearsFilter is
+// TestHandleMultiWorkbookExportDefaultBranchResetsYear's twin for the changed-collections
+// filter (Task 13 fix round 2, Critical #3): the default branch already resets the pinned
+// YEAR explicitly, for exactly the reason a queued batch's YearSetter call site can leave a
+// stale year behind -- but it never asked the same question about the FILTER a queued batch's
+// ChangedCollectionsAware call site can also leave behind. Left unset, a standalone run after
+// a cron exports only that cron's subset, and a standalone run after a no-change batch writes
+// ZERO sheets and still reports success -- the nil-versus-empty edge, live, on the one button
+// spec §5 names as the one that must mean "export everything".
+func TestHandleMultiWorkbookExportDefaultBranchClearsFilter(t *testing.T) {
+	now := time.Now().Year()
+
+	t.Setenv("CAMPMINDER_SEASON_ID", strconv.Itoa(now))
+	t.Setenv("GOOGLE_SHEETS_ENABLED", "true")
+
+	writer := NewMockSheetsWriter()
+	manager := newSignalingWorkbookManager()
+
+	export, err := NewMultiWorkbookExport(newExportSchemaApp(t), writer, manager, now)
+	if err != nil {
+		t.Fatalf("NewMultiWorkbookExport: %v", err)
+	}
+	// Simulate a leftover filter from a prior queued batch that only touched "divisions" --
+	// newExportSchemaApp's app seeds both "divisions" (global) and "bunks" (year), so a stale
+	// filter naming only one of them is directly observable in what actually gets written.
+	export.SetChangedCollections(map[string]bool{"divisions": true})
+
+	scheduler := NewScheduler(nil)
+	orchestrator := scheduler.GetOrchestrator()
+	orchestrator.RegisterService("multi_workbook_export", export)
+
+	re := &core.RequestEvent{}
+	re.Request = httptest.NewRequest(http.MethodPost, "/", http.NoBody)
+	rec := httptest.NewRecorder()
+	re.Response = rec
+
+	if err := handleMultiWorkbookExport(re, scheduler); err != nil {
+		t.Fatalf("handler returned error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	select {
+	case <-manager.done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("timed out waiting for the background export to finish")
+	}
+
+	if export.changed != nil {
+		t.Errorf("expected the default branch to clear the leftover filter to nil, got %v", export.changed)
+	}
+	if got := fakeWriterSheetsWritten(export); got != 2 {
+		t.Errorf("expected both seeded sheets (divisions + bunks) written once the filter was "+
+			"cleared, got %d", got)
+	}
+}

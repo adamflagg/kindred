@@ -63,6 +63,7 @@ var serialGroups = []struct {
 			"TestExportGlobalsOnCurrentYearOnly",
 			"TestSyncGlobalsFailureIsSoftYearDataFailureIsHard",
 			"TestHandleMultiWorkbookExportDefaultBranchResetsYear",
+			"TestHandleMultiWorkbookExportDefaultBranchClearsFilter",
 			"TestStandaloneRunClearsTheFilter",
 			"TestStandaloneRunResetsYear",
 			"TestStandaloneRunFailsClosedOnUnresolvableSeason",
