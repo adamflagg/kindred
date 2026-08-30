@@ -102,6 +102,21 @@ func (m *MultiWorkbookExport) SetYear(year int) {
 // every other yearless service in this package (see LodgingAssignmentsSync.activeSeasonYear).
 // An unresolvable season fails closed: exporting globals against an unknown year is worse
 // than refusing to run at all.
+//
+// Sync deliberately does NOT delegate to SyncForYears, even though the two look like near
+// duplicates. They have different error contracts on purpose: SyncForYears is a
+// fire-and-forget multi-year admin batch (RunSyncWithOptions's two epilogues, and the
+// individual multi-workbook-export POST route -- both off limits to this stage) where one
+// year failing must never abort the others, so every step there logs and continues, and it
+// always returns nil. Sync(), once queued (a later stage in this series), publishes a
+// sync_runs row and a completion toast for THIS run alone -- a fully failed year-data export
+// has to surface as a failure, not report green. So Sync() keeps its own body and its own
+// asymmetry, matching what it has always done: a globals failure is soft (log, continue to
+// year data -- the shared globals workbook lagging by one run is tolerable), a year-data
+// failure is hard (return the error -- this run's own workbook did not get written, and that
+// has to be visible). Do not "simplify" this by routing through SyncForYears; that
+// reintroduces the exact defect this comment exists to prevent. Pinned by
+// TestSyncGlobalsFailureIsSoftYearDataFailureIsHard.
 func (m *MultiWorkbookExport) Sync(ctx context.Context) error {
 	start := time.Now()
 	m.Stats = Stats{}
@@ -112,9 +127,23 @@ func (m *MultiWorkbookExport) Sync(ctx context.Context) error {
 		return fmt.Errorf("resolving current season: %w", err)
 	}
 
-	includeGlobals := m.year == currentSeason
-	if err := m.SyncForYears(ctx, []int{m.year}, includeGlobals, m.changed); err != nil {
-		return err
+	// 1. Export global tables to the globals workbook, current season only.
+	if m.year == currentSeason {
+		if err := m.SyncGlobalsOnly(ctx, m.changed); err != nil {
+			slog.Error("Failed to export global tables", "error", err)
+			// Continue with year-specific data even if globals fail
+		}
+	}
+
+	// 2. Export year-specific tables to this run's year workbook.
+	if err := m.SyncYearData(ctx, m.year, m.changed); err != nil {
+		return fmt.Errorf("exporting year-specific data: %w", err)
+	}
+
+	// 3. Update master index in globals workbook.
+	if err := m.workbookManager.UpdateMasterIndex(ctx); err != nil {
+		slog.Warn("Failed to update master index", "error", err)
+		// Don't fail the sync if index update fails
 	}
 
 	m.SyncSuccessful = true

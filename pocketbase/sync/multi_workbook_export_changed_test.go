@@ -2,6 +2,7 @@ package sync
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/pocketbase/pocketbase/core"
@@ -119,5 +120,44 @@ func TestExportGlobalsOnCurrentYearOnly(t *testing.T) {
 	}
 	if fakeWriterGlobalsWritten(historical) {
 		t.Error("a historical year must not export globals")
+	}
+}
+
+// TestSyncGlobalsFailureIsSoftYearDataFailureIsHard pins the asymmetry Sync() must keep even
+// though it looks like it could just delegate to SyncForYears (which has no such asymmetry --
+// it logs and continues on both a globals and a year-data failure, and always returns nil).
+// Sync() does NOT delegate, on purpose: a globals failure is soft (logged, the run continues
+// to year data -- the shared globals workbook lagging by one run is tolerable), but a
+// year-data failure is hard (returned -- this run's own year workbook did not get written,
+// and once this job is queued with a sync_runs row and a completion toast (task 13), that has
+// to surface as a failure rather than report green).
+//
+// Forces each independently via MockWorkbookManager's GetOrCreateGlobalsErr /
+// GetOrCreateYearErr -- SyncGlobalsOnly's and SyncYearData's only non-nil return paths.
+func TestSyncGlobalsFailureIsSoftYearDataFailureIsHard(t *testing.T) {
+	globalsFails := newExportWithFakeWriter(t)
+	globalsManager, ok := globalsFails.workbookManager.(*MockWorkbookManager)
+	if !ok {
+		t.Fatal("expected *MockWorkbookManager")
+	}
+	globalsManager.GetOrCreateGlobalsErr = errors.New("globals workbook unavailable")
+	if err := globalsFails.Sync(context.Background()); err != nil {
+		t.Errorf("a globals failure must not fail Sync(), got: %v", err)
+	}
+	if !globalsFails.SyncSuccessful {
+		t.Error("a globals failure must still leave SyncSuccessful true")
+	}
+
+	yearFails := newExportWithFakeWriter(t)
+	yearManager, ok := yearFails.workbookManager.(*MockWorkbookManager)
+	if !ok {
+		t.Fatal("expected *MockWorkbookManager")
+	}
+	yearManager.GetOrCreateYearErr = errors.New("year workbook unavailable")
+	if err := yearFails.Sync(context.Background()); err == nil {
+		t.Error("a year-data failure must fail Sync(), got nil error")
+	}
+	if yearFails.SyncSuccessful {
+		t.Error("a year-data failure must leave SyncSuccessful false")
 	}
 }
