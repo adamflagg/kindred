@@ -151,7 +151,7 @@ export function RefreshHousingButton() {
             </button>
             <button
               onClick={() => {
-                run.start()
+                void run.start()
                 startRefresh.mutate()
                 setIsModalOpen(false)
               }}

@@ -9,20 +9,27 @@
  * That test therefore drives a REAL QueryClient with the real defaults and a
  * REAL mounted roster query, and asserts the rendered value changes.
  */
-import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent, act } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query'
 import type { SyncStatusResponse } from '../../hooks/useSyncStatusAPI'
 import { queryKeys } from '../../utils/queryKeys'
 
-const syncStatusSpy = vi.fn(
-  (_opts?: unknown): { data: SyncStatusResponse | null | undefined; dataUpdatedAt: number } => ({
-    data: undefined,
-    dataUpdatedAt: 0,
-  })
-)
+/**
+ * A REAL `useQuery` on the real `['sync-status']` key, not a hand-fed hook
+ * return. `useSyncSequenceRun.start()` takes its baseline from the reading
+ * `invalidateQueries()`' own promise waits for (kindred#2599), so a mock that
+ * never reaches the cache leaves a PRESS with no baseline at all — this file
+ * used to synthesise an advancing `dataUpdatedAt` by hand for the same reason,
+ * and no longer has to model the query layer at all.
+ */
 vi.mock('../../hooks/useSyncStatusAPI', () => ({
-  useSyncStatusAPI: (...args: unknown[]) => syncStatusSpy(...args),
+  useSyncStatusAPI: (opts?: { enabled?: boolean }) =>
+    useQuery({
+      queryKey: queryKeys.syncStatus(),
+      queryFn: () => Promise.resolve(currentStatus),
+      enabled: opts?.enabled ?? true,
+    }),
 }))
 
 const refreshFamilyCamp = vi.fn((..._args: unknown[]) => Promise.resolve({ status: 'started' }))
@@ -67,16 +74,10 @@ function status(overrides: Record<string, unknown> = {}): SyncStatusResponse {
   } as unknown as SyncStatusResponse
 }
 
-/**
- * `dataUpdatedAt` is what `useSyncSequenceRun`'s `start()` now waits on
- * (kindred#2595) to tell a genuinely post-press status reading apart from the
- * stale cache it can no longer trust — it must advance on every simulated
- * poll here, not stay fixed like the bare `{ data }` this file mocked before.
- */
-let statusVersion = 0
+/** What `GET /api/custom/sync/status` would answer right now. */
+let currentStatus: SyncStatusResponse = status()
 function setStatus(s: SyncStatusResponse) {
-  statusVersion += 1
-  syncStatusSpy.mockImplementation(() => ({ data: s, dataUpdatedAt: statusVersion }))
+  currentStatus = s
 }
 
 /** The app's real cache policy — 30 minutes stale, no refetch on focus. */
@@ -104,6 +105,9 @@ function RosterProbe() {
 }
 
 function renderButton(client = makeClient()) {
+  // A WARM cache and no polling — the state a page at rest is in, and the one
+  // kindred#2595 is about. Seeding it also keeps the first render synchronous.
+  client.setQueryData(queryKeys.syncStatus(), currentStatus)
   const utils = render(
     <QueryClientProvider client={client}>
       <RosterProbe />
@@ -111,6 +115,22 @@ function renderButton(client = makeClient()) {
     </QueryClientProvider>
   )
   return { ...utils, client }
+}
+
+/** One 3 s poll landing, through the real cache. */
+async function poll(client: QueryClient, s: SyncStatusResponse) {
+  currentStatus = s
+  await act(async () => {
+    await client.invalidateQueries({ queryKey: queryKeys.syncStatus() })
+  })
+}
+
+/**
+ * Settle the press: `start()` cancels any in-flight poll, invalidates, and
+ * awaits that refetch before it has a baseline to measure the run against.
+ */
+async function settlePress() {
+  await act(async () => {})
 }
 
 describe('RefreshHousingButton — resting and the press modal', () => {
@@ -258,27 +278,23 @@ describe('RefreshHousingButton — the cutover', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     rosterFromServer = 'Tamarack 1'
+    setStatus(status())
   })
 
   it('LANDS THE NEW PLACEMENTS ON THE BOARD, not just a toast (§4.3)', async () => {
     setStatus(
       status({ family_camp_derived: { status: 'running', start_time: new Date().toISOString() } })
     )
-    const { rerender, client } = renderButton()
+    const { client } = renderButton()
     await screen.findByText('Tamarack 1')
     expect(screen.getByText(/Refreshing housing/)).toBeInTheDocument()
 
     // The chain finishes and CampMinder's newer placement is now what the
     // roster endpoint returns.
     rosterFromServer = 'Tamarack 2'
-    setStatus(
+    await poll(
+      client,
       status({ lodging_assignments: { status: 'success', end_time: '2026-04-22T10:30:00.000Z' } })
-    )
-    rerender(
-      <QueryClientProvider client={client}>
-        <RosterProbe />
-        <RefreshHousingButton />
-      </QueryClientProvider>
     )
 
     // WITHOUT the invalidation this stays "Tamarack 1" for thirty minutes.
@@ -289,15 +305,10 @@ describe('RefreshHousingButton — the cutover', () => {
     setStatus(
       status({ family_camp_derived: { status: 'running', start_time: new Date().toISOString() } })
     )
-    const { rerender, client } = renderButton()
-    setStatus(
+    const { client } = renderButton()
+    await poll(
+      client,
       status({ lodging_assignments: { status: 'success', end_time: '2026-04-22T10:30:00.000Z' } })
-    )
-    rerender(
-      <QueryClientProvider client={client}>
-        <RosterProbe />
-        <RefreshHousingButton />
-      </QueryClientProvider>
     )
     await waitFor(() => expect(toastSuccess).toHaveBeenCalledTimes(1))
     const message = String(toastSuccess.mock.calls[0]?.[0] ?? '')
@@ -314,41 +325,32 @@ describe('RefreshHousingButton — the cutover', () => {
    * equivalent (`lands the refreshed bunks on the board at the cutover`, in
    * AppLayout.test.tsx) has had it throughout. Weekend models summer.
    *
-   * The middle step is the one that matters: the first reading after the press
-   * is what CONFIRMS the baseline, and until it lands there are no grounds to
-   * call anything moved (kindred#2595).
+   * The middle step is the one that matters: the press's OWN refetch is what
+   * confirms the baseline, and until it settles there are no grounds to call
+   * anything moved (kindred#2595, kindred#2599).
    */
   it('LANDS THE NEW PLACEMENTS after a PRESS, not just after a mid-run pickup', async () => {
     setStatus(status())
-    const { rerender, client } = renderButton()
+    const { client } = renderButton()
     await screen.findByText('Tamarack 1')
 
     fireEvent.click(screen.getByRole('button', { name: /Refresh Housing/i }))
     fireEvent.click(screen.getByRole('button', { name: /Start refresh/i }))
     await waitFor(() => expect(refreshFamilyCamp).toHaveBeenCalledTimes(1))
 
-    const replay = () =>
-      rerender(
-        <QueryClientProvider client={client}>
-          <RosterProbe />
-          <RefreshHousingButton />
-        </QueryClientProvider>
-      )
-
-    // The invalidation's own refetch lands in the arming gap: nothing has moved
-    // yet, and this is what makes the baseline genuinely post-press.
-    setStatus(status())
-    replay()
+    // `start()`'s own invalidation refetches and settles here, in the arming
+    // gap: nothing has moved yet, and that reading is the baseline.
+    await settlePress()
     expect(toastSuccess).not.toHaveBeenCalled()
     expect(screen.getByTestId('roster').textContent).toBe('Tamarack 1')
 
     // The chain finishes: CampMinder's newer placement is now what the roster
     // endpoint returns, and the terminal job's end_time has moved.
     rosterFromServer = 'Tamarack 2'
-    setStatus(
+    await poll(
+      client,
       status({ lodging_assignments: { status: 'success', end_time: '2026-04-22T10:30:00.000Z' } })
     )
-    replay()
 
     // WITHOUT the invalidation this stays "Tamarack 1" for thirty minutes.
     await waitFor(() => expect(screen.getByTestId('roster').textContent).toBe('Tamarack 2'))
@@ -359,15 +361,10 @@ describe('RefreshHousingButton — the cutover', () => {
     setStatus(
       status({ family_camp_derived: { status: 'running', start_time: new Date().toISOString() } })
     )
-    const { rerender, client } = renderButton()
-    setStatus(
+    const { client } = renderButton()
+    await poll(
+      client,
       status({ lodging_assignments: { status: 'success', end_time: '2026-04-22T10:30:00.000Z' } })
-    )
-    rerender(
-      <QueryClientProvider client={client}>
-        <RosterProbe />
-        <RefreshHousingButton />
-      </QueryClientProvider>
     )
     await waitFor(() =>
       expect(screen.getByRole('button', { name: /Refresh Housing/i })).toBeInTheDocument()
@@ -379,15 +376,17 @@ describe('RefreshHousingButton — failure', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     rosterFromServer = 'Tamarack 1'
+    setStatus(status())
   })
 
   it('shows an error toast and nothing more, and does NOT refresh the board', async () => {
     setStatus(status({ persons: { status: 'running', start_time: new Date().toISOString() } }))
-    const { rerender, client } = renderButton()
+    const { client } = renderButton()
     await screen.findByText('Tamarack 1')
 
     rosterFromServer = 'Tamarack 2'
-    setStatus(
+    await poll(
+      client,
       status({
         persons: {
           status: 'failed',
@@ -395,12 +394,6 @@ describe('RefreshHousingButton — failure', () => {
           error: 'CampMinder 502',
         },
       })
-    )
-    rerender(
-      <QueryClientProvider client={client}>
-        <RosterProbe />
-        <RefreshHousingButton />
-      </QueryClientProvider>
     )
 
     await waitFor(() => expect(toastError).toHaveBeenCalledTimes(1))

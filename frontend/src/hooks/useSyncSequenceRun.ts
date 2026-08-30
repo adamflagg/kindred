@@ -30,15 +30,56 @@
  * clock skew. Snapshotting the terminal job's `end_time` when the run is first
  * observed and waiting for it to differ is exact and clock-free.
  *
+ * ## Where the baseline comes from, and why not from the cache
+ *
+ * A run picked up mid-flight snapshots it the moment a chain job is seen
+ * running: the terminal job has demonstrably NOT finished, so whatever it says
+ * now is a value to wait for a change against. A PRESS has no such proof.
+ * `start()` cannot read the cache either — polling stops entirely while the
+ * hook is at rest, so the cached payload can be arbitrarily old, and an
+ * unrelated run's moved `end_time` would then read as our own chain completing
+ * before it had done anything (kindred#2595).
+ *
+ * So the press waits for a reading it KNOWS post-dates it, and takes that as
+ * the baseline. `queryClient.invalidateQueries()` returns a promise that
+ * resolves when the refetch it triggered has settled, which is exactly that
+ * reading (kindred#2599). Two things about that promise are not free, and are
+ * guarded where it is awaited: it resolves without fetching anything when no
+ * observer is active, and it can be deduplicated onto a fetch that predates
+ * the press.
+ *
+ * ⛔ WHAT THIS DOES NOT DO, under any mechanism: detect a chain that finishes
+ * BEFORE that first post-press reading. "An unrelated run moved the terminal
+ * `end_time` while we were idle" and "our own chain finished between the press
+ * and the first response" are observationally identical on the inputs the
+ * client has, and the fresh reading is the baseline under either. The first
+ * post-press reading is therefore always trusted, never compared.
+ *
  * ## No new polling code
  *
  * `useSyncStatusAPI` already polls every 3 s while anything reports
  * running/pending and stops entirely at rest, and already sets
  * `refetchOnWindowFocus`. This hook subscribes to that same query — React Query
- * shares one cache entry across observers — and asks it for `forcePolling` only
- * during the ARMING GAP: the few hundred milliseconds between the POST
- * returning `{"status":"started"}` and the first job being marked running, when
- * nothing reports running and the polling would otherwise never start.
+ * shares one cache entry across observers — and asks it for `forcePolling` for
+ * the WHOLE of a run, not merely for the arming gap.
+ *
+ * The arming gap is the obvious half: the few hundred milliseconds between the
+ * POST returning `{"status":"started"}` and the first job being marked running,
+ * when nothing reports running and the polling would otherwise never start. The
+ * other half is every GAP BETWEEN TWO SEQUENTIAL JOBS. `runSyncAndWait` waits on
+ * a 500 ms ticker, and a `RunSyncSequence` carries no run-type flag and takes no
+ * queue entry, so a poll landing in one reads a payload that reports NOTHING —
+ * `refetchInterval` returns `false` and React Query clears the interval. Only a
+ * window focus would ever start it again, so the rest of the chain runs
+ * unobserved: no cutover, no invalidation, and the stall timeout retiring the
+ * run in silence two minutes later. That is the staleness kindred#2587 is
+ * about, under a progress bar that has simply vanished.
+ *
+ * Holding it for the whole run costs nothing extra: wherever a chain job IS
+ * published as running, `refetchInterval` already returns 3000, so those gaps
+ * are the entire delta. And it cannot latch on, because every exit — the
+ * cutover, `abandon()`, the arming timeout, the stall timeout — goes through
+ * `reset()`, which puts the phase back to `idle` and drops the force with it.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
@@ -103,8 +144,23 @@ export interface SyncSequenceRun {
   progress: number
   /** Seconds still to go, on the measured averages. */
   remainingSeconds: number
-  /** Arm the detector. Call it alongside the POST that starts the chain. */
-  start: () => void
+  /**
+   * Arm the detector. Call it alongside the POST that starts the chain.
+   *
+   * The arming itself is SYNCHRONOUS; the promise settles once the ATTEMPT to
+   * capture a baseline has finished — which is not the same as having captured
+   * one. Three of its four exit paths capture nothing: a second press has
+   * replaced this one, the invalidation resolved without fetching, or the
+   * reading carried no payload. So awaiting this is not a guarantee that a
+   * baseline is in hand; what it guarantees is that nothing further will be
+   * attempted for this run. That degradation is the documented safe one — a
+   * chain that starts is caught by the observed-running capture instead, and
+   * one that never starts expires on the arming timeout.
+   *
+   * Callers are free to ignore it (`void run.start()`) or to await it before
+   * firing the POST.
+   */
+  start: () => Promise<void>
   /** Drop an armed run without announcing anything — for a POST that failed. */
   abandon: () => void
 }
@@ -164,50 +220,46 @@ export function useSyncSequenceRun({
   const queryClient = useQueryClient()
   const [phase, setPhase] = useState<'idle' | 'arming' | 'running'>('idle')
 
-  // ⚠️ READING `dataUpdatedAt` HERE IS NOT FREE. React Query hands `useQuery`'s
-  // result through a tracking Proxy (`QueryObserver#trackResult`), so every key
-  // this line touches joins `#trackedProps` — and the observer is thereafter
-  // notified whenever THAT key changes, not only when `data` does.
-  // `dataUpdatedAt` is a fresh `Date.now()` on every resolved fetch, so this
-  // observer is now notified on every poll, including the polls whose payload
-  // is byte-identical to the one before.
+  // ⚠️ `data` AND NOTHING ELSE. React Query hands `useQuery`'s result through a
+  // tracking Proxy (`QueryObserver#trackResult`), so every key this line reads
+  // joins `#trackedProps` — and the observer is thereafter notified whenever
+  // THAT key changes, not only when `data` does. `dataUpdatedAt` is a fresh
+  // `Date.now()` on every resolved fetch, so reading it here would notify this
+  // observer on every poll, including the polls whose payload is byte-identical
+  // to the one before.
   //
   // MEASURED against the installed query-core 5.101.4 — one observer, 15
   // identical refetches 3 s apart: `const { data }` re-rendered ONCE,
   // `const { data, dataUpdatedAt }` re-rendered FIFTEEN times. `AppLayout`
-  // mounts one of these for the whole session, so the price is one render of
-  // the app shell per poll for as long as anything is syncing. (`<Outlet/>`
-  // hands back the same element from route context, so the routed page below
-  // it bails out; it is the nav shell that re-renders, not the board.) Note
-  // `#trackedProps` is only ever ADDED to, so this cannot be narrowed by
-  // reading the key conditionally — one read arms it for the observer's life.
+  // mounts one of these for the whole session, so that would be one render of
+  // the nav shell per poll for as long as anything is syncing — a nightly daily
+  // sync included, when no run is armed at all. `#trackedProps` is only ever
+  // ADDED to, so it cannot be narrowed by reading the key conditionally: one
+  // read arms it for the observer's life.
   //
-  // Paid deliberately: the gate below has to notice a refetch that changes
-  // NOTHING, and that is precisely the notification tracked props buy. Reading
-  // it untracked instead (`queryClient.getQueryState(...)`) leaves the capture
-  // to whatever else happens to re-render — the 5 s readout tick, another
-  // consumer's state change — which makes the timing incidental rather than
-  // prompt, against a ~4.7 s bunking chain and a 60 s arming budget.
-  // kindred#2599 tracks the redesign that would remove the need for the read.
-  const { data: syncStatus, dataUpdatedAt } = useSyncStatusAPI({
+  // `start()` gets its freshness signal from `invalidateQueries`' own promise
+  // instead (kindred#2599), and the one fetch-counting thing it still looks at
+  // it reads through `queryClient.getQueryState(...)` — UNTRACKED, and so free.
+  const { data: syncStatus } = useSyncStatusAPI({
     enabled,
-    forcePolling: phase === 'arming',
+    // EVERY phase but `idle`, not just `arming`: the arming gap and the
+    // sub-second gaps between sequential jobs are both polls that read a
+    // payload reporting nothing, and either one would otherwise stop the
+    // polling dead. See "No new polling code" above.
+    forcePolling: phase !== 'idle',
   })
 
   // The terminal job's end_time as it stood when this run was first seen.
-  // `undefined` means "not captured"; a captured absent end_time is null.
+  // `undefined` means "not captured", and is the whole of the state machine's
+  // "no grounds to call anything moved yet"; a captured absent end_time is
+  // null. Nothing else encodes that bit — the `awaitingBaseline` flag that used
+  // to sit beside it was true in exactly the cases this is `undefined` in.
   const baselineRef = useRef<string | null | undefined>(undefined)
-  // `dataUpdatedAt` as it stood at the press, and whether the baseline is
-  // still waiting on a reading confirmed to POST-DATE it. `start()` cannot
-  // snapshot the baseline from the CACHED payload: polling stops entirely
-  // while the hook is at rest, so the cache can be arbitrarily old, and an
-  // unrelated run's moved `end_time` would then read as our own chain
-  // completing before it has done anything (kindred#2595). `dataUpdatedAt` is
-  // what makes a genuinely post-press fetch distinguishable from a cached
-  // re-render: React Query bumps it on every resolved fetch, even one whose
-  // payload is byte-identical to what came before.
-  const pressDataUpdatedAtRef = useRef(0)
-  const awaitingBaselineRef = useRef(false)
+  // Which run a resolving `start()` belongs to. Its baseline capture happens
+  // after two awaits, and an `abandon()`, a cutover or a second press in
+  // between must not let a stale promise write over what the current run has
+  // set up.
+  const runTokenRef = useRef(0)
   // The furthest chain job observed running. `RunSyncSequence` aborts on the
   // first error, so at the cutover this is either the terminal job (success) or
   // the job that failed. STATE rather than a ref: the progress readout reads it
@@ -216,8 +268,8 @@ export function useSyncSequenceRun({
   const onCompleteRef = useRef(onComplete)
   onCompleteRef.current = onComplete
 
-  const terminal = chain[chain.length - 1]
-  const terminalEndTime = jobStatus(syncStatus, terminal?.service ?? '')?.end_time ?? null
+  const terminalService = chain[chain.length - 1]?.service ?? ''
+  const terminalEndTime = jobStatus(syncStatus, terminalService)?.end_time ?? null
 
   const orchestratorBusy = orchestratorRunInFlight(syncStatus)
   let activeIndex = -1
@@ -229,25 +281,75 @@ export function useSyncSequenceRun({
   }
   const isActive = activeIndex >= 0
 
+  /**
+   * Take the baseline unless this run already has one. NEVER OVERWRITE: a
+   * baseline captured from an OBSERVED running job is proof on its own, and is
+   * older than anything a later reading could offer.
+   */
+  const captureBaseline = useCallback((endTime: string | null) => {
+    if (baselineRef.current === undefined) baselineRef.current = endTime
+  }, [])
+
   const reset = useCallback(() => {
+    runTokenRef.current += 1
     baselineRef.current = undefined
-    awaitingBaselineRef.current = false
     setObservedIndex(-1)
     setPhase('idle')
   }, [])
 
-  const start = useCallback(() => {
-    // Do NOT snapshot from the cached payload — polling stops at rest, so it
-    // can be old (kindred#2595). Record the freshness marker instead; the
-    // effect below captures the real baseline once a reading that post-dates
-    // this press lands.
+  const start = useCallback(async () => {
+    // ARMED SYNCHRONOUSLY, above the first `await`: all of this has run by the
+    // time `start()` hands a promise back, so the POST on the caller's next
+    // line cannot outrun the detector. Awaiting it instead is also safe — that
+    // only delays the POST until the baseline is in hand, which narrows the
+    // window rather than opening one.
+    const token = ++runTokenRef.current
     baselineRef.current = undefined
-    pressDataUpdatedAtRef.current = dataUpdatedAt
-    awaitingBaselineRef.current = true
     setObservedIndex(-1)
     setPhase('arming')
-    void queryClient.invalidateQueries({ queryKey: queryKeys.syncStatus() })
-  }, [queryClient, dataUpdatedAt])
+
+    const key = queryKeys.syncStatus()
+
+    // HAZARD, DEDUPLICATION. `Query#fetch` hands back the EXISTING retryer
+    // promise when a fetch is already in flight and the cache holds no data —
+    // `cancelRefetch`, which `refetchQueries` already passes, can only cancel a
+    // refetch that has something to revert to. The invalidation below would
+    // then resolve carrying a payload the server decided BEFORE the press, and
+    // an unrelated run that finished in between would be invisible to it.
+    // Cancelling first makes "the reading I trust was requested after the
+    // press" true by construction, at the cost of one re-issued poll.
+    await queryClient.cancelQueries({ queryKey: key })
+
+    const updatesBefore = queryClient.getQueryState(key)?.dataUpdateCount ?? 0
+    await queryClient.invalidateQueries({ queryKey: key })
+    if (runTokenRef.current !== token) return
+
+    const state = queryClient.getQueryState<SyncStatusResponse | null>(key)
+
+    // HAZARD, A PROMISE THAT RESOLVES WITHOUT FETCHING. `invalidateQueries`
+    // hands its filters to `refetchQueries`, which defaults to `type: 'active'`:
+    // with no active observer — or no cache entry at all — it matches nothing
+    // and resolves IMMEDIATELY, having fetched nothing. Reading the cache back
+    // at that point hands over the arbitrarily old payload kindred#2595 is
+    // about, with nothing to say it is old. `dataUpdateCount` is the proof that
+    // a fetch actually landed. Leaving the baseline uncaptured when it has not
+    // is the safe degradation: a chain that does start is still caught by the
+    // OBSERVED-running capture below, and one that never starts still expires
+    // on the arming timeout.
+    if (!state || state.dataUpdateCount === updatesBefore) return
+
+    // A reading that post-dates the press is not the same thing as a reading
+    // that SAYS anything: `useSyncStatusAPI`'s queryFn SWALLOWS a 401 and
+    // returns `null`, which React Query stamps as a perfectly successful fetch.
+    // Capturing `null` as the baseline would make the next reading that does
+    // carry data differ from it — i.e. read as our chain completing. One shot
+    // is enough: on a 401 `pb.afterSend` has already cleared auth and redirected
+    // to /login, so there is no session left to announce into.
+    const fresh = state.data
+    if (!fresh) return
+
+    captureBaseline(jobStatus(fresh, terminalService)?.end_time ?? null)
+  }, [queryClient, terminalService, captureBaseline])
 
   const abandon = useCallback(() => {
     reset()
@@ -274,53 +376,44 @@ export function useSyncSequenceRun({
     }
 
     if (isActive) {
-      // The press can land before the first status response, leaving `start()`
-      // nothing to snapshot. This is the same capture the `idle` branch above
-      // makes for a run picked up mid-flight, and it is correct for the same
-      // reason: a chain job is running, so the terminal job has NOT finished,
-      // and its current end_time is a baseline to wait for a change against —
-      // that is true regardless of `dataUpdatedAt` freshness, since an
-      // OBSERVED running job is proof enough on its own. Without it
-      // `terminalMoved` can never become true and a successful chain ends in a
-      // silent stall timeout with no invalidation.
-      if (baselineRef.current === undefined) baselineRef.current = terminalEndTime
-      awaitingBaselineRef.current = false
+      // The reading `start()` awaited can arrive carrying nothing — a press
+      // before the first status response, a 401, an invalidation that fetched
+      // nothing — leaving the baseline uncaptured. This is the same capture the
+      // `idle` branch above makes for a run picked up mid-flight, and it is
+      // correct for the same reason: a chain job is RUNNING, so the terminal
+      // job has NOT finished, and its current end_time is a value to wait for a
+      // change against. An OBSERVED running job is proof on its own and needs
+      // no freshness argument at all. Without this `terminalMoved` could never
+      // become true and a successful chain would end in a silent stall timeout
+      // with no invalidation.
+      captureBaseline(terminalEndTime)
       if (phase !== 'running') setPhase('running')
       return
     }
 
-    // Nothing of the chain is currently observed running. Before comparing
-    // anything, the baseline itself has to be trustworthy: `start()` could not
-    // snapshot it from the cache (kindred#2595), so wait for a reading that
-    // POST-DATES the press — confirmed by `dataUpdatedAt` changing, which a
-    // refetch bumps even when the payload it returns is unchanged from before.
-    // The first such reading is always TRUSTED AS THE BASELINE, never compared
-    // against anything: on that read there are no grounds yet to call
-    // anything "moved", whether the difference from the pre-press cache is an
-    // unrelated run that finished while we were idle, or our own chain
-    // finishing between the press and this very first response.
+    // Nothing of the chain is currently observed running: either the run is
+    // over, or this poll landed in the gap between two of its jobs.
     //
-    // `syncStatus &&` is the second half of the same condition, and it is not
-    // decoration: `useSyncStatusAPI`'s queryFn SWALLOWS a 401 and returns
-    // `null`, which React Query stamps a fresh `dataUpdatedAt` for like any
-    // other successful fetch. A reading that post-dates the press is therefore
-    // not necessarily a reading that SAYS anything — and capturing `null` as
-    // the baseline would make the next reading that does carry data differ
-    // from it, i.e. read as our chain completing. `start()` used to carry this
-    // guard as `syncStatus ? terminalEndTime : undefined`; it moves with the
-    // capture.
-    if (awaitingBaselineRef.current) {
-      if (syncStatus && dataUpdatedAt !== pressDataUpdatedAtRef.current) {
-        baselineRef.current = terminalEndTime
-        awaitingBaselineRef.current = false
-      }
-      return
-    }
-
-    // Either the run is over, or this poll landed in the gap between two of
-    // its jobs.
+    // Nothing may be called "moved" without a baseline to move against, and an
+    // armed press has one only once the reading `start()` awaited has landed
+    // AND been trusted (kindred#2595, kindred#2599). Until then this is the
+    // whole of the answer: no grounds yet. That is deliberately the same
+    // silence whether the difference from the pre-press cache would have been
+    // an unrelated run finishing while we were idle or our own chain finishing
+    // between the press and that first response — the two are not separable on
+    // the data, and the run stays BOUNDED by the arming timeout either way.
     const baseline = baselineRef.current
-    const terminalMoved = baseline !== undefined && terminalEndTime !== baseline
+    if (baseline === undefined) return
+
+    // A reading that arrives is not necessarily a reading that SAYS anything:
+    // `useSyncStatusAPI`'s queryFn SWALLOWS a 401 and returns `null`, which
+    // React Query treats as a perfectly successful fetch. Comparing against
+    // that would read every string baseline as having moved to nothing — i.e.
+    // as our chain completing. `start()` carries the same guard for the
+    // capture; this is it for the comparison.
+    if (!syncStatus) return
+
+    const terminalMoved = terminalEndTime !== baseline
     const lastSeen = observedIndex
     const lastSeenFailed =
       lastSeen >= 0 && jobStatus(syncStatus, chain[lastSeen]?.service ?? '')?.status === 'failed'
@@ -340,7 +433,7 @@ export function useSyncSequenceRun({
     syncStatus,
     chain,
     reset,
-    dataUpdatedAt,
+    captureBaseline,
   ])
 
   // Bound the two states that can otherwise wait forever: an armed press whose
@@ -362,16 +455,17 @@ export function useSyncSequenceRun({
   // value it had when that job STARTED, "about 14 min left" with four minutes
   // to go. This re-renders; it starts no network request.
   //
-  // ⚠️ The measurement this comment used to cite — "15 identical polls, ZERO
-  // extra renders" — was true of `const { data } = useSyncStatusAPI(...)` and
-  // is NO LONGER true of this hook: tracking `dataUpdatedAt` (see the note at
-  // the destructure above) means an identical poll now does notify, so the
-  // readout would advance on the 3 s poll even without this. The tick STAYS
-  // anyway, and not out of caution: it is the only thing that moves when
-  // polling itself is not running, and it is what keeps the readout honest if
-  // the freshness gate above is ever changed to read `dataUpdatedAt` without
-  // tracking it. `advances the remaining-time estimate while the status
-  // payload is unchanged` pins it directly, with the query layer mocked out.
+  // ⚠️ That measurement — "15 identical polls, ZERO extra renders" — is true of
+  // this hook again since kindred#2599. It was NOT true while the freshness
+  // gate read `dataUpdatedAt`, which tracked that key and so did notify on an
+  // identical poll; the baseline now comes from `invalidateQueries`' own
+  // promise (see the destructure above), nothing puts a per-fetch timestamp
+  // into `#trackedProps`, and the tick is once more the ONLY thing that moves
+  // the readout during those nine minutes. It stays regardless of what the gate
+  // is built on, because it is also the only thing that moves when polling
+  // itself is not running. `advances the remaining-time estimate while the
+  // status payload is unchanged` pins it directly, with the query layer mocked
+  // out.
   const [, setTick] = useState(0)
   useEffect(() => {
     if (phase === 'idle') return

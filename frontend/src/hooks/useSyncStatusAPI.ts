@@ -182,13 +182,23 @@ export function useSyncStatusAPI(
     /**
      * Poll every 3 s regardless of what the payload reports.
      *
-     * For the ARMING GAP only (`useSyncSequenceRun`): between the POST that
-     * starts a targeted refresh returning `{"status":"started"}` and the
-     * orchestrator marking the chain's first job running, NOTHING in the
-     * payload says anything is happening — so the data-driven `refetchInterval`
-     * below returns `false`, polling never starts, and the run is never seen.
+     * For a `useSyncSequenceRun` run, which has TWO kinds of window in which
+     * the payload says nothing is happening while the run is very much alive:
+     *
+     * - the ARMING GAP, between the POST that starts a targeted refresh
+     *   returning `{"status":"started"}` and the orchestrator marking the
+     *   chain's first job running;
+     * - every GAP BETWEEN TWO SEQUENTIAL JOBS — `runSyncAndWait` waits on a
+     *   500 ms ticker, and `RunSyncSequence` sets no run-type flag and takes
+     *   no queue entry, so nothing below reports a chain in flight.
+     *
+     * The data-driven `refetchInterval` below returns `false` for both — and
+     * React Query CLEARS the interval when it does. In the first that means
+     * polling never starts and the run is never seen; in the second it means
+     * polling STOPS MID-CHAIN, and nothing but a window focus restarts it.
+     *
      * The caller is responsible for dropping this again, which the hook that
-     * sets it does on a timeout as well as on the cutover.
+     * sets it does on every exit: the cutover, an abandon, and both timeouts.
      *
      * Each React Query OBSERVER owns its own refetch timer, so one consumer
      * asking for this does not change the interval any other consumer of the
@@ -238,9 +248,10 @@ export function useSyncStatusAPI(
     },
     // Poll every 3 seconds if running or queue has items, stop polling otherwise
     refetchInterval: (query) => {
-      // The arming gap: a caller knows a run has been started that the payload
-      // cannot yet show. Checked before the no-data guard, because a caller
-      // that presses before the first status response needs polling too.
+      // A caller knows a run is in flight that the payload cannot show — the
+      // arming gap, or a gap between two of its jobs. Checked before the
+      // no-data guard, because a caller that presses before the first status
+      // response needs polling too.
       if (forcePolling) return 3000
 
       const data = query.state.data
