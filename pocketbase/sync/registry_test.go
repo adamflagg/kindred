@@ -287,4 +287,23 @@ func TestUnifiedRunDerivation(t *testing.T) {
 	if slices.Contains(dockerHistorical, "process_requests") {
 		t.Error("process_requests is CurrentYearOnly and must not be in a historical replay, even when IS_DOCKER=true")
 	}
+
+	// The full ordered sequence, pinned the same way TestDailyQueueDerivation pins the daily
+	// cron's: as a literal derived from syncJobMeta by hand, not from GetDefaultUnifiedSyncJobs
+	// itself. This is the one queue this branch actually reorders (stranded_assignment_cleanup
+	// moves from mid-Transform to dead-last), and until now only its membership and last
+	// element were asserted anywhere. multi_workbook_export needs no ignore-list entry here:
+	// it carries no TriggerFullRun (TestMultiWorkbookExportWithholdsFullRunTrigger pins that),
+	// so it can never appear in dockerFull regardless of its Gate.
+	assertSeq(t, "current-year full run", dockerFull, []string{
+		"session_groups", "sessions", "attendees", "persons", "bunks", "bunk_plans",
+		"bunk_assignments", "staff", "financial_transactions",
+		"person_custom_values", "household_custom_values",
+		"family_camp_derived", "lodging_assignments", "staff_skills",
+		"financial_aid_applications", "household_demographics", "camper_dietary",
+		"camper_transportation", "quest_registrations", "staff_applications",
+		"staff_vehicle_info", "normalize_geographic", "enrollment_snapshots",
+		"reconcile_request_lifecycle", "bunk_requests", "process_requests",
+		"stranded_assignment_cleanup",
+	})
 }
