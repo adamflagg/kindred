@@ -138,6 +138,10 @@ func TestScopedVariantContract(t *testing.T) {
 	for _, id := range scoped {
 		base := JobBase(id)
 
+		// Phase parity is not named in the doc comment above and has no mutation: it is
+		// structurally guaranteed by JobBase/GetPhaseForJob's shared syncJobMeta lookup
+		// (Tasks 1-3), not an independently falsifiable property the way the seven clauses
+		// below are. Left in as a cheap sanity check, not a proof.
 		if GetPhaseForJob(id) != GetPhaseForJob(base) {
 			t.Errorf("%s: phase %q != base %s's phase %q",
 				id, GetPhaseForJob(id), base, GetPhaseForJob(base))
