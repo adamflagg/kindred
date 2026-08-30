@@ -1,12 +1,13 @@
 import { describe, it, expect } from 'vitest'
 import {
+  assertStatusPayloadDerivesFromRegistry,
   getBackendSyncJobIds,
   getBackendSyncPostRouteSegments,
   parseSyncJobIds,
 } from './backendSyncJobIds'
 
 describe('getBackendSyncJobIds (kindred#2593)', () => {
-  it('parses a non-empty list of job IDs from pocketbase/sync/api.go', () => {
+  it('parses a non-empty list of job IDs from pocketbase/sync/orchestrator.go', () => {
     const ids = getBackendSyncJobIds()
     expect(ids.length).toBeGreaterThan(30)
   })
@@ -25,6 +26,19 @@ describe('getBackendSyncJobIds (kindred#2593)', () => {
     expect(ids).toContain('reconcile_request_lifecycle')
   })
 
+  it('includes the five global definition jobs', () => {
+    const ids = getBackendSyncJobIds()
+    for (const id of [
+      'person_tag_defs',
+      'custom_field_defs',
+      'staff_lookups',
+      'financial_lookups',
+      'divisions',
+    ]) {
+      expect(ids).toContain(id)
+    }
+  })
+
   it('includes multi_workbook_export, not the renamed google_sheets_export', () => {
     const ids = getBackendSyncJobIds()
     expect(ids).toContain('multi_workbook_export')
@@ -35,91 +49,142 @@ describe('getBackendSyncJobIds (kindred#2593)', () => {
     const ids = getBackendSyncJobIds()
     expect(new Set(ids).size).toBe(ids.length)
   })
+
+  // A Description, a Phase or a Gate is not a job. The row-shape check is what keeps them out;
+  // a quote-scraper over the same table would return every one of them.
+  it('parses only job ids, not the other fields on each row', () => {
+    const ids = getBackendSyncJobIds()
+    expect(ids).not.toContain('true')
+    for (const id of ids) {
+      expect(id).toMatch(/^[a-z0-9_]+$/)
+    }
+  })
 })
 
 // The parser is regex over Go source, and a source-text parser that quietly returns the WRONG
-// set is worse than no guard at all: three coverage tests are anchored to it, and a set that
+// set is worse than no guard at all: four coverage tests are anchored to it, and a set that
 // silently drops a job the backend added is precisely the drift kindred#2593 exists to catch,
 // now with a green tick on it. So every shape the parser does not understand must THROW rather
 // than parse to something plausible. These pin that, against synthetic sources -- the real
-// api.go is the happy path above.
+// orchestrator.go is the happy path above.
 describe('parseSyncJobIds rejects what it cannot parse (kindred#2593)', () => {
-  const wrap = (body: string) =>
-    `package sync\n\nfunc statusSyncTypes() []string {\n\treturn []string{\n${body}\n\t}\n}\n`
+  const wrap = (body: string) => `package sync\n\nvar syncJobMeta = []JobMeta{\n${body}\n}\n`
 
-  it('parses a well-formed literal, comments and all', () => {
+  it('parses a well-formed registry, comments and multi-line rows and all', () => {
     const src = wrap(
       [
-        '\t\t// Weekly syncs - global definitions',
-        '\t\t"person_tag_defs",   // Global sync: tag definitions',
-        '\t\t"sessions",',
-        '\t\t// Its dashboard row read "idle" while it ran.',
-        '\t\t"process_requests",',
+        '\t// Global phase -- cross-year definition tables.',
+        '\t{ID: "person_tag_defs", Phase: PhaseGlobal, Description: "Tag definitions",',
+        '\t\tCadences: CadenceWeeklyGlobal, Triggers: TriggerIndividualRoute},',
+        '',
+        '\t{ID: "sessions", Phase: PhaseSource, Description: "Sessions"}, // depends on groups',
+        '\t// process_requests only runs in Docker.',
+        '\t{ID: "process_requests", Phase: PhaseProcess,',
+        '\t\tDescription: "AI processing of bunk requests",',
+        '\t\tGate: func() bool { return os.Getenv("IS_DOCKER") == boolTrueStr }},',
       ].join('\n')
     )
     expect(parseSyncJobIds(src)).toEqual(['person_tag_defs', 'sessions', 'process_requests'])
   })
 
-  // The false-GREEN case, and the reason the parser validates line shape instead of scraping
-  // quotes: a job appended through a constant or a helper is invisible to a quote-scraper. The
-  // frontend lists would be missing it too, the sets would match, and all three guards would
-  // pass while the exact drift they exist to catch was live.
-  it('throws when a job is added by identifier rather than a string literal', () => {
-    const src = wrap('\t\t"sessions",\n\t\tjobPersonCustomValues,')
+  // The false-GREEN case, and the reason the parser validates row shape instead of scraping
+  // quotes: a job appended through a pre-built JobMeta value is invisible to a quote-scraper.
+  // The frontend lists would be missing it too, the sets would match, and all four guards
+  // would pass while the exact drift they exist to catch was live.
+  it('throws when a row is added by identifier rather than a composite literal', () => {
+    const src = wrap('\t{ID: "sessions", Phase: PhaseSource},\n\tpersonCustomValuesMeta,')
+    expect(() => parseSyncJobIds(src)).toThrow(/personCustomValuesMeta/)
+  })
+
+  // The same hole one level down: the row IS a literal, but its ID comes from a constant.
+  it('throws when a row names its ID with a constant', () => {
+    const src = wrap(
+      '\t{ID: "sessions", Phase: PhaseSource},\n\t{ID: jobPersonCustomValues, Phase: PhaseExpensive},'
+    )
     expect(() => parseSyncJobIds(src)).toThrow(/jobPersonCustomValues/)
   })
 
-  // The false-RED case: a quote-scraper turns any other string in the function into a phantom
-  // job id ("true" here), and then blames three frontend lists for a backend edit that added
-  // no job.
-  it('throws when the literal grows a conditional with a non-job string in it', () => {
-    const src = wrap(
-      '\t\t"sessions",\n\t\tif os.Getenv("IS_DOCKER") == "true" {\n\t\t\t"process_requests",\n\t\t}'
-    )
-    expect(() => parseSyncJobIds(src)).toThrow(/IS_DOCKER/)
+  // gofmt keeps `{ID: "..."` together, but nothing forces an author to write it that way. A row
+  // opened on its own line puts the id where this parser does not look, so it must throw rather
+  // than skip the row.
+  it('throws when a row is reshaped so its ID is not on the opening line', () => {
+    const src = wrap('\t{\n\t\tID: "sessions",\n\t\tPhase: PhaseSource,\n\t},')
+    expect(() => parseSyncJobIds(src)).toThrow(/only understands a row that opens/)
   })
 
   it('throws on a block comment, whose prose a "//" truncation cannot reach', () => {
-    const src = wrap('\t\t/* the "sessions" job is listed below */\n\t\t"sessions",')
+    const src = wrap('\t/* the "sessions" job is listed below */\n\t{ID: "sessions"},')
     expect(() => parseSyncJobIds(src)).toThrow(/sessions/)
   })
 
-  it('throws when statusSyncTypes() has been renamed or moved out of the file', () => {
-    const src =
-      'package sync\n\nfunc publishedSyncTypes() []string {\n\treturn []string{\n\t\t"sessions",\n\t}\n}\n'
-    expect(() => parseSyncJobIds(src)).toThrow(/renamed or removed/)
+  it('throws when syncJobMeta has been renamed or moved out of the file', () => {
+    const src = 'package sync\n\nvar syncJobRegistry = []JobMeta{\n\t{ID: "sessions"},\n}\n'
+    expect(() => parseSyncJobIds(src)).toThrow(/renamed/)
   })
 
-  // The remaining false-GREEN hole after the shape check, found by CodeRabbit on this PR: the
-  // literal search started at the function but was not bounded by it. Let statusSyncTypes()
-  // return a helper's result and the search runs on into the NEXT function's slice literal,
-  // parsing a plausible-looking wrong set that the three coverage guards then validate against.
-  it("throws rather than reading a later function's slice literal", () => {
+  // The remaining false-GREEN hole after the shape check: the row scan starts at the table but
+  // must be bounded by it. Let syncJobMeta be built by a helper and an unbounded search runs on
+  // into the NEXT declaration's slice literal, parsing a plausible-looking wrong set that the
+  // four coverage guards then validate against.
+  it("throws rather than reading a later declaration's slice literal", () => {
     const src = [
       'package sync',
       '',
-      'func statusSyncTypes() []string {',
-      '\treturn buildStatusSyncTypes()',
-      '}',
+      'var syncJobMeta = buildJobMeta()',
       '',
-      'func unrelatedNames() []string {',
-      '\treturn []string{',
-      '\t\t"not_a_job",',
-      '\t}',
+      'var unrelatedNames = []JobMeta{',
+      '\t{ID: "not_a_job"},',
       '}',
       '',
     ].join('\n')
-    expect(() => parseSyncJobIds(src)).toThrow(/no longer returns a/)
+    expect(() => parseSyncJobIds(src)).toThrow(/renamed/)
   })
 
-  it('throws on an empty list rather than returning one', () => {
-    expect(() => parseSyncJobIds(wrap('\t\t// nothing here yet'))).toThrow(/zero job IDs/)
+  it('throws on an empty table rather than returning one', () => {
+    expect(() => parseSyncJobIds(wrap('\t// nothing here yet'))).toThrow(/zero job IDs/)
+  })
+})
+
+// The registry is only the right anchor for the frontend's lists while the status payload IS
+// the registry. That is a fact about api.go, not about orchestrator.go, so it is checked
+// separately -- and it is the one way the re-pointed parser could go silently wrong.
+describe('assertStatusPayloadDerivesFromRegistry (kindred#2593)', () => {
+  it('accepts the live pocketbase/sync/api.go', () => {
+    expect(() => getBackendSyncJobIds()).not.toThrow()
+  })
+
+  it('accepts the derivation on one line or several', () => {
+    for (const body of [
+      'func statusSyncTypes() []string { return allJobIDs() }',
+      'func statusSyncTypes() []string {\n\treturn allJobIDs()\n}',
+    ]) {
+      expect(() =>
+        assertStatusPayloadDerivesFromRegistry(`package sync\n\n${body}\n`)
+      ).not.toThrow()
+    }
+  })
+
+  it('throws when the payload goes back to a hand-written list', () => {
+    const src =
+      'package sync\n\nfunc statusSyncTypes() []string {\n\treturn []string{\n\t\t"sessions",\n\t}\n}\n'
+    expect(() => assertStatusPayloadDerivesFromRegistry(src)).toThrow(/no longer returns allJobIDs/)
+  })
+
+  it('throws when the payload is derived from something narrower than the whole registry', () => {
+    const src =
+      'package sync\n\nfunc statusSyncTypes() []string { return jobsWithCadence(CadenceDaily) }\n'
+    expect(() => assertStatusPayloadDerivesFromRegistry(src)).toThrow(/no longer returns allJobIDs/)
+  })
+
+  it('throws when statusSyncTypes() has been renamed or removed', () => {
+    const src = 'package sync\n\nfunc publishedSyncTypes() []string { return allJobIDs() }\n'
+    expect(() => assertStatusPayloadDerivesFromRegistry(src)).toThrow(/renamed or removed/)
   })
 })
 
 // kindred#2593: the PR's own reasoning for the three no-Run-button cards is "no backend POST
 // route exists, so a generic Run button would 404". That claim is only as durable as a test
-// that re-checks it, so the route list is parsed from the same file the job list is.
+// that re-checks it, so the route list is parsed from api.go directly.
 describe('getBackendSyncPostRouteSegments (kindred#2593)', () => {
   it('finds the registered individual-sync POST routes', () => {
     const segments = getBackendSyncPostRouteSegments()
