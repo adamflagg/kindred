@@ -97,6 +97,21 @@ type JobMeta struct {
 	// needed. "" (ScopeAll) for every job that is not a variant of another. See the Scope
 	// type.
 	Scope Scope
+	// Cadences is the set of crons that queue this job. See the Cadence type.
+	Cadences Cadence
+	// Triggers is the set of operator-facing entry points that may start this job. See the
+	// Trigger type.
+	Triggers Trigger
+	// CurrentYearOnly marks a job that only makes sense against the live season -- a
+	// historical replay must exclude it. Must match the frontend's `currentYearOnly` flag
+	// (frontend/src/components/admin/syncTypes.ts) exactly; Stage 3 adds the test that pins
+	// the two together.
+	CurrentYearOnly bool
+	// Gate is an environment check a job must pass before a derived queue includes it --
+	// IS_DOCKER for process_requests, google.IsEnabled for multi_workbook_export. nil means
+	// unconditionally available. This is a RUNTIME check, distinct from Cadences/Triggers,
+	// which are static declarations of what a job is eligible for.
+	Gate func() bool
 }
 
 // syncJobMeta defines the phase and metadata for all sync jobs
@@ -104,78 +119,132 @@ type JobMeta struct {
 var syncJobMeta = []JobMeta{
 	// Source phase - CampMinder API calls
 	{ID: "session_groups", Phase: PhaseSource,
-		Description: "Session groups from CampMinder"},
+		Description: "Session groups from CampMinder",
+		Cadences:    CadenceDaily, Triggers: TriggerIndividualRoute | TriggerPhaseRun | TriggerFullRun},
 	{ID: "sessions", Phase: PhaseSource,
-		Description: "Sessions from CampMinder"},
+		Description: "Sessions from CampMinder",
+		Cadences:    CadenceDaily, Triggers: TriggerIndividualRoute | TriggerPhaseRun | TriggerFullRun},
 	{ID: "attendees", Phase: PhaseSource,
-		Description: "Attendees from CampMinder"},
+		Description: "Attendees from CampMinder",
+		Cadences:    CadenceDaily, Triggers: TriggerIndividualRoute | TriggerPhaseRun | TriggerFullRun},
 	{ID: "persons", Phase: PhaseSource,
-		Description: "Persons + households from CampMinder"},
+		Description: "Persons + households from CampMinder",
+		Cadences:    CadenceDaily, Triggers: TriggerIndividualRoute | TriggerPhaseRun | TriggerFullRun},
 	{ID: "bunks", Phase: PhaseSource,
-		Description: "Bunks from CampMinder"},
+		Description: "Bunks from CampMinder",
+		Cadences:    CadenceDaily, Triggers: TriggerIndividualRoute | TriggerPhaseRun | TriggerFullRun},
 	{ID: "bunk_plans", Phase: PhaseSource,
-		Description: "Bunk plans from CampMinder"},
+		Description: "Bunk plans from CampMinder",
+		Cadences:    CadenceDaily, Triggers: TriggerIndividualRoute | TriggerPhaseRun | TriggerFullRun},
+	// bunk_assignments is the ONLY job on two crons: the hourly refresh (RunHourlySync)
+	// as well as the daily sweep, which is what CadenceHourly's bitset exists to express
+	// without listing this row twice.
 	{ID: "bunk_assignments", Phase: PhaseSource,
-		Description: "Bunk assignments from CampMinder"},
+		Description: "Bunk assignments from CampMinder",
+		Cadences:    CadenceHourly | CadenceDaily, Triggers: TriggerIndividualRoute | TriggerPhaseRun | TriggerFullRun},
 	{ID: "staff", Phase: PhaseSource,
-		Description: "Staff from CampMinder"},
+		Description: "Staff from CampMinder",
+		Cadences:    CadenceDaily, Triggers: TriggerIndividualRoute | TriggerPhaseRun | TriggerFullRun},
 	{ID: "financial_transactions", Phase: PhaseSource,
-		Description: "Financial transactions from CampMinder"},
+		Description: "Financial transactions from CampMinder",
+		Cadences:    CadenceDaily, Triggers: TriggerIndividualRoute | TriggerPhaseRun | TriggerFullRun},
 
 	// Expensive phase - Custom values (on-demand, rate limited)
+	// The unrestricted pair runs on the weekly custom-values cron ("0 4 * * 0"), not the
+	// daily one -- getDailySyncJobs runs the bounded family-camp variants below instead.
 	{ID: "person_custom_values", Phase: PhaseExpensive,
-		Description: "Person custom field values"},
+		Description: "Person custom field values",
+		Cadences:    CadenceWeeklyCustomValues, Triggers: TriggerIndividualRoute | TriggerPhaseRun | TriggerFullRun},
 	{ID: "household_custom_values", Phase: PhaseExpensive,
-		Description: "Household custom field values"},
+		Description: "Household custom field values",
+		Cadences:    CadenceWeeklyCustomValues, Triggers: TriggerIndividualRoute | TriggerPhaseRun | TriggerFullRun},
 	// Bounded daily family-camp pass (kindred#2482): same API cost per entity as the two
 	// above, scoped to family-camp attendees (any status) and run as part of the daily
-	// cron -- see getDailySyncJobs.
+	// cron -- see getDailySyncJobs. No Triggers: neither has an individual POST route
+	// (they run only inside the daily cron), and phaseExecutionJobs deliberately excludes
+	// them from an admin-triggered PhaseExpensive run, and they must never join a full run
+	// (#2489) -- so all three trigger bits stay unset, matching the frontend's
+	// manualTrigger: false.
 	{ID: "person_custom_values_family_camp", Phase: PhaseExpensive,
 		Description: "Person custom field values -- bounded daily pass, family-camp attendees, any status",
-		Base:        "person_custom_values", Scope: ScopeFamilyCamp},
+		Base:        "person_custom_values", Scope: ScopeFamilyCamp,
+		Cadences: CadenceDaily, CurrentYearOnly: true},
 	{ID: "household_custom_values_family_camp", Phase: PhaseExpensive,
 		Description: "Household custom field values -- bounded daily pass, family-camp attendees, any status",
-		Base:        "household_custom_values", Scope: ScopeFamilyCamp},
+		Base:        "household_custom_values", Scope: ScopeFamilyCamp,
+		Cadences: CadenceDaily, CurrentYearOnly: true},
 
 	// Transform phase - PocketBase → PocketBase
 	{ID: "family_camp_derived", Phase: PhaseTransform,
-		Description: "Compute family camp tables from custom values"},
+		Description: "Compute family camp tables from custom values",
+		Cadences:    CadenceDaily, Triggers: TriggerIndividualRoute | TriggerPhaseRun | TriggerFullRun},
 	{ID: "lodging_assignments", Phase: PhaseTransform,
-		Description: "Derive lodging assignments from CampMinder cabin fields"},
+		Description: "Derive lodging assignments from CampMinder cabin fields",
+		Cadences:    CadenceDaily, Triggers: TriggerIndividualRoute | TriggerPhaseRun | TriggerFullRun},
 	{ID: "staff_skills", Phase: PhaseTransform,
-		Description: "Extract staff skills from person_custom_values"},
+		Description: "Extract staff skills from person_custom_values",
+		Cadences:    CadenceDaily, Triggers: TriggerIndividualRoute | TriggerPhaseRun | TriggerFullRun},
 	{ID: "financial_aid_applications", Phase: PhaseTransform,
-		Description: "Extract FA applications from person_custom_values"},
+		Description: "Extract FA applications from person_custom_values",
+		Cadences:    CadenceDaily, Triggers: TriggerIndividualRoute | TriggerPhaseRun | TriggerFullRun},
 	{ID: "household_demographics", Phase: PhaseTransform,
-		Description: "Compute household demographics from custom values"},
+		Description: "Compute household demographics from custom values",
+		Cadences:    CadenceDaily, Triggers: TriggerIndividualRoute | TriggerPhaseRun | TriggerFullRun},
 	{ID: "camper_dietary", Phase: PhaseTransform,
-		Description: "Extract camper dietary/allergy info from custom values"},
+		Description: "Extract camper dietary/allergy info from custom values",
+		Cadences:    CadenceDaily, Triggers: TriggerIndividualRoute | TriggerPhaseRun | TriggerFullRun},
 	{ID: "camper_transportation", Phase: PhaseTransform,
-		Description: "Extract camper transportation info from custom values"},
+		Description: "Extract camper transportation info from custom values",
+		Cadences:    CadenceDaily, Triggers: TriggerIndividualRoute | TriggerPhaseRun | TriggerFullRun},
 	{ID: "quest_registrations", Phase: PhaseTransform,
-		Description: "Extract Quest program registration info from custom values"},
+		Description: "Extract Quest program registration info from custom values",
+		Cadences:    CadenceDaily, Triggers: TriggerIndividualRoute | TriggerPhaseRun | TriggerFullRun},
 	{ID: "staff_applications", Phase: PhaseTransform,
-		Description: "Extract staff application info from custom values"},
+		Description: "Extract staff application info from custom values",
+		Cadences:    CadenceDaily, Triggers: TriggerIndividualRoute | TriggerPhaseRun | TriggerFullRun},
 	{ID: "staff_vehicle_info", Phase: PhaseTransform,
-		Description: "Extract staff vehicle info from custom values"},
+		Description: "Extract staff vehicle info from custom values",
+		Cadences:    CadenceDaily, Triggers: TriggerIndividualRoute | TriggerPhaseRun | TriggerFullRun},
 	{ID: "normalize_geographic", Phase: PhaseTransform,
-		Description: "Normalize geographic data (cities, schools, congregations)"},
+		Description: "Normalize geographic data (cities, schools, congregations)",
+		Cadences:    CadenceDaily, Triggers: TriggerIndividualRoute | TriggerPhaseRun | TriggerFullRun},
 	{ID: "enrollment_snapshots", Phase: PhaseTransform,
-		Description: "Capture daily enrollment counts per session"},
+		Description: "Capture daily enrollment counts per session",
+		Cadences:    CadenceDaily, Triggers: TriggerIndividualRoute | TriggerPhaseRun | TriggerFullRun},
 	{ID: "stranded_assignment_cleanup", Phase: PhaseTransform,
-		Description: "Auto-unassign scenario drafts stranded by bunk or cancellation"},
+		Description: "Auto-unassign scenario drafts stranded by bunk or cancellation",
+		Cadences:    CadenceDaily, Triggers: TriggerIndividualRoute | TriggerPhaseRun | TriggerFullRun},
 
 	// Process phase - CSV + AI
+	// reconcile_request_lifecycle has no individual POST route (it runs only inside the
+	// daily cron and ResolveUnifiedSyncServices' current-year branch), but GetJobsForPhase
+	// classifies it PhaseProcess and phaseExecutionJobs only filters PhaseExpensive, so a
+	// Run Phase button on the Process phase really does start it -- TriggerPhaseRun stays
+	// set even though TriggerIndividualRoute does not.
 	{ID: "reconcile_request_lifecycle", Phase: PhaseProcess,
-		Description: "Mark moved-requester OBRs for reprocessing"},
+		Description: "Mark moved-requester OBRs for reprocessing",
+		Cadences:    CadenceDaily, Triggers: TriggerPhaseRun | TriggerFullRun, CurrentYearOnly: true},
 	{ID: "bunk_requests", Phase: PhaseProcess,
-		Description: "Import bunk request CSV"},
+		Description: "Import bunk request CSV",
+		Cadences:    CadenceDaily, Triggers: TriggerIndividualRoute | TriggerPhaseRun | TriggerFullRun,
+		CurrentYearOnly: true},
+	// process_requests only runs in Docker (Gate) -- development skips AI processing to
+	// avoid unnecessary API costs, matching getDailySyncJobs' IS_DOCKER check.
 	{ID: "process_requests", Phase: PhaseProcess,
-		Description: "AI processing of bunk requests"},
+		Description: "AI processing of bunk requests",
+		Cadences:    CadenceDaily, Triggers: TriggerIndividualRoute | TriggerPhaseRun | TriggerFullRun,
+		CurrentYearOnly: true,
+		Gate:            func() bool { return os.Getenv("IS_DOCKER") == boolTrueStr }},
 
 	// Export phase - Google Sheets
+	// No TriggerFullRun: today a full run exports via the hardcoded epilogue in
+	// RunSyncWithOptions (orchestrator.go), not by queuing this job. Setting the bit now
+	// would run the export twice per unified run once Task 8 derives the full-run queue
+	// from this table. Stage 4 sets it in the same PR that deletes the epilogue.
 	{ID: "multi_workbook_export", Phase: PhaseExport,
-		Description: "Export to Google Sheets"},
+		Description: "Export to Google Sheets",
+		Cadences:    CadenceDaily, Triggers: TriggerIndividualRoute | TriggerPhaseRun,
+		Gate: google.IsEnabled},
 }
 
 // GetJobMeta returns the sync job metadata array
