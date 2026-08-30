@@ -465,9 +465,16 @@ func TestIsWeeklySyncRunning(t *testing.T) {
 	}
 }
 
-// TestWeeklySyncServices tests that weekly sync includes expected global services
+// TestWeeklySyncServices tests that weekly sync includes expected global services.
+//
+// multi_workbook_export also joins GetWeeklySyncJobs() when google.IsEnabled() (see
+// TestWeeklySyncJobsGatesExportOnGoogleEnabled/Disabled, which pin that conditional
+// membership directly), so this test -- about the five tables that are unconditionally
+// there -- pins GOOGLE_SHEETS_ENABLED off rather than leaving it to whatever the ambient
+// environment happens to be. It used to pass only because CI never sets the variable;
+// running it on a configured machine (production's actual setting) failed.
 func TestWeeklySyncServices(t *testing.T) {
-	t.Parallel()
+	t.Setenv("GOOGLE_SHEETS_ENABLED", "")
 	// Weekly sync should include global definition tables that rarely change
 	// Divisions is included here since it's a global table (no year field)
 	expectedServices := []string{
@@ -1058,9 +1065,13 @@ func TestHistoricalSyncExcludesDivisions(t *testing.T) {
 	}
 }
 
-// TestWeeklySyncJobsCount verifies the expected count of weekly sync jobs
+// TestWeeklySyncJobsCount verifies the expected count of weekly sync jobs.
+//
+// Pins GOOGLE_SHEETS_ENABLED off for the same reason TestWeeklySyncServices does: this count
+// is about the five unconditional global tables, and multi_workbook_export's own conditional
+// membership is TestWeeklySyncJobsGatesExportOnGoogleEnabled/Disabled's job, not this one's.
 func TestWeeklySyncJobsCount(t *testing.T) {
-	t.Parallel()
+	t.Setenv("GOOGLE_SHEETS_ENABLED", "")
 	jobs := GetWeeklySyncJobs()
 
 	// Weekly sync should have: person_tag_defs, custom_field_defs, staff_lookups,
@@ -3045,6 +3056,18 @@ func TestRunSyncWithOptionsPhaseOrdering(t *testing.T) {
 		// The unified sync job order (without CV) should match the daily sync order
 		// for all shared jobs: source → transform
 		jobs := GetDefaultUnifiedSyncJobs(false, false)
+
+		// multi_workbook_export's presence depends on google.IsEnabled(), which this test
+		// cannot pin via t.Setenv (its top-level parent calls t.Parallel()) -- filtered out
+		// rather than asserted, the same way TestDailyQueueDerivation ignores it from the
+		// daily queue it is being compared against here.
+		filtered := make([]string, 0, len(jobs))
+		for _, j := range jobs {
+			if j != "multi_workbook_export" {
+				filtered = append(filtered, j)
+			}
+		}
+		jobs = filtered
 
 		expectedOrder := []string{
 			// Source phase

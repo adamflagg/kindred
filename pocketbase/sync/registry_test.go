@@ -229,10 +229,14 @@ func TestDerivedQueuesMatchTodaysLists(t *testing.T) {
 
 	t.Run("weekly", func(t *testing.T) {
 		t.Parallel()
-		assertSeq(t, "weekly", GetWeeklySyncJobs(), []string{
+		// multi_workbook_export's presence depends on google.IsEnabled(), which a t.Parallel()
+		// test with a t.Parallel() ancestor cannot pin via t.Setenv -- ignored here rather than
+		// asserted, the same way TestDailyQueueDerivation ignores it from the daily queue.
+		// TestWeeklySyncJobsGatesExportOnGoogleEnabled/Disabled pin its conditional membership.
+		assertSeqIgnoring(t, "weekly", GetWeeklySyncJobs(), []string{
 			"person_tag_defs", "custom_field_defs", "staff_lookups",
 			"financial_lookups", "divisions",
-		})
+		}, "multi_workbook_export")
 	})
 	assertSeq(t, "custom values", GetCustomValuesSyncJobs(), []string{
 		"person_custom_values", "household_custom_values",
@@ -302,6 +306,13 @@ func TestDailyQueueGate(t *testing.T) {
 // serialGroups.
 func TestUnifiedRunDerivation(t *testing.T) {
 	t.Setenv("IS_DOCKER", "")
+	// Pinned true (production's actual setting) rather than left to the ambient
+	// environment -- see the assertSeq below, which used to read (in its own comment) "this
+	// test never sets GOOGLE_SHEETS_ENABLED, so available()'s Gate keeps it out of dockerFull
+	// regardless": that was true only because CI never sets the variable, and the same
+	// derivation run on a configured machine put multi_workbook_export in the list the
+	// assertion did not expect.
+	t.Setenv("GOOGLE_SHEETS_ENABLED", "true")
 
 	full := ResolveUnifiedSyncServices(DefaultService, true, true)
 	for _, id := range []string{"person_custom_values", "household_custom_values"} {
@@ -352,10 +363,11 @@ func TestUnifiedRunDerivation(t *testing.T) {
 	// cron's: as a literal derived from syncJobMeta by hand, not from GetDefaultUnifiedSyncJobs
 	// itself. This is the one queue this branch actually reorders (stranded_assignment_cleanup
 	// moves from mid-Transform to dead-last), and until now only its membership and last
-	// element were asserted anywhere. multi_workbook_export needs no ignore-list entry here:
-	// it now carries TriggerFullRun (Task 13), but this test never sets GOOGLE_SHEETS_ENABLED,
-	// so available()'s Gate (google.IsEnabled) keeps it out of dockerFull regardless -- see
-	// TestExportRunsExactlyOnceInAFullRun for the Gate-open case.
+	// element were asserted anywhere. multi_workbook_export is now explicitly IN this list,
+	// right before stranded_assignment_cleanup: it carries TriggerFullRun (Task 13) and
+	// GOOGLE_SHEETS_ENABLED is pinned true above, so available()'s Gate (google.IsEnabled) lets
+	// it into dockerFull the way it does in production -- see TestExportRunsExactlyOnceInAFullRun
+	// for the "runs exactly once, including through the fresh-DB bootstrap" half of this.
 	assertSeq(t, "current-year full run", dockerFull, []string{
 		"session_groups", "sessions", "attendees", "persons", "bunks", "bunk_plans",
 		"bunk_assignments", "staff", "financial_transactions",
@@ -365,7 +377,7 @@ func TestUnifiedRunDerivation(t *testing.T) {
 		"camper_transportation", "quest_registrations", "staff_applications",
 		"staff_vehicle_info", "normalize_geographic", "enrollment_snapshots",
 		"reconcile_request_lifecycle", "bunk_requests", "process_requests",
-		"stranded_assignment_cleanup",
+		"multi_workbook_export", "stranded_assignment_cleanup",
 	})
 }
 

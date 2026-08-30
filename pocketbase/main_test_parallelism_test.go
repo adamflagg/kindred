@@ -260,12 +260,12 @@ var serialGroups = []struct {
 	{
 		pkg:    "sync",
 		reason: "t.Setenv: IS_DOCKER drives the process_requests Gate in cadenceQueue",
-		tests:  []string{"TestDailyQueueDerivation", "TestDailyQueueGate", "TestUnifiedRunDerivation"},
+		tests:  []string{"TestDailyQueueDerivation", "TestDailyQueueGate"},
 	},
 	{
 		pkg:    "sync",
 		reason: "t.Setenv: IS_DOCKER and GOOGLE_SHEETS_ENABLED drive Gate filtering in the derived queues themselves",
-		tests:  []string{"TestExportRunsExactlyOnceInAFullRun"},
+		tests:  []string{"TestExportRunsExactlyOnceInAFullRun", "TestUnifiedRunDerivation"},
 	},
 	{
 		pkg:    "sync",
@@ -304,6 +304,8 @@ var serialGroups = []struct {
 		tests: []string{
 			"TestWeeklySyncJobsGatesExportOnGoogleEnabled",
 			"TestWeeklySyncJobsGatesExportOnGoogleDisabled",
+			"TestWeeklySyncJobsCount",
+			"TestWeeklySyncServices",
 		},
 	},
 	{
