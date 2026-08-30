@@ -2529,6 +2529,10 @@ func TestJobMeta_AllJobsHavePhase(t *testing.T) {
 		PhaseTransform: true,
 		PhaseProcess:   true,
 		PhaseExport:    true,
+		// PhaseGlobal is a classification, not an execution phase (see
+		// TestPhaseGlobalIsNotAnExecutionPhase in registry_test.go), but it is still a
+		// legitimate Phase value carried by real rows.
+		PhaseGlobal: true,
 	}
 
 	for _, job := range meta {

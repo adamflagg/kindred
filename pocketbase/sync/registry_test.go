@@ -142,6 +142,25 @@ func assertSeq(t *testing.T, label string, got, want []string) {
 	}
 }
 
+// TestPhaseGlobalIsNotAnExecutionPhase pins the distinction that makes PhaseGlobal safe.
+// Global jobs need a registry row so statusSyncTypes and GetWeeklySyncJobs can be derived,
+// but "global" is a CLASSIFICATION, not something Run Phase can target -- the frontend
+// already renders them in their own "Global Definitions" section and never through
+// getSyncTypesByPhase. Adding PhaseGlobal to GetAllPhases would put a sixth phase section
+// and a sixth Run Phase button on the Sync tab.
+func TestPhaseGlobalIsNotAnExecutionPhase(t *testing.T) {
+	t.Parallel()
+	for _, p := range GetAllPhases() {
+		if p == PhaseGlobal {
+			t.Fatal("PhaseGlobal must not be in GetAllPhases -- it is a classification, " +
+				"not an execution phase")
+		}
+	}
+	if got := len(GetJobsForPhase(PhaseGlobal)); got != 5 {
+		t.Errorf("PhaseGlobal has %d jobs, want 5", got)
+	}
+}
+
 // TestDerivedQueuesMatchTodaysLists pins the derived queues against the exact lists they
 // replace. Written as literals on purpose: deriving the expectation from the same helper the
 // production code uses would pass vacuously.
@@ -150,7 +169,6 @@ func TestDerivedQueuesMatchTodaysLists(t *testing.T) {
 
 	t.Run("weekly", func(t *testing.T) {
 		t.Parallel()
-		t.Skip("globals join the registry in Stage 3; remove this skip in Task 9")
 		assertSeq(t, "weekly", GetWeeklySyncJobs(), []string{
 			"person_tag_defs", "custom_field_defs", "staff_lookups",
 			"financial_lookups", "divisions",

@@ -75,6 +75,9 @@ const (
 	PhaseProcess Phase = "process"
 	// PhaseExport - PocketBase → Google Sheets
 	PhaseExport Phase = "export"
+	// PhaseGlobal is a classification, NOT an execution phase: see GetAllPhases. Cross-year
+	// definition tables, refreshed by the Sunday-2am cron (CadenceWeeklyGlobal).
+	PhaseGlobal Phase = "global"
 )
 
 // JobMeta contains metadata about a sync job
@@ -114,14 +117,28 @@ type JobMeta struct {
 // syncJobMeta defines the phase and metadata for all sync jobs
 // Jobs are listed in execution order within their phase
 var syncJobMeta = []JobMeta{
+	// Global phase -- cross-year definition tables, refreshed by the Sunday-2am cron.
+	// PhaseGlobal is a classification, NOT an execution phase: see GetAllPhases. These carry
+	// only CadenceWeeklyGlobal and TriggerIndividualRoute, so they appear in no daily,
+	// phase-run or full-run queue and cannot perturb any derived ordering below.
+	{ID: "person_tag_defs", Phase: PhaseGlobal, Description: "Tag definitions",
+		Cadences: CadenceWeeklyGlobal, Triggers: TriggerIndividualRoute},
+	{ID: "custom_field_defs", Phase: PhaseGlobal, Description: "Custom field definitions",
+		Cadences: CadenceWeeklyGlobal, Triggers: TriggerIndividualRoute},
+	{ID: "staff_lookups", Phase: PhaseGlobal, Description: "Positions, org categories, program areas",
+		Cadences: CadenceWeeklyGlobal, Triggers: TriggerIndividualRoute},
+	{ID: "financial_lookups", Phase: PhaseGlobal, Description: "Financial categories, payment methods",
+		Cadences: CadenceWeeklyGlobal, Triggers: TriggerIndividualRoute},
+	{ID: "divisions", Phase: PhaseGlobal, Description: "Division definitions (no year field)",
+		Cadences: CadenceWeeklyGlobal, Triggers: TriggerIndividualRoute},
+
 	// Source phase - CampMinder API calls
 	//
 	// The daily ordering below (getDailySyncJobs = cadenceQueue(CadenceDaily)) walks these
 	// rows in declaration order, so each row's dependency comment doubles as the reason it
 	// sits where it does relative to its neighbors. person_tag_defs, custom_field_defs and
-	// divisions are NOT among them -- those are global definitions that run on the weekly
-	// cron (GetWeeklySyncJobs) instead, since they rarely change; they join this table in
-	// Stage 3 (see TestDerivedQueuesMatchTodaysLists's "weekly" skip).
+	// divisions are NOT among them -- those are PhaseGlobal rows above that run on the
+	// weekly cron (GetWeeklySyncJobs) instead, since they rarely change.
 	//
 	// No dependencies -- sync first so its session_group relation exists for sessions.
 	{ID: "session_groups", Phase: PhaseSource,
@@ -1006,16 +1023,11 @@ func (o *Orchestrator) IsAnyJobRunning() bool {
 	return false
 }
 
-// GetWeeklySyncJobs returns the list of services that run in the weekly sync.
-// These are global definition tables that rarely change and don't need daily updates.
+// GetWeeklySyncJobs returns the list of services that run in the weekly sync. These are the
+// PhaseGlobal rows: definition tables that rarely change and don't need daily updates.
+// Derived from the registry in declaration order via jobsWithCadence.
 func GetWeeklySyncJobs() []string {
-	return []string{
-		"person_tag_defs",
-		"custom_field_defs",
-		"staff_lookups",     // Global: positions, org_categories, program_areas
-		"financial_lookups", // Global: financial_categories, payment_methods
-		"divisions",         // Global: division definitions (no year field)
-	}
+	return jobsWithCadence(CadenceWeeklyGlobal)
 }
 
 // GetRefreshBunkingJobs returns the services needed for a full bunking refresh.
