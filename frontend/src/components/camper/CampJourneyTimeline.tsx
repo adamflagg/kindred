@@ -117,8 +117,13 @@ export function CampJourneyTimeline({
                       </span>
                     )}
 
-                    {/* Bunk — only for enrolled records that actually have a label.
-                        No-bunk prior years (teen / 2022 gap / family) show no segment. */}
+                    {/* Housing — only for enrolled records that actually have a label.
+                        A bunk name for summer/teen; the household's resolved
+                        family-camp cabin for family (kindred#2466) — never the
+                        CampMinder day group, which `fetchCamperJourney` drops
+                        before this component ever sees it. No-label prior years
+                        (teen / 2022 gap / unresolved family housing) show no
+                        segment. */}
                     {!statusIndicator && record.bunkName !== undefined && (
                       <>
                         <span className="text-muted-foreground">·</span>

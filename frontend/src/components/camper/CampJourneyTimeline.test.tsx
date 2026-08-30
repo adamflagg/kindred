@@ -96,3 +96,34 @@ describe('CampJourneyTimeline program-agnostic strings (#2113)', () => {
     expect(screen.queryByText('Family')).toBeNull()
   })
 })
+
+// kindred#2466: the housing slot on a family-camp row shows the household's
+// resolved cabin, never the CampMinder day group. `fetchCamperJourney` is
+// what drops the day group and resolves the cabin — this component just
+// renders whatever `bunkName` it's handed, generically, exactly as it does
+// for a summer bunk. These two tests pin that the rendering itself needs no
+// family-specific branch.
+describe('CampJourneyTimeline family-camp housing (kindred#2466)', () => {
+  it("renders a family row's resolved cabin name in the same housing slot as a summer bunk", () => {
+    const history: HistoricalRecord[] = [
+      {
+        year: 2024,
+        sessionName: 'Family Camp 2: Keshet Weekend',
+        sessionType: 'family',
+        bunkName: 'Cedar Lodge',
+      },
+    ]
+    render(<CampJourneyTimeline history={history} yearsAtCamp={0} currentYear={2026} />)
+    expect(screen.getByText('Cedar Lodge')).toBeInTheDocument()
+  })
+
+  it('shows no housing segment for a family row with nothing to show (day group dropped, not replaced)', () => {
+    const history: HistoricalRecord[] = [
+      { year: 2024, sessionName: 'Family Camp 2: Keshet Weekend', sessionType: 'family' },
+    ]
+    render(<CampJourneyTimeline history={history} yearsAtCamp={0} currentYear={2026} />)
+    // No "·" separator and no day-group-shaped text — an absent `bunkName`
+    // renders nothing, same as any other unlabeled row.
+    expect(screen.queryAllByText('·')).toHaveLength(0)
+  })
+})

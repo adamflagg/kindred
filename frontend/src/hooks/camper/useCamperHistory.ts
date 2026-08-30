@@ -8,6 +8,7 @@ import { isAtCampSessionType } from '../../utils/sessionTypePredicates'
 import { filterEnrollmentsByStatus, toDisplayList } from '../../utils/enrollmentFilter'
 import { fetchCamperJourney, fetchParentMainSessions } from './fetchCamperJourney'
 import { byYearThenChronological } from './journeyOrder'
+import { useHouseholdJourney } from '../useWeekendRoster'
 import type { Camper } from '../../types/app-types'
 import type { CampSessionsResponse } from '../../types/pocketbase-types'
 import type { HistoricalRecord } from './types'
@@ -89,6 +90,15 @@ export function useCamperHistory(
   camper: Camper | null,
   allAttendees?: Camper[]
 ): UseCamperHistoryResult {
+  // kindred#2466: a family-camp row shows the household's ACTUAL HOUSING
+  // (the resolved cabin, exactly as the weekend board's own
+  // HouseholdJourneyCard shows it) rather than the CampMinder day group.
+  // `household_id` is the CampMinder household id already carried on every
+  // Camper (kindred#2073's household grain) — `null` for a camper with no
+  // household on file, which disables the query rather than fetching a
+  // meaningless id.
+  const { data: householdJourney } = useHouseholdJourney(camper?.household_id ?? null)
+
   const {
     data: camperHistory = [],
     isLoading,
@@ -101,6 +111,7 @@ export function useCamperHistory(
       camper?.expand?.session,
       camper?.expand?.assigned_bunk,
       allAttendees?.length,
+      householdJourney?.years,
     ],
     queryFn: async () => {
       if (!personCmId) return []
@@ -118,7 +129,9 @@ export function useCamperHistory(
         const parentByKey = await fetchParentMainSessions(agPairs)
         allHistory.push(...buildCurrentYearRecords(currentCampers, currentYear, parentByKey))
         // Prior years from the shared enrollment-sourced fetcher.
-        allHistory.push(...(await fetchCamperJourney(personCmId, currentYear)))
+        allHistory.push(
+          ...(await fetchCamperJourney(personCmId, currentYear, householdJourney?.years ?? []))
+        )
         // Sort by year descending.
         // The SHARED comparator, not a second year-only one. This merge is
         // where the reported defect actually lived: prior-year records arrive

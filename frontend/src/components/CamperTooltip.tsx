@@ -8,6 +8,7 @@ import { getSessionDisplayNameFromString } from '../utils/sessionDisplay'
 import { getDisplayAgeForYear } from '../utils/displayAge'
 import { formatGradeOrdinal } from '../utils/gradeUtils'
 import { fetchCamperJourney } from '../hooks/camper/fetchCamperJourney'
+import { useHouseholdJourney } from '../hooks/useWeekendRoster'
 import type { HistoricalRecord } from '../hooks/camper/types'
 import type { Camper } from '../types/app-types'
 import type { BunkRequestsResponse } from '../types/pocketbase-types'
@@ -41,17 +42,29 @@ export default function CamperTooltip({ camper, isVisible, position }: CamperToo
     enabled: !!user && isVisible && !!camper.person_cm_id,
   })
 
+  // kindred#2466: a family-camp row shows the household's ACTUAL HOUSING
+  // (the resolved cabin) rather than the CampMinder day group. `null` when
+  // the camper has no household on file, which disables the query.
+  const { data: householdJourney } = useHouseholdJourney(camper.household_id ?? null)
+
   // Fetch the prior-year journey via the shared enrollment-sourced fetcher,
   // limited to the 3 most recent years for the compact tooltip. Routing through
   // the fetcher surfaces real attended years (teen/2022 gap), not only
   // bunked at-camp years.
   const { data: history = [] } = useQuery<HistoricalRecord[]>({
-    queryKey: queryKeys.camperHistory(String(camper.person_cm_id), currentYear),
+    queryKey: [
+      ...queryKeys.camperHistory(String(camper.person_cm_id), currentYear),
+      householdJourney?.years,
+    ],
     queryFn: async () => {
       if (!camper.person_cm_id) return []
       const personCmId = parseInt(camper.person_cm_id.toString(), 10)
       if (isNaN(personCmId)) return []
-      const journey = await fetchCamperJourney(personCmId, currentYear)
+      const journey = await fetchCamperJourney(
+        personCmId,
+        currentYear,
+        householdJourney?.years ?? []
+      )
       return journey.slice(0, 3)
     },
     enabled: !!user && isVisible && !!camper.person_cm_id,

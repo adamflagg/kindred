@@ -297,6 +297,15 @@ vi.mock('../lib/pocketbase', () => ({
   },
 }))
 
+// kindred#2466: CamperDetailsPanel now calls useHouseholdJourney (to show a
+// family-camp row's resolved cabin instead of the CampMinder day group),
+// which needs an AuthProvider via useApiWithAuth — absent here, since these
+// tests render CamperDetailsPanel with no AuthContext mock at all. Stubbed
+// out; none of these integration tests concern family-camp housing.
+vi.mock('../hooks/useWeekendRoster', () => ({
+  useHouseholdJourney: () => ({ data: undefined }),
+}))
+
 vi.mock('../hooks/useCurrentYear', () => ({
   useYear: () => 2025,
 }))

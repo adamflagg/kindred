@@ -9,7 +9,16 @@ export interface HistoricalRecord {
   year: number
   sessionName: string
   sessionType: string
-  /** Bunk/day-group name. Absent when the enrolled session had no bunk assignment. */
+  /**
+   * Housing label for this row: the assigned bunk name for a summer/teen
+   * session, or the household's resolved cabin name for a family-camp
+   * session. Absent when nothing is assigned/known.
+   *
+   * A family-camp row NEVER carries the CampMinder day group here
+   * (kindred#2466) — a day group is a daytime activity grouping, not where
+   * the family slept, and staff do not want it in the slot every other row
+   * uses for housing. It is dropped entirely rather than relabeled.
+   */
   bunkName?: string
   startDate?: string
   endDate?: string
