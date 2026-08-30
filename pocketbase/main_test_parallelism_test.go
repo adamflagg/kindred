@@ -245,6 +245,11 @@ var serialGroups = []struct {
 		},
 	},
 	{
+		pkg:    "sync",
+		reason: "t.Setenv: IS_DOCKER drives the process_requests Gate in cadenceQueue",
+		tests:  []string{"TestDailyQueueDerivation", "TestDailyQueueGate", "TestUnifiedRunDerivation"},
+	},
+	{
 		// captureStdout redirects the process's os.Stdout; captureLogs swaps
 		// slog's default handler. Both are process-global, so a parallel test
 		// would capture some other test's output instead of its own.

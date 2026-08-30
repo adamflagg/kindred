@@ -23,6 +23,12 @@ import (
 // restart and there was no sync_runs table at all, so a season of Rejected counts would have
 // amounted to whatever happened to be in memory the moment someone looked.
 
+// hourlySyncJob mirrors the registry's sole CadenceHourly job. It is test-local rather than a
+// production constant now that RunHourlySync loops over cadenceQueue(CadenceHourly) directly;
+// TestCadenceBitsetOverlap (registry_test.go) is what pins the two together, so a change to
+// the hourly cadence's membership fails there rather than silently going stale here.
+const hourlySyncJob = "bunk_assignments"
+
 // newSyncRunsApp returns a test app carrying the sync_runs collection.
 //
 // The schema mirrors pb_migrations/1500000152_sync_runs.js field for field. It is written out

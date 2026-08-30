@@ -31,8 +31,8 @@ func everySyncSequence() map[string][]string {
 		"GetRefreshBunkingJobs":     GetRefreshBunkingJobs(),
 		"GetRefreshFamilyCampJobs":  GetRefreshFamilyCampJobs(),
 		"GetCustomValuesSyncJobs":   GetCustomValuesSyncJobs(),
-		"UnifiedSyncJobs":           GetDefaultUnifiedSyncJobs(true),
-		"UnifiedSyncJobsNoCustom":   GetDefaultUnifiedSyncJobs(false),
+		"UnifiedSyncJobs":           GetDefaultUnifiedSyncJobs(true, true),
+		"UnifiedSyncJobsNoCustom":   GetDefaultUnifiedSyncJobs(false, true),
 		"ResolveUnifiedCurrentYear": ResolveUnifiedSyncServices(DefaultService, true, true),
 		"ResolveUnifiedHistorical":  ResolveUnifiedSyncServices(DefaultService, true, false),
 	}
@@ -94,7 +94,8 @@ func TestStatusSyncTypesHasNoDuplicates(t *testing.T) {
 
 // The list's order is documentation, not protocol -- the payload is a JSON object keyed by
 // job name. But it is documentation that goes stale silently, so it is pinned against
-// orderedJobs, which pocketbase/CLAUDE.md names as the source of truth for sync order.
+// getDailySyncJobs(), whose syncJobMeta declaration order pocketbase/CLAUDE.md names as the
+// source of truth for sync order.
 //
 // This subsumes an earlier version that only bracketed the bounded family-camp pair
 // between "financial_transactions" and "family_camp_derived" using bare map lookups. Bare
