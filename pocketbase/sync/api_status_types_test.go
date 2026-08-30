@@ -1,6 +1,9 @@
 package sync
 
-import "testing"
+import (
+	"slices"
+	"testing"
+)
 
 // The status payload is what the client can SEE. A job missing from it has no per-job
 // entry, and on a run path that sets no run-type flag that is fatal: `useSyncStatusAPI`'s
@@ -62,8 +65,10 @@ func TestStatusSyncTypesCoversEverySequence(t *testing.T) {
 
 // statusSyncTypes must not list a name no service is registered under -- a typo here is
 // silent, showing as a row stuck permanently at "idle" rather than as any kind of error.
-// The five weekly global-definition jobs are exempt: they are real registered services but
-// are deliberately absent from syncJobMeta, which classifies only the phased jobs.
+//
+// The GetWeeklySyncJobs union is now redundant and kept only as a second, independent
+// spelling of the same claim: the five global definition jobs had no syncJobMeta row when
+// this was written and were exempted for that reason, and they gained one in Stage 3 Task 9.
 func TestStatusSyncTypesHasNoUnknownJobs(t *testing.T) {
 	t.Parallel()
 	known := make(map[string]bool)
@@ -102,6 +107,15 @@ func TestStatusSyncTypesHasNoDuplicates(t *testing.T) {
 // lookups made it fragile in the way that matters: a missing key reads as index 0, so if
 // an anchor name ever went stale the comparison silently stopped firing and the test
 // passed through a severe misplacement. Comparing whole subsequences needs no anchors.
+//
+// Since statusSyncTypes became allJobIDs() the two sides are no longer a hand-written list
+// and a derivation, but two views of one table -- so what is left to pin is the DIFFERENCE
+// between them, which is orderQueue: getDailySyncJobs applies it, the payload does not, and
+// it moves exactly one job (stranded_assignment_cleanup, dead-last, #1416/#1417). Dropping
+// that one job from both sides therefore leaves an assertion that still fails if any OTHER
+// job's position diverges -- which is what a second orderQueue exception, or a registry row
+// moved without moving its neighbours, would look like. orderQueue's own doc comment says a
+// second exception must never be added; this is the test that notices if one is.
 func TestStatusSyncTypesMatchesDailySyncOrder(t *testing.T) {
 	t.Parallel()
 	daily := getDailySyncJobs()
@@ -121,14 +135,17 @@ func TestStatusSyncTypesMatchesDailySyncOrder(t *testing.T) {
 		t.Fatalf("statusSyncTypes covers %d of the %d daily jobs; "+
 			"TestStatusSyncTypesCoversEverySequence names which are missing", len(got), len(daily))
 	}
-	for i := range daily {
-		if got[i] != daily[i] {
-			t.Errorf("daily job order diverges at position %d: statusSyncTypes has %q, "+
-				"getDailySyncJobs runs %q.\n  statusSyncTypes (daily subset): %v\n  getDailySyncJobs:              %v",
-				i, got[i], daily[i], got, daily)
-			break
-		}
+
+	const movedByOrderQueue = "stranded_assignment_cleanup"
+	if daily[len(daily)-1] != movedByOrderQueue {
+		t.Fatalf("getDailySyncJobs no longer ends with %s, so orderQueue is not the only "+
+			"difference between the two orders and this test's exemption is wrong; got %q",
+			movedByOrderQueue, daily[len(daily)-1])
 	}
+	wantOrder := slices.DeleteFunc(slices.Clone(daily), func(id string) bool {
+		return id == movedByOrderQueue
+	})
+	assertSeqIgnoring(t, "daily subset of the status payload", got, wantOrder, movedByOrderQueue)
 }
 
 // The bounded pair's placement is the one ordering fact with a stated reason, so it is
