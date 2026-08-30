@@ -46,6 +46,58 @@ func TestRegistryIntegrity(t *testing.T) {
 	}
 }
 
+// registeredServiceNames parses orchestrator.go for every literal o.RegisterService("name", ...)
+// call and returns the set of names found. Modeled on scope_test.go's postRouteSegments: a
+// t.Fatal floor check rather than a partial result, so a parser broken by a future refactor
+// fails loudly instead of silently matching nothing.
+func registeredServiceNames(t *testing.T) map[string]bool {
+	t.Helper()
+
+	src := readSourceFile(t, "orchestrator.go")
+	re := regexp.MustCompile(`\.RegisterService\(\s*"([a-z0-9_]+)"`)
+	matches := re.FindAllStringSubmatch(src, -1)
+	// 60 RegisterService calls exist as of this writing: 33 unique names, most registered
+	// twice because RunSyncWithOptions' historical-year path re-registers a subset of the
+	// same names under a year-scoped client (orchestrator.go:1937-2056). 40 is comfortably
+	// below that but well above what a parser matching only one of the two registration
+	// blocks would still find (~34 or ~26), so a regex narrowed by a future refactor fails
+	// loudly here instead of silently passing over an unreachable row.
+	if len(matches) < 40 {
+		t.Fatalf("registeredServiceNames: parsed only %d RegisterService call(s) out of "+
+			"orchestrator.go -- the regex is broken or the registration shape changed; "+
+			"update it to match rather than trust a partial result", len(matches))
+	}
+
+	names := make(map[string]bool, len(matches))
+	for _, m := range matches {
+		names[m[1]] = true
+	}
+	return names
+}
+
+// TestRegistryIDsAreRegisteredServices pins spec §7 test 1's registered-service half: every
+// syncJobMeta row's ID must be a name something actually constructs, not merely a row in the
+// table. TestRegistryIntegrity already pins uniqueness; this pins reachability. A row whose ID
+// no RegisterService call and no scopedServiceRegistrations entry ever produces can be
+// scheduled, queued and published on the status payload, but has no backing Service -- it
+// fails at run time, not at registration time, and this is the check that would have caught
+// it instead.
+func TestRegistryIDsAreRegisteredServices(t *testing.T) {
+	t.Parallel()
+
+	registered := registeredServiceNames(t)
+	for _, reg := range scopedServiceRegistrations(nil, nil) {
+		registered[scopedID(reg.base, reg.scope)] = true
+	}
+
+	for _, m := range syncJobMeta {
+		if !registered[m.ID] {
+			t.Errorf("%s: syncJobMeta row names no RegisterService call and is not a scoped "+
+				"variant -- the job can never actually run", m.ID)
+		}
+	}
+}
+
 // TestCadenceBitsetOverlap pins the one job on two crons. A slice-per-cadence cannot express
 // this without listing the job twice, which is why the bitset exists.
 func TestCadenceBitsetOverlap(t *testing.T) {

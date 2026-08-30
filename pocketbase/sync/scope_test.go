@@ -148,7 +148,13 @@ func TestJobMetaBaseIsAReference(t *testing.T) {
 //	                      rate-limited CampMinder quota (#2489)
 //	in statusSyncTypes -- RunSyncSequence sets no run-type flag, so the per-job entry is the
 //	                      client's ONLY completion signal; without it the Refresh Housing
-//	                      cutover is undetectable (#2591)
+//	                      cutover is undetectable (#2591). Since Stage 3, statusSyncTypes is
+//	                      allJobIDs() over this same syncJobMeta table, so `status` below is
+//	                      built from the very rows this loop iterates over -- the clause is
+//	                      structurally unable to fail and stays only as a tripwire against
+//	                      that identity changing. TestRegistryIDsAreRegisteredServices
+//	                      (registry_test.go) is what would now catch a variant left
+//	                      unregistered.
 //	no POST route      -- a scoped variant is cron-driven and exposes no Run button. This is
 //	                      now a server guarantee as well as a convention: since Stage 3 Task 10
 //	                      ResolveUnifiedSyncServices whitelists ?service= against

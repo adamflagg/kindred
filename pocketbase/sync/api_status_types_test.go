@@ -66,9 +66,21 @@ func TestStatusSyncTypesCoversEverySequence(t *testing.T) {
 // statusSyncTypes must not list a name no service is registered under -- a typo here is
 // silent, showing as a row stuck permanently at "idle" rather than as any kind of error.
 //
-// The GetWeeklySyncJobs union is now redundant and kept only as a second, independent
-// spelling of the same claim: the five global definition jobs had no syncJobMeta row when
-// this was written and were exempted for that reason, and they gained one in Stage 3 Task 9.
+// Since Stage 3, statusSyncTypes is allJobIDs() over the very same syncJobMeta this test
+// builds `known` from, so the comparison below is structurally unable to fail: an orphan row
+// (one naming no RegisterService call) is present in both `known` and statusSyncTypes() by
+// construction, and this test passes right over it. It is retained as a tripwire against that
+// identity changing -- which TestStatusSyncTypesIsTheWholeRegistry (registry_test.go) and
+// assertStatusPayloadDerivesFromRegistry (frontend/src/test/backendSyncJobIds.ts) are what
+// actually guard -- and the check that catches an orphan row today is
+// TestRegistryIDsAreRegisteredServices (registry_test.go), which pins spec §7 test 1's
+// registered-service half against the real RegisterService call sites.
+//
+// The GetWeeklySyncJobs union below is likewise not a second, independent spelling of the
+// same claim: GetWeeklySyncJobs() is jobsWithCadence(CadenceWeeklyGlobal) over this same
+// syncJobMeta table, so every id it contributes to `known` is already there. It dates from
+// when the five global definition jobs had no syncJobMeta row and were exempted for that
+// reason; they gained one in Stage 3 Task 9, which is what made the union inert.
 func TestStatusSyncTypesHasNoUnknownJobs(t *testing.T) {
 	t.Parallel()
 	known := make(map[string]bool)
