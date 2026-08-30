@@ -674,8 +674,18 @@ jobs:
         persist-credentials: false
 
     - name: Install and run actionlint
+      # Pinned to the v1.7.12 release (upstream commit 914e7df21a07ef503a81201c76d2b11c789d3fca).
+      # actionlint publishes per-release SHA256 checksums, so the release archive is fetched
+      # directly and verified against them, instead of piping the upstream `download-actionlint.bash`
+      # helper from a mutable `main` branch HEAD into bash.
       run: |
-        bash <(curl -sSL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
+        set -euo pipefail
+        version="1.7.12"
+        archive="actionlint_${version}_linux_amd64.tar.gz"
+        curl -sSLO "https://github.com/rhysd/actionlint/releases/download/v${version}/${archive}"
+        curl -sSLO "https://github.com/rhysd/actionlint/releases/download/v${version}/actionlint_${version}_checksums.txt"
+        grep " ${archive}\$" "actionlint_${version}_checksums.txt" | sha256sum -c -
+        tar xzf "${archive}" actionlint
         echo "=== actionlint ==="
         ./actionlint -shellcheck="" -color
 
