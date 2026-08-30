@@ -703,9 +703,18 @@ func newTestOrchestrator(t *testing.T) *Orchestrator {
 // since process START. A collection stays marked changed until its job completes again as a
 // no-op, so on a long-lived container most of the 18 sheets are rewritten on most runs and
 // "only if changed" does not mean it. Batch-scoping is where the API-cost saving lands.
+//
+// registerBatch is called first for both batches -- fix-round-1 correction: recordBatchChange
+// now only writes into a batch registerBatch initialized, so an un-registered batchID is
+// silently dropped (see registerBatch's doc comment for why: closing the leak that a fresh,
+// never-cleaned-up batch id -- RunSingleSync, RunSingleSyncWithService, RunSyncSequence --
+// otherwise accumulated into forever).
 func TestBatchScopedChangedCollections(t *testing.T) {
 	t.Parallel()
 	o := newTestOrchestrator(t)
+
+	o.registerBatch("batch-a")
+	o.registerBatch("batch-b")
 
 	o.recordBatchChange("batch-a", "persons", Stats{Created: 1})
 	o.recordBatchChange("batch-b", "bunks", Stats{Updated: 2})
@@ -831,7 +840,11 @@ func TestQueueScopesChangedCollectionsToItsBatch(t *testing.T) {
 	spy := &changedCollectionsSpy{name: "export_spy"}
 	o.RegisterService("export_spy", spy)
 
+	// registerBatch simulates what a real queue function does before its first job runs (see
+	// registerBatch's doc comment) -- runSyncAndWait itself never registers, since it's shared
+	// by both real queues and RunSingleSync-style batches of one that must NOT accumulate.
 	origin := newBatch(triggerManual)
+	o.registerBatch(origin.batchID)
 	if err := o.runSyncAndWait(context.Background(), "persons", origin); err != nil {
 		t.Fatalf("persons: %v", err)
 	}
@@ -856,8 +869,13 @@ func TestRunSingleSyncWithServiceRecordsBatchChange(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		o := NewOrchestrator(nil)
 
+		// Registered explicitly: this test is about whether site 2 records correctly INTO a
+		// real queue batch, which is a distinct question from whether an unregistered
+		// RunSingleSyncWithService caller leaks (see
+		// TestRunSingleSyncWithServiceDoesNotLeakIntoBatchChanged for that).
 		svc := &mockYearService{name: "sessions", stats: Stats{Created: 4}}
 		origin := newBatch(triggerManual)
+		o.registerBatch(origin.batchID)
 		if err := o.RunSingleSyncWithService(context.Background(), "sessions", svc, origin); err != nil {
 			t.Fatalf("RunSingleSyncWithService: %v", err)
 		}
@@ -880,6 +898,7 @@ func TestFinalizeSyncStatusRecordsBatchChange(t *testing.T) {
 	o := NewOrchestrator(nil)
 
 	const batchID = "finalize-test-batch"
+	o.registerBatch(batchID) // simulates the owning queue having registered it at start
 	o.mu.Lock()
 	o.runningJobs["persons"] = &Status{
 		Type:      "persons",
@@ -994,4 +1013,85 @@ func TestBatchChangedEntryDeletedWhenQueueCompletes(t *testing.T) {
 	// TestRunSyncWithOptionsHonorsDryRun's "skips the nil-baseClient year-override branch").
 	// Its defer adds delete(o.batchChanged, batch.batchID) in the exact same shape as the
 	// current-year branch just above -- verified by code inspection, not a live test.
+}
+
+// =============================================================================
+// Task 12 fix round 1: close the batchChanged leak, fail closed on the season
+// =============================================================================
+
+// TestRunSingleSyncDoesNotLeakIntoBatchChanged pins fix-round-1 correction #1 (Critical).
+// applyCompletionStatus's three callers all route through recordBatchChange, so every
+// completion -- not just a queue's -- used to write into batchChanged. RunSingleSync mints a
+// fresh batch id (batch of one) per call and never registers or cleans it up, so before this
+// fix every standalone run leaked one entry forever: the exact unbounded-growth bug this task
+// exists to fix, reintroduced through the one path C4's "each queue's existing defer" wording
+// excluded. registerBatch's gate is what closes it: recordBatchChange is now a no-op for any
+// batch nothing registered.
+func TestRunSingleSyncDoesNotLeakIntoBatchChanged(t *testing.T) {
+	t.Parallel()
+	o := newTestOrchestrator(t)
+	o.RegisterService("sessions", &MockService{name: "sessions", stats: Stats{Created: 1}})
+
+	if err := o.RunSingleSync(context.Background(), "sessions"); err != nil {
+		t.Fatalf("RunSingleSync: %v", err)
+	}
+	waitForSyncToFinish(t, o, "sessions")
+
+	o.mu.RLock()
+	n := len(o.batchChanged)
+	o.mu.RUnlock()
+	if n != 0 {
+		t.Errorf("expected batchChanged to hold no entries after a non-queue completion, got %d", n)
+	}
+}
+
+// TestRunSingleSyncWithServiceDoesNotLeakIntoBatchChanged is
+// TestRunSingleSyncDoesNotLeakIntoBatchChanged's twin for applyCompletionStatus call site 2 --
+// the correction named RunSingleSyncWithService explicitly ("12+ call sites across api.go").
+func TestRunSingleSyncWithServiceDoesNotLeakIntoBatchChanged(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		o := NewOrchestrator(nil)
+
+		svc := &mockYearService{name: "sessions", stats: Stats{Created: 4}}
+		origin := newBatch(triggerManual) // deliberately never registered
+		if err := o.RunSingleSyncWithService(context.Background(), "sessions", svc, origin); err != nil {
+			t.Fatalf("RunSingleSyncWithService: %v", err)
+		}
+		time.Sleep(50 * time.Millisecond)
+
+		o.mu.RLock()
+		n := len(o.batchChanged)
+		o.mu.RUnlock()
+		if n != 0 {
+			t.Errorf("expected batchChanged to hold no entries after a non-queue completion, got %d", n)
+		}
+	})
+}
+
+// TestStandaloneRunFailsClosedOnUnresolvableSeason pins fix-round-1 correction #2 (Important).
+// Swallowing ParseSeasonYear()'s error and proceeding would leave a YearSetter service pinned
+// to whatever year a prior queue left on it -- the exact insufficiency Task 11 established as
+// not good enough, and the reason RunSingleSync resets the year explicitly at all. A run that
+// can't resolve the current season must refuse outright, matching every other season-resolving
+// caller in this file (handleIndividualSync, the "unified" queue branch) and
+// MultiWorkbookExport.Sync() itself.
+func TestStandaloneRunFailsClosedOnUnresolvableSeason(t *testing.T) {
+	o := newTestOrchestrator(t)
+	exp := newExportWithFakeWriter(t) // sets CAMPMINDER_SEASON_ID=2025 momentarily; exp.year=2025
+	o.RegisterService("multi_workbook_export", exp)
+
+	exp.SetYear(2019)                    // leftover historical year from a prior queued run
+	t.Setenv("CAMPMINDER_SEASON_ID", "") // now unresolvable
+
+	err := o.RunSingleSync(context.Background(), "multi_workbook_export")
+	if err == nil {
+		t.Fatal("expected RunSingleSync to refuse when the current season can't be resolved")
+	}
+	if exp.year != 2019 {
+		t.Errorf("a refused run must not touch the stale year, got %d, want 2019", exp.year)
+	}
+	if o.IsRunning("multi_workbook_export") {
+		t.Error("a refused run must never start -- IsRunning should be false")
+	}
 }

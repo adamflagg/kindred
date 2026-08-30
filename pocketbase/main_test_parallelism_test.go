@@ -65,6 +65,7 @@ var serialGroups = []struct {
 			"TestHandleMultiWorkbookExportDefaultBranchResetsYear",
 			"TestStandaloneRunClearsTheFilter",
 			"TestStandaloneRunResetsYear",
+			"TestStandaloneRunFailsClosedOnUnresolvableSeason",
 		},
 	},
 	{
