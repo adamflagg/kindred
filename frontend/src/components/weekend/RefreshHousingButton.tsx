@@ -14,9 +14,17 @@
  * kindred#2478 §5, which is deliberately its own feature.
  *
  * ⛔ NOT RENDERED ON ADULT WEEKENDS. The caller hides it, the same way the
- * `Housing synced` line is hidden: `GetFamilyCampSessionCMIDs` filters
- * `session_type = 'family'` exactly, so on an adult weekend the chain skips
- * both expensive jobs — 13½ minutes to refresh nothing.
+ * `Housing synced` line is hidden: an adult session is not in the family-camp
+ * cohort either way, so the chain skips both expensive jobs and spends its
+ * whole runtime refreshing nothing.
+ *
+ * ⚠️ The MECHANISM moved even though the behaviour did not. That reasoning used
+ * to rest on `GetFamilyCampSessionCMIDs` filtering `session_type = 'family'`,
+ * which is only on the UNSCOPED path — and this button now always takes the
+ * scoped one. The scoped path is guarded instead by `handleRefreshFamilyCamp`,
+ * which refuses a session that is not a family-camp weekend in the year
+ * (kindred#2601). Hiding the button is still right; cite the guard, not the
+ * resolver.
  *
  * Why the run is not tracked in React state: see `useSyncSequenceRun`. The
  * running state is derived from the server's job statuses, so it survives a
@@ -161,10 +169,25 @@ export function RefreshHousingButton({ session }: RefreshHousingButtonProps) {
           to say is what the refresh costs.
         */}
         <div className="text-foreground space-y-3 text-sm">
+          {/*
+            ⚠️ THE TIMESTAMP DOES NOT NAME THE WEEKEND, DELIBERATELY.
+            `lastSynced` is `lodging_assignments.end_time` — ONE year-wide job
+            status with no session dimension. While every press covered every
+            weekend, attributing it to the weekend on screen was true. Scoping
+            the press (kindred#2601) made it false: refresh weekend A and
+            weekend B's copy would read "Housing for B was last refreshed less
+            than a minute ago" over days-stale answers.
+            That is the hazard #2586 was spent closing — "true about the JOB and
+            false about the DATA" — so the weekend name stays on the TITLE and
+            the action, which are claims about what this press will do, and off
+            the timestamp, which is a claim about data this press did not touch.
+            Per-session freshness needs session identity in the status payload
+            and is tracked separately.
+          */}
           <p>
             {lastSynced !== undefined
-              ? `Housing for ${session.name} was last refreshed ${formatDistanceToNow(new Date(lastSynced), { addSuffix: true })}. Anything staff entered in CampMinder since then is not here yet.`
-              : `Anything staff entered in CampMinder today for ${session.name} is not here yet.`}
+              ? `Housing was last refreshed ${formatDistanceToNow(new Date(lastSynced), { addSuffix: true })}. Anything staff entered in CampMinder since then is not here yet.`
+              : 'Anything staff entered in CampMinder today is not here yet.'}
           </p>
           {/*
             A RANGE, not the chain total. The press covers one weekend, and the

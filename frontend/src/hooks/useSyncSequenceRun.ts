@@ -459,10 +459,10 @@ export function useSyncSequenceRun({
   // A TICK OF ITS OWN. `person_custom_values_family_camp` runs for minutes and its
   // status payload is identical for the whole of it — `Status.Summary` is
   // written only at completion — so React Query's structural sharing hands this
-  // observer the SAME `data` reference on every poll of those nine minutes.
+  // observer the SAME `data` reference on every poll of that job's whole run.
   // Without a tick the readout would not merely sit still: it would sit on the
-  // value it had when that job STARTED, "about 14 min left" with four minutes
-  // to go. This re-renders; it starts no network request.
+  // value it had when that job STARTED — claiming the run's full estimate with
+  // most of it already elapsed. This re-renders; it starts no network request.
   //
   // ⚠️ That measurement — "15 identical polls, ZERO extra renders" — is true of
   // this hook again since kindred#2599. It was NOT true while the freshness
@@ -470,7 +470,7 @@ export function useSyncSequenceRun({
   // identical poll; the baseline now comes from `invalidateQueries`' own
   // promise (see the destructure above), nothing puts a per-fetch timestamp
   // into `#trackedProps`, and the tick is once more the ONLY thing that moves
-  // the readout during those nine minutes. It stays regardless of what the gate
+  // the readout while a long job runs. It stays regardless of what the gate
   // is built on, because it is also the only thing that moves when polling
   // itself is not running. `advances the remaining-time estimate while the
   // status payload is unchanged` pins it directly, with the query layer mocked

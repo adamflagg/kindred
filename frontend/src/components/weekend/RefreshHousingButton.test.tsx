@@ -272,6 +272,34 @@ describe('RefreshHousingButton — scoped to the weekend in view (kindred#2601)'
   })
 
   /**
+   * 🚨 THE REGRESSION PIN FOR THE FRESHNESS CLAIM.
+   *
+   * `lastSynced` is `lodging_assignments.end_time` — ONE year-wide job status
+   * with no session dimension. Naming the weekend beside it was true only while
+   * every press covered every weekend; scoping the press made it false, and the
+   * first draft of kindred#2601 shipped exactly that sentence.
+   *
+   * The weekend name belongs on the TITLE and the action — claims about what
+   * this press will DO — and must stay off the timestamp, which describes data
+   * this press did not necessarily touch. This asserts the split rather than the
+   * absence, so it still fails if someone re-attaches the name to the time.
+   */
+  it('does NOT attribute the shared freshness timestamp to this weekend', () => {
+    renderButton()
+    fireEvent.click(screen.getByRole('button', { name: /Refresh Housing/i }))
+    const dialog = screen.getByRole('dialog')
+
+    const freshnessLine = Array.from(dialog.querySelectorAll('p')).find((p) =>
+      /last refreshed/.test(p.textContent ?? '')
+    )
+    expect(freshnessLine).toBeDefined()
+    expect(freshnessLine?.textContent).not.toMatch(/Family Camp 2/)
+
+    // ...while the weekend IS still named where the claim is about the action.
+    expect(dialog.textContent).toMatch(/Family Camp 2/)
+  })
+
+  /**
    * The stated cost has to move WITH the scope. Leaving "13½ minutes" over a
    * press that now takes two to four would be a true sentence about the old
    * behaviour and a false one about this button — the same trade kindred#2600

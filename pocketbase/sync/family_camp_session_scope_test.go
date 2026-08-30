@@ -312,3 +312,63 @@ func TestHandleRefreshFamilyCampRejectsInvalidSession(t *testing.T) {
 		t.Errorf("session=not-a-weekend got %d, want %d", rec.Code, http.StatusBadRequest)
 	}
 }
+
+// TestHandleRefreshFamilyCampRejectsNonFamilySession closes the gap between the two cohort
+// paths' definitions of "family camp".
+//
+// The unscoped branch resolves through `GetFamilyCampSessionCMIDs`, which filters
+// `session_type = 'family'` exactly. The scoped branch resolves through
+// `ResolveSessionCMIDs`, which applies NO session_type filter and, for a `main` session, fans
+// out to its AG children as well. `IsValidSession` only checks the format. So without this
+// guard a hand-crafted request can point the family-camp bounded jobs at a SUMMER cohort:
+// they run under a job name and log label that say family camp, spend CampMinder calls on the
+// wrong people, and leave the weekend the operator wanted untouched — while the handler has
+// already answered 200 "started".
+//
+// Not reachable from the UI (`AppLayout` gates the button on a resolved non-adult weekend),
+// which is why this is a guard rather than a bug report. The two paths disagreeing about what
+// the scope MEANS is the defect; the endpoint is just where it shows.
+func TestHandleRefreshFamilyCampRejectsNonFamilySession(t *testing.T) {
+	// Not t.Parallel(): t.Setenv is incompatible with it.
+	t.Setenv("CAMPMINDER_SEASON_ID", "2026")
+	const year = 2026
+	app, familyWeekend := scopeSessionFixture(t, year)
+
+	scheduler := NewScheduler(nil)
+	for _, job := range GetRefreshFamilyCampJobs() {
+		scheduler.GetOrchestrator().RegisterService(job, &MockService{name: job})
+	}
+
+	t.Run("a summer session is refused", func(t *testing.T) {
+		re := &core.RequestEvent{}
+		re.App = app
+		re.Request = httptest.NewRequest(http.MethodPost, "/?session=2001", http.NoBody)
+		rec := httptest.NewRecorder()
+		re.Response = rec
+
+		if err := handleRefreshFamilyCamp(re, scheduler); err != nil {
+			t.Fatalf("handler returned error: %v", err)
+		}
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("session=2001 (a summer main session) got %d, want %d -- the family-camp "+
+				"bounded jobs must not be pointed at a summer cohort", rec.Code, http.StatusBadRequest)
+		}
+	})
+
+	t.Run("a real family weekend is accepted", func(t *testing.T) {
+		re := &core.RequestEvent{}
+		re.App = app
+		re.Request = httptest.NewRequest(http.MethodPost,
+			"/?session="+strconv.Itoa(familyWeekend), http.NoBody)
+		rec := httptest.NewRecorder()
+		re.Response = rec
+
+		if err := handleRefreshFamilyCamp(re, scheduler); err != nil {
+			t.Fatalf("handler returned error: %v", err)
+		}
+		if rec.Code != http.StatusOK {
+			t.Errorf("session=%d (a real family weekend) got %d, want %d: %s",
+				familyWeekend, rec.Code, http.StatusOK, rec.Body.String())
+		}
+	})
+}

@@ -708,6 +708,43 @@ func handleRefreshFamilyCamp(e *core.RequestEvent, scheduler *Scheduler) error {
 		})
 	}
 
+	// The named weekend must be one this chain's own scope recognizes.
+	//
+	// The two cohort paths resolve differently and only one of them filters by type: the
+	// unscoped branch goes through GetFamilyCampSessionCMIDs (`session_type = 'family'`),
+	// while the scoped branch goes through ResolveSessionCMIDs, which applies no type filter
+	// at all and fans a `main` session out to its AG children. IsValidSession checks only the
+	// format. Without this guard the bounded family-camp jobs can be pointed at a SUMMER
+	// cohort -- spending CampMinder calls on the wrong people, under a job name and log label
+	// that both say family camp, while the weekend the operator asked for goes unrefreshed
+	// and the handler has already answered 200.
+	//
+	// Deliberately reuses GetFamilyCampSessionCMIDs rather than re-deriving the rule, so the
+	// scoped path cannot drift from the unscoped one about what the scope MEANS.
+	if session != "" && session != DefaultSession {
+		year, yearErr := ParseSeasonYear()
+		if yearErr != nil {
+			return e.JSON(http.StatusInternalServerError, map[string]any{
+				"error": "Could not resolve the current season: " + yearErr.Error(),
+			})
+		}
+
+		familyCMIDs, famErr := NewSessionResolver(e.App).GetFamilyCampSessionCMIDs(year)
+		if famErr != nil {
+			return e.JSON(http.StatusInternalServerError, map[string]any{
+				"error": "Could not resolve family-camp sessions: " + famErr.Error(),
+			})
+		}
+
+		requested, _ := strconv.Atoi(session) // IsValidSession already proved this parses.
+		if !slices.Contains(familyCMIDs, requested) {
+			return e.JSON(http.StatusBadRequest, map[string]any{
+				"error": fmt.Sprintf(
+					"Session %d is not a family-camp weekend in %d.", requested, year),
+			})
+		}
+	}
+
 	// Check if any family-camp-refresh-related sync is already running.
 	//
 	// Collection-group-aware (kindred#2491 Face A), not a plain IsRunning(job) over the six
