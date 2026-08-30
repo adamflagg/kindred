@@ -50,10 +50,30 @@ When implementing a new sync job, ALL of these steps must be completed. Missing 
 | `InitializeSyncServices()` | Register service with `RegisterService()` in dependency order |
 | `RunDailySync()` orderedJobs | Add job ID string in correct position (respects dependencies) |
 | `RunSyncWithOptions()` servicesToRun | Add to default services list for historical syncs |
-| `RunSyncWithOptions()` re-registration | Add `NewXxxSync(o.app, yearClient)` call in historical re-registration block (~line 815) |
-| `syncJobMeta` | Add a `{id, Phase, description}` entry — this is what drives phase grouping and the status UI |
+| `RunSyncWithOptions()` re-registration | Add `NewXxxSync(o.app, yearClient)` call in historical re-registration block (~line 1966) |
+| `syncJobMeta` | Add a keyed `{ID: …, Phase: …, Description: …}` entry (plus Base/Scope for a scoped variant — see scope.go) — this is what drives phase grouping and the status UI |
 
 **Common mistake**: Registering the service but forgetting to add to `orderedJobs` - job won't run in daily sync!
+
+**Exception — a SCOPED VARIANT skips several steps below.** A scoped variant (`Base` + `Scope`
+set, e.g. `person_custom_values_family_camp`) is a narrower-cohort instance of an existing
+service, registered under `scopedID(base, scope)`. It is cron-driven only:
+
+| Step | A scoped variant instead |
+|------|--------------------------|
+| §2 `RunSyncWithOptions()` servicesToRun | **Omit.** It must not appear in a full or historical run — the daily cron already covers it, and re-running the cohort burns rate-limited CampMinder quota for values that are already fresh (#2489). |
+| §2 `RunSyncWithOptions()` re-registration | **Known gap, not a rule.** The scoped instances are the one place the current implementation diverges from this checklist: they are never re-registered against a year client, so a historical run silently uses the current-year instance. Tracked at #2608 — out of scope for the declaration refactor, which is zero-behavior-change. |
+| §3 Register route | **Omit — no individual POST route.** There is no Run button to call. Note this is a *convention*, not something the server enforces: `ResolveUnifiedSyncServices` returns any explicitly named `?service=` straight through without consulting a route table, so `POST /api/custom/sync/run?service=person_custom_values_family_camp` really does run the bounded pass on demand. What holds the convention today is `TestScopedVariantContract` plus the frontend's `manualTrigger: false` guard; the server-side whitelist is planned for the registry refactor's next stage (#2608). |
+| §3 Add to status endpoint | **Still required.** A targeted refresh sets no run-type flag, so the per-job status entry is the client's only completion signal (#2591). |
+| §5 `syncTypes.ts` | Card still required, but with `manualTrigger: false` — pinned to the backend route table by `syncTypes.test.ts`. |
+
+`TestScopedVariantContract` (`scope_test.go`) enforces the servicesToRun, route and status
+rows, plus the `SyncJobToCollections` requirement below. The `syncTypes.ts` row is enforced on
+the frontend side instead, by `syncTypes.test.ts`. The re-registration row is enforced by
+nothing — that is what makes it a gap.
+
+It does still need its `SyncJobToCollections` entry, mapped to the **same collections as its
+base**, or its writes are dropped from the export skip-optimisation (#2491).
 
 ### 2b. Orchestrator Test (`orchestrator_test.go`) — REQUIRED, and easy to miss
 

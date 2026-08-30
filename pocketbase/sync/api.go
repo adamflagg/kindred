@@ -2287,18 +2287,16 @@ func handleHouseholdDemographicsSync(e *core.RequestEvent, scheduler *Scheduler)
 	})
 }
 
-// familyCampBoundedCustomValuesJobs names the two daily-cron-only custom-values instances
-// (kindred#2489) that phaseExecutionJobs excludes from an admin-triggered PhaseExpensive run.
-var familyCampBoundedCustomValuesJobs = map[string]bool{
-	"person_custom_values_family_camp":    true,
-	"household_custom_values_family_camp": true,
-}
+// scopeFamilyCampJobs derives, from syncJobMeta's family-camp-scoped rows, the daily-cron-only
+// custom-values instances (kindred#2489) that phaseExecutionJobs excludes from an
+// admin-triggered PhaseExpensive run.
+var scopeFamilyCampJobs = buildScopedJobSet(ScopeFamilyCamp)
 
 // phaseExecutionJobs returns the jobs actually run for phase -- the list handleRunPhase and
 // processQueuedSyncs iterate to start syncs, as opposed to GetJobsForPhase's classification
 // list (used for phase metadata/UI in handleGetPhases and pinned as including all four
 // custom-values jobs by family_camp_daily_cadence_test.go's TestSyncJobMeta_
-// FamilyCampBoundedJobsAreExpensivePhase).
+// ScopeFamilyCampJobsAreExpensivePhase).
 //
 // For PhaseExpensive specifically, it drops the two bounded family-camp jobs
 // (kindred#2489): they are always covered minutes earlier by the daily cron
@@ -2313,7 +2311,7 @@ func phaseExecutionJobs(phase Phase) []string {
 	}
 	filtered := make([]string, 0, len(jobs))
 	for _, j := range jobs {
-		if !familyCampBoundedCustomValuesJobs[j] {
+		if !scopeFamilyCampJobs[j] {
 			filtered = append(filtered, j)
 		}
 	}

@@ -17,30 +17,22 @@ import (
 // Service name constant - uses new table name
 const serviceNamePersonCustomValues = "person_custom_values"
 
-// serviceNamePersonCustomValuesFamilyCamp must match orchestrator.go's
-// RegisterService("person_custom_values_family_camp", ...) call for the bounded daily instance
-// (kindred#2489). logJobName uses it so the bounded pass's own logs are distinguishable from
-// the unrestricted sweep's (kindred#2491 Face D).
-const serviceNamePersonCustomValuesFamilyCamp = "person_custom_values_family_camp"
-
 // PersonCustomFieldValuesSync handles syncing custom field values for persons from CampMinder.
 // The unrestricted instance (Session=DefaultSession) is ON-DEMAND -- weekly cron + manual runs
-// only -- because a year-wide sweep is 1 API call per person. A second, FamilyCampBounded
-// instance of this same type IS part of the daily cron (kindred#2482): scoped to family-camp
-// attendees, it stays cheap enough to run daily. See orchestrator.go's getDailySyncJobs and the
+// only -- because a year-wide sweep is 1 API call per person. A second, scoped instance of this
+// same type IS part of the daily cron (kindred#2482): scoped to family-camp attendees, it stays
+// cheap enough to run daily. See orchestrator.go's getDailySyncJobs and the
 // "person_custom_values_family_camp" registration.
 type PersonCustomFieldValuesSync struct {
 	BaseSyncService
 	Session     string                 // Session filter: "all", "1", "2", "2a", "3", "4", etc.
 	rateLimiter *ratelimit.RateLimiter // Rate limiter for API calls
 
-	// FamilyCampBounded selects the bounded daily family-camp cohort (any attendee status,
-	// via SessionResolver.GetFamilyCampPersonIDsAnyStatus) instead of Session or the
-	// year-wide fallback. Set only on the dedicated "person_custom_values_family_camp"
-	// service instance registered for the daily cron (kindred#2482) -- the plain
-	// "person_custom_values" instance used by the weekly sweep and manual runs leaves this
-	// false.
-	FamilyCampBounded bool
+	// Scope selects the cohort. ScopeFamilyCamp uses the bounded daily family-camp cohort
+	// (any attendee status, via SessionResolver.GetFamilyCampPersonIDsAnyStatus) instead of
+	// Session or the year-wide fallback; ScopeAll leaves the existing behavior untouched.
+	// Set only on the dedicated scoped instance registered for the daily cron (kindred#2482).
+	Scope Scope
 }
 
 // NewPersonCustomFieldValuesSync creates a new person custom field values sync service
@@ -62,17 +54,16 @@ func (s *PersonCustomFieldValuesSync) Name() string {
 	return serviceNamePersonCustomValues
 }
 
-// logJobName returns the registered job name this instance is actually running as: the bounded
-// family-camp name when FamilyCampBounded is set, the unrestricted name otherwise. Sync() uses
-// this (not the fixed Name()) for LogSyncStart and its cohort-size log line, so an operator
-// reading logs can tell the nightly bounded pass apart from the weekly unrestricted sweep --
-// before this both logged identically as "person_custom_values" even though they cover
-// different cohorts on different schedules (kindred#2491 Face D).
+// SetScope implements scopedService.
+func (s *PersonCustomFieldValuesSync) SetScope(scope Scope) { s.Scope = scope }
+
+// logJobName returns the registered job name this instance is actually running as. Sync()
+// uses this (not the fixed Name()) for LogSyncStart and its cohort-size log line, so an
+// operator reading logs can tell the nightly bounded pass apart from the weekly unrestricted
+// sweep -- before this both logged identically even though they cover different cohorts on
+// different schedules (kindred#2491 Face D).
 func (s *PersonCustomFieldValuesSync) logJobName() string {
-	if s.FamilyCampBounded {
-		return serviceNamePersonCustomValuesFamilyCamp
-	}
-	return serviceNamePersonCustomValues
+	return scopedID(serviceNamePersonCustomValues, s.Scope)
 }
 
 // SetDryRun implements the orchestrator's DryRunnable interface (kindred#2351). Declared
@@ -290,10 +281,15 @@ func (s *PersonCustomFieldValuesSync) preloadFieldDefMapping() (map[int]string, 
 
 // getPersonIDsToSync returns the list of person CampMinder IDs to sync based on session filter
 func (s *PersonCustomFieldValuesSync) getPersonIDsToSync(year int) ([]int, error) {
-	// Bounded daily family-camp pass (kindred#2482): any attendee status, across every
-	// family-camp weekend, resolved via attendees rather than Session so it can span
-	// multiple weekend sessions in one run.
-	if s.FamilyCampBounded {
+	// Exhaustive on purpose. An unhandled scope must NOT fall through: the constructor sets
+	// Session to DefaultSession, so the session guard below is false and control would reach
+	// the year-wide filter -- the ~43-minute unrestricted sweep of every person in the year,
+	// run on the daily cron under a bounded-sounding registered id.
+	switch s.Scope {
+	case ScopeFamilyCamp:
+		// Bounded daily family-camp pass (kindred#2482): any attendee status, across every
+		// family-camp weekend, resolved via attendees rather than Session so it can span
+		// multiple weekend sessions in one run.
 		resolver := NewSessionResolver(s.App)
 		personIDs, err := resolver.GetFamilyCampPersonIDsAnyStatus(year)
 		if err != nil {
@@ -305,6 +301,11 @@ func (s *PersonCustomFieldValuesSync) getPersonIDsToSync(year int) ([]int, error
 			"year", year)
 
 		return personIDs, nil
+	case ScopeAll:
+		// Unscoped -- the Session and year-wide selection below is the whole behavior.
+	default:
+		return nil, fmt.Errorf("getPersonIDsToSync: unhandled scope %q -- give it a case "+
+			"here before registering a service under it", s.Scope)
 	}
 
 	// Use session resolver if session filter is specified

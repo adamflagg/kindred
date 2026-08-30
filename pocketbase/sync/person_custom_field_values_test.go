@@ -237,37 +237,45 @@ func TestPersonCustomFieldValuesTrackingMatchesOrphanLookup(t *testing.T) {
 	}
 }
 
-// TestPersonCustomFieldValuesSync_LogJobName pins kindred#2491 Face D: Sync() used to call
-// LogSyncStart(serviceNamePersonCustomValues) unconditionally, so the daily cron's bounded
-// family-camp pass (FamilyCampBounded=true) logged "Starting sync service=person_custom_values"
-// -- byte-identical to the weekly unrestricted sweep, even though the two cover different
-// cohorts on different schedules. logJobName must resolve to the bounded instance's own
-// registered name (orchestrator.go's "person_custom_values_family_camp") when FamilyCampBounded
-// is set, and leave the unrestricted instance's logging exactly as it was.
-func TestPersonCustomFieldValuesSync_LogJobName(t *testing.T) {
+// TestLogJobNameFollowsScope pins kindred#2491 Face D: the bounded pass logs under its own
+// registered name so an operator can tell the nightly family-camp pass apart from the weekly
+// unrestricted sweep. Derived from Scope now, so a new scope gets the behavior for free.
+func TestLogJobNameFollowsScope(t *testing.T) {
 	t.Parallel()
 
-	unbounded := &PersonCustomFieldValuesSync{}
-	if got, want := unbounded.logJobName(), serviceNamePersonCustomValues; got != want {
-		t.Errorf("logJobName() (unbounded) = %q, want %q", got, want)
+	base := NewPersonCustomFieldValuesSync(nil, nil)
+	if got := base.logJobName(); got != serviceNamePersonCustomValues {
+		t.Errorf("unscoped logJobName() = %q, want %q", got, serviceNamePersonCustomValues)
 	}
 
-	bounded := &PersonCustomFieldValuesSync{FamilyCampBounded: true}
-	if got, want := bounded.logJobName(), "person_custom_values_family_camp"; got != want {
-		t.Errorf("logJobName() (FamilyCampBounded) = %q, want %q -- must match orchestrator.go's "+
-			"RegisterService(\"person_custom_values_family_camp\", ...) name so the log line "+
-			"identifies which instance ran", got, want)
+	bounded := NewPersonCustomFieldValuesSync(nil, nil)
+	bounded.SetScope(ScopeFamilyCamp)
+	if got := bounded.logJobName(); got != "person_custom_values_family_camp" {
+		t.Errorf("scoped logJobName() = %q, want person_custom_values_family_camp", got)
 	}
 
-	// Name() itself must stay unchanged -- it is not the registered lock/log identity (see
-	// TestPersonCustomFieldValuesSync_Name), only logJobName's own return value should vary.
-	if got, want := bounded.Name(), serviceNamePersonCustomValues; got != want {
-		t.Errorf("Name() must stay %q regardless of FamilyCampBounded, got %q", want, got)
+	// The other half of Face D, and the household twin
+	// (TestHouseholdCustomFieldValuesSync_LogJobName) asserts it too: only the LOG name
+	// follows Scope. Name() is the service's identity and must stay unscoped, so the
+	// registry, the orphan sweep and the stats all keep pointing at one service.
+	// TestPersonCustomFieldValuesSync_Name cannot cover this -- it builds a zero-value
+	// instance, which is ScopeAll by definition.
+	if got := bounded.Name(); got != serviceNamePersonCustomValues {
+		t.Errorf("Name() must stay %q regardless of Scope, got %q", serviceNamePersonCustomValues, got)
 	}
 }
 
+// TestScopedServiceInterface pins that both custom-values services satisfy the interface the
+// registration loop needs, so adding a third scoped service is a compile-time question.
+func TestScopedServiceInterface(t *testing.T) {
+	t.Parallel()
+
+	var _ scopedService = NewPersonCustomFieldValuesSync(nil, nil)
+	var _ scopedService = NewHouseholdCustomFieldValuesSync(nil, nil)
+}
+
 // TestPersonCustomFieldValuesSync_CompletionLogUsesBoundedJobName is the sibling gap
-// TestPersonCustomFieldValuesSync_LogJobName does not reach: logJobName is correct, but before
+// TestLogJobNameFollowsScope does not reach: logJobName is correct, but before
 // this test Sync()'s two LogSyncComplete call sites (the "nothing to sync" early return and the
 // end-of-run summary) still passed the hardcoded literal "PersonCustomFieldValues" instead of
 // jobName. That is the exact ambiguity kindred#2491 Face D's problem statement names -- "an
@@ -305,7 +313,7 @@ func TestPersonCustomFieldValuesSync_CompletionLogUsesBoundedJobName(t *testing.
 	}
 
 	s := NewPersonCustomFieldValuesSync(app, client)
-	s.FamilyCampBounded = true
+	s.Scope = ScopeFamilyCamp
 
 	logs := captureSweepLogs(t)
 

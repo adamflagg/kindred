@@ -16,30 +16,22 @@ import (
 // Service name constant - uses new table name
 const serviceNameHouseholdCustomValues = "household_custom_values"
 
-// serviceNameHouseholdCustomValuesFamilyCamp must match orchestrator.go's
-// RegisterService("household_custom_values_family_camp", ...) call for the bounded daily
-// instance (kindred#2489). logJobName uses it so the bounded pass's own logs are
-// distinguishable from the unrestricted sweep's (kindred#2491 Face D).
-const serviceNameHouseholdCustomValuesFamilyCamp = "household_custom_values_family_camp"
-
 // HouseholdCustomFieldValuesSync handles syncing custom field values for households from
 // CampMinder. The unrestricted instance (Session=DefaultSession) is ON-DEMAND -- weekly cron +
-// manual runs only -- because a year-wide sweep is 1 API call per household. A second,
-// FamilyCampBounded instance of this same type IS part of the daily cron (kindred#2482): scoped
-// to family-camp attendees, it stays cheap enough to run daily. See orchestrator.go's
-// getDailySyncJobs and the "household_custom_values_family_camp" registration.
+// manual runs only -- because a year-wide sweep is 1 API call per household. A second, scoped
+// instance of this same type IS part of the daily cron (kindred#2482): scoped to family-camp
+// attendees, it stays cheap enough to run daily. See orchestrator.go's getDailySyncJobs and the
+// "household_custom_values_family_camp" registration.
 type HouseholdCustomFieldValuesSync struct {
 	BaseSyncService
 	Session     string                 // Session filter: "all", "1", "2", "2a", "3", "4", etc.
 	rateLimiter *ratelimit.RateLimiter // Rate limiter for API calls
 
-	// FamilyCampBounded selects the bounded daily family-camp cohort (any attendee status,
-	// via SessionResolver.GetFamilyCampHouseholdIDsAnyStatus) instead of Session or the
-	// year-wide fallback. Set only on the dedicated "household_custom_values_family_camp"
-	// service instance registered for the daily cron (kindred#2482) -- the plain
-	// "household_custom_values" instance used by the weekly sweep and manual runs leaves
-	// this false.
-	FamilyCampBounded bool
+	// Scope selects the cohort. ScopeFamilyCamp uses the bounded daily family-camp cohort
+	// (any attendee status, via SessionResolver.GetFamilyCampHouseholdIDsAnyStatus) instead
+	// of Session or the year-wide fallback; ScopeAll leaves the existing behavior untouched.
+	// Set only on the dedicated scoped instance registered for the daily cron (kindred#2482).
+	Scope Scope
 }
 
 // NewHouseholdCustomFieldValuesSync creates a new household custom field values sync service
@@ -61,13 +53,13 @@ func (s *HouseholdCustomFieldValuesSync) Name() string {
 	return serviceNameHouseholdCustomValues
 }
 
+// SetScope implements scopedService.
+func (s *HouseholdCustomFieldValuesSync) SetScope(scope Scope) { s.Scope = scope }
+
 // logJobName is the household twin of PersonCustomFieldValuesSync.logJobName -- see that
 // method's comment for the full rationale (kindred#2491 Face D).
 func (s *HouseholdCustomFieldValuesSync) logJobName() string {
-	if s.FamilyCampBounded {
-		return serviceNameHouseholdCustomValuesFamilyCamp
-	}
-	return serviceNameHouseholdCustomValues
+	return scopedID(serviceNameHouseholdCustomValues, s.Scope)
 }
 
 // SetDryRun implements the orchestrator's DryRunnable interface (kindred#2351). Declared
@@ -281,10 +273,15 @@ func (s *HouseholdCustomFieldValuesSync) preloadFieldDefMapping() (map[int]strin
 
 // getHouseholdIDsToSync returns the list of household CampMinder IDs to sync based on session filter
 func (s *HouseholdCustomFieldValuesSync) getHouseholdIDsToSync(year int) ([]int, error) {
-	// Bounded daily family-camp pass (kindred#2482): any attendee status, across every
-	// family-camp weekend, resolved via attendees rather than Session so it can span
-	// multiple weekend sessions in one run.
-	if s.FamilyCampBounded {
+	// Exhaustive on purpose. An unhandled scope must NOT fall through: the constructor sets
+	// Session to DefaultSession, so the session guard below is false and control would reach
+	// the year-wide filter -- the ~29-minute unrestricted sweep of every household in the
+	// year, run on the daily cron under a bounded-sounding registered id.
+	switch s.Scope {
+	case ScopeFamilyCamp:
+		// Bounded daily family-camp pass (kindred#2482): any attendee status, across every
+		// family-camp weekend, resolved via attendees rather than Session so it can span
+		// multiple weekend sessions in one run.
 		resolver := NewSessionResolver(s.App)
 		householdIDs, err := resolver.GetFamilyCampHouseholdIDsAnyStatus(year)
 		if err != nil {
@@ -296,6 +293,11 @@ func (s *HouseholdCustomFieldValuesSync) getHouseholdIDsToSync(year int) ([]int,
 			"year", year)
 
 		return householdIDs, nil
+	case ScopeAll:
+		// Unscoped -- the Session and year-wide selection below is the whole behavior.
+	default:
+		return nil, fmt.Errorf("getHouseholdIDsToSync: unhandled scope %q -- give it a case "+
+			"here before registering a service under it", s.Scope)
 	}
 
 	// Use session resolver if session filter is specified
