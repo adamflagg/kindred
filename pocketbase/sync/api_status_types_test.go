@@ -109,13 +109,31 @@ func TestStatusSyncTypesHasNoDuplicates(t *testing.T) {
 // passed through a severe misplacement. Comparing whole subsequences needs no anchors.
 //
 // Since statusSyncTypes became allJobIDs() the two sides are no longer a hand-written list
-// and a derivation, but two views of one table -- so what is left to pin is the DIFFERENCE
-// between them, which is orderQueue: getDailySyncJobs applies it, the payload does not, and
-// it moves exactly one job (stranded_assignment_cleanup, dead-last, #1416/#1417). Dropping
-// that one job from both sides therefore leaves an assertion that still fails if any OTHER
-// job's position diverges -- which is what a second orderQueue exception, or a registry row
-// moved without moving its neighbors, would look like. orderQueue's own doc comment says a
-// second exception must never be added; this is the test that notices if one is.
+// and a derivation, but two views of one table, and this test IS NARROWER than the version
+// above it. That narrowing is structural, not a choice: filtering the payload to daily
+// membership reproduces available(jobsWithCadence(CadenceDaily)) in registry order by
+// construction, so no reshape could have preserved the old coverage. What is left to pin is
+// the DIFFERENCE between the two views, which is orderQueue -- getDailySyncJobs applies it,
+// the payload does not, and it moves exactly one job (stranded_assignment_cleanup, dead-last,
+// #1416/#1417).
+//
+// So be exact about what this does and does not catch. Verified by mutation, each run against
+// the real tree:
+//
+//	CAUGHT  statusSyncTypes ceasing to publish in registry declaration order -- sorting its
+//	        output fails the sequence comparison below.
+//	CAUGHT  orderQueue's exception changing identity or disappearing -- the t.Fatal below,
+//	        which is what stops the exemption from quietly excusing the wrong job.
+//	CAUGHT  a SECOND orderQueue exception, when it genuinely reorders a job relative to
+//	        registry order (moving "sessions" last fails this). Not caught when the second
+//	        exception is a no-op on the daily queue, e.g. a job the gates already leave last.
+//	NOT     a registry row moved relative to its neighbors. Both sides move together, and the
+//	CAUGHT  test still passes. TestDailyQueueDerivation's literal sequence (registry_test.go)
+//	        is what catches that, and it does -- swapping camper_dietary and
+//	        camper_transportation fails it and TestUnifiedRunDerivation, not this.
+//
+// orderQueue's own doc comment says a second exception must never be added. This test notices
+// most of the ways one could be; the literal daily sequence is the guard that notices the rest.
 func TestStatusSyncTypesMatchesDailySyncOrder(t *testing.T) {
 	t.Parallel()
 	daily := getDailySyncJobs()
