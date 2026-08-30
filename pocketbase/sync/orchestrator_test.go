@@ -2060,11 +2060,11 @@ func TestRealServicesHonorDryRunThroughUnifiedEndpoint(t *testing.T) {
 
 // TestRunSyncWithOptionsDryRunSkipsTheWeeklyBootstrap covers the one write inside
 // RunSyncWithOptions that the DryRunnable plumbing never sees. Before any service runs,
-// RunSyncWithOptions checks whether the global tables are empty and, if so, runs a full
-// weekly sync -- real CampMinder fetches, real writes to person_tag_defs / custom_field_defs
-// / divisions -- through RunWeeklySync, which takes no Options and so cannot know a dry run
-// was asked for. A dry_run=true request landing on an unseeded database therefore wrote,
-// while the 200 body told the operator "dry_run": true (kindred#2334).
+// RunSyncWithOptions checks whether the global tables are empty and, if so, runs the bootstrap
+// repair -- real CampMinder fetches, real writes to person_tag_defs / custom_field_defs /
+// divisions -- through runGlobalTableBootstrap, which takes no Options and so cannot know a
+// dry run was asked for. A dry_run=true request landing on an unseeded database therefore
+// wrote, while the 200 body told the operator "dry_run": true (kindred#2334).
 func TestRunSyncWithOptionsDryRunSkipsTheWeeklyBootstrap(t *testing.T) {
 	t.Parallel()
 

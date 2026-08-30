@@ -730,9 +730,11 @@ func NewOrchestrator(app core.App) *Orchestrator {
 // stale and leaves it stuck there permanently.
 //
 // A previous revision justified restore-over-clear by citing two nesting sites. Neither
-// nests: RunDailySync calls RunWeeklySync *before* opening its own batch, and
-// RunSyncWithOptions does the same. No beginBatch nesting existed anywhere in the tree, so
-// the only thing the shared slot ever did was let concurrent runs corrupt each other.
+// nests: RunDailySync calls runGlobalTableBootstrap *before* opening its own batch, and
+// RunSyncWithOptions does the same (both called RunWeeklySync directly for this at the time --
+// see runGlobalTableBootstrap's own doc comment for why that changed). No beginBatch nesting
+// existed anywhere in the tree, so the only thing the shared slot ever did was let concurrent
+// runs corrupt each other.
 type runOrigin struct {
 	// trigger is one of the trigger constants above. Persisted verbatim to
 	// sync_runs.trigger, whose select values must match that list exactly.
@@ -1590,8 +1592,10 @@ func (o *Orchestrator) FinalizeSyncStatus(syncType string, stats Stats, err erro
 
 	o.recordSyncRun(&snapshot)
 
-	// Read the outcome off the snapshot: &completed is in the map now, so reading its
-	// fields would be reading memory other goroutines can reach.
+	// Read the outcome off snapshot, not completed: reading completed directly would still
+	// be safe (it is a local copy, per the comment above recordBatchChange), but snapshot is
+	// the exact Status this run's sync_runs row is about to be written from, so reading it
+	// from anywhere else risks drifting from what actually got recorded.
 	finalStatus, finalError := snapshot.Status, snapshot.Error
 
 	if finalStatus == statusFailed {
@@ -1892,11 +1896,16 @@ func (o *Orchestrator) RunCustomValuesSync(ctx context.Context) error {
 // runSyncAndWait runs a sync as part of `origin`'s batch and waits for it to complete.
 //
 // A ChangedCollectionsAware service (see MultiWorkbookExport) receives the batch's own
-// changed-collections set so far -- batchChangedCollections(origin.batchID) -- never nil, so
-// export-everything stays reserved for RunSingleSync's explicit standalone case. Every queue
-// in this file (RunHourlySync, RunDailySync, RunWeeklySync, RunCustomValuesSync,
-// RunSyncWithOptions) and both of api.go's queued-run handlers route through this one
-// function, so wiring it here is what makes it "the queue" rather than any one caller.
+// changed-collections set so far -- batchChangedCollections(origin.batchID). This is nil,
+// meaning "export everything", whenever origin.batchID was never registered with
+// registerBatch: RunSingleSync's explicit standalone case, an operator-named single-service
+// RunSyncWithOptions run (final-review Critical C1 -- a batch of one has nothing that could
+// have changed anything before it), the synchronous phase-run handler (api.go's
+// handleRunPhase), and both of api.go's queued-run handlers, none of which register a batch
+// of their own. Every REGISTERED queue in this file (RunHourlySync, RunDailySync,
+// RunWeeklySync, RunCustomValuesSync, a multi-service RunSyncWithOptions run) routes through
+// this one function too, so wiring it here is what makes it "the queue" rather than any one
+// caller, for both the nil and the real-filter case.
 //
 // A YearSetter service gets origin.year the same way, for the identical reason: it too is a
 // per-run parameter the queue owns, not the job. origin.year == 0 means "the current season"
@@ -2108,11 +2117,11 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 		o.mu.Unlock()
 	}()
 
-	// Check if global tables are empty - if so, run weekly sync first
+	// Check if global tables are empty - if so, run the bootstrap repair first
 	// This ensures fresh DB setups have required global definitions before any sync
 	// The check is quick (1 DB query) so we do it regardless of year.
 	//
-	// Never on a dry run. RunWeeklySync fetches and writes person_tag_defs,
+	// Never on a dry run. runGlobalTableBootstrap fetches and writes person_tag_defs,
 	// custom_field_defs and divisions for real, and it does not go through the
 	// DryRunnable plumbing below, so a dry_run=true request that happened to land on an
 	// unseeded database would write anyway -- an operator told "dry_run": true while the

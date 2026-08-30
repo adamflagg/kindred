@@ -288,7 +288,10 @@ var serialGroups = []struct {
 	{
 		pkg:    "sync",
 		reason: "t.Setenv: CAMPMINDER_SEASON_ID drives runSyncAndWait's own season resolution",
-		tests:  []string{"TestRunSyncAndWaitSetsYearFromOrigin"},
+		tests: []string{
+			"TestRunSyncAndWaitSetsYearFromOrigin",
+			"TestRunSyncAndWaitLeavesYearUnsetRatherThanAbortingTheBatch",
+		},
 	},
 	{
 		pkg:    "sync",

@@ -918,6 +918,46 @@ func TestRunSyncAndWaitSetsYearFromOrigin(t *testing.T) {
 	})
 }
 
+// TestRunSyncAndWaitLeavesYearUnsetRatherThanAbortingTheBatch is the regression guard for fix
+// round 2's Important #4 ruling (final-review Minor, item 7's last sub-item): when
+// ParseSeasonYear() cannot resolve the current season, runSyncAndWait must leave that one
+// YearSetter's year unset and let its OWN Sync() fail closed on the identical
+// ParseSeasonYear() call (see MultiWorkbookExport.Sync()) -- not abort the rest of the batch.
+// Aborting ~27 services because one gated optional job cannot resolve its year would be the
+// wrong blast radius; that ruling was right for RunSingleSync, where the one service IS the
+// whole run, but does not transfer to a queue. Before this ruling, nothing pinned it as
+// behavior rather than as prose in the ledger -- a revert to a whole-batch abort would not
+// have been caught.
+//
+// Registered in serialGroups: CAMPMINDER_SEASON_ID is t.Setenv'd unresolvable.
+func TestRunSyncAndWaitLeavesYearUnsetRatherThanAbortingTheBatch(t *testing.T) {
+	t.Setenv("CAMPMINDER_SEASON_ID", "") // ParseSeasonYear() now fails closed
+	o := NewOrchestrator(nil)
+
+	yearSpy := &yearSetterSpy{name: "export_spy"}
+	o.RegisterService("export_spy", yearSpy)
+	other := &MockService{name: "other_service"}
+	o.RegisterService("other_service", other)
+
+	origin := newBatch(triggerManual) // origin.year == 0: current-season mode
+	o.registerBatch(origin.batchID)
+
+	if err := o.runSyncAndWait(context.Background(), "export_spy", origin); err != nil {
+		t.Fatalf("runSyncAndWait for the unresolvable-season job must not itself error, got: %v", err)
+	}
+	if yearSpy.yearWasSet {
+		t.Errorf("expected the year to be left unset when the season cannot be resolved, got SetYear(%d)", yearSpy.year)
+	}
+
+	// The rest of the batch must not be aborted by the first job's unresolvable season.
+	if err := o.runSyncAndWait(context.Background(), "other_service", origin); err != nil {
+		t.Fatalf("runSyncAndWait for a later job in the same batch: %v", err)
+	}
+	if got := other.callCount.Load(); got != 1 {
+		t.Errorf("expected the next job in the batch to still run, callCount=%d", got)
+	}
+}
+
 // TestWeeklySyncResetsAStaleExportYear pins the fifth stale-year path fix round 2 found:
 // RunWeeklySync (the Sunday-2am cron) reaches Sync() through runSyncAndWait exactly like
 // RunSyncWithOptions does, and before this fix nothing set the export's year there either.
@@ -1216,7 +1256,10 @@ func TestExportRunsExactlyOnceInAFullRun(t *testing.T) {
 	}
 	src := readSourceFile(t, "orchestrator.go")
 	if strings.Contains(src, "Sync with options: Exporting to Google Sheets") {
-		t.Error("the hardcoded export epilogue is still in RunSyncWithOptions")
+		t.Error("the hardcoded current-year export epilogue is still in RunSyncWithOptions")
+	}
+	if strings.Contains(src, "Historical sync: Exporting to Google Sheets") {
+		t.Error("the hardcoded historical export epilogue is still in RunSyncWithOptions")
 	}
 
 	// List membership cannot see a second execution path: checkGlobalTablesEmpty's
