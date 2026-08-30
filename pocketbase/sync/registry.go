@@ -1,5 +1,7 @@
 package sync
 
+import "log/slog"
+
 // Cadence is the set of crons that run a job. A bitset rather than one slice per cron
 // because a job may be on more than one -- bunk_assignments is both hourly and daily, and a
 // slice-per-cadence can only say that by listing it twice.
@@ -82,12 +84,19 @@ func allJobIDs() []string {
 	return ids
 }
 
-// available drops jobs whose environment gate is closed (IS_DOCKER, google.IsEnabled).
+// available drops jobs whose environment gate is closed (IS_DOCKER, google.IsEnabled), logging
+// at Debug level which job and that its gate was the reason. This is what RunDailySync used to
+// give one job by name ("Skipping process_requests in development mode..."); dropping the
+// hand-spelled special case in favor of the Gate field lost it. Restored here instead, uniform
+// across every gated row -- previously a google-disabled multi_workbook_export was dropped with
+// no explanation at all.
 func available(ids []string) []string {
 	out := make([]string, 0, len(ids))
 	for _, id := range ids {
 		if g := jobGate(id); g == nil || g() {
 			out = append(out, id)
+		} else {
+			slog.Debug("sync job skipped: environment gate closed", "job", id)
 		}
 	}
 	return out
