@@ -423,6 +423,9 @@ type YearSetter interface {
 //
 //	daily / full / historical / weekly-global queue -> that batch's changed set
 //	standalone Run button, Run Phase -> Export      -> nil, meaning "export everything"
+//	unified run resolving to ONE service            -> nil, for the same reason: a batch of
+//	                                                   one is not a queue, so nothing ran
+//	                                                   before it that could have changed
 //
 // nil and an empty map are DIFFERENT answers: SyncGlobalsOnly and SyncYearData skip on
 // `changed != nil && !changed[c]`, so an empty-but-non-nil map exports NOTHING while nil
@@ -1004,8 +1007,11 @@ func (o *Orchestrator) IsWeeklySyncRunning() bool {
 // nobody registered gets no entry, so there is nothing for a caller to forget to delete.
 //
 // registerBatch is deliberately NOT called by RunSingleSync/RunSingleSyncWithService/
-// RunSyncSequence -- those runs have no export waiting on the filter, so accumulating one for
-// them would be pure waste with no consumer. Only the five queue functions call it.
+// RunSyncSequence, nor by a unified run that resolves to a SINGLE service. None of those is a
+// queue: nothing ran before the job that could have changed anything, so there is no set worth
+// accumulating and the job correctly receives nil -- "export everything". Registering one
+// would be worse than useless: the export would receive a non-nil EMPTY filter and write zero
+// sheets while reporting success (final-review Critical C1).
 func (o *Orchestrator) registerBatch(batchID string) {
 	if batchID == "" {
 		return
@@ -1021,7 +1027,8 @@ func (o *Orchestrator) registerBatch(batchID string) {
 // applyCompletionStatus's three callers (runSingleSyncInternal, RunSingleSyncWithService,
 // FinalizeSyncStatus) -- so it sees every job's completion exactly once, scoped to the batch
 // it actually ran in. An unregistered batchID (a batch of one: RunSingleSync,
-// RunSingleSyncWithService, RunSyncSequence) is a no-op here, not an error -- see registerBatch.
+// RunSingleSyncWithService, RunSyncSequence, or a unified run resolving to a single service) is
+// a no-op here, not an error -- see registerBatch.
 //
 // This is the fix for the process-lifetime approach's limitation (the deleted
 // GetChangedCollections, which read lastCompletedStatus -- keyed by service name and
@@ -1606,7 +1613,12 @@ func (o *Orchestrator) FinalizeSyncStatus(syncType string, stats Stats, err erro
 }
 
 // checkGlobalTablesEmpty checks if essential global tables have been synced.
-// Returns true if global tables are empty and weekly sync should run first.
+// Returns true if global tables are empty and the global-table bootstrap should run first.
+//
+// Its callers run runGlobalTableBootstrap, NOT RunWeeklySync: since the Sheets export joined
+// the weekly-global cadence, running the whole weekly queue here would export as well as
+// repair, and a fresh-DB run would then export twice. The bootstrap is a repair path, not a
+// membership question.
 func (o *Orchestrator) checkGlobalTablesEmpty() bool {
 	// Quick check on person_tag_defs - if empty, globals haven't run
 	records, _ := o.app.FindRecordsByFilter("person_tag_defs", "", "", 1, 0)

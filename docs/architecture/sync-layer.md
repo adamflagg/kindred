@@ -74,6 +74,14 @@ skip now applies to the export at every trigger, not only the daily one; and the
 global cron (`CadenceWeeklyGlobal`) now exports the four global tables it just refreshed, which
 nothing did before.
 
+**Four exported tables, five global jobs — both numbers are right.** `GetReadableGlobalExports()`
+returns four `ExportConfig`s (`person_tag_defs`, `custom_field_defs`, `financial_categories`,
+`divisions`) while five jobs carry `CadenceWeeklyGlobal`. The gap is `staff_lookups`, which
+refreshes positions, org categories and program areas — lookups nothing exports. That is
+correct, not an omission: `TestEveryExportedCollectionHasASyncJob` pins the direction that
+matters (every exported collection must be written by some job, or its sheet becomes
+permanently unexportable), and deliberately does not pin the reverse.
+
 **The five global definition tables are ordinary rows now.** `person_tag_defs`,
 `custom_field_defs`, `staff_lookups`, `financial_lookups` and `divisions` are rows in
 `syncJobMeta` like any other job as of Stage 3 — they no longer come from a hand-written list.

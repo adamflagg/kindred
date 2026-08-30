@@ -1272,7 +1272,7 @@ func TestRunSyncWithOptionsChecksGlobalTables(t *testing.T) {
 		// The check is located in RunDailySync at lines 349-354:
 		//   if o.checkGlobalTablesEmpty() {
 		//       slog.Info("Global tables empty - running weekly sync first")
-		//       if err := o.RunWeeklySync(ctx); err != nil {
+		//       if err := o.runGlobalTableBootstrap(ctx); err != nil {
 		//           slog.Error("Weekly sync failed, continuing with daily", "error", err)
 		//       }
 		//   }

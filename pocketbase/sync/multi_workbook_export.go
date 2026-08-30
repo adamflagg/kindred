@@ -39,17 +39,6 @@ type MultiWorkbookExport struct {
 	// ChangedCollectionsAware's doc comment (orchestrator.go) for why nil and an empty map
 	// are different answers.
 	changed map[string]bool
-	// DryRun implements DryRunnable. There is no partial "compute what would export without
-	// writing" mode for a spreadsheet write -- the write IS the work -- so dry_run=true skips
-	// the export outright. Sync() reports the skip visibly (Stats.Skipped, logged) rather than
-	// silently doing nothing while still reporting success: kindred#2606-series Task 13 fix
-	// round 2, Important #5.
-	//
-	// Exported (unlike changed and year above) so TestRealServicesSetDryRunStoresTheFlag's
-	// reflection-based guard can reach it the same way it reaches every other DryRunnable
-	// service's field (final-review Important I3) -- this service is otherwise structured
-	// like the rest of the package, where DryRun is always exported.
-	DryRun bool
 }
 
 // NewMultiWorkbookExport creates a new multi-workbook export service.
@@ -103,6 +92,17 @@ func (m *MultiWorkbookExport) SetYear(year int) {
 // SetDryRun implements DryRunnable. The orchestrator calls this before Sync() the same way it
 // calls SetYear and SetChangedCollections above -- see Sync()'s own comment on why dry_run
 // means skipping outright rather than computing a preview.
+// SetDryRun implements DryRunnable, writing BaseSyncService's promoted DryRun field. There is
+// no partial "compute what would export without writing" mode for a spreadsheet write -- the
+// write IS the work -- so dry_run=true skips the export outright, and Sync() reports the skip
+// visibly (Stats.Skipped, logged) rather than silently doing nothing while reporting success.
+//
+// The field is the EMBEDDED one on purpose. An earlier revision redeclared `DryRun bool` here
+// so TestRealServicesSetDryRunStoresTheFlag's reflection guard could find it; that shadowed
+// BaseSyncService's field, leaving the embedded one permanently false while this one was read
+// -- a value set in one place and read from another, which is the exact class of bug this
+// branch spent seven rounds removing. reflect.FieldByName finds promoted fields, so the guard
+// reaches it either way and the shadow bought nothing.
 func (m *MultiWorkbookExport) SetDryRun(dryRun bool) {
 	m.DryRun = dryRun
 }
