@@ -104,14 +104,21 @@ function RosterProbe() {
   return <div data-testid="roster">{data ?? 'loading'}</div>
 }
 
-function renderButton(client = makeClient()) {
+/**
+ * The weekend the shell is pointed at. `AppLayout` only renders this button
+ * once `useWeekendShellSession` has resolved one, so a session is always in
+ * hand — there is no unscoped state to model here (kindred#2601).
+ */
+const TEST_SESSION = { session_cm_id: 900, name: 'Family Camp 2' }
+
+function renderButton(client = makeClient(), session = TEST_SESSION) {
   // A WARM cache and no polling — the state a page at rest is in, and the one
   // kindred#2595 is about. Seeding it also keeps the first render synchronous.
   client.setQueryData(queryKeys.syncStatus(), currentStatus)
   const utils = render(
     <QueryClientProvider client={client}>
       <RosterProbe />
-      <RefreshHousingButton />
+      <RefreshHousingButton session={session} />
     </QueryClientProvider>
   )
   return { ...utils, client }
@@ -156,7 +163,7 @@ describe('RefreshHousingButton — resting and the press modal', () => {
     renderButton()
     fireEvent.click(screen.getByRole('button', { name: /Refresh Housing/i }))
     const dialog = screen.getByRole('dialog')
-    expect(dialog.textContent).toMatch(/13½ minutes/)
+    expect(dialog.textContent).toMatch(/2–4 minutes/)
     expect(dialog.textContent).toMatch(/not here yet/i)
     expect(dialog.textContent).toMatch(/ago/)
   })
@@ -225,7 +232,57 @@ describe('RefreshHousingButton — resting and the press modal', () => {
     fireEvent.click(screen.getByRole('button', { name: /Refresh Housing/i }))
     fireEvent.click(screen.getByRole('button', { name: /Start refresh/i }))
     await waitFor(() => expect(refreshFamilyCamp).toHaveBeenCalledTimes(1))
-    expect(refreshFamilyCamp).toHaveBeenCalledWith(fetchWithAuth)
+    expect(refreshFamilyCamp).toHaveBeenCalledWith(fetchWithAuth, TEST_SESSION.session_cm_id)
+  })
+})
+
+describe('RefreshHousingButton — scoped to the weekend in view (kindred#2601)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    rosterFromServer = 'Tamarack 1'
+    setStatus(status())
+  })
+
+  /**
+   * The press covers ONE weekend, not the season. Before kindred#2601 the two
+   * bounded custom-values jobs swept every family-camp weekend in the year —
+   * measured 782 persons against 175 for the largest single weekend, and those
+   * two jobs are ~96% of the chain's runtime.
+   *
+   * Asserting the ARGUMENT rather than the elapsed time is the point: a press
+   * that silently refreshed all ten weekends would look identical on screen.
+   */
+  it('refreshes the weekend on screen, not the whole season', async () => {
+    renderButton()
+    fireEvent.click(screen.getByRole('button', { name: /Refresh Housing/i }))
+    fireEvent.click(screen.getByRole('button', { name: /Start refresh/i }))
+    await waitFor(() => expect(refreshFamilyCamp).toHaveBeenCalledTimes(1))
+    expect(refreshFamilyCamp).toHaveBeenCalledWith(fetchWithAuth, 900)
+  })
+
+  /**
+   * The button lives in the app shell's nav, not on the board, so nothing else
+   * on screen says which weekend it acts on. Naming it is what makes the
+   * narrowed scope honest rather than merely faster.
+   */
+  it('names the weekend it is about to refresh', () => {
+    renderButton()
+    fireEvent.click(screen.getByRole('button', { name: /Refresh Housing/i }))
+    expect(screen.getByRole('dialog').textContent).toMatch(/Family Camp 2/)
+  })
+
+  /**
+   * The stated cost has to move WITH the scope. Leaving "13½ minutes" over a
+   * press that now takes two to four would be a true sentence about the old
+   * behaviour and a false one about this button — the same trade kindred#2600
+   * refused when a phase header claimed a job count its own action did not run.
+   */
+  it('states the scoped cost, not the whole-season one', () => {
+    renderButton()
+    fireEvent.click(screen.getByRole('button', { name: /Refresh Housing/i }))
+    const text = screen.getByRole('dialog').textContent ?? ''
+    expect(text).toMatch(/2–4 minutes/)
+    expect(text).not.toMatch(/13½/)
   })
 })
 

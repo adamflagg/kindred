@@ -1226,12 +1226,36 @@ func GetCustomValuesSyncJobs() []string { return cadenceQueue(CadenceWeeklyCusto
 // tracking. Used for targeted refreshes like bunking (bunks -> bunk_plans ->
 // bunk_assignments).
 func (o *Orchestrator) RunSyncSequence(ctx context.Context, services []string) error {
+	return o.RunSyncSequenceWithServices(ctx, services, nil)
+}
+
+// RunSyncSequenceWithServices is RunSyncSequence with per-job REQUEST-SCOPED instances.
+//
+// `overrides` maps a job id to an instance the caller built and configured itself; any job
+// absent from the map runs the registered singleton exactly as before, so a nil map is
+// RunSyncSequence unchanged. That is the whole compatibility contract -- the crons, Refresh
+// Bunking and Run Phase all pass nil and are untouched.
+//
+// Why this exists rather than a setter the orchestrator applies to the registered instance
+// (kindred#2601): configuring the shared singleton per request is what kindred#2105 already
+// fixed on the single-job handlers. A rejected (409) request's SetSession stuck before
+// MarkSyncRunning ran, silently narrowing whichever request was actually in flight. A queue
+// reopens that same gap one level up -- its conflict check happens in the handler, before the
+// first job starts -- so the fix has to be the same one: never mutate the registry, hand the
+// run its own object. See api.go's handleIndividualSync comments for the original.
+//
+// The jobs still share ONE batch, which is why this is a variant of the sequence rather than
+// a loop of RunSingleSyncWithService calls: batch identity is what groups the six-job refresh
+// for the export filter and for the client's completion detection (kindred#2591).
+func (o *Orchestrator) RunSyncSequenceWithServices(
+	ctx context.Context, services []string, overrides map[string]Service,
+) error {
 	// A targeted refresh is still a queue, so its jobs are grouped as one batch. It carries
 	// no run-type flag and is only ever reached from an operator action, hence manual.
 	batch := newBatch(triggerManual)
 
 	for _, svc := range services {
-		if err := o.runSyncAndWait(ctx, svc, batch); err != nil {
+		if err := o.runSyncAndWaitWithService(ctx, svc, batch, overrides[svc]); err != nil {
 			return fmt.Errorf("sync sequence failed on %s: %w", svc, err)
 		}
 	}
@@ -1277,14 +1301,17 @@ func (o *Orchestrator) RunSingleSync(parentCtx context.Context, syncType string)
 		}
 	}
 
-	_, err := o.runSingleSyncInternal(parentCtx, syncType, newBatch(triggerManual))
+	_, err := o.runSingleSyncInternal(parentCtx, syncType, newBatch(triggerManual), nil)
 	return err
 }
 
 // runSingleSyncInternal runs a single sync service and returns the run token. `origin` names
 // the grouped run this execution belongs to; see runOrigin for why it is a parameter.
+// override, when non-nil, is a request-scoped instance the caller configured itself; the
+// registry is then consulted only to confirm the job id is real. See
+// RunSyncSequenceWithServices for why a caller would rather not configure the singleton.
 func (o *Orchestrator) runSingleSyncInternal(
-	parentCtx context.Context, syncType string, origin runOrigin,
+	parentCtx context.Context, syncType string, origin runOrigin, override Service,
 ) (string, error) {
 	// Check if service exists
 	o.mu.RLock()
@@ -1294,6 +1321,9 @@ func (o *Orchestrator) runSingleSyncInternal(
 
 	if !exists {
 		return "", fmt.Errorf("sync service not found: %s", syncType)
+	}
+	if override != nil {
+		service = override
 	}
 
 	// Generate a unique token for this run
@@ -1942,7 +1972,24 @@ func (o *Orchestrator) RunCustomValuesSync(ctx context.Context) error {
 // resolved would be the wrong blast radius (fix round 2, Important #4) -- that ruling was
 // right for RunSingleSync, where the one service IS the whole run, but does not transfer here.
 func (o *Orchestrator) runSyncAndWait(ctx context.Context, syncType string, origin runOrigin) error {
-	if svc := o.GetService(syncType); svc != nil {
+	return o.runSyncAndWaitWithService(ctx, syncType, origin, nil)
+}
+
+// runSyncAndWaitWithService is runSyncAndWait against an optional caller-supplied instance.
+// A nil `override` means "use the registered service", which is every pre-existing caller.
+//
+// The optional-interface setters below are applied to whichever instance will actually RUN --
+// the override when there is one. Applying them to the registry while running the override
+// would configure one object and execute another, which is a silent no-op rather than an
+// error.
+func (o *Orchestrator) runSyncAndWaitWithService(
+	ctx context.Context, syncType string, origin runOrigin, override Service,
+) error {
+	svc := override
+	if svc == nil {
+		svc = o.GetService(syncType)
+	}
+	if svc != nil {
 		if changedAware, ok := svc.(ChangedCollectionsAware); ok {
 			changedAware.SetChangedCollections(o.batchChangedCollections(origin.batchID))
 		}
@@ -1961,7 +2008,7 @@ func (o *Orchestrator) runSyncAndWait(ctx context.Context, syncType string, orig
 	// Start the sync and capture the token directly from the return value.
 	// This eliminates the race where the goroutine completes before we can
 	// read the token from runningJobs (issue #789).
-	expectedToken, err := o.runSingleSyncInternal(ctx, syncType, origin)
+	expectedToken, err := o.runSingleSyncInternal(ctx, syncType, origin, override)
 	if err != nil {
 		return err
 	}

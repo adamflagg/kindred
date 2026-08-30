@@ -19,6 +19,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/camp/kindred/pocketbase/campminder"
 	"github.com/camp/kindred/pocketbase/google"
 	"github.com/pocketbase/pocketbase"
 	"github.com/pocketbase/pocketbase/apis"
@@ -650,6 +651,37 @@ func handleRefreshBunking(e *core.RequestEvent, scheduler *Scheduler) error {
 	})
 }
 
+// refreshFamilyCampOverrides builds the REQUEST-SCOPED instances a session-scoped Refresh
+// Housing runs, keyed by job id. An empty or "all" session returns nil, which makes
+// RunSyncSequenceWithServices behave exactly like RunSyncSequence.
+//
+// Only the two custom-values jobs are overridden, and that is the whole point: measured
+// against production sync_runs they are ~96%% of the chain's ~13.5 minutes, while the other
+// four (attendees, persons, family_camp_derived, lodging_assignments) are year-wide by nature
+// and cost about half a minute between them. Narrowing those would save nothing and would
+// leave the board reading a partially-refreshed year.
+//
+// These are fresh instances rather than the registered singletons deliberately -- see
+// RunSyncSequenceWithServices, and kindred#2105 for the bug that rule exists to prevent.
+func refreshFamilyCampOverrides(app core.App, client *campminder.Client, session string) map[string]Service {
+	if session == "" || session == DefaultSession {
+		return nil
+	}
+
+	personSvc := NewPersonCustomFieldValuesSync(app, client)
+	personSvc.SetScope(ScopeFamilyCamp)
+	personSvc.SetSession(session)
+
+	householdSvc := NewHouseholdCustomFieldValuesSync(app, client)
+	householdSvc.SetScope(ScopeFamilyCamp)
+	householdSvc.SetSession(session)
+
+	return map[string]Service{
+		scopedID(serviceNamePersonCustomValues, ScopeFamilyCamp):    personSvc,
+		scopedID(serviceNameHouseholdCustomValues, ScopeFamilyCamp): householdSvc,
+	}
+}
+
 // handleRefreshFamilyCamp triggers a full family-camp housing refresh: attendees ->
 // persons -> person_custom_values_family_camp -> household_custom_values_family_camp
 // -> family_camp_derived -> lodging_assignments (kindred#2478).
@@ -659,8 +691,22 @@ func handleRefreshBunking(e *core.RequestEvent, scheduler *Scheduler) error {
 // 13m31s and has been seen at 17m39s — almost entirely the two bounded custom-values
 // jobs. 25 minutes leaves headroom above the worst observed run without risking a
 // truncated timeout on an ordinary one.
+//
+// Those figures are the UNSCOPED chain, and the timeout is still sized for it
+// deliberately: a request naming one weekend runs several times faster
+// (kindred#2601), but an absent session is still a supported mode and still has to
+// fit. Sizing the timeout to the scoped case would truncate the unscoped one.
 func handleRefreshFamilyCamp(e *core.RequestEvent, scheduler *Scheduler) error {
 	orchestrator := scheduler.GetOrchestrator()
+
+	// The weekend currently on screen, as a session cm_id (kindred#2601). Absent means the
+	// whole family-camp cohort, which is what every caller sent before this parameter existed.
+	session := e.Request.URL.Query().Get("session")
+	if !IsValidSession(session) {
+		return e.JSON(http.StatusBadRequest, map[string]any{
+			"error": "Invalid session parameter. Must be 'all' or a numeric session cm_id.",
+		})
+	}
 
 	// Check if any family-camp-refresh-related sync is already running.
 	//
@@ -688,12 +734,18 @@ func handleRefreshFamilyCamp(e *core.RequestEvent, scheduler *Scheduler) error {
 	// Run attendees -> persons -> person_custom_values_family_camp ->
 	// household_custom_values_family_camp -> family_camp_derived -> lodging_assignments
 	// sequentially.
+	// Built BEFORE the goroutine: these instances belong to this request, and constructing
+	// them here keeps the handler the only thing that decides what this press covers.
+	overrides := refreshFamilyCampOverrides(e.App, orchestrator.BaseClient(), session)
+
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 25*time.Minute)
 		defer cancel()
 
-		if err := orchestrator.RunSyncSequence(ctx, GetRefreshFamilyCampJobs()); err != nil {
-			e.App.Logger().Error("Refresh family camp failed", "error", err)
+		if err := orchestrator.RunSyncSequenceWithServices(
+			ctx, GetRefreshFamilyCampJobs(), overrides,
+		); err != nil {
+			e.App.Logger().Error("Refresh family camp failed", "error", err, "session", session)
 		}
 	}()
 

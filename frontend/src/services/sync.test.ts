@@ -20,6 +20,45 @@ describe('syncService', () => {
       )
     })
 
+    /**
+     * The weekend is the whole point of kindred#2601: without it the server
+     * refreshes every family-camp weekend in the year, which is ~4x the work
+     * and looks identical from the UI. A URL assertion is the only place that
+     * contract is visible.
+     */
+    it('narrows the refresh to one weekend when given a session', async () => {
+      const mockFetchWithAuth = vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ status: 'started' }),
+      })
+
+      await syncService.refreshFamilyCamp(mockFetchWithAuth, 900)
+
+      expect(mockFetchWithAuth).toHaveBeenCalledWith(
+        expect.stringContaining('/refresh-family-camp?session=900'),
+        expect.objectContaining({ method: 'POST' })
+      )
+    })
+
+    /**
+     * Omitting the weekend must send NO query string rather than an empty or
+     * "undefined" one — the server reads an absent session as "every weekend",
+     * and `?session=undefined` would be rejected as invalid instead.
+     */
+    it('sends no session parameter when none is given', async () => {
+      const mockFetchWithAuth = vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ status: 'started' }),
+      })
+
+      await syncService.refreshFamilyCamp(mockFetchWithAuth)
+
+      expect(mockFetchWithAuth).toHaveBeenCalledWith(
+        expect.not.stringContaining('session='),
+        expect.objectContaining({ method: 'POST' })
+      )
+    })
+
     it('should throw on non-ok response', async () => {
       const mockFetchWithAuth = vi.fn().mockResolvedValue({
         ok: false,

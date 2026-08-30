@@ -33,24 +33,8 @@ import { Modal } from '../ui'
 import { syncService } from '../../services/sync'
 import { useApiWithAuth } from '../../hooks/useApiWithAuth'
 import { useSyncStatusAPI } from '../../hooks/useSyncStatusAPI'
-import {
-  FAMILY_CAMP_REFRESH_CHAIN,
-  FAMILY_CAMP_REFRESH_SECONDS,
-  useSyncSequenceRun,
-} from '../../hooks/useSyncSequenceRun'
+import { FAMILY_CAMP_REFRESH_CHAIN, useSyncSequenceRun } from '../../hooks/useSyncSequenceRun'
 import { invalidateLodgingRegistryQueries, queryKeys } from '../../utils/queryKeys'
-
-/**
- * The total, to the nearest half minute — "13½ minutes". Halves rather than
- * whole minutes because the ruled copy is "the ~13½ min total" and rounding
- * 13 m 31 s up to "14 minutes" overstates a number staff are being asked to
- * commit to.
- */
-function formatChainTotal(seconds: number): string {
-  const halves = Math.round((seconds / 60) * 2) / 2
-  const whole = Math.floor(halves)
-  return `${whole}${halves - whole === 0.5 ? '½' : ''} minutes`
-}
 
 /** The running readout — whole minutes, because it is a moving estimate. */
 function formatRemaining(seconds: number): string {
@@ -59,7 +43,16 @@ function formatRemaining(seconds: number): string {
   return `about ${minutes} min left`
 }
 
-export function RefreshHousingButton() {
+/**
+ * The weekend this press acts on. `AppLayout` only mounts the button once
+ * `useWeekendShellSession` has resolved one, so this is never absent — which is
+ * why it is required rather than optional (kindred#2601).
+ */
+interface RefreshHousingButtonProps {
+  session: { session_cm_id: number; name: string }
+}
+
+export function RefreshHousingButton({ session }: RefreshHousingButtonProps) {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const queryClient = useQueryClient()
   const { fetchWithAuth } = useApiWithAuth()
@@ -90,7 +83,7 @@ export function RefreshHousingButton() {
   })
 
   const startRefresh = useMutation({
-    mutationFn: () => syncService.refreshFamilyCamp(fetchWithAuth),
+    mutationFn: () => syncService.refreshFamilyCamp(fetchWithAuth, session.session_cm_id),
     onError: (error: Error) => {
       // The POST never started a chain, so the detector must be disarmed or it
       // would sit forcing polling for its whole arming window.
@@ -139,7 +132,7 @@ export function RefreshHousingButton() {
       <Modal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
-        title="Refresh housing from CampMinder"
+        title={`Refresh housing for ${session.name}`}
         size="sm"
         footer={
           <div className="flex justify-end gap-2 pt-4">
@@ -170,12 +163,22 @@ export function RefreshHousingButton() {
         <div className="text-foreground space-y-3 text-sm">
           <p>
             {lastSynced !== undefined
-              ? `Housing was last refreshed ${formatDistanceToNow(new Date(lastSynced), { addSuffix: true })}. Anything staff entered in CampMinder since then is not here yet.`
-              : 'Anything staff entered in CampMinder today is not here yet.'}
+              ? `Housing for ${session.name} was last refreshed ${formatDistanceToNow(new Date(lastSynced), { addSuffix: true })}. Anything staff entered in CampMinder since then is not here yet.`
+              : `Anything staff entered in CampMinder today for ${session.name} is not here yet.`}
           </p>
+          {/*
+            A RANGE, not the chain total. The press covers one weekend, and the
+            weekends differ enough that a single figure would be wrong for most
+            of them — the largest is ~7x the smallest by cohort. Stating the
+            band is the honest version of a number staff are asked to commit
+            to, and it is deliberately not derived from
+            FAMILY_CAMP_REFRESH_SECONDS: that constant is calibrated to the
+            LARGEST weekend so the progress bar never stalls, which makes it the
+            top of this range rather than its middle (kindred#2601).
+          */}
           <p className="text-muted-foreground">
-            Pulling it in takes about {formatChainTotal(FAMILY_CAMP_REFRESH_SECONDS)}. You can keep
-            working — when it is done the housing will refresh itself.
+            Pulling it in takes about 2–4 minutes. You can keep working — when it is done the
+            housing will refresh itself.
           </p>
         </div>
       </Modal>

@@ -141,11 +141,12 @@ export interface SyncStatusResponse {
   person_custom_values: SyncStatus
   household_custom_values: SyncStatus
   // The BOUNDED daily family-camp custom-values pass (kindred#2482) — NOT the
-  // unrestricted pair above. These two are 13 of the family-camp refresh
-  // chain's 13 m 31 s, and they only became visible here in PR #2591; while
-  // they were absent from the backend's `statusSyncTypes` the client saw
-  // nothing running for thirteen minutes, stopped polling, and could never
-  // detect the cutover (kindred#2478 §4.2c).
+  // unrestricted pair above. These two are ~96% of the family-camp refresh
+  // chain whether it covers the season or one weekend (kindred#2601), and they
+  // only became visible here in PR #2591; while they were absent from the
+  // backend's `statusSyncTypes` the client saw nothing running for the whole
+  // run, stopped polling, and could never detect the cutover
+  // (kindred#2478 §4.2c).
   person_custom_values_family_camp: SyncStatus
   household_custom_values_family_camp: SyncStatus
   // Published alongside them by PR #2591: a registered daily Process-phase job

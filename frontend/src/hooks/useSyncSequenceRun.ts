@@ -101,27 +101,36 @@ export interface SyncSequenceJob {
 }
 
 /**
- * `GetRefreshFamilyCampJobs()`, in order. 13 m 31 s in total, of which the two
- * bounded custom-values jobs are 96%.
+ * `GetRefreshFamilyCampJobs()`, in order.
  *
  * `lodging_assignments` terminates the chain and is the one that matters:
  * `family_camp_derived` does NOT write it, so ending here rather than there is
  * what makes "the board's mirror is up to date" true.
+ *
+ * ## Why these two numbers are not the measured ones (kindred#2601)
+ *
+ * The 2026-08-23 measurement was of an UNSCOPED press: 536.7 s and 242.7 s,
+ * covering every family-camp weekend in the year. `RefreshHousingButton` now
+ * always names one weekend, so those figures would overstate its own button by
+ * roughly 4x and leave the bar crawling.
+ *
+ * Scaled by the measured cohort ratio (2026 production, any status): the union
+ * is 782 persons / 448 households across 9 attended weekends, and the LARGEST
+ * single weekend is 175 persons — so 175/782 ≈ 0.224. The largest weekend is
+ * used deliberately rather than the mean: a bar that finishes early and waits
+ * reads as "nearly done", while one that stalls at 90% reads as broken.
+ *
+ * Only the two custom-values jobs scale. The other four are year-wide by
+ * nature and are unchanged, which is also why they were left unscoped.
  */
 export const FAMILY_CAMP_REFRESH_CHAIN: readonly SyncSequenceJob[] = [
   { service: 'attendees', seconds: 3.3 },
   { service: 'persons', seconds: 21.0 },
-  { service: 'person_custom_values_family_camp', seconds: 536.7 },
-  { service: 'household_custom_values_family_camp', seconds: 242.7 },
+  { service: 'person_custom_values_family_camp', seconds: 120.2 },
+  { service: 'household_custom_values_family_camp', seconds: 54.4 },
   { service: 'family_camp_derived', seconds: 5.7 },
   { service: 'lodging_assignments', seconds: 1.8 },
 ]
-
-/** The total of `FAMILY_CAMP_REFRESH_CHAIN`, ~13½ minutes. */
-export const FAMILY_CAMP_REFRESH_SECONDS = FAMILY_CAMP_REFRESH_CHAIN.reduce(
-  (sum, job) => sum + job.seconds,
-  0
-)
 
 /**
  * `GetRefreshBunkingJobs()`, in order — ~4.7 s in total. The durations are
@@ -447,7 +456,7 @@ export function useSyncSequenceRun({
     return () => clearTimeout(timer)
   }, [phase, isActive, reset])
 
-  // A TICK OF ITS OWN. `person_custom_values_family_camp` runs 536.7 s and its
+  // A TICK OF ITS OWN. `person_custom_values_family_camp` runs for minutes and its
   // status payload is identical for the whole of it — `Status.Summary` is
   // written only at completion — so React Query's structural sharing hands this
   // observer the SAME `data` reference on every poll of those nine minutes.

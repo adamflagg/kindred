@@ -724,8 +724,8 @@ export const AppLayout = () => {
                     HIDDEN ON ADULT WEEKENDS, on the same condition as the
                     `Housing synced` line (§5.1): `GetFamilyCampSessionCMIDs`
                     filters `session_type = 'family'` exactly, so the chain
-                    skips both expensive jobs and would spend 13½ minutes
-                    refreshing nothing.
+                    skips both expensive jobs and would spend its whole
+                    runtime refreshing nothing.
                   */}
                   {/*
                     `useWeekendShellSession` returns `isAdultWeekend: false`
@@ -734,7 +734,9 @@ export const AppLayout = () => {
                     adult weekend too, where it must never appear. Wait for the
                     session to resolve before deciding.
                   */}
-                  {weekendSession && !isAdultWeekend && <RefreshHousingButton />}
+                  {weekendSession && !isAdultWeekend && (
+                    <RefreshHousingButton session={weekendSession} />
+                  )}
                 </>
               )}
               {/* Export button removed from metrics nav - export functionality will move inside metrics page if needed */}

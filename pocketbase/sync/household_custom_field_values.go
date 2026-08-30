@@ -283,6 +283,30 @@ func (s *HouseholdCustomFieldValuesSync) getHouseholdIDsToSync(year int) ([]int,
 		// family-camp weekend, resolved via attendees rather than Session so it can span
 		// multiple weekend sessions in one run.
 		resolver := NewSessionResolver(s.App)
+
+		// One weekend, not the season (kindred#2601). Refresh Housing is pressed while looking
+		// at ONE weekend, and the two custom-values jobs are ~96% of that chain's ~13.5 min --
+		// measured 782 persons / 448 households across the union against 175 for the largest
+		// single weekend, so scoping is a 4-5x saving on the press.
+		//
+		// Reached ONLY through a request-scoped instance (RunSyncSequenceWithServices). The
+		// registered singleton the 3am cron runs is constructed with Session=DefaultSession and
+		// is never written to, so the unattended pass still spans every weekend -- which is the
+		// half TestScopeFamilyCamp_NoSession* exists to keep true.
+		if s.Session != "" && s.Session != DefaultSession {
+			scoped, err := resolver.GetHouseholdIDsForSessionAnyStatus(s.Session, year)
+			if err != nil {
+				return nil, err
+			}
+
+			s.DebugLog("Resolved family-camp cohort to one weekend",
+				"count", len(scoped),
+				"session", s.Session,
+				"year", year)
+
+			return scoped, nil
+		}
+
 		householdIDs, err := resolver.GetFamilyCampHouseholdIDsAnyStatus(year)
 		if err != nil {
 			return nil, err
