@@ -253,6 +253,16 @@ func TestLogJobNameFollowsScope(t *testing.T) {
 	if got := bounded.logJobName(); got != "person_custom_values_family_camp" {
 		t.Errorf("scoped logJobName() = %q, want person_custom_values_family_camp", got)
 	}
+
+	// The other half of Face D, and the household twin
+	// (TestHouseholdCustomFieldValuesSync_LogJobName) asserts it too: only the LOG name
+	// follows Scope. Name() is the service's identity and must stay unscoped, so the
+	// registry, the orphan sweep and the stats all keep pointing at one service.
+	// TestPersonCustomFieldValuesSync_Name cannot cover this -- it builds a zero-value
+	// instance, which is ScopeAll by definition.
+	if got := bounded.Name(); got != serviceNamePersonCustomValues {
+		t.Errorf("Name() must stay %q regardless of Scope, got %q", serviceNamePersonCustomValues, got)
+	}
 }
 
 // TestScopedServiceInterface pins that both custom-values services satisfy the interface the

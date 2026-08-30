@@ -1,8 +1,8 @@
 package sync
 
 import (
-	"os"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -92,8 +92,15 @@ func TestCustomValuesCollectionGroupDerived(t *testing.T) {
 	}
 }
 
-// TestScopeFamilyCampSetDerived pins the phaseExecutionJobs exclusion set (kindred#2489)
-// as exactly the family-camp-scoped rows -- no more, no less.
+// TestScopeFamilyCampSetDerived pins the phaseExecutionJobs exclusion set (kindred#2489) as
+// exactly the family-camp-scoped rows -- no more, no less.
+//
+// The count is the whole test, and that is deliberate. A loop asserting that every
+// ScopedJobs(ScopeFamilyCamp) id is a member used to follow it and was removed as
+// tautological: scopeFamilyCampJobs IS buildScopedJobSet(ScopeFamilyCamp), whose body iterates
+// that same call, so "a set built from X contains X" cannot fail. The count still carries
+// information the derivation does not -- it pins api.go's var to ScopeFamilyCamp specifically,
+// so re-pointing it at another scope fails here rather than silently emptying the exclusion.
 func TestScopeFamilyCampSetDerived(t *testing.T) {
 	t.Parallel()
 
@@ -101,124 +108,189 @@ func TestScopeFamilyCampSetDerived(t *testing.T) {
 		t.Fatalf("exclusion set has %d entries, want 2: %v",
 			len(scopeFamilyCampJobs), scopeFamilyCampJobs)
 	}
-	for _, id := range ScopedJobs(ScopeFamilyCamp) {
-		if !scopeFamilyCampJobs[id] {
-			t.Errorf("scoped job %q missing from the phase-run exclusion set", id)
+}
+
+// TestJobMetaBaseIsAReference pins referential integrity on syncJobMeta's Base column, which
+// nothing else checks. A typo there is silent rather than loud: JobBase falls back to the id
+// itself, so buildCustomValuesCollectionGroups files the variant in its OWN collection group
+// and customValuesGroupRunningLocked stops seeing the pair as writers of one collection --
+// the kindred#2491 race, with no error message anywhere.
+func TestJobMetaBaseIsAReference(t *testing.T) {
+	t.Parallel()
+
+	ids := make(map[string]bool, len(syncJobMeta))
+	for _, m := range syncJobMeta {
+		ids[m.ID] = true
+	}
+
+	checked := 0
+	for _, m := range syncJobMeta {
+		if m.Base == "" {
+			continue
 		}
+		checked++
+		if !ids[m.Base] {
+			t.Errorf("%s: Base %q names no syncJobMeta row -- JobBase would fall back to %q "+
+				"and the pair would stop sharing a collection group (#2491)", m.ID, m.Base, m.ID)
+		}
+		if m.Base == m.ID {
+			t.Errorf("%s: Base must name the job this row narrows, not the row itself", m.ID)
+		}
+	}
+	if checked == 0 {
+		t.Fatal("no syncJobMeta row declares a Base -- every assertion above would pass vacuously")
 	}
 }
 
-// TestScopedVariantContract pins everything kindred#2482/#2489/#2491/#2591 established about
-// a scoped custom-values variant, so a THIRD one cannot be added half-wired. Each clause has
-// a distinct failure mode that has actually happened:
+// TestScopedVariantContract pins what kindred#2482/#2489/#2491/#2591 established about ANY
+// scoped variant, so a THIRD one cannot be added half-wired. It iterates every syncJobMeta row
+// carrying a Scope rather than ScopedJobs(ScopeFamilyCamp), because each clause below follows
+// from a variant's IDENTITY -- a narrower-cohort instance of an existing service, registered
+// under scopedID -- and not from the family-camp cron cadence. A scope declared tomorrow is
+// therefore covered the day its first row lands. What is genuinely about the daily cron lives
+// in TestScopeFamilyCampDailyContract instead: those clauses name specific jobs, and a future
+// scope need not be daily at all.
 //
-//	daily membership   -- the whole point of the bounded pass (#2482)
-//	daily ordering     -- after source, before the transforms that read it (#2482)
-//	not in full/phase  -- re-fetching a fresh cohort costs ~11.5 min of quota (#2489)
+// Each clause has a distinct failure mode that has actually happened:
+//
+//	Base declared      -- without one JobBase returns the id itself, so the variant shares a
+//	                      collection group with nothing and races its own base (#2491)
+//	id is scopedID     -- the row's own ID must be what registration builds, or the queue
+//	                      names a job the registry has never heard of
+//	phase parity       -- Phase is hand-written per row; a variant classified into a
+//	                      different phase from the job it narrows is queued, filtered and
+//	                      reported in the wrong group
+//	registered         -- a row nothing in scopedServiceRegistrations constructs is a queue
+//	                      entry that fails at run time
+//	not in full/phase  -- re-fetching a cohort the cron just refreshed costs ~11.5 min of
+//	                      rate-limited CampMinder quota (#2489)
 //	in statusSyncTypes -- RunSyncSequence sets no run-type flag, so the per-job entry is the
 //	                      client's ONLY completion signal; without it the Refresh Housing
 //	                      cutover is undetectable (#2591)
-//	no POST route      -- "no manual trigger" must be true of the server, not just the button
+//	no POST route      -- a scoped variant is cron-driven and exposes no Run button. This is
+//	                      a CONVENTION, not a server guarantee: ResolveUnifiedSyncServices
+//	                      passes any ?service= name straight through, so this clause and the
+//	                      frontend's manualTrigger flag are what enforce it today. The
+//	                      server-side whitelist is kindred#2608.
 //	collection mapping -- without it the bounded pass's writes are dropped from the export
 //	                      skip-optimization and the fresh data never reaches Sheets (#2491)
 func TestScopedVariantContract(t *testing.T) {
 	t.Parallel()
 
-	scoped := ScopedJobs(ScopeFamilyCamp)
-	if len(scoped) == 0 {
-		t.Fatal("no scoped jobs found -- every clause below would pass vacuously")
+	var variants []JobMeta
+	for _, m := range syncJobMeta {
+		if m.Scope != ScopeAll {
+			variants = append(variants, m)
+		}
+	}
+	if len(variants) == 0 {
+		t.Fatal("no scoped rows in syncJobMeta -- every clause below would pass vacuously")
 	}
 
-	daily := getDailySyncJobs()
 	full := GetDefaultUnifiedSyncJobs(true)
-	phaseRun := phaseExecutionJobs(PhaseExpensive)
 	status := statusSyncTypes()
 	routes := postRouteSegments(t)
 
-	for _, id := range scoped {
-		base := JobBase(id)
+	registered := make(map[string]bool)
+	for _, reg := range scopedServiceRegistrations(nil, nil) {
+		registered[scopedID(reg.base, reg.scope)] = true
+	}
 
-		// Phase parity and the phase-run clause below are not named in the doc comment above
-		// and have no mutation: phase parity is structurally guaranteed by
-		// JobBase/GetPhaseForJob's shared syncJobMeta lookup (Tasks 1-3), not an
-		// independently falsifiable property the way the eight clauses below are. The
-		// phase-run clause ("must not be in an admin-triggered phase run", #2489) is
-		// tautological today for a related reason: phaseExecutionJobs(PhaseExpensive)
-		// filters against buildScopedJobSet(ScopeFamilyCamp), the exact same
-		// ScopedJobs(ScopeFamilyCamp) call this loop iterates over as `scoped` -- so the
-		// assertion is "a set built by removing X excludes X," which cannot fail. It becomes
-		// genuinely falsifiable once Stage 2 replaces phaseExecutionJobs' body with
-		// inPhaseWithTrigger(p, TriggerPhaseRun), driven by the Triggers bitset rather than
-		// by Scope: a row could then carry both a Scope and TriggerPhaseRun, and this clause
-		// would catch that real wiring mistake. Both are left in as cheap sanity checks, not
-		// proofs -- the real coverage for the phase-run property today lives at
-		// api_test.go:2110 (TestPhaseExecutionJobsExcludesScopeFamilyCampForExpensivePhase),
-		// which asserts it against literal names instead of the derived set.
+	for _, m := range variants {
+		id := m.ID
+		if m.Base == "" {
+			t.Errorf("%s: carries Scope %q but no Base -- see the Base field's comment (#2491)",
+				id, m.Scope)
+			continue
+		}
+		base := m.Base
+
+		if got := scopedID(base, m.Scope); got != id {
+			t.Errorf("%s: scopedID(%q, %q) = %q -- the row's ID must be the name registration builds",
+				id, base, m.Scope, got)
+		}
 		if GetPhaseForJob(id) != GetPhaseForJob(base) {
 			t.Errorf("%s: phase %q != base %s's phase %q",
 				id, GetPhaseForJob(id), base, GetPhaseForJob(base))
 		}
-		if !sliceContains(daily, id) {
-			t.Errorf("%s: missing from the daily queue (#2482)", id)
+		if !registered[id] {
+			t.Errorf("%s: no scopedServiceRegistrations entry -- nothing constructs the "+
+				"instance, so the queued job fails at run time", id)
 		}
-		di, fi, fd := indexOf(daily, id), indexOf(daily, "financial_transactions"), indexOf(daily, "family_camp_derived")
-		if di == -1 || fi == -1 || fd == -1 {
-			t.Fatalf("daily ordering anchors missing: %s=%d financial_transactions=%d family_camp_derived=%d",
-				id, di, fi, fd)
-		}
-		if di <= fi {
-			t.Errorf("%s at daily[%d] must run AFTER the last source job at [%d] (#2482)", id, di, fi)
-		}
-		if di >= fd {
-			t.Errorf("%s at daily[%d] must run BEFORE family_camp_derived at [%d] (#2482)", id, di, fd)
-		}
-		if sliceContains(full, id) {
+		if slices.Contains(full, id) {
 			t.Errorf("%s: must not be in a full run (#2489)", id)
 		}
-		if sliceContains(phaseRun, id) {
-			t.Errorf("%s: must not be in an admin-triggered phase run (#2489)", id)
+		// Disclosed: for a family-camp row this clause cannot fail today, because
+		// phaseExecutionJobs(PhaseExpensive) filters against buildScopedJobSet(ScopeFamilyCamp)
+		// -- "a set built by removing X excludes X". It is NOT tautological for any other
+		// scope, which is the case this block exists for: phaseExecutionJobs only special-cases
+		// PhaseExpensive, so a variant of a source-phase job lands in its phase run untouched.
+		// The literal-name coverage for the family-camp pair lives at api_test.go's
+		// TestPhaseExecutionJobsExcludesScopeFamilyCampForExpensivePhase.
+		if phase := GetPhaseForJob(id); slices.Contains(phaseExecutionJobs(phase), id) {
+			t.Errorf("%s: must not be in an admin-triggered %q phase run (#2489)", id, phase)
 		}
-		if !sliceContains(status, id) {
+		if !slices.Contains(status, id) {
 			t.Errorf("%s: must be published on the status payload (#2591)", id)
 		}
-		if sliceContains(routes, strings.ReplaceAll(id, "_", "-")) {
-			t.Errorf("%s: must have no individual POST route", id)
+		// Both spellings. api.go registers most segments hyphenated but not all --
+		// bunk_requests_upload is underscored -- so checking one spelling would let a route
+		// registered in the other convention through.
+		for _, segment := range []string{id, strings.ReplaceAll(id, "_", "-")} {
+			if slices.Contains(routes, segment) {
+				t.Errorf("%s: must have no individual POST route, found /api/custom/sync/%s",
+					id, segment)
+			}
 		}
-		if got, want := SyncJobToCollections[id], SyncJobToCollections[base]; !equalStrings(got, want) {
-			t.Errorf("%s: SyncJobToCollections = %v, want its base's %v (#2491)", id, got, want)
+		wantCollections := SyncJobToCollections[base]
+		if len(wantCollections) == 0 {
+			t.Errorf("%s: base %s has no SyncJobToCollections entry -- the equality below "+
+				"would hold with both sides empty, which is exactly the dropped-from-the-export "+
+				"case #2491 is about", id, base)
+		} else if got := SyncJobToCollections[id]; !slices.Equal(got, wantCollections) {
+			t.Errorf("%s: SyncJobToCollections = %v, want its base's %v (#2491)",
+				id, got, wantCollections)
 		}
 	}
 }
 
-// sliceContains reports whether ids contains id. Named to avoid colliding with
-// persons_test.go's contains(haystack, needle string) bool -- a substring check with a
-// different signature -- since Go has no overloading and the two cannot share a name in one
-// package.
-func sliceContains(ids []string, id string) bool {
-	return indexOf(ids, id) != -1
-}
+// TestScopeFamilyCampDailyContract pins what is about the family-camp CADENCE rather than
+// about being scoped at all (kindred#2482): the bounded pass is part of the daily cron, and it
+// runs after the source jobs that feed it and before the transforms that read what it wrote.
+// These clauses name specific jobs -- financial_transactions and family_camp_derived -- and
+// must not be generalized into TestScopedVariantContract: a scope added later need not be
+// daily, let alone bracketed by those two.
+func TestScopeFamilyCampDailyContract(t *testing.T) {
+	t.Parallel()
 
-// indexOf returns the index of id within ids, or -1 if absent.
-func indexOf(ids []string, id string) int {
-	for i, v := range ids {
-		if v == id {
-			return i
+	scoped := ScopedJobs(ScopeFamilyCamp)
+	if len(scoped) == 0 {
+		t.Fatal("no family-camp-scoped jobs found -- every clause below would pass vacuously")
+	}
+
+	daily := getDailySyncJobs()
+	lastSource := slices.Index(daily, "financial_transactions")
+	firstTransform := slices.Index(daily, "family_camp_derived")
+	if lastSource == -1 || firstTransform == -1 {
+		t.Fatalf("daily ordering anchors missing: financial_transactions=%d family_camp_derived=%d",
+			lastSource, firstTransform)
+	}
+
+	for _, id := range scoped {
+		at := slices.Index(daily, id)
+		if at == -1 {
+			t.Errorf("%s: missing from the daily queue (#2482)", id)
+			continue
+		}
+		if at <= lastSource {
+			t.Errorf("%s at daily[%d] must run AFTER the last source job at [%d] (#2482)",
+				id, at, lastSource)
+		}
+		if at >= firstTransform {
+			t.Errorf("%s at daily[%d] must run BEFORE family_camp_derived at [%d] (#2482)",
+				id, at, firstTransform)
 		}
 	}
-	return -1
-}
-
-// equalStrings reports whether a and b hold the same elements in the same order.
-func equalStrings(a, b []string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-	return true
 }
 
 // postRouteSegments regex-scans api.go for every path segment registered as an
@@ -227,13 +299,15 @@ func equalStrings(a, b []string) bool {
 // of the language boundary -- both parsers exist because nothing else crosses the language
 // boundary to catch drift between the frontend's and backend's job-id lists.
 //
-// Like that parser, it Fatals rather than returning a plausible-but-wrong set: three clauses
-// of TestScopedVariantContract are anchored to this output, and a parser that silently found
-// the wrong routes (or none at all) would turn them green while pinning nothing.
+// Like that parser, it Fatals rather than returning a plausible-but-wrong set: one clause of
+// TestScopedVariantContract (the no-individual-route clause, which reads this output in both
+// the underscored and hyphenated spellings) is anchored to it, and a parser that silently
+// found the wrong routes -- or none at all -- would turn that clause green while pinning
+// nothing.
 func postRouteSegments(t *testing.T) []string {
 	t.Helper()
 
-	src := readSource(t, "api.go")
+	src := readSourceFile(t, "api.go")
 	re := regexp.MustCompile(`e\.Router\.POST\(\s*"/api/custom/sync/([a-z0-9_-]+)"`)
 	matches := re.FindAllStringSubmatch(src, -1)
 	// 40 individual-sync routes are registered as of this writing; 30 is comfortably below
@@ -250,15 +324,4 @@ func postRouteSegments(t *testing.T) []string {
 		segments = append(segments, m[1])
 	}
 	return segments
-}
-
-// readSource reads a file from this package's directory, t.Fatal on failure. Tests run with
-// the package directory as the working directory, so a bare filename is correct.
-func readSource(t *testing.T, name string) string {
-	t.Helper()
-	data, err := os.ReadFile(name)
-	if err != nil {
-		t.Fatalf("readSource(%q): %v", name, err)
-	}
-	return string(data)
 }
