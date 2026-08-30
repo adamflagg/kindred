@@ -216,6 +216,24 @@ func TestDailyQueueGate(t *testing.T) {
 	}
 }
 
+// TestMultiWorkbookExportWithholdsFullRunTrigger pins ruling F4: multi_workbook_export must
+// NOT carry TriggerFullRun while RunSyncWithOptions' hardcoded Google Sheets export epilogue
+// still fires on every unified run -- setting the bit before Stage 4 removes that epilogue
+// would export twice per run. Asserts the raw bit rather than derived-queue membership:
+// available() also filters multi_workbook_export on google.IsEnabled, so with Google disabled
+// in this environment the job would be absent from the full-run queue for the WRONG reason,
+// and a membership check could not tell a withheld bit from a closed gate.
+//
+// Stage 4's Task 13 deletes this assertion in the same commit that deletes the epilogue and
+// sets TriggerFullRun on this row for real.
+func TestMultiWorkbookExportWithholdsFullRunTrigger(t *testing.T) {
+	t.Parallel()
+	if hasTrigger("multi_workbook_export", TriggerFullRun) {
+		t.Fatal("multi_workbook_export must not carry TriggerFullRun until Stage 4 removes " +
+			"RunSyncWithOptions' export epilogue, or a unified run double-exports Google Sheets")
+	}
+}
+
 // TestUnifiedRunDerivation pins the full run, including both conditionals and the ordering
 // change this task makes: stranded_assignment_cleanup now runs dead-last on a full run,
 // matching the daily cron, instead of mid-Transform (#1416, #1417).
