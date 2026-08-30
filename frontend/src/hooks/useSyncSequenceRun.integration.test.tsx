@@ -172,4 +172,95 @@ describe('useSyncSequenceRun against a real QueryClient', () => {
     expect(onComplete).not.toHaveBeenCalled()
     expect(result.current.isRunning).toBe(true)
   })
+
+  /**
+   * Polling has to survive the GAP BETWEEN TWO CHAIN JOBS.
+   *
+   * `runSyncAndWait` waits on a 500 ms ticker (pocketbase/sync/orchestrator.go),
+   * so up to half a second separates job N finishing from job N+1 starting, and
+   * in that window NOTHING in the status payload says anything is happening:
+   * `RunSyncSequence` sets no run-type flag ("It carries no run-type flag") and
+   * does not go through the sync queue, so `_daily_sync_running`,
+   * `_historical_sync_running` and `_queue_length` are all quiet too.
+   *
+   * `useSyncStatusAPI`'s `refetchInterval` therefore returns `false` for a poll
+   * that lands in one — and React Query CLEARS the interval when it does.
+   * Nothing restarts it but a window focus, so the rest of the chain then runs
+   * unobserved: no cutover, no invalidation, the stall timeout retiring the run
+   * in silence 120 s later under a progress bar that has simply vanished. That
+   * is exactly the staleness kindred#2587 exists to prevent.
+   *
+   * Which is why `forcePolling` covers the whole run rather than the arming gap
+   * alone. Everywhere a chain job IS published as running it changes nothing —
+   * `refetchInterval` already returns 3000 — so the gaps are the entire delta,
+   * and the run is still bounded: every exit goes through `reset()`, which puts
+   * the phase back to `idle` and drops the force with it. Family Camp is the
+   * exposed case at 13½ minutes and five gaps; the 4.7 s bunking chain is
+   * nearly immune only because it is over before the second poll.
+   *
+   * The mocked suites cannot see any of this: they replace `useSyncStatusAPI`
+   * outright, so `refetchInterval` never runs. This one drives the real query.
+   */
+  it('keeps polling across the gap between two chain jobs, so the cutover is still seen', async () => {
+    vi.useFakeTimers()
+    try {
+      let payload: Record<string, unknown> = idlePayload()
+      ;(pb.send as Mock).mockImplementation(() => Promise.resolve(payload))
+
+      const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+      const onComplete = vi.fn()
+      const { result } = renderHook(
+        () => useSyncSequenceRun({ chain: BUNKING_REFRESH_CHAIN, enabled: true, onComplete }),
+        { wrapper: wrapper(qc) }
+      )
+
+      // The mount's own first read.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0)
+      })
+      expect(pb.send).toHaveBeenCalledTimes(1)
+
+      await act(async () => {
+        await result.current.start()
+      })
+      expect(result.current.isRunning).toBe(true)
+
+      // The chain's first job is marked running, and a poll catches it.
+      payload = {
+        ...idlePayload(),
+        bunks: { status: 'running', start_time: '2026-04-22T10:00:00.000Z' },
+      }
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3000)
+      })
+      expect(result.current.isRunning).toBe(true)
+
+      // THE GAP: `bunks` is done, `bunk_plans` has not been marked running yet,
+      // and the terminal end_time has not moved. A poll lands right here.
+      payload = {
+        ...idlePayload(),
+        bunks: { status: 'success', end_time: '2026-04-22T10:00:01.000Z' },
+      }
+      const beforeGap = (pb.send as Mock).mock.calls.length
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3000)
+      })
+      expect((pb.send as Mock).mock.calls.length).toBeGreaterThan(beforeGap)
+      expect(onComplete).not.toHaveBeenCalled()
+      expect(result.current.isRunning).toBe(true)
+
+      // The rest of the chain runs and the terminal job lands a new end_time.
+      // Only a POLL can carry that — which is the whole point.
+      const afterGap = (pb.send as Mock).mock.calls.length
+      payload = idlePayload('2026-04-22T10:00:06.000Z')
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(9000)
+      })
+      expect((pb.send as Mock).mock.calls.length).toBeGreaterThan(afterGap)
+      expect(onComplete).toHaveBeenCalledWith('success')
+      expect(result.current.isRunning).toBe(false)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
 })

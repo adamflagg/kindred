@@ -217,12 +217,34 @@ describe('useSyncSequenceRun', () => {
     expect(result.current.isRunning).toBe(false)
   })
 
-  it('forces polling between the press and the first observed job (the arming gap)', async () => {
-    const { result } = renderHook(() =>
+  /**
+   * The force is asked for over the WHOLE run, not just the arming gap. The
+   * behaviour that buys is pinned end-to-end against a real query client in
+   * `useSyncSequenceRun.integration.test.tsx` ("keeps polling across the gap
+   * between two chain jobs"); this is the prop-level statement of it.
+   */
+  it('forces polling for the whole run — the arming gap and the gaps between jobs alike', async () => {
+    const { result, rerender } = renderHook(() =>
       useSyncSequenceRun({ chain: BUNKING_REFRESH_CHAIN, enabled: true })
     )
     expect(syncStatusSpy).toHaveBeenLastCalledWith({ enabled: true, forcePolling: false })
+
+    // The arming gap: the POST has returned, no job is marked running yet.
     await press(result)
+    expect(syncStatusSpy).toHaveBeenLastCalledWith({ enabled: true, forcePolling: true })
+    expect(result.current.isRunning).toBe(true)
+
+    // A chain job is running. The payload would keep polling on its own here.
+    setStatus(idleStatus({ bunks: { status: 'running', start_time: '2026-04-22T10:00:01.000Z' } }))
+    rerender()
+    expect(syncStatusSpy).toHaveBeenLastCalledWith({ enabled: true, forcePolling: true })
+
+    // ...and here it would NOT. `bunks` is done, `bunk_plans` has not been
+    // marked running yet, and a `RunSyncSequence` sets no run-type flag and
+    // takes no queue entry — so nothing in the payload reports a chain in
+    // flight, and a poll landing in this gap would stop the polling dead.
+    setStatus(idleStatus({ bunks: { status: 'success', end_time: '2026-04-22T10:00:02.000Z' } }))
+    rerender()
     expect(syncStatusSpy).toHaveBeenLastCalledWith({ enabled: true, forcePolling: true })
     expect(result.current.isRunning).toBe(true)
   })

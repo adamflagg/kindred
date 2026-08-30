@@ -60,10 +60,26 @@
  * `useSyncStatusAPI` already polls every 3 s while anything reports
  * running/pending and stops entirely at rest, and already sets
  * `refetchOnWindowFocus`. This hook subscribes to that same query — React Query
- * shares one cache entry across observers — and asks it for `forcePolling` only
- * during the ARMING GAP: the few hundred milliseconds between the POST
- * returning `{"status":"started"}` and the first job being marked running, when
- * nothing reports running and the polling would otherwise never start.
+ * shares one cache entry across observers — and asks it for `forcePolling` for
+ * the WHOLE of a run, not merely for the arming gap.
+ *
+ * The arming gap is the obvious half: the few hundred milliseconds between the
+ * POST returning `{"status":"started"}` and the first job being marked running,
+ * when nothing reports running and the polling would otherwise never start. The
+ * other half is every GAP BETWEEN TWO SEQUENTIAL JOBS. `runSyncAndWait` waits on
+ * a 500 ms ticker, and a `RunSyncSequence` carries no run-type flag and takes no
+ * queue entry, so a poll landing in one reads a payload that reports NOTHING —
+ * `refetchInterval` returns `false` and React Query clears the interval. Only a
+ * window focus would ever start it again, so the rest of the chain runs
+ * unobserved: no cutover, no invalidation, and the stall timeout retiring the
+ * run in silence two minutes later. That is the staleness kindred#2587 is
+ * about, under a progress bar that has simply vanished.
+ *
+ * Holding it for the whole run costs nothing extra: wherever a chain job IS
+ * published as running, `refetchInterval` already returns 3000, so those gaps
+ * are the entire delta. And it cannot latch on, because every exit — the
+ * cutover, `abandon()`, the arming timeout, the stall timeout — goes through
+ * `reset()`, which puts the phase back to `idle` and drops the force with it.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
@@ -226,7 +242,11 @@ export function useSyncSequenceRun({
   // it reads through `queryClient.getQueryState(...)` — UNTRACKED, and so free.
   const { data: syncStatus } = useSyncStatusAPI({
     enabled,
-    forcePolling: phase === 'arming',
+    // EVERY phase but `idle`, not just `arming`: the arming gap and the
+    // sub-second gaps between sequential jobs are both polls that read a
+    // payload reporting nothing, and either one would otherwise stop the
+    // polling dead. See "No new polling code" above.
+    forcePolling: phase !== 'idle',
   })
 
   // The terminal job's end_time as it stood when this run was first seen.
