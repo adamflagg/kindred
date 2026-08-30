@@ -1701,7 +1701,7 @@ func handleMultiWorkbookExport(e *core.RequestEvent, scheduler *Scheduler) error
 	// ParseSeasonYear() in ordinary operation, which is exactly why that divergence went
 	// unnoticed -- off-season, or while preparing next season (the ordinary reason
 	// CAMPMINDER_SEASON_ID exists to differ from the wall clock), it sent this button the
-	// wrong year's workbook and silently dropped globals. Fail closed, as every neighbouring
+	// wrong year's workbook and silently dropped globals. Fail closed, as every neighboring
 	// path does (e.g. RunSingleSync), rather than falling back to the wall clock.
 	currentSeason, err := ParseSeasonYear()
 	if err != nil {
@@ -1771,8 +1771,11 @@ func handleMultiWorkbookExport(e *core.RequestEvent, scheduler *Scheduler) error
 			// dryRun (final-review Important I2, ...ResetsDryRun) -- and each was found in a
 			// separate round because the first two fixes did not say this out loud.
 			multiExport.SetYear(currentSeason)
-			multiExport.SetChangedCollections(nil) // nil means "export everything" (ChangedCollectionsAware's doc comment) -- spec §5's one entry point that must mean it
-			multiExport.SetDryRun(false)           // a dry-run full sync's SetDryRun(true) must not silently skip this button's write
+			// nil means "export everything" (ChangedCollectionsAware's doc comment) -- spec
+			// §5's one entry point that must mean it.
+			multiExport.SetChangedCollections(nil)
+			// A dry-run full sync's SetDryRun(true) must not silently skip this button's write.
+			multiExport.SetDryRun(false)
 			slog.Info("Starting multi-workbook export for current year", "year", currentSeason)
 			if err := multiExport.Sync(ctx); err != nil {
 				slog.Error("Multi-workbook export failed", "error", err)
