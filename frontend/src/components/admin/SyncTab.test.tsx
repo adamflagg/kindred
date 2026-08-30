@@ -610,4 +610,26 @@ describe('SyncTab phase header counts membership, button counts what it starts (
       within(headerRow as HTMLElement).getByRole('button', { name: 'Run Phase' })
     ).toBeInTheDocument()
   })
+
+  it('survives a null run_jobs instead of taking the tab down (#2600 review)', () => {
+    // Go marshals a nil slice as JSON null, and inPhaseWithTrigger returns nil for a phase
+    // with no TriggerPhaseRun job. The payload is cast, not validated, so an unguarded
+    // `phase.run_jobs.length` would throw inside a render-time memo and unmount the whole Sync
+    // tab -- a worse failure than the missing count this feature exists to supply.
+    syncPhasesData = {
+      phases: [
+        { id: 'expensive', name: 'Custom Values', description: '', jobs: [], run_jobs: null },
+      ],
+    }
+
+    renderSyncTab()
+
+    // The tab still renders, and the button degrades to its plain label rather than vanishing.
+    expect(screen.getByText('(4 jobs)')).toBeInTheDocument()
+    const headerRow = screen.getByText('Custom Values').closest('div')
+    if (!headerRow) throw new Error('could not find Custom Values phase header row')
+    expect(
+      within(headerRow as HTMLElement).getByRole('button', { name: 'Run Phase' })
+    ).toBeInTheDocument()
+  })
 })

@@ -108,8 +108,19 @@ export function SyncTab() {
   const syncPhasesQuery = useSyncPhasesAPI()
   const runJobCountByPhase = useMemo(() => {
     const counts = new Map<string, number>()
-    for (const phase of syncPhasesQuery.data?.phases ?? []) {
-      counts.set(phase.id, phase.run_jobs.length)
+    // Every read below is guarded because the payload is cast, not validated: pb.send returns
+    // `any` and useSyncPhasesAPI asserts the shape. A missing count must degrade to a plain
+    // "Run Phase" label -- but an unguarded `phase.run_jobs.length` would THROW here, inside a
+    // memo that runs during render, taking the whole Sync tab down instead. That is a worse
+    // failure than the one this count exists to fix, and it is reachable: Go marshals a nil
+    // slice as JSON null, and inPhaseWithTrigger returns nil for a phase with no
+    // TriggerPhaseRun job (registry.go). No phase is empty today; nothing guarantees that.
+    const phases = syncPhasesQuery.data?.phases
+    if (!Array.isArray(phases)) return counts
+    for (const phase of phases) {
+      if (typeof phase?.id === 'string' && Array.isArray(phase.run_jobs)) {
+        counts.set(phase.id, phase.run_jobs.length)
+      }
     }
     return counts
   }, [syncPhasesQuery.data])
