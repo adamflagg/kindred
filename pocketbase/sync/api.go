@@ -1174,6 +1174,19 @@ func handleUnifiedSync(e *core.RequestEvent, scheduler *Scheduler) error {
 		requestedBy = e.Auth.GetString("email")
 	}
 
+	// Reject an unknown or cron-only ?service= up front, before either the immediate or the
+	// queued path can start. ResolveUnifiedSyncServices returns nil -- distinct from empty --
+	// for a service the registry does not declare as individually routable, and that must be a
+	// 400: resolving it to a run of nothing would answer 200 for a sync that never happens, and
+	// passing it through (what this endpoint did until Stage 3) starts a real run of a job with
+	// no route, or of a service that does not exist at all.
+	services := ResolveUnifiedSyncServices(service, includeCustomValues, year == currentYear)
+	if services == nil {
+		return e.JSON(http.StatusBadRequest, map[string]any{
+			"error": fmt.Sprintf("Unknown sync service: %s", service),
+		})
+	}
+
 	orchestrator := scheduler.GetOrchestrator()
 
 	// Reject up front, before either the immediate or the queued path can start, if dry_run
@@ -1183,7 +1196,6 @@ func handleUnifiedSync(e *core.RequestEvent, scheduler *Scheduler) error {
 	// log line, never the 400 an operator actually needs to see (kindred#2334's ruled fix
 	// direction is "either honor it or reject the request", never a silent partial write).
 	if dryRun {
-		services := ResolveUnifiedSyncServices(service, includeCustomValues, year == currentYear)
 		if unsupported := orchestrator.UnsupportedDryRunServices(services); len(unsupported) > 0 {
 			return e.JSON(http.StatusBadRequest, map[string]any{
 				"error": fmt.Sprintf("dry_run is not supported for: %s",

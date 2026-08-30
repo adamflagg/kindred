@@ -503,3 +503,67 @@ func assertSameSet(t *testing.T, label string, got, want []string) {
 	t.Errorf("%s: sets differ\n  got  %v\n  want %v\n  only in got:  %v\n  only in want: %v",
 		label, sortedGot, sortedWant, onlyGot, onlyWant)
 }
+
+// TestUnifiedServiceWhitelist pins the rule spec §4 states and Stage 2 could not yet enforce:
+// a job may be named individually on POST /api/custom/sync/run?service=<id> only if it
+// declares TriggerIndividualRoute.
+//
+// nil is the rejection, and the distinction from empty is load-bearing: handleUnifiedSync
+// answers 400 on nil, so an unknown or cron-only service is refused rather than resolved to a
+// run of nothing. Before this, ResolveUnifiedSyncServices passed ANY ?service= name straight
+// through, which is why TestScopedVariantContract's no-individual-route clause had to describe
+// itself as a convention rather than a server guarantee.
+//
+// The five PhaseGlobal jobs are the reason this waited for Task 9. They have real POST routes
+// and are runnable today, but had no registry row until then -- a whitelist derived from the
+// incomplete table would have answered 400 for all five, which is a wrong answer, not merely
+// an early one (Stage 2 ledger, ruling F5). divisions is named below for exactly that.
+func TestUnifiedServiceWhitelist(t *testing.T) {
+	t.Parallel()
+
+	// A routed job resolves to itself. divisions is the deferral's own regression case; the
+	// other two are an ordinary source job and the one job with an environment Gate -- a Gate
+	// is a RUNTIME check and must not make a declared route unreachable.
+	for _, id := range []string{"sessions", "divisions", "multi_workbook_export"} {
+		if got := ResolveUnifiedSyncServices(id, true, true); !slices.Equal(got, []string{id}) {
+			t.Errorf("ResolveUnifiedSyncServices(%q) = %v, want [%s]", id, got, id)
+		}
+	}
+
+	// Everything else is nil: the two scoped variants and reconcile_request_lifecycle are
+	// registered but declare no route (they run only from the daily cron and, for the latter,
+	// a phase or full run); the last two are not jobs at all.
+	for _, id := range []string{
+		"person_custom_values_family_camp", "household_custom_values_family_camp",
+		"reconcile_request_lifecycle", "not_a_service", "",
+	} {
+		if got := ResolveUnifiedSyncServices(id, true, true); got != nil {
+			t.Errorf("ResolveUnifiedSyncServices(%q) = %v, want nil -- an unrouted service must "+
+				"be refused, never resolved to a run of nothing", id, got)
+		}
+	}
+
+	// DefaultService is not a job id and must never be caught by the whitelist.
+	if got := ResolveUnifiedSyncServices(DefaultService, true, true); len(got) == 0 {
+		t.Errorf("ResolveUnifiedSyncServices(%q) = %v, want the full-run queue", DefaultService, got)
+	}
+}
+
+// TestEveryRoutedJobIsIndividuallyResolvable is the whitelist's non-vacuity guard and the
+// deferral's real regression test: every job carrying TriggerIndividualRoute must still
+// resolve to itself. A row that lost the bit -- or was added without it -- turns a working Run
+// button into a 400, which is precisely what adding this whitelist during Stage 2 would have
+// done to all five global jobs.
+func TestEveryRoutedJobIsIndividuallyResolvable(t *testing.T) {
+	t.Parallel()
+
+	routed := jobsWithTrigger(TriggerIndividualRoute)
+	if len(routed) == 0 {
+		t.Fatal("no job carries TriggerIndividualRoute -- the loop below would be vacuous")
+	}
+	for _, id := range routed {
+		if got := ResolveUnifiedSyncServices(id, true, true); !slices.Equal(got, []string{id}) {
+			t.Errorf("%s declares TriggerIndividualRoute but resolves to %v -- its Run button 400s", id, got)
+		}
+	}
+}

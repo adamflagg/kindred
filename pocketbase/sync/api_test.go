@@ -1227,6 +1227,70 @@ func TestHandleUnifiedSyncRejectsUnsupportedDryRun(t *testing.T) {
 	}
 }
 
+// TestHandleUnifiedSyncRejectsUnroutedService proves the registry-derived whitelist reaches the
+// HTTP boundary as a 400, on the path that matters: the rejection happens BEFORE the branch
+// that would otherwise enqueue or start the run, so an unknown or cron-only ?service= is
+// refused rather than resolved to a run of nothing.
+//
+// reconcile_request_lifecycle is the sharpest case: it is a real, registered, running job that
+// simply has no individual POST route, so passing it through used to start a genuine sync from
+// an endpoint that never advertised it.
+func TestHandleUnifiedSyncRejectsUnroutedService(t *testing.T) {
+	// Not t.Parallel(): t.Setenv is incompatible with it.
+	t.Setenv("CAMPMINDER_SEASON_ID", "2025")
+
+	for _, service := range []string{"reconcile_request_lifecycle", "person_custom_values_family_camp", "not_a_service"} {
+		scheduler := NewScheduler(nil)
+		orchestrator := scheduler.GetOrchestrator()
+		svc := &notDryRunnableService{name: service}
+		orchestrator.RegisterService(service, svc)
+
+		re := &core.RequestEvent{}
+		re.Request = httptest.NewRequest(http.MethodPost, "/?year=2025&service="+service, http.NoBody)
+		rec := httptest.NewRecorder()
+		re.Response = rec
+
+		if err := handleUnifiedSync(re, scheduler); err != nil {
+			t.Fatalf("%s: handler returned error: %v", service, err)
+		}
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("%s: expected 400, got %d: %s", service, rec.Code, rec.Body.String())
+		}
+		if !strings.Contains(rec.Body.String(), service) {
+			t.Errorf("%s: expected the 400 body to name the rejected service, got: %s", service, rec.Body.String())
+		}
+		if got := svc.callCount.Load(); got != 0 {
+			t.Errorf("%s: expected the rejected service to never run, ran %d times", service, got)
+		}
+	}
+}
+
+// TestHandleUnifiedSyncAcceptsARoutedService is the other half, and the one the Stage 2
+// deferral existed to protect: a job that DOES declare TriggerIndividualRoute must still be
+// accepted. divisions is a PhaseGlobal job -- runnable through this endpoint the whole time,
+// but without a registry row until Task 9, so a whitelist added a stage earlier would have
+// 400d it.
+func TestHandleUnifiedSyncAcceptsARoutedService(t *testing.T) {
+	// Not t.Parallel(): t.Setenv is incompatible with it.
+	t.Setenv("CAMPMINDER_SEASON_ID", "2025")
+
+	scheduler := NewScheduler(nil)
+	orchestrator := scheduler.GetOrchestrator()
+	orchestrator.RegisterService("divisions", &dryRunAwareService{name: "divisions"})
+
+	re := &core.RequestEvent{}
+	re.Request = httptest.NewRequest(http.MethodPost, "/?year=2025&service=divisions&dry_run=true", http.NoBody)
+	rec := httptest.NewRecorder()
+	re.Response = rec
+
+	if err := handleUnifiedSync(re, scheduler); err != nil {
+		t.Fatalf("handler returned error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for a routed global job, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
 // TestHandleUnifiedSyncImmediatePathEchoesDryRun proves the 200 response for the immediate
 // path echoes dry_run -- the only reliable confirmation an operator gets that they actually
 // got a dry run, and the property that let the original bug go unnoticed until the 200 body

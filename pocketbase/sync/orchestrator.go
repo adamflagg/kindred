@@ -353,14 +353,28 @@ func GetDefaultUnifiedSyncJobs(includeCustomValues, isCurrentYear bool) []string
 }
 
 // ResolveUnifiedSyncServices returns the concrete service names a unified sync with these
-// parameters will run. handleUnifiedSync calls this to validate dry_run support *before*
-// responding, and RunSyncWithOptions calls it to decide what to actually run -- one function so
-// the two can never quietly drift apart (kindred#2334: a validator that resolves a different
-// list than the one that actually runs is worse than no validator). For DefaultService it
-// delegates straight to GetDefaultUnifiedSyncJobs, so the two can never resolve different
-// lists either.
+// parameters will run, or nil if the named service may not be started individually.
+// handleUnifiedSync calls this to validate dry_run support *before* responding, and
+// RunSyncWithOptions calls it to decide what to actually run -- one function so the two can
+// never quietly drift apart (kindred#2334: a validator that resolves a different list than the
+// one that actually runs is worse than no validator). For DefaultService it delegates straight
+// to GetDefaultUnifiedSyncJobs, so the two can never resolve different lists either.
+//
+// A named service is whitelisted against the registry (spec §4: a job may be named
+// individually only if it declares a route). Before this, any ?service= string was passed
+// straight through, so POST /api/custom/sync/run?service=reconcile_request_lifecycle started a
+// real sync from an endpoint that never advertised it, and a typo started a run of one
+// nonexistent service. The whitelist waited for Stage 3 because the five PhaseGlobal jobs are
+// routed and runnable but had no registry row until Task 9 -- deriving it any earlier would
+// have rejected all five (Stage 2 ledger, ruling F5).
+//
+// nil, not an empty slice: an unresolvable service is a 400 in handleUnifiedSync, never a run
+// of nothing. Callers that distinguish must check for nil explicitly.
 func ResolveUnifiedSyncServices(service string, includeCustomValues, isCurrentYear bool) []string {
 	if service != DefaultService {
+		if !hasTrigger(service, TriggerIndividualRoute) {
+			return nil
+		}
 		return []string{service}
 	}
 	return GetDefaultUnifiedSyncJobs(includeCustomValues, isCurrentYear)

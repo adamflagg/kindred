@@ -150,10 +150,12 @@ func TestJobMetaBaseIsAReference(t *testing.T) {
 //	                      client's ONLY completion signal; without it the Refresh Housing
 //	                      cutover is undetectable (#2591)
 //	no POST route      -- a scoped variant is cron-driven and exposes no Run button. This is
-//	                      a CONVENTION, not a server guarantee: ResolveUnifiedSyncServices
-//	                      passes any ?service= name straight through, so this clause and the
-//	                      frontend's manualTrigger flag are what enforce it today. The
-//	                      server-side whitelist is kindred#2608.
+//	                      now a server guarantee as well as a convention: since Stage 3 Task 10
+//	                      ResolveUnifiedSyncServices whitelists ?service= against
+//	                      TriggerIndividualRoute and handleUnifiedSync answers 400 otherwise
+//	                      (kindred#2608). What this clause still adds is the other direction --
+//	                      that no route is REGISTERED for a variant in the first place, which
+//	                      the whitelist cannot see.
 //	collection mapping -- without it the bounded pass's writes are dropped from the export
 //	                      skip-optimization and the fresh data never reaches Sheets (#2491)
 func TestScopedVariantContract(t *testing.T) {
