@@ -159,7 +159,15 @@ interface DimensionVerdict {
 export interface UnitCapacityReading {
   readonly capacity: number | null
   readonly consumed: number
-  readonly known: boolean
+  /**
+   * Whether `consumed` is a number this modal may PUBLISH.
+   *
+   * `writeInDemand`'s own `usable`, carried through rather than re-derived —
+   * NOT its `known`, which asks the different question of whether a human
+   * sized every party. kindred#2543, owner ruling 2026-08-29; the whole
+   * argument is at `capacityVerdict` below.
+   */
+  readonly usable: boolean
 }
 
 export function readUnitCapacity(
@@ -167,9 +175,13 @@ export function readUnitCapacity(
   units: LodgingUnitRow[]
 ): UnitCapacityReading {
   const capacity = effectiveSleeps(unit, units)
-  if (capacity === null) return { capacity: null, consumed: 0, known: false }
-  const { consumed, known } = writeInDemand(capacity, coveringWriteIns(unit))
-  return { capacity, consumed, known }
+  // No `capacity === null` early return any more. `writeInDemand` takes a
+  // NULLABLE capacity and answers that case itself — `consumed: 0`, and
+  // `usable: false` to say the 0 means nothing — so short-circuiting here
+  // would be this call site re-deriving the rule the field exists to state
+  // once.
+  const { consumed, usable } = writeInDemand(capacity, coveringWriteIns(unit))
+  return { capacity, consumed, usable }
 }
 
 function capacityVerdict(
@@ -177,22 +189,49 @@ function capacityVerdict(
   reading: UnitCapacityReading,
   occupied: number
 ): DimensionVerdict {
-  const { capacity, consumed, known } = reading
-  if (capacity === null) return { fit: 'fits', note: null }
+  const { capacity, consumed, usable } = reading
   // A written-into room has an occupant `occupied` never counts — a write-in
   // is not a party (kindred#2439) — so its beds have to come from
-  // `writeInDemand`, the SAME reading the card's own drag marks fold in
-  // (`writeInKnown` in `LodgingUnitCard`, since kindred#2503) and the Assign
-  // modal's header states as "N of M beds free". `known` is what decides
-  // whether there is a fact to grade against, not `hasWriteIn`: a fully- or
-  // partly-unsized cover still asserts an occupant nothing has counted, so
-  // this row falls back to the unmeasured-capacity reading above rather than
-  // claim a number it does not have. Once every cover on the card carries a
-  // recorded `party_size` (or an ancestor's whole-card claim), `consumed`
-  // folds into `occupied` exactly as a placed party's own beds already do —
-  // a written-into cabin is graded, not exempted, the moment its occupancy
-  // is a fact rather than a guess.
-  if (!known) return { fit: 'fits', note: null }
+  // `writeInDemand`, the same rule the Assign modal's header states as "N of M
+  // beds free", and never from `hasWriteIn`.
+  //
+  // ⚠️ `usable`, NOT `known` — kindred#2543, owner ruling 2026-08-29: *"sure
+  // modal can follow the floor, roll that fix in as well."* This gate read
+  // `known` until then, so ONE unsized cover exempted the whole card and every
+  // party in the list ranked as fitting a cabin somebody was already sleeping
+  // in — while the stats bar published a free-spot count for that same cabin
+  // and the board's own drag marks reddened it. Four surfaces, one cabin; this
+  // row and the modal header above it were the last two still standing mute.
+  //
+  // WHY A FLOOR IS PUBLISHABLE WHERE AN ABSENCE IS NOT. An unsized cover is
+  // charged the WHOLE capacity of the unit it NAMES, and a party cannot exceed
+  // the leaf it sleeps in, so the remainder can only UNDERSTATE what is free:
+  // reported free ≤ true free. `known` asks "did a human size every party";
+  // `usable` asks "was there a capacity this was subtracted from", and only
+  // the second decides whether a number may be printed. The one state that
+  // still exempts is an unmeasured CARD, where `consumed` is 0 and means
+  // nothing at all — `capacity === null` is exactly that state, and it is
+  // spelled beside `usable` only because it is what narrows `capacity` for the
+  // arithmetic below.
+  //
+  // ⚠️ THE TWO VERDICTS ARE NOT EQUALLY SAFE, and the asymmetry is worth
+  // stating because a floor makes only one of them free. `fits` off a floor is
+  // unfalsifiable — `spots ≤ reported free` implies `spots ≤ true free`, so
+  // this row can never green-light a party that will not fit. `unmet` is
+  // merely CONSERVATIVE: on a card of 10 with one cover sized 2 and one
+  // unsized cover on a measured 3-bed room, 5 is reported and a six-person
+  // family is refused even though 7 may really be free. The owner accepted
+  // that undercount by name — *"if that slightly undercounts 'real'
+  // availability, staff will know that when looking over the shared cabins"* —
+  // and it costs an ANNOTATION, never a placement: `placementCandidates`
+  // returns every party it was given, however badly it fits (owner ruling
+  // 2026-08-07).
+  //
+  // Once every cover carries a recorded `party_size` (or an ancestor's
+  // whole-card claim), `consumed` folds into `occupied` exactly as a placed
+  // party's own beds already do. This is that same fold, extended to the floor
+  // an unsized cover leaves.
+  if (capacity === null || !usable) return { fit: 'fits', note: null }
   const spots = partySpots(party)
   // `Math.max(0, …)` for the same reason the header does it: a room already
   // over its capacity has nothing left, never a negative number of spots.

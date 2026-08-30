@@ -1797,25 +1797,57 @@ describe('LodgingUnitCard — the write-in numerator counts recorded people (kin
 })
 
 describe('LodgingUnitCard — drag-time capacity follows the write-in count (kindred#2503, kindred#2528)', () => {
-  it('withholds the drag-time capacity claim while any cover on the card is unsized', () => {
-    // A partly-sized card is a LOWER bound, not a fact — kindred#2528's rule
-    // that a count which is not a fact supports neither the red figure nor
-    // the match wash is unchanged by sizing some but not all of the covers.
+  /*
+   * ⚠️ THE CARD STOPPED WITHHOLDING ON A PARTLY-SIZED WRITE-IN (kindred#2543,
+   * owner ruling 2026-08-29: *"it should subsume its leaf as it does today,
+   * but also reflect that in the stats bar"*).
+   *
+   * These cards used to go quiet whenever any cover was unsized, while the
+   * stats bar published a remainder for the very same card — one screen, two
+   * answers. The arithmetic did not move: an unsized cover still contributes
+   * the whole capacity of the unit it NAMES, so what the card publishes is a
+   * FLOOR. A party cannot exceed the leaf it is sleeping in, so the number can
+   * only understate what is free, never overstate it, and the owner accepts
+   * that undercount: *"if that slightly undercounts 'real' availability, staff
+   * will know that when looking over the shared cabins."*
+   *
+   * WHAT STILL WITHHOLDS is the card nobody has MEASURED — `consumed` there is
+   * returned as 0 with no capacity to subtract it from, so it means nothing.
+   * That is the one of `known`'s three meanings the ruling does not touch, and
+   * the last two tests in this block are what hold it.
+   */
+  it('publishes the floor a partly-sized card leaves, rather than withholding it', () => {
+    // Eight beds, one cover recorded at 2, one unsized cover on a measured
+    // room of 3 — so 5 are taken and 3 are left. That 3 is exactly what
+    // `free_family_spots` publishes to the stats bar for this card.
+    const partlySized = () =>
+      slot({
+        unit: unit({
+          sleeps: 8,
+          write_ins: [
+            cover({ party_size: 2 }),
+            cover({ unit_id: 'u5', party_size: null, unit_sleeps: 3 }),
+          ],
+        }),
+      })
     render(
       <LodgingUnitCard
-        slot={slot({
-          unit: unit({
-            sleeps: 8,
-            write_ins: [
-              cover({ party_size: 2 }),
-              cover({ unit_id: 'u5', party_size: null, unit_sleeps: 3 }),
-            ],
-          }),
-        })}
-        draggingParty={party({ party_size: 1 })}
+        slot={partlySized()}
+        draggingParty={party({ party_size: 4 })}
         onOpenParty={vi.fn()}
       />
     )
+    expect(screen.getByTestId('unit-occupancy')).toHaveClass('text-destructive')
+
+    cleanup()
+    render(
+      <LodgingUnitCard
+        slot={partlySized()}
+        draggingParty={party({ party_size: 3 })}
+        onOpenParty={vi.fn()}
+      />
+    )
+    // The boundary is `<`, so a party that exactly fills what is left FITS.
     expect(screen.getByTestId('unit-occupancy')).not.toHaveClass('text-destructive')
   })
 
@@ -3358,15 +3390,13 @@ describe('LodgingUnitCard — the drag-time match and the capacity red', () => {
   })
 
   it('never matches a room somebody is written into', () => {
-    // `slotOccupancy` sums `partySize` over `slot.parties`, and a write-in is
-    // not a party — it contributes 0 (kindred#2439). So the free-bed count is
-    // the WHOLE cabin, and a match would be drawn on a room the very same card
-    // refuses to call empty: it withholds the resting tint because "a room
-    // somebody is already sleeping in is not empty", and it prints an em dash
-    // rather than a numerator because it has no count to print. Washing green
-    // at DOUBLE the withheld tint, off free beds derived from the count it
-    // just refused to assert, is the loudest possible version of that
-    // contradiction.
+    // UNCHANGED BY kindred#2543, and now true for a better reason. This used
+    // to hold because the card withheld every claim about a card with an
+    // unsized cover. It holds now because the arithmetic says so: an unsized
+    // cover on a leaf nobody measured takes the WHOLE cabin, so there are no
+    // beds left to match into. Washing green at double the resting tint on a
+    // room with nothing free would be the loudest possible contradiction of
+    // the em dash beside it.
     const { container } = render(
       <LodgingUnitCard
         slot={slot({ unit: powered({ sleeps: 5, write_ins: [cover()] }) })}
@@ -3416,10 +3446,16 @@ describe('LodgingUnitCard — the drag-time match and the capacity red', () => {
     expect(within(card(container)).getByText(/\/2$/)).not.toHaveClass('text-destructive')
   })
 
-  it('does not redden a room somebody is written into either', () => {
-    // The other half of the write-in rule. The figure already prints an em
-    // dash because there is no count; reddening it would assert "no room"
-    // from the very number the card refuses to state.
+  it('reddens a room somebody is written into, em-dash numerator and all', () => {
+    // ⚠️ REVERSED BY kindred#2543 — this test used to assert the opposite, on
+    // the argument that reddening the figure would "assert no room from the
+    // very number the card refuses to state". The two halves of the figure
+    // answer different questions and only one of them is missing: the
+    // NUMERATOR is `sized`, which is an em dash because nobody recorded a
+    // headcount, while the RED is `free`, which comes from `consumed` — and
+    // `consumed` here is the whole cabin, because an unsized cover on a leaf
+    // nobody measured takes everything. 0 free is what the stats bar
+    // publishes for this card; the board now says the same thing.
     const { container } = render(
       <LodgingUnitCard
         slot={slot({ unit: powered({ sleeps: 2, write_ins: [cover()] }) })}
@@ -3427,7 +3463,31 @@ describe('LodgingUnitCard — the drag-time match and the capacity red', () => {
         onOpenParty={vi.fn()}
       />
     )
-    expect(within(card(container)).getByText('—/2')).not.toHaveClass('text-destructive')
+    expect(within(card(container)).getByText('—/2')).toHaveClass('text-destructive')
+  })
+
+  it('washes a partly-sized write-in card that the family in flight still fits', () => {
+    // The positive half of the same ruling (kindred#2543). Ten beds, one
+    // cover recorded at 2 and one unsized cover on a measured room of 3, so
+    // five are left — and a two-person family that asked for power goes in a
+    // powered cabin with five beds spare. The board used to withhold this
+    // match while the stats bar counted those same five beds as free.
+    const { container } = render(
+      <LodgingUnitCard
+        slot={slot({
+          unit: powered({
+            sleeps: 10,
+            write_ins: [
+              cover({ party_size: 2 }),
+              cover({ unit_id: 'u5', party_size: null, unit_sleeps: 3 }),
+            ],
+          }),
+        })}
+        draggingParty={needsPower}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(card(container)).toHaveClass('bg-primary/20')
   })
 
   it('does not tell the family they will not fit in the cabin they are in', () => {

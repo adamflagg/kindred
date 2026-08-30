@@ -99,15 +99,19 @@ export type DragFit =
  * What the card already knows about its own beds, passed in rather than
  * re-derived.
  *
- * `known` is NOT simply `effectiveSleeps(...) !== null` any more
- * (kindred#2503). An unmeasured cabin is still one way to get `known:
- * false`, but a fully-measured cabin covered by a write-in withholds too,
- * unless EVERY cover on it is a fact — a recorded size, or an ancestor's
- * whole-card claim (the house was let whole, so a room inside it has no room
- * of its own to offer). A wholesale guess and a partly-sized card (some
- * covers recorded, one not) both withhold, the same as before this task.
- * See `LodgingUnitCard`'s `writeInKnown` for the caller that builds this
- * value, and `writeInDemand` (`writeIn.ts`) for the underlying rule.
+ * `known` is "there is a free-spot number to stand behind here", and
+ * kindred#2543 narrowed it back to that. Between kindred#2503 and that ruling
+ * it also required every write-in cover to be SIZED, so a fully-measured cabin
+ * with one uncounted occupant withheld both marks — while the stats bar
+ * published a free-spot count for the same cabin. The card now publishes what
+ * the server does: an unsized cover is charged the whole capacity of the unit
+ * it names, so the remainder is a FLOOR and can only understate what is free.
+ *
+ * What still withholds: a cabin nobody MEASURED, where `writeInDemand`'s
+ * `consumed` means nothing at all, and a card whose party straddles beyond it.
+ * See `LodgingUnitCard`'s `writeInSpotsUsable` for the caller that builds this
+ * value, and `writeInDemand` (`writeIn.ts`) for the underlying rule and the
+ * three meanings of its `known`.
  *
  * `free` is capacity minus placed occupants minus write-in consumption
  * (`capacity − occupants − writeInConsumed`, plus the dragged party's own
@@ -144,10 +148,31 @@ export const NEUTRAL: DragFit = { state: 'neutral', severity: 'fits' }
  *
  * `known: false` yields FALSE, not true. A count that is not a fact cannot
  * support the claim "you will not fit here" any more than it can support a
- * match — the caller withholds `known` for an unmeasured cabin, a straddling
- * party, and a write-in card where any cover is unsized — wholesale or only
- * partly sized (kindred#2503) — and all three mean the same thing here:
- * nothing to say.
+ * match — the caller withholds `known` for an unmeasured cabin and for a
+ * straddling party, and both mean the same thing here: nothing to say.
+ *
+ * ⚠️ AN UNSIZED WRITE-IN IS NO LONGER ONE OF THOSE CASES (kindred#2543), AND
+ * THE REASON IS ASYMMETRIC BETWEEN THE TWO MARKS. A shorter draft of this
+ * paragraph gave one reason for both and lost the asymmetry the sentence above
+ * had just named. An unsized cover is charged its leaf's WHOLE capacity and a
+ * party cannot exceed the leaf it sleeps in, so `free` is a FLOOR — reported
+ * free ≤ true free — and a floor is not symmetric across `<` and `>=`.
+ * `resolveDragFit`'s match fires on `free >= partySize`, where reported ≥ party
+ * implies true ≥ party: the floor cannot manufacture a match, so that half is
+ * safe on the arithmetic alone. THIS function fires on `free < partySize`, and
+ * reported < party does NOT imply true < party. A container of 10 with one
+ * cover sized 2 and one unsized cover on a measured 3-bed room reports `free`
+ * 5; if that occupant is one person, 7 really are free, and a family of 6 is
+ * reddened off a cabin that fits them.
+ *
+ * So the red is CONSERVATIVE rather than safe, and it is conservative BY
+ * RULING: kindred#2543's divergence section names `hasNoRoom` and directs both
+ * marks to stop withholding, accepting the undercount verbatim — *"if that
+ * slightly undercounts 'real' availability, staff will know that when looking
+ * over the shared cabins."* It costs a MARK, never a placement: `dragPlacement`
+ * has refused nothing on a written-into card since kindred#2432, so the drop
+ * still lands on the cabin the red is wrong about. Do not re-narrow this to
+ * `known`.
  *
  * The boundary is `<`, so a party that exactly fills a cabin FITS.
  */

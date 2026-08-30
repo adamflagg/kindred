@@ -440,20 +440,24 @@ const LodgingUnitCardInner = memo(function LodgingUnitCardInner({
    * `writeInDemand`'s own doc in `writeIn.ts` carries the full arithmetic;
    * this card is one of its readers, not a second copy of the rule.
    *
-   * `writeInDemandKnown` is NOT the same question as `writeInKnown` used by
-   * `dragCapacity` below. `writeInDemand` answers "is write-in CONSUMPTION a
-   * fact", and that is vacuously true when nothing covers this card at all —
-   * it says nothing about whether THIS card's own capacity has ever been
-   * measured. `writeInDemand(null, [])` still answers `known: true`, so
-   * `writeInKnown` folds `capacityKnown` back in explicitly rather than
-   * trusting `writeInDemandKnown` alone — see `dragCapacity`'s comment.
+   * ⚠️ `usable`, NOT `known` (kindred#2543, owner ruling 2026-08-29). The two
+   * are different questions and this card asks the second: `known` is "did
+   * somebody size every party", `usable` is "may `consumed` be published".
+   * Reading the first for the second is what made the board go quiet about a
+   * card the stats bar was publishing a free-spot count for — one screen, two
+   * answers. `writeInDemand`'s own doc carries the three meanings of
+   * `known: false` and why only one of them withholds.
+   *
+   * IT ALSO ABSORBS THE `capacityKnown` FOLD-IN this line used to do by hand.
+   * `known` is vacuously true when nothing covers this card, independent of
+   * whether anybody ever measured it, so `writeInDemand(null, [])` answering
+   * `known: true` had to be corrected here. `usable` answers that itself.
    */
   const {
     consumed: writeInConsumed,
     sized: writeInPeople,
-    known: writeInDemandKnown,
+    usable: writeInSpotsUsable,
   } = writeInDemand(capacity, coveringWriteIns(unit))
-  const writeInKnown = capacityKnown && writeInDemandKnown
 
   // `capacity` rather than `capacity ?? 0`: TypeScript narrows it through
   // `capacityKnown`, which is an aliased `!== null` check, so the fallback is
@@ -742,35 +746,50 @@ const LodgingUnitCardInner = memo(function LodgingUnitCardInner({
     : 0
 
   /*
-   * `known` is withheld on TWO conditions now, not three (kindred#2503).
+   * `known` is withheld on TWO conditions, and kindred#2543 narrowed the
+   * second one to what it was always trying to say.
    *
    * `spanWidth > 0` — the occupant count is an upper bound, not a fact, so a
-   * positive claim must not be built on it (see `slotOccupancy`).
+   * positive claim must not be built on it (see `slotOccupancy`). Unchanged.
    *
-   * `writeInKnown` replaces the old blanket `!writtenInto`. ⚠️ THAT GATE USED
-   * TO SAY A WRITE-IN CONTRIBUTES ZERO, SO THE CABIN READS AS WHOLLY FREE —
-   * that premise is no longer true: `lodging_write_ins` now carries a
-   * `party_size`, and `writeInDemand` (`writeIn.ts`) turns a recorded size
-   * into real bed arithmetic instead of a blanket refusal.
-   *
-   * What survives is the underlying rule, applied per-cover instead of
-   * card-wide: a count that is not a fact supports neither the red figure
-   * nor the match wash. `writeInKnown` is true only once EVERY cover on this
-   * card is a fact — a recorded size, or an ancestor's whole-card claim (the
-   * house was let whole, so a room inside it genuinely has no room of its
-   * own to offer) — and stays false for a wholesale guess about a room that
-   * may still be shared, or for a card where even ONE cover among several is
-   * still unsized: a partly-sized card is a LOWER bound, not a fact, exactly
-   * as a fully-unsized one always was. Withholding costs a match the board
-   * might have been entitled to draw, which is the safe direction for a
+   * `writeInSpotsUsable` — is there a free-spot number to stand behind at
+   * all. ⚠️ THIS USED TO BE `capacityKnown && writeInDemandKnown`, i.e. "every
+   * cover on this card is sized", and that is the gate the owner struck on
+   * 2026-08-29: *"it should subsume its leaf as it does today, but also
+   * reflect that in the stats bar."* The board withheld both marks on a
+   * partly-sized card while `free_family_spots` published a remainder for the
+   * same card — the stats bar counting five free spots the board declined to
    * claim.
    *
-   * `writeInKnown` is `capacityKnown && writeInDemandKnown`, not
-   * `writeInDemandKnown` alone — see the comment where it is built, above
-   * `overCapacity`: `writeInDemand`'s own `known` is vacuously true whenever
-   * nothing covers this card, independent of whether THIS card's capacity
-   * has ever been measured, so `capacityKnown` has to be folded back in
-   * explicitly rather than assumed.
+   * The arithmetic did not move. An unsized cover still contributes the whole
+   * capacity of the unit it NAMES, so what the card publishes is a FLOOR: a
+   * party cannot exceed the leaf it is sleeping in, so the remainder can only
+   * understate what is free, never overstate it. Withholding was guarding
+   * against advertising space that may not exist, and a floor is the opposite
+   * of that. The owner accepts the undercount: *"if that slightly undercounts
+   * 'real' availability, staff will know that when looking over the shared
+   * cabins."*
+   *
+   * WHAT STILL WITHHOLDS is the card nobody MEASURED — `writeInDemand`
+   * returns `usable: false` there, because `consumed` comes back as 0 with no
+   * capacity to subtract it from and means nothing at all. That is one of
+   * `known: false`'s three meanings, and the only one the ruling leaves
+   * alone; `writeInDemand`'s own doc carries the other two.
+   *
+   * ⚠️ `writeInDemand`'s `known` HAS NOW BECOME UNUSED, and this paragraph
+   * said the opposite until the review — it claimed the Assign modal's header
+   * (`capacitySentence`) and its candidate rows (`capacityVerdict`) still read
+   * it deliberately, because those state facts rather than floors. The owner
+   * extended the ruling to them mid-review: *"sure modal can follow the floor,
+   * roll that fix in as well."* Both read `usable` now, so all four surfaces —
+   * stats bar, this card, the modal header, the candidate rows — answer one
+   * cabin the same way, and `writeInDemand`'s `known` gates nothing in
+   * production. It is kept as the only answer to "did a human count these
+   * people"; see its own doc.
+   *
+   * `DragCapacity.known` just below is a DIFFERENT field and is very much
+   * used — it is this card's own drag-time gate, and it is built FROM
+   * `usable`.
    *
    * Built ONCE, and both drag-time capacity marks read it: `resolveDragFit`
    * gates the match on it, and `hasNoRoom` reddens the figure from it. They
@@ -778,7 +797,7 @@ const LodgingUnitCardInner = memo(function LodgingUnitCardInner({
    * to both by hand.
    */
   const dragCapacity: DragCapacity = {
-    known: writeInKnown && spanWidth === 0,
+    known: writeInSpotsUsable && spanWidth === 0,
     free: freeBeds,
   }
 

@@ -158,19 +158,60 @@ class WriteInDemand(NamedTuple):
 
     `consumed` drives every spot statement. `sized` drives the card's NUMERATOR
     alone, and excludes both the wholesale fallback and an ancestor's size --
-    see `write_in_demand`. `known` gates the drag-time marks kindred#2528
-    built: a count that is not a fact supports neither the red figure nor the
-    match wash.
+    see `write_in_demand`.
 
     `sized` is deliberately UNCAPPED, unlike `consumed`. A hand-typed count
     above the card's own spots is what drives kindred#2503's over-capacity red,
     so the numerator has to carry the true recorded figure -- clipping it to
     capacity would hide the very overage the card exists to show.
+
+    ⚠️ `known` AND `usable` ARE TWO DIFFERENT QUESTIONS, and reading the first
+    for the second is the defect kindred#2543 was filed for (owner ruling
+    2026-08-29).
+
+    * `known` -- did somebody record a size for EVERY party on this card.
+      ⚠️ IT GATES NOTHING IN PRODUCTION ANY MORE. This bullet used to say it
+      was the ASSIGN MODAL's gate, so a card holding a party nobody counted
+      read "occupancy not counted (write-in)" rather than a number -- and that
+      stopped being true inside this issue's own review, when the owner
+      extended the ruling to the modal: *"sure modal can follow the floor, roll
+      that fix in as well."* Its header and its candidate rows now read
+      `usable` like the board does. `known` is KEPT because it is still the
+      only answer to "did a human count these people", a different question
+      from "may this number be printed".
+    * `usable` -- may `consumed` be PUBLISHED. It is the gate on EVERY surface
+      that prints a remainder -- the board card's drag marks, the Assign
+      modal's header, its candidate rows -- and the stats bar's own arithmetic
+      (`free_family_spots`) agrees with it by construction.
+
+    `known=False` means three different things, and only ONE of them makes
+    `consumed` meaningless:
+
+    | # | situation                                   | `consumed`            |
+    |---|---------------------------------------------|-----------------------|
+    | 1 | nobody measured the card                    | `0`, and meaningless  |
+    | 2 | unsized cover on an unmeasured LEAF         | the whole card        |
+    | 3 | unsized cover on a measured leaf            | a real FLOOR          |
+
+    Only (1) is unusable -- there was no capacity to subtract from. (2) and (3)
+    are both publishable, because a party cannot exceed the leaf it is sleeping
+    in: an unsized cover is already charged that leaf's whole capacity, so the
+    remainder can only UNDERSTATE what is free, never overstate it. The owner
+    accepts that undercount explicitly -- *"if that slightly undercounts 'real'
+    availability, staff will know that when looking over the shared cabins."*
+
+    ⇒ `usable` IS `capacity is not None` TODAY, in every branch, and it is a
+    field rather than a re-derivation at each call site for the reason the two
+    sums are: it is decided where `consumed` is decided. A future branch that
+    makes `consumed` meaningless again says so here, once, and every consumer
+    follows -- where a caller's own `capacity is not None` would keep publishing
+    a number the rule had stopped standing behind.
     """
 
     consumed: int
     sized: int
     known: bool
+    usable: bool
 
 
 def write_in_demand(capacity: int | None, loads: Sequence[WriteInLoad]) -> WriteInDemand:
@@ -218,17 +259,23 @@ def write_in_demand(capacity: int | None, loads: Sequence[WriteInLoad]) -> Write
     code did not have; the guard is the mechanism.
     """
     if not loads:
-        return WriteInDemand(consumed=0, sized=0, known=True)
+        # `usable` is NOT vacuously true the way `known` is. With no covers
+        # there is no unsized party to spoil `known`, but this branch runs
+        # BEFORE the capacity guard below, so an unmeasured card reaches it --
+        # and `free_family_spots` answers `None` there (the ROLE decides),
+        # never "0 taken, publish the lot".
+        return WriteInDemand(consumed=0, sized=0, known=True, usable=capacity is not None)
 
     # A fact about people, not about the card -- see the function docstring.
     # Computed before either guard below so neither one can discard it.
     sized = sum(load.party_size for load in loads if load.relation != "ancestor" and load.party_size is not None)
 
     if capacity is None:
-        # Nothing to subtract from. `consumed` is meaningless here and callers
-        # must read `known` before using it; `free_family_spots` closes the unit
-        # instead of reporting a number. `sized` survives regardless.
-        return WriteInDemand(consumed=0, sized=sized, known=False)
+        # Nothing to subtract from. `consumed` is meaningless here -- this is
+        # the ONE meaning of `known=False` that also withholds `usable`, and
+        # the reason the two are separate fields. `free_family_spots` closes
+        # the unit instead of reporting a number. `sized` survives regardless.
+        return WriteInDemand(consumed=0, sized=sized, known=False, usable=False)
 
     if any(load.relation == "ancestor" for load in loads):
         # Whole-card, and order-independent by construction: a pre-pass, not
@@ -236,7 +283,7 @@ def write_in_demand(capacity: int | None, loads: Sequence[WriteInLoad]) -> Write
         # unconditionally, because the guard above has already returned for
         # every unmeasured card -- see the function docstring, which used to
         # describe the conditionality as living in this expression.
-        return WriteInDemand(consumed=capacity, sized=sized, known=True)
+        return WriteInDemand(consumed=capacity, sized=sized, known=True, usable=True)
 
     consumed = 0
     known = True
@@ -247,10 +294,13 @@ def write_in_demand(capacity: int | None, loads: Sequence[WriteInLoad]) -> Write
         known = False
         if load.capacity is None:
             # An unbounded wholesale claim: somebody is in a space nobody
-            # measured, so nothing on this card is offerable.
-            return WriteInDemand(consumed=capacity, sized=sized, known=False)
+            # measured, so nothing on this card is offerable. `usable` is
+            # TRUE and the two are not in tension: "the whole card is taken"
+            # is a bound, not a guess, and 0 free is a number both surfaces
+            # can state.
+            return WriteInDemand(consumed=capacity, sized=sized, known=False, usable=True)
         consumed += load.capacity
-    return WriteInDemand(consumed=min(consumed, capacity), sized=sized, known=known)
+    return WriteInDemand(consumed=min(consumed, capacity), sized=sized, known=known, usable=True)
 
 
 def free_family_spots(capacity: int | None, loads: Sequence[WriteInLoad]) -> int | None:
@@ -268,22 +318,28 @@ def free_family_spots(capacity: int | None, loads: Sequence[WriteInLoad]) -> int
     * `n`     -- the remainder.
 
     ⚠️ `known` IS DELIBERATELY NOT READ HERE, and this is the note that stops
-    it being "fixed" (owner ruling 2026-08-23; the reasoning lives on
-    `WriteInDemand` above, which is not where a reader arrives). A PARTLY-SIZED
-    card -- some covers recorded, one not -- gives this function a `consumed`
-    it will happily turn into a remainder, while the client's drag marks
-    withhold on the same card because `writeInDemand`'s `known` is false. A
+    it being "fixed" (owner ruling 2026-08-23, REAFFIRMED 2026-08-29; the
+    reasoning lives on `WriteInDemand` above, which is not where a reader
+    arrives). A PARTLY-SIZED card -- some covers recorded, one not -- gives
+    this function a `consumed` it will happily turn into a remainder, and a
     container of 10 with one unsized written-into room of 3 and one sized cover
-    of 2 publishes FIVE free spots that the board itself declines to claim.
+    of 2 publishes FIVE free spots.
 
-    That divergence is the design, not a bug. `consumed` answers "how many spots
-    are left", and the server has to answer it -- open/closed is the only thing
-    the wire carries, and there is no third state. `known` gates a CLAIM the
-    board makes to a staff member mid-drag, which is held to a higher bar
-    because withholding it costs only a match the board might have drawn.
-    Making this withhold too would mean understating free spots, which is its
-    own lie, on a state that needs somebody to have sized some write-ins and
-    not others.
+    THE BOARD USED TO DECLINE TO CLAIM THOSE FIVE (kindred#2543), because its
+    drag marks gated on `writeInDemand`'s `known`. It no longer does: the card
+    gates on `usable` and prints the same number this function publishes. The
+    divergence this note used to defend is gone, and the direction it was
+    settled in is the one that matters here -- THE CARD MOVED TOWARD THIS
+    FUNCTION, not the reverse. Making this withhold too was rejected twice: it
+    would harmonise the two surfaces on the less informative answer, and
+    understating free spots is its own lie.
+
+    Why publishing the remainder is safe rather than over-advertising: an
+    unsized cover is charged the WHOLE capacity of the unit it names, and a
+    party cannot exceed the leaf it sleeps in, so the remainder is a FLOOR. It
+    can only understate availability. `consumed` answers "how many spots are
+    left", and the server has to answer it -- open/closed is the only thing the
+    wire carries, and there is no third state.
 
     Placed families are NOT subtracted here. `spots_family_available` is paired
     with `spotsNeeded` on the stats bar, and a placed family is counted in that

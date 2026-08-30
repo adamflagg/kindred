@@ -421,10 +421,46 @@ export function coveringWriteIns(unit: LodgingUnitRow): WriteInCoverRow[] {
  * `consumed` is what the BEDS arithmetic pays — the same recorded counts plus
  * the wholesale fallback plus an ancestor's whole-card claim.
  *
- * `known` asks whether `consumed` is a FACT, and gates kindred#2528's two
- * drag-time capacity marks. A recorded size is a fact; an ancestor taking the
- * whole card is a fact (the house is let whole); a wholesale guess about a
- * room that may be shared is not.
+ * `known` asks whether every party on this card was SIZED by a human. A
+ * recorded size is a fact; an ancestor taking the whole card is a fact (the
+ * house is let whole); a wholesale guess about a room that may be shared is
+ * not.
+ *
+ * ⚠️ IT GATES NOTHING IN PRODUCTION ANY MORE, and that is a ruling rather than
+ * an oversight — this paragraph used to end *"it gates the Assign modal's
+ * header and its candidate rows, which state facts rather than floors"*, and
+ * that stopped being true inside kindred#2543's own review. The owner extended
+ * the ruling to the modal: *"sure modal can follow the floor, roll that fix in
+ * as well."* `capacitySentence` and `capacityVerdict` now read `usable` like
+ * the board does, and the header's `occupancy not counted (write-in)` sentence
+ * is deleted. `known` is KEPT because it is still the only answer to *"did a
+ * human count these people"* — a different question from *"may this number be
+ * printed"* — and because it is half of the mirror: `write_in_demand` returns
+ * it too, with the same paragraph.
+ *
+ * ⚠️ `usable` IS A DIFFERENT QUESTION, and reading `known` for it is the
+ * defect kindred#2543 was filed for (owner ruling 2026-08-29). It asks whether
+ * `consumed` may be PUBLISHED, and it is what the BOARD's drag marks read.
+ * `known === false` means three different things and only one of them makes
+ * `consumed` meaningless:
+ *
+ * | # | situation | `consumed` |
+ * |---|---|---|
+ * | 1 | nobody measured the card | `0`, and meaningless |
+ * | 2 | unsized cover on an unmeasured LEAF | the whole card |
+ * | 3 | unsized cover on a measured leaf | a real FLOOR |
+ *
+ * Only (1) withholds. (2) and (3) publish, because an unsized cover is already
+ * charged the whole capacity of the unit it NAMES and a party cannot exceed
+ * the leaf it sleeps in — so the remainder can only understate what is free,
+ * never overstate it. The card used to withhold on all three while the stats
+ * bar published a number for the same card; that divergence is what this
+ * split closes.
+ *
+ * ⇒ `usable` IS `capacity !== null` today, in every branch, and it is a
+ * returned field rather than a re-derivation at each call site for the same
+ * reason the two sums are: it is decided where `consumed` is decided. A future
+ * branch that makes `consumed` meaningless again says so here, once.
  *
  * AN ANCESTOR TAKES THE WHOLE CARD, decided by a PRE-PASS over `covers`
  * rather than inside the per-cover loop, so the answer cannot depend on where
@@ -436,8 +472,12 @@ export function coveringWriteIns(unit: LodgingUnitRow): WriteInCoverRow[] {
 export function writeInDemand(
   capacity: number | null,
   covers: WriteInCoverRow[]
-): { consumed: number; sized: number; known: boolean } {
-  if (covers.length === 0) return { consumed: 0, sized: 0, known: true }
+): { consumed: number; sized: number; known: boolean; usable: boolean } {
+  // `usable` is NOT vacuously true the way `known` is: with no covers there is
+  // no unsized party to spoil `known`, but this branch runs BEFORE the
+  // capacity guard, so an unmeasured card reaches it — and an unmeasured,
+  // uncovered room must not read as a known zero.
+  if (covers.length === 0) return { consumed: 0, sized: 0, known: true, usable: capacity !== null }
 
   // A fact about people, not about the card — see the doc above. Computed
   // before either guard so neither one can discard it.
@@ -448,9 +488,10 @@ export function writeInDemand(
   }, 0)
 
   if (capacity === null) {
-    // Nothing to subtract from. `consumed` is meaningless here and callers
-    // must read `known` before using it. `sized` survives regardless.
-    return { consumed: 0, sized, known: false }
+    // Nothing to subtract from. `consumed` is meaningless here — the ONE
+    // meaning of `known: false` that also withholds `usable`, and the reason
+    // the two are separate fields. `sized` survives regardless.
+    return { consumed: 0, sized, known: false, usable: false }
   }
 
   if (covers.some((c) => (c.relation ?? 'own') === 'ancestor')) {
@@ -458,7 +499,7 @@ export function writeInDemand(
     // value the loop happens to have accumulated so far. `known=true`
     // unconditionally, because the guard above has already returned for
     // every unmeasured card.
-    return { consumed: capacity, sized, known: true }
+    return { consumed: capacity, sized, known: true, usable: true }
   }
 
   let consumed = 0
@@ -475,12 +516,14 @@ export function writeInDemand(
     const sourceCapacity = c.unit_sleeps ?? null
     if (sourceCapacity === null) {
       // An unbounded wholesale claim: somebody is in a space nobody
-      // measured, so nothing on this card is offerable.
-      return { consumed: capacity, sized, known: false }
+      // measured, so nothing on this card is offerable. `usable` is TRUE and
+      // the two are not in tension: "the whole card is taken" is a bound, not
+      // a guess, and 0 free is a number both surfaces can state.
+      return { consumed: capacity, sized, known: false, usable: true }
     }
     consumed += sourceCapacity
   }
-  return { consumed: Math.min(consumed, capacity), sized, known }
+  return { consumed: Math.min(consumed, capacity), sized, known, usable: true }
 }
 
 /**
