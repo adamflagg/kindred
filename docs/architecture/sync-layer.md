@@ -50,8 +50,8 @@ When implementing a new sync job, ALL of these steps must be completed. Missing 
 | `InitializeSyncServices()` | Register service with `RegisterService()` in dependency order |
 | `RunDailySync()` orderedJobs | Add job ID string in correct position (respects dependencies) |
 | `RunSyncWithOptions()` servicesToRun | Add to default services list for historical syncs |
-| `RunSyncWithOptions()` re-registration | Add `NewXxxSync(o.app, yearClient)` call in historical re-registration block (~line 815) |
-| `syncJobMeta` | Add a `{id, Phase, description}` entry — this is what drives phase grouping and the status UI |
+| `RunSyncWithOptions()` re-registration | Add `NewXxxSync(o.app, yearClient)` call in historical re-registration block (~line 1966) |
+| `syncJobMeta` | Add a keyed `{ID: …, Phase: …, Description: …}` entry (plus Base/Scope for a scoped variant — see scope.go) — this is what drives phase grouping and the status UI |
 
 **Common mistake**: Registering the service but forgetting to add to `orderedJobs` - job won't run in daily sync!
 
