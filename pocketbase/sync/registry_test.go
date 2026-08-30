@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/camp/kindred/pocketbase/campminder"
+	pbtests "github.com/pocketbase/pocketbase/tests"
 )
 
 // TestRegistryIntegrity pins the structural rules every row must satisfy. It is the guard
@@ -1199,11 +1200,43 @@ func TestExportRunsExactlyOnceInAFullRun(t *testing.T) {
 		}
 	}
 	if n != 1 {
-		t.Errorf("multi_workbook_export appears %d times in a full run, want 1", n)
+		t.Errorf("multi_workbook_export appears %d times in a full run's service LIST, want 1", n)
 	}
 	src := readSourceFile(t, "orchestrator.go")
 	if strings.Contains(src, "Sync with options: Exporting to Google Sheets") {
 		t.Error("the hardcoded export epilogue is still in RunSyncWithOptions")
+	}
+
+	// List membership cannot see a second execution path: checkGlobalTablesEmpty's
+	// weekly-sync bootstrap (called from both RunDailySync and RunSyncWithOptions, on any
+	// database with an empty person_tag_defs table -- a fresh deploy, or a database reset
+	// mid-season) used to run RunWeeklySync, whose job list is GetWeeklySyncJobs() --
+	// exactly the list multi_workbook_export joined via CadenceWeeklyGlobal this task added.
+	// A fresh-DB full run would export once from the bootstrap and once from its own
+	// service list -- two Sync() calls, invisible to the membership count above. Drive a
+	// REAL run against a database with NO person_tag_defs rows (so the bootstrap actually
+	// fires) and count executions directly, via a spy registered under the export's name
+	// rather than the real *MultiWorkbookExport -- the derivation functions only care about
+	// the registered NAME, not the concrete type.
+	app, err := pbtests.NewTestApp()
+	if err != nil {
+		t.Fatalf("NewTestApp: %v", err)
+	}
+	t.Cleanup(app.Cleanup)
+
+	o := NewOrchestrator(app)
+	o.SetJobSpacing(0)
+
+	spy := &MockService{name: "multi_workbook_export"}
+	o.RegisterService("multi_workbook_export", spy)
+
+	if err := o.RunSyncWithOptions(context.Background(), Options{Year: 0}); err != nil {
+		t.Fatalf("RunSyncWithOptions: %v", err)
+	}
+
+	if got := spy.callCount.Load(); got != 1 {
+		t.Errorf("multi_workbook_export.Sync() ran %d times in a full run, want 1 "+
+			"(checkGlobalTablesEmpty's bootstrap must not export -- spec §3)", got)
 	}
 }
 

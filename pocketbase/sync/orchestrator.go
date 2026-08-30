@@ -1651,12 +1651,13 @@ func (o *Orchestrator) RunHourlySync(ctx context.Context) error {
 
 // RunDailySync runs all base data syncs in the correct order
 func (o *Orchestrator) RunDailySync(ctx context.Context) error {
-	// Check if global tables are empty - if so, run weekly sync first
+	// Check if global tables are empty - if so, repair them first (the five PhaseGlobal
+	// tables only -- never the export; see runGlobalTableBootstrap).
 	// This ensures fresh DB setups have required global definitions before daily sync
 	if o.checkGlobalTablesEmpty() {
-		slog.Info("Global tables empty - running weekly sync first")
-		if err := o.RunWeeklySync(ctx); err != nil {
-			slog.Error("Weekly sync failed, continuing with daily", "error", err)
+		slog.Info("Global tables empty - running the bootstrap repair first")
+		if err := o.runGlobalTableBootstrap(ctx); err != nil {
+			slog.Error("Global table bootstrap failed, continuing with daily", "error", err)
 		}
 	}
 
@@ -1725,11 +1726,40 @@ func (o *Orchestrator) RunDailySync(ctx context.Context) error {
 // RunWeeklySync runs global data syncs that are too expensive for daily sync.
 // These services require N API calls (one per entity) and run once per week.
 //
+// This is the REAL Sunday-2am cron path (scheduler.go): GetWeeklySyncJobs() is every
+// CadenceWeeklyGlobal row, multi_workbook_export included since this task. Do not call this
+// from checkGlobalTablesEmpty's bootstrap -- see runGlobalTableBootstrap, which is that path's
+// job list instead, deliberately excluding the export (spec §3: "a repair path, not a
+// membership question").
+//
 //nolint:dupl // Similar pattern to RunCustomValuesSync, intentional for sync orchestration
 func (o *Orchestrator) RunWeeklySync(ctx context.Context) error {
-	// Get the weekly sync jobs
-	weeklyJobs := GetWeeklySyncJobs()
+	return o.runWeeklyJobs(ctx, GetWeeklySyncJobs())
+}
 
+// runGlobalTableBootstrap is checkGlobalTablesEmpty's repair path, called by RunDailySync and
+// RunSyncWithOptions when a fresh or freshly-reset database has no person_tag_defs rows. It
+// refills exactly the five PhaseGlobal tables (GetJobsForPhase(PhaseGlobal), gated the same
+// way every derived queue is) and nothing else.
+//
+// Deliberately NOT GetWeeklySyncJobs(): that list also carries multi_workbook_export
+// (CadenceWeeklyGlobal, since this task), and this bootstrap is a repair path, not a
+// membership question (spec §3) -- it must refill the definition tables a database is missing,
+// and must never trigger an export as a side effect of doing so. Before this function existed,
+// both callers ran RunWeeklySync directly, so a fresh-DB full run exported once from the
+// bootstrap and once from its own service list (TestExportRunsExactlyOnceInAFullRun is the
+// regression guard).
+//
+// Uses the SAME triggerWeekly batch trigger and the SAME weeklySyncRunning/weeklySyncQueue UI
+// flags as RunWeeklySync -- this is still, semantically, "the weekly sync ran early because the
+// globals were missing," just scoped to the five tables that repair path actually owns.
+func (o *Orchestrator) runGlobalTableBootstrap(ctx context.Context) error {
+	return o.runWeeklyJobs(ctx, available(GetJobsForPhase(PhaseGlobal)))
+}
+
+// runWeeklyJobs is RunWeeklySync's and runGlobalTableBootstrap's shared body, parameterized on
+// the job list so the two can differ only in which jobs run, never in how the batch is tracked.
+func (o *Orchestrator) runWeeklyJobs(ctx context.Context, weeklyJobs []string) error {
 	batch := newBatch(triggerWeekly)
 	o.registerBatch(batch.batchID)
 
@@ -2094,9 +2124,9 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 			slog.Warn("Dry run: global tables are empty and the weekly-sync bootstrap is " +
 				"skipped -- results are computed against an unseeded database")
 		} else {
-			slog.Info("Global tables empty - running weekly sync first")
-			if err := o.RunWeeklySync(ctx); err != nil {
-				slog.Error("Weekly sync failed, continuing with sync", "error", err)
+			slog.Info("Global tables empty - running the bootstrap repair first")
+			if err := o.runGlobalTableBootstrap(ctx); err != nil {
+				slog.Error("Global table bootstrap failed, continuing with sync", "error", err)
 			}
 		}
 	}
