@@ -249,6 +249,13 @@ func TestUnifiedRunDerivation(t *testing.T) {
 			t.Errorf("includeCustomValues=true must include %s", id)
 		}
 	}
+	// process_requests' Gate (IS_DOCKER) is closed here, independent of CurrentYearOnly --
+	// isCurrentYear is true, so this is what pins available() being consulted inside
+	// GetDefaultUnifiedSyncJobs rather than only the CurrentYearOnly filter the historical
+	// block below exercises.
+	if slices.Contains(full, "process_requests") {
+		t.Error("process_requests must be gated out of a current-year full run when IS_DOCKER is unset")
+	}
 	noCV := ResolveUnifiedSyncServices(DefaultService, false, true)
 	for _, id := range []string{"person_custom_values", "household_custom_values"} {
 		if slices.Contains(noCV, id) {
@@ -263,5 +270,21 @@ func TestUnifiedRunDerivation(t *testing.T) {
 	}
 	if got := full[len(full)-1]; got != "stranded_assignment_cleanup" {
 		t.Errorf("full run ends with %q, want stranded_assignment_cleanup", got)
+	}
+
+	// process_requests' CurrentYearOnly bit and its Gate are independent controls and both
+	// must hold for it to run. Re-run under IS_DOCKER=true so the CurrentYearOnly clause is
+	// pinned non-vacuously -- the block above already proves the Gate half, but with the gate
+	// closed there process_requests is absent for the gate's reason regardless of what
+	// CurrentYearOnly says, so removing that flag from the registry row would leave every
+	// assertion above green.
+	t.Setenv("IS_DOCKER", "true")
+	dockerFull := ResolveUnifiedSyncServices(DefaultService, true, true)
+	if !slices.Contains(dockerFull, "process_requests") {
+		t.Error("process_requests must be present in a current-year full run when IS_DOCKER=true")
+	}
+	dockerHistorical := ResolveUnifiedSyncServices(DefaultService, true, false)
+	if slices.Contains(dockerHistorical, "process_requests") {
+		t.Error("process_requests is CurrentYearOnly and must not be in a historical replay, even when IS_DOCKER=true")
 	}
 }
