@@ -112,6 +112,31 @@ describe('parseSyncJobIds rejects what it cannot parse (kindred#2593)', () => {
     expect(() => parseSyncJobIds(src)).toThrow(/only understands a row that opens/)
   })
 
+  // The shape gofmt will NOT reformat away, and the one this parser got wrong first time
+  // round: `{ID: "a", ...}, {ID: "b", ...},` is valid, stable Go, and a line-anchored regex
+  // reads the first row and drops the second in silence -- 35 ids returned, no throw, and four
+  // frontend guards validating against a set missing a real job. That is the exact false-GREEN
+  // failure the old `^"id",$` parser threw on, so losing it was a regression.
+  it('throws when two rows share one source line', () => {
+    const src = wrap(
+      '\t{ID: "sessions", Phase: PhaseSource}, {ID: "attendees", Phase: PhaseSource},'
+    )
+    expect(() => parseSyncJobIds(src)).toThrow(/2 syncJobMeta rows share one source line/)
+    expect(() => parseSyncJobIds(src)).toThrow(/attendees/)
+  })
+
+  it('throws when three rows share one source line', () => {
+    const src = wrap('\t{ID: "a"}, {ID: "b"}, {ID: "c"},')
+    expect(() => parseSyncJobIds(src)).toThrow(/3 syncJobMeta rows share one source line/)
+  })
+
+  // The sibling hole: a row that opens at continuation depth is invisible to a scan that
+  // treats every deeper-indented line as belonging to the row above it.
+  it('throws when a row opens at continuation indentation', () => {
+    const src = wrap('\t{ID: "sessions", Phase: PhaseSource,\n\t\t{ID: "attendees"}},')
+    expect(() => parseSyncJobIds(src)).toThrow(/opens at continuation indentation/)
+  })
+
   it('throws on a block comment, whose prose a "//" truncation cannot reach', () => {
     const src = wrap('\t/* the "sessions" job is listed below */\n\t{ID: "sessions"},')
     expect(() => parseSyncJobIds(src)).toThrow(/sessions/)
