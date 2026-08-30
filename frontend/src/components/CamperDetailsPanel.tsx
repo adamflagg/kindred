@@ -17,6 +17,7 @@ import {
 import { ParentStaffDivider, AgePreferenceDivider } from './camper/RequestSectionDividers'
 import FirstPickBadge from './camper/FirstPickBadge'
 import { pb } from '../lib/pocketbase'
+import { useAuth } from '../contexts/AuthContext'
 import { StatusBadge } from './StatusBadge'
 import {
   getGenderIdentityDisplay,
@@ -53,6 +54,7 @@ import type { RequestBucket, SatisfactionEntry } from '../types/satisfaction'
 import type { EnhancedBunkRequest } from '../hooks/camper/useAllBunkRequests'
 import { useOriginalBunkData } from '../hooks/camper/useOriginalBunkData'
 import { fetchCamperJourney, fetchParentMainSessions } from '../hooks/camper/fetchCamperJourney'
+import { useHouseholdJourney } from '../hooks/useWeekendRoster'
 import { collapseAgEnrollments, buildAgParentPairs } from '../hooks/camper/agCollapse'
 import type { HistoricalRecord } from '../hooks/camper/types'
 import { useOverlayEscape } from '../hooks/useOverlayEscape'
@@ -384,10 +386,25 @@ export default function CamperDetailsPanel({
     enabled: !!camperId,
   })
 
+  // kindred#2466: a family-camp row shows the household's ACTUAL HOUSING
+  // (the resolved cabin, mirroring the weekend board's own
+  // HouseholdJourneyCard) rather than the CampMinder day group. `null` when
+  // the person has no household on file, which disables the query.
+  // ⚠️ Gated on `isAuthLoading`, not only on the id. `useHouseholdJourney`
+  // reads a PROTECTED endpoint through `fetchWithAuth`, and its own `enabled`
+  // checks the household id alone -- so an ungated call can fire before auth
+  // is ready and lose the housing for the render (frontend/CLAUDE.md:
+  // "useAuth().isLoading first").
+  const { isLoading: isAuthLoading } = useAuth()
+  const { data: householdJourney } = useHouseholdJourney(
+    isAuthLoading ? null : (person?.household_id ?? null)
+  )
+
   // Fetch historical journey via the shared enrollment-sourced fetcher.
   const { data: historicalData = [] } = useQuery<HistoricalRecord[]>({
-    queryKey: queryKeys.camperHistory(camperId, currentYear),
-    queryFn: () => fetchCamperJourney(parseInt(camperId), currentYear),
+    queryKey: [...queryKeys.camperHistory(camperId, currentYear), householdJourney?.years],
+    queryFn: () =>
+      fetchCamperJourney(parseInt(camperId), currentYear, householdJourney?.years ?? []),
     enabled: !!camper,
   })
 

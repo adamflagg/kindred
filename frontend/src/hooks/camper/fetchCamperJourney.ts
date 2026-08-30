@@ -1,9 +1,11 @@
 /**
  * Shared prior-year journey source. Lists every prior year a camper was
  * ENROLLED (curated types: summer + teen + family, see #2113), labeling each
- * row with its bunk/day-group when an assignment exists. Sourcing from
- * attendees (not bunk_assignments) is what surfaces 2022 (a CampMinder export
- * gap), teens, and family camp uniformly.
+ * row with its housing when known: a bunk name for a summer/teen session, or
+ * the household's resolved family-camp cabin for a family session (never the
+ * CampMinder day group — see the family-housing override below, kindred#2466).
+ * Sourcing from attendees (not bunk_assignments) is what surfaces 2022 (a
+ * CampMinder export gap), teens, and family camp uniformly.
  *
  * AG is never shown as its own session: a Main+AG same-year pair collapses to the
  * Main row, and an AG-only year is relabeled to its parent main (name resolved via
@@ -18,6 +20,7 @@ import type {
   BunksResponse,
   CampSessionsResponse,
 } from '../../types/pocketbase-types'
+import type { HouseholdJourneyRow } from '../../types/lodging'
 import type { HistoricalRecord } from './types'
 
 interface SessionExpand {
@@ -50,11 +53,48 @@ export async function fetchParentMainSessions(
   return out
 }
 
+/**
+ * Reduce a household's family-camp journey to the one fact this file needs:
+ * which cabin, if any, is safely attributable to which specific weekend, per
+ * year. Only a year whose `housing_session_cm_id` names exactly one session
+ * earns an entry — mirroring `HouseholdJourneyRow.housing_session_cm_id`'s
+ * own ambiguity refusal (kindred#2461) rather than reimplementing it. A year
+ * with no housing, an unresolved cabin name, or more than one weekend that
+ * season produces no entry, and the caller shows nothing rather than guess.
+ */
+function familyHousingByYear(
+  years: HouseholdJourneyRow[]
+): Map<number, { sessionCmId: number; cabinName: string }> {
+  const map = new Map<number, { sessionCmId: number; cabinName: string }>()
+  for (const y of years) {
+    if (
+      y.year !== undefined &&
+      y.housing === 'placed' &&
+      y.housing_session_cm_id !== null &&
+      y.housing_session_cm_id !== undefined &&
+      y.cabin_name
+    ) {
+      map.set(y.year, { sessionCmId: y.housing_session_cm_id, cabinName: y.cabin_name })
+    }
+  }
+  return map
+}
+
 export async function fetchCamperJourney(
   personCmId: number,
-  currentYear: number
+  currentYear: number,
+  /**
+   * The household's family-camp journey years (kindred#2073/#2461), already
+   * fetched by the caller via `useHouseholdJourney` — this file makes no
+   * fetch of its own for it. Defaults to empty for a camper with no
+   * household on file, in which case every family row shows no housing at
+   * all (never the day group).
+   */
+  familyHousingYears: HouseholdJourneyRow[] = []
 ): Promise<HistoricalRecord[]> {
   if (!personCmId || Number.isNaN(personCmId)) return []
+
+  const familyHousing = familyHousingByYear(familyHousingYears)
 
   const typeFilter = buildCamperJourneySessionTypeFilter()
 
@@ -95,10 +135,12 @@ export async function fetchCamperJourney(
 
   // 2. Prior-year bunk assignments — used ONLY to label a row, never to gate it.
   // Restricted to journey session types (as of #2113, that now includes family) so
-  // a camper's own family-camp assignment can exact-match their family row. The
-  // year-fallback below has its own family/non-family guard to stop a lone family
-  // assignment from leaking onto an unrelated summer row (the leak fb1a88d2 closed
-  // for current-year views in useCamperEnrollment).
+  // the year-fallback's family/non-family guard below still has a family-typed
+  // candidate to compare against and reject (the leak fb1a88d2 closed for
+  // current-year views in useCamperEnrollment). A family session's OWN match here
+  // is never shown, though (kindred#2466): that "bunk" is the CampMinder day
+  // group, and the family-housing override further down discards it
+  // unconditionally in favor of the household's actual housing.
   const assignments = await pb
     .collection<BunkAssignmentsResponse<AssignmentExpand>>('bunk_assignments')
     .getFullList({
@@ -143,7 +185,22 @@ export async function fetchCamperJourney(
       if (candidateIsFamily === rowIsFamily) match = candidate
     }
     // 3. else (>=2 assignments, no match, or zero) → no label
-    const bunkName = match?.expand.bunk?.name
+    let bunkName = match?.expand.bunk?.name
+
+    // kindred#2466: a family-camp row shows the household's ACTUAL HOUSING
+    // instead — the day group computed above (if any) is discarded
+    // unconditionally, never relabeled or shown alongside it. Resolved via
+    // `familyHousing`, which only carries a year whose cabin is unambiguously
+    // THIS weekend; any other case (no housing, unresolved cabin, or a
+    // different/ambiguous weekend that year) leaves the row with no label,
+    // same as any other unlabeled row.
+    if (session?.session_type === 'family') {
+      const housing = familyHousing.get(year)
+      bunkName =
+        housing !== undefined && housing.sessionCmId === session.cm_id
+          ? housing.cabinName
+          : undefined
+    }
 
     // AG is never shown as its own session (spec §3). For a surviving AG-only row,
     // relabel to its parent main: name from the camp_sessions lookup (AG names

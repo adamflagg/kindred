@@ -123,12 +123,20 @@ describe('fetchCamperJourney', () => {
 
   // Regression for #2113 code review: widening CAMPER_JOURNEY_TYPES to include
   // 'family' means a lone family-camp assignment can now appear in yearAssignments
-  // for a year that also has a summer enrollment. The exact-match branch correctly
-  // claims it for the family row — but the year-fallback (length===1) doesn't know
+  // for a year that also has a summer enrollment. The exact-match branch used to
+  // claim it for the family row — but the year-fallback (length===1) doesn't know
   // the assignment was already exact-matched elsewhere, and would attach the same
   // family bunk to the unrelated summer row too. This is the exact leak fb1a88d2
   // closed for current-year views (useCamperEnrollment) — reopening it here would
   // show a family lodging unit as if it were the camper's summer cabin.
+  //
+  // kindred#2466 UPDATED this test's family-row expectation: the family row's
+  // `bunk_assignments` exact match ('Cabin FC-2') is now the CampMinder day
+  // group, and is unconditionally dropped rather than shown — see the
+  // dedicated 'kindred#2466' describe block below for the replacement
+  // (household-housing) behavior. What this test still pins is the leak
+  // guard: the main row must never inherit ANY family-session assignment via
+  // the fallback, day-group or otherwise.
   it('does not leak a lone family-camp assignment onto an unrelated summer row via the year-fallback', async () => {
     mockAttendeesGetFullList.mockResolvedValue([
       attendee(2019, 100, 'main', 'Session 2'),
@@ -138,7 +146,8 @@ describe('fetchCamperJourney', () => {
     const out = await fetchCamperJourney(PERSON, CURRENT_YEAR)
     const main = out.find((r) => r.sessionName === 'Session 2')
     const family = out.find((r) => r.sessionName === 'Winter Family Weekend')
-    expect(family?.bunkName).toBe('Cabin FC-2') // exact match — correct
+    // Day group dropped — no household housing was supplied, so no label at all.
+    expect(family?.bunkName).toBeUndefined()
     expect(main?.bunkName).toBeUndefined() // must NOT inherit the family bunk via fallback
   })
 
@@ -293,5 +302,101 @@ describe('ordering within a year', () => {
     const out = await fetchCamperJourney(PERSON, 2027)
 
     expect(out.map((record) => record.year)).toEqual([2026, 2024])
+  })
+})
+
+// kindred#2466: the housing slot on a family-camp row shows the household's
+// ACTUAL HOUSING, resolved from its own family-camp journey, never the
+// CampMinder day group `bunk_assignments` matches on a family session.
+// `fetchCamperJourney`'s optional 3rd argument is the household journey's
+// `years` (`HouseholdJourneyYear[]`, kindred#2073/#2461) — the caller already
+// has this from `useHouseholdJourney`, so no new fetch happens here.
+describe('family-camp housing (kindred#2466)', () => {
+  interface FamilyHousingYearOverrides {
+    year?: number
+    housing?: 'placed' | 'not_placed' | 'unknown'
+    cabin_name?: string
+    housing_session_cm_id?: number | null
+  }
+
+  function familyHousingYear(overrides: FamilyHousingYearOverrides = {}) {
+    return {
+      year: 2024,
+      housing: 'placed' as const,
+      cabin_name: 'Cedar Lodge',
+      housing_session_cm_id: 900,
+      ...overrides,
+    }
+  }
+
+  it('drops the day group entirely when no household housing is supplied', async () => {
+    mockAttendeesGetFullList.mockResolvedValue([
+      attendee(2024, 900, 'family', 'Family Camp 2: Keshet Weekend'),
+    ])
+    // A day-group bunk_assignments row exists (it always does, per the
+    // production data) but must never surface as `bunkName`.
+    mockAssignmentsGetFullList.mockResolvedValue([
+      assignment(2024, 900, 'Acorns (with parents)', 'family'),
+    ])
+    const out = await fetchCamperJourney(PERSON, CURRENT_YEAR)
+    expect(out[0]?.bunkName).toBeUndefined()
+  })
+
+  it("shows the household cabin name when the year unambiguously attributes it to this row's session", async () => {
+    mockAttendeesGetFullList.mockResolvedValue([
+      attendee(2024, 900, 'family', 'Family Camp 2: Keshet Weekend'),
+    ])
+    mockAssignmentsGetFullList.mockResolvedValue([
+      assignment(2024, 900, 'Acorns (with parents)', 'family'),
+    ])
+    const out = await fetchCamperJourney(PERSON, CURRENT_YEAR, [familyHousingYear()])
+    expect(out[0]).toMatchObject({ year: 2024, bunkName: 'Cedar Lodge' })
+  })
+
+  it('declines when the year attributes housing to a DIFFERENT weekend (ambiguous multi-weekend year)', async () => {
+    mockAttendeesGetFullList.mockResolvedValue([
+      attendee(2024, 900, 'family', 'Family Camp 2: Keshet Weekend'),
+      attendee(2024, 901, 'family', 'Family Camp 5'),
+    ])
+    mockAssignmentsGetFullList.mockResolvedValue([])
+    // housing_session_cm_id names session 900 only — session 901 gets nothing.
+    const out = await fetchCamperJourney(PERSON, CURRENT_YEAR, [
+      familyHousingYear({ housing_session_cm_id: 900 }),
+    ])
+    const keshet = out.find((r) => r.sessionName === 'Family Camp 2: Keshet Weekend')
+    const fc5 = out.find((r) => r.sessionName === 'Family Camp 5')
+    expect(keshet?.bunkName).toBe('Cedar Lodge')
+    expect(fc5?.bunkName).toBeUndefined()
+  })
+
+  it('declines when housing_session_cm_id is null (household attended more than one weekend that year)', async () => {
+    mockAttendeesGetFullList.mockResolvedValue([
+      attendee(2024, 900, 'family', 'Family Camp 2: Keshet Weekend'),
+    ])
+    mockAssignmentsGetFullList.mockResolvedValue([])
+    const out = await fetchCamperJourney(PERSON, CURRENT_YEAR, [
+      familyHousingYear({ housing_session_cm_id: null }),
+    ])
+    expect(out[0]?.bunkName).toBeUndefined()
+  })
+
+  it('declines when the year is not placed', async () => {
+    mockAttendeesGetFullList.mockResolvedValue([
+      attendee(2024, 900, 'family', 'Family Camp 2: Keshet Weekend'),
+    ])
+    mockAssignmentsGetFullList.mockResolvedValue([])
+    const out = await fetchCamperJourney(PERSON, CURRENT_YEAR, [
+      familyHousingYear({ housing: 'not_placed', cabin_name: '' }),
+    ])
+    expect(out[0]?.bunkName).toBeUndefined()
+  })
+
+  it('never applies household housing to a non-family row, even if the year matches by coincidence', async () => {
+    mockAttendeesGetFullList.mockResolvedValue([attendee(2024, 500, 'main', 'Session 3')])
+    mockAssignmentsGetFullList.mockResolvedValue([assignment(2024, 500, 'G-4A')])
+    const out = await fetchCamperJourney(PERSON, CURRENT_YEAR, [
+      familyHousingYear({ housing_session_cm_id: 500 }),
+    ])
+    expect(out[0]?.bunkName).toBe('G-4A') // unaffected — still the real summer bunk
   })
 })

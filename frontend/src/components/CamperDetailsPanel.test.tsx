@@ -59,6 +59,16 @@ vi.mock('../hooks/useCurrentYear', () => ({
   useYear: () => 2025,
 }))
 
+// kindred#2466: the historical journey shows the household's resolved
+// family-camp cabin instead of the CampMinder day group. Mocked here (rather
+// than exercised through real fetchWithAuth/fetch) so most existing tests —
+// which never set a household — stay untouched; the new describe block below
+// overrides this per test to prove the wiring.
+const mockUseHouseholdJourney = vi.fn()
+vi.mock('../hooks/useWeekendRoster', () => ({
+  useHouseholdJourney: (...args: unknown[]) => mockUseHouseholdJourney(...args),
+}))
+
 // Mock AuthContext — AllCamperRequestsModal calls useAuth() at module load,
 // even when isOpen=false, so tests need an AuthContext-shaped stub.
 vi.mock('../contexts/AuthContext', () => ({
@@ -254,6 +264,7 @@ describe('CamperDetailsPanel', () => {
     mockGetFullListBunkRequests.mockResolvedValue([])
     mockGetListPersons.mockResolvedValue({ items: [], totalItems: 0 })
     mockGetListOriginalBunkRequests.mockResolvedValue({ items: [], totalItems: 0 })
+    mockUseHouseholdJourney.mockReturnValue({ data: undefined })
   })
 
   describe('Loading and Error States', () => {
@@ -299,6 +310,99 @@ describe('CamperDetailsPanel', () => {
       })
       expect(screen.getByRole('alert')).toHaveTextContent(/couldn't load parent input/i)
       expect(screen.queryByTestId('original-bunk-data-loading')).not.toBeInTheDocument()
+    })
+  })
+
+  // kindred#2466: the "Camp Journey" history section shows the household's
+  // resolved family-camp cabin in the housing slot, never the CampMinder
+  // day group `bunk_assignments` resolves to on a family session.
+  describe('Camp Journey — family-camp housing (kindred#2466)', () => {
+    const FAMILY_PERSON = mockPerson({
+      id: 'pb-noah',
+      cm_id: 300,
+      first_name: 'Noah',
+      last_name: 'Smith',
+      year: 2025,
+      household_id: 1000001,
+    })
+
+    // A prior-year (2024 < currentYear 2025) family-camp enrollment.
+    const FAMILY_ATTENDEE: Record<string, unknown> = {
+      id: 'att-family-2024',
+      person: 'pb-noah',
+      person_id: 300,
+      session: 'sess-family-2024',
+      status: 'enrolled',
+      status_id: 2,
+      year: 2024,
+      collectionId: 'attendees',
+      collectionName: 'attendees',
+      created: '2024-01-01T00:00:00Z',
+      updated: '2024-01-01T00:00:00Z',
+      expand: {
+        session: {
+          id: 'sess-family-2024',
+          cm_id: 9100001,
+          name: 'Family Camp 2: Keshet Weekend',
+          session_type: 'family',
+        },
+      },
+    }
+
+    // The CampMinder day group `bunk_assignments` resolves for that same
+    // family session — must never surface as the housing label.
+    const FAMILY_DAY_GROUP_ASSIGNMENT: Record<string, unknown> = {
+      id: 'asn-family-2024',
+      year: 2024,
+      expand: {
+        session: { cm_id: 9100001, session_type: 'family' },
+        bunk: { name: 'Acorns (with parents)' },
+      },
+    }
+
+    beforeEach(() => {
+      mockGetFullListPersons.mockResolvedValue([FAMILY_PERSON])
+      mockGetListPersons.mockResolvedValue({ items: [FAMILY_PERSON], totalItems: 1 })
+      // Only the PRIOR-year fetch (fetchCamperJourney, "year < ...") returns
+      // the family attendee — the panel's own current-year fetch must stay
+      // empty so the "current enrollment" block (an unrelated code path)
+      // never enters the picture.
+      mockGetFullListAttendees.mockImplementation((opts: { filter?: string } = {}) => {
+        const filter = opts.filter ?? ''
+        return Promise.resolve(filter.includes('year < ') ? [FAMILY_ATTENDEE] : [])
+      })
+      mockGetFullListBunkAssignments.mockResolvedValue([FAMILY_DAY_GROUP_ASSIGNMENT])
+    })
+
+    it('never shows the CampMinder day group in the housing slot', async () => {
+      mockUseHouseholdJourney.mockReturnValue({ data: undefined })
+
+      render(<CamperDetailsPanel camperId={String(FAMILY_PERSON.cm_id)} onClose={mockOnClose} />)
+
+      await screen.findByText('Family Camp 2')
+      expect(screen.queryByText('Acorns (with parents)')).not.toBeInTheDocument()
+    })
+
+    it("shows the household's resolved cabin name in the housing slot instead", async () => {
+      mockUseHouseholdJourney.mockReturnValue({
+        data: {
+          household_cm_id: FAMILY_PERSON.household_id,
+          years: [
+            {
+              year: 2024,
+              housing: 'placed',
+              cabin_name: 'Cedar Lodge',
+              housing_session_cm_id: 9100001,
+            },
+          ],
+        },
+      })
+
+      render(<CamperDetailsPanel camperId={String(FAMILY_PERSON.cm_id)} onClose={mockOnClose} />)
+
+      expect(await screen.findByText('Cedar Lodge')).toBeInTheDocument()
+      expect(screen.queryByText('Acorns (with parents)')).not.toBeInTheDocument()
+      expect(mockUseHouseholdJourney).toHaveBeenCalledWith(FAMILY_PERSON.household_id)
     })
   })
 
