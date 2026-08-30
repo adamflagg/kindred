@@ -673,11 +673,15 @@ type Options struct {
 
 // Orchestrator manages sync service execution
 type Orchestrator struct {
-	app                     core.App
-	services                map[string]Service
-	mu                      sync.RWMutex
-	runningJobs             map[string]*Status
-	lastCompletedStatus     map[string]*Status // Store last completed status for each job
+	app                 core.App
+	services            map[string]Service
+	mu                  sync.RWMutex
+	runningJobs         map[string]*Status
+	lastCompletedStatus map[string]*Status // Store last completed status for each job
+	// batchChanged accumulates each in-flight batch's own changed-collections set, keyed by
+	// BatchID -- the batch-scoped counterpart to lastCompletedStatus's process-lifetime view.
+	// See recordBatchChange and batchChangedCollections.
+	batchChanged            map[string]map[string]bool
 	jobSpacing              time.Duration
 	baseClient              *campminder.Client // Base client for year overrides
 	currentSyncYear         int                // Year being synced (0 = current year from env)
@@ -702,6 +706,7 @@ func NewOrchestrator(app core.App) *Orchestrator {
 		services:            make(map[string]Service),
 		runningJobs:         make(map[string]*Status),
 		lastCompletedStatus: make(map[string]*Status),
+		batchChanged:        make(map[string]map[string]bool),
 		jobSpacing:          2 * time.Second, // Default 2 seconds between jobs
 	}
 }
@@ -1000,6 +1005,60 @@ func (o *Orchestrator) GetChangedCollections() map[string]bool {
 	return changed
 }
 
+// recordBatchChange unions service's collections (via SyncJobToCollections) into batchID's
+// own changed set, but only when the completion made a real change. Called from the single
+// completion path every queue routes through -- applyCompletionStatus's three callers
+// (runSingleSyncInternal, RunSingleSyncWithService, FinalizeSyncStatus) -- so it sees every
+// job's completion exactly once, scoped to the batch it actually ran in.
+//
+// This is the fix for GetChangedCollections' own limitation: that method reads
+// lastCompletedStatus, which is keyed by service name and overwritten on every completion --
+// not scoped to any one run -- so a collection stays "changed" until its job completes again
+// as a no-op. batchChangedCollections reads this map instead and answers only for the batch
+// asked about (spec 2026-08-29-sync-job-registry-design.md §5, "Batch-scoping the filter").
+//
+// A no-op completion (stats.IsNoOp()) must not mark its collections changed, and an empty or
+// unrecognized batchID/service is silently ignored -- RunSingleSyncWithService's own
+// documentation notwithstanding, every completion routes through here, including runs whose
+// batch is a batch-of-one that nothing will ever read back.
+//
+//nolint:gocritic // hugeParam: Stats grew past 80B with ProdAuditWarnings; signature refactor out of scope for #1439
+func (o *Orchestrator) recordBatchChange(batchID, service string, stats Stats) {
+	if batchID == "" || stats.IsNoOp() {
+		return
+	}
+	collections, ok := SyncJobToCollections[service]
+	if !ok {
+		return
+	}
+
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if o.batchChanged[batchID] == nil {
+		o.batchChanged[batchID] = make(map[string]bool, len(collections))
+	}
+	for _, col := range collections {
+		o.batchChanged[batchID][col] = true
+	}
+}
+
+// batchChangedCollections returns the collections changed so far within batchID -- the
+// changed-collections filter scoped to one queue's own run rather than the process's whole
+// history (GetChangedCollections). Always non-nil, even for a batchID that recorded nothing:
+// nil is reserved for "export everything" (RunSingleSync's explicit standalone case, see
+// ChangedCollectionsAware), and this function must never accidentally return it.
+func (o *Orchestrator) batchChangedCollections(batchID string) map[string]bool {
+	o.mu.RLock()
+	defer o.mu.RUnlock()
+
+	existing := o.batchChanged[batchID]
+	result := make(map[string]bool, len(existing))
+	for col := range existing {
+		result[col] = true
+	}
+	return result
+}
+
 // IsCustomValuesSyncRunning returns whether a custom values sync sequence is in progress
 func (o *Orchestrator) IsCustomValuesSyncRunning() bool {
 	o.mu.RLock()
@@ -1149,7 +1208,31 @@ func (o *Orchestrator) RunSyncSequence(ctx context.Context, services []string) e
 // Every caller is an operator action against one service — an API handler, or a test — so the
 // run is manual and forms a batch of one. A queue that wants its jobs grouped calls
 // runSyncAndWait with its own batch instead.
+//
+// The registered service is a long-lived singleton, and two optional interfaces let earlier
+// runs leave state on it that a standalone run must not inherit: a ChangedCollectionsAware
+// service (see MultiWorkbookExport) may still hold a queue's changed-collections filter, and a
+// YearSetter service (task 11's fix round 2, kindred#2606-series) may still hold a historical
+// year from a prior "Run Phase -> Export". Both are cleared explicitly, before the run starts
+// -- not-setting is not enough for either, because the batch id this function mints below is
+// fresh and would otherwise leave the field exactly as some earlier caller left it. If the
+// current season can't be resolved, the year is left alone and a warning is logged rather than
+// failing the whole run over it.
 func (o *Orchestrator) RunSingleSync(parentCtx context.Context, syncType string) error {
+	if svc := o.GetService(syncType); svc != nil {
+		if changedAware, ok := svc.(ChangedCollectionsAware); ok {
+			changedAware.SetChangedCollections(nil)
+		}
+		if yearSetter, ok := svc.(YearSetter); ok {
+			if year, err := ParseSeasonYear(); err == nil {
+				yearSetter.SetYear(year)
+			} else {
+				slog.Warn("RunSingleSync: could not resolve the current season, leaving year as-is",
+					"syncType", syncType, "error", err)
+			}
+		}
+	}
+
 	_, err := o.runSingleSyncInternal(parentCtx, syncType, newBatch(triggerManual))
 	return err
 }
@@ -1262,6 +1345,7 @@ func (o *Orchestrator) runSingleSyncInternal(
 		completed.Summary = stats
 
 		applyCompletionStatus(&completed, &stats, err)
+		o.recordBatchChange(completed.BatchID, syncType, stats)
 
 		if completed.Year == 0 {
 			if completed.Status == statusFailed {
@@ -1364,6 +1448,7 @@ func (o *Orchestrator) RunSingleSyncWithService(
 		completed.Summary = stats
 
 		applyCompletionStatus(&completed, &stats, err)
+		o.recordBatchChange(completed.BatchID, syncType, stats)
 
 		if completed.Status == statusFailed {
 			slog.Error("Sync failed", "syncType", syncType, "error", completed.Error)
@@ -1459,6 +1544,11 @@ func (o *Orchestrator) FinalizeSyncStatus(syncType string, stats Stats, err erro
 	snapshot := o.publishCompletedLocked(&completed)
 	o.mu.Unlock()
 
+	// recordBatchChange takes o.mu itself, so it must run after the unlock above -- calling it
+	// while the lock from the critical section is still held would deadlock. completed and
+	// stats are both local copies by this point, so reading them here is safe.
+	o.recordBatchChange(completed.BatchID, syncType, stats)
+
 	o.recordSyncRun(&snapshot)
 
 	// Read the outcome off the snapshot: &completed is in the map now, so reading its
@@ -1501,6 +1591,16 @@ func getDailySyncJobs() []string { return cadenceQueue(CadenceDaily) }
 // method here. Both callers already run it on their own goroutine.
 func (o *Orchestrator) RunHourlySync(ctx context.Context) error {
 	batch := newBatch(triggerHourly)
+	// Unlike the other queues below, this one has no *SyncRunning flag/defer of its own to
+	// piggyback on -- but it accumulates into batchChanged exactly like they do (bunk_assignments
+	// is CadenceHourly's one job, and it does map to a collection in SyncJobToCollections), so
+	// without this the map leaks one entry every hour, forever, in a long-lived container. Same
+	// reasoning as RunDailySync's identical cleanup.
+	defer func() {
+		o.mu.Lock()
+		delete(o.batchChanged, batch.batchID)
+		o.mu.Unlock()
+	}()
 	for _, job := range cadenceQueue(CadenceHourly) {
 		if err := o.runSyncAndWait(ctx, job, batch); err != nil {
 			return err
@@ -1533,12 +1633,15 @@ func (o *Orchestrator) RunDailySync(ctx context.Context) error {
 	o.currentRunIndex = 0 // Reset index at start
 	o.mu.Unlock()
 
-	// Ensure flag and queue are cleared on exit
+	// Ensure flag and queue are cleared on exit. delete(o.batchChanged, batch.batchID) here
+	// is what keeps that map from growing without bound in a long-lived container -- the
+	// same shape of bug recordBatchChange itself exists to fix, one level up.
 	defer func() {
 		o.mu.Lock()
 		o.dailySyncRunning = false
 		o.dailySyncQueue = nil
 		o.currentRunIndex = 0
+		delete(o.batchChanged, batch.batchID)
 		o.mu.Unlock()
 	}()
 
@@ -1595,12 +1698,14 @@ func (o *Orchestrator) RunWeeklySync(ctx context.Context) error {
 	o.currentRunIndex = 0 // Reset index at start
 	o.mu.Unlock()
 
-	// Ensure flag and queue are cleared on exit
+	// Ensure flag and queue are cleared on exit. See RunDailySync's identical defer for why
+	// batchChanged is cleaned up here too.
 	defer func() {
 		o.mu.Lock()
 		o.weeklySyncRunning = false
 		o.weeklySyncQueue = nil
 		o.currentRunIndex = 0
+		delete(o.batchChanged, batch.batchID)
 		o.mu.Unlock()
 	}()
 
@@ -1658,12 +1763,14 @@ func (o *Orchestrator) RunCustomValuesSync(ctx context.Context) error {
 	o.currentRunIndex = 0
 	o.mu.Unlock()
 
-	// Ensure flag and queue are cleared on exit
+	// Ensure flag and queue are cleared on exit. See RunDailySync's identical defer for why
+	// batchChanged is cleaned up here too.
 	defer func() {
 		o.mu.Lock()
 		o.customValuesSyncRunning = false
 		o.customValuesSyncQueue = nil
 		o.currentRunIndex = 0
+		delete(o.batchChanged, batch.batchID)
 		o.mu.Unlock()
 	}()
 
@@ -1710,7 +1817,20 @@ func (o *Orchestrator) RunCustomValuesSync(ctx context.Context) error {
 }
 
 // runSyncAndWait runs a sync as part of `origin`'s batch and waits for it to complete.
+//
+// A ChangedCollectionsAware service (see MultiWorkbookExport) receives the batch's own
+// changed-collections set so far -- batchChangedCollections(origin.batchID) -- never nil, so
+// export-everything stays reserved for RunSingleSync's explicit standalone case. Every queue
+// in this file (RunHourlySync, RunDailySync, RunWeeklySync, RunCustomValuesSync,
+// RunSyncWithOptions) and both of api.go's queued-run handlers route through this one
+// function, so wiring it here is what makes it "the queue" rather than any one caller.
 func (o *Orchestrator) runSyncAndWait(ctx context.Context, syncType string, origin runOrigin) error {
+	if svc := o.GetService(syncType); svc != nil {
+		if changedAware, ok := svc.(ChangedCollectionsAware); ok {
+			changedAware.SetChangedCollections(o.batchChangedCollections(origin.batchID))
+		}
+	}
+
 	// Start the sync and capture the token directly from the return value.
 	// This eliminates the race where the goroutine completes before we can
 	// read the token from runningJobs (issue #789).
@@ -1936,6 +2056,7 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 			o.historicalSyncQueue = nil
 			o.historicalSyncYear = 0
 			o.currentRunIndex = 0
+			delete(o.batchChanged, batch.batchID)
 			o.mu.Unlock()
 		}()
 	} else {
@@ -1953,6 +2074,7 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 			o.dailySyncRunning = false
 			o.dailySyncQueue = nil
 			o.currentRunIndex = 0
+			delete(o.batchChanged, batch.batchID)
 			o.mu.Unlock()
 		}()
 	}
