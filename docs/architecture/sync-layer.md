@@ -64,14 +64,23 @@ cadence and no trigger -- nothing can ever run it"), which is loud, but it does 
 daily-cron, full-run-eligible job carries `Cadences: CadenceDaily, Triggers:
 TriggerIndividualRoute | TriggerPhaseRun | TriggerFullRun`.
 
-**Still to come, not yet true of every job:** the five global definition tables
-(`person_tag_defs`, `custom_field_defs`, `staff_lookups`, `financial_lookups`, `divisions`) are
-**not yet** rows in `syncJobMeta` — they still come from the hand-written `GetWeeklySyncJobs()`
-until Stage 3 folds them in. `multi_workbook_export` carries no `TriggerFullRun` bit and still
-exports via a hardcoded epilogue in `RunSyncWithOptions` on a unified run, not via the derived
-full-run queue, until Stage 4 removes that epilogue and sets the bit for real
+**Still to come, not yet true of every job:** `multi_workbook_export` carries no `TriggerFullRun`
+bit and still exports via a hardcoded epilogue in `RunSyncWithOptions` on a unified run, not via
+the derived full-run queue, until Stage 4 removes that epilogue and sets the bit for real
 (`TestMultiWorkbookExportWithholdsFullRunTrigger` in `registry_test.go` pins the withheld bit
 and names the commit that deletes the assertion).
+
+**The five global definition tables are ordinary rows now.** `person_tag_defs`,
+`custom_field_defs`, `staff_lookups`, `financial_lookups` and `divisions` are rows in
+`syncJobMeta` like any other job as of Stage 3 — they no longer come from a hand-written list.
+Each carries only `Cadences: CadenceWeeklyGlobal, Triggers: TriggerIndividualRoute` and nothing
+else: no `TriggerFullRun` (a historical replay must not re-sync current-year-client global data
+against a past season), no `TriggerPhaseRun` (`PhaseGlobal` is a classification the crons and
+`GetAllPhases()` use to group these rows, not something `Run Phase` can target — see the
+`PhaseGlobal` doc comment in `orchestrator.go`), and no `Gate` (neither `IS_DOCKER` nor
+`google.IsEnabled` has ever gated a global). `GetWeeklySyncJobs()` is now
+`jobsWithCadence(CadenceWeeklyGlobal)` over this same table rather than its own hand-written
+list.
 
 **Exception — a SCOPED VARIANT skips several steps below.** A scoped variant (`Base` + `Scope`
 set, e.g. `person_custom_values_family_camp`) is a narrower-cohort instance of an existing
@@ -82,7 +91,7 @@ service, registered under `scopedID(base, scope)`. It is cron-driven only:
 | §2 `syncJobMeta` `Triggers` | **Leave unset (0).** Today's two scoped rows (the family-camp custom-values pair) carry no `Triggers` bits at all — no `TriggerFullRun` (must not appear in a full or historical run — the daily cron already covers it, and re-running the cohort burns rate-limited CampMinder quota for values that are already fresh, #2489), no `TriggerPhaseRun` (must not appear in an admin-triggered phase run either, #2489), no `TriggerIndividualRoute` (no Run button — see the route row below). This is a fact `TestScopedVariantContract` verifies about the current rows, not a structural guarantee the type system enforces — see that test's comment on the `TriggerPhaseRun` clause. |
 | §2 `RunSyncWithOptions()` re-registration | **Known gap, not a rule.** The scoped instances are the one place the current implementation diverges from this checklist: they are never re-registered against a year client, so a historical run silently uses the current-year instance. Tracked at #2608 — out of scope for the declaration refactor, which is zero-behavior-change. |
 | §3 Register route | **Omit — no individual POST route.** There is no Run button to call, and since the registry refactor's Stage 3 the server enforces that: `ResolveUnifiedSyncServices` whitelists an explicitly named `?service=` against `TriggerIndividualRoute` and returns `nil` for a job that does not declare it, which `handleUnifiedSync` answers **400** to (#2608). `POST /api/custom/sync/run?service=person_custom_values_family_camp` is therefore rejected rather than run. It used to be passed straight through, which is why `TestScopedVariantContract` and the frontend's `manualTrigger: false` guard were the only things holding the convention; both still matter — the test pins that no route is *registered* in the first place, which the whitelist cannot see, and the frontend flag keeps the option out of the Full-mode dropdown so a user never has to discover the 400. |
-| §3 Add to status endpoint | **Still required.** A targeted refresh sets no run-type flag, so the per-job status entry is the client's only completion signal (#2591). |
+| §3 Add to status endpoint | **No longer a step.** `statusSyncTypes()` derives from `syncJobMeta` (`allJobIDs()`), so any row — scoped variant or not — is published on the status payload the moment it has one; there is nothing left to add by hand. The reason this mattered is unchanged: a targeted refresh sets no run-type flag, so the per-job status entry is the client's only completion signal (#2591) — it is just structural now instead of a step to remember. |
 | §5 `syncTypes.ts` | Card still required, but with `manualTrigger: false` — pinned to the backend route table by `syncTypes.test.ts`. |
 
 `TestScopedVariantContract` (`scope_test.go`) enforces the full-run/phase-run exclusion, route
@@ -113,7 +122,7 @@ anything up.
 |--------|---------|
 | Add handler function | `handle{JobName}Sync()` with query param validation |
 | Register route | `POST /api/custom/sync/{job-name}` with `requireAuth` wrapper |
-| Add to status endpoint | Include in `handleSyncStatus()` known types list |
+| Add to status endpoint | **Nothing to do.** `statusSyncTypes()` derives from `syncJobMeta` via `allJobIDs()` — the §2 `syncJobMeta` row already publishes the job on the status payload; there is no separate list to edit. |
 
 ### 4. PocketBase Schema (if new table)
 
@@ -213,7 +222,7 @@ After implementation, verify ALL of these work:
 | Mistake | Consequence | Prevention |
 |---------|-------------|------------|
 | Service registered but its `syncJobMeta` row has no `Cadences`/`Triggers` | Fails loud: `TestRegistryIntegrity` rejects it ("no cadence and no trigger") | Set at least one `Cadence` and the `Triggers` the job needs; copy a comparable row |
-| Missing from `handleSyncStatus()` syncTypes | GUI never shows stats (always "idle") | Add to syncTypes array in api.go:711 |
+| Missing from `handleSyncStatus()` syncTypes *(no longer possible)* | — | There is no `syncTypes` array to forget: `statusSyncTypes()` derives from `syncJobMeta` via `allJobIDs()`, so a job with a `syncJobMeta` row (§2) is on the status payload automatically. |
 | Year-param endpoint without custom hook | Frontend errors on "Run" button | Check if API handler has `year` query param |
 | Missing historical re-registration | Won't run in historical imports | Add `NewXxxSync()` call in `RunSyncWithOptions()` block |
 | Derived table before dependencies | Empty results, relation errors | Map dependency chain, place its `syncJobMeta` row after its deps' rows |
