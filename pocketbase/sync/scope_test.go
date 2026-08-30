@@ -92,24 +92,6 @@ func TestCustomValuesCollectionGroupDerived(t *testing.T) {
 	}
 }
 
-// TestScopeFamilyCampSetDerived pins the phaseExecutionJobs exclusion set (kindred#2489) as
-// exactly the family-camp-scoped rows -- no more, no less.
-//
-// The count is the whole test, and that is deliberate. A loop asserting that every
-// ScopedJobs(ScopeFamilyCamp) id is a member used to follow it and was removed as
-// tautological: scopeFamilyCampJobs IS buildScopedJobSet(ScopeFamilyCamp), whose body iterates
-// that same call, so "a set built from X contains X" cannot fail. The count still carries
-// information the derivation does not -- it pins api.go's var to ScopeFamilyCamp specifically,
-// so re-pointing it at another scope fails here rather than silently emptying the exclusion.
-func TestScopeFamilyCampSetDerived(t *testing.T) {
-	t.Parallel()
-
-	if len(scopeFamilyCampJobs) != 2 {
-		t.Fatalf("exclusion set has %d entries, want 2: %v",
-			len(scopeFamilyCampJobs), scopeFamilyCampJobs)
-	}
-}
-
 // TestJobMetaBaseIsAReference pins referential integrity on syncJobMeta's Base column, which
 // nothing else checks. A typo there is silent rather than loud: JobBase falls back to the id
 // itself, so buildCustomValuesCollectionGroups files the variant in its OWN collection group
@@ -220,12 +202,13 @@ func TestScopedVariantContract(t *testing.T) {
 		if slices.Contains(full, id) {
 			t.Errorf("%s: must not be in a full run (#2489)", id)
 		}
-		// Disclosed: for a family-camp row this clause cannot fail today, because
-		// phaseExecutionJobs(PhaseExpensive) filters against buildScopedJobSet(ScopeFamilyCamp)
-		// -- "a set built by removing X excludes X". It is NOT tautological for any other
-		// scope, which is the case this block exists for: phaseExecutionJobs only special-cases
-		// PhaseExpensive, so a variant of a source-phase job lands in its phase run untouched.
-		// The literal-name coverage for the family-camp pair lives at api_test.go's
+		// This clause is genuinely falsifiable (kindred sync-job-registry Stage 2, Task 6):
+		// phaseExecutionJobs is now inPhaseWithTrigger(phase, TriggerPhaseRun), driven by
+		// each row's own Triggers bit rather than by filtering against Scope, so a row that
+		// carried both Scope and TriggerPhaseRun would fail here. It does not fail today only
+		// because the two family-camp rows carry no Triggers at all -- a fact about those
+		// specific rows, not a structural guarantee this loop provides. The literal-name
+		// coverage for the family-camp pair lives at api_test.go's
 		// TestPhaseExecutionJobsExcludesScopeFamilyCampForExpensivePhase.
 		if phase := GetPhaseForJob(id); slices.Contains(phaseExecutionJobs(phase), id) {
 			t.Errorf("%s: must not be in an admin-triggered %q phase run (#2489)", id, phase)

@@ -68,9 +68,7 @@ func JobBase(id string) string {
 
 // ScopedJobs returns every job registered under scope, in registry order -- with one
 // deliberate exception: it returns nil for ScopeAll rather than the ~28 unscoped rows.
-// ScopeAll is the ABSENCE of a scope, not a cohort, and every caller wants "the variants",
-// so returning the whole registry there would silently widen an exclusion set
-// (buildScopedJobSet feeds phaseExecutionJobs) into excluding everything.
+// ScopeAll is the ABSENCE of a scope, not a cohort, so there are no variants to return there.
 //
 // It composes badly with JobScope's registry-miss fallback and that is worth knowing before
 // writing `for range ScopedJobs(JobScope(id))`: JobScope returns ScopeAll both for a base job
@@ -88,15 +86,6 @@ func ScopedJobs(scope Scope) []string {
 		}
 	}
 	return ids
-}
-
-// buildScopedJobSet returns a membership set of every job registered under scope.
-func buildScopedJobSet(scope Scope) map[string]bool {
-	set := make(map[string]bool)
-	for _, id := range ScopedJobs(scope) {
-		set[id] = true
-	}
-	return set
 }
 
 // scopedService is a Service whose cohort can be narrowed at registration time.

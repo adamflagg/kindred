@@ -2287,36 +2287,18 @@ func handleHouseholdDemographicsSync(e *core.RequestEvent, scheduler *Scheduler)
 	})
 }
 
-// scopeFamilyCampJobs derives, from syncJobMeta's family-camp-scoped rows, the daily-cron-only
-// custom-values instances (kindred#2489) that phaseExecutionJobs excludes from an
-// admin-triggered PhaseExpensive run.
-var scopeFamilyCampJobs = buildScopedJobSet(ScopeFamilyCamp)
-
-// phaseExecutionJobs returns the jobs actually run for phase -- the list handleRunPhase and
-// processQueuedSyncs iterate to start syncs, as opposed to GetJobsForPhase's classification
-// list (used for phase metadata/UI in handleGetPhases and pinned as including all four
-// custom-values jobs by family_camp_daily_cadence_test.go's TestSyncJobMeta_
-// ScopeFamilyCampJobsAreExpensivePhase).
+// phaseExecutionJobs returns the jobs actually run for phase -- what handleRunPhase and
+// processQueuedSyncs iterate, as opposed to GetJobsForPhase's classification list used for
+// phase metadata in handleGetPhases (and pinned as including all four custom-values jobs by
+// family_camp_daily_cadence_test.go's TestSyncJobMeta_ScopeFamilyCampJobsAreExpensivePhase).
 //
-// For PhaseExpensive specifically, it drops the two bounded family-camp jobs
-// (kindred#2489): they are always covered minutes earlier by the daily cron
-// (getDailySyncJobs), so an admin running the "Custom Values" phase on demand would otherwise
-// re-fetch the identical family-camp cohort a second time -- kindred#2491 Face C, measured at
-// ~11.5 min of rate-limited CampMinder quota burned for values already fresh. GetJobsForPhase
-// itself is left untouched; only the execution list is filtered.
-func phaseExecutionJobs(phase Phase) []string {
-	jobs := GetJobsForPhase(phase)
-	if phase != PhaseExpensive {
-		return jobs
-	}
-	filtered := make([]string, 0, len(jobs))
-	for _, j := range jobs {
-		if !scopeFamilyCampJobs[j] {
-			filtered = append(filtered, j)
-		}
-	}
-	return filtered
-}
+// The difference is now declared per row (TriggerPhaseRun) rather than filtered here: the two
+// bounded family-camp jobs carry no triggers at all, because the daily cron
+// (getDailySyncJobs) covers them minutes earlier and an admin-triggered "Custom Values" phase
+// run would otherwise re-fetch the identical, already-fresh family-camp cohort -- kindred
+// #2491 Face C, measured at ~11.5 min of rate-limited CampMinder quota. GetJobsForPhase itself
+// is untouched; only the execution list is filtered.
+func phaseExecutionJobs(phase Phase) []string { return inPhaseWithTrigger(phase, TriggerPhaseRun) }
 
 // handleGetPhases returns list of available sync phases with metadata
 func handleGetPhases(e *core.RequestEvent) error {

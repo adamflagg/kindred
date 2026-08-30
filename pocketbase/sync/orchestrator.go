@@ -36,9 +36,6 @@ const (
 	runTypeHistorical   = "historical"
 	runTypeWeekly       = "weekly"
 	runTypeCustomValues = "custom_values"
-
-	// hourlySyncJob is the single service the hourly cron refreshes.
-	hourlySyncJob = "bunk_assignments"
 )
 
 // Trigger constants label how a run was started. They are persisted verbatim to
@@ -1062,14 +1059,10 @@ func GetRefreshFamilyCampJobs() []string {
 	}
 }
 
-// GetCustomValuesSyncJobs returns the list of services that run in the custom values sync.
-// These are expensive syncs (1 API call per entity) that run weekly after the main weekly sync.
-func GetCustomValuesSyncJobs() []string {
-	return []string{
-		"person_custom_values",
-		"household_custom_values",
-	}
-}
+// GetCustomValuesSyncJobs returns the services the Sunday-4am custom-values cron runs.
+// Derived from the registry: these are the unrestricted (ScopeAll) custom-values jobs. The
+// bounded family-camp variants carry CadenceDaily instead and are deliberately absent.
+func GetCustomValuesSyncJobs() []string { return jobsWithCadence(CadenceWeeklyCustomValues) }
 
 // RunSyncSequence runs multiple sync services sequentially, waiting for each
 // to complete before starting the next. Unlike RunSyncWithOptions, this is
@@ -1498,8 +1491,8 @@ func getDailySyncJobs() []string {
 	return orderedJobs
 }
 
-// RunHourlySync runs the hourly refresh — a single service, bunk_assignments — and waits for
-// it to finish.
+// RunHourlySync runs the hourly refresh — cadenceQueue(CadenceHourly), which today is the
+// single service bunk_assignments — and waits for each to finish.
 //
 // It exists so the hourly cron has an origin the orchestrator can see. Every other queue is
 // identifiable from a *SyncRunning flag, but the hourly job drove RunSingleSync directly and
@@ -1511,7 +1504,12 @@ func getDailySyncJobs() []string {
 // Unlike RunSingleSync this blocks until the run completes, matching every other Run*Sync
 // method here. Both callers already run it on their own goroutine.
 func (o *Orchestrator) RunHourlySync(ctx context.Context) error {
-	return o.runSyncAndWait(ctx, hourlySyncJob, newBatch(triggerHourly))
+	for _, job := range cadenceQueue(CadenceHourly) {
+		if err := o.runSyncAndWait(ctx, job, newBatch(triggerHourly)); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // RunDailySync runs all base data syncs in the correct order

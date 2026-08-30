@@ -132,3 +132,38 @@ func TestAvailableAndOrderQueue(t *testing.T) {
 		t.Errorf("cadenceQueue(CadenceDaily) must end with %s, got last=%q", strandedCleanup, daily[len(daily)-1])
 	}
 }
+
+// assertSeq fails with both whole slices when got != want -- a "differs at [9]" message is
+// not a diagnosis for a 27-element queue. Task 7 builds assertSeqIgnoring on top of this.
+func assertSeq(t *testing.T, label string, got, want []string) {
+	t.Helper()
+	if !slices.Equal(got, want) {
+		t.Errorf("%s: got  %v\n%s: want %v", label, got, label, want)
+	}
+}
+
+// TestDerivedQueuesMatchTodaysLists pins the derived queues against the exact lists they
+// replace. Written as literals on purpose: deriving the expectation from the same helper the
+// production code uses would pass vacuously.
+func TestDerivedQueuesMatchTodaysLists(t *testing.T) {
+	t.Parallel()
+
+	t.Run("weekly", func(t *testing.T) {
+		t.Parallel()
+		t.Skip("globals join the registry in Stage 3; remove this skip in Task 9")
+		assertSeq(t, "weekly", GetWeeklySyncJobs(), []string{
+			"person_tag_defs", "custom_field_defs", "staff_lookups",
+			"financial_lookups", "divisions",
+		})
+	})
+	assertSeq(t, "custom values", GetCustomValuesSyncJobs(), []string{
+		"person_custom_values", "household_custom_values",
+	})
+	assertSeq(t, "expensive phase run", phaseExecutionJobs(PhaseExpensive), []string{
+		"person_custom_values", "household_custom_values",
+	})
+	// Every other phase runs its whole membership -- only Expensive filters (#2489).
+	for _, p := range []Phase{PhaseSource, PhaseTransform, PhaseProcess, PhaseExport} {
+		assertSeq(t, string(p)+" phase run", phaseExecutionJobs(p), GetJobsForPhase(p))
+	}
+}
