@@ -1756,27 +1756,23 @@ func handleMultiWorkbookExport(e *core.RequestEvent, scheduler *Scheduler) error
 			}
 		} else {
 			// Default: full export (globals + current year). multiExport is the orchestrator's
-			// long-lived singleton, also reachable from three generic YearSetter call sites
-			// (a queued "Run Phase -> Export", a queued individual run, and the synchronous
-			// phase-run handler) that pin its year and never reset it. Nothing here can assume
-			// the instance still holds the current year -- a prior historical run may have left
-			// it behind -- so this standalone entry point sets it explicitly rather than
-			// inheriting whatever the instance happens to hold. Load-bearing: delete this and a
-			// previous historical Run Phase silently pins the plain Run button (and the current
-			// year's own globals gate, m.year == currentSeason in Sync()) to that stale year.
-			// See TestHandleMultiWorkbookExportDefaultBranchResetsYear.
+			// long-lived singleton, also reachable from other call sites that mutate one of
+			// its fields and never reset it -- three generic YearSetter sites (a queued
+			// "Run Phase -> Export", a queued individual run, the synchronous phase-run
+			// handler) for year and the changed-collections filter, and RunSyncWithOptions'
+			// dry-run loop for dryRun. This standalone button is none of those runs, so it
+			// cannot assume the instance still holds what a plain click means.
+			//
+			// THE RULE, stated once so it does not have to be rediscovered a fourth time:
+			// every field Sync() reads gets set explicitly, right here, in this one block.
+			// This has been found the hard way three separate times -- year (fix round 2
+			// Critical #3, TestHandleMultiWorkbookExportDefaultBranchResetsYear), the
+			// changed-collections filter (fix round 2 Critical #3, ...ClearsFilter), and
+			// dryRun (final-review Important I2, ...ResetsDryRun) -- and each was found in a
+			// separate round because the first two fixes did not say this out loud.
 			multiExport.SetYear(currentSeason)
-			// Same reasoning, same instance, a different field (fix round 2, Critical #3): a
-			// queued batch (runSyncAndWait) sets the changed-collections filter from ITS OWN
-			// origin before every run it owns, but this standalone button is not one of those
-			// runs and was never asked the same question the year line above already answers.
-			// Left unset, this button would inherit whatever the last cron's batch left behind
-			// -- exporting only that cron's subset, or (if the last batch touched nothing)
-			// writing ZERO sheets while still reporting success. nil is what "export
-			// everything" means to Sync() (ChangedCollectionsAware's own doc comment), and this
-			// is the one entry point spec §5 names as the one that must mean it.
-			// See TestHandleMultiWorkbookExportDefaultBranchClearsFilter.
-			multiExport.SetChangedCollections(nil)
+			multiExport.SetChangedCollections(nil) // nil means "export everything" (ChangedCollectionsAware's doc comment) -- spec §5's one entry point that must mean it
+			multiExport.SetDryRun(false)           // a dry-run full sync's SetDryRun(true) must not silently skip this button's write
 			slog.Info("Starting multi-workbook export for current year", "year", currentSeason)
 			if err := multiExport.Sync(ctx); err != nil {
 				slog.Error("Multi-workbook export failed", "error", err)

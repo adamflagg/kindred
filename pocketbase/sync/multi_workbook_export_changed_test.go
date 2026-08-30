@@ -328,6 +328,63 @@ func TestHandleMultiWorkbookExportDefaultBranchClearsFilter(t *testing.T) {
 	}
 }
 
+// TestHandleMultiWorkbookExportDefaultBranchResetsDryRun is the third member of the set the
+// default branch has to clear on the long-lived singleton, after year (...ResetsYear) and the
+// changed-collections filter (...ClearsFilter) -- final-review Important I2. RunSyncWithOptions
+// sets SetDryRun(true) on this same instance for a dry-run full run's whole duration and only
+// resets it in a defer after that run's loop completes -- so an operator who clicks the
+// standalone "Sheets Export" button while a dry-run full sync is in flight (the button's only
+// guard is IsRunning("multi_workbook_export"), which a dry run does not set) gets a silent
+// skip -- Stats.Skipped, not an actual write -- reported as success. Left set after a dry run
+// that already finished, the very next standalone click is the same silent skip with nothing
+// concurrently running at all.
+func TestHandleMultiWorkbookExportDefaultBranchResetsDryRun(t *testing.T) {
+	now := time.Now().Year()
+
+	t.Setenv("CAMPMINDER_SEASON_ID", strconv.Itoa(now))
+	t.Setenv("GOOGLE_SHEETS_ENABLED", "true")
+
+	writer := NewMockSheetsWriter()
+	manager := newSignalingWorkbookManager()
+
+	export, err := NewMultiWorkbookExport(newExportSchemaApp(t), writer, manager, now)
+	if err != nil {
+		t.Fatalf("NewMultiWorkbookExport: %v", err)
+	}
+	// Simulate a dry-run full sync's leftover flag on the shared singleton.
+	export.SetDryRun(true)
+
+	scheduler := NewScheduler(nil)
+	orchestrator := scheduler.GetOrchestrator()
+	orchestrator.RegisterService("multi_workbook_export", export)
+
+	re := &core.RequestEvent{}
+	re.Request = httptest.NewRequest(http.MethodPost, "/", http.NoBody)
+	rec := httptest.NewRecorder()
+	re.Response = rec
+
+	if err := handleMultiWorkbookExport(re, scheduler); err != nil {
+		t.Fatalf("handler returned error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	select {
+	case <-manager.done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("timed out waiting for the background export to finish")
+	}
+
+	if export.dryRun {
+		t.Error("expected the default branch to clear the leftover dryRun flag")
+	}
+	if got := fakeWriterSheetsWritten(export); got != 2 {
+		t.Errorf("expected both seeded sheets (divisions + bunks) actually written once dryRun "+
+			"was cleared, got %d (Stats.Skipped=%d)", got, export.Stats.Skipped)
+	}
+}
+
 // TestHandleMultiWorkbookExportDefaultBranchUsesTheSeasonNotTheWallClock pins the final-review
 // Critical C2. The default branch used to call multiExport.SetYear(time.Now().Year()) while
 // Sync()'s globals gate compares m.year against ParseSeasonYear() (multi_workbook_export.go:
