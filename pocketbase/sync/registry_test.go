@@ -567,3 +567,64 @@ func TestEveryRoutedJobIsIndividuallyResolvable(t *testing.T) {
 		}
 	}
 }
+
+// nonJobPostRouteSegments is the eight POST segments under /api/custom/sync/ that are not
+// jobs: five aggregate entry points (the unified run, a phase run, and the three cron
+// endpoints), the two RunSyncSequence refresh chains, and the multipart CSV upload.
+//
+// bunk_requests_upload is a DIFFERENT endpoint from the bunk_requests job's own
+// /sync/bunk-requests route -- it takes a file, the job takes a year -- and it is the one
+// segment api.go registers with underscores rather than hyphens.
+//
+// Named as a literal because the exclusion is a judgement about what a route MEANS, which no
+// parser can make. Every entry is checked to still exist below: a stale exclusion silently
+// widens the filter, which is the one way this set could turn the test green over real drift.
+var nonJobPostRouteSegments = []string{
+	"run", "run-phase", "hourly", "weekly", "custom-values",
+	"refresh-bunking", "refresh-family-camp", "bunk_requests_upload",
+}
+
+// TestTriggerIndividualRouteMatchesTheRouteTable pins spec §7 test 4 in BOTH directions:
+// TriggerIndividualRoute is a DECLARED FACT (see the Trigger type's comment -- the handlers
+// genuinely differ, so generating them would cost more than it saves), and a declared fact is
+// only worth declaring if something checks it.
+//
+// Each direction has its own failure mode. A row carrying the bit with no route makes
+// ResolveUnifiedSyncServices accept a ?service= that then 404s from the frontend's Run button;
+// a route with no bit is the reverse -- since Stage 3 Task 10's whitelist, that Run button
+// gets a 400 from an endpoint that is genuinely registered. Before the whitelist the second
+// direction was harmless, which is why this test and the whitelist arrived together.
+//
+// The arithmetic closes exactly, which is what makes it worth having: api.go registers 40 POST
+// segments, 8 of them the aggregates above; the registry declares 35 jobs, 32 carrying the bit
+// (all but the two _family_camp variants and reconcile_request_lifecycle). 32 + 8 = 40, with
+// nothing left over on either side.
+func TestTriggerIndividualRouteMatchesTheRouteTable(t *testing.T) {
+	t.Parallel()
+
+	segments := postRouteSegments(t)
+	for _, seg := range nonJobPostRouteSegments {
+		if !slices.Contains(segments, seg) {
+			t.Errorf("the exclusion set names %q, which api.go no longer registers -- a stale "+
+				"exclusion widens this filter silently", seg)
+		}
+	}
+
+	// Routes are hyphenated and ids underscored, so the comparison is made in the route
+	// spelling. A job whose route were registered underscored would fail here rather than
+	// match, which is correct: useRunIndividualSync.ts POSTs the hyphenated form.
+	var declared []string
+	for _, id := range jobsWithTrigger(TriggerIndividualRoute) {
+		declared = append(declared, strings.ReplaceAll(id, "_", "-"))
+	}
+	var routed []string
+	for _, seg := range segments {
+		if !slices.Contains(nonJobPostRouteSegments, seg) {
+			routed = append(routed, seg)
+		}
+	}
+	if len(declared) == 0 || len(routed) == 0 {
+		t.Fatalf("nothing to compare: %d declared, %d routed", len(declared), len(routed))
+	}
+	assertSameSet(t, "TriggerIndividualRoute vs api.go's POST route table", declared, routed)
+}
