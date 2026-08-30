@@ -410,6 +410,25 @@ type YearSetter interface {
 	SetYear(year int)
 }
 
+// ChangedCollectionsAware is an optional interface for services that can skip work for
+// collections a run did not touch. The orchestrator calls it before Sync(), the same way it
+// calls SetDryRun and SetYear -- a Service cannot reach back into the orchestrator itself.
+//
+// The filter belongs to the QUEUE that owns the run, never to the job:
+//
+//	daily / full / historical / weekly-global queue -> that batch's changed set
+//	standalone Run button, Run Phase -> Export      -> nil, meaning "export everything"
+//
+// nil and an empty map are DIFFERENT answers: SyncGlobalsOnly and SyncYearData skip on
+// `changed != nil && !changed[c]`, so an empty-but-non-nil map exports NOTHING while nil
+// exports everything. GetChangedCollections() returns make(map[string]bool) and is never
+// nil, so a caller that hands that through unconditionally -- instead of clearing it for a
+// standalone run -- silently writes zero sheets and still reports success. See
+// TestExportFilterNilVersusEmpty (multi_workbook_export_changed_test.go).
+type ChangedCollectionsAware interface {
+	SetChangedCollections(changed map[string]bool)
+}
+
 // Status represents the status of a sync operation
 type Status struct {
 	Type      string     `json:"type"`

@@ -33,6 +33,12 @@ type MultiWorkbookExport struct {
 	sheetsWriter    SheetsWriter
 	workbookManager WorkbookManagerInterface
 	year            int
+	// changed implements ChangedCollectionsAware: nil means "export everything" (a
+	// standalone Run button); a non-nil, possibly-empty map is the changed-collections set
+	// for the batch that owns this run, set by the orchestrator before Sync(). See
+	// ChangedCollectionsAware's doc comment (orchestrator.go) for why nil and an empty map
+	// are different answers.
+	changed map[string]bool
 }
 
 // NewMultiWorkbookExport creates a new multi-workbook export service.
@@ -69,42 +75,50 @@ func (m *MultiWorkbookExport) Name() string {
 	return serviceNameMultiWorkbook
 }
 
-// Sync implements the Service interface - exports data to multiple workbooks.
-// This is the main entry point for full exports.
-func (m *MultiWorkbookExport) Sync(ctx context.Context) error {
-	startTime := time.Now()
-	slog.Info("Starting multi-workbook export",
-		"year", m.year,
-	)
+// SetChangedCollections implements ChangedCollectionsAware. The orchestrator calls this
+// before Sync(), the same way it calls SetDryRun and SetYear below -- a Service cannot reach
+// back into the orchestrator to ask for the batch's changed set itself.
+func (m *MultiWorkbookExport) SetChangedCollections(changed map[string]bool) {
+	m.changed = changed
+}
 
+// SetYear implements YearSetter. The orchestrator calls this before Sync() so a queued run
+// (daily/full/historical) or a Run Phase click can target a year other than whatever
+// NewMultiWorkbookExport resolved at construction time.
+func (m *MultiWorkbookExport) SetYear(year int) {
+	m.year = year
+}
+
+// Sync implements the Service interface. One entry point for every trigger: the hardcoded
+// epilogues RunSyncWithOptions used to run after its service loop are gone, so a full or
+// historical run now produces a sync_runs row, a status transition and a completion toast
+// like any other job -- and the daily cron inherits the changed-collections skip it never had.
+//
+// Globals go to the shared workbook on the current year only: a historical replay writing
+// its year's workbook has no business touching the one shared globals workbook, which the
+// current season's own queue already keeps current (spec 2026-08-29-sync-job-registry-design
+// §5, "Globals on current year only"). "Current" is resolved via ParseSeasonYear() --
+// there is no m.currentSeason() method, and this deliberately doesn't invent one, matching
+// every other yearless service in this package (see LodgingAssignmentsSync.activeSeasonYear).
+// An unresolvable season fails closed: exporting globals against an unknown year is worse
+// than refusing to run at all.
+func (m *MultiWorkbookExport) Sync(ctx context.Context) error {
+	start := time.Now()
 	m.Stats = Stats{}
 	m.SyncSuccessful = false
 
-	// 1. Export global tables to globals workbook
-	if err := m.SyncGlobalsOnly(ctx); err != nil {
-		slog.Error("Failed to export global tables", "error", err)
-		// Continue with year-specific data even if globals fail
+	currentSeason, err := ParseSeasonYear()
+	if err != nil {
+		return fmt.Errorf("resolving current season: %w", err)
 	}
 
-	// 2. Export year-specific tables to year workbook
-	if err := m.SyncYearData(ctx, m.year); err != nil {
-		return fmt.Errorf("exporting year-specific data: %w", err)
-	}
-
-	// 3. Update master index in globals workbook
-	if err := m.workbookManager.UpdateMasterIndex(ctx); err != nil {
-		slog.Warn("Failed to update master index", "error", err)
-		// Don't fail the sync if index update fails
+	includeGlobals := m.year == currentSeason
+	if err := m.SyncForYears(ctx, []int{m.year}, includeGlobals, m.changed); err != nil {
+		return err
 	}
 
 	m.SyncSuccessful = true
-	m.Stats.Duration = int(time.Since(startTime).Seconds())
-
-	slog.Info("Multi-workbook export complete",
-		"duration_seconds", m.Stats.Duration,
-		"records_exported", m.Stats.Created,
-	)
-
+	m.Stats.Duration = int(time.Since(start).Seconds())
 	return nil
 }
 
@@ -340,7 +354,11 @@ func (m *MultiWorkbookExport) SyncForYears(
 		"includeGlobals", includeGlobals,
 	)
 
-	// Extract changedCollections from variadic param
+	// Extract changedCollections from variadic param. A nil map passed as the one variadic
+	// argument comes through as changed == nil here too, not an empty map -- this is what
+	// lets Sync() hand m.changed straight through and still mean "export everything" when
+	// no queue has set a filter. Looks accidental; is load-bearing (see
+	// ChangedCollectionsAware in orchestrator.go).
 	var changed map[string]bool
 	if len(changedCollections) > 0 {
 		changed = changedCollections[0]

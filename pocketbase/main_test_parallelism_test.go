@@ -59,6 +59,8 @@ var serialGroups = []struct {
 			"TestParseSeasonYear_AboveRange",
 			"TestParseSeasonYear_Boundaries",
 			"TestActiveSeasonYearFailsClosedWhenUnset",
+			"TestExportFilterNilVersusEmpty",
+			"TestExportGlobalsOnCurrentYearOnly",
 		},
 	},
 	{
