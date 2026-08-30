@@ -33,6 +33,7 @@ import { useStaffVehicleInfoSync } from '../../hooks/useStaffVehicleInfoSync'
 import { useCancelQueuedSync } from '../../hooks/useCancelQueuedSync'
 import { useCancelRunningSync } from '../../hooks/useCancelRunningSync'
 import { useRunPhaseSync } from '../../hooks/useRunPhaseSync'
+import { useSyncPhasesAPI } from '../../hooks/useSyncPhasesAPI'
 import { StatusIcon, formatDuration } from './ConfigInputs'
 import { clearCache } from '../../utils/queryClient'
 import ProcessRequestOptions, { type ProcessRequestOptionsState } from './ProcessRequestOptions'
@@ -96,6 +97,22 @@ export function SyncTab() {
   const cancelQueuedSync = useCancelQueuedSync()
   const cancelRunningSync = useCancelRunningSync()
   const runPhaseSync = useRunPhaseSync()
+
+  // kindred#2600: the phase header's "(N jobs)" count (types.length, below) and the Run Phase
+  // button's own count are deliberately different facts -- membership vs. what a phase run
+  // actually starts (the two bounded family-camp custom-values jobs are members of the
+  // Expensive phase but phaseExecutionJobs never starts them, #2489). Only the backend knows
+  // the second, so it is a separate query rather than derived from anything already in scope.
+  // Decoration on a control that must keep working: no loading state feeds into `isLoading`
+  // above, and a missing count just leaves the button reading plain "Run Phase" below.
+  const syncPhasesQuery = useSyncPhasesAPI()
+  const runJobCountByPhase = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const phase of syncPhasesQuery.data?.phases ?? []) {
+      counts.set(phase.id, phase.run_jobs.length)
+    }
+    return counts
+  }, [syncPhasesQuery.data])
 
   // One derived "is this card's own type-specific mutation pending" lookup, keyed by
   // syncType.id, instead of a hand-maintained list of `.isPending` references in the disabled
@@ -779,6 +796,9 @@ export function SyncTab() {
 
         const PhaseIcon = phase.icon
         const isCollapsed = collapsedPhases.has(phase.id)
+        // Undefined until the /sync/phases fetch resolves -- the button falls back to plain
+        // "Run Phase" below rather than blocking on it (kindred#2600, correction C2).
+        const runJobCount = runJobCountByPhase.get(phase.id)
 
         const togglePhase = () => {
           setCollapsedPhases((prev) => {
@@ -823,7 +843,7 @@ export function SyncTab() {
                 ) : (
                   <Play className="h-4 w-4" />
                 )}
-                Run Phase
+                Run Phase{runJobCount !== undefined ? ` (${runJobCount})` : ''}
               </button>
             </div>
 

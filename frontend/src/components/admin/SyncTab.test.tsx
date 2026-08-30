@@ -114,6 +114,17 @@ vi.mock('../../hooks/useCancelQueuedSync', () => ({ useCancelQueuedSync: () => n
 vi.mock('../../hooks/useCancelRunningSync', () => ({ useCancelRunningSync: () => notPending }))
 vi.mock('../../hooks/useRunPhaseSync', () => ({ useRunPhaseSync: () => notPending }))
 
+// #2600: the phase header's "(N jobs)" count and the Run Phase button's own count are
+// deliberately different facts (membership vs. what a phase run actually starts), so the
+// button's count comes from this separate query hook rather than `types.length`. Most tests
+// don't care about it, so the default mock reports no data -- the button falls back to plain
+// "Run Phase" text, same as the pre-#2600 behavior -- and the one test that does care
+// (below) overrides it per-call.
+let syncPhasesData: unknown = undefined
+vi.mock('../../hooks/useSyncPhasesAPI', () => ({
+  useSyncPhasesAPI: () => ({ data: syncPhasesData }),
+}))
+
 function renderSyncTab() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
@@ -547,5 +558,56 @@ describe('SyncTab clears a current-year-only service on year change (kindred#259
     expect(unifiedSyncMutate).toHaveBeenCalledWith(
       expect.objectContaining({ year: 2026, service: 'persons' })
     )
+  })
+})
+
+// kindred#2600: the Sync tab's Custom Values phase header read "(4 jobs)" directly above a
+// Run Phase button that only starts 2 -- the two bounded family-camp custom-values variants
+// are members of the phase (GetJobsForPhase) but are never started by an admin phase run
+// (phaseExecutionJobs, kindred#2489). The header keeps counting membership; the button must
+// count what it actually starts.
+describe('SyncTab phase header counts membership, button counts what it starts (#2600)', () => {
+  afterEach(() => {
+    syncPhasesData = undefined
+  })
+
+  it('counts membership in the header and what it starts on the button', () => {
+    syncPhasesData = {
+      phases: [
+        {
+          id: 'expensive',
+          name: 'Custom Values',
+          description: '1 API call per entity',
+          jobs: [
+            'person_custom_values',
+            'household_custom_values',
+            'person_custom_values_family_camp',
+            'household_custom_values_family_camp',
+          ],
+          run_jobs: ['person_custom_values', 'household_custom_values'],
+        },
+      ],
+    }
+
+    renderSyncTab()
+
+    expect(screen.getByText('Custom Values')).toBeInTheDocument()
+    expect(screen.getByText('(4 jobs)')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Run Phase \(2\)/ })).toBeInTheDocument()
+  })
+
+  it('falls back to a plain "Run Phase" button before the count arrives', () => {
+    syncPhasesData = undefined
+
+    renderSyncTab()
+
+    expect(screen.getByText('(4 jobs)')).toBeInTheDocument()
+    // The header row's Run Phase button (not the top quick-action one, which never had a
+    // count and is a separate control) has no "(N)" suffix while the count is unknown.
+    const headerRow = screen.getByText('Custom Values').closest('div')
+    if (!headerRow) throw new Error('could not find Custom Values phase header row')
+    expect(
+      within(headerRow as HTMLElement).getByRole('button', { name: 'Run Phase' })
+    ).toBeInTheDocument()
   })
 })
