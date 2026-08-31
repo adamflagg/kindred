@@ -40,9 +40,9 @@ import { formatDistanceToNow } from 'date-fns'
 import { Modal } from '../ui'
 import { syncService } from '../../services/sync'
 import { useApiWithAuth } from '../../hooks/useApiWithAuth'
-import { useSyncStatusAPI, weekendHousingSyncedAt } from '../../hooks/useSyncStatusAPI'
 import { FAMILY_CAMP_REFRESH_CHAIN, useSyncSequenceRun } from '../../hooks/useSyncSequenceRun'
 import { invalidateLodgingRegistryQueries, queryKeys } from '../../utils/queryKeys'
+import { weekendHousingSyncedAt } from './weekendFreshness'
 
 /** The running readout — whole minutes, because it is a moving estimate. */
 function formatRemaining(seconds: number): string {
@@ -57,14 +57,18 @@ function formatRemaining(seconds: number): string {
  * why it is required rather than optional (kindred#2601).
  */
 interface RefreshHousingButtonProps {
-  session: { session_cm_id: number; name: string }
+  /**
+   * `housing_synced_at` is resolved PER WEEKEND server-side out of `sync_runs`
+   * history (kindred#2617), so by the time it arrives here it is already a fact
+   * about this weekend — `""` when no run has ever covered it.
+   */
+  session: { session_cm_id: number; name: string; housing_synced_at?: string }
 }
 
 export function RefreshHousingButton({ session }: RefreshHousingButtonProps) {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const queryClient = useQueryClient()
   const { fetchWithAuth } = useApiWithAuth()
-  const { data: syncStatus } = useSyncStatusAPI()
 
   const run = useSyncSequenceRun({
     chain: FAMILY_CAMP_REFRESH_CHAIN,
@@ -86,9 +90,11 @@ export function RefreshHousingButton({ session }: RefreshHousingButtonProps) {
       // PRE-REFRESH placements for half an hour, under a timestamp reading
       // "just now" and a toast saying "refreshed" — strictly worse than not
       // shipping the feature. `invalidateLodgingRegistryQueries` is the shared
-      // list of every weekend reader; `syncStatus` is added because the
-      // `Housing synced` line beside this button reads the terminal job's
-      // end_time and must reset with it.
+      // list of every weekend reader, and since kindred#2617 that list is what
+      // resets BOTH freshness readouts too: `housing_synced_at` rides on
+      // `/sessions`, which it invalidates. `syncStatus` is invalidated beside
+      // it so the admin dashboard and summer's own lines see the finished run
+      // rather than the last polled frame of it.
       invalidateLodgingRegistryQueries(queryClient)
       void queryClient.invalidateQueries({ queryKey: queryKeys.syncStatus() })
       toast.success('Housing refreshed from CampMinder')
@@ -130,7 +136,8 @@ export function RefreshHousingButton({ session }: RefreshHousingButtonProps) {
 
   // Shared with the nav's "Housing synced" line — see weekendHousingSyncedAt for
   // why the source is the custom-values job and why undefined is a real answer.
-  const lastSynced = weekendHousingSyncedAt(syncStatus, session.session_cm_id)
+  // Both surfaces read it off the SAME weekend object, so the two cannot drift.
+  const lastSynced = weekendHousingSyncedAt(session)
 
   return (
     <>
@@ -178,7 +185,7 @@ export function RefreshHousingButton({ session }: RefreshHousingButtonProps) {
         <div className="text-foreground space-y-3 text-sm">
           {/*
             ⚠️ THE TIMESTAMP DOES NOT NAME THE WEEKEND, and does not need to:
-            `lastSynced` is already resolved to THIS weekend above, or is
+            `lastSynced` arrives already resolved to THIS weekend, or is
             undefined. Naming it here would add nothing and would re-invite the
             season-wide claim that made the first draft of kindred#2601 wrong.
             The weekend name stays on the TITLE, which is a claim about what the

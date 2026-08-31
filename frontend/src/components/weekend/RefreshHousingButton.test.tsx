@@ -23,9 +23,10 @@ import { queryKeys } from '../../utils/queryKeys'
  * used to synthesise an advancing `dataUpdatedAt` by hand for the same reason,
  * and no longer has to model the query layer at all.
  */
-// Only the HOOK is faked. `weekendHousingSyncedAt` comes through REAL, because
-// the freshness tests below assert its actual behaviour — a stub would make them
-// assert the stub (kindred#2601).
+// Only the HOOK is faked, and everything else in the module comes through real.
+// The freshness read is NOT in this module any more — `weekendHousingSyncedAt`
+// moved next to the component when its source became the weekend's own payload
+// (kindred#2617) — so nothing here can stub the sentence under test.
 vi.mock('../../hooks/useSyncStatusAPI', async (importActual) => ({
   ...(await importActual<typeof import('../../hooks/useSyncStatusAPI')>()),
   useSyncStatusAPI: (opts?: { enabled?: boolean }) =>
@@ -121,6 +122,11 @@ function RosterProbe() {
 const TEST_SESSION = {
   session_cm_id: 900,
   name: 'Family Camp 5: Extended Program Weekend (all ages)',
+  // Per-weekend, and resolved SERVER-SIDE from `sync_runs` history
+  // (kindred#2617). It is a fact about this weekend by the time it reaches the
+  // component, which is why the freshness tests below vary the PROP rather
+  // than the sync-status payload they used to reach through.
+  housing_synced_at: '2026-04-22T09:13:00.000Z',
 }
 
 function renderButton(client = makeClient(), session = TEST_SESSION) {
@@ -286,67 +292,63 @@ describe('RefreshHousingButton — scoped to the weekend in view (kindred#2601)'
   })
 
   /**
-   * ── Per-weekend freshness (kindred#2601) ──────────────────────────────────
+   * ── Per-weekend freshness (kindred#2601, kindred#2617) ────────────────────
    *
-   * The freshness sentence answers "how current is what I am looking at", so its
-   * source is the job that PULLS FROM CAMPMINDER for this weekend — the bounded
-   * custom-values pass — not `lodging_assignments`, which is a year-wide
+   * The freshness sentence answers "how current is what I am looking at", so it
+   * dates from the job that PULLS FROM CAMPMINDER for this weekend — the
+   * bounded custom-values pass — never `lodging_assignments`, a year-wide
    * transform that runs on every press regardless of which weekend was fetched.
    * Reading the transform is what made the old copy season-wide.
+   *
+   * WHICH RUN COVERED THIS WEEKEND IS NOT DECIDED HERE ANY MORE. It was, while
+   * the answer came from the sync-status payload's single slot per job — a slot
+   * that can only describe the LAST run, so a press on another weekend left this
+   * one with nothing to say. `/api/lodging/sessions` now resolves it per weekend
+   * out of `sync_runs` history, and the component renders the answer it is
+   * handed. The rule's own tests moved with it.
    */
-  it('dates the freshness from an UNSCOPED run, which covered every weekend', () => {
-    setStatus(
-      status({
-        household_custom_values_family_camp: {
-          status: 'success',
-          end_time: '2026-04-22T09:13:00.000Z',
-        },
-      })
-    )
-    renderButton()
-    fireEvent.click(screen.getByRole('button', { name: /Refresh Housing/i }))
-    expect(screen.getByRole('dialog').textContent).toMatch(/won't show here yet/i)
-  })
-
-  it('dates the freshness from a run scoped to THIS weekend', () => {
-    setStatus(
-      status({
-        household_custom_values_family_camp: {
-          status: 'success',
-          end_time: '2026-04-22T09:13:00.000Z',
-          session: '900',
-        },
-      })
-    )
+  it('dates the freshness from the weekend it was handed', () => {
     renderButton()
     fireEvent.click(screen.getByRole('button', { name: /Refresh Housing/i }))
     expect(screen.getByRole('dialog').textContent).toMatch(/won't show here yet/i)
   })
 
   /**
-   * 🚨 THE ONE THAT MATTERS. Refresh weekend A, open weekend B: B was NOT
-   * covered, and the single status slot cannot say how much older B is — the
-   * nightly cron's earlier run has already been overwritten. Claiming A's
-   * timestamp for B is the defect; inventing a different number would be worse.
-   * So B says nothing about staleness until run history exists (kindred#2617).
+   * 🚨 STILL THE ONE THAT MATTERS, one layer along. A weekend no run has ever
+   * covered has no attributable time, and "" is how the payload says so.
+   * Claiming another weekend's timestamp is the defect; rendering "Invalid Date
+   * ago" out of `new Date('')` would be a new one.
    */
-  it("says NOTHING about staleness when the last run was another weekend's", () => {
+  it('says NOTHING about staleness for a weekend with no attributable run', () => {
+    renderButton(makeClient(), { ...TEST_SESSION, housing_synced_at: '' })
+    fireEvent.click(screen.getByRole('button', { name: /Refresh Housing/i }))
+    const text = screen.getByRole('dialog').textContent ?? ''
+    expect(text).not.toMatch(/won't show here yet/i)
+    expect(text).not.toMatch(/ago/)
+    expect(text).not.toMatch(/Invalid Date/)
+    // The cost half of the dialog is unaffected — the press still works.
+    expect(text).toMatch(/2–4 minutes/)
+  })
+
+  /**
+   * The status payload is no longer consulted for freshness, and this pins
+   * that rather than trusting it: a run belonging to ANOTHER weekend sitting in
+   * the single job slot must not reach this sentence, in either direction —
+   * neither dating it nor silencing the weekend's own answer.
+   */
+  it('ignores the sync-status slot entirely, whatever weekend it names', () => {
     setStatus(
       status({
         household_custom_values_family_camp: {
           status: 'success',
-          end_time: '2026-04-22T09:13:00.000Z',
+          end_time: '2026-04-22T10:30:00.000Z',
           session: '1001',
         },
       })
     )
     renderButton()
     fireEvent.click(screen.getByRole('button', { name: /Refresh Housing/i }))
-    const text = screen.getByRole('dialog').textContent ?? ''
-    expect(text).not.toMatch(/won't show here yet/i)
-    expect(text).not.toMatch(/ago/)
-    // The cost half of the dialog is unaffected — the press still works.
-    expect(text).toMatch(/2–4 minutes/)
+    expect(screen.getByRole('dialog').textContent).toMatch(/won't show here yet/i)
   })
 
   /**

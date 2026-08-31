@@ -103,6 +103,10 @@ func (o *Orchestrator) recordSyncRun(completed *Status) {
 	rec.Set("year", resolveRunYear(completed.Year, seasonYear, time.Now().Year()))
 	rec.Set("status", completed.Status)
 	rec.Set("trigger", completed.Trigger)
+	// EMPTY MEANS EVERY WEEKEND (kindred#2617). Only the family-camp jobs are ever scoped, so
+	// this is empty on the overwhelming majority of rows -- and that is the value the
+	// per-weekend freshness query reads as "this run covered you", not as a gap.
+	rec.Set("session", completed.Session)
 	rec.Set("batch_id", completed.BatchID)
 	rec.Set("created_count", stats.Created)
 	rec.Set("updated_count", stats.Updated)
@@ -250,6 +254,7 @@ type syncRunRow struct {
 	Error                    string `db:"error"`
 	Year                     int    `db:"year"`
 	Trigger                  string `db:"trigger"`
+	Session                  string `db:"session"`
 	BatchID                  string `db:"batch_id"`
 	Created                  int    `db:"created_count"`
 	Updated                  int    `db:"updated_count"`
@@ -312,6 +317,15 @@ func (o *Orchestrator) LastRecordedRuns() map[string]*Status {
 	var rows []syncRunRow
 	query := o.app.DB().NewQuery(`
 		SELECT service, status, started, ended, error, year, trigger, batch_id,
+		       -- COALESCE is DEFENSIVE here, unlike sub_stats' own, which is load-bearing:
+		       -- PocketBase adds a text column as NOT NULL DEFAULT '', so 1500000175 left
+		       -- all 934 pre-existing rows on the dev snapshot holding '' rather than NULL.
+		       -- It stays because the cost of being wrong is total -- scanning a NULL into a
+		       -- string fails the WHOLE query, and this function swallows that to an empty
+		       -- map, so the freshness readout would degrade to "no history at all" without
+		       -- a word. Empty is also the right reading of those rows: scoping did not
+		       -- exist when they were written, so each one genuinely covered every weekend.
+		       COALESCE(session, '') AS session,
 		       created_count, updated_count, deleted_count, skipped_count, errors_count,
 		       rejected_count, expanded_count, already_processed_count,
 		       prod_audit_warnings_count, lodging_prod_audit_warnings_count, duration,
@@ -342,6 +356,10 @@ func (o *Orchestrator) LastRecordedRuns() map[string]*Status {
 			Error:   row.Error,
 			Year:    row.Year,
 			Trigger: row.Trigger,
+			// Rehydrated so the field cannot mean two things either side of a restart: a
+			// scoped run coming back without its weekend would read as having covered every
+			// weekend, because an absent session is what the cron looks like.
+			Session: row.Session,
 			BatchID: row.BatchID,
 			Summary: Stats{
 				Created:                  row.Created,

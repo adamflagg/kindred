@@ -7585,6 +7585,10 @@ export type WeekendSessionSummary = {
    * Status
    */
   status?: 'active' | 'cancelled'
+  /**
+   * Housing Synced At
+   */
+  housing_synced_at?: string
 }
 
 /**

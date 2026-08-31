@@ -49,7 +49,7 @@ from api.schemas.lodging import (
     ScenarioCompareCounts,
     ScenarioCompareResponse,
 )
-from api.services.lodging_repository import LodgingRepository
+from api.services.lodging_repository import FAMILY_SESSION_TYPE, LodgingRepository
 from api.services.lodging_roster_service import LodgingRosterService
 from api.services.lodging_rules import (
     ComparePartyPlacement,
@@ -59,19 +59,17 @@ from api.services.lodging_rules import (
 )
 from api.services.lodging_write_service import LodgingWriteService
 
-# `camp_sessions.session_type` for a family-camp weekend. The same literal
-# `SessionResolver.GetFamilyCampSessionCMIDs` filters on -- exactly and only --
-# which is what makes §5.1's scope ruling a fact about the data rather than a
-# preference: the adult sessions are not in the bounded cohort at all, so their
-# cabin answers are never fetched by the six-job chain and their mirror rows
-# are rewritten daily from custom values up to seven days old.
-FAMILY_SESSION_TYPE = "family"
-
 # The sync job whose last successful run dates the mirror. `lodging_assignments`
 # is the transform that WRITES the table this compare reads as the mirror side,
-# and the last of the six-job chain -- the same service the weekend shell's
-# "Housing synced" line reads, so the footer here and that line can never name
-# two different runs.
+# and the last of the six-job chain.
+#
+# DELIBERATELY NOT the job the weekend shell's "Housing synced" line reads.
+# That line moved to `household_custom_values_family_camp` in kindred#2601,
+# because it dates the ANSWERS and this dates the MIRROR TABLE -- two different
+# questions about the same chain. `lodging_assignments` is a year-wide
+# transform that runs on every press whatever weekend was fetched, which is
+# exactly why it can date this table for the whole season and cannot date one
+# weekend's answers.
 MIRROR_SYNC_SERVICE = "lodging_assignments"
 
 

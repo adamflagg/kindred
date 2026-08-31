@@ -56,6 +56,7 @@ from api.schemas.lodging import (
     WeekendSummaryResponse,
     WriteInCover,
 )
+from api.services.lodging_repository import FAMILY_SESSION_TYPE
 from api.services.lodging_rules import (
     REQUEST_TEXT_SOURCES,
     HousingNameResolver,
@@ -97,6 +98,19 @@ _ELIGIBILITY_SOURCE_VALUES: frozenset[str] = frozenset({"form", "registration"})
 # `min(32, cpu+4)`, so 8 concurrent weekends (32 reads) keeps the fan-out
 # from ever queuing behind itself.
 SUMMARY_ENTRY_CONCURRENCY = 8
+
+# The sync job whose last successful run dates ONE weekend's housing answers
+# (kindred#2617).
+#
+# `household_custom_values_family_camp` is the last CampMinder READ of the
+# six-job Refresh Housing chain. The question the weekend surfaces ask is how
+# current the ANSWERS are, so the source has to be the job that pulls them.
+# DELIBERATELY NOT `lodging_assignments`, which dates the compare footer: that
+# is a year-wide TRANSFORM that runs on every press whatever weekend was
+# fetched, so dating one weekend from it reported a season-wide event as that
+# weekend's -- exactly what broke when a press stopped covering the whole
+# season.
+HOUSING_SYNC_SERVICE = "household_custom_values_family_camp"
 
 
 class SessionNotFoundError(LookupError):
@@ -1834,16 +1848,83 @@ class LodgingRosterService:
             )
             return {}
 
+    async def _fetch_sync_ends_or_silent(self, year: int) -> list[tuple[str, str]]:
+        """The year's housing-sync history, or nothing (kindred#2617).
+
+        Same degrade as `_fetch_session_statuses_or_active` beside it, and for
+        the same structural reason: it sits in a TaskGroup with the reads the
+        weekend surfaces cannot do without, so a raise here cancels its
+        siblings and 500s both the lander and the session list. A freshness
+        timestamp is worth exactly nothing next to that -- losing it degrades
+        to the silence the surfaces already render honestly, which is the
+        state they were in before this shipped.
+
+        NOT for a not-yet-applied 1500000175, which was the obvious guess and
+        is wrong: PocketBase does not reject an unknown name in `fields=`, it
+        OMITS it (measured against the dev database -- `fields=no_such_column`
+        returns 200 with the column absent from every row). That case never
+        reaches here; it degrades one layer down, where the repository reads a
+        missing attribute as the unscoped "", and every weekend then dates
+        from the newest run -- the pre-kindred#2601 answer, and the right
+        shape for a deployment where scoping does not exist yet.
+        """
+        try:
+            return await self.repository.fetch_session_scoped_sync_ends(HOUSING_SYNC_SERVICE, year)
+        except Exception as exc:
+            logger.warning(f"sync_runs read failed for year {year}, no weekend can date its housing: {exc}")
+            return []
+
     async def list_sessions(self, year: int) -> WeekendSessionListResponse:
         async with asyncio.TaskGroup() as tg:
             rows_task = tg.create_task(self.repository.fetch_weekend_sessions(year))
             statuses_task = tg.create_task(self._fetch_session_statuses_or_active(year))
+            # Year-scoped like the status map above, and read ONCE for every
+            # weekend in the year rather than per weekend: it is one filtered
+            # slice of `sync_runs` that answers all of them.
+            sync_ends_task = tg.create_task(self._fetch_sync_ends_or_silent(year))
 
         statuses = statuses_task.result()
+        sync_ends = sync_ends_task.result()
         return WeekendSessionListResponse(
             year=year,
-            sessions=[self._session_summary(row, statuses) for row in rows_task.result()],
+            sessions=[self._session_summary(row, statuses, sync_ends) for row in rows_task.result()],
         )
+
+    @staticmethod
+    def _housing_synced_at(session_type: str, session_cm_id: int, sync_ends: Sequence[tuple[str, str]]) -> str:
+        """When a run that COVERED this weekend last succeeded, or "".
+
+        The issue's table, read off history that arrives newest first:
+
+            unscoped run              -> covered this weekend, take it
+            scoped to this weekend    -> take it
+            scoped to another weekend -> keep looking
+
+        AN EMPTY SESSION MATCHES, and it is the case that is easy to get
+        backwards. The nightly cron refreshes the whole family-camp cohort and
+        names no weekend, so a blank is a positive claim about coverage --
+        read as "not mine" it would silently stop the cron driving any
+        weekend's readout at all.
+
+        FIRST MATCH WINS rather than a max over timestamps. The history is
+        already ordered `-started,-id`, the same ordering
+        `Orchestrator.LastRecordedRuns` uses to pick one row per service;
+        comparing the timestamps here as strings would be a fourth ordering
+        that disagrees with all three whenever a run has no sub-second part.
+
+        ADULT WEEKENDS ARE NEVER DATED. `GetFamilyCampSessionCMIDs` filters
+        `session_type = 'family'` exactly, so an adult weekend is not in the
+        bounded cohort and this job never read its answers. An unscoped run
+        covers every FAMILY weekend; stamping an adult one from it would be
+        true about the job and false about the data (kindred#2478 section 5.1).
+        """
+        if session_type != FAMILY_SESSION_TYPE:
+            return ""
+        mine = str(session_cm_id)
+        for session, ended in sync_ends:
+            if session in ("", mine):
+                return ended
+        return ""
 
     @staticmethod
     def _weekend_status(raw: str) -> WeekendSessionStatus:
@@ -1859,7 +1940,12 @@ class LodgingRosterService:
         return "cancelled" if raw == "cancelled" else "active"
 
     @classmethod
-    def _session_summary(cls, row: Any, statuses: Mapping[int, str]) -> WeekendSessionSummary:
+    def _session_summary(
+        cls,
+        row: Any,
+        statuses: Mapping[int, str],
+        sync_ends: Sequence[tuple[str, str]] = (),
+    ) -> WeekendSessionSummary:
         """One weekend's identity. Shared so the lander and the session list
         can never describe the same weekend differently.
 
@@ -1867,17 +1953,24 @@ class LodgingRosterService:
         id (kindred#2092). A weekend with no entry is ACTIVE -- the migration
         seeds nothing, so absence of a row is the normal state and not a gap
         to warn about.
+
+        `sync_ends` is the year's housing-sync history, newest first
+        (kindred#2617). It defaults to EMPTY rather than being required for the
+        same reason `statuses` degrades to {}: no history is the honest shape
+        when the read failed or nothing has run, and it renders as silence.
         """
         session_cm_id = _i(row, "cm_id")
+        session_type = _s(row, "session_type")
         return WeekendSessionSummary(
             session_id=_s(row, "id"),
             session_cm_id=session_cm_id,
             name=_s(row, "name"),
-            session_type=_s(row, "session_type"),
+            session_type=session_type,
             start_date=_s(row, "start_date"),
             end_date=_s(row, "end_date"),
             sort_order=_i(row, "sort_order"),
             status=cls._weekend_status(statuses.get(session_cm_id, "")),
+            housing_synced_at=cls._housing_synced_at(session_type, session_cm_id, sync_ends),
         )
 
     async def build_roster(
@@ -2198,6 +2291,12 @@ class LodgingRosterService:
             # `_fetch_session_statuses_or_active` for why a failed read here
             # must not cancel the other six and 500 the lander.
             statuses_task = tg.create_task(self._fetch_session_statuses_or_active(year))
+            # Season-scoped for the same reason, and wrapped for the same
+            # reason: the lander must date a weekend exactly as `/sessions`
+            # does -- it links straight to the page whose nav renders this, so
+            # two answers one click apart would contradict each other -- and a
+            # freshness read must never cancel the six beside it.
+            sync_ends_task = tg.create_task(self._fetch_sync_ends_or_silent(year))
 
         units = units_task.result()
         households = households_task.result()
@@ -2206,6 +2305,7 @@ class LodgingRosterService:
         registrations = registrations_task.result()
         unresolved_aliases = aliases_task.result()
         statuses = statuses_task.result()
+        sync_ends = sync_ends_task.result()
 
         # Bounds how many weekends' four-read TaskGroups run at once. Per-year
         # (one instance per `build_summary` call), not module-level -- see
@@ -2339,7 +2439,7 @@ class LodgingRosterService:
                 unit_index=unit_index,
             )
             return WeekendSummaryEntry(
-                session=self._session_summary(session, statuses),
+                session=self._session_summary(session, statuses, sync_ends),
                 counts=self._build_counts(unit_summaries, parties, unresolved_aliases, unit_index, free_spots_by_unit),
             )
 

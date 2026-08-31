@@ -4,6 +4,7 @@ These tests assert the exact PocketBase filter/expand/sort parameters,
 because a wrong filter here is silently wrong data rather than an error.
 """
 
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -2303,3 +2304,110 @@ class TestFetchLastSuccessfulSyncEnd:
         pb.collection.return_value.get_list.return_value = MagicMock(items=[_record(ended="")])
 
         assert await repo.fetch_last_successful_sync_end("lodging_assignments") == ""
+
+
+class TestFetchSessionScopedSyncEnds:
+    """One weekend's housing freshness, read out of run HISTORY (kindred#2617).
+
+    `fetch_last_successful_sync_end` above answers "when did this job last
+    succeed", which is one row and enough for a job nobody scopes. Refresh
+    Housing IS scoped: a press names the weekend it was started for, so the
+    last run of the job is frequently a run that covered a DIFFERENT weekend.
+    The status payload keeps one slot per job and cannot say more; this
+    reads the rows behind it so the caller can ask the question that actually
+    matters -- when did a run that covered THIS weekend last succeed.
+    """
+
+    @pytest.mark.asyncio
+    async def test_reads_one_service_one_year_successes_only(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        """THREE filters, and the year is not optional.
+
+        CampMinder REUSES session ids across years, so an unscoped 2025 run
+        says nothing about the 2026 weekend wearing the same cm_id. Success
+        only for the reason the Go rehydration gives: a failed run refreshed
+        nothing, so dating a weekend from it is the freshness lie
+        `LastRecordedRuns` refuses.
+        """
+        await repo.fetch_session_scoped_sync_ends("household_custom_values_family_camp", 2026)
+
+        pb.collection.assert_called_with("sync_runs")
+        params = _last_query(pb)
+        assert params["filter"] == (
+            'service = "household_custom_values_family_camp" && status = "success" && year = 2026'
+        )
+        # `-started,-id`, matching `Orchestrator.LastRecordedRuns` and
+        # `fetch_last_successful_sync_end`. Three readouts of the same table
+        # must not disagree about which run is the later one.
+        assert params["sort"] == "-started,-id"
+
+    @pytest.mark.asyncio
+    async def test_returns_session_and_end_newest_first(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        """The ORDER is the answer. The caller walks this list and takes the
+        first row that covers its weekend, so reversing it would hand every
+        weekend the oldest run that covered it.
+        """
+        pb.collection.return_value.get_full_list.return_value = [
+            _record(session="1000001", ended="2026-08-23 10:16:08.257Z"),
+            _record(session="", ended="2026-08-23 03:04:05.000Z"),
+        ]
+
+        assert await repo.fetch_session_scoped_sync_ends("household_custom_values_family_camp", 2026) == [
+            ("1000001", "2026-08-23T10:16:08.257Z"),
+            ("", "2026-08-23T03:04:05.000Z"),
+        ]
+
+    @pytest.mark.asyncio
+    async def test_a_blank_session_reads_as_unscoped(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        """EMPTY MEANS EVERY WEEKEND, and that is what every row written
+        before 1500000175 holds -- scoping a press did not exist when they
+        ran, so each one genuinely covered the whole cohort. Reading a blank
+        as "unknown" would drop the nightly cron out of every weekend's
+        readout at once.
+        """
+        pb.collection.return_value.get_full_list.return_value = [_record(session="", ended="2026-08-23 03:04:05.000Z")]
+
+        assert await repo.fetch_session_scoped_sync_ends("household_custom_values_family_camp", 2026) == [
+            ("", "2026-08-23T03:04:05.000Z")
+        ]
+
+    @pytest.mark.asyncio
+    async def test_a_row_without_the_attribute_reads_as_unscoped(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        """SimpleNamespace, not the MagicMock the rest of this class uses, and
+        deliberately: a mock INVENTS every attribute asked of it, so it cannot
+        model a record that does not carry the field.
+
+        THIS IS A REAL SHAPE, not defensive padding. PocketBase does not
+        reject an unknown name in `fields=`, it OMITS it -- measured against
+        the dev database, `fields=no_such_column,ended` returns 200 with the
+        column absent from every row. So an API container running ahead of
+        migration 1500000175 reads exactly this, and it must degrade to
+        "covered everything" (the pre-kindred#2601 answer, correct for a
+        deployment where scoping does not exist yet) rather than to a
+        stringified object no weekend will ever match.
+        """
+        pb.collection.return_value.get_full_list.return_value = [SimpleNamespace(ended="2026-08-23 03:04:05.000Z")]
+
+        assert await repo.fetch_session_scoped_sync_ends("household_custom_values_family_camp", 2026) == [
+            ("", "2026-08-23T03:04:05.000Z")
+        ]
+
+    @pytest.mark.asyncio
+    async def test_a_run_with_no_end_time_is_dropped(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        """A row with no `ended` can date nothing. Keeping it would let it
+        shadow the older run that CAN answer, turning a real timestamp into
+        silence.
+        """
+        pb.collection.return_value.get_full_list.return_value = [
+            _record(session="", ended=""),
+            _record(session="", ended="2026-08-23 03:04:05.000Z"),
+        ]
+
+        assert await repo.fetch_session_scoped_sync_ends("household_custom_values_family_camp", 2026) == [
+            ("", "2026-08-23T03:04:05.000Z")
+        ]
+
+    @pytest.mark.asyncio
+    async def test_no_recorded_run_is_empty_rather_than_a_guess(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        pb.collection.return_value.get_full_list.return_value = []
+
+        assert await repo.fetch_session_scoped_sync_ends("household_custom_values_family_camp", 2026) == []
