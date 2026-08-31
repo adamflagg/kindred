@@ -19,6 +19,9 @@ vi.mock('../hooks/useWeekendRoster', () => ({
   useWeekendSessions: () => sessionsQuery,
   useWeekendRoster: () => rosterQuery,
   useHouseholdMedical: () => ({ data: undefined, isLoading: false, error: null }),
+  // Opening `FamilyDetailsPanel` for real (kindred#2650's family-name click)
+  // mounts `HouseholdJourneyCard`, which calls this unconditionally.
+  useHouseholdJourney: () => ({ data: undefined, isLoading: false, error: null }),
 }))
 
 // The Groups tab (kindred#1913) is a real React Query hook, and these page
@@ -799,6 +802,70 @@ describe('cabin-weekend attribution chip (kindred#2648 UI half)', () => {
     })
     renderPage('1000001')
     expect(screen.queryByRole('button', { name: /need.*a weekend/i })).not.toBeInTheDocument()
+  })
+
+  describe('opening a family from the attribution chip (kindred#2650)', () => {
+    function itemFor(householdCmId: number) {
+      return {
+        id: 'q1',
+        rawValue: 'Ridge I',
+        sourceField: 'Family Camp Cabin',
+        householdCmId,
+        personCmId: 0,
+        occurrences: 1,
+        firstSeen: '',
+        lastSeen: '',
+        resolvedUnitNames: [],
+        candidates: [{ sessionCmId: 1000001, short: 'FC1', dateRange: '', isSuggested: true }],
+        isStale: false,
+      }
+    }
+
+    const HOUSEHOLD_PARTY = {
+      grain: 'household' as const,
+      household_cm_id: 2000001,
+      display_name: 'Johnson',
+      children: [
+        { person_cm_id: 9001, display_name: 'Riley Johnson', last_name: 'Johnson', age: 8 },
+      ],
+    }
+
+    it("resolves the row's family name from the roster this page already has, opens FamilyDetailsPanel on click, and closes only the panel on Escape", async () => {
+      const user = userEvent.setup()
+      attributionQuery.mockReturnValue({
+        isLoading: false,
+        error: null,
+        data: [itemFor(2000001)],
+        items: [],
+        confirm: vi.fn(),
+        isConfirming: false,
+      })
+      rosterQuery.data = {
+        year: 2026,
+        session_cm_id: 1000001,
+        parties: [HOUSEHOLD_PARTY],
+        units: [],
+        counts: {},
+      }
+      renderPage('1000001')
+
+      await user.click(screen.getByRole('button', { name: /1 cabin needs a weekend/i }))
+      expect(screen.getByText(/The Johnson Family/)).toBeInTheDocument()
+
+      await user.click(screen.getByRole('button', { name: 'The Johnson Family' }))
+      expect(screen.getByTestId('family-details-panel')).toBeInTheDocument()
+
+      // The FIRST Escape closes the panel — the topmost surface — and
+      // leaves the attribution modal (still under it) open. This is the
+      // scenario `ui/modalStack.ts` exists for; see
+      // `FamilyDetailsPanel.test.tsx`'s own "Escape when opened ON TOP of an
+      // existing overlay" suite for the isolated version of this assertion.
+      fireEvent.keyDown(document, { key: 'Escape' })
+      expect(screen.getByTestId('family-details-panel')).toHaveClass('animate-slide-out-right')
+      expect(
+        screen.getByRole('dialog', { name: /which weekend is this cabin for/i })
+      ).toBeInTheDocument()
+    })
   })
 })
 

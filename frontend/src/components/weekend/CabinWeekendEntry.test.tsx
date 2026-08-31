@@ -10,6 +10,7 @@ import { MemoryRouter } from 'react-router'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { SessionAttributionQueueItem } from '../../hooks/useSessionAttributionQueue'
+import type { RosterPartyRow } from '../../types/lodging'
 
 const useSessionAttributionQueue = vi.fn()
 
@@ -125,5 +126,37 @@ describe('CabinWeekendEntry', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: /needs? a weekend/i }))
     expect(screen.getByRole('dialog')).toBeInTheDocument()
+  })
+
+  it('threads its roster and family-open handler into the modal (kindred#2650)', async () => {
+    // The chip itself has no roster data of its own — `WeekendRosterPage`
+    // has it in hand and hands it straight through, unchanged, so the modal
+    // can resolve a family name and hand the FULL party to `onOpenFamily` on
+    // click. `CabinWeekendModal.test.tsx` covers the resolution/click
+    // behaviour itself; this only proves the wiring reaches it.
+    const onOpenFamily = vi.fn()
+    const user = userEvent.setup()
+    const party: RosterPartyRow = {
+      grain: 'household',
+      household_cm_id: 2000001,
+      display_name: 'Johnson',
+      children: [
+        { person_cm_id: 9001, display_name: 'Riley Johnson', last_name: 'Johnson', age: 8 },
+      ],
+    }
+    useSessionAttributionQueue.mockReturnValue({
+      isLoading: false,
+      error: null,
+      data: [itemFixture()],
+      items: [],
+      confirm: vi.fn(),
+      isConfirming: false,
+    })
+    renderEntry({ parties: [party], onOpenFamily })
+
+    await user.click(screen.getByRole('button', { name: /needs? a weekend/i }))
+    await user.click(screen.getByRole('button', { name: 'The Johnson Family' }))
+
+    expect(onOpenFamily).toHaveBeenCalledWith(party)
   })
 })

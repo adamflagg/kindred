@@ -134,4 +134,107 @@ describe('SessionAttributionRow', () => {
     expect(screen.queryByRole('button', { name: /undo/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /change weekend/i })).not.toBeInTheDocument()
   })
+
+  // Owner finding on kindred#2650: "the modal has household ID which is not
+  // helpful, needs to show the family name". `familyName` is resolved by
+  // each home differently (board roster vs. a per-household journey fetch on
+  // the admin tab) and handed down as a plain string — this component stays
+  // ignorant of where it came from.
+  describe('the resolved family name', () => {
+    it('shows the family name instead of the raw household id, when one resolves', () => {
+      render(
+        <SessionAttributionRow
+          item={itemFixture()}
+          onConfirm={vi.fn()}
+          isConfirming={false}
+          familyName="The Johnson Family"
+        />
+      )
+      expect(screen.getByText(/The Johnson Family/)).toBeInTheDocument()
+      expect(screen.queryByText(/2000001/)).not.toBeInTheDocument()
+    })
+
+    it('falls back to the raw household id when no name resolves — a poor id beats a blank row', () => {
+      render(
+        <SessionAttributionRow
+          item={itemFixture()}
+          onConfirm={vi.fn()}
+          isConfirming={false}
+          familyName={undefined}
+        />
+      )
+      expect(screen.getByText(/2000001/)).toBeInTheDocument()
+    })
+
+    it('falls back to the raw household id when the resolved name is blank', () => {
+      render(
+        <SessionAttributionRow
+          item={itemFixture()}
+          onConfirm={vi.fn()}
+          isConfirming={false}
+          familyName=""
+        />
+      )
+      expect(screen.getByText(/2000001/)).toBeInTheDocument()
+    })
+
+    it('never resolves a family name for a person-scoped row — the id stays', () => {
+      render(
+        <SessionAttributionRow
+          item={itemFixture({ householdCmId: 0, personCmId: 3100001 })}
+          onConfirm={vi.fn()}
+          isConfirming={false}
+          familyName="The Johnson Family"
+        />
+      )
+      expect(screen.getByText(/3100001/)).toBeInTheDocument()
+      expect(screen.queryByText(/The Johnson Family/)).not.toBeInTheDocument()
+    })
+  })
+
+  describe('opening the family from the row', () => {
+    it('renders the name as a click target that opens the family, when a handler is given', async () => {
+      const onOpenFamily = vi.fn()
+      const user = userEvent.setup()
+      render(
+        <SessionAttributionRow
+          item={itemFixture()}
+          onConfirm={vi.fn()}
+          isConfirming={false}
+          familyName="The Johnson Family"
+          onOpenFamily={onOpenFamily}
+        />
+      )
+
+      await user.click(screen.getByRole('button', { name: 'The Johnson Family' }))
+
+      expect(onOpenFamily).toHaveBeenCalledTimes(1)
+      expect(onOpenFamily).toHaveBeenCalledWith(2000001)
+    })
+
+    it('renders plain text, never a dead click, when no handler is given — the admin tab has nothing to open', () => {
+      render(
+        <SessionAttributionRow
+          item={itemFixture()}
+          onConfirm={vi.fn()}
+          isConfirming={false}
+          familyName="The Johnson Family"
+        />
+      )
+      expect(screen.queryByRole('button', { name: 'The Johnson Family' })).not.toBeInTheDocument()
+      expect(screen.getByText(/The Johnson Family/)).toBeInTheDocument()
+    })
+
+    it('never renders a click target for a person-scoped row, even if a handler is given', () => {
+      render(
+        <SessionAttributionRow
+          item={itemFixture({ householdCmId: 0, personCmId: 3100001 })}
+          onConfirm={vi.fn()}
+          isConfirming={false}
+          onOpenFamily={vi.fn()}
+        />
+      )
+      expect(screen.queryByRole('button', { name: /3100001/ })).not.toBeInTheDocument()
+    })
+  })
 })

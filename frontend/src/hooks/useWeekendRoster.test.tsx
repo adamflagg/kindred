@@ -9,6 +9,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { queryKeys } from '../utils/queryKeys'
 import {
+  useHouseholdFamilyLabel,
   useHouseholdJourney,
   useHouseholdMedical,
   useWeekendRoster,
@@ -337,5 +338,55 @@ describe('useHouseholdJourney', () => {
     renderHook(() => useHouseholdJourney(0), { wrapper })
 
     expect(fetchHouseholdJourney).not.toHaveBeenCalled()
+  })
+})
+
+/**
+ * The admin cabin-weekend attribution tab (kindred#2650) has no roster in
+ * scope, unlike the board — this is its resolver, built on the SAME
+ * `useHouseholdJourney` fetch and the SAME `familyNameLabel(childSurnames(…))`
+ * pair `HouseholdJourneyCard`'s cross-year heading already uses, so there is
+ * only one derivation of "family name" in the codebase, fed by two data
+ * sources.
+ */
+describe('useHouseholdFamilyLabel', () => {
+  it('names the household from the union of its children across every journey year', async () => {
+    fetchHouseholdJourney.mockResolvedValue({
+      household_cm_id: 2000001,
+      years: [
+        {
+          year: 2026,
+          children: [{ person_cm_id: 9001, display_name: 'Riley Johnson', last_name: 'Johnson' }],
+        },
+      ],
+    })
+
+    const { result } = renderHook(() => useHouseholdFamilyLabel(2000001), { wrapper })
+
+    await waitFor(() => expect(result.current).toBe('The Johnson Family'))
+  })
+
+  it('resolves to undefined while the journey is still loading', () => {
+    fetchHouseholdJourney.mockReturnValue(new Promise(() => {}))
+
+    const { result } = renderHook(() => useHouseholdFamilyLabel(2000001), { wrapper })
+
+    expect(result.current).toBeUndefined()
+  })
+
+  it('resolves to undefined when no year carries a named child — SessionAttributionRow falls back to the id', async () => {
+    fetchHouseholdJourney.mockResolvedValue({ household_cm_id: 2000001, years: [] })
+
+    const { result } = renderHook(() => useHouseholdFamilyLabel(2000001), { wrapper })
+
+    await waitFor(() => expect(fetchHouseholdJourney).toHaveBeenCalled())
+    expect(result.current).toBeUndefined()
+  })
+
+  it('fetches nothing, and resolves to undefined, for a person-scoped row (no household)', () => {
+    const { result } = renderHook(() => useHouseholdFamilyLabel(0), { wrapper })
+
+    expect(fetchHouseholdJourney).not.toHaveBeenCalled()
+    expect(result.current).toBeUndefined()
   })
 })

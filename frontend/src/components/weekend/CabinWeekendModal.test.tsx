@@ -11,6 +11,7 @@ import { MemoryRouter } from 'react-router'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { SessionAttributionQueueItem } from '../../hooks/useSessionAttributionQueue'
+import type { RosterPartyRow } from '../../types/lodging'
 
 const useSessionAttributionQueue = vi.fn()
 
@@ -37,6 +38,17 @@ function itemFixture(over: Partial<SessionAttributionQueueItem> = {}): SessionAt
     ],
     isStale: false,
     ...over,
+  }
+}
+
+function partyFixture(overrides: Partial<RosterPartyRow> = {}): RosterPartyRow {
+  return {
+    grain: 'household',
+    household_cm_id: 2000001,
+    display_name: 'Johnson',
+    adults: [{ adult_number: 1, display_name: 'Emma Johnson', relationship: 'Mother' }],
+    children: [{ person_cm_id: 9001, display_name: 'Riley Johnson', last_name: 'Johnson', age: 8 }],
+    ...overrides,
   }
 }
 
@@ -166,5 +178,70 @@ describe('CabinWeekendModal', () => {
     await user.click(screen.getByRole('button', { name: /done/i }))
 
     expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  describe('the family name and its click-through (kindred#2650)', () => {
+    it("resolves a row's family name from the roster this modal's host page already has loaded", () => {
+      useSessionAttributionQueue.mockReturnValue({
+        isLoading: false,
+        error: null,
+        data: [itemFixture()],
+        items: [],
+        confirm: vi.fn(),
+        isConfirming: false,
+      })
+      renderModal({ parties: [partyFixture()] })
+
+      expect(screen.getByText(/The Johnson Family/)).toBeInTheDocument()
+      expect(screen.queryByText(/2000001/)).not.toBeInTheDocument()
+    })
+
+    it('falls back to the raw household id when the roster has no matching party', () => {
+      useSessionAttributionQueue.mockReturnValue({
+        isLoading: false,
+        error: null,
+        data: [itemFixture()],
+        items: [],
+        confirm: vi.fn(),
+        isConfirming: false,
+      })
+      renderModal({ parties: [] })
+
+      expect(screen.getByText(/2000001/)).toBeInTheDocument()
+    })
+
+    it('opens the FULL roster party for the household on click, not just its id', async () => {
+      const onOpenFamily = vi.fn()
+      const user = userEvent.setup()
+      const party = partyFixture()
+      useSessionAttributionQueue.mockReturnValue({
+        isLoading: false,
+        error: null,
+        data: [itemFixture()],
+        items: [],
+        confirm: vi.fn(),
+        isConfirming: false,
+      })
+      renderModal({ parties: [party], onOpenFamily })
+
+      await user.click(screen.getByRole('button', { name: 'The Johnson Family' }))
+
+      expect(onOpenFamily).toHaveBeenCalledTimes(1)
+      expect(onOpenFamily).toHaveBeenCalledWith(party)
+    })
+
+    it('renders no click target when the roster has no matching party, even with a handler given', () => {
+      useSessionAttributionQueue.mockReturnValue({
+        isLoading: false,
+        error: null,
+        data: [itemFixture()],
+        items: [],
+        confirm: vi.fn(),
+        isConfirming: false,
+      })
+      renderModal({ parties: [], onOpenFamily: vi.fn() })
+
+      expect(screen.queryByRole('button', { name: /2000001/ })).not.toBeInTheDocument()
+    })
   })
 })

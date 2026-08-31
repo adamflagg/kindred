@@ -5,7 +5,7 @@
  */
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { SessionAttributionQueueItem } from '../../../hooks/useSessionAttributionQueue'
 
@@ -13,6 +13,18 @@ const useSessionAttributionQueue = vi.fn()
 
 vi.mock('../../../hooks/useSessionAttributionQueue', () => ({
   useSessionAttributionQueue: () => useSessionAttributionQueue(),
+}))
+
+// The admin tab has no roster context (unlike the board's modal), so its
+// family-name resolution is its own per-household hook — see
+// `useWeekendRoster.ts`'s `useHouseholdFamilyLabel` doc comment for why it is
+// built on `useHouseholdJourney` rather than a second naming derivation.
+// Mocked by household id here, matching how `useSessionAttributionQueue`
+// above is mocked, so this file stays a pure component test.
+const householdFamilyLabels = new Map<number, string | undefined>()
+
+vi.mock('../../../hooks/useWeekendRoster', () => ({
+  useHouseholdFamilyLabel: (householdCmId: number) => householdFamilyLabels.get(householdCmId),
 }))
 
 import { CabinWeekendsQueue } from './CabinWeekendsQueue'
@@ -49,6 +61,10 @@ function baseHookResult(items: SessionAttributionQueueItem[]) {
 }
 
 describe('CabinWeekendsQueue', () => {
+  beforeEach(() => {
+    householdFamilyLabels.clear()
+  })
+
   it('shows loading state before the queue settles', () => {
     useSessionAttributionQueue.mockReturnValue({
       isLoading: true,
@@ -124,5 +140,36 @@ describe('CabinWeekendsQueue', () => {
 
     expect(confirm).toHaveBeenCalledTimes(1)
     expect(confirm).toHaveBeenCalledWith(item, 1309515)
+  })
+
+  describe('the family name (kindred#2650)', () => {
+    it("shows a row's resolved family name instead of its raw household id", () => {
+      householdFamilyLabels.set(2000001, 'The Johnson Family')
+      useSessionAttributionQueue.mockReturnValue(baseHookResult([itemFixture()]))
+
+      render(<CabinWeekendsQueue />)
+
+      expect(screen.getByText(/The Johnson Family/)).toBeInTheDocument()
+      expect(screen.queryByText(/2000001/)).not.toBeInTheDocument()
+    })
+
+    it('falls back to the raw household id when the per-row hook resolves nothing', () => {
+      // householdFamilyLabels left empty — the hook mock returns undefined,
+      // matching a first-time household with no attendee row yet.
+      useSessionAttributionQueue.mockReturnValue(baseHookResult([itemFixture()]))
+
+      render(<CabinWeekendsQueue />)
+
+      expect(screen.getByText(/2000001/)).toBeInTheDocument()
+    })
+
+    it('offers no click target — the admin tab has no roster party to hand FamilyDetailsPanel', () => {
+      householdFamilyLabels.set(2000001, 'The Johnson Family')
+      useSessionAttributionQueue.mockReturnValue(baseHookResult([itemFixture()]))
+
+      render(<CabinWeekendsQueue />)
+
+      expect(screen.queryByRole('button', { name: 'The Johnson Family' })).not.toBeInTheDocument()
+    })
   })
 })

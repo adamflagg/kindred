@@ -23,7 +23,7 @@ import { useCallback, useEffect, useState } from 'react'
 
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
 import { displayCampMinderAge } from '../../utils/age'
-import { hasOpenModal } from '../ui/modalStack'
+import { acquireOverlayToken, isTopOverlay, releaseOverlayToken } from '../ui/modalStack'
 import { Tooltip } from '../ui/Tooltip'
 import { HouseholdJourneyCard } from './HouseholdJourneyCard'
 import { namedAdults, partyFamilyLabel, partyHeadcount } from './householdIdentity'
@@ -103,20 +103,37 @@ export function FamilyDetailsPanel({
 
   useEffect(() => {
     if (isClosing) return
+    // This panel is now a full participant in `ui/modalStack`'s token stack,
+    // exactly as `ui/Modal` itself is (kindred#2650) -- not merely a reader
+    // of `hasOpenModal()`. Two directions both have to work:
+    //
+    //  - A `ui/Modal` this panel HOSTS (kindred#2073's "see members" is the
+    //    first) opens ON TOP of it. That modal acquires ITS OWN token after
+    //    this one, so it becomes topmost and this effect's own check below
+    //    correctly stands down for it.
+    //  - A `ui/Modal` HOSTS this panel instead (kindred#2650:
+    //    `CabinWeekendModal` opens this panel from a family-name click). This
+    //    panel's token is acquired AFTER the modal's, so IT becomes topmost —
+    //    which is what lets the modal's own `isTopOverlay` check stand down
+    //    in turn, rather than closing itself out from under a panel still
+    //    visibly on top.
+    //
+    // `hasOpenModal()` (`overlayStack.length > 0`) could not tell these two
+    // directions apart: once this panel held its own token, the stack would
+    // never again read as empty, and the FIRST direction above would break —
+    // a "see members" click would leave the panel unable to close on its own
+    // Escape ever again.
+    const token = acquireOverlayToken()
+
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return
-      // A `ui/Modal` this panel HOSTS owns Escape while it is open --
-      // kindred#2073's "see members" is the first, and this panel is the
-      // first surface in the repo to host one. Both handlers sit on
-      // `document`, so propagation cannot separate them: without this the
-      // single press dismisses the dialog AND the panel behind it, and the
-      // family the staff member was reading goes with it.
-      if (hasOpenModal()) return
+      if (!isTopOverlay(token)) return
       handleClose()
     }
     document.addEventListener('keydown', onKeyDown)
     return () => {
       document.removeEventListener('keydown', onKeyDown)
+      releaseOverlayToken(token)
     }
   }, [isClosing, handleClose])
 

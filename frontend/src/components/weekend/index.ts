@@ -30,6 +30,7 @@ export {
   indexUnitsByCode,
   partyAttention,
   partySpots,
+  resolvePartyUnit,
 } from './rosterAttention'
 export type { AttentionLevel, AttentionSection, PartyAttention } from './rosterAttention'
 export { formatSessionDates } from './sessionDates'

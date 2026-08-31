@@ -45,6 +45,7 @@ import {
   fetchWeekendSessions as fetchSessions,
   fetchWeekendSummary as fetchSummary,
 } from '../services/lodgingApi'
+import { childSurnames, familyNameLabel } from '../components/weekend/householdIdentity'
 import type {
   HouseholdJourney,
   HouseholdMedical,
@@ -132,6 +133,30 @@ export function useHouseholdJourney(householdCmId: number | null) {
     enabled: householdCmId !== null && householdCmId > 0,
     queryFn: () => fetchHouseholdJourney(fetchWithAuth, householdCmId as number),
   })
+}
+
+/**
+ * A household's family name for a caller with NO roster context — the
+ * cabin-weekend attribution admin tab (kindred#2650 owner finding: a raw
+ * household id "is not helpful, needs to show the family name"). `FamilyCard`
+ * and `FamilyDetailsPanel` derive the same label from `party.children` off an
+ * already-loaded roster; this surface has no roster at all, so it fetches the
+ * one household's OWN journey (this file's `useHouseholdJourney`, already
+ * used for kindred#2073's card) and reduces it through the exact same
+ * `familyNameLabel(childSurnames(…))` pair `HouseholdJourneyCard` uses for
+ * its own cross-year heading — ONE naming derivation (kindred#2180), two data
+ * sources, never a second implementation of the rule.
+ *
+ * `undefined` while loading, on error, or when the union of every year's
+ * children carries no surname (a first-time household with no attendee row
+ * yet) — callers fall back to the raw id, matching
+ * `SessionAttributionRow`'s existing fallback contract.
+ */
+export function useHouseholdFamilyLabel(householdCmId: number): string | undefined {
+  const { data } = useHouseholdJourney(householdCmId > 0 ? householdCmId : null)
+  const years = data?.years ?? []
+  const label = familyNameLabel(years.flatMap((row) => childSurnames(row.children)))
+  return label.length > 0 ? label : undefined
 }
 
 /**

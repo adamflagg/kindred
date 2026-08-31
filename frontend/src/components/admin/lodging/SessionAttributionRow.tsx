@@ -37,19 +37,47 @@ export interface SessionAttributionRowProps {
   item: SessionAttributionQueueItem
   onConfirm: (sessionCmId: number) => void
   isConfirming: boolean
+  /**
+   * The household's resolved family name (kindred#2650 owner finding: a raw
+   * `Household 2000001` tells staff nothing). Undefined or blank falls back
+   * to the raw id — a poor id still beats a blank row, and a household with
+   * no resolvable name is exactly the kind of row staff most need to see.
+   *
+   * Deliberately a plain string, not a resolver function or a hook: the two
+   * homes resolve it through entirely different data (the board's already-
+   * loaded roster vs. the admin tab's own per-household fetch), and handing
+   * down the ALREADY-RESOLVED value keeps this component ignorant of both.
+   * Never applies to a person-scoped row (an adult-weekend guest) — see
+   * `useSessionAttributionQueue`'s "exactly one id is ever set" comment.
+   */
+  familyName?: string | undefined
+  /**
+   * Opens the household's full detail surface (`FamilyDetailsPanel`,
+   * kindred#2073's "see members" precedent) when the name is clicked.
+   * Omitted renders the name as plain text — the admin tab has no roster
+   * party to hand the panel, so it passes nothing here rather than wiring a
+   * click that goes nowhere (a dead click is worse than no click).
+   */
+  onOpenFamily?: ((householdCmId: number) => void) | undefined
 }
 
 export function SessionAttributionRow({
   item,
   onConfirm,
   isConfirming,
+  familyName,
+  onOpenFamily,
 }: SessionAttributionRowProps) {
   // Exactly one of the two ids is ever set, as everywhere else in this
   // ingest — see `lodging_confirmed_session.go`'s `forParty`.
-  const partyLabel =
-    item.householdCmId > 0
-      ? `Household ${String(item.householdCmId)}`
-      : `Person ${String(item.personCmId)}`
+  const isHousehold = item.householdCmId > 0
+  const resolvedName = familyName?.trim() ?? ''
+  const partyLabel = isHousehold
+    ? resolvedName.length > 0
+      ? resolvedName
+      : `Household ${String(item.householdCmId)}`
+    : `Person ${String(item.personCmId)}`
+  const canOpenFamily = isHousehold && onOpenFamily !== undefined
 
   return (
     <div className="card-lodge flex flex-col gap-3 p-4">
@@ -63,7 +91,20 @@ export function SessionAttributionRow({
             )}
           </div>
           <p className="text-muted-foreground mt-1 text-xs">
-            {partyLabel} · seen {item.occurrences}× · last checked {item.lastSeen}
+            {canOpenFamily ? (
+              <button
+                type="button"
+                onClick={() => {
+                  onOpenFamily?.(item.householdCmId)
+                }}
+                className="text-foreground font-semibold underline-offset-2 hover:underline"
+              >
+                {partyLabel}
+              </button>
+            ) : (
+              partyLabel
+            )}{' '}
+            · seen {item.occurrences}× · last checked {item.lastSeen}
           </p>
         </div>
         <div className="text-right">

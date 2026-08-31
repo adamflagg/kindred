@@ -11,11 +11,48 @@
 import { useState } from 'react'
 
 import { useSessionAttributionQueue } from '../../../hooks/useSessionAttributionQueue'
+import type { SessionAttributionQueueItem } from '../../../hooks/useSessionAttributionQueue'
+import { useHouseholdFamilyLabel } from '../../../hooks/useWeekendRoster'
 import { QueryGuard } from '../../QueryGuard'
 import { BUTTON_SECONDARY } from './lodgingStyles'
 import { SessionAttributionRow } from './SessionAttributionRow'
 
 const NOTHING_WAITING = 'No cabins are waiting on a weekend.'
+
+/**
+ * One row, resolving ITS OWN family name (kindred#2650).
+ *
+ * `useHouseholdFamilyLabel` is a hook and this tab has no roster to build a
+ * lookup from up front — each row is its own household, so each row fetches
+ * its own journey. `SessionAttributionRow` itself stays a plain function of
+ * props; this is the one place that hook is called, satisfying the rules of
+ * hooks (one call per mounted row, never inside the `.map()` below).
+ *
+ * No `onOpenFamily`: `FamilyDetailsPanel` needs a full roster `RosterPartyRow`
+ * (adults, children, journey-driven housing state) that this admin route has
+ * no way to build without pulling the whole roster — the board's modal has
+ * one already loaded and wires the click there instead. A name with no click
+ * beats a click that goes nowhere.
+ */
+function AttributionRow({
+  item,
+  onConfirm,
+  isConfirming,
+}: {
+  item: SessionAttributionQueueItem
+  onConfirm: (sessionCmId: number) => void
+  isConfirming: boolean
+}) {
+  const familyName = useHouseholdFamilyLabel(item.householdCmId)
+  return (
+    <SessionAttributionRow
+      item={item}
+      isConfirming={isConfirming}
+      onConfirm={onConfirm}
+      familyName={familyName}
+    />
+  )
+}
 
 export function CabinWeekendsQueue() {
   const { isLoading, error, data, confirm, isConfirming } = useSessionAttributionQueue()
@@ -64,7 +101,7 @@ export function CabinWeekendsQueue() {
               </p>
             ) : (
               visible.map((item) => (
-                <SessionAttributionRow
+                <AttributionRow
                   key={item.id}
                   item={item}
                   isConfirming={isConfirming}

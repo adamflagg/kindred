@@ -13,6 +13,7 @@
 import { useState } from 'react'
 
 import { useSessionAttributionQueue } from '../../hooks/useSessionAttributionQueue'
+import type { RosterPartyRow } from '../../types/lodging'
 import { CabinWeekendChip } from './CabinWeekendChip'
 import { CabinWeekendModal } from './CabinWeekendModal'
 
@@ -21,12 +22,22 @@ export interface CabinWeekendEntryProps {
   sessionCmId: number
   weekendLabel: string
   canManage: boolean
+  /**
+   * Threaded straight through to `CabinWeekendModal` (kindred#2650) — this
+   * chip holds no roster of its own, `WeekendRosterPage` does. See that
+   * modal's own doc for why.
+   */
+  parties?: RosterPartyRow[]
+  /** Threaded straight through to `CabinWeekendModal`. */
+  onOpenFamily?: ((party: RosterPartyRow) => void) | undefined
 }
 
 export function CabinWeekendEntry({
   sessionCmId,
   weekendLabel,
   canManage,
+  parties = [],
+  onOpenFamily,
 }: CabinWeekendEntryProps) {
   const [open, setOpen] = useState(false)
   // Hooks run unconditionally; the render guard below is what stops a hidden
@@ -56,6 +67,8 @@ export function CabinWeekendEntry({
         }}
         weekendCmId={sessionCmId}
         weekendLabel={weekendLabel}
+        parties={parties}
+        onOpenFamily={onOpenFamily}
       />
     </>
   )

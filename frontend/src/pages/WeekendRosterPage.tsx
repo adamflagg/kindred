@@ -38,8 +38,11 @@ import {
   countBoardSlots,
   countMapUnits,
   countUnmeasuredSpaces,
+  FamilyDetailsPanel,
   HouseholdRosterTable,
+  indexUnitsByCode,
   partySpots,
+  resolvePartyUnit,
   resolveWeekendRef,
   scenarioForWeekend,
   shortWeekendName,
@@ -52,6 +55,8 @@ import {
   ScenarioCompareEntry,
 } from '../components/weekend'
 import { useCurrentYear } from '../hooks/useCurrentYear'
+import { useDismissOnDeadSpace } from '../hooks/useDismissOnDeadSpace'
+import { usePanelParty } from '../hooks/usePanelParty'
 import { usePermissions } from '../hooks/usePermissions'
 import { useScenario } from '../hooks/useScenario'
 import { useWeekendFriendGroups } from '../hooks/useWeekendFriendGroups'
@@ -218,6 +223,22 @@ export default function WeekendRosterPage() {
     [parties]
   )
   const spacesUnmeasured = useMemo(() => countUnmeasuredSpaces(units), [units])
+
+  // A FOURTH `FamilyDetailsPanel` call site (kindred#2139's shared hook was
+  // built to make exactly this trivial) — `LodgingBoard`, `LodgingMap` and
+  // `HouseholdRosterTable` each wire their own for a card/row click; this one
+  // is for a family-name click inside the cabin-weekend attribution chip
+  // (kindred#2650), which lives in the stats bar rather than inside any one
+  // tab, so it gets its OWN panel state here rather than borrowing a tab's.
+  const unitsByCode = useMemo(() => indexUnitsByCode(units), [units])
+  const {
+    panelParty: familyPanelParty,
+    requestClose: familyPanelRequestClose,
+    openParty: openFamilyPanel,
+    closePanel: closeFamilyPanel,
+    requestPanelClose: requestFamilyPanelClose,
+  } = usePanelParty(parties)
+  useDismissOnDeadSpace(familyPanelParty !== null, requestFamilyPanelClose)
 
   /**
    * A view is added the first time it becomes active and never removed —
@@ -404,6 +425,8 @@ export default function WeekendRosterPage() {
                     sessionCmId={selectedCmId ?? 0}
                     weekendLabel={selectedSession ? shortWeekendName(selectedSession.name) : ''}
                     canManage={canManageLodging}
+                    parties={parties}
+                    onOpenFamily={openFamilyPanel}
                   />
                 }
                 trailing={
@@ -584,6 +607,38 @@ export default function WeekendRosterPage() {
                 )}
               </div>
             </div>
+
+            {familyPanelParty !== null && (
+              // ⚠️ DIVERGES FROM THE OTHER THREE `FamilyDetailsPanel` CALL
+              // SITES: wrapped in its own stacking context at z-[110],
+              // ABOVE `ui/Modal`'s z-[100] (`Modal.tsx`'s own comment: "keeps
+              // us above documented panels ... e.g. z-[60] CamperDetailsPanel").
+              // Every other opener (`LodgingBoard`, `LodgingMap`,
+              // `HouseholdRosterTable`) renders the panel BESIDE a board, so
+              // sitting under a `ui/Modal` is correct there. This opener is
+              // the first to open the panel FROM INSIDE an already-open
+              // `ui/Modal` (`CabinWeekendModal`, via a family-name click in
+              // `SessionAttributionRow` — kindred#2650), where the panel must
+              // paint on top of the dialog that spawned it, not disappear
+              // behind it. `position: relative` (not `fixed`) is deliberate:
+              // it creates the new stacking context WITHOUT becoming a new
+              // containing block for the panel's own `fixed` children, so
+              // `FamilyDetailsPanel`'s `inset-0`/`top-0 right-0 bottom-0`
+              // still resolve against the viewport, unchanged. Escape
+              // ordering is the OTHER half of this divergence, fixed at the
+              // source: see `FamilyDetailsPanel.tsx`'s `ui/modalStack` token
+              // participation and its own "Escape when opened ON TOP of an
+              // existing overlay" tests.
+              <div className="relative z-[110]">
+                <FamilyDetailsPanel
+                  party={familyPanelParty}
+                  unit={resolvePartyUnit(familyPanelParty, unitsByCode)}
+                  year={currentYear}
+                  requestClose={familyPanelRequestClose}
+                  onClose={closeFamilyPanel}
+                />
+              </div>
+            )}
           </>
         )}
       </QueryGuard>

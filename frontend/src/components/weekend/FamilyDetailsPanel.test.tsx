@@ -15,6 +15,7 @@ import { MemoryRouter } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
+import { acquireOverlayToken, isTopOverlay, releaseOverlayToken } from '../ui/modalStack'
 import { FamilyDetailsPanel } from './FamilyDetailsPanel'
 import { partyAttention } from './rosterAttention'
 
@@ -917,6 +918,63 @@ describe('Escape with a dialog open on top', () => {
     openTheMembersModal()
 
     fireEvent.keyDown(document, { key: 'Escape' })
+    fireEvent.keyDown(document, { key: 'Escape' })
+
+    expect(screen.getByTestId('family-details-panel')).toHaveClass('animate-slide-out-right')
+  })
+})
+
+/**
+ * kindred#2650 opens this panel the OTHER direction from the describe block
+ * above: instead of the panel hosting a `ui/Modal`, `CabinWeekendModal` (a
+ * `ui/Modal`) can now open THIS panel on top of ITSELF, from a family-name
+ * click inside `SessionAttributionRow`. `hasOpenModal()` alone cannot answer
+ * "am I on top" for this direction — it only ever answered "is anything open
+ * at all", which is why the panel must participate in `ui/modalStack`'s own
+ * token stack (`acquireOverlayToken`/`isTopOverlay`), exactly as `ui/Modal`
+ * itself does, rather than special-casing one direction and not the other.
+ */
+describe('Escape when opened ON TOP of an existing overlay (kindred#2650)', () => {
+  it('closes on the FIRST Escape when opened on top of an overlay that was already there', () => {
+    // The panel opened AFTER `outerToken`, so it is the one visually on top
+    // (`CabinWeekendModal` opened first, this panel opened from a click
+    // inside it) — Escape has to reach IT first, not the overlay underneath.
+    const outerToken = acquireOverlayToken()
+    try {
+      render(<FamilyDetailsPanel party={party()} year={2026} onClose={vi.fn()} />, { wrapper })
+
+      fireEvent.keyDown(document, { key: 'Escape' })
+
+      const panel = screen.getByTestId('family-details-panel')
+      expect(panel).toHaveClass('animate-slide-out-right')
+    } finally {
+      releaseOverlayToken(outerToken)
+    }
+  })
+
+  it('takes over the top of the stack from an overlay opened BEFORE it, so that overlay stands down too', () => {
+    // The scenario this whole describe block exists for: `CabinWeekendModal`
+    // (a `ui/Modal`) acquires its token, opens, and THEN this panel opens on
+    // top of it — the reverse of "hosting a modal" above. Unless the panel
+    // acquires its OWN token here, `outerToken` stays topmost, and
+    // `CabinWeekendModal`'s own `isTopOverlay(outerToken)` check (see
+    // `ui/Modal.tsx`) would still say yes — closing the MODAL on the very
+    // first Escape while this panel, still visually on top, stays open.
+    // Asserted directly against the stack rather than through CSS classes,
+    // since `ui/Modal` itself is not rendered here.
+    const outerToken = acquireOverlayToken()
+    try {
+      render(<FamilyDetailsPanel party={party()} year={2026} onClose={vi.fn()} />, { wrapper })
+
+      expect(isTopOverlay(outerToken)).toBe(false)
+    } finally {
+      releaseOverlayToken(outerToken)
+    }
+  })
+
+  it('closes on Escape once it is itself the topmost overlay', () => {
+    render(<FamilyDetailsPanel party={party()} year={2026} onClose={vi.fn()} />, { wrapper })
+
     fireEvent.keyDown(document, { key: 'Escape' })
 
     expect(screen.getByTestId('family-details-panel')).toHaveClass('animate-slide-out-right')

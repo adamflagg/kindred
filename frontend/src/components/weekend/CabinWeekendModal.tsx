@@ -11,11 +11,14 @@
  * `SessionAttributionRow` only marks the backend's suggestion, exactly as it
  * does on the admin tab.
  */
+import { useMemo } from 'react'
 import { Link } from 'react-router'
 
 import { useSessionAttributionQueue } from '../../hooks/useSessionAttributionQueue'
+import type { RosterPartyRow } from '../../types/lodging'
 import { BUTTON_PRIMARY, BUTTON_SECONDARY, LABEL, MUTED_PILL } from '../admin/lodging/lodgingStyles'
 import { SessionAttributionRow } from '../admin/lodging/SessionAttributionRow'
+import { partyFamilyLabel } from './householdIdentity'
 import { Modal } from '../ui/Modal'
 
 export interface CabinWeekendModalProps {
@@ -23,6 +26,25 @@ export interface CabinWeekendModalProps {
   onClose: () => void
   weekendCmId: number
   weekendLabel: string
+  /**
+   * The weekend's already-loaded roster (kindred#2650) — `WeekendRosterPage`
+   * has it in hand regardless of which tab is open, since the attribution
+   * chip lives in the stats bar, not inside a tab panel. Used ONLY to
+   * resolve a row's family name and its full `RosterPartyRow`, the same way
+   * `FamilyCard` derives its own name (`partyFamilyLabel`) — never to
+   * re-derive anything `useSessionAttributionQueue` already computed.
+   * Defaults to `[]`, so a household with no roster match still shows its
+   * raw id rather than throwing.
+   */
+  parties?: RosterPartyRow[]
+  /**
+   * Opens the household's full detail surface (`FamilyDetailsPanel`) for a
+   * clicked row. Handed the FULL `RosterPartyRow`, not just the id — the
+   * panel needs adults/children/placement, none of which
+   * `SessionAttributionQueueItem` carries. Omitted renders the name as plain
+   * text.
+   */
+  onOpenFamily?: ((party: RosterPartyRow) => void) | undefined
 }
 
 export function CabinWeekendModal({
@@ -30,9 +52,23 @@ export function CabinWeekendModal({
   onClose,
   weekendCmId,
   weekendLabel,
+  parties = [],
+  onOpenFamily,
 }: CabinWeekendModalProps) {
   const { data, confirm, isConfirming } = useSessionAttributionQueue()
   const items = data ?? []
+
+  // Household grain only, cm_id > 0 — mirrors `SessionAttributionRow`'s own
+  // "exactly one id is ever set" contract. A person-scoped row (adult
+  // weekend guest) never looks itself up here.
+  const householdParties = useMemo(() => {
+    const byId = new Map<number, RosterPartyRow>()
+    for (const party of parties) {
+      const cmId = party.household_cm_id ?? 0
+      if (party.grain === 'household' && cmId > 0) byId.set(cmId, party)
+    }
+    return byId
+  }, [parties])
 
   const here = items.filter(
     (i) => !i.isStale && i.candidates.some((c) => c.sessionCmId === weekendCmId)
@@ -60,16 +96,27 @@ export function CabinWeekendModal({
           </p>
         ) : (
           <div className="flex flex-col gap-4">
-            {here.map((item) => (
-              <SessionAttributionRow
-                key={item.id}
-                item={item}
-                isConfirming={isConfirming}
-                onConfirm={(sessionCmId) => {
-                  confirm(item, sessionCmId)
-                }}
-              />
-            ))}
+            {here.map((item) => {
+              const party = householdParties.get(item.householdCmId)
+              return (
+                <SessionAttributionRow
+                  key={item.id}
+                  item={item}
+                  isConfirming={isConfirming}
+                  onConfirm={(sessionCmId) => {
+                    confirm(item, sessionCmId)
+                  }}
+                  familyName={party ? partyFamilyLabel(party) : undefined}
+                  onOpenFamily={
+                    party !== undefined && onOpenFamily !== undefined
+                      ? () => {
+                          onOpenFamily(party)
+                        }
+                      : undefined
+                  }
+                />
+              )
+            })}
           </div>
         )}
 
