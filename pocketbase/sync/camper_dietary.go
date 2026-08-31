@@ -9,9 +9,6 @@ import (
 	"github.com/pocketbase/pocketbase/core"
 )
 
-// serviceNameCamperDietary is the canonical name for this sync service
-const serviceNameCamperDietary = "camper_dietary"
-
 // camperDietaryCompareFields lists the fields to compare for idempotency checks.
 // Only these fields are checked when deciding whether an existing record needs updating.
 // Excludes PocketBase-managed fields (id, created, updated, collectionId, collectionName).
@@ -70,9 +67,6 @@ func NewCamperDietarySync(app core.App) *CamperDietarySync {
 }
 
 // Name returns the service name
-func (s *CamperDietarySync) Name() string {
-	return serviceNameCamperDietary
-}
 
 // GetStats returns the current stats
 func (s *CamperDietarySync) GetStats() Stats {

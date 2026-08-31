@@ -4,18 +4,6 @@ import (
 	"testing"
 )
 
-func TestSessionGroupsSync_Name(t *testing.T) {
-	t.Parallel()
-	s := &SessionGroupsSync{}
-
-	got := s.Name()
-	want := "session_groups"
-
-	if got != want {
-		t.Errorf("SessionGroupsSync.Name() = %q, want %q", got, want)
-	}
-}
-
 // TestTransformSessionGroupToPB tests that all CampMinder session group fields are extracted
 func TestTransformSessionGroupToPB(t *testing.T) {
 	t.Parallel()

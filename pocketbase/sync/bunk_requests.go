@@ -599,9 +599,6 @@ func (s *BunkRequestsSync) WasSuccessful() bool {
 }
 
 // Name returns the service name
-func (s *BunkRequestsSync) Name() string {
-	return "bunk_requests"
-}
 
 // Sync implements the Service interface - calls RunSync with year-prefixed CSV path
 func (s *BunkRequestsSync) Sync(_ context.Context) error {

@@ -4,18 +4,6 @@ import (
 	"testing"
 )
 
-func TestPersonTagDefinitionsSync_Name(t *testing.T) {
-	t.Parallel()
-	s := &PersonTagDefinitionsSync{}
-
-	got := s.Name()
-	want := serviceNamePersonTagDefinitions
-
-	if got != want {
-		t.Errorf("PersonTagDefinitionsSync.Name() = %q, want %q", got, want)
-	}
-}
-
 // TestTransformPersonTagDefinitionToPB tests that all CampMinder tag definition fields are extracted
 func TestTransformPersonTagDefinitionToPB(t *testing.T) {
 	t.Parallel()

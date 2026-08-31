@@ -26,9 +26,6 @@ func NewDivisionsSync(app core.App, client *campminder.Client) *DivisionsSync {
 }
 
 // Name returns the name of this sync service
-func (s *DivisionsSync) Name() string {
-	return serviceNameDivisions
-}
 
 // Sync performs the divisions sync
 // Note: Divisions are global (not year-specific) - they define age/gender groups

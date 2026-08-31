@@ -120,18 +120,6 @@ func TestFinancialAidApplicationsAdmitsWWFields(t *testing.T) {
 	}
 }
 
-// TestFinancialAidApplicationsSync_Name verifies the service name is correct
-func TestFinancialAidApplicationsSync_Name(t *testing.T) {
-	t.Parallel()
-	// The service name must be "financial_aid_applications" for orchestrator integration
-	expectedName := "financial_aid_applications"
-
-	// Test that the expected name matches the constant
-	if serviceNameFinancialAidApplications != expectedName {
-		t.Errorf("expected service name %q, got %q", expectedName, serviceNameFinancialAidApplications)
-	}
-}
-
 // TestFAYearValidation tests year parameter validation
 func TestFAYearValidation(t *testing.T) {
 	t.Parallel()

@@ -59,9 +59,6 @@ func NewFinancialAidApplicationsSync(app core.App) *FinancialAidApplicationsSync
 }
 
 // Name returns the service name
-func (s *FinancialAidApplicationsSync) Name() string {
-	return serviceNameFinancialAidApplications
-}
 
 // GetStats returns the current stats
 func (s *FinancialAidApplicationsSync) GetStats() Stats {

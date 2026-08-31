@@ -61,7 +61,6 @@ func (m *mockYearService) Sync(ctx context.Context) error {
 	return nil
 }
 
-func (m *mockYearService) Name() string    { return m.name }
 func (m *mockYearService) GetStats() Stats { return m.stats }
 
 func (m *MockService) Sync(ctx context.Context) error {
@@ -82,10 +81,6 @@ func (m *MockService) Sync(ctx context.Context) error {
 		return context.DeadlineExceeded
 	}
 	return nil
-}
-
-func (m *MockService) Name() string {
-	return m.name
 }
 
 func (m *MockService) GetStats() Stats {
@@ -1703,7 +1698,6 @@ func (s *dryRunAwareService) Sync(_ context.Context) error {
 	return nil
 }
 
-func (s *dryRunAwareService) Name() string    { return s.name }
 func (s *dryRunAwareService) GetStats() Stats { return Stats{} }
 
 func (s *dryRunAwareService) snapshot() (calls []bool, wrote int) {
@@ -1723,7 +1717,6 @@ func (s *notDryRunnableService) Sync(_ context.Context) error {
 	s.callCount.Add(1)
 	return nil
 }
-func (s *notDryRunnableService) Name() string    { return s.name }
 func (s *notDryRunnableService) GetStats() Stats { return Stats{} }
 
 // newDryRunTestApp returns a test app with one person_tag_defs row already present, so
@@ -4520,7 +4513,6 @@ func (p *registrationSnapshotProbe) Sync(_ context.Context) error {
 	}
 	return nil
 }
-func (p *registrationSnapshotProbe) Name() string    { return "probe" }
 func (p *registrationSnapshotProbe) GetStats() Stats { return Stats{} }
 
 // TestRunSyncWithOptionsHistoricalReRegistersScopedFamilyCampVariants pins kindred#2608: a

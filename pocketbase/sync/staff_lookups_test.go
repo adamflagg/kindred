@@ -4,18 +4,6 @@ import (
 	"testing"
 )
 
-func TestStaffLookupsSync_Name(t *testing.T) {
-	t.Parallel()
-	s := &StaffLookupsSync{}
-
-	got := s.Name()
-	want := "staff_lookups"
-
-	if got != want {
-		t.Errorf("StaffLookupsSync.Name() = %q, want %q", got, want)
-	}
-}
-
 // =============================================================================
 // Program Area Transform Tests
 // =============================================================================

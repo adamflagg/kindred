@@ -4,18 +4,6 @@ import (
 	"testing"
 )
 
-func TestDivisionsSync_Name(t *testing.T) {
-	t.Parallel()
-	s := &DivisionsSync{}
-
-	got := s.Name()
-	want := serviceNameDivisions
-
-	if got != want {
-		t.Errorf("DivisionsSync.Name() = %q, want %q", got, want)
-	}
-}
-
 // TestTransformDivisionToPB tests that all CampMinder division fields are extracted
 func TestTransformDivisionToPB(t *testing.T) {
 	t.Parallel()

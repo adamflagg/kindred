@@ -40,9 +40,6 @@ func NewFinancialTransactionsSync(app core.App, client *campminder.Client) *Fina
 }
 
 // Name returns the name of this sync service
-func (s *FinancialTransactionsSync) Name() string {
-	return serviceNameFinancialTransactions
-}
 
 // SetDryRun implements the orchestrator's DryRunnable interface (kindred#2351). Declared
 // explicitly rather than inherited by embedding BaseSyncService -- see that field's doc

@@ -9,14 +9,6 @@ import (
 	"github.com/pocketbase/pocketbase/tests"
 )
 
-func TestEnrollmentSnapshotsName(t *testing.T) {
-	t.Parallel()
-	svc := NewEnrollmentSnapshotsSync(nil)
-	if svc.Name() != "enrollment_snapshots" {
-		t.Errorf("expected name enrollment_snapshots, got %s", svc.Name())
-	}
-}
-
 func TestEnrollmentSnapshotsStats(t *testing.T) {
 	t.Parallel()
 	svc := NewEnrollmentSnapshotsSync(nil)

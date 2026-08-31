@@ -54,9 +54,6 @@ func NewBunkAssignmentsSync(app core.App, client *campminder.Client) *BunkAssign
 }
 
 // Name returns the name of this sync service
-func (s *BunkAssignmentsSync) Name() string {
-	return "bunk_assignments"
-}
 
 // SetDryRun implements the orchestrator's DryRunnable interface (kindred#2351). Declared
 // explicitly rather than inherited by embedding BaseSyncService -- see that field's doc

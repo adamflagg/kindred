@@ -15,9 +15,6 @@ import (
 	"github.com/pocketbase/pocketbase/core"
 )
 
-// serviceNameNormalizeGeographic is the canonical name for this sync service
-const serviceNameNormalizeGeographic = "normalize_geographic"
-
 // Normalization categories
 const (
 	categoryCity         = "city"
@@ -91,9 +88,6 @@ func NewNormalizeGeographicSync(app core.App) *NormalizeGeographicSync {
 }
 
 // Name returns the service name
-func (n *NormalizeGeographicSync) Name() string {
-	return serviceNameNormalizeGeographic
-}
 
 // GetStats returns the current stats
 func (n *NormalizeGeographicSync) GetStats() Stats {

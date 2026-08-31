@@ -64,9 +64,6 @@ func NewHouseholdDemographicsSync(app core.App) *HouseholdDemographicsSync {
 }
 
 // Name returns the service name
-func (s *HouseholdDemographicsSync) Name() string {
-	return serviceNameHouseholdDemographics
-}
 
 // GetStats returns the current stats
 func (s *HouseholdDemographicsSync) GetStats() Stats {

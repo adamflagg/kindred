@@ -10,18 +10,6 @@ import (
 const testAlumniTagID = "rec_alumni_001"
 const testFirstName = "Emma"
 
-func TestPersonsSync_Name(t *testing.T) {
-	t.Parallel()
-	s := &PersonsSync{}
-
-	got := s.Name()
-	want := "persons"
-
-	if got != want {
-		t.Errorf("PersonsSync.Name() = %q, want %q", got, want)
-	}
-}
-
 // TestTransformPersonToPB_CamperDetailsExpanded tests that all CamperDetails fields are extracted
 func TestTransformPersonToPB_CamperDetailsExpanded(t *testing.T) {
 	t.Parallel()

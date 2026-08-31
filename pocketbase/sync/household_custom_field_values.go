@@ -49,9 +49,6 @@ func NewHouseholdCustomFieldValuesSync(app core.App, client *campminder.Client) 
 }
 
 // Name returns the name of this sync service
-func (s *HouseholdCustomFieldValuesSync) Name() string {
-	return serviceNameHouseholdCustomValues
-}
 
 // SetScope implements scopedService.
 func (s *HouseholdCustomFieldValuesSync) SetScope(scope Scope) { s.Scope = scope }

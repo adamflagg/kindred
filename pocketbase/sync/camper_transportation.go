@@ -9,9 +9,6 @@ import (
 	"github.com/pocketbase/pocketbase/core"
 )
 
-// serviceNameCamperTransportation is the canonical name for this sync service
-const serviceNameCamperTransportation = "camper_transportation"
-
 // CampMinder field name constants
 const (
 	cmFieldBusToCamp   = "Bus to Camp"
@@ -103,9 +100,6 @@ func NewCamperTransportationSync(app core.App) *CamperTransportationSync {
 }
 
 // Name returns the service name
-func (s *CamperTransportationSync) Name() string {
-	return serviceNameCamperTransportation
-}
 
 // GetStats returns the current stats
 func (s *CamperTransportationSync) GetStats() Stats {

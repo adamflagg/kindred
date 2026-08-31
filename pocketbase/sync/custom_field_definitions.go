@@ -27,9 +27,6 @@ func NewCustomFieldDefinitionsSync(app core.App, client *campminder.Client) *Cus
 }
 
 // Name returns the name of this sync service
-func (s *CustomFieldDefinitionsSync) Name() string {
-	return serviceNameCustomFieldDefinitions
-}
 
 // Sync performs the custom field definitions sync
 // Note: Custom field definitions are global (not year-specific) in CampMinder's API

@@ -8,8 +8,6 @@ import (
 	"github.com/pocketbase/pocketbase/core"
 )
 
-const serviceNameReconcileLifecycle = "reconcile_request_lifecycle"
-
 // ReconcileLifecycleSync detects requesters whose current attendees.session
 // differs from the session_id stored on their bunk_requests rows, and marks
 // their original_bunk_requests as processed=” so process_requests rebuilds
@@ -32,9 +30,6 @@ func NewReconcileLifecycleSync(app core.App) *ReconcileLifecycleSync {
 }
 
 // Name returns the orchestrator-facing service name.
-func (s *ReconcileLifecycleSync) Name() string {
-	return serviceNameReconcileLifecycle
-}
 
 // GetStats returns the current stats snapshot.
 func (s *ReconcileLifecycleSync) GetStats() Stats {

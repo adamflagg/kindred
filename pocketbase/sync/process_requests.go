@@ -48,9 +48,6 @@ func NewRequestProcessor(app core.App) *RequestProcessor {
 }
 
 // Name returns the service name
-func (p *RequestProcessor) Name() string {
-	return "process_requests"
-}
 
 // Sync executes the processing by calling the FastAPI process-requests endpoint.
 // Python handles all 5 field types:

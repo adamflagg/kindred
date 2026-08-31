@@ -72,7 +72,6 @@ func NewLodgingAssignmentsSync(app core.App) *LodgingAssignmentsSync {
 }
 
 // Name returns the orchestrator's identifier for this job.
-func (s *LodgingAssignmentsSync) Name() string { return serviceNameLodgingAssignments }
 
 // GetStats returns the counters from the most recent Sync.
 func (s *LodgingAssignmentsSync) GetStats() Stats { return s.Stats }

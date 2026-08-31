@@ -9,8 +9,6 @@ import (
 	"github.com/pocketbase/pocketbase/core"
 )
 
-const serviceNameStrandedAssignmentCleanup = "stranded_assignment_cleanup"
-
 // msgOrphanProd is the Warn message for the observe-only production audit.
 // Hoisted to a const to keep the call site within the line-length limit.
 const msgOrphanProd = "stranded_assignment_cleanup: orphaned production assignments detected " +
@@ -242,7 +240,6 @@ func NewStrandedAssignmentCleanupSync(app core.App) *StrandedAssignmentCleanupSy
 }
 
 // Name returns the orchestrator-facing service name.
-func (s *StrandedAssignmentCleanupSync) Name() string { return serviceNameStrandedAssignmentCleanup }
 
 // GetStats returns the current stats snapshot.
 func (s *StrandedAssignmentCleanupSync) GetStats() Stats { return s.Stats }

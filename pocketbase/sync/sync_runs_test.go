@@ -274,7 +274,6 @@ func TestSyncRunPersistsFailure(t *testing.T) {
 type panicService struct{ name string }
 
 func (p *panicService) Sync(context.Context) error { panic("boom") }
-func (p *panicService) Name() string               { return p.name }
 func (p *panicService) GetStats() Stats            { return Stats{} }
 
 func TestSyncRunPersistsPanickedRun(t *testing.T) {
@@ -638,7 +637,6 @@ func (g *gateService) Sync(context.Context) error {
 	<-g.release
 	return nil
 }
-func (g *gateService) Name() string    { return g.name }
 func (g *gateService) GetStats() Stats { return Stats{} }
 
 // TestConcurrentBatchesKeepTheirOwnOrigin is the guard for kindred#2297's review finding 1.

@@ -4,18 +4,6 @@ import (
 	"testing"
 )
 
-func TestFinancialLookupsSync_Name(t *testing.T) {
-	t.Parallel()
-	s := &FinancialLookupsSync{}
-
-	got := s.Name()
-	want := "financial_lookups"
-
-	if got != want {
-		t.Errorf("FinancialLookupsSync.Name() = %q, want %q", got, want)
-	}
-}
-
 // =============================================================================
 // Financial Category Transform Tests
 // =============================================================================
