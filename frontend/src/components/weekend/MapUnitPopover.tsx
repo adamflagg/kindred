@@ -175,25 +175,23 @@ function Amenities({ unit }: { unit: MapUnit['unit'] }): ReactNode {
    * That asymmetry is already ruled, in `needGlyphs`' `someIs`: a fridge one
    * room over is still a fridge a family can use, and a ramp one room over is
    * not. A building advertising two step-free rooms out of ten invites
-   * precisely the placement that lands in one of the other eight. `partial` —
-   * a ramp with a lip, the fifth grade only this dimension carries — is
-   * withheld too, because this list has one binary mark per dimension and no
-   * room for degree, so "Step-free" would state more than was recorded.
+   * precisely the placement that lands in one of the other eight.
    *
-   * ⚠️ NOT `is_accessible`, AND NOT THE RAW `has_ramp`. `has_ramp` is a
-   * three-value select where `''` means NOT ASSESSED (104 of 118 rows) and
-   * `'no'` is a TRUTHY STRING, so a boolean read renders "step-free" on the
-   * cabins staff assessed as explicitly having none.
+   * ⚠️ THE OPEN PRODUCT QUESTION THIS COMMENT USED TO NAME IS ANSWERED, and
+   * the answer is `is_accessible`. Owner ruling, 2026-08-30: *"we just need to
+   * know what is in fact accessible."* So `ramp_coverage` is graded from
+   * `is_accessible` server-side now (kindred#2327, reversing kindred#2502),
+   * `partial` is gone with the five-grade vocabulary, and the three rows where
+   * a ramp reaches the door of a cabin that is not accessible inside answer
+   * `none` here — the conservative direction, and the one a wheelchair user
+   * needs. Nothing accessible lacks a ramp on the production snapshot, so the
+   * swap can never promise access a ramp assessment denies.
    *
-   * `is_accessible` is a genuine OPEN PRODUCT QUESTION and this change does not
-   * settle it: the two columns disagree — of the rows recording
-   * `has_ramp: 'yes'`, two are `is_accessible: true` and three are false — and
-   * which one staff mean by "accessible" needs an owner. What is not open is
-   * whether this list may keep reading it: it is a raw boolean with no
-   * resolver, so it carries the same container trap as every other raw column
-   * here. `ramp_coverage` is resolved over the leaves and is what the step-free
-   * NEED GLYPH on this same card already grades against, so it is the reading
-   * this surface can defend until the question is answered.
+   * STILL THE RESOLVED FIELD, NEVER THE RAW COLUMN. `is_accessible` on this
+   * row is a raw boolean with no resolver and carries the same container trap
+   * as every other raw column here; `ramp_coverage` is walked over the leaves
+   * and is what the step-free NEED GLYPH on this same card grades against.
+   * `has_ramp` is provenance and reads `'no'` as a TRUTHY STRING.
    */
   if ((unit.ramp_coverage ?? 'unknown') === 'all')
     items.push({ label: 'Step-free', icon: Accessibility })

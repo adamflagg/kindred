@@ -68,7 +68,6 @@ from api.services.lodging_rules import (
     effective_bathroom,
     free_family_spots,
     is_family_available,
-    ramp_coverage,
     request_text_authorship,
     request_text_source_order,
     unit_capacity,
@@ -202,11 +201,29 @@ def _ramp_assessment(value: str) -> RampAssessment:
     and PB validates that on save, so `registry.go`'s write of a typo'd value
     fails the save rather than persisting it. This rails two OTHER directions,
     both real. A later migration may WIDEN the value list -- that is how a
-    select grows -- and a grade this code has never heard of must read as NOT
-    ASSESSED rather than fall through `ramp_coverage`'s chain to `none`, which
-    is a claim. And `_s` is total over a record that lacks the attribute
-    entirely, which is what a summary built before the column existed looks
-    like.
+    select grows -- and a value this code has never heard of must not be
+    published as though it were one of the three. And `_s` is total over a
+    record that lacks the attribute entirely, which is what a summary built
+    before the column existed looks like.
+
+    ⚠️ THE OLD REASON IS SPENT, AND THE RAILING IS NOT. This used to argue that
+    an unrecognised grade would otherwise "fall through `ramp_coverage`'s chain
+    to `none`, which is a claim". Since kindred#2327 there is no such chain:
+    `ramp_coverage()` is deleted and NOTHING grades from `has_ramp` at all. What
+    the railing still buys is the PAYLOAD's type contract -- `RampAssessment` is
+    a closed Literal, and publishing an unlisted string through it would put a
+    value in the wire type that the schema says cannot occur. Removing the
+    railing does not fail loudly: it raises a pydantic `ValidationError` deep
+    inside `build_roster`, which 500s the roster endpoint.
+
+    ⚠️ AND UNDER THE FIELD'S NEW ROLE THE RAILING CUTS THE OTHER WAY, SO WIDEN
+    BOTH OR NEITHER. `has_ramp` is provenance now -- the record of the 14 cabins
+    staff walked. If a later migration adds a fourth grade and this tuple is not
+    widened WITH it, a genuine staff assessment is silently rewritten to `""` =
+    NOT ASSESSED in the very payload that exists to preserve it. That is a
+    quieter failure than the 500 above and a worse one. `RampAssessment` in
+    `api/schemas/lodging.py` and this tuple are one list in two places; a
+    migration touching `has_ramp`'s values must move both.
 
     Blank already means NOT ASSESSED -- 104 of the 118 production rows are
     blank -- and coercing either case to "no" is the inversion the select
@@ -1602,9 +1619,7 @@ def _resolve_power_coverage(units: list[LodgingUnitSummary], index: _BathroomInd
     pointing at the pre-resolution copies, which is exactly the kind of drift
     the one-index-per-call rule above exists to prevent.
     """
-    _resolve_amenity_coverage(
-        units, index, answer=lambda room: room.has_power, grade=amenity_coverage, target="power_coverage"
-    )
+    _resolve_amenity_coverage(units, index, answer=lambda room: room.has_power, target="power_coverage")
 
 
 def _resolve_fridge_coverage(units: list[LodgingUnitSummary], index: _BathroomIndex) -> None:
@@ -1638,48 +1653,48 @@ def _resolve_fridge_coverage(units: list[LodgingUnitSummary], index: _BathroomIn
         units,
         index,
         answer=lambda room: room.has_fridge or room.has_shared_fridge,
-        grade=amenity_coverage,
         target="fridge_coverage",
     )
 
 
 def _resolve_ramp_coverage(units: list[LodgingUnitSummary], index: _BathroomIndex) -> None:
-    """Fill in every unit's `ramp_coverage` in place — kindred#2438.
+    """Fill in every unit's step-free grade in place — kindred#2327.
 
-    The third resolver over the one leaf walk, and every rule
-    `_resolve_power_coverage` established applies here unchanged: a container's
-    registry row describes the CONTAINER, a deactivated room does not answer
-    for its building, and a container with no active room left reports
-    `unknown` rather than falling back to its own flag. One of the 14
-    production assessments IS on a container, and it is ignored for exactly
-    that reason.
+    ⚠️ IT READS `is_accessible`, AND THAT REVERSES kindred#2502 ON PURPOSE.
+    That change moved this grade OFF `is_accessible` and onto `has_ramp`; the
+    owner reversed it on 2026-08-30 — *"we just need to know what is in fact
+    accessible"* — because the product concept is accessibility, not the
+    presence of a ramp. Do not move it back without reading kindred#2327.
 
-    TWO things are this function's own, and both come from `has_ramp` being a
-    three-value select rather than a bool:
+    THE INVARIANT THAT MAKES THE SWAP SAFE: `is_accessible` is a STRICT SUBSET
+    of `has_ramp = 'yes'`, so it can only NARROW a ramp assessment and can never
+    promise a wheelchair user access that a ramp assessment denies.
 
-    1. A room answers in a THREE-VALUE vocabulary, so the verdict is graded by
-       `ramp_coverage` rather than `amenity_coverage` and carries a fifth
-       grade, `partial`. See that function for why `partial` folds into neither
-       `none` nor `some`.
-    2. BLANK IS NOT `no`. The boolean amenities have no way to be unanswered
-       -- a bool is a bool -- while here the field itself can be blank, and
-       104 of 118 production units are. So blank maps to `None` — not
-       assessed — and the building reports `unknown`. Reading it as `no`
-       would mark almost the whole registry step-free-hostile on evidence
-       nobody recorded, which is the inversion migration 1500000131 made the
-       column a select to prevent. (`has_ramp`'s three-value handling is
-       kindred#2327's, and untouched by kindred#2526.)
+    ⚠️ THE MEASUREMENT BEHIND THAT LIVES IN ONE PLACE, AND IT IS NOT HERE:
+    `docs/reference/lodging-registry.md` § "Step-free grades from
+    `is_accessible`". Re-measure there.
 
-    An unrecognised string maps to `None` too — see `_ramp_assessment` for the
-    two directions that can produce one, neither of which is the registry
-    loader. An unreadable answer is no answer, never a claim in either
-    direction.
+    It is also the column staff actually answered. `has_ramp` is editable
+    NOWHERE in the product, so blank meant "never asked" on 104 of 118 units;
+    `is_accessible` is `AMENITY_FLAGS` entry 6 on the confirm form and was
+    answered for all 118.
+
+    So this became an ORDINARY caller of `_resolve_amenity_coverage`, with
+    nothing of its own left: the five-grade `ramp_coverage()` grader is gone
+    (`partial` has no bool to sit in, and `unknown` as an assessment state has
+    nothing left to describe), and every rule `_resolve_power_coverage`
+    established applies here unchanged — a container's registry row describes
+    the CONTAINER, a deactivated room does not answer for its building, and a
+    container with no active room left reports `unknown` rather than falling
+    back to its own flag.
+
+    `has_ramp` stays STORED and stays in the payload as provenance. Nothing
+    grades from it.
     """
     _resolve_amenity_coverage(
         units,
         index,
-        answer=lambda room: room.has_ramp or None,
-        grade=ramp_coverage,
+        answer=lambda room: room.is_accessible,
         target="ramp_coverage",
     )
 
@@ -1695,9 +1710,7 @@ def _resolve_ac_coverage(units: list[LodgingUnitSummary], index: _BathroomIndex)
     Display only -- see the schema field. Every rule this walk applies is
     `_resolve_power_coverage`'s, unchanged.
     """
-    _resolve_amenity_coverage(
-        units, index, answer=lambda room: room.has_ac, grade=amenity_coverage, target="ac_coverage"
-    )
+    _resolve_amenity_coverage(units, index, answer=lambda room: room.has_ac, target="ac_coverage")
 
 
 def _resolve_bathroom(units: list[LodgingUnitSummary], index: _BathroomIndex) -> None:
@@ -1761,19 +1774,17 @@ def _resolve_bathroom(units: list[LodgingUnitSummary], index: _BathroomIndex) ->
         )
 
 
-def _resolve_amenity_coverage[Answer](
+def _resolve_amenity_coverage(
     units: list[LodgingUnitSummary],
     index: _BathroomIndex,
     *,
-    answer: Callable[[LodgingUnitSummary], Answer | None],
-    grade: Callable[[Sequence[Answer | None]], str],
+    answer: Callable[[LodgingUnitSummary], bool | None],
     target: str,
 ) -> None:
     """The one leaf walk all FOUR coverage resolvers above run.
 
-    Four, not three: `_resolve_ac_coverage` (kindred#2502) joined power,
-    fridge and step-free, and its own docstring already called itself the
-    fourth caller while this line still said three. `_resolve_bathroom` sits
+    Four: power, fridge, step-free and AC (`_resolve_ac_coverage`,
+    kindred#2502, was the last to join). `_resolve_bathroom` sits
     above too and deliberately does NOT come through here -- it writes a
     container's own `bathroom` rather than a coverage grade, and needs
     `container_bathroom`'s group reasoning, which has no place in a walk
@@ -1799,13 +1810,14 @@ def _resolve_amenity_coverage[Answer](
     would assert nothing about 118 cabins that demonstrably have power while
     hiding what staff did record.
 
-    `Answer` is the vocabulary a ROOM answers in — `bool` for the boolean
-    flags, `str` for `has_ramp`'s three-value select — and `grade` is
-    parameterised alongside it for ONE reason, not for generality
-    (kindred#2438): `has_ramp` is a three-value select, so its rooms answer
-    `"yes"` / `"partial"` / `"no"` rather than a bool and need
-    `ramp_coverage`'s five-grade verdict. The WALK is what must not be
-    duplicated; which vocabulary a room answers in is the caller's business.
+    ⚠️ THE `grade` PARAMETER IS GONE, and its removal is the point of
+    kindred#2327 rather than a tidy-up. It existed for ONE caller: `has_ramp`
+    was a three-value select, so step-free answered `"yes"` / `"partial"` /
+    `"no"` and needed `ramp_coverage`'s five-grade verdict. Step-free grades
+    from `is_accessible` now — a bool, like the other three — so every room on
+    every dimension answers `bool` and `amenity_coverage` is the only verdict
+    left. Re-introducing a grader hook to hold a second vocabulary means
+    re-litigating that ruling first.
     """
     for unit in units:
         rooms = [
@@ -1814,7 +1826,7 @@ def _resolve_amenity_coverage[Answer](
             if (leaf := index.units_by_code.get(code)) is not None and leaf.is_active
         ]
         answering = rooms if unit.is_container else [unit]
-        setattr(unit, target, grade([answer(room) for room in answering]))
+        setattr(unit, target, amenity_coverage([answer(room) for room in answering]))
 
 
 class LodgingRosterService:

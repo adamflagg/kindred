@@ -729,7 +729,7 @@ describe('resolvePartyUnit', () => {
       bathroom: 'none',
       power_coverage: 'some',
       fridge_coverage: 'unknown',
-      ramp_coverage: 'partial',
+      ramp_coverage: 'none',
       ac_coverage: 'none',
     })
     const resolved = resolvePartyUnit(
@@ -741,17 +741,22 @@ describe('resolvePartyUnit', () => {
     // `unknown` outranks `some`: nobody has measured the second cabin, and an
     // unmeasured room a family sleeps in is the louder mark on the glyph.
     expect(resolved?.fridge_coverage).toBe('unknown')
-    expect(resolved?.ramp_coverage).toBe('partial')
+    expect(resolved?.ramp_coverage).toBe('none')
     expect(resolved?.ac_coverage).toBe('none')
   })
 
-  it('ranks the grades nothing < unmeasured < some rooms < qualified < all of it', () => {
-    // The ladder, pinned rung by rung, because the two non-obvious ones are
-    // exactly what a later reader would "simplify" away: `unknown` is WORSE
-    // than `some` AND worse than `partial`, since an unmeasured room grades
-    // `unmet` on the glyph while both of the others can grade `partial`.
-    // Without these three assertions the ordering can be permuted freely and
-    // every other test in this file still passes.
+  it('ranks the grades nothing < unmeasured < some rooms < all of it', () => {
+    // The ladder, pinned rung by rung, because the non-obvious one is exactly
+    // what a later reader would "simplify" away: `unknown` is WORSE than
+    // `some`, since an unmeasured room grades `unmet` on the glyph while
+    // `some` can grade `partial`. Without these assertions the ordering can be
+    // permuted freely and every other test in this file still passes.
+    //
+    // ⚠️ ONE LADDER FOR ALL FOUR COVERAGES SINCE kindred#2327. Step-free used
+    // to need its own rung for `partial`, because it graded from the
+    // three-value `has_ramp` select; it grades from the boolean
+    // `is_accessible` now, so it shares the amenity ladder and the
+    // `RAMP_WORST_FIRST` constant is gone.
     const fold = (
       left: Partial<LodgingUnitRow>,
       right: Partial<LodgingUnitRow>
@@ -771,12 +776,13 @@ describe('resolvePartyUnit', () => {
       'unknown'
     )
     expect(fold({ power_coverage: 'some' }, { power_coverage: 'all' })?.power_coverage).toBe('some')
-    expect(fold({ ramp_coverage: 'unknown' }, { ramp_coverage: 'partial' })?.ramp_coverage).toBe(
+    expect(fold({ ramp_coverage: 'none' }, { ramp_coverage: 'unknown' })?.ramp_coverage).toBe(
+      'none'
+    )
+    expect(fold({ ramp_coverage: 'unknown' }, { ramp_coverage: 'some' })?.ramp_coverage).toBe(
       'unknown'
     )
-    expect(fold({ ramp_coverage: 'partial' }, { ramp_coverage: 'all' })?.ramp_coverage).toBe(
-      'partial'
-    )
+    expect(fold({ ramp_coverage: 'some' }, { ramp_coverage: 'all' })?.ramp_coverage).toBe('some')
     expect(fold({ bathroom: 'shared' }, { bathroom: 'private' })?.bathroom).toBe('shared')
   })
 

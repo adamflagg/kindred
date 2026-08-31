@@ -63,6 +63,12 @@ short list and a long tail of invisible maybes. Same discipline as `sleeps: null
 never rendering as 0. Qualifier text ("yes, but there is a lip at the door")
 belongs in `notes`, where it can say what the obstacle actually is.
 
+⚠️ **It answers nothing on the board (kindred#2327).** Step-free is graded from
+`is_accessible`, which staff answered for all 118 units on the confirm form,
+rather than from this column, which is editable nowhere in the product and blank
+on 104 of them. `has_ramp` stays stored as provenance for the 14 assessments
+that were made; it is a record of what somebody looked at, not a verdict.
+
 ## Legacy codes appear in two places and they disagree
 
 Older side-of-camp codes survive both in unit names (parenthesised) and in the

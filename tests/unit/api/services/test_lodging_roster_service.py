@@ -84,6 +84,14 @@ def _unit(
     # exists to undo -- so the fixture default is the blank string, exactly as
     # 104 of the 118 production rows are.
     has_ramp: str = "",
+    # THE COLUMN THE STEP-FREE GRADE IS RESOLVED FROM since kindred#2327.
+    # `has_ramp` above is kept STORED as provenance for the 14 staff ramp
+    # assessments and is no longer graded from: `is_accessible` is a STRICT
+    # SUBSET of `has_ramp = 'yes'`, so it can only ever narrow a ramp assessment
+    # and never promise access one denies. Measurement:
+    # `docs/reference/lodging-registry.md` § "Step-free grades from
+    # `is_accessible`".
+    is_accessible: bool = False,
     # False builds the fixture's default area (honouring `area_sort_order`);
     # True resolves the expanded `area` relation to None -- the missing-area
     # case.
@@ -108,7 +116,7 @@ def _unit(
         has_fridge=has_fridge,
         has_shared_fridge=has_shared_fridge,
         has_ramp=has_ramp,
-        is_accessible=False,
+        is_accessible=is_accessible,
         map_x=map_x,
         map_y=map_y,
         default_combined=default_combined,
@@ -4544,7 +4552,12 @@ class TestUnitBathroomResolution:
                     has_power=True,
                     has_fridge=True,
                     has_ac=True,
-                    has_ramp="yes",
+                    # STEP-FREE'S SUPPLY COLUMN, since kindred#2327 reversed
+                    # kindred#2502 back onto `is_accessible`. The test is about
+                    # the five resolvers agreeing on an UNCONFIRMED row, which
+                    # is unchanged; only which column carries the step-free
+                    # fact moved.
+                    is_accessible=True,
                 ),
             ],
         )
@@ -5088,31 +5101,43 @@ class TestUnitFridgeCoverage:
         assert roster.units[0].fridge_coverage == "none"
 
 
-class TestUnitRampCoverage:
-    """kindred#2438 -- `LodgingUnitSummary.ramp_coverage`, the third resolved
-    supply grade, over the same leaf walk as power and fridge.
+class TestUnitStepFreeCoverage:
+    """kindred#2327 -- `LodgingUnitSummary.ramp_coverage`, graded from
+    `is_accessible` through the ordinary `amenity_coverage` bool grain.
 
-    ONE thing separates it from either: `has_ramp` is a THREE-VALUE select
-    (`yes` / `no` / `partial`, blank = NOT ASSESSED), added deliberately as a
-    select in migration 1500000131 because "a bool maps every unassessed cabin
-    to false, which asserts 'no ramp' about cabins nobody has looked at". The
-    production distribution is 104 blank / 4 `no` / 5 `partial` / 5 `yes` -- 14
-    staff assessments a bool read reports as 0.
+    ⚠️ THIS SUPERSEDES kindred#2502, WHICH DELIBERATELY MOVED THIS GRADE THE
+    OTHER WAY -- off `is_accessible` and onto `has_ramp`. The owner reversed it
+    on 2026-08-30: *"we just need to know what is in fact accessible"*. The
+    product concept is ACCESSIBILITY, not the presence of a ramp, so the grade
+    reads the column that answers it.
 
-    So the verdict carries a FIFTH grade the boolean amenities do not:
+    THE INVARIANT THAT MAKES THE REVERSAL SAFE: `is_accessible` is a STRICT
+    SUBSET of `has_ramp = 'yes'`. It can only ever NARROW a ramp assessment,
+    never contradict one, so it can never promise a wheelchair user access a
+    ramp assessment denies. It errs in the safe direction, which is the whole
+    argument.
 
-        all      every answering room is fully step-free
-        some     at least one is, but not all
-        partial  none is, but at least one is a qualified ramp
-        none     every answering room answered `no`
-        unknown  nothing answers -- a blank or unrecognised value, or no
-                 active room left. NOT unconfirmed: a recorded value is read
-                 at face value whether or not staff have walked it (#2526)
+    ⚠️ THE MEASUREMENT IS SINGLE-SOURCED AND IT IS NOT HERE:
+    `docs/reference/lodging-registry.md` § "Step-free grades from
+    `is_accessible`" carries the counting query, the distribution and the
+    divergent-row query. It used to be pasted into eight tracked files, which
+    is eight places to miss on the next re-measure. Re-measure there.
 
-    `partial` is its own grade rather than folding into `none`, because folding
-    it would re-erase 5 of the 14 assessments in the very direction the select
-    exists to prevent; and rather than folding into `some`, because "no room is
-    step-free but one has a ramp with a lip" is not "some rooms are step-free".
+    TWO consequences, and both are deletions rather than new machinery:
+
+    * The five-grade `ramp_coverage()` verdict is gone. `partial` -- "no room
+      is step-free but one has a qualified ramp" -- has no bool to sit in, and
+      under the ruling a qualified ramp that leaves the cabin inaccessible is
+      not accessible. It grades `none`.
+    * `unknown` is gone as an ASSESSMENT state. It survives only as the empty
+      aggregation every other coverage already reports: a container with no
+      active room left has nothing to say. A blank `has_ramp` used to put 104
+      of 118 units there; `is_accessible` was answered for all 118 on the
+      confirm form, so nothing lands there for want of an assessment.
+
+    `has_ramp` STAYS STORED and stays published -- the repo forbids a
+    destructive migration over real staff assessments, and the 14 of them are
+    the provenance staff reconcile the three divergent rows against.
     """
 
     @pytest.mark.asyncio
@@ -5120,9 +5145,8 @@ class TestUnitRampCoverage:
         repo = _repo(
             fetch_session=FAMILY_SESSION,
             fetch_units=[
-                _unit("u1", "ridge-1", "Ridge 1", sleeps=4, has_ramp="yes"),
-                _unit("u2", "ridge-2", "Ridge 2", sleeps=4, has_ramp="no"),
-                _unit("u3", "ridge-3", "Ridge 3", sleeps=4, has_ramp="partial"),
+                _unit("u1", "ridge-1", "Ridge 1", sleeps=4, is_accessible=True),
+                _unit("u2", "ridge-2", "Ridge 2", sleeps=4, is_accessible=False),
             ],
         )
         roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
@@ -5130,28 +5154,67 @@ class TestUnitRampCoverage:
         by_code = {u.code: u for u in roster.units}
         assert by_code["ridge-1"].ramp_coverage == "all"
         assert by_code["ridge-2"].ramp_coverage == "none"
-        assert by_code["ridge-3"].ramp_coverage == "partial"
 
     @pytest.mark.asyncio
-    async def test_blank_is_unknown_never_none(self) -> None:
-        """THE TRAP THIS DIMENSION EXISTS TO AVOID. 104 of the 118 production
-        units are blank, so reading blank as `no` would mark almost the whole
-        registry step-free-hostile on evidence nobody recorded."""
+    async def test_a_ramp_that_did_not_make_the_cabin_accessible_grades_none(self) -> None:
+        """THE THREE DIVERGENT PRODUCTION ROWS, and the direction the reversal
+        moves them. Three 2026 rows record `has_ramp = 'yes'` with
+        `is_accessible = 0` -- the owner's "weird house": a ramp reaches the
+        door and the cabin is not accessible inside. Grading from
+        `is_accessible` is the CONSERVATIVE answer for all three, and the
+        subset measurement proves no row can ever move the other way.
+
+        The three codes are NOT named here because THE REGISTRY IS DATA, NOT
+        CODE (spec 3.8) -- the rule `verify-no-hardcoded-lodging.sh` enforces,
+        not merely the extensions it happens to scan. That rule is about
+        ARCHITECTURE, not privacy: unit codes are not PII, and the guard's
+        blindness to `.md` is a gap in the tripwire rather than a licence.
+        They are given as a QUERY rather than a list because a query re-derives
+        itself as staff reconcile the rows, where a pasted list rots -- and that
+        query lives in ONE place, `docs/reference/lodging-registry.md`
+        § "Step-free grades from `is_accessible`", rather than here as well."""
         repo = _repo(
             fetch_session=FAMILY_SESSION,
-            fetch_units=[_unit("u1", "ridge-1", "Ridge 1", sleeps=4, has_ramp="")],
+            fetch_units=[_unit("u1", "ridge-1", "Ridge 1", sleeps=4, has_ramp="yes", is_accessible=False)],
         )
         roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
 
-        assert roster.units[0].ramp_coverage == "unknown"
+        assert roster.units[0].ramp_coverage == "none"
 
     @pytest.mark.asyncio
-    async def test_an_unrecognised_value_is_unknown_not_a_yes(self) -> None:
-        """PocketBase validates the select on save, so this state does not
-        arrive through the registry loader. It pins the railing against the two
-        directions that CAN produce it: a later migration widening the value
-        list, and a record built before the column existed. A grade this code
-        has never heard of must read as NOT ASSESSED, never as a claim."""
+    async def test_a_qualified_ramp_is_not_a_grade_of_its_own(self) -> None:
+        """`partial` is gone. *"we can leave `partial` as a value, but does that
+        mean it's not actually accessible to guests from all angles? Probably.
+        So yeah, it means no."* -- owner, 2026-08-27. Six units move here on the
+        production snapshot, every one of them toward the safe answer."""
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[_unit("u1", "ridge-1", "Ridge 1", sleeps=4, has_ramp="partial", is_accessible=False)],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.units[0].ramp_coverage == "none"
+
+    @pytest.mark.asyncio
+    async def test_an_unrecognised_ramp_value_is_railed_to_not_assessed(self) -> None:
+        """`_ramp_assessment`'s railing, pinned DIRECTLY — kindred#2327 moved
+        the grade off `has_ramp` but left the field on the wire as provenance,
+        and this is what keeps that payload honest.
+
+        PocketBase validates the select on save, so this state does not arrive
+        through the registry loader. It pins the two directions that CAN produce
+        it: a later migration widening the value list, and a record built before
+        the column existed.
+
+        ⚠️ WITHOUT THIS TEST THE RAILING HAS NO PIN. The version of it that
+        lived here before kindred#2327 also asserted `ramp_coverage == "unknown"`
+        — which the reversal made meaningless, since the grade no longer reads
+        `has_ramp` at all — and it was deleted with the rest of that class.
+        Removing the railing then fails only `test_lodging_endpoints.py`'s
+        medical-permission test, with an opaque pydantic `ValidationError` whose
+        name gives no clue what broke. The assertion below is the one that names
+        the rule.
+        """
         repo = _repo(
             fetch_session=FAMILY_SESSION,
             fetch_units=[_unit("u1", "ridge-1", "Ridge 1", sleeps=4, has_ramp="Yes, but a lip")],
@@ -5159,35 +5222,106 @@ class TestUnitRampCoverage:
         roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
 
         assert roster.units[0].has_ramp == ""
-        assert roster.units[0].ramp_coverage == "unknown"
+
+    @pytest.mark.asyncio
+    async def test_a_blank_ramp_no_longer_hides_an_accessible_room(self) -> None:
+        """The gain, and the reason this is a consolidation rather than a swap.
+        A blank `has_ramp` meant NOT ASSESSED and graded `unknown` on 104 of 118
+        units, because there was no ramp control in the product to fill it in.
+        `is_accessible` is `AMENITY_FLAGS` entry 6 on the confirm form, so it
+        was genuinely answered for every unit."""
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[_unit("u1", "ridge-1", "Ridge 1", sleeps=4, has_ramp="", is_accessible=True)],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.units[0].ramp_coverage == "all"
+
+    @pytest.mark.asyncio
+    async def test_has_ramp_is_still_published_as_provenance(self) -> None:
+        """KEPT, NOT DROPPED. The repo forbids a destructive migration over
+        real staff assessments, so the column stays and keeps reaching the
+        payload beside its former grade -- it is what staff reconcile the three
+        divergent rows against. Nothing GRADES from it any more."""
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[_unit("u1", "ridge-1", "Ridge 1", sleeps=4, has_ramp="partial", is_accessible=False)],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.units[0].has_ramp == "partial"
 
     @pytest.mark.asyncio
     async def test_a_container_inherits_from_its_rooms_not_its_own_row(self) -> None:
-        """One of the 14 assessments IS on a container, and it is ignored for
-        the same reason `has_power` on a container is: the row describes the
-        building, not the rooms staff place families into."""
+        """Unchanged by the column swap, and the reason the walk was reused
+        rather than replaced: a container's row describes the BUILDING, not the
+        rooms staff place families into."""
         repo = _repo(
             fetch_session=FAMILY_SESSION,
             fetch_units=[
-                _unit("c1", "gt-lodge", "Lodge", is_container=True, has_ramp="no"),
-                _unit("u1", "gt-lodge-1", "Lodge 1", sleeps=4, has_ramp="yes", parent_unit="c1"),
-                _unit("u2", "gt-lodge-2", "Lodge 2", sleeps=4, has_ramp="yes", parent_unit="c1"),
+                _unit("c1", "gt-lodge", "Lodge", is_container=True, is_accessible=False),
+                _unit("u1", "gt-lodge-1", "Lodge 1", sleeps=4, is_accessible=True, parent_unit="c1"),
+                _unit("u2", "gt-lodge-2", "Lodge 2", sleeps=4, is_accessible=True, parent_unit="c1"),
             ],
         )
         roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
 
         by_code = {u.code: u for u in roster.units}
         assert by_code["gt-lodge"].ramp_coverage == "all"
-        assert by_code["gt-lodge"].has_ramp == "no"
+        assert by_code["gt-lodge"].is_accessible is False
+
+    @pytest.mark.asyncio
+    async def test_a_containers_own_accessible_flag_is_discarded_by_its_rooms(self) -> None:
+        """THE OTHER DIRECTION, AND THE UNCOMFORTABLE ONE. Above, a container
+        recorded NOT accessible is overruled UPWARD by accessible rooms. Here a
+        container recorded ACCESSIBLE is overruled DOWNWARD to `none` by rooms
+        that are not -- so a row-level staff assessment on the building is
+        discarded rather than counted.
+
+        ⚠️ THIS PINS TODAY'S BEHAVIOUR, IT DOES NOT ENDORSE IT. The gap it
+        names: a container's `is_accessible` could plausibly ROLL DOWN to leaves
+        that record nothing, on the argument that a step-free entrance is a
+        property of the building. It does not, and this test exists so that
+        change is a deliberate one with its own design rather than something a
+        later reader slips in under a green suite.
+
+        ⛔ DO NOT "FIX" THIS BY IMPLEMENTING ROLL-DOWN. It is a separate
+        designed change and it interacts with the whole leaf walk -- power,
+        fridge and AC run through the identical `_resolve_amenity_coverage`, so
+        a roll-down here is a roll-down for four amenities or an inconsistency
+        across them.
+
+        HARMLESS TODAY, and that is a measurement, not an assumption: **0** of
+        the 118 2026 registry rows are both `is_container` and
+        `is_accessible = 1`, so no production container reaches this branch.
+        The moment one does, the board answers `none` for a building staff
+        marked accessible.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("c1", "gt-lodge", "Lodge", is_container=True, is_accessible=True),
+                _unit("u1", "gt-lodge-1", "Lodge 1", sleeps=4, is_accessible=False, parent_unit="c1"),
+                _unit("u2", "gt-lodge-2", "Lodge 2", sleeps=4, is_accessible=False, parent_unit="c1"),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        by_code = {u.code: u for u in roster.units}
+        # The building's OWN flag still reaches the payload untouched -- only
+        # the resolved grade discards it.
+        assert by_code["gt-lodge"].is_accessible is True
+        assert by_code["gt-lodge"].ramp_coverage == "none"
 
     @pytest.mark.asyncio
     async def test_a_split_building_is_some(self) -> None:
         repo = _repo(
             fetch_session=FAMILY_SESSION,
             fetch_units=[
-                _unit("c1", "gt-lodge", "Lodge", is_container=True, has_ramp="yes"),
-                _unit("u1", "gt-lodge-1", "Lodge 1", sleeps=4, has_ramp="yes", parent_unit="c1"),
-                _unit("u2", "gt-lodge-2", "Lodge 2", sleeps=4, has_ramp="no", parent_unit="c1"),
+                _unit("c1", "gt-lodge", "Lodge", is_container=True),
+                _unit("u1", "gt-lodge-1", "Lodge 1", sleeps=4, is_accessible=True, parent_unit="c1"),
+                _unit("u2", "gt-lodge-2", "Lodge 2", sleeps=4, is_accessible=False, parent_unit="c1"),
             ],
         )
         roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
@@ -5195,33 +5329,16 @@ class TestUnitRampCoverage:
         assert {u.code: u.ramp_coverage for u in roster.units}["gt-lodge"] == "some"
 
     @pytest.mark.asyncio
-    async def test_a_building_whose_best_room_is_qualified_is_partial_not_none(self) -> None:
-        """The grade a boolean amenity has no room for. Three of the five
-        production `partial` units carry the qualifier in `notes`; collapsing
-        them into `none` would throw away the one thing staff wrote down."""
+    async def test_the_only_unknown_left_is_the_empty_aggregation(self) -> None:
+        """`unknown` is no longer an assessment state -- a bool cannot be
+        unanswered. It survives exactly where `power_coverage` and
+        `fridge_coverage` already report it: a container whose every room has
+        been deactivated has nothing to say, and `none` would be a claim."""
         repo = _repo(
             fetch_session=FAMILY_SESSION,
             fetch_units=[
                 _unit("c1", "gt-lodge", "Lodge", is_container=True),
-                _unit("u1", "gt-lodge-1", "Lodge 1", sleeps=4, has_ramp="partial", parent_unit="c1"),
-                _unit("u2", "gt-lodge-2", "Lodge 2", sleeps=4, has_ramp="no", parent_unit="c1"),
-            ],
-        )
-        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
-
-        assert {u.code: u.ramp_coverage for u in roster.units}["gt-lodge"] == "partial"
-
-    @pytest.mark.asyncio
-    async def test_one_unassessed_room_makes_the_whole_building_unknown(self) -> None:
-        """The same all-or-nothing evidence bar `amenity_coverage` already
-        applies to an unconfirmed row: a building is not step-free on the
-        strength of the rooms somebody happened to get to."""
-        repo = _repo(
-            fetch_session=FAMILY_SESSION,
-            fetch_units=[
-                _unit("c1", "gt-lodge", "Lodge", is_container=True),
-                _unit("u1", "gt-lodge-1", "Lodge 1", sleeps=4, has_ramp="yes", parent_unit="c1"),
-                _unit("u2", "gt-lodge-2", "Lodge 2", sleeps=4, has_ramp="", parent_unit="c1"),
+                _unit("u1", "gt-lodge-1", "Lodge 1", sleeps=4, is_active=False, is_accessible=True, parent_unit="c1"),
             ],
         )
         roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
@@ -5230,57 +5347,45 @@ class TestUnitRampCoverage:
 
     @pytest.mark.asyncio
     async def test_an_unconfirmed_room_answers_at_face_value(self) -> None:
-        """kindred#2526. ⚠️ THE BLANK CASE IS NOT THIS ONE and does not move:
-        `has_ramp = ""` is still `unknown` (see
-        `test_blank_is_unknown_never_none` above), because a blank field is a
-        field nobody filled in. What changed is that a RECORDED value on an
-        unconfirmed row is now read, instead of being discarded first.
-        """
+        """kindred#2526, and it survives the column swap: `is_confirmed` is a
+        staff work-down checklist, never an input to a verdict."""
         repo = _repo(
             fetch_session=FAMILY_SESSION,
             fetch_units=[
-                _unit("u1", "ridge-1", "Ridge 1", sleeps=4, is_confirmed=False, has_ramp="no"),
-                _unit("u2", "ridge-2", "Ridge 2", sleeps=4, is_confirmed=False, has_ramp="yes"),
-                _unit("u3", "ridge-3", "Ridge 3", sleeps=4, is_confirmed=False, has_ramp=""),
+                _unit("u1", "ridge-1", "Ridge 1", sleeps=4, is_confirmed=False, is_accessible=True),
+                _unit("u2", "ridge-2", "Ridge 2", sleeps=4, is_confirmed=False, is_accessible=False),
             ],
         )
         roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
 
         by_code = {u.code: u.ramp_coverage for u in roster.units}
-        assert by_code["ridge-1"] == "none"
-        assert by_code["ridge-2"] == "all"
-        assert by_code["ridge-3"] == "unknown"
+        assert by_code["ridge-1"] == "all"
+        assert by_code["ridge-2"] == "none"
 
     @pytest.mark.asyncio
-    async def test_ramp_is_independent_of_is_accessible(self) -> None:
-        """NEITHER COLUMN DETERMINES THE OTHER, measured: `has_ramp = 'yes'`
-        splits 2 `is_accessible` true / 3 false, and the 4 `no`s plus 5
-        `partial`s are invisible to `is_accessible` entirely. So no fold in
-        either direction is information-preserving, and this resolver reads one
-        column only."""
-        repo = _repo(
-            fetch_session=FAMILY_SESSION,
-            fetch_units=[_unit("u1", "ridge-1", "Ridge 1", sleeps=4, has_ramp="yes")],
-        )
-        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
-
-        assert roster.units[0].ramp_coverage == "all"
-        assert roster.units[0].is_accessible is False
-
-    @pytest.mark.asyncio
-    async def test_the_three_coverages_are_resolved_independently(self) -> None:
-        """One walk, three answers. Adding the third must not let any of them
-        borrow a verdict from another."""
+    async def test_the_four_coverages_are_resolved_independently(self) -> None:
+        """One walk, four answers. None of them may borrow a verdict from
+        another now that all four grade through `amenity_coverage`."""
         repo = _repo(
             fetch_session=FAMILY_SESSION,
             fetch_units=[
-                _unit("u1", "ridge-1", "Ridge 1", sleeps=4, has_power=True, has_fridge=False, has_ramp="no"),
+                _unit(
+                    "u1",
+                    "ridge-1",
+                    "Ridge 1",
+                    sleeps=4,
+                    has_power=True,
+                    has_fridge=False,
+                    has_ac=True,
+                    is_accessible=False,
+                ),
             ],
         )
         roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
 
         assert roster.units[0].power_coverage == "all"
         assert roster.units[0].fridge_coverage == "none"
+        assert roster.units[0].ac_coverage == "all"
         assert roster.units[0].ramp_coverage == "none"
 
 

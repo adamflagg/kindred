@@ -614,20 +614,67 @@ describe('candidateFit — one grading, and the notes the glyphs now carry (kind
     expect(result.fit).toBe('unmet')
   })
 
-  it('grades step-free, and SOME rooms is worse than none for it', () => {
-    // The `is_accessible` shape: a building advertising two step-free rooms
-    // out of ten invites precisely the placement that lands in one of the
-    // other eight.
+  it('grades step-free as no claim at all — a parsed hint, not a graded need (owner ruling 2026-08-31, kindred#2639)', () => {
+    /*
+     * ⚠️ THIS TEST USED TO BE "grades step-free with NO softer rung — SOME is
+     * no better than none" AND ASSERTED `'unmet'` ON BOTH LINES BELOW. That
+     * was #2327's own behaviour (grading from `is_accessible`); the OWNER'S
+     * FOLLOW-UP RULING on #2639 struck the grading entirely, verbatim: *"we
+     * should not hatch on accessibility since its not an explicit requestion
+     * we ask people, its parsed out of other accomm, and this one is only
+     * 'short distances', not a wheelchair. so, no hatch, and otherwise good
+     * to go."*
+     *
+     * `needs_step_free` is not a CampMinder question — it is keyword-matched
+     * out of the free-text `accommodation_explain` narrative, and the signal
+     * is a MOBILITY HINT ("short distances"), not a wheelchair requirement.
+     * So this row must read exactly as it would if the family had asked for
+     * nothing: `'fits'`, mirroring `resolveDragFit`'s `NEUTRAL` on the drag
+     * path — `needsFit.test.ts`'s twin of this block. Regression-pinned
+     * against the exact grades #2327 shipped as `'unmet'`.
+     */
     expect(
       candidateFit(party({ flags: { needs_step_free: true } }), unit({ ramp_coverage: 'some' }), [])
         .fit
-    ).toBe('unmet')
+    ).toBe('fits')
+    expect(
+      candidateFit(party({ flags: { needs_step_free: true } }), unit({ ramp_coverage: 'none' }), [])
+        .fit
+    ).toBe('fits')
+  })
+
+  it('suppresses ONLY the step-free contribution — a genuinely unmet other need still grades unmet', () => {
     expect(
       candidateFit(
-        party({ flags: { needs_step_free: true } }),
-        unit({ ramp_coverage: 'partial' }),
+        party({ flags: { needs_step_free: true, needs_fridge: true } }),
+        unit({ ramp_coverage: 'none', fridge_coverage: 'none' }),
         []
       ).fit
+    ).toBe('unmet')
+  })
+
+  it('agrees with resolveDragFit on step-free — the hatch and the picker must not diverge', () => {
+    // The earlier scan found `candidateFit` and `resolveDragFit` already
+    // diverge on plain `unknown` handling; this pins that step-free's OWN
+    // exclusion does not add a second divergence between the two surfaces
+    // that grade the same pairing.
+    for (const ramp_coverage of ['none', 'some', 'all', 'unknown'] as const) {
+      expect(
+        candidateFit(party({ flags: { needs_step_free: true } }), unit({ ramp_coverage }), []).fit
+      ).toBe('fits')
+    }
+  })
+
+  it('still has a softer rung for the needs that DO carry one', () => {
+    // The contrast that stops the test above from being vacuous. If `some`
+    // graded `unmet` on every dimension, both assertions there would pass with
+    // `someIs` deleted outright. Power's `someIs: 'partial'` is what proves
+    // step-free's `'unmet'` is a CHOICE — and it is the surviving home of the
+    // `partial` VERDICT, which kindred#2327 kept while removing `partial` as a
+    // coverage a cabin can report.
+    expect(
+      candidateFit(party({ flags: { needs_power: true } }), unit({ power_coverage: 'some' }), [])
+        .fit
     ).toBe('partial')
   })
 

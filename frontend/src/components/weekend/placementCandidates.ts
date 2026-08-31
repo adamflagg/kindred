@@ -253,11 +253,21 @@ function capacityVerdict(
  *
  * ⚠️ THIS PARAGRAPH USED TO END "and there is no step-free dimension to add —
  * `is_accessible` exists on the UNIT with nothing on the party side asking for
- * it." That was true when written and is now FALSE twice over: kindred#2438
- * added `needs_step_free` on the party, and this function grades it — the body
- * five lines below calls `resolveNeedGlyphs`, whose closed set carries it.
- * Corrected rather than deleted, because the reasoning it gave for the two
- * accommodation flags is still exactly right.
+ * it." That was true when written and became FALSE for one release:
+ * kindred#2438 added `needs_step_free` on the party, and this function graded
+ * it — the body several lines below calls `resolveNeedGlyphs`, whose closed
+ * set carries it.
+ *
+ * ⚠️ AND NOW FALSE AGAIN, BY A DIFFERENT RULING (2026-08-31, kindred#2639).
+ * `resolveNeedGlyphs` still RETURNS a step-free glyph — `AssignFamilyModal`
+ * calls it separately to DRAW the glyph on each row, and that is unaffected —
+ * but this function's own fold no longer counts it, per the owner: *"we
+ * should not hatch on accessibility since its not an explicit requestion we
+ * ask people, its parsed out of other accomm."* `needs_step_free` is parsed
+ * out of free text, not asked, so grading it here would let a hint claim a
+ * met (or unmet) requirement it never was. See `resolveDragFit`'s rule 4 for
+ * the full argument — this is that same exclusion on the Assign-modal's
+ * DIFFERENT code path, and the two must agree.
  *
  * @param units The whole registry, needed only to total a combined house's
  *   capacity. `[]` is correct for every leaf.
@@ -275,15 +285,22 @@ export function candidateFit(
   reading: UnitCapacityReading = readUnitCapacity(unit, units)
 ): PlacementCandidate {
   // ONE grading, in `needGlyphs.ts`, read in its PROSPECTIVE sense — see that
-  // module's `NeedReading`. All four ruled needs, where this table used to
-  // carry two: a family whose narrative asks for a fridge or for step-free
-  // access was hatched mid-drag on a cabin that could not supply it and
-  // annotated `fits` right here.
+  // module's `NeedReading`. All four ruled needs are RESOLVED here, but only
+  // bathroom/power/fridge are FOLDED into `fit` below — step-free is excluded
+  // from the fold (kindred#2639, see the module doc above), not from the
+  // resolve, so `AssignFamilyModal`'s separate glyph-drawing call still shows
+  // it.
   const glyphs = resolveNeedGlyphs(party, unit, 'prospective')
   const capacity = capacityVerdict(party, reading, occupied)
 
   let fit: CandidateFitLevel = capacity.fit
-  for (const glyph of glyphs) fit = worseOf(glyph.verdict, fit)
+  for (const glyph of glyphs) {
+    // Step-free is a PARSED HINT (kindred#2639): it must make neither claim,
+    // so it is skipped here exactly as `resolveDragFit`'s rule 4 skips it —
+    // the two surfaces grade the same pairing and must not diverge on it.
+    if (glyph.key === 'step_free') continue
+    fit = worseOf(glyph.verdict, fit)
+  }
   return { party, fit, notes: capacity.note === null ? [] : [capacity.note] }
 }
 
