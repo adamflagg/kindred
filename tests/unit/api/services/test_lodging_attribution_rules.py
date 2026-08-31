@@ -134,7 +134,7 @@ class TestValueShapes:
         already names households everywhere else it shows one."""
         rows = attribution_conflicts(
             (_candidate(FC1, _leaf("maple-1", name="Maple Upper 1", placed=(OTHER,))),),
-            THIS_HOUSEHOLD,
+            MY_KEY,
         )
 
         assert [(o.kind, o.label, o.leaf_name) for o in rows[0].occupants] == [
@@ -144,7 +144,7 @@ class TestValueShapes:
     def test_a_conflicting_leaf_inside_a_container_says_which_building(self) -> None:
         rows = attribution_conflicts(
             (_candidate(FC1, _leaf("birch-3", name="Room 3", container_name="Birch House", placed=(OTHER,))),),
-            THIS_HOUSEHOLD,
+            MY_KEY,
         )
 
         occupant = rows[0].occupants[0]
@@ -185,7 +185,7 @@ class TestWriteIns:
     def test_a_write_in_is_reported_as_the_occupant(self) -> None:
         rows = attribution_conflicts(
             (_candidate(FC1, _leaf("maple-1", name="Maple Upper 1", write_ins=("Weekend staff",))),),
-            THIS_HOUSEHOLD,
+            MY_KEY,
         )
 
         assert [(o.kind, o.label, o.leaf_code) for o in rows[0].occupants] == [
@@ -275,7 +275,7 @@ class TestNoData:
                 _candidate(FC1, _leaf("maple-1"), weekend_has_placements=False),
                 _candidate(FC2, _leaf("maple-1")),
             ),
-            THIS_HOUSEHOLD,
+            MY_KEY,
         )
 
         assert [row.verdict for row in rows] == ["no_data", "free"]
@@ -290,7 +290,7 @@ class TestConflictAwareSuggestion:
     def test_the_timestamp_pick_stands_when_it_survives(self) -> None:
         rows = attribution_conflicts(
             (_candidate(FC1, _leaf("A")), _candidate(FC2, _leaf("A", placed=(OTHER,)))),
-            THIS_HOUSEHOLD,
+            MY_KEY,
         )
 
         assert conflict_aware_suggestion([FC1, FC2], rows, FC1) == FC1
@@ -304,7 +304,7 @@ class TestConflictAwareSuggestion:
                 _candidate(FC1, _leaf("maple-1", placed=(OTHER,))),
                 _candidate(FC2, _leaf("maple-1")),
             ),
-            THIS_HOUSEHOLD,
+            MY_KEY,
         )
 
         assert conflict_aware_suggestion([FC1, FC2], rows, FC1) == FC2
@@ -318,7 +318,7 @@ class TestConflictAwareSuggestion:
                 _candidate(FC1, _leaf("maple-1", placed=(OTHER,))),
                 _candidate(FC2, _leaf("maple-1", placed=(THIRD,))),
             ),
-            THIS_HOUSEHOLD,
+            MY_KEY,
         )
 
         assert all(row.verdict == "conflict" for row in rows)
@@ -336,7 +336,7 @@ class TestConflictAwareSuggestion:
                 _candidate(FC2, _leaf("A", placed=(OTHER,))),
                 _candidate(FC3, _leaf("A")),
             ),
-            THIS_HOUSEHOLD,
+            MY_KEY,
         )
 
         assert conflict_aware_suggestion([FC1, FC2, FC3], rows, FC2) == FC3
@@ -351,7 +351,7 @@ class TestConflictAwareSuggestion:
                 _candidate(FC2, _leaf("A")),
                 _candidate(FC3, _leaf("A", placed=(OTHER,))),
             ),
-            THIS_HOUSEHOLD,
+            MY_KEY,
         )
 
         assert conflict_aware_suggestion([FC1, FC2, FC3], rows, FC3) == FC2
@@ -363,7 +363,7 @@ class TestConflictAwareSuggestion:
         zero `last_updated` leaves `suggested_session` empty)."""
         rows = attribution_conflicts(
             (_candidate(FC1, _leaf("A", placed=(OTHER,))), _candidate(FC2, _leaf("A"))),
-            THIS_HOUSEHOLD,
+            MY_KEY,
         )
 
         assert conflict_aware_suggestion([FC1, FC2], rows, None) == FC2
@@ -374,7 +374,7 @@ class TestConflictAwareSuggestion:
         one's name."""
         rows = attribution_conflicts(
             (_candidate(FC1, _leaf("A")), _candidate(FC2, _leaf("A"))),
-            THIS_HOUSEHOLD,
+            MY_KEY,
         )
 
         assert conflict_aware_suggestion([FC1, FC2], rows, None) is None
