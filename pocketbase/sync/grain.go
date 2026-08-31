@@ -52,18 +52,18 @@ package sync
 type ReducePolicy string
 
 const (
-	// ReduceNone: nothing collapses, because the declared key IS the upstream
+	// ReduceNone means nothing collapses, because the declared key IS the upstream
 	// entity's own identity. Two inputs sharing it is not a shape the upstream
 	// feed produces.
 	ReduceNone ReducePolicy = "none"
 
-	// ReduceLastWriteWins: several inputs can share the key in one run, and
+	// ReduceLastWriteWins means several inputs can share the key in one run, and
 	// whichever is processed last wins the upsert. Arrival order, not a
 	// timestamp -- nothing here compares recency.
 	ReduceLastWriteWins ReducePolicy = "last_write_wins"
 
-	// ReduceRejectDuplicate: a second input for a key this run already tracked
-	// is discarded and counted Stats.Rejected, with a warning naming it
+	// ReduceRejectDuplicate means a second input for a key this run already
+	// tracked is discarded and counted Stats.Rejected, with a warning naming it
 	// (kindred#2270). The storage grain is unchanged; the collapse is made loud.
 	ReduceRejectDuplicate ReducePolicy = "reject_duplicate"
 )
@@ -107,7 +107,7 @@ type CollectionGrain struct {
 
 // HasFullGrain reports whether this collection carries the full declaration
 // rather than a NoGrain reason.
-func (c CollectionGrain) HasFullGrain() bool {
+func (c *CollectionGrain) HasFullGrain() bool {
 	return c.WriteKey != "" && c.OrphanKey != "" && c.UniqueIndex != "" && c.Reduce != ""
 }
 
