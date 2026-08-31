@@ -318,9 +318,15 @@ class TestCandidateOrder:
         them in `sort_order`, which staff set for display and which SESSIONS
         above deliberately disagrees with. Reading the fetch order here would
         demote to the wrong weekend whenever the two differ.
+
+        The ROW's OWN `candidate_session_cm_ids` is not the order either, and
+        this fixture lists it backwards to say so: it is a plain PocketBase
+        `json` array with no ordering contract of its own, so the order has to
+        come from the session table rather than from whatever the writer
+        happened to store.
         """
         repo = _repo(
-            issues=[_issue("Maple Upper 1", suggested_session=FC2_PB, candidates=(FC1, FC2, FC3))],
+            issues=[_issue("Maple Upper 1", suggested_session=FC2_PB, candidates=(FC3, FC2, FC1))],
             placements={
                 FC1: [_placement(HH_HOLDER, [HALL])],
                 FC2: [_placement(HH_HOLDER, [MAPLE])],

@@ -16,6 +16,8 @@ from pocketbase.client import ClientResponseError  # type: ignore[attr-defined]
 from pydantic import BaseModel
 
 from api.schemas.lodging import (
+    AttributionCandidate,
+    AttributionOccupant,
     AvailabilityWriteRequest,
     PlacementCopyRequest,
     PlacementDeleteRequest,
@@ -26,6 +28,8 @@ from api.schemas.lodging import (
     RosterCounts,
     ScenarioCompareCounts,
     ScenarioCompareResponse,
+    SessionAttributionConflictRow,
+    SessionAttributionConflictsResponse,
     SlotMergeRequest,
     UnpushResponse,
     WeekendRosterResponse,
@@ -2338,3 +2342,107 @@ class TestScenarioCompareEndpoint:
             response = TestClient(app).get(self.URL, params={**self.PARAMS, "scenario": ""})
 
         assert response.status_code == 422
+
+
+class TestSessionAttributionConflictsEndpoint:
+    """`GET /api/lodging/attribution/conflicts` (§12.8, closes no issue).
+
+    Service-mocked for the same reason `TestPushPreviewEndpoint` and
+    `TestScenarioCompareEndpoint` are: the rule is `attribution_conflicts`'
+    contract (test_lodging_attribution_rules.py) and the composition is
+    `LodgingAttributionService`'s (test_lodging_attribution_service.py). What
+    is checked here is the wiring -- the auth gate, the argument, that BOTH
+    suggestions cross the wire, and that the response is not cached.
+    """
+
+    URL = "/api/lodging/attribution/conflicts"
+    PARAMS: ClassVar[dict[str, int]] = {"year": 2026}
+
+    @staticmethod
+    def _report() -> SessionAttributionConflictsResponse:
+        return SessionAttributionConflictsResponse(
+            year=2026,
+            rows=[
+                SessionAttributionConflictRow(
+                    issue_id="iss_1",
+                    raw_value="Maple Upper 1",
+                    household_cm_id=7990954,
+                    resolved_unit_codes=["maple-1"],
+                    resolved_leaf_codes=["maple-1"],
+                    candidates=[
+                        AttributionCandidate(
+                            session_cm_id=1000001,
+                            verdict="conflict",
+                            occupants=[
+                                AttributionOccupant(
+                                    kind="placement", label="The Garcia Family", leaf_code="maple-1"
+                                )
+                            ],
+                        ),
+                        AttributionCandidate(session_cm_id=1000002, verdict="free"),
+                    ],
+                    timestamp_suggested_session_cm_id=1000001,
+                    conflict_aware_suggested_session_cm_id=1000002,
+                    demotion_applied=True,
+                )
+            ],
+        )
+
+    def test_user_without_the_permission_gets_403(self, mock_pb: MagicMock) -> None:
+        """Same gate as `push/preview` and `compare`, the two report endpoints
+        it sits beside: this writes nothing, but the payload names households
+        and the cabins they are in, and confirming an attribution is part of
+        the same staff workflow placing families is."""
+        with patch("api.routers.lodging.pb", mock_pb):
+            app = _build_app(_plain_user(), mock_pb)
+            response = TestClient(app).get(self.URL, params=self.PARAMS)
+
+        assert response.status_code == 403
+        assert Permission.BUNKING_MANAGE in response.json()["detail"]
+
+    def test_bunking_staff_get_both_suggestions(self, mock_pb: MagicMock) -> None:
+        """Publishing BOTH is the point of the payload: the stored row keeps
+        `AttributeSession`'s timestamp answer, and the conflict-aware one is
+        what the UI moves the pill to -- so it can say WHY rather than
+        silently disagreeing with PocketBase."""
+        app = _build_app(_manage_user(), mock_pb)
+        with patch("api.routers.lodging.LodgingAttributionService") as service_cls:
+            service_cls.return_value.build_conflicts = AsyncMock(return_value=self._report())
+            with patch("api.routers.lodging.pb", mock_pb):
+                response = TestClient(app).get(self.URL, params=self.PARAMS)
+
+        assert response.status_code == 200
+        row = response.json()["rows"][0]
+        assert row["timestamp_suggested_session_cm_id"] == 1000001
+        assert row["conflict_aware_suggested_session_cm_id"] == 1000002
+        assert row["demotion_applied"] is True
+        assert [c["verdict"] for c in row["candidates"]] == ["conflict", "free"]
+        assert row["candidates"][0]["occupants"][0]["label"] == "The Garcia Family"
+        service_cls.return_value.build_conflicts.assert_awaited_once_with(2026)
+
+    def test_the_response_is_not_cached(self, mock_pb: MagicMock) -> None:
+        """UNCACHED DELIBERATELY, for two reasons rather than one: staff flip
+        `is_resolved` straight against PocketBase from the admin panel
+        (`confirmSessionAttribution`), and this additionally reads LIVE
+        write-ins, which the board writes directly. A second request must
+        recompute rather than replay -- the same call
+        `count_open_unresolved_aliases` makes for the queue this annotates."""
+        app = _build_app(_manage_user(), mock_pb)
+        with patch("api.routers.lodging.LodgingAttributionService") as service_cls:
+            build = AsyncMock(return_value=self._report())
+            service_cls.return_value.build_conflicts = build
+            with patch("api.routers.lodging.pb", mock_pb):
+                client = TestClient(app)
+                first = client.get(self.URL, params=self.PARAMS)
+                second = client.get(self.URL, params=self.PARAMS)
+
+        assert (first.status_code, second.status_code) == (200, 200)
+        assert build.await_count == 2, "a second request must recompute, not replay"
+        assert "cache-control" not in {key.lower() for key in first.headers}
+
+    def test_the_year_is_required_and_bounded(self, mock_pb: MagicMock) -> None:
+        with patch("api.routers.lodging.pb", mock_pb):
+            app = _build_app(_manage_user(), mock_pb)
+            client = TestClient(app)
+            assert client.get(self.URL).status_code == 422
+            assert client.get(self.URL, params={"year": 1999}).status_code == 422
