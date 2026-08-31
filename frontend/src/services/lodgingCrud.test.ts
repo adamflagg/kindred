@@ -31,11 +31,13 @@ vi.mock('../lib/pocketbase', () => ({ pb: { collection: (name: string) => collec
 import type { LodgingAliasRecord, LodgingUnitRecord } from '../types/lodging'
 import {
   confirmLodgingUnits,
+  confirmSessionAttribution,
   createLodgingAlias,
   createLodgingUnit,
   deactivateLodgingUnit,
   deleteLodgingAlias,
   ignoreIngestIssue,
+  listAmbiguousSessionIssues,
   listLodgingUnits,
   listUnresolvedAliasIssues,
   mapUnresolvedAlias,
@@ -215,6 +217,37 @@ describe('deleteLodgingAlias', () => {
 
     await expect(deleteLodgingAlias('alias_1')).rejects.toThrow('reopen failed')
     expect(deleteRecord).not.toHaveBeenCalled()
+  })
+})
+
+describe('listAmbiguousSessionIssues', () => {
+  it('reads the ingest work queue, ambiguous-session rows only, for one season', async () => {
+    await listAmbiguousSessionIssues(2026)
+
+    expect(collection).toHaveBeenCalledWith('lodging_ingest_issues')
+    const [options] = getFullList.mock.calls[0] as [{ filter?: string; sort?: string }]
+    expect(options.filter).toContain('year = 2026')
+    expect(options.filter).toContain('kind = "ambiguous_session"')
+    expect(options.filter).toContain('is_resolved = false')
+  })
+})
+
+describe('confirmSessionAttribution', () => {
+  // Contract, per LodgingIngestIssueRecord.confirmed_session_cm_id's own doc
+  // comment: PATCH the two fields TOGETHER. is_resolved's false -> true
+  // transition is what fires `replayOnResolve` server-side; writing
+  // confirmed_session_cm_id alone would leave the row open and unplaced.
+  it('writes confirmed_session_cm_id alongside is_resolved: true, in one PATCH', async () => {
+    update.mockResolvedValueOnce({ id: 'q1', confirmed_session_cm_id: 1309515 })
+
+    const row = await confirmSessionAttribution('q1', 1309515)
+
+    expect(update).toHaveBeenCalledTimes(1)
+    expect(update).toHaveBeenCalledWith('q1', {
+      confirmed_session_cm_id: 1309515,
+      is_resolved: true,
+    })
+    expect(row).toEqual({ id: 'q1', confirmed_session_cm_id: 1309515 })
   })
 })
 

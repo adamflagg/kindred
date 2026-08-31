@@ -306,6 +306,21 @@ export function Modal({
     }
   }, [isOpen])
 
+  // kindred#2650. Mirrors the Escape branch above exactly, for the same
+  // reason: a second overlay opened on top of this one (another `ui/Modal`,
+  // or — the case an owner caught live — `weekend/FamilyDetailsPanel`
+  // opening from a click inside this dialog) must own the next backdrop
+  // click, not this one. Before this gate, `onClick={onClose}` fired
+  // unconditionally, so `ScenarioManagementModal.tsx`'s always-open outer
+  // Modal closed on a click in its own backdrop area even while its
+  // confirm/edit/create Modal sat on top of it — the same asymmetry Escape
+  // fixed under kindred#2205, just never carried over to the pointer path.
+  const handleBackdropClick = () => {
+    const token = overlayTokenRef.current
+    if (token !== null && !isTopOverlay(token)) return
+    onClose()
+  }
+
   // Initial focus, once the panel node actually exists. `beforeEnter` fires
   // after the [isOpen] effect above (capture first, move second) and before
   // the enter transition starts — `afterEnter` would be too late: a fully
@@ -396,7 +411,7 @@ export function Modal({
             backgroundColor: 'rgba(17, 26, 22, 0.42)',
             ...(backdropInsetRight ? { right: backdropInsetRight } : {}),
           }}
-          onClick={onClose}
+          onClick={handleBackdropClick}
           aria-hidden="true"
           enter="transition-opacity duration-200 ease-out"
           enterFrom="opacity-0"

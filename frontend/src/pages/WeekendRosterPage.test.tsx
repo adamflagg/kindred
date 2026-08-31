@@ -19,6 +19,9 @@ vi.mock('../hooks/useWeekendRoster', () => ({
   useWeekendSessions: () => sessionsQuery,
   useWeekendRoster: () => rosterQuery,
   useHouseholdMedical: () => ({ data: undefined, isLoading: false, error: null }),
+  // Opening `FamilyDetailsPanel` for real (kindred#2650's family-name click)
+  // mounts `HouseholdJourneyCard`, which calls this unconditionally.
+  useHouseholdJourney: () => ({ data: undefined, isLoading: false, error: null }),
 }))
 
 // The Groups tab (kindred#1913) is a real React Query hook, and these page
@@ -98,6 +101,17 @@ vi.mock('../hooks/useUnitAvailability', () => ({
 // `components/weekend/PushWriteInsEntry.test.tsx`.
 vi.mock('../hooks/usePushPreview', () => ({
   usePushPreview: () => ({ data: undefined, isPending: false, error: null }),
+}))
+
+// Same reasoning as usePushPreview above: a real useQuery/useMutation here
+// reaches for react-query internals this file's own top-level
+// `@tanstack/react-query` mock does not satisfy. The chip's own behaviour
+// (count derivation, RBAC gate) is pinned in
+// `components/weekend/CabinWeekendEntry.test.tsx`; this file only proves the
+// page threads its own `selectedCmId`/`canManageLodging` into it correctly.
+const attributionQuery = vi.fn()
+vi.mock('../hooks/useSessionAttributionQueue', () => ({
+  useSessionAttributionQueue: () => attributionQuery(),
 }))
 
 vi.mock('../hooks/useUnitMerge', () => ({
@@ -281,6 +295,14 @@ beforeEach(() => {
   rosterQuery.data = { year: 2026, session_cm_id: 1000001, parties: [], units: [], counts: {} }
   rosterQuery.isLoading = false
   rosterQuery.error = null
+  attributionQuery.mockReset().mockReturnValue({
+    isLoading: false,
+    error: null,
+    data: [],
+    items: [],
+    confirm: vi.fn(),
+    isConfirming: false,
+  })
 })
 
 describe('header', () => {
@@ -692,6 +714,267 @@ describe('tabs', () => {
     renderPage()
     expect(screen.getByRole('tab', { name: 'Housing (2)' })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: 'Map (1)' })).toBeInTheDocument()
+  })
+})
+
+describe('cabin-weekend attribution chip (kindred#2648 UI half)', () => {
+  // Only proves the page threads its own selectedCmId and canManageLodging
+  // into CabinWeekendEntry correctly — the chip's own count/RBAC logic is
+  // unit-tested in CabinWeekendEntry.test.tsx.
+  it('shows the chip when the queue has a row for the selected weekend', () => {
+    attributionQuery.mockReturnValue({
+      isLoading: false,
+      error: null,
+      data: [
+        {
+          id: 'q1',
+          rawValue: 'Ridge I',
+          sourceField: 'Family Camp Cabin',
+          householdCmId: 2000001,
+          personCmId: 0,
+          occurrences: 1,
+          firstSeen: '',
+          lastSeen: '',
+          resolvedUnitNames: [],
+          candidates: [{ sessionCmId: 1000001, short: 'FC1', dateRange: '', isSuggested: true }],
+          isStale: false,
+        },
+      ],
+      items: [],
+      confirm: vi.fn(),
+      isConfirming: false,
+    })
+    renderPage('1000001')
+    expect(screen.getByRole('button', { name: /1 cabin needs a weekend/i })).toBeInTheDocument()
+  })
+
+  it('does not show the chip for a row belonging to a different weekend', () => {
+    attributionQuery.mockReturnValue({
+      isLoading: false,
+      error: null,
+      data: [
+        {
+          id: 'q1',
+          rawValue: 'Ridge I',
+          sourceField: 'Family Camp Cabin',
+          householdCmId: 2000001,
+          personCmId: 0,
+          occurrences: 1,
+          firstSeen: '',
+          lastSeen: '',
+          resolvedUnitNames: [],
+          candidates: [{ sessionCmId: 1000002, short: 'WOMENS', dateRange: '', isSuggested: true }],
+          isStale: false,
+        },
+      ],
+      items: [],
+      confirm: vi.fn(),
+      isConfirming: false,
+    })
+    renderPage('1000001')
+    expect(screen.queryByRole('button', { name: /need.*a weekend/i })).not.toBeInTheDocument()
+  })
+
+  it('hides the chip for a user without bunking.manage', () => {
+    isAdmin = false
+    permissions = new Set()
+    attributionQuery.mockReturnValue({
+      isLoading: false,
+      error: null,
+      data: [
+        {
+          id: 'q1',
+          rawValue: 'Ridge I',
+          sourceField: 'Family Camp Cabin',
+          householdCmId: 2000001,
+          personCmId: 0,
+          occurrences: 1,
+          firstSeen: '',
+          lastSeen: '',
+          resolvedUnitNames: [],
+          candidates: [{ sessionCmId: 1000001, short: 'FC1', dateRange: '', isSuggested: true }],
+          isStale: false,
+        },
+      ],
+      items: [],
+      confirm: vi.fn(),
+      isConfirming: false,
+    })
+    renderPage('1000001')
+    expect(screen.queryByRole('button', { name: /need.*a weekend/i })).not.toBeInTheDocument()
+  })
+
+  describe('opening a family from the attribution chip (kindred#2650)', () => {
+    function itemFor(householdCmId: number) {
+      return {
+        id: 'q1',
+        rawValue: 'Ridge I',
+        sourceField: 'Family Camp Cabin',
+        householdCmId,
+        personCmId: 0,
+        occurrences: 1,
+        firstSeen: '',
+        lastSeen: '',
+        resolvedUnitNames: [],
+        candidates: [{ sessionCmId: 1000001, short: 'FC1', dateRange: '', isSuggested: true }],
+        isStale: false,
+      }
+    }
+
+    const HOUSEHOLD_PARTY = {
+      grain: 'household' as const,
+      household_cm_id: 2000001,
+      display_name: 'Johnson',
+      children: [
+        { person_cm_id: 9001, display_name: 'Riley Johnson', last_name: 'Johnson', age: 8 },
+      ],
+    }
+
+    it("resolves the row's family name from the roster this page already has, opens FamilyDetailsPanel on click, and closes only the panel on Escape", async () => {
+      const user = userEvent.setup()
+      attributionQuery.mockReturnValue({
+        isLoading: false,
+        error: null,
+        data: [itemFor(2000001)],
+        items: [],
+        confirm: vi.fn(),
+        isConfirming: false,
+      })
+      rosterQuery.data = {
+        year: 2026,
+        session_cm_id: 1000001,
+        parties: [HOUSEHOLD_PARTY],
+        units: [],
+        counts: {},
+      }
+      renderPage('1000001')
+
+      await user.click(screen.getByRole('button', { name: /1 cabin needs a weekend/i }))
+      expect(screen.getByText(/The Johnson Family/)).toBeInTheDocument()
+
+      await user.click(screen.getByRole('button', { name: 'The Johnson Family' }))
+      expect(screen.getByTestId('family-details-panel')).toBeInTheDocument()
+
+      // The FIRST Escape closes the panel — the topmost surface — and
+      // leaves the attribution modal (still under it) open. This is the
+      // scenario `ui/modalStack.ts` exists for; see
+      // `FamilyDetailsPanel.test.tsx`'s own "Escape when opened ON TOP of an
+      // existing overlay" suite for the isolated version of this assertion.
+      fireEvent.keyDown(document, { key: 'Escape' })
+      expect(screen.getByTestId('family-details-panel')).toHaveClass('animate-slide-out-right')
+      expect(
+        screen.getByRole('dialog', { name: /which weekend is this cabin for/i })
+      ).toBeInTheDocument()
+    })
+
+    /**
+     * `#root` goes `inert` while `CabinWeekendModal` (a `ui/Modal`) is open
+     * (`ui/modalStack.ts#acquireBackgroundInert`, documented in
+     * `frontend/CLAUDE.md` as blocking mouse clicks, not merely an a11y
+     * label). `FamilyDetailsPanel` is normally a plain descendant of
+     * `#root`, so opening it FROM WITHIN an already-open modal — this call
+     * site only — would make the entire panel unclickable despite painting
+     * on top: `inert` blocks hit-testing regardless of z-index, and jsdom's
+     * default `render()` has no `#root` to reproduce that with (see
+     * `Modal.test.tsx`'s own "background inert" describe block for the one
+     * place that recreates it). This proves the escape hatch instead: the
+     * call site portals the panel straight to `document.body`, alongside
+     * `ui/Modal` itself, so it is never a descendant of `#root` in the first
+     * place.
+     */
+    it('portals the panel to document.body so it never lands inside #root (kindred#2650 follow-up)', async () => {
+      const user = userEvent.setup()
+      attributionQuery.mockReturnValue({
+        isLoading: false,
+        error: null,
+        data: [itemFor(2000001)],
+        items: [],
+        confirm: vi.fn(),
+        isConfirming: false,
+      })
+      rosterQuery.data = {
+        year: 2026,
+        session_cm_id: 1000001,
+        parties: [HOUSEHOLD_PARTY],
+        units: [],
+        counts: {},
+      }
+      const { container } = renderPage('1000001')
+
+      await user.click(screen.getByRole('button', { name: /1 cabin needs a weekend/i }))
+      await user.click(screen.getByRole('button', { name: 'The Johnson Family' }))
+
+      expect(container.querySelector('[data-panel="family-details"]')).toBeNull()
+      expect(screen.getByTestId('family-details-panel')).toBeInTheDocument()
+
+      // The other half of `backdropInteractive` — the click-based tests
+      // below can't distinguish it (jsdom's `fireEvent.click` bypasses
+      // `pointer-events` entirely), so pin the wiring directly instead.
+      expect(screen.getByTestId('family-panel-backdrop')).toHaveClass('pointer-events-auto')
+    })
+
+    /**
+     * The owner's exact live-review repro, at full fidelity: the real page,
+     * the real `CabinWeekendModal`, the real `FamilyDetailsPanel` — nothing
+     * stubbed.
+     *
+     * Clicks `[data-testid="family-panel-backdrop"]` directly, not some
+     * point "outside both": once portaled and `backdropInteractive`, that
+     * backdrop IS the element a real click outside both surfaces lands on —
+     * it now covers the full viewport and paints above the modal, so it
+     * catches the click before the modal's own backdrop ever sees it. See
+     * `FamilyDetailsPanel.tsx`'s `backdropInteractive` prop doc for why the
+     * default (pass-through, letting a click fall to whatever's underneath)
+     * would be wrong at this specific call site.
+     */
+    it('closes only the panel on a click outside both, leaving the weekend picker open (kindred#2650)', async () => {
+      const user = userEvent.setup()
+      attributionQuery.mockReturnValue({
+        isLoading: false,
+        error: null,
+        data: [itemFor(2000001)],
+        items: [],
+        confirm: vi.fn(),
+        isConfirming: false,
+      })
+      rosterQuery.data = {
+        year: 2026,
+        session_cm_id: 1000001,
+        parties: [HOUSEHOLD_PARTY],
+        units: [],
+        counts: {},
+      }
+      renderPage('1000001')
+
+      await user.click(screen.getByRole('button', { name: /1 cabin needs a weekend/i }))
+      await user.click(screen.getByRole('button', { name: 'The Johnson Family' }))
+      expect(screen.getByTestId('family-details-panel')).toBeInTheDocument()
+
+      fireEvent.click(screen.getByTestId('family-panel-backdrop'))
+
+      expect(screen.getByTestId('family-details-panel')).toHaveClass('animate-slide-out-right')
+      expect(
+        screen.getByRole('dialog', { name: /which weekend is this cabin for/i })
+      ).toBeInTheDocument()
+    })
+
+    /**
+     * NOT covered by any test, and it can't be: this is a regression guard
+     * against the panel being `inert` (see the portal test above), and its
+     * failure mode is "a click that VISUALLY lands on the panel's own
+     * content is delivered to a DIFFERENT element instead (the modal's
+     * backdrop), because `inert` removes the panel from hit-testing
+     * entirely." jsdom does not implement hit-testing at all —
+     * `fireEvent.click(node)` always dispatches directly to `node`,
+     * regardless of `inert` or `pointer-events` — so a jsdom test clicking
+     * "on panel content" can only prove the click reached that content,
+     * never that a REAL click aimed at the same screen position would have.
+     * Confirmed against real Chromium instead (`FamilyDetailsPanel.tsx`'s
+     * `backdropInteractive` prop doc has the measured detail): once
+     * portaled out of `#root`'s inert subtree, the panel's own content is
+     * genuinely hit-testable again, so a click there lands on it, not on
+     * the modal underneath.
+     */
   })
 })
 

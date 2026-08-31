@@ -30,6 +30,7 @@ export {
   indexUnitsByCode,
   partyAttention,
   partySpots,
+  resolvePartyUnit,
 } from './rosterAttention'
 export type { AttentionLevel, AttentionSection, PartyAttention } from './rosterAttention'
 export { formatSessionDates } from './sessionDates'
@@ -41,6 +42,7 @@ export { scenarioForWeekend } from './weekendScenario'
 export type { ScenarioRef } from './weekendScenario'
 export { WeekendFriendGroups } from './WeekendFriendGroups'
 export { WeekendScenarioPicker } from './WeekendScenarioPicker'
+export { CabinWeekendEntry } from './CabinWeekendEntry'
 export { PushWriteInsEntry } from './PushWriteInsEntry'
 export { ScenarioCompareEntry } from './ScenarioCompareEntry'
 export { WeekendStatsBar } from './WeekendStatsBar'

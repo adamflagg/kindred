@@ -232,6 +232,23 @@ describe('invalidateLodgingRegistryQueries', () => {
     expect(queryKeys.pushPreview(2026, 1000001, 'scn_1').slice(0, 1)).toEqual(preview)
   })
 
+  it('invalidates the cabin-weekend attribution queue by prefix', () => {
+    // Confirming a row (kindred#2648's frontend half) is a
+    // lodging_ingest_issues write like resolving an unresolved-alias row is —
+    // and it moves the roster too, since replayOnResolve materialises the
+    // placement. Without this the confirmed row would sit in the admin
+    // queue's cache for up to 30 seconds after a successful confirm
+    // (useSessionAttributionQueue opts into userDataOptions, not the app's
+    // 30-minute default) — and the board's stats-bar chip, which shares the
+    // same cache slot, would go stale right alongside it.
+    const client = recordingClient()
+    invalidateLodgingRegistryQueries(client)
+
+    const queue = client.keys.find((k) => k[0] === 'session-attribution-queue')
+    expect(queue).toHaveLength(1)
+    expect(queryKeys.sessionAttributionQueue(2026).slice(0, 1)).toEqual(queue)
+  })
+
   it('invalidates the lodging registry keys by PREFIX too, since 1500000141', () => {
     // Units and areas became year-scoped: the real keys are [key, year], and
     // an admin panel editing one season's registry does not know every year a

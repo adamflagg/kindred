@@ -240,4 +240,45 @@ describe('WeekendStatsBar', () => {
     render(<WeekendStatsBar counts={counts({})} spotsNeeded={0} spacesUnmeasured={0} />)
     expect(screen.queryByRole('button', { name: 'Push write-ins' })).not.toBeInTheDocument()
   })
+
+  // The cabin-weekend chip (kindred#2648 UI half, Q1 decided 2026-08-31):
+  // inline in the stats bar's own row, distinct from `trailing` above — that
+  // slot is for the right-aligned action group (Compare, Push write-ins),
+  // this one sits inline with the other figures, before it.
+  it('renders the attribution chip inline, inside the bar row', () => {
+    const { container } = render(
+      <WeekendStatsBar
+        counts={counts({})}
+        spotsNeeded={0}
+        spacesUnmeasured={0}
+        attributionChip={<button type="button">4 cabins need a weekend</button>}
+      />
+    )
+    const chip = screen.getByRole('button', { name: '4 cabins need a weekend' })
+    expect(container.firstElementChild?.firstElementChild?.contains(chip)).toBe(true)
+  })
+
+  it('renders no attribution-chip wrapper when the slot is empty', () => {
+    render(<WeekendStatsBar counts={counts({})} spotsNeeded={0} spacesUnmeasured={0} />)
+    expect(screen.queryByRole('button', { name: /need.*a weekend/i })).not.toBeInTheDocument()
+  })
+
+  it('places the attribution chip before the trailing action group', () => {
+    render(
+      <WeekendStatsBar
+        counts={counts({})}
+        spotsNeeded={0}
+        spacesUnmeasured={0}
+        attributionChip={<button type="button">4 cabins need a weekend</button>}
+        trailing={<button type="button">Push write-ins</button>}
+      />
+    )
+    // getByRole throws if either is missing, so a regression that drops one
+    // slot entirely fails loudly here rather than passing on a vacuous -1
+    // index comparison.
+    const chipIndex = screen.getByRole('button', { name: '4 cabins need a weekend' })
+    const trailingIndex = screen.getByRole('button', { name: 'Push write-ins' })
+    const buttons = screen.getAllByRole('button')
+    expect(buttons.indexOf(chipIndex)).toBeLessThan(buttons.indexOf(trailingIndex))
+  })
 })

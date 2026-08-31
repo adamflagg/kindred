@@ -16,6 +16,9 @@ import { LodgingSettingsTab } from './LodgingSettingsTab'
 vi.mock('./LodgingUnitsPanel', () => ({ LodgingUnitsPanel: () => <div>UNITS PANEL</div> }))
 vi.mock('./LodgingAliasesPanel', () => ({ LodgingAliasesPanel: () => <div>ALIASES PANEL</div> }))
 vi.mock('./UnresolvedAliasQueue', () => ({ UnresolvedAliasQueue: () => <div>QUEUE PANEL</div> }))
+vi.mock('./CabinWeekendsQueue', () => ({
+  CabinWeekendsQueue: () => <div>CABIN WEEKENDS PANEL</div>,
+}))
 vi.mock('./SeasonRollForwardPanel', () => ({
   SeasonRollForwardPanel: () => <div>SEASON PANEL</div>,
 }))
@@ -69,6 +72,13 @@ describe('LodgingSettingsTab', () => {
     expect(screen.getByText('QUEUE PANEL')).toBeInTheDocument()
   })
 
+  it('renders the cabin-weekend attribution queue', () => {
+    // kindred#2648 UI half — the always-accessible home for confirming which
+    // weekend an ambiguous CampMinder cabin value belongs to.
+    renderAt('/manage/lodging/attribution')
+    expect(screen.getByText('CABIN WEEKENDS PANEL')).toBeInTheDocument()
+  })
+
   it('renders the season roll-forward section', () => {
     renderAt('/manage/lodging/season')
     expect(screen.getByText('SEASON PANEL')).toBeInTheDocument()
@@ -93,6 +103,7 @@ describe('LodgingSettingsTab', () => {
       ['Units', '/manage/lodging/units'],
       ['Cabin name aliases', '/manage/lodging/aliases'],
       ['Unresolved names', '/manage/lodging/unresolved'],
+      ['Cabin Weekends', '/manage/lodging/attribution'],
       ['Season', '/manage/lodging/season'],
       ['Weekend status', '/manage/lodging/status'],
     ]

@@ -15,6 +15,7 @@ import { MemoryRouter } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
+import { acquireOverlayToken, isTopOverlay, releaseOverlayToken } from '../ui/modalStack'
 import { FamilyDetailsPanel } from './FamilyDetailsPanel'
 import { partyAttention } from './rosterAttention'
 
@@ -651,6 +652,25 @@ describe('FamilyDetailsPanel — interaction contract', () => {
     expect(container.querySelector('.pointer-events-none.fixed.inset-0')).toBeInTheDocument()
   })
 
+  it('keeps the click-outside catcher pass-through by default, so board cards stay reachable underneath it', () => {
+    render(<FamilyDetailsPanel party={party()} year={2026} onClose={vi.fn()} />, { wrapper })
+    expect(screen.getByTestId('family-panel-backdrop')).toHaveClass('pointer-events-none')
+    expect(screen.getByTestId('family-panel-backdrop')).not.toHaveClass('pointer-events-auto')
+  })
+
+  it('makes the click-outside catcher interactive when backdropInteractive is set (kindred#2650 follow-up)', () => {
+    // `WeekendRosterPage`'s attribution-chip call site opts in: it has no
+    // board underneath to pass clicks through to (only the `CabinWeekendModal`
+    // that spawned this panel), so the backdrop must catch a genuine outside
+    // click itself rather than leak it to the modal's own backdrop.
+    render(
+      <FamilyDetailsPanel party={party()} year={2026} onClose={vi.fn()} backdropInteractive />,
+      { wrapper }
+    )
+    expect(screen.getByTestId('family-panel-backdrop')).toHaveClass('pointer-events-auto')
+    expect(screen.getByTestId('family-panel-backdrop')).not.toHaveClass('pointer-events-none')
+  })
+
   it('closes on the close button', async () => {
     const onClose = vi.fn()
     render(<FamilyDetailsPanel party={party()} year={2026} onClose={onClose} />, { wrapper })
@@ -918,6 +938,121 @@ describe('Escape with a dialog open on top', () => {
 
     fireEvent.keyDown(document, { key: 'Escape' })
     fireEvent.keyDown(document, { key: 'Escape' })
+
+    expect(screen.getByTestId('family-details-panel')).toHaveClass('animate-slide-out-right')
+  })
+})
+
+/**
+ * kindred#2650 opens this panel the OTHER direction from the describe block
+ * above: instead of the panel hosting a `ui/Modal`, `CabinWeekendModal` (a
+ * `ui/Modal`) can now open THIS panel on top of ITSELF, from a family-name
+ * click inside `SessionAttributionRow`. `hasOpenModal()` alone cannot answer
+ * "am I on top" for this direction — it only ever answered "is anything open
+ * at all", which is why the panel must participate in `ui/modalStack`'s own
+ * token stack (`acquireOverlayToken`/`isTopOverlay`), exactly as `ui/Modal`
+ * itself does, rather than special-casing one direction and not the other.
+ */
+describe('Escape when opened ON TOP of an existing overlay (kindred#2650)', () => {
+  it('closes on the FIRST Escape when opened on top of an overlay that was already there', () => {
+    // The panel opened AFTER `outerToken`, so it is the one visually on top
+    // (`CabinWeekendModal` opened first, this panel opened from a click
+    // inside it) — Escape has to reach IT first, not the overlay underneath.
+    const outerToken = acquireOverlayToken()
+    try {
+      render(<FamilyDetailsPanel party={party()} year={2026} onClose={vi.fn()} />, { wrapper })
+
+      fireEvent.keyDown(document, { key: 'Escape' })
+
+      const panel = screen.getByTestId('family-details-panel')
+      expect(panel).toHaveClass('animate-slide-out-right')
+    } finally {
+      releaseOverlayToken(outerToken)
+    }
+  })
+
+  it('takes over the top of the stack from an overlay opened BEFORE it, so that overlay stands down too', () => {
+    // The scenario this whole describe block exists for: `CabinWeekendModal`
+    // (a `ui/Modal`) acquires its token, opens, and THEN this panel opens on
+    // top of it — the reverse of "hosting a modal" above. Unless the panel
+    // acquires its OWN token here, `outerToken` stays topmost, and
+    // `CabinWeekendModal`'s own `isTopOverlay(outerToken)` check (see
+    // `ui/Modal.tsx`) would still say yes — closing the MODAL on the very
+    // first Escape while this panel, still visually on top, stays open.
+    // Asserted directly against the stack rather than through CSS classes,
+    // since `ui/Modal` itself is not rendered here.
+    const outerToken = acquireOverlayToken()
+    try {
+      render(<FamilyDetailsPanel party={party()} year={2026} onClose={vi.fn()} />, { wrapper })
+
+      expect(isTopOverlay(outerToken)).toBe(false)
+    } finally {
+      releaseOverlayToken(outerToken)
+    }
+  })
+
+  it('closes on Escape once it is itself the topmost overlay', () => {
+    render(<FamilyDetailsPanel party={party()} year={2026} onClose={vi.fn()} />, { wrapper })
+
+    fireEvent.keyDown(document, { key: 'Escape' })
+
+    expect(screen.getByTestId('family-details-panel')).toHaveClass('animate-slide-out-right')
+  })
+})
+
+/**
+ * kindred#2650 follow-up. This panel's OWN `[data-testid="family-panel-backdrop"]`
+ * click handler had the exact same gap Escape used to have (fixed above): it
+ * called `handleClose` unconditionally, with no `isTopOverlay` check, so a
+ * click that reached it while a modal sat on top of this panel would close
+ * BOTH.
+ *
+ * ⚠️ These tests below run WITHOUT `backdropInteractive`, i.e. this
+ * backdrop's DEFAULT, `pointer-events-none` shape — the one every call site
+ * but `WeekendRosterPage`'s uses. In a real browser at THAT default this
+ * backdrop cannot physically receive a click at all (deliberately: it lets a
+ * click pass through to a board row underneath and switch families directly,
+ * the same contract `CamperDetailsPanel`'s identical backdrop has).
+ * `fireEvent.click` below dispatches directly at the node regardless of that
+ * CSS, which is how this suite reaches it at all — jsdom does not enforce
+ * `pointer-events` (confirmed against real Chromium: a real click never
+ * reaches this element at the default). This gate is defence-in-depth for
+ * that common case — construction, not the accident the panel's own
+ * pointer-events happened to hide it behind.
+ *
+ * `WeekendRosterPage`'s call site is the one exception: it sets
+ * `backdropInteractive`, making this SAME gate the real, load-bearing
+ * click-outside mechanism there (the panel is portaled outside `#root`'s
+ * `inert` subtree and its backdrop genuinely catches the click — see
+ * `WeekendRosterPage.test.tsx`'s "closes only the panel on a click outside
+ * both" for that end-to-end path, and `backdropInteractive`'s own prop doc
+ * on `FamilyDetailsPanelProps` for the full mechanism).
+ */
+describe('backdrop-click ownership when opened ON TOP of an existing overlay (kindred#2650)', () => {
+  it('does not close on its own backdrop click while a modal is on top of it', () => {
+    // The panel must mount FIRST and acquire ITS token before the modal
+    // opens on top of it — the "see members" direction (`Escape with a
+    // dialog open on top` above), not the "opened ON TOP of an existing
+    // overlay" direction (below). Acquiring a token before render would
+    // make the PANEL topmost instead, which is a different test.
+    const onClose = vi.fn()
+    render(<FamilyDetailsPanel party={party()} year={2026} onClose={onClose} />, { wrapper })
+    const topToken = acquireOverlayToken()
+    try {
+      fireEvent.click(screen.getByTestId('family-panel-backdrop'))
+
+      const panel = screen.getByTestId('family-details-panel')
+      expect(panel).not.toHaveClass('animate-slide-out-right')
+      expect(panel).toHaveClass('animate-slide-in-right')
+    } finally {
+      releaseOverlayToken(topToken)
+    }
+  })
+
+  it('closes on its own backdrop click once it is itself the topmost overlay', () => {
+    render(<FamilyDetailsPanel party={party()} year={2026} onClose={vi.fn()} />, { wrapper })
+
+    fireEvent.click(screen.getByTestId('family-panel-backdrop'))
 
     expect(screen.getByTestId('family-details-panel')).toHaveClass('animate-slide-out-right')
   })

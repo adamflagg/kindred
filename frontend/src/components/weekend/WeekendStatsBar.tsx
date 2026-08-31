@@ -41,6 +41,13 @@ export interface WeekendStatsBarProps {
    * first visual pass (2026-08-24).
    */
   trailing?: ReactNode
+  /**
+   * The cabin-weekend attribution chip (kindred#2648 UI half), INLINE with
+   * the bar's other figures rather than in `trailing` — Q1, decided
+   * 2026-08-31. `trailing` is the right-aligned action group (Compare, Push
+   * write-ins); this sits with the figures it is one of, ahead of it.
+   */
+  attributionChip?: ReactNode
 }
 
 const DIVIDER = <span className="text-border hidden sm:inline">|</span>
@@ -50,6 +57,7 @@ export function WeekendStatsBar({
   spotsNeeded,
   spacesUnmeasured,
   trailing,
+  attributionChip,
 }: WeekendStatsBarProps) {
   const partiesTotal = counts.parties_total ?? 0
   const partiesAssigned = counts.parties_assigned ?? 0
@@ -169,6 +177,13 @@ export function WeekendStatsBar({
               <span className="font-semibold tabular-nums">{partiesUnassigned}</span>
               <span>need a cabin</span>
             </div>
+          </>
+        )}
+
+        {attributionChip !== undefined && (
+          <>
+            {DIVIDER}
+            <div className="flex items-center gap-2">{attributionChip}</div>
           </>
         )}
 
