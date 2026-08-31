@@ -1016,6 +1016,22 @@ jobs:
         KINDRED_PROD_SCHEMA_JSON: /tmp/collections.json
       run: go test -count=1 ./sync/... -run TestLodgingTestsupportFixtureFieldsExistInProductionSchema -v
 
+    # kindred#2627: pocketbase/sync/grain.go declares, per service, the UNIQUE
+    # index that enforces each guarded sweep's grain. The ruling on that issue is
+    # that the index is asserted against a booted PocketBase's sqlite_master and
+    # never a regex over pb_migrations -- a regex passes on a migration that never
+    # applied. ./pb_test_data/data.db is the database the smoke test above just
+    # migrated, so this reads the real applied schema with no second boot.
+    #
+    # -count=1 for the same reason as the step above: the DB lives outside the
+    # module tree, so Go's test cache cannot see it change between runs and an
+    # unrelated PR could otherwise get a cached "ok" for a schema it never read.
+    - name: Grain declaration index agreement (kindred#2627)
+      working-directory: ./pocketbase
+      env:
+        KINDRED_PROD_SCHEMA_DB: ./pb_test_data/data.db
+      run: go test -count=1 ./sync/... -run TestDeclaredUniqueIndexesExistInBootedSchema -v
+
     # kindred#2278: frontend/src/types/pocketbase-types.ts is @generated from
     # live PocketBase schema introspection (pocketbase-typegen), and nothing
     # else in this repo regenerates or diffs it -- a migration can add,
