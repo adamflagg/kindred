@@ -333,6 +333,17 @@ const _exhaustiveLodgingUnit: Required<LodgingUnitRow> = {
   // container's row describes the CONTAINER, so this is what a drop is judged
   // against; `has_fridge` above stays the registry's own fact about the row.
   fridge_coverage: 'none',
+  has_heat: false,
+  // The heat twin of `power_coverage`, resolved over the same leaf walk
+  // (kindred#2327). DISPLAY ONLY, and not yet read by any card — heat and AC
+  // are ruled as two separate marks, never one combined "temperature
+  // control", but heat has no shipped icon on any surface to align with.
+  heat_coverage: 'none',
+  is_weatherized: false,
+  // The weatherized twin of `power_coverage`, resolved over the same leaf
+  // walk (kindred#2327). DISPLAY ONLY. The ruled treatment is a NEGATED mark
+  // and is gated on a mockup this fixture's change does not build.
+  weatherized_coverage: 'none',
   // THREE-VALUE select plus blank, never a bool. `'no'` is a TRUTHY string, so
   // anything filtering this on truthiness renders the glyph on the four cabins
   // staff assessed as having no ramp. PROVENANCE ONLY since kindred#2327 —
