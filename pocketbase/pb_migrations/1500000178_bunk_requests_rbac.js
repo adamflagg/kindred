@@ -38,18 +38,39 @@
  * therefore lose the pending-request badge, camper tooltips, and request
  * panels on the board after this change.
  *
- * Degradation, verified per read path (2026-08-31): every consumer goes
- * EMPTY, none shows a visible error. Two swallow the 403 outright —
+ * Degradation, verified per read path (2026-08-31). Six of the seven go
+ * EMPTY and none shows a visible error. Two swallow the 403 outright —
  * useBunkRequestsCount's getRequestsCount try/catch returns 0 (the badge
- * reads 0), and BunkRequestProvider's queryFn try/catch returns []. The
- * other four let it reject into React Query but destructure `data = []` /
- * `= EMPTY` and never read isError, so they render as "no requests":
+ * reads 0), and BunkRequestProvider's queryFn try/catch returns []. Four
+ * let it reject into React Query but destructure `data = []` / `= EMPTY`
+ * and never read isError, so they render as "no requests":
  * CamperDetailsPanel:412, RequestReviewPanel:292, useAllBunkRequests:41,
  * useCohortRequestRelations:61. Those four are also SLOW to settle —
  * utils/queryClient.ts's retry predicate excludes only 401, so a 403 is
  * retried three times (1s/2s/4s backoff) first. Tightening that predicate
  * is deliberately NOT done here: queryClient.ts is a shared default for
  * every query in the app and is out of this migration's scope.
+ *
+ * ⛔ The seventh path is NOT confined to request data, and the "badge and
+ * panels only" framing above understates it. SessionList.tsx's
+ * `statisticsQueries` queryFn (~:467-585) has no try/catch, and its
+ * bunk_requests manual_review count (:565) is the last await before the
+ * return. A 403 there rejects the WHOLE queryFn, so for Registrar,
+ * Finance and zero-role users every per-session statistics card on the
+ * sessions landing page loses all of its numbers — totalCampers,
+ * assignedCampers, unassignedCampers, totalBunks, totalCapacity,
+ * sexDistribution, ageGroups, newCampers/returningCampers — and the
+ * page-level `totalCampers` / `totalUnassigned` aggregates (~:598-605)
+ * both fall to 0 via `s.statistics?.x ?? 0`. There is no error UI: the
+ * page's `error` guard belongs to the outer sessions query, not to
+ * statisticsQueries, and isLoadingStats is false once the query settles,
+ * so those roles see real-looking ZEROS rather than a failure. The
+ * attendees/bunk_plans/bunk_assignments reads in that same queryFn stay
+ * permitted — it is only the bunk_requests line that takes the card down.
+ * Left unfixed here on purpose: SessionList.tsx is a hand-written
+ * component outside this migration's diff, and whether those roles should
+ * see zeros, an explicit no-access state, or the stats minus the badge is
+ * a product decision, not a mechanical fix.
  *
  * This is a deliberate, reviewed product change (not a bug to paper over)
  * — no frontend reader is touched by this migration.
