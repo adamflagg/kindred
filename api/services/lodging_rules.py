@@ -959,18 +959,28 @@ class HousingNameResolver:
 AttributionVerdict = Literal["conflict", "free", "no_data"]
 
 
-class PlacedHousehold(NamedTuple):
-    """A household `lodging_assignments` puts in a leaf, and what to call it.
+class PlacedParty(NamedTuple):
+    """A party `lodging_assignments` puts in a leaf, and what to call it.
 
-    BOTH HALVES, because the rule needs each for a different job: `cm_id` is
-    the identity it compares against the household being attributed (its own
+    BOTH HALVES, because the rule needs each for a different job: `party_key`
+    is the identity it compares against the party being attributed (its own
     placement is not a conflict), and `label` is what the evidence line prints.
-    Carrying only the id would push naming onto the caller AFTER the rule has
+    Carrying only the key would push naming onto the caller AFTER the rule has
     already decided which placements to publish, which is how a payload comes
-    to name a household the rule dropped.
+    to name a party the rule dropped.
+
+    ⚠️ `party_key` IS `compare_party_key`'S KEY, not a bare CampMinder id, and
+    the difference is not cosmetic. `lodging_ingest_issues` files an
+    `ambiguous_session` at BOTH grains -- family camp places households, adult
+    weekends place people -- and the two id spaces are unrelated, so an adult's
+    own queue row compared on integers alone could read a same-numbered
+    household's placement as its own and call a taken cabin free. The key is
+    the identity this surface already joins on, in Python and in TypeScript
+    (`frontend/src/components/weekend/partyKey.ts`); a third spelling here
+    would be a third answer to "is this the same party".
     """
 
-    cm_id: int
+    party_key: str
     label: str
 
 
@@ -990,9 +1000,9 @@ class LeafOccupancy(NamedTuple):
     covering the space through `free_family_spots`. It is passed in rather
     than re-derived -- see the section note above.
 
-    `placed_households` is every household `lodging_assignments` puts in this
-    leaf that weekend, INCLUDING the one being attributed; the rule drops its
-    own household rather than the caller having to.
+    `placed_parties` is every party `lodging_assignments` puts in this leaf
+    that weekend, INCLUDING the one being attributed; the rule drops its own
+    party rather than the caller having to.
 
     `write_in_labels` is one label per write-in cover on the leaf, own or
     inherited from an ancestor. It is the DISPLAY half; whether those write-ins
@@ -1000,7 +1010,7 @@ class LeafOccupancy(NamedTuple):
 
     `container_name` is the building the value NAMED when this leaf came out of
     a container expansion, "" when the value named the leaf itself -- so the
-    evidence line can say "a room inside Clouds Rest" rather than naming a room
+    evidence line can say "a room inside Birch House" rather than naming a room
     staff never wrote down.
     """
 
@@ -1008,7 +1018,7 @@ class LeafOccupancy(NamedTuple):
     unit_name: str
     shareability: str
     is_family_available: bool
-    placed_households: tuple[PlacedHousehold, ...]
+    placed_parties: tuple[PlacedParty, ...]
     write_in_labels: tuple[str, ...]
     container_name: str = ""
 
@@ -1053,8 +1063,8 @@ class CandidateConflict(NamedTuple):
     occupants: tuple[ConflictOccupant, ...]
 
 
-def leaf_occupants(leaf: LeafOccupancy, household_cm_id: int) -> tuple[ConflictOccupant, ...]:
-    """Who is in this leaf OTHER THAN the household being attributed.
+def leaf_occupants(leaf: LeafOccupancy, party_key: str) -> tuple[ConflictOccupant, ...]:
+    """Who is in this leaf OTHER THAN the party being attributed.
 
     A household already placed in the cabin it was written into is the
     opposite of evidence against that weekend, so its own placement is neither
@@ -1071,8 +1081,8 @@ def leaf_occupants(leaf: LeafOccupancy, household_cm_id: int) -> tuple[ConflictO
             leaf_name=leaf.unit_name,
             container_name=leaf.container_name,
         )
-        for placed in leaf.placed_households
-        if placed.cm_id != household_cm_id
+        for placed in leaf.placed_parties
+        if placed.party_key != party_key
     ]
     occupants.extend(
         ConflictOccupant(
@@ -1087,8 +1097,8 @@ def leaf_occupants(leaf: LeafOccupancy, household_cm_id: int) -> tuple[ConflictO
     return tuple(occupants)
 
 
-def leaf_conflicts(leaf: LeafOccupancy, household_cm_id: int) -> bool:
-    """Whether this leaf is UNAVAILABLE to this household that weekend.
+def leaf_conflicts(leaf: LeafOccupancy, party_key: str) -> bool:
+    """Whether this leaf is UNAVAILABLE to this party that weekend.
 
     THREE DISJUNCTS, exactly as §12.8.5 states them, and they split across two
     questions because availability already answers one of them:
@@ -1098,7 +1108,7 @@ def leaf_conflicts(leaf: LeafOccupancy, household_cm_id: int) -> bool:
        write-in is charged the WHOLE capacity of the unit it names
        (kindred#2540), so `free_family_spots` reaches 0 and the leaf closes.
        ⛔ Read, never re-derived (see the section note).
-    2. A PLACEMENT held by a different household. `free_family_spots`
+    2. A PLACEMENT held by a different party. `free_family_spots`
        deliberately does not subtract placed families -- its docstring says so,
        because the stats bar counts them in the other numerator -- so
        availability alone cannot see this and the rule has to.
@@ -1119,12 +1129,12 @@ def leaf_conflicts(leaf: LeafOccupancy, household_cm_id: int) -> bool:
         return True
     if leaf.shareability == "shareable":
         return False
-    if any(placed.cm_id != household_cm_id for placed in leaf.placed_households):
+    if any(placed.party_key != party_key for placed in leaf.placed_parties):
         return True
     return bool(leaf.write_in_labels)
 
 
-def candidate_conflict(candidate: CandidateOccupancy, household_cm_id: int) -> CandidateConflict:
+def candidate_conflict(candidate: CandidateOccupancy, party_key: str) -> CandidateConflict:
     """One candidate weekend's verdict.
 
     ANY leaf being unavailable is the whole value being unavailable: a family
@@ -1139,8 +1149,8 @@ def candidate_conflict(candidate: CandidateOccupancy, household_cm_id: int) -> C
     occupants: list[ConflictOccupant] = []
     conflict = False
     for leaf in candidate.leaves:
-        occupants.extend(leaf_occupants(leaf, household_cm_id))
-        conflict = leaf_conflicts(leaf, household_cm_id) or conflict
+        occupants.extend(leaf_occupants(leaf, party_key))
+        conflict = leaf_conflicts(leaf, party_key) or conflict
 
     if conflict:
         verdict: AttributionVerdict = "conflict"
@@ -1152,10 +1162,14 @@ def candidate_conflict(candidate: CandidateOccupancy, household_cm_id: int) -> C
 
 
 def attribution_conflicts(
-    candidates: Sequence[CandidateOccupancy], household_cm_id: int
+    candidates: Sequence[CandidateOccupancy], party_key: str
 ) -> tuple[CandidateConflict, ...]:
-    """Every candidate weekend's verdict, in the order handed in."""
-    return tuple(candidate_conflict(candidate, household_cm_id) for candidate in candidates)
+    """Every candidate weekend's verdict, in the order handed in.
+
+    `party_key` is `compare_party_key`'s key for the party the queue row is
+    about -- see `PlacedParty`.
+    """
+    return tuple(candidate_conflict(candidate, party_key) for candidate in candidates)
 
 
 def conflict_aware_suggestion(

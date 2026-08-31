@@ -18,10 +18,11 @@ from api.services.lodging_rules import (
     CandidateOccupancy,
     HousingNameResolver,
     LeafOccupancy,
-    PlacedHousehold,
+    PlacedParty,
     RegistryUnit,
     UnitAlias,
     attribution_conflicts,
+    compare_party_key,
     conflict_aware_suggestion,
 )
 
@@ -31,10 +32,22 @@ THIS_HOUSEHOLD = 7990954
 OTHER_HOUSEHOLD = 10569302
 THIRD_HOUSEHOLD = 8604272
 
+# IDENTITY IS `compare_party_key`, the join key this surface already shares
+# with `partyKey` in TypeScript -- so a PERSON-grain queue row (adult weekends
+# place people, not households) can never match a household placement that
+# happens to carry the same CampMinder integer.
+MY_KEY = compare_party_key("household", THIS_HOUSEHOLD, 0, "The Johnson Family")
+
 # The evidence line names the FAMILY, not the id -- fictional throughout.
-OTHER = PlacedHousehold(cm_id=OTHER_HOUSEHOLD, label="The Garcia Family")
-THIRD = PlacedHousehold(cm_id=THIRD_HOUSEHOLD, label="The Chen Family")
-MINE = PlacedHousehold(cm_id=THIS_HOUSEHOLD, label="The Johnson Family")
+OTHER = PlacedParty(
+    party_key=compare_party_key("household", OTHER_HOUSEHOLD, 0, "The Garcia Family"),
+    label="The Garcia Family",
+)
+THIRD = PlacedParty(
+    party_key=compare_party_key("household", THIRD_HOUSEHOLD, 0, "The Chen Family"),
+    label="The Chen Family",
+)
+MINE = PlacedParty(party_key=MY_KEY, label="The Johnson Family")
 
 FC1 = 1000001
 FC2 = 1000002
@@ -47,7 +60,7 @@ def _leaf(
     name: str = "",
     shareability: str = "single_party",
     is_family_available: bool = True,
-    placed: tuple[PlacedHousehold, ...] = (),
+    placed: tuple[PlacedParty, ...] = (),
     write_ins: tuple[str, ...] = (),
     container_name: str = "",
 ) -> LeafOccupancy:
@@ -56,7 +69,7 @@ def _leaf(
         unit_name=name or code,
         shareability=shareability,
         is_family_available=is_family_available,
-        placed_households=placed,
+        placed_parties=placed,
         write_in_labels=write_ins,
         container_name=container_name,
     )
@@ -74,8 +87,8 @@ def _candidate(
     )
 
 
-def _verdicts(*candidates: CandidateOccupancy, household_cm_id: int = THIS_HOUSEHOLD) -> dict[int, str]:
-    return {row.session_cm_id: row.verdict for row in attribution_conflicts(candidates, household_cm_id)}
+def _verdicts(*candidates: CandidateOccupancy, party_key: str = MY_KEY) -> dict[int, str]:
+    return {row.session_cm_id: row.verdict for row in attribution_conflicts(candidates, party_key)}
 
 
 class TestValueShapes:
@@ -84,18 +97,18 @@ class TestValueShapes:
 
     def test_a_single_leaf_value_conflicts_on_its_own_leaf(self) -> None:
         verdicts = _verdicts(
-            _candidate(FC1, _leaf("HCU1", placed=(OTHER,))),
-            _candidate(FC2, _leaf("HCU1")),
+            _candidate(FC1, _leaf("maple-1", placed=(OTHER,))),
+            _candidate(FC2, _leaf("maple-1")),
         )
         assert verdicts == {FC1: "conflict", FC2: "free"}
 
     def test_a_multi_unit_value_conflicts_when_any_named_unit_is_taken(self) -> None:
-        """`Golden Triangle - Tioga 1and2` resolves to TWO leaves. One of them
+        """`Aspen Pair - Aspen 1and2` resolves to TWO leaves. One of them
         being held is the whole value being unavailable -- a family cannot take
         half of the pair it was written into."""
         verdicts = _verdicts(
-            _candidate(FC1, _leaf("TIOGA1"), _leaf("TIOGA2", placed=(OTHER,))),
-            _candidate(FC2, _leaf("TIOGA1"), _leaf("TIOGA2")),
+            _candidate(FC1, _leaf("aspen-1"), _leaf("aspen-2", placed=(OTHER,))),
+            _candidate(FC2, _leaf("aspen-1"), _leaf("aspen-2")),
         )
         assert verdicts == {FC1: "conflict", FC2: "free"}
 
@@ -103,15 +116,15 @@ class TestValueShapes:
         """Owner ruling 3: *"if someone is assigned a container and another
         family has a contained leaf, i think that's likely a demote/conflict
         yes."* The VALUE names the building; the occupancy is one room."""
-        clouds = [
-            _leaf("CR1", container_name="Clouds Rest"),
-            _leaf("CR2", container_name="Clouds Rest"),
-            _leaf("CR3", container_name="Clouds Rest", placed=(OTHER,)),
-            _leaf("CR4", container_name="Clouds Rest"),
+        rooms = [
+            _leaf("birch-1", container_name="Birch House"),
+            _leaf("birch-2", container_name="Birch House"),
+            _leaf("birch-3", container_name="Birch House", placed=(OTHER,)),
+            _leaf("birch-4", container_name="Birch House"),
         ]
-        free = [_leaf(leaf.unit_code, container_name="Clouds Rest") for leaf in clouds]
+        free = [_leaf(leaf.unit_code, container_name="Birch House") for leaf in rooms]
 
-        verdicts = _verdicts(_candidate(FC1, *clouds), _candidate(FC2, *free))
+        verdicts = _verdicts(_candidate(FC1, *rooms), _candidate(FC2, *free))
 
         assert verdicts == {FC1: "conflict", FC2: "free"}
 
@@ -120,23 +133,23 @@ class TestValueShapes:
         key, not something staff can check a cabin against -- and the queue
         already names households everywhere else it shows one."""
         rows = attribution_conflicts(
-            (_candidate(FC1, _leaf("HCU1", name="HC Upstairs 1", placed=(OTHER,))),),
+            (_candidate(FC1, _leaf("maple-1", name="Maple Upper 1", placed=(OTHER,))),),
             THIS_HOUSEHOLD,
         )
 
         assert [(o.kind, o.label, o.leaf_name) for o in rows[0].occupants] == [
-            ("placement", "The Garcia Family", "HC Upstairs 1")
+            ("placement", "The Garcia Family", "Maple Upper 1")
         ]
 
     def test_a_conflicting_leaf_inside_a_container_says_which_building(self) -> None:
         rows = attribution_conflicts(
-            (_candidate(FC1, _leaf("CR3", name="Room 3", container_name="Clouds Rest", placed=(OTHER,))),),
+            (_candidate(FC1, _leaf("birch-3", name="Room 3", container_name="Birch House", placed=(OTHER,))),),
             THIS_HOUSEHOLD,
         )
 
         occupant = rows[0].occupants[0]
-        assert occupant.leaf_code == "CR3"
-        assert occupant.container_name == "Clouds Rest"
+        assert occupant.leaf_code == "birch-3"
+        assert occupant.container_name == "Birch House"
 
 
 class TestWriteIns:
@@ -155,9 +168,9 @@ class TestWriteIns:
         verdicts = _verdicts(
             _candidate(
                 FC1,
-                _leaf("HCU1", is_family_available=False, write_ins=("Weekend staff",)),
+                _leaf("maple-1", is_family_available=False, write_ins=("Weekend staff",)),
             ),
-            _candidate(FC2, _leaf("HCU1")),
+            _candidate(FC2, _leaf("maple-1")),
         )
 
         assert verdicts == {FC1: "conflict", FC2: "free"}, "an unsized write-in takes the whole unit"
@@ -165,18 +178,18 @@ class TestWriteIns:
     def test_a_sized_write_in_still_conflicts_on_a_single_party_leaf(self) -> None:
         """A single_party leaf holds ONE party. Beds left over do not make room
         for a second one -- that is what the shareability column means."""
-        verdicts = _verdicts(_candidate(FC1, _leaf("HCU1", write_ins=("Weekend staff",))))
+        verdicts = _verdicts(_candidate(FC1, _leaf("maple-1", write_ins=("Weekend staff",))))
 
         assert verdicts == {FC1: "conflict"}
 
     def test_a_write_in_is_reported_as_the_occupant(self) -> None:
         rows = attribution_conflicts(
-            (_candidate(FC1, _leaf("HCU1", name="HC Upstairs 1", write_ins=("Weekend staff",))),),
+            (_candidate(FC1, _leaf("maple-1", name="Maple Upper 1", write_ins=("Weekend staff",))),),
             THIS_HOUSEHOLD,
         )
 
         assert [(o.kind, o.label, o.leaf_code) for o in rows[0].occupants] == [
-            ("write_in", "Weekend staff", "HCU1")
+            ("write_in", "Weekend staff", "maple-1")
         ]
 
 
@@ -189,7 +202,7 @@ class TestShareable:
             _candidate(
                 FC1,
                 _leaf(
-                    "BUNKHOUSE",
+                    "shared-hall",
                     shareability="shareable",
                     is_family_available=True,
                     placed=(OTHER,),
@@ -207,7 +220,7 @@ class TestShareable:
         verdicts = _verdicts(
             _candidate(
                 FC1,
-                _leaf("BUNKHOUSE", shareability="shareable", is_family_available=False, write_ins=("Weekend staff",)),
+                _leaf("shared-hall", shareability="shareable", is_family_available=False, write_ins=("Weekend staff",)),
             )
         )
 
@@ -217,7 +230,7 @@ class TestShareable:
         """`unit_shareability` answers "unknown" for a column staff never set.
         A cabin nobody classified holds one party until somebody says
         otherwise -- the same direction the board's own drop rules take."""
-        verdicts = _verdicts(_candidate(FC1, _leaf("MYSTERY", shareability="unknown", placed=(OTHER,))))
+        verdicts = _verdicts(_candidate(FC1, _leaf("unclassified-1", shareability="unknown", placed=(OTHER,))))
 
         assert verdicts == {FC1: "conflict"}
 
@@ -226,12 +239,12 @@ class TestOwnHouseholdIsNotAConflict:
     def test_this_households_own_placement_does_not_conflict(self) -> None:
         """"Taken" means taken by SOMEBODY ELSE. A household already placed in
         the cabin it was written into is the opposite of evidence against."""
-        verdicts = _verdicts(_candidate(FC1, _leaf("HCU1", placed=(MINE,))))
+        verdicts = _verdicts(_candidate(FC1, _leaf("maple-1", placed=(MINE,))))
 
         assert verdicts == {FC1: "free"}
 
     def test_this_households_own_placement_is_not_listed_as_an_occupant(self) -> None:
-        rows = attribution_conflicts((_candidate(FC1, _leaf("HCU1", placed=(MINE,))),), THIS_HOUSEHOLD)
+        rows = attribution_conflicts((_candidate(FC1, _leaf("maple-1", placed=(MINE,))),), MY_KEY)
 
         assert rows[0].occupants == ()
 
@@ -240,7 +253,7 @@ class TestNoData:
     """⚠️ `no_data` means no PLACEMENTS, not no occupancy (§12.8.7)."""
 
     def test_a_weekend_with_no_placements_is_no_data(self) -> None:
-        verdicts = _verdicts(_candidate(FC1, _leaf("HCU1"), weekend_has_placements=False))
+        verdicts = _verdicts(_candidate(FC1, _leaf("maple-1"), weekend_has_placements=False))
 
         assert verdicts == {FC1: "no_data"}
 
@@ -248,8 +261,8 @@ class TestNoData:
         """FC6 carries 3 write-ins and 0 placements. The write-ins make the
         weekend look non-empty; they do not make it PLANNED."""
         verdicts = _verdicts(
-            _candidate(FC1, _leaf("SOMEWHERE", write_ins=("Weekend staff",)), weekend_has_placements=False),
-            _candidate(FC2, _leaf("HCU1"), weekend_has_placements=False),
+            _candidate(FC1, _leaf("unit-x", write_ins=("Weekend staff",)), weekend_has_placements=False),
+            _candidate(FC2, _leaf("maple-1"), weekend_has_placements=False),
         )
 
         assert verdicts == {FC1: "conflict", FC2: "no_data"}, "a conflict outranks the no_data label"
@@ -259,8 +272,8 @@ class TestNoData:
         are both absences and neither promotes the other weekend."""
         rows = attribution_conflicts(
             (
-                _candidate(FC1, _leaf("HCU1"), weekend_has_placements=False),
-                _candidate(FC2, _leaf("HCU1")),
+                _candidate(FC1, _leaf("maple-1"), weekend_has_placements=False),
+                _candidate(FC2, _leaf("maple-1")),
             ),
             THIS_HOUSEHOLD,
         )
@@ -284,12 +297,12 @@ class TestConflictAwareSuggestion:
 
     def test_a_conflicted_pick_is_demoted_to_the_survivor(self) -> None:
         """§12.8.2's worked case: the household is enrolled FC1 + FC2, the
-        value is `HC Upstairs 1`, and FC1's copy is held by another household.
+        value is `Maple Upper 1`, and FC1's copy is held by another household.
         """
         rows = attribution_conflicts(
             (
-                _candidate(FC1, _leaf("HCU1", placed=(OTHER,))),
-                _candidate(FC2, _leaf("HCU1")),
+                _candidate(FC1, _leaf("maple-1", placed=(OTHER,))),
+                _candidate(FC2, _leaf("maple-1")),
             ),
             THIS_HOUSEHOLD,
         )
@@ -302,8 +315,8 @@ class TestConflictAwareSuggestion:
         wrong."""
         rows = attribution_conflicts(
             (
-                _candidate(FC1, _leaf("HCU1", placed=(OTHER,))),
-                _candidate(FC2, _leaf("HCU1", placed=(THIRD,))),
+                _candidate(FC1, _leaf("maple-1", placed=(OTHER,))),
+                _candidate(FC2, _leaf("maple-1", placed=(THIRD,))),
             ),
             THIS_HOUSEHOLD,
         )
@@ -376,14 +389,14 @@ class TestResolveCodes:
     @staticmethod
     def _resolver() -> HousingNameResolver:
         units = [
-            RegistryUnit(unit_id="u1", code="TIOGA1", name="Tioga 1", year=2026, parent_id="gt"),
-            RegistryUnit(unit_id="u2", code="TIOGA2", name="Tioga 2", year=2026, parent_id="gt"),
-            RegistryUnit(unit_id="gt", code="GT", name="Golden Triangle", year=2026, parent_id=""),
-            RegistryUnit(unit_id="u3", code="HCU1", name="HC Upstairs 1", year=2026, parent_id=""),
+            RegistryUnit(unit_id="u1", code="aspen-1", name="Aspen 1", year=2026, parent_id="up"),
+            RegistryUnit(unit_id="u2", code="aspen-2", name="Aspen 2", year=2026, parent_id="up"),
+            RegistryUnit(unit_id="up", code="aspen-pair", name="Aspen Pair", year=2026, parent_id=""),
+            RegistryUnit(unit_id="u3", code="maple-1", name="Maple Upper 1", year=2026, parent_id=""),
         ]
         aliases = [
             UnitAlias(
-                alias_string="Golden Triangle - Tioga 1and2",
+                alias_string="Aspen Pair - Aspen 1and2",
                 member_unit_ids=("u1", "u2"),
                 valid_from_year=0,
                 valid_to_year=0,
@@ -392,10 +405,10 @@ class TestResolveCodes:
         return HousingNameResolver.build(units, aliases)
 
     def test_a_direct_name_resolves_to_one_code(self) -> None:
-        assert self._resolver().resolve_codes("HC Upstairs 1", 2026) == ("HCU1",)
+        assert self._resolver().resolve_codes("Maple Upper 1", 2026) == ("maple-1",)
 
     def test_a_multi_member_alias_resolves_to_every_member_code(self) -> None:
-        assert self._resolver().resolve_codes("Golden Triangle - Tioga 1and2", 2026) == ("TIOGA1", "TIOGA2")
+        assert self._resolver().resolve_codes("Aspen Pair - Aspen 1and2", 2026) == ("aspen-1", "aspen-2")
 
     def test_an_unrecognised_string_resolves_to_nothing(self) -> None:
         assert self._resolver().resolve_codes("wherever they like", 2026) == ()
@@ -406,10 +419,30 @@ class TestResolveCodes:
         which is what the conflict rule has to expand."""
         resolver = self._resolver()
 
-        assert resolver.display_name("Golden Triangle - Tioga 1and2", 2026) == "Golden Triangle"
-        assert resolver.resolve_codes("Golden Triangle - Tioga 1and2", 2026) == ("TIOGA1", "TIOGA2")
+        assert resolver.display_name("Aspen Pair - Aspen 1and2", 2026) == "Aspen Pair"
+        assert resolver.resolve_codes("Aspen Pair - Aspen 1and2", 2026) == ("aspen-1", "aspen-2")
 
 
-@pytest.mark.parametrize("household_cm_id", [THIS_HOUSEHOLD, OTHER_HOUSEHOLD])
-def test_the_rule_is_total_over_an_empty_candidate_list(household_cm_id: int) -> None:
-    assert attribution_conflicts((), household_cm_id) == ()
+@pytest.mark.parametrize("party_key", [MY_KEY, "household-999"])
+def test_the_rule_is_total_over_an_empty_candidate_list(party_key: str) -> None:
+    assert attribution_conflicts((), party_key) == ()
+
+
+def test_a_person_grain_row_does_not_match_a_household_with_the_same_id() -> None:
+    """`ambiguous_session` is filed at BOTH grains -- family camp places
+    households, adult weekends place people -- and the two id spaces are
+    unrelated. Comparing bare integers would let an adult's own queue row read
+    a same-numbered household's placement as its own and call a taken cabin
+    free."""
+    same_number = PlacedParty(
+        party_key=compare_party_key("household", THIS_HOUSEHOLD, 0, "The Garcia Family"),
+        label="The Garcia Family",
+    )
+    person_key = compare_party_key("person", 0, THIS_HOUSEHOLD, "Riley Sam")
+
+    verdicts = {
+        row.session_cm_id: row.verdict
+        for row in attribution_conflicts((_candidate(FC1, _leaf("maple-1", placed=(same_number,))),), person_key)
+    }
+
+    assert verdicts == {FC1: "conflict"}
