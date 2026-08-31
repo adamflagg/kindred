@@ -351,7 +351,7 @@ async def set_availability(
     form sends the name it loaded, this resolves that row, and `occupant_name`
     is written onto it. A previous name that resolves nothing answers **409**:
     the row moved under the card, and falling through to a create is what
-    turns one rename into two rows the moment step 8 narrows the index.
+    turns one rename into two rows now that step 8 has narrowed the index.
     """
     try:
         return await _writes().set_availability(request)

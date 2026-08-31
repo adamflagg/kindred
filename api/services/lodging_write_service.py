@@ -159,8 +159,8 @@ class WriteInRenameConflictError(RuntimeError):
     ⚠️ A FAILED SWAP IS A CONFLICT, NEVER A CREATE, and that is the whole
     reason this class exists rather than a fall-through. Creating instead is
     precisely the two-rows-from-one-rename failure the field was added to
-    stop, reached through the guard meant to stop it -- and once step 8
-    narrows the index the create SUCCEEDS, so the failure would be silent
+    stop, reached through the guard meant to stop it -- and since step 8
+    narrowed the index the create SUCCEEDS, so the failure would be silent
     rather than merely wrong.
 
     CHEAP BY RULING. Staff are each assigned their own weekend and work async
@@ -1134,9 +1134,10 @@ class LodgingWriteService:
         cabin is `DELETE /api/lodging/write-ins` (`remove_write_in`), which is
         the verb that names its row.
 
-        DARK UNTIL STEP 8. Both unique indexes still forbid the second row, so
-        every path above resolves exactly what the unit-keyed one did for
-        every row that can exist in production today.
+        LIVE SINCE STEP 8 (`1500000176`). Both unique indexes now key on
+        `occupant_name`, so a write naming somebody the unit does not already
+        hold CREATES beside them instead of overwriting them. Every path above
+        was written for that and ran dark until the index moved.
 
         `reason` is written to the `note` COLUMN. This and `_build_units` are
         still the only two places that translate -- the fact moved tables and
@@ -1402,9 +1403,11 @@ class LodgingWriteService:
         404 on the delete itself, so a refusal keeps its status.
 
         ⚠️ OQ-8. The spec marks this shape "verify against staff expectation
-        before building". It is the recommended one, and it stays cheap to
-        revise: every path here is unreachable in production until step 8
-        narrows the unique index.
+        before building". It is the recommended one, and it was cheap to
+        revise while the unique index still made every path here unreachable.
+        Step 8 (`1500000176`) narrowed that index, so this verb is now the
+        only way to take one occupant out of a shared cabin and a change to
+        its wire shape is a change staff can feel.
         """
         # The RESULT is discarded, the call is not -- exactly as in
         # `unplace_party`. Nothing below needs the session's PocketBase id

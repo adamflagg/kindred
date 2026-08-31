@@ -55,6 +55,44 @@ func readMigration(t *testing.T, path string) string {
 	return jsConcat.ReplaceAllString(string(content), "")
 }
 
+// constValue returns the source of one top-level `const NAME = ...` binding,
+// so an assertion about a statement's TEXT cannot be satisfied by a constant
+// the migration never uses. It reads to the next top-level declaration.
+func constValue(t *testing.T, body, name string) string {
+	t.Helper()
+	at := strings.Index(body, "const "+name+" =")
+	if at < 0 {
+		t.Fatalf("migration %s declares no `const %s`", writeInIndexMigration, name)
+	}
+	tail := body[at+len("const "+name+" ="):]
+	for _, stop := range []string{"\nconst ", "\n/**", "\nfunction ", "\nmigrate("} {
+		if end := strings.Index(tail, stop); end >= 0 {
+			tail = tail[:end]
+		}
+	}
+	return tail
+}
+
+// migrationHalves splits the file at the two `(app) => {` arrows `migrate`
+// takes, so an assertion can say WHICH DIRECTION a statement is wired into.
+// Asserting only that the text appears somewhere in the file passes on a
+// migration that declares the narrowed statement and installs the old one --
+// mutation-checked, and that is exactly what it did before this split existed.
+func migrationHalves(t *testing.T, body string) (up, down string) {
+	t.Helper()
+	const arrow = "(app) => {"
+	upAt := strings.Index(body, arrow)
+	if upAt < 0 {
+		t.Fatalf("migration %s has no up path", writeInIndexMigration)
+	}
+	rest := body[upAt+len(arrow):]
+	downAt := strings.Index(rest, arrow)
+	if downAt < 0 {
+		t.Fatalf("migration %s has no down path", writeInIndexMigration)
+	}
+	return rest[:downAt], rest[downAt+len(arrow):]
+}
+
 // TestWriteInUniqueIndexesNarrowOntoTheOccupant pins the up path of step 8.
 //
 // BOTH indexes move, not one. The draft twin RETAINS `scenario`: a scenario is
@@ -63,13 +101,27 @@ func readMigration(t *testing.T, path string) string {
 func TestWriteInUniqueIndexesNarrowOntoTheOccupant(t *testing.T) {
 	body := readMigration(t, writeInIndexMigration)
 
-	if !strings.Contains(body, liveIndexAfter) {
-		t.Errorf("migration %s must narrow the live index onto occupant_name:\n  want %s",
-			writeInIndexMigration, liveIndexAfter)
+	if got := constValue(t, body, "LIVE_AFTER"); !strings.Contains(got, liveIndexAfter) {
+		t.Errorf("migration %s must narrow the live index onto occupant_name:\n  want %s\n  got %s",
+			writeInIndexMigration, liveIndexAfter, strings.TrimSpace(got))
 	}
-	if !strings.Contains(body, draftIndexAfter) {
-		t.Errorf("migration %s must narrow the draft index onto occupant_name while KEEPING scenario:\n  want %s",
-			writeInIndexMigration, draftIndexAfter)
+	if got := constValue(t, body, "DRAFT_AFTER"); !strings.Contains(got, draftIndexAfter) {
+		t.Errorf("migration %s must narrow the draft index onto occupant_name while KEEPING scenario:"+
+			"\n  want %s\n  got %s", writeInIndexMigration, draftIndexAfter, strings.TrimSpace(got))
+	}
+
+	up, _ := migrationHalves(t, body)
+	for _, name := range []string{"LIVE_AFTER", "DRAFT_AFTER"} {
+		if !strings.Contains(up, name) {
+			t.Errorf("migration %s's up path must install %s -- a narrowed statement the "+
+				"migration declares and never uses narrows nothing", writeInIndexMigration, name)
+		}
+	}
+	for _, name := range []string{"LIVE_BEFORE", "DRAFT_BEFORE"} {
+		if strings.Contains(up, name) {
+			t.Errorf("migration %s's up path installs %s, which is the statement it exists to replace",
+				writeInIndexMigration, name)
+		}
 	}
 }
 
@@ -93,17 +145,31 @@ func TestWriteInIndexDownPathRestoresTheOriginalStatements(t *testing.T) {
 	}
 
 	body := readMigration(t, writeInIndexMigration)
-	if !strings.Contains(body, liveIndexBefore) {
-		t.Errorf("migration %s must restore %s's live index VERBATIM on the down path:\n  want %s",
-			writeInIndexMigration, writeInCreateMigration, liveIndexBefore)
+	if got := constValue(t, body, "LIVE_BEFORE"); !strings.Contains(got, liveIndexBefore) {
+		t.Errorf("migration %s must restore %s's live index VERBATIM:\n  want %s\n  got %s",
+			writeInIndexMigration, writeInCreateMigration, liveIndexBefore, strings.TrimSpace(got))
 	}
-	if !strings.Contains(body, draftIndexBefore) {
-		t.Errorf("migration %s must restore %s's draft index VERBATIM on the down path:\n  want %s",
-			writeInIndexMigration, writeInCreateMigration, draftIndexBefore)
+	if got := constValue(t, body, "DRAFT_BEFORE"); !strings.Contains(got, draftIndexBefore) {
+		t.Errorf("migration %s must restore %s's draft index VERBATIM:\n  want %s\n  got %s",
+			writeInIndexMigration, writeInCreateMigration, draftIndexBefore, strings.TrimSpace(got))
+	}
+
+	_, down := migrationHalves(t, body)
+	for _, name := range []string{"LIVE_BEFORE", "DRAFT_BEFORE"} {
+		if !strings.Contains(down, name) {
+			t.Errorf("migration %s's down path must install %s", writeInIndexMigration, name)
+		}
+	}
+	for _, name := range []string{"LIVE_AFTER", "DRAFT_AFTER"} {
+		if strings.Contains(down, name) {
+			t.Errorf("migration %s's down path installs %s -- the down path restores, it does not narrow",
+				writeInIndexMigration, name)
+		}
 	}
 }
 
-// TestWriteInIndexMigrationDocumentsItsOneWayDownPath.
+// TestWriteInIndexMigrationDocumentsItsOneWayDownPath pins the header's
+// statement that this migration cannot be undone once the feature is used.
 //
 // Restoring a unique index over a table that by then holds two rows on one
 // unit FAILS, so this migration is one-way in practice like every widening
@@ -121,7 +187,8 @@ func TestWriteInIndexMigrationDocumentsItsOneWayDownPath(t *testing.T) {
 	}
 }
 
-// TestTombstoneReasoningNoLongerCitesAWriteBlockThatCannotHappen.
+// TestTombstoneReasoningNoLongerCitesAWriteBlockThatCannotHappen keeps
+// 1500000173's header arguing from reasons that are still true.
 //
 // 1500000173's header rules out a `deleted_at` tombstone for three reasons,
 // and step 8 makes the FIRST one untrue: with the index keyed on

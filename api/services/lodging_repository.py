@@ -1522,8 +1522,8 @@ class LodgingRepository:
     async def find_write_in(self, year: int, session_cm_id: int, unit_pb_id: str, occupant_name: str) -> Any | None:
         """The LIVE write-in naming this occupant in this unit, or None.
 
-        Keyed exactly as `idx_lodging_write_in_unique` is once kindred#2583
-        step 8 narrows it: (session_cm_id, year, unit, occupant_name). So the
+        Keyed exactly as `idx_lodging_write_in_unique` is since kindred#2583
+        step 8 narrowed it: (session_cm_id, year, unit, occupant_name). So the
         lookup either finds the row the next write would collide with or there
         is none -- the same argument `find_availability_override` makes for
         the table this half moves off.
@@ -1543,9 +1543,10 @@ class LodgingRepository:
         one row, and the second write edits the first. Real, uncommon, and
         strictly rarer than the failure this replaces.
 
-        DARK UNTIL STEP 8. The index still forbids the second row, so this
-        finder returns exactly what the unit-keyed one did for every row that
-        can exist in production today.
+        LIVE SINCE STEP 8 (`1500000176`). While the index still keyed on the
+        unit alone this returned exactly what the unit-keyed finder did, for
+        every row that could then exist; a unit may now hold two, and which
+        one this returns is the whole of the difference.
 
         `unit_pb_id` and `occupant_name` both arrive in the request body and
         are both escaped. Unescaped, an injected `||` would return some OTHER

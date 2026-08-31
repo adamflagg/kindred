@@ -831,13 +831,13 @@ def write_in_rows_by_unit(write_ins: list[Any]) -> dict[str, list[OwnWriteIn]]:
     same way through a `dict[unit_id, row]` that kept whichever row the fetch
     returned last. Both are gone; this is the one index both sides read.
 
-    DARK UNTIL THE INDEX MOVES. `idx_lodging_write_in_unique` (session_cm_id,
-    year, unit) and `idx_lodging_write_in_draft_unique` (+ scenario) still make
-    a second row per unit-weekend schema-impossible, so every list this returns
-    holds exactly one entry in production today and nothing downstream can
-    observe the difference. That is deliberate: this is the read path landing
-    ahead of the switch, the way kindred#2382 landed two empty tables ahead of
-    the move into them.
+    LIVE SINCE THE INDEX MOVED. `idx_lodging_write_in_unique` and
+    `idx_lodging_write_in_draft_unique` both key on `occupant_name` since
+    kindred#2583 step 8 (`1500000176`), so a second row per unit-weekend is
+    now representable and these lists really do hold more than one entry. Until
+    then a second row was schema-impossible and nothing downstream could observe
+    the difference -- this read path landed ahead of the switch, the way
+    kindred#2382 landed two empty tables ahead of the move into them.
 
     ORDER IS THE FETCH'S. `fetch_write_ins` sorts, and two occupants of one
     cabin have no other natural sequence -- so the board draws them in the
