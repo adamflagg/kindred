@@ -138,41 +138,25 @@ var requestFieldProbes = map[string][]string{
 // column is what a reader of the table sees, and the column is what this
 // compares.
 //
-// It mirrors setRegistrationRequestFields plus the eight columns
-// upsertRegistrations writes directly, and not the household/year key it also
-// writes on the create branch. Keeping the mirror in step with the production
-// writer is what TestRegistrationColumnsCoverEveryWrittenColumn below is for,
-// and that test reads the writer's source rather than a second copy of this
-// list.
+// It mirrors registrationColumnValues (kindred#2552 piece 2 fused
+// setRegistrationRequestFields's write list and registrationNeedsUpdate's
+// compare list into that one production list) plus the household/year key
+// upsertRegistrations writes directly on the create branch, which this map
+// does not mirror -- the fan-out guard compares answers, and a key is not an
+// answer. Reading straight from registrationColumnValues instead of
+// hand-naming the same columns a third time is the same move medicalColumns
+// below already makes from medicalColumnValues.
 func registrationColumns(reg *registrationData) map[string]string {
-	eligibility, eligibilitySource := NormalizeShareEligibility(
-		reg.shareEligibility, reg.shareEligibilitySource)
-	return map[string]string{
-		"cabin_assignment":           reg.cabinAssignment,
-		"share_cabin_preference":     reg.shareCabinPreference,
-		"shared_cabin_modes_raw":     reg.sharedCabinModesRaw,
-		"arrival_eta":                reg.arrivalETA,
-		"special_occasions":          reg.specialOccasions,
-		"goals":                      reg.goals,
-		"notes":                      reg.notes,
-		"needs_accommodation":        strconv.FormatBool(reg.needsAccommodation),
-		"share_cabin_gate":           reg.shareCabinGate,
-		"wants_near":                 strconv.FormatBool(reg.wantsNear),
-		"wants_with_named":           strconv.FormatBool(reg.wantsWithNamed),
-		"wants_similar_ages":         strconv.FormatBool(reg.wantsSimilarAges),
-		"request_text":               reg.requestText,
-		"request_source_field":       reg.requestSourceField,
-		"request_last_updated":       formatRequestStamp(reg.requestLastUpdated),
-		"needs_private_bathroom":     strconv.FormatBool(reg.needsPrivateBathroom),
-		"needs_power":                strconv.FormatBool(reg.needsPower),
-		"accommodation_is_mandatory": strconv.FormatBool(reg.accommodationIsMandatory),
-		"has_infant":                 strconv.FormatBool(reg.hasInfant),
-		"needs_fridge":               strconv.FormatBool(reg.needsFridge),
-		"needs_step_free":            strconv.FormatBool(reg.needsStepFree),
-		"share_eligibility":          eligibility,
-		"share_eligibility_source":   eligibilitySource,
-		enrollmentStatusColumn:       reg.enrollmentStatus,
+	out := make(map[string]string, 24)
+	for _, cv := range registrationColumnValues(reg) {
+		switch v := cv.value.(type) {
+		case string:
+			out[cv.column] = v
+		case bool:
+			out[cv.column] = strconv.FormatBool(v)
+		}
 	}
+	return out
 }
 
 // medicalColumns is the same read for family_camp_medical, reusing the
@@ -359,13 +343,19 @@ func setCallColumns(t *testing.T, funcName string) []string {
 }
 
 // TestRegistrationColumnsCoverEveryWrittenColumn keeps the mirror above honest,
-// in BOTH directions, against the production writer's own source.
+// in BOTH directions, against what production actually writes.
 //
-// registrationColumns is a hand-written list, and a column added to
-// setRegistrationRequestFields but not to it would be invisible to the fan-out
-// guard -- the guard would go green on the very write it exists to catch. So
-// this reads every record.Set in setRegistrationRequestFields and in
-// upsertRegistrations' two branches and demands set equality with the mirror.
+// Before kindred#2552 piece 2, setRegistrationRequestFields hand-named every
+// column with a literal record.Set("column", ...) call, so this test read
+// that source text to catch a column added there but not to the
+// registrationColumns mirror. Now both registrationColumns and
+// setRegistrationRequestFields itself read from registrationColumnValues, so
+// a column added to that ONE list reaches every consumer by construction --
+// the drift this test used to catch by parsing source text can no longer
+// happen. What is still hand-written, and still worth reading from source, is
+// upsertRegistrations' own two literal Set calls (household, year) plus
+// whatever else might someday be added there directly, bypassing the shared
+// helper -- that is what setCallColumns still checks below.
 func TestRegistrationColumnsCoverEveryWrittenColumn(t *testing.T) {
 	t.Parallel()
 
@@ -375,15 +365,16 @@ func TestRegistrationColumnsCoverEveryWrittenColumn(t *testing.T) {
 	keyColumns := map[string]bool{"household": true, "year": true}
 
 	written := map[string]bool{}
-	for _, funcName := range []string{"setRegistrationRequestFields", "upsertRegistrations"} {
-		columns := setCallColumns(t, funcName)
-		if len(columns) == 0 {
-			t.Fatalf("found no record.Set calls in %s; this guard would pass vacuously", funcName)
-		}
-		for _, column := range columns {
-			if !keyColumns[column] {
-				written[column] = true
-			}
+	for _, cv := range registrationColumnValues(&registrationData{}) {
+		written[cv.column] = true
+	}
+	if len(written) == 0 {
+		t.Fatal("registrationColumnValues returned nothing; this guard would pass vacuously")
+	}
+	for _, column := range setCallColumns(t, "upsertRegistrations") {
+		if !keyColumns[column] && !written[column] {
+			t.Errorf("upsertRegistrations sets %q directly, bypassing setRegistrationRequestFields "+
+				"and registrationColumnValues -- add it there instead so the compare path sees it too", column)
 		}
 	}
 

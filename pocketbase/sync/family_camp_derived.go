@@ -2776,37 +2776,88 @@ func (s *FamilyCampDerivedSync) adultNeedsUpdate(existing *core.Record, adult *a
 		storedAttributeConflicts(existing) != adult.conflictsJSON()
 }
 
+// registrationColumnValue pairs one family_camp_registrations column with the
+// value registrationData currently holds for it. value is either a string or
+// a bool -- registration mixes the two, unlike medicalColumnValue's all-string
+// list, so both setRegistrationRequestFields and registrationNeedsUpdate type
+// switch on it below.
+type registrationColumnValue struct {
+	column string
+	value  any
+}
+
+// registrationColumnValues lists every family_camp_registrations column
+// setRegistrationRequestFields writes, next to reg's current value for it.
+// Both setRegistrationRequestFields and registrationNeedsUpdate walk this ONE
+// list rather than each naming the same 24 columns by hand (kindred#2552
+// piece 2, on the model of medicalColumnValues) -- so a column added here
+// reaches the write path and the change-detection path in one edit, instead
+// of risking the silent split #2552 was filed over: a column written in only
+// one of two hand-copied lists, or compared in only the other.
+//
+// medicalColumnValues' doc comment draws the line at "every field is a plain
+// string, no normalisation" -- registration crosses both of those and fuses
+// anyway. The bool columns need no special handling: value is `any`, and both
+// consumers type-switch on it. The one normalisation this function needs,
+// NormalizeShareEligibility, is computed ONCE here rather than separately in
+// each caller (the comparator used to recompute it to match what the setter
+// writes, "or every household with no request values would look changed on
+// every pass: the struct holds \"\" while the row holds \"unknown\"" -- that
+// invariant is preserved by computing it into the shared list instead).
+//
+// A future column whose write and compare sets should DIVERGE must not
+// simply join this list -- see medicalColumnValues' comment for why: it would
+// make every row compare dirty on every run, the kindred#2384 shape. Split it
+// out instead of adding it here.
+func registrationColumnValues(reg *registrationData) []registrationColumnValue {
+	eligibility, eligibilitySource := NormalizeShareEligibility(
+		reg.shareEligibility, reg.shareEligibilitySource)
+	return []registrationColumnValue{
+		{"cabin_assignment", reg.cabinAssignment},
+		{"share_cabin_preference", reg.shareCabinPreference},
+		{"shared_cabin_modes_raw", reg.sharedCabinModesRaw},
+		{"arrival_eta", reg.arrivalETA},
+		{"special_occasions", reg.specialOccasions},
+		{"goals", reg.goals},
+		{"notes", reg.notes},
+		{"needs_accommodation", reg.needsAccommodation},
+		{enrollmentStatusColumn, reg.enrollmentStatus},
+		{"share_cabin_gate", reg.shareCabinGate},
+		{"wants_near", reg.wantsNear},
+		{"wants_with_named", reg.wantsWithNamed},
+		{"wants_similar_ages", reg.wantsSimilarAges},
+		{"request_text", reg.requestText},
+		{"request_source_field", reg.requestSourceField},
+		{"request_last_updated", formatRequestStamp(reg.requestLastUpdated)},
+		{"needs_private_bathroom", reg.needsPrivateBathroom},
+		{"needs_power", reg.needsPower},
+		{"accommodation_is_mandatory", reg.accommodationIsMandatory},
+		{"has_infant", reg.hasInfant},
+		{"needs_fridge", reg.needsFridge},
+		{"needs_step_free", reg.needsStepFree},
+		// The board's placement verdict. share_cabin_gate above stays the raw
+		// REGISTRATION answer; this is the resolved one, and the Family Camp
+		// information form outranks the gate wherever both were answered.
+		{"share_eligibility", eligibility},
+		{"share_eligibility_source", eligibilitySource},
+	}
+}
+
 // registrationNeedsUpdate checks if a registration record needs updating
 func (s *FamilyCampDerivedSync) registrationNeedsUpdate(existing *core.Record, reg *registrationData) bool {
-	// Compared in the same normalised form setRegistrationRequestFields WRITES, or
-	// every household with no request values would look changed on every pass:
-	// the struct holds "" while the row holds "unknown".
-	normalizedEligibility, normalizedSource := NormalizeShareEligibility(
-		reg.shareEligibility, reg.shareEligibilitySource)
-	return existing.GetString("cabin_assignment") != reg.cabinAssignment ||
-		existing.GetString("share_cabin_preference") != reg.shareCabinPreference ||
-		existing.GetString("shared_cabin_modes_raw") != reg.sharedCabinModesRaw ||
-		existing.GetString("arrival_eta") != reg.arrivalETA ||
-		existing.GetString("special_occasions") != reg.specialOccasions ||
-		existing.GetString("goals") != reg.goals ||
-		existing.GetString("notes") != reg.notes ||
-		existing.GetBool("needs_accommodation") != reg.needsAccommodation ||
-		existing.GetString("share_cabin_gate") != reg.shareCabinGate ||
-		existing.GetBool("wants_near") != reg.wantsNear ||
-		existing.GetBool("wants_with_named") != reg.wantsWithNamed ||
-		existing.GetBool("wants_similar_ages") != reg.wantsSimilarAges ||
-		existing.GetString("request_text") != reg.requestText ||
-		existing.GetString("request_source_field") != reg.requestSourceField ||
-		existing.GetString("request_last_updated") != formatRequestStamp(reg.requestLastUpdated) ||
-		existing.GetBool("needs_private_bathroom") != reg.needsPrivateBathroom ||
-		existing.GetBool("needs_power") != reg.needsPower ||
-		existing.GetBool("accommodation_is_mandatory") != reg.accommodationIsMandatory ||
-		existing.GetBool("has_infant") != reg.hasInfant ||
-		existing.GetBool("needs_fridge") != reg.needsFridge ||
-		existing.GetBool("needs_step_free") != reg.needsStepFree ||
-		existing.GetString("share_eligibility") != normalizedEligibility ||
-		existing.GetString("share_eligibility_source") != normalizedSource ||
-		existing.GetString(enrollmentStatusColumn) != reg.enrollmentStatus
+	for _, cv := range registrationColumnValues(reg) {
+		switch v := cv.value.(type) {
+		case string:
+			if existing.GetString(cv.column) != v {
+				return true
+			}
+		case bool:
+			if existing.GetBool(cv.column) != v {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // setRegistrationRequestFields writes the registration profile columns, the
@@ -2814,53 +2865,10 @@ func (s *FamilyCampDerivedSync) registrationNeedsUpdate(existing *core.Record, r
 // create and update branches so the two cannot drift -- PocketBase Set on a
 // column the schema lacks is a silent no-op, so a field written in only one
 // branch fails invisibly on the other path.
-//
-// The first block (cabin_assignment through needs_accommodation) used to be
-// hand-copied into both branches of upsertRegistrations (kindred#2552 piece
-// 1). Seven of those eight columns are plain strings with no normalisation,
-// meeting the inclusion criterion medicalColumnValues' doc comment states.
-// needs_accommodation is the bool of the eight, but unlike that comment's
-// "shared list" (a single []struct{column, value string} walked by both the
-// writer and the comparator), this function is write-only and already mixes
-// bools with strings below -- wantsNear, needsPower, hasInfant, and the rest.
-// Nothing about being a bool stops a column joining a write-only helper, so
-// it is included here too. registrationNeedsUpdate's SEPARATE compare list
-// is untouched: whether that list can fuse with this one is kindred#2552
-// piece 2, not yet decided.
 func setRegistrationRequestFields(record *core.Record, reg *registrationData) {
-	record.Set("cabin_assignment", reg.cabinAssignment)
-	record.Set("share_cabin_preference", reg.shareCabinPreference)
-	record.Set("shared_cabin_modes_raw", reg.sharedCabinModesRaw)
-	record.Set("arrival_eta", reg.arrivalETA)
-	record.Set("special_occasions", reg.specialOccasions)
-	record.Set("goals", reg.goals)
-	record.Set("notes", reg.notes)
-	record.Set("needs_accommodation", reg.needsAccommodation)
-	record.Set(enrollmentStatusColumn, reg.enrollmentStatus)
-	record.Set("share_cabin_gate", reg.shareCabinGate)
-	record.Set("wants_near", reg.wantsNear)
-	record.Set("wants_with_named", reg.wantsWithNamed)
-	record.Set("wants_similar_ages", reg.wantsSimilarAges)
-	record.Set("request_text", reg.requestText)
-	record.Set("request_source_field", reg.requestSourceField)
-	record.Set("request_last_updated", formatRequestStamp(reg.requestLastUpdated))
-	record.Set("needs_private_bathroom", reg.needsPrivateBathroom)
-	record.Set("needs_power", reg.needsPower)
-	record.Set("accommodation_is_mandatory", reg.accommodationIsMandatory)
-	record.Set("has_infant", reg.hasInfant)
-	record.Set("needs_fridge", reg.needsFridge)
-	record.Set("needs_step_free", reg.needsStepFree)
-	// The board's placement verdict. share_cabin_gate above stays the raw
-	// REGISTRATION answer; this is the resolved one, and the Family Camp
-	// information form outranks the gate wherever both were answered.
-	//
-	// Normalised so the column has exactly ONE spelling per state: a household
-	// with no request values at all never reaches the collapse, and writing its
-	// zero value would store "" beside "unknown" for the same meaning.
-	eligibility, eligibilitySource := NormalizeShareEligibility(
-		reg.shareEligibility, reg.shareEligibilitySource)
-	record.Set("share_eligibility", eligibility)
-	record.Set("share_eligibility_source", eligibilitySource)
+	for _, cv := range registrationColumnValues(reg) {
+		record.Set(cv.column, cv.value)
+	}
 }
 
 // formatRequestStamp renders requestLastUpdated for the PocketBase date column.
@@ -2883,23 +2891,17 @@ type medicalColumnValue struct {
 // medicalColumnValues lists every family_camp_medical column setMedicalFields
 // writes, next to med's current value for it. Both setMedicalFields and
 // medicalNeedsUpdate walk this ONE list rather than each naming the same 14
-// columns by hand -- so, unlike setRegistrationRequestFields' comparison
-// sibling registrationNeedsUpdate (which stays a hand-written list because it
-// mixes bools with a normalisation step, NormalizeShareEligibility, that has
-// no single scalar to compare), a column added here reaches the write path
-// and the change-detection path in one edit. What makes a shared list
-// workable here and not there: every field on medicalData is a plain string,
-// with no normalisation applied between the struct and the column.
+// columns by hand -- so a column added here reaches the write path and the
+// change-detection path in one edit.
 //
-// The registration WRITE path is now fully solved (kindred#2552 piece 1):
-// setRegistrationRequestFields covers all of the columns upsertRegistrations
-// writes, including the eight (seven plain strings plus the bool
-// needs_accommodation) that used to be hand-copied into both its branches.
-// registrationNeedsUpdate's SEPARATE compare list is still hand-written and
-// deliberately untouched -- whether it can fuse with the write list the way
-// this one does is kindred#2552 piece 2, and it carries a real decision: a
-// column whose write and compare sets should DIVERGE cannot simply join a
-// fused list, for the same reason given in the paragraph below.
+// registrationColumnValues (below setRegistrationRequestFields) is the same
+// pattern applied to the registration sibling (kindred#2552, both pieces):
+// its write and compare sets were also byte-identical once piece 1 finished
+// moving the last hand-copied columns in, so the "plain string, no
+// normalisation" line this comment used to draw was narrower than it needed
+// to be -- a shared list works fine with bools and one normalisation step
+// (NormalizeShareEligibility) folded in, as long as it is computed once, into
+// the list, rather than separately by each caller.
 //
 // ONE LIST FUSES TWO QUESTIONS -- "is this column written?" and "does a
 // change to it make the row dirty?" -- and today those sets are identical for
