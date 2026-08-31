@@ -75,12 +75,12 @@ func enrollmentStatusesForYear(t *testing.T, app core.App, year int) map[string]
 // assertion: an adult weekend is NOT family camp.
 //
 // Men's and Women's Weekend and the Divorce & Discovery retreat are a SEPARATE
-// PROGRAM that enrols adults directly. They are not family camp at a different
+// PROGRAM that enrolls adults directly. They are not family camp at a different
 // grain, and their attendee rows say nothing about whether a household attended
 // a family weekend. kindred#2619 ruled it, and api/services/lodging_repository.py
 // and lodging_roster_service.py already read it this way.
 //
-// A household whose only weekend enrolment is an adult one is therefore ABSENT
+// A household whose only weekend enrollment is an adult one is therefore ABSENT
 // from the map -- it holds no family-camp attendee row at all, which is exactly
 // what none_on_file names.
 func TestFamilyCampEnrollmentStatusExcludesAdultWeekends(t *testing.T) {
@@ -140,7 +140,7 @@ func TestFamilyCampEnrollmentStatusIgnoresAnAdultWeekendFallbackStatus(t *testin
 	}
 }
 
-// TestFamilyCampEnrollmentStatusLetsTheFamilyStatusSurfaceOverAnAdultEnrolment
+// TestFamilyCampEnrollmentStatusLetsTheFamilyStatusSurfaceOverAnAdultEnrollment
 // is the sharpest case, and the one the column got actively backwards.
 //
 // A household enrolled on an adult weekend AND waitlisted for a family weekend
@@ -149,7 +149,7 @@ func TestFamilyCampEnrollmentStatusIgnoresAnAdultWeekendFallbackStatus(t *testin
 // With adult weekends excluded, the family-side status is the only one left and
 // it surfaces. 8 such households in 2022, 10 in 2023, 5 in 2025 on the
 // production snapshot.
-func TestFamilyCampEnrollmentStatusLetsTheFamilyStatusSurfaceOverAnAdultEnrolment(t *testing.T) {
+func TestFamilyCampEnrollmentStatusLetsTheFamilyStatusSurfaceOverAnAdultEnrollment(t *testing.T) {
 	t.Parallel()
 	const year = 2026
 
@@ -164,7 +164,7 @@ func TestFamilyCampEnrollmentStatusLetsTheFamilyStatusSurfaceOverAnAdultEnrolmen
 	statuses := enrollmentStatusesForYear(t, app, year)
 
 	if got := statuses["hh_mixed"]; got != "waitlisted" {
-		t.Errorf("hh_mixed enrollment_status = %q, want %q -- an adult-weekend enrolment "+
+		t.Errorf("hh_mixed enrollment_status = %q, want %q -- an adult-weekend enrollment "+
 			"must not outrank the household's real family-camp status", got, "waitlisted")
 	}
 }

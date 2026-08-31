@@ -56,7 +56,7 @@ const (
 //
 // ⛔ AN ADULT WEEKEND IS NOT FAMILY CAMP, and this list is deliberately one
 // element. Men's and Women's Weekend and the Divorce & Discovery retreat are a
-// SEPARATE PROGRAM that happens to enrol adults directly; they are not family
+// SEPARATE PROGRAM that happens to enroll adults directly; they are not family
 // camp at a different grain. The operational fact behind the ruling
 // (kindred#2619): ADULTS-ONLY FAMILY CAMP IS REGISTERED ON PAPER and never
 // reaches CampMinder, so there is no adults-only family-camp cohort in
