@@ -911,6 +911,38 @@
       color-mix(in srgb, var(--share-yes) calc(30% + var(--share-emphasis-amp) * 45%), transparent);
   }
 
+  /*
+   * The unit card's amenity-cap trailing-icon hover cue — kindred#2327
+   * follow-up (`docs/plans/2026-08-31-mockup-sparkle-lab.html`, LOCAL ONLY,
+   * "Hover-triggered Trailing Breathe"). The IDENTICAL `.share-emphasis-glow`
+   * formula above, re-pointed at `--primary` instead of `--share-yes`, and
+   * NOTHING ELSE new: `--share-emphasis-amp` is reused as-is rather than
+   * minting a second intensity token.
+   *
+   * The re-point is deliberate, not cosmetic: reusing the share colour here
+   * would falsely say "this cabin has a share answer" on a card that carries
+   * no share mark at all. `--primary` is the same "this is interactive"
+   * green `.card-lodge:hover` and the drag-match wash (`bg-primary/20`)
+   * already use, so this borrows an existing meaning rather than adding a
+   * new hue — halo and motion only, per `shareEmphasis.ts`'s own house rule.
+   *
+   * Unlike `.share-emphasis-glow`, this class carries no permanent resting
+   * state of its own: `amenityCapCue.ts` adds it on hover-start and removes
+   * it on `kill()`, in the same calls that run the GSAP scale breathe on the
+   * same element. A resting halo was measured and ruled OUT (a disco once 11
+   * cards on a board carry one at rest) — see the mockup's "Continuous
+   * Restless Glow" and "Mount Halo Pulse" verdicts.
+   *
+   * A plain class rule, deliberately, not a Tailwind `@utility` — #1894/
+   * #2027's silent-dead-class trap: a utility Tailwind never scans as a
+   * candidate generates nothing at all.
+   */
+  .amenity-cap-cue-glow {
+    box-shadow: 0 0 calc(4px + var(--share-emphasis-amp) * 8px)
+      calc(var(--share-emphasis-amp) * 2px)
+      color-mix(in srgb, var(--primary) calc(30% + var(--share-emphasis-amp) * 45%), transparent);
+  }
+
   /* Stagger delays for lists */
   .stagger-1 {
     animation-delay: 0.05s;

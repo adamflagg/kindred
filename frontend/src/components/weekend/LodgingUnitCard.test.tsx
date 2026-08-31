@@ -16,6 +16,21 @@ import { mergeDragId, unitDroppableId } from './dragPlacement'
 import { LodgingUnitCard } from './LodgingUnitCard'
 
 /**
+ * The amenity-cap hover cue is GSAP-driven and jsdom "cannot run GSAP
+ * animations meaningfully" — the tween's visual output is untestable here,
+ * so this file tests the CONTRACT instead: the card starts a breath on
+ * `mouseenter` and kills it on `mouseleave`/unmount. `amenityCapCue.test.ts`
+ * covers the tween itself (real, unmocked GSAP, scrubbed with
+ * `timeline.time()` — the same technique `shareEmphasis.test.ts` uses).
+ */
+const amenityCueBreath = vi.hoisted(() => ({ active: true, kill: vi.fn() }))
+const startAmenityCapCueBreathMock = vi.hoisted(() => vi.fn(() => amenityCueBreath))
+vi.mock('./amenityCapCue', () => ({
+  startAmenityCapCueBreath: startAmenityCapCueBreathMock,
+  AMENITY_CAP_CUE_GLOW_CLASS: 'amenity-cap-cue-glow',
+}))
+
+/**
  * jsdom cannot perform a pointer drag, so `useDroppable`'s real `isOver`
  * never goes true here. The settled idiom (`LodgingBoard.drag.test.tsx`) is
  * to mock at the `@dnd-kit/core` boundary; this one only needs `isOver`
@@ -61,6 +76,8 @@ vi.mock('@dnd-kit/core', async (importOriginal) => {
 
 beforeEach(() => {
   overDroppableId = null
+  startAmenityCapCueBreathMock.mockClear()
+  amenityCueBreath.kill.mockClear()
 })
 
 /**
@@ -2952,7 +2969,14 @@ describe('LodgingUnitCard — T2: the amenities ride the TITLE row', () => {
     expect(screen.getByLabelText('Step-free')).toBeInTheDocument()
   })
 
-  it('draws all seven marks together — bathroom, power, AC, fridge, heat, negative weatherized and step-free', () => {
+  it('can COMPUTE all seven marks at once, but the row caps at 3 — see the "amenity row caps at 3" describe block', () => {
+    // This used to assert `toHaveLength(7)` — the row drew every mark it
+    // could. kindred#2327's follow-up caps the row at 3, always (see
+    // `describe('LodgingUnitCard — the amenity row caps at 3 ...')` below
+    // for the full contract: which 3 survive, the icon-only popover, and
+    // the hover cue). This test only pins that a unit CAN present all seven
+    // conditions true at once — the resting-row count assertion belongs to
+    // the cap's own describe block, not duplicated here.
     const { container } = renderUnit({
       bathroom: 'shared',
       has_power: true,
@@ -2969,7 +2993,15 @@ describe('LodgingUnitCard — T2: the amenities ride the TITLE row', () => {
       ramp_coverage: 'all',
     })
     const title = container.querySelector('[data-testid="unit-title-row"]')
-    expect(title?.querySelectorAll('[data-testid^="amenity-"]')).toHaveLength(7)
+    // Bathroom, power and fridge are the top 3 by the ruled priority order —
+    // never all 7, and never any of the other four in their place.
+    expect(title?.querySelector('[data-testid="amenity-bathroom"]')).not.toBeNull()
+    expect(title?.querySelector('[data-testid="amenity-power"]')).not.toBeNull()
+    expect(title?.querySelector('[data-testid="amenity-fridge"]')).not.toBeNull()
+    expect(title?.querySelector('[data-testid="amenity-ac"]')).toBeNull()
+    expect(title?.querySelector('[data-testid="amenity-heat"]')).toBeNull()
+    expect(title?.querySelector('[data-testid="amenity-not-weatherized"]')).toBeNull()
+    expect(title?.querySelector('[data-testid="amenity-step-free"]')).toBeNull()
   })
 
   it('keeps the title, the amenities and the occupancy figure on ONE row', () => {
@@ -3044,6 +3076,192 @@ describe('LodgingUnitCard — T2: the amenities ride the TITLE row', () => {
   it('draws no plug where no room has power', () => {
     renderUnit({ has_power: false, power_coverage: 'none' })
     expect(screen.queryByTestId('amenity-power')).not.toBeInTheDocument()
+  })
+})
+
+describe('LodgingUnitCard — the amenity row caps at 3, always (kindred#2327 follow-up)', () => {
+  /*
+   * Ruled across two measured mockup rounds
+   * (docs/plans/2026-08-31-mockup-icon-crowding.html and
+   * -sparkle-lab.html, both LOCAL ONLY, "Option C"): at most 3 icons, no
+   * "+N" chip, an icon-only hover/focus popover on the trailing icon
+   * carrying every mark, and a hover-triggered breathe cue on that same
+   * icon while the pointer is on the CARD.
+   */
+  const renderUnit = (overrides: Partial<LodgingUnitRow>) =>
+    render(<LodgingUnitCard slot={slot({ unit: unit(overrides) })} onOpenParty={vi.fn()} />)
+
+  const ALL_SEVEN: Partial<LodgingUnitRow> = {
+    bathroom: 'shared',
+    has_power: true,
+    power_coverage: 'all',
+    has_ac: true,
+    ac_coverage: 'all',
+    has_fridge: true,
+    fridge_coverage: 'all',
+    has_heat: true,
+    heat_coverage: 'all',
+    is_weatherized: false,
+    weatherized_coverage: 'none',
+    is_accessible: true,
+    ramp_coverage: 'all',
+  }
+
+  // Willow Downstairs A/B's real shape (the mockup's own failure case): bathroom,
+  // power, AC, heat, step-free — no fridge, no not-weatherized.
+  const FIVE_NO_FRIDGE: Partial<LodgingUnitRow> = {
+    bathroom: 'shared',
+    has_power: true,
+    power_coverage: 'all',
+    has_ac: true,
+    ac_coverage: 'all',
+    has_fridge: false,
+    fridge_coverage: 'none',
+    has_heat: true,
+    heat_coverage: 'all',
+    is_weatherized: true,
+    weatherized_coverage: 'all',
+    is_accessible: true,
+    ramp_coverage: 'all',
+  }
+
+  it('never draws more than 3 amenity icons in the row, however many the unit has', () => {
+    const { container } = renderUnit(ALL_SEVEN)
+    const title = container.querySelector('[data-testid="unit-title-row"]')
+    const rowIcons = title?.querySelectorAll(
+      '[data-testid^="amenity-"]:not([data-testid$="-popover"])'
+    )
+    expect(rowIcons).toHaveLength(3)
+  })
+
+  it('keeps the top 3 by the ruled priority order — bathroom, power, fridge — dropping AC, heat, not-weatherized and step-free', () => {
+    const { container } = renderUnit(ALL_SEVEN)
+    const title = container.querySelector('[data-testid="unit-title-row"]')
+    expect(title?.querySelector('[data-testid="amenity-bathroom"]')).not.toBeNull()
+    expect(title?.querySelector('[data-testid="amenity-power"]')).not.toBeNull()
+    expect(title?.querySelector('[data-testid="amenity-fridge"]')).not.toBeNull()
+    expect(title?.querySelector('[data-testid="amenity-ac"]')).toBeNull()
+    expect(title?.querySelector('[data-testid="amenity-heat"]')).toBeNull()
+    expect(title?.querySelector('[data-testid="amenity-not-weatherized"]')).toBeNull()
+    expect(title?.querySelector('[data-testid="amenity-step-free"]')).toBeNull()
+  })
+
+  it("drops AC first on Willow Downstairs A/B's real 5-mark shape, keeping bathroom/power/heat", () => {
+    const { container } = renderUnit(FIVE_NO_FRIDGE)
+    const title = container.querySelector('[data-testid="unit-title-row"]')
+    expect(title?.querySelector('[data-testid="amenity-bathroom"]')).not.toBeNull()
+    expect(title?.querySelector('[data-testid="amenity-power"]')).not.toBeNull()
+    expect(title?.querySelector('[data-testid="amenity-heat"]')).not.toBeNull()
+    expect(title?.querySelector('[data-testid="amenity-ac"]')).toBeNull()
+    expect(title?.querySelector('[data-testid="amenity-step-free"]')).toBeNull()
+  })
+
+  it('draws no "+N" chip and no overflow count of any kind', () => {
+    const { container } = renderUnit(ALL_SEVEN)
+    // No element anywhere in the card carries digit text shaped like a
+    // count/chip — the strongest available negative check for "nothing was
+    // built that spends row width to say how many are hidden."
+    expect(container.textContent).not.toMatch(/\+\d/)
+    expect(container.querySelector('[data-testid*="overflow"]')).toBeNull()
+    expect(container.querySelector('[data-testid*="chip"]')).toBeNull()
+  })
+
+  it('renders every visible icon as a plain flex item with no cap machinery when the unit has 3 or fewer marks', () => {
+    // The no-op path: below the cap, nothing about the row changes.
+    const { container } = renderUnit({
+      bathroom: 'shared',
+      has_power: true,
+      power_coverage: 'all',
+      has_ac: true,
+      ac_coverage: 'all',
+    })
+    expect(screen.queryByTestId('unit-amenity-cap-trigger')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('unit-amenity-cap-cue')).not.toBeInTheDocument()
+    const title = container.querySelector('[data-testid="unit-title-row"]')
+    expect(title?.querySelectorAll('[data-testid^="amenity-"]')).toHaveLength(3)
+  })
+
+  describe('the icon-only popover', () => {
+    it('makes the last VISIBLE icon the hover/focus trigger, reusing ui/Tooltip', () => {
+      renderUnit(ALL_SEVEN)
+      const trigger = screen.getByTestId('unit-amenity-cap-trigger')
+      // ui/Tooltip's own trigger element — the transparent 24px hit target,
+      // never a drawn box (this card already spends a dashed border on
+      // "empty room").
+      expect(trigger.tagName).toBe('BUTTON')
+      expect(within(trigger).getByTestId('amenity-fridge')).toBeInTheDocument()
+    })
+
+    it("lists ALL of the unit's marks on hover, not only the ones the cap dropped", () => {
+      renderUnit(ALL_SEVEN)
+      const trigger = screen.getByTestId('unit-amenity-cap-trigger')
+      fireEvent.pointerEnter(trigger)
+      const popover = screen.getByTestId('amenity-cap-popover')
+      expect(within(popover).getAllByTestId(/-popover$/)).toHaveLength(7)
+      // Both a kept mark (bathroom) and a dropped one (AC) are present.
+      expect(within(popover).getByTestId('amenity-bathroom-popover')).toBeInTheDocument()
+      expect(within(popover).getByTestId('amenity-ac-popover')).toBeInTheDocument()
+    })
+
+    it('opens on keyboard focus, not only on pointer hover', () => {
+      // The lab's own ruling: ":focus-visible should open the popover — it
+      // costs nothing." ui/Tooltip already opens on real focus; this pins
+      // that this card's wiring does not opt out of it.
+      renderUnit(ALL_SEVEN)
+      const trigger = screen.getByTestId('unit-amenity-cap-trigger')
+      expect(screen.queryByTestId('amenity-cap-popover')).not.toBeInTheDocument()
+      fireEvent.focus(trigger)
+      expect(screen.getByTestId('amenity-cap-popover')).toBeInTheDocument()
+    })
+
+    it('has no trigger at all when the cap never drops anything', () => {
+      renderUnit({ bathroom: 'shared', has_power: true, power_coverage: 'all' })
+      expect(screen.queryByTestId('unit-amenity-cap-trigger')).not.toBeInTheDocument()
+    })
+  })
+
+  describe('the hover-triggered trailing breathe', () => {
+    it('starts a breath on the cue wrapper when the pointer enters the CARD', () => {
+      const { container } = renderUnit(ALL_SEVEN)
+      const card = container.querySelector('[data-unit-card]')
+      expect(card).not.toBeNull()
+      const cue = screen.getByTestId('unit-amenity-cap-cue')
+
+      expect(startAmenityCapCueBreathMock).not.toHaveBeenCalled()
+      fireEvent.mouseEnter(card as Element)
+      expect(startAmenityCapCueBreathMock).toHaveBeenCalledTimes(1)
+      expect(startAmenityCapCueBreathMock).toHaveBeenCalledWith(cue)
+    })
+
+    it('kills the breath — never pauses it — when the pointer leaves the card', () => {
+      const { container } = renderUnit(ALL_SEVEN)
+      const card = container.querySelector('[data-unit-card]') as Element
+      fireEvent.mouseEnter(card)
+      expect(amenityCueBreath.kill).not.toHaveBeenCalled()
+      fireEvent.mouseLeave(card)
+      expect(amenityCueBreath.kill).toHaveBeenCalledTimes(1)
+    })
+
+    it('kills a running breath on unmount, so a leaving pointer is never required', () => {
+      const { container, unmount } = renderUnit(ALL_SEVEN)
+      const card = container.querySelector('[data-unit-card]') as Element
+      fireEvent.mouseEnter(card)
+      expect(startAmenityCapCueBreathMock).toHaveBeenCalledTimes(1)
+      unmount()
+      expect(amenityCueBreath.kill).toHaveBeenCalledTimes(1)
+    })
+
+    it('never starts a breath on a card with no overflow — there is nothing to cue toward', () => {
+      const { container } = renderUnit({
+        bathroom: 'shared',
+        has_power: true,
+        power_coverage: 'all',
+      })
+      const card = container.querySelector('[data-unit-card]') as Element
+      fireEvent.mouseEnter(card)
+      fireEvent.mouseLeave(card)
+      expect(startAmenityCapCueBreathMock).not.toHaveBeenCalled()
+    })
   })
 })
 
