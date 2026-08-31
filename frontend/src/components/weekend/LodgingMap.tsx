@@ -333,7 +333,9 @@ export function LodgingMap({ parties, units, year, sessionCmId = 0 }: LodgingMap
     // GROUPED BY BUILDING (kindred#2440). Two different buildings a few pixels
     // apart must never draw as one mark — proximity alone merged four such
     // pairs on the production registry. `buildingCode` is resolved once in
-    // `mapModel`, off the grain kindred#2008 ruled; this never re-derives it.
+    // `mapModel`, off `mapBuildingKey`'s ROOT grain — deliberately NOT the
+    // immediate-parent grain kindred#2008 ruled for lettability; this never
+    // re-derives it.
     return { item: mapUnit, x: screen.x, y: screen.y, group: mapUnit.buildingCode }
   })
   const clusters = clusterByProximity(placed)
@@ -555,11 +557,13 @@ export function LodgingMap({ parties, units, year, sessionCmId = 0 }: LodgingMap
                 (member) => member.item.unit.inventory_class === 'staff_default'
               )
               // Hue has the same order-dependence risk. Cross-area clusters
-              // are 0 on the current registry — clustering is proximity-based
-              // and rooms rarely straddle an area boundary — but this must
-              // not assume that stays true. `first.hue` is kept as the
-              // fallback deliberately: there is no principled "average" of
-              // two areas' colours.
+              // are 0 on the current registry, but the REASON changed with
+              // kindred#2440 and the old one no longer holds: the partition is
+              // not proximity any more, it is the registry's own building
+              // tree, and 0 of the 8 multi-room buildings span two areas.
+              // This must still not assume that stays true. `first.hue` is
+              // kept as the fallback deliberately: there is no principled
+              // "average" of two areas' colours.
               const hue = first.hue
               // #1926 added `slot.consent` so a non-consenting shared
               // placement could not pass unnoticed, and the board spends an
@@ -585,8 +589,23 @@ export function LodgingMap({ parties, units, year, sessionCmId = 0 }: LodgingMap
                 first.unit.sleeps === null ||
                 first.unit.sleeps === undefined ||
                 first.unit.sleeps === 0
+              // NAME THE BUILDING when the whole mark is one (kindred#2440).
+              // `many` used to mean "these happen to overlap, zoom to
+              // separate", so dropping the name cost nothing you could not
+              // recover. It is structural now — the rooms of a building are
+              // coincident at every zoom — so without this, 8 buildings on the
+              // 2026 registry would show a bare count and no way to get a name
+              // back. A cluster of several different buildings keeps the count
+              // alone, because there is no one name to give it.
+              const sharedBuilding =
+                many && cluster.members.every((m) => m.item.buildingCode === first.buildingCode)
+                  ? unitsByCode.get(first.buildingCode)?.name
+                  : undefined
+              const roomTally = `${String(cluster.members.length)} rooms · ${String(occupied)} occupied`
               let summary = many
-                ? `${String(cluster.members.length)} rooms · ${String(occupied)} occupied`
+                ? sharedBuilding === undefined
+                  ? roomTally
+                  : `${sharedBuilding} · ${roomTally}`
                 : first.unit.name
               // Every glyph on the pin is also said in words here — colour and
               // shape alone are not signals (WCAG 1.4.1), and the mark carries
@@ -807,7 +826,7 @@ export function LodgingMap({ parties, units, year, sessionCmId = 0 }: LodgingMap
                   <b className="text-foreground font-semibold">{containerCount}</b>{' '}
                   {containerCount === 1 ? 'container' : 'containers'} not drawn ·{' '}
                   <b className="text-foreground font-semibold">{clusterCount}</b>{' '}
-                  {clusterCount === 1 ? 'cluster' : 'clusters'} at this zoom
+                  {clusterCount === 1 ? 'cluster' : 'clusters'}
                 </span>
               </div>
             </div>

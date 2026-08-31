@@ -65,7 +65,7 @@ import { amenitiesOf } from './unitAmenities'
 import { BUTTON_PRIMARY, BUTTON_SECONDARY, FIELD, LABEL } from './lodgingStyles'
 import { parseSleeps } from './sleepsValue'
 import { slugify } from './unitCode'
-import { combinedAncestor, directChildren } from './unitTree'
+import { combinedAncestor, directChildren, pinAncestor } from './unitTree'
 import { UnitAmenityFieldset } from './UnitAmenityFieldset'
 import { UnitCapacityFields } from './UnitCapacityFields'
 import { UnitIdentityFields } from './UnitIdentityFields'
@@ -196,32 +196,25 @@ export function LodgingUnitForm({
   const [bathroomPeerIds, setBathroomPeerIds] = useState(() => storedPeerIds(unit, units))
   const unitsById = new Map(units.map((u) => [u.id, u]))
   /**
-   * The building whose pin this unit draws on, or `undefined` when the unit is
-   * itself the pin site — the mirror of `mapModel`'s `pinFor`, in ids rather
-   * than codes because this form's relation field holds `parent_unit`.
+   * The building whose pin this unit draws on, or `undefined` when the unit
+   * carries its own — `pinAncestor`, the id-keyed mirror of `mapModel`'s
+   * `pinFor` (kindred#2440).
    *
-   * THE ROOT, walked all the way up (kindred#2440 question 4, re-ruled by the
-   * owner 2026-08-30). `is_container` deliberately plays no part: a half of a
-   * house draws on the house, so what decides this is only whether the unit
-   * has a parent at all. Under the superseded immediate-parent grain a
-   * container was always its own pin site, which is how the registry's largest
-   * tree came to draw three marks on one roof.
+   * SHARED, not re-walked. This was an inline loop for one commit and
+   * disagreed with the map on a rho cycle and on a self-parent, with no tests
+   * to say so; running in the component body, an unguarded cycle is an
+   * infinite render loop. It now lives in `./unitTree` beside
+   * `combinedAncestor`, the ancestor walk this file already imports.
    *
-   * A parent the payload does not carry stops the walk rather than yielding
-   * nothing, matching `mapBuildingKey`: an unresolvable relation must not take
-   * the control away with nothing to point at.
+   * NOT simply "the root": the map draws at the outermost POSITIONED ancestor,
+   * so a building with no coordinate yet — which is every building the moment
+   * it is created here — leaves its rooms drawing at their own points, and
+   * they must keep their own editors.
+   *
+   * `is_container` deliberately plays no part. A half of a house draws on the
+   * house; what decides this is only what is above the unit.
    */
-  const pinBuilding = (() => {
-    let current = unitsById.get(identity.parent_unit)
-    const seen = new Set<string>()
-    while (current !== undefined && !seen.has(current.id)) {
-      seen.add(current.id)
-      const next = unitsById.get(current.parent_unit)
-      if (next === undefined) break
-      current = next
-    }
-    return current
-  })()
+  const pinBuilding = pinAncestor(identity.parent_unit, units)
   const shareParent = unitsById.get(identity.parent_unit)
   const sharePeers = bathroomPeerIds
     .map((id) => unitsById.get(id))
@@ -501,15 +494,17 @@ export function LodgingUnitForm({
           created has no id to write a coordinate to.
 
           Which unit carries it is kindred#2440's ruling (2026-08-21): the map
-          is a view of BUILDINGS, so a unit draws at its building's point and
-          its own coordinate is never read. The building is the ROOT (question
-          4, re-ruled 2026-08-30), so the pin belongs to the outermost
-          container of the tree — and this gate USED TO SAY THE OPPOSITE, in
-          two ways. It withheld the pin from every container, on the superseded
-          model that a building carried its rooms' positions through its
-          children; left alone that made the pin uneditable for every building
-          with rooms, while still offering each of those rooms a control that
-          saved a value nothing reads.
+          is a view of BUILDINGS, so a unit draws at its building's point
+          rather than its own. The building is the ROOT (question 4, re-ruled
+          2026-08-30), so the pin normally belongs to the outermost container
+          of the tree — but only if that container HAS a coordinate, which a
+          building created here does not until someone drags it. `pinAncestor`
+          settles both halves. This gate USED TO SAY THE OPPOSITE: it withheld
+          the pin from every container, on the superseded model that a building
+          carried its rooms' positions through its children; left alone that
+          made the pin uneditable for every building with rooms, while still
+          offering each of those rooms a control that saved a value nothing
+          reads.
 
           Read LIVE off the SELECTED parent, like the capacity flag above: a
           staffer who has just re-parented a unit has already made the ruling.
@@ -530,7 +525,8 @@ export function LodgingUnitForm({
           <span className={LABEL}>Map position</span>
           <p className="text-muted-foreground text-sm">
             Drawn at {pinBuilding.name}&rsquo;s pin, with the rest of the building. Position{' '}
-            {pinBuilding.name} to move it.
+            {pinBuilding.name} to move it. A building with no pin of its own leaves its rooms on
+            their own points, and each keeps its own control until the building is placed.
           </p>
         </div>
       )}

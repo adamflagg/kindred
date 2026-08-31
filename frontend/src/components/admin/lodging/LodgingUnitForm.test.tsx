@@ -1060,7 +1060,7 @@ describe('LodgingUnitForm — fields staff have no use for', () => {
     renderWithParent({ ...UNIT, parent_unit: 'u0', is_container: true })
 
     expect(screen.queryByLabelText(/edit position/i)).not.toBeInTheDocument()
-    expect(screen.getByText(/Drawn at Cedar House/)).toBeInTheDocument()
+    expect(screen.getByText(/Drawn at Cedar House\u2019s pin/)).toBeInTheDocument()
   })
 
   it('hands the pin back the moment a room is re-parented to nothing', async () => {
@@ -1074,6 +1074,45 @@ describe('LodgingUnitForm — fields staff have no use for', () => {
     await user.selectOptions(screen.getByLabelText('Parent unit'), '')
 
     expect(screen.getByLabelText(/edit position/i)).toBeInTheDocument()
+  })
+
+  it('WITHDRAWS the pin the moment a parentless unit is given a parent', async () => {
+    // The other direction, which the rewrite dropped. Present -> absent is the
+    // half that catches a gate stuck open, and nothing in the ruling forced
+    // giving it up.
+    const user = userEvent.setup()
+    renderWithParent(UNIT)
+    expect(screen.getByLabelText(/edit position/i)).toBeInTheDocument()
+
+    await user.selectOptions(screen.getByLabelText('Parent unit'), 'u0')
+
+    expect(screen.queryByLabelText(/edit position/i)).not.toBeInTheDocument()
+    expect(screen.getByText(/Drawn at Cedar House\u2019s pin/)).toBeInTheDocument()
+  })
+
+  /**
+   * Row 5 of the #2620 scan. A building created in this very panel starts with
+   * NO coordinate — the form omits `map_x`/`map_y` from its payload — so
+   * re-parenting positioned rooms into a fresh building is ordinary workflow.
+   * `pinFor` then draws each room at its own point, and a note claiming
+   * otherwise would be a lie about where the room is AND would hide the only
+   * control that could fix it.
+   */
+  it('keeps the pin on a room whose building has no coordinate yet', () => {
+    const freshBuilding: LodgingUnitRecord = { ...PARENT, map_x: 0, map_y: 0 }
+    render(
+      <LodgingUnitForm
+        areas={AREAS}
+        units={[freshBuilding, { ...UNIT, parent_unit: 'u0' }]}
+        year={2026}
+        unit={{ ...UNIT, parent_unit: 'u0' }}
+        onSaved={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    )
+
+    expect(screen.getByLabelText(/edit position/i)).toBeInTheDocument()
+    expect(screen.queryByText(/Drawn at/)).not.toBeInTheDocument()
   })
 
   it('offers no pin for a room inside a building — the building`s pin is its pin', () => {
@@ -1114,7 +1153,7 @@ describe('LodgingUnitForm — fields staff have no use for', () => {
     renderWithParent({ ...UNIT, parent_unit: 'u0' })
 
     // The parent picker names it too, so match the note's own wording.
-    expect(screen.getByText(/Drawn at Cedar House/)).toBeInTheDocument()
+    expect(screen.getByText(/Drawn at Cedar House\u2019s pin/)).toBeInTheDocument()
   })
 
   it('leaves a stored coordinate alone when saving a unit that has one', async () => {

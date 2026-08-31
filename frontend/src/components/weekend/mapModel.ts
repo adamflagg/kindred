@@ -14,7 +14,7 @@
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
 import { buildBoard, slotOccupancy, type ConsentFlag } from './boardLayout'
 import { effectiveSleeps } from './rosterAttention'
-import { coveredCodes, indexUnitsByCode, mapBuildingKey } from './unitLevel'
+import { coveredCodes, indexUnitsByCode, mapBuildingChain } from './unitLevel'
 
 /** Why the map cannot draw a party the board can. */
 export type OffMapReason =
@@ -85,7 +85,9 @@ export interface MapUnit {
    * Threaded rather than re-derived for the reason `roomCount` and `capacity`
    * are: the consumer holds `MapUnit[]` and never the registry, so it cannot
    * walk a room to its parent to ask. A second derivation is also how the
-   * product would end up with two different "buildings" — see `buildingKey`.
+   * product would end up with more "buildings" than it has — see
+   * `mapBuildingKey`, and its note on why it is deliberately not
+   * `buildingKey`.
    */
   buildingCode: string
   /**
@@ -199,6 +201,13 @@ function unitRoomCount(unit: LodgingUnitRow, units: LodgingUnitRow[]): number {
  * it overrides are not geography: kindred#2013 digitised them from the base
  * map's LABEL anchors, so each room inherited wherever its printed name sat.
  *
+ * ⚠️ "ITS OWN COORDINATE IS NEVER READ" IS NOT ABSOLUTE, here or in the two
+ * admin docs that say it. It holds whenever some ancestor is positioned, which
+ * is every unit on the 2026 registry — but a building created in the admin
+ * panel starts with NO coordinate (the form omits `map_x`/`map_y` from its
+ * payload), so re-parenting positioned rooms into a fresh building reaches the
+ * fallback below through ordinary workflow, not through bad data.
+ *
  * RESOLVED AT READ TIME. Nothing is written and no stored value is dropped
  * (question 2, defaulted): `map_x`/`map_y` are classified staff-owned and all
  * 118 production units carry one, so a migration would destroy 103 real values
@@ -208,26 +217,39 @@ function unitRoomCount(unit: LodgingUnitRow, units: LodgingUnitRow[]): number {
  * re-ruling (owner, 2026-08-30) and why the map deliberately does NOT share
  * #2008's `buildingKey`. Everything under one roof draws on one point,
  * containers included: a combined half is still part of its house. That took
- * the 2026 registry from 86 pin sites to 79, and it is what stopped the Health
- * Center drawing three marks on one building.
+ * the 2026 registry from 86 pin sites to 79, and it is what stopped the
+ * registry's largest tree drawing three marks on one building.
  *
- * THE FALLBACK IS THE POINT OF THE `null`. Read-time resolution must never
- * lose a pin that exists today, so an unpositioned building yields to the
- * room's own coordinate rather than taking the room off the map. Only when
- * neither carries one is there nothing to draw. Unreachable on the 2026
- * registry; it is what makes the resolution safe rather than lucky.
+ * THE FALLBACK WALKS DOWN, and that is the point of taking the whole chain.
+ * Read-time resolution must never lose a pin that exists today, so an
+ * unpositioned building yields to the outermost ancestor that IS positioned —
+ * a half, if the house has no coordinate — and only then to the unit's own.
+ * Jumping straight from the root to the unit would discard a real intermediate
+ * coordinate while promising not to. Only when nothing in the chain carries a
+ * coordinate is there nothing to draw.
+ *
+ * THE GROUP STAYS THE ROOT even when the point comes from further down. Two
+ * halves of an unpositioned house draw at their own two points but remain ONE
+ * cluster group, so the radius decides whether they merge — which is exactly
+ * the one case `mapClustering`'s header says the radius still decides. Keying
+ * the group on the half instead would reintroduce the split this issue exists
+ * to remove.
  */
 function pinFor(
   unit: LodgingUnitRow,
   units: LodgingUnitRow[]
-): { building: LodgingUnitRow; x: number; y: number } | null {
-  const byCode = indexUnitsByCode(units)
-  const building = byCode.get(mapBuildingKey(unit, byCode)) ?? unit
-  // The building's own point wins whenever it has one — that is the override,
-  // and it is deliberately an override of a real value rather than a rescue of
-  // a missing one.
-  if (hasCoordinates(building)) return { building, x: building.map_x ?? 0, y: building.map_y ?? 0 }
-  if (hasCoordinates(unit)) return { building, x: unit.map_x ?? 0, y: unit.map_y ?? 0 }
+): { buildingCode: string; x: number; y: number } | null {
+  const chain = mapBuildingChain(unit, indexUnitsByCode(units))
+  const buildingCode = chain[chain.length - 1]?.code ?? unit.code
+  // Outermost first: the highest positioned ancestor wins, and that is
+  // deliberately an override of the room's own real value rather than a
+  // rescue of a missing one.
+  for (let i = chain.length - 1; i >= 0; i -= 1) {
+    const candidate = chain[i]
+    if (candidate !== undefined && hasCoordinates(candidate)) {
+      return { buildingCode, x: candidate.map_x ?? 0, y: candidate.map_y ?? 0 }
+    }
+  }
   return null
 }
 
@@ -271,7 +293,7 @@ export function buildMapModel(parties: RosterPartyRow[], units: LodgingUnitRow[]
         // with `partySpots`, which is the roster's number rather than the
         // board's `partySize`.
         spanWidth: slotOccupancy(slot, units).spanWidth,
-        buildingCode: pin.building.code,
+        buildingCode: pin.buildingCode,
         x: pin.x,
         y: pin.y,
       })

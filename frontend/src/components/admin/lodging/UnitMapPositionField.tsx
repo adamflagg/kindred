@@ -2,12 +2,18 @@
  * Put this unit's pin where the cabin actually is.
  *
  * SINCE kindred#2440 THIS POSITIONS A BUILDING, not one room. The map is a
- * view of buildings: a unit draws at its ROOT's point and its own coordinate
- * is never read, so `LodgingUnitForm` offers this editor only to a unit with
- * no parent, and shows everything under one where its pin lives instead.
- * Dragging here moves the whole tree at once — every half and every room —
- * which is the point of the ruling: one thing to maintain per building rather
- * than up to fourteen.
+ * view of buildings: a unit draws at the outermost POSITIONED ancestor in its
+ * chain — normally its root — so `LodgingUnitForm` offers this editor to
+ * whichever unit that is, and shows everything beneath it where its pin lives
+ * instead. Dragging here moves the whole tree at once, which is the point of
+ * the ruling: one thing to maintain per building rather than up to fourteen.
+ *
+ * ⚠️ "its own coordinate is never read" would be too strong. A unit whose
+ * ancestors are ALL unpositioned still draws at its own point, and a building
+ * created in this panel starts unpositioned because the form omits
+ * `map_x`/`map_y` from its payload — so that state is reached by ordinary
+ * workflow. `pinAncestor` is what keeps this editor pointed at the coordinate
+ * the map is actually reading.
  *
  * `/manage/lodging` used to expose the position as two number inputs; PR #2024
  * deleted them and nothing replaced them, so correcting a coordinate meant

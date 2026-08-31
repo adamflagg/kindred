@@ -15,6 +15,7 @@
  * cannot un-write one already sitting in the database. This filters both
  * things the picker rejects before either ever reaches a write.
  */
+import { hasCoordinates } from '../../weekend/mapModel'
 import type { LodgingUnitRecord } from '../../../types/lodging'
 import { sortUnits, type UnitSort } from './unitSort'
 
@@ -79,6 +80,58 @@ export function combinedAncestor(
     if (!current) return undefined
     if (current.default_combined) return current
     currentId = current.parent_unit
+  }
+  return undefined
+}
+
+/**
+ * The unit whose coordinate the MAP will draw `parentId`'s child at, or
+ * `undefined` when the child carries its own pin — kindred#2440.
+ *
+ * THE MIRROR OF `mapModel`'s `pinFor`, in ids rather than codes, and the admin
+ * panel's answer to "who should be offered the pin editor". The map draws a
+ * unit at the OUTERMOST POSITIONED ancestor in its chain, so that is what this
+ * returns: normally the root, but a half when the house has no coordinate yet,
+ * and nothing at all when no ancestor is positioned.
+ *
+ * ⚠️ THE UNPOSITIONED-ROOT CASE IS ORDINARY WORKFLOW, not bad data. The unit
+ * form omits `map_x`/`map_y` from its payload, so a building created in the
+ * panel starts with no coordinate; re-parent positioned rooms into it and
+ * every room still draws at its own point. A gate that assumed the root always
+ * had a pin would tell the staffer their rooms draw somewhere they do not, and
+ * would hide the only control that could fix it.
+ *
+ * `hasCoordinates` is the map's own predicate, imported rather than re-spelled:
+ * PocketBase stores an unset number as 0, and a second copy of "both axes zero
+ * means unset" is exactly how the (0,0) trap gets back in.
+ *
+ * Same guard idiom as `combinedAncestor` above — check the NEXT hop before
+ * stepping onto it, so a rho shape terminates and a self-parent resolves to
+ * itself rather than walking forever.
+ */
+export function pinAncestor(
+  parentId: string,
+  units: LodgingUnitRecord[]
+): LodgingUnitRecord | undefined {
+  const byId = new Map(units.map((entry) => [entry.id, entry]))
+  const first = byId.get(parentId)
+  if (first === undefined) return undefined
+
+  const chain: LodgingUnitRecord[] = [first]
+  const seen = new Set<string>([first.id])
+  for (;;) {
+    const current = chain[chain.length - 1]
+    if (current === undefined) break
+    const next = byId.get(current.parent_unit)
+    if (next === undefined || seen.has(next.id)) break
+    seen.add(next.id)
+    chain.push(next)
+  }
+
+  // Outermost first, matching `pinFor`'s descent.
+  for (let i = chain.length - 1; i >= 0; i -= 1) {
+    const candidate = chain[i]
+    if (candidate !== undefined && hasCoordinates(candidate)) return candidate
   }
   return undefined
 }

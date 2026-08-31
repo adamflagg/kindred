@@ -448,9 +448,14 @@ describe('countMapUnits', () => {
  * defaulted): all 118 production units carry a coordinate, so a migration
  * would destroy 103 real staff-owned values to rescue nothing.
  *
- * The grain is the IMMEDIATE parent, never walked to the root — `buildingKey`
- * in `unitLevel.ts`, the grain kindred#2008 ruled. A pin rule that disagreed
- * would give the product two different "buildings".
+ * The grain is the ROOT, walked all the way up — `mapBuildingKey` in
+ * `unitLevel.ts`. Question 4 originally defaulted to the immediate parent, to
+ * avoid giving the product two "buildings"; the owner reversed that on
+ * 2026-08-30 once the immediate-parent grain drew one physical building as
+ * three marks. There are now two grains on purpose, because they answer
+ * different questions — `buildingKey` answers lettability, this one geography.
+ * Both are defined side by side in `unitLevel.ts` with each doc naming the
+ * other.
  */
 describe('buildMapModel — one pin per building (kindred#2440)', () => {
   /** A plain building: a grouping container with two rooms under it. */
@@ -541,54 +546,56 @@ describe('buildMapModel — one pin per building (kindred#2440)', () => {
    * under three sibling containers beneath one root: one physical building
    * that the immediate-parent grain drew as THREE marks, and — once Q3 forbade
    * cross-building merges — three that could never blob back together. Named
-   * in kindred#2440, not here (spec 3.8).
+   * in kindred#2440, not here — and so are its COORDINATES, which identify a
+   * building as surely as its name does and which the guard cannot see. The
+   * numbers below are invented; only their distinctness is load-bearing.
    */
   it('draws one mark for a house whose rooms sit under sibling halves', () => {
     const bigTree = [
-      unit({ unit_id: 'birch', code: 'birch', is_container: true, map_x: 0.731, map_y: 0.577 }),
+      unit({ unit_id: 'birch', code: 'birch', is_container: true, map_x: 0.42, map_y: 0.31 }),
       unit({
         unit_id: 'birch-up',
         code: 'birch-up',
         is_container: true,
         parent_code: 'birch',
-        map_x: 0.7295,
-        map_y: 0.5738,
+        map_x: 0.44,
+        map_y: 0.33,
       }),
       unit({
         unit_id: 'birch-down',
         code: 'birch-down',
         is_container: true,
         parent_code: 'birch',
-        map_x: 0.7294,
-        map_y: 0.582,
+        map_x: 0.45,
+        map_y: 0.36,
       }),
       unit({
         unit_id: 'r1',
         code: 'birch-up-1',
         parent_code: 'birch-up',
-        map_x: 0.727,
-        map_y: 0.57,
+        map_x: 0.46,
+        map_y: 0.3,
       }),
       unit({
         unit_id: 'r2',
         code: 'birch-up-2',
         parent_code: 'birch-up',
-        map_x: 0.728,
-        map_y: 0.5715,
+        map_x: 0.47,
+        map_y: 0.32,
       }),
       unit({
         unit_id: 'r3',
         code: 'birch-down-a',
         parent_code: 'birch-down',
-        map_x: 0.728,
-        map_y: 0.581,
+        map_x: 0.48,
+        map_y: 0.35,
       }),
     ]
     const model = buildMapModel([], bigTree)
     expect(model.units.map((u) => u.buildingCode)).toEqual(['birch', 'birch', 'birch'])
     for (const mark of model.units) {
-      expect(mark.x).toBeCloseTo(0.731, 6)
-      expect(mark.y).toBeCloseTo(0.577, 6)
+      expect(mark.x).toBeCloseTo(0.42, 6)
+      expect(mark.y).toBeCloseTo(0.31, 6)
     }
   })
 
@@ -610,7 +617,34 @@ describe('buildMapModel — one pin per building (kindred#2440)', () => {
    * registry — all 118 units carry a coordinate — but falling back to the
    * room's own point is what keeps that true of every registry.
    */
-  it('falls back to the room`s own pin when the building has none', () => {
+  it('falls back to a positioned HALF before the room`s own point', () => {
+    // The root has no coordinate — reachable through ordinary admin workflow,
+    // because a building created in the panel starts unpositioned. Dropping
+    // straight to the room would discard the half's real coordinate while the
+    // docstring promises never to lose a pin that exists.
+    const model = buildMapModel(
+      [],
+      [
+        unit({ unit_id: 'w0', code: 'wing', is_container: true, map_x: 0, map_y: 0 }),
+        unit({
+          unit_id: 'w1',
+          code: 'wing-up',
+          is_container: true,
+          parent_code: 'wing',
+          map_x: 0.55,
+          map_y: 0.6,
+        }),
+        unit({ unit_id: 'w2', code: 'wing-a', parent_code: 'wing-up', map_x: 0.9, map_y: 0.9 }),
+      ]
+    )
+    expect(model.units[0]?.x).toBeCloseTo(0.55, 6)
+    expect(model.units[0]?.y).toBeCloseTo(0.6, 6)
+    // The GROUP stays the root, so the halves of an unpositioned house are
+    // still one cluster rather than splitting into several buildings.
+    expect(model.units[0]?.buildingCode).toBe('wing')
+  })
+
+  it('falls back to the room`s own pin when nothing above it has one', () => {
     const model = buildMapModel(
       [],
       [

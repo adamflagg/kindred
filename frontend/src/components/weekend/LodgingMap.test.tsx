@@ -895,7 +895,7 @@ describe('LodgingMap legend', () => {
       unit({ unit_id: 'u3', code: 'c', name: 'C', map_x: 0.1, map_y: 0.9 }),
     ]
     render(<LodgingMap parties={[]} units={stacked} year={2026} />)
-    expect(screen.getByTestId('map-legend')).toHaveTextContent(/1 cluster at this zoom/)
+    expect(screen.getByTestId('map-legend')).toHaveTextContent(/1 cluster/)
   })
 
   /**
@@ -904,6 +904,59 @@ describe('LodgingMap legend', () => {
    * building always gets its own pin." Four pairs on the production registry
    * merged this way at rest, and this is the acceptance case for removing it.
    */
+  /**
+   * kindred#2440 made the lost name permanent. Before it, a multi-room blob
+   * was a proximity accident you could zoom apart to read the names; now the
+   * rooms are coincident at every zoom, so a bare "N rooms" would be the only
+   * thing 8 buildings on the 2026 registry ever say.
+   */
+  it('names the building on a mark that is one whole building', () => {
+    const house = [
+      unit({
+        unit_id: 'h0',
+        code: 'oak-house',
+        name: 'Oak House',
+        is_container: true,
+        map_x: 0.5,
+        map_y: 0.5,
+      }),
+      unit({
+        unit_id: 'h1',
+        code: 'oak-a',
+        name: 'Oak A',
+        parent_code: 'oak-house',
+        map_x: 0.51,
+        map_y: 0.5,
+      }),
+      unit({
+        unit_id: 'h2',
+        code: 'oak-b',
+        name: 'Oak B',
+        parent_code: 'oak-house',
+        map_x: 0.52,
+        map_y: 0.5,
+      }),
+    ]
+    render(<LodgingMap parties={[]} units={house} year={2026} />)
+    expect(screen.getByTestId('map-mark')).toHaveAttribute(
+      'title',
+      expect.stringContaining('Oak House · 2 rooms')
+    )
+  })
+
+  it('gives a mark spanning two buildings the count alone, having no one name', () => {
+    // Only reachable through the fallback, where an unpositioned root leaves
+    // rooms on their own points — but the mark must not pick one building's
+    // name to stand for both.
+    const neighbours = [
+      unit({ unit_id: 'n1', code: 'oak', name: 'Oak', map_x: 0.5, map_y: 0.5 }),
+      unit({ unit_id: 'n2', code: 'elm', name: 'Elm', map_x: 0.5, map_y: 0.5 }),
+    ]
+    render(<LodgingMap parties={[]} units={neighbours} year={2026} />)
+    // Distinct buildings never merge, so this is two marks, each named.
+    expect(screen.getAllByTestId('map-mark')).toHaveLength(2)
+  })
+
   it('never merges two different buildings, however close they sit', () => {
     const neighbours = [
       unit({ unit_id: 'n1', code: 'oak', name: 'Oak', map_x: 0.5, map_y: 0.5 }),
@@ -911,7 +964,7 @@ describe('LodgingMap legend', () => {
     ]
     render(<LodgingMap parties={[]} units={neighbours} year={2026} />)
     expect(screen.getAllByTestId('map-mark')).toHaveLength(2)
-    expect(screen.getByTestId('map-legend')).toHaveTextContent(/0 clusters at this zoom/)
+    expect(screen.getByTestId('map-legend')).toHaveTextContent(/0 clusters/)
   })
 })
 

@@ -130,6 +130,19 @@ describe('clusterByProximity — the building barrier (kindred#2440)', () => {
     expect(clusters[0]?.members).toHaveLength(3)
   })
 
+  it('refuses to merge two buildings sharing an EXACT point', () => {
+    // The barrier's comment says "no distance, not even zero". Both other
+    // barrier tests use 1px, so `if (d === 0) return true` ahead of the group
+    // check would leave the suite green. Not reachable on the 2026 registry —
+    // 0 pairs of distinct roots share a coordinate — which is precisely why
+    // the claim needs a test rather than an observation.
+    const clusters = clusterByProximity([
+      inBuilding('a', 100, 100, 'oak'),
+      inBuilding('b', 100, 100, 'elm'),
+    ])
+    expect(clusters).toHaveLength(2)
+  })
+
   it('does not let one building bridge two others', () => {
     // a---c---b in space, but c belongs to a third building. Without the
     // barrier single-link chaining fuses all three into one mark.

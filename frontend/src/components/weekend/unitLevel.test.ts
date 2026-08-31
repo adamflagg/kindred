@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import type { LodgingUnitRow } from '../../types/lodging'
 import {
   buildingGroups,
+  buildingKey,
   buildingsSpanned,
   coveredCodes,
   drawnUnits,
@@ -342,17 +343,48 @@ describe('mapBuildingKey — the ROOT grain the map draws on (kindred#2440)', ()
     expect(mapBuildingKey(solo, indexUnitsByCode([solo]))).toBe('solo')
   })
 
+  it('is NOT buildingKey — the two grains disagree by design on a halved house', () => {
+    // The load-bearing contrast, asserted directly rather than left to the
+    // reader: same unit, same registry, two different answers.
+    const room = u({ code: 'up-r1', parent_code: 'upstairs' })
+    expect(buildingKey(room, byCode)).toBe('upstairs')
+    expect(mapBuildingKey(room, byCode)).toBe('house')
+  })
+
   it('stops at a parent the payload does not carry, rather than returning nothing', () => {
     const orphan = u({ code: 'orphan', parent_code: 'not-in-payload' })
     expect(mapBuildingKey(orphan, indexUnitsByCode([orphan]))).toBe('orphan')
   })
 
-  it('does not hang on a parent cycle, which the server guards but data may hold', () => {
-    // Same backstop as `coveredCodes` and `representingCodes` (#1899).
-    const cyclic = [
+  it('does not hang on a parent cycle entered from OUTSIDE it', () => {
+    // A RHO shape (`u -> a -> b -> c -> b`), not a 2-cycle, and the walk starts
+    // off the loop. A 2-cycle whose walk begins inside it is caught by the seed
+    // `new Set([unit.code])` alone, so it exercises nothing: delete the
+    // `seen.add` in the loop and that fixture still passes while this one
+    // hangs. Same reason `CYCLIC` above is rho-shaped — see its comment.
+    const rho = [
+      u({ code: 'u', parent_code: 'a' }),
       u({ code: 'a', is_container: true, parent_code: 'b' }),
-      u({ code: 'b', is_container: true, parent_code: 'a' }),
+      u({ code: 'b', is_container: true, parent_code: 'c' }),
+      u({ code: 'c', is_container: true, parent_code: 'b' }),
     ]
-    expect(['a', 'b']).toContain(mapBuildingKey(cyclic[0]!, indexUnitsByCode(cyclic)))
+    // A DEFINITE answer, not a set: the walk stops at the last node before the
+    // repeat, so `b -> c -> b` ends on `c`.
+    expect(mapBuildingKey(rho[0]!, indexUnitsByCode(rho))).toBe('c')
+  })
+
+  it('stops at a MID-CHAIN parent the payload does not carry, keeping the half', () => {
+    // The depth-1 orphan above cannot tell "return `current.code`" from
+    // "return `unit.code`" — they are the same node there. This decides
+    // whether the rooms of a half whose house is missing share a pin (they do)
+    // or scatter to their own points (they must not).
+    const partial = [
+      u({ code: 'half', is_container: true, parent_code: 'house-not-in-payload' }),
+      u({ code: 'r1', parent_code: 'half' }),
+      u({ code: 'r2', parent_code: 'half' }),
+    ]
+    const byPartial = indexUnitsByCode(partial)
+    expect(mapBuildingKey(partial[1]!, byPartial)).toBe('half')
+    expect(mapBuildingKey(partial[2]!, byPartial)).toBe('half')
   })
 })
