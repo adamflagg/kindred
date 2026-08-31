@@ -121,9 +121,8 @@ func attendeesExistingForReplay(t replayT, s *AttendeesSync, filter string) map[
 // moment they stop agreeing, independent of what any particular CampMinder
 // feed happens to contain.
 func TestAttendeesOrphanSweep_SurvivesReplay(t *testing.T) {
-	// Not t.Parallel(): t.Setenv below panics under Parallel (every other
-	// caller of newParallelTestCampMinderClient works around this the same
-	// way -- see its doc comment in bunk_assignments_grain_test.go).
+	// Not t.Parallel(): t.Setenv below panics under Parallel (matches
+	// attendees_dryrun_test.go's TestAttendeesLogStatusChangeDryRunWritesNothing).
 	app, err := pbtests.NewTestApp()
 	if err != nil {
 		t.Fatalf("NewTestApp: %v", err)
@@ -139,7 +138,6 @@ func TestAttendeesOrphanSweep_SurvivesReplay(t *testing.T) {
 	saveRecord(t, app, "camp_sessions", map[string]any{"cm_id": sessionCMID, "year": year})
 	saveRecord(t, app, "persons", map[string]any{"cm_id": personCMID, "year": year})
 
-	//nolint:usetesting // matches newParallelTestCampMinderClient's own workaround; this test is not t.Parallel().
 	t.Setenv("CAMPMINDER_PRIMARY_KEY", "test-subscription-key")
 	client, err := campminder.NewClient(&campminder.Config{APIKey: "test-key", ClientID: "test-client", SeasonID: year})
 	if err != nil {
