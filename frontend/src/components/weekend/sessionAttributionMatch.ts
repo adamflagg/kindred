@@ -51,6 +51,14 @@ export function resolveCabinAlias(rawValue: string, aliases: LodgingAliasRecord[
  * what CampMinder currently holds for that party. A tie at the freshest
  * `last_seen` is never flagged: it describes the pass that just ran, not one
  * a later pass superseded.
+ *
+ * `last_seen` is `required: false` on `lodging_ingest_issues` (migration
+ * 1500000122); PocketBase's zero value for an unset date is `''`, which
+ * sorts below every real timestamp. A row with no `last_seen` at all is
+ * skipped rather than compared -- there is nothing to judge its freshness
+ * against, and treating "unknown" as "definitely stale" would silently drop
+ * it from both the board chip's count and the admin queue's default view,
+ * which is worse than showing an unflagged row nobody can vouch for.
  */
 export function computeStaleQueueIds(rows: readonly LodgingIngestIssueRecord[]): Set<string> {
   const stale = new Set<string>()
@@ -60,7 +68,7 @@ export function computeStaleQueueIds(rows: readonly LodgingIngestIssueRecord[]):
     if (row.last_seen > maxLastSeen) maxLastSeen = row.last_seen
   }
   for (const row of rows) {
-    if (row.last_seen < maxLastSeen) stale.add(row.id)
+    if (row.last_seen !== '' && row.last_seen < maxLastSeen) stale.add(row.id)
   }
   return stale
 }

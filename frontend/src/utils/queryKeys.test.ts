@@ -237,8 +237,10 @@ describe('invalidateLodgingRegistryQueries', () => {
     // lodging_ingest_issues write like resolving an unresolved-alias row is —
     // and it moves the roster too, since replayOnResolve materialises the
     // placement. Without this the confirmed row would sit in the admin
-    // queue's cache and the board's stats-bar chip for 30 minutes after a
-    // successful confirm.
+    // queue's cache for up to 30 seconds after a successful confirm
+    // (useSessionAttributionQueue opts into userDataOptions, not the app's
+    // 30-minute default) — and the board's stats-bar chip, which shares the
+    // same cache slot, would go stale right alongside it.
     const client = recordingClient()
     invalidateLodgingRegistryQueries(client)
 

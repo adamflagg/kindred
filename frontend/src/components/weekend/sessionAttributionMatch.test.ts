@@ -100,4 +100,23 @@ describe('computeStaleQueueIds', () => {
     const rows = [issue('q1', '2026-08-23 00:00:00.000Z'), issue('q2', '2026-08-23 00:00:00.000Z')]
     expect(computeStaleQueueIds(rows)).toEqual(new Set())
   })
+
+  // last_seen is `required: false` on lodging_ingest_issues (migration
+  // 1500000122) -- PocketBase's zero value for an unset date field is ''.
+  // An empty string sorts BELOW every real timestamp lexicographically, so
+  // without a guard a row with no last_seen at all would be silently
+  // misclassified as stale (dropped from the board chip AND hidden behind
+  // the admin toggle) rather than surfaced as unknown -- and if EVERY row's
+  // last_seen were empty, maxLastSeen would stay '' and nothing would ever
+  // flag. Treated as "cannot judge freshness", not "definitely stale":
+  // hiding a row nobody can vouch for is worse than showing an unflagged one.
+  it('does not flag a row with no last_seen at all as stale', () => {
+    const rows = [issue('q1', '2026-08-23 00:00:00.000Z'), issue('q2', '')]
+    expect(computeStaleQueueIds(rows)).toEqual(new Set())
+  })
+
+  it('flags nothing when every row in the batch has no last_seen', () => {
+    const rows = [issue('q1', ''), issue('q2', '')]
+    expect(computeStaleQueueIds(rows)).toEqual(new Set())
+  })
 })
