@@ -36,11 +36,23 @@
  * the routes that host them sit behind a bare <ProtectedRoute> with no
  * Permission requirement. Registrar, Finance, and any zero-role user
  * therefore lose the pending-request badge, camper tooltips, and request
- * panels on the board after this change:
- * useBunkRequestsCount catches the resulting 403 and returns 0, so the
- * badge silently reads 0 rather than erroring. This is a deliberate,
- * reviewed product change (not a bug to paper over) — no frontend reader
- * is touched by this migration.
+ * panels on the board after this change.
+ *
+ * Degradation, verified per read path (2026-08-31): every consumer goes
+ * EMPTY, none shows a visible error. Two swallow the 403 outright —
+ * useBunkRequestsCount's getRequestsCount try/catch returns 0 (the badge
+ * reads 0), and BunkRequestProvider's queryFn try/catch returns []. The
+ * other four let it reject into React Query but destructure `data = []` /
+ * `= EMPTY` and never read isError, so they render as "no requests":
+ * CamperDetailsPanel:412, RequestReviewPanel:292, useAllBunkRequests:41,
+ * useCohortRequestRelations:61. Those four are also SLOW to settle —
+ * utils/queryClient.ts's retry predicate excludes only 401, so a 403 is
+ * retried three times (1s/2s/4s backoff) first. Tightening that predicate
+ * is deliberately NOT done here: queryClient.ts is a shared default for
+ * every query in the app and is out of this migration's scope.
+ *
+ * This is a deliberate, reviewed product change (not a bug to paper over)
+ * — no frontend reader is touched by this migration.
  */
 
 const BUNK_REQUESTS_RBAC_RULE =
