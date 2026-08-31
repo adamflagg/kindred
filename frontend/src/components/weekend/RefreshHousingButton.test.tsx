@@ -172,7 +172,7 @@ describe('RefreshHousingButton — resting and the press modal', () => {
     fireEvent.click(screen.getByRole('button', { name: /Refresh Housing/i }))
     const dialog = screen.getByRole('dialog')
     expect(dialog.textContent).toMatch(/2–4 minutes/)
-    expect(dialog.textContent).toMatch(/not here yet/i)
+    expect(dialog.textContent).toMatch(/won't show here yet/i)
     expect(dialog.textContent).toMatch(/ago/)
   })
 
@@ -282,6 +282,70 @@ describe('RefreshHousingButton — scoped to the weekend in view (kindred#2601)'
   })
 
   /**
+   * ── Per-weekend freshness (kindred#2601) ──────────────────────────────────
+   *
+   * The freshness sentence answers "how current is what I am looking at", so its
+   * source is the job that PULLS FROM CAMPMINDER for this weekend — the bounded
+   * custom-values pass — not `lodging_assignments`, which is a year-wide
+   * transform that runs on every press regardless of which weekend was fetched.
+   * Reading the transform is what made the old copy season-wide.
+   */
+  it('dates the freshness from an UNSCOPED run, which covered every weekend', () => {
+    setStatus(
+      status({
+        household_custom_values_family_camp: {
+          status: 'success',
+          end_time: '2026-04-22T09:13:00.000Z',
+        },
+      })
+    )
+    renderButton()
+    fireEvent.click(screen.getByRole('button', { name: /Refresh Housing/i }))
+    expect(screen.getByRole('dialog').textContent).toMatch(/won't show here yet/i)
+  })
+
+  it('dates the freshness from a run scoped to THIS weekend', () => {
+    setStatus(
+      status({
+        household_custom_values_family_camp: {
+          status: 'success',
+          end_time: '2026-04-22T09:13:00.000Z',
+          session: '900',
+        },
+      })
+    )
+    renderButton()
+    fireEvent.click(screen.getByRole('button', { name: /Refresh Housing/i }))
+    expect(screen.getByRole('dialog').textContent).toMatch(/won't show here yet/i)
+  })
+
+  /**
+   * 🚨 THE ONE THAT MATTERS. Refresh weekend A, open weekend B: B was NOT
+   * covered, and the single status slot cannot say how much older B is — the
+   * nightly cron's earlier run has already been overwritten. Claiming A's
+   * timestamp for B is the defect; inventing a different number would be worse.
+   * So B says nothing about staleness until run history exists (kindred#2617).
+   */
+  it("says NOTHING about staleness when the last run was another weekend's", () => {
+    setStatus(
+      status({
+        household_custom_values_family_camp: {
+          status: 'success',
+          end_time: '2026-04-22T09:13:00.000Z',
+          session: '1001',
+        },
+      })
+    )
+    renderButton()
+    fireEvent.click(screen.getByRole('button', { name: /Refresh Housing/i }))
+    const text = screen.getByRole('dialog').textContent ?? ''
+    expect(text).not.toMatch(/won't show here yet/i)
+    expect(text).not.toMatch(/ago/)
+    // The cost half of the dialog is unaffected — the press still works.
+    expect(text).toMatch(/2–4 minutes/)
+  })
+
+  /**
    * 🚨 THE REGRESSION PIN FOR THE FRESHNESS CLAIM.
    *
    * `lastSynced` is `lodging_assignments.end_time` — ONE year-wide job status
@@ -294,16 +358,16 @@ describe('RefreshHousingButton — scoped to the weekend in view (kindred#2601)'
    * this press did not necessarily touch. This asserts the split rather than the
    * absence, so it still fails if someone re-attaches the name to the time.
    */
-  it('does NOT attribute the shared freshness timestamp to this weekend', () => {
+  it('does NOT attribute the freshness sentence to this weekend by name', () => {
     renderButton()
     fireEvent.click(screen.getByRole('button', { name: /Refresh Housing/i }))
     const dialog = screen.getByRole('dialog')
 
     const freshnessLine = Array.from(dialog.querySelectorAll('p')).find((p) =>
-      /last refreshed/.test(p.textContent ?? '')
+      /won't show here yet/i.test(p.textContent ?? '')
     )
     expect(freshnessLine).toBeDefined()
-    expect(freshnessLine?.textContent).not.toMatch(/Family Camp 5: Extended Program Weekend/)
+    expect(freshnessLine?.textContent).not.toMatch(/Family Camp 5/)
 
     // ...while the weekend IS still named where the claim is about the action.
     expect(dialog.textContent).toMatch(/Family Camp 5: Extended Program Weekend/)

@@ -128,7 +128,39 @@ export function RefreshHousingButton({ session }: RefreshHousingButtonProps) {
     )
   }
 
-  const lastSynced = syncStatus?.lodging_assignments?.end_time
+  /**
+   * When CampMinder was last read FOR THIS WEEKEND, or undefined when that
+   * cannot be answered (kindred#2601).
+   *
+   * ## Why the custom-values job and not `lodging_assignments`
+   *
+   * The sentence below is about how current the ANSWERS are, so its source has
+   * to be the job that pulls them from CampMinder. `lodging_assignments` is a
+   * year-wide TRANSFORM: it runs on every press whatever weekend was fetched,
+   * so dating the copy from it reported a season-wide event as this weekend's.
+   * That is what made the old copy wrong once the press stopped covering the
+   * whole season.
+   *
+   * ## Why it can be undefined
+   *
+   * `Status.Session` names the weekend a run was started for, and an ABSENT
+   * session means it covered every weekend (the nightly cron). So:
+   *
+   *   unscoped run   -> covered this weekend  -> its end_time is correct here
+   *   scoped to us   -> correct here
+   *   scoped to another weekend -> this weekend is OLDER, and by how much is
+   *                                unknowable: the status keeps one slot per
+   *                                job, so the cron run that did cover us has
+   *                                already been overwritten.
+   *
+   * In that last case the honest answer is silence. Showing the other weekend's
+   * timestamp is the defect; inventing a different number would be worse. A
+   * durable per-weekend sync time is kindred#2617.
+   */
+  const housingSync = syncStatus?.household_custom_values_family_camp
+  const syncedSession = housingSync?.session
+  const coversThisWeekend = !syncedSession || syncedSession === String(session.session_cm_id)
+  const lastSynced = coversThisWeekend ? housingSync?.end_time : undefined
 
   return (
     <>
@@ -175,25 +207,19 @@ export function RefreshHousingButton({ session }: RefreshHousingButtonProps) {
         */}
         <div className="text-foreground space-y-3 text-sm">
           {/*
-            ⚠️ THE TIMESTAMP DOES NOT NAME THE WEEKEND, DELIBERATELY.
-            `lastSynced` is `lodging_assignments.end_time` — ONE year-wide job
-            status with no session dimension. While every press covered every
-            weekend, attributing it to the weekend on screen was true. Scoping
-            the press (kindred#2601) made it false: refresh weekend A and
-            weekend B's copy would read "Housing for B was last refreshed less
-            than a minute ago" over days-stale answers.
-            That is the hazard #2586 was spent closing — "true about the JOB and
-            false about the DATA" — so the weekend name stays on the TITLE and
-            the action, which are claims about what this press will do, and off
-            the timestamp, which is a claim about data this press did not touch.
-            Per-session freshness needs session identity in the status payload
-            and is tracked separately.
+            ⚠️ THE TIMESTAMP DOES NOT NAME THE WEEKEND, and does not need to:
+            `lastSynced` is already resolved to THIS weekend above, or is
+            undefined. Naming it here would add nothing and would re-invite the
+            season-wide claim that made the first draft of kindred#2601 wrong.
+            The weekend name stays on the TITLE, which is a claim about what the
+            press will do.
           */}
-          <p>
-            {lastSynced !== undefined
-              ? `Housing was last refreshed ${formatDistanceToNow(new Date(lastSynced), { addSuffix: true })}. Anything staff entered in CampMinder since then is not here yet.`
-              : 'Anything staff entered in CampMinder today is not here yet.'}
-          </p>
+          {lastSynced !== undefined && (
+            <p>
+              Anything entered in CampMinder since{' '}
+              {formatDistanceToNow(new Date(lastSynced), { addSuffix: true })} won't show here yet.
+            </p>
+          )}
           {/*
             A RANGE, not the chain total. The press covers one weekend, and the
             weekends differ enough that a single figure would be wrong for most
