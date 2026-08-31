@@ -4495,7 +4495,7 @@ class TestUnitAcCoverage:
 
 
 class TestUnitHeatCoverage:
-    """kindred#2327 -- `LodgingUnitSummary.heat_coverage`, the sixth caller of
+    """kindred#2327 -- `LodgingUnitSummary.heat_coverage`, the fifth caller of
     `_resolve_amenity_coverage` and `has_heat`'s first appearance in `api/` at
     all. Owner ruling 2026-08-17: the icon set is bathroom / power / fridge /
     heat / AC, heat and AC counted as two separate marks rather than one
@@ -4569,7 +4569,7 @@ class TestUnitHeatCoverage:
 
 
 class TestUnitWeatherizedCoverage:
-    """kindred#2327 -- `LodgingUnitSummary.weatherized_coverage`, the seventh
+    """kindred#2327 -- `LodgingUnitSummary.weatherized_coverage`, the sixth
     caller of `_resolve_amenity_coverage` and `is_weatherized`'s first
     appearance in `api/` at all. Owner ruling 2026-08-17/18: 96 of 118
     production units are weatherized, and the 22 that are not split 13

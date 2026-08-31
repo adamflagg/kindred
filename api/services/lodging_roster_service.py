@@ -2421,12 +2421,13 @@ class LodgingRosterService:
             # comment there and `_BathroomIndex`'s own docstring.
             unit_index = _BathroomIndex.build(unit_summaries)
             # ⚠️ THIS PATH RAN NONE OF THE AMENITY RESOLVERS UNTIL kindred#2502.
-            # `build_roster` runs all five right after building its index; this
-            # one built the index and went straight to `_build_counts`, so every
-            # coverage field stayed at its `"unknown"` default and a container's
-            # bathroom stayed at its own blank row while the board resolved it.
+            # `build_roster` runs all seven right after building its index;
+            # this one built the index and went straight to `_build_counts`,
+            # so every coverage field stayed at its `"unknown"` default and a
+            # container's bathroom stayed at its own blank row while the
+            # board resolved it.
             #
-            # ALL FIVE MOVE NO NUMBER ON THIS PATH TODAY -- not four of them.
+            # ALL SEVEN MOVE NO NUMBER ON THIS PATH TODAY -- not four of them.
             # An earlier draft of this comment left the fifth unexplained, and
             # CodeRabbit read the gap the obvious way and asked for
             # `_resolve_bathroom`'s call to be deleted as having no observable
