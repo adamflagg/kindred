@@ -598,6 +598,16 @@ export const queryKeys = {
    * narrower collection could not express.
    */
   lodgingIngestIssues: (year: number) => ['lodging-ingest-issues', year] as const,
+  /**
+   * The cabin-weekend attribution queue (kindred#2648 UI half) — the same
+   * `lodging_ingest_issues` collection as `lodgingIngestIssues` above,
+   * filtered to `kind = "ambiguous_session"` instead of `"unresolved_alias"`.
+   * A SEPARATE key, not a shared one: the two queries cache different
+   * subsets of the same collection under the same `year`, and one cache slot
+   * for both would serve one kind's rows to the other's reader.
+   */
+  sessionAttributionQueue: (year: number) => ['session-attribution-queue', year] as const,
+  sessionAttributionQueuePrefix: () => ['session-attribution-queue'] as const,
   // Prefixes for invalidation, mirroring the weekend keys above: a registry
   // edit does not know which season's cache slot a stale reader is on, so
   // `invalidateLodgingRegistryQueries` invalidates every cached year at once
@@ -704,6 +714,12 @@ export function invalidateLodgingRegistryQueries(queryClient: {
   void queryClient.invalidateQueries({ queryKey: queryKeys.lodgingAreasPrefix() })
   void queryClient.invalidateQueries({ queryKey: queryKeys.lodgingAliases() })
   void queryClient.invalidateQueries({ queryKey: queryKeys.lodgingIngestIssuesPrefix() })
+  // Confirming a cabin-weekend attribution row (kindred#2648 UI half) writes
+  // this same collection under the OTHER key above, and its own confirm
+  // mutation calls this helper too — the admin queue's row and the board's
+  // stats-bar chip must both drop the row the instant it resolves, not after
+  // 30 minutes.
+  void queryClient.invalidateQueries({ queryKey: queryKeys.sessionAttributionQueuePrefix() })
   // Every registry write changes what a roll-forward would carry: creating a
   // unit in the target season is precisely what moves a code from
   // units_to_create to skipped_codes. Invalidating here rather than at the
