@@ -21,7 +21,7 @@ import {
   Accessibility,
   Bath,
   CloudOff,
-  Flame,
+  Thermometer,
   Merge,
   Plug,
   Plus,
@@ -1208,12 +1208,19 @@ const LodgingUnitCardInner = memo(function LodgingUnitCardInner({
             cooled) and folding them would hide that.
 
             PRESENCE, exactly like the three marks before it: `some` draws the
-            flame — no half-fill, matching this row's shipped grammar rather
+            mark — no half-fill, matching this row's shipped grammar rather
             than the half-filled glyph a 2026-08-18 ruling once proposed and
-            that was never built anywhere on this card. */}
+            that was never built anywhere on this card.
+
+            ⚠️ THERMOMETER, NOT A FLAME, and the distinction is a real one in
+            the schema. `has_space_heater` is a SEPARATE column from `has_heat`
+            (44 rows vs 34 on the 2026 snapshot) and the admin registry draws
+            THAT one with the flame — portable heat — while built-in heat gets
+            the thermometer. A flame here would mean one thing on this card and
+            a different thing in the form staff confirm from. */}
         {(unit.heat_coverage ?? 'unknown') !== 'none' &&
           (unit.heat_coverage ?? 'unknown') !== 'unknown' && (
-            <Flame
+            <Thermometer
               data-testid="amenity-heat"
               aria-label="Heat"
               className="text-muted-foreground h-3.5 w-3.5 flex-shrink-0"
