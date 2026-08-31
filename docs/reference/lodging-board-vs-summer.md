@@ -456,6 +456,104 @@ title row, so there is no amenity row left for the title to sit on top of.
 
 ---
 
+## 7. Capability axis — does the board DO what summer does
+
+Sections 1–6 answer one question: does the weekend board *look* like
+summer's. They say nothing about whether it *does* what summer does — a
+board can match every class and still be missing half of what makes summer
+useful. This section is that second axis, walked capability by capability
+against the tree rather than against memory (kindred#1913, half 2).
+
+Verified at HEAD `b13bb3df`. Status values follow §1–6's vocabulary: **✅
+SHIPPED** for parity, **⬅️ REVERSE** where the weekend leads summer, and for
+the rest, the owner's already-recorded default — carry over, adapt later,
+does not apply, or a named open ruling. Nothing below is a new decision;
+every "ruling needed" row was already unruled when this table was written,
+and this table does not close any of them.
+
+### The gate three rows sit behind
+
+**Satisfaction scoring, the social graph, and do-not-place-with each need a
+*resolved* household-to-household edge, and none exists.** The weekend has
+raw request text (`request_text`, per-source-field blocks) and nothing that
+turns it into a relationship between two households — no parser, no review
+step, no resolved table.
+
+The owner ruled on this **2026-08-17: "yes in principle, not scheduled."**
+The gate is not declined and not open — it is a deferred yes, parked behind
+named (but unbuilt) architecture: `original_lodging_requests` (raw, per
+source field) → intent parsing → `lodging_requests` (clean, resolved),
+deliberately mirroring summer's `original_bunk_requests` →
+`bunk_request_processor` → `bunk_requests`
+(`bunking/sync/bunk_request_processor/`,
+`docs/architecture/bunk-request-pipeline.md`). Re-derive with `git grep
+original_lodging_requests` / `git grep lodging_requests` — both are zero
+hits as of this writing.
+
+⚠️ **A prior version of this issue's tracking pointed at a per-household
+boolean flag in `api/services/lodging_roster_service.py` as the live anchor
+for "is this gate still open."** That flag is gone — deleted end-to-end by
+kindred#2581 (2026-08-27), because measured against 2026 data it was true
+for nearly every household carrying any request text at all, "a constant
+wearing a badge" rather than a discriminating signal (see `FamilyCard.tsx`,
+`rosterAttention.ts` for the record of the deletion). Deleting it did not
+resolve the gate — there is still no resolver anywhere in the tree — so
+grep the collection names above, not a per-household flag that no longer
+exists.
+
+⚠️ **Naming collision to know about before building any of this.**
+`pocketbase/sync/lodging_requests.go` already exists and is something else
+entirely — the share-eligibility derivation (`gateNoShare` /
+`gateMaybeMutual` / `gateYesShare`, `CollapseToHouseholdGrain`,
+`DeriveShareEligibility`). It is not a start on the pipeline above, and the
+pipeline cannot take that filename.
+
+### The table
+
+| Summer capability | Summer's implementation | Weekend equivalent | Status |
+| --- | --- | --- | --- |
+| Lock / friend groups | `LockGroupPanel.tsx`, `LockGroupActionBar.tsx`, `LockGroupsHub.tsx` | `WeekendFriendGroups.tsx`, `FriendGroupActionBar.tsx`, `AddHouseholdPicker.tsx` | ✅ **SHIPPED** — half 1, PR #2169 |
+| Scenarios + draft assignments | `api/routers/scenarios.py`, `NewScenarioModal`, `ScenarioManagementModal` | `WeekendScenarioPicker.tsx`; `scenarios.py:70` `_is_weekend_session_type`, `:111` `_seed_weekend_scenario`, `lodging_assignments_draft` | ✅ SHIPPED — program-aware create / rename / delete / seed / clear |
+| Legend | `BunkingLegend.tsx` | `WeekendLegendButton`, the same file (`WeekendRosterPage.tsx`) | ✅ SHIPPED, shared component |
+| Unplaced badge | `FloatingUnassignedBadge.tsx` | `FloatingUnplacedBadge.tsx` | ✅ SHIPPED |
+| Utilisation / session stats | `BunkUtilizationBar.tsx`, `SessionStats.tsx` | `WeekendStatsBar.tsx` | ✅ SHIPPED |
+| Detail panel + alerts | `CamperDetailsPanel.tsx`, `CamperAlertSection.tsx` | `FamilyDetailsPanel.tsx`, `AccessibilityFlagList.tsx` | ✅ SHIPPED |
+| Tooltip | `CamperTooltip.tsx` | `ui/Tooltip.tsx` (shared) | ✅ SHIPPED |
+| Year-over-year journey | `CamperDetail.tsx` camp journey | `HouseholdJourneyCard.tsx` | ✅ SHIPPED |
+| **Findability during drag** | `BunkCard` applies `pointer-events-none opacity-40` (DIM = refusal) to every invalid bunk | `needsFit.ts` grades fit with a HATCH (`background-image`), never a dim — kindred#1912, shipped by kindred#2211, refined into a three-state model by kindred#2528 (2026-08-21) | ✅ SHIPPED, **deliberately not the same mark** — see below |
+| **Request pipeline** (CSV → parse → review → merge/split → resolve) | `BunkRequestsUpload`, `RequestReviewPanel`, `MergeRequestsModal`, `SplitRequestModal`, `bunking/sync/bunk_request_processor/` | raw text and per-source blocks only (`fetch_request_text_values`, `_request_blocks` in `api/services/lodging_roster_service.py`); no parser, no resolved edge | ❌ **ABSENT — THE GATE.** Deferred yes, not scheduled (owner, 2026-08-17). See above |
+| **The solver** | `api/routers/solver.py`, `bunking/solver/`, `OptimizeBunksButton.tsx` | none — `solver.py`'s only `session_type` branch is `'ag'` (`:478`) | ❌ **ABSENT — open ruling, independent of the gate** |
+| **Satisfaction scoring** | `api/routers/satisfaction.py`, `bunking/satisfaction/` | none — no weekend/household read path | ❌ ABSENT — downstream of the gate |
+| **Social graph** | `api/routers/social_graph.py`, `bunking/graph/social_graph_builder.py`, `BunkSocialGraphModal.tsx` | none — the only `household` tokens in the social-graph layer are `household_id` on the camper type (`bunking/graph/_types.py:53`, `:85`); no household-to-household edge | ❌ ABSENT — downstream of the gate |
+| **Do-not-place-with** | `not_bunk_with`, a TARGETED negative edge (`bunking/satisfaction/predicate.py:88`, `bunking/solver/objective_evaluator.py:210`) | `ShareRequestSummary.eligibility` (`api/schemas/lodging.py`, class + field) — an UNTARGETED 3-state self-gate, not a pair | ❌ **DIFFERENT OBJECT** — not a status a household names about another household, just about itself |
+| Scenario scoring / comparison (solver objective score) | `scenarios.py:325` `GET /score`, `ScenarioComparisonPage.tsx` | none — nothing to score without a solver | ❌ Absent. Default: **does not apply** until a solver exists. **Not the same thing as** `ScenarioCompareEntry.tsx` / "Compare with CampMinder" below, which diffs a scenario against the live CampMinder mirror, not against an objective score |
+| Swap (picker started from a container) | `BunkSwapModal.tsx`, `utils/bunkSwap.ts`, hides ineligible targets via `isEligibleSwapTarget` | the Assign modal (§3) — same interaction, shows every candidate rather than filtering (36 of 118 units answer the bathroom need against 66 of 479 registrations asking for one, so a filtered list would usually be empty) | ✅ **CONVERGED, deliberately unfiltered** — see §3 |
+| PDF export | `PdfExport/BunkPlanReport.tsx` | none | ❌ Absent. Default: **adapt later** |
+| Popouts | `pages/CamperPopout/`, `pages/PostCheckPopout/` | none | ❌ Absent. Default: **adapt later** |
+| Pre/post validation | `PreValidateRequestsButton`, `PostValidationResultsModal`, `ValidateBunkingButton` | none | ❌ Absent. Default: **does not apply** — presupposes a solver |
+| Cohorts / drill-down | `CamperCohortsSection.tsx`, `CohortDrillDownModal.tsx` | none | ❌ Absent. Default: **does not apply** — grain mismatch |
+| Metrics / analytics | `api/routers/metrics.py`, `/analytics/*` | none — no weekend `session_type` branch anywhere in `metrics.py` | ❌ Absent. Default: **does not apply** for now |
+| **Map** | none | `LodgingMap.tsx`, `MapBaseLayer.tsx`, `mapClustering.ts` | ⬅️ **REVERSE — weekend leads summer** |
+| **Availability holds / whole-house merge** | none | `lodging_availability`, `PUT /api/lodging/merge` (`api/routers/lodging.py:546`), `hooks/useUnitAvailability.ts` rendered from `LodgingBoard.tsx` | ⬅️ **REVERSE — weekend leads summer** |
+| **Push placements to CampMinder** | none — summer has no write-back path | `POST /api/lodging/push`, `/push/preview`, `/push/{push_id}/unpush` (`api/routers/lodging.py`), `PushWriteInsModal.tsx` | ⬅️ **REVERSE — weekend leads summer** |
+
+Bulk actions are not a row: summer has no bulk-action surface on the board
+to carry over either (`BunkingBoardByArea.tsx`, `UnassignedCampers.tsx`,
+`AllCampersView.tsx` — none).
+
+**Findability's mark is deliberately not summer's mark, and that is the
+divergence worth being precise about.** The board's signal vocabulary
+(owner ruling, 2026-08-09) reserves DIM (`opacity-40` + `pointer-events-none`)
+for REFUSAL — on this board that is spoken for by the invalid merge target
+alone (kindred#2432 struck the written-into space's refusal). Amenity fit is
+advisory, never a block: a family can be dropped on a cabin `needsFit.ts`
+marks `unmet`, because staff routinely place against the machine's opinion
+and are right to. Copying summer's dim for an advisory fact would have read
+as a stronger claim than the board can honestly make, so fit gets its own
+mark — a hatch — rather than a borrowed one.
+
+---
+
 ## What #2040 and #2029 settled
 
 Both merged while this branch was in flight. Neither is optional reading before
@@ -500,23 +598,26 @@ the weekend Inventory tab, so the board now reads Housing / Roster / Map.
 
 ## Remaining work
 
-### Findability — the one substantive item left
+Nothing presentation-shaped is left open. §7 covers what remains
+capability-shaped — most of it downstream of the gate, not a to-do list for
+this document.
 
-Summer does not solve "where can this camper go?" with layout. It solves it
-during the drag: `BunkCard` applies `pointer-events-none opacity-40` to every
-invalid bunk the moment a camper is picked up. `LodgingUnitCard` indicates
-nothing — it deliberately accepts every drop, for a good reason stated in its
-comment (fit is advisory; no cabin is confirmed until staff walk the property).
+### ~~Findability — the one substantive item left~~ — CLOSED
 
-**Declining to refuse a drop is not the same as declining to indicate fit.**
-Dimming poor fits without blocking them is summer's own pattern and squarely §4.
-It is also what keeps the per-area sections defensible: sections are bad at
-search, and this removes the need to search. The well built for §3 is where the
-reason goes ("Sleeps 2", "No power").
+⚠️ **This section used to say `LodgingUnitCard` "indicates nothing" during a
+drag and treat that as the one thing still to build.** That stopped being
+true on 2026-08-09 (kindred#2211) and was refined on 2026-08-21
+(kindred#2528): `needsFit.ts` now grades every card against the family in
+hand and marks a misfit with a hatch. See §7's capability table and its note
+on why the mark is a hatch rather than summer's dim — the short version is
+that summer's `BunkCard` dim means REFUSAL, which this board reserves for
+the invalid merge target alone, so an advisory fact gets its own mark
+instead of a borrowed one.
 
-The uniform slot shape made this _more_ urgent, not less: every empty card is now
-an identically well-formed target, so they are harder to tell apart at a glance
-than when they were ragged.
+The uniform slot shape argument that motivated this item is still accurate
+context, not still-open work: every empty card is an identically well-formed
+target, which is exactly why a wordless dashed border was not enough and the
+hatch was worth building.
 
 ### ~~Closing §3's actions row~~ — CLOSED
 
