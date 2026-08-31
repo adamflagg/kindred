@@ -1400,6 +1400,49 @@ class _BathroomIndex(NamedTuple):
                 leaves.add(child.code)
         return frozenset(leaves)
 
+    def ancestor_codes(self, code: str) -> tuple[str, ...]:
+        """Every ancestor of `code`, NEAREST FIRST -- the ONE upward walk.
+
+        The mirror of `leaf_codes_under` above, and it exists for the same
+        single-implementation reason: two walks over one tree are free to
+        drift. Added for the amenity roll-down ruling of 2026-08-30 (*"things
+        can always roll DOWNWARDS, not up"*), which needs to ask whether
+        anything ABOVE a unit asserts an amenity.
+
+        `drawn_units` keeps its own inline `_parent_of` climb and is
+        deliberately NOT refactored onto this. That walk also tests
+        `is_combined` as it goes, stops at the highest combined node, and
+        BLOCKS on a cycle rather than merely halting -- a different traversal
+        wearing a similar shape. Folding a board-drawing rule into the walk
+        the amenity resolvers share is how one of them would acquire the
+        other's behaviour by accident.
+
+        Cycle-guarded exactly as the downward walk is: the server guards
+        against WRITING a cycle (`guardUnitParentCycle`, kindred#1899), but a
+        cycle already in the data must not hang a request. Unlike
+        `drawn_units` a cycle here simply STOPS the climb -- there is no
+        card to withhold, and the ancestors found before the loop closed are
+        real ancestors whose assertions still count.
+
+        A BLANK `parent_code` IS NEVER LOOKED UP, which is `drawn_units`'
+        `_parent_of` guard on this walk. A blank `code` is a valid if
+        unfortunate registry value and `units_by_code` is keyed on it, so a
+        row with no code occupies the same `""` key that `parent_code == ""`
+        uses to mean "no parent"; without the guard every root would inherit
+        from whichever row happens to have a blank code.
+        """
+        ancestors: list[str] = []
+        seen: set[str] = {code}
+        unit = self.units_by_code.get(code)
+        while unit is not None and unit.parent_code:
+            parent = self.units_by_code.get(unit.parent_code)
+            if parent is None or parent.code in seen:
+                break
+            ancestors.append(parent.code)
+            seen.add(parent.code)
+            unit = parent
+        return tuple(ancestors)
+
 
 def _effective_sleeps(unit: LodgingUnitSummary, unit_index: _BathroomIndex) -> int | None:
     # MIRRORED IN TWO PLACES, and both are named here on purpose -- the
@@ -1599,20 +1642,32 @@ def _resolve_power_coverage(units: list[LodgingUnitSummary], index: _BathroomInd
     reconfirmed it. See `_resolve_amenity_coverage` for why.
 
     A LEAF answers for itself: it has nothing beneath it to inherit from, so
-    its own row is the only fact there is. A CONTAINER never does, and that
-    asymmetry is the point of the function. Once no active room is left to
-    supply the answer the container reports `unknown`, exactly as
-    `_effective_sleeps` returns `None` in the same degenerate case ("0 is not
-    a delta over anything, it is the claim 'this house sleeps nobody'"). It is
-    tempting to fall back to the container's own flag here, on
-    `container_bathroom`'s "nothing to inherit, so the container reports what
-    its own row says" -- but that reasoning holds for `bathroom` only because
-    a container's stored `"none"` is a deliberate registry convention.
-    `has_power` is not: THIRTEEN of the fifteen 2026 containers record
-    `has_power = 0` while their rooms are powered, so the fallback would take
-    the one field this function exists to distrust and publish it as "nothing
-    here has power" -- a mark stating a fact no row supports, in the
-    plausible-looking direction.
+    its own row is the only fact there is.
+
+    ⚠️ A CONTAINER'S FALSE NEVER ANSWERS; ITS TRUE NOW DOES. That asymmetry
+    -- not a blanket "a container never answers for itself" -- is the point
+    of the function, and the two halves rest on different evidence:
+
+    * The FALSE half is the measurement this resolver was built on:
+      THIRTEEN of the fifteen 2026 containers record `has_power = 0` while
+      their rooms are powered. Publishing that as "nothing here has power"
+      states a fact no row supports, in the plausible-looking direction, so
+      a container's `0` is discarded and a container with no active room
+      left still reports `unknown` -- exactly as `_effective_sleeps` returns
+      `None` in the same degenerate case ("0 is not a delta over anything,
+      it is the claim 'this house sleeps nobody'").
+    * The TRUE half is the owner's roll-down ruling of 2026-08-30 --
+      *"things can always roll DOWNWARDS, not up ... both yes = yes.
+      container yes = yes. leaf yes = yes. both no = no."* A `1` is a claim
+      somebody typed and there is no reading of it that means "no", so it
+      reaches every unit beneath it (`_resolve_amenity_coverage`'s
+      `effective`). The old measurement argued only that a container's FALSE
+      value is wrong and never spoke to this direction.
+
+    THERE IS NO CONFLICT STATE. A descendant's `0` asserts nothing, so it
+    cannot contradict an ancestor's `1` -- "staff set it at the wrong level"
+    is a data fix, not something the model resolves. That is also why this
+    needs no third value, no sentinel and no schema change.
 
     IN PLACE, on the very objects `index.units_by_code` holds, rather than
     returning a rebuilt list: a second list of summaries would leave the index
@@ -1627,10 +1682,11 @@ def _resolve_fridge_coverage(units: list[LodgingUnitSummary], index: _BathroomIn
 
     The twin of `_resolve_power_coverage` above, and it shares that function's
     walk rather than repeating it, because two walks over one tree are free to
-    drift. Every word of its docstring applies here unchanged: a container's
-    registry row describes the CONTAINER, a deactivated room does not answer
-    for its building, and a container with no active room left reports
-    `unknown` rather than falling back to its own flag.
+    drift. Every word of its docstring applies here unchanged: a deactivated
+    room does not answer for its building; a container's FALSE is discarded
+    and a container with no active room left reports `unknown` rather than
+    falling back to it; a container's TRUE rolls DOWN to every room beneath
+    it under the ruling of 2026-08-30.
 
     ONE thing is this function's own, and it is the owner ruling of 2026-08-15:
     A SHARED FRIDGE IS A FRIDGE. `has_shared_fridge` NARROWS `has_fridge` --
@@ -1683,10 +1739,23 @@ def _resolve_ramp_coverage(units: list[LodgingUnitSummary], index: _BathroomInde
     nothing of its own left: the five-grade `ramp_coverage()` grader is gone
     (`partial` has no bool to sit in, and `unknown` as an assessment state has
     nothing left to describe), and every rule `_resolve_power_coverage`
-    established applies here unchanged — a container's registry row describes
-    the CONTAINER, a deactivated room does not answer for its building, and a
-    container with no active room left reports `unknown` rather than falling
-    back to its own flag.
+    established applies here unchanged — a deactivated room does not answer
+    for its building, a container's FALSE is discarded and a container with no
+    active room left reports `unknown`, and a container's TRUE rolls DOWN.
+
+    ⚠️ ROLL-DOWN ON THIS FIELD IS THE ONE PLACE THE MODEL'S MONOTONICITY IS
+    SAFETY-RELEVANT, and it is IN on purpose rather than by omission. The
+    roll-down can only ever WIDEN: ticking `is_accessible` on a two-storey
+    building grades its upper-floor rooms `all` -- rooms reached by stairs --
+    and nothing in the model can express "except the upper floor", because a
+    descendant's `0` asserts nothing and so has no force to take a claim
+    back. It ships because container-level accessibility is precisely what
+    the owner asked for when he ruled (his worked example sets it on two
+    multi-storey buildings at three container levels at once), and because
+    the blast radius is zero: `is_accessible = 1` on exactly two of the 118
+    rows, both LEAVES, with no container carrying it. Exempting this one
+    field from the shared walk is a design change that reopens the ruling,
+    not a tidy-up.
 
     `has_ramp` stays STORED and stays in the payload as provenance. Nothing
     grades from it.
@@ -1766,6 +1835,16 @@ def _resolve_bathroom(units: list[LodgingUnitSummary], index: _BathroomIndex) ->
     whole-house card drew no bathroom while both its rooms drew one the moment
     staff split it.
 
+    ⛔ EXEMPT FROM THE AMENITY ROLL-DOWN, and the reason is stronger after
+    that change rather than weaker. `bathroom` is a LOCATION-BEARING ENUM,
+    not a presence-of-service fact: `private` on a container does not mean
+    every room below it has its own private bathroom, and rolled down that is
+    exactly what it would claim -- false for every two-bedroom-one-bath house
+    in the registry. Roll-down is sound only where a service available to the
+    space is available to everything inside it. This resolver infers the
+    container's value UPWARD from its leaves plus `bathroom_group`
+    exclusivity, which is the opposite direction and the right one here.
+
     ⚠️ CONTAINERS ONLY, unlike the three above. A leaf's own row is already
     the right answer and `_build_units` already computes it correctly --
     `effective_bathroom` against a one-element slot leaves a `shared` leaf
@@ -1829,10 +1908,34 @@ def _resolve_amenity_coverage(
 
     Parameterised on WHICH flag a room answers with and WHICH field receives
     the verdict, so a second amenity is a call site rather than a second
-    traversal. The rules — leaves answer for themselves, containers never do,
-    inactive rooms do not answer — live here once; the reasoning for each
-    lives in `_resolve_power_coverage`, which is the function that
-    established them.
+    traversal. The rules — leaves answer for themselves, a container's FALSE
+    never answers while its TRUE rolls DOWN, inactive rooms do not answer —
+    live here once; the reasoning for each lives in
+    `_resolve_power_coverage`, which is the function that established them.
+
+    ⚠️ THE ROLL-DOWN IS THE OWNER'S RULING OF 2026-08-30, and it is a PURE
+    OR down the tree: `effective(unit, flag) = own OR any ancestor's`.
+    Verbatim — *"both yes = yes. container yes = yes. leaf yes = yes. both
+    no = no."* Three consequences worth stating because each is a thing a
+    later reader will reach for and must not build:
+
+    * NO CONFLICT STATE, and no report of one. A `0` is not an assertion, so
+      it cannot contradict an ancestor's `1`; a disagreement between the two
+      is "staff set it at the wrong level", which is a data fix. The ruling
+      is explicit: *"i think there is no conflict, tbh."*
+    * NOTHING ROLLS UPWARD. A leaf never implies anything about its
+      ancestors -- a container still grades from its leaves, so a split
+      building still reads `some`. Where an upward inference is genuinely
+      wanted it is written by hand, as `_resolve_bathroom` writes it.
+    * NO STORED STATE, no sentinel, no third value, NO SCHEMA CHANGE. The
+      whole rule is two `is True` tests and an ancestor walk at read time.
+
+    ⛔ NOT EVERY COLUMN IS IN IT, and the carve-outs are the ruling's, not
+    this function's convenience. `sleeps` / `beds` / `max_beds` are
+    QUANTITIES that sum UP the tree (`_effective_sleeps`) -- rolled down they
+    would claim each room sleeps the whole house. `is_confirmed` would mark
+    every room confirmed with nobody having walked it, destroying the one
+    guarantee it carries. `bathroom` is exempt for its own reason, below.
 
     ⚠️ `is_confirmed` IS NOT ONE OF THEM, and it used to be: an unconfirmed
     room answered `None` here, so its recorded value was discarded and the
@@ -1856,14 +1959,42 @@ def _resolve_amenity_coverage(
     left. Re-introducing a grader hook to hold a second vocabulary means
     re-litigating that ruling first.
     """
+
+    def effective(unit: LodgingUnitSummary) -> bool | None:
+        """`own OR any ancestor's` -- the roll-down, in one place.
+
+        Returns the unit's OWN answer unless something above it asserts, in
+        which case the assertion wins. Nothing is written back: the raw
+        column reaching the payload is still exactly what the registry row
+        says, and only the derived grade moves.
+        """
+        own = answer(unit)
+        if own is True:
+            return own
+        for ancestor_code in index.ancestor_codes(unit.code):
+            ancestor = index.units_by_code.get(ancestor_code)
+            if ancestor is not None and answer(ancestor) is True:
+                return True
+        return own
+
     for unit in units:
+        if effective(unit) is True:
+            # THE UNIT ITSELF (or something above it) ASSERTS, so there is
+            # nothing left to aggregate -- including for a container whose
+            # every room has been retired, which would otherwise fall to the
+            # empty aggregation and DISCARD the assertion. That discard is
+            # the bug the ruling fixes, so the early return is load-bearing
+            # rather than a shortcut. No production container is in that
+            # state today; this pins the rule, not a data case.
+            setattr(unit, target, "all")
+            continue
         rooms = [
             leaf
             for code in sorted(index.leaf_codes_under(unit.code))
             if (leaf := index.units_by_code.get(code)) is not None and leaf.is_active
         ]
         answering = rooms if unit.is_container else [unit]
-        setattr(unit, target, amenity_coverage([answer(room) for room in answering]))
+        setattr(unit, target, amenity_coverage([effective(room) for room in answering]))
 
 
 class LodgingRosterService:

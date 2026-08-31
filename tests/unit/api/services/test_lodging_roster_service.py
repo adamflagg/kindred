@@ -5000,10 +5000,18 @@ class TestUnitPowerCoverage:
 
     @pytest.mark.asyncio
     async def test_a_split_building_is_some_not_all_or_none(self) -> None:
+        """THE BUILDING RECORDS NOTHING, and it has to for `some` to be
+        reachable: under the roll-down ruling of 2026-08-30 a container that
+        records `has_power = 1` covers everything beneath it, so a split is a
+        case only a non-asserting container can be in. The fixture used to
+        set the container `True` incidentally, which is now the OTHER test
+        (`TestAmenityRollDown`); what this one pins is unchanged -- one
+        powered room out of two does not promote the building.
+        """
         repo = _repo(
             fetch_session=FAMILY_SESSION,
             fetch_units=[
-                _unit("c1", "gt-lodge", "Lodge", is_container=True, has_power=True),
+                _unit("c1", "gt-lodge", "Lodge", is_container=True, has_power=False),
                 _unit("u1", "gt-lodge-1", "Lodge 1", sleeps=4, has_power=True, parent_unit="c1"),
                 _unit("u2", "gt-lodge-2", "Lodge 2", sleeps=4, has_power=False, parent_unit="c1"),
             ],
@@ -5203,7 +5211,11 @@ class TestUnitFridgeCoverage:
         repo = _repo(
             fetch_session=FAMILY_SESSION,
             fetch_units=[
-                _unit("c1", "gt-lodge", "Lodge", is_container=True, has_fridge=True),
+                # The building records NOTHING -- see the power twin: a
+                # container that asserts covers everything beneath it since
+                # the roll-down ruling, so `some` is reachable only from a
+                # container that does not.
+                _unit("c1", "gt-lodge", "Lodge", is_container=True, has_fridge=False),
                 _unit("u1", "gt-lodge-1", "Lodge 1", sleeps=4, has_fridge=True, parent_unit="c1"),
                 _unit("u2", "gt-lodge-2", "Lodge 2", sleeps=4, has_fridge=False, parent_unit="c1"),
             ],
@@ -5425,48 +5437,15 @@ class TestUnitStepFreeCoverage:
         assert by_code["gt-lodge"].ramp_coverage == "all"
         assert by_code["gt-lodge"].is_accessible is False
 
-    @pytest.mark.asyncio
-    async def test_a_containers_own_accessible_flag_is_discarded_by_its_rooms(self) -> None:
-        """THE OTHER DIRECTION, AND THE UNCOMFORTABLE ONE. Above, a container
-        recorded NOT accessible is overruled UPWARD by accessible rooms. Here a
-        container recorded ACCESSIBLE is overruled DOWNWARD to `none` by rooms
-        that are not -- so a row-level staff assessment on the building is
-        discarded rather than counted.
-
-        ⚠️ THIS PINS TODAY'S BEHAVIOUR, IT DOES NOT ENDORSE IT. The gap it
-        names: a container's `is_accessible` could plausibly ROLL DOWN to leaves
-        that record nothing, on the argument that a step-free entrance is a
-        property of the building. It does not, and this test exists so that
-        change is a deliberate one with its own design rather than something a
-        later reader slips in under a green suite.
-
-        ⛔ DO NOT "FIX" THIS BY IMPLEMENTING ROLL-DOWN. It is a separate
-        designed change and it interacts with the whole leaf walk -- power,
-        fridge and AC run through the identical `_resolve_amenity_coverage`, so
-        a roll-down here is a roll-down for four amenities or an inconsistency
-        across them.
-
-        HARMLESS TODAY, and that is a measurement, not an assumption: **0** of
-        the 118 2026 registry rows are both `is_container` and
-        `is_accessible = 1`, so no production container reaches this branch.
-        The moment one does, the board answers `none` for a building staff
-        marked accessible.
-        """
-        repo = _repo(
-            fetch_session=FAMILY_SESSION,
-            fetch_units=[
-                _unit("c1", "gt-lodge", "Lodge", is_container=True, is_accessible=True),
-                _unit("u1", "gt-lodge-1", "Lodge 1", sleeps=4, is_accessible=False, parent_unit="c1"),
-                _unit("u2", "gt-lodge-2", "Lodge 2", sleeps=4, is_accessible=False, parent_unit="c1"),
-            ],
-        )
-        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
-
-        by_code = {u.code: u for u in roster.units}
-        # The building's OWN flag still reaches the payload untouched -- only
-        # the resolved grade discards it.
-        assert by_code["gt-lodge"].is_accessible is True
-        assert by_code["gt-lodge"].ramp_coverage == "none"
+    # ⛔ `test_a_containers_own_accessible_flag_is_discarded_by_its_rooms`
+    # USED TO SIT HERE, pinning the opposite answer: a container recorded
+    # ACCESSIBLE was overruled DOWNWARD to `none` by rooms that were not, so
+    # a staff assessment on the building was discarded. Its own docstring
+    # said that behaviour was pinned rather than endorsed and that changing
+    # it had to be a deliberate, designed change rather than something
+    # slipped in under a green suite. The owner ruled on 2026-08-30 and this
+    # is that change -- `TestStepFreeRollsDownToo` below carries the new
+    # answer, the residual risk, and why step-free is not exempted.
 
     @pytest.mark.asyncio
     async def test_a_split_building_is_some(self) -> None:
@@ -5541,6 +5520,445 @@ class TestUnitStepFreeCoverage:
         assert roster.units[0].fridge_coverage == "none"
         assert roster.units[0].ac_coverage == "all"
         assert roster.units[0].ramp_coverage == "none"
+
+
+class TestBathroomIndexAncestorCodes:
+    """`_BathroomIndex.ancestor_codes` -- the module's ONE upward walk.
+
+    `leaf_codes_under` beside it is the ONE downward walk and this is its
+    mirror, added for the amenity roll-down ruling of 2026-08-30: *"things
+    can always roll DOWNWARDS, not up"*. Two walks over one tree are free to
+    drift, which is why each direction gets exactly one implementation.
+
+    `drawn_units` keeps its own inline `_parent_of` climb ON PURPOSE and is
+    not refactored onto this. That walk tests `is_combined` as it goes and
+    BLOCKS on a cycle rather than merely stopping, so it is a different
+    traversal wearing a similar shape -- folding a combined-node rule into
+    the walk the amenity resolvers share would put a board-drawing concern
+    inside a grading one.
+
+    Cycle-guarded for the same reason every walk here is: the server guards
+    against WRITING a cycle (`guardUnitParentCycle`, kindred#1899), but a
+    cycle already in the data must not hang a request.
+    """
+
+    def test_it_returns_every_ancestor_nearest_first(self) -> None:
+        index = _BathroomIndex.build(
+            [
+                _summary("block", is_container=True),
+                _summary("wing", is_container=True, parent_code="block"),
+                _summary("room", parent_code="wing"),
+            ]
+        )
+
+        assert index.ancestor_codes("room") == ("wing", "block")
+
+    def test_a_root_has_no_ancestors(self) -> None:
+        index = _BathroomIndex.build([_summary("block", is_container=True), _summary("room", parent_code="block")])
+
+        assert index.ancestor_codes("block") == ()
+
+    def test_a_code_the_registry_does_not_hold_has_no_ancestors(self) -> None:
+        """A total function over any code, the way `leaf_codes_under` is --
+        the callers hand it a `unit.code` and must not have to pre-check."""
+        index = _BathroomIndex.build([_summary("room")])
+
+        assert index.ancestor_codes("nowhere") == ()
+
+    def test_a_blank_parent_code_is_never_looked_up(self) -> None:
+        """`drawn_units`' `_parent_of` guard, on the shared walk. A blank
+        `code` is a valid if unfortunate registry value and `units_by_code`
+        is keyed on it, so a row with no code occupies the SAME `""` key that
+        `parent_code == ""` uses to mean NO PARENT. Without the guard a root
+        would inherit from whichever row happens to have a blank code.
+        """
+        index = _BathroomIndex.build([_summary("", is_container=True, has_power=True), _summary("room")])
+
+        assert index.ancestor_codes("room") == ()
+
+    def test_a_self_parent_does_not_hang(self) -> None:
+        index = _BathroomIndex.build([_summary("loop", is_container=True, parent_code="loop")])
+
+        assert index.ancestor_codes("loop") == ()
+
+    def test_a_two_cycle_does_not_hang(self) -> None:
+        index = _BathroomIndex.build(
+            [
+                _summary("a", is_container=True, parent_code="b"),
+                _summary("b", is_container=True, parent_code="a"),
+            ]
+        )
+
+        assert index.ancestor_codes("a") == ("b",)
+        assert index.ancestor_codes("b") == ("a",)
+
+
+class TestAmenityRollDown:
+    """`effective(unit, flag) = own OR any ancestor's` -- the owner's ruling
+    of 2026-08-30, on every coverage grain the shared walk resolves.
+
+    Verbatim: *"i think there is no conflict, tbh. the only case is 'staff
+    set things at the wrong level' which is a data change. both yes = yes.
+    container yes = yes. leaf yes = yes. both no = no."* So this is a PURE
+    OR down the tree. There is no conflict state, no sentinel, no stored
+    state and no schema change -- a container's `0` still asserts nothing,
+    which is why the disagreement it can produce with a leaf's `1` is not a
+    contradiction to resolve.
+
+    ⚠️ THIS REVERSES ONE HALF of kindred#1912's rule, and only one half. A
+    container's FALSE is still discarded, because that is what was measured:
+    THIRTEEN of the fifteen 2026 containers record `has_power = 0` over
+    powered rooms. Its TRUE now answers, because a `1` is a claim somebody
+    typed and there is no reading of it that means "no" -- the original
+    measurement was about a container's FALSE value being wrong and never
+    spoke to the opposite direction.
+
+    THE BLAST RADIUS WAS MEASURED AT ZERO before this shipped: over
+    `pb_data/data-prod.db`, 0 of the 118 cards change any graded coverage.
+    The only two (ancestor true, descendant false) pairs in the entire
+    registry are `has_tub` and `has_crib` on one house, and neither column
+    has a coverage grain or a board consumer.
+
+    ⛔ NOT EVERYTHING ROLLS. `sleeps` / `beds` / `max_beds` are quantities
+    and sum UP the tree; `is_confirmed` is a per-location staff checklist and
+    rolling it down would mark every room confirmed with nobody having
+    walked it; `bathroom` is a location-bearing enum inferred UPWARD from
+    its leaves (`_resolve_bathroom`, pinned below).
+    """
+
+    @pytest.mark.asyncio
+    async def test_a_container_that_asserts_covers_rooms_that_record_nothing(self) -> None:
+        """*"container yes = yes"*. The whole point of the ruling: staff tick
+        the amenity at the HIGHEST level that is true and it reaches every
+        room, instead of ticking it on each room by hand."""
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("c1", "gt-lodge", "Lodge", is_container=True, has_power=True),
+                _unit("u1", "gt-lodge-1", "Lodge 1", sleeps=4, has_power=False, parent_unit="c1"),
+                _unit("u2", "gt-lodge-2", "Lodge 2", sleeps=4, has_power=False, parent_unit="c1"),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        by_code = {u.code: u for u in roster.units}
+        assert by_code["gt-lodge"].power_coverage == "all"
+        assert by_code["gt-lodge-1"].power_coverage == "all"
+        assert by_code["gt-lodge-2"].power_coverage == "all"
+
+    @pytest.mark.asyncio
+    async def test_the_rooms_own_stored_flag_is_left_untouched(self) -> None:
+        """RESOLVED, NEVER STORED. Only the derived grade moves; the payload
+        still carries what the registry row says, because the admin panels
+        write `lodging_units` straight to PocketBase from the browser
+        (`lodgingCrud.ts`) and a value this walk wrote back would have no
+        recompute trigger on the one path that edits amenities."""
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("c1", "gt-lodge", "Lodge", is_container=True, has_power=True),
+                _unit("u1", "gt-lodge-1", "Lodge 1", sleeps=4, has_power=False, parent_unit="c1"),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        by_code = {u.code: u for u in roster.units}
+        assert by_code["gt-lodge-1"].has_power is False
+        assert by_code["gt-lodge-1"].power_coverage == "all"
+
+    @pytest.mark.asyncio
+    async def test_a_grandchild_inherits_from_its_grandparent(self) -> None:
+        """The walk climbs to any depth, mirroring `leaf_codes_under`'s
+        descent. The owner's worked example is three container levels deep
+        and offers a CHOICE of where to tick -- *"we could set it at 3
+        container levels, 1 container parent level, or at each leaf,
+        whatever"* -- so all three spellings have to give the same answer or
+        the choice is not really offered.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("c1", "hc-block", "Health Block", is_container=True, has_power=True),
+                _unit("c2", "hc-wing-a", "Wing A", is_container=True, has_power=False, parent_unit="c1"),
+                _unit("u1", "hc-a-1", "A1", sleeps=2, has_power=False, parent_unit="c2"),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        by_code = {u.code: u.power_coverage for u in roster.units}
+        assert by_code["hc-block"] == "all"
+        assert by_code["hc-wing-a"] == "all"
+        assert by_code["hc-a-1"] == "all"
+
+    @pytest.mark.asyncio
+    async def test_a_sibling_subtree_is_untouched(self) -> None:
+        """ANCESTRY, NOT PROXIMITY, and the owner's own example is ambiguous
+        about it: a two-storey building splits into an upper and a lower
+        container, and setting an amenity on ONE of them must not reach the
+        rooms under the other. Only a unit ON THE PATH answers."""
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("c1", "gt-block", "Block", is_container=True, has_power=False),
+                _unit("c2", "gt-block-up", "Block Upper", is_container=True, has_power=True, parent_unit="c1"),
+                _unit("c3", "gt-block-down", "Block Lower", is_container=True, has_power=False, parent_unit="c1"),
+                _unit("u1", "gt-block-1", "Block 1", sleeps=2, has_power=False, parent_unit="c2"),
+                _unit("u2", "gt-block-3", "Block 3", sleeps=2, has_power=False, parent_unit="c3"),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        by_code = {u.code: u.power_coverage for u in roster.units}
+        assert by_code["gt-block-1"] == "all"
+        assert by_code["gt-block-3"] == "none"
+        assert by_code["gt-block-down"] == "none"
+        # The root sees ONE of its two leaves covered, from below.
+        assert by_code["gt-block"] == "some"
+
+    @pytest.mark.asyncio
+    async def test_a_container_that_records_nothing_still_grades_from_its_rooms(self) -> None:
+        """*"leaf yes = yes"*, and NOTHING ROLLS UPWARD. The half of
+        kindred#1912 this change does NOT touch: a container's `0` asserts
+        nothing, so its rooms still supply the verdict and a split building
+        still reads `some` rather than being promoted by one covered room.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("c1", "gt-lodge", "Lodge", is_container=True, has_power=False),
+                _unit("u1", "gt-lodge-1", "Lodge 1", sleeps=4, has_power=True, parent_unit="c1"),
+                _unit("u2", "gt-lodge-2", "Lodge 2", sleeps=4, has_power=False, parent_unit="c1"),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        by_code = {u.code: u.power_coverage for u in roster.units}
+        assert by_code["gt-lodge"] == "some"
+        assert by_code["gt-lodge-1"] == "all"
+        assert by_code["gt-lodge-2"] == "none"
+
+    @pytest.mark.asyncio
+    async def test_both_no_is_still_no(self) -> None:
+        """*"both no = no"*. The OR adds nothing where nothing is asserted --
+        this is the arm that keeps the change from being a blanket widening.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("c1", "gt-lodge", "Lodge", is_container=True, has_power=False),
+                _unit("u1", "gt-lodge-1", "Lodge 1", sleeps=4, has_power=False, parent_unit="c1"),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        by_code = {u.code: u.power_coverage for u in roster.units}
+        assert by_code["gt-lodge"] == "none"
+        assert by_code["gt-lodge-1"] == "none"
+
+    @pytest.mark.asyncio
+    async def test_a_container_that_asserts_with_no_active_room_left_is_all_not_unknown(self) -> None:
+        """THE DEGENERATE BRANCH, AND IT MOVES. `unknown` is the EMPTY
+        AGGREGATION -- nothing answered, so there is nothing to say. Once the
+        container itself asserts, something HAS answered, and discarding it
+        for want of a room is the exact bug the ruling fixes.
+
+        0 production containers are in this state today (every one of the 15
+        has at least one active leaf), so this pins the rule rather than a
+        data case.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("c1", "gt-lodge", "Lodge", is_container=True, has_power=True),
+                _unit("u1", "gt-lodge-1", "Lodge 1", sleeps=4, has_power=False, is_active=False, parent_unit="c1"),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert {u.code: u.power_coverage for u in roster.units}["gt-lodge"] == "all"
+
+    @pytest.mark.asyncio
+    async def test_a_retired_room_still_does_not_answer_for_its_building(self) -> None:
+        """UNCHANGED BY THE ROLL-DOWN, and deliberately so: the `is_active`
+        filter is about who can be PLACED there, and roll-down runs the other
+        way. A retired room's `1` is still not the building's answer, so a
+        container with nothing else left still reports `unknown` rather than
+        borrowing it.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("c1", "gt-lodge", "Lodge", is_container=True, has_power=False),
+                _unit("u1", "gt-lodge-1", "Lodge 1", sleeps=4, has_power=True, is_active=False, parent_unit="c1"),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert {u.code: u.power_coverage for u in roster.units}["gt-lodge"] == "unknown"
+
+    @pytest.mark.asyncio
+    async def test_every_coverage_grain_rolls_down_not_just_power(self) -> None:
+        """ALL SIX CALLERS OF THE SHARED WALK, pinned in one place. The rule
+        lives in `_resolve_amenity_coverage` precisely so a per-amenity
+        exception cannot be added without being noticed, and an amenity that
+        did not roll down while its five neighbours did would be exactly the
+        inconsistency the shared walk exists to prevent.
+
+        Step-free is in this list ON PURPOSE -- see
+        `TestStepFreeRollsDownToo` below, which carries the argument.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit(
+                    "c1",
+                    "gt-lodge",
+                    "Lodge",
+                    is_container=True,
+                    has_power=True,
+                    has_fridge=True,
+                    has_ac=True,
+                    has_heat=True,
+                    is_weatherized=True,
+                    is_accessible=True,
+                ),
+                _unit("u1", "gt-lodge-1", "Lodge 1", sleeps=4, parent_unit="c1"),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        room = {u.code: u for u in roster.units}["gt-lodge-1"]
+        assert room.power_coverage == "all"
+        assert room.fridge_coverage == "all"
+        assert room.ac_coverage == "all"
+        assert room.heat_coverage == "all"
+        assert room.weatherized_coverage == "all"
+        assert room.ramp_coverage == "all"
+
+    @pytest.mark.asyncio
+    async def test_a_shared_fridge_on_the_building_still_narrows_to_a_fridge(self) -> None:
+        """The roll-down composes with `has_shared_fridge`'s OR rather than
+        bypassing it: the container asserts a SHARED fridge only, which is
+        still a fridge (owner ruling 2026-08-15), so every room below it
+        reads covered. The one house in the 2026 registry that carries a
+        container-level tub and crib over four rooms that record neither is
+        exactly this shape.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("c1", "gt-lodge", "Lodge", is_container=True, has_fridge=False, has_shared_fridge=True),
+                _unit("u1", "gt-lodge-1", "Lodge 1", sleeps=4, parent_unit="c1"),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert {u.code: u.fridge_coverage for u in roster.units}["gt-lodge-1"] == "all"
+
+    @pytest.mark.asyncio
+    async def test_the_bathroom_enum_is_exempt_and_does_not_roll_down(self) -> None:
+        """⛔ THE ONE RESOLVER THAT STAYS OUT, and the reason is stronger
+        after this change rather than weaker. `bathroom` is a
+        LOCATION-BEARING ENUM, not a presence-of-service bool: `private` on a
+        container does not mean every room below it has its own private
+        bathroom, and rolled down that is exactly what it would claim -- false
+        for every two-bedroom-one-bath house in the registry.
+
+        `_resolve_bathroom` infers the container's value UPWARD from its
+        leaves plus `bathroom_group` exclusivity, which is the opposite
+        direction and the correct one for that question.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("c1", "gt-lodge", "Lodge", is_container=True, bathroom="private"),
+                _unit("u1", "gt-lodge-1", "Lodge 1", sleeps=4, bathroom="shared", parent_unit="c1"),
+                _unit("u2", "gt-lodge-2", "Lodge 2", sleeps=4, bathroom="shared", parent_unit="c1"),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        by_code = {u.code: u.bathroom for u in roster.units}
+        assert by_code["gt-lodge-1"] == "shared"
+        assert by_code["gt-lodge-2"] == "shared"
+
+
+class TestStepFreeRollsDownToo:
+    """`is_accessible` is IN the roll-down, and that is a deliberate call
+    with a named residual risk -- read this before exempting it.
+
+    THE RISK, stated rather than discovered: roll-down can only WIDEN.
+    Ticking `is_accessible` on a two-storey building would grade its
+    upper-floor rooms `all` -- rooms reached by stairs. Nothing in the model
+    stops that, because nothing in the model can express "except the upper
+    floor" (a descendant's `0` asserts nothing, so it has no force to take a
+    claim back).
+
+    WHY IT SHIPS ANYWAY:
+
+    * The owner's motivating example IS this field: his worked case sets
+      accessibility on two multi-storey buildings at three container levels
+      at once. Container-level accessibility is what was asked for.
+    * BLAST RADIUS ZERO, measured on the 2026 snapshot: `is_accessible = 1`
+      on exactly two of the 118 rows, and both are LEAVES. No container
+      carries it, so nothing moves today.
+    * The direction of error is a staff data entry a staff member can undo by
+      untickng the container, not a stored state anyone has to migrate.
+
+    ⚠️ THE ORIGINAL PLAN NAMED A CONFLICT REPORT as this field's safety net --
+    an admin queue listing every (ancestor true, descendant false) pair. THAT
+    REPORT WAS NOT BUILT: the owner ruled there is no conflict to report,
+    *"the only case is 'staff set things at the wrong level' which is a data
+    change"*. So the net is the ruling itself. If a later reader wants belt
+    and braces for accessibility specifically, that is a new design question
+    and it starts by reopening the ruling, not by quietly exempting the field.
+    """
+
+    @pytest.mark.asyncio
+    async def test_a_container_marked_accessible_covers_its_rooms(self) -> None:
+        """REPLACES the removed step-free test that pinned the OPPOSITE
+        answer -- a container recorded accessible overruled DOWNWARD to
+        `none` by rooms that were not. That test said in as many words that
+        changing it had to be deliberate and designed. This is that change;
+        see the note left at its old site in `TestUnitStepFreeCoverage`.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("c1", "gt-lodge", "Lodge", is_container=True, is_accessible=True),
+                _unit("u1", "gt-lodge-1", "Lodge 1", sleeps=4, is_accessible=False, parent_unit="c1"),
+                _unit("u2", "gt-lodge-2", "Lodge 2", sleeps=4, is_accessible=False, parent_unit="c1"),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        by_code = {u.code: u for u in roster.units}
+        # The building's OWN flag still reaches the payload untouched -- the
+        # grade is derived beside it, never written back over it.
+        assert by_code["gt-lodge"].is_accessible is True
+        assert by_code["gt-lodge"].ramp_coverage == "all"
+        assert by_code["gt-lodge-1"].ramp_coverage == "all"
+        assert by_code["gt-lodge-2"].ramp_coverage == "all"
+
+    @pytest.mark.asyncio
+    async def test_has_ramp_does_not_roll_down_because_nothing_grades_from_it(self) -> None:
+        """`has_ramp` is a THREE-VALUE select kept as provenance for the 14
+        staff assessments (kindred#2327). It is not a presence bool, no
+        verdict reads it, and the roll-down never touches it -- a container's
+        `yes` leaves every room's stored value exactly as staff typed it.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("c1", "gt-lodge", "Lodge", is_container=True, has_ramp="yes", is_accessible=False),
+                _unit("u1", "gt-lodge-1", "Lodge 1", sleeps=4, has_ramp="", is_accessible=False, parent_unit="c1"),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        by_code = {u.code: u for u in roster.units}
+        assert by_code["gt-lodge-1"].has_ramp == ""
+        assert by_code["gt-lodge-1"].ramp_coverage == "none"
 
 
 def _journey_repo(**overrides: Any) -> MagicMock:

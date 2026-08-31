@@ -408,6 +408,63 @@ registry values may be parked.
 a record id — so comparing raw values reports every parented unit as needing a
 change, and applying that would write a code into a relation field.
 
+### Amenities roll DOWN the tree
+
+**`effective(unit, flag) = own OR any ancestor's`.** Owner ruling, 2026-08-30:
+*"things can always roll DOWNWARDS, not up ... both yes = yes. container yes =
+yes. leaf yes = yes. both no = no."*
+
+Staff tick an amenity at the **highest level that is true** and it reaches
+every unit beneath it — three container levels, one, or each leaf are all the
+same answer. Resolved at read time in `_resolve_amenity_coverage`
+(`api/services/lodging_roster_service.py`), which is the one place the rule
+lives, over `_BathroomIndex.ancestor_codes`, which is the one upward walk.
+
+**There is no conflict state and no conflict report.** A `0` is not an
+assertion — it is the absence of a claim — so a descendant's `0` cannot
+contradict an ancestor's `1`. A disagreement between the two is "staff set it
+at the wrong level", which is a data fix, not something the model resolves.
+That is also why the rule needs **no third value, no sentinel, no stored state
+and no schema change**: it is two `is True` tests and an ancestor walk.
+
+**Only one half of the container rule reversed.** A container's `false` is
+still discarded — thirteen of the fifteen 2026 containers record `has_power =
+0` while their rooms are powered, and publishing that as "nothing here has
+power" states a fact no row supports. Its `true` now answers, because a `1` is
+a claim somebody typed and there is no reading of it that means "no". A
+container that asserts with no active room left grades `all` rather than
+`unknown`; a container that asserts nothing still grades from its active
+leaves, so a split building still reads `some`.
+
+**Nothing rolls upward, and quantities never roll at all.**
+
+| Out of the roll-down | Why |
+| --- | --- |
+| `sleeps`, `beds`, `max_beds` | Quantities. A container's `sleeps` is a DELTA over its rooms (kindred#2041) and `_effective_sleeps` sums the tree; rolled down they would claim each room sleeps the whole house. |
+| `is_confirmed` | The per-location staff checklist. Rolling it down marks every room confirmed with nobody having walked it, destroying the one guarantee it carries. |
+| `bathroom`, `bathroom_group` | A location-bearing enum, not a presence-of-service fact: `private` on a container does not mean every room below it has a private bathroom. `_resolve_bathroom` infers it UPWARD from the leaves plus group exclusivity — the opposite direction, and the right one for that question. |
+| `has_ramp` | A three-value select kept as provenance only (see the section above). No verdict reads it. |
+| `shareability`, `inventory_class`, `is_active`, `default_combined`, `map_x`/`map_y` | Structure and policy, not amenities. Several already have their own inheritance rule in a different shape. |
+
+**Blast radius was measured at zero before it shipped.** Over the 2026
+snapshot, all 118 units, every graded coverage — power, fridge, AC, heat,
+weatherized, step-free — is byte-identical before and after, as is the
+resolved `bathroom`. The only (ancestor true, descendant false) pairs in the
+whole registry are `has_tub` and `has_crib` on a single house: four rooms move
+from not-carrying to carrying, and neither column has a coverage grain or a
+board consumer. Re-derive with the walk above rather than trusting this
+paragraph if the registry has moved since.
+
+⚠️ **`is_accessible` is IN the roll-down, deliberately, and the residual risk
+is named.** Roll-down can only ever WIDEN, so ticking accessibility on a
+two-storey building grades its upper-floor rooms `all` — rooms reached by
+stairs — and nothing in the model can express "except the upper floor",
+because a descendant's `0` has no force to take a claim back. It is in because
+container-level accessibility is exactly what the ruling asked for, and
+because no container carries the flag today (`is_accessible = 1` on two rows,
+both leaves). Exempting it is a design change that reopens the ruling, not a
+tidy-up.
+
 ### What confirming a unit gates across the system
 
 Marking a unit `is_confirmed: true` gates the following behavior. **7 behavioral gates**
