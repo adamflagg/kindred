@@ -15,6 +15,8 @@ import { QueryGuard } from '../../QueryGuard'
 import { BUTTON_SECONDARY } from './lodgingStyles'
 import { SessionAttributionRow } from './SessionAttributionRow'
 
+const NOTHING_WAITING = 'No cabins are waiting on a weekend.'
+
 export function CabinWeekendsQueue() {
   const { isLoading, error, data, confirm, isConfirming } = useSessionAttributionQueue()
   const [showStale, setShowStale] = useState(false)
@@ -25,7 +27,7 @@ export function CabinWeekendsQueue() {
       error={error}
       data={data}
       label="cabin weekends"
-      emptyMessage="No cabins are waiting on a weekend."
+      emptyMessage={NOTHING_WAITING}
     >
       {(items) => {
         const staleCount = items.filter((i) => i.isStale).length
@@ -36,9 +38,7 @@ export function CabinWeekendsQueue() {
           // array is truthy — without this the settled-empty case renders a
           // blank page, matching UnresolvedAliasQueue's own guard.
           return (
-            <p className="text-muted-foreground py-12 text-center text-sm">
-              No cabins are waiting on a weekend.
-            </p>
+            <p className="text-muted-foreground py-12 text-center text-sm">{NOTHING_WAITING}</p>
           )
         }
 

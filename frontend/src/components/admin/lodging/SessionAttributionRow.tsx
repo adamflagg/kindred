@@ -21,9 +21,16 @@
 import { LABEL, MUTED_PILL, PILL } from './lodgingStyles'
 import type { SessionAttributionQueueItem } from '../../../hooks/useSessionAttributionQueue'
 
-const BUTTON_PRIMARY =
+// Named CANDIDATE_*, not BUTTON_PRIMARY/BUTTON_SECONDARY: those names are
+// lodgingStyles.ts's own exports (px-4 py-2 text-sm), which this file already
+// imports LABEL/MUTED_PILL/PILL from. Reusing the identifiers here for a
+// deliberately denser px-3 py-1.5 text-xs variant (these buttons sit inside a
+// 2-column grid of small candidate cards) would shadow the shared module's
+// definition with a same-named, different-value local — exactly the "six
+// dialects" drift that module's own header comment warns against.
+const CANDIDATE_BUTTON_PRIMARY =
   'bg-primary text-primary-foreground shadow-lodge-sm inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-semibold transition-opacity disabled:opacity-50'
-const BUTTON_SECONDARY =
+const CANDIDATE_BUTTON_SECONDARY =
   'border-border text-muted-foreground hover:text-foreground hover:bg-muted/50 inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors disabled:opacity-50'
 
 export interface SessionAttributionRowProps {
@@ -103,7 +110,7 @@ export function SessionAttributionRow({
                 onClick={() => {
                   onConfirm(candidate.sessionCmId)
                 }}
-                className={`${candidate.isSuggested ? BUTTON_PRIMARY : BUTTON_SECONDARY} mt-2 w-full justify-center`}
+                className={`${candidate.isSuggested ? CANDIDATE_BUTTON_PRIMARY : CANDIDATE_BUTTON_SECONDARY} mt-2 w-full justify-center`}
               >
                 This is {candidate.short}
               </button>

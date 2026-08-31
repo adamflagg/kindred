@@ -197,6 +197,24 @@ describe('useSessionAttributionQueue', () => {
     expect(result.current.items.find((i) => i.id === 'q9')?.isStale).toBe(true)
   })
 
+  // The module doc is explicit: "Only the primary queue query gates
+  // isLoading/error for QueryGuard purposes; a failed alias or session fetch
+  // degrades the RENDER ... rather than blocking it." QueryGuard checks
+  // isLoading before data, so if isLoading stays true while the queue's own
+  // rows are already in hand, staff see a perpetual spinner instead of the
+  // degraded-but-usable row the doc promises.
+  it('stops loading once the queue resolves, even while alias/session enrichment is still pending', async () => {
+    listLodgingAliases.mockReturnValue(new Promise(() => undefined))
+    fetchWeekendSessions.mockReturnValue(new Promise(() => undefined))
+    const { result } = renderHook(() => useSessionAttributionQueue(), {
+      wrapper: wrapper(YEAR_CONTEXT),
+    })
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false)
+    })
+    expect(result.current.data).toBeDefined()
+  })
+
   it('degrades gracefully when the alias fetch fails, rather than blocking the queue', async () => {
     listLodgingAliases.mockRejectedValue(new Error('network'))
     const { result } = renderHook(() => useSessionAttributionQueue(), {

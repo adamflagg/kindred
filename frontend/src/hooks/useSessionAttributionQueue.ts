@@ -150,8 +150,10 @@ export function useSessionAttributionQueue(): UseSessionAttributionQueueResult {
   })
 
   // Only the PRIMARY query's pending state blocks rendering — see module doc.
-  const isLoading =
-    queueQuery.isLoading || aliasesQuery.isLoading || sessionsQuery.isLoading || !yearReady
+  // aliasesQuery/sessionsQuery are deliberately excluded: their own pending
+  // or failed state degrades the RENDER (buildItem's fallbacks below), it
+  // must not hold QueryGuard on a spinner once the queue's own rows are in.
+  const isLoading = queueQuery.isLoading || !yearReady
 
   const rows = queueQuery.data
   const aliases = aliasesQuery.data ?? []
