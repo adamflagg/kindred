@@ -29,9 +29,10 @@ HH_HOLDER = 10569302
 
 FC1_PB, FC1 = "s_fc1", 1000001
 FC2_PB, FC2 = "s_fc2", 1000002
+FC3_PB, FC3 = "s_fc3", 1000003
 
 
-def _session(pb_id: str, cm_id: int, name: str, start: str) -> SimpleNamespace:
+def _session(pb_id: str, cm_id: int, name: str, start: str, sort_order: int) -> SimpleNamespace:
     return SimpleNamespace(
         id=pb_id,
         cm_id=cm_id,
@@ -39,13 +40,18 @@ def _session(pb_id: str, cm_id: int, name: str, start: str) -> SimpleNamespace:
         start_date=start,
         end_date=start,
         session_type="family",
-        sort_order=cm_id,
+        sort_order=sort_order,
     )
 
 
+# ⚠️ FETCH ORDER IS NOT DATE ORDER HERE, DELIBERATELY. `fetch_weekend_sessions`
+# sorts by `sort_order` first, which is a DISPLAY choice staff set, while
+# `AttributeSession` requires its candidates in START DATE ascending order --
+# so the third weekend is returned first and starts last.
 SESSIONS = [
-    _session(FC1_PB, FC1, "Family Weekend One", "2026-06-05"),
-    _session(FC2_PB, FC2, "Family Weekend Two", "2026-06-12"),
+    _session(FC3_PB, FC3, "Family Weekend Three", "2026-06-19", sort_order=0),
+    _session(FC1_PB, FC1, "Family Weekend One", "2026-06-05", sort_order=1),
+    _session(FC2_PB, FC2, "Family Weekend Two", "2026-06-12", sort_order=2),
 ]
 
 
@@ -280,6 +286,55 @@ class TestValueShapes:
         assert _row(response).resolved_leaf_codes == []
         assert _verdicts(response) == {FC1: "free", FC2: "free"}
         assert _row(response).conflict_aware_suggested_session_cm_id == FC1
+
+
+    @pytest.mark.asyncio
+    async def test_a_placement_on_the_building_takes_the_rooms_inside_it(self) -> None:
+        """The mirror image of the container-value case, and it needs the same
+        expansion from the other end: staff placed a family on the WHOLE house
+        and the value names one room in it. A family in a building occupies
+        every room in it, so reading the room's own placements finds nothing
+        and would call a full house free."""
+        repo = _repo(
+            issues=[_issue("Birch Room 1")],
+            placements={FC1: [_placement(HH_HOLDER, [BIRCH_HOUSE])], FC2: [_placement(HH_HOLDER, [MAPLE])]},
+        )
+
+        response = await LodgingAttributionService(repo).build_conflicts(YEAR)
+
+        assert _verdicts(response) == {FC1: "conflict", FC2: "free"}
+        conflicted = next(c for c in _row(response).candidates if c.session_cm_id == FC1)
+        assert [(o.kind, o.label, o.leaf_code) for o in conflicted.occupants] == [
+            ("placement", "The Garcia Family", "birch-1")
+        ]
+
+
+class TestCandidateOrder:
+    @pytest.mark.asyncio
+    async def test_the_demotion_walks_candidates_by_start_date_not_fetch_order(self) -> None:
+        """`AttributeSession` requires its candidates START DATE ASCENDING, and
+        `conflict_aware_suggestion` derives from that order -- the first
+        survivor at or after the demoted pick. `fetch_weekend_sessions` returns
+        them in `sort_order`, which staff set for display and which SESSIONS
+        above deliberately disagrees with. Reading the fetch order here would
+        demote to the wrong weekend whenever the two differ.
+        """
+        repo = _repo(
+            issues=[_issue("Maple Upper 1", suggested_session=FC2_PB, candidates=(FC1, FC2, FC3))],
+            placements={
+                FC1: [_placement(HH_HOLDER, [HALL])],
+                FC2: [_placement(HH_HOLDER, [MAPLE])],
+                FC3: [_placement(HH_HOLDER, [HALL])],
+            },
+        )
+
+        response = await LodgingAttributionService(repo).build_conflicts(YEAR)
+        row = _row(response)
+
+        assert [c.session_cm_id for c in row.candidates] == [FC1, FC2, FC3]
+        assert _verdicts(response) == {FC1: "free", FC2: "conflict", FC3: "free"}
+        assert row.timestamp_suggested_session_cm_id == FC2
+        assert row.conflict_aware_suggested_session_cm_id == FC3
 
 
 class TestWriteInsAreReadLive:
