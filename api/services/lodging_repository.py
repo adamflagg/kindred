@@ -100,9 +100,23 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+# `camp_sessions.session_type` for a family-camp weekend. The same literal
+# `SessionResolver.GetFamilyCampSessionCMIDs` filters on -- exactly and only --
+# which is what makes kindred#2478 section 5.1's scope ruling a fact about the
+# data rather than a preference: the adult sessions are not in the bounded
+# cohort at all, so their cabin answers are never fetched by the six-job chain
+# and their mirror rows are rewritten daily from custom values up to seven days
+# old.
+#
+# Named here rather than in either service because BOTH read it -- the compare
+# footer and the roster's per-weekend housing freshness -- and
+# `lodging_compare_service` already imports `lodging_roster_service`, so the
+# constant cannot live in the one that would then have to import back.
+FAMILY_SESSION_TYPE = "family"
+
 # camp_sessions.session_type values that this surface owns. Summer types
 # (main/embedded/ag/quest/...) belong to the bunking board, not here.
-WEEKEND_SESSION_TYPES = ("family", "adult")
+WEEKEND_SESSION_TYPES = (FAMILY_SESSION_TYPE, "adult")
 
 # lodging_ingest_issues.kind for a cabin string that resolved to no unit. The
 # collection carries seven kinds and this surface reports only this one, so the
@@ -1324,6 +1338,88 @@ class LodgingRepository:
         # only by engine leniency -- normalised here so the component never
         # has to know which producer it is reading.
         return ended.replace(" ", "T", 1)
+
+    async def fetch_session_scoped_sync_ends(self, service: str, year: int) -> list[tuple[str, str]]:
+        """`service`'s successful runs in `year`, newest first, as
+        (session, ended) -- RFC3339, and "" for a run that covered every
+        weekend.
+
+        `fetch_last_successful_sync_end` above answers "when did this job last
+        succeed", which is one row and enough for a job nobody scopes. Refresh
+        Housing IS scoped (kindred#2601): a press names the weekend it was
+        started for, so the last run of the job is often a run that covered a
+        DIFFERENT weekend. The sync-status payload keeps one slot per job and
+        cannot say more than that, which is why both weekend surfaces went
+        silent there. THE ORDER IS THE ANSWER: the caller walks this list and
+        takes the first row that covers its weekend, so the most recent run
+        that was unscoped OR scoped to it wins (kindred#2617).
+
+        EMPTY SESSION MEANS EVERY WEEKEND, not "unknown". The nightly cron
+        refreshes the whole family-camp cohort and names no weekend, so a
+        blank is a positive claim about coverage -- and it is what every row
+        written before 1500000175 carries, correctly, because scoping a press
+        did not exist when they ran.
+
+        The YEAR filter is not optional: CampMinder REUSES session ids across
+        years, so an unscoped 2025 run says nothing about the 2026 weekend
+        wearing the same cm_id.
+
+        SORTED `-started,-id`, matching `Orchestrator.LastRecordedRuns` and
+        `fetch_last_successful_sync_end` exactly rather than sorting on
+        `ended`. Stored timestamps are millisecond precision and a fast
+        transform can produce two within one, so the id breaks the tie the
+        same way in all three places -- and picking the first row of an
+        ordered list, rather than comparing the timestamps as strings, is what
+        keeps this from inventing a fourth ordering.
+
+        PAGED, unlike its one-row sibling, and the filter is what makes that
+        affordable: `sync_runs` holds every service's run for the whole
+        retention window, but ONE service in ONE year over
+        `SyncRunRetentionDays` is order tens of rows, of which two fields are
+        read.
+
+        A run with no `ended` is DROPPED rather than carried as a blank: it
+        can date nothing, and keeping it would let it shadow the older run
+        that can, turning a real timestamp into silence.
+
+        WHAT THIS READ MAY EXPECT OF THE WRITER, stated here because
+        `recordSyncRun` deliberately skips the Go sync layer's WAL checkpoint
+        and kindred#2297 asked that the question be settled "on the read
+        path's expectations" once a reader existed:
+
+        - IT SEES EVERY COMMITTED ROW. This goes through PocketBase's REST
+          API, so it is PocketBase reading its own writes on its own
+          connection -- there is no cross-connection WAL visibility gap to
+          worry about, and there would be one for a reader that opened
+          `data.db` itself.
+        - The one edge is a HOST POWER LOSS (not a crash, not a `docker
+          stop` -- SQLite recovers committed WAL frames on the next open),
+          which can lose the newest rows. That makes a weekend's freshness
+          UNDERSTATE itself and self-heal at the next covering run. Every
+          other failure in this feature is shaped the same way, so nothing
+          downstream needs a special case for it.
+        """
+        rows = await self._page(
+            SYNC_RUNS,
+            query_params={
+                "filter": f'service = "{pb_escape(service)}" && status = "success" && year = {year}',
+                "sort": "-started,-id",
+                "fields": "session,ended",
+            },
+        )
+
+        ends: list[tuple[str, str]] = []
+        for row in rows:
+            # PocketBase serialises a datetime SPACE-separated
+            # ("2026-08-23 10:16:08.257Z"); `new Date()` parses that form only
+            # by engine leniency. Normalised here for the same reason
+            # `fetch_last_successful_sync_end` normalises: the component must
+            # not have to know which producer it is reading.
+            ended = str(getattr(row, "ended", "") or "").replace(" ", "T", 1)
+            if not ended:
+                continue
+            ends.append((str(getattr(row, "session", "") or ""), ended))
+        return ends
 
     # ---------------------------------------------------------------- writes
     #

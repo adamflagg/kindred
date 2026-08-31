@@ -201,6 +201,24 @@ class WeekendSessionSummary(BaseModel):
     # resolving, so neither /sessions nor /summary filters on this.
     status: WeekendSessionStatus = "active"
 
+    # When CampMinder was last read for THIS weekend, RFC3339, or "" when that
+    # cannot be answered (kindred#2617).
+    #
+    # PER WEEKEND, not per job. `household_custom_values_family_camp` -- the
+    # last CampMinder READ of the Refresh Housing chain, and so the job that
+    # dates the answers rather than the transform that rewrites them -- can run
+    # scoped to one weekend, and the sync-status payload keeps one slot per
+    # job. So the last run of that job is frequently a run that covered a
+    # different weekend, and this is resolved from `sync_runs` history instead:
+    # the most recent successful run that was unscoped OR scoped to this
+    # weekend.
+    #
+    # "" IS A REAL ANSWER and it means WITHHOLD. A weekend whose only runs
+    # belong to other weekends has no attributable time, and a neighbour's is
+    # not an approximation of it. Adult weekends are always "": they are not in
+    # the family-camp cohort, so the job never read their answers at all.
+    housing_synced_at: str = ""
+
 
 class WeekendSessionListResponse(BaseModel):
     year: int

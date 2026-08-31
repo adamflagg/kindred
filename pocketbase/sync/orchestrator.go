@@ -456,9 +456,15 @@ type Status struct {
 	// weekend, so a consumer must treat an absent session as matching, or the cron would stop
 	// driving any weekend's UI.
 	//
-	// In-memory only, deliberately. It is read from runningJobs / lastCompletedStatus to
-	// answer a question about a live or just-finished run, so it is not persisted to
-	// sync_runs and needs no migration.
+	// PERSISTED to sync_runs since kindred#2617, and it was in-memory only before that. One
+	// slot per job is enough to answer "is the run I can see mine?" about a LIVE run, and not
+	// enough afterwards: a press scoped to weekend A overwrites the nightly cron run that
+	// covered weekend B, so B's freshness became unanswerable rather than merely old. The
+	// column turns "the last run of this job" into "the last run that COVERED this weekend",
+	// which is a query over history rather than a read of one slot.
+	//
+	// CANONICALLY EMPTY FOR AN UNSCOPED RUN, never "all" -- see runOrigin.forSession, which
+	// collapses the two so the stored vocabulary is total.
 	Session string `json:"session,omitempty"`
 	// Trigger records how the run was started (see the trigger constants). Persisted to
 	// sync_runs; unreconstructable after the fact.
@@ -782,7 +788,30 @@ func (r runOrigin) forYear(year int) runOrigin {
 // forSession returns a copy of the origin filed under one weekend, for a run that covers only
 // that weekend rather than the whole cohort (kindred#2601). An empty session is the unscoped
 // default and is what every other caller leaves it as.
+//
+// DefaultSession ("all") COLLAPSES TO EMPTY, and that is load-bearing rather than tidiness.
+// The sync-service vocabulary normalises the other way -- normalizeSession turns "" into
+// "all" -- so handleRefreshFamilyCamp hands this whichever spelling the caller used, and both
+// mean the whole cohort (TestRefreshFamilyCampOverridesEmptyForWholeCohort). Since
+// kindred#2617 the value is STORED and then queried as `session = "" || session = <weekend>`,
+// so an "all" reaching the column would read as a run scoped to a weekend named "all": it
+// would match no weekend at all, and an unscoped press would take every weekend's freshness
+// readout silent instead of refreshing all of them.
+//
+// A NUMERIC SESSION IS STORED CANONICALLY, for the same reason. The stored value is queried
+// by exact match against `strconv.Itoa(cm_id)`, so "0100001" would match no weekend and take
+// that weekend's readout silent -- the very silence kindred#2617 removes. IsValidSession
+// accepts it because it parses; no UI path produces one (frontend/src/services/sync.ts builds
+// the parameter from a JS number), so this is a guard on the hand-crafted request. The
+// round-trip is deliberately conditional on parsing: summer's identifiers are "2a", "toc" and
+// friends, and must pass through untouched even though no caller passes one today.
 func (r runOrigin) forSession(session string) runOrigin {
+	if session == DefaultSession {
+		session = ""
+	}
+	if n, err := strconv.Atoi(session); err == nil {
+		session = strconv.Itoa(n)
+	}
 	r.session = session
 	return r
 }

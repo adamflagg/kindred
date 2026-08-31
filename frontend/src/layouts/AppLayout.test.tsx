@@ -44,8 +44,9 @@ vi.mock('../contexts/ProgramContext', () => ({
 const syncStatusSpy = vi.fn((_opts?: unknown): { data: SyncStatusResponse | null } => ({
   data: null,
 }))
-// Only the HOOK is faked; `weekendHousingSyncedAt` comes through real so the
-// nav's freshness line is exercised against the shared calculation, not a stub.
+// Only the HOOK is faked. The nav's freshness line no longer reads this at all
+// (kindred#2617) — it reads the weekend's own `housing_synced_at` — but the
+// bunk-notes line beside it still does, and so does everything else in the nav.
 vi.mock('../hooks/useSyncStatusAPI', async (importActual) => ({
   ...(await importActual<typeof import('../hooks/useSyncStatusAPI')>()),
   useSyncStatusAPI: (...args: unknown[]) => syncStatusSpy(...args),
@@ -532,7 +533,11 @@ describe('AppLayout weekend freshness stack', () => {
     // family session are indistinguishable on that flag alone. These tests
     // mean "a family weekend, loaded", which is this.
     mockWeekendShell = {
-      session: { session_type: 'family', session_cm_id: 900 },
+      // `housing_synced_at` is resolved PER WEEKEND server-side, out of
+      // `sync_runs` history (kindred#2617). By the time the shell holds it, it
+      // is a fact about this weekend — which is why the freshness tests below
+      // vary the session rather than the sync-status payload.
+      session: { session_type: 'family', session_cm_id: 900, housing_synced_at: housingIso },
       isAdultWeekend: false,
     }
     mockWeekendSyncStatus()
@@ -564,13 +569,30 @@ describe('AppLayout weekend freshness stack', () => {
   /**
    * 🚨 The nav line and the Refresh Housing modal are inches apart and must
    * never disagree — one claiming two minutes while the other goes quiet is
-   * worse than either alone. Both read `weekendHousingSyncedAt`.
+   * worse than either alone. Both read `weekendHousingSyncedAt`, and since
+   * kindred#2617 both read it off the SAME weekend object, so there is no
+   * second calculation left to drift.
    *
-   * A run scoped to ANOTHER weekend says nothing about this one, and the single
-   * status slot cannot say how much older this weekend is, so the line is
-   * withheld rather than borrowed (kindred#2601, kindred#2617).
+   * A weekend no run has ever covered has no attributable time, and "" is how
+   * the payload says so. Borrowing a neighbour's would be a claim about data
+   * this weekend does not have.
    */
-  it('withholds "Housing synced" when the last run was another weekend\'s', () => {
+  it('withholds "Housing synced" for a weekend with no attributable run', () => {
+    mockWeekendShell = {
+      session: { session_type: 'family', session_cm_id: 900, housing_synced_at: '' },
+      isAdultWeekend: false,
+    }
+    renderAppLayout('/weekend/fc4')
+    expect(screen.queryByText(/Housing synced/)).not.toBeInTheDocument()
+  })
+
+  /**
+   * The sync-status payload keeps ONE slot per job, so its
+   * `household_custom_values_family_camp` entry is whichever weekend was
+   * refreshed last. Reading it here is what made a weekend go quiet because a
+   * neighbour had been refreshed; the line must ignore it entirely now.
+   */
+  it('ignores the sync-status slot, whatever weekend it names', () => {
     mockWeekendSyncStatus({
       household_custom_values_family_camp: {
         status: 'success',
@@ -580,7 +602,7 @@ describe('AppLayout weekend freshness stack', () => {
       },
     } as Partial<SyncStatusResponse>)
     renderAppLayout('/weekend/fc4')
-    expect(screen.queryByText(/Housing synced/)).not.toBeInTheDocument()
+    expect(screen.getByText(/Housing synced/)).toBeInTheDocument()
   })
 
   it('renders "Bunk notes uploaded ..." off the CSV upload timestamp (#2570)', () => {
@@ -626,10 +648,6 @@ describe('AppLayout weekend freshness stack', () => {
     syncStatusSpy.mockImplementation(() => ({
       data: {
         lodging_assignments: { status: 'success', end_time: housingIso },
-        // Present so the housing line still renders — this test is about the
-        // BUNK NOTES line, and housing is scaffolding for it. Unscoped, so it
-        // dates every weekend (kindred#2601).
-        household_custom_values_family_camp: { status: 'success', end_time: housingIso },
         bunk_requests: { status: 'success', end_time: housingIso },
       } as SyncStatusResponse,
     }))

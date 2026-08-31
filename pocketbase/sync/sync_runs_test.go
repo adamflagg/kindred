@@ -62,6 +62,7 @@ func newSyncRunsApp(t *testing.T) *tests.TestApp {
 		},
 	})
 	col.Fields.Add(&core.TextField{Name: "batch_id", Required: true, Max: 100})
+	col.Fields.Add(&core.TextField{Name: "session", Max: 100})
 	for _, name := range []string{
 		"created_count", "updated_count", "deleted_count", "skipped_count",
 		"errors_count", "rejected_count", "expanded_count", "already_processed_count",
@@ -988,37 +989,60 @@ func TestSyncRunsFixtureMatchesMigration(t *testing.T) {
 	}
 }
 
-// migrationFields parses the sync_runs migration's field declarations into name -> type.
-// Every field in that file is written `type: "..."` then `name: "..."`, which is what this
+// migrationFields parses the sync_runs migrations' field declarations into name -> type.
+// Every field on either side is written `type: "..."` then `name: "..."`, which is what this
 // relies on; a field that breaks the convention shows up as a missing name and fails the
 // comparison rather than being skipped silently.
+//
+// TWO SHAPES, because the collection is created by one migration and extended by later ones.
+// The CREATE migration (*_sync_runs.js) declares its fields inside `fields: [ ... ]`, and
+// everything outside that array — the indexes, the down function — must stay out of the
+// parse. An ALTER migration (*_sync_runs_*.js, e.g. 1500000175's `session`) declares one
+// field per `new Field({...})` with no array to bound, so its whole source is read.
+//
+// The union is what the fixture is compared against, because the fixture mirrors the schema
+// production ENDS UP with, not the one it started at. A future ALTER that REMOVES a column
+// would therefore need handling here — this parser only ever adds.
 func migrationFields(t *testing.T) map[string]string {
 	t.Helper()
 
-	matches, err := filepath.Glob("../pb_migrations/*_sync_runs.js")
-	if err != nil || len(matches) != 1 {
-		t.Fatalf("expected exactly one sync_runs migration, found %v (err %v)", matches, err)
-	}
-	body, err := os.ReadFile(matches[0])
-	if err != nil {
-		t.Fatalf("read %s: %v", matches[0], err)
+	matches, err := filepath.Glob("../pb_migrations/*_sync_runs*.js")
+	if err != nil || len(matches) == 0 {
+		t.Fatalf("found no sync_runs migrations (err %v)", err)
 	}
 
-	src := string(body)
-	from := strings.Index(src, "fields: [")
-	to := strings.Index(src, "indexes: [")
-	if from < 0 || to < from {
-		t.Fatalf("could not find the fields array in %s", matches[0])
-	}
-
-	declared := map[string]string{}
 	re := regexp.MustCompile(`type:\s*"(\w+)",\s*\n\s*name:\s*"(\w+)"`)
-	for _, m := range re.FindAllStringSubmatch(src[from:to], -1) {
-		declared[m[2]] = m[1]
+	declared := map[string]string{}
+	created := 0
+
+	for _, path := range matches {
+		body, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read %s: %v", path, err)
+		}
+		src := string(body)
+
+		if strings.HasSuffix(path, "_sync_runs.js") {
+			created++
+			from := strings.Index(src, "fields: [")
+			to := strings.Index(src, "indexes: [")
+			if from < 0 || to < from {
+				t.Fatalf("could not find the fields array in %s", path)
+			}
+			src = src[from:to]
+		}
+
+		for _, m := range re.FindAllStringSubmatch(src, -1) {
+			declared[m[2]] = m[1]
+		}
+	}
+
+	if created != 1 {
+		t.Fatalf("expected exactly one CREATE migration among %v, found %d", matches, created)
 	}
 	if len(declared) == 0 {
-		t.Fatalf("parsed no fields out of %s — the parser, not the schema, is what broke",
-			matches[0])
+		t.Fatalf("parsed no fields out of %v — the parser, not the schema, is what broke",
+			matches)
 	}
 	return declared
 }
@@ -1428,5 +1452,172 @@ func TestResolveServiceStatusesUsesHistoryAfterRestart(t *testing.T) {
 	}
 	if status.EndTime == nil {
 		t.Error("EndTime is nil — the freshness line renders off this field and would show nothing")
+	}
+}
+
+// ── The weekend a run was started for (kindred#2617) ─────────────────────────────────────
+//
+// Status.Session shipped in kindred#2601 as an IN-MEMORY answer to "is the run I can see
+// mine?", and that is enough while the run is live. It is not enough afterwards: the status
+// payload keeps one slot per job, so a press scoped to weekend A overwrites the nightly cron
+// run that covered weekend B, and B's freshness becomes unanswerable rather than merely old.
+//
+// Persisting the session is what turns "the last run of this job" into "the last run that
+// COVERED this weekend" — a query the API can answer per weekend, because sync_runs keeps the
+// history the single in-memory slot cannot.
+
+// TestSyncRunPersistsTheSessionItWasStartedFor is the write half. Without it the column is
+// always empty, every stored run reads as unscoped, and the per-weekend query silently
+// answers "the cron covered you" for a press that covered one weekend.
+func TestSyncRunPersistsTheSessionItWasStartedFor(t *testing.T) {
+	t.Parallel()
+
+	const jobID = "household_custom_values_family_camp"
+	app := newSyncRunsApp(t)
+	o := NewOrchestrator(app)
+	o.RegisterService(jobID, &MockService{name: jobID})
+
+	if err := o.RunSyncSequenceWithServices(
+		context.Background(), []string{jobID}, nil, "1000001",
+	); err != nil {
+		t.Fatalf("RunSyncSequenceWithServices: %v", err)
+	}
+
+	recs := waitForSyncRuns(t, app, 1)
+	if got := recs[0].GetString("session"); got != "1000001" {
+		t.Errorf("session = %q, want %q — a scoped press stored as unscoped claims it "+
+			"refreshed every weekend", got, "1000001")
+	}
+}
+
+// TestSyncRunLeavesSessionEmptyForAnUnscopedRun pins the other half of the vocabulary, and it
+// is the one that is easy to get backwards. EMPTY MEANS EVERY WEEKEND, not "unknown": the
+// nightly cron genuinely refreshes the whole family-camp cohort, so a run that names no
+// weekend must store no weekend — inventing one here would take the cron out of every
+// weekend's readout at once.
+func TestSyncRunLeavesSessionEmptyForAnUnscopedRun(t *testing.T) {
+	t.Parallel()
+
+	app := newSyncRunsApp(t)
+	o := NewOrchestrator(app)
+	o.RegisterService("lodging_assignments", &MockService{name: "lodging_assignments"})
+
+	if err := o.RunSingleSync(context.Background(), "lodging_assignments"); err != nil {
+		t.Fatalf("RunSingleSync: %v", err)
+	}
+
+	recs := waitForSyncRuns(t, app, 1)
+	if got := recs[0].GetString("session"); got != "" {
+		t.Errorf("session = %q, want empty — an unscoped run filed under a weekend stops "+
+			"covering the other eleven", got)
+	}
+}
+
+// TestLastRecordedRunsRehydratesTheSession is the read half, and it closes the gap the column
+// would otherwise open across a restart: `session` would be present on a live run and absent
+// on a rehydrated one, so the same field would mean "this weekend only" before a deploy and
+// "every weekend" after it. That is worse than not storing it at all, because runBelongsHere
+// and the freshness query both read an absent session as MATCHING.
+func TestLastRecordedRunsRehydratesTheSession(t *testing.T) {
+	t.Parallel()
+
+	const jobID = "household_custom_values_family_camp"
+	app := newSyncRunsApp(t)
+	o := NewOrchestrator(app)
+	o.RegisterService(jobID, &MockService{name: jobID})
+
+	if err := o.RunSyncSequenceWithServices(
+		context.Background(), []string{jobID}, nil, "1000001",
+	); err != nil {
+		t.Fatalf("RunSyncSequenceWithServices: %v", err)
+	}
+	waitForSyncRuns(t, app, 1)
+
+	got, ok := NewOrchestrator(app).LastRecordedRuns()[jobID]
+	if !ok {
+		t.Fatalf("no entry for %s", jobID)
+	}
+	if got.Session != "1000001" {
+		t.Errorf("Session = %q, want %q — a rehydrated scoped run that reports no weekend "+
+			"is read as having covered them all", got.Session, "1000001")
+	}
+}
+
+// TestSyncRunStoresAllAsUnscoped pins the vocabulary collapse in runOrigin.forSession.
+//
+// The sync-service vocabulary normalises the OTHER way — normalizeSession turns "" into
+// "all" — so a caller may legitimately hand the refresh handler either spelling for "the
+// whole cohort", and TestRefreshFamilyCampOverridesEmptyForWholeCohort pins that the two
+// produce the same run. Once the value is stored and queried as
+// `session = "" || session = <weekend>`, an "all" surviving into the column would read as a
+// run scoped to a weekend named "all": it would match no weekend, so an unscoped press would
+// take every weekend's freshness readout SILENT instead of refreshing all of them.
+func TestSyncRunStoresAllAsUnscoped(t *testing.T) {
+	t.Parallel()
+
+	const jobID = "household_custom_values_family_camp"
+	app := newSyncRunsApp(t)
+	o := NewOrchestrator(app)
+	o.RegisterService(jobID, &MockService{name: jobID})
+
+	if err := o.RunSyncSequenceWithServices(
+		context.Background(), []string{jobID}, nil, DefaultSession,
+	); err != nil {
+		t.Fatalf("RunSyncSequenceWithServices: %v", err)
+	}
+
+	recs := waitForSyncRuns(t, app, 1)
+	if got := recs[0].GetString("session"); got != "" {
+		t.Errorf("session = %q after a %q press, want empty — %q is the whole cohort, and "+
+			"stored verbatim it matches no weekend at all", got, DefaultSession, DefaultSession)
+	}
+}
+
+// TestSyncRunStoresACanonicalSessionID pins the other half of the vocabulary collapse.
+//
+// Same class as TestSyncRunStoresAllAsUnscoped above, and the same consequence: the stored
+// value is queried by EXACT MATCH against `strconv.Itoa(cm_id)` on the API side, so any
+// spelling of a weekend that is not its canonical decimal form matches nothing and takes that
+// weekend's freshness silent — the exact silence kindred#2617 exists to remove.
+//
+// `IsValidSession` accepts "0100001" (it parses), and no UI path can produce it because
+// frontend/src/services/sync.ts builds the parameter from a JS number. So this is a guard on
+// the hand-crafted request rather than a live defect, and it belongs HERE rather than at the
+// handler because this is where the vocabulary is defined.
+//
+// NON-NUMERIC SESSIONS PASS THROUGH UNTOUCHED. Summer's session identifiers are "2a", "toc"
+// and friends; a numeric round-trip must not eat them, even though no current caller of
+// forSession passes one.
+func TestSyncRunStoresACanonicalSessionID(t *testing.T) {
+	t.Parallel()
+
+	const jobID = "household_custom_values_family_camp"
+	app := newSyncRunsApp(t)
+	o := NewOrchestrator(app)
+	o.RegisterService(jobID, &MockService{name: jobID})
+
+	if err := o.RunSyncSequenceWithServices(
+		context.Background(), []string{jobID}, nil, "0100001",
+	); err != nil {
+		t.Fatalf("RunSyncSequenceWithServices: %v", err)
+	}
+
+	recs := waitForSyncRuns(t, app, 1)
+	if got := recs[0].GetString("session"); got != "100001" {
+		t.Errorf("session = %q, want %q -- a non-canonical id is queried by exact match "+
+			"against the weekend's decimal cm_id, so it matches no weekend at all", got, "100001")
+	}
+}
+
+// TestForSessionKeepsANonNumericSession is the other side of that guard, at the unit level:
+// the canonicalisation must be a no-op for a session identifier that is not a number.
+func TestForSessionKeepsANonNumericSession(t *testing.T) {
+	t.Parallel()
+
+	for _, session := range []string{"2a", "toc", "3b"} {
+		if got := newBatch(triggerManual).forSession(session).session; got != session {
+			t.Errorf("forSession(%q).session = %q, want it unchanged -- a numeric round-trip "+
+				"must not eat a summer session identifier", session, got)
+		}
 	}
 }

@@ -771,6 +771,7 @@ One row per completed sync run, written by the orchestrator's shared completion 
 | `year` | number | Season the run covered |
 | `status` | select | success/failed |
 | `trigger` | select | hourly/daily/weekly/custom_values/historical/manual |
+| `session` | text | Weekend the run was started for; **empty = every weekend** |
 | `batch_id` | text | Groups every job of one queue as a single run |
 | `created_count` | number | Records created |
 | `updated_count` | number | Records updated |
@@ -793,6 +794,15 @@ One row per completed sync run, written by the orchestrator's shared completion 
 collected and a threshold set from evidence later (#2284) — which requires the counts to
 outlive the process. There is deliberately no `kind` column: a job's kind is derivable from
 `service`, and storing it would create a second place for it to be wrong.
+
+**`session` means coverage, not provenance** (#2617). A Refresh Housing press names the
+weekend it was started for; the nightly cron names none, and an empty value is therefore a
+positive claim that the run covered *every* family-camp weekend, not "unknown". It exists
+because the sync-status payload keeps one slot per job, so once a scoped press lands, the
+cron run that covered the other weekends is gone from memory — the history is what lets
+`/api/lodging/sessions` answer "when did a run that covered THIS weekend last succeed"
+(`fetch_session_scoped_sync_ends`). `runOrigin.forSession` collapses the `"all"` spelling to
+empty so the stored vocabulary is total.
 
 ---
 

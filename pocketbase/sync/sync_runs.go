@@ -103,6 +103,10 @@ func (o *Orchestrator) recordSyncRun(completed *Status) {
 	rec.Set("year", resolveRunYear(completed.Year, seasonYear, time.Now().Year()))
 	rec.Set("status", completed.Status)
 	rec.Set("trigger", completed.Trigger)
+	// EMPTY MEANS EVERY WEEKEND (kindred#2617). Only the family-camp jobs are ever scoped, so
+	// this is empty on the overwhelming majority of rows -- and that is the value the
+	// per-weekend freshness query reads as "this run covered you", not as a gap.
+	rec.Set("session", completed.Session)
 	rec.Set("batch_id", completed.BatchID)
 	rec.Set("created_count", stats.Created)
 	rec.Set("updated_count", stats.Updated)
@@ -135,11 +139,42 @@ func (o *Orchestrator) recordSyncRun(completed *Status) {
 	// migrations; its rationale (main.go:372) is durability across a docker stop/start, not
 	// reader visibility.
 	//
-	// The call: this table is orchestrator telemetry, read weeks later to fit a threshold,
-	// and the whole write path already swallows its own failures for that reason. Losing the
-	// last few rows to an unclean shutdown costs a handful of points on a distribution of
-	// thousands, against a wal_checkpoint(FULL) on every one of ~100 writes a day. The
-	// exception is recorded in pocketbase/CLAUDE.md so this reads as a decision and not an
+	// The call, as first made on kindred#2297: a wal_checkpoint(FULL) on every one of ~100
+	// writes a day is not worth what it buys here.
+	//
+	// Be precise about what it WOULD buy, because "a checkpoint is not what makes a commit
+	// durable" is true of SQLite in general and misleading in THIS configuration. PocketBase
+	// connects with synchronous=NORMAL (core/db_connect.go), so the WAL is not fsynced per
+	// commit — it is fsynced at checkpoint. A committed row therefore survives a process kill
+	// and a docker stop regardless (the frames are in the file, and SQLite replays them on the
+	// next open), but a HOST POWER LOSS can still lose it. The checkpoint is what closes that
+	// last gap, and it is the only thing it closes here.
+	//
+	// The gap is already small and self-closing: this row is written after its service
+	// finished, so the very next job's own checkpoint flushes it seconds later during a
+	// nightly sweep, the next hourly run does so within the hour otherwise, and main.go
+	// checkpoints on every boot. The exposed row is the LAST of a chain, for at most an hour.
+	//
+	// Visibility did not need it either, because nothing outside PocketBase read this table.
+	//
+	// ⚠️ THAT SECOND CLAUSE STOPPED BEING TRUE IN kindred#2617, and #2297 pre-registered this
+	// exact moment: "if a reader for this table is added later, the checkpoint question is
+	// worth reopening then — at that point it belongs on the read path's expectations, not on
+	// every telemetry insert." Reopened, and the answer is unchanged, for a reason worth
+	// stating rather than assuming:
+	//
+	//   - The new reader (api/services/lodging_repository.fetch_session_scoped_sync_ends) is
+	//     an HTTP CLIENT OF POCKETBASE, not a second process opening data.db. PocketBase is
+	//     still reading its own writes through its own connection, so the visibility argument
+	//     survives intact. A reader that opened the file directly would NOT be covered by
+	//     this, and would be a real reason to reopen it again.
+	//   - What the read path may therefore expect is stated on that function. The residual
+	//     durability edge — a host power loss, not a crash and not a docker stop — can only
+	//     lose the newest rows, which makes a weekend's freshness UNDERSTATE itself and
+	//     self-heal at the next covering run. Understating is the safe direction this whole
+	//     feature is built on.
+	//
+	// The exception is recorded in pocketbase/CLAUDE.md so this reads as a decision and not an
 	// omission — if that entry goes, this comment is wrong and the checkpoint belongs here.
 	o.pruneSyncRuns()
 }
@@ -250,6 +285,7 @@ type syncRunRow struct {
 	Error                    string `db:"error"`
 	Year                     int    `db:"year"`
 	Trigger                  string `db:"trigger"`
+	Session                  string `db:"session"`
 	BatchID                  string `db:"batch_id"`
 	Created                  int    `db:"created_count"`
 	Updated                  int    `db:"updated_count"`
@@ -312,6 +348,15 @@ func (o *Orchestrator) LastRecordedRuns() map[string]*Status {
 	var rows []syncRunRow
 	query := o.app.DB().NewQuery(`
 		SELECT service, status, started, ended, error, year, trigger, batch_id,
+		       -- COALESCE is DEFENSIVE here, unlike sub_stats' own, which is load-bearing:
+		       -- PocketBase adds a text column as NOT NULL DEFAULT '', so 1500000175 left
+		       -- all 934 pre-existing rows on the dev snapshot holding '' rather than NULL.
+		       -- It stays because the cost of being wrong is total -- scanning a NULL into a
+		       -- string fails the WHOLE query, and this function swallows that to an empty
+		       -- map, so the freshness readout would degrade to "no history at all" without
+		       -- a word. Empty is also the right reading of those rows: scoping did not
+		       -- exist when they were written, so each one genuinely covered every weekend.
+		       COALESCE(session, '') AS session,
 		       created_count, updated_count, deleted_count, skipped_count, errors_count,
 		       rejected_count, expanded_count, already_processed_count,
 		       prod_audit_warnings_count, lodging_prod_audit_warnings_count, duration,
@@ -342,6 +387,10 @@ func (o *Orchestrator) LastRecordedRuns() map[string]*Status {
 			Error:   row.Error,
 			Year:    row.Year,
 			Trigger: row.Trigger,
+			// Rehydrated so the field cannot mean two things either side of a restart: a
+			// scoped run coming back without its weekend would read as having covered every
+			// weekend, because an absent session is what the cron looks like.
+			Session: row.Session,
 			BatchID: row.BatchID,
 			Summary: Stats{
 				Created:                  row.Created,

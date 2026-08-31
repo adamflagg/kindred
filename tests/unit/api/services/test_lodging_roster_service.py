@@ -187,6 +187,11 @@ def _repo(**overrides: Any) -> MagicMock:
         # session id. EMPTY is the honest default: the migration seeds
         # nothing, so absence of a row means active.
         "fetch_session_statuses": {},
+        # Successful runs of the housing-freshness job for the year, newest
+        # first (kindred#2617). EMPTY is the honest default: a deployment with
+        # no recorded run must show no timestamp, and every test that does not
+        # set this up asserts against that silence.
+        "fetch_session_scoped_sync_ends": [],
         "fetch_session": None,
         "fetch_units": [],
         "fetch_availability": [],
@@ -287,6 +292,19 @@ ADULT_SESSION = _rec(
     start_date="2026-10-10",
     end_date="2026-10-12",
     sort_order=2,
+)
+# A SECOND family weekend, for the tests that need two of them in one year:
+# per-weekend housing freshness (kindred#2617) only has anything to say when a
+# run scoped to one weekend has to be told apart from a run covering another.
+SECOND_FAMILY_SESSION = _rec(
+    id="sess_3",
+    cm_id=1000003,
+    name="Family Camp 2",
+    session_type="family",
+    year=2026,
+    start_date="2026-09-11",
+    end_date="2026-09-14",
+    sort_order=3,
 )
 
 
@@ -481,6 +499,182 @@ class TestWeekendCancellation:
         summary = await service.build_summary(2026)
 
         assert [e.session.status for e in summary.weekends] == ["active", "active"]
+
+
+class TestWeekendHousingFreshness:
+    """When CampMinder was last read for ONE weekend (kindred#2617).
+
+    kindred#2601 scoped a Refresh Housing press to the weekend on screen and
+    gave the run an in-memory `Status.Session`, which answers "is the run I
+    can see mine?" about a LIVE run. The sync-status payload keeps ONE SLOT
+    PER JOB, so the moment a press scoped to weekend A lands, the nightly cron
+    run that covered weekend B is gone -- and B's freshness line went silent
+    rather than claiming A's timestamp. Silence was the honest answer and it
+    was still an absence.
+
+    `sync_runs` keeps ninety days of history, and 1500000175 puts the session
+    on the row. The rule this class pins is the issue's own table, read off
+    the ORDERED history rather than one slot:
+
+        unscoped run              -> covered this weekend
+        scoped to this weekend    -> covered this weekend
+        scoped to another weekend -> keep looking
+
+    The FIRST row that covers the weekend wins, because the history arrives
+    newest first.
+    """
+
+    NIGHTLY = "2026-08-23T03:04:05.000Z"
+    PRESS = "2026-08-23T10:16:08.257Z"
+
+    @pytest.mark.asyncio
+    async def test_an_unscoped_run_dates_every_family_weekend(self) -> None:
+        """EMPTY MEANS EVERY WEEKEND, and this is the case that keeps the cron
+        working. Reading a blank session as "not mine" would take every
+        weekend's readout silent every night."""
+        service = LodgingRosterService(
+            _repo(
+                fetch_weekend_sessions=[FAMILY_SESSION, SECOND_FAMILY_SESSION],
+                fetch_session_scoped_sync_ends=[("", self.NIGHTLY)],
+            )
+        )
+
+        result = await service.list_sessions(2026)
+
+        assert [s.housing_synced_at for s in result.sessions] == [self.NIGHTLY, self.NIGHTLY]
+
+    @pytest.mark.asyncio
+    async def test_a_press_on_this_weekend_dates_it(self) -> None:
+        service = LodgingRosterService(
+            _repo(
+                fetch_weekend_sessions=[FAMILY_SESSION],
+                fetch_session_scoped_sync_ends=[("1000001", self.PRESS), ("", self.NIGHTLY)],
+            )
+        )
+
+        result = await service.list_sessions(2026)
+
+        assert result.sessions[0].housing_synced_at == self.PRESS
+
+    @pytest.mark.asyncio
+    async def test_a_press_on_another_weekend_falls_through_to_the_cron(self) -> None:
+        """THE WHOLE ISSUE. Weekend 1000003 was refreshed at 10:16 and weekend
+        1000001 was not -- but the nightly cron covered 1000001 at 03:04, and
+        that run is still in the history even though it is no longer in the
+        status payload's single slot.
+
+        Both wrong answers are worse than the silence this replaces: 10:16
+        would credit 1000001 with a refresh it never had, and "" would go on
+        withholding a timestamp that is right there.
+        """
+        service = LodgingRosterService(
+            _repo(
+                fetch_weekend_sessions=[FAMILY_SESSION, SECOND_FAMILY_SESSION],
+                fetch_session_scoped_sync_ends=[("1000003", self.PRESS), ("", self.NIGHTLY)],
+            )
+        )
+
+        result = await service.list_sessions(2026)
+
+        assert [s.housing_synced_at for s in result.sessions] == [self.NIGHTLY, self.PRESS]
+
+    @pytest.mark.asyncio
+    async def test_a_weekend_the_history_never_covered_is_silent(self) -> None:
+        """WITHHOLD RATHER THAN BORROW. A weekend whose only runs belong to
+        other weekends has no attributable time, and the neighbour's is not an
+        approximation of it -- it is a different weekend's fact.
+        """
+        service = LodgingRosterService(
+            _repo(
+                fetch_weekend_sessions=[FAMILY_SESSION],
+                fetch_session_scoped_sync_ends=[("1000003", self.PRESS)],
+            )
+        )
+
+        result = await service.list_sessions(2026)
+
+        assert result.sessions[0].housing_synced_at == ""
+
+    @pytest.mark.asyncio
+    async def test_no_recorded_run_is_silence_not_a_guess(self) -> None:
+        service = LodgingRosterService(_repo(fetch_weekend_sessions=[FAMILY_SESSION]))
+
+        result = await service.list_sessions(2026)
+
+        assert result.sessions[0].housing_synced_at == ""
+
+    @pytest.mark.asyncio
+    async def test_an_adult_weekend_is_never_dated(self) -> None:
+        """kindred#2478 section 5.1, restated as data rather than as a UI rule.
+        `GetFamilyCampSessionCMIDs` filters `session_type = 'family'` exactly,
+        so an adult weekend is not in the bounded cohort and the job that dates
+        this NEVER READ ITS ANSWERS. An unscoped run covers every FAMILY
+        weekend; stamping an adult one from it would be true about the job and
+        false about the data.
+        """
+        service = LodgingRosterService(
+            _repo(
+                fetch_weekend_sessions=[FAMILY_SESSION, ADULT_SESSION],
+                fetch_session_scoped_sync_ends=[("", self.NIGHTLY)],
+            )
+        )
+
+        result = await service.list_sessions(2026)
+
+        assert [s.housing_synced_at for s in result.sessions] == [self.NIGHTLY, ""]
+
+    @pytest.mark.asyncio
+    async def test_the_lander_reports_the_same_time_as_the_session_list(self) -> None:
+        """Two endpoints, one weekend, one answer. The lander links straight to
+        the page whose nav renders this; a weekend dated differently on the two
+        would be self-contradicting one click apart.
+        """
+        rows = [("1000003", self.PRESS), ("", self.NIGHTLY)]
+        sessions = [FAMILY_SESSION, SECOND_FAMILY_SESSION]
+
+        listed = await LodgingRosterService(
+            _repo(fetch_weekend_sessions=sessions, fetch_session_scoped_sync_ends=rows)
+        ).list_sessions(2026)
+        summary = await LodgingRosterService(
+            _repo(fetch_weekend_sessions=sessions, fetch_session_scoped_sync_ends=rows)
+        ).build_summary(2026)
+
+        assert [s.housing_synced_at for s in listed.sessions] == [e.session.housing_synced_at for e in summary.weekends]
+
+    @pytest.mark.asyncio
+    async def test_the_history_is_read_once_for_the_whole_year(self) -> None:
+        """Year-scoped like the status map beside it, and read ONCE rather
+        than per weekend: it is one small filtered slice of `sync_runs` that
+        answers every weekend in the year, and a per-weekend read would repeat
+        it twelve times to reach twelve rows of the same list.
+        """
+        repo = _repo(fetch_weekend_sessions=[FAMILY_SESSION, SECOND_FAMILY_SESSION])
+
+        await LodgingRosterService(repo).build_summary(2026)
+
+        assert repo.fetch_session_scoped_sync_ends.await_count == 1
+        assert repo.fetch_session_scoped_sync_ends.await_args[0] == (
+            "household_custom_values_family_camp",
+            2026,
+        )
+
+    @pytest.mark.asyncio
+    async def test_a_failed_history_read_degrades_to_silence(self) -> None:
+        """Same shape as the `lodging_session_status` degrade beside it, and
+        the same structural reason: this read sits in a TaskGroup with the
+        reads the weekend surface cannot do without, so a raise cancels them
+        and 500s the board. A decorative timestamp must never cost that.
+
+        A not-yet-applied 1500000175 is NOT this case -- PocketBase omits an
+        unknown `fields=` name rather than rejecting it, so that degrades in
+        the repository instead (see its own SimpleNamespace test).
+        """
+        repo = _repo(fetch_weekend_sessions=[FAMILY_SESSION])
+        repo.fetch_session_scoped_sync_ends = AsyncMock(side_effect=RuntimeError("no such field"))
+
+        result = await LodgingRosterService(repo).list_sessions(2026)
+
+        assert result.sessions[0].housing_synced_at == ""
 
 
 class TestFamilyCampParties:
