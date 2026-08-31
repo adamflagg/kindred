@@ -824,6 +824,57 @@ class HousingNameResolver:
             alias_by_key=alias_by_key,
         )
 
+    def resolve_codes(self, raw: str, year: int) -> tuple[str, ...]:
+        """The registry-year unit CODES `raw` names, or () when nothing resolves.
+
+        THE RESOLUTION HALF OF `display_name`, published rather than kept
+        private, because the cabin-weekend conflict rule (§12.8) has to expand
+        the very units the queue's own label was built from. A second
+        resolution there would be a second answer to "which cabin is this
+        string" -- the drift class this module's docstring is about.
+
+        `year` is the year the RAW STRING came from, and its only job is
+        picking which alias row was in use then, exactly as it is below.
+
+        ALL OR NOTHING on an alias's members, on both doors, exactly as
+        `Resolve` does it. A stored id whose unit row is gone, and a code with
+        no row in the registry year, are the same failure: a member that
+        cannot be carried into the present. Keeping the ones that survive
+        would silently shrink a family's rooms -- and, here, would silently
+        shrink the set of leaves a conflict could be found on.
+
+        NO COLLAPSE. `display_name` renders the PARENT when 2+ members share
+        one, because a joined label is too long for the card; the codes it
+        collapsed are what the rule needs, so this returns the members
+        themselves. Expanding a container to its leaves is a separate step and
+        belongs to the caller that holds the unit tree.
+        """
+        key = housing_lookup_key(raw)
+        if not key:
+            return ()
+
+        direct = self._direct_by_key.get(key, "")
+        if direct:
+            return (direct,)
+
+        matches = [alias for alias in self._alias_by_key.get(key, ()) if alias.covers(year)]
+        if len(matches) != 1:
+            # 0 is a work-queue item, not an error -- three of the 88 distinct
+            # strings name a unit FAMILY rather than a unit and need staff
+            # knowledge (kindred#2392). 2+ is the overlapping-window pair the
+            # unique index on (alias_string, valid_from_year) permits; picking
+            # one arbitrarily would name a cabin nobody chose.
+            return ()
+
+        codes: list[str] = []
+        for unit_id in matches[0].member_unit_ids:
+            code = self._code_by_unit_id.get(unit_id, "")
+            unit = self._current_by_code.get(code) if code else None
+            if unit is None:
+                return ()
+            codes.append(unit.code)
+        return tuple(codes)
+
     def display_name(self, raw: str, year: int) -> str:
         """The unit's CURRENT name, or `raw` unchanged when nothing resolves.
 
@@ -840,39 +891,17 @@ class HousingNameResolver:
         names is up to 35 characters, one MORE than the worst raw string, on a
         `whitespace-nowrap` span. Every one of the seven in-use multi-member
         aliases resolves to exactly two siblings under one container.
+
+        THE RESOLUTION ITSELF IS `resolve_codes` ABOVE, and this reads it
+        rather than repeating it. The two used to be one function; they were
+        split when the conflict rule needed the codes, and splitting rather
+        than copying is what keeps one answer to "which cabin is this string".
         """
-        key = housing_lookup_key(raw)
-        if not key:
+        codes = self.resolve_codes(raw, year)
+        if not codes:
             return raw
 
-        direct = self._direct_by_key.get(key, "")
-        if direct:
-            return self._current_by_code[direct].name
-
-        matches = [alias for alias in self._alias_by_key.get(key, ()) if alias.covers(year)]
-        if len(matches) != 1:
-            # 0 is a work-queue item, not an error -- three of the 88 distinct
-            # strings name a unit FAMILY rather than a unit and need staff
-            # knowledge (kindred#2392). 2+ is the overlapping-window pair the
-            # unique index on (alias_string, valid_from_year) permits; picking
-            # one arbitrarily would name a cabin nobody chose.
-            return raw
-
-        members: list[RegistryUnit] = []
-        for unit_id in matches[0].member_unit_ids:
-            # ALL OR NOTHING, on both doors, exactly as `Resolve` does it. A
-            # stored id whose unit row is gone, and a code with no row in the
-            # registry year, are the same failure: a member that cannot be
-            # carried into the present. Keeping the ones that survive would
-            # silently shrink a family's rooms.
-            code = self._code_by_unit_id.get(unit_id, "")
-            unit = self._current_by_code.get(code) if code else None
-            if unit is None:
-                return raw
-            members.append(unit)
-
-        if not members:
-            return raw
+        members = [self._current_by_code[code] for code in codes]
         if len(members) == 1:
             return members[0].name
 
@@ -884,6 +913,340 @@ class HousingNameResolver:
             if parent is not None:
                 return parent.name
         return _MEMBER_JOIN.join(unit.name for unit in members)
+
+
+# ------------------------------------------- cabin-weekend attribution conflicts
+#
+# The round-2 triage-attack master plan §12.8, owner-designed and owner-ruled
+# 2026-08-31. It closes no issue and none is filed.
+#
+# WHAT IT IS FOR. When a household attends 2+ weekends, CampMinder holds ONE
+# `Family Camp Cabin` value for the year and cannot say which weekend it
+# describes. The Go ingest files that as an `ambiguous_session` work-queue row
+# with a SUGGESTION from `AttributeSession`
+# (`pocketbase/sync/lodging_session_attribution.go`), which picks the earliest
+# candidate weekend starting on or after the value's `last_updated`.
+#
+# ⛔ THAT PREMISE DOES NOT HOLD AT HOUSEHOLD GRAIN. Measured on the 2026
+# snapshot: the 136 cabin values carry only SEVEN distinct `last_updated` days,
+# 83% of them on two. `last_updated` records when staff did a bulk pass over a
+# whole weekend, not when one household's cabin was set -- it has no
+# per-household resolution at all. So this rule outranks it, on the one signal
+# that IS per-household: whether the cabin is already occupied that weekend.
+#
+# ⚖️ DEMOTE ON CONFLICT ONLY, and the asymmetry is what forces it (§12.8.4).
+# "Taken" is a POSITIVE LOCAL FACT -- one cabin, one other party, one weekend
+# -- true regardless of how complete that weekend's planning is. "Free" is an
+# ABSENCE, and an absence is evidence only in proportion to planning
+# completeness, which nothing measures: the last bulk pass wrote 53 values in
+# one day, so "partly planned" is a real recurring state and a cabin the pass
+# had not yet reached reads free. `free` and `no_data` therefore carry NO
+# RANKING POWER; they are published for display and nothing else.
+#
+# ⛔ AVAILABILITY IS NOT RE-DERIVED HERE. `LeafOccupancy.is_family_available`
+# arrives already computed by `is_family_available` / `free_family_spots`
+# above, which carry owner rulings dated 2026-08-23 and 2026-08-29 and a note
+# explicitly guarding them against being "fixed". A second implementation of
+# availability is the drift class this repository has been burned by three
+# times (the three tables grading, `resolveDragFit` vs `candidateFit`, and
+# "the second copy that drifts" in `family_camp_derived.go`), and it is the
+# first of §12.8.6's two disqualifying reasons for not doing any of this in Go.
+#
+# Pure over `(leaves, occupancy, candidates)` for the reason
+# `_resolve_write_in_covers` states about its own pure counterpart: the rule is
+# what the tests reason about, and the service is one line that calls it.
+
+AttributionVerdict = Literal["conflict", "free", "no_data"]
+
+
+class PlacedHousehold(NamedTuple):
+    """A household `lodging_assignments` puts in a leaf, and what to call it.
+
+    BOTH HALVES, because the rule needs each for a different job: `cm_id` is
+    the identity it compares against the household being attributed (its own
+    placement is not a conflict), and `label` is what the evidence line prints.
+    Carrying only the id would push naming onto the caller AFTER the rule has
+    already decided which placements to publish, which is how a payload comes
+    to name a household the rule dropped.
+    """
+
+    cm_id: int
+    label: str
+
+
+class LeafOccupancy(NamedTuple):
+    """What ONE LEAF unit holds in ONE candidate weekend.
+
+    A LEAF, never a container: the value is resolved through
+    `lodging_unit_aliases` and any container it names is expanded to its rooms
+    before it reaches here, so one shape answers all three value shapes (a
+    leaf, a multi-unit alias, a whole building). Owner ruling 3 is what makes
+    that expansion the right grain -- *"if someone is assigned a container and
+    another family has a contained leaf, i think that's likely a
+    demote/conflict yes."*
+
+    `is_family_available` IS `is_family_available(...)`'S OWN ANSWER for this
+    leaf this weekend, folding the staff<->family role and every write-in
+    covering the space through `free_family_spots`. It is passed in rather
+    than re-derived -- see the section note above.
+
+    `placed_households` is every household `lodging_assignments` puts in this
+    leaf that weekend, INCLUDING the one being attributed; the rule drops its
+    own household rather than the caller having to.
+
+    `write_in_labels` is one label per write-in cover on the leaf, own or
+    inherited from an ancestor. It is the DISPLAY half; whether those write-ins
+    exhaust the space is already inside `is_family_available`.
+
+    `container_name` is the building the value NAMED when this leaf came out of
+    a container expansion, "" when the value named the leaf itself -- so the
+    evidence line can say "a room inside Clouds Rest" rather than naming a room
+    staff never wrote down.
+    """
+
+    unit_code: str
+    unit_name: str
+    shareability: str
+    is_family_available: bool
+    placed_households: tuple[PlacedHousehold, ...]
+    write_in_labels: tuple[str, ...]
+    container_name: str = ""
+
+
+class CandidateOccupancy(NamedTuple):
+    """One candidate weekend, with what the resolved leaves hold in it.
+
+    `weekend_has_placements` is the `no_data` axis and it is WEEKEND-WIDE, not
+    leaf-wide. ⚠️ `no_data` means NO PLACEMENTS, not no occupancy: six of the
+    2026 snapshot's eight live queue rows have a candidate weekend with zero
+    placements (FC4/FC6/FC7 are Sep-Oct weekends nobody has planned yet), and
+    one of those weekends carries three write-ins. Write-ins make a weekend
+    look non-empty; they do not make it PLANNED, and the distinction is what
+    stops "free" being read as a finding on a weekend nobody has touched.
+    """
+
+    session_cm_id: int
+    leaves: tuple[LeafOccupancy, ...]
+    weekend_has_placements: bool
+
+
+class ConflictOccupant(NamedTuple):
+    """WHO is in the cabin, for the evidence line.
+
+    Display only. Nothing ranks off this -- the verdict does -- but a bare
+    "conflict" is not evidence staff can check, and the whole point of the
+    feature is that the queue can say *"FC2, because FC1 is taken"*.
+    """
+
+    kind: Literal["placement", "write_in"]
+    label: str
+    leaf_code: str
+    leaf_name: str
+    container_name: str = ""
+
+
+class CandidateConflict(NamedTuple):
+    """One candidate weekend's verdict, and the evidence behind it."""
+
+    session_cm_id: int
+    verdict: AttributionVerdict
+    occupants: tuple[ConflictOccupant, ...]
+
+
+def leaf_occupants(leaf: LeafOccupancy, household_cm_id: int) -> tuple[ConflictOccupant, ...]:
+    """Who is in this leaf OTHER THAN the household being attributed.
+
+    A household already placed in the cabin it was written into is the
+    opposite of evidence against that weekend, so its own placement is neither
+    a conflict nor an occupant. It is not published as evidence either: this
+    rule only ever demotes, so a fact that could only promote has nothing to
+    say here (§12.8.4), and printing "occupied by you" beside a free verdict
+    would read as a warning.
+    """
+    occupants = [
+        ConflictOccupant(
+            kind="placement",
+            label=placed.label,
+            leaf_code=leaf.unit_code,
+            leaf_name=leaf.unit_name,
+            container_name=leaf.container_name,
+        )
+        for placed in leaf.placed_households
+        if placed.cm_id != household_cm_id
+    ]
+    occupants.extend(
+        ConflictOccupant(
+            kind="write_in",
+            label=label,
+            leaf_code=leaf.unit_code,
+            leaf_name=leaf.unit_name,
+            container_name=leaf.container_name,
+        )
+        for label in leaf.write_in_labels
+    )
+    return tuple(occupants)
+
+
+def leaf_conflicts(leaf: LeafOccupancy, household_cm_id: int) -> bool:
+    """Whether this leaf is UNAVAILABLE to this household that weekend.
+
+    THREE DISJUNCTS, exactly as §12.8.5 states them, and they split across two
+    questions because availability already answers one of them:
+
+    1. `is_family_available` is False -- the space has no room left. This is
+       the shareable-at-capacity arm AND the unsized-write-in arm: an unsized
+       write-in is charged the WHOLE capacity of the unit it names
+       (kindred#2540), so `free_family_spots` reaches 0 and the leaf closes.
+       ⛔ Read, never re-derived (see the section note).
+    2. A PLACEMENT held by a different household. `free_family_spots`
+       deliberately does not subtract placed families -- its docstring says so,
+       because the stats bar counts them in the other numerator -- so
+       availability alone cannot see this and the rule has to.
+    3. ANY write-in on a leaf that is not shareable. A `single_party` leaf
+       holds ONE party: beds left over do not make room for a second one, which
+       is the entire meaning of the shareability column.
+
+    Arms 2 and 3 are gated on shareability and arm 1 is not, which is the
+    asymmetry the column exists to express: a shareable leaf takes a second
+    party until its beds run out, and running out is arm 1's business.
+
+    "unknown" shareability -- the answer `unit_shareability` gives for a column
+    staff never set -- is treated as NOT shareable. A cabin nobody classified
+    holds one party until somebody says otherwise; the alternative silently
+    promotes a weekend on an unanswered question.
+    """
+    if not leaf.is_family_available:
+        return True
+    if leaf.shareability == "shareable":
+        return False
+    if any(placed.cm_id != household_cm_id for placed in leaf.placed_households):
+        return True
+    return bool(leaf.write_in_labels)
+
+
+def candidate_conflict(candidate: CandidateOccupancy, household_cm_id: int) -> CandidateConflict:
+    """One candidate weekend's verdict.
+
+    ANY leaf being unavailable is the whole value being unavailable: a family
+    cannot take half of the pair it was written into, and cannot take a
+    building one of whose rooms is somebody else's.
+
+    A CONFLICT OUTRANKS THE `no_data` LABEL. A weekend with no placements at
+    all can still hold a write-in in the very cabin under discussion, and that
+    write-in is a positive local fact about that cabin -- exactly the kind of
+    fact §12.8.4 says does rank.
+    """
+    occupants: list[ConflictOccupant] = []
+    conflict = False
+    for leaf in candidate.leaves:
+        occupants.extend(leaf_occupants(leaf, household_cm_id))
+        conflict = leaf_conflicts(leaf, household_cm_id) or conflict
+
+    if conflict:
+        verdict: AttributionVerdict = "conflict"
+    elif not candidate.weekend_has_placements:
+        verdict = "no_data"
+    else:
+        verdict = "free"
+    return CandidateConflict(session_cm_id=candidate.session_cm_id, verdict=verdict, occupants=tuple(occupants))
+
+
+def attribution_conflicts(
+    candidates: Sequence[CandidateOccupancy], household_cm_id: int
+) -> tuple[CandidateConflict, ...]:
+    """Every candidate weekend's verdict, in the order handed in."""
+    return tuple(candidate_conflict(candidate, household_cm_id) for candidate in candidates)
+
+
+def conflict_aware_suggestion(
+    ordered_session_cm_ids: Sequence[int],
+    verdicts: Sequence[CandidateConflict],
+    timestamp_suggestion: int | None,
+) -> int | None:
+    """`AttributeSession`'s answer over the SURVIVORS, derived from its answer
+    over the whole set.
+
+        survivors = [c for c in candidates if not conflict(c)]
+        best      = AttributeSession_rule(survivors if survivors else candidates)
+
+    ⛔ IT IS A DERIVATION, NOT A SECOND IMPLEMENTATION, and that distinction is
+    the point. `AttributeSession` stays untouched in Go (§12.8.6) and its
+    published answer -- the queue row's `suggested_session` -- is this
+    function's INPUT. Re-running its `last_updated` comparison in Python would
+    be exactly the cross-language copy §12.8.6 refuses for availability.
+
+    `ordered_session_cm_ids` must be sorted by weekend START DATE ASCENDING,
+    which is the order `AttributeSession` requires of its own candidates and
+    which `BuildHouseholdSessionIndex` guarantees.
+
+    THE DERIVATION, case by case. `AttributeSession` answers a 2+ candidate set
+    with "the earliest candidate whose start is not before `lastUpdated`", and
+    falls back to the LAST candidate when none qualifies.
+
+    * The stored pick qualified. Then every candidate AFTER it also starts at
+      or after `lastUpdated`, and every candidate before it starts before. Over
+      a subset the same comparison therefore picks the first survivor at or
+      after the stored pick -- and, when there is none, the same fallback arm
+      answers the last survivor.
+    * The stored pick was the FALLBACK (the last candidate, nothing qualified).
+      Then nothing in any subset qualifies either, so the answer is the last
+      survivor. The formula above gives that too: no survivor sits at or after
+      the last candidate once the last candidate is itself conflicted.
+
+    ⇒ ONE expression covers both: the first survivor at or after the stored
+    pick, else the last survivor.
+
+    TWO ARMS DO NOT NEED THE TIMESTAMP AT ALL, and they are why this can still
+    answer when `suggested_session` is empty (a zero `last_updated` makes
+    `AttributeSession` return no best guess):
+
+    * NOTHING SURVIVES -- `conflict_in_every_candidate`. The stored answer
+      stands unchanged: the adopted default (§12.8.3) raises an alarm about the
+      VALUE rather than moving the guess to a weekend the rule just called
+      wrong. **This demotes nothing.**
+    * EXACTLY ONE SURVIVES. `AttributeSession` answers a one-candidate set with
+      certainty and never consults `lastUpdated`, so neither does this.
+    """
+    verdict_by_id = {row.session_cm_id: row.verdict for row in verdicts}
+    survivors = [cm_id for cm_id in ordered_session_cm_ids if verdict_by_id.get(cm_id) != "conflict"]
+
+    if not survivors:
+        return timestamp_suggestion
+    if timestamp_suggestion in survivors:
+        return timestamp_suggestion
+    if len(survivors) == 1:
+        return survivors[0]
+    if timestamp_suggestion is None:
+        # `AttributeSession` had no answer over ANY set. Inventing one here
+        # would be a SECOND heuristic wearing the first one's name.
+        return None
+
+    order = list(ordered_session_cm_ids)
+    if timestamp_suggestion not in order:
+        # The stored suggestion names a weekend this row does not offer --
+        # a stale row, which `computeStaleQueueIds` already hides. Nothing to
+        # derive from, so nothing is claimed.
+        return None
+    demoted_at = order.index(timestamp_suggestion)
+    for cm_id in order[demoted_at:]:
+        if cm_id in survivors:
+            return cm_id
+    return survivors[-1]
+
+
+def conflict_in_every_candidate(verdicts: Sequence[CandidateConflict]) -> bool:
+    """The alarm condition -- every candidate weekend conflicts.
+
+    It points at the CABIN VALUE, not at a weekend: if the string is taken
+    everywhere the household could be, either the value is wrong or somebody
+    else's placement is. Demoting on it would move the guess to a weekend the
+    rule has just called wrong, so it demotes nothing.
+
+    False for an EMPTY candidate list -- there is no "every" to be true of, and
+    an empty list is a row with nothing to attribute rather than a row in
+    trouble.
+    """
+    return bool(verdicts) and all(row.verdict == "conflict" for row in verdicts)
 
 
 # ------------------------------------------------------------ push classifier
