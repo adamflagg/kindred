@@ -330,7 +330,11 @@ export function LodgingMap({ parties, units, year, sessionCmId = 0 }: LodgingMap
   const placed = drawn.map((mapUnit) => {
     const base = basePosition(mapUnit.x, mapUnit.y, width, height)
     const screen = screenPosition(base, view)
-    return { item: mapUnit, x: screen.x, y: screen.y }
+    // GROUPED BY BUILDING (kindred#2440). Two different buildings a few pixels
+    // apart must never draw as one mark — proximity alone merged four such
+    // pairs on the production registry. `buildingCode` is resolved once in
+    // `mapModel`, off the grain kindred#2008 ruled; this never re-derives it.
+    return { item: mapUnit, x: screen.x, y: screen.y, group: mapUnit.buildingCode }
   })
   const clusters = clusterByProximity(placed)
 

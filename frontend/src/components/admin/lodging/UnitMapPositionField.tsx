@@ -1,6 +1,14 @@
 /**
  * Put this unit's pin where the cabin actually is.
  *
+ * SINCE kindred#2440 THIS POSITIONS A BUILDING, not necessarily one room. The
+ * map is a view of buildings: a room draws at its container's point and its
+ * own coordinate is never read, so `LodgingUnitForm` offers this editor to
+ * whichever unit is the pin SITE — a container, or a room with no parent — and
+ * shows an inheriting room where its pin lives instead. Dragging here moves
+ * every room under the building at once, which is the whole point of the
+ * ruling: one thing to maintain per building rather than up to fourteen.
+ *
  * `/manage/lodging` used to expose the position as two number inputs; PR #2024
  * deleted them and nothing replaced them, so correcting a coordinate meant
  * editing the database. Typing `0.4389` was never how a pin gets placed

@@ -967,6 +967,26 @@ describe('LodgingUnitForm — fields staff have no use for', () => {
       />
     )
 
+  /** The same, with the unit's building in the payload so the parent resolves. */
+  const PARENT: LodgingUnitRecord = {
+    ...UNIT,
+    id: 'u0',
+    code: 'cedar-house',
+    name: 'Cedar House',
+    is_container: true,
+  }
+  const renderWithParent = (unit: LodgingUnitRecord) =>
+    render(
+      <LodgingUnitForm
+        areas={AREAS}
+        units={[PARENT, unit]}
+        year={2026}
+        unit={unit}
+        onSaved={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    )
+
   it('never offers the code when editing an existing unit', () => {
     // The code is a JOIN KEY, not a name. apply_lodging_inventory.py matches
     // units by it, so changing one orphans the unit from the registry and the
@@ -1012,26 +1032,54 @@ describe('LodgingUnitForm — fields staff have no use for', () => {
     expect(screen.queryByText('Map position')).not.toBeInTheDocument()
   })
 
-  it('offers no pin for a container, which the map never draws', () => {
-    // A building carries its rooms' positions through its children, so
-    // `buildMapModel` draws the children and never the container itself.
+  /**
+   * kindred#2440 REVERSED THIS PAIR. They used to assert that a container gets
+   * no pin, on the model that "a building carries its rooms' positions through
+   * its children". The owner ruled the opposite on 2026-08-21 — the map is a
+   * view of BUILDINGS and a room draws at its building's point — so the
+   * container is now the only thing whose coordinate the map reads, and the
+   * room's own is inert. Leaving the old gate would have left the pin editable
+   * NOWHERE for the twelve buildings that carry a room's pin, while still
+   * offering each of those rooms a control that saves and moves nothing.
+   */
+  it('offers the pin for a container, which now carries its whole building`s mark', () => {
     renderUnit({ ...UNIT, is_container: true })
 
-    expect(screen.queryByText('Map position')).not.toBeInTheDocument()
+    // The GATE CHECKBOX, not the heading: an inheriting room keeps the "Map
+    // position" heading to say where its pin lives, so the heading no longer
+    // distinguishes the editor from the note that replaces it.
+    expect(screen.getByLabelText(/edit position/i)).toBeInTheDocument()
   })
 
-  it('withdraws the pin the moment the unit is declared a building', async () => {
-    // Read LIVE off the checkbox, not off the stored record: a staffer who has
-    // just ticked "this is a building" has already made the ruling.
+  it('hands the pin to a room the moment it is declared a building itself', async () => {
+    // Read LIVE off the checkbox, not off the stored record — the invariant the
+    // superseded version of this test protected, kept and pointed the other
+    // way. A room inside a building has no pin of its own; ticking "this is a
+    // building" makes it its own pin site, and the control must follow.
     const user = userEvent.setup()
-    renderUnit(UNIT)
-    expect(screen.getByText('Map position')).toBeInTheDocument()
+    renderWithParent({ ...UNIT, parent_unit: 'u0' })
+    expect(screen.queryByLabelText(/edit position/i)).not.toBeInTheDocument()
 
     await user.click(
       screen.getByLabelText('This is a building or building area with multiple bedrooms.')
     )
 
-    expect(screen.queryByText('Map position')).not.toBeInTheDocument()
+    expect(screen.getByLabelText(/edit position/i)).toBeInTheDocument()
+  })
+
+  it('offers no pin for a room inside a building — the building`s pin is its pin', () => {
+    renderWithParent({ ...UNIT, parent_unit: 'u0' })
+
+    expect(screen.queryByLabelText(/edit position/i)).not.toBeInTheDocument()
+  })
+
+  it('names the building that carries the pin, so the control has not merely vanished', () => {
+    // The #2327 lesson: a capability that disappears without saying where it
+    // went is a capability loss, whatever the data model says.
+    renderWithParent({ ...UNIT, parent_unit: 'u0' })
+
+    // The parent picker names it too, so match the note's own wording.
+    expect(screen.getByText(/Drawn at Cedar House/)).toBeInTheDocument()
   })
 
   it('leaves a stored coordinate alone when saving a unit that has one', async () => {

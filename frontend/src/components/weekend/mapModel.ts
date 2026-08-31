@@ -14,7 +14,7 @@
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
 import { buildBoard, slotOccupancy, type ConsentFlag } from './boardLayout'
 import { effectiveSleeps } from './rosterAttention'
-import { coveredCodes, indexUnitsByCode } from './unitLevel'
+import { buildingKey, coveredCodes, indexUnitsByCode } from './unitLevel'
 
 /** Why the map cannot draw a party the board can. */
 export type OffMapReason =
@@ -77,7 +77,22 @@ export interface MapUnit {
    * pinned before it is reached.
    */
   spanWidth: number
-  /** Normalized 0-1 map coordinates. Projection to pixels is the viewport's job. */
+  /**
+   * The BUILDING this mark belongs to — kindred#2440's grain, resolved by
+   * `pinFor` below and carried so `LodgingMap` can hand it to clustering as
+   * the group that nothing merges across.
+   *
+   * Threaded rather than re-derived for the reason `roomCount` and `capacity`
+   * are: the consumer holds `MapUnit[]` and never the registry, so it cannot
+   * walk a room to its parent to ask. A second derivation is also how the
+   * product would end up with two different "buildings" — see `buildingKey`.
+   */
+  buildingCode: string
+  /**
+   * Normalized 0-1 map coordinates. Projection to pixels is the viewport's job.
+   *
+   * THE BUILDING'S, not necessarily this unit's own — see `pinFor`.
+   */
   x: number
   y: number
 }
@@ -94,8 +109,13 @@ export interface MapModel {
   /** Placed, but not drawable on a map. */
   offMap: OffMapEntry[]
   /**
-   * Bookable rooms nobody has positioned, reported HERE — but this is not a
-   * totality guarantee for the payload as a whole. `buildBoard` drops two
+   * Bookable rooms with no pin to inherit — neither their own nor their
+   * building's (kindred#2440). A room whose own coordinate is unset but whose
+   * building is positioned is NOT here: it draws at the building's pin, which
+   * is what inheritance means. Unreachable on the 2026 registry, where all
+   * 118 units are positioned.
+   *
+   * This is not a totality guarantee for the payload as a whole. `buildBoard` drops two
    * kinds of unit before `buildMapModel` ever sees them (see the `drawn`
    * filter in `boardLayout.ts`), and an unpositioned one of either kind is
    * dropped upstream and never reaches this list:
@@ -169,6 +189,53 @@ function unitRoomCount(unit: LodgingUnitRow, units: LodgingUnitRow[]): number {
   return Math.max(active, 1)
 }
 
+/**
+ * WHERE THIS DRAWN UNIT'S MARK GOES — one pin per building (kindred#2440).
+ *
+ * Owner ruling 2026-08-21: the session map is a view of BUILDINGS. A room
+ * inherits its building's coordinate and never carries its own point, so a
+ * building draws as ONE mark at every zoom rather than dissolving into its
+ * rooms the moment you zoom past the cluster radius. The per-room coordinates
+ * it overrides are not geography: kindred#2013 digitised them from the base
+ * map's LABEL anchors, so each room inherited wherever its printed name sat.
+ *
+ * RESOLVED AT READ TIME. Nothing is written and no stored value is dropped
+ * (question 2, defaulted): `map_x`/`map_y` are classified staff-owned and all
+ * 118 production units carry one, so a migration would destroy 103 real values
+ * to rescue nothing — and this is reversible by deleting this function.
+ *
+ * THE GRAIN IS THE IMMEDIATE PARENT — `buildingKey`, the grain kindred#2008
+ * ruled on placement-history evidence, reused rather than re-derived. Two
+ * container HALVES under one roof are let separately and stay two buildings;
+ * walking to the root would merge them. That is question 4's 83 pin sites
+ * against the root grain's 79, and they differ for four buildings.
+ *
+ * A DRAWN CONTAINER IS ITSELF THE BUILDING and keeps its own point. It does
+ * not roll up another level — the 83 counts 71 freestanding rooms plus the 12
+ * containers that carry a room's pin, so a container is a pin SITE, never a
+ * pin BORROWER.
+ *
+ * THE FALLBACK IS THE POINT OF THE `null`. Read-time resolution must never
+ * lose a pin that exists today, so an unpositioned building yields to the
+ * room's own coordinate rather than taking the room off the map. Only when
+ * neither carries one is there nothing to draw. Unreachable on the 2026
+ * registry; it is what makes the resolution safe rather than lucky.
+ */
+function pinFor(
+  unit: LodgingUnitRow,
+  units: LodgingUnitRow[]
+): { building: LodgingUnitRow; x: number; y: number } | null {
+  const byCode = indexUnitsByCode(units)
+  const building =
+    unit.is_container === true ? unit : (byCode.get(buildingKey(unit, byCode)) ?? unit)
+  // The building's own point wins whenever it has one — that is the override,
+  // and it is deliberately an override of a real value rather than a rescue of
+  // a missing one.
+  if (hasCoordinates(building)) return { building, x: building.map_x ?? 0, y: building.map_y ?? 0 }
+  if (hasCoordinates(unit)) return { building, x: unit.map_x ?? 0, y: unit.map_y ?? 0 }
+  return null
+}
+
 export function buildMapModel(parties: RosterPartyRow[], units: LodgingUnitRow[]): MapModel {
   const board = buildBoard(parties, units)
 
@@ -181,7 +248,8 @@ export function buildMapModel(parties: RosterPartyRow[], units: LodgingUnitRow[]
 
   for (const area of board.areas) {
     for (const slot of area.slots) {
-      if (!hasCoordinates(slot.unit)) {
+      const pin = pinFor(slot.unit, units)
+      if (pin === null) {
         unpositionedUnits.push(slot.unit)
         for (const party of slot.parties) {
           offMap.push({ party, reason: 'no-coordinates' })
@@ -208,9 +276,9 @@ export function buildMapModel(parties: RosterPartyRow[], units: LodgingUnitRow[]
         // with `partySpots`, which is the roster's number rather than the
         // board's `partySize`.
         spanWidth: slotOccupancy(slot, units).spanWidth,
-        // Non-null by hasCoordinates above; narrowed for the type checker.
-        x: slot.unit.map_x ?? 0,
-        y: slot.unit.map_y ?? 0,
+        buildingCode: pin.building.code,
+        x: pin.x,
+        y: pin.y,
       })
     }
   }
@@ -221,13 +289,19 @@ export function buildMapModel(parties: RosterPartyRow[], units: LodgingUnitRow[]
 /**
  * How many BOOKABLE ROOMS ARE POSITIONED — what the Map tab's badge counts.
  *
- * This is NOT how many marks the map draws. Clustering runs AFTER this
- * count, so overlapping rooms collapse into fewer marks whenever any of them
- * share a spot — measured live on 2026's busiest weekend, 76 positioned
- * rooms render as 76 marks at rest (nothing happens to overlap there this
- * year), and the mark count keeps falling as you zoom out further wherever
- * it does. A badge that changed as you zoomed would be absurd, so it reports
- * the room count, which is stable, rather than the mark count, which is not.
+ * This is NOT how many marks the map draws, and since kindred#2440 the gap is
+ * structural rather than incidental. Clustering runs AFTER this count, and
+ * every room of a multi-room building now resolves to ONE point, so those
+ * rooms collapse into a single mark at every zoom. A badge that reported
+ * marks would therefore undercount the rooms staff can actually book, and
+ * would still have been absurd for the older reason: before #2440 the mark
+ * count also moved as you zoomed. It reports the room count, which is stable.
+ *
+ * ⚠️ This docstring used to claim "76 positioned rooms render as 76 marks at
+ * rest (nothing happens to overlap there this year)", which disagreed with
+ * `mapClustering`'s own measurement of 8 multi-room clusters at 1x. #2440
+ * settles the disagreement by removing the question: re-measure before
+ * quoting a mark count anywhere.
  *
  * The 76 itself is NOT the old 103 with a typo fixed — kindred#1993 stopped
  * `buildBoard` (which this projects) drawing unreleased staff housing, so

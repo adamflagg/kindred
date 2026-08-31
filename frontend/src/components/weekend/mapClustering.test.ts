@@ -86,3 +86,85 @@ describe('clusterByProximity', () => {
     expect(clusterByProximity(points, CLUSTER_RADIUS_PX * 4)).toHaveLength(1)
   })
 })
+
+/**
+ * kindred#2440 — the map is a view of BUILDINGS.
+ *
+ * Q3, ruled 2026-08-24: two different buildings that sit a few pixels apart
+ * must never be drawn as one mark. Proximity alone used to decide that, and on
+ * the production registry it merged four pairs of genuinely different
+ * buildings at rest. The group key is the barrier.
+ */
+describe('clusterByProximity — the building barrier (kindred#2440)', () => {
+  function inBuilding(name: string, x: number, y: number, group: string): Placed<string> {
+    return { item: name, x, y, group }
+  }
+
+  it('never merges two different buildings, however close they sit', () => {
+    // One pixel apart — far inside the radius, and merged before #2440.
+    const clusters = clusterByProximity([
+      inBuilding('a', 100, 100, 'oak'),
+      inBuilding('b', 101, 100, 'elm'),
+    ])
+    expect(clusters).toHaveLength(2)
+  })
+
+  it('holds one building together at any zoom, because its rooms are coincident', () => {
+    // Radius 0 stands in for infinite zoom: the rooms of one building resolve
+    // to ONE point (mapModel's building pin), so nothing can pull them apart.
+    const clusters = clusterByProximity(
+      [inBuilding('a', 100, 100, 'oak'), inBuilding('b', 100, 100, 'oak')],
+      0
+    )
+    expect(clusters).toHaveLength(1)
+    expect(clusters[0]?.members).toHaveLength(2)
+  })
+
+  it('still chains within one building, so a terrace stays one mark', () => {
+    const clusters = clusterByProximity([
+      inBuilding('a', 0, 0, 'oak'),
+      inBuilding('b', 15, 0, 'oak'),
+      inBuilding('c', 30, 0, 'oak'),
+    ])
+    expect(clusters).toHaveLength(1)
+    expect(clusters[0]?.members).toHaveLength(3)
+  })
+
+  it('does not let one building bridge two others', () => {
+    // a---c---b in space, but c belongs to a third building. Without the
+    // barrier single-link chaining fuses all three into one mark.
+    const clusters = clusterByProximity([
+      inBuilding('a', 0, 0, 'oak'),
+      inBuilding('c', 15, 0, 'elm'),
+      inBuilding('b', 30, 0, 'ash'),
+    ])
+    expect(clusters).toHaveLength(3)
+  })
+
+  it('is still order-independent once buildings are in play', () => {
+    const A = inBuilding('a', 0, 0, 'oak')
+    const C = inBuilding('c', 15, 0, 'oak')
+    const B = inBuilding('b', 30, 0, 'elm')
+    const partition = (items: Array<Placed<string>>) =>
+      clusterByProximity(items)
+        .map((cluster) =>
+          cluster.members
+            .map((m) => m.item)
+            .sort()
+            .join('')
+        )
+        .sort()
+    expect(partition([A, C, B])).toEqual(['ac', 'b'])
+    expect(partition([B, A, C])).toEqual(['ac', 'b'])
+    expect(partition([C, B, A])).toEqual(['ac', 'b'])
+  })
+
+  it('treats an absent group as one shared building, so geometry still decides', () => {
+    // The generic contract the eight tests above rest on: no group, no barrier.
+    const clusters = clusterByProximity([
+      { item: 'a', x: 100, y: 100 },
+      { item: 'b', x: 105, y: 100 },
+    ])
+    expect(clusters).toHaveLength(1)
+  })
+})

@@ -195,6 +195,17 @@ export function LodgingUnitForm({
   const storedBathroomGroup = unit?.bathroom_group ?? ''
   const [bathroomPeerIds, setBathroomPeerIds] = useState(() => storedPeerIds(unit, units))
   const unitsById = new Map(units.map((u) => [u.id, u]))
+  /**
+   * The building whose pin this unit draws on, or `undefined` when the unit is
+   * its own pin site — kindred#2440's grain, and the mirror of `mapModel`'s
+   * `pinFor`. A container is always its own site; a room's site is its
+   * IMMEDIATE parent, never walked to the root (the grain kindred#2008 ruled).
+   *
+   * A parent the payload does not carry resolves to `undefined` for the same
+   * reason `buildingKey` falls back to the unit's own code: an unresolvable
+   * relation must not take the control away with nothing to point at.
+   */
+  const pinBuilding = isContainer ? undefined : unitsById.get(identity.parent_unit)
   const shareParent = unitsById.get(identity.parent_unit)
   const sharePeers = bathroomPeerIds
     .map((id) => unitsById.get(id))
@@ -470,16 +481,40 @@ export function LodgingUnitForm({
         )}
       </div>
 
-      {/* EDIT ONLY, and only for a room. A unit being created has no id to
-          write a coordinate to, and a CONTAINER never gets a pin at all — a
-          building carries its rooms' positions through its children, so
-          `buildMapModel` draws the children and never the building. Read
-          LIVE off `isContainer`, like the capacity flag above: a staffer who
-          has just ticked "this is a building" has already made the ruling.
-          The pin writes on pointer-up and is NOT part of this form's payload
-          — see UnitMapPositionField's header. */}
-      {unit && !isContainer && (
+      {/* EDIT ONLY, and only for the unit that CARRIES the pin. A unit being
+          created has no id to write a coordinate to.
+
+          Which unit carries it is kindred#2440's ruling (2026-08-21): the map
+          is a view of BUILDINGS, so a room draws at its building's point and
+          its own coordinate is never read. The pin therefore belongs to the
+          container, and this gate USED TO SAY THE OPPOSITE — it withheld the
+          pin from every container, on the superseded model that a building
+          carried its rooms' positions through its children. Left alone it
+          would have made the pin uneditable for the twelve buildings that
+          carry a room's pin, while still offering each of those rooms a
+          control that saved a value nothing reads.
+
+          Both halves are read LIVE — off `isContainer` and off the SELECTED
+          parent, like the capacity flag above: a staffer who has just ticked
+          "this is a building", or just re-parented a room, has already made
+          the ruling. The pin writes on pointer-up and is NOT part of this
+          form's payload — see UnitMapPositionField's header. */}
+      {unit && pinBuilding === undefined && (
         <UnitMapPositionField unit={unit} onPositionSaved={onPositionSaved} />
+      )}
+
+      {/* SAYS WHERE THE CONTROL WENT. A capability that disappears without
+          naming its new home is a capability loss however sound the data
+          model is, so an inheriting room points at the building it draws on
+          rather than simply losing the field. */}
+      {unit && pinBuilding !== undefined && (
+        <div className="sm:col-span-2">
+          <span className={LABEL}>Map position</span>
+          <p className="text-muted-foreground text-sm">
+            Drawn at {pinBuilding.name}&rsquo;s pin, with the rest of the building. Position{' '}
+            {pinBuilding.name} to move it.
+          </p>
+        </div>
       )}
 
       <label className="text-sm sm:col-span-2">
