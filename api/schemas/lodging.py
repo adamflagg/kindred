@@ -1335,7 +1335,10 @@ class HouseholdJourneyResponse(BaseModel):
     years. Registration and `family_camp_adults` rows stopped being traces of
     their own in kindred#2516: both fire on a form being filled in rather than
     on anybody turning up, so a cancelled or waitlisted family carried a year
-    indistinguishable from one they attended.
+    indistinguishable from one they attended. A registration's CABIN still
+    counts, for the one population it is the only trace of: adults-only family
+    camp is paper-only and never reaches CampMinder, so a household with a
+    cabin and no attendee row at all did sleep here.
 
     Carries NO family name. The label is the children's deduplicated
     surnames, and that derivation lives in exactly one place
