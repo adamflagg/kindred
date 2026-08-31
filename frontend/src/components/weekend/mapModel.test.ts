@@ -510,11 +510,11 @@ describe('buildMapModel — one pin per building (kindred#2440)', () => {
   })
 
   /**
-   * 83 pin sites, not 79. A drawn CONTAINER is the building — it does not roll
-   * up another level to its root. Question 4's two candidate answers differ for
-   * four buildings, and the standing default is the immediate parent.
+   * 79 pin sites, not 86. Question 4 was RE-RULED by the owner on 2026-08-30:
+   * the map's grain is the ROOT, always — so a drawn container rolls up like
+   * any room, and a combined half draws on its house.
    */
-  it('pins a drawn container at its own point, never its root`s', () => {
+  it('pins a drawn container at its ROOT`s point, not its own', () => {
     const model = buildMapModel(
       [],
       [
@@ -532,8 +532,51 @@ describe('buildMapModel — one pin per building (kindred#2440)', () => {
       ]
     )
     expect(model.units.map((u) => u.unit.code)).toEqual(['blk-up'])
-    expect(model.units[0]?.x).toBeCloseTo(0.5, 6)
-    expect(model.units[0]?.buildingCode).toBe('blk-up')
+    expect(model.units[0]?.x).toBeCloseTo(0.1, 6)
+    expect(model.units[0]?.buildingCode).toBe('blk')
+  })
+
+  /**
+   * THE HEALTH CENTER, which is what re-ruled question 4. Ten rooms under
+   * three sibling containers beneath one root: one physical building that the
+   * immediate-parent grain drew as THREE marks, and — once Q3 forbade
+   * cross-building merges — three that could never blob back together.
+   */
+  it('draws one mark for a house whose rooms sit under sibling halves', () => {
+    const health = [
+      unit({ unit_id: 'hc', code: 'hc', is_container: true, map_x: 0.731, map_y: 0.577 }),
+      unit({
+        unit_id: 'hc-up',
+        code: 'hc-up',
+        is_container: true,
+        parent_code: 'hc',
+        map_x: 0.7295,
+        map_y: 0.5738,
+      }),
+      unit({
+        unit_id: 'hc-down',
+        code: 'hc-down',
+        is_container: true,
+        parent_code: 'hc',
+        map_x: 0.7294,
+        map_y: 0.582,
+      }),
+      unit({ unit_id: 'r1', code: 'hc-up-1', parent_code: 'hc-up', map_x: 0.727, map_y: 0.57 }),
+      unit({ unit_id: 'r2', code: 'hc-up-2', parent_code: 'hc-up', map_x: 0.728, map_y: 0.5715 }),
+      unit({
+        unit_id: 'r3',
+        code: 'hc-down-a',
+        parent_code: 'hc-down',
+        map_x: 0.728,
+        map_y: 0.581,
+      }),
+    ]
+    const model = buildMapModel([], health)
+    expect(model.units.map((u) => u.buildingCode)).toEqual(['hc', 'hc', 'hc'])
+    for (const mark of model.units) {
+      expect(mark.x).toBeCloseTo(0.731, 6)
+      expect(mark.y).toBeCloseTo(0.577, 6)
+    }
   })
 
   it('gives a room its building`s pin even when the room has none of its own', () => {

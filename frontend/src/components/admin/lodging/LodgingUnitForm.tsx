@@ -197,15 +197,31 @@ export function LodgingUnitForm({
   const unitsById = new Map(units.map((u) => [u.id, u]))
   /**
    * The building whose pin this unit draws on, or `undefined` when the unit is
-   * its own pin site — kindred#2440's grain, and the mirror of `mapModel`'s
-   * `pinFor`. A container is always its own site; a room's site is its
-   * IMMEDIATE parent, never walked to the root (the grain kindred#2008 ruled).
+   * itself the pin site — the mirror of `mapModel`'s `pinFor`, in ids rather
+   * than codes because this form's relation field holds `parent_unit`.
    *
-   * A parent the payload does not carry resolves to `undefined` for the same
-   * reason `buildingKey` falls back to the unit's own code: an unresolvable
-   * relation must not take the control away with nothing to point at.
+   * THE ROOT, walked all the way up (kindred#2440 question 4, re-ruled by the
+   * owner 2026-08-30). `is_container` deliberately plays no part: a half of a
+   * house draws on the house, so what decides this is only whether the unit
+   * has a parent at all. Under the superseded immediate-parent grain a
+   * container was always its own pin site, which is how the Health Center came
+   * to draw three marks on one roof.
+   *
+   * A parent the payload does not carry stops the walk rather than yielding
+   * nothing, matching `mapBuildingKey`: an unresolvable relation must not take
+   * the control away with nothing to point at.
    */
-  const pinBuilding = isContainer ? undefined : unitsById.get(identity.parent_unit)
+  const pinBuilding = (() => {
+    let current = unitsById.get(identity.parent_unit)
+    const seen = new Set<string>()
+    while (current !== undefined && !seen.has(current.id)) {
+      seen.add(current.id)
+      const next = unitsById.get(current.parent_unit)
+      if (next === undefined) break
+      current = next
+    }
+    return current
+  })()
   const shareParent = unitsById.get(identity.parent_unit)
   const sharePeers = bathroomPeerIds
     .map((id) => unitsById.get(id))
@@ -485,20 +501,22 @@ export function LodgingUnitForm({
           created has no id to write a coordinate to.
 
           Which unit carries it is kindred#2440's ruling (2026-08-21): the map
-          is a view of BUILDINGS, so a room draws at its building's point and
-          its own coordinate is never read. The pin therefore belongs to the
-          container, and this gate USED TO SAY THE OPPOSITE — it withheld the
-          pin from every container, on the superseded model that a building
-          carried its rooms' positions through its children. Left alone it
-          would have made the pin uneditable for the twelve buildings that
-          carry a room's pin, while still offering each of those rooms a
-          control that saved a value nothing reads.
+          is a view of BUILDINGS, so a unit draws at its building's point and
+          its own coordinate is never read. The building is the ROOT (question
+          4, re-ruled 2026-08-30), so the pin belongs to the outermost
+          container of the tree — and this gate USED TO SAY THE OPPOSITE, in
+          two ways. It withheld the pin from every container, on the superseded
+          model that a building carried its rooms' positions through its
+          children; left alone that made the pin uneditable for every building
+          with rooms, while still offering each of those rooms a control that
+          saved a value nothing reads.
 
-          Both halves are read LIVE — off `isContainer` and off the SELECTED
-          parent, like the capacity flag above: a staffer who has just ticked
-          "this is a building", or just re-parented a room, has already made
-          the ruling. The pin writes on pointer-up and is NOT part of this
-          form's payload — see UnitMapPositionField's header. */}
+          Read LIVE off the SELECTED parent, like the capacity flag above: a
+          staffer who has just re-parented a unit has already made the ruling.
+          `isContainer` is deliberately NOT consulted — a half of a house draws
+          on the house, container or not. The pin writes on pointer-up and is
+          NOT part of this form's payload — see UnitMapPositionField's
+          header. */}
       {unit && pinBuilding === undefined && (
         <UnitMapPositionField unit={unit} onPositionSaved={onPositionSaved} />
       )}

@@ -14,7 +14,7 @@
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
 import { buildBoard, slotOccupancy, type ConsentFlag } from './boardLayout'
 import { effectiveSleeps } from './rosterAttention'
-import { buildingKey, coveredCodes, indexUnitsByCode } from './unitLevel'
+import { coveredCodes, indexUnitsByCode, mapBuildingKey } from './unitLevel'
 
 /** Why the map cannot draw a party the board can. */
 export type OffMapReason =
@@ -204,16 +204,12 @@ function unitRoomCount(unit: LodgingUnitRow, units: LodgingUnitRow[]): number {
  * 118 production units carry one, so a migration would destroy 103 real values
  * to rescue nothing — and this is reversible by deleting this function.
  *
- * THE GRAIN IS THE IMMEDIATE PARENT — `buildingKey`, the grain kindred#2008
- * ruled on placement-history evidence, reused rather than re-derived. Two
- * container HALVES under one roof are let separately and stay two buildings;
- * walking to the root would merge them. That is question 4's 83 pin sites
- * against the root grain's 79, and they differ for four buildings.
- *
- * A DRAWN CONTAINER IS ITSELF THE BUILDING and keeps its own point. It does
- * not roll up another level — the 83 counts 71 freestanding rooms plus the 12
- * containers that carry a room's pin, so a container is a pin SITE, never a
- * pin BORROWER.
+ * THE GRAIN IS THE ROOT — `mapBuildingKey`, whose own doc carries question 4's
+ * re-ruling (owner, 2026-08-30) and why the map deliberately does NOT share
+ * #2008's `buildingKey`. Everything under one roof draws on one point,
+ * containers included: a combined half is still part of its house. That took
+ * the 2026 registry from 86 pin sites to 79, and it is what stopped the Health
+ * Center drawing three marks on one building.
  *
  * THE FALLBACK IS THE POINT OF THE `null`. Read-time resolution must never
  * lose a pin that exists today, so an unpositioned building yields to the
@@ -226,8 +222,7 @@ function pinFor(
   units: LodgingUnitRow[]
 ): { building: LodgingUnitRow; x: number; y: number } | null {
   const byCode = indexUnitsByCode(units)
-  const building =
-    unit.is_container === true ? unit : (byCode.get(buildingKey(unit, byCode)) ?? unit)
+  const building = byCode.get(mapBuildingKey(unit, byCode)) ?? unit
   // The building's own point wins whenever it has one — that is the override,
   // and it is deliberately an override of a real value rather than a rescue of
   // a missing one.

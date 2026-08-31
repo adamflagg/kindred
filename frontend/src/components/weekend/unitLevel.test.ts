@@ -6,6 +6,8 @@ import {
   buildingsSpanned,
   coveredCodes,
   drawnUnits,
+  indexUnitsByCode,
+  mapBuildingKey,
   wholeBuildingHeld,
 } from './unitLevel'
 
@@ -283,5 +285,73 @@ describe("buildingsSpanned — #2009's distinct-building count", () => {
 
   it('returns 0 for nothing drawn', () => {
     expect(buildingsSpanned([], HALVED_HOUSE)).toBe(0)
+  })
+})
+
+/**
+ * kindred#2440 Q4, RE-RULED by the owner 2026-08-30: the MAP's grain is the
+ * ROOT, always.
+ *
+ * The standing default had been the immediate parent, on the argument that a
+ * pin rule disagreeing with #2008 would give the product two different
+ * "buildings". It does give it two, and that is now deliberate, because the
+ * two grains answer different questions:
+ *
+ * - `buildingKey` (#2008) answers LETTABILITY — which block staff hold at
+ *   once. Halves are let separately 13-17 times a year, so a half is a
+ *   building for that purpose and walking to the root would merge two things
+ *   staff let apart.
+ * - `mapBuildingKey` (#2440) answers GEOGRAPHY — where the door is. Halves of
+ *   one house are one structure at one place, so NOT walking to the root
+ *   draws several marks on one roof.
+ *
+ * The Health Center is what settled it: ten rooms under three sibling
+ * containers (upstairs, downstairs, doctor's house) beneath one root, drawing
+ * THREE marks under the immediate-parent grain for one physical building —
+ * and, once #2440's Q3 barrier forbade cross-building merges, three marks
+ * that could never blob back together at any zoom. Two other roots behave the
+ * same way (Tenaya and Tioga, 4 rooms and 2 marks each). Root grain takes the
+ * registry from 86 pin sites to 79.
+ */
+describe('mapBuildingKey — the ROOT grain the map draws on (kindred#2440)', () => {
+  const byCode = indexUnitsByCode(HALVED_HOUSE)
+
+  it('walks a room past its half all the way to the root', () => {
+    expect(mapBuildingKey(u({ code: 'up-r1', parent_code: 'upstairs' }), byCode)).toBe('house')
+    expect(mapBuildingKey(u({ code: 'down-r2', parent_code: 'downstairs' }), byCode)).toBe('house')
+  })
+
+  it('puts both halves of one house on ONE pin, which buildingKey deliberately does not', () => {
+    const upstairs = u({ code: 'upstairs', is_container: true, parent_code: 'house' })
+    const downstairs = u({ code: 'downstairs', is_container: true, parent_code: 'house' })
+    expect(mapBuildingKey(upstairs, byCode)).toBe(mapBuildingKey(downstairs, byCode))
+    // The contrast is the point: #2008's grain keeps them apart on purpose.
+    expect(buildingGroups(HALVED_HOUSE).has('house')).toBe(false)
+  })
+
+  it('walks a CONTAINER to its root too, so a combined half draws on the house', () => {
+    // Under the immediate-parent grain a drawn container was its own pin site.
+    // It is not any more: a combined half is still part of one building.
+    const upstairs = u({ code: 'upstairs', is_container: true, parent_code: 'house' })
+    expect(mapBuildingKey(upstairs, byCode)).toBe('house')
+  })
+
+  it('leaves a freestanding cabin as its own root', () => {
+    const solo = u({ code: 'solo' })
+    expect(mapBuildingKey(solo, indexUnitsByCode([solo]))).toBe('solo')
+  })
+
+  it('stops at a parent the payload does not carry, rather than returning nothing', () => {
+    const orphan = u({ code: 'orphan', parent_code: 'not-in-payload' })
+    expect(mapBuildingKey(orphan, indexUnitsByCode([orphan]))).toBe('orphan')
+  })
+
+  it('does not hang on a parent cycle, which the server guards but data may hold', () => {
+    // Same backstop as `coveredCodes` and `representingCodes` (#1899).
+    const cyclic = [
+      u({ code: 'a', is_container: true, parent_code: 'b' }),
+      u({ code: 'b', is_container: true, parent_code: 'a' }),
+    ]
+    expect(['a', 'b']).toContain(mapBuildingKey(cyclic[0]!, indexUnitsByCode(cyclic)))
   })
 })

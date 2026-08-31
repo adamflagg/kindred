@@ -9,10 +9,12 @@
  * overlap that leaves behind; the mark count is not the thing being minimised.
  *
  * ⚠️ Grouping is the CALLER's word, not this module's. `LodgingMap` passes
- * `MapUnit.buildingCode`, which `mapModel` resolves through `buildingKey` —
- * the grain kindred#2008 ruled. Deriving a second answer here is how the
- * product ends up with two different "buildings". An ABSENT group means one
- * shared building, so a caller with nothing to say keeps pure geometry.
+ * `MapUnit.buildingCode`, which `mapModel` resolves through `mapBuildingKey` —
+ * the ROOT of the unit's tree, and deliberately not #2008's lettability grain
+ * (that helper's doc carries the re-ruling and why). Deriving a third answer
+ * here is how the product ends up with more "buildings" than it has. An ABSENT
+ * group means one shared building, so a caller with nothing to say keeps pure
+ * geometry.
  *
  * WHAT THE RADIUS STILL DECIDES, now that it decides less. Since #2440 the
  * rooms of one building resolve to ONE point, so they are coincident and

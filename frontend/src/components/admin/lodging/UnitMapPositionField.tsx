@@ -1,13 +1,13 @@
 /**
  * Put this unit's pin where the cabin actually is.
  *
- * SINCE kindred#2440 THIS POSITIONS A BUILDING, not necessarily one room. The
- * map is a view of buildings: a room draws at its container's point and its
- * own coordinate is never read, so `LodgingUnitForm` offers this editor to
- * whichever unit is the pin SITE — a container, or a room with no parent — and
- * shows an inheriting room where its pin lives instead. Dragging here moves
- * every room under the building at once, which is the whole point of the
- * ruling: one thing to maintain per building rather than up to fourteen.
+ * SINCE kindred#2440 THIS POSITIONS A BUILDING, not one room. The map is a
+ * view of buildings: a unit draws at its ROOT's point and its own coordinate
+ * is never read, so `LodgingUnitForm` offers this editor only to a unit with
+ * no parent, and shows everything under one where its pin lives instead.
+ * Dragging here moves the whole tree at once — every half and every room —
+ * which is the point of the ruling: one thing to maintain per building rather
+ * than up to fourteen.
  *
  * `/manage/lodging` used to expose the position as two number inputs; PR #2024
  * deleted them and nothing replaced them, so correcting a coordinate meant

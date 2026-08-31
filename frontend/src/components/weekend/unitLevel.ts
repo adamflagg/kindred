@@ -180,6 +180,55 @@ export function buildingKey(
 }
 
 /**
+ * A unit's building FOR THE MAP — the ROOT of its tree, walked all the way up.
+ *
+ * ⚠️ DELIBERATELY NOT `buildingKey`, and the two sit together so the
+ * divergence is visible rather than discovered. kindred#2440 originally
+ * defaulted the map to the immediate parent precisely to avoid giving the
+ * product two "buildings"; the owner re-ruled it on 2026-08-30 because the two
+ * grains answer different questions and the single answer was wrong for one of
+ * them:
+ *
+ * - `buildingKey` answers LETTABILITY — which block staff hold at once.
+ *   Whole-building holds resolve half-level 13-17 times a year (#2008), so a
+ *   half IS a building there and walking to the root would merge two things
+ *   staff let separately.
+ * - This one answers GEOGRAPHY — where the door is. Halves of one house are
+ *   one structure at one place, so NOT walking to the root puts several marks
+ *   on one roof.
+ *
+ * The Health Center settled it: ten rooms under three sibling containers
+ * (upstairs, downstairs, doctor's house) beneath one root drew THREE marks for
+ * one physical building — and once #2440's Q3 barrier forbade cross-building
+ * merges, three marks that could never blob back together at any zoom. Tenaya
+ * and Tioga behave the same way. Root grain takes the 2026 registry from 86
+ * pin sites to 79.
+ *
+ * CONTAINERS WALK TOO, unlike under the superseded grain where a drawn
+ * container was its own pin site. A combined half is still part of one
+ * building, so it draws on the house.
+ *
+ * Stops at the first parent code the payload does not carry — a freestanding
+ * cabin is its own root, and an unresolvable relation must not yield nothing.
+ * Carries the same cycle backstop as `coveredCodes` (#1899).
+ */
+export function mapBuildingKey(
+  unit: LodgingUnitRow,
+  unitsByCode: ReadonlyMap<string, LodgingUnitRow>
+): string {
+  let current = unit
+  const seen = new Set<string>([unit.code])
+  for (;;) {
+    const parent = current.parent_code ?? ''
+    if (parent === '') return current.code
+    const next = unitsByCode.get(parent)
+    if (next === undefined || seen.has(next.code)) return current.code
+    seen.add(next.code)
+    current = next
+  }
+}
+
+/**
  * Every LEAF unit, grouped into its building (`buildingKey`).
  *
  * Containers are never members of a group — a container's OWN code is what
