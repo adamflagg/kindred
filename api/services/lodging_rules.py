@@ -1161,9 +1161,7 @@ def candidate_conflict(candidate: CandidateOccupancy, party_key: str) -> Candida
     return CandidateConflict(session_cm_id=candidate.session_cm_id, verdict=verdict, occupants=tuple(occupants))
 
 
-def attribution_conflicts(
-    candidates: Sequence[CandidateOccupancy], party_key: str
-) -> tuple[CandidateConflict, ...]:
+def attribution_conflicts(candidates: Sequence[CandidateOccupancy], party_key: str) -> tuple[CandidateConflict, ...]:
     """Every candidate weekend's verdict, in the order handed in.
 
     `party_key` is `compare_party_key`'s key for the party the queue row is

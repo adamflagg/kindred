@@ -287,7 +287,6 @@ class TestValueShapes:
         assert _verdicts(response) == {FC1: "free", FC2: "free"}
         assert _row(response).conflict_aware_suggested_session_cm_id == FC1
 
-
     @pytest.mark.asyncio
     async def test_a_placement_on_the_building_takes_the_rooms_inside_it(self) -> None:
         """The mirror image of the container-value case, and it needs the same

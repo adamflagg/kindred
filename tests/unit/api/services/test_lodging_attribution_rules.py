@@ -188,9 +188,7 @@ class TestWriteIns:
             MY_KEY,
         )
 
-        assert [(o.kind, o.label, o.leaf_code) for o in rows[0].occupants] == [
-            ("write_in", "Weekend staff", "maple-1")
-        ]
+        assert [(o.kind, o.label, o.leaf_code) for o in rows[0].occupants] == [("write_in", "Weekend staff", "maple-1")]
 
 
 class TestShareable:
@@ -237,7 +235,7 @@ class TestShareable:
 
 class TestOwnHouseholdIsNotAConflict:
     def test_this_households_own_placement_does_not_conflict(self) -> None:
-        """"Taken" means taken by SOMEBODY ELSE. A household already placed in
+        """ "Taken" means taken by SOMEBODY ELSE. A household already placed in
         the cabin it was written into is the opposite of evidence against."""
         verdicts = _verdicts(_candidate(FC1, _leaf("maple-1", placed=(MINE,))))
 

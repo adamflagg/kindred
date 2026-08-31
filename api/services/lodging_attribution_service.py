@@ -157,7 +157,7 @@ class LodgingAttributionService:
             # kindred#2332's registry-naming pair -- the same helper the roster
             # uses, so the value resolves to the unit the queue already labels
             # it with rather than to a second opinion.
-            names_task = tg.create_task(self.roster._housing_names())  # noqa: SLF001
+            names_task = tg.create_task(self.roster._housing_names())
 
         sessions = sessions_task.result()
         units = units_task.result()
@@ -176,17 +176,11 @@ class LodgingAttributionService:
             _i(row, "cm_id"): _household_display_name(row, _i(row, "cm_id")) for row in households.values()
         }
 
-        wanted = {
-            cm_id
-            for issue in issues
-            for cm_id in self._candidate_cm_ids(issue)
-            if cm_id in name_by_cm_id
-        }
+        wanted = {cm_id for issue in issues for cm_id in self._candidate_cm_ids(issue) if cm_id in name_by_cm_id}
         boards = await self._weekend_boards(year, sorted(wanted), units, label_by_household_cm_id)
 
         rows = [
-            self._row(issue, year, boards, resolver, session_cm_ids, name_by_cm_id, cm_id_by_pb_id)
-            for issue in issues
+            self._row(issue, year, boards, resolver, session_cm_ids, name_by_cm_id, cm_id_by_pb_id) for issue in issues
         ]
         return SessionAttributionConflictsResponse(year=year, rows=rows)
 
@@ -207,7 +201,7 @@ class LodgingAttributionService:
         for member in raw:
             try:
                 out.append(int(member))
-            except (TypeError, ValueError):
+            except TypeError, ValueError:
                 continue
         return out
 
@@ -258,7 +252,7 @@ class LodgingAttributionService:
         exist to catch; here it would report a written-into cabin as free and
         promote the wrong weekend.
         """
-        summaries = self.roster._build_units(units, availability, write_ins, merges)  # noqa: SLF001
+        summaries = self.roster._build_units(units, availability, write_ins, merges)
         index = _BathroomIndex.build(summaries)
         capacity_by_code = {unit.code: _effective_sleeps(unit, index) for unit in summaries}
         write_in_rows = write_in_rows_by_unit(write_ins)
@@ -266,9 +260,7 @@ class LodgingAttributionService:
         _resolve_family_availability(summaries, capacity_by_code, write_in_rows)
 
         available_by_code = {unit.code: unit.is_family_available for unit in summaries}
-        write_ins_by_code = {
-            unit.code: tuple(cover.occupant_name for cover in unit.write_ins) for unit in summaries
-        }
+        write_ins_by_code = {unit.code: tuple(cover.occupant_name for cover in unit.write_ins) for unit in summaries}
 
         placed_by_leaf: dict[str, list[PlacedParty]] = {}
         for row in placements:

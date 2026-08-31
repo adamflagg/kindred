@@ -2374,9 +2374,7 @@ class TestSessionAttributionConflictsEndpoint:
                             session_cm_id=1000001,
                             verdict="conflict",
                             occupants=[
-                                AttributionOccupant(
-                                    kind="placement", label="The Garcia Family", leaf_code="maple-1"
-                                )
+                                AttributionOccupant(kind="placement", label="The Garcia Family", leaf_code="maple-1")
                             ],
                         ),
                         AttributionCandidate(session_cm_id=1000002, verdict="free"),
