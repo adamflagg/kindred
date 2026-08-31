@@ -33,10 +33,9 @@ func NewWidgetsSync(app core.App, client *campminder.Client) *WidgetsSync {
     }
 }
 
-// Name returns the name of this sync service
-func (s *WidgetsSync) Name() string {
-    return "widgets"
-}
+// NOTE: no Name() method. The service's identity is the name it is REGISTERED
+// under in orchestrator.go, never a method on the type. Adding one fails
+// TestNoNameMethodRemainsInSyncPackage (kindred#2607).
 
 // Sync performs the widgets synchronization
 func (s *WidgetsSync) Sync(ctx context.Context) error {
@@ -206,6 +205,7 @@ for {
 ```
 
 **Page size constants:**
+
 - `SmallPageSize = 10` -- For endpoints with known limitations
 - `DefaultPageSize = 100` -- General purpose
 - `LargePageSize = 500` -- High-volume operations
@@ -215,6 +215,7 @@ for {
 After processing all CampMinder records, delete PocketBase records that no longer exist in CampMinder:
 
 ### Simple key orphan deletion (re-queries PocketBase):
+
 ```go
 s.DeleteOrphans("widgets",
     func(record *core.Record) (string, bool) {
@@ -231,6 +232,7 @@ s.DeleteOrphans("widgets",
 ```
 
 ### Preloaded orphan deletion (~200x faster for large tables):
+
 ```go
 s.DeleteOrphansFromPreloaded(existingRecords, "widget")
 ```
@@ -252,6 +254,7 @@ slog.Debug("Detailed info", "field", value)  // Only visible with LOG_LEVEL=DEBU
 Format: `2026-01-06T14:05:52Z [pocketbase] INFO message key=value...`
 
 Use structured key=value pairs, not formatted strings:
+
 ```go
 // CORRECT
 slog.Info("Fetched records", "count", len(records), "year", year)
@@ -265,13 +268,6 @@ slog.Info(fmt.Sprintf("Fetched %d records for year %d", len(records), year))
 Tests use table-driven style with the standard `testing` package:
 
 ```go
-func TestWidgetsSync_Name(t *testing.T) {
-    s := &WidgetsSync{}
-    if got := s.Name(); got != "widgets" {
-        t.Errorf("Name() = %q, want %q", got, "widgets")
-    }
-}
-
 func TestWidgetsSync_Transform(t *testing.T) {
     tests := []struct {
         name    string
@@ -307,13 +303,13 @@ func TestWidgetsSync_Transform(t *testing.T) {
 run.** kindred#2284 split the two kinds of failure a sync can count, because conflating them
 is how a sync that could not write to SQLite still handed the operator a green checkmark:
 
-| Counter | Means | Tolerance |
-|---------|-------|-----------|
-| `Stats.Errors` | **Infrastructure** — a local SQLite operation did not complete (`App.Save`, `App.Delete`, `App.Create`, `FindRecordsByFilter`) | **Zero. Any non-zero count fails the run.** There is no healthy run in which this is non-zero. |
-| `Stats.Rejected` | **Per-record transform** — one upstream record could not be turned into a PocketBase row, so it was counted and skipped | Warn-only for its first season. Surfaced on the Sync tab, never fatal. |
+| Counter          | Means                                                                                                                          | Tolerance                                                                                      |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------- |
+| `Stats.Errors`   | **Infrastructure** — a local SQLite operation did not complete (`App.Save`, `App.Delete`, `App.Create`, `FindRecordsByFilter`) | **Zero. Any non-zero count fails the run.** There is no healthy run in which this is non-zero. |
+| `Stats.Rejected` | **Per-record transform** — one upstream record could not be turned into a PocketBase row, so it was counted and skipped        | Warn-only for its first season. Surfaced on the Sync tab, never fatal.                         |
 
 The decision lives in one place, `applyCompletionStatus` in `orchestrator.go`, which all three
-normal completion paths route through. It sums `Errors` across the service *and* its
+normal completion paths route through. It sums `Errors` across the service _and_ its
 `SubStats`, so a combined sync cannot hide a failing sub-entity.
 
 **`Stats.Rejected` is wired, and the site list is machine-enforced — do not extend it by
@@ -324,24 +320,24 @@ orphan sweep would otherwise delete its existing row in the same run.
 There are exactly **30** per-record rejection sites, and two AST census tests in
 `pocketbase/sync/rejection_sites_test.go` hold that number in both directions:
 
-| Test | Fails when |
-|------|-----------|
-| `TestPerRecordRejectionsUseTheRejectedCounter` | a declared site slips back to `Stats.Errors` |
-| `TestNoUnexpectedSiteUsesTheRejectedCounter` | any `Rejected++` appears that is not on the declared list — **including one the census cannot classify** |
+| Test                                           | Fails when                                                                                               |
+| ---------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `TestPerRecordRejectionsUseTheRejectedCounter` | a declared site slips back to `Stats.Errors`                                                             |
+| `TestNoUnexpectedSiteUsesTheRejectedCounter`   | any `Rejected++` appears that is not on the declared list — **including one the census cannot classify** |
 
 So adding a site means adding it to `expectedRejectSites` with the reasoning, in the same
 change. Do not count the sites with `grep "Stats.Rejected++"`: that returns 32, because two
 hits are prose in the census tests' own comments and because `householdStats.Rejected++`
 contains the same substring.
 
-**Before you reclassify a site, check that its sweep is actually guarded.** The *rejection*
+**Before you reclassify a site, check that its sweep is actually guarded.** The _rejection_
 arm reaches `DeleteOrphans`, `DeleteOrphansGuarded` and `DeleteOrphansFromPreloaded` — every
 sweep that routes through `BaseSyncService`, which is the only thing that fills in
 `OrphanSweepGuard.Rejected`. Eight services (`camper_dietary`,
 `camper_transportation`, `household_demographics`, `normalize_geographic`,
 `quest_registrations`, `staff_skills`, `staff_applications`, `staff_vehicle_info`) do not
 embed `BaseSyncService` at all and build their own `OrphanSweepGuard` inside their own
-`deleteOrphans` (kindred#2280, kindred#2296). They get the *collapse* arm, but they leave
+`deleteOrphans` (kindred#2280, kindred#2296). They get the _collapse_ arm, but they leave
 `Rejected` at zero, so a site reclassified in one of those gets **no rejection protection and
 no warning**.
 
@@ -395,7 +391,6 @@ Key linter configurations from `.golangci.yml`:
 - **Exhaustive switches**: Required by `exhaustive` linter
 - **Misspell**: US locale, with `cancelled` allowed as an exception
 - **Build tags**: `pocketbase` tag required
-
 
 ## Year-scoped vs global collections
 
