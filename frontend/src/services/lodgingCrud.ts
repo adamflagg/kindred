@@ -315,6 +315,58 @@ export async function mapUnresolvedAlias(
 }
 
 /**
+ * The open cabin-weekend attribution queue.
+ *
+ * Filtered to `kind = "ambiguous_session"` — a household or person CampMinder
+ * enrolls in two or more weekends but can only carry one cabin value per year,
+ * so the sync cannot say which weekend the value belongs to. See
+ * `LodgingIngestIssueRecord.confirmed_session_cm_id`'s doc comment for the
+ * write contract `confirmSessionAttribution` below implements.
+ */
+export async function listAmbiguousSessionIssues(
+  year: number
+): Promise<LodgingIngestIssueRecord[]> {
+  return pb.collection(INGEST_ISSUES).getFullList<LodgingIngestIssueRecord>({
+    filter: `year = ${year} && kind = "ambiguous_session" && is_resolved = false`,
+    sort: '-last_seen,raw_value',
+  })
+}
+
+/**
+ * Pin a party's ambiguous cabin value to the weekend staff say it belongs to.
+ *
+ * ONE PATCH, both fields together — this is the whole contract, and it is
+ * not optional. `is_resolved`'s false -> true transition is what fires
+ * `replayOnResolve` (`pocketbase/lodging/hooks.go`) server-side; a caller
+ * that wrote `confirmed_session_cm_id` in an update and `is_resolved`
+ * separately would risk the two landing as different requests, and the
+ * confirmation would sit unreplayed until the next scheduled sync.
+ *
+ * `sessionCmId` MUST be one of the row's own `candidate_session_cm_ids` — the
+ * backend resolves it against the party's candidate weekends and refuses a
+ * miss, leaving the row unplaced and re-opened rather than writing anywhere
+ * else. The confirm UI only ever offers a row's own candidates as choices, so
+ * this is a defence-in-depth check, not the UI's only guard.
+ *
+ * CONFIRMATION IS ONE-TIME. There is deliberately no re-confirm / change-
+ * weekend function here: the placement `replayOnResolve` writes is a NEW
+ * `lodging_assignments` row, not an update to whatever the party's confirmed
+ * weekend used to be, so re-confirming a different weekend would put one
+ * household in two cabins rather than moving it. Whether that may ever
+ * delete a `staff_touched` row is an open owner decision (kindred#2648) — see
+ * the queue UI's own doc comment.
+ */
+export async function confirmSessionAttribution(
+  queueId: string,
+  sessionCmId: number
+): Promise<LodgingIngestIssueRecord> {
+  return pb.collection(INGEST_ISSUES).update<LodgingIngestIssueRecord>(queueId, {
+    confirmed_session_cm_id: sessionCmId,
+    is_resolved: true,
+  })
+}
+
+/**
  * Resolve a queue row without mapping it — e.g. a note staff typed into the
  * cabin field, which is not a cabin name at all.
  *
