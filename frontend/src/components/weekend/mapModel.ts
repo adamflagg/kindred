@@ -235,22 +235,48 @@ function unitRoomCount(unit: LodgingUnitRow, units: LodgingUnitRow[]): number {
  * the group on the half instead would reintroduce the split this issue exists
  * to remove.
  */
+/**
+ * Outermost first: the highest positioned ancestor wins, and that is
+ * deliberately an override of the room's own real value rather than a
+ * rescue of a missing one. Shared by `pinFor` and `pinSite` so the two can
+ * never name a different unit for the same chain.
+ */
+function sitedAncestor(chain: LodgingUnitRow[]): LodgingUnitRow | null {
+  for (let i = chain.length - 1; i >= 0; i -= 1) {
+    const candidate = chain[i]
+    if (candidate !== undefined && hasCoordinates(candidate)) return candidate
+  }
+  return null
+}
+
+/**
+ * THE WRITE TARGET for a session-map pin drag (kindred#2396).
+ *
+ * `pinFor` below resolves a mark's screen position off exactly this unit's
+ * `map_x`/`map_y` — this exposes the SAME candidate rather than re-deriving
+ * it, which is what stops a drag from ever writing to a unit whose
+ * coordinate the map is not actually reading. Mirrors the admin panel's
+ * `pinAncestor` (`components/admin/lodging/unitTree.ts`), in codes rather
+ * than ids — that one answers "which unit should get the pin EDITOR", this
+ * one answers "which unit does THIS drawn unit's pin currently belong to",
+ * but both walk the same outermost-positioned-ancestor rule.
+ *
+ * `null` when nothing in the chain is positioned — the drawn unit is in
+ * `unpositionedUnits` and never reaches a mark to drag in the first place.
+ */
+export function pinSite(unit: LodgingUnitRow, units: LodgingUnitRow[]): LodgingUnitRow | null {
+  return sitedAncestor(mapBuildingChain(unit, indexUnitsByCode(units)))
+}
+
 function pinFor(
   unit: LodgingUnitRow,
   units: LodgingUnitRow[]
 ): { buildingCode: string; x: number; y: number } | null {
   const chain = mapBuildingChain(unit, indexUnitsByCode(units))
   const buildingCode = chain[chain.length - 1]?.code ?? unit.code
-  // Outermost first: the highest positioned ancestor wins, and that is
-  // deliberately an override of the room's own real value rather than a
-  // rescue of a missing one.
-  for (let i = chain.length - 1; i >= 0; i -= 1) {
-    const candidate = chain[i]
-    if (candidate !== undefined && hasCoordinates(candidate)) {
-      return { buildingCode, x: candidate.map_x ?? 0, y: candidate.map_y ?? 0 }
-    }
-  }
-  return null
+  const site = sitedAncestor(chain)
+  if (site === null) return null
+  return { buildingCode, x: site.map_x ?? 0, y: site.map_y ?? 0 }
 }
 
 export function buildMapModel(parties: RosterPartyRow[], units: LodgingUnitRow[]): MapModel {

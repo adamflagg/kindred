@@ -52,10 +52,14 @@
  */
 import { Info } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import toast from 'react-hot-toast'
 
 import { useDismissOnDeadSpace } from '../../hooks/useDismissOnDeadSpace'
 import { usePanelParty } from '../../hooks/usePanelParty'
+import { updateLodgingUnitPositions } from '../../services/lodgingCrud'
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
+import { queryClient } from '../../utils/queryClient'
+import { invalidateLodgingRegistryQueries } from '../../utils/queryKeys'
 import { wholeBuildingHolders } from './boardLayout'
 import { FamilyCard } from './FamilyCard'
 import { FamilyDetailsPanel } from './FamilyDetailsPanel'
@@ -64,7 +68,7 @@ import { indexUnitsByCode, resolvePartyUnit } from './rosterAttention'
 import { MapBaseLayer } from './MapBaseLayer'
 import { clusterByProximity, type Cluster } from './mapClustering'
 import { BATHHOUSE_BLUE } from './mapColors'
-import { buildMapModel, type MapUnit } from './mapModel'
+import { buildMapModel, pinSite, type MapUnit } from './mapModel'
 import { CONSENT_AMBER, CONSENT_PHRASE, MapUnitPopover } from './MapUnitPopover'
 import { partyKey } from './partyKey'
 import {
@@ -73,10 +77,62 @@ import {
   IDENTITY_VIEW,
   MAP_ASPECT,
   screenPosition,
+  screenToNormalized,
   type Viewport,
   zoomAt,
 } from './mapViewport'
 import { resolveRingPrecedence } from './ringPrecedence'
+
+/**
+ * Four decimals for a stored pin — one part in 10,000 against a 3300px
+ * render, so roughly a third of a pixel. Same precision `UnitMapPositionField`
+ * uses for the admin editor's own pin, kept here as an independent constant
+ * rather than a shared import: that field is not part of this PR's scope
+ * (kindred#2396), and re-deriving four lines of rounding here is cheaper and
+ * safer than reaching into a working, heavily-documented file to extract one.
+ */
+const PIN_PRECISION = 4
+
+function roundPin(value: number): number {
+  return Number(value.toFixed(PIN_PRECISION))
+}
+
+/**
+ * (0,0) IS THE SENTINEL for "never placed" (`hasCoordinates`, `mapModel.ts`)
+ * — the one pair a drag may never write, or the building would UNPLACE
+ * itself through the very gesture meant to reposition it. Mirrors
+ * `UnitMapPositionField`'s `offOrigin` for the same reason stated there: only
+ * the exact corner is special-cased, and a ten-thousandth of the map is a
+ * third of a pixel at full render, so nudging off it is invisible.
+ */
+function offOriginPin(point: { x: number; y: number }): { x: number; y: number } {
+  if (point.x === 0 && point.y === 0) {
+    return { x: 10 ** -PIN_PRECISION, y: 10 ** -PIN_PRECISION }
+  }
+  return point
+}
+
+/** One accumulated, not-yet-saved pin move — keyed by `buildingCode` so a
+ *  second drag of the same building during one edit session overwrites the
+ *  first rather than queuing a second write to the same row. */
+interface PinDraft {
+  targetUnitId: string
+  x: number
+  y: number
+  /** Stamped fresh by `nextPinDraftRev()` the moment a NEW drag gesture
+   *  creates this entry (kept across that gesture's own later moves). Lets
+   *  the flush's failure path (below) delete only the exact entry IT sent —
+   *  never a later redrag of the SAME building that overwrote this one in
+   *  `pinDrafts` while the write was still in flight. A `buildingCode`-only
+   *  key cannot tell those apart, because both share the same map key. */
+  rev: number
+}
+
+let pinDraftRevCounter = 0
+function nextPinDraftRev(): number {
+  pinDraftRevCounter += 1
+  return pinDraftRevCounter
+}
 
 /** Below this a pointer gesture is a click, above it a pan. Capturing the
  *  pointer any earlier retargets the click away from the mark under it. */
@@ -194,6 +250,166 @@ export function LodgingMap({ parties, units, year, sessionCmId = 0 }: LodgingMap
   // tree the moment the user switches tabs mid-hover.
   useEffect(() => cancelDwell, [cancelDwell])
 
+  // ── Pin dragging (kindred#2396) ──────────────────────────────────────────
+  //
+  // The gate. Off by default, same as `UnitMapPositionField`'s `editing`.
+  // Marks gain drag handlers, and lose their click-to-peek and hover-dwell
+  // handlers, ONLY while this is true — with it off, a mark carries no drag
+  // handlers at all (spread conditionally below, not behind an early return
+  // inside them), so a stray pointer gesture on a mark is structurally
+  // incapable of moving a pin.
+  //
+  // The canvas's OWN pan/zoom handlers, below, are NOT conditioned on this
+  // flag (kindred#2396 follow-up, owner request 2026-08-31: "we need to be
+  // able to scroll in to zoom while in edit mode, or grab the background to
+  // drag still"). A drag that starts on bare canvas pans in both modes, and a
+  // drag that starts on a mark moves that mark in both modes — a mark is the
+  // one that calls `event.stopPropagation()` on its own `onPointerDown`, so
+  // the two gestures never contend for the same drag record regardless of
+  // `editingPins`. The original #2396 ruling froze the canvas outright; this
+  // reopens exactly the two gestures the owner named and nothing else — see
+  // `onDoubleClick` below for the one gesture deliberately left frozen.
+  const [editingPins, setEditingPins] = useState(false)
+  // Every move made during ONE edit session, keyed by `buildingCode` so a
+  // second drag of the same building overwrites the first rather than
+  // queuing a second write to the same row. NOT saved on pointer-up — see
+  // the flush effect below for why exiting edit mode is the commit point
+  // instead, which is the one place this surface deliberately departs from
+  // `UnitMapPositionField`'s save-on-interaction shape.
+  const [pinDrafts, setPinDrafts] = useState<Map<string, PinDraft>>(new Map())
+  // THE POINTER THAT OWNS THE CURRENT DRAG, not a bare boolean — same
+  // reasoning as `UnitMapPositionField`'s `draggingRef`: a second finger
+  // landing mid-drag, or a stray pointerup from a pointer that never pressed
+  // here, must not be able to move or end someone else's gesture.
+  // `startX`/`startY`/`moved` gate draft creation on `DRAG_THRESHOLD_PX` —
+  // the same threshold the canvas pan already uses — so a stray click that
+  // never leaves the mark does not write a new position (CodeRabbit finding
+  // on kindred#2640: the offset was previously bounded only by the mark's
+  // own radius, 8-19px, a real coordinate change at `PIN_PRECISION`). `rev`
+  // is this gesture's `PinDraft.rev`, stamped once at the point the draft is
+  // actually created and reused for every later move of the SAME gesture.
+  const pinDragRef = useRef<{
+    pointerId: number
+    buildingCode: string
+    targetUnitId: string
+    rev: number
+    startX: number
+    startY: number
+    moved: boolean
+  } | null>(null)
+
+  // Mirrored into a ref so the flush effect's cleanup — which runs on the
+  // NEXT render after a state change, or on unmount — reads the drafts as of
+  // the moment editing actually stopped, not whatever was captured when the
+  // effect was set up. Same technique `LodgingMap` already uses for `size`
+  // below, and for the same reason: writing a ref during render is what
+  // `react-hooks/refs` exists to catch.
+  const pinDraftsRef = useRef(pinDrafts)
+  useEffect(() => {
+    pinDraftsRef.current = pinDrafts
+  }, [pinDrafts])
+
+  // THE FLUSH. Registered only while `editingPins` is true, so its cleanup —
+  // which React runs the moment `editingPins` next changes, AND on unmount —
+  // fires exactly once per edit session, on the transition OUT of it. This is
+  // what the ruling's "an exit must flush" covers for a navigation away, a
+  // tab change or an unmount while Edit pins is on: `WeekendRosterPage`
+  // mounts this component inside a React 19 `<Activity>` that tears effects
+  // down on going hidden, so leaving the Map tab runs this cleanup exactly
+  // like flipping the checkbox off does.
+  useEffect(() => {
+    if (!editingPins) return
+    return () => {
+      const drafts = pinDraftsRef.current
+      if (drafts.size === 0) return
+      // Captured BEFORE the await — not re-read off `pinDraftsRef` once the
+      // write resolves. A second edit session can open and drag a DIFFERENT
+      // building, or REDRAG THE SAME ONE, while this write is still in
+      // flight (its own uncheck fires a later, independent flush of this
+      // same effect); only the exact entries THIS flush actually sent may
+      // ever be touched below, or that session's still-open draft would be
+      // wiped by a clear that has nothing to do with it. `rev`, not just the
+      // `buildingCode` key, is what makes that precise: a redrag of the same
+      // building overwrites the map entry under the identical key, so a
+      // key-only delete below would erase the NEWER draft too (CodeRabbit
+      // finding on kindred#2640).
+      const flushed = Array.from(drafts.entries()).map(
+        ([code, draft]) => [code, draft.rev] as const
+      )
+      // ROUNDED AND OFF-ORIGIN ONLY HERE, at the write — never during the
+      // live drag. The draft driving the mark's on-screen position stays at
+      // full pointer precision so the pin tracks the cursor exactly; only
+      // what actually reaches PocketBase is rounded to `PIN_PRECISION` and
+      // nudged off the exact (0,0) sentinel, mirroring `UnitMapPositionField`.
+      const updates = Array.from(drafts.values()).map((draft) => {
+        const point = offOriginPin({ x: roundPin(draft.x), y: roundPin(draft.y) })
+        return { id: draft.targetUnitId, map_x: point.x, map_y: point.y }
+      })
+      void updateLodgingUnitPositions(updates).then((landed) => {
+        if (landed < updates.length) {
+          toast.error(
+            updates.length === 1
+              ? 'Failed to save the map pin.'
+              : `Saved ${String(landed)} of ${String(updates.length)} map pins.`
+          )
+          // A failure (or partial failure) is the one case the draft must
+          // NOT keep speaking for the server — clear just what THIS flush
+          // sent so the mark falls back to `mapUnit.x/y`, which the refetch
+          // below is about to confirm is where the write actually landed
+          // (`UnitMapPositionField`'s "the stored position goes back" idiom).
+          setPinDrafts((current) => {
+            const next = new Map(current)
+            // Only delete an entry that is STILL the one this flush sent —
+            // if a redrag of the same building has since overwritten it, its
+            // `rev` no longer matches and this leaves it alone.
+            for (const [code, rev] of flushed) {
+              if (next.get(code)?.rev === rev) next.delete(code)
+            }
+            return next
+          })
+        }
+        // On a clean write the draft is left in place, on purpose — it IS
+        // the server's value now, same as `UnitMapPositionField`'s own
+        // `saved` state never reverting to a prop read after a successful
+        // commit. `invalidateQueries` only marks the roster query stale and
+        // starts a refetch in the background; it does not wait for it. If
+        // this cleared the draft here too, the mark would fall back to
+        // `mapUnit.x/y` from the STILL-STALE `units` prop for that
+        // round-trip and visibly snap back to the pre-drag position before
+        // snapping forward again once the refetch lands — reading to staff
+        // as a failed save when it was not one.
+        invalidateLodgingRegistryQueries(queryClient)
+      })
+    }
+  }, [editingPins])
+
+  // RECONCILE a committed draft against a landed refetch. The flush above
+  // deliberately leaves a successful write's draft in place (so the mark
+  // does not snap back to a stale prop while the refetch is in flight — see
+  // that effect's own comment), but nothing then retires it once `units`
+  // actually agrees. Left alone, EVERY draft ever successfully dragged in
+  // this mount would keep riding along on every later flush, forever —
+  // harmless (an idempotent overwrite of the same value) but pointless, and
+  // it grows without bound on a long-lived tab. Runs off `model.units`, the
+  // exact values the mark render below reads, not `units` directly.
+  useEffect(() => {
+    setPinDrafts((current) => {
+      if (current.size === 0) return current
+      let changed = false
+      const next = new Map(current)
+      for (const mapUnit of model.units) {
+        const draft = next.get(mapUnit.buildingCode)
+        if (!draft) continue
+        const landedAt = offOriginPin({ x: roundPin(draft.x), y: roundPin(draft.y) })
+        if (roundPin(mapUnit.x) === landedAt.x && roundPin(mapUnit.y) === landedAt.y) {
+          next.delete(mapUnit.buildingCode)
+          changed = true
+        }
+      }
+      return changed ? next : current
+    })
+  }, [model.units])
+
   // Measure the canvas so projection happens in real pixels. ResizeObserver
   // rather than a window listener: the tab can be revealed at any size.
   useEffect(() => {
@@ -283,6 +499,15 @@ export function LodgingMap({ parties, units, year, sessionCmId = 0 }: LodgingMap
     if (!node) return
     const handleWheel = (event: WheelEvent) => {
       event.preventDefault()
+      // ZOOM STAYS LIVE WHILE EDITING (kindred#2396 follow-up, owner request
+      // 2026-08-31: "we need to be able to scroll in to zoom while in edit
+      // mode"). The original #2396 ruling froze this too, on the theory that
+      // any drag gesture in edit mode could only mean "move a pin". The
+      // wheel is a different gesture entirely and never competes with a pin
+      // drag for the same pointer, so there was never a real conflict here
+      // to guard against — only an over-broad freeze. `preventDefault` above
+      // still runs unconditionally regardless, so the page can never scroll
+      // under the map.
       closePeek()
       const rect = node.getBoundingClientRect()
       const { width: currentWidth, height: currentHeight } = sizeRef.current
@@ -316,9 +541,11 @@ export function LodgingMap({ parties, units, year, sessionCmId = 0 }: LodgingMap
       node.removeEventListener('wheel', handleWheel)
       window.removeEventListener('keydown', handleKeyDown)
     }
-    // `closePeek` is a stable useCallback over a stable `cancelDwell`, so this
-    // listener is still attached exactly once — the dependency documents the
-    // reference rather than reattaching on every render.
+    // `closePeek` is a stable useCallback over a stable `cancelDwell`, so
+    // this dependency alone attaches the listener exactly once. `handleWheel`
+    // no longer closes over `editingPins` (kindred#2396 follow-up above) —
+    // zoom behaves identically in both modes now — so it is deliberately not
+    // a dependency here.
   }, [closePeek])
 
   // FILTERED BEFORE CLUSTERING, and that ordering is the point: hiding empty
@@ -328,7 +555,15 @@ export function LodgingMap({ parties, units, year, sessionCmId = 0 }: LodgingMap
     ? model.units
     : model.units.filter((mapUnit) => mapUnit.parties.length > 0)
   const placed = drawn.map((mapUnit) => {
-    const base = basePosition(mapUnit.x, mapUnit.y, width, height)
+    // A PENDING DRAG WINS OVER THE MODEL'S OWN POSITION (kindred#2396). The
+    // draft is normalized 0-1 map space, same as `mapUnit.x`/`y`, so it goes
+    // through the identical `basePosition`/`screenPosition` pipeline below —
+    // there is no second rendering path to keep in step with this one.
+    // Applied whether or not `editingPins` is still true: a flush in flight
+    // after the checkbox is switched off must keep showing where the pin was
+    // dropped, not snap it back until the write actually resolves.
+    const draft = pinDrafts.get(mapUnit.buildingCode)
+    const base = basePosition(draft?.x ?? mapUnit.x, draft?.y ?? mapUnit.y, width, height)
     const screen = screenPosition(base, view)
     // GROUPED BY BUILDING (kindred#2440). Two different buildings a few pixels
     // apart must never draw as one mark — proximity alone merged four such
@@ -457,7 +692,17 @@ export function LodgingMap({ parties, units, year, sessionCmId = 0 }: LodgingMap
             // there is deliberately no double-click-to-zoom on a node — a
             // pin's one job is to say what is in it. The same `closest` guard
             // as the background dismiss is what keeps the two apart.
+            //
+            // STILL SUSPENDED WHILE EDITING, and this is a deliberate scope
+            // boundary now rather than a leftover of the old blanket freeze
+            // (kindred#2396 follow-up, owner request 2026-08-31 named only
+            // wheel-zoom and background-drag-pan — a discrete reset was not
+            // asked for, and snapping the whole view back to identity
+            // mid-edit is a bigger, more disorienting jump than either of
+            // those two continuous gestures). Revisit only on a fresh
+            // request, not by inference from the other two reopening.
             onDoubleClick={(event) => {
+              if (editingPins) return
               const target = event.target as HTMLElement
               if (
                 target.closest('[data-testid="map-mark"]') ||
@@ -467,6 +712,15 @@ export function LodgingMap({ parties, units, year, sessionCmId = 0 }: LodgingMap
               }
               resetView()
             }}
+            // PAN/ZOOM POINTER HANDLERS, ALWAYS PRESENT — no longer
+            // conditioned on `editingPins` (kindred#2396 follow-up above).
+            // The discriminator is the TARGET a gesture starts on, not a
+            // mode flag: a mark's own `onPointerDown` (below) calls
+            // `event.stopPropagation()` before it ever reaches here, so a
+            // press that starts ON a pin never sets `dragRef` regardless of
+            // `editingPins` — only a press on bare canvas does, and that
+            // press pans exactly as it always has, in both modes.
+            //
             // Replacing the record on a new press is what makes a DROPPED
             // gesture self-heal: if an up event is ever lost, the next press
             // must be able to take over rather than strand the map forever.
@@ -481,7 +735,7 @@ export function LodgingMap({ parties, units, year, sessionCmId = 0 }: LodgingMap
             // CAPTURE is the discriminator, not `active` alone: held means the
             // gesture is live and the new pointer is a bystander; absent means
             // the record is stale and replacing it is the self-heal.
-            onPointerDown={(event) => {
+            onPointerDown={(event: React.PointerEvent<HTMLDivElement>) => {
               const live = dragRef.current
               if (live?.active && event.currentTarget.hasPointerCapture(live.id)) return
               dragRef.current = {
@@ -493,12 +747,35 @@ export function LodgingMap({ parties, units, year, sessionCmId = 0 }: LodgingMap
                 active: false,
               }
             }}
-            onPointerMove={(event) => {
+            onPointerMove={(event: React.PointerEvent<HTMLDivElement>) => {
+              // THE STUCK-DRAG RECOVERY, folded into this handler rather than
+              // kept as `editingPins`'s own separate branch (both live here
+              // unconditionally now — see the note above). A mark's own
+              // `onPointerMove` carries the identical `buttons === 0` guard,
+              // but a mark is a 16-38px target — if `setPointerCapture`
+              // failed (or is unsupported) and the release lands anywhere
+              // else, no move ever reaches that mark again and `pinDragRef`
+              // is stuck, blocking every future drag until reload. This
+              // canvas-sized listener is the same recovery at the size
+              // `UnitMapPositionField` already gets it at for free by
+              // putting its OWN drag handlers on its canvas rather than a
+              // small mark. A no-op outside edit mode: `pinDragRef.current`
+              // is only ever set inside a mark's own edit-mode-only
+              // `onPointerDown`.
+              const pinDrag = pinDragRef.current
+              if (pinDrag && pinDrag.pointerId === event.pointerId && event.buttons === 0) {
+                pinDragRef.current = null
+              }
               const drag = dragRef.current
               // Only the pointer that STARTED the gesture may drive it. Without
               // this, a second touch point (the only touch path, since the
               // canvas sets `touch-none`) moves the map against the other
-              // finger's baseline and the pan jitters.
+              // finger's baseline and the pan jitters. This also covers a pin
+              // drag's own moves as they bubble up from the mark (marks do
+              // NOT stop propagation on `onPointerMove`, only on
+              // `onPointerDown`): `dragRef` was never set for that pointer,
+              // since the mark's `onPointerDown` stopped its own propagation
+              // before this handler could see it, so this returns here too.
               if (!drag || event.pointerId !== drag.id) return
               const dx = event.clientX - drag.x
               const dy = event.clientY - drag.y
@@ -519,7 +796,7 @@ export function LodgingMap({ parties, units, year, sessionCmId = 0 }: LodgingMap
               // must go or a stale baseline outlives the gesture.
               dragRef.current = null
             }}
-            onPointerUp={(event) => {
+            onPointerUp={(event: React.PointerEvent<HTMLDivElement>) => {
               const drag = dragRef.current
               if (!drag || event.pointerId !== drag.id) return
               if (drag.active && event.currentTarget.hasPointerCapture(drag.id)) {
@@ -641,37 +918,174 @@ export function LodgingMap({ parties, units, year, sessionCmId = 0 }: LodgingMap
                   key={key}
                   data-testid="map-mark"
                   title={flagged > 0 ? `${summary} — ${CONSENT_PHRASE}` : summary}
-                  onClick={(event) => {
-                    event.stopPropagation()
-                    // A click PINS, and supersedes any dwell in flight —
-                    // otherwise the timer fires later and reopens what the
-                    // click just toggled shut.
-                    cancelDwell()
-                    setDwellKey(null)
-                    setPinnedKey((current) => (current === key ? null : key))
-                  }}
+                  // THE PEEK IS SUPPRESSED WHILE EDITING (kindred#2396
+                  // ruling): a click no longer pins it and a dwell no longer
+                  // opens it, so it cannot follow the drag and cover the
+                  // very label the drag exists to uncover. `undefined`, not a
+                  // no-op function — an absent handler is what keeps the mark
+                  // honest about not being a control here, same reasoning as
+                  // this mark's own conditional drag handlers below.
+                  onClick={
+                    editingPins
+                      ? undefined
+                      : (event) => {
+                          event.stopPropagation()
+                          // A click PINS, and supersedes any dwell in flight —
+                          // otherwise the timer fires later and reopens what the
+                          // click just toggled shut.
+                          cancelDwell()
+                          setDwellKey(null)
+                          setPinnedKey((current) => (current === key ? null : key))
+                        }
+                  }
                   // MOUSE ONLY. A touch pointerenter arrives with the tap
                   // itself, so honouring it would open on dwell and then
                   // immediately toggle shut on the click that follows.
-                  onPointerEnter={(event) => {
-                    if (event.pointerType !== 'mouse') return
-                    cancelDwell()
-                    dwellTimer.current = setTimeout(() => {
-                      setDwellKey(key)
-                    }, DWELL_MS)
-                  }}
-                  onPointerLeave={(event) => {
-                    if (event.pointerType !== 'mouse') return
-                    cancelDwell()
-                    // Only ever retracts the peek this mark itself borrowed —
-                    // a pinned one belongs to the user, not to the cursor.
-                    setDwellKey((current) => (current === key ? null : current))
-                  }}
+                  onPointerEnter={
+                    editingPins
+                      ? undefined
+                      : (event) => {
+                          if (event.pointerType !== 'mouse') return
+                          cancelDwell()
+                          dwellTimer.current = setTimeout(() => {
+                            setDwellKey(key)
+                          }, DWELL_MS)
+                        }
+                  }
+                  onPointerLeave={
+                    editingPins
+                      ? undefined
+                      : (event) => {
+                          if (event.pointerType !== 'mouse') return
+                          cancelDwell()
+                          // Only ever retracts the peek this mark itself borrowed —
+                          // a pinned one belongs to the user, not to the cursor.
+                          setDwellKey((current) => (current === key ? null : current))
+                        }
+                  }
+                  // THE DRAG ITSELF, spread conditionally — present ONLY
+                  // while editing, so a mark is incapable of moving anything
+                  // the rest of the time. (The canvas's OWN pan/zoom handlers
+                  // are unconditional now — kindred#2396 follow-up, see the
+                  // `editingPins` gate's own comment above — but a mark's
+                  // pin-drag handlers stay gated: nothing should move a pin
+                  // outside an explicit edit session.) `pinSite` resolves the
+                  // WRITE TARGET once per gesture at pointerdown: every
+                  // member of a cluster shares one `buildingCode`
+                  // (mapClustering.ts's group barrier), so `first.unit`
+                  // speaks for the whole mark.
+                  {...(editingPins
+                    ? {
+                        onPointerDown: (event: React.PointerEvent<HTMLDivElement>) => {
+                          // STOPPED FIRST, unconditionally — a press starting
+                          // ON a mark must never fall through to the canvas's
+                          // own onPointerDown, whatever button it is or
+                          // whatever this handler decides below. Previously
+                          // this ran AFTER the early-return guards, so a
+                          // non-primary button (or a second pointer landing
+                          // while one drag was already active) skipped
+                          // `stopPropagation()` entirely and let that same
+                          // press bubble up and arm the canvas's pan — the
+                          // exact contradiction the comment on the
+                          // `editingPins` gate above claims never happens.
+                          event.stopPropagation()
+                          if (event.button !== 0) return
+                          if (pinDragRef.current !== null) return
+                          const site = pinSite(first.unit, units)
+                          // Unreachable while `hasCoordinates` gates which
+                          // units ever reach a mark at all — kept as a guard
+                          // on a state this file cannot prove impossible from
+                          // here, not as a state believed reachable.
+                          if (site === null) return
+                          try {
+                            event.currentTarget.setPointerCapture(event.pointerId)
+                          } catch {
+                            // Unsupported, or the pointer is already gone —
+                            // same non-fatal case `UnitMapPositionField`
+                            // documents at its own capture call.
+                          }
+                          // NO DRAFT YET — only the down point and the write
+                          // target are recorded. Creating one here is what let
+                          // a stray click (down+up with no movement) persist
+                          // a new position bounded only by the mark's own
+                          // radius (CodeRabbit finding on kindred#2640); the
+                          // first draft is written in `onPointerMove` below,
+                          // once movement clears `DRAG_THRESHOLD_PX`.
+                          pinDragRef.current = {
+                            pointerId: event.pointerId,
+                            buildingCode: first.buildingCode,
+                            targetUnitId: site.unit_id,
+                            rev: nextPinDraftRev(),
+                            startX: event.clientX,
+                            startY: event.clientY,
+                            moved: false,
+                          }
+                        },
+                        onPointerMove: (event: React.PointerEvent<HTMLDivElement>) => {
+                          const drag = pinDragRef.current
+                          if (!drag || drag.pointerId !== event.pointerId) return
+                          // No button held: the release happened somewhere
+                          // this mark never saw (capture unavailable), so end
+                          // the gesture here rather than keep following an
+                          // unpressed cursor. Same guard UnitMapPositionField
+                          // carries at its own onPointerMove.
+                          if (event.buttons === 0) {
+                            pinDragRef.current = null
+                            return
+                          }
+                          if (!drag.moved) {
+                            const dx = event.clientX - drag.startX
+                            const dy = event.clientY - drag.startY
+                            // Same L1 threshold, same reasoning, as the
+                            // canvas's own pan-vs-click discrimination above.
+                            if (Math.abs(dx) + Math.abs(dy) <= DRAG_THRESHOLD_PX) return
+                            drag.moved = true
+                          }
+                          const rect = canvasRef.current?.getBoundingClientRect()
+                          if (!rect) return
+                          const point = screenToNormalized(
+                            event.clientX - rect.left,
+                            event.clientY - rect.top,
+                            view,
+                            width,
+                            height
+                          )
+                          setPinDrafts((current) => {
+                            const next = new Map(current)
+                            next.set(drag.buildingCode, {
+                              targetUnitId: drag.targetUnitId,
+                              x: point.x,
+                              y: point.y,
+                              rev: drag.rev,
+                            })
+                            return next
+                          })
+                        },
+                        onPointerUp: (event: React.PointerEvent<HTMLDivElement>) => {
+                          const drag = pinDragRef.current
+                          if (!drag || drag.pointerId !== event.pointerId) return
+                          pinDragRef.current = null
+                        },
+                        // The browser took the gesture away. The draft this
+                        // gesture last wrote STAYS — this only releases the
+                        // pointer's OWNERSHIP of the drag, so a later drag can
+                        // pick the same building back up; the accumulated
+                        // move is not lost the way a single-value `abandon()`
+                        // would lose it in `UnitMapPositionField`.
+                        onPointerCancel: (event: React.PointerEvent<HTMLDivElement>) => {
+                          const drag = pinDragRef.current
+                          if (!drag || drag.pointerId !== event.pointerId) return
+                          pinDragRef.current = null
+                        },
+                      }
+                    : {})}
                   style={{
                     left: cluster.x,
                     top: cluster.y,
                   }}
-                  className="absolute -translate-x-1/2 -translate-y-1/2 cursor-pointer"
+                  className={`absolute -translate-x-1/2 -translate-y-1/2 ${
+                    editingPins ? 'cursor-grab touch-none' : 'cursor-pointer'
+                  }`}
                 >
                   <span
                     style={{
@@ -763,7 +1177,11 @@ export function LodgingMap({ parties, units, year, sessionCmId = 0 }: LodgingMap
                 controls' })`). No wrapping div around the label either; the
                 label already declares the same `inline-flex items-center
                 gap-1.5` a wrapper would add. */}
-            <div role="group" aria-label="Map controls">
+            <div
+              role="group"
+              aria-label="Map controls"
+              className="flex flex-wrap items-center gap-x-4 gap-y-1.5"
+            >
               <label className="inline-flex cursor-pointer items-center gap-1.5">
                 <input
                   type="checkbox"
@@ -778,6 +1196,30 @@ export function LodgingMap({ parties, units, year, sessionCmId = 0 }: LodgingMap
                 />
                 Empty rooms
               </label>
+              {/* SIBLING OF EMPTY ROOMS, per the owner ruling on kindred#2396
+                  — the same `role="group"` this one already carries a test
+                  handle for, no new one needed. Toggling either direction
+                  calls `closePeek()`, mirroring Empty rooms' own onChange:
+                  turning editing ON must not leave a peek open to follow the
+                  drag over the label it exists to uncover, and turning it
+                  OFF is the flush point — see the effect above — where a peek
+                  from BEFORE editing started has long since closed anyway. */}
+              <label className="inline-flex cursor-pointer items-center gap-1.5">
+                <input
+                  type="checkbox"
+                  checked={editingPins}
+                  onChange={(event) => {
+                    setEditingPins(event.target.checked)
+                    closePeek()
+                  }}
+                />
+                Edit pins
+              </label>
+              {editingPins && (
+                <span className="text-primary font-semibold">
+                  Editing — drag a pin to uncover a label. Saves when you turn this off.
+                </span>
+              )}
             </div>
             {/* `contents`: this legend strip generates no box of its own —
                 its children lay out as direct items of the flex-wrap row

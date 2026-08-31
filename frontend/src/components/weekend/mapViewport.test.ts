@@ -12,6 +12,7 @@ import {
   K_MIN,
   MAP_ASPECT,
   screenPosition,
+  screenToNormalized,
   zoomAt,
 } from './mapViewport'
 
@@ -92,6 +93,41 @@ describe('zoomAt', () => {
     expect(view.k).toBeCloseTo(1.5, 10)
     expect(view.tx).toBeCloseTo(W - 1.5 * W, 6)
     expect(view.ty).toBeCloseTo(H - 1.5 * H, 6)
+  })
+})
+
+/**
+ * The INVERSE of `basePosition` + `screenPosition` — where a pointer's screen
+ * position lands in normalized 0-1 map space, for kindred#2396's pin drag.
+ * Read-only maths, exactly like every other function in this file: it never
+ * touches the DOM, so a drag handler can be tested without mocking
+ * `getBoundingClientRect`.
+ */
+describe('screenToNormalized', () => {
+  it('round-trips a normalized point through the forward transform at rest', () => {
+    const normalized = { x: 0.37, y: 0.62 }
+    const base = basePosition(normalized.x, normalized.y, W, H)
+    const screen = screenPosition(base, IDENTITY_VIEW)
+    // toBeCloseTo per axis, not toEqual — floating point division is not
+    // exact even when the forward transform is the identity multiply.
+    const back = screenToNormalized(screen.x, screen.y, IDENTITY_VIEW, W, H)
+    expect(back.x).toBeCloseTo(normalized.x, 10)
+    expect(back.y).toBeCloseTo(normalized.y, 10)
+  })
+
+  it('round-trips through a panned, zoomed view — not just the identity', () => {
+    const normalized = { x: 0.15, y: 0.85 }
+    const view = { k: 3, tx: -220, ty: -140 }
+    const base = basePosition(normalized.x, normalized.y, W, H)
+    const screen = screenPosition(base, view)
+    const back = screenToNormalized(screen.x, screen.y, view, W, H)
+    expect(back.x).toBeCloseTo(normalized.x, 10)
+    expect(back.y).toBeCloseTo(normalized.y, 10)
+  })
+
+  it('clamps a point dragged past the canvas edge to the edge, never outside 0-1', () => {
+    expect(screenToNormalized(-500, -500, IDENTITY_VIEW, W, H)).toEqual({ x: 0, y: 0 })
+    expect(screenToNormalized(W + 500, H + 500, IDENTITY_VIEW, W, H)).toEqual({ x: 1, y: 1 })
   })
 })
 

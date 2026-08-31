@@ -183,6 +183,32 @@ export async function confirmLodgingUnits(ids: string[]): Promise<number> {
   return results.filter((r) => r.status === 'fulfilled').length
 }
 
+/**
+ * The FLUSH for the session map's pin drag (kindred#2396).
+ *
+ * The map batches every move made during one Edit-pins session and writes
+ * them here on EXIT rather than on each individual drop — the ruling that
+ * distinguishes it from `UnitMapPositionField`'s save-on-pointer-up (see
+ * that file's header, and `LodgingMap.tsx`'s own note on the divergence).
+ *
+ * Mirrors `confirmLodgingUnits` immediately above on purpose: every write is
+ * ATTEMPTED even if one fails, because aborting a multi-pin batch partway
+ * through leaves a state nobody can reason about — some buildings moved,
+ * others silently still queued behind a rejected one. Returns how many
+ * actually landed so the caller can toast honestly and decide whether a
+ * registry refetch is worth paying for.
+ */
+export async function updateLodgingUnitPositions(
+  updates: Array<{ id: string; map_x: number; map_y: number }>
+): Promise<number> {
+  const results = await Promise.allSettled(
+    updates.map(({ id, map_x, map_y }) =>
+      pb.collection(UNITS).update<LodgingUnitRecord>(id, { map_x, map_y })
+    )
+  )
+  return results.filter((r) => r.status === 'fulfilled').length
+}
+
 // ── Aliases ───────────────────────────────────────────────────────────────────
 
 export async function listLodgingAliases(): Promise<LodgingAliasRecord[]> {

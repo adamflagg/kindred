@@ -68,6 +68,37 @@ vi.mock('../../hooks/useApiWithAuth', () => ({
   useApiWithAuth: () => ({ fetchWithAuth: vi.fn(), isAuthenticated: true, isAuthLoading: false }),
 }))
 
+// `vi.hoisted`, same reason `medicalFetchMode`/`mockFetchHouseholdMedical`
+// above need it: `vi.mock` factories run before any other module-level code,
+// so a plain `const` referenced inside one is a use-before-initialization
+// error once hoisted above it.
+const { mockUpdatePositions, mockInvalidateQueries } = vi.hoisted(() => ({
+  mockUpdatePositions: vi.fn().mockResolvedValue(0),
+  mockInvalidateQueries: vi.fn(),
+}))
+
+// kindred#2396's pin-drag flush. Partial mock, like the two above: everything
+// else `lodgingCrud` exports stays real, only the one write this file drives
+// is intercepted.
+vi.mock('../../services/lodgingCrud', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../services/lodgingCrud')>()
+  return {
+    ...actual,
+    updateLodgingUnitPositions: (...args: unknown[]) =>
+      (mockUpdatePositions as (...a: unknown[]) => unknown)(...args),
+  }
+})
+
+// The singleton `LodgingMap` invalidates through after a flush (see its own
+// docstring on why: a `useQueryClient()` call would force every one of this
+// file's 60+ unwrapped `render()` calls to grow a `QueryClientProvider` they
+// have no other reason to carry). A FULL mock, not a partial one — importing
+// the real module constructs a live `QueryClient` and touches `localStorage`
+// at module load, neither of which this file's other tests should pay for.
+vi.mock('../../utils/queryClient', () => ({
+  queryClient: { invalidateQueries: mockInvalidateQueries },
+}))
+
 // One client per TEST, built outside the render path. Constructing it inside the
 // wrapper body rebuilds it on every render, discarding the cache and starting a
 // fresh loading pass underneath assertions that already resolved.
@@ -1393,5 +1424,533 @@ describe('LodgingMap — extends the whole-building marker to the popover (kindr
     expect(screen.queryByText('Whole building')).not.toBeInTheDocument()
     await userEvent.click(screen.getAllByTestId('map-mark')[1] as HTMLElement)
     expect(screen.queryByText('Whole building')).not.toBeInTheDocument()
+  })
+})
+
+/**
+ * Dragging a pin off the label it covers — kindred#2396, ★ owner ruling
+ * 2026-08-18: an Edit-pins checkbox sibling of Empty rooms; edit mode
+ * freezes pan/zoom; the peek is suppressed for the duration; saving happens
+ * on EXITING edit mode, not on pointer-up (the deliberate divergence from
+ * `UnitMapPositionField`'s save-on-pointer-up — see `LodgingMap.tsx`'s own
+ * note on why).
+ */
+describe('LodgingMap — pin dragging (kindred#2396)', () => {
+  /** jsdom performs no layout; the map canvas has to be told its own size,
+   *  matching the 1000×(1000/MAP_ASPECT) fallback the component itself uses
+   *  when a real ResizeObserver never fires. */
+  const RECT_WIDTH = 1000
+  const RECT_HEIGHT = 1000 / (3300 / 2550)
+
+  function mapCanvas(): HTMLElement {
+    const canvas = screen.getByTestId('map-canvas')
+    vi.spyOn(canvas, 'getBoundingClientRect').mockReturnValue({
+      left: 0,
+      top: 0,
+      width: RECT_WIDTH,
+      height: RECT_HEIGHT,
+      right: RECT_WIDTH,
+      bottom: RECT_HEIGHT,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    })
+    return canvas
+  }
+
+  async function enableEditing() {
+    await userEvent.click(screen.getByLabelText('Edit pins'))
+  }
+
+  /** A building with two rooms under one root — the write target must be the
+   *  ROOT (`kindred#2396`'s "one semantic"), never whichever leaf happens to
+   *  be `cluster.members[0]`. Positioned close together so they draw as ONE
+   *  mark, same as `mapModel.test.ts`'s TERRACE fixture. */
+  const TERRACE: LodgingUnitRow[] = [
+    unit({
+      unit_id: 't0',
+      code: 'oak-terrace',
+      name: 'Oak Terrace',
+      is_container: true,
+      map_x: 0.4,
+      map_y: 0.5,
+    }),
+    unit({
+      unit_id: 't1',
+      code: 'oak-a',
+      name: 'Oak A',
+      parent_code: 'oak-terrace',
+      map_x: 0.401,
+      map_y: 0.5,
+    }),
+  ]
+
+  function markStyle(index = 0): { left: string; top: string } {
+    const mark = screen.getAllByTestId('map-mark')[index] as HTMLElement
+    return { left: mark.style.left, top: mark.style.top }
+  }
+
+  /** The payload of the most recent flush — empty if none has landed yet. */
+  function lastFlush(): Array<{ id: string; map_x: number; map_y: number }> {
+    const calls = mockUpdatePositions.mock.calls as Array<
+      [Array<{ id: string; map_x: number; map_y: number }>]
+    >
+    return calls.at(-1)?.[0] ?? []
+  }
+
+  it('offers Edit pins as a sibling of Empty rooms, unchecked at rest', () => {
+    render(<LodgingMap parties={[]} units={UNITS} year={2026} />, { wrapper })
+    const controls = screen.getByRole('group', { name: 'Map controls' })
+    const checkbox = within(controls).getByLabelText<HTMLInputElement>('Edit pins')
+    expect(checkbox).toBeInTheDocument()
+    expect(checkbox.checked).toBe(false)
+  })
+
+  it('closes an open peek the moment Edit pins is switched on', async () => {
+    render(<LodgingMap parties={[PLACED]} units={UNITS} year={2026} />, { wrapper })
+    await userEvent.click(screen.getAllByTestId('map-mark')[0] as HTMLElement)
+    expect(screen.getByText('Cedar 1')).toBeInTheDocument()
+    await enableEditing()
+    expect(screen.queryByText('Cedar 1')).not.toBeInTheDocument()
+  })
+
+  it('suppresses the peek while editing — clicking a mark does not open it', async () => {
+    render(<LodgingMap parties={[PLACED]} units={UNITS} year={2026} />, { wrapper })
+    await enableEditing()
+    await userEvent.click(screen.getAllByTestId('map-mark')[0] as HTMLElement)
+    expect(screen.queryByText('Cedar 1')).not.toBeInTheDocument()
+  })
+
+  // Owner follow-up on kindred#2396, requested while #2640 was in review
+  // (2026-08-31): "we need to be able to scroll in to zoom while in edit
+  // mode, or grab the background to drag still." The three tests below
+  // replace the pair that used to pin the opposite behaviour ("freezes pan
+  // while editing" / "freezes zoom while editing") — that was the #2396
+  // ruling this follow-up deliberately overturns, not a bug fix.
+
+  it('keeps wheel-zoom working while editing, per the owner follow-up', () => {
+    render(<LodgingMap parties={[]} units={UNITS} year={2026} />, { wrapper })
+    const canvas = mapCanvas()
+    const transform = () => screen.getByTestId('map-backdrop').style.transform
+    const before = transform()
+    fireEvent.click(screen.getByLabelText('Edit pins'))
+    fireEvent.wheel(canvas, { deltaY: -600 })
+    expect(transform()).not.toBe(before)
+  })
+
+  it('pans the map when a drag starts on bare canvas while editing, per the owner follow-up', () => {
+    render(<LodgingMap parties={[]} units={UNITS} year={2026} />, { wrapper })
+    const canvas = mapCanvas()
+    const transform = () => screen.getByTestId('map-backdrop').style.transform
+    // ZOOM IN FIRST, outside editing. At rest (k=1, the identity view)
+    // `clampView` pins tx/ty to exactly 0 — there is nowhere TO pan — so a
+    // drag attempted at rest would pass this assertion whether or not
+    // panning actually works, and prove nothing about it.
+    fireEvent.wheel(canvas, { deltaY: -600 })
+    const zoomed = transform()
+    fireEvent.click(screen.getByLabelText('Edit pins'))
+    fireEvent.pointerDown(canvas, { pointerId: 1, clientX: 300, clientY: 300 })
+    fireEvent.pointerMove(canvas, { pointerId: 1, clientX: 100, clientY: 100 })
+    fireEvent.pointerUp(canvas, { pointerId: 1, clientX: 100, clientY: 100 })
+    expect(transform()).not.toBe(zoomed)
+    // A background drag pans. It must never also read as a pin write.
+    expect(mockUpdatePositions).not.toHaveBeenCalled()
+  })
+
+  it('moves only the pin, not the map, when a drag starts ON a mark while editing', () => {
+    render(<LodgingMap parties={[]} units={UNITS} year={2026} />, { wrapper })
+    const canvas = mapCanvas()
+    const transform = () => screen.getByTestId('map-backdrop').style.transform
+    // Zoomed in first, same reason as above: at rest a wrongly-triggered pan
+    // would clamp straight back to identity and this assertion would pass
+    // whether or not the drag/pan discrimination actually works.
+    fireEvent.wheel(canvas, { deltaY: -600 })
+    const zoomed = transform()
+    fireEvent.click(screen.getByLabelText('Edit pins'))
+    const mark = screen.getAllByTestId('map-mark')[0] as HTMLElement
+    const beforeMark = markStyle(0)
+    // The move lands well past DRAG_THRESHOLD_PX from the down point, and
+    // LEFT/UP — both load-bearing, not incidental. Past-threshold: if
+    // propagation from the mark ever stopped discriminating (e.g. the mark's
+    // own `stopPropagation()` regressed), a move that never left its
+    // starting point could never expose that, because the canvas's own pan
+    // only activates past that same threshold. Left/up: a rightward or
+    // downward drag wants a positive tx/ty, which `clampView` clamps straight
+    // back to 0 at this zoom regardless of whether a pan actually ran — the
+    // same vacuous-assertion trap the background-drag test above avoids the
+    // same way.
+    fireEvent.pointerDown(mark, { pointerId: 1, button: 0, clientX: 700, clientY: 200 })
+    fireEvent.pointerMove(mark, { pointerId: 1, buttons: 1, clientX: 650, clientY: 140 })
+    fireEvent.pointerUp(mark, { pointerId: 1, clientX: 650, clientY: 140 })
+    // The pin moved...
+    expect(markStyle(0)).not.toEqual(beforeMark)
+    // ...but the map underneath it did not. This is the whole distinction
+    // the owner's follow-up turns on: drag a pin, or drag the background,
+    // never both from the same gesture.
+    expect(transform()).toBe(zoomed)
+  })
+
+  it('does not pan when a press on a mark is not the primary button, while editing', () => {
+    // The mark's own onPointerDown used to call `stopPropagation()` AFTER
+    // its early-return guards (non-primary button, a drag already owned by
+    // another pointer), so a press this handler chose not to act on still
+    // fell through to the canvas's own onPointerDown/onPointerMove — the
+    // exact contradiction the `editingPins` gate's own comment claims never
+    // happens ("a press that starts ON a pin never sets dragRef"). A
+    // right-click-drag starting on a pin is the reachable case with a single
+    // ordinary mouse.
+    render(<LodgingMap parties={[]} units={UNITS} year={2026} />, { wrapper })
+    const canvas = mapCanvas()
+    const transform = () => screen.getByTestId('map-backdrop').style.transform
+    // Zoomed in first, same reason as the sibling tests above: at rest a
+    // wrongly-triggered pan clamps straight back to identity and proves
+    // nothing either way.
+    fireEvent.wheel(canvas, { deltaY: -600 })
+    const zoomed = transform()
+    fireEvent.click(screen.getByLabelText('Edit pins'))
+    const mark = screen.getAllByTestId('map-mark')[0] as HTMLElement
+    fireEvent.pointerDown(mark, { pointerId: 1, button: 2, clientX: 700, clientY: 200 })
+    fireEvent.pointerMove(mark, { pointerId: 1, buttons: 2, clientX: 650, clientY: 140 })
+    expect(transform()).toBe(zoomed)
+    expect(mockUpdatePositions).not.toHaveBeenCalled()
+  })
+
+  it('follows the pointer while dragging a mark, before anything is saved', async () => {
+    render(<LodgingMap parties={[]} units={UNITS} year={2026} />, { wrapper })
+    await enableEditing()
+    mapCanvas()
+    const mark = screen.getAllByTestId('map-mark')[0] as HTMLElement
+    const before = markStyle(0)
+    fireEvent.pointerDown(mark, { pointerId: 1, button: 0, clientX: 700, clientY: 200 })
+    // Below DRAG_THRESHOLD_PX from the down point — a stray click must not
+    // move the pin (CodeRabbit finding on kindred#2640).
+    fireEvent.pointerMove(mark, { pointerId: 1, buttons: 1, clientX: 702, clientY: 200 })
+    expect(markStyle(0)).toEqual(before)
+    // Past the threshold now — the draft is created and the mark follows.
+    fireEvent.pointerMove(mark, { pointerId: 1, buttons: 1, clientX: 706, clientY: 200 })
+    expect(markStyle(0)).not.toEqual(before)
+    expect(markStyle(0)).toEqual({ left: '706px', top: '200px' })
+    // Not yet written — the ruling saves on EXIT, not on pointer-up.
+    fireEvent.pointerUp(mark, { pointerId: 1, clientX: 706, clientY: 200 })
+    expect(mockUpdatePositions).not.toHaveBeenCalled()
+  })
+
+  it('writes the drag on exiting edit mode, rounded to the field precision', async () => {
+    render(<LodgingMap parties={[]} units={UNITS} year={2026} />, { wrapper })
+    await enableEditing()
+    mapCanvas()
+    const mark = screen.getAllByTestId('map-mark')[0] as HTMLElement
+    // Down point offset from the drop point so the single move below already
+    // clears DRAG_THRESHOLD_PX and lands exactly on (750, 250).
+    fireEvent.pointerDown(mark, { pointerId: 1, button: 0, clientX: 744, clientY: 250 })
+    fireEvent.pointerMove(mark, { pointerId: 1, buttons: 1, clientX: 750, clientY: 250 })
+    fireEvent.pointerUp(mark, { pointerId: 1, clientX: 750, clientY: 250 })
+    expect(mockUpdatePositions).not.toHaveBeenCalled()
+
+    await userEvent.click(screen.getByLabelText('Edit pins'))
+
+    await waitFor(() => expect(mockUpdatePositions).toHaveBeenCalledTimes(1))
+    const updates = lastFlush()
+    expect(updates).toHaveLength(1)
+    expect(updates[0]?.id).toBe('u1')
+    // Expected fractions computed off the same RECT dimensions the drag was
+    // driven against, not hand-picked "nice" numbers — 250/RECT_HEIGHT is
+    // not a round fraction, and pinning a wrong-but-round expectation here
+    // is exactly how a subtly incorrect axis goes unnoticed.
+    expect(updates[0]?.map_x).toBeCloseTo(750 / RECT_WIDTH, 4)
+    expect(updates[0]?.map_y).toBeCloseTo(250 / RECT_HEIGHT, 4)
+    await waitFor(() => expect(mockInvalidateQueries).toHaveBeenCalled())
+  })
+
+  it('writes to the BUILDING`s root, not whichever room the mark happens to draw', async () => {
+    render(<LodgingMap parties={[]} units={TERRACE} year={2026} />, { wrapper })
+    // The two rooms sit close enough to draw as one mark.
+    expect(screen.getAllByTestId('map-mark')).toHaveLength(1)
+    await enableEditing()
+    mapCanvas()
+    const mark = screen.getByTestId('map-mark')
+    fireEvent.pointerDown(mark, { pointerId: 1, button: 0, clientX: 894, clientY: 100 })
+    fireEvent.pointerMove(mark, { pointerId: 1, buttons: 1, clientX: 900, clientY: 100 })
+    fireEvent.pointerUp(mark, { pointerId: 1, clientX: 900, clientY: 100 })
+
+    await userEvent.click(screen.getByLabelText('Edit pins'))
+
+    await waitFor(() => expect(mockUpdatePositions).toHaveBeenCalledTimes(1))
+    // 't0' is the root (Oak Terrace); 't1' is the leaf the cluster could have
+    // named instead had this picked `cluster.members[0]` uncritically.
+    expect(lastFlush().map((update) => update.id)).toEqual(['t0'])
+  })
+
+  it('flushes a pending drag on unmount, not only on the checkbox flipping off', async () => {
+    const { unmount } = render(<LodgingMap parties={[]} units={UNITS} year={2026} />, { wrapper })
+    await enableEditing()
+    mapCanvas()
+    const mark = screen.getAllByTestId('map-mark')[0] as HTMLElement
+    fireEvent.pointerDown(mark, { pointerId: 1, button: 0, clientX: 644, clientY: 150 })
+    fireEvent.pointerMove(mark, { pointerId: 1, buttons: 1, clientX: 650, clientY: 150 })
+    fireEvent.pointerUp(mark, { pointerId: 1, clientX: 650, clientY: 150 })
+    expect(mockUpdatePositions).not.toHaveBeenCalled()
+
+    unmount()
+
+    await waitFor(() => expect(mockUpdatePositions).toHaveBeenCalledTimes(1))
+  })
+
+  it('does not flush anything when edit mode is switched on and off with no drag', async () => {
+    render(<LodgingMap parties={[]} units={UNITS} year={2026} />, { wrapper })
+    await enableEditing()
+    await userEvent.click(screen.getByLabelText('Edit pins'))
+    // No wait needed to prove a negative reliably here — nothing async is in
+    // flight for an edit session that never produced a draft.
+    expect(mockUpdatePositions).not.toHaveBeenCalled()
+  })
+
+  it('does not drop a second session`s drag when an earlier flush resolves mid-session', async () => {
+    // The first flush (u1) is held open deliberately, so a SECOND edit
+    // session can start and drag u2 while it is still in flight — the exact
+    // window a wholesale `setPinDrafts(new Map())` in the first flush's
+    // `.then()` would wipe out.
+    let resolveFirst: (landed: number) => void = () => {
+      throw new Error('resolveFirst called before the first flush started')
+    }
+    mockUpdatePositions.mockImplementationOnce(
+      () =>
+        new Promise<number>((resolve) => {
+          resolveFirst = resolve
+        })
+    )
+    mockUpdatePositions.mockResolvedValueOnce(1)
+
+    render(<LodgingMap parties={[]} units={UNITS} year={2026} />, { wrapper })
+    await enableEditing()
+    mapCanvas()
+    const mark0 = screen.getAllByTestId('map-mark')[0] as HTMLElement
+    const mark1 = screen.getAllByTestId('map-mark')[1] as HTMLElement
+
+    fireEvent.pointerDown(mark0, { pointerId: 1, button: 0, clientX: 694, clientY: 200 })
+    fireEvent.pointerMove(mark0, { pointerId: 1, buttons: 1, clientX: 700, clientY: 200 })
+    fireEvent.pointerUp(mark0, { pointerId: 1, clientX: 700, clientY: 200 })
+
+    // Uncheck: kicks off the first (still-pending) flush for u1.
+    await userEvent.click(screen.getByLabelText('Edit pins'))
+    await waitFor(() => expect(mockUpdatePositions).toHaveBeenCalledTimes(1))
+
+    // Re-check and drag u2 — a brand new session, still open, while u1's
+    // write from the FIRST session has not resolved yet.
+    await userEvent.click(screen.getByLabelText('Edit pins'))
+    fireEvent.pointerDown(mark1, { pointerId: 2, button: 0, clientX: 294, clientY: 300 })
+    fireEvent.pointerMove(mark1, { pointerId: 2, buttons: 1, clientX: 300, clientY: 300 })
+    fireEvent.pointerUp(mark1, { pointerId: 2, clientX: 300, clientY: 300 })
+
+    // Now the first flush lands, mid-session, and clears whatever it is
+    // entitled to clear — u1's own entry, never u2's still-open one.
+    await act(async () => {
+      resolveFirst(1)
+      await Promise.resolve()
+    })
+
+    // Exit the second session. Its own draft (u2) must still be there to
+    // flush — a wholesale clear upstream would leave nothing to send here,
+    // and this second flush would silently never happen. (u1 legitimately
+    // rides along too here — `units` never changed in this test, so nothing
+    // has told the surface u1's write is confirmed; see the dedicated
+    // reconciliation test below for that half.)
+    await userEvent.click(screen.getByLabelText('Edit pins'))
+    await waitFor(() => expect(mockUpdatePositions).toHaveBeenCalledTimes(2))
+    const secondFlush = mockUpdatePositions.mock.calls[1]?.[0] as Array<{ id: string }>
+    expect(secondFlush.map((update) => update.id)).toContain('u2')
+  })
+
+  it('drops a committed draft once the refetch confirms it, so a later flush does not resend it', async () => {
+    mockUpdatePositions.mockResolvedValueOnce(1) // flush #1 (u1) succeeds
+
+    const { rerender } = render(<LodgingMap parties={[]} units={UNITS} year={2026} />, { wrapper })
+    await enableEditing()
+    mapCanvas()
+    const marksBefore = screen.getAllByTestId('map-mark')
+    fireEvent.pointerDown(marksBefore[0] as HTMLElement, {
+      pointerId: 1,
+      button: 0,
+      clientX: 694,
+      clientY: 200,
+    })
+    fireEvent.pointerMove(marksBefore[0] as HTMLElement, {
+      pointerId: 1,
+      buttons: 1,
+      clientX: 700,
+      clientY: 200,
+    })
+    fireEvent.pointerUp(marksBefore[0] as HTMLElement, { pointerId: 1, clientX: 700, clientY: 200 })
+
+    await userEvent.click(screen.getByLabelText('Edit pins'))
+    await waitFor(() => expect(mockUpdatePositions).toHaveBeenCalledTimes(1))
+    const firstFlush = lastFlush()
+
+    // The registry refetch lands: `units` now reports u1 sitting exactly
+    // where the drag wrote it.
+    const firstUpdate = firstFlush[0]
+    if (!firstUpdate) throw new Error('expected the first flush to have sent one update')
+    const refreshed = UNITS.map((u) =>
+      u.unit_id === 'u1' ? { ...u, map_x: firstUpdate.map_x, map_y: firstUpdate.map_y } : u
+    )
+    rerender(<LodgingMap parties={[]} units={refreshed} year={2026} />)
+
+    await enableEditing()
+    mapCanvas()
+    const marksAfter = screen.getAllByTestId('map-mark')
+    fireEvent.pointerDown(marksAfter[1] as HTMLElement, {
+      pointerId: 2,
+      button: 0,
+      clientX: 294,
+      clientY: 300,
+    })
+    fireEvent.pointerMove(marksAfter[1] as HTMLElement, {
+      pointerId: 2,
+      buttons: 1,
+      clientX: 300,
+      clientY: 300,
+    })
+    fireEvent.pointerUp(marksAfter[1] as HTMLElement, { pointerId: 2, clientX: 300, clientY: 300 })
+    await userEvent.click(screen.getByLabelText('Edit pins'))
+
+    await waitFor(() => expect(mockUpdatePositions).toHaveBeenCalledTimes(2))
+    // u1's committed draft is gone by now — the confirmed refetch retired
+    // it — so this flush names only the building actually dragged this time.
+    expect(lastFlush().map((update) => update.id)).toEqual(['u2'])
+  })
+
+  it('keeps a saved pin at its dropped position until the registry refetch actually lands', async () => {
+    // Full success (`landed === updates.length`) — the pin's local draft is
+    // the server's truth now. `units` is a static prop in this test, so it
+    // never "catches up"; if the mark's position falls back to it at all,
+    // that IS the bug — a real refetch would eventually repaint the same
+    // number, but staff would watch the pin jump back and then forward again
+    // first.
+    mockUpdatePositions.mockResolvedValueOnce(1)
+
+    render(<LodgingMap parties={[]} units={UNITS} year={2026} />, { wrapper })
+    await enableEditing()
+    mapCanvas()
+    const mark = screen.getAllByTestId('map-mark')[0] as HTMLElement
+    fireEvent.pointerDown(mark, { pointerId: 1, button: 0, clientX: 694, clientY: 200 })
+    fireEvent.pointerMove(mark, { pointerId: 1, buttons: 1, clientX: 700, clientY: 200 })
+    fireEvent.pointerUp(mark, { pointerId: 1, clientX: 700, clientY: 200 })
+    const dropped = markStyle(0)
+
+    await userEvent.click(screen.getByLabelText('Edit pins'))
+    await waitFor(() => expect(mockInvalidateQueries).toHaveBeenCalled())
+
+    expect(markStyle(0)).toEqual(dropped)
+  })
+
+  it('keeps a second session`s redrag of the SAME building when the first (failed) flush lands after it', async () => {
+    // CodeRabbit finding on #2640: the failure-path delete used to key off
+    // `buildingCode` alone, so a FAILED flush #1 (u1) could delete session
+    // B's still-open redrag of the same building the moment it landed, even
+    // though flush #1 never sent session B's move. Unlike the sibling test
+    // above ("does not drop a second session`s drag..."), which proves
+    // DIFFERENT buildings never collide, this one proves the SAME building
+    // survives — the case the old buildingCode-only key could not tell apart.
+    let resolveFirst: (landed: number) => void = () => {
+      throw new Error('resolveFirst called before the first flush started')
+    }
+    mockUpdatePositions.mockImplementationOnce(
+      () =>
+        new Promise<number>((resolve) => {
+          resolveFirst = resolve
+        })
+    )
+
+    render(<LodgingMap parties={[]} units={UNITS} year={2026} />, { wrapper })
+    await enableEditing()
+    mapCanvas()
+
+    // Session A drags u1, closes — kicks off flush #1 (u1), held pending.
+    const mark0 = screen.getAllByTestId('map-mark')[0] as HTMLElement
+    fireEvent.pointerDown(mark0, { pointerId: 1, button: 0, clientX: 694, clientY: 200 })
+    fireEvent.pointerMove(mark0, { pointerId: 1, buttons: 1, clientX: 700, clientY: 200 })
+    fireEvent.pointerUp(mark0, { pointerId: 1, clientX: 700, clientY: 200 })
+    await userEvent.click(screen.getByLabelText('Edit pins'))
+    await waitFor(() => expect(mockUpdatePositions).toHaveBeenCalledTimes(1))
+
+    // Session B re-opens and redrags the SAME building (u1) to a different
+    // spot, while flush #1 is still in flight.
+    await userEvent.click(screen.getByLabelText('Edit pins'))
+    const mark0Again = screen.getAllByTestId('map-mark')[0] as HTMLElement
+    fireEvent.pointerDown(mark0Again, { pointerId: 2, button: 0, clientX: 294, clientY: 300 })
+    fireEvent.pointerMove(mark0Again, { pointerId: 2, buttons: 1, clientX: 300, clientY: 300 })
+    fireEvent.pointerUp(mark0Again, { pointerId: 2, clientX: 300, clientY: 300 })
+
+    // Flush #1 lands now, mid-session-B — and FAILS outright (0 landed).
+    await act(async () => {
+      resolveFirst(0)
+      await Promise.resolve()
+    })
+
+    // Session B's own drag for u1 must have survived flush #1's failure
+    // cleanup — closing session B must still send it.
+    await userEvent.click(screen.getByLabelText('Edit pins'))
+    await waitFor(() => expect(mockUpdatePositions).toHaveBeenCalledTimes(2))
+    const secondFlush = lastFlush()
+    expect(secondFlush.map((update) => update.id)).toContain('u1')
+    expect(secondFlush.find((u) => u.id === 'u1')?.map_x).toBeCloseTo(300 / RECT_WIDTH, 4)
+  })
+})
+
+describe('LodgingMap — pin dragging recovers a stuck gesture (kindred#2396)', () => {
+  const RECT_WIDTH = 1000
+  const RECT_HEIGHT = 1000 / (3300 / 2550)
+
+  function mapCanvas(): HTMLElement {
+    const canvas = screen.getByTestId('map-canvas')
+    vi.spyOn(canvas, 'getBoundingClientRect').mockReturnValue({
+      left: 0,
+      top: 0,
+      width: RECT_WIDTH,
+      height: RECT_HEIGHT,
+      right: RECT_WIDTH,
+      bottom: RECT_HEIGHT,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    })
+    return canvas
+  }
+
+  function markStyle(index = 0): { left: string; top: string } {
+    const mark = screen.getAllByTestId('map-mark')[index] as HTMLElement
+    return { left: mark.style.left, top: mark.style.top }
+  }
+
+  it('recovers a stuck drag when capture fails and the release lands off the tiny mark', () => {
+    render(<LodgingMap parties={[]} units={UNITS} year={2026} />, { wrapper })
+    const originalCapture = Element.prototype.setPointerCapture
+    // Models "unsupported, or the pointer is already gone" — the same case
+    // the mark's own onPointerDown already catches — so the drag never
+    // secures capture and a release off the mark is delivered nowhere this
+    // component is listening for it, UNLESS the canvas itself recovers.
+    Element.prototype.setPointerCapture = () => {
+      throw new Error('capture unsupported')
+    }
+    try {
+      fireEvent.click(screen.getByLabelText('Edit pins'))
+      const canvas = mapCanvas()
+      const mark0 = screen.getAllByTestId('map-mark')[0] as HTMLElement
+      const mark1 = screen.getAllByTestId('map-mark')[1] as HTMLElement
+
+      fireEvent.pointerDown(mark0, { pointerId: 1, button: 0, clientX: 700, clientY: 200 })
+      // The release lands on bare canvas, never back on the 16-38px mark —
+      // exactly what "capture failed" means in practice.
+      fireEvent.pointerMove(canvas, { pointerId: 1, buttons: 0, clientX: 50, clientY: 50 })
+
+      // A second gesture, on a DIFFERENT mark, must not be blocked by the
+      // first one's stranded pointerId.
+      const before = markStyle(1)
+      fireEvent.pointerDown(mark1, { pointerId: 2, button: 0, clientX: 294, clientY: 300 })
+      fireEvent.pointerMove(mark1, { pointerId: 2, buttons: 1, clientX: 300, clientY: 300 })
+      expect(markStyle(1)).not.toEqual(before)
+    } finally {
+      Element.prototype.setPointerCapture = originalCapture
+    }
   })
 })

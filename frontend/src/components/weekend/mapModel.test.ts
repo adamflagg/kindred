@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
 import { AREA_HUES } from './boardLayout'
-import { buildMapModel, countMapUnits, hasCoordinates } from './mapModel'
+import { buildMapModel, countMapUnits, hasCoordinates, pinSite } from './mapModel'
 
 function unit(overrides: Partial<LodgingUnitRow> = {}): LodgingUnitRow {
   return {
@@ -675,5 +675,97 @@ describe('buildMapModel — one pin per building (kindred#2440)', () => {
     )
     expect(model.units[0]?.x).toBeCloseTo(0.2, 6)
     expect(model.units[0]?.buildingCode).toBe('orphan')
+  })
+})
+
+/**
+ * The WRITE TARGET for a session-map pin drag (kindred#2396). `pinFor`
+ * resolves a mark's SCREEN position off exactly this unit — this exposes the
+ * same candidate rather than re-deriving it, so a drag can never write to a
+ * unit whose coordinate the map is not actually reading. Mirrors admin's
+ * `pinAncestor` (`components/admin/lodging/unitTree.ts`), in codes rather
+ * than ids.
+ */
+describe('pinSite — the drag write target (kindred#2396)', () => {
+  const TERRACE: LodgingUnitRow[] = [
+    unit({
+      unit_id: 't0',
+      code: 'oak-terrace',
+      name: 'Oak Terrace',
+      is_container: true,
+      map_x: 0.3,
+      map_y: 0.3,
+    }),
+    unit({
+      unit_id: 't1',
+      code: 'oak-a',
+      name: 'Oak A',
+      parent_code: 'oak-terrace',
+      map_x: 0.31,
+      map_y: 0.305,
+    }),
+    unit({
+      unit_id: 't2',
+      code: 'oak-b',
+      name: 'Oak B',
+      parent_code: 'oak-terrace',
+      map_x: 0.32,
+      map_y: 0.312,
+    }),
+  ]
+
+  it('names the ROOT as the site when the root is positioned', () => {
+    const leaf = TERRACE.find((u) => u.code === 'oak-a')
+    expect(leaf).toBeDefined()
+    const site = pinSite(leaf as LodgingUnitRow, TERRACE)
+    expect(site?.unit_id).toBe('t0')
+    expect(site?.code).toBe('oak-terrace')
+  })
+
+  it('names a positioned HALF as the site when the root has no coordinate', () => {
+    const wing = [
+      unit({ unit_id: 'w0', code: 'wing', is_container: true, map_x: 0, map_y: 0 }),
+      unit({
+        unit_id: 'w1',
+        code: 'wing-up',
+        is_container: true,
+        parent_code: 'wing',
+        map_x: 0.55,
+        map_y: 0.6,
+      }),
+      unit({ unit_id: 'w2', code: 'wing-a', parent_code: 'wing-up', map_x: 0.9, map_y: 0.9 }),
+    ]
+    const leaf = wing.find((u) => u.code === 'wing-a')
+    expect(leaf).toBeDefined()
+    const site = pinSite(leaf as LodgingUnitRow, wing)
+    expect(site?.unit_id).toBe('w1')
+  })
+
+  it('names the room itself when nothing above it is positioned', () => {
+    const fir = [
+      unit({ unit_id: 'f0', code: 'fir', is_container: true, map_x: 0, map_y: 0 }),
+      unit({ unit_id: 'f1', code: 'fir-a', parent_code: 'fir', map_x: 0.6, map_y: 0.65 }),
+    ]
+    const leaf = fir.find((u) => u.code === 'fir-a')
+    expect(leaf).toBeDefined()
+    const site = pinSite(leaf as LodgingUnitRow, fir)
+    expect(site?.unit_id).toBe('f1')
+  })
+
+  it('names nothing when neither the room nor anything above it is positioned', () => {
+    const gum = [
+      unit({ unit_id: 'g0', code: 'gum', is_container: true, map_x: 0, map_y: 0 }),
+      unit({ unit_id: 'g1', code: 'gum-a', parent_code: 'gum', map_x: 0, map_y: 0 }),
+    ]
+    const leaf = gum.find((u) => u.code === 'gum-a')
+    expect(leaf).toBeDefined()
+    expect(pinSite(leaf as LodgingUnitRow, gum)).toBeNull()
+  })
+
+  it('names itself when the dragged mark IS the positioned root', () => {
+    const root = TERRACE.find((u) => u.code === 'oak-terrace')
+    expect(root).toBeDefined()
+    const site = pinSite(root as LodgingUnitRow, TERRACE)
+    expect(site?.unit_id).toBe('t0')
   })
 })

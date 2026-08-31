@@ -41,6 +41,7 @@ import {
   mapUnresolvedAlias,
   reorderLodgingAreas,
   setWeekendSessionStatus,
+  updateLodgingUnitPositions,
 } from './lodgingCrud'
 
 beforeEach(() => {
@@ -249,6 +250,43 @@ describe('confirmLodgingUnits', () => {
 
   it('does nothing for an empty selection', async () => {
     expect(await confirmLodgingUnits([])).toBe(0)
+    expect(update).not.toHaveBeenCalled()
+  })
+})
+
+/**
+ * The FLUSH for kindred#2396's session-map pin drag — every move made during
+ * one Edit-pins session, written on EXIT rather than one write per drop.
+ * Mirrors `confirmLodgingUnits`'s bulk-write shape on purpose: every write is
+ * attempted even if one fails, and the caller finds out how many actually
+ * landed rather than the batch aborting on the first rejection.
+ */
+describe('updateLodgingUnitPositions', () => {
+  it('writes every pin and reports how many landed', async () => {
+    const landed = await updateLodgingUnitPositions([
+      { id: 'u1', map_x: 0.31, map_y: 0.44 },
+      { id: 'u2', map_x: 0.62, map_y: 0.18 },
+    ])
+
+    expect(update).toHaveBeenNthCalledWith(1, 'u1', { map_x: 0.31, map_y: 0.44 })
+    expect(update).toHaveBeenNthCalledWith(2, 'u2', { map_x: 0.62, map_y: 0.18 })
+    expect(landed).toBe(2)
+  })
+
+  it('keeps writing the rest when one drop fails, and reports the true count', async () => {
+    update.mockRejectedValueOnce(new Error('nope')).mockResolvedValueOnce({ id: 'u2' })
+
+    const landed = await updateLodgingUnitPositions([
+      { id: 'u1', map_x: 0.31, map_y: 0.44 },
+      { id: 'u2', map_x: 0.62, map_y: 0.18 },
+    ])
+
+    expect(update).toHaveBeenCalledTimes(2)
+    expect(landed).toBe(1)
+  })
+
+  it('does nothing for an empty batch', async () => {
+    expect(await updateLodgingUnitPositions([])).toBe(0)
     expect(update).not.toHaveBeenCalled()
   })
 })

@@ -58,6 +58,33 @@ export function screenPosition(
 }
 
 /**
+ * The INVERSE of `basePosition` + `screenPosition` — kindred#2396's pin drag
+ * needs this direction too: a pointer lands somewhere in SCREEN pixels, and
+ * what gets written to `map_x`/`map_y` is normalized 0-1 map space.
+ *
+ * `screen = normalized * dimension * k + t`, so solving for `normalized` is
+ * `(screen - t) / k / dimension` — algebra, not a fresh derivation, and
+ * kept beside the two functions it undoes so the three cannot drift apart.
+ *
+ * CLAMPED to 0-1, mirroring `UnitMapPositionField`'s `clamp01`: a pointer
+ * dragged past the edge of the canvas belongs on the edge, the same ruling
+ * that field already made for the single-pin admin editor.
+ */
+export function screenToNormalized(
+  screenX: number,
+  screenY: number,
+  view: Viewport,
+  width: number,
+  height: number
+): { x: number; y: number } {
+  const baseX = (screenX - view.tx) / view.k
+  const baseY = (screenY - view.ty) / view.k
+  const x = width > 0 ? baseX / width : 0
+  const y = height > 0 ? baseY / height : 0
+  return { x: Math.min(1, Math.max(0, x)), y: Math.min(1, Math.max(0, y)) }
+}
+
+/**
  * Keep the map filling the frame at every zoom.
  *
  * Deliberately stricter than "keep some of it on screen": the background is an
