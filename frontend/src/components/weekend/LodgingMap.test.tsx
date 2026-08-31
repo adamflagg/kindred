@@ -1590,6 +1590,31 @@ describe('LodgingMap — pin dragging (kindred#2396)', () => {
     expect(transform()).toBe(zoomed)
   })
 
+  it('does not pan when a press on a mark is not the primary button, while editing', () => {
+    // The mark's own onPointerDown used to call `stopPropagation()` AFTER
+    // its early-return guards (non-primary button, a drag already owned by
+    // another pointer), so a press this handler chose not to act on still
+    // fell through to the canvas's own onPointerDown/onPointerMove — the
+    // exact contradiction the `editingPins` gate's own comment claims never
+    // happens ("a press that starts ON a pin never sets dragRef"). A
+    // right-click-drag starting on a pin is the reachable case with a single
+    // ordinary mouse.
+    render(<LodgingMap parties={[]} units={UNITS} year={2026} />, { wrapper })
+    const canvas = mapCanvas()
+    const transform = () => screen.getByTestId('map-backdrop').style.transform
+    // Zoomed in first, same reason as the sibling tests above: at rest a
+    // wrongly-triggered pan clamps straight back to identity and proves
+    // nothing either way.
+    fireEvent.wheel(canvas, { deltaY: -600 })
+    const zoomed = transform()
+    fireEvent.click(screen.getByLabelText('Edit pins'))
+    const mark = screen.getAllByTestId('map-mark')[0] as HTMLElement
+    fireEvent.pointerDown(mark, { pointerId: 1, button: 2, clientX: 700, clientY: 200 })
+    fireEvent.pointerMove(mark, { pointerId: 1, buttons: 2, clientX: 650, clientY: 140 })
+    expect(transform()).toBe(zoomed)
+    expect(mockUpdatePositions).not.toHaveBeenCalled()
+  })
+
   it('follows the pointer while dragging a mark, before anything is saved', async () => {
     render(<LodgingMap parties={[]} units={UNITS} year={2026} />, { wrapper })
     await enableEditing()
@@ -1597,11 +1622,16 @@ describe('LodgingMap — pin dragging (kindred#2396)', () => {
     const mark = screen.getAllByTestId('map-mark')[0] as HTMLElement
     const before = markStyle(0)
     fireEvent.pointerDown(mark, { pointerId: 1, button: 0, clientX: 700, clientY: 200 })
-    fireEvent.pointerMove(mark, { pointerId: 1, buttons: 1, clientX: 700, clientY: 200 })
+    // Below DRAG_THRESHOLD_PX from the down point — a stray click must not
+    // move the pin (CodeRabbit finding on kindred#2640).
+    fireEvent.pointerMove(mark, { pointerId: 1, buttons: 1, clientX: 702, clientY: 200 })
+    expect(markStyle(0)).toEqual(before)
+    // Past the threshold now — the draft is created and the mark follows.
+    fireEvent.pointerMove(mark, { pointerId: 1, buttons: 1, clientX: 706, clientY: 200 })
     expect(markStyle(0)).not.toEqual(before)
-    expect(markStyle(0)).toEqual({ left: '700px', top: '200px' })
+    expect(markStyle(0)).toEqual({ left: '706px', top: '200px' })
     // Not yet written — the ruling saves on EXIT, not on pointer-up.
-    fireEvent.pointerUp(mark, { pointerId: 1, clientX: 700, clientY: 200 })
+    fireEvent.pointerUp(mark, { pointerId: 1, clientX: 706, clientY: 200 })
     expect(mockUpdatePositions).not.toHaveBeenCalled()
   })
 
@@ -1610,7 +1640,9 @@ describe('LodgingMap — pin dragging (kindred#2396)', () => {
     await enableEditing()
     mapCanvas()
     const mark = screen.getAllByTestId('map-mark')[0] as HTMLElement
-    fireEvent.pointerDown(mark, { pointerId: 1, button: 0, clientX: 750, clientY: 250 })
+    // Down point offset from the drop point so the single move below already
+    // clears DRAG_THRESHOLD_PX and lands exactly on (750, 250).
+    fireEvent.pointerDown(mark, { pointerId: 1, button: 0, clientX: 744, clientY: 250 })
     fireEvent.pointerMove(mark, { pointerId: 1, buttons: 1, clientX: 750, clientY: 250 })
     fireEvent.pointerUp(mark, { pointerId: 1, clientX: 750, clientY: 250 })
     expect(mockUpdatePositions).not.toHaveBeenCalled()
@@ -1637,7 +1669,7 @@ describe('LodgingMap — pin dragging (kindred#2396)', () => {
     await enableEditing()
     mapCanvas()
     const mark = screen.getByTestId('map-mark')
-    fireEvent.pointerDown(mark, { pointerId: 1, button: 0, clientX: 900, clientY: 100 })
+    fireEvent.pointerDown(mark, { pointerId: 1, button: 0, clientX: 894, clientY: 100 })
     fireEvent.pointerMove(mark, { pointerId: 1, buttons: 1, clientX: 900, clientY: 100 })
     fireEvent.pointerUp(mark, { pointerId: 1, clientX: 900, clientY: 100 })
 
@@ -1654,7 +1686,7 @@ describe('LodgingMap — pin dragging (kindred#2396)', () => {
     await enableEditing()
     mapCanvas()
     const mark = screen.getAllByTestId('map-mark')[0] as HTMLElement
-    fireEvent.pointerDown(mark, { pointerId: 1, button: 0, clientX: 650, clientY: 150 })
+    fireEvent.pointerDown(mark, { pointerId: 1, button: 0, clientX: 644, clientY: 150 })
     fireEvent.pointerMove(mark, { pointerId: 1, buttons: 1, clientX: 650, clientY: 150 })
     fireEvent.pointerUp(mark, { pointerId: 1, clientX: 650, clientY: 150 })
     expect(mockUpdatePositions).not.toHaveBeenCalled()
@@ -1695,7 +1727,7 @@ describe('LodgingMap — pin dragging (kindred#2396)', () => {
     const mark0 = screen.getAllByTestId('map-mark')[0] as HTMLElement
     const mark1 = screen.getAllByTestId('map-mark')[1] as HTMLElement
 
-    fireEvent.pointerDown(mark0, { pointerId: 1, button: 0, clientX: 700, clientY: 200 })
+    fireEvent.pointerDown(mark0, { pointerId: 1, button: 0, clientX: 694, clientY: 200 })
     fireEvent.pointerMove(mark0, { pointerId: 1, buttons: 1, clientX: 700, clientY: 200 })
     fireEvent.pointerUp(mark0, { pointerId: 1, clientX: 700, clientY: 200 })
 
@@ -1706,7 +1738,7 @@ describe('LodgingMap — pin dragging (kindred#2396)', () => {
     // Re-check and drag u2 — a brand new session, still open, while u1's
     // write from the FIRST session has not resolved yet.
     await userEvent.click(screen.getByLabelText('Edit pins'))
-    fireEvent.pointerDown(mark1, { pointerId: 2, button: 0, clientX: 300, clientY: 300 })
+    fireEvent.pointerDown(mark1, { pointerId: 2, button: 0, clientX: 294, clientY: 300 })
     fireEvent.pointerMove(mark1, { pointerId: 2, buttons: 1, clientX: 300, clientY: 300 })
     fireEvent.pointerUp(mark1, { pointerId: 2, clientX: 300, clientY: 300 })
 
@@ -1739,7 +1771,7 @@ describe('LodgingMap — pin dragging (kindred#2396)', () => {
     fireEvent.pointerDown(marksBefore[0] as HTMLElement, {
       pointerId: 1,
       button: 0,
-      clientX: 700,
+      clientX: 694,
       clientY: 200,
     })
     fireEvent.pointerMove(marksBefore[0] as HTMLElement, {
@@ -1769,7 +1801,7 @@ describe('LodgingMap — pin dragging (kindred#2396)', () => {
     fireEvent.pointerDown(marksAfter[1] as HTMLElement, {
       pointerId: 2,
       button: 0,
-      clientX: 300,
+      clientX: 294,
       clientY: 300,
     })
     fireEvent.pointerMove(marksAfter[1] as HTMLElement, {
@@ -1800,7 +1832,7 @@ describe('LodgingMap — pin dragging (kindred#2396)', () => {
     await enableEditing()
     mapCanvas()
     const mark = screen.getAllByTestId('map-mark')[0] as HTMLElement
-    fireEvent.pointerDown(mark, { pointerId: 1, button: 0, clientX: 700, clientY: 200 })
+    fireEvent.pointerDown(mark, { pointerId: 1, button: 0, clientX: 694, clientY: 200 })
     fireEvent.pointerMove(mark, { pointerId: 1, buttons: 1, clientX: 700, clientY: 200 })
     fireEvent.pointerUp(mark, { pointerId: 1, clientX: 700, clientY: 200 })
     const dropped = markStyle(0)
@@ -1809,6 +1841,59 @@ describe('LodgingMap — pin dragging (kindred#2396)', () => {
     await waitFor(() => expect(mockInvalidateQueries).toHaveBeenCalled())
 
     expect(markStyle(0)).toEqual(dropped)
+  })
+
+  it('keeps a second session`s redrag of the SAME building when the first (failed) flush lands after it', async () => {
+    // CodeRabbit finding on #2640: the failure-path delete used to key off
+    // `buildingCode` alone, so a FAILED flush #1 (u1) could delete session
+    // B's still-open redrag of the same building the moment it landed, even
+    // though flush #1 never sent session B's move. Unlike the sibling test
+    // above ("does not drop a second session`s drag..."), which proves
+    // DIFFERENT buildings never collide, this one proves the SAME building
+    // survives — the case the old buildingCode-only key could not tell apart.
+    let resolveFirst: (landed: number) => void = () => {
+      throw new Error('resolveFirst called before the first flush started')
+    }
+    mockUpdatePositions.mockImplementationOnce(
+      () =>
+        new Promise<number>((resolve) => {
+          resolveFirst = resolve
+        })
+    )
+
+    render(<LodgingMap parties={[]} units={UNITS} year={2026} />, { wrapper })
+    await enableEditing()
+    mapCanvas()
+
+    // Session A drags u1, closes — kicks off flush #1 (u1), held pending.
+    const mark0 = screen.getAllByTestId('map-mark')[0] as HTMLElement
+    fireEvent.pointerDown(mark0, { pointerId: 1, button: 0, clientX: 694, clientY: 200 })
+    fireEvent.pointerMove(mark0, { pointerId: 1, buttons: 1, clientX: 700, clientY: 200 })
+    fireEvent.pointerUp(mark0, { pointerId: 1, clientX: 700, clientY: 200 })
+    await userEvent.click(screen.getByLabelText('Edit pins'))
+    await waitFor(() => expect(mockUpdatePositions).toHaveBeenCalledTimes(1))
+
+    // Session B re-opens and redrags the SAME building (u1) to a different
+    // spot, while flush #1 is still in flight.
+    await userEvent.click(screen.getByLabelText('Edit pins'))
+    const mark0Again = screen.getAllByTestId('map-mark')[0] as HTMLElement
+    fireEvent.pointerDown(mark0Again, { pointerId: 2, button: 0, clientX: 294, clientY: 300 })
+    fireEvent.pointerMove(mark0Again, { pointerId: 2, buttons: 1, clientX: 300, clientY: 300 })
+    fireEvent.pointerUp(mark0Again, { pointerId: 2, clientX: 300, clientY: 300 })
+
+    // Flush #1 lands now, mid-session-B — and FAILS outright (0 landed).
+    await act(async () => {
+      resolveFirst(0)
+      await Promise.resolve()
+    })
+
+    // Session B's own drag for u1 must have survived flush #1's failure
+    // cleanup — closing session B must still send it.
+    await userEvent.click(screen.getByLabelText('Edit pins'))
+    await waitFor(() => expect(mockUpdatePositions).toHaveBeenCalledTimes(2))
+    const secondFlush = lastFlush()
+    expect(secondFlush.map((update) => update.id)).toContain('u1')
+    expect(secondFlush.find((u) => u.id === 'u1')?.map_x).toBeCloseTo(300 / RECT_WIDTH, 4)
   })
 })
 
@@ -1861,7 +1946,7 @@ describe('LodgingMap — pin dragging recovers a stuck gesture (kindred#2396)', 
       // A second gesture, on a DIFFERENT mark, must not be blocked by the
       // first one's stranded pointerId.
       const before = markStyle(1)
-      fireEvent.pointerDown(mark1, { pointerId: 2, button: 0, clientX: 300, clientY: 300 })
+      fireEvent.pointerDown(mark1, { pointerId: 2, button: 0, clientX: 294, clientY: 300 })
       fireEvent.pointerMove(mark1, { pointerId: 2, buttons: 1, clientX: 300, clientY: 300 })
       expect(markStyle(1)).not.toEqual(before)
     } finally {

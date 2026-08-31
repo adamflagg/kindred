@@ -119,6 +119,19 @@ interface PinDraft {
   targetUnitId: string
   x: number
   y: number
+  /** Stamped fresh by `nextPinDraftRev()` the moment a NEW drag gesture
+   *  creates this entry (kept across that gesture's own later moves). Lets
+   *  the flush's failure path (below) delete only the exact entry IT sent —
+   *  never a later redrag of the SAME building that overwrote this one in
+   *  `pinDrafts` while the write was still in flight. A `buildingCode`-only
+   *  key cannot tell those apart, because both share the same map key. */
+  rev: number
+}
+
+let pinDraftRevCounter = 0
+function nextPinDraftRev(): number {
+  pinDraftRevCounter += 1
+  return pinDraftRevCounter
 }
 
 /** Below this a pointer gesture is a click, above it a pan. Capturing the
@@ -268,7 +281,22 @@ export function LodgingMap({ parties, units, year, sessionCmId = 0 }: LodgingMap
   // reasoning as `UnitMapPositionField`'s `draggingRef`: a second finger
   // landing mid-drag, or a stray pointerup from a pointer that never pressed
   // here, must not be able to move or end someone else's gesture.
-  const pinDragRef = useRef<{ pointerId: number; buildingCode: string } | null>(null)
+  // `startX`/`startY`/`moved` gate draft creation on `DRAG_THRESHOLD_PX` —
+  // the same threshold the canvas pan already uses — so a stray click that
+  // never leaves the mark does not write a new position (CodeRabbit finding
+  // on kindred#2640: the offset was previously bounded only by the mark's
+  // own radius, 8-19px, a real coordinate change at `PIN_PRECISION`). `rev`
+  // is this gesture's `PinDraft.rev`, stamped once at the point the draft is
+  // actually created and reused for every later move of the SAME gesture.
+  const pinDragRef = useRef<{
+    pointerId: number
+    buildingCode: string
+    targetUnitId: string
+    rev: number
+    startX: number
+    startY: number
+    moved: boolean
+  } | null>(null)
 
   // Mirrored into a ref so the flush effect's cleanup — which runs on the
   // NEXT render after a state change, or on unmount — reads the drafts as of
@@ -296,12 +324,18 @@ export function LodgingMap({ parties, units, year, sessionCmId = 0 }: LodgingMap
       if (drafts.size === 0) return
       // Captured BEFORE the await — not re-read off `pinDraftsRef` once the
       // write resolves. A second edit session can open and drag a DIFFERENT
-      // building while this write is still in flight (its own uncheck fires
-      // a later, independent flush of this same effect); only the keys THIS
-      // flush actually sent may ever be touched below, or that session's
-      // still-open draft would be wiped by a wholesale clear that has
-      // nothing to do with it.
-      const flushedCodes = Array.from(drafts.keys())
+      // building, or REDRAG THE SAME ONE, while this write is still in
+      // flight (its own uncheck fires a later, independent flush of this
+      // same effect); only the exact entries THIS flush actually sent may
+      // ever be touched below, or that session's still-open draft would be
+      // wiped by a clear that has nothing to do with it. `rev`, not just the
+      // `buildingCode` key, is what makes that precise: a redrag of the same
+      // building overwrites the map entry under the identical key, so a
+      // key-only delete below would erase the NEWER draft too (CodeRabbit
+      // finding on kindred#2640).
+      const flushed = Array.from(drafts.entries()).map(
+        ([code, draft]) => [code, draft.rev] as const
+      )
       // ROUNDED AND OFF-ORIGIN ONLY HERE, at the write — never during the
       // live drag. The draft driving the mark's on-screen position stays at
       // full pointer precision so the pin tracks the cursor exactly; only
@@ -325,7 +359,12 @@ export function LodgingMap({ parties, units, year, sessionCmId = 0 }: LodgingMap
           // (`UnitMapPositionField`'s "the stored position goes back" idiom).
           setPinDrafts((current) => {
             const next = new Map(current)
-            for (const code of flushedCodes) next.delete(code)
+            // Only delete an entry that is STILL the one this flush sent —
+            // if a redrag of the same building has since overwritten it, its
+            // `rev` no longer matches and this leaves it alone.
+            for (const [code, rev] of flushed) {
+              if (next.get(code)?.rev === rev) next.delete(code)
+            }
             return next
           })
         }
@@ -938,6 +977,18 @@ export function LodgingMap({ parties, units, year, sessionCmId = 0 }: LodgingMap
                   {...(editingPins
                     ? {
                         onPointerDown: (event: React.PointerEvent<HTMLDivElement>) => {
+                          // STOPPED FIRST, unconditionally — a press starting
+                          // ON a mark must never fall through to the canvas's
+                          // own onPointerDown, whatever button it is or
+                          // whatever this handler decides below. Previously
+                          // this ran AFTER the early-return guards, so a
+                          // non-primary button (or a second pointer landing
+                          // while one drag was already active) skipped
+                          // `stopPropagation()` entirely and let that same
+                          // press bubble up and arm the canvas's pan — the
+                          // exact contradiction the comment on the
+                          // `editingPins` gate above claims never happens.
+                          event.stopPropagation()
                           if (event.button !== 0) return
                           if (pinDragRef.current !== null) return
                           const site = pinSite(first.unit, units)
@@ -946,7 +997,6 @@ export function LodgingMap({ parties, units, year, sessionCmId = 0 }: LodgingMap
                           // on a state this file cannot prove impossible from
                           // here, not as a state believed reachable.
                           if (site === null) return
-                          event.stopPropagation()
                           try {
                             event.currentTarget.setPointerCapture(event.pointerId)
                           } catch {
@@ -954,28 +1004,22 @@ export function LodgingMap({ parties, units, year, sessionCmId = 0 }: LodgingMap
                             // same non-fatal case `UnitMapPositionField`
                             // documents at its own capture call.
                           }
+                          // NO DRAFT YET — only the down point and the write
+                          // target are recorded. Creating one here is what let
+                          // a stray click (down+up with no movement) persist
+                          // a new position bounded only by the mark's own
+                          // radius (CodeRabbit finding on kindred#2640); the
+                          // first draft is written in `onPointerMove` below,
+                          // once movement clears `DRAG_THRESHOLD_PX`.
                           pinDragRef.current = {
                             pointerId: event.pointerId,
                             buildingCode: first.buildingCode,
+                            targetUnitId: site.unit_id,
+                            rev: nextPinDraftRev(),
+                            startX: event.clientX,
+                            startY: event.clientY,
+                            moved: false,
                           }
-                          const rect = canvasRef.current?.getBoundingClientRect()
-                          if (!rect) return
-                          const point = screenToNormalized(
-                            event.clientX - rect.left,
-                            event.clientY - rect.top,
-                            view,
-                            width,
-                            height
-                          )
-                          setPinDrafts((current) => {
-                            const next = new Map(current)
-                            next.set(first.buildingCode, {
-                              targetUnitId: site.unit_id,
-                              x: point.x,
-                              y: point.y,
-                            })
-                            return next
-                          })
                         },
                         onPointerMove: (event: React.PointerEvent<HTMLDivElement>) => {
                           const drag = pinDragRef.current
@@ -989,6 +1033,14 @@ export function LodgingMap({ parties, units, year, sessionCmId = 0 }: LodgingMap
                             pinDragRef.current = null
                             return
                           }
+                          if (!drag.moved) {
+                            const dx = event.clientX - drag.startX
+                            const dy = event.clientY - drag.startY
+                            // Same L1 threshold, same reasoning, as the
+                            // canvas's own pan-vs-click discrimination above.
+                            if (Math.abs(dx) + Math.abs(dy) <= DRAG_THRESHOLD_PX) return
+                            drag.moved = true
+                          }
                           const rect = canvasRef.current?.getBoundingClientRect()
                           if (!rect) return
                           const point = screenToNormalized(
@@ -999,10 +1051,13 @@ export function LodgingMap({ parties, units, year, sessionCmId = 0 }: LodgingMap
                             height
                           )
                           setPinDrafts((current) => {
-                            const existing = current.get(drag.buildingCode)
-                            if (!existing) return current
                             const next = new Map(current)
-                            next.set(drag.buildingCode, { ...existing, x: point.x, y: point.y })
+                            next.set(drag.buildingCode, {
+                              targetUnitId: drag.targetUnitId,
+                              x: point.x,
+                              y: point.y,
+                              rev: drag.rev,
+                            })
                             return next
                           })
                         },
