@@ -6,9 +6,10 @@
  * in source code — not the area list, the unit list, the alias mapping, the
  * parent relations, the staff-default flags, or any amenity.
  */
-import { AlertCircle, Ban, BedDouble, CalendarPlus, Link2 } from 'lucide-react'
+import { AlertCircle, Ban, BedDouble, CalendarCheck, CalendarPlus, Link2 } from 'lucide-react'
 import { Link, useParams } from 'react-router'
 
+import { CabinWeekendsQueue } from './CabinWeekendsQueue'
 import { LodgingAliasesPanel } from './LodgingAliasesPanel'
 import { LodgingUnitsPanel } from './LodgingUnitsPanel'
 import { SeasonRollForwardPanel } from './SeasonRollForwardPanel'
@@ -27,6 +28,10 @@ const SECTIONS = [
   { id: 'units', label: 'Units', icon: BedDouble },
   { id: 'aliases', label: 'Cabin name aliases', icon: Link2 },
   { id: 'unresolved', label: 'Unresolved names', icon: AlertCircle },
+  // kindred#2648 UI half. Which weekend an ambiguous CampMinder cabin value
+  // belongs to — distinct from `unresolved` above (which unit a raw string
+  // means) and from `status` below (whether a weekend is running at all).
+  { id: 'attribution', label: 'Cabin Weekends', icon: CalendarCheck },
   { id: 'season', label: 'Season', icon: CalendarPlus },
   { id: 'status', label: 'Weekend status', icon: Ban },
 ] as const
@@ -75,6 +80,7 @@ export function LodgingSettingsTab() {
       {active === 'units' && <LodgingUnitsPanel />}
       {active === 'aliases' && <LodgingAliasesPanel />}
       {active === 'unresolved' && <UnresolvedAliasQueue />}
+      {active === 'attribution' && <CabinWeekendsQueue />}
       {active === 'season' && <SeasonRollForwardPanel />}
       {active === 'status' && <WeekendStatusPanel />}
     </div>
