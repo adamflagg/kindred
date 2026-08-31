@@ -143,9 +143,28 @@ func TestIngestRefusesAConfirmedWeekendThatIsNotACandidate(t *testing.T) {
 func TestConfirmedPlacementSurvivesItsOwnOrphanSweep(t *testing.T) {
 	t.Parallel()
 	app := newSyncTestApp(t)
-	first, _, _ := seedThreeWeekendHousehold(t, app,
+	first, second, third := seedThreeWeekendHousehold(t, app,
 		"Ridge A", "2025-06-10T09:00:00.0000000+00:00")
-	seedConfirmedIssue(t, app, cmIDFamilyCamp1)
+	// The SECOND weekend, not the first. An orphan key that was never widened
+	// alongside the write key -- the kindred#2626 shape -- typically still knows
+	// a party's earliest weekend, so confirming the first would let a narrowed
+	// key pass this test. A middle weekend forces the orphan key to carry the
+	// whole candidate set.
+	seedConfirmedIssue(t, app, cmIDFamilyCamp6)
+
+	// A second family on all three weekends, unconfirmed. It places nothing --
+	// that is the whole point of the ambiguity -- but it keeps every weekend
+	// inside reliableEnrolledSessions independently of household 9001. Without
+	// it the sweep's per-session reliability guard ("a session with zero
+	// reliably-enrolled parties of a grain is left untouched") shields the
+	// confirmed row for the WRONG reason, and the test passes even when the
+	// orphan key genuinely no longer knows about the confirmed weekend --
+	// verified by mutation.
+	hh2 := addHousehold(t, app, 9002, 2025)
+	kid2 := addPerson(t, app, 5002, 9002, 2025, hh2)
+	for _, sess := range []string{first, second, third} {
+		addAttendee(t, app, kid2, sess, 5002, 2, 2025)
+	}
 
 	// A genuinely orphaned mirror row: household 9100 holds a placement on a
 	// weekend it is not enrolled in. The sweep must take this one, which is what
@@ -180,9 +199,13 @@ func TestConfirmedPlacementSurvivesItsOwnOrphanSweep(t *testing.T) {
 		t.Fatalf("assignments = %d, want the confirmed household's row alone -- "+
 			"the sweep deleted the row the confirmation had just written", len(rows))
 	}
-	if rows[0].GetInt("session_cm_id") != cmIDFamilyCamp1 {
-		t.Errorf("session_cm_id = %d, want %d",
-			rows[0].GetInt("session_cm_id"), cmIDFamilyCamp1)
+	if rows[0].GetInt("session_cm_id") != cmIDFamilyCamp6 {
+		t.Errorf("session_cm_id = %d, want the confirmed %d",
+			rows[0].GetInt("session_cm_id"), cmIDFamilyCamp6)
+	}
+	if rows[0].GetString("session") != second {
+		t.Errorf("session = %q, want the confirmed second weekend %q",
+			rows[0].GetString("session"), second)
 	}
 
 	// A second run: the row must be found, not re-created, and never swept.
@@ -199,7 +222,7 @@ func TestConfirmedPlacementSurvivesItsOwnOrphanSweep(t *testing.T) {
 	if err != nil {
 		t.Fatalf("find assignments after the second run: %v", err)
 	}
-	if len(rows) != 1 || rows[0].GetInt("session_cm_id") != cmIDFamilyCamp1 {
+	if len(rows) != 1 || rows[0].GetInt("session_cm_id") != cmIDFamilyCamp6 {
 		t.Fatalf("assignments after a re-sync = %d, want the same single confirmed row",
 			len(rows))
 	}
