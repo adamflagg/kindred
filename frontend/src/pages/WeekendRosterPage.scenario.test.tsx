@@ -149,6 +149,14 @@ vi.mock('../components/weekend/ScenarioCompareEntry', () => ({
   ScenarioCompareEntry: () => null,
 }))
 
+// Same reasoning again, for the cabin-weekend chip (kindred#2648 UI half):
+// `CabinWeekendEntry` mounts `useSessionAttributionQueue`, a real
+// `useQuery`/`useMutation` the `useQueryClient` stub above does not satisfy.
+// Its own suite is `components/weekend/CabinWeekendEntry.test.tsx`.
+vi.mock('../components/weekend/CabinWeekendEntry', () => ({
+  CabinWeekendEntry: () => null,
+}))
+
 // The board mounts `useLodgingPlacement`, which mounts a real `useMutation` —
 // and that reaches for a QueryClient through react-query's own internals,
 // which the `useQueryClient` stub above does not satisfy. These files are

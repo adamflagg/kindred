@@ -107,6 +107,21 @@ vi.mock('../hooks/usePushPreview', () => ({
   usePushPreview: () => ({ data: undefined, isPending: false, error: null }),
 }))
 
+// Same reasoning, for the cabin-weekend chip (kindred#2648 UI half): a real
+// `useQuery`/`useMutation` inside `useSessionAttributionQueue` reaches for a
+// QueryClient the `useQueryClient` stub does not satisfy. Its own suite is
+// `components/weekend/CabinWeekendEntry.test.tsx`.
+vi.mock('../hooks/useSessionAttributionQueue', () => ({
+  useSessionAttributionQueue: () => ({
+    isLoading: false,
+    error: null,
+    data: [],
+    items: [],
+    confirm: vi.fn(),
+    isConfirming: false,
+  }),
+}))
+
 vi.mock('../hooks/useScenario', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../hooks/useScenario')>()
   return {
