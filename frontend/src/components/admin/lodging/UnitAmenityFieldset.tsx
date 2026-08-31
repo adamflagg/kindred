@@ -2,16 +2,17 @@
  * What the cabin has, and the one assertion staff make over all of it.
  *
  * The flags render as a FIXED grid rather than a wrapping row. A flex-wrap
- * reflows to a different shape at every width, so the same ten controls landed
- * in a different arrangement each time the panel was opened — nothing sat
- * where it sat last time, which is what made the section feel unordered even
- * though the list never changed. Columns hold their position.
+ * reflows to a different shape at every width, so the same controls landed in
+ * a different arrangement each time the panel was opened — nothing sat where
+ * it sat last time, which is what made the section feel unordered even though
+ * the list never changed. Columns hold their position.
  *
- * `is_confirmed` is NOT rendered here. It is an assertion OVER these ten, not
- * an eleventh peer — "a human has walked this cabin and checked them" — so it
- * belongs beside Save, where the form's other commitments live. It stopped
- * gating the roster's judgement under kindred#2526; it is the reconfirm
- * work-down list, and it is still an assertion over the whole set.
+ * `is_confirmed` is NOT rendered here. It is an assertion OVER every flag in
+ * `AMENITY_FLAGS`, not one more peer among them — "a human has walked this
+ * cabin and checked them" — so it belongs beside Save, where the form's other
+ * commitments live. It stopped gating the roster's judgement under
+ * kindred#2526; it is the reconfirm work-down list, and it is still an
+ * assertion over the whole set.
  */
 import { Plus, X } from 'lucide-react'
 import { useState } from 'react'

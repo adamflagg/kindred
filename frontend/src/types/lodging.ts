@@ -308,6 +308,19 @@ export interface LodgingUnitRecord extends PocketBaseRecordBase {
   has_ac: boolean
   has_fridge: boolean
   is_accessible: boolean
+  // The ORIGINAL 2026 inventory migration's fields (1500000131) — the first
+  // amenity columns the registry ever carried, six migrations before the
+  // Master Housing sheet fields below. Populated by the registry import from
+  // day one, but with no editing surface anywhere in the app until
+  // `unitAmenities.ts`'s `AMENITY_FLAGS` grew to cover them.
+  is_weatherized: boolean
+  has_plumbing: boolean
+  has_space_heater: boolean
+  has_lights: boolean
+  has_heat: boolean
+  has_pack_play_space: boolean
+  has_kitchen: boolean
+  has_living_room: boolean
   // From the 2026 Master Housing sheet. Each refines a field above rather than
   // restating it: has_tub under `bathroom`, has_shared_fridge under
   // has_fridge. has_crib is distinct from has_pack_play_space — a camp crib is
@@ -477,6 +490,14 @@ export interface LodgingUnitInput {
   has_ac?: boolean
   has_fridge?: boolean
   is_accessible?: boolean
+  is_weatherized?: boolean
+  has_plumbing?: boolean
+  has_space_heater?: boolean
+  has_lights?: boolean
+  has_heat?: boolean
+  has_pack_play_space?: boolean
+  has_kitchen?: boolean
+  has_living_room?: boolean
   has_tub?: boolean
   has_crib?: boolean
   has_changing_table?: boolean

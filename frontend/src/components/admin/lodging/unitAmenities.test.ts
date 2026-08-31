@@ -13,6 +13,23 @@ import { AMENITY_FLAGS, amenitiesOf, type UnitAmenities } from './unitAmenities'
 // staff ruled the split not worth tracking. See the dedicated test below.
 const NEW_2026_FLAGS = ['has_tub', 'has_crib', 'has_changing_table', 'has_shared_fridge'] as const
 
+// The eight booleans the ORIGINAL 2026 inventory migration (1500000131) put
+// on lodging_units — before near_bathhouse/has_power/has_ac/has_fridge/
+// is_accessible even existed on every unit, and six migrations before the
+// Master Housing sheet fields above. They were populated by the registry
+// import from day one but had no editing surface anywhere in the app until
+// this pass closed that gap.
+const ORIGINAL_INVENTORY_FLAGS = [
+  'is_weatherized',
+  'has_plumbing',
+  'has_space_heater',
+  'has_lights',
+  'has_heat',
+  'has_pack_play_space',
+  'has_kitchen',
+  'has_living_room',
+] as const
+
 describe('AMENITY_FLAGS', () => {
   it('has a unique key, a label and an icon for every entry', () => {
     const keys = AMENITY_FLAGS.map((f) => f.key)
@@ -28,6 +45,22 @@ describe('AMENITY_FLAGS', () => {
     for (const key of NEW_2026_FLAGS) {
       expect(keys.has(key), `${key} is not in AMENITY_FLAGS`).toBe(true)
     }
+  })
+
+  it('carries the eight original-inventory flags that had no editing surface until now', () => {
+    const keys = new Set<string>(AMENITY_FLAGS.map((f) => f.key))
+    for (const key of ORIGINAL_INVENTORY_FLAGS) {
+      expect(keys.has(key), `${key} is not in AMENITY_FLAGS`).toBe(true)
+    }
+  })
+
+  it('accounts for every boolean amenity lodging_units carries — 17, not 9', () => {
+    // Pinned against production (year 2026, 118 units): the 9 already wired
+    // plus these 8 are the full set of editable amenity booleans the schema
+    // has. is_confirmed, shareability and has_ramp are deliberately NOT
+    // amenities (see the module docstring and the test below) and capacity/
+    // bathroom fields are their own thing entirely.
+    expect(AMENITY_FLAGS.length).toBe(17)
   })
 
   it('gives every flag a slot in the amenity object the form saves', () => {
@@ -56,6 +89,9 @@ describe('amenitiesOf', () => {
     for (const key of NEW_2026_FLAGS) {
       expect(fresh[key as keyof UnitAmenities]).toBe(false)
     }
+    for (const key of ORIGINAL_INVENTORY_FLAGS) {
+      expect(fresh[key as keyof UnitAmenities], key).toBe(false)
+    }
     expect(fresh.is_confirmed).toBe(false)
   })
 
@@ -69,6 +105,24 @@ describe('amenitiesOf', () => {
 
     const amenities = amenitiesOf(unit)
     for (const key of NEW_2026_FLAGS) {
+      expect(amenities[key as keyof UnitAmenities], key).toBe(true)
+    }
+  })
+
+  it('carries the original-inventory flags off an existing unit', () => {
+    const unit = {
+      is_weatherized: true,
+      has_plumbing: true,
+      has_space_heater: true,
+      has_lights: true,
+      has_heat: true,
+      has_pack_play_space: true,
+      has_kitchen: true,
+      has_living_room: true,
+    } as Parameters<typeof amenitiesOf>[0]
+
+    const amenities = amenitiesOf(unit)
+    for (const key of ORIGINAL_INVENTORY_FLAGS) {
       expect(amenities[key as keyof UnitAmenities], key).toBe(true)
     }
   })
