@@ -12,18 +12,22 @@ import (
 
 // ============================================================================
 // kindred#2305 -- the three family_camp_* tables carry an enrollment status.
+// kindred#2619 -- that status counts FAMILY weekends only.
 //
-// The defect these pin is NOT "a registered household has no status column".
-// It is the read that column replaces: `build_household_journey` badges a year
-// "No enrollment" whenever the household has no ENROLLED CHILD, and its child
-// source filters `session.session_type = "family"`. An adult weekend enrolls the
-// PARENT, person-grain, on a session typed `adult` -- so a household that
-// genuinely attended gets the chip anyway.
+// What the column is for: the three derived tables are built from custom values,
+// a form a family filled in, and filling the form is not attending. Between 46
+// and 89 households a year hold family-camp rows with nobody enrolled, and the
+// column is what tells them apart from a household that came.
 //
-// Measured on the production snapshot for 2026: 480 journey (household, year)
-// rows, 89 carrying the chip, 33 of them households with an enrolled
-// family-or-adult attendee. Copying the family-only predicate into this
-// derivation would reproduce all 33.
+// ⛔ ADULT WEEKENDS ARE NOT FAMILY CAMP. An earlier version of this derivation
+// counted them, on the reasoning that a family-only filter would badge genuine
+// attendees as never enrolled. That reasoning was measured against this column
+// and was CIRCULAR -- the households it counted were `enrolled` BECAUSE of the
+// adult weekend. kindred#2619 ruled it out, and the tests below pin the ruling.
+//
+// Measured on the production snapshot (2026-08-23) for 2026: 162 households
+// hold a family_camp_* row whose stored status changes, every one of them with
+// no family-session attendee row in any state.
 // ============================================================================
 
 // seedWeekendSession writes one camp_sessions row and returns its PB id.
@@ -67,12 +71,19 @@ func enrollmentStatusesForYear(t *testing.T, app core.App, year int) map[string]
 	return statuses
 }
 
-// TestFamilyCampEnrollmentStatusCountsAdultWeekends is the whole issue in one
-// assertion: an ADULT weekend is a family-camp weekend. A derivation that
-// filtered `session_type = "family"` -- the predicate
-// fetch_household_family_attendees uses, and the reason the journey's chip is
-// wrong on 33 of 89 rows -- would report this household as never enrolled.
-func TestFamilyCampEnrollmentStatusCountsAdultWeekends(t *testing.T) {
+// TestFamilyCampEnrollmentStatusExcludesAdultWeekends is the whole ruling in one
+// assertion: an adult weekend is NOT family camp.
+//
+// Men's and Women's Weekend and the Divorce & Discovery retreat are a SEPARATE
+// PROGRAM that enrols adults directly. They are not family camp at a different
+// grain, and their attendee rows say nothing about whether a household attended
+// a family weekend. kindred#2619 ruled it, and api/services/lodging_repository.py
+// and lodging_roster_service.py already read it this way.
+//
+// A household whose only weekend enrolment is an adult one is therefore ABSENT
+// from the map -- it holds no family-camp attendee row at all, which is exactly
+// what none_on_file names.
+func TestFamilyCampEnrollmentStatusExcludesAdultWeekends(t *testing.T) {
 	t.Parallel()
 	const year = 2026
 
@@ -88,10 +99,73 @@ func TestFamilyCampEnrollmentStatusCountsAdultWeekends(t *testing.T) {
 
 	statuses := enrollmentStatusesForYear(t, app, year)
 
-	for _, household := range []string{"hh_family", "hh_adult"} {
-		if got := statuses[household]; got != enrollmentStatusEnrolled {
-			t.Errorf("%s enrollment_status = %q, want %q", household, got, enrollmentStatusEnrolled)
-		}
+	if got := statuses["hh_family"]; got != enrollmentStatusEnrolled {
+		t.Errorf("hh_family enrollment_status = %q, want %q", got, enrollmentStatusEnrolled)
+	}
+	if got, present := statuses["hh_adult"]; present {
+		t.Errorf("hh_adult is present with %q; an adult-weekend-only household holds no "+
+			"family-camp attendee row and must be absent", got)
+	}
+	if got := enrollmentStatusForHousehold(statuses, "hh_adult"); got != enrollmentStatusNoneOnFile {
+		t.Errorf("hh_adult resolves to %q, want %q", got, enrollmentStatusNoneOnFile)
+	}
+}
+
+// TestFamilyCampEnrollmentStatusIgnoresAnAdultWeekendFallbackStatus covers the
+// OTHER branch, which the enrolled case above does not reach.
+//
+// A household whose only weekend row is a CANCELLED adult-weekend one took the
+// bestStatus path, not the enrolled one, and stored `cancelled` -- asserting a
+// family-camp cancellation on the strength of a different program's row. 19 such
+// households on the 2026 production snapshot, 292 across all years.
+func TestFamilyCampEnrollmentStatusIgnoresAnAdultWeekendFallbackStatus(t *testing.T) {
+	t.Parallel()
+	const year = 2026
+
+	app := newFamilyCampReplayTestApp(t)
+	seedWeekendSession(t, app, 101, "Family Camp 1", "family", year)
+	adultWeekend := seedWeekendSession(t, app, 102, "Adult Weekend 1", "adult", year)
+
+	onAdult := seedHouseholdMember(t, app, "hh_adult_cancelled", year)
+	seedAttendee(t, app, onAdult, adultWeekend, "cancelled", 32, year)
+
+	statuses := enrollmentStatusesForYear(t, app, year)
+
+	if got, present := statuses["hh_adult_cancelled"]; present {
+		t.Errorf("hh_adult_cancelled is present with %q; a cancelled adult-weekend row is "+
+			"not a family-camp cancellation", got)
+	}
+	if got := enrollmentStatusForHousehold(statuses, "hh_adult_cancelled"); got != enrollmentStatusNoneOnFile {
+		t.Errorf("hh_adult_cancelled resolves to %q, want %q", got, enrollmentStatusNoneOnFile)
+	}
+}
+
+// TestFamilyCampEnrollmentStatusLetsTheFamilyStatusSurfaceOverAnAdultEnrolment
+// is the sharpest case, and the one the column got actively backwards.
+//
+// A household enrolled on an adult weekend AND waitlisted for a family weekend
+// stored `enrolled`, because the adult row won the two-stage resolution -- so the
+// column asserted the family attended a family camp it was only waitlisted for.
+// With adult weekends excluded, the family-side status is the only one left and
+// it surfaces. 8 such households in 2022, 10 in 2023, 5 in 2025 on the
+// production snapshot.
+func TestFamilyCampEnrollmentStatusLetsTheFamilyStatusSurfaceOverAnAdultEnrolment(t *testing.T) {
+	t.Parallel()
+	const year = 2026
+
+	app := newFamilyCampReplayTestApp(t)
+	familyWeekend := seedWeekendSession(t, app, 101, "Family Camp 1", "family", year)
+	adultWeekend := seedWeekendSession(t, app, 102, "Adult Weekend 1", "adult", year)
+
+	member := seedHouseholdMember(t, app, "hh_mixed", year)
+	seedAttendee(t, app, member, adultWeekend, "enrolled", 2, year)
+	seedAttendee(t, app, member, familyWeekend, "waitlisted", 8, year)
+
+	statuses := enrollmentStatusesForYear(t, app, year)
+
+	if got := statuses["hh_mixed"]; got != "waitlisted" {
+		t.Errorf("hh_mixed enrollment_status = %q, want %q -- an adult-weekend enrolment "+
+			"must not outrank the household's real family-camp status", got, "waitlisted")
 	}
 }
 
@@ -290,10 +364,10 @@ func TestFamilyCampStatusPriorityMatchesTheFrontend(t *testing.T) {
 // refuses instead.
 //
 // The discriminator is the year's camp_sessions rows, not its weekends: a
-// season that ran sessions but no family or adult weekend is a real answer
+// season that ran sessions but no family weekend is a real answer
 // (`none_on_file` for everyone), while a season with no sessions row at all has
 // not been synced yet. Every year 2017-2026 on the production snapshot carries
-// between 6 and 18 weekends, so the second case is never a real season.
+// between 6 and 10 family weekends, so the second case is never a real season.
 func TestFamilyCampEnrollmentStatusRefusesAYearWithNoSessionsAtAll(t *testing.T) {
 	t.Parallel()
 	const year = 2026
@@ -320,8 +394,8 @@ func TestFamilyCampEnrollmentStatusRefusesAYearWithNoSessionsAtAll(t *testing.T)
 }
 
 // TestFamilyCampEnrollmentStatusAcceptsASeasonWithNoWeekends is the other half:
-// the guard above must not fire on a season that genuinely ran no family or
-// adult weekend. Sessions exist, none of them is a weekend, so every household
+// the guard above must not fire on a season that genuinely ran no family
+// weekend. Sessions exist, none of them is a family weekend, so every household
 // is honestly none_on_file.
 func TestFamilyCampEnrollmentStatusAcceptsASeasonWithNoWeekends(t *testing.T) {
 	t.Parallel()
