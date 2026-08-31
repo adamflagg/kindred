@@ -283,6 +283,14 @@ export function LodgingMap({ parties, units, year, sessionCmId = 0 }: LodgingMap
     return () => {
       const drafts = pinDraftsRef.current
       if (drafts.size === 0) return
+      // Captured BEFORE the await — not re-read off `pinDraftsRef` once the
+      // write resolves. A second edit session can open and drag a DIFFERENT
+      // building while this write is still in flight (its own uncheck fires
+      // a later, independent flush of this same effect); only the keys THIS
+      // flush actually sent may ever be touched below, or that session's
+      // still-open draft would be wiped by a wholesale clear that has
+      // nothing to do with it.
+      const flushedCodes = Array.from(drafts.keys())
       // ROUNDED AND OFF-ORIGIN ONLY HERE, at the write — never during the
       // live drag. The draft driving the mark's on-screen position stays at
       // full pointer precision so the pin tracks the cursor exactly; only
@@ -299,16 +307,58 @@ export function LodgingMap({ parties, units, year, sessionCmId = 0 }: LodgingMap
               ? 'Failed to save the map pin.'
               : `Saved ${String(landed)} of ${String(updates.length)} map pins.`
           )
+          // A failure (or partial failure) is the one case the draft must
+          // NOT keep speaking for the server — clear just what THIS flush
+          // sent so the mark falls back to `mapUnit.x/y`, which the refetch
+          // below is about to confirm is where the write actually landed
+          // (`UnitMapPositionField`'s "the stored position goes back" idiom).
+          setPinDrafts((current) => {
+            const next = new Map(current)
+            for (const code of flushedCodes) next.delete(code)
+            return next
+          })
         }
-        // Invalidated REGARDLESS of a partial failure: a refetch is what
-        // shows a failed pin back where the server actually left it, exactly
-        // the "the stored position goes back" idiom `UnitMapPositionField`
-        // documents for its own failed write.
+        // On a clean write the draft is left in place, on purpose — it IS
+        // the server's value now, same as `UnitMapPositionField`'s own
+        // `saved` state never reverting to a prop read after a successful
+        // commit. `invalidateQueries` only marks the roster query stale and
+        // starts a refetch in the background; it does not wait for it. If
+        // this cleared the draft here too, the mark would fall back to
+        // `mapUnit.x/y` from the STILL-STALE `units` prop for that
+        // round-trip and visibly snap back to the pre-drag position before
+        // snapping forward again once the refetch lands — reading to staff
+        // as a failed save when it was not one.
         invalidateLodgingRegistryQueries(queryClient)
-        setPinDrafts(new Map())
       })
     }
   }, [editingPins])
+
+  // RECONCILE a committed draft against a landed refetch. The flush above
+  // deliberately leaves a successful write's draft in place (so the mark
+  // does not snap back to a stale prop while the refetch is in flight — see
+  // that effect's own comment), but nothing then retires it once `units`
+  // actually agrees. Left alone, EVERY draft ever successfully dragged in
+  // this mount would keep riding along on every later flush, forever —
+  // harmless (an idempotent overwrite of the same value) but pointless, and
+  // it grows without bound on a long-lived tab. Runs off `model.units`, the
+  // exact values the mark render below reads, not `units` directly.
+  useEffect(() => {
+    setPinDrafts((current) => {
+      if (current.size === 0) return current
+      let changed = false
+      const next = new Map(current)
+      for (const mapUnit of model.units) {
+        const draft = next.get(mapUnit.buildingCode)
+        if (!draft) continue
+        const landedAt = offOriginPin({ x: roundPin(draft.x), y: roundPin(draft.y) })
+        if (roundPin(mapUnit.x) === landedAt.x && roundPin(mapUnit.y) === landedAt.y) {
+          next.delete(mapUnit.buildingCode)
+          changed = true
+        }
+      }
+      return changed ? next : current
+    })
+  }, [model.units])
 
   // Measure the canvas so projection happens in real pixels. ResizeObserver
   // rather than a window listener: the tab can be revealed at any size.
@@ -611,7 +661,24 @@ export function LodgingMap({ parties, units, year, sessionCmId = 0 }: LodgingMap
             // canvas while Edit pins is on. Marks below grow the opposite
             // set of handlers under the same condition.
             {...(editingPins
-              ? {}
+              ? {
+                  // THE STUCK-DRAG RECOVERY. A mark's own `onPointerMove`
+                  // carries the identical `buttons === 0` guard, but a mark
+                  // is a 16-38px target — if `setPointerCapture` failed (or
+                  // is unsupported) and the release lands anywhere else, no
+                  // move ever reaches that mark again and `pinDragRef` is
+                  // stuck, blocking every future drag until reload. This
+                  // canvas-sized listener is the same recovery at the size
+                  // `UnitMapPositionField` already gets it at for free by
+                  // putting its OWN drag handlers on its canvas rather than
+                  // a small mark.
+                  onPointerMove: (event: React.PointerEvent<HTMLDivElement>) => {
+                    const drag = pinDragRef.current
+                    if (drag && drag.pointerId === event.pointerId && event.buttons === 0) {
+                      pinDragRef.current = null
+                    }
+                  },
+                }
               : {
                   // Replacing the record on a new press is what makes a DROPPED
                   // gesture self-heal: if an up event is ever lost, the next press
