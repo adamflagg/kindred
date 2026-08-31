@@ -16,6 +16,8 @@ import (
 
 	"github.com/pocketbase/pocketbase/core"
 	pbtests "github.com/pocketbase/pocketbase/tests"
+
+	"github.com/camp/kindred/pocketbase/campminder"
 )
 
 // MockService implements Service interface for testing
@@ -4496,5 +4498,108 @@ func TestCurrentYearDefaultSyncStillRejectsDryRun(t *testing.T) {
 		if got[i] != name {
 			t.Errorf("UnsupportedDryRunServices(current-year default)[%d] = %q, want %q", i, got[i], name)
 		}
+	}
+}
+
+// registrationSnapshotProbe is a Service whose Sync captures whatever is registered under each
+// of `ids` at the moment IT runs. That is the only point from which RunSyncWithOptions'
+// year-override re-registration (the block starting "If year override is specified") is
+// observable from outside the function: the block's own defer restores o.services to its
+// pre-call state before RunSyncWithOptions returns, so inspecting o.services after the call
+// would only ever show the restored, pre-call registrations.
+type registrationSnapshotProbe struct {
+	orchestrator *Orchestrator
+	ids          []string
+	seen         map[string]Service
+}
+
+func (p *registrationSnapshotProbe) Sync(_ context.Context) error {
+	p.seen = make(map[string]Service, len(p.ids))
+	for _, id := range p.ids {
+		p.seen[id] = p.orchestrator.GetService(id)
+	}
+	return nil
+}
+func (p *registrationSnapshotProbe) Name() string    { return "probe" }
+func (p *registrationSnapshotProbe) GetStats() Stats { return Stats{} }
+
+// TestRunSyncWithOptionsHistoricalReRegistersScopedFamilyCampVariants pins kindred#2608: a
+// historical replay (opts.Year > 0) re-registers the unrestricted person_custom_values /
+// household_custom_values pair against a year-specific client, but until this fix left the two
+// scoped family-camp variants (person_custom_values_family_camp,
+// household_custom_values_family_camp) untouched -- so a historical run of one of them kept
+// running against whatever client it was constructed with at boot (InitializeSyncServices),
+// current season and all, while the run was labeled as replaying a past year.
+//
+// It proves re-registration happened, not just that a service exists, by pre-registering the
+// scoped ids with sentinel instances standing in for InitializeSyncServices' boot-time
+// registration (bound to bootClient) and then asserting the registrationSnapshotProbe sees
+// DIFFERENT instances mid-run: identical pointers would mean the historical block left the
+// boot-time registration alone.
+//
+// Registered in serialGroups: CAMPMINDER_PRIMARY_KEY (campminder.NewClient) is t.Setenv.
+func TestRunSyncWithOptionsHistoricalReRegistersScopedFamilyCampVariants(t *testing.T) {
+	t.Setenv("CAMPMINDER_PRIMARY_KEY", "test-key")
+
+	app := newDryRunTestApp(t)
+	o := NewOrchestrator(app)
+	o.SetJobSpacing(0)
+
+	bootClient, err := campminder.NewClient(&campminder.Config{APIKey: "boot-key", ClientID: "c", SeasonID: 2025})
+	if err != nil {
+		t.Fatalf("campminder.NewClient (boot): %v", err)
+	}
+	o.baseClient = bootClient
+
+	personID := scopedID(serviceNamePersonCustomValues, ScopeFamilyCamp)
+	householdID := scopedID(serviceNameHouseholdCustomValues, ScopeFamilyCamp)
+
+	// Simulate InitializeSyncServices' boot-time registration of the two scoped family-camp
+	// variants: bound to the current-season client, exactly like scopedServiceRegistrations
+	// constructs them at boot.
+	bootPerson := NewPersonCustomFieldValuesSync(app, bootClient)
+	bootPerson.SetScope(ScopeFamilyCamp)
+	o.RegisterService(personID, bootPerson)
+
+	bootHousehold := NewHouseholdCustomFieldValuesSync(app, bootClient)
+	bootHousehold.SetScope(ScopeFamilyCamp)
+	o.RegisterService(householdID, bootHousehold)
+
+	probe := &registrationSnapshotProbe{orchestrator: o, ids: []string{personID, householdID}}
+	o.RegisterService("probe", probe)
+
+	if err := o.RunSyncWithOptions(context.Background(), Options{
+		Year:     2020, // a historical replay, distinct from bootClient's SeasonID 2025
+		Services: []string{"probe"},
+	}); err != nil {
+		t.Fatalf("RunSyncWithOptions: %v", err)
+	}
+
+	personSeen := probe.seen[personID]
+	if personSeen == nil {
+		t.Fatalf("%s was not registered at all during the historical run", personID)
+	}
+	if personSeen == Service(bootPerson) {
+		t.Errorf("%s still pointed at the boot-time instance during a historical run -- it was "+
+			"never re-registered against the year-specific client (kindred#2608)", personID)
+	}
+	if pcv, ok := personSeen.(*PersonCustomFieldValuesSync); !ok {
+		t.Errorf("%s: expected *PersonCustomFieldValuesSync, got %T", personID, personSeen)
+	} else if pcv.Scope != ScopeFamilyCamp {
+		t.Errorf("%s: expected Scope=%q, got %q", personID, ScopeFamilyCamp, pcv.Scope)
+	}
+
+	householdSeen := probe.seen[householdID]
+	if householdSeen == nil {
+		t.Fatalf("%s was not registered at all during the historical run", householdID)
+	}
+	if householdSeen == Service(bootHousehold) {
+		t.Errorf("%s still pointed at the boot-time instance during a historical run -- it was "+
+			"never re-registered against the year-specific client (kindred#2608)", householdID)
+	}
+	if hcv, ok := householdSeen.(*HouseholdCustomFieldValuesSync); !ok {
+		t.Errorf("%s: expected *HouseholdCustomFieldValuesSync, got %T", householdID, householdSeen)
+	} else if hcv.Scope != ScopeFamilyCamp {
+		t.Errorf("%s: expected Scope=%q, got %q", householdID, ScopeFamilyCamp, hcv.Scope)
 	}
 }

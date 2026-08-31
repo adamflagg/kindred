@@ -294,6 +294,13 @@ var serialGroups = []struct {
 	},
 	{
 		pkg:    "sync",
+		reason: "t.Setenv: CAMPMINDER_PRIMARY_KEY (campminder.NewClient) builds the boot-time client",
+		tests: []string{
+			"TestRunSyncWithOptionsHistoricalReRegistersScopedFamilyCampVariants",
+		},
+	},
+	{
+		pkg:    "sync",
 		reason: "t.Setenv: CAMPMINDER_SEASON_ID drives runSyncAndWait's own season resolution",
 		tests: []string{
 			"TestRunSyncAndWaitSetsYearFromOrigin",
