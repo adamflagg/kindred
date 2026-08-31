@@ -27,11 +27,6 @@ func NewFinancialLookupsSync(app core.App, client *campminder.Client) *Financial
 	}
 }
 
-// Name returns the name of this sync service
-func (s *FinancialLookupsSync) Name() string {
-	return serviceNameFinancialLookups
-}
-
 // Sync performs the financial lookups sync - syncs all global lookup endpoints
 func (s *FinancialLookupsSync) Sync(ctx context.Context) error {
 	s.LogSyncStart(serviceNameFinancialLookups)

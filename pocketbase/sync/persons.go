@@ -67,11 +67,6 @@ func NewPersonsSync(app core.App, client *campminder.Client) *PersonsSync {
 	}
 }
 
-// Name returns the name of this sync service
-func (s *PersonsSync) Name() string {
-	return personsCollection
-}
-
 // SetDryRun implements the orchestrator's DryRunnable interface (kindred#2351). Declared
 // explicitly rather than inherited by embedding BaseSyncService -- see that field's doc
 // comment on BaseSyncService for why a promoted setter is not safe. Setting it also gates

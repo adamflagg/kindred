@@ -6,19 +6,6 @@ import (
 
 const testSessionName = "Session 2"
 
-func TestSessionsSync_Name(t *testing.T) {
-	t.Parallel()
-	// Create a SessionsSync without dependencies for this simple test
-	s := &SessionsSync{}
-
-	got := s.Name()
-	want := "sessions"
-
-	if got != want {
-		t.Errorf("SessionsSync.Name() = %q, want %q", got, want)
-	}
-}
-
 // TestTransformSessionExtractsAllFields tests that all CampMinder fields are extracted to PocketBase format
 func TestTransformSessionExtractsAllFields(t *testing.T) {
 	t.Parallel()

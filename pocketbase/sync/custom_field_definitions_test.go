@@ -5,18 +5,6 @@ import (
 	"testing"
 )
 
-func TestCustomFieldDefinitionsSync_Name(t *testing.T) {
-	t.Parallel()
-	s := &CustomFieldDefinitionsSync{}
-
-	got := s.Name()
-	want := "custom_field_defs"
-
-	if got != want {
-		t.Errorf("CustomFieldDefinitionsSync.Name() = %q, want %q", got, want)
-	}
-}
-
 // TestTransformCustomFieldDefinitionToPB tests transformation to PocketBase format
 // Note: CampMinder API uses camelCase field names for this endpoint
 func TestTransformCustomFieldDefinitionToPB(t *testing.T) {

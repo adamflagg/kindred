@@ -48,15 +48,6 @@ func TestQuestRegistrationsLoadFieldDefinitionsTrimsNames(t *testing.T) {
 	}
 }
 
-// TestQuestRegistrationsSync_Name verifies the service name is correct
-func TestQuestRegistrationsSync_Name(t *testing.T) {
-	t.Parallel()
-	expectedName := "quest_registrations"
-	if serviceNameQuestRegistrations != expectedName {
-		t.Errorf("expected service name %q, got %q", expectedName, serviceNameQuestRegistrations)
-	}
-}
-
 // TestQuestRegistrationsYearValidation tests year parameter validation
 func TestQuestRegistrationsYearValidation(t *testing.T) {
 	t.Parallel()

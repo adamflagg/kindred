@@ -89,18 +89,6 @@ func TestStaffSkillsLoadSkillDefinitionsTrimsNames(t *testing.T) {
 	}
 }
 
-// TestStaffSkillsSync_Name verifies the service name is correct
-func TestStaffSkillsSync_Name(t *testing.T) {
-	t.Parallel()
-	// The service name must be "staff_skills" for orchestrator integration
-	expectedName := serviceNameStaffSkills
-
-	// Test that the expected name matches
-	if expectedName != "staff_skills" {
-		t.Errorf("expected service name %q", expectedName)
-	}
-}
-
 // TestStaffSkillsYearValidation tests year parameter validation
 func TestStaffSkillsYearValidation(t *testing.T) {
 	t.Parallel()

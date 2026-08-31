@@ -817,7 +817,6 @@ type changedCollectionsSpy struct {
 }
 
 func (s *changedCollectionsSpy) Sync(context.Context) error { return nil }
-func (s *changedCollectionsSpy) Name() string               { return s.name }
 func (s *changedCollectionsSpy) GetStats() Stats            { return Stats{} }
 func (s *changedCollectionsSpy) SetChangedCollections(changed map[string]bool) {
 	s.changed = changed
@@ -868,7 +867,6 @@ type yearSetterSpy struct {
 }
 
 func (s *yearSetterSpy) Sync(context.Context) error { return nil }
-func (s *yearSetterSpy) Name() string               { return s.name }
 func (s *yearSetterSpy) GetStats() Stats            { return Stats{} }
 func (s *yearSetterSpy) SetYear(year int) {
 	s.year = year

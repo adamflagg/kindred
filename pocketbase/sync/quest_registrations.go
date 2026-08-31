@@ -10,9 +10,6 @@ import (
 	"github.com/pocketbase/pocketbase/core"
 )
 
-// serviceNameQuestRegistrations is the canonical name for this sync service
-const serviceNameQuestRegistrations = "quest_registrations"
-
 // Column name constants for quest_registrations table
 const (
 	colParentSignature     = "parent_signature"
@@ -61,11 +58,6 @@ func NewQuestRegistrationsSync(app core.App) *QuestRegistrationsSync {
 		Year:   0,
 		DryRun: false,
 	}
-}
-
-// Name returns the service name
-func (s *QuestRegistrationsSync) Name() string {
-	return serviceNameQuestRegistrations
 }
 
 // GetStats returns the current stats

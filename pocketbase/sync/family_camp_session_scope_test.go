@@ -161,7 +161,6 @@ type sessionSpy struct {
 }
 
 func (s *sessionSpy) Sync(context.Context) error { s.ran = true; return nil }
-func (s *sessionSpy) Name() string               { return s.name }
 func (s *sessionSpy) GetStats() Stats            { return Stats{} }
 func (s *sessionSpy) SetSession(session string)  { s.session = session }
 

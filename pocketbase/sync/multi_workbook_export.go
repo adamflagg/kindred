@@ -9,11 +9,6 @@ import (
 	"github.com/pocketbase/pocketbase/core"
 )
 
-const (
-	// serviceNameMultiWorkbook is the name of the multi-workbook export service
-	serviceNameMultiWorkbook = "multi_workbook_export"
-)
-
 // WorkbookManagerInterface defines the interface for workbook management.
 // This allows mocking in tests while the real WorkbookManager handles
 // database storage and Google Sheets API calls.
@@ -68,11 +63,6 @@ func NewMultiWorkbookExport(
 		workbookManager: workbookManager,
 		year:            year,
 	}, nil
-}
-
-// Name returns the name of this sync service.
-func (m *MultiWorkbookExport) Name() string {
-	return serviceNameMultiWorkbook
 }
 
 // SetChangedCollections implements ChangedCollectionsAware. The orchestrator calls this

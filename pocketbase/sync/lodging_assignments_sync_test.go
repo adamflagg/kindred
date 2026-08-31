@@ -31,14 +31,6 @@ func seedOneWeekendHousehold(t *testing.T, app core.App) (sessionID, unitID stri
 	return sessionID, unitID
 }
 
-func TestLodgingAssignmentsSyncName(t *testing.T) {
-	t.Parallel()
-	s := NewLodgingAssignmentsSync(nil)
-	if s.Name() != serviceNameLodgingAssignments {
-		t.Errorf("Name() = %q, want %q", s.Name(), serviceNameLodgingAssignments)
-	}
-}
-
 // TestLodgingAssignmentsSyncHouseholdGrain: the whole happy path end to end.
 func TestLodgingAssignmentsSyncHouseholdGrain(t *testing.T) {
 	t.Parallel()

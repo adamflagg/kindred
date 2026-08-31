@@ -76,20 +76,6 @@ func TestHouseholdDemographicsLoadFieldDefinitionsTrimsNames(t *testing.T) {
 	}
 }
 
-// ============================================================================
-// Service Identity Tests
-// ============================================================================
-
-// TestHouseholdDemographicsSync_Name verifies the service name is correct
-func TestHouseholdDemographicsSync_Name(t *testing.T) {
-	t.Parallel()
-	// The orchestrator registers and looks this service up by name; a rename
-	// that missed one of the two registration paths would strand the job.
-	if got := NewHouseholdDemographicsSync(nil).Name(); got != "household_demographics" {
-		t.Errorf("Name() = %q, want %q", got, "household_demographics")
-	}
-}
-
 // TestHouseholdDemographicsSync_YearValidation tests year parameter validation
 func TestHouseholdDemographicsSync_YearValidation(t *testing.T) {
 	t.Parallel()

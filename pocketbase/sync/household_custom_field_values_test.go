@@ -15,18 +15,6 @@ import (
 const testFieldDefPBID = "pb_field_100"
 const testHouseholdPBID = "pb_household_123"
 
-func TestHouseholdCustomFieldValuesSync_Name(t *testing.T) {
-	t.Parallel()
-	s := &HouseholdCustomFieldValuesSync{}
-
-	got := s.Name()
-	want := serviceNameHouseholdCustomValues
-
-	if got != want {
-		t.Errorf("HouseholdCustomFieldValuesSync.Name() = %q, want %q", got, want)
-	}
-}
-
 // TestTransformHouseholdCustomFieldValueToPB tests transformation to PocketBase format
 func TestTransformHouseholdCustomFieldValueToPB(t *testing.T) {
 	t.Parallel()
@@ -250,10 +238,6 @@ func TestHouseholdCustomFieldValuesSync_LogJobName(t *testing.T) {
 	if got, want := bounded.logJobName(), "household_custom_values_family_camp"; got != want {
 		t.Errorf("logJobName() (Scope=ScopeFamilyCamp) = %q, want %q -- must match orchestrator.go's "+
 			"RegisterService(\"household_custom_values_family_camp\", ...) name", got, want)
-	}
-
-	if got, want := bounded.Name(), serviceNameHouseholdCustomValues; got != want {
-		t.Errorf("Name() must stay %q regardless of Scope, got %q", want, got)
 	}
 }
 

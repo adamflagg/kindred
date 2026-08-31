@@ -39,11 +39,6 @@ func NewStaffApplicationsSync(app core.App) *StaffApplicationsSync {
 	}
 }
 
-// Name returns the service name
-func (s *StaffApplicationsSync) Name() string {
-	return serviceNameStaffApplications
-}
-
 // GetStats returns the current stats
 func (s *StaffApplicationsSync) GetStats() Stats {
 	return s.Stats

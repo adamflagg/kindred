@@ -25,11 +25,6 @@ func NewPersonTagDefinitionsSync(app core.App, client *campminder.Client) *Perso
 	}
 }
 
-// Name returns the name of this sync service
-func (s *PersonTagDefinitionsSync) Name() string {
-	return serviceNamePersonTagDefinitions
-}
-
 // Sync performs the person tag definitions sync
 // Note: Person tag definitions are global (not year-specific) in CampMinder's API
 func (s *PersonTagDefinitionsSync) Sync(ctx context.Context) error {

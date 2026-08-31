@@ -21,18 +21,6 @@ import (
 // Test data constants
 const testEmailJohn = "john@example.com"
 
-// TestFamilyCampDerivedSync_Name verifies the service name is correct
-func TestFamilyCampDerivedSync_Name(t *testing.T) {
-	t.Parallel()
-	// The service name must be "family_camp_derived" for orchestrator integration
-	expectedName := serviceNameFamilyCampDerived
-
-	// Test that the expected name matches (actual instance test requires PocketBase app)
-	if expectedName != serviceNameFamilyCampDerived {
-		t.Errorf("expected service name %q", expectedName)
-	}
-}
-
 // TestFamilyCampYearValidation tests year parameter validation
 func TestFamilyCampYearValidation(t *testing.T) {
 	t.Parallel()

@@ -103,11 +103,6 @@ func NewFamilyCampDerivedSync(app core.App) *FamilyCampDerivedSync {
 	}
 }
 
-// Name returns the service name
-func (s *FamilyCampDerivedSync) Name() string {
-	return "family_camp_derived"
-}
-
 // GetStats returns the current stats
 func (s *FamilyCampDerivedSync) GetStats() Stats {
 	return s.Stats

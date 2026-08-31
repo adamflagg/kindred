@@ -10,8 +10,6 @@ import (
 	"github.com/pocketbase/pocketbase/core"
 )
 
-const serviceNameStaffSkills = "staff_skills"
-
 // staffSkillsCompareFields lists the fields to compare for idempotency checks.
 // Only these fields are checked when deciding whether an existing record needs updating.
 // Excludes unique key fields (person_id, skill_cm_id, year) and PocketBase-managed fields.
@@ -52,11 +50,6 @@ func NewStaffSkillsSync(app core.App) *StaffSkillsSync {
 		DryRun:        false,
 		ProcessedKeys: make(map[string]bool),
 	}
-}
-
-// Name returns the service name
-func (s *StaffSkillsSync) Name() string {
-	return serviceNameStaffSkills
 }
 
 // GetStats returns the current stats

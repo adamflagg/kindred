@@ -392,7 +392,6 @@ func ResolveUnifiedSyncServices(service string, includeCustomValues, isCurrentYe
 // Service defines the interface for sync services
 type Service interface {
 	Sync(ctx context.Context) error
-	Name() string
 	GetStats() Stats
 }
 

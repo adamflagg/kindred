@@ -48,15 +48,6 @@ func TestCamperDietaryLoadFieldDefinitionsTrimsNames(t *testing.T) {
 	}
 }
 
-// TestCamperDietarySync_Name verifies the service name is correct
-func TestCamperDietarySync_Name(t *testing.T) {
-	t.Parallel()
-	expectedName := "camper_dietary"
-	if serviceNameCamperDietary != expectedName {
-		t.Errorf("expected service name %q, got %q", expectedName, serviceNameCamperDietary)
-	}
-}
-
 // TestCamperDietaryYearValidation tests year parameter validation
 func TestCamperDietaryYearValidation(t *testing.T) {
 	t.Parallel()

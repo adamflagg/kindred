@@ -4,18 +4,6 @@ import (
 	"testing"
 )
 
-func TestFinancialTransactionsSync_Name(t *testing.T) {
-	t.Parallel()
-	s := &FinancialTransactionsSync{}
-
-	got := s.Name()
-	want := "financial_transactions"
-
-	if got != want {
-		t.Errorf("FinancialTransactionsSync.Name() = %q, want %q", got, want)
-	}
-}
-
 // =============================================================================
 // Transaction Transform Tests
 // =============================================================================

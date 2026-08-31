@@ -17,23 +17,6 @@ import (
 )
 
 // ============================================================================
-// Service Name Tests
-// ============================================================================
-
-// TestNormalizeGeographicSync_Name verifies the service name is correct
-func TestNormalizeGeographicSync_Name(t *testing.T) {
-	t.Parallel()
-	// The service name must be "normalize_geographic" for orchestrator integration
-	expectedName := "normalize_geographic"
-
-	// This test verifies the constant will be defined correctly
-	// The actual constant serviceNameNormalizeGeographic is defined in normalize_geographic.go
-	if expectedName != "normalize_geographic" {
-		t.Errorf("expected service name %q, got %q", "normalize_geographic", expectedName)
-	}
-}
-
-// ============================================================================
 // Year Validation Tests
 // ============================================================================
 
