@@ -797,9 +797,20 @@ func (r runOrigin) forYear(year int) runOrigin {
 // so an "all" reaching the column would read as a run scoped to a weekend named "all": it
 // would match no weekend at all, and an unscoped press would take every weekend's freshness
 // readout silent instead of refreshing all of them.
+//
+// A NUMERIC SESSION IS STORED CANONICALLY, for the same reason. The stored value is queried
+// by exact match against `strconv.Itoa(cm_id)`, so "0100001" would match no weekend and take
+// that weekend's readout silent -- the very silence kindred#2617 removes. IsValidSession
+// accepts it because it parses; no UI path produces one (frontend/src/services/sync.ts builds
+// the parameter from a JS number), so this is a guard on the hand-crafted request. The
+// round-trip is deliberately conditional on parsing: summer's identifiers are "2a", "toc" and
+// friends, and must pass through untouched even though no caller passes one today.
 func (r runOrigin) forSession(session string) runOrigin {
 	if session == DefaultSession {
 		session = ""
+	}
+	if n, err := strconv.Atoi(session); err == nil {
+		session = strconv.Itoa(n)
 	}
 	r.session = session
 	return r

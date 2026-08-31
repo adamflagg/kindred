@@ -1572,3 +1572,52 @@ func TestSyncRunStoresAllAsUnscoped(t *testing.T) {
 			"stored verbatim it matches no weekend at all", got, DefaultSession, DefaultSession)
 	}
 }
+
+// TestSyncRunStoresACanonicalSessionID pins the other half of the vocabulary collapse.
+//
+// Same class as TestSyncRunStoresAllAsUnscoped above, and the same consequence: the stored
+// value is queried by EXACT MATCH against `strconv.Itoa(cm_id)` on the API side, so any
+// spelling of a weekend that is not its canonical decimal form matches nothing and takes that
+// weekend's freshness silent — the exact silence kindred#2617 exists to remove.
+//
+// `IsValidSession` accepts "0100001" (it parses), and no UI path can produce it because
+// frontend/src/services/sync.ts builds the parameter from a JS number. So this is a guard on
+// the hand-crafted request rather than a live defect, and it belongs HERE rather than at the
+// handler because this is where the vocabulary is defined.
+//
+// NON-NUMERIC SESSIONS PASS THROUGH UNTOUCHED. Summer's session identifiers are "2a", "toc"
+// and friends; a numeric round-trip must not eat them, even though no current caller of
+// forSession passes one.
+func TestSyncRunStoresACanonicalSessionID(t *testing.T) {
+	t.Parallel()
+
+	const jobID = "household_custom_values_family_camp"
+	app := newSyncRunsApp(t)
+	o := NewOrchestrator(app)
+	o.RegisterService(jobID, &MockService{name: jobID})
+
+	if err := o.RunSyncSequenceWithServices(
+		context.Background(), []string{jobID}, nil, "0100001",
+	); err != nil {
+		t.Fatalf("RunSyncSequenceWithServices: %v", err)
+	}
+
+	recs := waitForSyncRuns(t, app, 1)
+	if got := recs[0].GetString("session"); got != "100001" {
+		t.Errorf("session = %q, want %q -- a non-canonical id is queried by exact match "+
+			"against the weekend's decimal cm_id, so it matches no weekend at all", got, "100001")
+	}
+}
+
+// TestForSessionKeepsANonNumericSession is the other side of that guard, at the unit level:
+// the canonicalisation must be a no-op for a session identifier that is not a number.
+func TestForSessionKeepsANonNumericSession(t *testing.T) {
+	t.Parallel()
+
+	for _, session := range []string{"2a", "toc", "3b"} {
+		if got := newBatch(triggerManual).forSession(session).session; got != session {
+			t.Errorf("forSession(%q).session = %q, want it unchanged -- a numeric round-trip "+
+				"must not eat a summer session identifier", session, got)
+		}
+	}
+}

@@ -1381,6 +1381,23 @@ class LodgingRepository:
         A run with no `ended` is DROPPED rather than carried as a blank: it
         can date nothing, and keeping it would let it shadow the older run
         that can, turning a real timestamp into silence.
+
+        WHAT THIS READ MAY EXPECT OF THE WRITER, stated here because
+        `recordSyncRun` deliberately skips the Go sync layer's WAL checkpoint
+        and kindred#2297 asked that the question be settled "on the read
+        path's expectations" once a reader existed:
+
+        - IT SEES EVERY COMMITTED ROW. This goes through PocketBase's REST
+          API, so it is PocketBase reading its own writes on its own
+          connection -- there is no cross-connection WAL visibility gap to
+          worry about, and there would be one for a reader that opened
+          `data.db` itself.
+        - The one edge is a HOST POWER LOSS (not a crash, not a `docker
+          stop` -- SQLite recovers committed WAL frames on the next open),
+          which can lose the newest rows. That makes a weekend's freshness
+          UNDERSTATE itself and self-heal at the next covering run. Every
+          other failure in this feature is shaped the same way, so nothing
+          downstream needs a special case for it.
         """
         rows = await self._page(
             SYNC_RUNS,

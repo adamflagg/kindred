@@ -139,11 +139,30 @@ func (o *Orchestrator) recordSyncRun(completed *Status) {
 	// migrations; its rationale (main.go:372) is durability across a docker stop/start, not
 	// reader visibility.
 	//
-	// The call: this table is orchestrator telemetry, read weeks later to fit a threshold,
-	// and the whole write path already swallows its own failures for that reason. Losing the
-	// last few rows to an unclean shutdown costs a handful of points on a distribution of
-	// thousands, against a wal_checkpoint(FULL) on every one of ~100 writes a day. The
-	// exception is recorded in pocketbase/CLAUDE.md so this reads as a decision and not an
+	// The call, as first made on kindred#2297: a wal_checkpoint(FULL) on every one of ~100
+	// writes a day buys nothing here. Durability does not need it — SQLite recovers committed
+	// WAL frames on the next open, and a checkpoint moves pages into the main file rather than
+	// being what makes a commit durable. Visibility did not need it either, because nothing
+	// outside PocketBase read this table.
+	//
+	// ⚠️ THAT SECOND CLAUSE STOPPED BEING TRUE IN kindred#2617, and #2297 pre-registered this
+	// exact moment: "if a reader for this table is added later, the checkpoint question is
+	// worth reopening then — at that point it belongs on the read path's expectations, not on
+	// every telemetry insert." Reopened, and the answer is unchanged, for a reason worth
+	// stating rather than assuming:
+	//
+	//   - The new reader (api/services/lodging_repository.fetch_session_scoped_sync_ends) is
+	//     an HTTP CLIENT OF POCKETBASE, not a second process opening data.db. PocketBase is
+	//     still reading its own writes through its own connection, so the visibility argument
+	//     survives intact. A reader that opened the file directly would NOT be covered by
+	//     this, and would be a real reason to reopen it again.
+	//   - What the read path may therefore expect is stated on that function. The residual
+	//     durability edge — a host power loss, not a crash and not a docker stop — can only
+	//     lose the newest rows, which makes a weekend's freshness UNDERSTATE itself and
+	//     self-heal at the next covering run. Understating is the safe direction this whole
+	//     feature is built on.
+	//
+	// The exception is recorded in pocketbase/CLAUDE.md so this reads as a decision and not an
 	// omission — if that entry goes, this comment is wrong and the checkpoint belongs here.
 	o.pruneSyncRuns()
 }
