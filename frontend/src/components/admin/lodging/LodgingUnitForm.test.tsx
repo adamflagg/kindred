@@ -1055,8 +1055,8 @@ describe('LodgingUnitForm — fields staff have no use for', () => {
     // Question 4 was re-ruled 2026-08-30: the map's grain is the ROOT. A half
     // of a house draws on the house, so `is_container` no longer decides this
     // — only whether the unit has a parent does. Under the superseded
-    // immediate-parent grain this container WOULD have had its own pin, and
-    // the Health Center drew three marks on one roof because of it.
+    // immediate-parent grain this container WOULD have had its own pin, which
+    // is how one production building drew three marks on one roof.
     renderWithParent({ ...UNIT, parent_unit: 'u0', is_container: true })
 
     expect(screen.queryByLabelText(/edit position/i)).not.toBeInTheDocument()
@@ -1083,7 +1083,7 @@ describe('LodgingUnitForm — fields staff have no use for', () => {
   })
 
   it('names the ROOT, not the half, when a room sits two levels down', () => {
-    // The Health Center shape: room -> half -> house. The staffer must be sent
+    // The three-level shape: room -> half -> house. The staffer must be sent
     // to the unit that actually carries the pin, which is the house.
     const half: LodgingUnitRecord = {
       ...UNIT,

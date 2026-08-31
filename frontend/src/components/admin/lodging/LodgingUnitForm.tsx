@@ -204,8 +204,8 @@ export function LodgingUnitForm({
    * owner 2026-08-30). `is_container` deliberately plays no part: a half of a
    * house draws on the house, so what decides this is only whether the unit
    * has a parent at all. Under the superseded immediate-parent grain a
-   * container was always its own pin site, which is how the Health Center came
-   * to draw three marks on one roof.
+   * container was always its own pin site, which is how the registry's largest
+   * tree came to draw three marks on one roof.
    *
    * A parent the payload does not carry stops the walk rather than yielding
    * nothing, matching `mapBuildingKey`: an unresolvable relation must not take

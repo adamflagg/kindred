@@ -305,13 +305,14 @@ describe("buildingsSpanned — #2009's distinct-building count", () => {
  *   one house are one structure at one place, so NOT walking to the root
  *   draws several marks on one roof.
  *
- * The Health Center is what settled it: ten rooms under three sibling
- * containers (upstairs, downstairs, doctor's house) beneath one root, drawing
- * THREE marks under the immediate-parent grain for one physical building —
- * and, once #2440's Q3 barrier forbade cross-building merges, three marks
- * that could never blob back together at any zoom. Two other roots behave the
- * same way (Tenaya and Tioga, 4 rooms and 2 marks each). Root grain takes the
- * registry from 86 pin sites to 79.
+ * The registry's largest tree is what settled it: ten rooms under three
+ * sibling containers beneath one root, drawing THREE marks under the
+ * immediate-parent grain for one physical building — and, once #2440's Q3
+ * barrier forbade cross-building merges, three marks that could never blob
+ * back together at any zoom. Two other roots behave the same way at four
+ * rooms and two marks each. Root grain takes the registry from 86 pin sites
+ * to 79. The buildings are named in kindred#2440, not here — spec 3.8, the
+ * registry is data, not code.
  */
 describe('mapBuildingKey — the ROOT grain the map draws on (kindred#2440)', () => {
   const byCode = indexUnitsByCode(HALVED_HOUSE)

@@ -537,42 +537,55 @@ describe('buildMapModel — one pin per building (kindred#2440)', () => {
   })
 
   /**
-   * THE HEALTH CENTER, which is what re-ruled question 4. Ten rooms under
-   * three sibling containers beneath one root: one physical building that the
-   * immediate-parent grain drew as THREE marks, and — once Q3 forbade
-   * cross-building merges — three that could never blob back together.
+   * THE REGISTRY'S LARGEST TREE, which is what re-ruled question 4. Ten rooms
+   * under three sibling containers beneath one root: one physical building
+   * that the immediate-parent grain drew as THREE marks, and — once Q3 forbade
+   * cross-building merges — three that could never blob back together. Named
+   * in kindred#2440, not here (spec 3.8).
    */
   it('draws one mark for a house whose rooms sit under sibling halves', () => {
-    const health = [
-      unit({ unit_id: 'hc', code: 'hc', is_container: true, map_x: 0.731, map_y: 0.577 }),
+    const bigTree = [
+      unit({ unit_id: 'birch', code: 'birch', is_container: true, map_x: 0.731, map_y: 0.577 }),
       unit({
-        unit_id: 'hc-up',
-        code: 'hc-up',
+        unit_id: 'birch-up',
+        code: 'birch-up',
         is_container: true,
-        parent_code: 'hc',
+        parent_code: 'birch',
         map_x: 0.7295,
         map_y: 0.5738,
       }),
       unit({
-        unit_id: 'hc-down',
-        code: 'hc-down',
+        unit_id: 'birch-down',
+        code: 'birch-down',
         is_container: true,
-        parent_code: 'hc',
+        parent_code: 'birch',
         map_x: 0.7294,
         map_y: 0.582,
       }),
-      unit({ unit_id: 'r1', code: 'hc-up-1', parent_code: 'hc-up', map_x: 0.727, map_y: 0.57 }),
-      unit({ unit_id: 'r2', code: 'hc-up-2', parent_code: 'hc-up', map_x: 0.728, map_y: 0.5715 }),
+      unit({
+        unit_id: 'r1',
+        code: 'birch-up-1',
+        parent_code: 'birch-up',
+        map_x: 0.727,
+        map_y: 0.57,
+      }),
+      unit({
+        unit_id: 'r2',
+        code: 'birch-up-2',
+        parent_code: 'birch-up',
+        map_x: 0.728,
+        map_y: 0.5715,
+      }),
       unit({
         unit_id: 'r3',
-        code: 'hc-down-a',
-        parent_code: 'hc-down',
+        code: 'birch-down-a',
+        parent_code: 'birch-down',
         map_x: 0.728,
         map_y: 0.581,
       }),
     ]
-    const model = buildMapModel([], health)
-    expect(model.units.map((u) => u.buildingCode)).toEqual(['hc', 'hc', 'hc'])
+    const model = buildMapModel([], bigTree)
+    expect(model.units.map((u) => u.buildingCode)).toEqual(['birch', 'birch', 'birch'])
     for (const mark of model.units) {
       expect(mark.x).toBeCloseTo(0.731, 6)
       expect(mark.y).toBeCloseTo(0.577, 6)

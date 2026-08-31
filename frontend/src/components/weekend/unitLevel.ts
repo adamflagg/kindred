@@ -197,12 +197,13 @@ export function buildingKey(
  *   one structure at one place, so NOT walking to the root puts several marks
  *   on one roof.
  *
- * The Health Center settled it: ten rooms under three sibling containers
- * (upstairs, downstairs, doctor's house) beneath one root drew THREE marks for
- * one physical building — and once #2440's Q3 barrier forbade cross-building
- * merges, three marks that could never blob back together at any zoom. Tenaya
- * and Tioga behave the same way. Root grain takes the 2026 registry from 86
- * pin sites to 79.
+ * The registry's largest tree settled it: ten rooms under three sibling
+ * containers beneath one root drew THREE marks for one physical building —
+ * and once #2440's Q3 barrier forbade cross-building merges, three marks that
+ * could never blob back together at any zoom. Two more roots behave the same
+ * way at four rooms and two marks each. Root grain takes the 2026 registry
+ * from 86 pin sites to 79. The buildings are named in kindred#2440, not
+ * here — spec 3.8, the registry is data, not code.
  *
  * CONTAINERS WALK TOO, unlike under the superseded grain where a drawn
  * container was its own pin site. A combined half is still part of one
