@@ -2760,6 +2760,218 @@ describe('LodgingUnitCard — T2: the amenities ride the TITLE row', () => {
     expect(container.querySelector('[data-testid="amenity-ac"]')).toBeNull()
   })
 
+  /*
+   * ⚠️ THE FRIDGE MARK, kindred#2327 — render-only, because `has_fridge` and
+   * its `fridge_coverage` grain already ship (kindred#2224, kindred#2462) and
+   * `MapUnitPopover.tsx` already draws it with `Refrigerator`. This card was
+   * the one surface left disagreeing with the map: it drew AC and power but
+   * not the fridge the popover a staff member opens FROM this card shows —
+   * the same contradiction kindred#2502 closed on the AC axis, one amenity
+   * over. Same rule as power and AC: `fridge_coverage`, never the raw
+   * `has_fridge`, and PRESENCE, so `some` draws it — no half-fill, matching
+   * the shipped grammar of the other three marks in this row.
+   */
+  it('draws the fridge for a BUILDING whose rooms have one but whose own row does not', () => {
+    const { container } = renderUnit({
+      has_fridge: false,
+      fridge_coverage: 'all',
+      is_container: true,
+      is_combined: true,
+    })
+    expect(container.querySelector('[data-testid="amenity-fridge"]')).not.toBeNull()
+  })
+
+  it('draws it when only SOME rooms have a fridge, as the plug does for power', () => {
+    const { container } = renderUnit({ has_fridge: false, fridge_coverage: 'some' })
+    expect(container.querySelector('[data-testid="amenity-fridge"]')).not.toBeNull()
+  })
+
+  it('never claims a fridge from the raw flag the resolved field arbitrates', () => {
+    // The raw twin set to the OPPOSITE of the resolved answer, so the test
+    // proves which one is read rather than merely agreeing with both.
+    const { container } = renderUnit({ has_fridge: true, fridge_coverage: 'none' })
+    expect(container.querySelector('[data-testid="amenity-fridge"]')).toBeNull()
+  })
+
+  it('says nothing about a fridge nobody has recorded', () => {
+    const { container } = renderUnit({ has_fridge: true, fridge_coverage: 'unknown' })
+    expect(container.querySelector('[data-testid="amenity-fridge"]')).toBeNull()
+  })
+
+  /*
+   * ⚠️ THE HEAT MARK, kindred#2327/kindred#2646 — render-only, because
+   * `has_heat` and its `heat_coverage` grain already ship (kindred#2646's
+   * API half). The owner ruling on #2327 (2026-08-17) is explicit: heat and
+   * AC are TWO icons, not one combined "temperature control" mark. Same rule
+   * as power, AC and fridge: `heat_coverage`, never the raw `has_heat`, and
+   * PRESENCE, so `some` draws it — no half-fill.
+   */
+  it('draws the flame for a BUILDING whose rooms have heat but whose own row does not', () => {
+    const { container } = renderUnit({
+      has_heat: false,
+      heat_coverage: 'all',
+      is_container: true,
+      is_combined: true,
+    })
+    expect(container.querySelector('[data-testid="amenity-heat"]')).not.toBeNull()
+  })
+
+  it('draws it when only SOME rooms have heat, as the plug does for power', () => {
+    const { container } = renderUnit({ has_heat: false, heat_coverage: 'some' })
+    expect(container.querySelector('[data-testid="amenity-heat"]')).not.toBeNull()
+  })
+
+  it('never claims heat from the raw flag the resolved field arbitrates', () => {
+    // The raw twin set to the OPPOSITE of the resolved answer, so the test
+    // proves which one is read rather than merely agreeing with both.
+    const { container } = renderUnit({ has_heat: true, heat_coverage: 'none' })
+    expect(container.querySelector('[data-testid="amenity-heat"]')).toBeNull()
+  })
+
+  it('says nothing about heat nobody has recorded', () => {
+    const { container } = renderUnit({ has_heat: true, heat_coverage: 'unknown' })
+    expect(container.querySelector('[data-testid="amenity-heat"]')).toBeNull()
+  })
+
+  /*
+   * ⚠️ THE NEGATIVE WEATHERIZED MARK, kindred#2327/kindred#2646 — the ONE mark
+   * in this row that draws on ABSENCE rather than presence. Owner ruling
+   * 2026-08-18: the treatment is "a struck-through icon", not a positive
+   * glyph, because the fact worth a staff member's attention here is the
+   * warning — 22 of 118 production units are not weatherized.
+   *
+   * The condition is therefore the AND-policy's complement, not the plug's
+   * OR-policy: `power_coverage` etc. draw on `!== 'none'` (presence anywhere
+   * is enough). This mark draws on `!== 'all'` (anything short of FULLY
+   * weatherized leaves a room a family could land in unweathered), and still
+   * refuses `'unknown'` — the same never-claim-from-nothing-recorded
+   * discipline every positive mark in this row keeps, just on the other
+   * side of the assertion.
+   */
+  it('draws the not-weatherized mark for a unit with no weatherization at all', () => {
+    const { container } = renderUnit({ is_weatherized: false, weatherized_coverage: 'none' })
+    expect(container.querySelector('[data-testid="amenity-not-weatherized"]')).not.toBeNull()
+  })
+
+  it('draws it for a BUILDING mixed between weatherized and not — a family can still land in the wrong room', () => {
+    const { container } = renderUnit({
+      is_weatherized: false,
+      weatherized_coverage: 'some',
+      is_container: true,
+      is_combined: true,
+    })
+    expect(container.querySelector('[data-testid="amenity-not-weatherized"]')).not.toBeNull()
+  })
+
+  it('draws nothing when the unit is fully weatherized', () => {
+    const { container } = renderUnit({ is_weatherized: true, weatherized_coverage: 'all' })
+    expect(container.querySelector('[data-testid="amenity-not-weatherized"]')).toBeNull()
+  })
+
+  it('never claims non-weatherization from the raw flag the resolved field arbitrates', () => {
+    // The raw twin set to the OPPOSITE of the resolved answer, so the test
+    // proves which one is read rather than merely agreeing with both.
+    const { container } = renderUnit({ is_weatherized: false, weatherized_coverage: 'all' })
+    expect(container.querySelector('[data-testid="amenity-not-weatherized"]')).toBeNull()
+  })
+
+  it('says nothing about weatherization nobody has recorded', () => {
+    // `unknown` never draws the mark, on either side of the assertion: this
+    // is not "not weatherized", it is "nobody answered".
+    const { container } = renderUnit({ is_weatherized: false, weatherized_coverage: 'unknown' })
+    expect(container.querySelector('[data-testid="amenity-not-weatherized"]')).toBeNull()
+  })
+
+  /*
+   * ⚠️ THE STEP-FREE MARK reads `ramp_coverage`, kindred#2327/kindred#2646 —
+   * the owner's follow-up ask on this same PR: "the wheelchair icon for the
+   * locations that are 'is accessible'". `MapUnitPopover.tsx` already draws
+   * this exact mark (`Accessibility` icon, `Step-free` label) — this card is
+   * the surface catching up, same shape as the fridge mark catching up to
+   * the map earlier in this same file.
+   *
+   * ⚠️ NOT THE SAME GRAMMAR AS THE OTHER FIVE POSITIVE MARKS. Every other
+   * amenity here draws on presence (`!== 'none' && !== 'unknown'`, so `some`
+   * draws the full icon). Step-free is the one dimension
+   * `MapUnitPopover.tsx` grades on `=== 'all'` instead of "offers", and its
+   * own comment states why: "a building advertising two step-free rooms out
+   * of ten invites precisely the placement that lands in one of the other
+   * eight" — a ramp one room over is not a ramp a wheelchair user can use,
+   * unlike a fridge or an AC unit one room over. This card reuses that same
+   * `=== 'all'` grade rather than inventing a second policy for the same
+   * field two surfaces already read.
+   */
+  it('draws the wheelchair mark for a unit graded fully step-free', () => {
+    const { container } = renderUnit({ is_accessible: true, ramp_coverage: 'all' })
+    expect(container.querySelector('[data-testid="amenity-step-free"]')).not.toBeNull()
+  })
+
+  it('draws nothing for a BUILDING graded only SOME step-free — unlike every presence-based mark above', () => {
+    // The divergence test: `some` draws the plug, the snowflake, the fridge
+    // and the flame, but must NOT draw this one. A wheelchair user placed on
+    // the strength of "the building has it somewhere" can land in the one
+    // room that is not step-free.
+    const { container } = renderUnit({
+      is_accessible: false,
+      ramp_coverage: 'some',
+      is_container: true,
+      is_combined: true,
+    })
+    expect(container.querySelector('[data-testid="amenity-step-free"]')).toBeNull()
+  })
+
+  it('draws nothing where no room is step-free', () => {
+    const { container } = renderUnit({ is_accessible: false, ramp_coverage: 'none' })
+    expect(container.querySelector('[data-testid="amenity-step-free"]')).toBeNull()
+  })
+
+  it('never claims step-free from the raw is_accessible flag the resolved field arbitrates', () => {
+    // The raw twin set to the OPPOSITE of the resolved answer, so the test
+    // proves which one is read rather than merely agreeing with both.
+    const { container } = renderUnit({ is_accessible: true, ramp_coverage: 'none' })
+    expect(container.querySelector('[data-testid="amenity-step-free"]')).toBeNull()
+  })
+
+  it('draws the mark for a BUILDING whose rooms are accessible but whose own row is not, off the resolved grade', () => {
+    const { container } = renderUnit({
+      is_accessible: false,
+      ramp_coverage: 'all',
+      is_container: true,
+      is_combined: true,
+    })
+    expect(container.querySelector('[data-testid="amenity-step-free"]')).not.toBeNull()
+  })
+
+  it('says nothing about step-free access nobody has recorded', () => {
+    const { container } = renderUnit({ is_accessible: true, ramp_coverage: 'unknown' })
+    expect(container.querySelector('[data-testid="amenity-step-free"]')).toBeNull()
+  })
+
+  it('reuses MapUnitPopover’s own label, so the two surfaces agree', () => {
+    renderUnit({ is_accessible: true, ramp_coverage: 'all' })
+    expect(screen.getByLabelText('Step-free')).toBeInTheDocument()
+  })
+
+  it('draws all seven marks together — bathroom, power, AC, fridge, heat, negative weatherized and step-free', () => {
+    const { container } = renderUnit({
+      bathroom: 'shared',
+      has_power: true,
+      power_coverage: 'all',
+      has_ac: true,
+      ac_coverage: 'all',
+      has_fridge: true,
+      fridge_coverage: 'all',
+      has_heat: true,
+      heat_coverage: 'all',
+      is_weatherized: false,
+      weatherized_coverage: 'none',
+      is_accessible: true,
+      ramp_coverage: 'all',
+    })
+    const title = container.querySelector('[data-testid="unit-title-row"]')
+    expect(title?.querySelectorAll('[data-testid^="amenity-"]')).toHaveLength(7)
+  })
+
   it('keeps the title, the amenities and the occupancy figure on ONE row', () => {
     const { container } = renderUnit({
       bathroom: 'shared',

@@ -568,6 +568,37 @@ class LodgingUnitSummary(BaseModel):
     # units carry `has_fridge`, four of those also carry `has_shared_fridge`,
     # and none carries shared without the parent.
     fridge_coverage: AmenityCoverage = "unknown"
+    has_heat: bool = False
+    # The heat twin of `power_coverage`, resolved over the same leaf walk and
+    # defaulting to "unknown" for the same reason: a payload built without the
+    # resolution pass must not claim an absent amenity. Owner ruling
+    # 2026-08-17: the icon set counts heat and AC as TWO marks, not one
+    # combined "temperature control" -- `has_ac` is a strict subset of
+    # `has_heat` on the 2026 snapshot (heat=0/ac=0 84, heat=1/ac=0 16,
+    # heat=1/ac=1 18, heat=0/ac=1 0), so a heat-or-AC fold would hide the 16
+    # rooms that are heated but not cooled.
+    #
+    # DISPLAY ONLY, exactly like `ac_coverage`. The card reads it as of
+    # kindred#2646: `LodgingUnitCard.tsx` draws a `Flame` mark on presence
+    # (`!== 'none' && !== 'unknown'`), matching this row's PRESENCE grammar
+    # rather than fridge's precedent -- there was no shipped heat icon on any
+    # surface to align with, so this was the first one rather than a copy.
+    heat_coverage: AmenityCoverage = "unknown"
+    is_weatherized: bool = False
+    # The weatherized twin of `power_coverage`, resolved over the same leaf
+    # walk and defaulting to "unknown" for the same reason. 96 of 118
+    # production units are weatherized; the 22 that are not split 13
+    # containers / 9 leaves with every container's non-weatherized leaves
+    # recursively confirmed, and zero containers hold a mix -- so `some` is
+    # reachable through this walk in principle but does not occur today.
+    #
+    # DISPLAY ONLY. The ruled TREATMENT is a NEGATED mark (a struck-through
+    # icon, kindred#2327 ruling 2026-08-18) rather than a positive one, and
+    # the card draws it as of kindred#2646: `LodgingUnitCard.tsx` uses
+    # `CloudOff` -- struck through by the glyph itself -- on the AND-policy's
+    # complement (`!== 'all' && !== 'unknown'`), the opposite polarity from
+    # every positive mark in the row, because this one asserts an absence.
+    weatherized_coverage: AmenityCoverage = "unknown"
     # The registry's own RAMP assessment for THIS ROW. ⚠️ PROVENANCE, NOT A
     # VERDICT (kindred#2327) -- nothing grades from it, on any surface. Kept in
     # the payload because it is the record of the 14 cabins staff walked, and

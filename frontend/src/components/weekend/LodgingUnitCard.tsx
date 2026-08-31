@@ -17,7 +17,18 @@ import {
   type DraggableAttributes,
   type DraggableSyntheticListeners,
 } from '@dnd-kit/core'
-import { Bath, Merge, Plug, Plus, Snowflake, Split } from 'lucide-react'
+import {
+  Accessibility,
+  Bath,
+  CloudOff,
+  Thermometer,
+  Merge,
+  Plug,
+  Plus,
+  Refrigerator,
+  Snowflake,
+  Split,
+} from 'lucide-react'
 import { memo, useCallback, useState } from 'react'
 
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
@@ -1163,6 +1174,122 @@ const LodgingUnitCardInner = memo(function LodgingUnitCardInner({
               className="text-muted-foreground h-3.5 w-3.5 flex-shrink-0"
             />
           )}
+        {/* `fridge_coverage`, NEVER the raw `has_fridge` — kindred#2327,
+            and the same move `power_coverage` and `ac_coverage` already made
+            above, for the same reason: a container's own row describes the
+            container, not its rooms. `MapUnitPopover.tsx` already draws this
+            mark (`Refrigerator`, reading `fridge_coverage`), so this card was
+            the one surface disagreeing with the map it sits behind — the
+            same contradiction kindred#2502 closed on the AC axis, one
+            amenity over. `has_fridge`/`fridge_coverage` themselves are not
+            new here — kindred#2224 and kindred#2462 already ship them; this
+            is only the card catching up to what the map already shows.
+
+            PRESENCE, so `some` draws it, matching the plug and the
+            snowflake: the mark says the building offers a fridge somewhere,
+            never which room. No half-fill for `some` — the 2026-08-18
+            ruling that asked for one was never built anywhere else in this
+            row, and a half-fill here alone would read on a different axis
+            than the other three marks beside it. */}
+        {(unit.fridge_coverage ?? 'unknown') !== 'none' &&
+          (unit.fridge_coverage ?? 'unknown') !== 'unknown' && (
+            <Refrigerator
+              data-testid="amenity-fridge"
+              aria-label="Fridge"
+              className="text-muted-foreground h-3.5 w-3.5 flex-shrink-0"
+            />
+          )}
+        {/* `heat_coverage`, NEVER the raw `has_heat` — kindred#2327, and the
+            same move power/AC/fridge already made above: a container's own
+            row describes the container, not its rooms. Owner ruling
+            2026-08-17: heat and AC are TWO icons, not one combined
+            "temperature control" mark, because `has_ac` is a strict subset of
+            `has_heat` on the 2026 snapshot (16 rooms are heated but not
+            cooled) and folding them would hide that.
+
+            PRESENCE, exactly like the three marks before it: `some` draws the
+            mark — no half-fill, matching this row's shipped grammar rather
+            than the half-filled glyph a 2026-08-18 ruling once proposed and
+            that was never built anywhere on this card.
+
+            ⚠️ THERMOMETER, NOT A FLAME, and the distinction is a real one in
+            the schema. `has_space_heater` is a SEPARATE column from `has_heat`
+            (44 rows vs 34 on the 2026 snapshot) and the admin registry draws
+            THAT one with the flame — portable heat — while built-in heat gets
+            the thermometer. A flame here would mean one thing on this card and
+            a different thing in the form staff confirm from. */}
+        {(unit.heat_coverage ?? 'unknown') !== 'none' &&
+          (unit.heat_coverage ?? 'unknown') !== 'unknown' && (
+            <Thermometer
+              data-testid="amenity-heat"
+              aria-label="Heat"
+              className="text-muted-foreground h-3.5 w-3.5 flex-shrink-0"
+            />
+          )}
+        {/* NEGATIVE MARK — the only one in this row. Drawn when the unit is
+            NOT weatherized, rather than when it has an amenity. Owner ruling
+            2026-08-18 (kindred#2327) called for "a struck-through icon" here
+            on purpose: the fact worth a staff member's attention is the
+            warning, not the amenity — 22 of 118 production units are not
+            weatherized, and a family placed expecting insulation a building
+            does not have is the failure this mark exists to prevent.
+
+            `CloudOff`: no dedicated "weatherized"/"insulated" glyph exists in
+            lucide-react, so this is a deliberate choice rather than a
+            pre-existing one, made because no negative-mark precedent existed
+            anywhere on this card to follow instead (see kindred#2646 PR
+            comment). It reads as "no protection from the weather", which is
+            what "not weatherized" means, and — unlike every positive glyph in
+            this row — the icon itself is LITERALLY struck through (a
+            diagonal line crosses the glyph), which is the ruled treatment,
+            without inventing a second rendering mechanism (compositing an
+            icon with a manual slash) this card has never used.
+
+            THE CONDITION IS THE AND-POLICY'S COMPLEMENT, not the OR-policy
+            every positive mark above uses. `power_coverage` etc. draw on
+            `!== 'none'` — presence anywhere is enough to assert "the building
+            has this". This mark asserts an ABSENCE, so it draws on
+            `!== 'all'`: `'none'` (nothing weatherized) and `'some'` (a mix)
+            both leave a room a family could land in unweathered; only `'all'`
+            (fully weatherized) draws nothing. `'unknown'` still draws
+            nothing either way — the same never-claim-from-nothing-recorded
+            discipline every other mark in this row keeps, just read from the
+            other side of the assertion. */}
+        {(unit.weatherized_coverage ?? 'unknown') !== 'all' &&
+          (unit.weatherized_coverage ?? 'unknown') !== 'unknown' && (
+            <CloudOff
+              data-testid="amenity-not-weatherized"
+              aria-label="Not weatherized"
+              className="text-muted-foreground h-3.5 w-3.5 flex-shrink-0"
+            />
+          )}
+        {/* `ramp_coverage`, NEVER the raw `is_accessible` column and NEVER
+            `has_ramp` — kindred#2327/kindred#2646, the owner's follow-up ask
+            on this same PR ("the wheelchair icon for the locations that are
+            'is accessible'"). `MapUnitPopover.tsx` already draws this exact
+            mark (`Accessibility` icon, `Step-free` label) — reused verbatim
+            here so the card and the popover a staff member opens FROM it
+            agree, the same contradiction-closing move the fridge mark made
+            against the same popover earlier in this file.
+
+            ⚠️ NOT THIS ROW'S OR-POLICY. Every other positive mark above
+            draws on PRESENCE (`!== 'none' && !== 'unknown'`, so `some` draws
+            the full icon — no half-fill). Step-free draws on `=== 'all'`
+            instead, and that is not a new policy invented for this card: it
+            is `MapUnitPopover.tsx`'s own documented exception, carried over
+            rather than re-litigated — "the ONE DIMENSION that needs `all`
+            rather than `offers`", because a ramp one room over is not a ramp
+            a wheelchair user in a DIFFERENT room can use, unlike a fridge or
+            an AC unit one room over. Presence would draw the wheelchair icon
+            on a `some`-graded building — inviting exactly the placement that
+            lands a wheelchair user in the one room without a ramp. */}
+        {(unit.ramp_coverage ?? 'unknown') === 'all' && (
+          <Accessibility
+            data-testid="amenity-step-free"
+            aria-label="Step-free"
+            className="text-muted-foreground h-3.5 w-3.5 flex-shrink-0"
+          />
+        )}
         {/* The tooltip hangs on THIS figure, never on the `<h3>` above it
             (kindred#2177). It is also the smallest trigger on the board, which
             is why `ui/Tooltip` grows a transparent 24px hit target around
