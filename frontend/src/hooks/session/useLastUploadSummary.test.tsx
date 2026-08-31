@@ -181,7 +181,12 @@ describe('useLastUploadSummary', () => {
     const { result } = renderHook(() => useLastUploadSummary(1000001, []), {
       wrapper: makeWrapper(),
     })
-    await waitFor(() => expect(result.current.runId).toBe('r1'))
+    // Wait for the actual session-changes call, not just runId — session is
+    // null before that query ever fires too, so asserting only on runId would
+    // pass even if the query were disabled or never invoked.
+    await waitFor(() =>
+      expect(fetchSessionUploadChanges).toHaveBeenCalledWith('r1', [1000001], expect.any(Function))
+    )
     expect(result.current.session).toBeNull()
   })
 
