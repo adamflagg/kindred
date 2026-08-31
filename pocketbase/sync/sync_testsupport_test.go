@@ -216,6 +216,11 @@ func newSyncTestApp(t *testing.T) core.App {
 	issues.Fields.Add(&core.RelationField{Name: "suggested_session", CollectionId: sessions.Id, MaxSelect: 1})
 	issues.Fields.Add(&core.RelationField{Name: "resolved_alias", CollectionId: aliases.Id, MaxSelect: 1})
 	issues.Fields.Add(&core.JSONField{Name: "candidate_session_cm_ids", MaxSize: 20000})
+	// The weekend a human picked for a household CampMinder cannot place itself.
+	// A CampMinder id rather than a relation, so it is comparable against
+	// candidate_session_cm_ids and against the assignment's own session_cm_id
+	// without a join -- see migration 1500000177.
+	issues.Fields.Add(&core.NumberField{Name: "confirmed_session_cm_id", OnlyInt: true})
 	issues.Fields.Add(&core.NumberField{Name: "occurrences"})
 	issues.Fields.Add(&core.DateField{Name: "first_seen"})
 	issues.Fields.Add(&core.DateField{Name: "last_seen"})

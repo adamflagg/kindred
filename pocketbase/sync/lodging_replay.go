@@ -98,6 +98,13 @@ func ReplayIssue(app core.App, issueID string) (ReplayResult, error) {
 		Candidates:    candidates,
 		LastUpdated:   lastUpdated,
 		Now:           now,
+		// Read off THIS row rather than through newReplayScope's per-party map,
+		// which the fan-out below uses. A click is about the row that was
+		// clicked: if a party somehow carries two confirmed rows, honouring the
+		// other one would place a weekend the staff member in front of the queue
+		// did not choose. The map's "freshest wins" rule is the right answer for
+		// an unattended pass and the wrong one for a click.
+		ConfirmedSessionCMID: row.GetInt("confirmed_session_cm_id"),
 	})
 
 	recorded := s.issues.Recorded()
@@ -277,6 +284,13 @@ func ReplayPartylessIssue(app core.App, issueID string) (int, error) {
 			Candidates:    sessionIndex[p.cmID()],
 			LastUpdated:   p.LastUpdated,
 			Now:           now,
+			// This click is about a STRING, not about any one party, so each
+			// party brings its own confirmed weekend -- the same map the sync's
+			// grain passes read. Without it, mapping an alias would place every
+			// single-weekend household that wrote the string and re-queue each
+			// confirmed multi-weekend one as a fresh ambiguity, undoing work
+			// staff had already done.
+			ConfirmedSessionCMID: s.confirmed.forParty(p.HouseholdCMID, p.PersonCMID),
 		})
 		// ingestValue queues an item on every path that fails to place and on no
 		// path that succeeds, so "recorded nothing" is the same evidence
@@ -319,6 +333,13 @@ func newReplayScope(app core.App, year int) (*LodgingAssignmentsSync, error) {
 	}
 	if err = s.buildPartySizeIndexes(year); err != nil {
 		return nil, fmt.Errorf("building party-size indexes: %w", err)
+	}
+	// Built here rather than in either caller so both replay paths and the sync
+	// attribute against the same thing -- replay's premise is that a click
+	// produces the placement the next sync would have written, and that only
+	// holds while there is one setup rather than two that can drift.
+	if s.confirmed, err = loadConfirmedSessions(app, year); err != nil {
+		return nil, err
 	}
 	s.issues = NewIssueRecorder(app, year)
 	return s, nil
