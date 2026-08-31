@@ -143,7 +143,8 @@ func normaliseFamilyCampStatus(raw string) string {
 
 // enrollmentStatusForHousehold resolves one household's stored status, and is
 // the ONLY place the absent case is named. A household missing from the map has
-// no family/adult attendee row for the year at all.
+// no family-weekend attendee row for the year at all -- an adult-weekend row
+// does not keep it present, see familyCampSessionTypes.
 //
 // Never returns "": an empty status is the "could not determine" value a
 // consumer cannot act on, and the whole point of a non-nullable derived column

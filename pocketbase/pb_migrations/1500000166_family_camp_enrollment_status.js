@@ -19,23 +19,40 @@
  * THE VOCABULARY, and the one entry that is not a CampMinder status:
  *
  *   enrolled       -- at least one member actively enrolled (status_id = 2) on
- *                     a FAMILY OR ADULT weekend that year.
+ *                     a FAMILY weekend that year. (Originally family OR adult;
+ *                     narrowed by kindred#2619 -- see the superseded note below.)
  *   <status slug>  -- nobody enrolled: the single best non-enrolled status by
  *                     the ordering in frontend/src/utils/enrollmentFilter.ts
  *                     (waitlisted > applied > cancelled > ... > none).
- *   none_on_file   -- no family/adult attendee row at all for the year.
+ *   none_on_file   -- no family-weekend attendee row at all for the year.
  *
  * `none_on_file` is deliberately NOT spelled `none`. CampMinder has an occupied
  * status of that name -- 409 weekend attendee rows carry it -- so reusing it
  * would collapse "we hold a row and it says none" into "we hold no row", which
  * are different facts about a household.
  *
- * ADULT WEEKENDS COUNT. An adult weekend is a family-camp weekend; it differs
- * only in enrolling the parent directly rather than their children. Measured on
- * the production snapshot for 2026, 89 of 480 household-journey rows are badged
- * "No enrollment" today and 33 of those households DID enroll -- on a session
- * typed `adult`. A derivation filtering `session_type = "family"` alone would
- * carry that error into the column.
+ * ⛔ SUPERSEDED BY kindred#2619 -- ADULT WEEKENDS DO **NOT** COUNT. The
+ * paragraph below is the original reasoning, kept because the column's history
+ * is only legible with it. DO NOT IMPLEMENT FROM IT.
+ *
+ * Why it fell: the measurement was CIRCULAR. It counted households as having
+ * "DID enroll" using this very column, which at the time derived from
+ * `session_type IN ("family", "adult")` -- so those households read as enrolled
+ * BECAUSE of the adult weekend. On the production snapshot every one of them
+ * has no family-session attendee row in any state. Men's and Women's Weekend
+ * and the Divorce & Discovery retreat are a SEPARATE PROGRAM, and adults-only
+ * family camp is registered on paper and never reaches CampMinder, so there is
+ * no adults-only family-camp cohort in `attendees` for an `adult` pairing to
+ * rescue. The derivation now filters `session_type = "family"` alone, matching
+ * the Python read layer. See familyCampSessionTypes in
+ * pocketbase/sync/family_camp_enrollment_status.go.
+ *
+ * ~~ORIGINAL (superseded):~~ ADULT WEEKENDS COUNT. An adult weekend is a
+ * family-camp weekend; it differs only in enrolling the parent directly rather
+ * than their children. Measured on the production snapshot for 2026, 89 of 480
+ * household-journey rows are badged "No enrollment" today and 33 of those
+ * households DID enroll -- on a session typed `adult`. A derivation filtering
+ * `session_type = "family"` alone would carry that error into the column.
  *
  * NOT REQUIRED, on purpose. The column populates from family_camp_derived, one
  * year per run, and the standing ruling (D12) is FORWARD-ONLY: no replay of any
