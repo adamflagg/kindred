@@ -1128,6 +1128,7 @@ export type LodgingIngestIssuesKindOptions =
   (typeof LodgingIngestIssuesKindOptions)[keyof typeof LodgingIngestIssuesKindOptions]
 export type LodgingIngestIssuesRecord<Tcandidate_session_cm_ids = unknown> = {
   candidate_session_cm_ids?: null | Tcandidate_session_cm_ids
+  confirmed_session_cm_id?: number
   created: IsoAutoDateString
   first_seen?: IsoDateString
   household_cm_id?: number

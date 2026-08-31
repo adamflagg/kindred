@@ -416,6 +416,32 @@ export interface LodgingIngestIssueRecord extends PocketBaseRecordBase {
   person_cm_id: number
   suggested_session: string
   candidate_session_cm_ids: number[]
+  /**
+   * The weekend a human picked for a party CampMinder cannot place itself.
+   *
+   * CampMinder holds ONE cabin value per household per year and cannot say
+   * which weekend it describes, so a household booked on two weekends has no
+   * key for `lodging_assignments` and the sync writes no row at all — on the
+   * board that reads as unassigned, because "unassigned" is row-ABSENT rather
+   * than a blank column.
+   *
+   * A CampMinder session id, not a PocketBase relation like `suggested_session`
+   * beside it: this one is compared against `candidate_session_cm_ids` above
+   * and against `lodging_assignments.session_cm_id`, both of which are
+   * CampMinder ids. `0` means unconfirmed.
+   *
+   * Confirming is the ordinary resolve affordance — PATCH this alongside
+   * `is_resolved: true`, the same shape `ignoreIngestIssue` uses. The
+   * `replayOnResolve` hook fires on the false → true transition and the
+   * placement is written by the sync's own transform path; nothing is ever
+   * written back to CampMinder (ruling kindred#1968).
+   *
+   * SET IT ONLY TO ONE OF `candidate_session_cm_ids`. The backend resolves it
+   * against the party's candidate weekends and refuses a miss, leaving the row
+   * unplaced and re-opening it — so a picker offering anything else can only
+   * produce a tick that silently undoes itself.
+   */
+  confirmed_session_cm_id: number
   occurrences: number
   /** Set when the row was resolved by mapping it to a real alias. */
   resolved_alias: string

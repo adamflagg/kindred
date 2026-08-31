@@ -63,6 +63,12 @@ type LodgingAssignmentsSync struct {
 	// enrolled set (#2028).
 	householdSessionIndex map[int][]SessionWindow
 	personSessionIndex    map[int][]SessionWindow
+
+	// confirmed holds the weekends staff picked for the parties CampMinder
+	// cannot place itself. Loaded once per run, alongside the indexes above,
+	// because both grain passes read it. The zero value means "nothing
+	// confirmed", which is what newReplayScope's partly-wired service relies on.
+	confirmed confirmedSessions
 }
 
 // NewLodgingAssignmentsSync builds the service. Year 0 means "resolve from the
@@ -153,6 +159,14 @@ func (s *LodgingAssignmentsSync) Sync(ctx context.Context) error {
 
 	if idxErr := s.buildPartySizeIndexes(year); idxErr != nil {
 		return idxErr
+	}
+
+	// Read before either grain pass, because both attribute against it. A
+	// failure here is fatal rather than degraded: carrying on with an empty map
+	// would silently un-place every confirmed household and queue each of them
+	// as a fresh ambiguity, which reads as staff work having been lost.
+	if s.confirmed, err = loadConfirmedSessions(s.App, year); err != nil {
+		return err
 	}
 
 	if hhErr := s.syncHouseholdGrain(ctx, year, fieldTargets, counts, now); hhErr != nil {
@@ -304,13 +318,14 @@ func (s *LodgingAssignmentsSync) syncHouseholdGrain(
 
 		lastUpdated, _ := ParseCampMinderTimestamp(v.GetString("last_updated"))
 		s.ingestValue(&ingestContext{
-			Year:          year,
-			Raw:           v.GetString("value"),
-			SourceField:   fieldNameFamilyCampCabin,
-			HouseholdCMID: hhCMID,
-			Candidates:    sessionIndex[hhCMID],
-			LastUpdated:   lastUpdated,
-			Now:           now,
+			Year:                 year,
+			Raw:                  v.GetString("value"),
+			SourceField:          fieldNameFamilyCampCabin,
+			HouseholdCMID:        hhCMID,
+			Candidates:           sessionIndex[hhCMID],
+			LastUpdated:          lastUpdated,
+			Now:                  now,
+			ConfirmedSessionCMID: s.confirmed.forParty(hhCMID, 0),
 		})
 	}
 	return nil
@@ -370,13 +385,14 @@ func (s *LodgingAssignmentsSync) syncPersonGrain(
 
 		lastUpdated, _ := ParseCampMinderTimestamp(v.GetString("last_updated"))
 		s.ingestValue(&ingestContext{
-			Year:        year,
-			Raw:         v.GetString("value"),
-			SourceField: fieldNameReportableFamilyCampCabin,
-			PersonCMID:  personCMID,
-			Candidates:  sessionIndex[personCMID],
-			LastUpdated: lastUpdated,
-			Now:         now,
+			Year:                 year,
+			Raw:                  v.GetString("value"),
+			SourceField:          fieldNameReportableFamilyCampCabin,
+			PersonCMID:           personCMID,
+			Candidates:           sessionIndex[personCMID],
+			LastUpdated:          lastUpdated,
+			Now:                  now,
+			ConfirmedSessionCMID: s.confirmed.forParty(0, personCMID),
 		})
 	}
 	return nil
@@ -428,6 +444,11 @@ type ingestContext struct {
 	Candidates    []SessionWindow
 	LastUpdated   time.Time
 	Now           time.Time
+	// ConfirmedSessionCMID is the weekend staff picked for a party CampMinder
+	// cannot place itself, read off lodging_ingest_issues.confirmed_session_cm_id.
+	// 0 means unconfirmed, which is every party on the 98% path. It is resolved
+	// against Candidates below and never trusted on its own.
+	ConfirmedSessionCMID int
 }
 
 // ingestValue resolves, attributes, and writes one observed cabin value.
@@ -445,7 +466,20 @@ func (s *LodgingAssignmentsSync) ingestValue(in *ingestContext) {
 		})
 	}
 
-	attr := AttributeSession(in.Candidates, in.LastUpdated)
+	// A weekend staff confirmed wins, because AttributeSession by ruling settles
+	// nothing here: with two or more candidates it returns an advisory BestGuess
+	// and places nothing. This is the ONLY thing that turns a confirmation into a
+	// board row, and it does so through the sync's own transform path rather than
+	// as a write-in -- everything below this point is untouched by the feature.
+	//
+	// A confirmation naming a weekend the party does not attend falls through to
+	// the heuristic, which records the ambiguity exactly as before: the value
+	// stays unplaced and the queue item stays (or is re-opened) open. See
+	// confirmedAttribution for why the miss must not be a placement.
+	attr, confirmed := confirmedAttribution(in.Candidates, in.ConfirmedSessionCMID)
+	if !confirmed {
+		attr = AttributeSession(in.Candidates, in.LastUpdated)
+	}
 	if attr.Reason != attrSingleSession {
 		s.issues.Record(Issue{
 			Kind:             attr.Reason,
