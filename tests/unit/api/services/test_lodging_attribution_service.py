@@ -303,6 +303,51 @@ class TestWriteInsAreReadLive:
         assert [(o.kind, o.label) for o in conflicted.occupants] == [("write_in", "Weekend staff")]
 
     @pytest.mark.asyncio
+    async def test_a_shareable_unit_with_an_unsized_write_in_conflicts_wholesale(self) -> None:
+        """⭐ THE ARM ONLY `is_family_available` CAN ANSWER, and the reason this
+        service must not re-derive availability.
+
+        On a `single_party` leaf the write-in arm of the rule closes the space
+        on its own, so an unsized write-in there proves nothing about the
+        availability wiring. On a SHAREABLE leaf it does not: a shareable cabin
+        takes a second party until its beds run out, and what runs them out is
+        `free_family_spots` charging an unsized cover the unit's WHOLE capacity
+        (kindred#2540). Twelve beds, one write-in nobody counted, zero spots
+        left -- and the ONLY thing that says so is the resolver pass this
+        service borrows from the roster.
+        """
+        repo = _repo(
+            issues=[_issue("Shared Hall")],
+            placements={FC1: [_placement(HH_HOLDER, [MAPLE])], FC2: [_placement(HH_HOLDER, [MAPLE])]},
+            write_ins={FC1: [_write_in(HALL, "Weekend staff")]},
+        )
+
+        response = await LodgingAttributionService(repo).build_conflicts(YEAR)
+
+        assert _verdicts(response) == {FC1: "conflict", FC2: "free"}
+
+    @pytest.mark.asyncio
+    async def test_a_write_in_on_the_building_closes_a_room_inside_it(self) -> None:
+        """A write-in is a fact about a physical SPACE, and a building's space
+        contains its rooms' (`WriteInCover`). The row names the house; the
+        value names one room; the room is taken. Only the cover walk resolves
+        that -- reading the room's own rows finds nothing at all.
+        """
+        repo = _repo(
+            issues=[_issue("Birch Room 1")],
+            placements={FC1: [_placement(HH_HOLDER, [MAPLE])], FC2: [_placement(HH_HOLDER, [MAPLE])]},
+            write_ins={FC1: [_write_in(BIRCH_HOUSE, "Weekend staff")]},
+        )
+
+        response = await LodgingAttributionService(repo).build_conflicts(YEAR)
+
+        assert _verdicts(response) == {FC1: "conflict", FC2: "free"}
+        conflicted = next(c for c in _row(response).candidates if c.session_cm_id == FC1)
+        assert [(o.kind, o.label, o.leaf_code) for o in conflicted.occupants] == [
+            ("write_in", "Weekend staff", "birch-1")
+        ]
+
+    @pytest.mark.asyncio
     async def test_a_shareable_unit_with_room_left_does_not_conflict(self) -> None:
         repo = _repo(
             issues=[_issue("Shared Hall")],
