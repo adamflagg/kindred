@@ -109,7 +109,15 @@ function RosterProbe() {
  * once `useWeekendShellSession` has resolved one, so a session is always in
  * hand — there is no unscoped state to model here (kindred#2601).
  */
-const TEST_SESSION = { session_cm_id: 900, name: 'Family Camp 2' }
+/**
+ * Name length is DELIBERATE. Real weekend names reach 50 characters, which makes
+ * the modal title ~70 in a `size="sm"` dialog — a short fixture cannot exercise
+ * that geometry, and the first draft of this file used one.
+ */
+const TEST_SESSION = {
+  session_cm_id: 900,
+  name: 'Family Camp 5: Extended Program Weekend (all ages)',
+}
 
 function renderButton(client = makeClient(), session = TEST_SESSION) {
   // A WARM cache and no polling — the state a page at rest is in, and the one
@@ -268,7 +276,9 @@ describe('RefreshHousingButton — scoped to the weekend in view (kindred#2601)'
   it('names the weekend it is about to refresh', () => {
     renderButton()
     fireEvent.click(screen.getByRole('button', { name: /Refresh Housing/i }))
-    expect(screen.getByRole('dialog').textContent).toMatch(/Family Camp 2/)
+    expect(screen.getByRole('dialog').textContent).toMatch(
+      /Family Camp 5: Extended Program Weekend/
+    )
   })
 
   /**
@@ -293,10 +303,10 @@ describe('RefreshHousingButton — scoped to the weekend in view (kindred#2601)'
       /last refreshed/.test(p.textContent ?? '')
     )
     expect(freshnessLine).toBeDefined()
-    expect(freshnessLine?.textContent).not.toMatch(/Family Camp 2/)
+    expect(freshnessLine?.textContent).not.toMatch(/Family Camp 5: Extended Program Weekend/)
 
     // ...while the weekend IS still named where the claim is about the action.
-    expect(dialog.textContent).toMatch(/Family Camp 2/)
+    expect(dialog.textContent).toMatch(/Family Camp 5: Extended Program Weekend/)
   })
 
   /**

@@ -780,7 +780,7 @@ func handleRefreshFamilyCamp(e *core.RequestEvent, scheduler *Scheduler) error {
 		defer cancel()
 
 		if err := orchestrator.RunSyncSequenceWithServices(
-			ctx, GetRefreshFamilyCampJobs(), overrides,
+			ctx, GetRefreshFamilyCampJobs(), overrides, session,
 		); err != nil {
 			e.App.Logger().Error("Refresh family camp failed", "error", err, "session", session)
 		}

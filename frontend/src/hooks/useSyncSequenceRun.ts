@@ -89,6 +89,25 @@ import { useSyncStatusAPI } from './useSyncStatusAPI'
 import type { SyncStatus, SyncStatusResponse } from './useSyncStatusAPI'
 
 /** One job of a refresh chain, with the measured cost used for the readout. */
+/**
+ * Whether a run belongs to the surface watching it (kindred#2601).
+ *
+ * Two absences, both meaning "no opinion, so match":
+ *   - `runSession` absent — the run covers EVERY weekend (the nightly cron). It
+ *     must drive every weekend's readout, so this is the case that keeps the
+ *     cron working and is the easy one to get backwards.
+ *   - `mine` absent — the caller does not scope at all (summer's bunking chain).
+ *
+ * Before scoping, every family-camp run covered every weekend and this question
+ * had no meaning; the mid-run pickup deliberately armed on a weekend switch. Now
+ * a run started for weekend A must not drive weekend B's progress readout, its
+ * success toast, or its cache invalidation.
+ */
+function runBelongsHere(runSession: string | undefined, mine: string | undefined): boolean {
+  if (!runSession || !mine) return true
+  return runSession === mine
+}
+
 export interface SyncSequenceJob {
   /** The service name exactly as `GET /api/custom/sync/status` reports it. */
   service: string
@@ -216,6 +235,7 @@ export function useSyncSequenceRun({
   chain,
   enabled = true,
   onComplete,
+  session,
 }: {
   chain: readonly SyncSequenceJob[]
   /**
@@ -225,6 +245,14 @@ export function useSyncSequenceRun({
    */
   enabled?: boolean
   onComplete?: (outcome: SyncSequenceOutcome) => void
+  /**
+   * The weekend this surface is about, as a session cm_id. Omit for a chain that
+   * is not per-weekend (summer's bunking refresh).
+   *
+   * Supplying it stops a run started for ANOTHER weekend from driving this one's
+   * readout, toast and invalidation — see `runBelongsHere` (kindred#2601).
+   */
+  session?: string
 }): SyncSequenceRun {
   const queryClient = useQueryClient()
   const [phase, setPhase] = useState<'idle' | 'arming' | 'running'>('idle')
@@ -284,8 +312,9 @@ export function useSyncSequenceRun({
   let activeIndex = -1
   if (syncStatus && !orchestratorBusy) {
     activeIndex = chain.findIndex((job) => {
-      const s = jobStatus(syncStatus, job.service)?.status
-      return s === 'running' || s === 'pending'
+      const jobState = jobStatus(syncStatus, job.service)
+      const running = jobState?.status === 'running' || jobState?.status === 'pending'
+      return running && runBelongsHere(jobState?.session, session)
     })
   }
   const isActive = activeIndex >= 0

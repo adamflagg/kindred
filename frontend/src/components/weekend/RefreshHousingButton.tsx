@@ -68,6 +68,11 @@ export function RefreshHousingButton({ session }: RefreshHousingButtonProps) {
 
   const run = useSyncSequenceRun({
     chain: FAMILY_CAMP_REFRESH_CHAIN,
+    // Scopes the readout, the toast and the invalidation below to THIS weekend.
+    // Without it, a refresh started on another weekend drives this button —
+    // announcing and cache-busting a refresh that never touched what is on
+    // screen (kindred#2601).
+    session: String(session.session_cm_id),
     onComplete: (outcome) => {
       if (outcome === 'failed') {
         // §4.4: the two jobs that touch anything staff sees run LAST and are

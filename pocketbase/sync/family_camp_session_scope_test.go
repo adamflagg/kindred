@@ -189,7 +189,7 @@ func TestRefreshHousingLeavesRegisteredSingletonUntouched(t *testing.T) {
 	scoped := &sessionSpy{name: jobID, session: "1001"}
 
 	if err := o.RunSyncSequenceWithServices(context.Background(),
-		[]string{jobID}, map[string]Service{jobID: scoped}); err != nil {
+		[]string{jobID}, map[string]Service{jobID: scoped}, ""); err != nil {
 		t.Fatalf("RunSyncSequenceWithServices: %v", err)
 	}
 
@@ -217,7 +217,7 @@ func TestRunSyncSequenceNilOverridesUsesRegistry(t *testing.T) {
 	registered := &sessionSpy{name: "spy", session: DefaultSession}
 	o.RegisterService("spy", registered)
 
-	if err := o.RunSyncSequenceWithServices(context.Background(), []string{"spy"}, nil); err != nil {
+	if err := o.RunSyncSequenceWithServices(context.Background(), []string{"spy"}, nil, ""); err != nil {
 		t.Fatalf("RunSyncSequenceWithServices: %v", err)
 	}
 	if !registered.ran {
@@ -371,4 +371,72 @@ func TestHandleRefreshFamilyCampRejectsNonFamilySession(t *testing.T) {
 				familyWeekend, rec.Code, http.StatusOK, rec.Body.String())
 		}
 	})
+}
+
+// ── Run attribution: which weekend is this run about? (kindred#2601) ─────────────────────
+
+// TestScopedRunCarriesItsSession is what lets a surface ask "is the run I can see the one for
+// MY weekend?".
+//
+// Before scoping, the answer was always yes — every press covered every weekend — so the
+// status payload never needed a session and `useSyncSequenceRun` arms on job NAMES alone.
+// Scoping made that assumption false: without this, pressing Refresh on weekend A makes
+// weekend B's button show "Refreshing housing" and then fire B's success toast and cache
+// invalidation for a run that never touched B.
+//
+// Deliberately in-memory only. `runningJobs` / `lastCompletedStatus` are what the payload is
+// built from, and the question is only ever asked about a live or just-finished run, so
+// nothing here needs persisting to sync_runs or a migration.
+func TestScopedRunCarriesItsSession(t *testing.T) {
+	t.Parallel()
+	o := newTestOrchestrator(t)
+
+	const jobID = "person_custom_values_family_camp"
+	o.RegisterService(jobID, &sessionSpy{name: jobID, session: DefaultSession})
+
+	scoped := &sessionSpy{name: jobID, session: "1001"}
+	if err := o.RunSyncSequenceWithServices(context.Background(),
+		[]string{jobID}, map[string]Service{jobID: scoped}, "1001"); err != nil {
+		t.Fatalf("RunSyncSequenceWithServices: %v", err)
+	}
+
+	o.mu.RLock()
+	got := o.lastCompletedStatus[jobID]
+	o.mu.RUnlock()
+
+	if got == nil {
+		t.Fatal("no completed status recorded")
+	}
+	if got.Session != "1001" {
+		t.Errorf("completed status Session = %q, want %q -- a surface cannot tell whose run "+
+			"this was without it", got.Session, "1001")
+	}
+}
+
+// TestUnscopedRunCarriesNoSession is the other half, and it is what keeps the daily cron
+// arming every weekend's UI: an unscoped run genuinely covers all of them, so it must NOT
+// look like it belongs to one. A frontend filter reads an empty session as "matches
+// everybody".
+func TestUnscopedRunCarriesNoSession(t *testing.T) {
+	t.Parallel()
+	o := newTestOrchestrator(t)
+
+	const jobID = "person_custom_values_family_camp"
+	o.RegisterService(jobID, &sessionSpy{name: jobID, session: DefaultSession})
+
+	if err := o.RunSyncSequence(context.Background(), []string{jobID}); err != nil {
+		t.Fatalf("RunSyncSequence: %v", err)
+	}
+
+	o.mu.RLock()
+	got := o.lastCompletedStatus[jobID]
+	o.mu.RUnlock()
+
+	if got == nil {
+		t.Fatal("no completed status recorded")
+	}
+	if got.Session != "" {
+		t.Errorf("unscoped run recorded Session = %q, want empty -- the nightly pass covers "+
+			"every weekend and must not look like it belongs to one", got.Session)
+	}
 }

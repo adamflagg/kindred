@@ -49,6 +49,16 @@ export interface SyncStatus {
   start_time?: string
   end_time?: string
   error?: string
+  /**
+   * The weekend this run was started FOR, absent when it covers everything
+   * (kindred#2601, `Status.Session` in pocketbase/sync/orchestrator.go).
+   *
+   * ⚠️ ABSENT MEANS EVERY WEEKEND, not "unknown". The nightly cron refreshes the
+   * whole family-camp cohort, so a consumer must treat a missing session as
+   * MATCHING — reading it as "not mine" would silently stop the cron from
+   * driving any weekend's readout.
+   */
+  session?: string
   summary?: {
     created: number
     updated: number
