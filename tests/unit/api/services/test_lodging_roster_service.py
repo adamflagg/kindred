@@ -5164,9 +5164,15 @@ class TestUnitStepFreeCoverage:
 
         The three codes are NOT named here because THE REGISTRY IS DATA, NOT
         CODE (spec 3.8) -- the rule `verify-no-hardcoded-lodging.sh` enforces,
-        not merely the extensions it happens to scan. They live in the registry
-        and are described in `docs/reference/lodging-registry.md`, which is
-        where a staff-facing reconciliation list belongs."""
+        not merely the extensions it happens to scan. That rule is about
+        ARCHITECTURE, not privacy: unit codes are not PII, and the guard's
+        blindness to `.md` is a gap in the tripwire rather than a licence.
+        `docs/reference/lodging-registry.md` gives the same query for the same
+        reason. Re-derive them, which also keeps the answer current as staff
+        edit::
+
+            select code from lodging_units
+             where year = 2026 and has_ramp = 'yes' and is_accessible = 0;"""
         repo = _repo(
             fetch_session=FAMILY_SESSION,
             fetch_units=[_unit("u1", "ridge-1", "Ridge 1", sleeps=4, has_ramp="yes", is_accessible=False)],
