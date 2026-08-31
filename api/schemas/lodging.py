@@ -578,11 +578,11 @@ class LodgingUnitSummary(BaseModel):
     # heat=1/ac=1 18, heat=0/ac=1 0), so a heat-or-AC fold would hide the 16
     # rooms that are heated but not cooled.
     #
-    # DISPLAY ONLY, exactly like `ac_coverage`. Publishing the grain is
-    # kindred#2327's (b); the card does not read it yet -- there is no shipped
-    # icon for heat on any surface to align with, unlike fridge's `Refrigerator`
-    # already on `MapUnitPopover`, so choosing one here would be inventing a
-    # visual channel rather than aligning with one that exists.
+    # DISPLAY ONLY, exactly like `ac_coverage`. The card reads it as of
+    # kindred#2646: `LodgingUnitCard.tsx` draws a `Flame` mark on presence
+    # (`!== 'none' && !== 'unknown'`), matching this row's PRESENCE grammar
+    # rather than fridge's precedent -- there was no shipped heat icon on any
+    # surface to align with, so this was the first one rather than a copy.
     heat_coverage: AmenityCoverage = "unknown"
     is_weatherized: bool = False
     # The weatherized twin of `power_coverage`, resolved over the same leaf
@@ -594,8 +594,10 @@ class LodgingUnitSummary(BaseModel):
     #
     # DISPLAY ONLY. The ruled TREATMENT is a NEGATED mark (a struck-through
     # icon, kindred#2327 ruling 2026-08-18) rather than a positive one, and
-    # that treatment is gated on a mockup this change does not build -- only
-    # the fact is published here.
+    # the card draws it as of kindred#2646: `LodgingUnitCard.tsx` uses
+    # `CloudOff` -- struck through by the glyph itself -- on the AND-policy's
+    # complement (`!== 'all' && !== 'unknown'`), the opposite polarity from
+    # every positive mark in the row, because this one asserts an absence.
     weatherized_coverage: AmenityCoverage = "unknown"
     # The registry's own RAMP assessment for THIS ROW. ⚠️ PROVENANCE, NOT A
     # VERDICT (kindred#2327) -- nothing grades from it, on any surface. Kept in

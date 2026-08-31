@@ -4579,10 +4579,10 @@ class TestUnitWeatherizedCoverage:
     does not occur on production data today.
 
     Display-only, exactly like `ac_coverage` and `heat_coverage` above. The
-    ruled TREATMENT (a negated/slashed glyph, chosen 2026-08-18) is a new
-    visual channel this change deliberately does not build -- it stays gated
-    on a mockup, per kindred#2327's own scope note. This resolver only makes
-    the fact available on the wire.
+    ruled TREATMENT (a negated/slashed glyph, chosen 2026-08-18) shipped in
+    kindred#2646: `LodgingUnitCard.tsx` draws a struck-through `CloudOff` on
+    the AND-policy's complement. This resolver only makes the fact available
+    on the wire; the card is what reads it.
     """
 
     @pytest.mark.asyncio

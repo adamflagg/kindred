@@ -1724,8 +1724,8 @@ def _resolve_heat_coverage(units: list[LodgingUnitSummary], index: _BathroomInde
     (16 rooms are heated but not cooled) and folding them would hide that.
 
     Every rule `_resolve_power_coverage` established applies here unchanged.
-    Display only -- see the schema field for why this stops short of the
-    card.
+    Display only -- as of kindred#2646 the card reads it: a `Flame` mark on
+    presence. See the schema field for the icon detail.
     """
     _resolve_amenity_coverage(units, index, answer=lambda room: room.has_heat, target="heat_coverage")
 
@@ -1742,8 +1742,9 @@ def _resolve_weatherized_coverage(units: list[LodgingUnitSummary], index: _Bathr
     occurs on production data, though this walk can return it exactly as
     `ac_coverage` and `fridge_coverage` do.
 
-    Display only -- the ruled TREATMENT is a NEGATED mark and is gated on a
-    mockup this change does not build. See the schema field.
+    Display only -- the ruled TREATMENT is a NEGATED mark, and as of
+    kindred#2646 the card draws it: a struck-through `CloudOff` on the
+    AND-policy's complement. See the schema field for why the polarity flips.
     """
     _resolve_amenity_coverage(units, index, answer=lambda room: room.is_weatherized, target="weatherized_coverage")
 
