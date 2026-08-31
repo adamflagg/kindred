@@ -2057,10 +2057,16 @@ export type HistoricalTrendsResponse = {
  *
  * A household's year-over-year family-camp record, newest year first.
  *
- * The window is DISCOVERED, not chosen: a year appears when the household
- * has a trace in it -- an enrolled child, an adult on file, or a
- * registration -- so the list is empty for a first-time family rather than
- * padded with blank years.
+ * The window is DISCOVERED, not chosen: a year appears when camp actually
+ * had the household -- an ENROLLED attendee on one of its weekends -- so
+ * the list is empty for a first-time family rather than padded with blank
+ * years. Registration and `family_camp_adults` rows stopped being traces of
+ * their own in kindred#2516: both fire on a form being filled in rather than
+ * on anybody turning up, so a cancelled or waitlisted family carried a year
+ * indistinguishable from one they attended. A registration's CABIN still
+ * counts, for the one population it is the only trace of: adults-only family
+ * camp is paper-only and never reaches CampMinder, so a household with a
+ * cabin and no attendee row at all did sleep here.
  *
  * Carries NO family name. The label is the children's deduplicated
  * surnames, and that derivation lives in exactly one place
@@ -2145,10 +2151,6 @@ export type HouseholdJourneyYear = {
    * Housing Session Cm Id
    */
   housing_session_cm_id?: number | null
-  /**
-   * Enrollment
-   */
-  enrollment?: 'enrolled' | 'none_on_file'
   /**
    * Adults
    */

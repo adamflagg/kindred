@@ -598,13 +598,13 @@ class LodgingRepository:
         )
 
     async def fetch_household_family_attendees(self, household_cm_id: int) -> list[Any]:
-        """One household's enrolled family-camp children, across EVERY year.
+        """One household's FAMILY-session attendees, EVERY year, EVERY status.
 
         The cross-year read behind the household journey (kindred#2073). The
         year is deliberately NOT a parameter here -- unlike every other read
         in this file -- because the journey's window is not chosen, it is
         discovered: the years a household appears in are exactly the years it
-        has a trace, and a hard-coded floor would either invent empty rows or
+        was with us, and a hard-coded floor would either invent empty rows or
         silently truncate a long-standing family's history.
 
         ⚠️ `person.household_id`, NOT `person.household`. Both exist on
@@ -616,18 +616,41 @@ class LodgingRepository:
         match one season. `household_id` is the CampMinder id, which is the
         identity thread across seasons (CLAUDE.md section 1).
 
-        `session.session_type = "family"` because an adult weekend is
-        person-grain: it enrols the adult directly, and letting those rows
-        through would file a parent's own weekend under their children.
+        `session.session_type = "family"`, and adult weekends are NOT read.
+        Men's and Women's Weekend and the Divorce & Discovery retreat are a
+        DIFFERENT PROGRAM that happens to enrol adults directly, so their
+        attendee rows say nothing about family camp. kindred#2516 briefly
+        proposed reading them, on the measurement that 34 of 2026's 425
+        "enrolled" family-camp registrations have no enrolled child and an
+        adult-weekend row. That reasoning is CIRCULAR and the number is an
+        artefact: `enrollment_status` is itself derived from
+        `session_type IN ("family", "adult")`, so those 34 are "enrolled"
+        BECAUSE of the adult weekend. Checked against the snapshot, all 34
+        have no family-session attendee row in any state -- they never
+        registered for a family weekend at all.
 
-        `status_id = 2` for the reason it is everywhere else, with one year
-        that makes it vivid: 2020 has 1,264 family attendee rows and not one
-        enrolled -- the season was cancelled outright -- so an unfiltered read
-        renders 2020 as an ordinary year.
+        ⚠️ NO STATUS FILTER, and that is a deliberate reversal. Every other
+        attendee read here applies `ACTIVE_ENROLLED_FILTER`; this one cannot,
+        because the journey has to tell two things apart that an enrolled-only
+        read renders identical:
+
+        * a household whose child was booked and then CANCELLED -- its
+          `cabin_assignment` string is stale, staff assigned it before the
+          cancellation and nothing clears the field. 101 household-years on
+          the snapshot. The year must NOT render.
+        * a household with NO family attendee row at all that still holds a
+          cabin -- a PAPER registration. Adults-only family camp is never
+          entered into CampMinder, so the cabin staff typed is the household's
+          only trace, and it is proof they slept here. 57 household-years,
+          51 of them in 2022. The year MUST render.
+
+        Both look like "no enrolled child" to a filtered read. The caller
+        applies `status_id = 2` itself when collecting MEMBERS, and uses the
+        bare presence of a row for the paper test.
 
         NOT cached. `lodging_cache` is keyed by year and this read has no
         year; it is also per-household rather than per-season, so it is small
-        (one family's children) and there is no year-scoped sharing to win.
+        (one family's members) and there is no year-scoped sharing to win.
         """
         # Never issue the query for an unresolvable household.
         # `_build_household_parties` gives one `household_cm_id = 0`, and
@@ -638,17 +661,18 @@ class LodgingRepository:
         return await self._page(
             ATTENDEES,
             query_params={
-                "filter": (
-                    f"person.household_id = {household_cm_id} "
-                    f'&& session.session_type = "family" && {ACTIVE_ENROLLED_FILTER}'
-                ),
+                "filter": (f'person.household_id = {household_cm_id} && session.session_type = "family"'),
                 # `session` alongside `person` (kindred#2420): the journey
-                # needs to know WHICH family session this attendee row is
-                # enrolled in, to compute that child's age at that specific
-                # session's start rather than at the year's earliest
-                # camp-wide family session -- a season runs several, months
-                # apart, and a household does not necessarily attend the
-                # first one.
+                # needs to know WHICH session this attendee row is enrolled
+                # in, to compute that child's age at that specific session's
+                # start rather than at the year's earliest camp-wide family
+                # session -- a season runs several, months apart, and a
+                # household does not necessarily attend the first one.
+                #
+                # Since kindred#2516 it carries a second load: `session_type`
+                # is what the caller splits family from adult on, so an
+                # unexpanded `session` would not merely lose an age, it would
+                # make an adult weekend indistinguishable from a family one.
                 "expand": "person,session",
                 "sort": STABLE_SORT,
             },
@@ -689,27 +713,64 @@ class LodgingRepository:
             adults.sort(key=lambda a: int(getattr(a, "adult_number", 0) or 0))
         return dict(grouped)
 
-    async def fetch_household_registration_years(self, household_cm_id: int) -> set[int]:
-        """The years this household registered for family camp (kindred#2073).
+    async def fetch_household_registration_cabins(self, household_cm_id: int) -> dict[int, str]:
+        """This household's staff-written cabin string, per year (kindred#2073).
 
-        A trace of its own, and NOT recoverable from
-        `fetch_cabin_assignments_by_household_cm_id`, which drops every blank
-        `cabin_assignment` -- and blank is all 1,433 rows from 2017-2021.
-        Measured on the production snapshot, between 24 and 89 registrations a
-        year carry neither an enrolled child nor an adult row, so a journey
-        assembled from children and adults alone loses those years entirely.
+        ⚠️ THIS READ STOPPED BEING A YEAR SOURCE IN kindred#2516. It used to
+        return the bare set of years a `family_camp_registrations` row exists
+        for, and the journey unioned that into its window -- which is what put
+        a cancelled or waitlisted family's year on the card looking exactly
+        like a year they attended. A registration row means a form was filled
+        in, never that anybody turned up.
+
+        What it carries now is the CABIN, because a cabin means somebody
+        SLEPT here. That is the one fact in this table which is evidence of
+        attendance rather than of intent, and it exists to rescue exactly one
+        population: PAPER registrations. Adults-only family camp is never
+        entered into CampMinder at all, so a household that registered on
+        paper has no attendee row in any state -- the cabin staff typed is its
+        only trace. 57 household-years on the snapshot, 51 of them in 2022.
+
+        ⛔ A CABIN IS NOT ENOUGH ON ITS OWN, and the caller enforces that. A
+        household whose child was booked and then cancelled ALSO holds a
+        cabin: staff assigned it before the cancellation and nothing clears
+        the field, so the string is stale. 101 household-years look like that,
+        and they must not render. The discriminator is whether a
+        family-session attendee row exists AT ALL, which is why
+        `fetch_household_family_attendees` dropped its status filter.
+
+        Blank on all 1,433 rows from 2017-2021, so this rescues nothing before
+        2022 -- which is correct: 2020's season was cancelled after enrollment
+        and 2021 was cancelled before it, and neither has a cabin on file.
         """
         if household_cm_id <= 0:
-            return set()
+            return {}
         rows = await self._page(
             FAMILY_CAMP_REGISTRATIONS,
             query_params={
                 "filter": f"household.cm_id = {household_cm_id}",
-                "fields": "year",
+                # `cabin_assignment` alongside `year`: requesting `year` alone
+                # is what made this a bare year set, and the whole point of the
+                # read now is the string beside it.
+                "fields": "year,cabin_assignment",
                 "sort": STABLE_SORT,
             },
         )
-        return {year for row in rows if (year := int(getattr(row, "year", 0) or 0))}
+        cabins: dict[int, str] = {}
+        for row in rows:
+            year = int(getattr(row, "year", 0) or 0)
+            if not year:
+                continue
+            # RAW, exactly as `fetch_cabin_assignments_by_household_cm_id`
+            # returns it: resolution happens at display (kindred#2332), and a
+            # string nobody can map is still a household that was placed.
+            cabin = str(getattr(row, "cabin_assignment", "") or "")
+            # One row per household-year (unique index), so no merge rule is
+            # needed -- but prefer a non-blank if the index ever loosens,
+            # rather than letting row order decide whether a family attended.
+            if cabin or year not in cabins:
+                cabins[year] = cabin
+        return cabins
 
     @cached_by_year(lodging_cache)
     async def fetch_households(self, year: int) -> dict[str, Any]:
@@ -788,7 +849,7 @@ class LodgingRepository:
 
         Bridged through `person.household_id` (the CampMinder id) rather than
         `person.household` (the PocketBase relation): this is a cross-YEAR
-        read, exactly like `fetch_household_family_attendees`, and
+        read, exactly like `fetch_household_weekend_attendees`, and
         `household` is a relation into the year-scoped `households` table --
         it can only ever match one season. `household_id` is the identity
         thread across seasons (CLAUDE.md section 1).

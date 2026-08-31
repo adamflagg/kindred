@@ -250,9 +250,10 @@ function JourneyRows({
                 </span>
 
                 {/* PLAIN TEXT, not chips (owner ruling 2026-08-18). The row
-                  already carries a housing name, a "No enrollment" chip and a
-                  "See members" action; a fourth decorated element makes none
-                  of them readable.
+                  already carries a housing name and a "See members" action; a
+                  third decorated element makes none of them readable. The
+                  ruling counted a "No enrollment" chip too, which kindred#2516
+                  has since deleted -- the ruling holds with one fewer.
 
                   ⚠️ ONE CABIN, RENDERED ONCE. There is deliberately no cabin
                   against each weekend: `family_camp_registrations` holds a
@@ -262,12 +263,13 @@ function JourneyRows({
                   analysis. There is no explanatory note for the ambiguous
                   case either — the owner struck it, because staff know
                   CampMinder overwrites the source value and it would have sat
-                  beside the "No enrollment" chip saying nearly the same thing.
+                  beside the then-present "No enrollment" chip saying nearly the
+                  same thing.
 
                   Nothing at all when no weekend is knowable: an empty list is
-                  the pre-kindred#2420 payload shape and a year with no
-                  enrolled child (2020's cancelled season, 2021's adults-only
-                  rows), not a household that attended none. */}
+                  the pre-kindred#2420 payload shape, or a year discovered from
+                  an ADULT weekend, which never enters `sessions` (kindred#2516).
+                  It is not a household that attended none. */}
                 {weekends.length > 0 && (
                   <>
                     {/* Its own element, not a prefix inside the label span, so
@@ -289,21 +291,6 @@ function JourneyRows({
                   despite 247 registrations. The muted chip is the camper
                   journey's own de-emphasis treatment for a row a reader can
                   skip without losing the fact. */}
-              {/* A reachable tooltip, not a `title` (kindred#2177): the rest
-                  of the weekend surface stopped explaining itself on mouse
-                  hover alone, and this chip only kept the old pattern because
-                  it landed after that sweep's file list was drawn up. The row
-                  around it is a `<div>`, so unlike `HouseholdRosterRow`'s
-                  in-button badges this one can be a real trigger. */}
-              {row.enrollment === 'none_on_file' && (
-                <Tooltip
-                  content="The household is in that season's records, but CampMinder has no enrolled child against it"
-                  className="bg-muted text-muted-foreground flex-shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium"
-                >
-                  No enrollment
-                </Tooltip>
-              )}
-
               {/* No affordance for a year with nobody to show. An empty modal
                   is worse than no button: it reads as a load failure. */}
               {count > 0 && (

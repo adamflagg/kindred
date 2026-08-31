@@ -821,7 +821,6 @@ describe('the household journey', () => {
             year: 2025,
             housing: 'placed',
             cabin_name: 'Cedar Lodge - Room 2',
-            enrollment: 'enrolled',
             adults: [],
             children: [],
           },
@@ -878,7 +877,6 @@ describe('Escape with a dialog open on top', () => {
             year: 2025,
             housing: 'placed',
             cabin_name: 'Cedar Lodge - Room 2',
-            enrollment: 'enrolled',
             adults: [{ adult_number: 1, display_name: 'Olivia Johnson', relationship: 'Parent' }],
             children: [
               {

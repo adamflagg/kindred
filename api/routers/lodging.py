@@ -180,11 +180,17 @@ async def get_household_journey(
 
     TAKES NO YEAR, unlike every other read on this router, and that is the
     contract rather than an omission: the journey's window is DISCOVERED, not
-    chosen. A year appears when the household has a trace in it -- an enrolled
-    child, an adult on file, or a registration -- and those three reach
-    different distances back. A `?year=` parameter would imply the caller
-    picks the window, which is exactly how a four-year family ends up
-    rendered as a one-year one.
+    chosen. A year appears when camp actually had the household -- an ENROLLED
+    child on a family session, or (for a paper registration, which leaves no
+    attendee row at all) a cabin on file -- and attendance reaches further
+    back than housing does. A `?year=` parameter would imply the caller picks
+    the window, which is exactly how a four-year family ends up rendered as a
+    one-year one.
+
+    ⚠️ Registration and adult-on-file rows STOPPED being traces of their own
+    in kindred#2516: both fire on a form being filled in rather than on
+    anybody turning up, so a cancelled or waitlisted family carried a year
+    indistinguishable from one they attended.
 
     Open to any authenticated user, like `/roster` and `/summary` above and
     UNLIKE the medical endpoint directly below. It carries names, ages and

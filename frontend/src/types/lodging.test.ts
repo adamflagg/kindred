@@ -72,8 +72,13 @@ void _exhaustivePartyChild
 /**
  * kindred#2073's journey year. Every field is a distinct fact the card reads
  * and none can be recovered from another: `housing` and `cabin_name` disagree
- * on purpose in the two unplaced states, and `enrollment` is what stops an
- * empty `children` rendering as a childless family.
+ * on purpose in the two unplaced states.
+ *
+ * `enrollment` was here until kindred#2516 and is deliberately NOT replaced.
+ * A year now reaches this payload only where the household was enrolled, so
+ * the field could hold one value forever — and this fixture is `Required<>`
+ * precisely so a field that leaves the wire fails the build rather than
+ * lingering as a type nobody publishes.
  */
 const _exhaustiveHouseholdJourneyRow: Required<HouseholdJourneyRow> = {
   year: 2025,
@@ -86,7 +91,6 @@ const _exhaustiveHouseholdJourneyRow: Required<HouseholdJourneyRow> = {
   // DISAGREE here on purpose: that disagreement is 716 of 1,861 rows on the
   // snapshot, and it is the only case the card shows this field in.
   cabin_name_raw: 'Old Meadow 1',
-  enrollment: 'enrolled',
   // kindred#2393. The weekends the household attended that year, earliest
   // first. Two of them here on purpose: that is the 64-of-5,438 case the
   // field exists for, and it is also why the row below refuses to pin the

@@ -60,7 +60,6 @@ function _row(overrides: Partial<HouseholdJourneyRow> = {}): HouseholdJourneyRow
     year: 2025,
     housing: 'placed',
     cabin_name: 'Cedar Lodge - Room 2',
-    enrollment: 'enrolled',
     adults: [{ adult_number: 1, display_name: 'Olivia Johnson', relationship: 'Parent' }],
     children: [
       {
@@ -162,31 +161,35 @@ describe('the housing states', () => {
 })
 
 describe('the enrollment states', () => {
-  it('flags a year with no enrolled child rather than showing nothing', () => {
-    show([_row({ year: 2021, enrollment: 'none_on_file', children: [] })])
+  // kindred#2516 DELETED this chip, and deleted the state behind it. A year
+  // now reaches the journey only where the household was actually enrolled,
+  // so "no enrolled child on file" is not a year the card can be handed —
+  // the server does not publish one. The chip could only ever have rendered
+  // on a row that no longer exists.
+  //
+  // What it used to say is now said by the row's ABSENCE, which is how summer
+  // has always said it (`fetchCamperJourney` filters `status = "enrolled"`).
+  it('never renders a no-enrollment chip, because a non-enrolled year is not published', () => {
+    show([_row({ year: 2021, children: [] }), _row({ year: 2025 })])
 
-    expect(within(rowFor(2021)).getByText('No enrollment')).toBeInTheDocument()
+    expect(screen.queryByText('No enrollment')).not.toBeInTheDocument()
+    expect(within(rowFor(2021)).queryByText('No enrollment')).not.toBeInTheDocument()
   })
 
-  it('does not flag a year that has one', () => {
-    show([_row({ year: 2025, enrollment: 'enrolled' })])
+  it('still renders a year whose children are absent, which is now an adult weekend', () => {
+    // A year discovered from an ADULT weekend carries no children: the
+    // attendee row is the adult's own and never enters the member walk. The
+    // row must still render — the household WAS with us — and its adults come
+    // from `family_camp_adults` as they always have.
+    show([
+      _row({
+        year: 2026,
+        children: [],
+        adults: [{ adult_number: 1, display_name: 'Sofia Martinez', relationship: 'Parent' }],
+      }),
+    ])
 
-    expect(within(rowFor(2025)).queryByText('No enrollment')).not.toBeInTheDocument()
-  })
-
-  it('explains the flag on a tooltip a keyboard and a tablet can reach', () => {
-    // kindred#2177. This chip is on the weekend surface and carried the same
-    // bare `title` as the rest of it — it just landed late enough to miss the
-    // sweep's file list, which is exactly how a half-swept surface happens.
-    // The row around it is a `<div>`, not a `<button>`, so unlike
-    // `HouseholdRosterRow`'s in-button badges this one CAN be a real trigger.
-    show([_row({ year: 2021, enrollment: 'none_on_file', children: [] })])
-
-    const chip = within(rowFor(2021)).getByRole('button', { name: 'No enrollment' })
-    expect(chip).not.toHaveAttribute('title')
-
-    fireEvent.focus(chip)
-    expect(screen.getByRole('tooltip')).toHaveTextContent(/no enrolled child/i)
+    expect(rowFor(2026)).toBeInTheDocument()
   })
 })
 
@@ -316,7 +319,7 @@ describe('the family name', () => {
   })
 
   it('falls back to a neutral heading when no child on any year carries a surname', () => {
-    show([_row({ year: 2021, enrollment: 'none_on_file', children: [] })])
+    show([_row({ year: 2021, children: [] })])
 
     expect(screen.getByTestId('household-journey-title').textContent).toBe('Family Camp history')
   })
@@ -351,7 +354,7 @@ describe('see members', () => {
   })
 
   it('offers no affordance for a year with nobody on file', () => {
-    show([_row({ year: 2020, enrollment: 'none_on_file', adults: [], children: [] })])
+    show([_row({ year: 2020, adults: [], children: [] })])
 
     expect(screen.queryByRole('button', { name: 'See members for 2020' })).not.toBeInTheDocument()
   })
@@ -360,7 +363,6 @@ describe('see members', () => {
     show([
       _row({
         year: 2020,
-        enrollment: 'none_on_file',
         adults: [{ adult_number: 1, display_name: 'NA', relationship: '' }],
         children: [],
       }),

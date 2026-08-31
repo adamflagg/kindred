@@ -1305,12 +1305,15 @@ class TestFetchHouseholdFamilyAttendees:
       SAME year's households record, so a PB-id filter can only ever match
       one year. `household_id` is the CampMinder id, which is the identity
       thread across seasons (CLAUDE.md section 1).
-    * `session.session_type = "family"`. Adult weekends are person-grain and
-      enrol the adult directly; letting them through would put a parent's own
-      weekend into their children's journey.
-    * `status_id = 2`. 2020 has 1,264 family attendee rows and not one
-      enrolled -- the whole season cancelled -- and without this filter that
-      year renders as a normal one.
+    * `session.session_type = "family"` ONLY. Adult weekends are a different
+      program that enrols adults directly, and adults-only family camp is
+      PAPER and never reaches CampMinder -- so a family camp visible here at
+      all had a child register.
+    * ⚠️ NO `status_id` filter, reversing kindred#2073's original. The journey
+      has to separate a CANCELLED child (whose cabin string is stale) from NO
+      child at all (a paper registration whose cabin is real), and an
+      enrolled-only read renders those identical. The caller applies
+      `ACTIVE_ENROLLED_STATUS_ID` itself when collecting members.
     """
 
     @pytest.mark.asyncio
@@ -1322,8 +1325,16 @@ class TestFetchHouseholdFamilyAttendees:
         pb.collection.assert_called_with("attendees")
         params = _last_query(pb)
         assert "person.household_id = 2000001" in params["filter"]
+        # FAMILY only. An adult weekend is a different program (kindred#2516),
+        # and reading it here put a parent's own retreat into the family-camp
+        # journey.
         assert 'session.session_type = "family"' in params["filter"]
-        assert "status_id = 2" in params["filter"]
+        assert 'session.session_type = "adult"' not in params["filter"]
+        # ⚠️ NO status predicate, and this assertion is the point of the read.
+        # A cancelled child leaves a row; a paper registration leaves none.
+        # Filtering here collapses the two and either strands 57 households
+        # that did attend or admits 101 that cancelled.
+        assert "status_id" not in params["filter"]
         # No year predicate at all -- the sweep IS every year on file.
         assert "year =" not in params["filter"]
         # `session` alongside `person` (kindred#2420): the journey computes
@@ -1376,36 +1387,57 @@ class TestFetchHouseholdAdultsByYear:
         pb.collection.assert_not_called()
 
 
-class TestFetchHouseholdRegistrationYears:
-    """Which years the household registered for family camp at all.
+class TestFetchHouseholdRegistrationCabins:
+    """The household's staff-written cabin string, per year.
 
-    NOT derivable from `fetch_cabin_assignments_by_household_cm_id`, which
-    drops every blank `cabin_assignment` -- and blank is all of 2017-2021.
-    Measured on the production snapshot: between 24 and 89 registrations a
-    year carry neither an enrolled child nor an adult row, so registration is
-    a trace of its own and a journey built without it silently loses those
-    years.
+    ⚠️ THIS STOPPED BEING A YEAR SOURCE IN kindred#2516. It used to return the
+    bare set of years a registration row exists for, and the journey unioned
+    that into its window -- which put a cancelled family's year on the card
+    looking exactly like a year they attended.
+
+    What it carries now is the CABIN, because a cabin means somebody SLEPT
+    here. It rescues exactly one population: PAPER registrations, which never
+    reach CampMinder at all, so the cabin is their only trace.
     """
 
     @pytest.mark.asyncio
-    async def test_returns_the_set_of_years(self, repo: LodgingRepository, pb: MagicMock) -> None:
+    async def test_returns_the_cabin_keyed_by_year(self, repo: LodgingRepository, pb: MagicMock) -> None:
         pb.collection.return_value.get_full_list.return_value = [
-            _record(year=2024),
-            _record(year=2021),
-            _record(year=2024),
+            _record(year=2024, cabin_assignment="Cedar Lodge"),
+            _record(year=2021, cabin_assignment=""),
         ]
 
-        result = await repo.fetch_household_registration_years(2000001)
+        result = await repo.fetch_household_registration_cabins(2000001)
 
         pb.collection.assert_called_with("family_camp_registrations")
         assert "household.cm_id = 2000001" in _last_query(pb)["filter"]
-        assert result == {2021, 2024}
+        # `cabin_assignment` must be REQUESTED. Asking for `year` alone is what
+        # made this a bare year set, and the string beside it is now the point.
+        assert "cabin_assignment" in _last_query(pb)["fields"]
+        assert result == {2024: "Cedar Lodge", 2021: ""}
+
+    @pytest.mark.asyncio
+    async def test_a_blank_cabin_is_kept_not_dropped(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        """The blank must survive the read. It is the caller that decides a
+        blank rescues nothing -- dropping it here would make "registered with
+        no cabin" indistinguishable from "never registered", and 1,433 rows
+        from 2017-2021 are blank.
+        """
+        pb.collection.return_value.get_full_list.return_value = [_record(year=2021, cabin_assignment="")]
+
+        assert await repo.fetch_household_registration_cabins(2000001) == {2021: ""}
+
+    @pytest.mark.asyncio
+    async def test_year_zero_is_not_a_year(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        pb.collection.return_value.get_full_list.return_value = [_record(year=0, cabin_assignment="Cedar Lodge")]
+
+        assert await repo.fetch_household_registration_cabins(2000001) == {}
 
     @pytest.mark.asyncio
     async def test_an_unresolvable_household_reads_nothing(self, repo: LodgingRepository, pb: MagicMock) -> None:
-        result = await repo.fetch_household_registration_years(0)
+        result = await repo.fetch_household_registration_cabins(0)
 
-        assert result == set()
+        assert result == {}
         pb.collection.assert_not_called()
 
 

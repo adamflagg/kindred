@@ -1240,16 +1240,6 @@ class HouseholdMedicalResponse(BaseModel):
 # being worked, "no cabin on file" for a past one.
 HousingState = Literal["placed", "not_placed", "unknown"]
 
-# Whether the year has an enrolled child on file.
-#
-# "none_on_file" is NOT "a childless family", and the difference is the whole
-# reason it is a named state. 2020 has 1,264 family attendee rows and not one
-# with status_id = 2 -- the season was cancelled. 2021 has no family attendee
-# rows at all despite 247 registrations, while `family_camp_adults` carries
-# 647 rows across 351 households. Both years are real attendance the enrollment
-# tables cannot describe, and neither is an error.
-EnrollmentState = Literal["enrolled", "none_on_file"]
-
 
 class HouseholdJourneySession(BaseModel):
     """One family weekend a household attended in a given year (kindred#2393).
@@ -1306,10 +1296,12 @@ class HouseholdJourneyYear(BaseModel):
     # already come from, so it costs no extra round trip -- the journey's
     # attendee read has expanded `session` since kindred#2420.
     #
-    # Empty for a year with no enrolled child (2020's cancelled season, 2021's
-    # adults-only rows) and for the pre-kindred#2420 payload shape where the
-    # relation did not expand. Empty is "no weekend is knowable", never "the
-    # household attended none".
+    # Empty for a year discovered from an ADULT weekend (kindred#2516) --
+    # those never enter this list, because an adult retreat is not a family
+    # weekend and admitting one would also un-pin the cabin below by making
+    # its "exactly one weekend" count two -- and for the pre-kindred#2420
+    # payload shape where the relation did not expand. Empty is "no weekend
+    # is knowable", never "the household attended none".
     sessions: list[HouseholdJourneySession] = Field(default_factory=list)
     # Which weekend `cabin_name` belongs to -- and `None` whenever that cannot
     # be said, which is the whole point of the field.
@@ -1327,7 +1319,6 @@ class HouseholdJourneyYear(BaseModel):
     # household-years on the production snapshot), no weekend on file (158),
     # and no cabin to attribute in the first place.
     housing_session_cm_id: int | None = None
-    enrollment: EnrollmentState = "none_on_file"
     # Every `family_camp_adults` row for the year, blanks and placeholders
     # included -- the same contract `RosterParty.adults` publishes, so the
     # client applies one predicate (`isAttendingAdultName`) on both surfaces.
@@ -1338,10 +1329,16 @@ class HouseholdJourneyYear(BaseModel):
 class HouseholdJourneyResponse(BaseModel):
     """A household's year-over-year family-camp record, newest year first.
 
-    The window is DISCOVERED, not chosen: a year appears when the household
-    has a trace in it -- an enrolled child, an adult on file, or a
-    registration -- so the list is empty for a first-time family rather than
-    padded with blank years.
+    The window is DISCOVERED, not chosen: a year appears when camp actually
+    had the household -- an ENROLLED attendee on one of its weekends -- so
+    the list is empty for a first-time family rather than padded with blank
+    years. Registration and `family_camp_adults` rows stopped being traces of
+    their own in kindred#2516: both fire on a form being filled in rather than
+    on anybody turning up, so a cancelled or waitlisted family carried a year
+    indistinguishable from one they attended. A registration's CABIN still
+    counts, for the one population it is the only trace of: adults-only family
+    camp is paper-only and never reaches CampMinder, so a household with a
+    cabin and no attendee row at all did sleep here.
 
     Carries NO family name. The label is the children's deduplicated
     surnames, and that derivation lives in exactly one place

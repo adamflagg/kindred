@@ -21,6 +21,7 @@ from dataclasses import dataclass
 from datetime import date
 from typing import TYPE_CHECKING, Any, Literal, NamedTuple, cast
 
+from api.constants.filters import ACTIVE_ENROLLED_STATUS_ID
 from api.constants.lodging import INFANT_BED_EXEMPT_MONTHS, is_attending_adult_name
 from api.schemas.lodging import (
     MEDICAL_GATE_FIELD_NAMES,
@@ -2414,14 +2415,22 @@ class LodgingRosterService:
     async def build_household_journey(self, household_cm_id: int) -> HouseholdJourneyResponse:
         """A household's family-camp record, year by year (kindred#2073).
 
-        THE WINDOW IS DISCOVERED, NOT CHOSEN. A year appears when the
-        household has a trace in it, and the three traces disagree about which
-        years exist: attendance reaches back to 2017, housing only to 2022,
-        and between 24 and 89 registrations a year carry neither an enrolled
-        child nor an adult row. Taking their union is what makes the view
-        honest about a four-year housing window sitting inside a longer
-        attendance one -- and a hard-coded floor would either invent empty
-        rows or truncate a long-standing family.
+        THE WINDOW IS DISCOVERED, NOT CHOSEN, AND ENROLLMENT IS WHAT
+        DISCOVERS IT (kindred#2516). A year appears when camp actually had
+        this household -- an enrolled attendee on one of its weekends -- which
+        is how summer answers the same question (`fetchCamperJourney` filters
+        `status = "enrolled"`). Discovery still floats: attendance reaches
+        back to 2017 while housing only reaches 2022, so the view stays honest
+        about a shorter housing window sitting inside a longer attendance one,
+        and a hard-coded floor would still either invent empty rows or
+        truncate a long-standing family.
+
+        WHAT IT NO LONGER DOES is take the UNION of three traces. The other
+        two fire on a form being filled in, not on anybody turning up, so a
+        cancelled or waitlisted family carried a year identical to one they
+        attended -- the defect staff reported. One exception survives, for
+        PAPER registrations, which leave a cabin and nothing else. The rule
+        and both of its edges are stated at `years` below.
 
         The cabin comes from kindred#2075's helper, once per traced year. That
         helper takes a plain year precisely so this can sweep, and composing
@@ -2446,10 +2455,10 @@ class LodgingRosterService:
         if household_cm_id <= 0:
             return HouseholdJourneyResponse(household_cm_id=household_cm_id)
 
-        attendees, adults_by_year, registration_years = await asyncio.gather(
+        attendees, adults_by_year, registration_cabins = await asyncio.gather(
             self.repository.fetch_household_family_attendees(household_cm_id),
             self.repository.fetch_household_adults_by_year(household_cm_id),
-            self.repository.fetch_household_registration_years(household_cm_id),
+            self.repository.fetch_household_registration_cabins(household_cm_id),
         )
 
         children_by_year: dict[int, list[Any]] = {}
@@ -2490,14 +2499,29 @@ class LodgingRosterService:
         # give.
         sessions_by_year: dict[int, dict[int, HouseholdJourneySession]] = {}
         child_sessions_by_year: dict[int, dict[Any, set[int]]] = {}
+        # EVERY year with a family-session attendee row, at ANY status. Not a
+        # year source -- a DISQUALIFIER, and the only thing that separates a
+        # stale cabin from a paper registration. See `years` below.
+        family_row_years: set[int] = set()
         for attendee in attendees:
             expand = getattr(attendee, "expand", None) or {}
             person = expand.get("person")
             if person is None:
                 continue
             year = _i(attendee, "year")
-            identity = _child_identity(person)
+            family_row_years.add(year)
+            # THE ENROLLMENT FILTER LIVES HERE, not in the query, and it gates
+            # MEMBERSHIP only. `fetch_household_family_attendees` deliberately
+            # returns every status so the year rule below can tell a CANCELLED
+            # child -- whose `cabin_assignment` is a stale string staff wrote
+            # before the cancellation -- from NO child at all, which is a paper
+            # registration whose cabin is real. Neither is a member of the
+            # party, so both stop here; only the year they banked above
+            # survives, and only as a disqualifier.
+            if _i(attendee, "status_id") != ACTIVE_ENROLLED_STATUS_ID:
+                continue
             session = expand.get("session")
+            identity = _child_identity(person)
             start = _as_date(_s(session, "start_date")) if session is not None else None
             if identity and start is not None:
                 starts = session_start_by_year.setdefault(year, {})
@@ -2530,16 +2554,56 @@ class LodgingRosterService:
                 seen.add(identity)
             children_by_year.setdefault(year, []).append(person)
 
+        # ENROLLMENT DISCOVERS THE YEAR, AND A CABIN IS THE ONE EXCEPTION
+        # (kindred#2516).
+        #
+        # A journey year says "camp had this household", so it is discovered
+        # the way summer discovers one -- from enrollment, matching
+        # `fetchCamperJourney`'s `status = "enrolled"` filter. Until #2516
+        # this was the UNION of three traces, and two of them fire on a form
+        # being filled in rather than on anybody turning up:
+        # `family_camp_registrations` and `family_camp_adults` are derived
+        # from custom values keyed on household and year, so a waitlisted or
+        # cancelled family had both. That is the defect staff reported --
+        # "these families have cancelled for FC2, but still show" -- and it
+        # drops 2,264 household-years on the production snapshot, 56 of them
+        # in 2026.
+        #
+        # ⚠️ AN ENROLLED CHILD IS THE ONLY CAMPMINDER EVIDENCE OF A FAMILY
+        # ATTENDING, and adult weekends are NOT a second kind. Men's and
+        # Women's Weekend and Divorce & Discovery are a different program that
+        # enrols adults directly; ADULTS-ONLY FAMILY CAMP IS PAPER ONLY and
+        # never reaches CampMinder. So for a family camp to be visible here at
+        # all, a child had to register, which means a family-session attendee
+        # row. #2516 proposed reading adult weekends on the measurement that
+        # 34 of 2026's 425 "enrolled" registrations have no enrolled child but
+        # do have an adult-weekend row -- circular, because `enrollment_status`
+        # is itself derived from `session_type IN ("family", "adult")`. All 34
+        # turn out to have no family-session row in any state.
+        #
+        # THE PAPER EXCEPTION, and it is the one thing a cabin can prove. A
+        # paper registration leaves no attendee row at all, but staff still
+        # type where the family slept -- and somebody with a cabin slept here.
+        # 57 household-years, 51 of them in 2022, the post-COVID restart when
+        # paper was heaviest; 0 to 3 a year since.
+        #
+        # ⛔ THE CABIN ALONE IS NOT ENOUGH, and this is the half that is easy
+        # to get wrong. A household whose child was booked and then CANCELLED
+        # also holds a cabin, because staff assigned it first and nothing
+        # clears the field. 101 household-years look exactly like that and
+        # must NOT render. The discriminator is whether a family-session row
+        # exists AT ALL -- a cancellation leaves one, a paper registration
+        # leaves none -- which is why the read above returns every status.
+        #
+        # Nothing before 2022 is rescued: `cabin_assignment` is blank on all
+        # 1,433 rows from 2017-2021, so 2020 (cancelled after enrollment) and
+        # 2021 (cancelled before it) drop in full, as they should.
+        paper_registration_years = {
+            year for year, cabin in registration_cabins.items() if cabin and year not in family_row_years
+        }
         # Year 0 is not a year. A row whose `year` column never populated
         # would otherwise open the journey with a blank heading.
-        years = [
-            year
-            for year in sorted(
-                set(children_by_year) | set(adults_by_year) | set(registration_years),
-                reverse=True,
-            )
-            if year > 0
-        ]
+        years = [year for year in sorted(set(children_by_year) | paper_registration_years, reverse=True) if year > 0]
         # The cabin sweep and the registry read go together: the sweep is
         # `@cached_by_year` and usually free, the registry read never is, and
         # neither depends on the other.
@@ -2585,11 +2649,6 @@ class LodgingRosterService:
                     housing_session_cm_id=(
                         year_sessions_ordered[0].session_cm_id if cabin and len(year_sessions_ordered) == 1 else None
                     ),
-                    # An empty child list is NOT a childless family: 2020 was
-                    # cancelled outright and 2021 has no family attendee rows
-                    # at all. Naming the state here is what stops the client
-                    # rendering either as an error or as a family with no kids.
-                    enrollment="enrolled" if children else "none_on_file",
                     adults=[_party_adult(adult) for adult in adults_by_year.get(year, [])],
                     children=[
                         # Each child's OWN attended session start
