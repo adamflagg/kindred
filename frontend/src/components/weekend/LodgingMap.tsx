@@ -239,12 +239,23 @@ export function LodgingMap({ parties, units, year, sessionCmId = 0 }: LodgingMap
 
   // ── Pin dragging (kindred#2396) ──────────────────────────────────────────
   //
-  // The gate. Off by default, same as `UnitMapPositionField`'s `editing` —
-  // and for the same reason: with it off the canvas keeps ONLY its pan/zoom
-  // handlers (spread conditionally below, not behind an early return inside
-  // them), so a stray pointer gesture is structurally incapable of moving a
-  // pin. Marks gain drag handlers, and lose their click-to-peek and
-  // hover-dwell handlers, only while this is true.
+  // The gate. Off by default, same as `UnitMapPositionField`'s `editing`.
+  // Marks gain drag handlers, and lose their click-to-peek and hover-dwell
+  // handlers, ONLY while this is true — with it off, a mark carries no drag
+  // handlers at all (spread conditionally below, not behind an early return
+  // inside them), so a stray pointer gesture on a mark is structurally
+  // incapable of moving a pin.
+  //
+  // The canvas's OWN pan/zoom handlers, below, are NOT conditioned on this
+  // flag (kindred#2396 follow-up, owner request 2026-08-31: "we need to be
+  // able to scroll in to zoom while in edit mode, or grab the background to
+  // drag still"). A drag that starts on bare canvas pans in both modes, and a
+  // drag that starts on a mark moves that mark in both modes — a mark is the
+  // one that calls `event.stopPropagation()` on its own `onPointerDown`, so
+  // the two gestures never contend for the same drag record regardless of
+  // `editingPins`. The original #2396 ruling froze the canvas outright; this
+  // reopens exactly the two gestures the owner named and nothing else — see
+  // `onDoubleClick` below for the one gesture deliberately left frozen.
   const [editingPins, setEditingPins] = useState(false)
   // Every move made during ONE edit session, keyed by `buildingCode` so a
   // second drag of the same building overwrites the first rather than
@@ -449,11 +460,15 @@ export function LodgingMap({ parties, units, year, sessionCmId = 0 }: LodgingMap
     if (!node) return
     const handleWheel = (event: WheelEvent) => {
       event.preventDefault()
-      // EDIT MODE FREEZES THE CANVAS (kindred#2396 ruling): while Edit pins
-      // is on, a drag moves pins only — no pan, no zoom. `preventDefault`
-      // still runs unconditionally above so the page cannot scroll under a
-      // frozen map; only the zoom itself is skipped.
-      if (editingPins) return
+      // ZOOM STAYS LIVE WHILE EDITING (kindred#2396 follow-up, owner request
+      // 2026-08-31: "we need to be able to scroll in to zoom while in edit
+      // mode"). The original #2396 ruling froze this too, on the theory that
+      // any drag gesture in edit mode could only mean "move a pin". The
+      // wheel is a different gesture entirely and never competes with a pin
+      // drag for the same pointer, so there was never a real conflict here
+      // to guard against — only an over-broad freeze. `preventDefault` above
+      // still runs unconditionally regardless, so the page can never scroll
+      // under the map.
       closePeek()
       const rect = node.getBoundingClientRect()
       const { width: currentWidth, height: currentHeight } = sizeRef.current
@@ -488,11 +503,11 @@ export function LodgingMap({ parties, units, year, sessionCmId = 0 }: LodgingMap
       window.removeEventListener('keydown', handleKeyDown)
     }
     // `closePeek` is a stable useCallback over a stable `cancelDwell`, so
-    // that dependency alone would attach this listener exactly once.
-    // `editingPins` is added on top of it: `handleWheel` closes over it by
-    // value, and without the dependency this listener would keep testing
-    // whatever `editingPins` was on the render that first attached it.
-  }, [closePeek, editingPins])
+    // this dependency alone attaches the listener exactly once. `handleWheel`
+    // no longer closes over `editingPins` (kindred#2396 follow-up above) —
+    // zoom behaves identically in both modes now — so it is deliberately not
+    // a dependency here.
+  }, [closePeek])
 
   // FILTERED BEFORE CLUSTERING, and that ordering is the point: hiding empty
   // rooms also dissolves the clusters they were padding, so what is left is a
@@ -637,11 +652,16 @@ export function LodgingMap({ parties, units, year, sessionCmId = 0 }: LodgingMap
             // Spec §7: double-click on BARE canvas fits the whole map, and
             // there is deliberately no double-click-to-zoom on a node — a
             // pin's one job is to say what is in it. The same `closest` guard
-            // as the background dismiss is what keeps the two apart, and
-            // EDIT MODE FREEZES THE CANVAS (kindred#2396): a reset is a form
-            // of pan/zoom, so it is suspended right alongside the drag
-            // handlers below rather than left as a back door around the
-            // freeze.
+            // as the background dismiss is what keeps the two apart.
+            //
+            // STILL SUSPENDED WHILE EDITING, and this is a deliberate scope
+            // boundary now rather than a leftover of the old blanket freeze
+            // (kindred#2396 follow-up, owner request 2026-08-31 named only
+            // wheel-zoom and background-drag-pan — a discrete reset was not
+            // asked for, and snapping the whole view back to identity
+            // mid-edit is a bigger, more disorienting jump than either of
+            // those two continuous gestures). Revisit only on a fresh
+            // request, not by inference from the other two reopening.
             onDoubleClick={(event) => {
               if (editingPins) return
               const target = event.target as HTMLElement
@@ -653,100 +673,102 @@ export function LodgingMap({ parties, units, year, sessionCmId = 0 }: LodgingMap
               }
               resetView()
             }}
-            // PAN/ZOOM POINTER HANDLERS, SPREAD CONDITIONALLY — the same
-            // technique `UnitMapPositionField` uses for its OWN gate, and for
-            // the same reason stated there: an early return inside each
-            // handler only checks a flag, but omitting the handlers entirely
-            // means a pan gesture is structurally incapable of reaching this
-            // canvas while Edit pins is on. Marks below grow the opposite
-            // set of handlers under the same condition.
-            {...(editingPins
-              ? {
-                  // THE STUCK-DRAG RECOVERY. A mark's own `onPointerMove`
-                  // carries the identical `buttons === 0` guard, but a mark
-                  // is a 16-38px target — if `setPointerCapture` failed (or
-                  // is unsupported) and the release lands anywhere else, no
-                  // move ever reaches that mark again and `pinDragRef` is
-                  // stuck, blocking every future drag until reload. This
-                  // canvas-sized listener is the same recovery at the size
-                  // `UnitMapPositionField` already gets it at for free by
-                  // putting its OWN drag handlers on its canvas rather than
-                  // a small mark.
-                  onPointerMove: (event: React.PointerEvent<HTMLDivElement>) => {
-                    const drag = pinDragRef.current
-                    if (drag && drag.pointerId === event.pointerId && event.buttons === 0) {
-                      pinDragRef.current = null
-                    }
-                  },
-                }
-              : {
-                  // Replacing the record on a new press is what makes a DROPPED
-                  // gesture self-heal: if an up event is ever lost, the next press
-                  // must be able to take over rather than strand the map forever.
-                  //
-                  // But a press while a gesture is genuinely LIVE is the opposite
-                  // case, and treating them alike was a real bug. A stray thumb
-                  // landing mid-pan took the record, and its own pointerup then
-                  // cleared the record belonging to the finger still panning — which
-                  // still held capture and kept firing moves that now fell through
-                  // the `!drag` guard below, freezing the map until it lifted.
-                  //
-                  // CAPTURE is the discriminator, not `active` alone: held means the
-                  // gesture is live and the new pointer is a bystander; absent means
-                  // the record is stale and replacing it is the self-heal.
-                  onPointerDown: (event: React.PointerEvent<HTMLDivElement>) => {
-                    const live = dragRef.current
-                    if (live?.active && event.currentTarget.hasPointerCapture(live.id)) return
-                    dragRef.current = {
-                      x: event.clientX,
-                      y: event.clientY,
-                      tx: view.tx,
-                      ty: view.ty,
-                      id: event.pointerId,
-                      active: false,
-                    }
-                  },
-                  onPointerMove: (event: React.PointerEvent<HTMLDivElement>) => {
-                    const drag = dragRef.current
-                    // Only the pointer that STARTED the gesture may drive it. Without
-                    // this, a second touch point (the only touch path, since the
-                    // canvas sets `touch-none`) moves the map against the other
-                    // finger's baseline and the pan jitters.
-                    if (!drag || event.pointerId !== drag.id) return
-                    const dx = event.clientX - drag.x
-                    const dy = event.clientY - drag.y
-                    if (!drag.active) {
-                      // Do NOT capture before this point: capturing on pointerdown
-                      // retargets the following click to the canvas, so a mark's own
-                      // handler never fires.
-                      if (Math.abs(dx) + Math.abs(dy) <= DRAG_THRESHOLD_PX) return
-                      drag.active = true
-                      event.currentTarget.setPointerCapture(drag.id)
-                      closePeek()
-                    }
-                    setView(
-                      clampView({ k: view.k, tx: drag.tx + dx, ty: drag.ty + dy }, width, height)
-                    )
-                  },
-                  onPointerCancel: () => {
-                    // The browser took the gesture away (system gesture, tab switch).
-                    // No capture to release — it is released for us — but the record
-                    // must go or a stale baseline outlives the gesture.
-                    dragRef.current = null
-                  },
-                  onPointerUp: (event: React.PointerEvent<HTMLDivElement>) => {
-                    const drag = dragRef.current
-                    if (!drag || event.pointerId !== drag.id) return
-                    if (drag.active && event.currentTarget.hasPointerCapture(drag.id)) {
-                      event.currentTarget.releasePointerCapture(drag.id)
-                    }
-                    // The click that follows this pointerup must not read as dead
-                    // space if this gesture actually panned — the canvas's `onClick`
-                    // above reads this and stops that click there.
-                    wasDraggingRef.current = drag.active
-                    dragRef.current = null
-                  },
-                })}
+            // PAN/ZOOM POINTER HANDLERS, ALWAYS PRESENT — no longer
+            // conditioned on `editingPins` (kindred#2396 follow-up above).
+            // The discriminator is the TARGET a gesture starts on, not a
+            // mode flag: a mark's own `onPointerDown` (below) calls
+            // `event.stopPropagation()` before it ever reaches here, so a
+            // press that starts ON a pin never sets `dragRef` regardless of
+            // `editingPins` — only a press on bare canvas does, and that
+            // press pans exactly as it always has, in both modes.
+            //
+            // Replacing the record on a new press is what makes a DROPPED
+            // gesture self-heal: if an up event is ever lost, the next press
+            // must be able to take over rather than strand the map forever.
+            //
+            // But a press while a gesture is genuinely LIVE is the opposite
+            // case, and treating them alike was a real bug. A stray thumb
+            // landing mid-pan took the record, and its own pointerup then
+            // cleared the record belonging to the finger still panning — which
+            // still held capture and kept firing moves that now fell through
+            // the `!drag` guard below, freezing the map until it lifted.
+            //
+            // CAPTURE is the discriminator, not `active` alone: held means the
+            // gesture is live and the new pointer is a bystander; absent means
+            // the record is stale and replacing it is the self-heal.
+            onPointerDown={(event: React.PointerEvent<HTMLDivElement>) => {
+              const live = dragRef.current
+              if (live?.active && event.currentTarget.hasPointerCapture(live.id)) return
+              dragRef.current = {
+                x: event.clientX,
+                y: event.clientY,
+                tx: view.tx,
+                ty: view.ty,
+                id: event.pointerId,
+                active: false,
+              }
+            }}
+            onPointerMove={(event: React.PointerEvent<HTMLDivElement>) => {
+              // THE STUCK-DRAG RECOVERY, folded into this handler rather than
+              // kept as `editingPins`'s own separate branch (both live here
+              // unconditionally now — see the note above). A mark's own
+              // `onPointerMove` carries the identical `buttons === 0` guard,
+              // but a mark is a 16-38px target — if `setPointerCapture`
+              // failed (or is unsupported) and the release lands anywhere
+              // else, no move ever reaches that mark again and `pinDragRef`
+              // is stuck, blocking every future drag until reload. This
+              // canvas-sized listener is the same recovery at the size
+              // `UnitMapPositionField` already gets it at for free by
+              // putting its OWN drag handlers on its canvas rather than a
+              // small mark. A no-op outside edit mode: `pinDragRef.current`
+              // is only ever set inside a mark's own edit-mode-only
+              // `onPointerDown`.
+              const pinDrag = pinDragRef.current
+              if (pinDrag && pinDrag.pointerId === event.pointerId && event.buttons === 0) {
+                pinDragRef.current = null
+              }
+              const drag = dragRef.current
+              // Only the pointer that STARTED the gesture may drive it. Without
+              // this, a second touch point (the only touch path, since the
+              // canvas sets `touch-none`) moves the map against the other
+              // finger's baseline and the pan jitters. This also covers a pin
+              // drag's own moves as they bubble up from the mark (marks do
+              // NOT stop propagation on `onPointerMove`, only on
+              // `onPointerDown`): `dragRef` was never set for that pointer,
+              // since the mark's `onPointerDown` stopped its own propagation
+              // before this handler could see it, so this returns here too.
+              if (!drag || event.pointerId !== drag.id) return
+              const dx = event.clientX - drag.x
+              const dy = event.clientY - drag.y
+              if (!drag.active) {
+                // Do NOT capture before this point: capturing on pointerdown
+                // retargets the following click to the canvas, so a mark's own
+                // handler never fires.
+                if (Math.abs(dx) + Math.abs(dy) <= DRAG_THRESHOLD_PX) return
+                drag.active = true
+                event.currentTarget.setPointerCapture(drag.id)
+                closePeek()
+              }
+              setView(clampView({ k: view.k, tx: drag.tx + dx, ty: drag.ty + dy }, width, height))
+            }}
+            onPointerCancel={() => {
+              // The browser took the gesture away (system gesture, tab switch).
+              // No capture to release — it is released for us — but the record
+              // must go or a stale baseline outlives the gesture.
+              dragRef.current = null
+            }}
+            onPointerUp={(event: React.PointerEvent<HTMLDivElement>) => {
+              const drag = dragRef.current
+              if (!drag || event.pointerId !== drag.id) return
+              if (drag.active && event.currentTarget.hasPointerCapture(drag.id)) {
+                event.currentTarget.releasePointerCapture(drag.id)
+              }
+              // The click that follows this pointerup must not read as dead
+              // space if this gesture actually panned — the canvas's `onClick`
+              // above reads this and stops that click there.
+              wasDraggingRef.current = drag.active
+              dragRef.current = null
+            }}
           >
             {/* The illustration, its scrim and the art-missing notice, shared
                 with the admin unit editor's pin canvas (kindred#2013). */}
@@ -863,7 +885,7 @@ export function LodgingMap({ parties, units, year, sessionCmId = 0 }: LodgingMap
                   // very label the drag exists to uncover. `undefined`, not a
                   // no-op function — an absent handler is what keeps the mark
                   // honest about not being a control here, same reasoning as
-                  // the canvas's own conditional pan handlers above.
+                  // this mark's own conditional drag handlers below.
                   onClick={
                     editingPins
                       ? undefined
@@ -902,13 +924,17 @@ export function LodgingMap({ parties, units, year, sessionCmId = 0 }: LodgingMap
                           setDwellKey((current) => (current === key ? null : current))
                         }
                   }
-                  // THE DRAG ITSELF, spread conditionally the same way the
-                  // canvas's pan handlers are — present ONLY while editing,
-                  // so a mark is incapable of moving anything the rest of the
-                  // time. `pinSite` resolves the WRITE TARGET once per
-                  // gesture at pointerdown: every member of a cluster shares
-                  // one `buildingCode` (mapClustering.ts's group barrier), so
-                  // `first.unit` speaks for the whole mark.
+                  // THE DRAG ITSELF, spread conditionally — present ONLY
+                  // while editing, so a mark is incapable of moving anything
+                  // the rest of the time. (The canvas's OWN pan/zoom handlers
+                  // are unconditional now — kindred#2396 follow-up, see the
+                  // `editingPins` gate's own comment above — but a mark's
+                  // pin-drag handlers stay gated: nothing should move a pin
+                  // outside an explicit edit session.) `pinSite` resolves the
+                  // WRITE TARGET once per gesture at pointerdown: every
+                  // member of a cluster shares one `buildingCode`
+                  // (mapClustering.ts's group barrier), so `first.unit`
+                  // speaks for the whole mark.
                   {...(editingPins
                     ? {
                         onPointerDown: (event: React.PointerEvent<HTMLDivElement>) => {

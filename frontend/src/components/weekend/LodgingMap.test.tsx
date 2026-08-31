@@ -1521,29 +1521,63 @@ describe('LodgingMap — pin dragging (kindred#2396)', () => {
     expect(screen.queryByText('Cedar 1')).not.toBeInTheDocument()
   })
 
-  it('freezes pan while editing — dragging the canvas background moves no mark', () => {
+  // Owner follow-up on kindred#2396, requested while #2640 was in review
+  // (2026-08-31): "we need to be able to scroll in to zoom while in edit
+  // mode, or grab the background to drag still." The three tests below
+  // replace the pair that used to pin the opposite behaviour ("freezes pan
+  // while editing" / "freezes zoom while editing") — that was the #2396
+  // ruling this follow-up deliberately overturns, not a bug fix.
+
+  it('keeps wheel-zoom working while editing, per the owner follow-up', () => {
     render(<LodgingMap parties={[]} units={UNITS} year={2026} />, { wrapper })
     const canvas = mapCanvas()
+    const transform = () => screen.getByTestId('map-backdrop').style.transform
+    const before = transform()
+    fireEvent.click(screen.getByLabelText('Edit pins'))
+    fireEvent.wheel(canvas, { deltaY: -600 })
+    expect(transform()).not.toBe(before)
+  })
+
+  it('pans the map when a drag starts on bare canvas while editing, per the owner follow-up', () => {
+    render(<LodgingMap parties={[]} units={UNITS} year={2026} />, { wrapper })
+    const canvas = mapCanvas()
+    const transform = () => screen.getByTestId('map-backdrop').style.transform
     // ZOOM IN FIRST, outside editing. At rest (k=1, the identity view)
     // `clampView` pins tx/ty to exactly 0 — there is nowhere TO pan — so a
-    // drag attempted at rest would pass this assertion whether or not the
-    // freeze guard exists at all, and prove nothing about it.
+    // drag attempted at rest would pass this assertion whether or not
+    // panning actually works, and prove nothing about it.
     fireEvent.wheel(canvas, { deltaY: -600 })
-    const zoomed = markStyle()
+    const zoomed = transform()
     fireEvent.click(screen.getByLabelText('Edit pins'))
     fireEvent.pointerDown(canvas, { pointerId: 1, clientX: 300, clientY: 300 })
     fireEvent.pointerMove(canvas, { pointerId: 1, clientX: 100, clientY: 100 })
     fireEvent.pointerUp(canvas, { pointerId: 1, clientX: 100, clientY: 100 })
-    expect(markStyle()).toEqual(zoomed)
+    expect(transform()).not.toBe(zoomed)
+    // A background drag pans. It must never also read as a pin write.
+    expect(mockUpdatePositions).not.toHaveBeenCalled()
   })
 
-  it('freezes zoom while editing — wheeling the canvas changes nothing', () => {
+  it('moves only the pin, not the map, when a drag starts ON a mark while editing', () => {
     render(<LodgingMap parties={[]} units={UNITS} year={2026} />, { wrapper })
-    const before = markStyle()
-    fireEvent.click(screen.getByLabelText('Edit pins'))
     const canvas = mapCanvas()
+    const transform = () => screen.getByTestId('map-backdrop').style.transform
+    // Zoomed in first, same reason as above: at rest a wrongly-triggered pan
+    // would clamp straight back to identity and this assertion would pass
+    // whether or not the drag/pan discrimination actually works.
     fireEvent.wheel(canvas, { deltaY: -600 })
-    expect(markStyle()).toEqual(before)
+    const zoomed = transform()
+    fireEvent.click(screen.getByLabelText('Edit pins'))
+    const mark = screen.getAllByTestId('map-mark')[0] as HTMLElement
+    const beforeMark = markStyle(0)
+    fireEvent.pointerDown(mark, { pointerId: 1, button: 0, clientX: 700, clientY: 200 })
+    fireEvent.pointerMove(mark, { pointerId: 1, buttons: 1, clientX: 700, clientY: 200 })
+    fireEvent.pointerUp(mark, { pointerId: 1, clientX: 700, clientY: 200 })
+    // The pin moved...
+    expect(markStyle(0)).not.toEqual(beforeMark)
+    // ...but the map underneath it did not. This is the whole distinction
+    // the owner's follow-up turns on: drag a pin, or drag the background,
+    // never both from the same gesture.
+    expect(transform()).toBe(zoomed)
   })
 
   it('follows the pointer while dragging a mark, before anything is saved', async () => {
