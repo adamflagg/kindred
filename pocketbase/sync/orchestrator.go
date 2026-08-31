@@ -2455,6 +2455,30 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 		householdCustomValuesSync.SetSession("all") // Historical syncs all sessions
 		o.RegisterService("household_custom_values", householdCustomValuesSync)
 
+		// The scoped family-camp variants of the two services above must be re-registered too,
+		// or a historical replay of one of them silently keeps running against the boot-time
+		// current-season client instead of yearClient (kindred#2608). ScopedJobs -- not a
+		// hand-rolled loop over syncJobMeta -- is what keeps this list correct if a third
+		// scoped variant of either service is ever added. Session is left at its NewXxx
+		// default (DefaultSession) rather than set to "all" explicitly: with Scope ==
+		// ScopeFamilyCamp, getPersonIDsToSync/getHouseholdIDsToSync only consult Session when
+		// it names one specific weekend, so DefaultSession already spans every family-camp
+		// weekend in the year, same as the boot-time singleton the unattended cron runs.
+		for _, id := range ScopedJobs(ScopeFamilyCamp) {
+			switch JobBase(id) {
+			case serviceNamePersonCustomValues:
+				scopedPersonSync := NewPersonCustomFieldValuesSync(o.app, yearClient)
+				scopedPersonSync.SetScope(ScopeFamilyCamp)
+				scopedPersonSync.SetDebug(opts.Debug)
+				o.RegisterService(id, scopedPersonSync)
+			case serviceNameHouseholdCustomValues:
+				scopedHouseholdSync := NewHouseholdCustomFieldValuesSync(o.app, yearClient)
+				scopedHouseholdSync.SetScope(ScopeFamilyCamp)
+				scopedHouseholdSync.SetDebug(opts.Debug)
+				o.RegisterService(id, scopedHouseholdSync)
+			}
+		}
+
 		// Restore original services after sync completes
 		defer func() {
 			o.mu.Lock()
