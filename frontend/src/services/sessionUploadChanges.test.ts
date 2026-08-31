@@ -1,5 +1,9 @@
 import { describe, it, expect, vi } from 'vitest'
-import { fetchSessionUploadChanges, type UploadChangeRow } from './sessionUploadChanges'
+import {
+  fetchSessionUploadChanges,
+  countsFromUploadChangeRows,
+  type UploadChangeRow,
+} from './sessionUploadChanges'
 
 describe('fetchSessionUploadChanges', () => {
   it('filters by run_id and all session cm_ids', async () => {
@@ -40,5 +44,34 @@ describe('fetchSessionUploadChanges', () => {
   it('returns [] on non-ok response', async () => {
     const fetchWithAuth = vi.fn().mockResolvedValue({ ok: false })
     expect(await fetchSessionUploadChanges('r1', [1000001], fetchWithAuth)).toEqual([])
+  })
+})
+
+// kindred#1713 Part 1: the "new" chip must count these rows (one per final
+// bunk_request), not traces (one per form-field row, which can fan out into
+// several of these rows — a note naming three friends is one trace but three
+// rows here).
+describe('countsFromUploadChangeRows', () => {
+  const row = (final_status: string): UploadChangeRow => ({
+    requester_cm_id: 1,
+    requester_name: 'Emma Johnson',
+    target_name: 'Olivia Chen',
+    request_type: 'bunk_with',
+    final_status,
+    session_cm_id: 1000001,
+  })
+
+  it('counts one per row, not one per camper — a camper with 3 rows counts as 3', () => {
+    const rows = [row('RESOLVED'), row('RESOLVED'), row('DECLINED')]
+    expect(countsFromUploadChangeRows(rows)).toEqual({ total: 3, autoMatched: 3, needReview: 0 })
+  })
+
+  it('treats PENDING (case-insensitive) as needReview and everything else as autoMatched', () => {
+    const rows = [row('pending'), row('RESOLVED'), row('DECLINED'), row('SKIPPED'), row('DEDUPED')]
+    expect(countsFromUploadChangeRows(rows)).toEqual({ total: 5, autoMatched: 4, needReview: 1 })
+  })
+
+  it('returns all-zero counts for an empty row list', () => {
+    expect(countsFromUploadChangeRows([])).toEqual({ total: 0, autoMatched: 0, needReview: 0 })
   })
 })
