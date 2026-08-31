@@ -501,6 +501,15 @@ def _all_filters() -> dict[str, list[str]]:
     return parsed
 
 
+def test_backend_filter_covers_the_workspace_file():
+    """go-lint runs `go vet ./...`, which loads the workspace before anything else.
+
+    A go.work-only change -- the fix for kindred#2629 is exactly that -- is a real
+    input to that job, and nothing else in `backend` matches it.
+    """
+    assert "go.work" in _all_filters()["backend"]
+
+
 def test_no_filter_watches_a_root_go_module_that_does_not_exist():
     """`go.mod`/`go.sum` at the root match nothing -- there is no root module.
 
