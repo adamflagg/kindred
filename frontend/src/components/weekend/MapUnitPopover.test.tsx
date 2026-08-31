@@ -527,8 +527,8 @@ describe('MapUnitPopover — amenities, off the resolved coverages', () => {
   it('draws no step-free mark on a cabin staff assessed as having NO ramp', () => {
     // ⚠️ `has_ramp` IS A THREE-VALUE SELECT, SO `'no'` IS A TRUTHY STRING.
     // Any consumer testing it for truthiness renders "step-free" on the very
-    // cabins staff assessed as explicitly having none — the exact inversion
-    // the select exists to prevent.
+    // cabins staff assessed as explicitly having none. It is provenance and
+    // nothing more since kindred#2327 — `ramp_coverage` is the reading.
     render(
       <MapUnitPopover
         units={[mapUnit(row({ has_ramp: 'no', ramp_coverage: 'none' }))]}
@@ -555,14 +555,25 @@ describe('MapUnitPopover — amenities, off the resolved coverages', () => {
     expect(screen.queryByLabelText('Step-free')).not.toBeInTheDocument()
   })
 
-  it('withholds it for a QUALIFIED ramp too, rather than overclaiming step-free', () => {
-    // `partial` is the fifth grade `ramp_coverage` carries and the other three
-    // dimensions cannot: a ramp with a lip. The list has one binary mark per
-    // dimension and no room for degree, so "Step-free" would state more than
-    // the registry recorded.
+  it('withholds it where a ramp reaches the door of a cabin that is not accessible', () => {
+    /*
+     * THE THREE DIVERGENT PRODUCTION ROWS, and the whole point of
+     * kindred#2327. They record `has_ramp: 'yes'` with `is_accessible: 0` —
+     * the owner's "weird house": the ramp reaches the door, the cabin is not
+     * accessible inside. The server grades `ramp_coverage` from
+     * `is_accessible` now, so they answer `none` and this list stays silent.
+     *
+     * ⚠️ THAT IS THE CONSERVATIVE DIRECTION AND IT CANNOT INVERT. Measured on
+     * the 2026 snapshot, 0 rows are `is_accessible` without `has_ramp = 'yes'`
+     * — `is_accessible` is a STRICT SUBSET — so it can only ever narrow a ramp
+     * assessment, never promise a wheelchair user access one denies.
+     *
+     * It also covers the old `partial` case, which no longer exists as a
+     * grade: a qualified ramp means no (owner, 2026-08-27).
+     */
     render(
       <MapUnitPopover
-        units={[mapUnit(row({ ramp_coverage: 'partial' }))]}
+        units={[mapUnit(row({ has_ramp: 'yes', is_accessible: false, ramp_coverage: 'none' }))]}
         hue={HUE}
         onOpenParty={vi.fn()}
       />
@@ -570,20 +581,16 @@ describe('MapUnitPopover — amenities, off the resolved coverages', () => {
     expect(screen.queryByLabelText('Step-free')).not.toBeInTheDocument()
   })
 
-  it('does not take `is_accessible` as the step-free answer', () => {
+  it('takes the RESOLVED grade, never the raw `is_accessible` on this row', () => {
     /*
-     * ⚠️ AN OPEN PRODUCT QUESTION, DELIBERATELY NOT SETTLED HERE. `is_accessible`
-     * and `has_ramp` are two independent registry columns and they DISAGREE:
-     * of the production rows recording `has_ramp: 'yes'`, two are
-     * `is_accessible: true` and three are false. Which one staff mean by
-     * "accessible" needs an owner, not a guess from this file.
-     *
-     * What is NOT open is whether this list may keep reading `is_accessible`.
-     * It is a raw boolean on the row, so it carries the container trap every
-     * other raw column here carried, and it has no resolver. `ramp_coverage`
-     * is resolved over the leaves and is the field the step-free NEED GLYPH
-     * already grades against on this same card — so it is the one reading this
-     * surface can defend, and the one it takes until the question is answered.
+     * ⚠️ THE COLUMN QUESTION IS SETTLED AND THIS IS NOT IT. Owner ruling,
+     * 2026-08-30: step-free means `is_accessible`, and kindred#2327 wired that
+     * in SERVER-SIDE. What stays true is that this list may not read the raw
+     * flag: it is a bare boolean on this row, so it carries the container trap
+     * every other raw column here carried — a whole-house card would report
+     * the building's own flag while both its rooms answer otherwise.
+     * `ramp_coverage` is walked over the leaves and is the field the step-free
+     * NEED GLYPH grades against on this same card.
      */
     render(
       <MapUnitPopover

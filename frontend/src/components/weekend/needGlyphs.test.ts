@@ -16,6 +16,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
+import type { Coverage } from './needGlyphs'
 import {
   NEED_GLYPHS,
   needCoverage,
@@ -114,12 +115,31 @@ describe('needCoverage — where each need reads its supply', () => {
     expect(needCoverage('fridge', party(), shared)).toBe('all')
   })
 
-  it('reads step-free off ramp_coverage, never the truthy has_ramp string', () => {
-    // `has_ramp` is a three-value SELECT, so `'no'` is a truthy string: any
-    // consumer testing it for truthiness renders "step-free" on the four
-    // cabins staff assessed as explicitly having no ramp.
-    const noRamp = unit({ has_ramp: 'no', ramp_coverage: 'none' })
-    expect(needCoverage('step_free', party(), noRamp)).toBe('none')
+  it('reads step-free off the resolved coverage, never the raw has_ramp string', () => {
+    // TWO traps in one field. `has_ramp` is a three-value SELECT, so `'no'` is
+    // a truthy string — a consumer testing it for truthiness renders
+    // "step-free" on the cabins staff assessed as explicitly having none. And
+    // since kindred#2327 it is not even the supply column: the server grades
+    // `ramp_coverage` from `is_accessible`, so a cabin whose ramp reaches the
+    // door but is not accessible inside answers `none` while `has_ramp` still
+    // reads `'yes'`. Three production rows are exactly that.
+    const rampButNotAccessible = unit({ has_ramp: 'yes', ramp_coverage: 'none' })
+    expect(needCoverage('step_free', party(), rampButNotAccessible)).toBe('none')
+  })
+
+  it('has no fifth step-free grade left — `partial` is not a coverage value', () => {
+    /*
+     * kindred#2327, pinned at the TYPE level because that is where it can be
+     * broken silently. `ramp_coverage` used to be the one dimension carrying a
+     * fifth grade, `partial` ("no room is step-free but one has a qualified
+     * ramp"), because its supply column was the three-value `has_ramp` select.
+     * It grades from the boolean `is_accessible` now — "a qualified ramp means
+     * no" (owner, 2026-08-27) — so every dimension speaks `AmenityCoverage`
+     * and `Coverage` is that alone. Re-widening it fails `tsc`, not just this.
+     */
+    type PartialIsNotACoverage = Exclude<'partial', Coverage> extends never ? false : true
+    const pinned: PartialIsNotACoverage = true
+    expect(pinned).toBe(true)
   })
 
   it('reads the bathroom off the PARTY, because a merge is what satisfies it', () => {
@@ -182,7 +202,7 @@ describe('needVerdict — the truth table', () => {
    * step-free rooms out of ten invites precisely the placement that lands in
    * one of the other eight.
    */
-  const TABLE: ReadonlyArray<[string, 'all' | 'some' | 'partial' | 'none' | 'unknown', string]> = [
+  const TABLE: ReadonlyArray<[string, Coverage, string]> = [
     ['bathroom', 'all', 'fits'],
     ['bathroom', 'none', 'unmet'],
     ['bathroom', 'unknown', 'unmet'],
@@ -196,7 +216,10 @@ describe('needVerdict — the truth table', () => {
     ['fridge', 'unknown', 'unmet'],
     ['step_free', 'all', 'fits'],
     ['step_free', 'some', 'unmet'],
-    ['step_free', 'partial', 'partial'],
+    // NO `partial` ROW, and its absence is the ruling: the grade went with
+    // `ramp_coverage()` under kindred#2327. `partial` survives as a VERDICT —
+    // `someIs: 'partial'` still returns it for power and fridge, two rows up —
+    // and no longer as a coverage a cabin can report.
     ['step_free', 'none', 'unmet'],
     ['step_free', 'unknown', 'unmet'],
   ]
@@ -345,7 +368,7 @@ describe('needCoverage — the PROSPECTIVE reading', () => {
 
   it('reads the other three identically in both readings — they were never party-scoped', () => {
     const p = party({ effective_bathroom: 'private' })
-    const u = unit({ power_coverage: 'some', fridge_coverage: 'all', ramp_coverage: 'partial' })
+    const u = unit({ power_coverage: 'some', fridge_coverage: 'all', ramp_coverage: 'none' })
     for (const key of ['power', 'fridge', 'step_free'] as const) {
       expect(needCoverage(key, p, u, 'prospective')).toBe(needCoverage(key, p, u, 'placed'))
     }

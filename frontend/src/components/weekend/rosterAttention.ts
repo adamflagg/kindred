@@ -196,8 +196,10 @@ function representingCards(
  * fold is exactly `needVerdict`'s worst case over the cards — checked pair by
  * pair, the fold's verdict is never softer than the loudest card's, including
  * the two pairs that are not obvious: `unknown` beats `some` because an
- * unmeasured room grades `unmet` while `some` may grade `partial`, and
- * `unknown` beats `partial` for the same reason.
+ * unmeasured room grades `unmet` while `some` may grade `partial`. (The
+ * `unknown`-beats-`partial` pair went with the `partial` COVERAGE rung under
+ * kindred#2327; `partial` survives only as a VERDICT `someIs` returns for
+ * power and fridge, which no card reports as a grade.)
  *
  * ⚠️ THAT HOLDS FOR THE GLYPH READING, WHICH IS THE ONLY ONE `needVerdict`
  * HAS since 2026-08-21. The drag-time state no longer reads `unknown` at all
@@ -207,12 +209,16 @@ function representingCards(
  * gone along with its `UnknownReading` parameter. If a drag-time reading of
  * `unknown` ever returns, this ladder needs a second one beside it.
  *
- * `partial` is ramp-only and `shared`/`private` are bathroom-only, so the
- * three vocabularies get three constants rather than one union that would
- * type-check against fields it can never hold.
+ * `partial` COVERAGE RUNG IS GONE, so there are TWO vocabularies here rather
+ * than three (kindred#2327). `RAMP_WORST_FIRST` used to sit beside these with
+ * a fifth rung, because step-free graded from the three-value `has_ramp`
+ * select; it grades from the boolean `is_accessible` now, so step-free speaks
+ * `AmenityCoverage` like power, fridge and AC and shares their ladder.
+ * `shared`/`private` are still bathroom-only, so that one keeps its own
+ * constant rather than joining a union that would type-check against fields it
+ * can never hold.
  */
 const AMENITY_WORST_FIRST = ['none', 'unknown', 'some', 'all'] as const
-const RAMP_WORST_FIRST = ['none', 'unknown', 'some', 'partial', 'all'] as const
 const BATHROOM_WORST_FIRST = ['none', 'unknown', 'shared', 'private'] as const
 
 /** The worst grade present, treating an absent field as `absent`. */
@@ -272,7 +278,7 @@ function worstCard(cards: readonly LodgingUnitRow[]): LodgingUnitRow | undefined
       cards.map((card) => card.ac_coverage)
     ),
     ramp_coverage: worstGrade(
-      RAMP_WORST_FIRST,
+      AMENITY_WORST_FIRST,
       'unknown',
       cards.map((card) => card.ramp_coverage)
     ),
@@ -424,8 +430,10 @@ export function partyAttention(
      *
      * ⚠️ THAT REVERSAL SURVIVES kindred#2526 and its target is what is left
      * of `unknown`: a cabin whose coverage cannot be RESOLVED — an empty
-     * aggregation, or a blank `has_ramp` nobody assessed — as opposed to a
+     * aggregation, a container with no active room left — as opposed to a
      * cabin nobody has reconfirmed, which is no longer a way to get here.
+     * (The blank-`has_ramp` source went with kindred#2327, which moved
+     * step-free onto `is_accessible`; a bool cannot be unanswered.)
      * The `is_confirmed` gate this paragraph used to credit with "most of
      * the work" is gone; every placed cabin reaches this branch now.
      * Measured across 2026's twelve weekends and 575 parties: no placed

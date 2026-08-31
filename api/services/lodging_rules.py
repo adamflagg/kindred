@@ -415,13 +415,27 @@ def amenity_coverage(values: Sequence[bool | None]) -> str:
     step-free rooms out of ten invites the placement that lands in one of the
     other eight), and that nuance belongs to the renderer, not here.
 
-    ⚠️ THE STEP-FREE GRAIN IS GRADED FROM `has_ramp`, NOT `is_accessible`.
-    This paragraph named the wrong column until kindred#2502. They are
-    INDEPENDENT and they disagree: of the five rows with `has_ramp = 'yes'`,
-    two are `is_accessible` true and three are false, and the four explicit
-    `no`s plus five `partial`s are invisible to that flag entirely. Which of
-    the two a surface should show is an open product question (kindred#2327);
-    which one this machinery grades is not.
+    ⚠️ THE STEP-FREE GRAIN IS GRADED FROM `is_accessible`, NOT `has_ramp`,
+    AND THAT REVERSES kindred#2502 ON PURPOSE. Owner ruling, 2026-08-30: *"we
+    just need to know what is in fact accessible."* The product concept is
+    accessibility, not the presence of a ramp, so the grade reads the column
+    that answers it -- and `is_accessible` is a bool, which is why step-free
+    comes through this function now and `ramp_coverage`, its five-grade twin,
+    was deleted rather than kept beside it (kindred#2327).
+
+    THE MEASUREMENT THAT MAKES THAT SAFE, 2026 production snapshot::
+
+        select count(*) from lodging_units
+         where year=2026 and is_accessible=1 and coalesce(has_ramp,'')<>'yes';
+        -- 0
+
+    `is_accessible` is a STRICT SUBSET of `has_ramp = 'yes'`, so it can only
+    ever NARROW a ramp assessment and can never promise a wheelchair user
+    access a ramp assessment denies. Three rows go the other way -- a ramp
+    reaches the door, the cabin is not accessible inside -- and on those
+    `is_accessible` is the MORE informed answer, not the weaker one.
+    `has_ramp` stays STORED as provenance for the 14 staff assessments; no
+    verdict reads it.
 
     This function does not walk anything. Resolving which rooms answer for a
     slot is the caller's job -- `_BathroomIndex.leaf_codes_under` in
@@ -432,9 +446,11 @@ def amenity_coverage(values: Sequence[bool | None]) -> str:
         values: one entry per unit that answers for the slot -- a leaf's own
             flag, or every leaf descendant's for a container. `None` means
             the unit gave NO ANSWER at all. A bool cannot be unanswered, so
-            no boolean caller passes one today; the parameter stays `| None`
-            because `ramp_coverage` below shares this shape and its select
-            genuinely can be blank.
+            no caller passes one today at all -- `ramp_coverage`, the
+            five-grade twin whose select genuinely could be blank, was
+            deleted by kindred#2327. The `| None` stays because the arm is
+            this function's CONTRACT about missing evidence (see Returns),
+            not an artefact of the one caller that used to reach it.
 
             ⚠️ AN UNCONFIRMED ROW IS NOT `None` and has not been since
             kindred#2526. `_resolve_amenity_coverage` used to map one here,
@@ -457,67 +473,6 @@ def amenity_coverage(values: Sequence[bool | None]) -> str:
         return "all"
     if any(values):
         return "some"
-    return "none"
-
-
-def ramp_coverage(values: Sequence[str | None]) -> str:
-    """How much of a slot is step-free — kindred#2438.
-
-    The twin of `amenity_coverage` above, and a SEPARATE function for one
-    reason: `has_ramp` is a three-value select (`yes` / `no` / `partial`, blank
-    = NOT ASSESSED) rather than a bool, so a room can answer "qualified" and
-    the boolean grain has nowhere to put that. Migration 1500000131 made it a
-    select deliberately -- "a bool maps every unassessed cabin to false, which
-    asserts 'no ramp' about cabins nobody has looked at" -- and a boolean read
-    of it reports 0 of 118 units, erasing all 14 staff assessments (5 `yes`,
-    5 `partial`, 4 `no`, 104 blank on the production snapshot).
-
-    It does not walk anything, exactly as `amenity_coverage` does not: the
-    caller resolves which rooms answer, and `_BathroomIndex.leaf_codes_under`
-    is the ONE walk over that tree.
-
-    Args:
-        values: one entry per unit that answers for the slot -- `"yes"`,
-            `"partial"` or `"no"`. `None` means NO ANSWER: the field is blank,
-            i.e. nobody has assessed the cabin. The caller maps an
-            unrecognised string to `None` too, because an unreadable answer is
-            not a claim in either direction. It NO LONGER covers an
-            unconfirmed row (kindred#2526) -- a recorded `has_ramp` answers
-            whether or not staff have reconfirmed the cabin.
-
-    Returns:
-        "all" | "some" | "partial" | "none" | "unknown".
-
-        FIVE grades, one more than the boolean amenities carry, and each is a
-        different claim:
-
-            all      every answering room is fully step-free
-            some     at least one is, but not all -- the reading that invites
-                     the placement landing in one of the others
-            partial  NO room is, but at least one has a qualified ramp
-            none     every answering room answered `no`
-            unknown  nothing answers
-
-        `partial` does not fold into `none`, because that would re-erase 5 of
-        the 14 assessments in the exact direction the select exists to prevent,
-        and 3 of those 5 carry the qualifier text in `notes`. It does not fold
-        into `some` either: "no room is step-free but one has a ramp with a
-        lip" is a weaker claim than "some rooms are step-free", and collapsing
-        them would make the grade order lie.
-
-        `unknown` whenever ANY contributing unit is unanswered -- the same
-        all-or-nothing evidence bar `amenity_coverage` states, and it matters
-        far more here: 104 of 118 units are blank, so a looser bar would grade
-        buildings step-free on the strength of the rooms somebody got to.
-    """
-    if not values or any(value is None for value in values):
-        return "unknown"
-    if all(value == "yes" for value in values):
-        return "all"
-    if any(value == "yes" for value in values):
-        return "some"
-    if any(value == "partial" for value in values):
-        return "partial"
     return "none"
 
 

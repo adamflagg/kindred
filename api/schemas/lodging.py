@@ -137,8 +137,11 @@ Shareability = Literal["unknown", "shareable", "single_party"]
 # and because what SOME means differs per criterion: for step-free, some is
 # worse than none, since a building advertising two step-free rooms out of ten
 # invites the placement that lands in one of the other eight. (That grain is
-# graded from `has_ramp`, NOT `is_accessible` -- this named the wrong column
-# until kindred#2502; the two are independent and disagree on five rows.)
+# graded from `is_accessible`, NOT `has_ramp` -- kindred#2327 reversed
+# kindred#2502 on the owner's ruling that the concept is "what is in fact
+# accessible". Safe because `is_accessible` is a STRICT SUBSET of
+# `has_ramp = 'yes'`: 0 of 118 rows are accessible without a ramp, so the swap
+# can only narrow a ramp assessment, never contradict one.)
 #
 # "unknown" is the EMPTY AGGREGATION -- a slot with no active leaf has nothing
 # to say -- exactly as EffectiveBathroom and Shareability spell their own. It
@@ -147,31 +150,19 @@ Shareability = Literal["unknown", "shareable", "single_party"]
 # `amenity_coverage`.
 AmenityCoverage = Literal["all", "some", "none", "unknown"]
 
-# The registry's own step-free assessment, mirrored from the `has_ramp` select
-# added by migration 1500000131 (kindred#2438). THREE values plus blank, and
-# the blank is the load-bearing one: it means NOT ASSESSED, which is neither
-# "yes" nor "no". That migration's comment says why it is not a bool -- "a bool
-# maps every unassessed cabin to false, which asserts 'no ramp' about cabins
-# nobody has looked at" -- and reading it as one reports 0 of 118 units while
-# erasing all 14 staff assessments.
+# The registry's own ramp assessment, mirrored from the `has_ramp` select added
+# by migration 1500000131. THREE values plus blank, and the blank is the
+# load-bearing one: it means NOT ASSESSED, which is neither "yes" nor "no" --
+# 104 of 118 production rows, because `has_ramp` is editable NOWHERE in the
+# product and never was.
+#
+# ⚠️ PROVENANCE ONLY SINCE kindred#2327. Nothing grades from it: step-free is
+# `is_accessible`'s question now (see `AmenityCoverage` above). The column is
+# KEPT rather than migrated away because the repo forbids a destructive
+# migration over real staff assessments, and these 14 are what staff reconcile
+# the three divergent rows against. Read it as a record of what somebody
+# looked at, never as a verdict -- it is a STRING, so `"no"` is truthy.
 RampAssessment = Literal["", "yes", "no", "partial"]
-
-# How much of a slot is step-free, resolved over its LEAF descendants
-# (kindred#2438). FIVE grades rather than `AmenityCoverage`'s four, because the
-# supply column is three-valued and a qualified ramp is a real answer with
-# nowhere to go in a boolean grain:
-#
-#   all      every answering room is fully step-free
-#   some     at least one is, but not all
-#   partial  NO room is, but at least one has a qualified ramp
-#   none     every answering room answered `no`
-#   unknown  nothing answers -- a blank `has_ramp`, or no active room left.
-#            NOT unconfirmed: since kindred#2526 a row is read at face value
-#            whether or not staff have walked it.
-#
-# See `ramp_coverage` in `api/services/lodging_rules.py` for why `partial`
-# folds into neither of its neighbours.
-RampCoverage = Literal["all", "some", "partial", "none", "unknown"]
 
 # The STAFF-OWNED weekend status, from lodging_session_status (1500000142).
 # Unlike every other vocabulary in this module it mirrors no Go ingest, because
@@ -575,29 +566,38 @@ class LodgingUnitSummary(BaseModel):
     # units carry `has_fridge`, four of those also carry `has_shared_fridge`,
     # and none carries shared without the parent.
     fridge_coverage: AmenityCoverage = "unknown"
-    # The registry's own step-free fact about THIS ROW, published beside its
-    # resolution exactly as `has_power` and `has_fridge` are (kindred#2438).
-    #
-    # ⚠️ NOT the field a drop is judged against -- `ramp_coverage` below is,
-    # and reading this instead reintroduces the container trap AND the
-    # truthiness trap at once: `has_ramp` is a STRING, so `'no'` is truthy, and
-    # a consumer filtering on it renders "step-free" on the four cabins staff
-    # assessed as explicitly having no ramp. Blank means NOT ASSESSED (104 of
-    # 118 production rows) and is never coerced to "no".
+    # The registry's own RAMP assessment for THIS ROW. ⚠️ PROVENANCE, NOT A
+    # VERDICT (kindred#2327) -- nothing grades from it, on any surface. Kept in
+    # the payload because it is the record of the 14 cabins staff walked, and
+    # because a `has_ramp = 'yes'` row that is not accessible is the exact
+    # divergence staff reconcile at leisure. Blank means NOT ASSESSED (104 of
+    # 118 production rows) and is never coerced to "no"; it is a STRING, so
+    # `'no'` is truthy and a boolean read of it inverts four cabins.
     has_ramp: RampAssessment = ""
-    # The step-free twin of `power_coverage` and `fridge_coverage`, resolved
-    # over the same leaf walk and defaulting to "unknown" for the same reason:
-    # a payload built without the resolution pass must not claim an unmet need.
-    # Fourteen of 118 production units carry an assessment (5 yes / 5 partial /
-    # 4 no), so almost every unit resolves "unknown" today -- which is the
-    # honest answer, not a gap.
-    ramp_coverage: RampCoverage = "unknown"
-    # ⚠️ INDEPENDENT of `has_ramp` above, measured: `has_ramp = 'yes'` splits 2
-    # `is_accessible` true / 3 false, and the 4 explicit `no`s plus 5
-    # `partial`s are invisible to this flag, which reads them identically to
-    # the 104 rows nobody has looked at. No fold in either direction is
-    # information-preserving (kindred#2438), and #2327's ruling -- accessible
-    # draws only when TRUE -- is unchanged by the ramp dimension.
+    # THE STEP-FREE GRADE, and the fourth twin of `power_coverage` --
+    # `AmenityCoverage`, resolved over the same leaf walk, defaulting to
+    # "unknown" for the same reason: a payload built without the resolution
+    # pass must not claim an unmet need.
+    #
+    # ⚠️ GRADED FROM `is_accessible` BELOW, NOT FROM `has_ramp` ABOVE, AND THAT
+    # REVERSES kindred#2502 DELIBERATELY. Owner ruling 2026-08-30: *"we just
+    # need to know what is in fact accessible."* Safe because `is_accessible`
+    # is a STRICT SUBSET of `has_ramp = 'yes'` -- 0 of 118 rows are accessible
+    # without a ramp -- so it can only narrow a ramp assessment, never promise
+    # access one denies. The five-grade `RampCoverage` vocabulary went with it:
+    # `partial` has no bool to sit in ("a qualified ramp means no", owner
+    # 2026-08-27) and `unknown` is now only the empty aggregation, because a
+    # bool cannot be unanswered.
+    #
+    # THE NAME IS HISTORICAL. Renaming the wire field to `step_free_coverage`
+    # is a separable mechanical change and is deliberately not bundled here.
+    ramp_coverage: AmenityCoverage = "unknown"
+    # THE COLUMN STEP-FREE IS GRADED FROM. It is `AMENITY_FLAGS` entry 6 on the
+    # admin confirm form, so unlike `has_ramp` it was genuinely answered for
+    # all 118 units -- which is why the blank-means-unassessed problem does not
+    # follow it across. Published raw beside its resolution exactly as
+    # `has_power` and `has_fridge` are; `ramp_coverage` is what a drop is
+    # judged against, because this row's own flag carries the container trap.
     is_accessible: bool = False
     is_confirmed: bool = False
     is_active: bool = False

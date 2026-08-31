@@ -210,7 +210,7 @@ loud on purpose, rather than a silently empty registry.
       "has_lights": true,
 
       "has_ramp": "partial", // yes | no | partial; "" or absent = NOT ASSESSED
-      //   read by the roster as ramp_coverage (#2438)
+      //   PROVENANCE ONLY since #2327 — nothing grades from it
       "max_beds": 14, // total sleeping spots. NOT sleeps — see below
 
       "shareability": "shareable", // shareable | single_party; absent = not curated
@@ -335,16 +335,27 @@ Two further rules: an empty `has_ramp` never overwrites a real assessment, and
 `notes` are filled only when the database has none — replacing free text a staff
 member wrote would destroy it.
 
-Since kindred#2438 `has_ramp` is no longer write-only: the weekend roster
-publishes it as `ramp_coverage`, resolved over a unit's LEAF descendants exactly
-as `power_coverage` and `fridge_coverage` are, and the board grades a family's
-`needs_step_free` flag against it. Two things follow for anyone editing this
-file. **Blank still means NOT ASSESSED and resolves `unknown`, never `none`** —
-104 of the 118 units are blank, so writing `no` into them would mark almost the
-whole registry step-free-hostile on evidence nobody recorded. And **`partial` is
-carried through** as its own grade rather than folded into either neighbour, so
-the ramp qualifier a `partial` unit records in `notes` stays the thing staff are
-being pointed at.
+⛔ **`has_ramp` IS WRITE-ONLY AGAIN, AND THAT IS DELIBERATE (kindred#2327).**
+kindred#2438 had the roster publish it as `ramp_coverage`, and kindred#2502
+confirmed step-free graded from it rather than from `is_accessible`. The owner
+reversed that on 2026-08-30: *"we just need to know what is in fact
+accessible."* The payload field `ramp_coverage` survives under its historical
+name and is now resolved from **`is_accessible`**, over the same leaf walk as
+`power_coverage`, `fridge_coverage` and `ac_coverage`.
+
+The swap is safe in one direction only, which is why it is safe at all. Measured
+on the 2026 snapshot, `select count(*) … where is_accessible=1 and
+coalesce(has_ramp,'')<>'yes'` returns **0**: `is_accessible` is a **strict
+subset** of `has_ramp = 'yes'`, so it can only ever *narrow* a ramp assessment
+and can never promise a wheelchair user access a ramp assessment denies.
+
+Two things follow for anyone editing this file. **`has_ramp` is still not a
+bool and blank still means NOT ASSESSED** — 104 of 118 units are blank, because
+the column is editable nowhere in the product, so writing `no` into them would
+fabricate an assessment. And **it is now provenance**: it stays stored (the repo
+forbids a destructive migration over the 14 real staff assessments) and is what
+staff reconcile the three divergent rows against — `ridge-f`, `ridge-g` and
+`river-i`, which record a ramp on a cabin that is not accessible inside.
 
 `parent_unit` is compared as a **code**. The database stores it as a relation —
 a record id — so comparing raw values reports every parented unit as needing a

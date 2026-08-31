@@ -333,15 +333,18 @@ const _exhaustiveLodgingUnit: Required<LodgingUnitRow> = {
   // container's row describes the CONTAINER, so this is what a drop is judged
   // against; `has_fridge` above stays the registry's own fact about the row.
   fridge_coverage: 'none',
-  // THREE-VALUE select plus blank, never a bool (kindred#2438). `'no'` is a
-  // TRUTHY string, so anything filtering this on truthiness renders the glyph
-  // on the four cabins staff assessed as having no ramp — which is why the
-  // reader surface is `ramp_coverage` below and this is only the row's fact.
+  // THREE-VALUE select plus blank, never a bool. `'no'` is a TRUTHY string, so
+  // anything filtering this on truthiness renders the glyph on the four cabins
+  // staff assessed as having no ramp. PROVENANCE ONLY since kindred#2327 —
+  // nothing grades from it; it is the record of the 14 cabins staff walked.
   has_ramp: '',
-  // The step-free twin of `power_coverage`, resolved over the same leaf walk,
-  // and the only one of the three that carries a `partial` grade: a ramp with
-  // a lip is a real answer a boolean amenity has nowhere to put.
+  // The step-free twin of `power_coverage`, resolved over the same leaf walk
+  // and speaking the SAME four grades as the other three since kindred#2327:
+  // it grades from `is_accessible` below, a bool, so the fifth `partial` grade
+  // went with the `has_ramp` reading.
   ramp_coverage: 'none',
+  // The column step-free is graded FROM. `AMENITY_FLAGS` entry 6 on the admin
+  // confirm form, so unlike `has_ramp` it was answered for all 118 units.
   is_accessible: false,
   is_confirmed: true,
   is_active: true,

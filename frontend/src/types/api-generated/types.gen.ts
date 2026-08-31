@@ -2358,7 +2358,7 @@ export type LodgingUnitSummary = {
   /**
    * Ramp Coverage
    */
-  ramp_coverage?: 'all' | 'some' | 'partial' | 'none' | 'unknown'
+  ramp_coverage?: 'all' | 'some' | 'none' | 'unknown'
   /**
    * Is Accessible
    */

@@ -168,7 +168,9 @@ export interface AssignFamilyModalProps {
  * cannot answer one dimension differently from another — the four used to be
  * four hand-written conditions over four differently-shaped raw fields, which
  * is how one of them (`has_ramp`, a three-value select where `'no'` is TRUTHY)
- * inverts under a boolean read.
+ * inverts under a boolean read. That field is provenance only since
+ * kindred#2327; step-free grades from `is_accessible` through the same
+ * resolved `*_coverage` shape as the other three.
  *
  * ⚠️ `unknown` IS ABSENT, AND THAT IS A CLAIM ABOUT CLAIMS. A word in this
  * header asserts the room HAS the thing; there is no third, neutral state to
@@ -229,11 +231,15 @@ function offers(value: string | undefined): boolean {
  * also carries the owner's 2026-08-15 ruling that a SHARED fridge IS a fridge,
  * which no client-side read of `has_fridge` would reproduce.
  *
- * STEP-FREE IS DELIBERATELY ABSENT. `ramp_coverage` is the fourth need glyph,
- * but 102 of 118 cabins have never been assessed, so the word would be missing
- * from nine headers in ten and read as "no ramp" rather than as "nobody
- * looked". The glyph can say that — it is only drawn for a household that
- * ASKED — and this unconditional line cannot.
+ * STEP-FREE IS DELIBERATELY ABSENT, AND THE REASON CHANGED UNDER kindred#2327.
+ * It used to be evidence: 102 of 118 cabins had never been ramp-assessed, so
+ * the word would have been missing from nine headers in ten and read as "no
+ * ramp" rather than "nobody looked". `is_accessible` was answered for all 118,
+ * so that argument is spent — and the shape it described is not: 116 of 118
+ * cabins are not accessible, so the word would still be absent from nine
+ * headers in ten, now stating a fact rather than a gap. An unconditional line
+ * that is silent nine times in ten is a line staff stop reading. The glyph
+ * carries it instead, drawn only for a household that ASKED.
  */
 function amenityWords(unit: LodgingUnitRow): string[] {
   // Power first, then bathroom — the review artifact's order

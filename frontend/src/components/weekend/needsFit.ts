@@ -211,20 +211,23 @@ export function hasNoRoom(party: RosterPartyRow, capacity: DragCapacity): boolea
  * 2. UNRECORDED COVERAGE MAKES NEITHER CLAIM. Not a conflict, because the
  *    hatch is an interruption and its bar is evidence of absence; not a match,
  *    because a positive mark is a claim and the 2026-08-20 ruling says
- *    unconfirmed information must not read as met. `has_ramp` is the only
- *    registry field that carries one: 104 of 118 units hold a blank raw
- *    `has_ramp`, of which 102 are still `unknown` once `ramp_coverage` has
- *    walked the leaves — a few blank containers have rooms that answer for
- *    them. Quote 102 wherever the figure feeds the hatched-pairs arithmetic
- *    (`weekend-card-vocabulary.md`), 104 for the raw assessment gap. This
- *    reads the RESOLVED value, so 102 is the number that reaches here.
+ *    unconfirmed information must not read as met.
  *
- *    ⚠️ kindred#2526 DID NOT REMOVE THIS BRANCH, which this paragraph used to
- *    forecast it might. It removed one SOURCE of `unknown` — "nobody has
- *    reconfirmed this cabin" — and left two live: a blank `has_ramp`, which
- *    is the 102 above and is `has_ramp`'s own question (kindred#2327), and an
- *    empty aggregation, where a container has no active leaf to answer at
- *    all. The branch is as reachable as it ever was.
+ *    ⚠️ THE BRANCH SURVIVES BUT ITS DOMINANT SOURCE IS GONE. `has_ramp` used
+ *    to supply almost all of it: 104 of 118 units held a blank raw `has_ramp`,
+ *    of which 102 were still `unknown` once `ramp_coverage` walked the leaves.
+ *    kindred#2526 removed one other source ("nobody has reconfirmed this
+ *    cabin"); kindred#2327 removed the blank-`has_ramp` source itself, moving
+ *    step-free onto the boolean `is_accessible`, which a bool cannot leave
+ *    unanswered. What is left is the EMPTY AGGREGATION — a container with no
+ *    active leaf to answer at all — plus a bathroom nobody recorded. Still
+ *    reachable, and still the right reading; far rarer.
+ *
+ *    ⚠️ THAT MAKES THE HATCH LOUDER, DELIBERATELY. A cabin that is simply not
+ *    accessible now grades `none` where it used to grade `unknown`, so a
+ *    step-free household hatches against it instead of passing over it in
+ *    silence. That is the ruling, not a side effect: staff asked to know what
+ *    is in fact accessible.
  *
  * 3. CAPACITY GATES THE MATCH AND NEVER CAUSES A CONFLICT. A full cabin is not
  *    a bad cabin, it is a cabin with nothing left in it. Measured before it was

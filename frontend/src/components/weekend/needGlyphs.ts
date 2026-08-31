@@ -51,19 +51,19 @@ import type { NeedsFit } from './needsFit'
 type AmenityCoverage = NonNullable<LodgingUnitRow['power_coverage']>
 
 /**
- * The step-free grade, and the one vocabulary that is NOT `AmenityCoverage`.
+ * Every grade any dimension's resolved coverage field can report — and since
+ * kindred#2327 there is only one vocabulary.
  *
- * `has_ramp` is a three-value select — `yes` / `no` / `partial`, blank = NOT
- * ASSESSED (migration 1500000131) — so a room can answer "qualified" and the
- * boolean grain has nowhere to put that. `ramp_coverage` therefore carries a
- * fifth grade, `partial`, meaning NO room is fully step-free but at least one
- * has a qualified ramp. Derived from the generated type for the same reason
- * `AmenityCoverage` is.
+ * Step-free used to be the exception. Its supply was `has_ramp`, a three-value
+ * select (`yes` / `no` / `partial`, blank = NOT ASSESSED), so `ramp_coverage`
+ * carried a fifth grade the boolean amenities had nowhere to put. It grades
+ * from `is_accessible` now — a bool — on the owner's 2026-08-30 ruling that
+ * the concept is *"what is in fact accessible"*, so the fifth grade and the
+ * separate `RampCoverage` alias both went. Safe because `is_accessible` is a
+ * STRICT SUBSET of `has_ramp = 'yes'` on production: it can only narrow a ramp
+ * assessment, never promise access one denies.
  */
-type RampCoverage = NonNullable<LodgingUnitRow['ramp_coverage']>
-
-/** Every grade any dimension's resolved coverage field can report. */
-export type Coverage = AmenityCoverage | RampCoverage
+export type Coverage = AmenityCoverage
 
 /** The four dimensions, and the set is CLOSED (§6). */
 export type NeedKey = 'bathroom' | 'power' | 'fridge' | 'step_free'
@@ -303,11 +303,13 @@ export const NEED_GLYPHS: readonly NeedGlyphSpec[] = [
     // narrative is a bathroom explanation was drawing two glyphs that quoted
     // the same paragraph. The bathroom narrative belongs to the bathroom glyph.
     explainSources: ['accommodation_explain'],
-    // `ramp_coverage`, never the raw `has_ramp` — and here that is not only the
-    // container trap. `has_ramp` is a STRING, so `'no'` is TRUTHY: any consumer
-    // testing it for truthiness renders "step-free" on the four cabins staff
-    // assessed as explicitly having no ramp, the exact inversion the select
-    // exists to prevent.
+    // `ramp_coverage`, never the raw `has_ramp` — and the field name is now
+    // historical: the server grades this from `is_accessible` (kindred#2327,
+    // reversing kindred#2502 on the owner's ruling that the concept is "what
+    // is in fact accessible"). Reading `has_ramp` here would be wrong twice
+    // over: it carries the container trap, and it is a STRING, so `'no'` is
+    // TRUTHY and a truthiness test renders "step-free" on the cabins staff
+    // assessed as explicitly having none.
     coverage: (_party, unit) => unit.ramp_coverage ?? 'unknown',
   },
 ]
@@ -391,8 +393,15 @@ export function needExplainTexts(
  * the other three passed through. kindred#2526 deleted that gate rather than
  * extending it — the four coverage resolvers now agree with `_resolve_bathroom`
  * — so `unknown` no longer means "nobody has reconfirmed this cabin" on any of
- * them. The ruling below is unaffected: what reaches it is an EMPTY
- * aggregation or a blank `has_ramp`, and `fits` would still be a claim.
+ * them.
+ *
+ * ⚠️ AND kindred#2327 TOOK THE OTHER SOURCE. A blank `has_ramp` used to put
+ * 102 of 118 resolved cabins in `unknown`; step-free grades from
+ * `is_accessible`, which a bool cannot leave unanswered, so what reaches this
+ * branch now is the EMPTY AGGREGATION alone — a container with no active room,
+ * or a bathroom nobody recorded. `fits` would still be a claim, so the ruling
+ * below is unaffected; the branch is simply far rarer than the numbers in this
+ * comment describe.
  *
  * ⚠️ AN UNPLACED PARTY IS A DIFFERENT CASE AND IS NOT GRADED HERE. No unit
  * means nothing to be unconfirmed ABOUT; `resolveNeedGlyphs` short-circuits to
@@ -404,6 +413,8 @@ export function needExplainTexts(
  * whose `ramp_coverage` the server could not resolve. The roster's section
  * counts do not move at all — `ROSTER_NEEDS` grades bathroom and power, and
  * every placed party's coverage for those two is already `all` or `none`.
+ * ⚠️ Those three glyphs no longer arise this way (kindred#2327 above); the
+ * measurement is kept because it is what the ruling was made against.
  *
  * ONE READING OF `unknown` NOW, where there used to be a parameter.
  * `UnknownReading` let the drag-time hatch read `unknown` as `'fits'`
@@ -422,11 +433,12 @@ export function needExplainTexts(
 export function needVerdict(key: NeedKey, coverage: Coverage): NeedsFit {
   if (coverage === 'none') return 'unmet'
   if (coverage === 'some') return needGlyph(key).someIs
-  // The fifth grade, reachable only from `ramp_coverage`. It says the space
-  // itself is QUALIFIED — a ramp with a lip — which is a softer statement than
-  // "nothing here" in every reading of it, and softer than `some`, which is
-  // about a building whose rooms disagree.
-  if (coverage === 'partial') return 'partial'
+  // ⚠️ NO `coverage === 'partial'` ARM, and its absence is kindred#2327's.
+  // `partial` was reachable only from `ramp_coverage`'s fifth grade, which
+  // went when step-free moved onto the boolean `is_accessible` — "a qualified
+  // ramp means no" (owner, 2026-08-27). The `partial` VERDICT is NOT dead:
+  // `someIs: 'partial'` above still returns it for power and fridge. What is
+  // gone is a cabin's ability to REPORT `partial` as its coverage.
   if (coverage === 'unknown') return 'unmet'
   return 'fits'
 }

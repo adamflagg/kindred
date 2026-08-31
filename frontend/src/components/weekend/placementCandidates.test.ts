@@ -618,16 +618,23 @@ describe('candidateFit — one grading, and the notes the glyphs now carry (kind
     // The `is_accessible` shape: a building advertising two step-free rooms
     // out of ten invites precisely the placement that lands in one of the
     // other eight.
+    //
+    // ⚠️ THE `partial` ARM THAT USED TO SIT HERE IS GONE, not softened.
+    // kindred#2327 moved step-free onto the boolean `is_accessible`, so a
+    // cabin can no longer REPORT `partial` as its coverage — "a qualified ramp
+    // means no" (owner, 2026-08-27). The `partial` VERDICT still exists and is
+    // still exercised, by power and fridge, whose `someIs` returns it.
     expect(
       candidateFit(party({ flags: { needs_step_free: true } }), unit({ ramp_coverage: 'some' }), [])
         .fit
     ).toBe('unmet')
     expect(
-      candidateFit(
-        party({ flags: { needs_step_free: true } }),
-        unit({ ramp_coverage: 'partial' }),
-        []
-      ).fit
+      candidateFit(party({ flags: { needs_step_free: true } }), unit({ ramp_coverage: 'none' }), [])
+        .fit
+    ).toBe('unmet')
+    expect(
+      candidateFit(party({ flags: { needs_power: true } }), unit({ power_coverage: 'some' }), [])
+        .fit
     ).toBe('partial')
   })
 

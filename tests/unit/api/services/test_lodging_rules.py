@@ -18,6 +18,7 @@ from typing import ClassVar
 
 import pytest
 
+from api.services import lodging_rules
 from api.services.lodging_rules import (
     BUNKING_CSV_REQUEST_TEXT_FIELDS,
     FAMILY_CAMP_REQUEST_TEXT_CM_IDS,
@@ -39,7 +40,6 @@ from api.services.lodging_rules import (
     is_family_available,
     push_building_key,
     push_digest,
-    ramp_coverage,
     request_text_authorship,
     request_text_source_order,
     unit_capacity,
@@ -272,9 +272,11 @@ class TestAmenityCoverage:
     ⚠️ AN UNCONFIRMED ROW IS NOT ONE (kindred#2526). `_resolve_amenity_coverage`
     used to map one to `None` here; registry values are read at face value now
     and `is_confirmed` is a staff work-down checklist. A bool cannot be
-    unanswered, so the boolean callers pass no `None` today at all -- the arm
-    is `ramp_coverage`'s, whose select genuinely can be blank -- but the
-    all-or-nothing rule is pinned below because both share this shape.
+    unanswered, so no caller passes one today at all -- `ramp_coverage`, the
+    five-grade twin whose select genuinely could be blank, was DELETED by
+    kindred#2327. The all-or-nothing rule is pinned below anyway: the arm is
+    the contract this function states about missing evidence, not an artefact
+    of the one caller that used to reach it.
     """
 
     def test_every_source_has_it(self) -> None:
@@ -307,55 +309,35 @@ class TestAmenityCoverage:
         assert amenity_coverage([None]) == "unknown"
 
 
-class TestRampCoverage:
-    """kindred#2438. The step-free twin of `amenity_coverage`, and the reason
-    it is a separate function rather than a call into that one: `has_ramp` is a
-    THREE-VALUE select, so a room can answer "qualified" and no boolean grain
-    has anywhere to put that.
+class TestRampCoverageIsDeleted:
+    """kindred#2327. `ramp_coverage()` and its `RampCoverage` vocabulary are
+    GONE, and this pins the deletion rather than leaving it to be re-added by
+    somebody reading kindred#2438's argument without kindred#2327's ruling.
 
-    Migration 1500000131 made it a select on purpose -- "a bool maps every
-    unassessed cabin to false, which asserts 'no ramp' about cabins nobody has
-    looked at". The production distribution is 104 blank / 4 `no` / 5 `partial`
-    / 5 `yes`; a bool read reports 0 of 118 and erases all 14 assessments.
+    The step-free grade is graded from `is_accessible` through
+    `amenity_coverage` above, the same bool grain that serves power, AC and
+    fridge. That takes `partial` and `unknown` out in ONE move: a bool has no
+    third value to hold "a ramp with a lip", and a bool cannot be unanswered.
 
-    Five grades, worst-known first: `none` < `partial` < `some` < `all`, plus
-    `unknown` for the absence of evidence.
+    ⚠️ THIS SUPERSEDES kindred#2502, which deliberately moved the grade the
+    other way. Owner ruling, 2026-08-30: *"we just need to know what is in fact
+    accessible."* Safe because `is_accessible = 1` is a STRICT SUBSET of
+    `has_ramp = 'yes'` on the 2026 snapshot -- 0 rows accessible without a
+    ramp -- so the swap can only NARROW a ramp assessment and can never promise
+    a wheelchair user access a ramp assessment denies.
+
+    `has_ramp` itself STAYS STORED (no destructive migration over 14 real staff
+    assessments); nothing reads it into a verdict any more.
     """
 
-    def test_every_room_step_free_is_all(self) -> None:
-        assert ramp_coverage(["yes", "yes"]) == "all"
+    def test_the_five_grade_grader_is_gone(self) -> None:
+        assert not hasattr(lodging_rules, "ramp_coverage")
 
-    def test_every_room_refused_is_none(self) -> None:
-        assert ramp_coverage(["no", "no"]) == "none"
-
-    def test_a_mixed_set_is_some(self) -> None:
-        assert ramp_coverage(["yes", "no"]) == "some"
-        assert ramp_coverage(["yes", "partial"]) == "some"
-
-    def test_qualified_without_a_full_yes_is_partial(self) -> None:
-        """The grade a boolean amenity has no room for, and the one that must
-        NOT collapse into `none`: three of the five production `partial` units
-        carry the ramp qualifier in `notes`, which is the record of somebody
-        having gone and looked."""
-        assert ramp_coverage(["partial"]) == "partial"
-        assert ramp_coverage(["partial", "no"]) == "partial"
-
-    def test_partial_is_not_some(self) -> None:
-        """`some` says at least one room IS step-free, which invites the
-        placement that lands in one of the others. `partial` says none is, and
-        the two are different claims."""
-        assert ramp_coverage(["partial", "partial"]) != "some"
-
-    def test_blank_is_unknown_never_none(self) -> None:
-        """104 of 118 production units are blank. Reading blank as `no` marks
-        almost the whole registry step-free-hostile on evidence nobody
-        recorded -- the exact inversion the select exists to prevent."""
-        assert ramp_coverage([None]) == "unknown"
-        assert ramp_coverage(["yes", None]) == "unknown"
-        assert ramp_coverage(["no", None]) == "unknown"
-
-    def test_nothing_to_judge_is_unknown(self) -> None:
-        assert ramp_coverage([]) == "unknown"
+    def test_the_bool_grain_is_the_only_coverage_grader_left(self) -> None:
+        """`amenity_coverage` never returns `partial`, on any input it can be
+        handed. The step-free dimension has no grade of its own now."""
+        assert set(lodging_rules.AMENITY_COVERAGE_VALUES) == {"all", "some", "none", "unknown"}
+        assert "partial" not in lodging_rules.AMENITY_COVERAGE_VALUES
 
 
 class TestRequestTextSourceRegistry:
