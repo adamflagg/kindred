@@ -86,10 +86,11 @@ def _unit(
     has_ramp: str = "",
     # THE COLUMN THE STEP-FREE GRADE IS RESOLVED FROM since kindred#2327.
     # `has_ramp` above is kept STORED as provenance for the 14 staff ramp
-    # assessments and is no longer graded from -- measured on the 2026
-    # snapshot, `is_accessible = 1` is a STRICT SUBSET of `has_ramp = 'yes'`
-    # (0 rows accessible without a ramp), so it can only ever narrow a ramp
-    # assessment and never promise access one denies.
+    # assessments and is no longer graded from: `is_accessible` is a STRICT
+    # SUBSET of `has_ramp = 'yes'`, so it can only ever narrow a ramp assessment
+    # and never promise access one denies. Measurement:
+    # `docs/reference/lodging-registry.md` § "Step-free grades from
+    # `is_accessible`".
     is_accessible: bool = False,
     # False builds the fixture's default area (honouring `area_sort_order`);
     # True resolves the expanded `area` relation to None -- the missing-area
@@ -5110,16 +5111,17 @@ class TestUnitStepFreeCoverage:
     product concept is ACCESSIBILITY, not the presence of a ramp, so the grade
     reads the column that answers it.
 
-    THE MEASUREMENT THAT MAKES THE REVERSAL SAFE, 2026 production snapshot::
+    THE INVARIANT THAT MAKES THE REVERSAL SAFE: `is_accessible` is a STRICT
+    SUBSET of `has_ramp = 'yes'`. It can only ever NARROW a ramp assessment,
+    never contradict one, so it can never promise a wheelchair user access a
+    ramp assessment denies. It errs in the safe direction, which is the whole
+    argument.
 
-        select count(*) from lodging_units
-         where year=2026 and is_accessible=1 and coalesce(has_ramp,'')<>'yes';
-        -- 0
-
-    `is_accessible` is a STRICT SUBSET of `has_ramp = 'yes'`. It can only ever
-    NARROW a ramp assessment, never contradict one, so it can never promise a
-    wheelchair user access a ramp assessment denies. It errs in the safe
-    direction, which is the whole argument.
+    ⚠️ THE MEASUREMENT IS SINGLE-SOURCED AND IT IS NOT HERE:
+    `docs/reference/lodging-registry.md` § "Step-free grades from
+    `is_accessible`" carries the counting query, the distribution and the
+    divergent-row query. It used to be pasted into eight tracked files, which
+    is eight places to miss on the next re-measure. Re-measure there.
 
     TWO consequences, and both are deletions rather than new machinery:
 
@@ -5167,12 +5169,10 @@ class TestUnitStepFreeCoverage:
         not merely the extensions it happens to scan. That rule is about
         ARCHITECTURE, not privacy: unit codes are not PII, and the guard's
         blindness to `.md` is a gap in the tripwire rather than a licence.
-        `docs/reference/lodging-registry.md` gives the same query for the same
-        reason. Re-derive them, which also keeps the answer current as staff
-        edit::
-
-            select code from lodging_units
-             where year = 2026 and has_ramp = 'yes' and is_accessible = 0;"""
+        They are given as a QUERY rather than a list because a query re-derives
+        itself as staff reconcile the rows, where a pasted list rots -- and that
+        query lives in ONE place, `docs/reference/lodging-registry.md`
+        § "Step-free grades from `is_accessible`", rather than here as well."""
         repo = _repo(
             fetch_session=FAMILY_SESSION,
             fetch_units=[_unit("u1", "ridge-1", "Ridge 1", sleeps=4, has_ramp="yes", is_accessible=False)],
@@ -5270,6 +5270,49 @@ class TestUnitStepFreeCoverage:
         by_code = {u.code: u for u in roster.units}
         assert by_code["gt-lodge"].ramp_coverage == "all"
         assert by_code["gt-lodge"].is_accessible is False
+
+    @pytest.mark.asyncio
+    async def test_a_containers_own_accessible_flag_is_discarded_by_its_rooms(self) -> None:
+        """THE OTHER DIRECTION, AND THE UNCOMFORTABLE ONE. Above, a container
+        recorded NOT accessible is overruled UPWARD by accessible rooms. Here a
+        container recorded ACCESSIBLE is overruled DOWNWARD to `none` by rooms
+        that are not -- so a row-level staff assessment on the building is
+        discarded rather than counted.
+
+        ⚠️ THIS PINS TODAY'S BEHAVIOUR, IT DOES NOT ENDORSE IT. The gap it
+        names: a container's `is_accessible` could plausibly ROLL DOWN to leaves
+        that record nothing, on the argument that a step-free entrance is a
+        property of the building. It does not, and this test exists so that
+        change is a deliberate one with its own design rather than something a
+        later reader slips in under a green suite.
+
+        ⛔ DO NOT "FIX" THIS BY IMPLEMENTING ROLL-DOWN. It is a separate
+        designed change and it interacts with the whole leaf walk -- power,
+        fridge and AC run through the identical `_resolve_amenity_coverage`, so
+        a roll-down here is a roll-down for four amenities or an inconsistency
+        across them.
+
+        HARMLESS TODAY, and that is a measurement, not an assumption: **0** of
+        the 118 2026 registry rows are both `is_container` and
+        `is_accessible = 1`, so no production container reaches this branch.
+        The moment one does, the board answers `none` for a building staff
+        marked accessible.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("c1", "gt-lodge", "Lodge", is_container=True, is_accessible=True),
+                _unit("u1", "gt-lodge-1", "Lodge 1", sleeps=4, is_accessible=False, parent_unit="c1"),
+                _unit("u2", "gt-lodge-2", "Lodge 2", sleeps=4, is_accessible=False, parent_unit="c1"),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        by_code = {u.code: u for u in roster.units}
+        # The building's OWN flag still reaches the payload untouched -- only
+        # the resolved grade discards it.
+        assert by_code["gt-lodge"].is_accessible is True
+        assert by_code["gt-lodge"].ramp_coverage == "none"
 
     @pytest.mark.asyncio
     async def test_a_split_building_is_some(self) -> None:

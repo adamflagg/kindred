@@ -324,9 +324,10 @@ class TestRampCoverageIsDeleted:
     ⚠️ THIS SUPERSEDES kindred#2502, which deliberately moved the grade the
     other way. Owner ruling, 2026-08-30: *"we just need to know what is in fact
     accessible."* Safe because `is_accessible = 1` is a STRICT SUBSET of
-    `has_ramp = 'yes'` on the 2026 snapshot -- 0 rows accessible without a
-    ramp -- so the swap can only NARROW a ramp assessment and can never promise
-    a wheelchair user access a ramp assessment denies.
+    `has_ramp = 'yes'`, so the swap can only NARROW a ramp assessment and can
+    never promise a wheelchair user access a ramp assessment denies. The
+    measurement lives in ONE place: `docs/reference/lodging-registry.md`
+    § "Step-free grades from `is_accessible`".
 
     `has_ramp` itself STAYS STORED (no destructive migration over 14 real staff
     assessments); nothing reads it into a verdict any more.

@@ -140,8 +140,10 @@ Shareability = Literal["unknown", "shareable", "single_party"]
 # graded from `is_accessible`, NOT `has_ramp` -- kindred#2327 reversed
 # kindred#2502 on the owner's ruling that the concept is "what is in fact
 # accessible". Safe because `is_accessible` is a STRICT SUBSET of
-# `has_ramp = 'yes'`: 0 of 118 rows are accessible without a ramp, so the swap
-# can only narrow a ramp assessment, never contradict one.)
+# `has_ramp = 'yes'`, so the swap can only narrow a ramp assessment, never
+# contradict one. The measurement behind that lives in ONE place:
+# `docs/reference/lodging-registry.md` § "Step-free grades from
+# `is_accessible`".)
 #
 # "unknown" is the EMPTY AGGREGATION -- a slot with no active leaf has nothing
 # to say -- exactly as EffectiveBathroom and Shareability spell their own. It
@@ -582,9 +584,10 @@ class LodgingUnitSummary(BaseModel):
     # ⚠️ GRADED FROM `is_accessible` BELOW, NOT FROM `has_ramp` ABOVE, AND THAT
     # REVERSES kindred#2502 DELIBERATELY. Owner ruling 2026-08-30: *"we just
     # need to know what is in fact accessible."* Safe because `is_accessible`
-    # is a STRICT SUBSET of `has_ramp = 'yes'` -- 0 of 118 rows are accessible
-    # without a ramp -- so it can only narrow a ramp assessment, never promise
-    # access one denies. The five-grade `RampCoverage` vocabulary went with it:
+    # is a STRICT SUBSET of `has_ramp = 'yes'`, so it can only narrow a ramp
+    # assessment, never promise access one denies; the measurement is
+    # single-sourced in `docs/reference/lodging-registry.md` § "Step-free grades
+    # from `is_accessible`". The five-grade `RampCoverage` vocabulary went too:
     # `partial` has no bool to sit in ("a qualified ramp means no", owner
     # 2026-08-27) and `unknown` is now only the empty aggregation, because a
     # bool cannot be unanswered.

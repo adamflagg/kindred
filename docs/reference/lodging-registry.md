@@ -335,19 +335,45 @@ Two further rules: an empty `has_ramp` never overwrites a real assessment, and
 `notes` are filled only when the database has none — replacing free text a staff
 member wrote would destroy it.
 
-⛔ **`has_ramp` IS WRITE-ONLY AGAIN, AND THAT IS DELIBERATE (kindred#2327).**
-kindred#2438 had the roster publish it as `ramp_coverage`, and kindred#2502
-confirmed step-free graded from it rather than from `is_accessible`. The owner
-reversed that on 2026-08-30: _"we just need to know what is in fact
-accessible."_ The payload field `ramp_coverage` survives under its historical
-name and is now resolved from **`is_accessible`**, over the same leaf walk as
-`power_coverage`, `fridge_coverage` and `ac_coverage`.
+### Step-free grades from `is_accessible` (kindred#2327)
 
-The swap is safe in one direction only, which is why it is safe at all. Measured
-on the 2026 snapshot, `select count(*) … where is_accessible=1 and
-coalesce(has_ramp,'')<>'yes'` returns **0**: `is_accessible` is a **strict
-subset** of `has_ramp = 'yes'`, so it can only ever _narrow_ a ramp assessment
-and can never promise a wheelchair user access a ramp assessment denies.
+⚠️ **THIS SECTION IS THE ONE HOME FOR THE STRICT-SUBSET MEASUREMENT.** The
+claim below was copy-pasted into eight tracked files, which is eight places to
+miss on the next re-measure. Every code site now states the one-sentence
+invariant and points here for the numbers and the queries; if you re-measure,
+re-measure **here** and leave the pointers alone.
+
+⛔ **`has_ramp` IS WRITE-ONLY AGAIN, AND THAT IS DELIBERATE.** kindred#2438
+had the roster publish it as `ramp_coverage`, and kindred#2502 confirmed
+step-free graded from it rather than from `is_accessible`. The owner reversed
+that on 2026-08-30: _"we just need to know what is in fact accessible."_ The
+payload field `ramp_coverage` survives under its historical name and is now
+resolved from **`is_accessible`**, over the same leaf walk as `power_coverage`,
+`fridge_coverage` and `ac_coverage`.
+
+The swap is safe in one direction only, which is why it is safe at all. On the
+2026 snapshot (`pocketbase/pb_data/data-prod.db`, 118 units) this returns **0**:
+
+```sql
+select count(*) from lodging_units
+ where year = 2026 and is_accessible = 1 and coalesce(has_ramp, '') <> 'yes';
+```
+
+`is_accessible` is a **strict subset** of `has_ramp = 'yes'`, so it can only
+ever _narrow_ a ramp assessment and can never promise a wheelchair user access a
+ramp assessment denies. Three rows diverge the other way — a ramp reaches the
+door, the cabin is not accessible inside — and on those `is_accessible` is the
+_more_ informed answer, not the weaker one.
+
+The rest of the distribution, same snapshot: `is_accessible` is `1` on **2** of
+118 rows; `has_ramp` is blank on **104**, `no` on 4, `partial` on 5, `yes` on 5;
+`is_confirmed` is `1` on all 118. After the leaf walk **3 cards grade `all`**
+(the 2 rooms plus the container they fill), **1** grades `some` and **114**
+grade `none`; nothing grades `unknown`, because a bool cannot be unanswered.
+Only `all` escapes the drag hatch, so a step-free household hatches against 115
+of 118 cards. Also **0** of the 118 rows are both `is_container` and
+`is_accessible = 1`, which is what makes the container roll-down gap harmless
+today (`test_a_containers_own_accessible_flag_is_discarded_by_its_rooms`).
 
 Two things follow for anyone editing this file. **`has_ramp` is still not a
 bool and blank still means NOT ASSESSED** — 104 of 118 units are blank, because

@@ -1666,17 +1666,13 @@ def _resolve_ramp_coverage(units: list[LodgingUnitSummary], index: _BathroomInde
     accessible"* — because the product concept is accessibility, not the
     presence of a ramp. Do not move it back without reading kindred#2327.
 
-    THE MEASUREMENT THAT MAKES THE SWAP SAFE, 2026 production snapshot::
+    THE INVARIANT THAT MAKES THE SWAP SAFE: `is_accessible` is a STRICT SUBSET
+    of `has_ramp = 'yes'`, so it can only NARROW a ramp assessment and can never
+    promise a wheelchair user access that a ramp assessment denies.
 
-        select count(*) from lodging_units
-         where year=2026 and is_accessible=1 and coalesce(has_ramp,'')<>'yes';
-        -- 0
-
-    `is_accessible` is a STRICT SUBSET of `has_ramp = 'yes'`, so it can only
-    NARROW a ramp assessment and can never promise a wheelchair user access
-    that a ramp assessment denies. Three rows diverge the other way — a ramp
-    reaches the door, the cabin is not accessible inside — and there
-    `is_accessible` is the MORE informed answer.
+    ⚠️ THE MEASUREMENT BEHIND THAT LIVES IN ONE PLACE, AND IT IS NOT HERE:
+    `docs/reference/lodging-registry.md` § "Step-free grades from
+    `is_accessible`". Re-measure there.
 
     It is also the column staff actually answered. `has_ramp` is editable
     NOWHERE in the product, so blank meant "never asked" on 104 of 118 units;

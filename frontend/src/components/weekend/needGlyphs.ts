@@ -61,7 +61,9 @@ type AmenityCoverage = NonNullable<LodgingUnitRow['power_coverage']>
  * the concept is *"what is in fact accessible"*, so the fifth grade and the
  * separate `RampCoverage` alias both went. Safe because `is_accessible` is a
  * STRICT SUBSET of `has_ramp = 'yes'` on production: it can only narrow a ramp
- * assessment, never promise access one denies.
+ * assessment, never promise access one denies. The measurement behind that is
+ * single-sourced in `docs/reference/lodging-registry.md` § "Step-free grades
+ * from `is_accessible`".
  */
 export type Coverage = AmenityCoverage
 

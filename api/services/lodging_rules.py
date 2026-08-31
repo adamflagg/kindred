@@ -423,19 +423,17 @@ def amenity_coverage(values: Sequence[bool | None]) -> str:
     comes through this function now and `ramp_coverage`, its five-grade twin,
     was deleted rather than kept beside it (kindred#2327).
 
-    THE MEASUREMENT THAT MAKES THAT SAFE, 2026 production snapshot::
+    THE INVARIANT THAT MAKES THAT SAFE: `is_accessible` is a STRICT SUBSET of
+    `has_ramp = 'yes'` on the 2026 registry, so the swap can only ever NARROW a
+    ramp assessment and can never promise a wheelchair user access a ramp
+    assessment denies. `has_ramp` stays STORED as provenance for the 14 staff
+    assessments; no verdict reads it.
 
-        select count(*) from lodging_units
-         where year=2026 and is_accessible=1 and coalesce(has_ramp,'')<>'yes';
-        -- 0
-
-    `is_accessible` is a STRICT SUBSET of `has_ramp = 'yes'`, so it can only
-    ever NARROW a ramp assessment and can never promise a wheelchair user
-    access a ramp assessment denies. Three rows go the other way -- a ramp
-    reaches the door, the cabin is not accessible inside -- and on those
-    `is_accessible` is the MORE informed answer, not the weaker one.
-    `has_ramp` stays STORED as provenance for the 14 staff assessments; no
-    verdict reads it.
+    ⚠️ THE MEASUREMENT ITSELF LIVES IN ONE PLACE, AND IT IS NOT HERE:
+    `docs/reference/lodging-registry.md` § "Step-free grades from
+    `is_accessible`" carries the counting query, the distribution and the three
+    divergent rows. It used to be pasted into eight tracked files. Re-measure
+    there, not here.
 
     This function does not walk anything. Resolving which rooms answer for a
     slot is the caller's job -- `_BathroomIndex.leaf_codes_under` in

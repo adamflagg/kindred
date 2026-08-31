@@ -563,10 +563,12 @@ describe('MapUnitPopover — amenities, off the resolved coverages', () => {
      * accessible inside. The server grades `ramp_coverage` from
      * `is_accessible` now, so they answer `none` and this list stays silent.
      *
-     * ⚠️ THAT IS THE CONSERVATIVE DIRECTION AND IT CANNOT INVERT. Measured on
-     * the 2026 snapshot, 0 rows are `is_accessible` without `has_ramp = 'yes'`
-     * — `is_accessible` is a STRICT SUBSET — so it can only ever narrow a ramp
-     * assessment, never promise a wheelchair user access one denies.
+     * ⚠️ THAT IS THE CONSERVATIVE DIRECTION AND IT CANNOT INVERT.
+     * `is_accessible` is a STRICT SUBSET of `has_ramp = 'yes'`, so it can only
+     * ever narrow a ramp assessment, never promise a wheelchair user access one
+     * denies. Measurement, single-sourced:
+     * `docs/reference/lodging-registry.md` § "Step-free grades from
+     * `is_accessible`".
      *
      * It also covers the old `partial` case, which no longer exists as a
      * grade: a qualified ramp means no (owner, 2026-08-27).
