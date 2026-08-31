@@ -927,6 +927,87 @@ describe('Modal', () => {
     })
   })
 
+  describe('Backdrop-click ownership when a second `ui/Modal` opens on top (kindred#2650)', () => {
+    // The asymmetry this describe block exists to close: Escape (above) has
+    // gated on `isTopOverlay` since kindred#2205, but the backdrop's
+    // `onClick={onClose}` never did — so `ScenarioManagementModal.tsx`'s
+    // outer, always-open Modal closed on a click in its own backdrop area
+    // even while its confirm/edit/create Modal sat on top of it, exactly the
+    // bug an owner caught live on a DIFFERENT stacked pair (kindred#2650:
+    // `CabinWeekendModal` + `FamilyDetailsPanel`, which does not render a
+    // second `ui/Modal` and so cannot be reproduced with this harness — see
+    // `FamilyDetailsPanel.test.tsx` and `useDismissOnDeadSpace.test.tsx` for
+    // that half). Same `StackedModals` shape as the Escape describe block
+    // above, same reasoning, now for the pointer path.
+    function StackedModals({
+      onCloseOuter,
+      onCloseInner,
+    }: {
+      onCloseOuter: () => void
+      onCloseInner: () => void
+    }) {
+      return (
+        <>
+          <Modal isOpen={true} onClose={onCloseOuter} title="Outer">
+            <p>Outer content</p>
+          </Modal>
+          <Modal isOpen={true} onClose={onCloseInner} title="Inner">
+            <p>Inner content</p>
+          </Modal>
+        </>
+      )
+    }
+
+    it('a click on the OUTER backdrop does not close it while the inner modal is on top', () => {
+      const onCloseOuter = vi.fn()
+      const onCloseInner = vi.fn()
+      render(<StackedModals onCloseOuter={onCloseOuter} onCloseInner={onCloseInner} />)
+
+      // Mounted in JSX order, so index 0 is the outer modal's own backdrop.
+      const [outerBackdrop] = screen.getAllByTestId('modal-backdrop')
+      fireEvent.click(outerBackdrop!)
+
+      expect(onCloseOuter).not.toHaveBeenCalled()
+      expect(onCloseInner).not.toHaveBeenCalled()
+    })
+
+    it('a click on the INNER (topmost) backdrop closes only the inner modal', () => {
+      const onCloseOuter = vi.fn()
+      const onCloseInner = vi.fn()
+      render(<StackedModals onCloseOuter={onCloseOuter} onCloseInner={onCloseInner} />)
+
+      const [, innerBackdrop] = screen.getAllByTestId('modal-backdrop')
+      fireEvent.click(innerBackdrop!)
+
+      expect(onCloseInner).toHaveBeenCalledTimes(1)
+      expect(onCloseOuter).not.toHaveBeenCalled()
+    })
+
+    it('the outer modal closes normally on its own backdrop once the inner one is gone', () => {
+      const onCloseOuter = vi.fn()
+      const onCloseInner = vi.fn()
+      const { rerender } = render(
+        <StackedModals onCloseOuter={onCloseOuter} onCloseInner={onCloseInner} />
+      )
+
+      rerender(
+        <>
+          <Modal isOpen={true} onClose={onCloseOuter} title="Outer">
+            <p>Outer content</p>
+          </Modal>
+          <Modal isOpen={false} onClose={onCloseInner} title="Inner">
+            <p>Inner content</p>
+          </Modal>
+        </>
+      )
+
+      const outerBackdrop = screen.getByTestId('modal-backdrop')
+      fireEvent.click(outerBackdrop)
+
+      expect(onCloseOuter).toHaveBeenCalledTimes(1)
+    })
+  })
+
   describe('transition (spec 1c: fade+scale 200/150, Transition + appear)', () => {
     it('routes pointer events through the wrapper and blocks nothing once dead (2530 review finding 1)', () => {
       // THE pattern: the fixed inset-0 wrapper is pointer-events-none ALWAYS,

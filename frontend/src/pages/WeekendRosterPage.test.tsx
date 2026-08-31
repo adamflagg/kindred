@@ -866,6 +866,115 @@ describe('cabin-weekend attribution chip (kindred#2648 UI half)', () => {
         screen.getByRole('dialog', { name: /which weekend is this cabin for/i })
       ).toBeInTheDocument()
     })
+
+    /**
+     * `#root` goes `inert` while `CabinWeekendModal` (a `ui/Modal`) is open
+     * (`ui/modalStack.ts#acquireBackgroundInert`, documented in
+     * `frontend/CLAUDE.md` as blocking mouse clicks, not merely an a11y
+     * label). `FamilyDetailsPanel` is normally a plain descendant of
+     * `#root`, so opening it FROM WITHIN an already-open modal — this call
+     * site only — would make the entire panel unclickable despite painting
+     * on top: `inert` blocks hit-testing regardless of z-index, and jsdom's
+     * default `render()` has no `#root` to reproduce that with (see
+     * `Modal.test.tsx`'s own "background inert" describe block for the one
+     * place that recreates it). This proves the escape hatch instead: the
+     * call site portals the panel straight to `document.body`, alongside
+     * `ui/Modal` itself, so it is never a descendant of `#root` in the first
+     * place.
+     */
+    it('portals the panel to document.body so it never lands inside #root (kindred#2650 follow-up)', async () => {
+      const user = userEvent.setup()
+      attributionQuery.mockReturnValue({
+        isLoading: false,
+        error: null,
+        data: [itemFor(2000001)],
+        items: [],
+        confirm: vi.fn(),
+        isConfirming: false,
+      })
+      rosterQuery.data = {
+        year: 2026,
+        session_cm_id: 1000001,
+        parties: [HOUSEHOLD_PARTY],
+        units: [],
+        counts: {},
+      }
+      const { container } = renderPage('1000001')
+
+      await user.click(screen.getByRole('button', { name: /1 cabin needs a weekend/i }))
+      await user.click(screen.getByRole('button', { name: 'The Johnson Family' }))
+
+      expect(container.querySelector('[data-panel="family-details"]')).toBeNull()
+      expect(screen.getByTestId('family-details-panel')).toBeInTheDocument()
+
+      // The other half of `backdropInteractive` — the click-based tests
+      // below can't distinguish it (jsdom's `fireEvent.click` bypasses
+      // `pointer-events` entirely), so pin the wiring directly instead.
+      expect(screen.getByTestId('family-panel-backdrop')).toHaveClass('pointer-events-auto')
+    })
+
+    /**
+     * The owner's exact live-review repro, at full fidelity: the real page,
+     * the real `CabinWeekendModal`, the real `FamilyDetailsPanel` — nothing
+     * stubbed.
+     *
+     * Clicks `[data-testid="family-panel-backdrop"]` directly, not some
+     * point "outside both": once portaled and `backdropInteractive`, that
+     * backdrop IS the element a real click outside both surfaces lands on —
+     * it now covers the full viewport and paints above the modal, so it
+     * catches the click before the modal's own backdrop ever sees it. See
+     * `FamilyDetailsPanel.tsx`'s `backdropInteractive` prop doc for why the
+     * default (pass-through, letting a click fall to whatever's underneath)
+     * would be wrong at this specific call site.
+     */
+    it('closes only the panel on a click outside both, leaving the weekend picker open (kindred#2650)', async () => {
+      const user = userEvent.setup()
+      attributionQuery.mockReturnValue({
+        isLoading: false,
+        error: null,
+        data: [itemFor(2000001)],
+        items: [],
+        confirm: vi.fn(),
+        isConfirming: false,
+      })
+      rosterQuery.data = {
+        year: 2026,
+        session_cm_id: 1000001,
+        parties: [HOUSEHOLD_PARTY],
+        units: [],
+        counts: {},
+      }
+      renderPage('1000001')
+
+      await user.click(screen.getByRole('button', { name: /1 cabin needs a weekend/i }))
+      await user.click(screen.getByRole('button', { name: 'The Johnson Family' }))
+      expect(screen.getByTestId('family-details-panel')).toBeInTheDocument()
+
+      fireEvent.click(screen.getByTestId('family-panel-backdrop'))
+
+      expect(screen.getByTestId('family-details-panel')).toHaveClass('animate-slide-out-right')
+      expect(
+        screen.getByRole('dialog', { name: /which weekend is this cabin for/i })
+      ).toBeInTheDocument()
+    })
+
+    /**
+     * NOT covered by any test, and it can't be: this is a regression guard
+     * against the panel being `inert` (see the portal test above), and its
+     * failure mode is "a click that VISUALLY lands on the panel's own
+     * content is delivered to a DIFFERENT element instead (the modal's
+     * backdrop), because `inert` removes the panel from hit-testing
+     * entirely." jsdom does not implement hit-testing at all —
+     * `fireEvent.click(node)` always dispatches directly to `node`,
+     * regardless of `inert` or `pointer-events` — so a jsdom test clicking
+     * "on panel content" can only prove the click reached that content,
+     * never that a REAL click aimed at the same screen position would have.
+     * Confirmed against real Chromium instead (`FamilyDetailsPanel.tsx`'s
+     * `backdropInteractive` prop doc has the measured detail): once
+     * portaled out of `#root`'s inert subtree, the panel's own content is
+     * genuinely hit-testable again, so a click there lands on it, not on
+     * the modal underneath.
+     */
   })
 })
 

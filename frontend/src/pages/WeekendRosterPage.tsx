@@ -26,6 +26,7 @@
  */
 import { Heart, Home, Map as MapIcon, Users } from 'lucide-react'
 import { Activity, lazy, Suspense, useEffect, useMemo, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useNavigate, useParams } from 'react-router'
 
 import { WeekendLegendButton } from '../components/BunkingLegend'
@@ -608,37 +609,64 @@ export default function WeekendRosterPage() {
               </div>
             </div>
 
-            {familyPanelParty !== null && (
+            {familyPanelParty !== null &&
               // ⚠️ DIVERGES FROM THE OTHER THREE `FamilyDetailsPanel` CALL
-              // SITES: wrapped in its own stacking context at z-[110],
-              // ABOVE `ui/Modal`'s z-[100] (`Modal.tsx`'s own comment: "keeps
-              // us above documented panels ... e.g. z-[60] CamperDetailsPanel").
-              // Every other opener (`LodgingBoard`, `LodgingMap`,
-              // `HouseholdRosterTable`) renders the panel BESIDE a board, so
-              // sitting under a `ui/Modal` is correct there. This opener is
-              // the first to open the panel FROM INSIDE an already-open
-              // `ui/Modal` (`CabinWeekendModal`, via a family-name click in
-              // `SessionAttributionRow` — kindred#2650), where the panel must
-              // paint on top of the dialog that spawned it, not disappear
-              // behind it. `position: relative` (not `fixed`) is deliberate:
-              // it creates the new stacking context WITHOUT becoming a new
-              // containing block for the panel's own `fixed` children, so
-              // `FamilyDetailsPanel`'s `inset-0`/`top-0 right-0 bottom-0`
-              // still resolve against the viewport, unchanged. Escape
-              // ordering is the OTHER half of this divergence, fixed at the
-              // source: see `FamilyDetailsPanel.tsx`'s `ui/modalStack` token
+              // SITES, in THREE ways, all downstream of the same fact: this
+              // opener is the first to open the panel FROM INSIDE an
+              // already-open `ui/Modal` (`CabinWeekendModal`, via a
+              // family-name click in `SessionAttributionRow` — kindred#2650)
+              // instead of beside a board.
+              //
+              // 1. PORTALED to `document.body`, unlike every other
+              // `FamilyDetailsPanel` (a plain descendant of `#root`).
+              // `ui/Modal` marks `#root` `inert` while open
+              // (`acquireBackgroundInert`, documented in `frontend/CLAUDE.md`
+              // as blocking MOUSE CLICKS, not merely an a11y label) — that is
+              // correct for the direction every other call site uses (a
+              // modal opening ON TOP of an already-visible panel should make
+              // that panel non-interactive), but exactly backwards here,
+              // where the PANEL is what opens on top. Left un-portaled, the
+              // panel would still PAINT above the modal (z-[110] below still
+              // handles that) but be entirely unclickable underneath its own
+              // pixels — `inert` ignores z-index, it is a DOM-tree property —
+              // measured against real Chromium: `elementFromPoint` over the
+              // panel's own visible close button resolved to the modal's
+              // backdrop instead, and a real click there did nothing.
+              // `position: relative` (not `fixed`) on the wrapper is still
+              // deliberate: it creates the z-[110] stacking context WITHOUT
+              // becoming a containing block for the panel's own `fixed`
+              // children, so `FamilyDetailsPanel`'s `inset-0`/
+              // `top-0 right-0 bottom-0` still resolve against the viewport.
+              //
+              // 2. `backdropInteractive` — the panel's click-outside layer is
+              // `pointer-events-none` everywhere else so a click can pass
+              // through it to a board card underneath and switch families
+              // directly. There is no board here, only the modal this panel
+              // sits on top of, so the backdrop must catch a genuine outside
+              // click itself; left `pointer-events-none`, that click would
+              // fall through to the MODAL's own backdrop instead — which
+              // cannot tell "outside both" apart from "inside this panel",
+              // since inert already erased the distinction once, and
+              // `event.target` cannot recover it. See
+              // `FamilyDetailsPanel.tsx`'s prop doc for the fuller version.
+              //
+              // 3. Escape ordering, fixed at the source: see
+              // `FamilyDetailsPanel.tsx`'s `ui/modalStack` token
               // participation and its own "Escape when opened ON TOP of an
               // existing overlay" tests.
-              <div className="relative z-[110]">
-                <FamilyDetailsPanel
-                  party={familyPanelParty}
-                  unit={resolvePartyUnit(familyPanelParty, unitsByCode)}
-                  year={currentYear}
-                  requestClose={familyPanelRequestClose}
-                  onClose={closeFamilyPanel}
-                />
-              </div>
-            )}
+              createPortal(
+                <div className="relative z-[110]">
+                  <FamilyDetailsPanel
+                    party={familyPanelParty}
+                    unit={resolvePartyUnit(familyPanelParty, unitsByCode)}
+                    year={currentYear}
+                    requestClose={familyPanelRequestClose}
+                    onClose={closeFamilyPanel}
+                    backdropInteractive
+                  />
+                </div>,
+                document.body
+              )}
           </>
         )}
       </QueryGuard>

@@ -19,11 +19,16 @@
  * slide-in overlay — there is no second implementation to keep in sync.
  */
 import { Baby, Clock, Home, Repeat, Star, Users, X } from 'lucide-react'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
 import { displayCampMinderAge } from '../../utils/age'
-import { acquireOverlayToken, isTopOverlay, releaseOverlayToken } from '../ui/modalStack'
+import {
+  acquireOverlayToken,
+  isTopOverlay,
+  releaseOverlayToken,
+  type OverlayToken,
+} from '../ui/modalStack'
 import { Tooltip } from '../ui/Tooltip'
 import { HouseholdJourneyCard } from './HouseholdJourneyCard'
 import { namedAdults, partyFamilyLabel, partyHeadcount } from './householdIdentity'
@@ -40,6 +45,31 @@ export interface FamilyDetailsPanelProps {
   /** Parent-driven animated close, as the summer board does. */
   requestClose?: boolean
   onClose: () => void
+  /**
+   * kindred#2650 follow-up. The click-outside layer (`family-panel-backdrop`
+   * below) is `pointer-events-none` by default, DELIBERATELY: it lets a
+   * click pass through to a board card/row underneath and switch families
+   * directly, the contract `CamperDetailsPanel`'s identical backdrop also
+   * has, exercised by every OTHER `FamilyDetailsPanel` caller
+   * (`LodgingBoard`, `LodgingMap`, `HouseholdRosterTable`).
+   *
+   * `WeekendRosterPage`'s `familyPanelParty` site is different: it can open
+   * this panel FROM WITHIN an already-open `ui/Modal`
+   * (`CabinWeekendModal`), rendered — per its own divergence comment — in a
+   * portal OUTSIDE `#root`'s `inert` subtree specifically so this panel
+   * stays genuinely interactive there. A `pointer-events-none` backdrop in
+   * THAT configuration is a hole, not a feature: nothing is meant to be
+   * reached "through" it (there is no board underneath, only the modal that
+   * spawned this panel), so a real click physically falls through to the
+   * MODAL's own backdrop instead — which cannot tell "outside both" apart
+   * from "on this panel's own content", because both routes land on the
+   * identical DOM node once the panel is invisible to hit-testing (measured
+   * against real Chromium; see `FamilyDetailsPanel.test.tsx`'s comment on
+   * `handleBackdropClick` for the detail). Passing `true` here makes the
+   * backdrop `pointer-events-auto`, so it correctly catches a genuine
+   * outside click ITSELF instead of leaking it to whatever sits beneath.
+   */
+  backdropInteractive?: boolean
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -59,6 +89,7 @@ export function FamilyDetailsPanel({
   year,
   requestClose = false,
   onClose,
+  backdropInteractive = false,
 }: FamilyDetailsPanelProps) {
   const [isClosing, setIsClosing] = useState(false)
 
@@ -77,6 +108,12 @@ export function FamilyDetailsPanel({
   // `onClose` ever fires, so nothing here would clear a latched
   // `requestClose` for it. `usePanelParty`'s own render-time correction is
   // what clears it in that case, not this component.
+  // kindred#2650 follow-up. Read by `handleBackdropClick` below, written by
+  // the token effect further down — split the same way `ui/Modal`'s own
+  // `overlayTokenRef` is, so the JSX click handler (defined outside that
+  // effect) can see the current token without re-deriving it.
+  const overlayTokenRef = useRef<OverlayToken | null>(null)
+
   const identity = partyKey(party)
   const [shownIdentity, setShownIdentity] = useState(identity)
   if (identity !== shownIdentity) {
@@ -124,6 +161,7 @@ export function FamilyDetailsPanel({
     // a "see members" click would leave the panel unable to close on its own
     // Escape ever again.
     const token = acquireOverlayToken()
+    overlayTokenRef.current = token
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return
@@ -134,8 +172,23 @@ export function FamilyDetailsPanel({
     return () => {
       document.removeEventListener('keydown', onKeyDown)
       releaseOverlayToken(token)
+      overlayTokenRef.current = null
     }
-  }, [isClosing, handleClose])
+  }, [isClosing, handleClose, overlayTokenRef])
+
+  // kindred#2650 follow-up. Mirrors the Escape check just above, and
+  // `ui/Modal`'s own identically-shaped backdrop gate: a click on THIS
+  // panel's own click-outside layer must defer to whatever overlay is
+  // currently on top of it, exactly like Escape already does. Kept separate
+  // from `handleClose` (shared with the header close button and Escape)
+  // because the header's own explicit close button is not gated — it mirrors
+  // `ui/Modal`'s own close button, which stays reachable-or-not purely by
+  // whatever visually covers it, never by this token.
+  const handleBackdropClick = useCallback(() => {
+    const token = overlayTokenRef.current
+    if (token !== null && !isTopOverlay(token)) return
+    handleClose()
+  }, [handleClose, overlayTokenRef])
 
   // A blank `family_camp_adults` slot is not an attending adult -- rendering
   // it left an empty <li> in the Party list (kindred#2084 scan finding).
@@ -392,8 +445,8 @@ export function FamilyDetailsPanel({
       {/* Click-outside layer, as the summer board lays over the page. */}
       <div
         data-testid="family-panel-backdrop"
-        className="pointer-events-none fixed inset-0 z-[59]"
-        onClick={handleClose}
+        className={`${backdropInteractive ? 'pointer-events-auto' : 'pointer-events-none'} fixed inset-0 z-[59]`}
+        onClick={handleBackdropClick}
         aria-hidden="true"
       />
       <div
