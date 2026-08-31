@@ -1523,13 +1523,18 @@ describe('LodgingMap — pin dragging (kindred#2396)', () => {
 
   it('freezes pan while editing — dragging the canvas background moves no mark', () => {
     render(<LodgingMap parties={[]} units={UNITS} year={2026} />, { wrapper })
-    const before = markStyle()
-    fireEvent.click(screen.getByLabelText('Edit pins'))
     const canvas = mapCanvas()
+    // ZOOM IN FIRST, outside editing. At rest (k=1, the identity view)
+    // `clampView` pins tx/ty to exactly 0 — there is nowhere TO pan — so a
+    // drag attempted at rest would pass this assertion whether or not the
+    // freeze guard exists at all, and prove nothing about it.
+    fireEvent.wheel(canvas, { deltaY: -600 })
+    const zoomed = markStyle()
+    fireEvent.click(screen.getByLabelText('Edit pins'))
     fireEvent.pointerDown(canvas, { pointerId: 1, clientX: 300, clientY: 300 })
     fireEvent.pointerMove(canvas, { pointerId: 1, clientX: 100, clientY: 100 })
     fireEvent.pointerUp(canvas, { pointerId: 1, clientX: 100, clientY: 100 })
-    expect(markStyle()).toEqual(before)
+    expect(markStyle()).toEqual(zoomed)
   })
 
   it('freezes zoom while editing — wheeling the canvas changes nothing', () => {
