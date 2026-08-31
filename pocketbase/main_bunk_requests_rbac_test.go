@@ -60,25 +60,41 @@ func TestBunkRequestsRBACMigrationGatesReadOnBunkingManage(t *testing.T) {
 		t.Errorf("migration %s must reference collection %q", bunkRequestsRBACMigration, "bunk_requests")
 	}
 
-	for _, rule := range []string{"listRule", "viewRule"} {
-		if !strings.Contains(body, rule) {
-			t.Errorf("migration %s must set %s", bunkRequestsRBACMigration, rule)
-		}
-	}
-
-	// The permissive rule must not appear in the UP path — only the DOWN
-	// path may restore it, to revert cleanly. Split on the up/down boundary
-	// (the same "}, (app)" marker checked below) so the down function's
-	// legitimate restoration of the old rule doesn't fail this check.
+	// Split on the up/down boundary so the down function's legitimate
+	// restoration of the old permissive rule (needed to revert cleanly)
+	// doesn't get scanned as if it were the live behavior.
 	upIdx := strings.Index(body, "}, (app)")
 	if upIdx == -1 {
 		t.Fatalf("migration %s: could not locate the up/down boundary", bunkRequestsRBACMigration)
 	}
 	upBody := body[:upIdx]
-	const permissiveRule = `'@request.auth.id != ""'`
-	if strings.Contains(upBody, permissiveRule) {
-		t.Errorf("migration %s must not retain the permissive rule %s in the up function",
-			bunkRequestsRBACMigration, permissiveRule)
+
+	// Pin each assignment individually — not just "the bunkingManage string
+	// appears somewhere in the up function" — so a mutation that fixes
+	// viewRule but leaves listRule permissive (or vice versa) is caught.
+	// Assignments may read the rule from a named constant or spell it
+	// inline; either is fine as long as the RESOLVED value is the canonical
+	// rule, so check the assignment target against both the constant name
+	// and the literal string.
+	for _, field := range []string{"listRule", "viewRule"} {
+		assignedToConst := strings.Contains(upBody, field+" = BUNK_REQUESTS_RBAC_RULE")
+		assignedInline := strings.Contains(upBody, field+" = "+bunkingManageRule)
+		if !assignedToConst && !assignedInline {
+			t.Errorf("migration %s: %s in the up function must be assigned the canonical bunkingManage rule "+
+				"(found neither %q nor an inline %s)",
+				bunkRequestsRBACMigration, field, field+" = BUNK_REQUESTS_RBAC_RULE", field)
+		}
+	}
+
+	// Belt-and-suspenders: no spelling of the old permissive rule — single-
+	// or double-quoted, escaped or not — may appear anywhere in the up
+	// function. Normalize quote style before comparing so a mutation that
+	// merely changes quoting doesn't slip past a literal-string match.
+	normalizedUp := strings.NewReplacer(`\"`, `"`, `'`, `"`).Replace(upBody)
+	const permissiveRuleNormalized = `"@request.auth.id != """`
+	if strings.Contains(normalizedUp, permissiveRuleNormalized) {
+		t.Errorf("migration %s must not retain the permissive rule '@request.auth.id != \"\"' in the up function",
+			bunkRequestsRBACMigration)
 	}
 
 	if !strings.Contains(body, "app.save(") {
