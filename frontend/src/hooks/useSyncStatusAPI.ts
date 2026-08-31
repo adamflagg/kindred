@@ -44,11 +44,61 @@ export interface CurrentRunProgress {
   remaining_jobs: string[] | null
 }
 
+/**
+ * When CampMinder was last read for ONE family-camp weekend, or undefined when
+ * that cannot be answered (kindred#2601).
+ *
+ * ONE CALCULATION, BOTH SURFACES — the nav's "Housing synced" line and the
+ * Refresh Housing modal. They sit inches apart on the same screen, so a
+ * divergence here is immediately self-contradicting: one going quiet while the
+ * other claims two minutes is worse than either alone.
+ *
+ * ## Why the custom-values job, not `lodging_assignments`
+ *
+ * The question is how current the ANSWERS are, so the source must be the job
+ * that pulls them from CampMinder. `lodging_assignments` is a year-wide
+ * TRANSFORM that runs on every press whatever weekend was fetched — dating
+ * freshness from it reported a season-wide event as one weekend's, which is
+ * exactly what broke when the press stopped covering the whole season.
+ *
+ * ## Why undefined is a real answer
+ *
+ * An ABSENT `session` means the run covered every weekend (the nightly cron):
+ *
+ *   unscoped run              -> covered this weekend, time is correct here
+ *   scoped to this weekend    -> correct here
+ *   scoped to another weekend -> this weekend is OLDER by an unknowable amount
+ *
+ * The status keeps one slot per job, so in the third case the cron run that DID
+ * cover this weekend has already been overwritten. Silence is the only honest
+ * answer; a durable per-weekend time is kindred#2617.
+ */
+export function weekendHousingSyncedAt(
+  syncStatus: SyncStatusResponse | null | undefined,
+  sessionCmId: number | undefined
+): string | undefined {
+  const run = syncStatus?.household_custom_values_family_camp
+  if (run?.end_time === undefined || sessionCmId === undefined) return undefined
+  const runSession = run.session
+  if (runSession && runSession !== String(sessionCmId)) return undefined
+  return run.end_time
+}
+
 export interface SyncStatus {
   status: 'idle' | 'running' | 'success' | 'failed' | 'pending'
   start_time?: string
   end_time?: string
   error?: string
+  /**
+   * The weekend this run was started FOR, absent when it covers everything
+   * (kindred#2601, `Status.Session` in pocketbase/sync/orchestrator.go).
+   *
+   * ⚠️ ABSENT MEANS EVERY WEEKEND, not "unknown". The nightly cron refreshes the
+   * whole family-camp cohort, so a consumer must treat a missing session as
+   * MATCHING — reading it as "not mine" would silently stop the cron from
+   * driving any weekend's readout.
+   */
+  session?: string
   summary?: {
     created: number
     updated: number
@@ -141,11 +191,13 @@ export interface SyncStatusResponse {
   person_custom_values: SyncStatus
   household_custom_values: SyncStatus
   // The BOUNDED daily family-camp custom-values pass (kindred#2482) — NOT the
-  // unrestricted pair above. These two are 13 of the family-camp refresh
-  // chain's 13 m 31 s, and they only became visible here in PR #2591; while
-  // they were absent from the backend's `statusSyncTypes` the client saw
-  // nothing running for thirteen minutes, stopped polling, and could never
-  // detect the cutover (kindred#2478 §4.2c).
+  // unrestricted pair above. These two dominate the family-camp refresh chain
+  // either way — ~96% of it when it covers the season, ~85% when scoped to one
+  // weekend (kindred#2601) — and they only became visible here in PR #2591;
+  // while they were absent from the
+  // backend's `statusSyncTypes` the client saw nothing running for the whole
+  // run, stopped polling, and could never detect the cutover
+  // (kindred#2478 §4.2c).
   person_custom_values_family_camp: SyncStatus
   household_custom_values_family_camp: SyncStatus
   // Published alongside them by PR #2591: a registered daily Process-phase job

@@ -730,10 +730,88 @@ describe('useSyncSequenceRun', () => {
     expect(result.current.isRunning).toBe(true)
   })
 
+  /**
+   * 🚨 THE CROSS-WEEKEND PIN (kindred#2601).
+   *
+   * `Refresh Housing` used to cover every family-camp weekend, so a job NAME was a
+   * sufficient identity and the mid-run pickup below deliberately arms on "a
+   * reload, a navigation, or a weekend switch". Scoping the press turned that
+   * intent into a defect: press on weekend A, walk to weekend B, and B armed on
+   * A's run — showing "Refreshing housing", then firing B's success toast and
+   * cache invalidation for a run that never touched B.
+   *
+   * The run now says which weekend it is for, and a weekend only arms on its own.
+   */
+  it('does NOT arm on a run scoped to a different weekend', () => {
+    setStatus(
+      idleStatus({
+        person_custom_values_family_camp: {
+          status: 'running',
+          start_time: '2026-04-22T09:59:00.000Z',
+          session: '1001',
+        },
+      })
+    )
+    const { result } = renderHook(() =>
+      useSyncSequenceRun({ chain: FAMILY_CAMP_REFRESH_CHAIN, enabled: true, session: '900' })
+    )
+    expect(result.current.isRunning).toBe(false)
+  })
+
+  it('DOES arm on a run scoped to this weekend', () => {
+    setStatus(
+      idleStatus({
+        person_custom_values_family_camp: {
+          status: 'running',
+          start_time: '2026-04-22T09:59:00.000Z',
+          session: '900',
+        },
+      })
+    )
+    const { result } = renderHook(() =>
+      useSyncSequenceRun({ chain: FAMILY_CAMP_REFRESH_CHAIN, enabled: true, session: '900' })
+    )
+    expect(result.current.isRunning).toBe(true)
+  })
+
+  /**
+   * An UNSCOPED run genuinely covers every weekend — that is the nightly cron —
+   * so an absent session must read as "matches everybody". Getting this backwards
+   * would silently stop the cron from driving any weekend's readout, which is a
+   * quieter regression than the one above and would outlive it.
+   */
+  it('arms on an UNSCOPED run, because the nightly pass covers every weekend', () => {
+    setStatus(
+      idleStatus({
+        person_custom_values_family_camp: {
+          status: 'running',
+          start_time: '2026-04-22T09:59:00.000Z',
+        },
+      })
+    )
+    const { result } = renderHook(() =>
+      useSyncSequenceRun({ chain: FAMILY_CAMP_REFRESH_CHAIN, enabled: true, session: '900' })
+    )
+    expect(result.current.isRunning).toBe(true)
+  })
+
   it('estimates the remaining time from the measured per-job durations', () => {
-    // person_custom_values_family_camp (536.7 s) has been running 60 s. What is
-    // left is the rest of it plus household_custom_values (242.7) +
-    // family_camp_derived (5.7) + lodging_assignments (1.8).
+    // person_custom_values_family_camp has been running 60 s. What is left is
+    // the rest of it plus household_custom_values + family_camp_derived +
+    // lodging_assignments.
+    //
+    // Built from the chain BY NAME rather than from literals: the per-job
+    // seconds are measurement data that moves when the cohort does (they were
+    // rescaled for one weekend in kindred#2601), while the arithmetic under
+    // test — "the rest of the running job, plus every job after it" — is the
+    // part that must not. Hardcoding the durations pinned the data and let the
+    // rescale read as a behaviour regression.
+    const secondsFor = (service: string) => {
+      const job = FAMILY_CAMP_REFRESH_CHAIN.find((j) => j.service === service)
+      if (job === undefined) throw new Error(`no such job in the chain: ${service}`)
+      return job.seconds
+    }
+
     setStatus(
       idleStatus({
         person_custom_values_family_camp: {
@@ -745,7 +823,12 @@ describe('useSyncSequenceRun', () => {
     const { result } = renderHook(() =>
       useSyncSequenceRun({ chain: FAMILY_CAMP_REFRESH_CHAIN, enabled: true })
     )
-    const expected = 536.7 - 60 + 242.7 + 5.7 + 1.8
+    const expected =
+      secondsFor('person_custom_values_family_camp') -
+      60 +
+      secondsFor('household_custom_values_family_camp') +
+      secondsFor('family_camp_derived') +
+      secondsFor('lodging_assignments')
     expect(result.current.remainingSeconds).toBeCloseTo(expected, 1)
     expect(result.current.progress).toBeGreaterThan(0)
     expect(result.current.progress).toBeLessThan(1)
@@ -754,7 +837,7 @@ describe('useSyncSequenceRun', () => {
   /**
    * The readout has to advance on its own, because NOTHING ELSE MOVES.
    *
-   * `person_custom_values_family_camp` runs 536.7 s and its status payload is
+   * `person_custom_values_family_camp` runs for minutes and its status payload is
    * byte-identical for the whole of it — `Status.Summary` is written only at
    * completion (pocketbase/sync/orchestrator.go), so `status`, `start_time` and
    * every other field are fixed while it runs. React Query's structural sharing

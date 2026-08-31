@@ -14,9 +14,17 @@
  * kindred#2478 §5, which is deliberately its own feature.
  *
  * ⛔ NOT RENDERED ON ADULT WEEKENDS. The caller hides it, the same way the
- * `Housing synced` line is hidden: `GetFamilyCampSessionCMIDs` filters
- * `session_type = 'family'` exactly, so on an adult weekend the chain skips
- * both expensive jobs — 13½ minutes to refresh nothing.
+ * `Housing synced` line is hidden: an adult session is not in the family-camp
+ * cohort either way, so the chain skips both expensive jobs and spends its
+ * whole runtime refreshing nothing.
+ *
+ * ⚠️ The MECHANISM moved even though the behaviour did not. That reasoning used
+ * to rest on `GetFamilyCampSessionCMIDs` filtering `session_type = 'family'`,
+ * which is only on the UNSCOPED path — and this button now always takes the
+ * scoped one. The scoped path is guarded instead by `handleRefreshFamilyCamp`,
+ * which refuses a session that is not a family-camp weekend in the year
+ * (kindred#2601). Hiding the button is still right; cite the guard, not the
+ * resolver.
  *
  * Why the run is not tracked in React state: see `useSyncSequenceRun`. The
  * running state is derived from the server's job statuses, so it survives a
@@ -32,25 +40,9 @@ import { formatDistanceToNow } from 'date-fns'
 import { Modal } from '../ui'
 import { syncService } from '../../services/sync'
 import { useApiWithAuth } from '../../hooks/useApiWithAuth'
-import { useSyncStatusAPI } from '../../hooks/useSyncStatusAPI'
-import {
-  FAMILY_CAMP_REFRESH_CHAIN,
-  FAMILY_CAMP_REFRESH_SECONDS,
-  useSyncSequenceRun,
-} from '../../hooks/useSyncSequenceRun'
+import { useSyncStatusAPI, weekendHousingSyncedAt } from '../../hooks/useSyncStatusAPI'
+import { FAMILY_CAMP_REFRESH_CHAIN, useSyncSequenceRun } from '../../hooks/useSyncSequenceRun'
 import { invalidateLodgingRegistryQueries, queryKeys } from '../../utils/queryKeys'
-
-/**
- * The total, to the nearest half minute — "13½ minutes". Halves rather than
- * whole minutes because the ruled copy is "the ~13½ min total" and rounding
- * 13 m 31 s up to "14 minutes" overstates a number staff are being asked to
- * commit to.
- */
-function formatChainTotal(seconds: number): string {
-  const halves = Math.round((seconds / 60) * 2) / 2
-  const whole = Math.floor(halves)
-  return `${whole}${halves - whole === 0.5 ? '½' : ''} minutes`
-}
 
 /** The running readout — whole minutes, because it is a moving estimate. */
 function formatRemaining(seconds: number): string {
@@ -59,7 +51,16 @@ function formatRemaining(seconds: number): string {
   return `about ${minutes} min left`
 }
 
-export function RefreshHousingButton() {
+/**
+ * The weekend this press acts on. `AppLayout` only mounts the button once
+ * `useWeekendShellSession` has resolved one, so this is never absent — which is
+ * why it is required rather than optional (kindred#2601).
+ */
+interface RefreshHousingButtonProps {
+  session: { session_cm_id: number; name: string }
+}
+
+export function RefreshHousingButton({ session }: RefreshHousingButtonProps) {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const queryClient = useQueryClient()
   const { fetchWithAuth } = useApiWithAuth()
@@ -67,6 +68,11 @@ export function RefreshHousingButton() {
 
   const run = useSyncSequenceRun({
     chain: FAMILY_CAMP_REFRESH_CHAIN,
+    // Scopes the readout, the toast and the invalidation below to THIS weekend.
+    // Without it, a refresh started on another weekend drives this button —
+    // announcing and cache-busting a refresh that never touched what is on
+    // screen (kindred#2601).
+    session: String(session.session_cm_id),
     onComplete: (outcome) => {
       if (outcome === 'failed') {
         // §4.4: the two jobs that touch anything staff sees run LAST and are
@@ -90,7 +96,7 @@ export function RefreshHousingButton() {
   })
 
   const startRefresh = useMutation({
-    mutationFn: () => syncService.refreshFamilyCamp(fetchWithAuth),
+    mutationFn: () => syncService.refreshFamilyCamp(fetchWithAuth, session.session_cm_id),
     onError: (error: Error) => {
       // The POST never started a chain, so the detector must be disarmed or it
       // would sit forcing polling for its whole arming window.
@@ -122,7 +128,9 @@ export function RefreshHousingButton() {
     )
   }
 
-  const lastSynced = syncStatus?.lodging_assignments?.end_time
+  // Shared with the nav's "Housing synced" line — see weekendHousingSyncedAt for
+  // why the source is the custom-values job and why undefined is a real answer.
+  const lastSynced = weekendHousingSyncedAt(syncStatus, session.session_cm_id)
 
   return (
     <>
@@ -139,7 +147,7 @@ export function RefreshHousingButton() {
       <Modal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
-        title="Refresh housing from CampMinder"
+        title={`Refresh housing for ${session.name}`}
         size="sm"
         footer={
           <div className="flex justify-end gap-2 pt-4">
@@ -168,14 +176,33 @@ export function RefreshHousingButton() {
           to say is what the refresh costs.
         */}
         <div className="text-foreground space-y-3 text-sm">
-          <p>
-            {lastSynced !== undefined
-              ? `Housing was last refreshed ${formatDistanceToNow(new Date(lastSynced), { addSuffix: true })}. Anything staff entered in CampMinder since then is not here yet.`
-              : 'Anything staff entered in CampMinder today is not here yet.'}
-          </p>
+          {/*
+            ⚠️ THE TIMESTAMP DOES NOT NAME THE WEEKEND, and does not need to:
+            `lastSynced` is already resolved to THIS weekend above, or is
+            undefined. Naming it here would add nothing and would re-invite the
+            season-wide claim that made the first draft of kindred#2601 wrong.
+            The weekend name stays on the TITLE, which is a claim about what the
+            press will do.
+          */}
+          {lastSynced !== undefined && (
+            <p>
+              Anything entered in CampMinder since{' '}
+              {formatDistanceToNow(new Date(lastSynced), { addSuffix: true })} won't show here yet.
+            </p>
+          )}
+          {/*
+            A RANGE, not the chain total. The press covers one weekend, and the
+            weekends differ enough that a single figure would be wrong for most
+            of them — the largest is ~7x the smallest by cohort. Stating the
+            band is the honest version of a number staff are asked to commit
+            to, and it is deliberately not derived from
+            FAMILY_CAMP_REFRESH_SECONDS: that constant is calibrated to the
+            LARGEST weekend so the progress bar never stalls, which makes it the
+            top of this range rather than its middle (kindred#2601).
+          */}
           <p className="text-muted-foreground">
-            Pulling it in takes about {formatChainTotal(FAMILY_CAMP_REFRESH_SECONDS)}. You can keep
-            working — when it is done the housing will refresh itself.
+            Pulling it in takes about 2–4 minutes. You can keep working — when it is done the
+            housing will refresh itself.
           </p>
         </div>
       </Modal>

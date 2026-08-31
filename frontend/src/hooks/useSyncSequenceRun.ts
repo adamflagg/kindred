@@ -89,6 +89,25 @@ import { useSyncStatusAPI } from './useSyncStatusAPI'
 import type { SyncStatus, SyncStatusResponse } from './useSyncStatusAPI'
 
 /** One job of a refresh chain, with the measured cost used for the readout. */
+/**
+ * Whether a run belongs to the surface watching it (kindred#2601).
+ *
+ * Two absences, both meaning "no opinion, so match":
+ *   - `runSession` absent — the run covers EVERY weekend (the nightly cron). It
+ *     must drive every weekend's readout, so this is the case that keeps the
+ *     cron working and is the easy one to get backwards.
+ *   - `mine` absent — the caller does not scope at all (summer's bunking chain).
+ *
+ * Before scoping, every family-camp run covered every weekend and this question
+ * had no meaning; the mid-run pickup deliberately armed on a weekend switch. Now
+ * a run started for weekend A must not drive weekend B's progress readout, its
+ * success toast, or its cache invalidation.
+ */
+function runBelongsHere(runSession: string | undefined, mine: string | undefined): boolean {
+  if (!runSession || !mine) return true
+  return runSession === mine
+}
+
 export interface SyncSequenceJob {
   /** The service name exactly as `GET /api/custom/sync/status` reports it. */
   service: string
@@ -101,27 +120,36 @@ export interface SyncSequenceJob {
 }
 
 /**
- * `GetRefreshFamilyCampJobs()`, in order. 13 m 31 s in total, of which the two
- * bounded custom-values jobs are 96%.
+ * `GetRefreshFamilyCampJobs()`, in order.
  *
  * `lodging_assignments` terminates the chain and is the one that matters:
  * `family_camp_derived` does NOT write it, so ending here rather than there is
  * what makes "the board's mirror is up to date" true.
+ *
+ * ## Why these two numbers are not the measured ones (kindred#2601)
+ *
+ * The 2026-08-23 measurement was of an UNSCOPED press: 536.7 s and 242.7 s,
+ * covering every family-camp weekend in the year. `RefreshHousingButton` now
+ * always names one weekend, so those figures would overstate its own button by
+ * roughly 4x and leave the bar crawling.
+ *
+ * Scaled by the measured cohort ratio (2026 production, any status): the union
+ * is 782 persons / 448 households across 9 attended weekends, and the LARGEST
+ * single weekend is 175 persons — so 175/782 ≈ 0.224. The largest weekend is
+ * used deliberately rather than the mean: a bar that finishes early and waits
+ * reads as "nearly done", while one that stalls at 90% reads as broken.
+ *
+ * Only the two custom-values jobs scale. The other four are year-wide by
+ * nature and are unchanged, which is also why they were left unscoped.
  */
 export const FAMILY_CAMP_REFRESH_CHAIN: readonly SyncSequenceJob[] = [
   { service: 'attendees', seconds: 3.3 },
   { service: 'persons', seconds: 21.0 },
-  { service: 'person_custom_values_family_camp', seconds: 536.7 },
-  { service: 'household_custom_values_family_camp', seconds: 242.7 },
+  { service: 'person_custom_values_family_camp', seconds: 120.2 },
+  { service: 'household_custom_values_family_camp', seconds: 54.4 },
   { service: 'family_camp_derived', seconds: 5.7 },
   { service: 'lodging_assignments', seconds: 1.8 },
 ]
-
-/** The total of `FAMILY_CAMP_REFRESH_CHAIN`, ~13½ minutes. */
-export const FAMILY_CAMP_REFRESH_SECONDS = FAMILY_CAMP_REFRESH_CHAIN.reduce(
-  (sum, job) => sum + job.seconds,
-  0
-)
 
 /**
  * `GetRefreshBunkingJobs()`, in order — ~4.7 s in total. The durations are
@@ -207,6 +235,7 @@ export function useSyncSequenceRun({
   chain,
   enabled = true,
   onComplete,
+  session,
 }: {
   chain: readonly SyncSequenceJob[]
   /**
@@ -216,6 +245,14 @@ export function useSyncSequenceRun({
    */
   enabled?: boolean
   onComplete?: (outcome: SyncSequenceOutcome) => void
+  /**
+   * The weekend this surface is about, as a session cm_id. Omit for a chain that
+   * is not per-weekend (summer's bunking refresh).
+   *
+   * Supplying it stops a run started for ANOTHER weekend from driving this one's
+   * readout, toast and invalidation — see `runBelongsHere` (kindred#2601).
+   */
+  session?: string
 }): SyncSequenceRun {
   const queryClient = useQueryClient()
   const [phase, setPhase] = useState<'idle' | 'arming' | 'running'>('idle')
@@ -275,8 +312,9 @@ export function useSyncSequenceRun({
   let activeIndex = -1
   if (syncStatus && !orchestratorBusy) {
     activeIndex = chain.findIndex((job) => {
-      const s = jobStatus(syncStatus, job.service)?.status
-      return s === 'running' || s === 'pending'
+      const jobState = jobStatus(syncStatus, job.service)
+      const running = jobState?.status === 'running' || jobState?.status === 'pending'
+      return running && runBelongsHere(jobState?.session, session)
     })
   }
   const isActive = activeIndex >= 0
@@ -447,13 +485,13 @@ export function useSyncSequenceRun({
     return () => clearTimeout(timer)
   }, [phase, isActive, reset])
 
-  // A TICK OF ITS OWN. `person_custom_values_family_camp` runs 536.7 s and its
+  // A TICK OF ITS OWN. `person_custom_values_family_camp` runs for minutes and its
   // status payload is identical for the whole of it — `Status.Summary` is
   // written only at completion — so React Query's structural sharing hands this
-  // observer the SAME `data` reference on every poll of those nine minutes.
+  // observer the SAME `data` reference on every poll of that job's whole run.
   // Without a tick the readout would not merely sit still: it would sit on the
-  // value it had when that job STARTED, "about 14 min left" with four minutes
-  // to go. This re-renders; it starts no network request.
+  // value it had when that job STARTED — claiming the run's full estimate with
+  // most of it already elapsed. This re-renders; it starts no network request.
   //
   // ⚠️ That measurement — "15 identical polls, ZERO extra renders" — is true of
   // this hook again since kindred#2599. It was NOT true while the freshness
@@ -461,7 +499,7 @@ export function useSyncSequenceRun({
   // identical poll; the baseline now comes from `invalidateQueries`' own
   // promise (see the destructure above), nothing puts a per-fetch timestamp
   // into `#trackedProps`, and the tick is once more the ONLY thing that moves
-  // the readout during those nine minutes. It stays regardless of what the gate
+  // the readout while a long job runs. It stays regardless of what the gate
   // is built on, because it is also the only thing that moves when polling
   // itself is not running. `advances the remaining-time estimate while the
   // status payload is unchanged` pins it directly, with the query layer mocked

@@ -12,7 +12,7 @@
  * synced` line and the `Refresh Housing` button on adult weekends.
  * `SessionResolver.GetFamilyCampSessionCMIDs` filters `session_type =
  * 'family'` exactly, so adult sessions are not in the bounded cohort — the
- * refresh chain would skip both expensive jobs and spend 13½ minutes
+ * refresh chain would skip both expensive jobs and spend its whole runtime
  * refreshing nothing. And `lodging_assignments` is a transform that runs daily
  * for everyone, rewriting adult rows from custom values up to seven days old,
  * so "Housing synced 11h ago" on an adult weekend is true about the JOB and

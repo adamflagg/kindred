@@ -97,6 +97,13 @@ var serialGroups = []struct {
 	},
 	{
 		pkg:    "sync",
+		reason: "t.Setenv: the family-camp session guard resolves the year via ParseSeasonYear",
+		tests: []string{
+			"TestHandleRefreshFamilyCampRejectsNonFamilySession",
+		},
+	},
+	{
+		pkg:    "sync",
 		reason: "t.Setenv: PROCESS_REQUESTS_TIMEOUT_MINUTES",
 		tests:  []string{"TestGetProcessRequestsTimeout"},
 	},

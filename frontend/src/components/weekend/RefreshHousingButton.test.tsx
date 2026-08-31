@@ -23,7 +23,11 @@ import { queryKeys } from '../../utils/queryKeys'
  * used to synthesise an advancing `dataUpdatedAt` by hand for the same reason,
  * and no longer has to model the query layer at all.
  */
-vi.mock('../../hooks/useSyncStatusAPI', () => ({
+// Only the HOOK is faked. `weekendHousingSyncedAt` comes through REAL, because
+// the freshness tests below assert its actual behaviour — a stub would make them
+// assert the stub (kindred#2601).
+vi.mock('../../hooks/useSyncStatusAPI', async (importActual) => ({
+  ...(await importActual<typeof import('../../hooks/useSyncStatusAPI')>()),
   useSyncStatusAPI: (opts?: { enabled?: boolean }) =>
     useQuery({
       queryKey: queryKeys.syncStatus(),
@@ -104,14 +108,29 @@ function RosterProbe() {
   return <div data-testid="roster">{data ?? 'loading'}</div>
 }
 
-function renderButton(client = makeClient()) {
+/**
+ * The weekend the shell is pointed at. `AppLayout` only renders this button
+ * once `useWeekendShellSession` has resolved one, so a session is always in
+ * hand — there is no unscoped state to model here (kindred#2601).
+ */
+/**
+ * Name length is DELIBERATE. Real weekend names reach 50 characters, which makes
+ * the modal title ~70 in a `size="sm"` dialog — a short fixture cannot exercise
+ * that geometry, and the first draft of this file used one.
+ */
+const TEST_SESSION = {
+  session_cm_id: 900,
+  name: 'Family Camp 5: Extended Program Weekend (all ages)',
+}
+
+function renderButton(client = makeClient(), session = TEST_SESSION) {
   // A WARM cache and no polling — the state a page at rest is in, and the one
   // kindred#2595 is about. Seeding it also keeps the first render synchronous.
   client.setQueryData(queryKeys.syncStatus(), currentStatus)
   const utils = render(
     <QueryClientProvider client={client}>
       <RosterProbe />
-      <RefreshHousingButton />
+      <RefreshHousingButton session={session} />
     </QueryClientProvider>
   )
   return { ...utils, client }
@@ -156,8 +175,8 @@ describe('RefreshHousingButton — resting and the press modal', () => {
     renderButton()
     fireEvent.click(screen.getByRole('button', { name: /Refresh Housing/i }))
     const dialog = screen.getByRole('dialog')
-    expect(dialog.textContent).toMatch(/13½ minutes/)
-    expect(dialog.textContent).toMatch(/not here yet/i)
+    expect(dialog.textContent).toMatch(/2–4 minutes/)
+    expect(dialog.textContent).toMatch(/won't show here yet/i)
     expect(dialog.textContent).toMatch(/ago/)
   })
 
@@ -225,7 +244,151 @@ describe('RefreshHousingButton — resting and the press modal', () => {
     fireEvent.click(screen.getByRole('button', { name: /Refresh Housing/i }))
     fireEvent.click(screen.getByRole('button', { name: /Start refresh/i }))
     await waitFor(() => expect(refreshFamilyCamp).toHaveBeenCalledTimes(1))
-    expect(refreshFamilyCamp).toHaveBeenCalledWith(fetchWithAuth)
+    expect(refreshFamilyCamp).toHaveBeenCalledWith(fetchWithAuth, TEST_SESSION.session_cm_id)
+  })
+})
+
+describe('RefreshHousingButton — scoped to the weekend in view (kindred#2601)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    rosterFromServer = 'Tamarack 1'
+    setStatus(status())
+  })
+
+  /**
+   * The press covers ONE weekend, not the season. Before kindred#2601 the two
+   * bounded custom-values jobs swept every family-camp weekend in the year —
+   * measured 782 persons against 175 for the largest single weekend, and those
+   * two jobs are ~96% of the chain's runtime.
+   *
+   * Asserting the ARGUMENT rather than the elapsed time is the point: a press
+   * that silently refreshed all ten weekends would look identical on screen.
+   */
+  it('refreshes the weekend on screen, not the whole season', async () => {
+    renderButton()
+    fireEvent.click(screen.getByRole('button', { name: /Refresh Housing/i }))
+    fireEvent.click(screen.getByRole('button', { name: /Start refresh/i }))
+    await waitFor(() => expect(refreshFamilyCamp).toHaveBeenCalledTimes(1))
+    expect(refreshFamilyCamp).toHaveBeenCalledWith(fetchWithAuth, 900)
+  })
+
+  /**
+   * The button lives in the app shell's nav, not on the board, so nothing else
+   * on screen says which weekend it acts on. Naming it is what makes the
+   * narrowed scope honest rather than merely faster.
+   */
+  it('names the weekend it is about to refresh', () => {
+    renderButton()
+    fireEvent.click(screen.getByRole('button', { name: /Refresh Housing/i }))
+    expect(screen.getByRole('dialog').textContent).toMatch(
+      /Family Camp 5: Extended Program Weekend/
+    )
+  })
+
+  /**
+   * ── Per-weekend freshness (kindred#2601) ──────────────────────────────────
+   *
+   * The freshness sentence answers "how current is what I am looking at", so its
+   * source is the job that PULLS FROM CAMPMINDER for this weekend — the bounded
+   * custom-values pass — not `lodging_assignments`, which is a year-wide
+   * transform that runs on every press regardless of which weekend was fetched.
+   * Reading the transform is what made the old copy season-wide.
+   */
+  it('dates the freshness from an UNSCOPED run, which covered every weekend', () => {
+    setStatus(
+      status({
+        household_custom_values_family_camp: {
+          status: 'success',
+          end_time: '2026-04-22T09:13:00.000Z',
+        },
+      })
+    )
+    renderButton()
+    fireEvent.click(screen.getByRole('button', { name: /Refresh Housing/i }))
+    expect(screen.getByRole('dialog').textContent).toMatch(/won't show here yet/i)
+  })
+
+  it('dates the freshness from a run scoped to THIS weekend', () => {
+    setStatus(
+      status({
+        household_custom_values_family_camp: {
+          status: 'success',
+          end_time: '2026-04-22T09:13:00.000Z',
+          session: '900',
+        },
+      })
+    )
+    renderButton()
+    fireEvent.click(screen.getByRole('button', { name: /Refresh Housing/i }))
+    expect(screen.getByRole('dialog').textContent).toMatch(/won't show here yet/i)
+  })
+
+  /**
+   * 🚨 THE ONE THAT MATTERS. Refresh weekend A, open weekend B: B was NOT
+   * covered, and the single status slot cannot say how much older B is — the
+   * nightly cron's earlier run has already been overwritten. Claiming A's
+   * timestamp for B is the defect; inventing a different number would be worse.
+   * So B says nothing about staleness until run history exists (kindred#2617).
+   */
+  it("says NOTHING about staleness when the last run was another weekend's", () => {
+    setStatus(
+      status({
+        household_custom_values_family_camp: {
+          status: 'success',
+          end_time: '2026-04-22T09:13:00.000Z',
+          session: '1001',
+        },
+      })
+    )
+    renderButton()
+    fireEvent.click(screen.getByRole('button', { name: /Refresh Housing/i }))
+    const text = screen.getByRole('dialog').textContent ?? ''
+    expect(text).not.toMatch(/won't show here yet/i)
+    expect(text).not.toMatch(/ago/)
+    // The cost half of the dialog is unaffected — the press still works.
+    expect(text).toMatch(/2–4 minutes/)
+  })
+
+  /**
+   * 🚨 THE REGRESSION PIN FOR THE FRESHNESS CLAIM.
+   *
+   * `lastSynced` is `lodging_assignments.end_time` — ONE year-wide job status
+   * with no session dimension. Naming the weekend beside it was true only while
+   * every press covered every weekend; scoping the press made it false, and the
+   * first draft of kindred#2601 shipped exactly that sentence.
+   *
+   * The weekend name belongs on the TITLE and the action — claims about what
+   * this press will DO — and must stay off the timestamp, which describes data
+   * this press did not necessarily touch. This asserts the split rather than the
+   * absence, so it still fails if someone re-attaches the name to the time.
+   */
+  it('does NOT attribute the freshness sentence to this weekend by name', () => {
+    renderButton()
+    fireEvent.click(screen.getByRole('button', { name: /Refresh Housing/i }))
+    const dialog = screen.getByRole('dialog')
+
+    const freshnessLine = Array.from(dialog.querySelectorAll('p')).find((p) =>
+      /won't show here yet/i.test(p.textContent ?? '')
+    )
+    expect(freshnessLine).toBeDefined()
+    expect(freshnessLine?.textContent).not.toMatch(/Family Camp 5/)
+
+    // ...while the weekend IS still named where the claim is about the action.
+    expect(dialog.textContent).toMatch(/Family Camp 5: Extended Program Weekend/)
+  })
+
+  /**
+   * The stated cost has to move WITH the scope. Leaving "13½ minutes" over a
+   * press that now takes two to four would be a true sentence about the old
+   * behaviour and a false one about this button — the same trade kindred#2600
+   * refused when a phase header claimed a job count its own action did not run.
+   */
+  it('states the scoped cost, not the whole-season one', () => {
+    renderButton()
+    fireEvent.click(screen.getByRole('button', { name: /Refresh Housing/i }))
+    const text = screen.getByRole('dialog').textContent ?? ''
+    expect(text).toMatch(/2–4 minutes/)
+    expect(text).not.toMatch(/13½/)
   })
 })
 

@@ -39,12 +39,20 @@ export const syncService = {
   },
 
   /**
-   * Refresh family camp housing placements from CampMinder
+   * Refresh family camp housing placements from CampMinder.
+   *
+   * `sessionCmId` narrows the two expensive custom-values jobs to ONE weekend
+   * (kindred#2601). Omitting it refreshes every family-camp weekend in the
+   * year, which is what this call did before the parameter existed — the
+   * server treats an absent session exactly that way, so the omission is a
+   * supported mode rather than an accident.
    */
   async refreshFamilyCamp(
-    fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>
+    fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>,
+    sessionCmId?: number
   ): Promise<unknown> {
-    const response = await fetchWithAuth(`${API_BASE}/refresh-family-camp`, {
+    const query = sessionCmId === undefined ? '' : `?session=${sessionCmId}`
+    const response = await fetchWithAuth(`${API_BASE}/refresh-family-camp${query}`, {
       method: 'POST',
     })
     if (!response.ok) {
