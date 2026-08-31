@@ -68,6 +68,37 @@ vi.mock('../../hooks/useApiWithAuth', () => ({
   useApiWithAuth: () => ({ fetchWithAuth: vi.fn(), isAuthenticated: true, isAuthLoading: false }),
 }))
 
+// `vi.hoisted`, same reason `medicalFetchMode`/`mockFetchHouseholdMedical`
+// above need it: `vi.mock` factories run before any other module-level code,
+// so a plain `const` referenced inside one is a use-before-initialization
+// error once hoisted above it.
+const { mockUpdatePositions, mockInvalidateQueries } = vi.hoisted(() => ({
+  mockUpdatePositions: vi.fn().mockResolvedValue(0),
+  mockInvalidateQueries: vi.fn(),
+}))
+
+// kindred#2396's pin-drag flush. Partial mock, like the two above: everything
+// else `lodgingCrud` exports stays real, only the one write this file drives
+// is intercepted.
+vi.mock('../../services/lodgingCrud', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../services/lodgingCrud')>()
+  return {
+    ...actual,
+    updateLodgingUnitPositions: (...args: unknown[]) =>
+      (mockUpdatePositions as (...a: unknown[]) => unknown)(...args),
+  }
+})
+
+// The singleton `LodgingMap` invalidates through after a flush (see its own
+// docstring on why: a `useQueryClient()` call would force every one of this
+// file's 60+ unwrapped `render()` calls to grow a `QueryClientProvider` they
+// have no other reason to carry). A FULL mock, not a partial one — importing
+// the real module constructs a live `QueryClient` and touches `localStorage`
+// at module load, neither of which this file's other tests should pay for.
+vi.mock('../../utils/queryClient', () => ({
+  queryClient: { invalidateQueries: mockInvalidateQueries },
+}))
+
 // One client per TEST, built outside the render path. Constructing it inside the
 // wrapper body rebuilds it on every render, discarding the cache and starting a
 // fresh loading pass underneath assertions that already resolved.
@@ -1393,5 +1424,203 @@ describe('LodgingMap — extends the whole-building marker to the popover (kindr
     expect(screen.queryByText('Whole building')).not.toBeInTheDocument()
     await userEvent.click(screen.getAllByTestId('map-mark')[1] as HTMLElement)
     expect(screen.queryByText('Whole building')).not.toBeInTheDocument()
+  })
+})
+
+/**
+ * Dragging a pin off the label it covers — kindred#2396, ★ owner ruling
+ * 2026-08-18: an Edit-pins checkbox sibling of Empty rooms; edit mode
+ * freezes pan/zoom; the peek is suppressed for the duration; saving happens
+ * on EXITING edit mode, not on pointer-up (the deliberate divergence from
+ * `UnitMapPositionField`'s save-on-pointer-up — see `LodgingMap.tsx`'s own
+ * note on why).
+ */
+describe('LodgingMap — pin dragging (kindred#2396)', () => {
+  /** jsdom performs no layout; the map canvas has to be told its own size,
+   *  matching the 1000×(1000/MAP_ASPECT) fallback the component itself uses
+   *  when a real ResizeObserver never fires. */
+  const RECT_WIDTH = 1000
+  const RECT_HEIGHT = 1000 / (3300 / 2550)
+
+  function mapCanvas(): HTMLElement {
+    const canvas = screen.getByTestId('map-canvas')
+    vi.spyOn(canvas, 'getBoundingClientRect').mockReturnValue({
+      left: 0,
+      top: 0,
+      width: RECT_WIDTH,
+      height: RECT_HEIGHT,
+      right: RECT_WIDTH,
+      bottom: RECT_HEIGHT,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    })
+    return canvas
+  }
+
+  async function enableEditing() {
+    await userEvent.click(screen.getByLabelText('Edit pins'))
+  }
+
+  /** A building with two rooms under one root — the write target must be the
+   *  ROOT (`kindred#2396`'s "one semantic"), never whichever leaf happens to
+   *  be `cluster.members[0]`. Positioned close together so they draw as ONE
+   *  mark, same as `mapModel.test.ts`'s TERRACE fixture. */
+  const TERRACE: LodgingUnitRow[] = [
+    unit({
+      unit_id: 't0',
+      code: 'oak-terrace',
+      name: 'Oak Terrace',
+      is_container: true,
+      map_x: 0.4,
+      map_y: 0.5,
+    }),
+    unit({
+      unit_id: 't1',
+      code: 'oak-a',
+      name: 'Oak A',
+      parent_code: 'oak-terrace',
+      map_x: 0.401,
+      map_y: 0.5,
+    }),
+  ]
+
+  function markStyle(index = 0): { left: string; top: string } {
+    const mark = screen.getAllByTestId('map-mark')[index] as HTMLElement
+    return { left: mark.style.left, top: mark.style.top }
+  }
+
+  /** The payload of the most recent flush — empty if none has landed yet. */
+  function lastFlush(): Array<{ id: string; map_x: number; map_y: number }> {
+    const calls = mockUpdatePositions.mock.calls as Array<
+      [Array<{ id: string; map_x: number; map_y: number }>]
+    >
+    return calls.at(-1)?.[0] ?? []
+  }
+
+  it('offers Edit pins as a sibling of Empty rooms, unchecked at rest', () => {
+    render(<LodgingMap parties={[]} units={UNITS} year={2026} />, { wrapper })
+    const controls = screen.getByRole('group', { name: 'Map controls' })
+    const checkbox = within(controls).getByLabelText<HTMLInputElement>('Edit pins')
+    expect(checkbox).toBeInTheDocument()
+    expect(checkbox.checked).toBe(false)
+  })
+
+  it('closes an open peek the moment Edit pins is switched on', async () => {
+    render(<LodgingMap parties={[PLACED]} units={UNITS} year={2026} />, { wrapper })
+    await userEvent.click(screen.getAllByTestId('map-mark')[0] as HTMLElement)
+    expect(screen.getByText('Cedar 1')).toBeInTheDocument()
+    await enableEditing()
+    expect(screen.queryByText('Cedar 1')).not.toBeInTheDocument()
+  })
+
+  it('suppresses the peek while editing — clicking a mark does not open it', async () => {
+    render(<LodgingMap parties={[PLACED]} units={UNITS} year={2026} />, { wrapper })
+    await enableEditing()
+    await userEvent.click(screen.getAllByTestId('map-mark')[0] as HTMLElement)
+    expect(screen.queryByText('Cedar 1')).not.toBeInTheDocument()
+  })
+
+  it('freezes pan while editing — dragging the canvas background moves no mark', () => {
+    render(<LodgingMap parties={[]} units={UNITS} year={2026} />, { wrapper })
+    const before = markStyle()
+    fireEvent.click(screen.getByLabelText('Edit pins'))
+    const canvas = mapCanvas()
+    fireEvent.pointerDown(canvas, { pointerId: 1, clientX: 300, clientY: 300 })
+    fireEvent.pointerMove(canvas, { pointerId: 1, clientX: 100, clientY: 100 })
+    fireEvent.pointerUp(canvas, { pointerId: 1, clientX: 100, clientY: 100 })
+    expect(markStyle()).toEqual(before)
+  })
+
+  it('freezes zoom while editing — wheeling the canvas changes nothing', () => {
+    render(<LodgingMap parties={[]} units={UNITS} year={2026} />, { wrapper })
+    const before = markStyle()
+    fireEvent.click(screen.getByLabelText('Edit pins'))
+    const canvas = mapCanvas()
+    fireEvent.wheel(canvas, { deltaY: -600 })
+    expect(markStyle()).toEqual(before)
+  })
+
+  it('follows the pointer while dragging a mark, before anything is saved', async () => {
+    render(<LodgingMap parties={[]} units={UNITS} year={2026} />, { wrapper })
+    await enableEditing()
+    mapCanvas()
+    const mark = screen.getAllByTestId('map-mark')[0] as HTMLElement
+    const before = markStyle(0)
+    fireEvent.pointerDown(mark, { pointerId: 1, button: 0, clientX: 700, clientY: 200 })
+    fireEvent.pointerMove(mark, { pointerId: 1, buttons: 1, clientX: 700, clientY: 200 })
+    expect(markStyle(0)).not.toEqual(before)
+    expect(markStyle(0)).toEqual({ left: '700px', top: '200px' })
+    // Not yet written — the ruling saves on EXIT, not on pointer-up.
+    fireEvent.pointerUp(mark, { pointerId: 1, clientX: 700, clientY: 200 })
+    expect(mockUpdatePositions).not.toHaveBeenCalled()
+  })
+
+  it('writes the drag on exiting edit mode, rounded to the field precision', async () => {
+    render(<LodgingMap parties={[]} units={UNITS} year={2026} />, { wrapper })
+    await enableEditing()
+    mapCanvas()
+    const mark = screen.getAllByTestId('map-mark')[0] as HTMLElement
+    fireEvent.pointerDown(mark, { pointerId: 1, button: 0, clientX: 750, clientY: 250 })
+    fireEvent.pointerMove(mark, { pointerId: 1, buttons: 1, clientX: 750, clientY: 250 })
+    fireEvent.pointerUp(mark, { pointerId: 1, clientX: 750, clientY: 250 })
+    expect(mockUpdatePositions).not.toHaveBeenCalled()
+
+    await userEvent.click(screen.getByLabelText('Edit pins'))
+
+    await waitFor(() => expect(mockUpdatePositions).toHaveBeenCalledTimes(1))
+    const updates = lastFlush()
+    expect(updates).toHaveLength(1)
+    expect(updates[0]?.id).toBe('u1')
+    // Expected fractions computed off the same RECT dimensions the drag was
+    // driven against, not hand-picked "nice" numbers — 250/RECT_HEIGHT is
+    // not a round fraction, and pinning a wrong-but-round expectation here
+    // is exactly how a subtly incorrect axis goes unnoticed.
+    expect(updates[0]?.map_x).toBeCloseTo(750 / RECT_WIDTH, 4)
+    expect(updates[0]?.map_y).toBeCloseTo(250 / RECT_HEIGHT, 4)
+    await waitFor(() => expect(mockInvalidateQueries).toHaveBeenCalled())
+  })
+
+  it('writes to the BUILDING`s root, not whichever room the mark happens to draw', async () => {
+    render(<LodgingMap parties={[]} units={TERRACE} year={2026} />, { wrapper })
+    // The two rooms sit close enough to draw as one mark.
+    expect(screen.getAllByTestId('map-mark')).toHaveLength(1)
+    await enableEditing()
+    mapCanvas()
+    const mark = screen.getByTestId('map-mark')
+    fireEvent.pointerDown(mark, { pointerId: 1, button: 0, clientX: 900, clientY: 100 })
+    fireEvent.pointerMove(mark, { pointerId: 1, buttons: 1, clientX: 900, clientY: 100 })
+    fireEvent.pointerUp(mark, { pointerId: 1, clientX: 900, clientY: 100 })
+
+    await userEvent.click(screen.getByLabelText('Edit pins'))
+
+    await waitFor(() => expect(mockUpdatePositions).toHaveBeenCalledTimes(1))
+    // 't0' is the root (Oak Terrace); 't1' is the leaf the cluster could have
+    // named instead had this picked `cluster.members[0]` uncritically.
+    expect(lastFlush().map((update) => update.id)).toEqual(['t0'])
+  })
+
+  it('flushes a pending drag on unmount, not only on the checkbox flipping off', async () => {
+    const { unmount } = render(<LodgingMap parties={[]} units={UNITS} year={2026} />, { wrapper })
+    await enableEditing()
+    mapCanvas()
+    const mark = screen.getAllByTestId('map-mark')[0] as HTMLElement
+    fireEvent.pointerDown(mark, { pointerId: 1, button: 0, clientX: 650, clientY: 150 })
+    fireEvent.pointerMove(mark, { pointerId: 1, buttons: 1, clientX: 650, clientY: 150 })
+    fireEvent.pointerUp(mark, { pointerId: 1, clientX: 650, clientY: 150 })
+    expect(mockUpdatePositions).not.toHaveBeenCalled()
+
+    unmount()
+
+    await waitFor(() => expect(mockUpdatePositions).toHaveBeenCalledTimes(1))
+  })
+
+  it('does not flush anything when edit mode is switched on and off with no drag', async () => {
+    render(<LodgingMap parties={[]} units={UNITS} year={2026} />, { wrapper })
+    await enableEditing()
+    await userEvent.click(screen.getByLabelText('Edit pins'))
+    // No wait needed to prove a negative reliably here — nothing async is in
+    // flight for an edit session that never produced a draft.
+    expect(mockUpdatePositions).not.toHaveBeenCalled()
   })
 })
