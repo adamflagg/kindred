@@ -2403,10 +2403,12 @@ class TestAWriteInIsAddressedByItsUnitAndItsOccupant:
     cabin silently overwrote the first -- live in production on all 118
     units, with no warning anywhere on the path.
 
-    DARK UNTIL STEP 8. `idx_lodging_write_in_unique` still forces at most one
-    live row per (unit, session_cm_id, year), so the second create these
-    tests describe is refused by the schema in production today. What they
-    pin is that the API asks the right question the moment the index moves.
+    LIVE AS OF STEP 8. This read "DARK UNTIL STEP 8 ...
+    `idx_lodging_write_in_unique` still forces at most one live row per
+    (unit, session_cm_id, year)", which `1500000176` -- shipped in this same
+    PR -- makes untrue. The second create these tests describe is now
+    ACCEPTED by the schema, so they pin live behaviour rather than a question
+    the API was asking into a closed door.
     """
 
     @staticmethod
@@ -2528,12 +2530,13 @@ class TestARenameNamesTheRowItIsRenaming:
     address. Collapsing the two would leave the pencil on an unnamed row
     doing the bare rename this class exists to forbid.
 
-    DARK UNTIL STEP 8, and provably: while the unit-grain index stands a
-    rename resolved through the previous name UPDATES the same row the
-    unit-grain recovery in `recover_occupancy` reaches today, so the end state
-    is byte-identical -- one row, the new name on it. What moves is the route
-    (one update instead of create-collide-re-read-update) and the answer when
-    the row is GONE.
+    LIVE AS OF STEP 8. While the unit-grain index stood, a rename resolved
+    through the previous name UPDATED the same row the unit-grain recovery in
+    `recover_occupancy` reached, so the end state was byte-identical -- one
+    row, the new name on it -- and this class was dark. `1500000176` (this
+    PR) removed that equivalence: the recovery is gone, the route is one
+    update rather than create-collide-re-read-update, and a missing row now
+    answers 409 instead of silently creating a second one.
     """
 
     @staticmethod
@@ -4022,18 +4025,19 @@ class TestPushAndUnpushCarryNRowsPerUnit:
     (owner, 2026-08-22) is untouched: it says what to do WHEN there is drift,
     not what counts as drift.
 
-    ⚠️ ITS EFFECT IS HELD BACK TO STEP 8 by a unit-grain bridge beside the
-    narrowed key: the index in the tree is still `(session_cm_id, year,
-    unit)`, so the co-occupant the ruled shape waves through still collides
-    with phase 2's recreate today. The narrowed key is what remains once the
-    bridge goes; see `TestTheDriftGuardStaysConservativeUntilTheIndexNarrows`.
+    ITS EFFECT ARRIVES HERE. This paragraph used to say the effect was "HELD
+    BACK TO STEP 8 by a unit-grain bridge beside the narrowed key" because
+    "the index in the tree is still `(session_cm_id, year, unit)`" -- and
+    step 8 is this PR. The bridge is deleted with `1500000176`, so a
+    co-occupant under another name no longer collides with phase 2's
+    recreate; see `TestTheDriftGuardRefusesExactlyWhatTheNarrowedIndexCollidesOn`.
 
-    `execute_push`'s add-side check is NOT narrowed with it, and that is a
-    sequencing call rather than a disagreement: the Design B ruling names
-    that site too, and it re-keys in the STEP 8 PR. It errs the other way
-    from this one -- unit-grain it refuses MORE than the index requires, and
-    the refusal is a re-preview rather than a half-apply -- so it needs no
-    bridge, only the same landing slot. See its own comment.
+    `execute_push`'s add-side check re-keys in the same step, onto
+    `(unit_id, occupant_name)` -- it was NOT narrowed with this one, which
+    was a sequencing call rather than a disagreement. Keyed on the unit it
+    refused MORE than the index required, which was safe (the refusal is a
+    re-preview rather than a half-apply) but wrong once a cabin may hold two.
+    See its own comment.
 
     Fictional occupant names throughout.
     """
