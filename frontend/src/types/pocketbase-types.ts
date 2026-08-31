@@ -1781,6 +1781,7 @@ export type SyncRunsRecord<Tsub_stats = unknown> = {
   prod_audit_warnings_count?: number
   rejected_count?: number
   service: string
+  session?: string
   skipped_count?: number
   started?: IsoDateString
   status: SyncRunsStatusOptions
