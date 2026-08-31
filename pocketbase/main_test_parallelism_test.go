@@ -125,6 +125,7 @@ var serialGroups = []struct {
 		reason: "t.Setenv: campminder.NewClient reads CAMPMINDER_PRIMARY_KEY",
 		tests: []string{
 			"TestAttendeesLogStatusChangeDryRunWritesNothing",
+			"TestAttendeesOrphanSweep_SurvivesReplay",
 			"TestProcessAssignment_MissingPersonID_IsRejected",
 			"TestProcessAssignment_SaveFailure_IsInfraError",
 			"TestProcessEnrollment_MissingSessionID_IsRejected",
