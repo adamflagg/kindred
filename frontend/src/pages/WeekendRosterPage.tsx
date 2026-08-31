@@ -34,6 +34,7 @@ import { QueryGuard } from '../components/QueryGuard'
 import { TitleSwitcher } from '../components/ui'
 import { Permission } from '../constants/permissions'
 import {
+  CabinWeekendEntry,
   countBoardSlots,
   countMapUnits,
   countUnmeasuredSpaces,
@@ -398,6 +399,13 @@ export default function WeekendRosterPage() {
                 counts={roster.counts ?? {}}
                 spotsNeeded={spotsNeeded}
                 spacesUnmeasured={spacesUnmeasured}
+                attributionChip={
+                  <CabinWeekendEntry
+                    sessionCmId={selectedCmId ?? 0}
+                    weekendLabel={selectedSession ? shortWeekendName(selectedSession.name) : ''}
+                    canManage={canManageLodging}
+                  />
+                }
                 trailing={
                   /* Two entries, one slot. Compare sits BEFORE push: it
                      reports and changes nothing, so it is the safe thing to

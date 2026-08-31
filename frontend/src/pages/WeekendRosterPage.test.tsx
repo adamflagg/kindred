@@ -100,6 +100,17 @@ vi.mock('../hooks/usePushPreview', () => ({
   usePushPreview: () => ({ data: undefined, isPending: false, error: null }),
 }))
 
+// Same reasoning as usePushPreview above: a real useQuery/useMutation here
+// reaches for react-query internals this file's own top-level
+// `@tanstack/react-query` mock does not satisfy. The chip's own behaviour
+// (count derivation, RBAC gate) is pinned in
+// `components/weekend/CabinWeekendEntry.test.tsx`; this file only proves the
+// page threads its own `selectedCmId`/`canManageLodging` into it correctly.
+const attributionQuery = vi.fn()
+vi.mock('../hooks/useSessionAttributionQueue', () => ({
+  useSessionAttributionQueue: () => attributionQuery(),
+}))
+
 vi.mock('../hooks/useUnitMerge', () => ({
   useUnitMerge: () => ({
     setCombined: vi.fn(() => Promise.resolve()),
@@ -281,6 +292,14 @@ beforeEach(() => {
   rosterQuery.data = { year: 2026, session_cm_id: 1000001, parties: [], units: [], counts: {} }
   rosterQuery.isLoading = false
   rosterQuery.error = null
+  attributionQuery.mockReset().mockReturnValue({
+    isLoading: false,
+    error: null,
+    data: [],
+    items: [],
+    confirm: vi.fn(),
+    isConfirming: false,
+  })
 })
 
 describe('header', () => {
@@ -692,6 +711,94 @@ describe('tabs', () => {
     renderPage()
     expect(screen.getByRole('tab', { name: 'Housing (2)' })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: 'Map (1)' })).toBeInTheDocument()
+  })
+})
+
+describe('cabin-weekend attribution chip (kindred#2648 UI half)', () => {
+  // Only proves the page threads its own selectedCmId and canManageLodging
+  // into CabinWeekendEntry correctly — the chip's own count/RBAC logic is
+  // unit-tested in CabinWeekendEntry.test.tsx.
+  it('shows the chip when the queue has a row for the selected weekend', () => {
+    attributionQuery.mockReturnValue({
+      isLoading: false,
+      error: null,
+      data: [
+        {
+          id: 'q1',
+          rawValue: 'Ridge I',
+          sourceField: 'Family Camp Cabin',
+          householdCmId: 2000001,
+          personCmId: 0,
+          occurrences: 1,
+          firstSeen: '',
+          lastSeen: '',
+          resolvedUnitNames: [],
+          candidates: [{ sessionCmId: 1000001, short: 'FC1', dateRange: '', isSuggested: true }],
+          isStale: false,
+        },
+      ],
+      items: [],
+      confirm: vi.fn(),
+      isConfirming: false,
+    })
+    renderPage('1000001')
+    expect(screen.getByRole('button', { name: /1 cabin needs a weekend/i })).toBeInTheDocument()
+  })
+
+  it('does not show the chip for a row belonging to a different weekend', () => {
+    attributionQuery.mockReturnValue({
+      isLoading: false,
+      error: null,
+      data: [
+        {
+          id: 'q1',
+          rawValue: 'Ridge I',
+          sourceField: 'Family Camp Cabin',
+          householdCmId: 2000001,
+          personCmId: 0,
+          occurrences: 1,
+          firstSeen: '',
+          lastSeen: '',
+          resolvedUnitNames: [],
+          candidates: [{ sessionCmId: 1000002, short: 'WOMENS', dateRange: '', isSuggested: true }],
+          isStale: false,
+        },
+      ],
+      items: [],
+      confirm: vi.fn(),
+      isConfirming: false,
+    })
+    renderPage('1000001')
+    expect(screen.queryByRole('button', { name: /need.*a weekend/i })).not.toBeInTheDocument()
+  })
+
+  it('hides the chip for a user without bunking.manage', () => {
+    isAdmin = false
+    permissions = new Set()
+    attributionQuery.mockReturnValue({
+      isLoading: false,
+      error: null,
+      data: [
+        {
+          id: 'q1',
+          rawValue: 'Ridge I',
+          sourceField: 'Family Camp Cabin',
+          householdCmId: 2000001,
+          personCmId: 0,
+          occurrences: 1,
+          firstSeen: '',
+          lastSeen: '',
+          resolvedUnitNames: [],
+          candidates: [{ sessionCmId: 1000001, short: 'FC1', dateRange: '', isSuggested: true }],
+          isStale: false,
+        },
+      ],
+      items: [],
+      confirm: vi.fn(),
+      isConfirming: false,
+    })
+    renderPage('1000001')
+    expect(screen.queryByRole('button', { name: /need.*a weekend/i })).not.toBeInTheDocument()
   })
 })
 
