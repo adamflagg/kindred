@@ -294,7 +294,7 @@ var serialGroups = []struct {
 	},
 	{
 		pkg:    "sync",
-		reason: "t.Setenv: CAMPMINDER_PRIMARY_KEY (campminder.NewClient) builds the boot-time client the historical re-registration test compares against",
+		reason: "t.Setenv: CAMPMINDER_PRIMARY_KEY (campminder.NewClient) builds the boot-time client",
 		tests: []string{
 			"TestRunSyncWithOptionsHistoricalReRegistersScopedFamilyCampVariants",
 		},
