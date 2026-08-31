@@ -1569,9 +1569,19 @@ describe('LodgingMap — pin dragging (kindred#2396)', () => {
     fireEvent.click(screen.getByLabelText('Edit pins'))
     const mark = screen.getAllByTestId('map-mark')[0] as HTMLElement
     const beforeMark = markStyle(0)
+    // The move lands well past DRAG_THRESHOLD_PX from the down point, and
+    // LEFT/UP — both load-bearing, not incidental. Past-threshold: if
+    // propagation from the mark ever stopped discriminating (e.g. the mark's
+    // own `stopPropagation()` regressed), a move that never left its
+    // starting point could never expose that, because the canvas's own pan
+    // only activates past that same threshold. Left/up: a rightward or
+    // downward drag wants a positive tx/ty, which `clampView` clamps straight
+    // back to 0 at this zoom regardless of whether a pan actually ran — the
+    // same vacuous-assertion trap the background-drag test above avoids the
+    // same way.
     fireEvent.pointerDown(mark, { pointerId: 1, button: 0, clientX: 700, clientY: 200 })
-    fireEvent.pointerMove(mark, { pointerId: 1, buttons: 1, clientX: 700, clientY: 200 })
-    fireEvent.pointerUp(mark, { pointerId: 1, clientX: 700, clientY: 200 })
+    fireEvent.pointerMove(mark, { pointerId: 1, buttons: 1, clientX: 650, clientY: 140 })
+    fireEvent.pointerUp(mark, { pointerId: 1, clientX: 650, clientY: 140 })
     // The pin moved...
     expect(markStyle(0)).not.toEqual(beforeMark)
     // ...but the map underneath it did not. This is the whole distinction
