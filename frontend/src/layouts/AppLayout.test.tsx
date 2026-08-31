@@ -44,7 +44,10 @@ vi.mock('../contexts/ProgramContext', () => ({
 const syncStatusSpy = vi.fn((_opts?: unknown): { data: SyncStatusResponse | null } => ({
   data: null,
 }))
-vi.mock('../hooks/useSyncStatusAPI', () => ({
+// Only the HOOK is faked; `weekendHousingSyncedAt` comes through real so the
+// nav's freshness line is exercised against the shared calculation, not a stub.
+vi.mock('../hooks/useSyncStatusAPI', async (importActual) => ({
+  ...(await importActual<typeof import('../hooks/useSyncStatusAPI')>()),
   useSyncStatusAPI: (...args: unknown[]) => syncStatusSpy(...args),
 }))
 
@@ -502,6 +505,15 @@ describe('AppLayout weekend freshness stack', () => {
           start_time: housingIso,
           summary: { created: 1, updated: 2, skipped: 0, errors: 0 },
         },
+        // The nav's "Housing synced" line dates from the job that PULLS from
+        // CampMinder, not the year-wide transform above (kindred#2601). No
+        // `session` here means the run covered every weekend — the nightly
+        // cron's shape, and the one that keeps a timestamp available.
+        household_custom_values_family_camp: {
+          status: 'success',
+          end_time: housingIso,
+          start_time: housingIso,
+        },
         _bunk_requests_upload: {
           filename: 'BunkRequests_2026-04-04.csv',
           uploaded_at: uploadedAt,
@@ -519,7 +531,10 @@ describe('AppLayout weekend freshness stack', () => {
     // `session?.session_type === 'adult'`, so an unresolved session and a
     // family session are indistinguishable on that flag alone. These tests
     // mean "a family weekend, loaded", which is this.
-    mockWeekendShell = { session: { session_type: 'family' }, isAdultWeekend: false }
+    mockWeekendShell = {
+      session: { session_type: 'family', session_cm_id: 900 },
+      isAdultWeekend: false,
+    }
     mockWeekendSyncStatus()
   })
 
@@ -540,10 +555,32 @@ describe('AppLayout weekend freshness stack', () => {
     expect(screen.getByTestId('bunk-requests-upload')).toBeInTheDocument()
   })
 
-  it('renders "Housing synced ..." off lodging_assignments', () => {
+  it('renders "Housing synced ..." off THIS weekend\'s CampMinder pull', () => {
     renderAppLayout('/weekend/fc4')
     const label = screen.getByText(/Housing synced/)
     expect(label.textContent).toMatch(/ago/)
+  })
+
+  /**
+   * 🚨 The nav line and the Refresh Housing modal are inches apart and must
+   * never disagree — one claiming two minutes while the other goes quiet is
+   * worse than either alone. Both read `weekendHousingSyncedAt`.
+   *
+   * A run scoped to ANOTHER weekend says nothing about this one, and the single
+   * status slot cannot say how much older this weekend is, so the line is
+   * withheld rather than borrowed (kindred#2601, kindred#2617).
+   */
+  it('withholds "Housing synced" when the last run was another weekend\'s', () => {
+    mockWeekendSyncStatus({
+      household_custom_values_family_camp: {
+        status: 'success',
+        end_time: housingIso,
+        start_time: housingIso,
+        session: '999999',
+      },
+    } as Partial<SyncStatusResponse>)
+    renderAppLayout('/weekend/fc4')
+    expect(screen.queryByText(/Housing synced/)).not.toBeInTheDocument()
   })
 
   it('renders "Bunk notes uploaded ..." off the CSV upload timestamp (#2570)', () => {
@@ -589,6 +626,10 @@ describe('AppLayout weekend freshness stack', () => {
     syncStatusSpy.mockImplementation(() => ({
       data: {
         lodging_assignments: { status: 'success', end_time: housingIso },
+        // Present so the housing line still renders — this test is about the
+        // BUNK NOTES line, and housing is scaffolding for it. Unscoped, so it
+        // dates every weekend (kindred#2601).
+        household_custom_values_family_camp: { status: 'success', end_time: housingIso },
         bunk_requests: { status: 'success', end_time: housingIso },
       } as SyncStatusResponse,
     }))
@@ -631,7 +672,10 @@ describe('AppLayout adult weekend', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockPerms = { hasPermission: (p: string) => p === 'bunking.manage', isAdmin: false }
-    mockWeekendShell = { session: { session_type: 'adult' }, isAdultWeekend: true }
+    mockWeekendShell = {
+      session: { session_type: 'adult', session_cm_id: 901 },
+      isAdultWeekend: true,
+    }
     syncStatusSpy.mockImplementation(() => ({
       data: {
         lodging_assignments: { status: 'success', end_time: '2026-04-22T12:00:00.000Z' },
@@ -673,7 +717,10 @@ describe('AppLayout Refresh Housing', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockPerms = { hasPermission: (p: string) => p === 'bunking.manage', isAdmin: false }
-    mockWeekendShell = { session: { session_type: 'family' }, isAdultWeekend: false }
+    mockWeekendShell = {
+      session: { session_type: 'family', session_cm_id: 900 },
+      isAdultWeekend: false,
+    }
     syncStatusSpy.mockImplementation(() => ({
       data: {
         lodging_assignments: { status: 'success', end_time: '2026-04-22T12:00:00.000Z' },
@@ -690,7 +737,10 @@ describe('AppLayout Refresh Housing', () => {
   })
 
   it('is hidden on an adult weekend — the chain would refresh nothing (§5.1)', () => {
-    mockWeekendShell = { session: { session_type: 'adult' }, isAdultWeekend: true }
+    mockWeekendShell = {
+      session: { session_type: 'adult', session_cm_id: 901 },
+      isAdultWeekend: true,
+    }
     renderAppLayout('/weekend/ww')
     expect(screen.queryByRole('button', { name: /Refresh Housing/i })).not.toBeInTheDocument()
     // The CSV lane is program-agnostic and stays.

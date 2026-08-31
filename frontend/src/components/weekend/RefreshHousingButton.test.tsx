@@ -23,7 +23,11 @@ import { queryKeys } from '../../utils/queryKeys'
  * used to synthesise an advancing `dataUpdatedAt` by hand for the same reason,
  * and no longer has to model the query layer at all.
  */
-vi.mock('../../hooks/useSyncStatusAPI', () => ({
+// Only the HOOK is faked. `weekendHousingSyncedAt` comes through REAL, because
+// the freshness tests below assert its actual behaviour — a stub would make them
+// assert the stub (kindred#2601).
+vi.mock('../../hooks/useSyncStatusAPI', async (importActual) => ({
+  ...(await importActual<typeof import('../../hooks/useSyncStatusAPI')>()),
   useSyncStatusAPI: (opts?: { enabled?: boolean }) =>
     useQuery({
       queryKey: queryKeys.syncStatus(),

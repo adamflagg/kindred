@@ -40,7 +40,7 @@ import { formatDistanceToNow } from 'date-fns'
 import { Modal } from '../ui'
 import { syncService } from '../../services/sync'
 import { useApiWithAuth } from '../../hooks/useApiWithAuth'
-import { useSyncStatusAPI } from '../../hooks/useSyncStatusAPI'
+import { useSyncStatusAPI, weekendHousingSyncedAt } from '../../hooks/useSyncStatusAPI'
 import { FAMILY_CAMP_REFRESH_CHAIN, useSyncSequenceRun } from '../../hooks/useSyncSequenceRun'
 import { invalidateLodgingRegistryQueries, queryKeys } from '../../utils/queryKeys'
 
@@ -128,39 +128,9 @@ export function RefreshHousingButton({ session }: RefreshHousingButtonProps) {
     )
   }
 
-  /**
-   * When CampMinder was last read FOR THIS WEEKEND, or undefined when that
-   * cannot be answered (kindred#2601).
-   *
-   * ## Why the custom-values job and not `lodging_assignments`
-   *
-   * The sentence below is about how current the ANSWERS are, so its source has
-   * to be the job that pulls them from CampMinder. `lodging_assignments` is a
-   * year-wide TRANSFORM: it runs on every press whatever weekend was fetched,
-   * so dating the copy from it reported a season-wide event as this weekend's.
-   * That is what made the old copy wrong once the press stopped covering the
-   * whole season.
-   *
-   * ## Why it can be undefined
-   *
-   * `Status.Session` names the weekend a run was started for, and an ABSENT
-   * session means it covered every weekend (the nightly cron). So:
-   *
-   *   unscoped run   -> covered this weekend  -> its end_time is correct here
-   *   scoped to us   -> correct here
-   *   scoped to another weekend -> this weekend is OLDER, and by how much is
-   *                                unknowable: the status keeps one slot per
-   *                                job, so the cron run that did cover us has
-   *                                already been overwritten.
-   *
-   * In that last case the honest answer is silence. Showing the other weekend's
-   * timestamp is the defect; inventing a different number would be worse. A
-   * durable per-weekend sync time is kindred#2617.
-   */
-  const housingSync = syncStatus?.household_custom_values_family_camp
-  const syncedSession = housingSync?.session
-  const coversThisWeekend = !syncedSession || syncedSession === String(session.session_cm_id)
-  const lastSynced = coversThisWeekend ? housingSync?.end_time : undefined
+  // Shared with the nav's "Housing synced" line — see weekendHousingSyncedAt for
+  // why the source is the custom-values job and why undefined is a real answer.
+  const lastSynced = weekendHousingSyncedAt(syncStatus, session.session_cm_id)
 
   return (
     <>

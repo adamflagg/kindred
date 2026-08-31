@@ -44,6 +44,46 @@ export interface CurrentRunProgress {
   remaining_jobs: string[] | null
 }
 
+/**
+ * When CampMinder was last read for ONE family-camp weekend, or undefined when
+ * that cannot be answered (kindred#2601).
+ *
+ * ONE CALCULATION, BOTH SURFACES — the nav's "Housing synced" line and the
+ * Refresh Housing modal. They sit inches apart on the same screen, so a
+ * divergence here is immediately self-contradicting: one going quiet while the
+ * other claims two minutes is worse than either alone.
+ *
+ * ## Why the custom-values job, not `lodging_assignments`
+ *
+ * The question is how current the ANSWERS are, so the source must be the job
+ * that pulls them from CampMinder. `lodging_assignments` is a year-wide
+ * TRANSFORM that runs on every press whatever weekend was fetched — dating
+ * freshness from it reported a season-wide event as one weekend's, which is
+ * exactly what broke when the press stopped covering the whole season.
+ *
+ * ## Why undefined is a real answer
+ *
+ * An ABSENT `session` means the run covered every weekend (the nightly cron):
+ *
+ *   unscoped run              -> covered this weekend, time is correct here
+ *   scoped to this weekend    -> correct here
+ *   scoped to another weekend -> this weekend is OLDER by an unknowable amount
+ *
+ * The status keeps one slot per job, so in the third case the cron run that DID
+ * cover this weekend has already been overwritten. Silence is the only honest
+ * answer; a durable per-weekend time is kindred#2617.
+ */
+export function weekendHousingSyncedAt(
+  syncStatus: SyncStatusResponse | null | undefined,
+  sessionCmId: number | undefined
+): string | undefined {
+  const run = syncStatus?.household_custom_values_family_camp
+  if (run?.end_time === undefined || sessionCmId === undefined) return undefined
+  const runSession = run.session
+  if (runSession && runSession !== String(sessionCmId)) return undefined
+  return run.end_time
+}
+
 export interface SyncStatus {
   status: 'idle' | 'running' | 'success' | 'failed' | 'pending'
   start_time?: string

@@ -28,7 +28,7 @@ import { BrandedLogo } from '../components/BrandedLogo'
 import { useYear } from '../hooks/useCurrentYear'
 import { usePermissions } from '../hooks/usePermissions'
 import { Permission } from '../constants/permissions'
-import { useSyncStatusAPI } from '../hooks/useSyncStatusAPI'
+import { useSyncStatusAPI, weekendHousingSyncedAt } from '../hooks/useSyncStatusAPI'
 import { useWeekendShellSession } from '../hooks/useWeekendShellSession'
 import { useSyncSequenceRun, BUNKING_REFRESH_CHAIN } from '../hooks/useSyncSequenceRun'
 import { RefreshHousingButton } from '../components/weekend/RefreshHousingButton'
@@ -80,9 +80,12 @@ function buildSyncTooltip(kind: string, status: SyncStatus): string {
 function WeekendFreshness({
   syncStatus,
   isAdultWeekend,
+  sessionCmId,
 }: {
   syncStatus: SyncStatusResponse
   isAdultWeekend: boolean
+  /** The weekend on screen. Freshness is per-weekend (kindred#2601). */
+  sessionCmId: number | undefined
 }) {
   // HIDDEN ON ADULT WEEKENDS (kindred#2478 §5.1).
   // `GetFamilyCampSessionCMIDs` filters `session_type = 'family'` exactly, so
@@ -91,7 +94,16 @@ function WeekendFreshness({
   // rewriting adult rows from custom values up to SEVEN DAYS old. A line
   // reading "Housing synced 11h ago" on an adult weekend is true about the JOB
   // and false about the DATA.
-  const housingSyncedAt = isAdultWeekend ? undefined : syncStatus.lodging_assignments?.end_time
+  // ⚠️ NOT `lodging_assignments` any more, and not this weekend's business to
+  // re-derive: `weekendHousingSyncedAt` is the SAME calculation the Refresh
+  // Housing modal uses. The two sit inches apart, so a divergence would be
+  // self-contradicting on one screen — one going quiet while the other claims
+  // two minutes (kindred#2601). It returns undefined when the last run belonged
+  // to a DIFFERENT weekend, which is the honest answer rather than a missing
+  // feature; kindred#2617 makes a real number available there.
+  const housingSyncedAt = isAdultWeekend
+    ? undefined
+    : weekendHousingSyncedAt(syncStatus, sessionCmId)
   const upload = syncStatus._bunk_requests_upload
 
   // No empty row: with neither half to show there is nothing to lay out.
@@ -580,6 +592,7 @@ export const AppLayout = () => {
                 <WeekendFreshness
                   syncStatus={syncStatus}
                   isAdultWeekend={isAdultWeekend || !weekendSession}
+                  sessionCmId={weekendSession?.session_cm_id}
                 />
               )}
               {/*
