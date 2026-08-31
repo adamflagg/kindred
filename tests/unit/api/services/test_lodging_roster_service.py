@@ -5156,11 +5156,17 @@ class TestUnitStepFreeCoverage:
     @pytest.mark.asyncio
     async def test_a_ramp_that_did_not_make_the_cabin_accessible_grades_none(self) -> None:
         """THE THREE DIVERGENT PRODUCTION ROWS, and the direction the reversal
-        moves them. `ridge-f`, `ridge-g` and `river-i` record `has_ramp = 'yes'`
-        with `is_accessible = 0` -- the owner's "weird house": a ramp reaches
-        the door and the cabin is not accessible inside. Grading from
+        moves them. Three 2026 rows record `has_ramp = 'yes'` with
+        `is_accessible = 0` -- the owner's "weird house": a ramp reaches the
+        door and the cabin is not accessible inside. Grading from
         `is_accessible` is the CONSERVATIVE answer for all three, and the
-        subset measurement proves no row can ever move the other way."""
+        subset measurement proves no row can ever move the other way.
+
+        The three codes are NOT named here because THE REGISTRY IS DATA, NOT
+        CODE (spec 3.8) -- the rule `verify-no-hardcoded-lodging.sh` enforces,
+        not merely the extensions it happens to scan. They live in the registry
+        and are described in `docs/reference/lodging-registry.md`, which is
+        where a staff-facing reconciliation list belongs."""
         repo = _repo(
             fetch_session=FAMILY_SESSION,
             fetch_units=[_unit("u1", "ridge-1", "Ridge 1", sleeps=4, has_ramp="yes", is_accessible=False)],
@@ -5182,6 +5188,34 @@ class TestUnitStepFreeCoverage:
         roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
 
         assert roster.units[0].ramp_coverage == "none"
+
+    @pytest.mark.asyncio
+    async def test_an_unrecognised_ramp_value_is_railed_to_not_assessed(self) -> None:
+        """`_ramp_assessment`'s railing, pinned DIRECTLY — kindred#2327 moved
+        the grade off `has_ramp` but left the field on the wire as provenance,
+        and this is what keeps that payload honest.
+
+        PocketBase validates the select on save, so this state does not arrive
+        through the registry loader. It pins the two directions that CAN produce
+        it: a later migration widening the value list, and a record built before
+        the column existed.
+
+        ⚠️ WITHOUT THIS TEST THE RAILING HAS NO PIN. The version of it that
+        lived here before kindred#2327 also asserted `ramp_coverage == "unknown"`
+        — which the reversal made meaningless, since the grade no longer reads
+        `has_ramp` at all — and it was deleted with the rest of that class.
+        Removing the railing then fails only `test_lodging_endpoints.py`'s
+        medical-permission test, with an opaque pydantic `ValidationError` whose
+        name gives no clue what broke. The assertion below is the one that names
+        the rule.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[_unit("u1", "ridge-1", "Ridge 1", sleeps=4, has_ramp="Yes, but a lip")],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.units[0].has_ramp == ""
 
     @pytest.mark.asyncio
     async def test_a_blank_ramp_no_longer_hides_an_accessible_room(self) -> None:

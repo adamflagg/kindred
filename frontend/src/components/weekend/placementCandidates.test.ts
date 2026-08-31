@@ -614,16 +614,20 @@ describe('candidateFit — one grading, and the notes the glyphs now carry (kind
     expect(result.fit).toBe('unmet')
   })
 
-  it('grades step-free, and SOME rooms is worse than none for it', () => {
+  it('grades step-free with NO softer rung — SOME is no better than none', () => {
     // The `is_accessible` shape: a building advertising two step-free rooms
     // out of ten invites precisely the placement that lands in one of the
-    // other eight.
+    // other eight. So step-free's `someIs` is `'unmet'`, not `'partial'`: a
+    // ramp one room over is not a ramp, where a fridge one room over is a
+    // fridge.
     //
-    // ⚠️ THE `partial` ARM THAT USED TO SIT HERE IS GONE, not softened.
-    // kindred#2327 moved step-free onto the boolean `is_accessible`, so a
-    // cabin can no longer REPORT `partial` as its coverage — "a qualified ramp
-    // means no" (owner, 2026-08-27). The `partial` VERDICT still exists and is
-    // still exercised, by power and fridge, whose `someIs` returns it.
+    // ⚠️ THE TITLE SAYS WHAT THESE TWO LINES ACTUALLY PIN. It used to read
+    // "SOME rooms is worse than none for it", which was carried by an arm that
+    // kindred#2327 deleted — `ramp_coverage: 'partial'` graded `'partial'`, so
+    // `some` really was worse than something. A cabin cannot REPORT `partial`
+    // now ("a qualified ramp means no", owner 2026-08-27), so both step-free
+    // grades below land on the SAME verdict, and a title promising an ordering
+    // between them describes a test that no longer exists.
     expect(
       candidateFit(party({ flags: { needs_step_free: true } }), unit({ ramp_coverage: 'some' }), [])
         .fit
@@ -632,6 +636,15 @@ describe('candidateFit — one grading, and the notes the glyphs now carry (kind
       candidateFit(party({ flags: { needs_step_free: true } }), unit({ ramp_coverage: 'none' }), [])
         .fit
     ).toBe('unmet')
+  })
+
+  it('still has a softer rung for the needs that DO carry one', () => {
+    // The contrast that stops the test above from being vacuous. If `some`
+    // graded `unmet` on every dimension, both assertions there would pass with
+    // `someIs` deleted outright. Power's `someIs: 'partial'` is what proves
+    // step-free's `'unmet'` is a CHOICE — and it is the surviving home of the
+    // `partial` VERDICT, which kindred#2327 kept while removing `partial` as a
+    // coverage a cabin can report.
     expect(
       candidateFit(party({ flags: { needs_power: true } }), unit({ power_coverage: 'some' }), [])
         .fit

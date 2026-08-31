@@ -201,11 +201,29 @@ def _ramp_assessment(value: str) -> RampAssessment:
     and PB validates that on save, so `registry.go`'s write of a typo'd value
     fails the save rather than persisting it. This rails two OTHER directions,
     both real. A later migration may WIDEN the value list -- that is how a
-    select grows -- and a grade this code has never heard of must read as NOT
-    ASSESSED rather than fall through `ramp_coverage`'s chain to `none`, which
-    is a claim. And `_s` is total over a record that lacks the attribute
-    entirely, which is what a summary built before the column existed looks
-    like.
+    select grows -- and a value this code has never heard of must not be
+    published as though it were one of the three. And `_s` is total over a
+    record that lacks the attribute entirely, which is what a summary built
+    before the column existed looks like.
+
+    ⚠️ THE OLD REASON IS SPENT, AND THE RAILING IS NOT. This used to argue that
+    an unrecognised grade would otherwise "fall through `ramp_coverage`'s chain
+    to `none`, which is a claim". Since kindred#2327 there is no such chain:
+    `ramp_coverage()` is deleted and NOTHING grades from `has_ramp` at all. What
+    the railing still buys is the PAYLOAD's type contract -- `RampAssessment` is
+    a closed Literal, and publishing an unlisted string through it would put a
+    value in the wire type that the schema says cannot occur. Removing the
+    railing does not fail loudly: it raises a pydantic `ValidationError` deep
+    inside `build_roster`, which 500s the roster endpoint.
+
+    ⚠️ AND UNDER THE FIELD'S NEW ROLE THE RAILING CUTS THE OTHER WAY, SO WIDEN
+    BOTH OR NEITHER. `has_ramp` is provenance now -- the record of the 14 cabins
+    staff walked. If a later migration adds a fourth grade and this tuple is not
+    widened WITH it, a genuine staff assessment is silently rewritten to `""` =
+    NOT ASSESSED in the very payload that exists to preserve it. That is a
+    quieter failure than the 500 above and a worse one. `RampAssessment` in
+    `api/schemas/lodging.py` and this tuple are one list in two places; a
+    migration touching `has_ramp`'s values must move both.
 
     Blank already means NOT ASSESSED -- 104 of the 118 production rows are
     blank -- and coercing either case to "no" is the inversion the select

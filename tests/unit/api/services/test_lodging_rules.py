@@ -13,11 +13,13 @@ module docstring of api/services/lodging_rules.py for why re-parsing them in
 Python would regress two fixes that live only on the Go side.
 """
 
+import itertools
 from types import SimpleNamespace
-from typing import ClassVar
+from typing import ClassVar, get_args
 
 import pytest
 
+from api.schemas.lodging import AmenityCoverage
 from api.services import lodging_rules
 from api.services.lodging_rules import (
     BUNKING_CSV_REQUEST_TEXT_FIELDS,
@@ -335,9 +337,39 @@ class TestRampCoverageIsDeleted:
 
     def test_the_bool_grain_is_the_only_coverage_grader_left(self) -> None:
         """`amenity_coverage` never returns `partial`, on any input it can be
-        handed. The step-free dimension has no grade of its own now."""
-        assert set(lodging_rules.AMENITY_COVERAGE_VALUES) == {"all", "some", "none", "unknown"}
-        assert "partial" not in lodging_rules.AMENITY_COVERAGE_VALUES
+        handed. The step-free dimension has no grade of its own now.
+
+        ⚠️ THIS EXERCISES THE FUNCTION, NOT A CONSTANT BESIDE IT. An earlier
+        version of this test asserted only
+        `set(AMENITY_COVERAGE_VALUES) == {...}` -- a module-level literal tuple
+        compared against itself, which `amenity_coverage` does not consult and
+        no production code reads. It passed with the grader returning
+        `"partial"`, so it pinned the deletion it was written to pin exactly not
+        at all. The domain below is EXHAUSTIVE over what a caller can hand this
+        function: every room answers `True`, `False` or `None`, and
+        `_resolve_amenity_coverage` passes at most one entry per answering leaf.
+        """
+        domain: list[bool | None] = [True, False, None]
+        seen: set[str] = set()
+        for length in range(4):
+            for combo in itertools.product(domain, repeat=length):
+                grade = amenity_coverage(list(combo))
+                assert grade != "partial", f"{combo!r} graded partial"
+                assert grade in lodging_rules.AMENITY_COVERAGE_VALUES, f"{combo!r} -> {grade!r}"
+                seen.add(grade)
+
+        # ...and all four grades are genuinely reachable, so the assertion
+        # above is not passing merely because the domain is too narrow.
+        assert seen == {"all", "some", "none", "unknown"}
+
+    def test_the_wire_vocabulary_matches_the_grader(self) -> None:
+        """The CONTRACT the frontend generates its union from. `AmenityCoverage`
+        in `api/schemas/lodging.py` is what reaches `types.gen.ts`, and
+        `ramp_coverage` is typed as it since kindred#2327 -- so re-widening it
+        to hold `partial` again would put a fifth grade back on the wire that
+        this module can no longer produce."""
+        assert set(get_args(AmenityCoverage)) == set(lodging_rules.AMENITY_COVERAGE_VALUES)
+        assert "partial" not in get_args(AmenityCoverage)
 
 
 class TestRequestTextSourceRegistry:

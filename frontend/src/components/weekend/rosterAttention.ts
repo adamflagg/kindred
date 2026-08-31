@@ -190,16 +190,19 @@ function representingCards(
  * THE RESOLVED GRADES, ORDERED WORST FIRST, and the order is the whole content
  * of the roll-up below — so it is worth saying why it is this one.
  *
- * It is a ladder of how much of the space provides the thing: nothing,
- * nothing answered, some rooms, a qualified answer, all of it. Ordered that
- * way the
- * fold is exactly `needVerdict`'s worst case over the cards — checked pair by
- * pair, the fold's verdict is never softer than the loudest card's, including
- * the two pairs that are not obvious: `unknown` beats `some` because an
- * unmeasured room grades `unmet` while `some` may grade `partial`. (The
- * `unknown`-beats-`partial` pair went with the `partial` COVERAGE rung under
- * kindred#2327; `partial` survives only as a VERDICT `someIs` returns for
- * power and fridge, which no card reports as a grade.)
+ * It is a ladder of how much of the space provides the thing: nothing, nothing
+ * answered, some rooms, all of it — FOUR rungs, not five. Ordered that way the
+ * fold is exactly `needVerdict`'s worst case over the cards: checked pair by
+ * pair, the fold's verdict is never softer than the loudest card's.
+ *
+ * ONE PAIR IS NOT OBVIOUS, and it is the reason a later reader must not sort
+ * this alphabetically or by "severity": `unknown` beats `some`, because an
+ * unmeasured room grades `unmet` while `some` may grade `partial`.
+ *
+ * There used to be a second such pair, `unknown` beats `partial`. It went with
+ * the `partial` COVERAGE rung under kindred#2327; `partial` survives only as a
+ * VERDICT `someIs` returns for power and fridge, which no card reports as a
+ * grade.
  *
  * ⚠️ THAT HOLDS FOR THE GLYPH READING, WHICH IS THE ONLY ONE `needVerdict`
  * HAS since 2026-08-21. The drag-time state no longer reads `unknown` at all

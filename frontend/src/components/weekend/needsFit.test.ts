@@ -182,6 +182,43 @@ describe('resolveDragFit — capacity gates the match and never causes a conflic
   })
 })
 
+describe('resolveDragFit — a cabin that is not accessible DOES hatch (kindred#2327)', () => {
+  it('hatches a step-free household against a cabin graded `none`', () => {
+    /*
+     * ⚠️ THE HEADLINE BEHAVIOUR OF kindred#2327, AND IT WAS PINNED NOWHERE IN
+     * THIS SUITE. Step-free used to grade from the mostly-blank `has_ramp`, so
+     * 102 of 118 cabins resolved `unknown` and rule 2 below withheld the hatch
+     * on almost all of them. It grades from the boolean `is_accessible` now, so
+     * those cabins report `none` — a recorded fact — and `none` is a conflict.
+     * A step-free household's hatched cabins move from 10 of 118 to 115 of 118.
+     *
+     * Every other `needs_step_free` case in this file uses
+     * `ramp_coverage: 'unknown'`, so adding a `coverage === 'none'` intercept to
+     * `resolveDragFit` would silently revert the whole change with a green
+     * suite. `candidateFit` covers the same grade on a DIFFERENT code path;
+     * this is the drag path.
+     */
+    const fit = resolveDragFit(
+      party({ flags: { needs_step_free: true } }),
+      unit({ ramp_coverage: 'none' }),
+      { known: true, free: 6 }
+    )
+    expect(fit.state).toBe('conflict')
+    expect(fit.severity).toBe('unmet')
+  })
+
+  it('still hatches when the cabin has room to spare', () => {
+    // Capacity gates the MATCH, never the conflict — rule 3. A not-accessible
+    // cabin is a bad cabin whether or not it is a full one.
+    expect(
+      resolveDragFit(party({ flags: { needs_step_free: true } }), unit({ ramp_coverage: 'none' }), {
+        known: true,
+        free: 99,
+      }).state
+    ).toBe('conflict')
+  })
+})
+
 describe('resolveDragFit — unrecorded coverage makes NEITHER claim', () => {
   it('does not hatch a cabin nobody has assessed', () => {
     // The hatch is an INTERRUPTION, so its bar is evidence of absence rather
