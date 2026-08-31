@@ -46,6 +46,7 @@ from api.services.lodging_write_service import (
     PushNotFoundError,
     ScenarioNotEmptyError,
     UnpushDriftError,
+    WriteInNameTakenError,
     WriteInRenameConflictError,
 )
 from bunking.auth_middleware import AuthUser, get_current_user
@@ -366,6 +367,16 @@ async def set_availability(
         # saying the row moved and to reopen the card (owner, 2026-08-29:
         # staff each work their own weekend async, so this fires essentially
         # never and buys correctness rather than a conflict UI).
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except WriteInNameTakenError as exc:
+        # kindred#2583 step 8 (raised by #2642's scan). The swap RESOLVED --
+        # the row is where the card said it was -- and the index refused the
+        # new name because the co-occupant beside it already holds it. 409 for
+        # the same reason the rename conflict above is one: the request is
+        # well formed and the state, not the input, is what refuses it. The
+        # message names the taken name because the remedy is to choose another
+        # one, which a bare "Invalid request" (what `pb_error_to_http` renders
+        # a raw PocketBase 400 as) gives staff no way to reach.
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 

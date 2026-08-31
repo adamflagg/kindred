@@ -46,6 +46,12 @@ const (
 // is not optional at these lengths.
 var jsConcat = regexp.MustCompile(`'\s*\+\s*'`)
 
+// commentFold collapses a JSDoc line break -- newline, leading spaces and
+// the continuation asterisk -- plus any run of whitespace, into one space,
+// so an assertion about what a header CLAIMS cannot be defeated by
+// re-wrapping the paragraph it claims it in (kindred#2642 scan).
+var commentFold = regexp.MustCompile(`\s*\n\s*\*?\s*|\s+`)
+
 func readMigration(t *testing.T, path string) string {
 	t.Helper()
 	content, err := os.ReadFile(path)
@@ -200,12 +206,50 @@ func TestWriteInIndexMigrationDocumentsItsOneWayDownPath(t *testing.T) {
 // the same PR that makes it wrong.
 func TestTombstoneReasoningNoLongerCitesAWriteBlockThatCannotHappen(t *testing.T) {
 	body := readMigration(t, "pb_migrations/1500000173_lodging_write_in_pushes.js")
-	if strings.Contains(body, "blocks staff from\n * ever writing that unit again for the weekend") {
-		t.Errorf("1500000173's header still argues from a unit-grain write block that " +
-			"kindred#2583 step 8 removed; correct the reason, keep the answer")
+
+	// ⚠️ NORMALISE THE COMMENT FOLD BEFORE MATCHING (kindred#2642 scan).
+	// This used to search for the old text at its exact 80-column wrap --
+	// "blocks staff from\n * ever writing that unit again for the weekend".
+	// Nothing pins that fold (prettier is not configured for pb_migrations),
+	// so re-flowing the paragraph to any other width would have retired this
+	// guard silently with the wrong reason fully intact. Collapsing the
+	// leading comment asterisks and runs of whitespace makes the assertion
+	// about the CLAIM rather than about where the line happened to break.
+	flat := commentFold.ReplaceAllString(body, " ")
+
+	// THE CLAIM MAY APPEAR EXACTLY ONCE, AND ONLY AS A QUOTATION OF ITSELF.
+	// Normalising the fold showed what the wrap-sensitive check had been
+	// hiding: the corrected header RESTATES the old sentence, deliberately,
+	// so the next reader can see which words moved. An absence check is
+	// therefore the wrong shape -- it was passing only because the quotation
+	// happened to fold at a different column than the original did. What has
+	// to hold is that every occurrence is introduced as superseded rather
+	// than argued from.
+	const claim = "blocks staff from ever writing that unit again for the weekend"
+	if n := strings.Count(flat, claim); n != 1 {
+		t.Errorf("1500000173's header mentions the retired unit-grain write block %d times; "+
+			"want exactly 1, as the quotation inside the ⚠️ CORRECTED note", n)
+	} else if lead, _, found := strings.Cut(flat, claim); found {
+		if !strings.HasSuffix(lead, `⚠️ CORRECTED. This used to read "the live table's unique index `+
+			"(unit, session_cm_id, year) means a tombstone ") {
+			t.Errorf("1500000173's header still ARGUES from a unit-grain write block that " +
+				"kindred#2583 step 8 removed; it may only quote it, introduced by " +
+				"`⚠️ CORRECTED. This used to read ...`")
+		}
 	}
-	if !strings.Contains(body, "kindred#2583") {
-		t.Errorf("1500000173's header must say which change moved the first reason, " +
-			"so the next reader can follow it")
+
+	// ASSERT THE CORRECTION IS PRESENT, not merely that the old text is gone.
+	// Deleting the paragraph outright would satisfy an absence check while
+	// leaving the next reader with no account of why the reason changed --
+	// and `strings.Contains(body, "kindred#2583")` alone was satisfied by the
+	// issue number appearing anywhere in the file, including inside a line
+	// arguing the opposite.
+	if !strings.Contains(flat, "1500000176 narrowed that index onto `occupant_name`") {
+		t.Errorf("1500000173's header must say which change moved the first reason " +
+			"(1500000176 narrowing the index onto `occupant_name`), so the next reader can follow it")
+	}
+	if !strings.Contains(flat, "Physical delete is still the answer") {
+		t.Errorf("1500000173's header must still reach the unchanged ANSWER -- the argument moved, " +
+			"the ruling did not")
 	}
 }

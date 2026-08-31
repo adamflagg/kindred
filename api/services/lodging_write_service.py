@@ -186,6 +186,39 @@ class WriteInRenameConflictError(RuntimeError):
         self.unit_id = unit_id
 
 
+class WriteInNameTakenError(RuntimeError):
+    """A rename would put two rows with the SAME name on one unit
+    (kindred#2583 step 8, found by #2642's scan).
+
+    THIS CLASS EXISTS BECAUSE STEP 8 CREATED THE FAILURE. `occupant_name` is
+    in the narrowed key (`1500000176`), so an UPDATE can now be refused by the
+    index -- something that was structurally impossible while the key was
+    `(session_cm_id, year, unit)` and the column was not in it. The refusal
+    escaped `_upsert_row`'s update branch as a raw PocketBase 400, which
+    `pb_error_to_http` renders as `"Invalid request"`: no name, no reason, on
+    the ordinary act of fixing a typo in an occupant's name.
+
+    NOT `WriteInRenameConflictError`, deliberately, though both answer 409.
+    That one means *the row you opened is gone* -- reopen the card and the
+    problem is elsewhere. This one means *the row is right where you left it,
+    but the name you typed belongs to the co-occupant beside it* -- reopening
+    changes nothing and the staff member has to pick a different name or
+    remove the other row. Same status, opposite remedy, so they are told
+    apart rather than sharing one sentence that fits neither.
+
+    NOTHING IS WRITTEN when this raises. The index refuses the update before
+    it lands, so both rows are exactly as they were.
+    """
+
+    def __init__(self, occupant_name: str, unit_id: str) -> None:
+        super().__init__(
+            f"this unit already has a write-in for {occupant_name or 'an unnamed occupant'}. "
+            "Two write-ins on one unit need different names -- rename the other one, or remove it first."
+        )
+        self.occupant_name = occupant_name
+        self.unit_id = unit_id
+
+
 class UnpushDriftError(RuntimeError):
     """RULED refuse-wholesale (owner 2026-08-22): `unpush` checks EVERY unit
     the push touched against the push's own after-state before it reverts
@@ -926,6 +959,7 @@ class LodgingWriteService:
         find: Callable[[], Awaitable[Any | None]],
         create: Callable[[dict[str, Any]], Awaitable[Any]],
         update: Callable[[str, dict[str, Any]], Awaitable[Any]],
+        on_update_conflict: Callable[[], Exception] | None = None,
         **context: Any,
     ) -> Any:
         """Create or update one row, recovering a lost unique-index race.
@@ -965,6 +999,17 @@ class LodgingWriteService:
             try:
                 return await update(str(existing.id), data)
             except ClientResponseError as exc:
+                # AN UPDATE CAN BE REFUSED BY THE INDEX NOW, and it could not
+                # before kindred#2583 step 8 put `occupant_name` in the key
+                # (`1500000176`). `on_update_conflict` is how the caller that
+                # knows what the collision MEANS names it; without one the
+                # refusal falls through to the generic conversion, which
+                # renders a 400 as "Invalid request" and tells staff nothing.
+                # NOT a lost race: the row was found and the write was
+                # refused on its content, so re-reading would return the same
+                # row and retrying would be refused again.
+                if on_update_conflict is not None and exc.status == 400:
+                    raise on_update_conflict() from exc
                 raise pb_error_to_http(exc) from exc
         try:
             return await create(data)
@@ -1114,8 +1159,9 @@ class LodgingWriteService:
         ★ AND A RENAME NAMES BOTH ENDS (kindred#2583 step 4, owner ruling
         2026-08-29). If the occupant's name IS the address, changing it is the
         one edit that cannot address itself: a write carrying only the new
-        name misses the finder, and once step 8 narrows the index that miss is
-        a CREATE -- one rename, two rows, the old occupant still in the cabin.
+        name misses the finder, and since step 8 narrowed the index (`1500000176`)
+        that miss IS a CREATE -- one rename, two rows, the old occupant still
+        in the cabin.
         `previous_occupant_name` is the compare-and-swap that closes it. It is
         `str | None`, and `""` is a NAME rather than an absence: an unnamed
         row is real (the ingest path stays permissive) and its pencil can make
@@ -1128,9 +1174,10 @@ class LodgingWriteService:
         gets half cleared. A WRITE names an occupant, so it resolves ONE row.
         A CLEAR and a RELEASE name none, so they resolve EVERY occupancy row
         on the unit -- `fetch_write_ins_on_unit` rather than `find_write_in`.
-        `family_available: null` still means "clear this unit entirely",
-        which is exactly what it means today while a cabin can hold one row,
-        so nothing at the boundary moves. Removing ONE occupant from a shared
+        `family_available: null` still means "clear this unit entirely" -- the
+        verb kept its meaning across step 8 rather than inheriting one from
+        how many rows happened to be there, so nothing at the boundary moves
+        now that a cabin may hold several. Removing ONE occupant from a shared
         cabin is `DELETE /api/lodging/write-ins` (`remove_write_in`), which is
         the verb that names its row.
 
@@ -1246,9 +1293,9 @@ class LodgingWriteService:
 
         if request.family_available is None:
             # EVERY occupancy row, not the first one a finder returns. The
-            # verb means "clear this unit entirely", which is what it already
-            # means while a unit can hold one row -- so the boundary does not
-            # move and the shareable case stops being a coin flip.
+            # verb means "clear this unit entirely" -- the meaning it already
+            # had, so step 8 moved the boundary nowhere and the shareable case
+            # stops being a coin flip.
             write_in_id, write_in_deleted = await self._clear_every_row(await find_every_occupancy(), delete_occupancy)
             role_id, role_deleted = await self._clear_row(existing_role, self.repository.delete_availability)
             # The occupancy id is reported in preference to the role id when
@@ -1353,6 +1400,15 @@ class LodgingWriteService:
                 find=find_occupancy,
                 create=create_occupancy,
                 update=update_occupancy,
+                # ONLY THE RENAME CAN COLLIDE ON UPDATE. A create-shaped write
+                # (`previous_occupant_name is None`) reaches `update` only
+                # when the finder already matched the name being written, so
+                # the row it would collide with IS the row being updated.
+                on_update_conflict=(
+                    None
+                    if request.previous_occupant_name is None
+                    else lambda: WriteInNameTakenError(request.occupant_name, request.unit_id)
+                ),
                 year=request.year,
                 session_cm_id=request.session_cm_id,
                 unit_id=request.unit_id,
@@ -1723,18 +1779,20 @@ class LodgingWriteService:
         identical tuple from `PushRowPayload` (the wire shape `removes` holds,
         off `fresh.buildings[*].live`) -- that model is a separate Pydantic
         class with no `tuple_key()` method of its own, so the shape is
-        reproduced rather than a second definition of it invented. `live_by_unit`
-        (kindred#2555 scan fix-round, M) is the same fetch grouped by unit_id
-        instead, which is what lets the add-side check ask "is EVERY current
-        occupant of this unit one of the rows this push's own removes will
-        delete?" without a second read.
+        reproduced rather than a second definition of it invented.
+        `live_by_occupant` (kindred#2555 scan fix-round, M; re-keyed in step 8
+        from the `live_by_unit` it was born as) is the same fetch grouped by
+        `(unit_id, occupant_name)` instead, which is what lets the add-side
+        check ask "would this create collide with a row this push's own
+        removes will NOT delete?" without a second read.
 
         ⚠️ BOTH ARE LISTS PER KEY, and this paragraph used to argue from
         `idx_lodging_write_in_unique` by name that they need not be -- "at
         most one live row per unit, so keying on unit_id alone is safe". The
-        two-write-ins-per-shareable-unit work removes that guarantee, and a
-        `dict` built from a list eats a duplicate key without a word. Both
-        loops reduce to exactly what they were while the index still stands.
+        two-write-ins-per-shareable-unit work removed that guarantee in step 8
+        (`1500000176`), and a `dict` built from a list eats a duplicate key
+        without a word. Both loops still reduce to exactly what they were on
+        the single-row data every existing weekend holds.
 
         `party_size` IS EXPLICIT ALWAYS ON THE CREATE PAYLOAD, `None` included.
         This method is the "fifth producer" kindred#2540's data-loss guard
@@ -1807,7 +1865,8 @@ class LodgingWriteService:
         #
         # `live_rows_with_ids` is fetched once and read two ways: `live_ids`
         # (the RULED four-field tuple) resolves removes exactly as before;
-        # `live_by_unit` (kindred#2555 scan fix-round, M) is the add-side
+        # `live_by_occupant` (kindred#2555 scan fix-round, M; `live_by_unit`
+        # until step 8 re-keyed it) is the add-side
         # symmetric check -- a live row appearing on an add's target unit
         # between the entry re-classify and the apply would otherwise collide
         # AFTER the ledger row already exists, making the ledger lie about

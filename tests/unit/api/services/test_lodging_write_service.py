@@ -45,6 +45,7 @@ from api.services.lodging_write_service import (
     PushNotFoundError,
     ScenarioNotEmptyError,
     UnpushDriftError,
+    WriteInNameTakenError,
     WriteInRenameConflictError,
 )
 from bunking.logging_config import ISO8601Formatter
@@ -3164,8 +3165,11 @@ def _indexed_write_in_repo(
     """
     store = list(rows)
 
-    def collides(data: dict[str, Any]) -> bool:
-        return any(row.unit == data["unit"] and row.occupant_name == data["occupant_name"] for row in store)
+    def collides(data: dict[str, Any], *, ignoring: str | None = None) -> bool:
+        return any(
+            row.unit == data["unit"] and row.occupant_name == data["occupant_name"] and row.id != ignoring
+            for row in store
+        )
 
     async def _find(*args: Any) -> SimpleNamespace | None:
         unit, occupant = args[-2], args[-1]
@@ -3191,6 +3195,17 @@ def _indexed_write_in_repo(
 
     async def _update(record_id: str, data: dict[str, Any]) -> SimpleNamespace:
         row = next(r for r in store if r.id == record_id)
+        # THE UPDATE SIDE ENFORCES THE INDEX TOO -- kindred#2642 scan.
+        # This fake used to write `occupant_name` unconditionally, so every
+        # update-side collision was invisible to the suite while its docstring
+        # claimed the index was enforced. `occupant_name` is IN the narrowed
+        # key, so a rename onto a co-occupant's name is refused by PocketBase
+        # exactly as a create would be; ignoring the row's own id is what
+        # keeps a no-op rename (same name back onto itself) legal.
+        if collides({**data, "unit": row.unit}, ignoring=record_id):
+            raise ClientResponseError(
+                "validation_not_unique", status=400, data={}, url="", is_abort=False, original_error=None
+            )
         row.occupant_name = data["occupant_name"]
         row.note = data["note"]
         row.party_size = data.get("party_size")
@@ -3362,6 +3377,43 @@ class TestTheOccupantKeyedRecoveryUnderTheNarrowedIndex:
         )
 
         assert [(r.id, r.occupant_name) for r in store] == [("wi_chen", "Olivia Chen-Whitfield")]
+
+    @pytest.mark.asyncio
+    async def test_a_rename_onto_a_co_occupants_name_is_a_409_not_a_raw_400(self) -> None:
+        """A rename may now COLLIDE, and this is the class step 8 created.
+
+        `occupant_name` is in the narrowed key, so renaming one occupant onto
+        a name a co-occupant already holds is refused by the index. Before
+        1500000176 the column was not in the key and an update could never
+        collide, so nothing on this path had ever had to answer for it -- the
+        refusal escaped `_upsert_row`'s `existing is not None` branch as a raw
+        PocketBase 400 `validation_not_unique`, which reaches staff as an
+        opaque error on the ordinary act of fixing a typo.
+
+        It is the same fact `WriteInRenameConflictError` already answers 409
+        for -- "this edit cannot land, reopen the card" -- so it answers 409
+        too, and says which name is taken rather than leaking the index.
+        """
+        repo, store = _indexed_write_in_repo(
+            [
+                SimpleNamespace(id="wi_chen", unit="u1", occupant_name="Olivia Chen", note="", party_size=3),
+                SimpleNamespace(id="wi_johnson", unit="u1", occupant_name="Emma Johnson", note="", party_size=2),
+            ]
+        )
+        service = LodgingWriteService(repo)
+
+        with pytest.raises(WriteInNameTakenError) as caught:
+            await service.set_availability(
+                _availability_request(occupant_name="Emma Johnson", previous_occupant_name="Olivia Chen", party_size=3)
+            )
+
+        assert "Emma Johnson" in str(caught.value)
+        # AND NOTHING MOVED. A refused rename must leave both rows exactly as
+        # they were -- the failure this guards is a half-applied edit.
+        assert [(r.id, r.occupant_name) for r in store] == [
+            ("wi_chen", "Olivia Chen"),
+            ("wi_johnson", "Emma Johnson"),
+        ]
 
     @pytest.mark.asyncio
     async def test_a_rename_inside_a_scenario_still_edits_the_draft_row(self) -> None:
@@ -3942,16 +3994,20 @@ class TestUnpush:
 class TestPushAndUnpushCarryNRowsPerUnit:
     """The push ledger's half of "two write-ins in one shareable cabin".
 
-    DARK ON ARRIVAL, like the read path beside it: both unique indexes still
-    stand, so none of the shapes below can exist in production yet and none
-    of these paths behaves differently for the one-row data that can. What
-    they fix is a set of dicts that would eat a second row the moment the
-    index moves.
+    LIVE SINCE STEP 8, and this header used to say the opposite. It read
+    "DARK ON ARRIVAL ... both unique indexes still stand, so none of the
+    shapes below can exist in production yet" -- true while the index forbade
+    the second row, and untrue from `1500000176` onward, which is the very
+    migration this PR ships. The shapes below are now REACHABLE, and these
+    tests are the coverage for them rather than a set of pins on an
+    unreachable state that a later reader could mistake for dead weight.
 
     FOUR SITES, not the three a name-grep for `idx_lodging_write_in_unique`
-    returns. `execute_push` keys `live_by_unit` on unit id and `live_ids` on
-    the four-field `PushRow.tuple_key()`; `unpush` keys `by_unit` on unit id
-    and `by_tuple` on the same four-field tuple. Every one of them is a
+    returns. `execute_push` keys `live_by_occupant` on `(unit_id,
+    occupant_name)` and `live_ids` on the four-field `PushRow.tuple_key()`;
+    `unpush` keys `by_tuple` on the same four-field tuple. (`live_by_occupant`
+    and `unpush`'s deleted `by_unit` were both unit-grain until step 8
+    re-keyed them -- that re-keying is half of what this PR does.) Every one of them is a
     `dict` built from a list, so a duplicate key collapses SILENTLY -- one
     row disappears from the ledger's view of the board, and the two-phase
     apply then either 404s mid-revert on a record id it has already deleted

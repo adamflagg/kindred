@@ -66,7 +66,17 @@ insert_outcome() {
     echo "accepted"
   else
     case "$out" in
-      *UNIQUE*|*"constraint failed"*) echo "refused" ;;
+      # ⚠️ UNIQUE ONLY, and the narrowness is the point (kindred#2642 scan).
+      # This read `*UNIQUE*|*"constraint failed"*`, and the second alternative
+      # is strictly wider than the first: SQLite prints "UNIQUE constraint
+      # failed: ..." so a real uniqueness refusal already matched. All the
+      # second one added was NOT NULL, CHECK and FOREIGN KEY failures --
+      # classified as "refused" and therefore PASSING every assertion here
+      # that expects a refusal. A later migration adding a NOT NULL column
+      # `live_row()` does not populate would have turned this whole script
+      # green while proving nothing about uniqueness, in a script whose only
+      # job is being the tie to the deployed schema.
+      *"UNIQUE constraint failed"*) echo "refused" ;;
       *) echo "error:$out" ;;
     esac
   fi
@@ -108,6 +118,23 @@ got=$(insert_outcome "$BEFORE_DB" "$(live_row wi000000000001 unit0000000001 'Emm
 got=$(insert_outcome "$BEFORE_DB" "$(live_row wi000000000002 unit0000000001 'Liam Garcia')")
 [[ "$got" == "refused" ]] \
   || note "before: a SECOND occupant on one unit was $got -- the un-narrowed index must refuse it, or this script proves nothing"
+
+# THE DRAFT TWIN GETS THE SAME BEFORE-PROOF (kindred#2642 scan). Only the live
+# table was pinned here, so the four draft assertions after the second boot
+# rested on a single "after" reading -- which, as this script's own header
+# says, "cannot distinguish 'the migration narrowed the index' from 'the index
+# was already like that'". Someone narrowing 1500000161's draft index and
+# dropping the draft half of 1500000176 would have left every draft assertion
+# passing and this script reporting PASS.
+cols=$(pb_harness_index_columns "$BEFORE_DB" idx_lodging_write_in_draft_unique)
+[[ "$cols" == "scenario,session_cm_id,unit,year" ]] \
+  || note "before: idx_lodging_write_in_draft_unique keys on '$cols' (expected the un-narrowed set)"
+
+got=$(insert_outcome "$BEFORE_DB" "$(draft_row wd000000000001 unit0000000001 scen0000000001 'Emma Johnson')")
+[[ "$got" == "accepted" ]] || note "before: the first draft write-in in a scenario was $got"
+got=$(insert_outcome "$BEFORE_DB" "$(draft_row wd000000000002 unit0000000001 scen0000000001 'Liam Garcia')")
+[[ "$got" == "refused" ]] \
+  || note "before: a SECOND occupant in one draft scenario was $got -- the un-narrowed draft index must refuse it, or the draft assertions below prove nothing"
 
 # ── AFTER: the tree with 1500000176 ─────────────────────────────────────────
 

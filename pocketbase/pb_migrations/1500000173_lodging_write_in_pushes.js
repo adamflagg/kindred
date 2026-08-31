@@ -16,9 +16,9 @@
  *      writing that unit again for the weekend". 1500000176 narrowed that
  *      index onto `occupant_name`, so a tombstone no longer blocks the UNIT —
  *      it blocks re-writing THAT OCCUPANT onto it. Weakened, not void: remove
- *      "Chen" from Ridge D and write "Chen" back, and the tombstone is still
- *      in the way. It is no longer the reason it once was, and the next reader
- *      should not argue from it as though it were.
+ *      one occupant from a unit and write the same occupant back, and the
+ *      tombstone is still in the way. It is no longer the reason it once was,
+ *      and the next reader should not argue from it as though it were.
  *   2. The live table deliberately has no scenario column
  *      (main_lodging_write_in_cascade_test.go pins it). UNCHANGED.
  *   3. Every reader would need a deleted-filter, and one missed reader would
