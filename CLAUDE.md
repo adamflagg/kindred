@@ -205,7 +205,8 @@ The failure mode is systemic, not occasional. A 2026-08-06 sweep of all 70 open 
 
 - Fix the body in place with `gh issue edit <N> --body-file …`, and say what changed and why in a comment so the edit is auditable.
 - Keep the original reasoning when it is still sound — correct the identifiers, do not rewrite the argument.
-- If the *approach* is obsolete rather than the details, say so at the top of the body rather than silently leaving a plan nobody should follow (`#1218`'s one-shot re-inventory, `#1766`'s routing, `#1484`'s non-compiling hook signatures).
+- If the *approach* is obsolete rather than the details, say so at the top of the body rather than silently leaving a plan nobody should follow (`#1218`'s one-shot re-inventory, superseded by the per-domain `solver-config-it` walk).
+  **These examples go stale too — re-verify one before citing it.** A 2026-08-30 pass found two of the three originally listed here had since been fixed: `#1766`'s routing was resolved by the issue's own in-body correction, and `#1484`'s hook signatures compile (`tsc --noEmit` exits clean).
 - If an issue turns out to be already shipped, close it with the commit as evidence — `#2007` sat open through two triage passes after shipping in #2040, and was recommended as the *next thing to build*.
 
 **Never implement a Group 84 / lodging issue from its body alone.** Verify against the tree and the data first.
