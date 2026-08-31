@@ -6,7 +6,7 @@
  * string equality is measurably wrong here — it drops two of the eight
  * currently-open households from "matches a known unit" to "not recognized",
  * because their raw CampMinder value carries an area prefix the alias table
- * strips ("Golden Triangle - Cloud's Rest" vs "Clouds Rest").
+ * strips ("North Area - Larkspur Lodge" vs "Larkspur Lodge").
  */
 import { describe, expect, it } from 'vitest'
 
@@ -32,34 +32,34 @@ function alias(aliasString: string, members: LodgingUnitRecord[]): LodgingAliasR
 
 describe('resolveCabinAlias', () => {
   it('resolves an exact (trim + lowercase) alias_string match to its member unit names', () => {
-    const aliases = [alias('Ridge I', [unit('u1', 'Ridge I')])]
-    expect(resolveCabinAlias('Ridge I', aliases)).toEqual(['Ridge I'])
+    const aliases = [alias('Willow 1', [unit('u1', 'Willow 1')])]
+    expect(resolveCabinAlias('Willow 1', aliases)).toEqual(['Willow 1'])
   })
 
   it('is case- and whitespace-insensitive, mirroring aliasLookupKey', () => {
-    const aliases = [alias('ridge i', [unit('u1', 'Ridge I')])]
-    expect(resolveCabinAlias('  Ridge I  ', aliases)).toEqual(['Ridge I'])
+    const aliases = [alias('willow 1', [unit('u1', 'Willow 1')])]
+    expect(resolveCabinAlias('  Willow 1  ', aliases)).toEqual(['Willow 1'])
   })
 
   // The measured case naive string equality gets wrong: the alias string is
   // an area-prefixed CampMinder value, unrelated by literal comparison to the
   // real unit name it maps to.
   it('resolves an alias-only match a naive string comparison would miss', () => {
-    const aliases = [alias("Golden Triangle - Cloud's Rest", [unit('u9', 'Clouds Rest')])]
-    expect(resolveCabinAlias("Golden Triangle - Cloud's Rest", aliases)).toEqual(['Clouds Rest'])
+    const aliases = [alias('North Area - Larkspur Lodge', [unit('u9', 'Larkspur Lodge')])]
+    expect(resolveCabinAlias('North Area - Larkspur Lodge', aliases)).toEqual(['Larkspur Lodge'])
     // The naive check this guards against:
-    expect("Golden Triangle - Cloud's Rest".trim().toLowerCase()).not.toBe(
+    expect('North Area - Larkspur Lodge'.trim().toLowerCase()).not.toBe(
       'clouds rest'.trim().toLowerCase()
     )
   })
 
   it('returns every member for a merge alias, in member order', () => {
     const aliases = [
-      alias('Golden Triangle - Tioga 1and2', [unit('u1', 'Tioga 1'), unit('u2', 'Tioga 2')]),
+      alias('North Area - Willow 2and3', [unit('u1', 'Willow 2'), unit('u2', 'Willow 3')]),
     ]
-    expect(resolveCabinAlias('Golden Triangle - Tioga 1and2', aliases)).toEqual([
-      'Tioga 1',
-      'Tioga 2',
+    expect(resolveCabinAlias('North Area - Willow 2and3', aliases)).toEqual([
+      'Willow 2',
+      'Willow 3',
     ])
   })
 

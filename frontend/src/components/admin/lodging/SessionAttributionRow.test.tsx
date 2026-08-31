@@ -13,14 +13,14 @@ import { SessionAttributionRow } from './SessionAttributionRow'
 function itemFixture(over: Partial<SessionAttributionQueueItem> = {}): SessionAttributionQueueItem {
   return {
     id: 'q1',
-    rawValue: 'Ridge I',
+    rawValue: 'Willow 1',
     sourceField: 'Family Camp Cabin',
     householdCmId: 2000001,
     personCmId: 0,
     occurrences: 3,
     firstSeen: '2026-08-18 00:00:00.000Z',
     lastSeen: '2026-08-23 00:00:00.000Z',
-    resolvedUnitNames: ['Ridge I'],
+    resolvedUnitNames: ['Willow 1'],
     candidates: [
       {
         sessionCmId: 1309515,
@@ -43,10 +43,10 @@ function itemFixture(over: Partial<SessionAttributionQueueItem> = {}): SessionAt
 describe('SessionAttributionRow', () => {
   it('shows the raw CampMinder value and the household it belongs to', () => {
     // The fixture's raw value and its resolved unit happen to be the same
-    // string ("Ridge I" is an exact-match alias for itself) — a realistic
+    // string ("Willow 1" is an exact-match alias for itself) — a realistic
     // case, so this asserts BOTH render rather than picking one arbitrarily.
     render(<SessionAttributionRow item={itemFixture()} onConfirm={vi.fn()} isConfirming={false} />)
-    expect(screen.getAllByText('Ridge I')).toHaveLength(2)
+    expect(screen.getAllByText('Willow 1')).toHaveLength(2)
     expect(screen.getByText(/2000001/)).toBeInTheDocument()
   })
 
@@ -64,12 +64,12 @@ describe('SessionAttributionRow', () => {
   it('shows the alias-resolved unit name(s), never the raw value twice', () => {
     render(
       <SessionAttributionRow
-        item={itemFixture({ resolvedUnitNames: ['Tioga 1', 'Tioga 2'] })}
+        item={itemFixture({ resolvedUnitNames: ['Willow 2', 'Willow 3'] })}
         onConfirm={vi.fn()}
         isConfirming={false}
       />
     )
-    expect(screen.getByText('Tioga 1 + Tioga 2')).toBeInTheDocument()
+    expect(screen.getByText('Willow 2 + Willow 3')).toBeInTheDocument()
   })
 
   it('says the cabin is not recognized when the alias table has no match', () => {
