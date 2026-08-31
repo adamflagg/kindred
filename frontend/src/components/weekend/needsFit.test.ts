@@ -182,70 +182,116 @@ describe('resolveDragFit — capacity gates the match and never causes a conflic
   })
 })
 
-describe('resolveDragFit — a cabin that is not accessible DOES hatch (kindred#2327)', () => {
-  it('hatches a step-free household against a cabin graded `none`', () => {
-    /*
-     * ⚠️ THE HEADLINE BEHAVIOUR OF kindred#2327, AND IT WAS PINNED NOWHERE IN
-     * THIS SUITE. Step-free used to grade from the mostly-blank `has_ramp`, so
-     * 102 of 118 cabins resolved `unknown` and rule 2 below withheld the hatch
-     * on almost all of them. It grades from the boolean `is_accessible` now, so
-     * those cabins report `none` — a recorded fact — and `none` is a conflict.
-     * A step-free household's hatched cabins move from 10 of 118 to 115 of 118.
-     *
-     * Every other `needs_step_free` case in this file uses
-     * `ramp_coverage: 'unknown'`, so adding a `coverage === 'none'` intercept to
-     * `resolveDragFit` would silently revert the whole change with a green
-     * suite. `candidateFit` covers the same grade on a DIFFERENT code path;
-     * this is the drag path.
-     */
+describe('resolveDragFit — step-free is a parsed hint and makes NEITHER claim (owner ruling 2026-08-31, kindred#2639)', () => {
+  /*
+   * ⚠️ THIS BLOCK USED TO BE "a cabin that is not accessible DOES hatch
+   * (kindred#2327)" AND ASSERTED THE OPPOSITE. That was correct for #2327's
+   * own change (grading from `is_accessible` instead of `has_ramp`) but the
+   * OWNER'S FOLLOW-UP RULING on #2639 struck the hatch/match entirely for
+   * this one need, verbatim: *"we should not hatch on accessibility since
+   * its not an explicit requestion we ask people, its parsed out of other
+   * accomm, and this one is only 'short distances', not a wheelchair. so, no
+   * hatch, and otherwise good to go."*
+   *
+   * `needs_step_free` is not a question CampMinder asks families — the Go
+   * sync derives it by keyword-matching the free-text `accommodation_explain`
+   * narrative, and the signal behind it is a MOBILITY HINT ("short
+   * distances"), not a wheelchair requirement. So the hatch's evidence bar
+   * (rule 2's "unrecorded coverage makes neither claim") is applied to this
+   * need UNCONDITIONALLY rather than only when the cabin's own coverage is
+   * unresolved: the ambiguity here is in what the family actually meant, not
+   * in what the cabin's data says, so it cannot be cured by the cabin being
+   * confirmed either way.
+   *
+   * This is a REGRESSION TEST for #2327's own behaviour, deliberately kept
+   * rather than deleted: it pins the exact case (`ramp_coverage: 'none'`)
+   * #2327 shipped as a hatch, now asserting the reverse. `candidateFit`
+   * covers the same grade on the Assign-modal's DIFFERENT code path —
+   * `placementCandidates.test.ts`'s mirror of this block.
+   */
+  it('does NOT hatch a step-free household against a cabin graded `none` — the recorded-fact case', () => {
     const fit = resolveDragFit(
       party({ flags: { needs_step_free: true } }),
       unit({ ramp_coverage: 'none' }),
+      { known: true, free: 6 }
+    )
+    expect(fit.state).toBe('neutral')
+  })
+
+  it('does not hatch even with room to spare — this was never about capacity', () => {
+    expect(
+      resolveDragFit(party({ flags: { needs_step_free: true } }), unit({ ramp_coverage: 'none' }), {
+        known: true,
+        free: 99,
+      }).state
+    ).toBe('neutral')
+  })
+
+  it('does not MATCH a step-free household against a fully accessible cabin either', () => {
+    // The other half of "neither claim": a positive mark must not read a
+    // parsed hint as a met requirement, even when the cabin genuinely is
+    // accessible. Before this ruling `ramp_coverage: 'all'` here matched.
+    expect(
+      resolveDragFit(party({ flags: { needs_step_free: true } }), unit({ ramp_coverage: 'all' }), {
+        known: true,
+        free: 6,
+      }).state
+    ).toBe('neutral')
+  })
+
+  it('suppresses ONLY the step-free contribution — another genuinely unmet need still hatches', () => {
+    // "do not suppress the whole verdict, only the step-free contribution."
+    const fit = resolveDragFit(
+      party({ flags: { needs_step_free: true, needs_power: true } }),
+      unit({ ramp_coverage: 'none', power_coverage: 'none' }),
       { known: true, free: 6 }
     )
     expect(fit.state).toBe('conflict')
     expect(fit.severity).toBe('unmet')
   })
 
-  it('still hatches when the cabin has room to spare', () => {
-    // Capacity gates the MATCH, never the conflict — rule 3. A not-accessible
-    // cabin is a bad cabin whether or not it is a full one.
-    expect(
-      resolveDragFit(party({ flags: { needs_step_free: true } }), unit({ ramp_coverage: 'none' }), {
-        known: true,
-        free: 99,
-      }).state
-    ).toBe('conflict')
+  it('still matches on a genuinely met OTHER need — step-free does not block a real match', () => {
+    // Step-free is excluded as though it were never asked; it must not
+    // additionally suppress a positive verdict a real need has earned.
+    const fit = resolveDragFit(
+      party({ flags: { needs_step_free: true, needs_power: true } }),
+      unit({ ramp_coverage: 'none', power_coverage: 'all' }),
+      { known: true, free: 6 }
+    )
+    expect(fit.state).toBe('match')
   })
 })
 
 describe('resolveDragFit — unrecorded coverage makes NEITHER claim', () => {
+  /*
+   * ⚠️ THIS BLOCK USED TO GRADE `needs_step_free` against `ramp_coverage:
+   * 'unknown'`, WITH PRODUCTION NUMBERS ATTACHED (102 of 118 units, 21
+   * matches). Those numbers were real for kindred#2327's own change and are
+   * now HISTORICAL: the 2026-08-31 ruling above (kindred#2639) excludes
+   * step-free from this grading UNCONDITIONALLY — its coverage is never even
+   * read, whatever the cabin says — so it can no longer demonstrate "an
+   * unrecorded CABIN makes neither claim" without conflating two different
+   * mechanisms in one fixture. Fridge is the example now; its own `unknown`
+   * reading carries no such carve-out.
+   */
   it('does not hatch a cabin nobody has assessed', () => {
     // The hatch is an INTERRUPTION, so its bar is evidence of absence rather
     // than absence of evidence.
-    //
-    // ⚠️ THE NUMBER BEHIND THIS SHRANK UNDER kindred#2327 AND THE RULE DID
-    // NOT. 102 of 118 units used to read `unknown` because `has_ramp` was
-    // blank on them; step-free grades from the boolean `is_accessible` now, so
-    // what still reaches `unknown` is the empty aggregation — a container with
-    // no active room to answer for it — and a bathroom nobody recorded.
     expect(
       resolveDragFit(
-        party({ flags: { needs_step_free: true } }),
-        unit({ ramp_coverage: 'unknown' }),
+        party({ flags: { needs_fridge: true } }),
+        unit({ fridge_coverage: 'unknown' }),
         { known: true, free: 6 }
       ).state
     ).toBe('neutral')
   })
 
   it('does not MATCH a cabin nobody has assessed either', () => {
-    // The half this used to get wrong. A match is a positive claim, like a
-    // glyph's full hue, and the 2026-08-20 ruling says unconfirmed information
-    // must not read as met. Before this rule a step-free household saw 21
-    // matches on the design board, every one of them never assessed.
+    // A match is a positive claim, like a glyph's full hue, and the
+    // 2026-08-20 ruling says unconfirmed information must not read as met.
     const fit = resolveDragFit(
-      party({ flags: { needs_step_free: true } }),
-      unit({ ramp_coverage: 'unknown' }),
+      party({ flags: { needs_fridge: true } }),
+      unit({ fridge_coverage: 'unknown' }),
       { known: true, free: 6 }
     )
     expect(fit.state).not.toBe('match')
@@ -266,8 +312,8 @@ describe('resolveDragFit — unrecorded coverage makes NEITHER claim', () => {
 
   it('lets a recorded need decide even when another asked need is unrecorded', () => {
     const fit = resolveDragFit(
-      party({ flags: { needs_step_free: true, needs_power: true } }),
-      unit({ ramp_coverage: 'unknown', power_coverage: 'none' }),
+      party({ flags: { needs_fridge: true, needs_power: true } }),
+      unit({ fridge_coverage: 'unknown', power_coverage: 'none' }),
       { known: true, free: 6 }
     )
     expect(fit.state).toBe('conflict')
@@ -275,8 +321,8 @@ describe('resolveDragFit — unrecorded coverage makes NEITHER claim', () => {
 
   it('withholds the match when one asked need is recorded and another is not', () => {
     const fit = resolveDragFit(
-      party({ flags: { needs_step_free: true, needs_power: true } }),
-      unit({ ramp_coverage: 'unknown', power_coverage: 'all' }),
+      party({ flags: { needs_fridge: true, needs_power: true } }),
+      unit({ fridge_coverage: 'unknown', power_coverage: 'all' }),
       { known: true, free: 6 }
     )
     expect(fit.state).toBe('neutral')

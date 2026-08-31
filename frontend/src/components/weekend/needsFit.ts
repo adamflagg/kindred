@@ -234,13 +234,55 @@ export function hasNoRoom(party: RosterPartyRow, capacity: DragCapacity): boolea
  *    settled: letting capacity hatch took a six-person family asking NOTHING
  *    from 0 marked cards to 45 of 73. Capacity already has a per-card carrier
  *    in the N/M figure; the needs have none.
+ *
+ * 4. ⚠️ STEP-FREE IS EXCLUDED FROM THIS GRADING ENTIRELY (owner ruling
+ *    2026-08-31, kindred#2639), REVERSING kindred#2327's "a cabin that is not
+ *    accessible DOES hatch". The owner, verbatim: *"we should not hatch on
+ *    accessibility since its not an explicit requestion we ask people, its
+ *    parsed out of other accomm, and this one is only 'short distances', not
+ *    a wheelchair. so, no hatch, and otherwise good to go."*
+ *
+ *    `needs_step_free` is not a question CampMinder asks families — the Go
+ *    sync keyword-matches it out of the free-text `accommodation_explain`
+ *    narrative, and the signal behind it is a MOBILITY HINT ("short
+ *    distances"), not a wheelchair requirement. Rule 2 above withholds a
+ *    claim when the CABIN's own coverage is unresolved; this withholds a
+ *    claim about step-free UNCONDITIONALLY, because the ambiguity here is in
+ *    what the family actually meant, not in what the cabin's data says — a
+ *    confirmed `is_accessible` cannot cure it. So step-free is treated as
+ *    though it were never asked for AT ALL: it contributes to neither the
+ *    hatch (the bar is evidence of absence, and a parsed hint is not that)
+ *    nor the match (a positive mark must not read a parsed hint as a met
+ *    requirement) — mirroring rule 1's "asks for nothing" case, not rule 2's
+ *    "asked but unresolved" case, which is why it is filtered out of `asked`
+ *    below rather than routed through the `unrecorded` branch: a party who
+ *    ALSO asks for something real must still get that need's own verdict,
+ *    hatch or match, undiminished.
+ *
+ *    ⚠️ THE UNIT CARD'S OWN `is_accessible` AMENITY MARK IS UNCHANGED. This
+ *    rule governs only the drag-time NEED verdict; `is_accessible` stays a
+ *    real recorded fact about the cabin, reported wherever the card already
+ *    reports it.
+ *
+ *    ⚠️ THE FAMILY CARD'S STEP-FREE GLYPH IS ALSO UNCHANGED. `needGlyphs.ts`'s
+ *    `resolveNeedGlyphs` — a DIFFERENT function, called by `FamilyCard` and
+ *    `HousingNeedDetails` — still grades and draws it: staff should still see
+ *    that a family mentioned accessibility. What is struck here is only the
+ *    automatic drag-time VERDICT this function derives from it, not the
+ *    information that the family asked.
  */
 export function resolveDragFit(
   party: RosterPartyRow,
   unit: LodgingUnitRow,
   capacity: DragCapacity
 ): DragFit {
-  const asked = askedNeedGlyphs(party)
+  // Rule 4: step-free is a PARSED HINT, not an explicit ask, so it is
+  // filtered out here — treated exactly as rule 1 treats "asked for
+  // nothing" — rather than run through the loop below at all. A party whose
+  // only recorded flag is `needs_step_free` therefore returns `NEUTRAL` from
+  // the `asked.length === 0` check immediately below, same as a party who
+  // asked for nothing.
+  const asked = askedNeedGlyphs(party).filter((glyph) => glyph.key !== 'step_free')
   if (asked.length === 0) return NEUTRAL
 
   // `'partial'` is the softest non-`fits` grade, so it is the identity
