@@ -159,8 +159,8 @@ class WriteInRenameConflictError(RuntimeError):
     ⚠️ A FAILED SWAP IS A CONFLICT, NEVER A CREATE, and that is the whole
     reason this class exists rather than a fall-through. Creating instead is
     precisely the two-rows-from-one-rename failure the field was added to
-    stop, reached through the guard meant to stop it -- and once step 8
-    narrows the index the create SUCCEEDS, so the failure would be silent
+    stop, reached through the guard meant to stop it -- and since step 8
+    narrowed the index the create SUCCEEDS, so the failure would be silent
     rather than merely wrong.
 
     CHEAP BY RULING. Staff are each assigned their own weekend and work async
@@ -183,6 +183,39 @@ class WriteInRenameConflictError(RuntimeError):
         # a retry or a log line would want -- and `unit_id` is the half a
         # message naming the cabin would use. Stated rather than left to be
         # read as an oversight (kindred#2603 review).
+        self.unit_id = unit_id
+
+
+class WriteInNameTakenError(RuntimeError):
+    """A rename would put two rows with the SAME name on one unit
+    (kindred#2583 step 8, found by #2642's scan).
+
+    THIS CLASS EXISTS BECAUSE STEP 8 CREATED THE FAILURE. `occupant_name` is
+    in the narrowed key (`1500000176`), so an UPDATE can now be refused by the
+    index -- something that was structurally impossible while the key was
+    `(session_cm_id, year, unit)` and the column was not in it. The refusal
+    escaped `_upsert_row`'s update branch as a raw PocketBase 400, which
+    `pb_error_to_http` renders as `"Invalid request"`: no name, no reason, on
+    the ordinary act of fixing a typo in an occupant's name.
+
+    NOT `WriteInRenameConflictError`, deliberately, though both answer 409.
+    That one means *the row you opened is gone* -- reopen the card and the
+    problem is elsewhere. This one means *the row is right where you left it,
+    but the name you typed belongs to the co-occupant beside it* -- reopening
+    changes nothing and the staff member has to pick a different name or
+    remove the other row. Same status, opposite remedy, so they are told
+    apart rather than sharing one sentence that fits neither.
+
+    NOTHING IS WRITTEN when this raises. The index refuses the update before
+    it lands, so both rows are exactly as they were.
+    """
+
+    def __init__(self, occupant_name: str, unit_id: str) -> None:
+        super().__init__(
+            f"this unit already has a write-in for {occupant_name or 'an unnamed occupant'}. "
+            "Two write-ins on one unit need different names -- rename the other one, or remove it first."
+        )
+        self.occupant_name = occupant_name
         self.unit_id = unit_id
 
 
@@ -926,6 +959,7 @@ class LodgingWriteService:
         find: Callable[[], Awaitable[Any | None]],
         create: Callable[[dict[str, Any]], Awaitable[Any]],
         update: Callable[[str, dict[str, Any]], Awaitable[Any]],
+        on_update_conflict: Callable[[], Exception] | None = None,
         **context: Any,
     ) -> Any:
         """Create or update one row, recovering a lost unique-index race.
@@ -965,6 +999,17 @@ class LodgingWriteService:
             try:
                 return await update(str(existing.id), data)
             except ClientResponseError as exc:
+                # AN UPDATE CAN BE REFUSED BY THE INDEX NOW, and it could not
+                # before kindred#2583 step 8 put `occupant_name` in the key
+                # (`1500000176`). `on_update_conflict` is how the caller that
+                # knows what the collision MEANS names it; without one the
+                # refusal falls through to the generic conversion, which
+                # renders a 400 as "Invalid request" and tells staff nothing.
+                # NOT a lost race: the row was found and the write was
+                # refused on its content, so re-reading would return the same
+                # row and retrying would be refused again.
+                if on_update_conflict is not None and exc.status == 400:
+                    raise on_update_conflict() from exc
                 raise pb_error_to_http(exc) from exc
         try:
             return await create(data)
@@ -1114,8 +1159,9 @@ class LodgingWriteService:
         ★ AND A RENAME NAMES BOTH ENDS (kindred#2583 step 4, owner ruling
         2026-08-29). If the occupant's name IS the address, changing it is the
         one edit that cannot address itself: a write carrying only the new
-        name misses the finder, and once step 8 narrows the index that miss is
-        a CREATE -- one rename, two rows, the old occupant still in the cabin.
+        name misses the finder, and since step 8 narrowed the index (`1500000176`)
+        that miss IS a CREATE -- one rename, two rows, the old occupant still
+        in the cabin.
         `previous_occupant_name` is the compare-and-swap that closes it. It is
         `str | None`, and `""` is a NAME rather than an absence: an unnamed
         row is real (the ingest path stays permissive) and its pencil can make
@@ -1128,15 +1174,17 @@ class LodgingWriteService:
         gets half cleared. A WRITE names an occupant, so it resolves ONE row.
         A CLEAR and a RELEASE name none, so they resolve EVERY occupancy row
         on the unit -- `fetch_write_ins_on_unit` rather than `find_write_in`.
-        `family_available: null` still means "clear this unit entirely",
-        which is exactly what it means today while a cabin can hold one row,
-        so nothing at the boundary moves. Removing ONE occupant from a shared
+        `family_available: null` still means "clear this unit entirely" -- the
+        verb kept its meaning across step 8 rather than inheriting one from
+        how many rows happened to be there, so nothing at the boundary moves
+        now that a cabin may hold several. Removing ONE occupant from a shared
         cabin is `DELETE /api/lodging/write-ins` (`remove_write_in`), which is
         the verb that names its row.
 
-        DARK UNTIL STEP 8. Both unique indexes still forbid the second row, so
-        every path above resolves exactly what the unit-keyed one did for
-        every row that can exist in production today.
+        LIVE SINCE STEP 8 (`1500000176`). Both unique indexes now key on
+        `occupant_name`, so a write naming somebody the unit does not already
+        hold CREATES beside them instead of overwriting them. Every path above
+        was written for that and ran dark until the index moved.
 
         `reason` is written to the `note` COLUMN. This and `_build_units` are
         still the only two places that translate -- the fact moved tables and
@@ -1211,48 +1259,30 @@ class LodgingWriteService:
         update_occupancy = self.repository.update_draft_write_in if in_scenario else self.repository.update_write_in
         delete_occupancy = self.repository.delete_draft_write_in if in_scenario else self.repository.delete_write_in
 
-        async def recover_occupancy() -> Any | None:
-            """The re-read `_upsert_row` makes after a create the INDEX refused.
-
-            THE OCCUPANT KEY FIRST, which is the genuine lost race and the
-            whole of this once step 8 lands: two staff writing the same
-            occupant into the same cabin, the loser adopting the winner's row.
-
-            ⚠️ THE UNIT-GRAIN FALLBACK IS WHAT MAKES STEP 6 ACTUALLY DARK,
-            rather than merely claiming to be. `idx_lodging_write_in_unique`
-            is still `(session_cm_id, year, unit)` (`1500000161:208`) and its
-            draft twin still `(…, unit, scenario)` -- step 8 is the on-switch
-            and lands last. So while the finder above asks "is THIS occupant
-            here", the index refuses a create over ANY occupant: a write
-            naming somebody the unit does not already hold misses the finder,
-            creates, collides, finds nothing bearing that name to adopt, and
-            answers 400 for a write that succeeded before this change.
-
-            TWO ORDINARY STAFF ACTIONS REACH IT, and neither is exotic:
-            renaming an occupant from `WriteInCard`'s pencil (it seeds its
-            Occupant field from the row and lets the field be edited), and the
-            acknowledged replace from `AssignFamilyModal`, which kindred#2594
-            step 0 deliberately ruled *a warning, not a refusal* following
-            kindred#2432. Adopting the unit's row is exactly what the
-            unit-keyed resolver did before this step, so the boundary really
-            does not move.
-
-            SELF-RETIRING, provably rather than by intention. Once step 8 keys
-            the index on `(unit, occupant_name)`, the only create it can
-            refuse is one bearing a name the finder above WOULD have returned
-            -- so this branch becomes unreachable, not merely unused, and the
-            second occupant creates beside the first. Pinned both ways by
-            `TestTheOccupantKeyDoesNotBreakTheUnitGrainIndexItStillRunsUnder`.
-
-            A 401/403 never arrives here: `REFUSAL_STATUSES` short-circuit
-            inside `_upsert_row` before any re-read, so this cannot turn "you
-            may not" into an adopted neighbour.
-            """
-            raced = await find_occupancy()
-            if raced is not None:
-                return raced
-            on_the_unit = await find_every_occupancy()
-            return on_the_unit[0] if on_the_unit else None
+        # THE RE-READ `_upsert_row` MAKES AFTER A CREATE THE INDEX REFUSED is
+        # `find_occupancy` itself, and since kindred#2583 step 8 that is the
+        # whole of it: two staff writing the SAME occupant into the same cabin,
+        # the loser adopting the winner's row.
+        #
+        # ⚠️ THIS USED TO CARRY A UNIT-GRAIN FALLBACK and the deletion is the
+        # point of step 8, not an incidental tidy-up. While
+        # `idx_lodging_write_in_unique` was `(session_cm_id, year, unit)`
+        # (`1500000161:208`) the index refused a create over ANY occupant, so a
+        # write naming somebody the unit did not already hold missed this
+        # finder, created, collided, and found nothing bearing that name to
+        # adopt. The fallback adopted whatever row the UNIT held, which is what
+        # the pre-step-6 resolver did and is why step 6 could ship dark.
+        #
+        # `1500000176` narrows the index onto `occupant_name`, so the only
+        # create it can refuse is one bearing a name this finder WOULD have
+        # returned. The fallback is unreachable rather than merely unused --
+        # and left in, it would be a live path that adopts a STRANGER'S row on
+        # any other 400 the create can answer, silently overwriting an occupant
+        # nobody addressed. Pinned by
+        # `TestTheOccupantKeyedRecoveryUnderTheNarrowedIndex`.
+        #
+        # A 401/403 never reaches the re-read at all: `REFUSAL_STATUSES`
+        # short-circuit inside `_upsert_row` before it.
 
         # The ROLE lookup on every call, because every branch has to know
         # about the fact it is NOT writing: an occupancy has a release to
@@ -1263,9 +1293,9 @@ class LodgingWriteService:
 
         if request.family_available is None:
             # EVERY occupancy row, not the first one a finder returns. The
-            # verb means "clear this unit entirely", which is what it already
-            # means while a unit can hold one row -- so the boundary does not
-            # move and the shareable case stops being a coin flip.
+            # verb means "clear this unit entirely" -- the meaning it already
+            # had, so step 8 moved the boundary nowhere and the shareable case
+            # stops being a coin flip.
             write_in_id, write_in_deleted = await self._clear_every_row(await find_every_occupancy(), delete_occupancy)
             role_id, role_deleted = await self._clear_row(existing_role, self.repository.delete_availability)
             # The occupancy id is reported in preference to the role id when
@@ -1363,13 +1393,22 @@ class LodgingWriteService:
                     # one.
                     **({"scenario": request.scenario} if in_scenario else {}),
                 },
-                # NOT `find_occupancy`: the re-read runs only after the index
-                # has already refused a create, and until step 8 narrows it
-                # the index refuses over a name this finder cannot see. See
-                # `recover_occupancy`.
-                find=recover_occupancy,
+                # `find_occupancy`, NOT the row this call may have resolved
+                # through `previous_occupant_name`: the re-read runs only
+                # after the index refused a create, and the index refuses on
+                # the name being WRITTEN. See the comment above it.
+                find=find_occupancy,
                 create=create_occupancy,
                 update=update_occupancy,
+                # ONLY THE RENAME CAN COLLIDE ON UPDATE. A create-shaped write
+                # (`previous_occupant_name is None`) reaches `update` only
+                # when the finder already matched the name being written, so
+                # the row it would collide with IS the row being updated.
+                on_update_conflict=(
+                    None
+                    if request.previous_occupant_name is None
+                    else lambda: WriteInNameTakenError(request.occupant_name, request.unit_id)
+                ),
                 year=request.year,
                 session_cm_id=request.session_cm_id,
                 unit_id=request.unit_id,
@@ -1420,9 +1459,11 @@ class LodgingWriteService:
         404 on the delete itself, so a refusal keeps its status.
 
         ⚠️ OQ-8. The spec marks this shape "verify against staff expectation
-        before building". It is the recommended one, and it stays cheap to
-        revise: every path here is unreachable in production until step 8
-        narrows the unique index.
+        before building". It is the recommended one, and it was cheap to
+        revise while the unique index still made every path here unreachable.
+        Step 8 (`1500000176`) narrowed that index, so this verb is now the
+        only way to take one occupant out of a shared cabin and a change to
+        its wire shape is a change staff can feel.
         """
         # The RESULT is discarded, the call is not -- exactly as in
         # `unplace_party`. Nothing below needs the session's PocketBase id
@@ -1738,18 +1779,20 @@ class LodgingWriteService:
         identical tuple from `PushRowPayload` (the wire shape `removes` holds,
         off `fresh.buildings[*].live`) -- that model is a separate Pydantic
         class with no `tuple_key()` method of its own, so the shape is
-        reproduced rather than a second definition of it invented. `live_by_unit`
-        (kindred#2555 scan fix-round, M) is the same fetch grouped by unit_id
-        instead, which is what lets the add-side check ask "is EVERY current
-        occupant of this unit one of the rows this push's own removes will
-        delete?" without a second read.
+        reproduced rather than a second definition of it invented.
+        `live_by_occupant` (kindred#2555 scan fix-round, M; re-keyed in step 8
+        from the `live_by_unit` it was born as) is the same fetch grouped by
+        `(unit_id, occupant_name)` instead, which is what lets the add-side
+        check ask "would this create collide with a row this push's own
+        removes will NOT delete?" without a second read.
 
         ⚠️ BOTH ARE LISTS PER KEY, and this paragraph used to argue from
         `idx_lodging_write_in_unique` by name that they need not be -- "at
         most one live row per unit, so keying on unit_id alone is safe". The
-        two-write-ins-per-shareable-unit work removes that guarantee, and a
-        `dict` built from a list eats a duplicate key without a word. Both
-        loops reduce to exactly what they were while the index still stands.
+        two-write-ins-per-shareable-unit work removed that guarantee in step 8
+        (`1500000176`), and a `dict` built from a list eats a duplicate key
+        without a word. Both loops still reduce to exactly what they were on
+        the single-row data every existing weekend holds.
 
         `party_size` IS EXPLICIT ALWAYS ON THE CREATE PAYLOAD, `None` included.
         This method is the "fifth producer" kindred#2540's data-loss guard
@@ -1822,40 +1865,41 @@ class LodgingWriteService:
         #
         # `live_rows_with_ids` is fetched once and read two ways: `live_ids`
         # (the RULED four-field tuple) resolves removes exactly as before;
-        # `live_by_unit` (kindred#2555 scan fix-round, M) is the add-side
+        # `live_by_occupant` (kindred#2555 scan fix-round, M; `live_by_unit`
+        # until step 8 re-keyed it) is the add-side
         # symmetric check -- a live row appearing on an add's target unit
         # between the entry re-classify and the apply would otherwise collide
         # AFTER the ledger row already exists, making the ledger lie about
         # what actually landed.
         #
-        # ⚠️ ITS REACH WILL EXCEED THE COLLISION once kindred#2583 step 8
-        # narrows the index: a mid-flight arrival with a DIFFERENT occupant
-        # name would then create cleanly beside the add, so this would stop
-        # being strictly a collision guard. ⇒ RE-KEY IT IN THE STEP 8 PR, on
-        # `(unit_id, occupant_name)`; see the comment at the check itself.
+        # KEYED ON `(unit_id, occupant_name)` SINCE kindred#2583 STEP 8 -- the
+        # narrowed index's own key, so this keeps asking exactly "would this
+        # create collide". Keyed on the unit alone it asked "is anybody else
+        # in this cabin", which was the same question only while a cabin could
+        # hold one person; it refused MORE than the index required, which was
+        # safe (a `PushDigestStaleError` the client answers by re-previewing)
+        # but wrong once a cabin may hold two, because the co-occupant it
+        # refused over is the feature working.
         live_rows_with_ids = await self._live_rows_with_ids(request.year, request.session_cm_id)
         # ⚠️ A LIST PER KEY ON BOTH, because a `dict` built from a list drops a
-        # duplicate key SILENTLY and both of these keys can repeat once a unit
+        # duplicate key SILENTLY and both of these keys can repeat now a unit
         # may hold more than one write-in. `live_ids` used to map the tuple to
         # one record id, so two live rows sharing a full four-field tuple --
         # two unsized `TBD` placeholders is the realistic case -- resolved
         # BOTH removes to the same id, and the second `delete_write_in` 404'd
         # mid-apply, after the ledger row promising both was already written.
-        # `live_by_unit` used to map the unit to one record id, so which of
+        # `live_by_occupant` used to map the unit to one record id, so which of
         # two occupants the add-side check examined was decided by fetch order.
-        #
-        # DARK TODAY: `idx_lodging_write_in_unique` still forces at most one
-        # live row per (unit, session_cm_id, year), so every list here holds
-        # exactly one entry and both loops below reduce to what they were.
         live_ids: dict[tuple[str, str, str, int | None], list[str]] = {}
-        live_by_unit: dict[str, list[str]] = {}
+        live_by_occupant: dict[tuple[str, str], list[str]] = {}
         # `live_row`, not `r`: the `for r in removes` / `for r in adds` loops
         # below bind the same name to a `PushRowPayload`, and one variable
         # holding two shapes is a type error rather than a style point.
         for row, live_row in live_rows_with_ids:
             record_id = str(getattr(row, "id", "") or "")
-            live_ids.setdefault(live_row.tuple_key(), []).append(record_id)
-            live_by_unit.setdefault(live_row.unit_id, []).append(record_id)
+            key = live_row.tuple_key()
+            live_ids.setdefault(key, []).append(record_id)
+            live_by_occupant.setdefault((key[0], key[1]), []).append(record_id)
 
         remove_ids: list[str] = []
         for r in removes:
@@ -1870,32 +1914,21 @@ class LodgingWriteService:
 
         removing = set(remove_ids)
         for r in adds:
-            # EVERY occupant, not the one a collapsing dict happened to keep.
+            # EVERY row on the add's own key, not the one a collapsing dict
+            # happened to keep. kindred#2583's Design B ruling names this site
+            # in its own mechanical table -- *"`execute_push.live_by_unit`
+            # re-keys to the index's own key, so the add-side pre-check keeps
+            # asking exactly 'would this create collide'"* -- and it re-keyed
+            # here, with the index, for the reason the fetch above states.
             #
-            # ⚠️ UNIT-GRAIN UNTIL STEP 8, AND THAT IS A SEQUENCING CALL RATHER
-            # THAN A DISAGREEMENT. kindred#2583's Design B ruling names this
-            # site in its own mechanical table -- *"`execute_push.live_by_unit`
-            # re-keys to `dict[tuple[str, str], str]` -- the index's own key,
-            # so the add-side pre-check keeps asking exactly 'would this
-            # create collide'"* -- and the spec's 6.5 says the same. So the
-            # destination is ruled; what is left is WHEN.
-            #
-            # THE ANSWER IS "WITH THE INDEX", because of which way this guard
-            # errs. Keyed on the unit it refuses MORE than the deployed index
-            # requires, and its whole failure mode is a `PushDigestStaleError`
-            # the client answers by re-previewing -- no half-apply, no lost
-            # row, no lying ledger. Under the index actually in the tree,
-            # `(session_cm_id, year, unit)` (1500000161:208), it is not even
-            # over-broad: it IS the collision check. Narrowed early it would
-            # instead let a push land silently beside a write-in its own
-            # preview never showed, and that error does not undo itself.
-            # `unpush`'s recreate guard errs the other way, which is why that
-            # one carries an explicit pre-step-8 bridge.
-            #
-            # ⇒ RE-KEY THIS ON `(unit_id, occupant_name)` IN THE STEP 8 PR,
-            # in the same change that narrows the index and deletes `unpush`'s
-            # bridge. Not before, and not left behind.
-            if any(occupant_id not in removing for occupant_id in live_by_unit.get(r.unit_id, ())):
+            # `.strip()` MATCHES `PushRow.tuple_key()`, which is where the
+            # live side of this key came from: the two halves of one
+            # comparison must normalise the same way or a padded stored name
+            # would key one side and not the other.
+            if any(
+                occupant_id not in removing
+                for occupant_id in live_by_occupant.get((r.unit_id, r.occupant_name.strip()), ())
+            ):
                 stale = await self.preview_push(request.year, request.session_cm_id, request.scenario)
                 raise PushDigestStaleError(stale)
 
@@ -2078,26 +2111,18 @@ class LodgingWriteService:
         # whichever row the fetch returned last decide whether the drift
         # guard fires at all.
         #
-        # DARK TODAY: the index still stands, so every list holds one entry
-        # and both checks below reduce to what they were.
         by_tuple: dict[tuple[str, str, str, int | None], list[str]] = {}
         # KEYED ON `(unit_id, occupant_name)` SINCE OQ-3 WAS ANSWERED
-        # (2026-08-29) -- the narrowed index's own key, so the drift check
-        # below asks exactly "would phase 2's recreate collide". Keyed on the
-        # unit alone it asked "is anybody else in this cabin", which was the
-        # same question only while a cabin could hold one person.
+        # (2026-08-29), and unaccompanied since kindred#2583 step 8 deployed
+        # the index that key describes -- so the drift check below asks
+        # exactly "would phase 2's recreate collide". Keyed on the unit alone
+        # it asked "is anybody else in this cabin", which was the same
+        # question only while a cabin could hold one person.
         by_unit_occupant: dict[tuple[str, str], list[tuple[str, str, str, int | None]]] = {}
-        # ⚠️ THE UNIT GRAIN SURVIVES AS A PRE-STEP-8 BRIDGE, and it is the
-        # STEP 8 PR'S TO DELETE together with its use below. The narrowed key
-        # above describes the index step 8 will create; this one describes
-        # the index in the tree, which is what phase 2's recreate is actually
-        # checked against until then.
-        by_unit: dict[str, list[tuple[str, str, str, int | None]]] = {}
         for row, live_row in live:
             key = live_row.tuple_key()
             by_tuple.setdefault(key, []).append(str(getattr(row, "id", "") or ""))
             by_unit_occupant.setdefault((key[0], key[1]), []).append(key)
-            by_unit.setdefault(key[0], []).append(key)
 
         def change_tuple(c: dict[str, Any]) -> tuple[str, str, str, int | None]:
             return (c["unit"], c["occupant_name"].strip(), c["note"].strip(), c["party_size"])
@@ -2158,26 +2183,22 @@ class LodgingWriteService:
                 # a different count -- is NOT subtracted, and still drifts,
                 # because phase 1 never deletes it and phase 2 would collide
                 # with it.
-                colliding = Counter(by_unit_occupant.get((c["unit"], c["occupant_name"].strip()), ())) - own_add_counts
-                # ⚠️ PRE-STEP-8 BRIDGE, AND THE ONLY REASON THIS PR IS DARK
-                # ON THIS PATH. The narrowing above is right about the index
-                # step 8 WILL create and wrong about the one in the tree:
-                # `idx_lodging_write_in_unique` is still
-                # `(session_cm_id, year, unit)` (1500000161:208), so a
-                # co-occupant with a different name DOES collide with phase
-                # 2's recreate today. Keyed on the tuple alone the guard
-                # waves that revert through, phase 1's deletes land, and the
-                # recreate throws mid-apply with `unpushed_at` never stamped
-                # -- a half-reverted push whose retry can only throw again.
-                # That is precisely the kindred#2555 failure this guard was
-                # written to close, and the refusal it replaces was a clean
-                # 409 naming the building.
                 #
-                # ⇒ DELETE THIS AND `by_unit` IN THE STEP 8 PR, in the same
-                # change that narrows the index. The line above is the ruled
-                # OQ-3 shape and is what remains.
-                on_the_unit = Counter(by_unit.get(c["unit"], ())) - own_add_counts
-                if colliding or on_the_unit:
+                # ⚠️ A UNIT-GRAIN BRIDGE STOOD BESIDE THIS UNTIL kindred#2583
+                # STEP 8, and deleting it is what turns OQ-3's ruling on. It
+                # existed because the narrowing above was right about the
+                # index step 8 would create and wrong about the one then in
+                # the tree: under `(session_cm_id, year, unit)` a co-occupant
+                # with a DIFFERENT name still collided with phase 2's
+                # recreate, so keying on the occupant alone would have waved
+                # the revert through, landed phase 1's deletes, and thrown
+                # mid-apply with `unpushed_at` never stamped -- the
+                # kindred#2555 half-revert, reached through the guard written
+                # to close it. `1500000176` removes that collision, so the
+                # bridge now refuses reverts that would in fact succeed, and
+                # on a shareable cabin it refuses over the feature working.
+                colliding = Counter(by_unit_occupant.get((c["unit"], c["occupant_name"].strip()), ())) - own_add_counts
+                if colliding:
                     drifted.append(c["unit_code"])
         if drifted:
             raise UnpushDriftError(sorted(set(drifted)))

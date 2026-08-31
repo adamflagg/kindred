@@ -1610,7 +1610,7 @@ class AvailabilityWriteRequest(BaseModel):
     # WHY THE FIELD EXISTS AT ALL. Under Design B the occupant's name IS the
     # row's address, so a rename is the one edit that cannot address itself --
     # a write carrying only the new name misses the occupant-keyed finder, and
-    # once step 8 narrows the index that miss is a CREATE. One rename, two
+    # since step 8 narrowed the index that miss is a CREATE. One rename, two
     # rows, the old occupant still in the cabin and nothing on the path saying
     # so. #2583's Design B ruling names the two ways out, `previous_occupant_name`
     # or a delete-then-create dance, and forbids step 4's UI from offering a

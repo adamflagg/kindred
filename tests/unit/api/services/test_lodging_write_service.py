@@ -45,6 +45,7 @@ from api.services.lodging_write_service import (
     PushNotFoundError,
     ScenarioNotEmptyError,
     UnpushDriftError,
+    WriteInNameTakenError,
     WriteInRenameConflictError,
 )
 from bunking.logging_config import ISO8601Formatter
@@ -2402,10 +2403,12 @@ class TestAWriteInIsAddressedByItsUnitAndItsOccupant:
     cabin silently overwrote the first -- live in production on all 118
     units, with no warning anywhere on the path.
 
-    DARK UNTIL STEP 8. `idx_lodging_write_in_unique` still forces at most one
-    live row per (unit, session_cm_id, year), so the second create these
-    tests describe is refused by the schema in production today. What they
-    pin is that the API asks the right question the moment the index moves.
+    LIVE AS OF STEP 8. This read "DARK UNTIL STEP 8 ...
+    `idx_lodging_write_in_unique` still forces at most one live row per
+    (unit, session_cm_id, year)", which `1500000176` -- shipped in this same
+    PR -- makes untrue. The second create these tests describe is now
+    ACCEPTED by the schema, so they pin live behaviour rather than a question
+    the API was asking into a closed door.
     """
 
     @staticmethod
@@ -2527,12 +2530,13 @@ class TestARenameNamesTheRowItIsRenaming:
     address. Collapsing the two would leave the pencil on an unnamed row
     doing the bare rename this class exists to forbid.
 
-    DARK UNTIL STEP 8, and provably: while the unit-grain index stands a
-    rename resolved through the previous name UPDATES the same row the
-    unit-grain recovery in `recover_occupancy` reaches today, so the end state
-    is byte-identical -- one row, the new name on it. What moves is the route
-    (one update instead of create-collide-re-read-update) and the answer when
-    the row is GONE.
+    LIVE AS OF STEP 8. While the unit-grain index stood, a rename resolved
+    through the previous name UPDATED the same row the unit-grain recovery in
+    `recover_occupancy` reached, so the end state was byte-identical -- one
+    row, the new name on it -- and this class was dark. `1500000176` (this
+    PR) removed that equivalence: the recovery is gone, the route is one
+    update rather than create-collide-re-read-update, and a missing row now
+    answers 409 instead of silently creating a second one.
     """
 
     @staticmethod
@@ -3138,7 +3142,7 @@ class TestRemovingOneOccupantLeavesTheRestAlone:
 
 
 def _indexed_write_in_repo(
-    rows: list[SimpleNamespace], *, narrowed: bool = False, draft: bool = False
+    rows: list[SimpleNamespace], *, draft: bool = False
 ) -> tuple[MagicMock, list[SimpleNamespace]]:
     """A `_repo()` whose write-in table actually ENFORCES the unique index.
 
@@ -3149,23 +3153,26 @@ def _indexed_write_in_repo(
     `set_availability` resolves a row it must UPDATE is only answerable
     against a store that refuses the create it would otherwise fall back on.
 
-    `narrowed=False` is TODAY'S index, `(session_cm_id, year, unit)` --
-    `1500000161:208`, still in the tree because kindred#2583 step 8 is the
-    on-switch and has not landed. `narrowed=True` is what step 8 makes it,
-    `(session_cm_id, year, unit, occupant_name)`, and it is here so the
-    pre-step-8 behaviour below can be shown to RETIRE rather than merely be
-    unused.
+    THE INDEX MODELLED HERE IS THE NARROWED ONE,
+    `(session_cm_id, year, unit, occupant_name)` -- kindred#2583 step 8,
+    `1500000176`. It used to take a `narrowed` flag because the tree still
+    carried `(session_cm_id, year, unit)` and the pre-step-8 behaviour had to
+    be pinned beside the behaviour that would replace it. Step 8 landed, the
+    old index is gone, and a fake that still modelled it would be pinning a
+    schema no database has.
+
+    A REAL POCKETBASE BOOT IS WHAT TIES THIS FAKE TO THE DEPLOYED SCHEMA:
+    `scripts/dev/verify-writein-occupant-index.sh` reads the applied index off
+    the SQLite file after booting the binary against `pb_migrations/`. Without
+    it this helper would only be asserting against itself.
     """
     store = list(rows)
 
-    def collides(data: dict[str, Any]) -> bool:
-        for row in store:
-            if row.unit != data["unit"]:
-                continue
-            if narrowed and row.occupant_name != data["occupant_name"]:
-                continue
-            return True
-        return False
+    def collides(data: dict[str, Any], *, ignoring: str | None = None) -> bool:
+        return any(
+            row.unit == data["unit"] and row.occupant_name == data["occupant_name"] and row.id != ignoring
+            for row in store
+        )
 
     async def _find(*args: Any) -> SimpleNamespace | None:
         unit, occupant = args[-2], args[-1]
@@ -3191,6 +3198,17 @@ def _indexed_write_in_repo(
 
     async def _update(record_id: str, data: dict[str, Any]) -> SimpleNamespace:
         row = next(r for r in store if r.id == record_id)
+        # THE UPDATE SIDE ENFORCES THE INDEX TOO -- kindred#2642 scan.
+        # This fake used to write `occupant_name` unconditionally, so every
+        # update-side collision was invisible to the suite while its docstring
+        # claimed the index was enforced. `occupant_name` is IN the narrowed
+        # key, so a rename onto a co-occupant's name is refused by PocketBase
+        # exactly as a create would be; ignoring the row's own id is what
+        # keeps a no-op rename (same name back onto itself) legal.
+        if collides({**data, "unit": row.unit}, ignoring=record_id):
+            raise ClientResponseError(
+                "validation_not_unique", status=400, data={}, url="", is_abort=False, original_error=None
+            )
         row.occupant_name = data["occupant_name"]
         row.note = data["note"]
         row.party_size = data.get("party_size")
@@ -3210,108 +3228,42 @@ def _indexed_write_in_repo(
     return repo, store
 
 
-class TestTheOccupantKeyDoesNotBreakTheUnitGrainIndexItStillRunsUnder:
-    """kindred#2583 step 6 is only DARK if the still-unnarrowed index agrees.
+class TestTheOccupantKeyedRecoveryUnderTheNarrowedIndex:
+    """kindred#2583 step 8 landed, and the unit-grain bridge retired with it.
 
-    Step 6 re-keys the occupancy lookup onto `(unit, occupant_name)` while
-    `idx_lodging_write_in_unique` is still `(session_cm_id, year, unit)`
-    (`1500000161:208`) -- step 8 is the on-switch and lands last. Between the
-    two, a write whose occupant name does NOT match the unit's one row misses
-    the lookup, CREATES, and the unit-grain index refuses the create. There
-    is no second row for the occupant-keyed re-read to adopt, so
-    `_upsert_row` re-raises and a write that worked yesterday answers 400.
+    Step 6 re-keyed the occupancy lookup onto `(unit, occupant_name)` while
+    `idx_lodging_write_in_unique` was still `(session_cm_id, year, unit)`, so
+    a write naming somebody the unit did not already hold missed the lookup,
+    created, and the unit-grain index refused the create. `recover_occupancy`
+    carried a UNIT-GRAIN FALLBACK for that window: when the occupant-keyed
+    re-read found nothing, it adopted whatever row the unit happened to hold.
 
-    TWO STAFF ACTIONS REACH THAT, and neither is exotic:
+    `1500000176` narrows the index onto `occupant_name`, so the only create it
+    can now refuse is one bearing a name the occupant-keyed lookup WOULD have
+    returned. The fallback is unreachable rather than merely unused, and it is
+    deleted: kept, it would be a live path that adopts a STRANGER'S row on any
+    other 400 the create can answer -- a validation failure on `party_size`,
+    say -- and silently overwrite an occupant nobody addressed.
 
-    1. RENAMING an occupant -- `WriteInCard`'s pencil seeds its Occupant
-       field from the row and lets a staff member edit it, and correcting a
-       typed name is the ordinary use of an edit form.
-    2. The ACKNOWLEDGED REPLACE -- `AssignFamilyModal` writing a different
-       family into an occupied cabin. kindred#2594 step 0 ruled that a
-       WARNING naming who would be replaced, explicitly *"a warning, not a
-       refusal"*, following kindred#2432. A bare 400 makes it a refusal, and
-       an opaque one.
+    `MagicMock` alone cannot pin any of this: it accepts every create, so the
+    collision never happens and every test below passes against code that has
+    no recovery at all. These run against `_indexed_write_in_repo`, which
+    models the narrowed index the way `_StatefulWriteInRepo` models it for
+    `unpush`.
 
-    So these pin the boundary the PR claims not to move. `MagicMock` alone
-    cannot: it accepts every create, so the collision never happens and the
-    tests go green on a path production answers 400 on.
+    Fictional occupant names throughout.
     """
 
     @pytest.mark.asyncio
-    async def test_renaming_the_occupant_of_the_only_row_still_edits_that_row(self) -> None:
-        repo, store = _indexed_write_in_repo(
-            [SimpleNamespace(id="wi_chen", unit="u1", occupant_name="Olivia Chen", note="", party_size=3)]
-        )
-        service = LodgingWriteService(repo)
+    async def test_a_new_occupant_creates_beside_the_first(self) -> None:
+        """THE FEATURE, reached for the first time here.
 
-        await service.set_availability(_availability_request(occupant_name="Olivia Chen-Whitfield", party_size=3))
-
-        assert [(r.id, r.occupant_name) for r in store] == [("wi_chen", "Olivia Chen-Whitfield")]
-
-    @pytest.mark.asyncio
-    async def test_the_acknowledged_replace_still_lands_rather_than_answering_400(self) -> None:
-        """kindred#2594 step 0's warning stays a warning."""
-        repo, store = _indexed_write_in_repo(
-            [SimpleNamespace(id="wi_chen", unit="u1", occupant_name="Olivia Chen", note="", party_size=3)]
-        )
-        service = LodgingWriteService(repo)
-
-        await service.set_availability(_availability_request(occupant_name="Emma Johnson", party_size=2))
-
-        assert [(r.id, r.occupant_name, r.party_size) for r in store] == [("wi_chen", "Emma Johnson", 2)]
-
-    @pytest.mark.asyncio
-    async def test_renaming_inside_a_scenario_still_edits_the_draft_row(self) -> None:
-        """`idx_lodging_write_in_draft_unique` is the same shape plus
-        `scenario` (`1500000161:251`), so the draft half breaks identically
-        and has to be fixed by the same bound group."""
-        repo, store = _indexed_write_in_repo(
-            [SimpleNamespace(id="wd_chen", unit="u1", occupant_name="Olivia Chen", note="", party_size=3)], draft=True
-        )
-        service = LodgingWriteService(repo)
-
-        await service.set_availability(
-            _availability_request(scenario="scn_1", occupant_name="Olivia Chen-Whitfield", party_size=3)
-        )
-
-        assert [(r.id, r.occupant_name) for r in store] == [("wd_chen", "Olivia Chen-Whitfield")]
-
-    @pytest.mark.asyncio
-    async def test_a_refusal_during_the_recovery_is_still_a_refusal(self) -> None:
-        """The bridge must not turn a 401/403 into an adopted neighbour.
-
-        `REFUSAL_STATUSES` short-circuit before any re-read, and widening the
-        recovery must not reach past them.
-        """
-        repo, _ = _indexed_write_in_repo(
-            [SimpleNamespace(id="wi_chen", unit="u1", occupant_name="Olivia Chen", note="", party_size=3)]
-        )
-        repo.create_write_in = AsyncMock(
-            side_effect=ClientResponseError(
-                "forbidden", status=403, data={}, url="", is_abort=False, original_error=None
-            )
-        )
-        service = LodgingWriteService(repo)
-
-        with pytest.raises(HTTPException) as exc:
-            await service.set_availability(_availability_request(occupant_name="Emma Johnson"))
-        assert exc.value.status_code == 403
-        repo.update_write_in.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_under_the_narrowed_index_a_new_occupant_creates_beside_the_first(self) -> None:
-        """AND THE BRIDGE RETIRES ITSELF, which is what makes it safe to add.
-
-        Once step 8 keys the index on `(unit, occupant_name)`, the only
-        create it can refuse is one bearing a name the occupant-keyed lookup
-        would already have found -- so the unit-grain fallback is
-        unreachable, not merely unused. Here the create succeeds outright and
-        the neighbour is untouched: two write-ins in one shareable cabin,
-        which is the feature.
+        Two paper families in one shareable cabin are two ROWS. Before step 8
+        this write collided on the unit-grain index and the bridge turned it
+        into an overwrite of the sitting occupant.
         """
         repo, store = _indexed_write_in_repo(
-            [SimpleNamespace(id="wi_chen", unit="u1", occupant_name="Olivia Chen", note="", party_size=3)],
-            narrowed=True,
+            [SimpleNamespace(id="wi_chen", unit="u1", occupant_name="Olivia Chen", note="", party_size=3)]
         )
         service = LodgingWriteService(repo)
 
@@ -3324,11 +3276,16 @@ class TestTheOccupantKeyDoesNotBreakTheUnitGrainIndexItStillRunsUnder:
         repo.update_write_in.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_under_the_narrowed_index_the_same_occupant_still_recovers_a_lost_race(self) -> None:
-        """The genuine race the recovery was written for, unchanged."""
+    async def test_the_same_occupant_still_recovers_a_lost_race(self) -> None:
+        """The genuine race the recovery was written for, unchanged.
+
+        Two staff writing "Chen" into one cabin at the same moment: both find
+        nothing, both create, the index rejects the loser, and the loser
+        adopts the winner's row -- which by construction is the row this call
+        wanted, same weekend, same unit, same occupant.
+        """
         repo, store = _indexed_write_in_repo(
-            [SimpleNamespace(id="wi_chen", unit="u1", occupant_name="Olivia Chen", note="", party_size=3)],
-            narrowed=True,
+            [SimpleNamespace(id="wi_chen", unit="u1", occupant_name="Olivia Chen", note="", party_size=3)]
         )
         # The find misses (the winner's row lands between the find and the
         # create), the create then collides, and the re-read adopts it.
@@ -3347,6 +3304,161 @@ class TestTheOccupantKeyDoesNotBreakTheUnitGrainIndexItStillRunsUnder:
         await service.set_availability(_availability_request(occupant_name="Olivia Chen", party_size=5))
 
         assert [(r.id, r.party_size) for r in store] == [("wi_chen", 5)]
+
+    @pytest.mark.asyncio
+    async def test_the_recovery_never_adopts_a_row_bearing_another_occupants_name(self) -> None:
+        """★ THE BRIDGE IS GONE, and this is the assertion that says so.
+
+        A create refused for a reason the occupant-keyed re-read cannot
+        explain -- the re-read finds no row under this name -- must surface as
+        the refusal it is. The deleted fallback would have reached past it to
+        `fetch_write_ins_on_unit` and overwritten the unit's sitting occupant
+        with a write that never named her.
+
+        Under the narrowed index this branch is unreachable through the
+        ordinary create; what it pins is that if it is ever reached, it fails
+        loudly instead of destroying a neighbour.
+        """
+        repo, store = _indexed_write_in_repo(
+            [SimpleNamespace(id="wi_chen", unit="u1", occupant_name="Olivia Chen", note="", party_size=3)]
+        )
+        repo.create_write_in = AsyncMock(
+            side_effect=ClientResponseError(
+                "validation_not_unique", status=400, data={}, url="", is_abort=False, original_error=None
+            )
+        )
+        service = LodgingWriteService(repo)
+
+        with pytest.raises(HTTPException) as exc:
+            await service.set_availability(_availability_request(occupant_name="Emma Johnson", party_size=2))
+
+        assert exc.value.status_code == 400
+        repo.update_write_in.assert_not_called()
+        assert [(r.id, r.occupant_name) for r in store] == [("wi_chen", "Olivia Chen")]
+
+    @pytest.mark.asyncio
+    async def test_a_refusal_during_the_recovery_is_still_a_refusal(self) -> None:
+        """A 401/403 must never become an adopted neighbour.
+
+        `REFUSAL_STATUSES` short-circuit inside `_upsert_row` before any
+        re-read, so this cannot turn "you may not" into a silent overwrite.
+        """
+        repo, _ = _indexed_write_in_repo(
+            [SimpleNamespace(id="wi_chen", unit="u1", occupant_name="Olivia Chen", note="", party_size=3)]
+        )
+        repo.create_write_in = AsyncMock(
+            side_effect=ClientResponseError(
+                "forbidden", status=403, data={}, url="", is_abort=False, original_error=None
+            )
+        )
+        service = LodgingWriteService(repo)
+
+        with pytest.raises(HTTPException) as exc:
+            await service.set_availability(_availability_request(occupant_name="Emma Johnson"))
+        assert exc.value.status_code == 403
+        repo.update_write_in.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_a_rename_carrying_the_previous_name_still_edits_the_one_row(self) -> None:
+        """The rename is a COMPARE-AND-SWAP now, not a rescued collision.
+
+        Before step 8 a bare rename worked by accident: the new name missed
+        the finder, the create collided on the unit-grain index, and the
+        bridge adopted the unit's only row. `previous_occupant_name` (step 4)
+        is what makes it work on purpose -- and it is the only thing that
+        does, now that a missed finder CREATES.
+        """
+        repo, store = _indexed_write_in_repo(
+            [SimpleNamespace(id="wi_chen", unit="u1", occupant_name="Olivia Chen", note="", party_size=3)]
+        )
+        service = LodgingWriteService(repo)
+
+        await service.set_availability(
+            _availability_request(
+                occupant_name="Olivia Chen-Whitfield", previous_occupant_name="Olivia Chen", party_size=3
+            )
+        )
+
+        assert [(r.id, r.occupant_name) for r in store] == [("wi_chen", "Olivia Chen-Whitfield")]
+
+    @pytest.mark.asyncio
+    async def test_a_rename_onto_a_co_occupants_name_is_a_409_not_a_raw_400(self) -> None:
+        """A rename may now COLLIDE, and this is the class step 8 created.
+
+        `occupant_name` is in the narrowed key, so renaming one occupant onto
+        a name a co-occupant already holds is refused by the index. Before
+        1500000176 the column was not in the key and an update could never
+        collide, so nothing on this path had ever had to answer for it -- the
+        refusal escaped `_upsert_row`'s `existing is not None` branch as a raw
+        PocketBase 400 `validation_not_unique`, which reaches staff as an
+        opaque error on the ordinary act of fixing a typo.
+
+        It is the same fact `WriteInRenameConflictError` already answers 409
+        for -- "this edit cannot land, reopen the card" -- so it answers 409
+        too, and says which name is taken rather than leaking the index.
+        """
+        repo, store = _indexed_write_in_repo(
+            [
+                SimpleNamespace(id="wi_chen", unit="u1", occupant_name="Olivia Chen", note="", party_size=3),
+                SimpleNamespace(id="wi_johnson", unit="u1", occupant_name="Emma Johnson", note="", party_size=2),
+            ]
+        )
+        service = LodgingWriteService(repo)
+
+        with pytest.raises(WriteInNameTakenError) as caught:
+            await service.set_availability(
+                _availability_request(occupant_name="Emma Johnson", previous_occupant_name="Olivia Chen", party_size=3)
+            )
+
+        assert "Emma Johnson" in str(caught.value)
+        # AND NOTHING MOVED. A refused rename must leave both rows exactly as
+        # they were -- the failure this guards is a half-applied edit.
+        assert [(r.id, r.occupant_name) for r in store] == [
+            ("wi_chen", "Olivia Chen"),
+            ("wi_johnson", "Emma Johnson"),
+        ]
+
+    @pytest.mark.asyncio
+    async def test_a_rename_inside_a_scenario_still_edits_the_draft_row(self) -> None:
+        """`idx_lodging_write_in_draft_unique` narrows the same way plus
+        `scenario` (`1500000176`), so the draft half has to be reached through
+        the same bound group rather than a hand-written second copy."""
+        repo, store = _indexed_write_in_repo(
+            [SimpleNamespace(id="wd_chen", unit="u1", occupant_name="Olivia Chen", note="", party_size=3)], draft=True
+        )
+        service = LodgingWriteService(repo)
+
+        await service.set_availability(
+            _availability_request(
+                scenario="scn_1",
+                occupant_name="Olivia Chen-Whitfield",
+                previous_occupant_name="Olivia Chen",
+                party_size=3,
+            )
+        )
+
+        assert [(r.id, r.occupant_name) for r in store] == [("wd_chen", "Olivia Chen-Whitfield")]
+
+    @pytest.mark.asyncio
+    async def test_a_second_occupant_creates_inside_a_scenario_too(self) -> None:
+        """The draft twin keeps `scenario` and gains `occupant_name`, so a
+        shared cabin is shareable on a scenario board as well as the live
+        one. Dropping `scenario` would have been the other error: two
+        scenarios' rows for one unit colliding."""
+        repo, store = _indexed_write_in_repo(
+            [SimpleNamespace(id="wd_chen", unit="u1", occupant_name="Olivia Chen", note="", party_size=3)], draft=True
+        )
+        service = LodgingWriteService(repo)
+
+        await service.set_availability(
+            _availability_request(scenario="scn_1", occupant_name="Emma Johnson", party_size=2)
+        )
+
+        assert sorted((r.occupant_name, r.party_size) for r in store) == [
+            ("Emma Johnson", 2),
+            ("Olivia Chen", 3),
+        ]
+        repo.update_draft_write_in.assert_not_called()
 
 
 def _wi(unit: str, occ: str, note: str = "", ppl: int | None = None, id: str = "wi_x") -> SimpleNamespace:
@@ -3629,7 +3741,7 @@ class TestExecutePush:
         repo.create_write_in.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_a_foreign_occupant_on_an_adds_target_unit_refuses_the_push(self) -> None:
+    async def test_a_colliding_arrival_on_an_adds_target_unit_refuses_the_push(self) -> None:
         """kindred#2555 scan fix-round (M). `execute_push` pre-resolves every
         `remove` to a live record id before writing the ledger, but had NO
         symmetric check for `adds`: a live row appearing on an add's target
@@ -3638,11 +3750,19 @@ class TestExecutePush:
         landed. `fetch_write_ins` is given a side_effect list so the test's
         own preview (for `preview.digest`) and execute_push's internal
         re-classify both see the unit free (an "add" building), and only the
-        NEW add-side pre-check's own live fetch sees the foreign row that
-        appeared in between -- reproducing the race without touching a real
-        PocketBase.
+        add-side pre-check's own live fetch sees the row that appeared in
+        between -- reproducing the race without touching a real PocketBase.
+
+        THE ARRIVAL SHARES THE ADD'S OCCUPANT NAME SINCE kindred#2583 STEP 8.
+        The check is a COLLISION pre-check and the narrowed
+        `(session_cm_id, year, unit, occupant_name)` index only collides on
+        that key; an arrival under another name creates cleanly beside the add
+        and is covered by
+        `test_a_co_occupant_under_another_name_no_longer_refuses_an_add`. It
+        used to be spelled with an unrelated occupant, because under the
+        unit-grain index anybody at all collided.
         """
-        foreign = [_wi("uc", "Foreign Party", ppl=1, id="wi_foreign")]
+        foreign = [_wi("uc", "H. Osei", ppl=1, id="wi_foreign")]
         repo = _repo(
             fetch_units=[_u("uc", "cedar-9")],
             fetch_draft_write_ins=[_wi("uc", "H. Osei", ppl=2, id="wd_1")],
@@ -3877,16 +3997,20 @@ class TestUnpush:
 class TestPushAndUnpushCarryNRowsPerUnit:
     """The push ledger's half of "two write-ins in one shareable cabin".
 
-    DARK ON ARRIVAL, like the read path beside it: both unique indexes still
-    stand, so none of the shapes below can exist in production yet and none
-    of these paths behaves differently for the one-row data that can. What
-    they fix is a set of dicts that would eat a second row the moment the
-    index moves.
+    LIVE SINCE STEP 8, and this header used to say the opposite. It read
+    "DARK ON ARRIVAL ... both unique indexes still stand, so none of the
+    shapes below can exist in production yet" -- true while the index forbade
+    the second row, and untrue from `1500000176` onward, which is the very
+    migration this PR ships. The shapes below are now REACHABLE, and these
+    tests are the coverage for them rather than a set of pins on an
+    unreachable state that a later reader could mistake for dead weight.
 
     FOUR SITES, not the three a name-grep for `idx_lodging_write_in_unique`
-    returns. `execute_push` keys `live_by_unit` on unit id and `live_ids` on
-    the four-field `PushRow.tuple_key()`; `unpush` keys `by_unit` on unit id
-    and `by_tuple` on the same four-field tuple. Every one of them is a
+    returns. `execute_push` keys `live_by_occupant` on `(unit_id,
+    occupant_name)` and `live_ids` on the four-field `PushRow.tuple_key()`;
+    `unpush` keys `by_tuple` on the same four-field tuple. (`live_by_occupant`
+    and `unpush`'s deleted `by_unit` were both unit-grain until step 8
+    re-keyed them -- that re-keying is half of what this PR does.) Every one of them is a
     `dict` built from a list, so a duplicate key collapses SILENTLY -- one
     row disappears from the ledger's view of the board, and the two-phase
     apply then either 404s mid-revert on a record id it has already deleted
@@ -3901,18 +4025,19 @@ class TestPushAndUnpushCarryNRowsPerUnit:
     (owner, 2026-08-22) is untouched: it says what to do WHEN there is drift,
     not what counts as drift.
 
-    ⚠️ ITS EFFECT IS HELD BACK TO STEP 8 by a unit-grain bridge beside the
-    narrowed key: the index in the tree is still `(session_cm_id, year,
-    unit)`, so the co-occupant the ruled shape waves through still collides
-    with phase 2's recreate today. The narrowed key is what remains once the
-    bridge goes; see `TestTheDriftGuardStaysConservativeUntilTheIndexNarrows`.
+    ITS EFFECT ARRIVES HERE. This paragraph used to say the effect was "HELD
+    BACK TO STEP 8 by a unit-grain bridge beside the narrowed key" because
+    "the index in the tree is still `(session_cm_id, year, unit)`" -- and
+    step 8 is this PR. The bridge is deleted with `1500000176`, so a
+    co-occupant under another name no longer collides with phase 2's
+    recreate; see `TestTheDriftGuardRefusesExactlyWhatTheNarrowedIndexCollidesOn`.
 
-    `execute_push`'s add-side check is NOT narrowed with it, and that is a
-    sequencing call rather than a disagreement: the Design B ruling names
-    that site too, and it re-keys in the STEP 8 PR. It errs the other way
-    from this one -- unit-grain it refuses MORE than the index requires, and
-    the refusal is a re-preview rather than a half-apply -- so it needs no
-    bridge, only the same landing slot. See its own comment.
+    `execute_push`'s add-side check re-keys in the same step, onto
+    `(unit_id, occupant_name)` -- it was NOT narrowed with this one, which
+    was a sequencing call rather than a disagreement. Keyed on the unit it
+    refused MORE than the index required, which was safe (the refusal is a
+    re-preview rather than a half-apply) but wrong once a cabin may hold two.
+    See its own comment.
 
     Fictional occupant names throughout.
     """
@@ -3953,25 +4078,19 @@ class TestPushAndUnpushCarryNRowsPerUnit:
         assert sorted(deleted) == ["wi_a", "wi_b"]
 
     @pytest.mark.asyncio
-    async def test_an_unaccounted_co_occupant_on_an_adds_target_still_refuses(self) -> None:
-        """`live_by_unit` maps a unit to ONE record id, and the add-side
-        pre-check asks whether THAT id is one this push will delete.
+    async def test_a_mid_flight_arrival_sharing_an_adds_own_key_still_refuses(self) -> None:
+        """The add-side pre-check is a COLLISION check, and this is the
+        collision: a row arriving between the entry re-classify and the apply
+        that bears the very name the add is about.
 
-        With two live rows on the target unit the dict keeps whichever the
-        fetch returned last, so ordering alone decides whether the check
-        sees the row this push clears or the foreign one beside it. The
-        fixture puts the CLEARED row last, which is the arrangement that
-        passes the check today and then collides on the create.
-
-        Every occupant has to be accounted for, not the one the dict happened
-        to keep. That is the conservative reading and it deliberately does
-        not narrow the refuse-wholesale ruling -- see the class docstring's
-        OQ-3 note.
+        Left unrefused it would collide AFTER the ledger row already exists,
+        making the ledger lie about what actually landed. Re-keyed onto
+        `(unit_id, occupant_name)` by step 8, it still fires here -- and no
+        longer fires on the sibling test below, where the arrival is somebody
+        else. Same fixture, one name apart.
         """
         classified = [_wi("uc", "G. Whitfield", id="wi_1")]
-        # `wi_1` LAST: `live_by_unit` keeps the last writer, so the collapsed
-        # dict holds the very row this push removes and the check passes.
-        at_apply = [_wi("uc", "Foreign Party", ppl=1, id="wi_foreign"), _wi("uc", "G. Whitfield", id="wi_1")]
+        at_apply = [_wi("uc", "H. Osei", ppl=2, id="wi_foreign"), _wi("uc", "G. Whitfield", id="wi_1")]
         repo = _repo(
             fetch_units=[_u("uc", "cedar-9")],
             fetch_draft_write_ins=[_wi("uc", "H. Osei", ppl=2, id="wd_1")],
@@ -3979,7 +4098,7 @@ class TestPushAndUnpushCarryNRowsPerUnit:
         )
         # 1st: this test's own preview (for the digest). 2nd: execute_push's
         # internal re-preview -- same state, so the digest agrees. 3rd:
-        # `_live_rows_with_ids`, by which point a co-occupant has appeared.
+        # `_live_rows_with_ids`, by which point a duplicate has appeared.
         # 4th: the fresh report the refusal carries.
         repo.fetch_write_ins = AsyncMock(side_effect=[classified, classified, at_apply, at_apply])
         svc = LodgingWriteService(repo)
@@ -3997,6 +4116,45 @@ class TestPushAndUnpushCarryNRowsPerUnit:
         repo.create_push_event.assert_not_called()
         repo.delete_write_in.assert_not_called()
         repo.create_write_in.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_a_co_occupant_under_another_name_no_longer_refuses_an_add(self) -> None:
+        """★ THE ADD-SIDE RE-KEY, kindred#2583 step 8.
+
+        The check is a COLLISION pre-check, and under the narrowed
+        `(session_cm_id, year, unit, occupant_name)` index a live row bearing
+        a different name is not a collision -- the add creates cleanly beside
+        it. Keyed on the unit it refused MORE than the index required, which
+        was safe (its failure mode is a `PushDigestStaleError` the client
+        answers by re-previewing) but wrong once a cabin may hold two, because
+        the co-occupant it refused over is the feature working.
+
+        The Design B ruling names this site verbatim; only the timing was
+        open, and the answer was "with the index".
+        """
+        classified = [_wi("uc", "G. Whitfield", id="wi_1")]
+        at_apply = [_wi("uc", "Foreign Party", ppl=1, id="wi_foreign"), _wi("uc", "G. Whitfield", id="wi_1")]
+        repo = _repo(
+            fetch_units=[_u("uc", "cedar-9")],
+            fetch_draft_write_ins=[_wi("uc", "H. Osei", ppl=2, id="wd_1")],
+            create_push_event=SimpleNamespace(id="push_1"),
+        )
+        repo.fetch_write_ins = AsyncMock(side_effect=[classified, classified, at_apply, at_apply])
+        svc = LodgingWriteService(repo)
+        preview = await svc.preview_push(2026, 1309001, "scn_1")
+        req = PushExecuteRequest(
+            year=2026,
+            session_cm_id=1309001,
+            scenario="scn_1",
+            digest=preview.digest,
+            decisions={"cedar-9": "scenario"},
+        )
+
+        out = await svc.execute_push(req, pushed_by="user_1")
+
+        assert (out.added, out.removed, out.replaced) == (1, 1, 1)
+        assert [call.args[0] for call in repo.delete_write_in.call_args_list] == ["wi_1"]
+        assert repo.create_write_in.call_args.args[0]["occupant_name"] == "H. Osei"
 
     @pytest.mark.asyncio
     async def test_an_unpush_deletes_both_of_two_identical_added_rows(self) -> None:
@@ -4061,34 +4219,27 @@ class TestPushAndUnpushCarryNRowsPerUnit:
         repo.update_push_event.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_an_unrelated_co_occupant_still_refuses_until_step_8_narrows_the_index(self) -> None:
-        """★ OQ-3, ANSWERED 2026-08-29 -- AND ITS EFFECT BELONGS TO STEP 8.
+    async def test_an_unrelated_co_occupant_no_longer_refuses_the_revert(self) -> None:
+        """★ OQ-3, ANSWERED 2026-08-29 -- AND ITS EFFECT ARRIVES WITH STEP 8.
 
-        The ruled shape is that drift keys on the tuple rather than the unit,
-        because under the narrowed
-        `(session_cm_id, year, unit, occupant_name)` index a recreate beside
-        a DIFFERENT occupant no longer collides, and refusing over it refuses
-        a revert that would in fact have succeeded.
+        Drift keys on `(unit, occupant_name)`, not on the unit: under the
+        narrowed `(session_cm_id, year, unit, occupant_name)` index
+        (`1500000176`) a recreate BESIDE a different occupant no longer
+        collides, so refusing over that co-occupant refused a revert that
+        would in fact have succeeded -- and on a shareable cabin the
+        co-occupant refused over is the feature working.
 
-        ⚠️ THAT INDEX DOES NOT EXIST YET. The tree still carries
-        `(session_cm_id, year, unit)` (`1500000161:208`); step 8 is the
-        on-switch and lands last. Under the index that IS deployed the
-        neighbour below collides with phase 2's recreate, so letting the
-        revert proceed deletes the push's adds and then throws mid-apply with
-        `unpushed_at` never stamped -- the kindred#2555 failure this guard
-        exists to close, reached through the guard itself. Reproduced against
-        a store that models the real index in
-        `TestTheDriftGuardStaysConservativeUntilTheIndexNarrows`.
+        THE FLIP THIS TEST RECORDS. It used to assert `UnpushDriftError`,
+        because until step 8 the neighbour DID collide with phase 2's
+        recreate and letting the revert proceed left a half-applied unpush
+        with `unpushed_at` never stamped. The unit-grain bridge that bought
+        that is deleted with the index change, and this is its other end.
 
-        So the narrowed key is in place and pinned by the two tests above,
-        with a unit-grain bridge beside it that keeps the ANSWER conservative
-        until the schema catches up. ⇒ THIS TEST IS THE STEP 8 PR'S TO FLIP,
-        in the same change that deletes the bridge: `restored == 1`, the
-        neighbour untouched.
-
-        THE 2026-08-22 REFUSE-WHOLESALE RULING IS UNTOUCHED EITHER WAY. It
-        governs what happens WHEN there is drift -- nothing reverted, the
-        buildings named -- not what counts as drift.
+        THE 2026-08-22 REFUSE-WHOLESALE RULING IS UNTOUCHED. It governs what
+        happens WHEN there is drift -- nothing reverted, the buildings named
+        -- not what counts as drift. Only the definition narrows, and it
+        narrows onto the collision the guard was protecting all along; the
+        two tests above still refuse over a row sharing the recreate's key.
         """
         repo = _repo(
             find_push_event=_ledger([CH_REM]),
@@ -4097,28 +4248,34 @@ class TestPushAndUnpushCarryNRowsPerUnit:
         )
         svc = LodgingWriteService(repo)
 
-        with pytest.raises(UnpushDriftError) as exc:
-            await svc.unpush("push_1", 2026, 1309001)
+        out = await svc.unpush("push_1", 2026, 1309001)
 
-        assert exc.value.buildings == ["fern-1"]
-        repo.create_write_in.assert_not_called()
+        assert (out.deleted, out.restored) == (0, 1)
         repo.delete_write_in.assert_not_called()
-        repo.update_push_event.assert_not_called()
+        assert repo.create_write_in.call_args.args[0]["occupant_name"] == "E. Sandoval"
+        assert repo.update_push_event.called
 
 
 class _StatefulWriteInRepo:
     """A minimal STATEFUL fake standing in for PocketBase's own
-    `idx_lodging_write_in_unique` on `lodging_write_ins` (unit,
-    session_cm_id, year) -- kindred#2477 fix round, found by Task 10's
-    live-PocketBase acceptance pass.
+    `idx_lodging_write_in_unique` on `lodging_write_ins`
+    (session_cm_id, year, unit, occupant_name) -- kindred#2477 fix round,
+    found by Task 10's live-PocketBase acceptance pass.
 
     The `MagicMock`-based `_repo()` helper this file otherwise uses
     enforces no such index, so it cannot reproduce a real
     `ClientResponseError` collision. This fake keeps an actual dict of
-    "live" rows and refuses a `create_write_in` that would put two rows on
-    the same (unit, session_cm_id, year) -- exactly what PocketBase itself
-    refuses -- so a stored-order replay that recreates before it deletes
-    hits the same 400 in this test that it hit against the real database.
+    "live" rows and refuses a `create_write_in` that would collide --
+    exactly what PocketBase itself refuses -- so a stored-order replay that
+    recreates before it deletes hits the same 400 in this test that it hit
+    against the real database.
+
+    `occupant_name` JOINED THE KEY IN kindred#2583 STEP 8 (`1500000176`).
+    Before it, the key was (unit, session_cm_id, year) and ANY sitting
+    occupant refused a recreate; that is why `unpush`'s drift guard carried a
+    unit-grain bridge. Narrowed, only the SAME occupant collides -- which is
+    what lets a revert proceed past an unrelated co-occupant, and is exactly
+    the case the bridge had to refuse.
     """
 
     def __init__(self, push_event: SimpleNamespace, units: list[Any], write_ins: dict[str, SimpleNamespace]) -> None:
@@ -4155,11 +4312,18 @@ class _StatefulWriteInRepo:
 
     async def create_write_in(self, data: dict[str, Any]) -> SimpleNamespace:
         self.create_write_in_calls.append(data)
-        # The real index: (unit, session_cm_id, year). A row still occupying
-        # this unit refuses the create exactly as PocketBase's own index
-        # does -- the collision this test exists to reproduce.
+        # The real index: (session_cm_id, year, unit, occupant_name). A row
+        # already naming THIS occupant on this unit refuses the create exactly
+        # as PocketBase's own index does -- the collision this test exists to
+        # reproduce. A different occupant creates beside it, which is the
+        # feature step 8 turns on.
         for row in self._store.values():
-            if (row.unit, row.session_cm_id, row.year) == (data["unit"], data["session_cm_id"], data["year"]):
+            if (row.unit, row.session_cm_id, row.year, row.occupant_name) == (
+                data["unit"],
+                data["session_cm_id"],
+                data["year"],
+                data["occupant_name"],
+            ):
                 raise ClientResponseError(
                     "validation_not_unique", status=400, data={}, url="", is_abort=False, original_error=None
                 )
@@ -4248,28 +4412,23 @@ class TestUnpushDeletesTheAddsBeforeItRecreatesTheRemoves:
         assert restored_row.unit == "uc"
 
 
-class TestTheDriftGuardStaysConservativeUntilTheIndexNarrows:
-    """OQ-3's narrowing is a STEP 8 change, and shipping its effect early
-    re-opens the kindred#2555 failure it was written to close.
+class TestTheDriftGuardRefusesExactlyWhatTheNarrowedIndexCollidesOn:
+    """OQ-3's narrowing arrives with step 8, and this is the pair that shows
+    the guard and the schema now agree about what a collision is.
 
-    The ruled shape is right: once `idx_lodging_write_in_unique` is
-    `(session_cm_id, year, unit, occupant_name)`, a recreate BESIDE a
-    different occupant no longer collides, so refusing over that co-occupant
-    refuses a revert that would in fact have succeeded.
-
-    But the index in the tree is still `(session_cm_id, year, unit)`
-    (`1500000161:208`) and step 8 is deliberately not in this PR. Under THAT
-    index the co-occupant does collide, so a guard that keys on the recreated
-    row's own `(unit, occupant_name)` waves the revert through, phase 1's
-    deletes land, and phase 2's `create_write_in` throws mid-apply with
+    Before `1500000176`, `idx_lodging_write_in_unique` was
+    `(session_cm_id, year, unit)`, so ANY sitting occupant collided with
+    phase 2's recreate. A guard keyed on the recreated row's own
+    `(unit, occupant_name)` would have waved such a revert through, phase 1's
+    deletes would land, and the recreate would throw mid-apply with
     `unpushed_at` never stamped -- a half-reverted push whose retry can only
-    throw again. The old unit-grain reading refused cleanly and named the
-    building, which is what staff can act on.
+    throw again (kindred#2555). That is what the unit-grain bridge bought, and
+    step 8 deletes it because the index no longer refuses that case.
 
-    So the narrowed key stays (it is the ruled shape, and the tests above pin
-    it), with a pre-step-8 bridge beside it that keeps the guard unit-grain
-    until the schema catches up. ⚠️ THE BRIDGE IS THE STEP 8 PR'S TO DELETE,
-    together with `by_unit`; the narrowed key beside it is what remains.
+    Narrowed, the two questions are the same question: the guard refuses a
+    live row sharing the recreate's `(unit, occupant_name)` -- which is
+    exactly what the index refuses -- and lets an unrelated co-occupant
+    through, which is the shareable cabin working.
 
     `MagicMock` cannot see any of this -- it accepts every create -- so these
     run against `_StatefulWriteInRepo`, which models the real index and is
@@ -4307,9 +4466,60 @@ class TestTheDriftGuardStaysConservativeUntilTheIndexNarrows:
             },
         )
 
+    @staticmethod
+    def _repo_with_the_same_occupant_on_the_recreate_target() -> _StatefulWriteInRepo:
+        """The same shape, except the row sitting on fern-1 bears the very
+        name phase 2 has to recreate. THAT collides under the narrowed index,
+        so it is still drift and still refuses wholesale."""
+        push_event = _ledger([CH_ADD, CH_REM])
+        return _StatefulWriteInRepo(
+            push_event=push_event,
+            units=[_u("uc", "cedar-9"), _u("uc2", "fern-1")],
+            write_ins={
+                "wi_pushed": SimpleNamespace(
+                    id="wi_pushed",
+                    unit="uc",
+                    occupant_name="H. Osei",
+                    note="",
+                    party_size=2,
+                    session_cm_id=1309001,
+                    year=2026,
+                ),
+                "wi_same_name": SimpleNamespace(
+                    id="wi_same_name",
+                    unit="uc2",
+                    occupant_name="E. Sandoval",
+                    note="Rewritten by hand",
+                    party_size=1,
+                    session_cm_id=1309001,
+                    year=2026,
+                ),
+            },
+        )
+
     @pytest.mark.asyncio
-    async def test_a_co_occupant_the_current_index_would_collide_with_still_refuses(self) -> None:
+    async def test_an_unrelated_co_occupant_lets_the_revert_through(self) -> None:
+        """★ THE BRIDGE IS GONE. Against a store that models the NARROWED
+        index the recreate lands beside the neighbour, so the revert
+        completes rather than refusing a case that would have worked."""
         repo = self._repo_with_a_neighbour_on_the_recreate_target()
+        svc = LodgingWriteService(repo)  # type: ignore[arg-type]
+
+        out = await svc.unpush("push_1", 2026, 1309001)
+
+        assert (out.deleted, out.restored) == (1, 1)
+        assert repo.delete_write_in_calls == ["wi_pushed"]
+        assert [c["occupant_name"] for c in repo.create_write_in_calls] == ["E. Sandoval"]
+        # Both households on fern-1, which is the whole feature.
+        assert sorted(r.occupant_name for r in repo._store.values()) == ["E. Sandoval", "Olivia Chen"]
+        assert repo._push_event.unpushed_at != ""
+
+    @pytest.mark.asyncio
+    async def test_a_row_sharing_the_recreates_own_key_still_refuses(self) -> None:
+        """The collision the guard exists for, unchanged. The removed
+        occupant written back by hand with different details is NOT the
+        pushed row, phase 1 never clears it, and phase 2 would collide."""
+        repo = self._repo_with_the_same_occupant_on_the_recreate_target()
         svc = LodgingWriteService(repo)  # type: ignore[arg-type]
 
         with pytest.raises(UnpushDriftError) as exc:
@@ -4322,7 +4532,7 @@ class TestTheDriftGuardStaysConservativeUntilTheIndexNarrows:
         """The whole point of a PRE-check. A refusal after phase 1 has run is
         a half-reverted push, and `unpushed_at` is never stamped, so a retry
         finds the adds already gone and can only throw again."""
-        repo = self._repo_with_a_neighbour_on_the_recreate_target()
+        repo = self._repo_with_the_same_occupant_on_the_recreate_target()
         svc = LodgingWriteService(repo)  # type: ignore[arg-type]
 
         with pytest.raises(UnpushDriftError):
@@ -4330,5 +4540,5 @@ class TestTheDriftGuardStaysConservativeUntilTheIndexNarrows:
 
         assert repo.delete_write_in_calls == []
         assert repo.create_write_in_calls == []
-        assert sorted(repo._store) == ["wi_neighbour", "wi_pushed"]
+        assert sorted(repo._store) == ["wi_pushed", "wi_same_name"]
         assert repo._push_event.unpushed_at == ""

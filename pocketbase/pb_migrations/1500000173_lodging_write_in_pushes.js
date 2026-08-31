@@ -8,11 +8,26 @@
  * Unpush a replay: delete what the push added, recreate what it removed.
  *
  * Removals of live write-ins are PHYSICAL deletes recorded here first — a
- * `deleted_at` tombstone was ruled out (owner, 2026-08-22): the live table's
- * unique index (unit, session_cm_id, year) means a tombstone blocks staff from
- * ever writing that unit again for the weekend, the live table deliberately
- * has no scenario column (main_lodging_write_in_cascade_test.go pins it), and
- * every reader would need a deleted-filter one missed reader would break.
+ * `deleted_at` tombstone was ruled out (owner, 2026-08-22) for three reasons,
+ * two of which stand and one of which kindred#2583 step 8 has since changed:
+ *
+ *   1. ⚠️ CORRECTED. This used to read "the live table's unique index
+ *      (unit, session_cm_id, year) means a tombstone blocks staff from ever
+ *      writing that unit again for the weekend". 1500000176 narrowed that
+ *      index onto `occupant_name`, so a tombstone no longer blocks the UNIT —
+ *      it blocks re-writing THAT OCCUPANT onto it. Weakened, not void: remove
+ *      one occupant from a unit and write the same occupant back, and the
+ *      tombstone is still in the way. It is no longer the reason it once was,
+ *      and the next reader should not argue from it as though it were.
+ *   2. The live table deliberately has no scenario column
+ *      (main_lodging_write_in_cascade_test.go pins it). UNCHANGED.
+ *   3. Every reader would need a deleted-filter, and one missed reader would
+ *      break. UNCHANGED, and stronger: the two-write-ins work found three
+ *      readers of this data nobody had audited.
+ *
+ * ⇒ Physical delete is still the answer, on reasons 2 and 3. The answer did
+ * not move; the argument did, and it is corrected here rather than left to
+ * mislead — see CLAUDE.md § "A Wrong Issue Body Gets Fixed, Not Worked Around".
  *
  * `scenario_id` is a TEXT SNAPSHOT, not a relation, deliberately: push history
  * must outlive the scenario. A relation with cascadeDelete erases the audit
