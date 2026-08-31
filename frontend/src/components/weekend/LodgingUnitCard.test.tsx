@@ -2882,7 +2882,77 @@ describe('LodgingUnitCard — T2: the amenities ride the TITLE row', () => {
     expect(container.querySelector('[data-testid="amenity-not-weatherized"]')).toBeNull()
   })
 
-  it('draws all six marks together — bathroom, power, AC, fridge, heat and negative weatherized', () => {
+  /*
+   * ⚠️ THE STEP-FREE MARK reads `ramp_coverage`, kindred#2327/kindred#2646 —
+   * the owner's follow-up ask on this same PR: "the wheelchair icon for the
+   * locations that are 'is accessible'". `MapUnitPopover.tsx` already draws
+   * this exact mark (`Accessibility` icon, `Step-free` label) — this card is
+   * the surface catching up, same shape as the fridge mark catching up to
+   * the map earlier in this same file.
+   *
+   * ⚠️ NOT THE SAME GRAMMAR AS THE OTHER FIVE POSITIVE MARKS. Every other
+   * amenity here draws on presence (`!== 'none' && !== 'unknown'`, so `some`
+   * draws the full icon). Step-free is the one dimension
+   * `MapUnitPopover.tsx` grades on `=== 'all'` instead of "offers", and its
+   * own comment states why: "a building advertising two step-free rooms out
+   * of ten invites precisely the placement that lands in one of the other
+   * eight" — a ramp one room over is not a ramp a wheelchair user can use,
+   * unlike a fridge or an AC unit one room over. This card reuses that same
+   * `=== 'all'` grade rather than inventing a second policy for the same
+   * field two surfaces already read.
+   */
+  it('draws the wheelchair mark for a unit graded fully step-free', () => {
+    const { container } = renderUnit({ is_accessible: true, ramp_coverage: 'all' })
+    expect(container.querySelector('[data-testid="amenity-step-free"]')).not.toBeNull()
+  })
+
+  it('draws nothing for a BUILDING graded only SOME step-free — unlike every presence-based mark above', () => {
+    // The divergence test: `some` draws the plug, the snowflake, the fridge
+    // and the flame, but must NOT draw this one. A wheelchair user placed on
+    // the strength of "the building has it somewhere" can land in the one
+    // room that is not step-free.
+    const { container } = renderUnit({
+      is_accessible: false,
+      ramp_coverage: 'some',
+      is_container: true,
+      is_combined: true,
+    })
+    expect(container.querySelector('[data-testid="amenity-step-free"]')).toBeNull()
+  })
+
+  it('draws nothing where no room is step-free', () => {
+    const { container } = renderUnit({ is_accessible: false, ramp_coverage: 'none' })
+    expect(container.querySelector('[data-testid="amenity-step-free"]')).toBeNull()
+  })
+
+  it('never claims step-free from the raw is_accessible flag the resolved field arbitrates', () => {
+    // The raw twin set to the OPPOSITE of the resolved answer, so the test
+    // proves which one is read rather than merely agreeing with both.
+    const { container } = renderUnit({ is_accessible: true, ramp_coverage: 'none' })
+    expect(container.querySelector('[data-testid="amenity-step-free"]')).toBeNull()
+  })
+
+  it('draws the mark for a BUILDING whose rooms are accessible but whose own row is not, off the resolved grade', () => {
+    const { container } = renderUnit({
+      is_accessible: false,
+      ramp_coverage: 'all',
+      is_container: true,
+      is_combined: true,
+    })
+    expect(container.querySelector('[data-testid="amenity-step-free"]')).not.toBeNull()
+  })
+
+  it('says nothing about step-free access nobody has recorded', () => {
+    const { container } = renderUnit({ is_accessible: true, ramp_coverage: 'unknown' })
+    expect(container.querySelector('[data-testid="amenity-step-free"]')).toBeNull()
+  })
+
+  it('reuses MapUnitPopover’s own label, so the two surfaces agree', () => {
+    renderUnit({ is_accessible: true, ramp_coverage: 'all' })
+    expect(screen.getByLabelText('Step-free')).toBeInTheDocument()
+  })
+
+  it('draws all seven marks together — bathroom, power, AC, fridge, heat, negative weatherized and step-free', () => {
     const { container } = renderUnit({
       bathroom: 'shared',
       has_power: true,
@@ -2895,9 +2965,11 @@ describe('LodgingUnitCard — T2: the amenities ride the TITLE row', () => {
       heat_coverage: 'all',
       is_weatherized: false,
       weatherized_coverage: 'none',
+      is_accessible: true,
+      ramp_coverage: 'all',
     })
     const title = container.querySelector('[data-testid="unit-title-row"]')
-    expect(title?.querySelectorAll('[data-testid^="amenity-"]')).toHaveLength(6)
+    expect(title?.querySelectorAll('[data-testid^="amenity-"]')).toHaveLength(7)
   })
 
   it('keeps the title, the amenities and the occupancy figure on ONE row', () => {

@@ -18,6 +18,7 @@ import {
   type DraggableSyntheticListeners,
 } from '@dnd-kit/core'
 import {
+  Accessibility,
   Bath,
   CloudOff,
   Flame,
@@ -1255,6 +1256,33 @@ const LodgingUnitCardInner = memo(function LodgingUnitCardInner({
               className="text-muted-foreground h-3.5 w-3.5 flex-shrink-0"
             />
           )}
+        {/* `ramp_coverage`, NEVER the raw `is_accessible` column and NEVER
+            `has_ramp` — kindred#2327/kindred#2646, the owner's follow-up ask
+            on this same PR ("the wheelchair icon for the locations that are
+            'is accessible'"). `MapUnitPopover.tsx` already draws this exact
+            mark (`Accessibility` icon, `Step-free` label) — reused verbatim
+            here so the card and the popover a staff member opens FROM it
+            agree, the same contradiction-closing move the fridge mark made
+            against the same popover earlier in this file.
+
+            ⚠️ NOT THIS ROW'S OR-POLICY. Every other positive mark above
+            draws on PRESENCE (`!== 'none' && !== 'unknown'`, so `some` draws
+            the full icon — no half-fill). Step-free draws on `=== 'all'`
+            instead, and that is not a new policy invented for this card: it
+            is `MapUnitPopover.tsx`'s own documented exception, carried over
+            rather than re-litigated — "the ONE DIMENSION that needs `all`
+            rather than `offers`", because a ramp one room over is not a ramp
+            a wheelchair user in a DIFFERENT room can use, unlike a fridge or
+            an AC unit one room over. Presence would draw the wheelchair icon
+            on a `some`-graded building — inviting exactly the placement that
+            lands a wheelchair user in the one room without a ramp. */}
+        {(unit.ramp_coverage ?? 'unknown') === 'all' && (
+          <Accessibility
+            data-testid="amenity-step-free"
+            aria-label="Step-free"
+            className="text-muted-foreground h-3.5 w-3.5 flex-shrink-0"
+          />
+        )}
         {/* The tooltip hangs on THIS figure, never on the `<h3>` above it
             (kindred#2177). It is also the smallest trigger on the board, which
             is why `ui/Tooltip` grows a transparent 24px hit target around
