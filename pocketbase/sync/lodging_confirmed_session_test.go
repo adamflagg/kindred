@@ -331,3 +331,73 @@ func TestReplayIssueReopensARowWhoseConfirmationIsNotACandidate(t *testing.T) {
 		t.Error("the row stayed ticked with no placement behind it")
 	}
 }
+
+// GUARD 2, pinned at the level the guarantee actually lives.
+//
+// TestConfirmedPlacementSurvivesItsOwnOrphanSweep proves the end-to-end
+// behaviour against one fixture. This proves the INVARIANT that makes it hold
+// for every fixture, and it is the one that bites on the widening kindred#2626
+// measured: whatever confirmedAttribution returns true for, the session it
+// names is one deleteLodgingOrphans' own predicate would keep.
+//
+// sessionIndexHasWindow is called here rather than re-implemented, because it
+// IS the orphan key -- findLodgingEnrollmentOrphans decides on that single call
+// against householdIndex[hh], and Candidates is that same slice. A test that
+// spelled the check out again could agree with itself while the two keys
+// diverged, which is exactly how the write key and the orphan key came apart
+// the first time: the run reported SUCCESS while deleting its own new rows.
+//
+// Attribution.SessionCMID() is the value that reaches
+// lodging_assignments.session_cm_id, so it -- not the input number -- is what
+// gets compared.
+func TestConfirmedAttributionNeverEscapesTheOrphanKey(t *testing.T) {
+	t.Parallel()
+	candidates := []SessionWindow{
+		{ID: "sess_fc1", CMID: cmIDFamilyCamp1},
+		{ID: "sess_fc6", CMID: cmIDFamilyCamp6},
+		{ID: "sess_winter", CMID: cmIDWinterFamily},
+	}
+
+	cases := []struct {
+		name        string
+		candidates  []SessionWindow
+		confirmed   int
+		wantOK      bool
+		wantSession string
+	}{
+		{"a confirmed candidate", candidates, cmIDFamilyCamp6, true, "sess_fc6"},
+		{"the first candidate", candidates, cmIDFamilyCamp1, true, "sess_fc1"},
+		{"the last candidate", candidates, cmIDWinterFamily, true, "sess_winter"},
+		{"a real weekend the party does not attend", candidates, cmIDFamilyCamp2, false, ""},
+		{"unconfirmed", candidates, 0, false, ""},
+		{"a negative id", candidates, -1, false, ""},
+		{"confirmed against no candidates at all", nil, cmIDFamilyCamp1, false, ""},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			attr, ok := confirmedAttribution(tc.candidates, tc.confirmed)
+			if ok != tc.wantOK {
+				t.Fatalf("ok = %v, want %v", ok, tc.wantOK)
+			}
+			if !ok {
+				return
+			}
+			if attr.SessionID != tc.wantSession {
+				t.Errorf("SessionID = %q, want %q", attr.SessionID, tc.wantSession)
+			}
+			if attr.Reason != attrSingleSession {
+				t.Errorf("Reason = %q, want %q so the write path treats it as attributable",
+					attr.Reason, attrSingleSession)
+			}
+			// THE INVARIANT: the session that reaches session_cm_id is one the
+			// orphan sweep's own predicate keeps.
+			if !sessionIndexHasWindow(tc.candidates, attr.SessionCMID()) {
+				t.Errorf("session_cm_id %d is outside the party's session index -- "+
+					"the next orphan sweep would delete the row this attribution writes",
+					attr.SessionCMID())
+			}
+		})
+	}
+}
