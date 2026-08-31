@@ -22,18 +22,19 @@ const enrollmentStatusColumn = "enrollment_status"
 
 const (
 	// enrollmentStatusEnrolled means at least one member of the household was
-	// actively enrolled (status_id = 2) on a family OR adult weekend that year.
+	// actively enrolled (status_id = 2) on a FAMILY weekend that year. Adult
+	// weekends are a different program and do not count -- see
+	// familyCampSessionTypes.
 	enrollmentStatusEnrolled = "enrolled"
-	// enrollmentStatusNoneOnFile means the household has NO family/adult
+	// enrollmentStatusNoneOnFile means the household has NO family-weekend
 	// attendee row at all for the year -- it registered and never appeared in
 	// CampMinder's enrollment ledger.
 	//
 	// Deliberately NOT the string "none". CampMinder has an occupied status
 	// spelled exactly that (409 weekend rows on the production snapshot), so
 	// reusing it would collapse "we have a row and it says none" into "we have
-	// no row", which are different facts. `none_on_file` is the name the read
-	// layer already gives the second one (EnrollmentState in
-	// api/schemas/lodging.py).
+	// no row", which are different facts. `none_on_file` is the name this
+	// derivation gives the second one.
 	enrollmentStatusNoneOnFile = "none_on_file"
 	// enrollmentStatusUnknown covers an attendee row whose status slug is
 	// missing, or one whose slug says enrolled while its status_id does not.
@@ -42,31 +43,48 @@ const (
 	enrollmentStatusUnknown = "unknown"
 )
 
-// ⚠️ THE STORED VOCABULARY IS WIDER THAN THE WIRE'S, and the read layer has to
-// catch up before it can publish this column verbatim.
-// api/schemas/lodging.py's EnrollmentState is
-// Literal["enrolled", "none_on_file"] and it types
-// HouseholdJourneyYear.enrollment -- so the kindred#2305 follow-on that
-// switches build_household_journey onto this column must WIDEN that Literal
-// first. 55 of 2026's 479 registration rows store a status slug (cancelled,
-// incomplete, waitlisted, withdrawn, applied) the two-value Literal would
-// reject with a Pydantic ValidationError the moment the journey was built.
+// ⚠️ THE STORED VOCABULARY IS WIDE, AND THIS COLUMN HAS NO READER TODAY.
+// Beyond the three names above it stores any CampMinder status slug verbatim --
+// 55 of 2026's 481 registration rows carry cancelled, incomplete, waitlisted,
+// withdrawn or applied. The kindred#2305-era read layer that would have
+// published it (EnrollmentState / HouseholdJourneyYear.enrollment in
+// api/schemas/lodging.py) was DELETED by kindred#2618, so anything that picks
+// this column up is building a new reader, not restoring an old one -- and it
+// must accept the full slug vocabulary rather than a closed two-value set.
 
-// familyCampWeekendSessionTypes is which session types ARE family camp.
+// familyCampSessionTypes is which session types ARE family camp.
 //
-// ⚠️ An adult weekend is a family-camp weekend. It differs only in being
-// person-grain -- it enrolls the parent directly rather than their children --
-// and a derivation that filtered `session_type = "family"` alone would report
-// every adult-weekend household as never enrolled. That is not hypothetical:
-// it is the live defect kindred#2305 fixes, measured at 33 of the 89 journey
-// rows badged "No enrollment" for 2026.
+// ⛔ AN ADULT WEEKEND IS NOT FAMILY CAMP, and this list is deliberately one
+// element. Men's and Women's Weekend and the Divorce & Discovery retreat are a
+// SEPARATE PROGRAM that happens to enroll adults directly; they are not family
+// camp at a different grain. The operational fact behind the ruling
+// (kindred#2619): ADULTS-ONLY FAMILY CAMP IS REGISTERED ON PAPER and never
+// reaches CampMinder, so there is no adults-only family-camp cohort in
+// `attendees` for an `adult` pairing to rescue. For a family camp to be visible
+// in CampMinder at all, a child had to register -- which means a family-session
+// attendee row.
 //
-// This DUPLICATES api/services/lodging_repository.py's WEEKEND_SESSION_TYPES
-// rather than importing it, because that one is Python. The Go pairing this
-// would otherwise have reused (`familySessionTypes` in camper_history.go) went
-// away with the camper_history table in migration 1500000157, so there is now
-// nothing in Go to import OR to drift from.
-var familyCampWeekendSessionTypes = []string{sessionTypeFamily, sessionTypeAdult}
+// An earlier version of this list carried sessionTypeAdult, on the reasoning
+// that a family-only filter would badge genuine attendees as never enrolled.
+// That was measured against this very column and was CIRCULAR: the households
+// it counted were `enrolled` BECAUSE of the adult weekend. On the production
+// snapshot all of them turn out to have no family-session attendee row in any
+// state. Do not re-add it without re-reading kindred#2619.
+//
+// ⚠️ THIS DELIBERATELY DIVERGES FROM api/services/lodging_repository.py's
+// WEEKEND_SESSION_TYPES, which stays ("family", "adult"). The two answer
+// DIFFERENT QUESTIONS and the divergence is the point:
+//
+//   - WEEKEND_SESSION_TYPES answers WHICH WEEKENDS HAVE LODGING. An adult
+//     weekend books cabins like any other, so it belongs there.
+//   - familyCampSessionTypes answers WHAT IS FAMILY CAMP. An adult weekend is
+//     a different program, so it does not belong here.
+//
+// The Python read layer already filters `session_type = "family"` alone for the
+// family-camp question (lodging_repository.py's household attendee read and
+// lodging_roster_service.py's journey build, both carrying this argument in
+// full). This derivation is what brings Go into line with them.
+var familyCampSessionTypes = []string{sessionTypeFamily}
 
 // familyCampStatusPriority ranks the non-enrolled statuses, lower being more
 // relevant. It MIRRORS STATUS_PRIORITY in frontend/src/utils/enrollmentFilter.ts
@@ -125,7 +143,8 @@ func normaliseFamilyCampStatus(raw string) string {
 
 // enrollmentStatusForHousehold resolves one household's stored status, and is
 // the ONLY place the absent case is named. A household missing from the map has
-// no family/adult attendee row for the year at all.
+// no family-weekend attendee row for the year at all -- an adult-weekend row
+// does not keep it present, see familyCampSessionTypes.
 //
 // Never returns "": an empty status is the "could not determine" value a
 // consumer cannot act on, and the whole point of a non-nullable derived column
@@ -142,13 +161,13 @@ func enrollmentStatusForHousehold(statuses map[string]string, householdPBID stri
 //
 // TWO STAGES, in this order:
 //
-//  1. ANY actively enrolled member (status_id = 2) on a family or adult
-//     weekend makes the whole household `enrolled`. Mixed households are real
+//  1. ANY actively enrolled member (status_id = 2) on a FAMILY weekend makes
+//     the whole household `enrolled`. Mixed households are real
 //     -- 43 of 594 at (household, year) grain in 2026, 142 of 973 in 2024 --
 //     and a family with one cancelled child and one who came did attend.
 //  2. Otherwise the single best non-enrolled status by familyCampStatusPriority.
 //
-// Households with no family/adult attendee row are ABSENT from the result
+// Households with no family-weekend attendee row are ABSENT from the result
 // rather than present with a sentinel; enrollmentStatusForHousehold names that
 // case. Keyed on the household PocketBase id because that is what the three
 // derived tables store in their `household` relation -- personToHousehold is
@@ -157,9 +176,9 @@ func enrollmentStatusForHousehold(statuses map[string]string, householdPBID stri
 func (s *FamilyCampDerivedSync) loadHouseholdEnrollmentStatus(
 	ctx context.Context, year int, personToHousehold map[string]string,
 ) (map[string]string, error) {
-	weekends, err := LoadSessionWindows(s.App, year, familyCampWeekendSessionTypes)
+	weekends, err := LoadSessionWindows(s.App, year, familyCampSessionTypes)
 	if err != nil {
-		return nil, fmt.Errorf("loading family/adult sessions for %d: %w", year, err)
+		return nil, fmt.Errorf("loading family sessions for %d: %w", year, err)
 	}
 	if len(weekends) == 0 {
 		// NO WEEKENDS IS TWO DIFFERENT FACTS, and only one of them is an answer.
@@ -174,10 +193,12 @@ func (s *FamilyCampDerivedSync) loadHouseholdEnrollmentStatus(
 		// prevent, so the run refuses rather than asserting it.
 		//
 		// The discriminator is the year's camp_sessions rows, not its weekends.
-		// A season that ran sessions and no family or adult weekend is a real
-		// answer; a season with no sessions row at all has not been synced.
-		// Every year 2017-2026 on the production snapshot carries between 6 and
-		// 18 weekends, so the second case is never a real season.
+		// A season that ran sessions and no family weekend is a real answer; a
+		// season with no sessions row at all has not been synced. Every year
+		// 2017-2026 on the production snapshot carries between 6 and 10 FAMILY
+		// weekends, so the second case is never a real season. (That range was
+		// 6-18 while adult weekends counted; narrowing the predicate does not
+		// empty any real year.)
 		sessions, countErr := s.App.FindRecordsByFilter(
 			"camp_sessions", fmt.Sprintf("year = %d", year), sortByID, 1, 0)
 		if countErr != nil {
