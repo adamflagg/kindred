@@ -2760,6 +2760,44 @@ describe('LodgingUnitCard — T2: the amenities ride the TITLE row', () => {
     expect(container.querySelector('[data-testid="amenity-ac"]')).toBeNull()
   })
 
+  /*
+   * ⚠️ THE FRIDGE MARK, kindred#2327 — render-only, because `has_fridge` and
+   * its `fridge_coverage` grain already ship (kindred#2224, kindred#2462) and
+   * `MapUnitPopover.tsx` already draws it with `Refrigerator`. This card was
+   * the one surface left disagreeing with the map: it drew AC and power but
+   * not the fridge the popover a staff member opens FROM this card shows —
+   * the same contradiction kindred#2502 closed on the AC axis, one amenity
+   * over. Same rule as power and AC: `fridge_coverage`, never the raw
+   * `has_fridge`, and PRESENCE, so `some` draws it — no half-fill, matching
+   * the shipped grammar of the other three marks in this row.
+   */
+  it('draws the fridge for a BUILDING whose rooms have one but whose own row does not', () => {
+    const { container } = renderUnit({
+      has_fridge: false,
+      fridge_coverage: 'all',
+      is_container: true,
+      is_combined: true,
+    })
+    expect(container.querySelector('[data-testid="amenity-fridge"]')).not.toBeNull()
+  })
+
+  it('draws it when only SOME rooms have a fridge, as the plug does for power', () => {
+    const { container } = renderUnit({ has_fridge: false, fridge_coverage: 'some' })
+    expect(container.querySelector('[data-testid="amenity-fridge"]')).not.toBeNull()
+  })
+
+  it('never claims a fridge from the raw flag the resolved field arbitrates', () => {
+    // The raw twin set to the OPPOSITE of the resolved answer, so the test
+    // proves which one is read rather than merely agreeing with both.
+    const { container } = renderUnit({ has_fridge: true, fridge_coverage: 'none' })
+    expect(container.querySelector('[data-testid="amenity-fridge"]')).toBeNull()
+  })
+
+  it('says nothing about a fridge nobody has recorded', () => {
+    const { container } = renderUnit({ has_fridge: true, fridge_coverage: 'unknown' })
+    expect(container.querySelector('[data-testid="amenity-fridge"]')).toBeNull()
+  })
+
   it('keeps the title, the amenities and the occupancy figure on ONE row', () => {
     const { container } = renderUnit({
       bathroom: 'shared',

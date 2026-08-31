@@ -2352,6 +2352,22 @@ export type LodgingUnitSummary = {
    */
   fridge_coverage?: 'all' | 'some' | 'none' | 'unknown'
   /**
+   * Has Heat
+   */
+  has_heat?: boolean
+  /**
+   * Heat Coverage
+   */
+  heat_coverage?: 'all' | 'some' | 'none' | 'unknown'
+  /**
+   * Is Weatherized
+   */
+  is_weatherized?: boolean
+  /**
+   * Weatherized Coverage
+   */
+  weatherized_coverage?: 'all' | 'some' | 'none' | 'unknown'
+  /**
    * Has Ramp
    */
   has_ramp?: '' | 'yes' | 'no' | 'partial'

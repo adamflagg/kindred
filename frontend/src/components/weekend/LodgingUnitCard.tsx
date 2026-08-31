@@ -17,7 +17,7 @@ import {
   type DraggableAttributes,
   type DraggableSyntheticListeners,
 } from '@dnd-kit/core'
-import { Bath, Merge, Plug, Plus, Snowflake, Split } from 'lucide-react'
+import { Bath, Merge, Plug, Plus, Refrigerator, Snowflake, Split } from 'lucide-react'
 import { memo, useCallback, useState } from 'react'
 
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
@@ -1160,6 +1160,31 @@ const LodgingUnitCardInner = memo(function LodgingUnitCardInner({
             <Snowflake
               data-testid="amenity-ac"
               aria-label="Air conditioning"
+              className="text-muted-foreground h-3.5 w-3.5 flex-shrink-0"
+            />
+          )}
+        {/* `fridge_coverage`, NEVER the raw `has_fridge` — kindred#2327,
+            and the same move `power_coverage` and `ac_coverage` already made
+            above, for the same reason: a container's own row describes the
+            container, not its rooms. `MapUnitPopover.tsx` already draws this
+            mark (`Refrigerator`, reading `fridge_coverage`), so this card was
+            the one surface disagreeing with the map it sits behind — the
+            same contradiction kindred#2502 closed on the AC axis, one
+            amenity over. `has_fridge`/`fridge_coverage` themselves are not
+            new here — kindred#2224 and kindred#2462 already ship them; this
+            is only the card catching up to what the map already shows.
+
+            PRESENCE, so `some` draws it, matching the plug and the
+            snowflake: the mark says the building offers a fridge somewhere,
+            never which room. No half-fill for `some` — the 2026-08-18
+            ruling that asked for one was never built anywhere else in this
+            row, and a half-fill here alone would read on a different axis
+            than the other three marks beside it. */}
+        {(unit.fridge_coverage ?? 'unknown') !== 'none' &&
+          (unit.fridge_coverage ?? 'unknown') !== 'unknown' && (
+            <Refrigerator
+              data-testid="amenity-fridge"
+              aria-label="Fridge"
               className="text-muted-foreground h-3.5 w-3.5 flex-shrink-0"
             />
           )}
