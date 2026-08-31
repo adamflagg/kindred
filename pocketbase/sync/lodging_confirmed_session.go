@@ -118,7 +118,7 @@ func loadConfirmedSessions(app core.App, year int) (confirmedSessions, error) {
 //     column constraint could express that -- the constraint is enrollment, not
 //     existence.
 //
-// The synthesised Reason is attrSingleSession because that is what every reader
+// The synthesized Reason is attrSingleSession because that is what every reader
 // downstream tests: it means "this value is attributable to exactly one
 // weekend", which a confirmation makes true. It is not a claim that the party
 // attends only one.

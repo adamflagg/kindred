@@ -45,7 +45,7 @@ func seedConfirmedIssue(t *testing.T, app core.App, confirmedCMID int) string {
 // advisory BestGuess for this fixture is the SECOND (the value was edited
 // 10 June, between the first and second weekends), and its fall-through answer
 // is the LAST. Confirming the first therefore cannot be produced by either
-// branch of the heuristic -- only by honouring the human's choice.
+// branch of the heuristic -- only by honoring the human's choice.
 func TestIngestPlacesTheConfirmedWeekend(t *testing.T) {
 	t.Parallel()
 	app := newSyncTestApp(t)
@@ -212,8 +212,8 @@ func TestConfirmedPlacementSurvivesItsOwnOrphanSweep(t *testing.T) {
 	s2 := NewLodgingAssignmentsSync(app)
 	s2.Year = 2025
 	s2.ActiveSeasonYear = 2025
-	if err := s2.Sync(context.Background()); err != nil {
-		t.Fatalf("second Sync: %v", err)
+	if syncErr := s2.Sync(context.Background()); syncErr != nil {
+		t.Fatalf("second Sync: %v", syncErr)
 	}
 	if s2.Stats.Deleted != 0 {
 		t.Errorf("second run deleted %d rows, want 0", s2.Stats.Deleted)
@@ -358,7 +358,7 @@ func TestReplayIssueReopensARowWhoseConfirmationIsNotACandidate(t *testing.T) {
 // GUARD 2, pinned at the level the guarantee actually lives.
 //
 // TestConfirmedPlacementSurvivesItsOwnOrphanSweep proves the end-to-end
-// behaviour against one fixture. This proves the INVARIANT that makes it hold
+// behavior against one fixture. This proves the INVARIANT that makes it hold
 // for every fixture, and it is the one that bites on the widening kindred#2626
 // measured: whatever confirmedAttribution returns true for, the session it
 // names is one deleteLodgingOrphans' own predicate would keep.

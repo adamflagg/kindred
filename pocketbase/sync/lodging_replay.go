@@ -100,7 +100,7 @@ func ReplayIssue(app core.App, issueID string) (ReplayResult, error) {
 		Now:           now,
 		// Read off THIS row rather than through newReplayScope's per-party map,
 		// which the fan-out below uses. A click is about the row that was
-		// clicked: if a party somehow carries two confirmed rows, honouring the
+		// clicked: if a party somehow carries two confirmed rows, honoring the
 		// other one would place a weekend the staff member in front of the queue
 		// did not choose. The map's "freshest wins" rule is the right answer for
 		// an unattended pass and the wrong one for a click.
