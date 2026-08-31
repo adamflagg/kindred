@@ -140,10 +140,22 @@ func (o *Orchestrator) recordSyncRun(completed *Status) {
 	// reader visibility.
 	//
 	// The call, as first made on kindred#2297: a wal_checkpoint(FULL) on every one of ~100
-	// writes a day buys nothing here. Durability does not need it — SQLite recovers committed
-	// WAL frames on the next open, and a checkpoint moves pages into the main file rather than
-	// being what makes a commit durable. Visibility did not need it either, because nothing
-	// outside PocketBase read this table.
+	// writes a day is not worth what it buys here.
+	//
+	// Be precise about what it WOULD buy, because "a checkpoint is not what makes a commit
+	// durable" is true of SQLite in general and misleading in THIS configuration. PocketBase
+	// connects with synchronous=NORMAL (core/db_connect.go), so the WAL is not fsynced per
+	// commit — it is fsynced at checkpoint. A committed row therefore survives a process kill
+	// and a docker stop regardless (the frames are in the file, and SQLite replays them on the
+	// next open), but a HOST POWER LOSS can still lose it. The checkpoint is what closes that
+	// last gap, and it is the only thing it closes here.
+	//
+	// The gap is already small and self-closing: this row is written after its service
+	// finished, so the very next job's own checkpoint flushes it seconds later during a
+	// nightly sweep, the next hourly run does so within the hour otherwise, and main.go
+	// checkpoints on every boot. The exposed row is the LAST of a chain, for at most an hour.
+	//
+	// Visibility did not need it either, because nothing outside PocketBase read this table.
 	//
 	// ⚠️ THAT SECOND CLAUSE STOPPED BEING TRUE IN kindred#2617, and #2297 pre-registered this
 	// exact moment: "if a reader for this table is added later, the checkpoint question is
