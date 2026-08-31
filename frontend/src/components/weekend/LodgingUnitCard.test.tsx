@@ -2798,6 +2798,108 @@ describe('LodgingUnitCard — T2: the amenities ride the TITLE row', () => {
     expect(container.querySelector('[data-testid="amenity-fridge"]')).toBeNull()
   })
 
+  /*
+   * ⚠️ THE HEAT MARK, kindred#2327/kindred#2646 — render-only, because
+   * `has_heat` and its `heat_coverage` grain already ship (kindred#2646's
+   * API half). The owner ruling on #2327 (2026-08-17) is explicit: heat and
+   * AC are TWO icons, not one combined "temperature control" mark. Same rule
+   * as power, AC and fridge: `heat_coverage`, never the raw `has_heat`, and
+   * PRESENCE, so `some` draws it — no half-fill.
+   */
+  it('draws the flame for a BUILDING whose rooms have heat but whose own row does not', () => {
+    const { container } = renderUnit({
+      has_heat: false,
+      heat_coverage: 'all',
+      is_container: true,
+      is_combined: true,
+    })
+    expect(container.querySelector('[data-testid="amenity-heat"]')).not.toBeNull()
+  })
+
+  it('draws it when only SOME rooms have heat, as the plug does for power', () => {
+    const { container } = renderUnit({ has_heat: false, heat_coverage: 'some' })
+    expect(container.querySelector('[data-testid="amenity-heat"]')).not.toBeNull()
+  })
+
+  it('never claims heat from the raw flag the resolved field arbitrates', () => {
+    // The raw twin set to the OPPOSITE of the resolved answer, so the test
+    // proves which one is read rather than merely agreeing with both.
+    const { container } = renderUnit({ has_heat: true, heat_coverage: 'none' })
+    expect(container.querySelector('[data-testid="amenity-heat"]')).toBeNull()
+  })
+
+  it('says nothing about heat nobody has recorded', () => {
+    const { container } = renderUnit({ has_heat: true, heat_coverage: 'unknown' })
+    expect(container.querySelector('[data-testid="amenity-heat"]')).toBeNull()
+  })
+
+  /*
+   * ⚠️ THE NEGATIVE WEATHERIZED MARK, kindred#2327/kindred#2646 — the ONE mark
+   * in this row that draws on ABSENCE rather than presence. Owner ruling
+   * 2026-08-18: the treatment is "a struck-through icon", not a positive
+   * glyph, because the fact worth a staff member's attention here is the
+   * warning — 22 of 118 production units are not weatherized.
+   *
+   * The condition is therefore the AND-policy's complement, not the plug's
+   * OR-policy: `power_coverage` etc. draw on `!== 'none'` (presence anywhere
+   * is enough). This mark draws on `!== 'all'` (anything short of FULLY
+   * weatherized leaves a room a family could land in unweathered), and still
+   * refuses `'unknown'` — the same never-claim-from-nothing-recorded
+   * discipline every positive mark in this row keeps, just on the other
+   * side of the assertion.
+   */
+  it('draws the not-weatherized mark for a unit with no weatherization at all', () => {
+    const { container } = renderUnit({ is_weatherized: false, weatherized_coverage: 'none' })
+    expect(container.querySelector('[data-testid="amenity-not-weatherized"]')).not.toBeNull()
+  })
+
+  it('draws it for a BUILDING mixed between weatherized and not — a family can still land in the wrong room', () => {
+    const { container } = renderUnit({
+      is_weatherized: false,
+      weatherized_coverage: 'some',
+      is_container: true,
+      is_combined: true,
+    })
+    expect(container.querySelector('[data-testid="amenity-not-weatherized"]')).not.toBeNull()
+  })
+
+  it('draws nothing when the unit is fully weatherized', () => {
+    const { container } = renderUnit({ is_weatherized: true, weatherized_coverage: 'all' })
+    expect(container.querySelector('[data-testid="amenity-not-weatherized"]')).toBeNull()
+  })
+
+  it('never claims non-weatherization from the raw flag the resolved field arbitrates', () => {
+    // The raw twin set to the OPPOSITE of the resolved answer, so the test
+    // proves which one is read rather than merely agreeing with both.
+    const { container } = renderUnit({ is_weatherized: false, weatherized_coverage: 'all' })
+    expect(container.querySelector('[data-testid="amenity-not-weatherized"]')).toBeNull()
+  })
+
+  it('says nothing about weatherization nobody has recorded', () => {
+    // `unknown` never draws the mark, on either side of the assertion: this
+    // is not "not weatherized", it is "nobody answered".
+    const { container } = renderUnit({ is_weatherized: false, weatherized_coverage: 'unknown' })
+    expect(container.querySelector('[data-testid="amenity-not-weatherized"]')).toBeNull()
+  })
+
+  it('draws all six marks together — bathroom, power, AC, fridge, heat and negative weatherized', () => {
+    const { container } = renderUnit({
+      bathroom: 'shared',
+      has_power: true,
+      power_coverage: 'all',
+      has_ac: true,
+      ac_coverage: 'all',
+      has_fridge: true,
+      fridge_coverage: 'all',
+      has_heat: true,
+      heat_coverage: 'all',
+      is_weatherized: false,
+      weatherized_coverage: 'none',
+    })
+    const title = container.querySelector('[data-testid="unit-title-row"]')
+    expect(title?.querySelectorAll('[data-testid^="amenity-"]')).toHaveLength(6)
+  })
+
   it('keeps the title, the amenities and the occupancy figure on ONE row', () => {
     const { container } = renderUnit({
       bathroom: 'shared',
