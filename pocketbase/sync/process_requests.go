@@ -47,8 +47,6 @@ func NewRequestProcessor(app core.App) *RequestProcessor {
 	}
 }
 
-// Name returns the service name
-
 // Sync executes the processing by calling the FastAPI process-requests endpoint.
 // Python handles all 5 field types:
 // - bunk_with, not_bunk_with, bunking_notes, internal_notes -> AI parsing

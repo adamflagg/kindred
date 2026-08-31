@@ -49,8 +49,6 @@ func NewPersonCustomFieldValuesSync(app core.App, client *campminder.Client) *Pe
 	}
 }
 
-// Name returns the name of this sync service
-
 // SetScope implements scopedService.
 func (s *PersonCustomFieldValuesSync) SetScope(scope Scope) { s.Scope = scope }
 

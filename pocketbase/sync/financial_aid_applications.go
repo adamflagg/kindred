@@ -58,8 +58,6 @@ func NewFinancialAidApplicationsSync(app core.App) *FinancialAidApplicationsSync
 	}
 }
 
-// Name returns the service name
-
 // GetStats returns the current stats
 func (s *FinancialAidApplicationsSync) GetStats() Stats {
 	return s.Stats

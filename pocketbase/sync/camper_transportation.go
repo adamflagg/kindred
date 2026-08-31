@@ -99,8 +99,6 @@ func NewCamperTransportationSync(app core.App) *CamperTransportationSync {
 	}
 }
 
-// Name returns the service name
-
 // GetStats returns the current stats
 func (s *CamperTransportationSync) GetStats() Stats {
 	return s.Stats

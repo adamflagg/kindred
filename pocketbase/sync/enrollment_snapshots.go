@@ -26,8 +26,6 @@ func NewEnrollmentSnapshotsSync(app core.App) *EnrollmentSnapshotsSync {
 	}
 }
 
-// Name returns the service name
-
 // GetStats returns the current stats
 func (s *EnrollmentSnapshotsSync) GetStats() Stats {
 	return s.Stats

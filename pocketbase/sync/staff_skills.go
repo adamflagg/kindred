@@ -52,8 +52,6 @@ func NewStaffSkillsSync(app core.App) *StaffSkillsSync {
 	}
 }
 
-// Name returns the service name
-
 // GetStats returns the current stats
 func (s *StaffSkillsSync) GetStats() Stats {
 	return s.Stats

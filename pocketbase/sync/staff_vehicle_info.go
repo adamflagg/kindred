@@ -46,8 +46,6 @@ func NewStaffVehicleInfoSync(app core.App) *StaffVehicleInfoSync {
 	}
 }
 
-// Name returns the service name
-
 // GetStats returns the current stats
 func (s *StaffVehicleInfoSync) GetStats() Stats {
 	return s.Stats

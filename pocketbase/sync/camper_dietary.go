@@ -66,8 +66,6 @@ func NewCamperDietarySync(app core.App) *CamperDietarySync {
 	}
 }
 
-// Name returns the service name
-
 // GetStats returns the current stats
 func (s *CamperDietarySync) GetStats() Stats {
 	return s.Stats

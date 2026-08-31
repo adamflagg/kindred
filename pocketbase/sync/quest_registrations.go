@@ -60,8 +60,6 @@ func NewQuestRegistrationsSync(app core.App) *QuestRegistrationsSync {
 	}
 }
 
-// Name returns the service name
-
 // GetStats returns the current stats
 func (s *QuestRegistrationsSync) GetStats() Stats {
 	return s.Stats

@@ -239,8 +239,6 @@ func NewStrandedAssignmentCleanupSync(app core.App) *StrandedAssignmentCleanupSy
 	return &StrandedAssignmentCleanupSync{App: app}
 }
 
-// Name returns the orchestrator-facing service name.
-
 // GetStats returns the current stats snapshot.
 func (s *StrandedAssignmentCleanupSync) GetStats() Stats { return s.Stats }
 

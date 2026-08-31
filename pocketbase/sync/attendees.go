@@ -37,8 +37,6 @@ func NewAttendeesSync(app core.App, client *campminder.Client) *AttendeesSync {
 	}
 }
 
-// Name returns the name of this sync service
-
 // SetDryRun implements the orchestrator's DryRunnable interface (kindred#2351). Declared
 // explicitly rather than inherited by embedding BaseSyncService -- see that field's doc
 // comment on BaseSyncService for why a promoted setter is not safe. Setting it also gates

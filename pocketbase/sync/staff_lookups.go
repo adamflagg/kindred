@@ -27,8 +27,6 @@ func NewStaffLookupsSync(app core.App, client *campminder.Client) *StaffLookupsS
 	}
 }
 
-// Name returns the name of this sync service
-
 // Sync performs the staff lookups sync - syncs all 3 global lookup endpoints
 func (s *StaffLookupsSync) Sync(ctx context.Context) error {
 	s.LogSyncStart(serviceNameStaffLookups)

@@ -65,8 +65,6 @@ func NewMultiWorkbookExport(
 	}, nil
 }
 
-// Name returns the name of this sync service.
-
 // SetChangedCollections implements ChangedCollectionsAware. The orchestrator calls this
 // before Sync(), the same way it calls SetDryRun and SetYear below -- a Service cannot reach
 // back into the orchestrator to ask for the batch's changed set itself.

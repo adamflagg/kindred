@@ -29,8 +29,6 @@ func NewReconcileLifecycleSync(app core.App) *ReconcileLifecycleSync {
 	return &ReconcileLifecycleSync{App: app}
 }
 
-// Name returns the orchestrator-facing service name.
-
 // GetStats returns the current stats snapshot.
 func (s *ReconcileLifecycleSync) GetStats() Stats {
 	return s.Stats

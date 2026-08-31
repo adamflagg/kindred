@@ -598,8 +598,6 @@ func (s *BunkRequestsSync) WasSuccessful() bool {
 	return s.SyncSuccessful
 }
 
-// Name returns the service name
-
 // Sync implements the Service interface - calls RunSync with year-prefixed CSV path
 func (s *BunkRequestsSync) Sync(_ context.Context) error {
 	// Get current year from config

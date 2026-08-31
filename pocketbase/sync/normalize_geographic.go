@@ -87,8 +87,6 @@ func NewNormalizeGeographicSync(app core.App) *NormalizeGeographicSync {
 	}
 }
 
-// Name returns the service name
-
 // GetStats returns the current stats
 func (n *NormalizeGeographicSync) GetStats() Stats {
 	return n.Stats
