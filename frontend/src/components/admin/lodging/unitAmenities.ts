@@ -134,10 +134,10 @@ export const AMENITY_FLAGS: readonly { key: AmenityFlag; label: string; icon: Lu
  * `shareability` is DELIBERATELY NOT in this object (kindred#2026).
  *
  * Everything here is governed by the one `is_confirmed` checkbox, which
- * asserts that a human walked the cabin and checked these ten physical
- * facts. Shareability is not one: it is a POLICY classification, decided at a
- * desk rather than observed in a doorway, so a walk-through cannot confirm it
- * and the checkbox does not apply to it.
+ * asserts that a human walked the cabin and checked every `AMENITY_FLAGS`
+ * physical fact. Shareability is not one: it is a POLICY classification,
+ * decided at a desk rather than observed in a doorway, so a walk-through
+ * cannot confirm it and the checkbox does not apply to it.
  *
  * ⚠️ THE ORIGINAL ARGUMENT HERE WAS A DIFFERENT ONE and no longer holds:
  * "the board trusts shareability immediately and discounts these until
