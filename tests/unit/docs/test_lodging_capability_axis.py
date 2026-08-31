@@ -20,9 +20,11 @@ doc's own content, not a markdown-structure parser. What is worth pinning:
   number written here") exists to prevent.
 """
 
+import re
 from pathlib import Path
 
 DOC_PATH = Path(__file__).resolve().parents[3] / "docs" / "reference" / "lodging-board-vs-summer.md"
+SECTION_HEADING = "7. Capability axis"
 
 REQUIRED_CAPABILITY_ROWS = (
     "lock / friend group",
@@ -55,6 +57,25 @@ def _doc_text() -> str:
     return DOC_PATH.read_text(encoding="utf-8")
 
 
+def _capability_axis_section_text() -> str:
+    """Text of the '## 7. Capability axis' section only, up to (not
+    including) the next top-level '## ' heading.
+
+    Coverage must be checked against the table itself, not the whole
+    document — several of the required terms (map, availability, swap,
+    scenario, findability, ...) also appear in the doc's prose outside the
+    table (tab names, JS snippets in 'How to re-measure'), so a whole-doc
+    substring search would keep passing even if a row were silently
+    dropped from the table — exactly the regression this guard exists to
+    catch.
+    """
+    sections = re.split(r"(?m)^## ", _doc_text())
+    for section in sections:
+        if section.startswith(SECTION_HEADING):
+            return section
+    raise AssertionError(f"no '## {SECTION_HEADING}' section found in the doc")
+
+
 def test_capability_axis_section_exists() -> None:
     lowered = _doc_text().lower()
     assert "capability axis" in lowered, (
@@ -64,7 +85,7 @@ def test_capability_axis_section_exists() -> None:
 
 
 def test_capability_axis_covers_every_surveyed_capability() -> None:
-    lowered = _doc_text().lower()
+    lowered = _capability_axis_section_text().lower()
     missing = [name for name in REQUIRED_CAPABILITY_ROWS if name not in lowered]
     assert not missing, f"capability axis is missing a row for: {missing}"
 

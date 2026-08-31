@@ -514,7 +514,7 @@ pipeline cannot take that filename.
 | --- | --- | --- | --- |
 | Lock / friend groups | `LockGroupPanel.tsx`, `LockGroupActionBar.tsx`, `LockGroupsHub.tsx` | `WeekendFriendGroups.tsx`, `FriendGroupActionBar.tsx`, `AddHouseholdPicker.tsx` | ✅ **SHIPPED** — half 1, PR #2169 |
 | Scenarios + draft assignments | `api/routers/scenarios.py`, `NewScenarioModal`, `ScenarioManagementModal` | `WeekendScenarioPicker.tsx`; `scenarios.py:70` `_is_weekend_session_type`, `:111` `_seed_weekend_scenario`, `lodging_assignments_draft` | ✅ SHIPPED — program-aware create / rename / delete / seed / clear |
-| Legend | `BunkingLegend.tsx` | `WeekendLegendButton`, the same file (`WeekendRosterPage.tsx`) | ✅ SHIPPED, shared component |
+| Legend | `BunkingLegend.tsx` | `WeekendLegendButton`, the same file (`BunkingLegend.tsx`) | ✅ SHIPPED, shared component |
 | Unplaced badge | `FloatingUnassignedBadge.tsx` | `FloatingUnplacedBadge.tsx` | ✅ SHIPPED |
 | Utilisation / session stats | `BunkUtilizationBar.tsx`, `SessionStats.tsx` | `WeekendStatsBar.tsx` | ✅ SHIPPED |
 | Detail panel + alerts | `CamperDetailsPanel.tsx`, `CamperAlertSection.tsx` | `FamilyDetailsPanel.tsx`, `AccessibilityFlagList.tsx` | ✅ SHIPPED |
