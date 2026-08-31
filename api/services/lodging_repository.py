@@ -125,6 +125,15 @@ WEEKEND_SESSION_TYPES = (FAMILY_SESSION_TYPE, "adult")
 # vocabulary, not any constant here.
 UNRESOLVED_ALIAS_KIND = "unresolved_alias"
 
+# lodging_ingest_issues.kind for a household or person CampMinder enrolls in
+# 2+ weekends while carrying ONE cabin value for the year, so the sync cannot
+# say which weekend the value describes. Spelled here because two reads now
+# name it -- the row read below and, on the frontend,
+# `listAmbiguousSessionIssues` in `frontend/src/services/lodgingCrud.ts`. The
+# migration's select list is the constraint on the vocabulary, not this
+# constant.
+AMBIGUOUS_SESSION_KIND = "ambiguous_session"
+
 # Every read below pages through `get_full_list`, which walks LIMIT/OFFSET
 # without an ORDER BY unless one is given. SQLite may then return a different
 # row order per request, so a row past the first page can be skipped or
@@ -1286,6 +1295,40 @@ class LodgingRepository:
         return await self._count(
             LODGING_INGEST_ISSUES,
             f'year = {year} && kind = "{UNRESOLVED_ALIAS_KIND}" && is_resolved = false',
+        )
+
+    async def fetch_open_ambiguous_session_issues(self, year: int) -> list[Any]:
+        """The open cabin-weekend attribution queue -- the ROWS, not a count.
+
+        The row-level twin of `count_open_unresolved_aliases` one kind over.
+        The conflict report (§12.8) needs each row's raw cabin value and its
+        candidate weekends, which a count cannot carry.
+
+        THE SAME THREE PREDICATES `listAmbiguousSessionIssues` USES
+        (`frontend/src/services/lodgingCrud.ts`), and that matters more here
+        than it does for a count: this endpoint annotates the rows the queue is
+        showing, so a fourth answer to "which rows are open" would attach
+        evidence to a row staff cannot see, or leave a visible row bare.
+
+        The YEAR filter is not optional. `lodging_ingest_issues` has carried a
+        required `year` since 1500000122, and CampMinder reuses session ids
+        across years, so an unfiltered read would offer one season's cabin
+        value the next season's candidate weekends.
+
+        Deliberately NOT cached, for the reason its sibling count states:
+        `is_resolved` and `confirmed_session_cm_id` are flipped straight
+        against PocketBase from the admin panel (`confirmSessionAttribution` /
+        `ignoreIngestIssue`), never through this API, so a cached row would
+        leave a weekend staff just confirmed sitting in the report. The
+        endpoint that reads this is uncached for the same reason plus one more
+        -- it also reads live write-ins.
+        """
+        return await self._page(
+            LODGING_INGEST_ISSUES,
+            query_params={
+                "filter": f'year = {year} && kind = "{AMBIGUOUS_SESSION_KIND}" && is_resolved = false',
+                "sort": "-last_seen,raw_value",
+            },
         )
 
     async def fetch_last_successful_sync_end(self, service: str) -> str:

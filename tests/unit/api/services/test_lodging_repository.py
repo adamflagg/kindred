@@ -2223,6 +2223,43 @@ class TestRegistryNameReads:
         assert pb.collection.return_value.get_full_list.call_count == 2
 
 
+class TestFetchOpenAmbiguousSessionIssues:
+    """The open cabin-weekend attribution queue, ROWS this time rather than a
+    count -- the conflict endpoint (§12.8) has to read each row's raw value and
+    candidate weekends, not just how many are waiting.
+
+    Same three predicates `listAmbiguousSessionIssues` uses in
+    `frontend/src/services/lodgingCrud.ts`, because the endpoint reports on the
+    rows the queue is showing: a fourth answer to "which rows are open" is a
+    payload that annotates a row staff cannot see.
+    """
+
+    @pytest.mark.asyncio
+    async def test_filters_to_the_open_rows_of_this_kind_and_year(
+        self, repo: LodgingRepository, pb: MagicMock
+    ) -> None:
+        await repo.fetch_open_ambiguous_session_issues(2026)
+
+        pb.collection.assert_called_with("lodging_ingest_issues")
+        filter_str = _last_query(pb)["filter"]
+        assert "year = 2026" in filter_str
+        assert 'kind = "ambiguous_session"' in filter_str
+        assert "is_resolved = false" in filter_str
+
+    @pytest.mark.asyncio
+    async def test_is_never_cached(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        """`is_resolved` and `confirmed_session_cm_id` are written STRAIGHT to
+        PocketBase from the admin panel (`confirmSessionAttribution` /
+        `ignoreIngestIssue` in lodgingCrud.ts), never through this API -- the
+        same argument `count_open_unresolved_aliases` makes for the queue it
+        feeds. A cached row would leave a weekend staff just confirmed sitting
+        in the conflict report."""
+        await repo.fetch_open_ambiguous_session_issues(2026)
+        await repo.fetch_open_ambiguous_session_issues(2026)
+
+        assert pb.collection.return_value.get_full_list.call_count == 2
+
+
 class TestFetchLastSuccessfulSyncEnd:
     """The mirror's own age, read server-side from `sync_runs`.
 

@@ -1883,3 +1883,117 @@ class LodgingCopyResponse(BaseModel):
 
     copied: int = 0
     skipped: int = 0
+
+
+# ------------------------------------------- cabin-weekend attribution conflicts
+#
+# The round-2 triage-attack master plan §12.8, owner-designed and owner-ruled
+# 2026-08-31. It closes no issue and none is filed.
+#
+# PUBLISHED, NOT RE-DERIVED, and that is the same principle `PushBuildingReport`
+# states one grain over: *"computed server-side and PUBLISHED rather than
+# re-derived… no TS mirror of the classifier exists on purpose."* The conflict
+# rule reads the live board's placements AND its write-ins across every
+# candidate weekend; a client cannot answer it from the queue rows alone, and a
+# client that tried would be a second implementation of availability.
+
+
+class AttributionOccupant(BaseModel):
+    """WHO is in a candidate weekend's copy of the cabin, for the evidence line.
+
+    `label` is a household's mailing title or a write-in's occupant name --
+    what staff can check a cabin against. A CampMinder id is a key, not
+    something anybody recognises.
+
+    `container_name` is set only when the leaf came out of a CONTAINER the raw
+    value named, so the line can say "a room inside <building>" rather than
+    naming a room staff never wrote down.
+    """
+
+    kind: Literal["placement", "write_in"] = "placement"
+    label: str = ""
+    leaf_code: str = ""
+    leaf_name: str = ""
+    container_name: str = ""
+
+
+class AttributionCandidate(BaseModel):
+    """One candidate weekend's verdict, with the evidence behind it.
+
+    ⚠️ `no_data` MEANS NO PLACEMENTS, not no occupancy. A weekend nobody has
+    planned can still hold write-ins -- one 2026 weekend holds three with zero
+    placements -- and calling that "free" would report an absence of planning
+    as a finding.
+
+    ONLY `conflict` RANKS. "free" and "no_data" carry no ranking power (§12.8.4):
+    "taken" is a positive local fact, while "free" is an absence whose weight
+    depends on how complete that weekend's planning is, which nothing measures.
+    Both are drawn anyway, per owner ruling 6 -- *"for the sake of visual
+    uniformity and information."*
+    """
+
+    session_cm_id: int = 0
+    session_name: str = ""
+    verdict: Literal["conflict", "free", "no_data"] = "no_data"
+    occupants: list[AttributionOccupant] = []
+
+
+class SessionAttributionConflictRow(BaseModel):
+    """One open `ambiguous_session` queue row, annotated with occupancy.
+
+    BOTH SUGGESTIONS ARE PUBLISHED, and that is the point of the payload rather
+    than a convenience. `timestamp_suggested_session_cm_id` is the value
+    PocketBase actually stores on the row (`suggested_session`, written by
+    `AttributeSession` in Go and deliberately UNCHANGED by this feature);
+    `conflict_aware_suggested_session_cm_id` is the same rule run over the
+    weekends that survive the conflict check. Publishing only the second would
+    make the UI silently disagree with the stored row; publishing both lets it
+    say *"FC2, because FC1 is taken."*
+
+    `demotion_applied` is that disagreement, named once here rather than
+    re-derived per render -- it is the banner condition.
+
+    `conflict_in_every_candidate` DEMOTES NOTHING. It is an alarm about the
+    cabin VALUE, not about a weekend: if the string is taken everywhere the
+    party could be, moving the guess would move it onto a weekend the rule has
+    just called wrong.
+    """
+
+    issue_id: str = ""
+    raw_value: str = ""
+    source_field: str = ""
+    household_cm_id: int = 0
+    person_cm_id: int = 0
+    # The unit codes the raw value resolved to through `lodging_unit_aliases`,
+    # before any container was expanded -- so the UI can say which building was
+    # named. Empty when nothing resolved, which is a work-queue item rather
+    # than an error (three of the 88 distinct strings name a unit FAMILY).
+    resolved_unit_codes: list[str] = []
+    # The unit's CURRENT name for each of those codes, in the same order.
+    resolved_unit_names: list[str] = []
+    # Those codes with every container replaced by its rooms. This is the grain
+    # the conflict rule works at -- owner ruling 3, *"if someone is assigned a
+    # container and another family has a contained leaf, i think that's likely
+    # a demote/conflict yes."*
+    resolved_leaf_codes: list[str] = []
+    candidates: list[AttributionCandidate] = []
+    conflict_in_every_candidate: bool = False
+    timestamp_suggested_session_cm_id: int | None = None
+    conflict_aware_suggested_session_cm_id: int | None = None
+    demotion_applied: bool = False
+
+
+class SessionAttributionConflictsResponse(BaseModel):
+    """Occupancy evidence for every open attribution queue row in one year.
+
+    UNCACHED at every layer it passes through, for two reasons rather than one.
+    `is_resolved` is flipped straight against PocketBase from the admin panel
+    (`confirmSessionAttribution` in `frontend/src/services/lodgingCrud.ts`) --
+    the argument `count_open_unresolved_aliases` already makes -- and this
+    additionally reads LIVE WRITE-INS, which the board writes directly through
+    `lodging_write_service.py`. Either alone would make a TTL show staff a
+    conflict they had just cleared.
+    """
+
+    year: int = 0
+    rows: list[SessionAttributionConflictRow] = []
