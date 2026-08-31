@@ -78,6 +78,8 @@ def _unit(
     # kindred#2224): a shared fridge IS a fridge. Zero of the 118 production
     # units carry shared without the parent.
     has_shared_fridge: bool = False,
+    has_heat: bool = False,
+    is_weatherized: bool = False,
     # THREE-VALUE select, not a bool (migration 1500000131): "yes" / "no" /
     # "partial", and blank = NOT ASSESSED. A bool read of it reports 0 of 118
     # and erases all 14 staff assessments, which is the trap kindred#2438
@@ -115,6 +117,8 @@ def _unit(
         has_ac=has_ac,
         has_fridge=has_fridge,
         has_shared_fridge=has_shared_fridge,
+        has_heat=has_heat,
+        is_weatherized=is_weatherized,
         has_ramp=has_ramp,
         is_accessible=is_accessible,
         map_x=map_x,
@@ -4486,6 +4490,156 @@ class TestUnitAcCoverage:
         roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
 
         by_code = {u.code: u.ac_coverage for u in roster.units}
+        assert by_code["ridge-1"] == "none"
+        assert by_code["ridge-2"] == "all"
+
+
+class TestUnitHeatCoverage:
+    """kindred#2327 -- `LodgingUnitSummary.heat_coverage`, the sixth caller of
+    `_resolve_amenity_coverage` and `has_heat`'s first appearance in `api/` at
+    all. Owner ruling 2026-08-17: the icon set is bathroom / power / fridge /
+    heat / AC, heat and AC counted as two separate marks rather than one
+    combined "temperature control" -- `has_ac` is a strict subset of
+    `has_heat` on the 2026 snapshot (heat=0/ac=0 84, heat=1/ac=0 16,
+    heat=1/ac=1 18, heat=0/ac=1 0), so folding them would hide the 16 heated,
+    uncooled rooms.
+
+    Display-only, like `ac_coverage` -- this resolver publishes the coverage
+    grain so a future card can read it; whether and how it renders is a
+    separate design question this change does not answer.
+    """
+
+    @pytest.mark.asyncio
+    async def test_a_container_inherits_heat_from_its_rooms(self) -> None:
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("c1", "lodge", "Lodge", is_container=True, has_heat=False),
+                _unit("u1", "lodge-1", "Lodge 1", sleeps=2, has_heat=True, parent_unit="c1"),
+                _unit("u2", "lodge-2", "Lodge 2", sleeps=2, has_heat=True, parent_unit="c1"),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        by_code = {u.code: u for u in roster.units}
+        assert by_code["lodge"].heat_coverage == "all"
+        assert by_code["lodge"].has_heat is False
+
+    @pytest.mark.asyncio
+    async def test_a_partly_heated_container_reports_some(self) -> None:
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("c1", "lodge", "Lodge", is_container=True, has_heat=False),
+                _unit("u1", "lodge-1", "Lodge 1", sleeps=2, has_heat=True, parent_unit="c1"),
+                _unit("u2", "lodge-2", "Lodge 2", sleeps=2, has_heat=False, parent_unit="c1"),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert {u.code: u.heat_coverage for u in roster.units}["lodge"] == "some"
+
+    @pytest.mark.asyncio
+    async def test_a_leaf_answers_for_itself(self) -> None:
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[_unit("u1", "ridge-1", "Ridge 1", sleeps=4, has_heat=True)],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.units[0].heat_coverage == "all"
+
+    @pytest.mark.asyncio
+    async def test_an_unconfirmed_room_answers_at_face_value(self) -> None:
+        """kindred#2526, on the same shared walk every resolver above pins
+        this against separately -- a re-added special case would show up on
+        exactly one of them."""
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("u1", "ridge-1", "Ridge 1", sleeps=4, is_confirmed=False, has_heat=False),
+                _unit("u2", "ridge-2", "Ridge 2", sleeps=4, is_confirmed=False, has_heat=True),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        by_code = {u.code: u.heat_coverage for u in roster.units}
+        assert by_code["ridge-1"] == "none"
+        assert by_code["ridge-2"] == "all"
+
+
+class TestUnitWeatherizedCoverage:
+    """kindred#2327 -- `LodgingUnitSummary.weatherized_coverage`, the seventh
+    caller of `_resolve_amenity_coverage` and `is_weatherized`'s first
+    appearance in `api/` at all. Owner ruling 2026-08-17/18: 96 of 118
+    production units are weatherized, and the 22 that are not split 13
+    containers / 9 leaves with zero containers holding a single
+    non-weatherized leaf beneath them -- weatherized never splits inside a
+    container, so `some` is reachable in principle through this same walk but
+    does not occur on production data today.
+
+    Display-only, exactly like `ac_coverage` and `heat_coverage` above. The
+    ruled TREATMENT (a negated/slashed glyph, chosen 2026-08-18) is a new
+    visual channel this change deliberately does not build -- it stays gated
+    on a mockup, per kindred#2327's own scope note. This resolver only makes
+    the fact available on the wire.
+    """
+
+    @pytest.mark.asyncio
+    async def test_a_container_inherits_weatherized_from_its_rooms(self) -> None:
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("c1", "lodge", "Lodge", is_container=True, is_weatherized=False),
+                _unit("u1", "lodge-1", "Lodge 1", sleeps=2, is_weatherized=True, parent_unit="c1"),
+                _unit("u2", "lodge-2", "Lodge 2", sleeps=2, is_weatherized=True, parent_unit="c1"),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        by_code = {u.code: u for u in roster.units}
+        assert by_code["lodge"].weatherized_coverage == "all"
+        assert by_code["lodge"].is_weatherized is False
+
+    @pytest.mark.asyncio
+    async def test_a_partly_weatherized_container_reports_some(self) -> None:
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("c1", "lodge", "Lodge", is_container=True, is_weatherized=False),
+                _unit("u1", "lodge-1", "Lodge 1", sleeps=2, is_weatherized=True, parent_unit="c1"),
+                _unit("u2", "lodge-2", "Lodge 2", sleeps=2, is_weatherized=False, parent_unit="c1"),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert {u.code: u.weatherized_coverage for u in roster.units}["lodge"] == "some"
+
+    @pytest.mark.asyncio
+    async def test_a_leaf_answers_for_itself(self) -> None:
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[_unit("u1", "ridge-1", "Ridge 1", sleeps=4, is_weatherized=True)],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.units[0].weatherized_coverage == "all"
+
+    @pytest.mark.asyncio
+    async def test_an_unconfirmed_room_answers_at_face_value(self) -> None:
+        """kindred#2526, on the same shared walk every resolver above pins
+        this against separately -- a re-added special case would show up on
+        exactly one of them."""
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("u1", "ridge-1", "Ridge 1", sleeps=4, is_confirmed=False, is_weatherized=False),
+                _unit("u2", "ridge-2", "Ridge 2", sleeps=4, is_confirmed=False, is_weatherized=True),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        by_code = {u.code: u.weatherized_coverage for u in roster.units}
         assert by_code["ridge-1"] == "none"
         assert by_code["ridge-2"] == "all"
 

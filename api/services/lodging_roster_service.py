@@ -1713,16 +1713,51 @@ def _resolve_ac_coverage(units: list[LodgingUnitSummary], index: _BathroomIndex)
     _resolve_amenity_coverage(units, index, answer=lambda room: room.has_ac, target="ac_coverage")
 
 
+def _resolve_heat_coverage(units: list[LodgingUnitSummary], index: _BathroomIndex) -> None:
+    """Fill in every unit's `heat_coverage` in place -- kindred#2327.
+
+    The fifth caller of `_resolve_amenity_coverage`, and `has_heat`'s first
+    appearance in `api/` at all -- before this it existed only in the
+    registry file and the PocketBase column. Owner ruling 2026-08-17: heat
+    and AC are TWO icons, not one combined "temperature control" mark,
+    because `has_ac` is a strict subset of `has_heat` on the 2026 snapshot
+    (16 rooms are heated but not cooled) and folding them would hide that.
+
+    Every rule `_resolve_power_coverage` established applies here unchanged.
+    Display only -- see the schema field for why this stops short of the
+    card.
+    """
+    _resolve_amenity_coverage(units, index, answer=lambda room: room.has_heat, target="heat_coverage")
+
+
+def _resolve_weatherized_coverage(units: list[LodgingUnitSummary], index: _BathroomIndex) -> None:
+    """Fill in every unit's `weatherized_coverage` in place -- kindred#2327.
+
+    The sixth caller of `_resolve_amenity_coverage`, and `is_weatherized`'s
+    first appearance in `api/` at all, for the same reason `heat_coverage`
+    above is new: the ruled icon set (2026-08-17/18) needs it and nothing
+    published it before now. 96 of 118 production units are weatherized; the
+    22 that are not split 13 containers / 9 leaves, and every one of those 13
+    containers is weatherized nowhere beneath it either -- so `some` never
+    occurs on production data, though this walk can return it exactly as
+    `ac_coverage` and `fridge_coverage` do.
+
+    Display only -- the ruled TREATMENT is a NEGATED mark and is gated on a
+    mockup this change does not build. See the schema field.
+    """
+    _resolve_amenity_coverage(units, index, answer=lambda room: room.is_weatherized, target="weatherized_coverage")
+
+
 def _resolve_bathroom(units: list[LodgingUnitSummary], index: _BathroomIndex) -> None:
     """Fill in every CONTAINER's `bathroom` from its leaves -- kindred#2502.
 
-    THE FIFTH IN-PLACE RESOLVER AND THE ONLY ONE THAT IS NOT A COVERAGE
-    GRADE. Power, fridge, step-free and AC all funnel through
-    `_resolve_amenity_coverage` and write a `*_coverage` field beside the raw
-    column; this one overwrites the column itself, because `bathroom` is a
-    four-value enum every surface already reads and giving it a parallel
+    THE SEVENTH IN-PLACE RESOLVER AND THE ONLY ONE THAT IS NOT A COVERAGE
+    GRADE. Power, fridge, step-free, AC, heat and weatherized all funnel
+    through `_resolve_amenity_coverage` and write a `*_coverage` field beside
+    the raw column; this one overwrites the column itself, because `bathroom`
+    is a four-value enum every surface already reads and giving it a parallel
     `bathroom_coverage` would have left two fields to keep in step. So it is
-    the twin of those four in its walk and its `is_active` filter, and the
+    the twin of those six in its walk and its `is_active` filter, and the
     last amenity that was still answered from the unit's own row.
 
     All 15 production containers store `bathroom = "none"` (a building is not
@@ -1781,10 +1816,11 @@ def _resolve_amenity_coverage(
     answer: Callable[[LodgingUnitSummary], bool | None],
     target: str,
 ) -> None:
-    """The one leaf walk all FOUR coverage resolvers above run.
+    """The one leaf walk all SIX coverage resolvers above run.
 
-    Four: power, fridge, step-free and AC (`_resolve_ac_coverage`,
-    kindred#2502, was the last to join). `_resolve_bathroom` sits
+    Six: power, fridge, step-free, AC, heat and weatherized
+    (`_resolve_heat_coverage` and `_resolve_weatherized_coverage`,
+    kindred#2327, were the last two to join). `_resolve_bathroom` sits
     above too and deliberately does NOT come through here -- it writes a
     container's own `bathroom` rather than a coverage grade, and needs
     `container_bathroom`'s group reasoning, which has no place in a walk
@@ -2154,19 +2190,21 @@ class LodgingRosterService:
         # bathroom gap survived unnoticed. See the note there for what they do
         # and do not move on that path.
         #
-        # Four of them walk the leaves and write a `*_coverage` grade
-        # (kindred#1912, #2224, #2438, #2502). The fifth is not a coverage
-        # grade at all: it overwrites a CONTAINER's own `bathroom` from its
-        # rooms. It repeats their leaf comprehension and their `is_active`
-        # filter rather than calling `_resolve_amenity_coverage`, because it
-        # needs `container_bathroom`'s group reasoning and that walk is
-        # parameterised on one flag per room. Nothing here depends on the
-        # ORDER of the five -- they are independent, and grouped because they
-        # are one thought.
+        # Six of them walk the leaves and write a `*_coverage` grade
+        # (kindred#1912, #2224, #2438, #2502, #2327 x2). The seventh is not a
+        # coverage grade at all: it overwrites a CONTAINER's own `bathroom`
+        # from its rooms. It repeats their leaf comprehension and their
+        # `is_active` filter rather than calling `_resolve_amenity_coverage`,
+        # because it needs `container_bathroom`'s group reasoning and that
+        # walk is parameterised on one flag per room. Nothing here depends on
+        # the ORDER of the seven -- they are independent, and grouped because
+        # they are one thought.
         _resolve_power_coverage(unit_summaries, unit_index)
         _resolve_fridge_coverage(unit_summaries, unit_index)
         _resolve_ramp_coverage(unit_summaries, unit_index)
         _resolve_ac_coverage(unit_summaries, unit_index)
+        _resolve_heat_coverage(unit_summaries, unit_index)
+        _resolve_weatherized_coverage(unit_summaries, unit_index)
         _resolve_bathroom(unit_summaries, unit_index)
         # A SECOND PASS, and it has to be: a unit's cover can come from a row
         # on a unit built after it, so there is no order in which one pass over
@@ -2419,8 +2457,10 @@ class LodgingRosterService:
             _resolve_fridge_coverage(unit_summaries, unit_index)
             _resolve_ramp_coverage(unit_summaries, unit_index)
             _resolve_ac_coverage(unit_summaries, unit_index)
+            _resolve_heat_coverage(unit_summaries, unit_index)
+            _resolve_weatherized_coverage(unit_summaries, unit_index)
             _resolve_bathroom(unit_summaries, unit_index)
-            # THE SIXTH AND SEVENTH RESOLVERS, and unlike the five above they
+            # THE EIGHTH AND NINTH RESOLVERS, and unlike the seven above they
             # MOVE NUMBERS ON THIS PATH. `_build_counts` reads
             # `is_family_available`, so the cover walk and the availability
             # resolution have to run here exactly as `build_roster` runs them
@@ -2943,6 +2983,8 @@ class LodgingRosterService:
                     has_ac=_b(unit, "has_ac"),
                     has_fridge=_b(unit, "has_fridge"),
                     has_shared_fridge=_b(unit, "has_shared_fridge"),
+                    has_heat=_b(unit, "has_heat"),
+                    is_weatherized=_b(unit, "is_weatherized"),
                     # RAILED to the select's own vocabulary, not cast, so a
                     # grade this code has never heard of reads as NOT ASSESSED
                     # rather than leaking into the payload's Literal
