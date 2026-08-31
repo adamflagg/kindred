@@ -28,11 +28,14 @@ import {
   Refrigerator,
   Snowflake,
   Split,
+  type LucideIcon,
 } from 'lucide-react'
-import { memo, useCallback, useState } from 'react'
+import { memo, useCallback, useEffect, useRef, useState } from 'react'
 
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
 import { Tooltip } from '../ui/Tooltip'
+import { capAmenityMarks, type AmenityMark, type AmenityMarkKey } from './amenityCap'
+import { startAmenityCapCueBreath, type AmenityCapCueBreath } from './amenityCapCue'
 import { overlappingPartyKeys, partySize, slotOccupancy, type BoardSlot } from './boardLayout'
 import { AssignFamilyModal } from './AssignFamilyModal'
 import { isValidMergeTarget, mergeDragId, unitDroppableId } from './dragPlacement'
@@ -151,6 +154,67 @@ const NEEDS_HATCH_CLASSES: Record<'unmet' | 'partial', string> = {
     '[background-image:repeating-linear-gradient(45deg,transparent_0_4px,hsl(var(--foreground)_/_0.06)_4px_7px)]',
   partial:
     '[background-image:repeating-linear-gradient(45deg,transparent_0_12px,hsl(var(--foreground)_/_0.06)_12px_15px)]',
+}
+
+/**
+ * The amenity row's icon + label per mark, keyed by `amenityCap.ts`'s own
+ * `AmenityMarkKey` — kindred#2327 follow-up. The `data-testid` each mark
+ * used to carry inline (`amenity-bathroom`, `amenity-ac`, …) is derived from
+ * the key rather than restated, so a key can never drift from its testid.
+ *
+ * Module scope, not component state, matching `RING_CLASSES` and
+ * `NEEDS_HATCH_CLASSES` above: nothing here references a per-card value.
+ */
+const AMENITY_MARK_META: Record<AmenityMarkKey, { Icon: LucideIcon; ariaLabel: string }> = {
+  bathroom: { Icon: Bath, ariaLabel: 'Bathroom in unit' },
+  power: { Icon: Plug, ariaLabel: 'Power' },
+  ac: { Icon: Snowflake, ariaLabel: 'Air conditioning' },
+  fridge: { Icon: Refrigerator, ariaLabel: 'Fridge' },
+  heat: { Icon: Thermometer, ariaLabel: 'Heat' },
+  'not-weatherized': { Icon: CloudOff, ariaLabel: 'Not weatherized' },
+  'step-free': { Icon: Accessibility, ariaLabel: 'Step-free' },
+}
+
+/**
+ * The order the row has always drawn these seven in — unchanged by the cap.
+ * `amenityCap.ts`'s `AMENITY_PRIORITY` decides WHICH 3 survive; this decides
+ * where in the row they sit once they do (`capAmenityMarks` returns its
+ * `visible` set in the order it was GIVEN, never priority order, precisely
+ * so this ordering carries through unchanged).
+ */
+const AMENITY_RENDER_ORDER: readonly AmenityMarkKey[] = [
+  'bathroom',
+  'power',
+  'ac',
+  'fridge',
+  'heat',
+  'not-weatherized',
+  'step-free',
+]
+
+/**
+ * The icon-only hover/focus popover — the owner's "all of them in an icon
+ * only pop" (mockup correction-box, 2026-08-31), reusing `ui/Tooltip` rather
+ * than building a second popover primitive. ALL of the unit's marks, never
+ * only the dropped ones: a staff member checking one hidden mark should see
+ * the whole picture, not have to also read the row for the other two.
+ */
+function AmenityCapPopover({ marks }: { marks: readonly AmenityMark<AmenityMarkKey>[] }) {
+  return (
+    <div className="flex items-center gap-1.5" data-testid="amenity-cap-popover">
+      {marks.map((mark) => {
+        const { Icon, ariaLabel } = AMENITY_MARK_META[mark.key]
+        return (
+          <Icon
+            key={mark.key}
+            aria-label={ariaLabel}
+            data-testid={`amenity-${mark.key}-popover`}
+            className="h-3.5 w-3.5"
+          />
+        )
+      })}
+    </div>
+  )
 }
 
 export interface LodgingUnitCardProps {
@@ -564,6 +628,39 @@ const LodgingUnitCardInner = memo(function LodgingUnitCardInner({
   // board-level: the modal names one cabin and writes to one cabin, and
   // hoisting it would make every card re-render when any card opened one.
   const [assignOpen, setAssignOpen] = useState(false)
+
+  /*
+   * THE AMENITY-CAP HOVER CUE — refs, not state, matching `amenityCapCue.ts`'s
+   * own kill()-not-pause discipline: a re-hover must start clean, which state
+   * plus a re-render cannot guarantee mid-tween the way a direct DOM/GSAP
+   * call can. `amenityCueRef` is null on any card whose row never overflows
+   * (≤3 marks) — the JSX below only ever attaches it to the trailing icon's
+   * wrapper when `overflowAmenityMarks.length > 0`, so the handlers here are
+   * no-ops on every other card.
+   */
+  const amenityCueRef = useRef<HTMLSpanElement | null>(null)
+  const amenityCueBreathRef = useRef<AmenityCapCueBreath | null>(null)
+
+  const handleAmenityCueCardEnter = useCallback(() => {
+    if (!amenityCueRef.current) return
+    amenityCueBreathRef.current = startAmenityCapCueBreath(amenityCueRef.current)
+  }, [])
+
+  const handleAmenityCueCardLeave = useCallback(() => {
+    amenityCueBreathRef.current?.kill()
+    amenityCueBreathRef.current = null
+  }, [])
+
+  // A card can unmount mid-breathe (a re-solve, a scenario switch) without
+  // ever firing `mouseleave` — the same leak `useShareEmphasisBurst.ts`
+  // guards against for its own burst. `kill()`, never pause, same reason.
+  useEffect(
+    () => () => {
+      amenityCueBreathRef.current?.kill()
+      amenityCueBreathRef.current = null
+    },
+    []
+  )
 
   /*
    * Which of the three mutually-exclusive RING states wins — see
@@ -988,6 +1085,218 @@ const LodgingUnitCardInner = memo(function LodgingUnitCardInner({
    */
   const titleClassName = 'text-foreground font-semibold'
 
+  /*
+   * THE AMENITY MARKS — seven possible, capped at 3 always (kindred#2327
+   * follow-up, docs/plans/2026-08-31-mockup-icon-crowding.html LOCAL ONLY,
+   * "Option C"). Each PRESENCE boolean below is UNCHANGED from before the
+   * cap existed; only what happens once more than 3 are present is new, so
+   * every mark's own reasoning stays with its boolean rather than moving to
+   * a generic renderer that would say nothing about any one of them.
+   *
+   * ⛔ NO "+N" CHIP. Measured (mockup "Option B") to eat back exactly the
+   * space the cap saved and re-break this row's own T2 failure — two
+   * lettered cabins, `Willow Downstairs A` / `Willow Downstairs B`, truncating to
+   * the identical illegible prefix at the board's 280–292px column band.
+   * The fix is Option C instead: cap at 3, no chip, everything the cap
+   * dropped behind an icon-only hover/focus popover on the last icon shown.
+   */
+
+  /* PRESENCE, AND NEVER WHICH KIND (ruling 2). The meta row spelled
+     this out as `Bath Private` / `Bath Shared`; the CampMinder question
+     behind the family's flag asks for "a bathroom that doesn't require
+     you to leave your cabin", which is `bathroom != 'none'`, and a
+     shared unit satisfies it as fully as a private one. Of the 6
+     private units, 5 are staff housing no weekend has ever released —
+     so the distinction is one no staff member on this board can act on.
+     Vocabulary §4 carries the full correction.
+
+     ⚠️ THE ONE-RELEASE GAP THIS USED TO NAME IS CLOSED. It said
+     kindred#2501 was "the matching fix to the family-side RULE, which
+     still grades exclusivity for one more release" — #2501 has landed,
+     and `needGlyphs.bathroomCoverage` now maps `'shared'` and
+     `'private'` alike onto the met arm. This mark and the family glyph
+     read one axis. Only the COLUMN name (`needs_private_bathroom`)
+     still lags, which is a named follow-up. */
+  const bathroomMarkPresent =
+    unit.bathroom !== undefined && unit.bathroom !== 'none' && unit.bathroom !== 'unknown'
+
+  /* `power_coverage`, NEVER the raw `has_power` — see `needsFit` above.
+     The raw flag drew no plug on twelve entirely-powered buildings, and
+     T2 would have made that the first thing staff read.
+
+     PRESENCE again, so `some` draws the plug: the mark says the
+     building offers power somewhere. Whether it reaches a particular
+     family is the need glyph's question, and `needsFit` already grades
+     `some` as the softer misfit on the drag hatch. */
+  const powerMarkPresent =
+    (unit.power_coverage ?? 'unknown') !== 'none' &&
+    (unit.power_coverage ?? 'unknown') !== 'unknown'
+
+  /* NO DEMAND COUNTERPART, and that is measured rather than assumed: 0
+     of 184 housing narratives mention air conditioning, against 54 for
+     a bathroom, 34 for CPAP power and 11 for a fridge — so the same
+     scan that found the others found none of these. It stays because
+     staff place against it; what it gets no glyph for is family DEMAND.
+     The `Snowflake` mark is the UNIT's own amenity mark and still
+     draws on the title row — it is the paired demand glyph, the one
+     that would say a family asked for this, that nothing mints.
+
+     ⚠️ `ac_coverage`, NEVER THE RAW `has_ac` — kindred#2502, and the
+     LAST of this row's three marks to move. The plug above it made the
+     same move at kindred#2072 for the same reason, and the server's own
+     count is the measurement: `_resolve_ac_coverage` records that SEVEN
+     of the 15 production containers carry `has_ac = 0` with AC-bearing
+     rooms, so the raw read drew no snowflake on seven buildings that
+     are air-conditioned throughout.
+
+     It was also a CONTRADICTION rather than only an omission. #2502
+     named three surfaces reading this field raw; `MapUnitPopover` and
+     `AssignFamilyModal` both moved, so the modal a staff member opens
+     FROM this card listed "air conditioning" while the card behind it
+     drew nothing — the same disagreement kindred#2501 closed on the
+     bathroom axis, one dimension over.
+
+     PRESENCE, so `some` draws it, exactly as the plug does: the mark
+     says the building offers AC somewhere. There is no need glyph to
+     disagree with that here, because AC has no demand side at all.
+
+     ⚠️ ALSO THE FIRST MARK THE CAP DROPS, on the owner's own priority
+     order (`amenityCap.ts`'s `AMENITY_PRIORITY`) — 0 of 184 housing
+     narratives ask for it, so it is the least staff need this row can
+     lose. */
+  const acMarkPresent =
+    (unit.ac_coverage ?? 'unknown') !== 'none' && (unit.ac_coverage ?? 'unknown') !== 'unknown'
+
+  /* `fridge_coverage`, NEVER the raw `has_fridge` — kindred#2327,
+     and the same move `power_coverage` and `ac_coverage` already made
+     above, for the same reason: a container's own row describes the
+     container, not its rooms. `MapUnitPopover.tsx` already draws this
+     mark (`Refrigerator`, reading `fridge_coverage`), so this card was
+     the one surface disagreeing with the map it sits behind — the
+     same contradiction kindred#2502 closed on the AC axis, one
+     amenity over. `has_fridge`/`fridge_coverage` themselves are not
+     new here — kindred#2224 and kindred#2462 already ship them; this
+     is only the card catching up to what the map already shows.
+
+     PRESENCE, so `some` draws it, matching the plug and the
+     snowflake: the mark says the building offers a fridge somewhere,
+     never which room. No half-fill for `some` — the 2026-08-18
+     ruling that asked for one was never built anywhere else in this
+     row, and a half-fill here alone would read on a different axis
+     than the other three marks beside it. */
+  const fridgeMarkPresent =
+    (unit.fridge_coverage ?? 'unknown') !== 'none' &&
+    (unit.fridge_coverage ?? 'unknown') !== 'unknown'
+
+  /* `heat_coverage`, NEVER the raw `has_heat` — kindred#2327, and the
+     same move power/AC/fridge already made above: a container's own
+     row describes the container, not its rooms. Owner ruling
+     2026-08-17: heat and AC are TWO icons, not one combined
+     "temperature control" mark, because `has_ac` is a strict subset of
+     `has_heat` on the 2026 snapshot (16 rooms are heated but not
+     cooled) and folding them would hide that.
+
+     PRESENCE, exactly like the three marks before it: `some` draws the
+     mark — no half-fill, matching this row's shipped grammar rather
+     than the half-filled glyph a 2026-08-18 ruling once proposed and
+     that was never built anywhere on this card.
+
+     ⚠️ THERMOMETER, NOT A FLAME, and the distinction is a real one in
+     the schema. `has_space_heater` is a SEPARATE column from `has_heat`
+     (44 rows vs 34 on the 2026 snapshot) and the admin registry draws
+     THAT one with the flame — portable heat — while built-in heat gets
+     the thermometer. A flame here would mean one thing on this card and
+     a different thing in the form staff confirm from. */
+  const heatMarkPresent =
+    (unit.heat_coverage ?? 'unknown') !== 'none' && (unit.heat_coverage ?? 'unknown') !== 'unknown'
+
+  /* NEGATIVE MARK — the only one in this row. Drawn when the unit is
+     NOT weatherized, rather than when it has an amenity. Owner ruling
+     2026-08-18 (kindred#2327) called for "a struck-through icon" here
+     on purpose: the fact worth a staff member's attention is the
+     warning, not the amenity — 22 of 118 production units are not
+     weatherized, and a family placed expecting insulation a building
+     does not have is the failure this mark exists to prevent.
+
+     `CloudOff`: no dedicated "weatherized"/"insulated" glyph exists in
+     lucide-react, so this is a deliberate choice rather than a
+     pre-existing one, made because no negative-mark precedent existed
+     anywhere on this card to follow instead (see kindred#2646 PR
+     comment). It reads as "no protection from the weather", which is
+     what "not weatherized" means, and — unlike every positive glyph in
+     this row — the icon itself is LITERALLY struck through (a
+     diagonal line crosses the glyph), which is the ruled treatment,
+     without inventing a second rendering mechanism (compositing an
+     icon with a manual slash) this card has never used.
+
+     THE CONDITION IS THE AND-POLICY'S COMPLEMENT, not the OR-policy
+     every positive mark above uses. `power_coverage` etc. draw on
+     `!== 'none'` — presence anywhere is enough to assert "the building
+     has this". This mark asserts an ABSENCE, so it draws on
+     `!== 'all'`: `'none'` (nothing weatherized) and `'some'` (a mix)
+     both leave a room a family could land in unweathered; only `'all'`
+     (fully weatherized) draws nothing. `'unknown'` still draws
+     nothing either way — the same never-claim-from-nothing-recorded
+     discipline every other mark in this row keeps, just read from the
+     other side of the assertion.
+
+     ⚠️ MOVED FROM 2ND TO 6TH IN CAP PRIORITY (owner's corrected order,
+     2026-08-31). Staff's stated scan order is bathroom/power/fridge
+     first; this mark keeps its full value as a warning, it is simply
+     not what staff scan for second — see `amenityCap.ts`'s own doc. */
+  const notWeatherizedMarkPresent =
+    (unit.weatherized_coverage ?? 'unknown') !== 'all' &&
+    (unit.weatherized_coverage ?? 'unknown') !== 'unknown'
+
+  /* `ramp_coverage`, NEVER the raw `is_accessible` column and NEVER
+     `has_ramp` — kindred#2327/kindred#2646, the owner's follow-up ask
+     on this same PR ("the wheelchair icon for the locations that are
+     'is accessible'"). `MapUnitPopover.tsx` already draws this exact
+     mark (`Accessibility` icon, `Step-free` label) — reused verbatim
+     here so the card and the popover a staff member opens FROM it
+     agree, the same contradiction-closing move the fridge mark made
+     against the same popover earlier in this file.
+
+     ⚠️ NOT THIS ROW'S OR-POLICY. Every other positive mark above
+     draws on PRESENCE (`!== 'none' && !== 'unknown'`, so `some` draws
+     the full icon — no half-fill). Step-free draws on `=== 'all'`
+     instead, and that is not a new policy invented for this card: it
+     is `MapUnitPopover.tsx`'s own documented exception, carried over
+     rather than re-litigated — "the ONE DIMENSION that needs `all`
+     rather than `offers`", because a ramp one room over is not a ramp
+     a wheelchair user in a DIFFERENT room can use, unlike a fridge or
+     an AC unit one room over. Presence would draw the wheelchair icon
+     on a `some`-graded building — inviting exactly the placement that
+     lands a wheelchair user in the one room without a ramp. */
+  const stepFreeMarkPresent = (unit.ramp_coverage ?? 'unknown') === 'all'
+
+  /**
+   * The full set this card would draw with no cap at all, in the row's own
+   * RENDER order — `AMENITY_RENDER_ORDER`, unchanged from before the cap.
+   */
+  const presentAmenityMarks: AmenityMark<AmenityMarkKey>[] = AMENITY_RENDER_ORDER.filter(
+    (key) =>
+      ({
+        bathroom: bathroomMarkPresent,
+        power: powerMarkPresent,
+        ac: acMarkPresent,
+        fridge: fridgeMarkPresent,
+        heat: heatMarkPresent,
+        'not-weatherized': notWeatherizedMarkPresent,
+        'step-free': stepFreeMarkPresent,
+      })[key]
+  ).map((key) => ({ key, node: key }))
+
+  /**
+   * `amenityCap.ts`'s own doc covers the algorithm; here it is enough to say
+   * `visibleAmenityMarks` is what the row draws and `overflowAmenityMarks`
+   * is what the popover exists for. Both are empty-safe: a card with ≤3
+   * marks gets `overflow: []` and renders exactly as it did before this cap
+   * existed — no wrapper, no Tooltip, no cue.
+   */
+  const { visible: visibleAmenityMarks, overflow: overflowAmenityMarks } =
+    capAmenityMarks(presentAmenityMarks)
+
   return (
     <div
       data-unit-card
@@ -1002,6 +1311,11 @@ const LodgingUnitCardInner = memo(function LodgingUnitCardInner({
       // own `attentionSections` is where the same fact is stated in text.
       {...(dragFit.state === 'conflict' ? { 'data-needs-fit': dragFit.severity } : {})}
       ref={setCardRef}
+      // The amenity-cap hover cue — see the refs/handlers above. A no-op on
+      // every card whose row never overflows, because `amenityCueRef` is
+      // never attached to anything on those cards.
+      onMouseEnter={handleAmenityCueCardEnter}
+      onMouseLeave={handleAmenityCueCardLeave}
       // No inline style at all now. The area's top edge went with the
       // 2026-08-21 ruling — §3.10's hue is carried by the section header dot,
       // which is where the grouping actually happens, so the card's border is
@@ -1100,196 +1414,71 @@ const LodgingUnitCardInner = memo(function LodgingUnitCardInner({
             default `min-width: auto` refuses to shrink below its content, and
             the title now has icons beside it competing for the row. */}
         <h3 className={`min-w-0 truncate text-lg ${titleClassName}`}>{unit.name}</h3>
-        {/* PRESENCE, AND NEVER WHICH KIND (ruling 2). The meta row spelled
-            this out as `Bath Private` / `Bath Shared`; the CampMinder question
-            behind the family's flag asks for "a bathroom that doesn't require
-            you to leave your cabin", which is `bathroom != 'none'`, and a
-            shared unit satisfies it as fully as a private one. Of the 6
-            private units, 5 are staff housing no weekend has ever released —
-            so the distinction is one no staff member on this board can act on.
-            Vocabulary §4 carries the full correction.
+        {/* The seven marks' own presence rules are computed above, beside
+            `visibleAmenityMarks`/`overflowAmenityMarks` — see that block's
+            comments for what each one means and why. This is only the
+            RENDER: at most 3, in the row's own order, and — only when the
+            cap actually dropped something — the last one shown becomes the
+            hover/focus trigger for the icon-only popover carrying every mark
+            the unit has (kindred#2327 follow-up).
 
-            ⚠️ THE ONE-RELEASE GAP THIS USED TO NAME IS CLOSED. It said
-            kindred#2501 was "the matching fix to the family-side RULE, which
-            still grades exclusivity for one more release" — #2501 has landed,
-            and `needGlyphs.bathroomCoverage` now maps `'shared'` and
-            `'private'` alike onto the met arm. This mark and the family glyph
-            read one axis. Only the COLUMN name (`needs_private_bathroom`)
-            still lags, which is a named follow-up. */}
-        {unit.bathroom !== undefined && unit.bathroom !== 'none' && unit.bathroom !== 'unknown' && (
-          <Bath
-            data-testid="amenity-bathroom"
-            aria-label="Bathroom in unit"
-            className="text-muted-foreground h-3.5 w-3.5 flex-shrink-0"
-          />
-        )}
-        {/* `power_coverage`, NEVER the raw `has_power` — see `needsFit` above.
-            The raw flag drew no plug on twelve entirely-powered buildings, and
-            T2 would have made that the first thing staff read.
-
-            PRESENCE again, so `some` draws the plug: the mark says the
-            building offers power somewhere. Whether it reaches a particular
-            family is the need glyph's question, and `needsFit` already grades
-            `some` as the softer misfit on the drag hatch. */}
-        {(unit.power_coverage ?? 'unknown') !== 'none' &&
-          (unit.power_coverage ?? 'unknown') !== 'unknown' && (
-            <Plug
-              data-testid="amenity-power"
-              aria-label="Power"
-              className="text-muted-foreground h-3.5 w-3.5 flex-shrink-0"
-            />
-          )}
-        {/* NO DEMAND COUNTERPART, and that is measured rather than assumed: 0
-            of 184 housing narratives mention air conditioning, against 54 for
-            a bathroom, 34 for CPAP power and 11 for a fridge — so the same
-            scan that found the others found none of these. It stays because
-            staff place against it; what it gets no glyph for is family DEMAND.
-            The `Snowflake` below is the UNIT's own amenity mark and still
-            draws on the title row — it is the paired demand glyph, the one
-            that would say a family asked for this, that nothing mints.
-
-            ⚠️ `ac_coverage`, NEVER THE RAW `has_ac` — kindred#2502, and the
-            LAST of this row's three marks to move. The plug above it made the
-            same move at kindred#2072 for the same reason, and the server's own
-            count is the measurement: `_resolve_ac_coverage` records that SEVEN
-            of the 15 production containers carry `has_ac = 0` with AC-bearing
-            rooms, so the raw read drew no snowflake on seven buildings that
-            are air-conditioned throughout.
-
-            It was also a CONTRADICTION rather than only an omission. #2502
-            named three surfaces reading this field raw; `MapUnitPopover` and
-            `AssignFamilyModal` both moved, so the modal a staff member opens
-            FROM this card listed "air conditioning" while the card behind it
-            drew nothing — the same disagreement kindred#2501 closed on the
-            bathroom axis, one dimension over.
-
-            PRESENCE, so `some` draws it, exactly as the plug does: the mark
-            says the building offers AC somewhere. There is no need glyph to
-            disagree with that here, because AC has no demand side at all. */}
-        {(unit.ac_coverage ?? 'unknown') !== 'none' &&
-          (unit.ac_coverage ?? 'unknown') !== 'unknown' && (
-            <Snowflake
-              data-testid="amenity-ac"
-              aria-label="Air conditioning"
-              className="text-muted-foreground h-3.5 w-3.5 flex-shrink-0"
-            />
-          )}
-        {/* `fridge_coverage`, NEVER the raw `has_fridge` — kindred#2327,
-            and the same move `power_coverage` and `ac_coverage` already made
-            above, for the same reason: a container's own row describes the
-            container, not its rooms. `MapUnitPopover.tsx` already draws this
-            mark (`Refrigerator`, reading `fridge_coverage`), so this card was
-            the one surface disagreeing with the map it sits behind — the
-            same contradiction kindred#2502 closed on the AC axis, one
-            amenity over. `has_fridge`/`fridge_coverage` themselves are not
-            new here — kindred#2224 and kindred#2462 already ship them; this
-            is only the card catching up to what the map already shows.
-
-            PRESENCE, so `some` draws it, matching the plug and the
-            snowflake: the mark says the building offers a fridge somewhere,
-            never which room. No half-fill for `some` — the 2026-08-18
-            ruling that asked for one was never built anywhere else in this
-            row, and a half-fill here alone would read on a different axis
-            than the other three marks beside it. */}
-        {(unit.fridge_coverage ?? 'unknown') !== 'none' &&
-          (unit.fridge_coverage ?? 'unknown') !== 'unknown' && (
-            <Refrigerator
-              data-testid="amenity-fridge"
-              aria-label="Fridge"
-              className="text-muted-foreground h-3.5 w-3.5 flex-shrink-0"
-            />
-          )}
-        {/* `heat_coverage`, NEVER the raw `has_heat` — kindred#2327, and the
-            same move power/AC/fridge already made above: a container's own
-            row describes the container, not its rooms. Owner ruling
-            2026-08-17: heat and AC are TWO icons, not one combined
-            "temperature control" mark, because `has_ac` is a strict subset of
-            `has_heat` on the 2026 snapshot (16 rooms are heated but not
-            cooled) and folding them would hide that.
-
-            PRESENCE, exactly like the three marks before it: `some` draws the
-            mark — no half-fill, matching this row's shipped grammar rather
-            than the half-filled glyph a 2026-08-18 ruling once proposed and
-            that was never built anywhere on this card.
-
-            ⚠️ THERMOMETER, NOT A FLAME, and the distinction is a real one in
-            the schema. `has_space_heater` is a SEPARATE column from `has_heat`
-            (44 rows vs 34 on the 2026 snapshot) and the admin registry draws
-            THAT one with the flame — portable heat — while built-in heat gets
-            the thermometer. A flame here would mean one thing on this card and
-            a different thing in the form staff confirm from. */}
-        {(unit.heat_coverage ?? 'unknown') !== 'none' &&
-          (unit.heat_coverage ?? 'unknown') !== 'unknown' && (
-            <Thermometer
-              data-testid="amenity-heat"
-              aria-label="Heat"
-              className="text-muted-foreground h-3.5 w-3.5 flex-shrink-0"
-            />
-          )}
-        {/* NEGATIVE MARK — the only one in this row. Drawn when the unit is
-            NOT weatherized, rather than when it has an amenity. Owner ruling
-            2026-08-18 (kindred#2327) called for "a struck-through icon" here
-            on purpose: the fact worth a staff member's attention is the
-            warning, not the amenity — 22 of 118 production units are not
-            weatherized, and a family placed expecting insulation a building
-            does not have is the failure this mark exists to prevent.
-
-            `CloudOff`: no dedicated "weatherized"/"insulated" glyph exists in
-            lucide-react, so this is a deliberate choice rather than a
-            pre-existing one, made because no negative-mark precedent existed
-            anywhere on this card to follow instead (see kindred#2646 PR
-            comment). It reads as "no protection from the weather", which is
-            what "not weatherized" means, and — unlike every positive glyph in
-            this row — the icon itself is LITERALLY struck through (a
-            diagonal line crosses the glyph), which is the ruled treatment,
-            without inventing a second rendering mechanism (compositing an
-            icon with a manual slash) this card has never used.
-
-            THE CONDITION IS THE AND-POLICY'S COMPLEMENT, not the OR-policy
-            every positive mark above uses. `power_coverage` etc. draw on
-            `!== 'none'` — presence anywhere is enough to assert "the building
-            has this". This mark asserts an ABSENCE, so it draws on
-            `!== 'all'`: `'none'` (nothing weatherized) and `'some'` (a mix)
-            both leave a room a family could land in unweathered; only `'all'`
-            (fully weatherized) draws nothing. `'unknown'` still draws
-            nothing either way — the same never-claim-from-nothing-recorded
-            discipline every other mark in this row keeps, just read from the
-            other side of the assertion. */}
-        {(unit.weatherized_coverage ?? 'unknown') !== 'all' &&
-          (unit.weatherized_coverage ?? 'unknown') !== 'unknown' && (
-            <CloudOff
-              data-testid="amenity-not-weatherized"
-              aria-label="Not weatherized"
-              className="text-muted-foreground h-3.5 w-3.5 flex-shrink-0"
-            />
-          )}
-        {/* `ramp_coverage`, NEVER the raw `is_accessible` column and NEVER
-            `has_ramp` — kindred#2327/kindred#2646, the owner's follow-up ask
-            on this same PR ("the wheelchair icon for the locations that are
-            'is accessible'"). `MapUnitPopover.tsx` already draws this exact
-            mark (`Accessibility` icon, `Step-free` label) — reused verbatim
-            here so the card and the popover a staff member opens FROM it
-            agree, the same contradiction-closing move the fridge mark made
-            against the same popover earlier in this file.
-
-            ⚠️ NOT THIS ROW'S OR-POLICY. Every other positive mark above
-            draws on PRESENCE (`!== 'none' && !== 'unknown'`, so `some` draws
-            the full icon — no half-fill). Step-free draws on `=== 'all'`
-            instead, and that is not a new policy invented for this card: it
-            is `MapUnitPopover.tsx`'s own documented exception, carried over
-            rather than re-litigated — "the ONE DIMENSION that needs `all`
-            rather than `offers`", because a ramp one room over is not a ramp
-            a wheelchair user in a DIFFERENT room can use, unlike a fridge or
-            an AC unit one room over. Presence would draw the wheelchair icon
-            on a `some`-graded building — inviting exactly the placement that
-            lands a wheelchair user in the one room without a ramp. */}
-        {(unit.ramp_coverage ?? 'unknown') === 'all' && (
-          <Accessibility
-            data-testid="amenity-step-free"
-            aria-label="Step-free"
-            className="text-muted-foreground h-3.5 w-3.5 flex-shrink-0"
-          />
-        )}
+            No "+N" chip joins this row, ever — see the doc above
+            `presentAmenityMarks`. */}
+        {visibleAmenityMarks.map((mark, index) => {
+          const { Icon, ariaLabel } = AMENITY_MARK_META[mark.key]
+          const isTrailingTrigger =
+            overflowAmenityMarks.length > 0 && index === visibleAmenityMarks.length - 1
+          // The common case (≤3 marks total, every card before this cap
+          // existed) renders EXACTLY as before: the icon is the flex item
+          // directly, `flex-shrink-0` and all — no wrapper span, so nothing
+          // about the row's layout changes for a card the cap never touches.
+          if (!isTrailingTrigger) {
+            return (
+              <Icon
+                key={mark.key}
+                data-testid={`amenity-${mark.key}`}
+                aria-label={ariaLabel}
+                className="text-muted-foreground h-3.5 w-3.5 flex-shrink-0"
+              />
+            )
+          }
+          return (
+            <Tooltip
+              key={mark.key}
+              data-testid="unit-amenity-cap-trigger"
+              content={<AmenityCapPopover marks={presentAmenityMarks} />}
+            >
+              {/* The GSAP transform TARGET, per `shareEmphasis.ts`'s own
+                  rule: a WRAPPER, never the glyph itself — scaling the icon
+                  directly would skew it relative to its siblings the moment
+                  `ui/Tooltip`'s own button grows the transparent 24px hit
+                  target around it. `rounded-full` matches `ShareMarks.tsx`'s
+                  `VEHICLE` for the same reason: the halo is a box-shadow,
+                  which follows border-radius. */}
+              <span
+                ref={amenityCueRef}
+                data-testid="unit-amenity-cap-cue"
+                /* `flex`, NOT `inline-flex`. An inline-level box participates in
+                 * the Tooltip <button>'s 24px line box at `vertical-align:
+                 * baseline`, so the icon sat on the baseline (top 933) instead of
+                 * the button's centre (935) — exactly 2px above its two bare-<svg>
+                 * siblings, which are flex items and get `items-center` directly.
+                 * A block-level flex box has no baseline participation, so the
+                 * button collapses to the icon's 14px and the row centres it.
+                 * Measured: all three centres agree afterwards, row height
+                 * unchanged at 28px, and HIT_TARGET's `after:h-[max(100%,24px)]`
+                 * still gives the 24px hit box. */
+                className="flex rounded-full"
+              >
+                <Icon
+                  data-testid={`amenity-${mark.key}`}
+                  aria-label={ariaLabel}
+                  className="text-muted-foreground h-3.5 w-3.5 flex-shrink-0"
+                />
+              </span>
+            </Tooltip>
+          )
+        })}
         {/* The tooltip hangs on THIS figure, never on the `<h3>` above it
             (kindred#2177). It is also the smallest trigger on the board, which
             is why `ui/Tooltip` grows a transparent 24px hit target around
