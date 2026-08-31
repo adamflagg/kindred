@@ -946,7 +946,11 @@
        * The sibling `.share-emphasis-glow` works only because `--share-yes` is
        * already a full `hsl(...)`. `.glow-primary` two rules away wraps it the
        * same way; follow that. Measured: raw var => computed box-shadow `none`. */
-      color-mix(in srgb, hsl(var(--primary)) calc(30% + var(--share-emphasis-amp) * 45%), transparent);
+      color-mix(
+        in srgb,
+        hsl(var(--primary)) calc(30% + var(--share-emphasis-amp) * 45%),
+        transparent
+      );
   }
 
   /* Stagger delays for lists */
