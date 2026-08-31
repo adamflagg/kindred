@@ -338,15 +338,15 @@ member wrote would destroy it.
 ⛔ **`has_ramp` IS WRITE-ONLY AGAIN, AND THAT IS DELIBERATE (kindred#2327).**
 kindred#2438 had the roster publish it as `ramp_coverage`, and kindred#2502
 confirmed step-free graded from it rather than from `is_accessible`. The owner
-reversed that on 2026-08-30: *"we just need to know what is in fact
-accessible."* The payload field `ramp_coverage` survives under its historical
+reversed that on 2026-08-30: _"we just need to know what is in fact
+accessible."_ The payload field `ramp_coverage` survives under its historical
 name and is now resolved from **`is_accessible`**, over the same leaf walk as
 `power_coverage`, `fridge_coverage` and `ac_coverage`.
 
 The swap is safe in one direction only, which is why it is safe at all. Measured
 on the 2026 snapshot, `select count(*) … where is_accessible=1 and
 coalesce(has_ramp,'')<>'yes'` returns **0**: `is_accessible` is a **strict
-subset** of `has_ramp = 'yes'`, so it can only ever *narrow* a ramp assessment
+subset** of `has_ramp = 'yes'`, so it can only ever _narrow_ a ramp assessment
 and can never promise a wheelchair user access a ramp assessment denies.
 
 Two things follow for anyone editing this file. **`has_ramp` is still not a
@@ -354,8 +354,29 @@ bool and blank still means NOT ASSESSED** — 104 of 118 units are blank, becaus
 the column is editable nowhere in the product, so writing `no` into them would
 fabricate an assessment. And **it is now provenance**: it stays stored (the repo
 forbids a destructive migration over the 14 real staff assessments) and is what
-staff reconcile the three divergent rows against — `ridge-f`, `ridge-g` and
-`river-i`, which record a ramp on a cabin that is not accessible inside.
+staff reconcile the three divergent rows against — the rows recording a ramp on
+a cabin that is not accessible inside.
+
+⚠️ **Those three are given as a query rather than a list, and the reason is
+spec 3.8 — "the registry is DATA, not code" — NOT privacy.** Lodging unit names
+are not PII: this repo's privacy rule covers real camper, family and staff
+names, schools and CampMinder IDs, and unit codes are none of those. Do not
+redact unit codes from docs or issues on the strength of the Lodging Name
+Guard; that misreading has been made before and reverted.
+
+The query is the right form because it **re-derives itself as staff edit**,
+where a pasted list silently rots the moment somebody reconciles one of the
+three:
+
+```sql
+select code from lodging_units
+ where year = 2026 and has_ramp = 'yes' and is_accessible = 0;
+```
+
+Note that `verify-no-hardcoded-lodging.sh` would not have caught a list here —
+it scans `.go/.py/.ts/.tsx/.js/.sh` and never `.md`. That gap is a reason to
+apply spec 3.8 by judgement in docs, not a reason to treat `.md` as a place
+registry values may be parked.
 
 `parent_unit` is compared as a **code**. The database stores it as a relation —
 a record id — so comparing raw values reports every parented unit as needing a
