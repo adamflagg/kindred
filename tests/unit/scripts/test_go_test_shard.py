@@ -460,3 +460,65 @@ def test_go_filter_covers_the_workflow_that_configures_the_shards():
     the paths-filter incident of March 2026 the whole job comment is about.
     """
     assert ".github/workflows/ci.yml" in _go_filter()
+
+
+def test_go_filter_covers_the_go_module_files():
+    """A dependency bump touches only `pocketbase/go.mod` and `pocketbase/go.sum`.
+
+    The filter used to list `go.mod` and `go.sum` at the repo *root*, where no Go
+    module has ever existed -- the module is `pocketbase/go.mod`, and go.work is
+    all that sits at the root. `pocketbase/**/*.go` does not help either: a
+    dependency bump changes no .go file. So every Dependabot Go PR matched
+    nothing here, `tests-go` was *skipped*, and the summary gate counts skipped
+    as OK.
+
+    That is not hypothetical. kindred#2629 (PocketBase 0.39.11 -> 0.40.1, which
+    bumps the minimum Go to 1.27 and moves the whole codebase onto
+    `encoding/json/v2`) reached review having run zero Go tests. Upstream's own
+    release note for that version says not to push it blindly. Same false-green
+    class as the two entries above, and as the paths-filter incident of March 2026.
+    """
+    patterns = _go_filter()
+    assert "pocketbase/go.mod" in patterns
+    assert "pocketbase/go.sum" in patterns
+
+
+def test_go_filter_covers_the_workspace_file():
+    """go.work pins its own `go` directive, and it gates every Go command.
+
+    It must be >= the directive in pocketbase/go.mod or the toolchain refuses to
+    load the workspace at all (`go.work lists go X, but module requires go Y`),
+    which is how kindred#2629 went red. Editing it is a Go-toolchain change and
+    has to be able to run the Go tests.
+    """
+    assert "go.work" in _go_filter()
+
+
+def _all_filters() -> dict[str, list[str]]:
+    filters = _ci_workflow()["jobs"]["detect-changes"]["steps"][1]["with"]["filters"]
+    parsed = yaml.safe_load(filters)
+    assert isinstance(parsed, dict)
+    return parsed
+
+
+def test_backend_filter_covers_the_workspace_file():
+    """go-lint runs `go vet ./...`, which loads the workspace before anything else.
+
+    A go.work-only change -- the fix for kindred#2629 is exactly that -- is a real
+    input to that job, and nothing else in `backend` matches it.
+    """
+    assert "go.work" in _all_filters()["backend"]
+
+
+def test_no_filter_watches_a_root_go_module_that_does_not_exist():
+    """`go.mod`/`go.sum` at the root match nothing -- there is no root module.
+
+    Leaving them in is what made the hole above look covered on a read-through:
+    the filter appeared to watch the module files, so nobody checked which ones.
+    `backend` carried the same two dead entries and was only ever right by
+    accident, via its broader `pocketbase/**`.
+    """
+    assert not (REPO_ROOT / "go.mod").exists(), "a root module now exists; revisit the go filter"
+    for name, patterns in _all_filters().items():
+        assert "go.mod" not in patterns, f"{name} watches a nonexistent root go.mod"
+        assert "go.sum" not in patterns, f"{name} watches a nonexistent root go.sum"

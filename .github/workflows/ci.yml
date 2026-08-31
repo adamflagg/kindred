@@ -108,13 +108,18 @@ jobs:
             - 'api/**/*.py'
             - 'bunking/**/*.py'
             - 'campminder/**'
-            - 'pocketbase/**'
             - 'scripts/**/*.py'
             - 'pyproject.toml'
             - 'ruff.toml'
             - 'uv.lock'
-            - 'go.mod'
-            - 'go.sum'
+            # 'pocketbase/**' covers the Go module wholesale, including
+            # go.mod/go.sum. This used to also list 'go.mod' and 'go.sum' at the
+            # repo root, which match nothing -- see the `go` filter below for
+            # what those dead entries cost when a filter relied on them.
+            - 'pocketbase/**'
+            # go-lint runs `go vet ./...`, which loads the workspace, so a
+            # go.work-only edit is a real input to this job.
+            - 'go.work'
             - '.golangci.yml'
             - '.python-version'
           python:
@@ -130,8 +135,21 @@ jobs:
             - '.python-version'
           go:
             - 'pocketbase/**/*.go'
-            - 'go.mod'
-            - 'go.sum'
+            # The module files, at their real path. These used to read 'go.mod'
+            # and 'go.sum' -- the repo root, where no Go module has ever lived.
+            # Only go.work sits there; the module is pocketbase/go.mod. So the
+            # filter looked like it watched the module and matched nothing, and
+            # a dependency bump -- which by definition changes no .go file --
+            # left tests-go *skipped*, which the summary gate counts as OK.
+            # kindred#2629 (PocketBase 0.39.11 -> 0.40.1: minimum Go to 1.27 and
+            # the whole codebase onto encoding/json/v2, which upstream says not
+            # to ship blindly) reached review having run zero Go tests.
+            - 'pocketbase/go.mod'
+            - 'pocketbase/go.sum'
+            # go.work carries its own `go` directive, and it must be >= the one
+            # in pocketbase/go.mod or every Go command fails to even load the
+            # workspace. That is a Go-toolchain input like the module files.
+            - 'go.work'
             - '.golangci.yml'
             # The sharder decides which tests run at all, so a change to it must
             # run them -- otherwise it ships without ever executing a Go test.
