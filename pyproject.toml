@@ -76,7 +76,7 @@ dev = [
     "mypy>=2.3.1",
     "types-requests>=2.33.0.20260712",
     "types-PyYAML>=6.0.12.20260724",
-    "types-psutil>=7.2.2.20260518",
+    "types-psutil>=7.2.2.20260827",
     "pandas-stubs>=3.0.5.260730",
     # Security
     "pip-audit>=2.10.1",
