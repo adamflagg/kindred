@@ -3,8 +3,10 @@
  *
  * The flags travel as ONE object because a single checkbox confirms all of
  * them at once — `is_confirmed` asserts that a human has walked the cabin and
- * checked these ten. Keeping the flags and the assertion over them in one
- * value is what stops the form saving one without the other.
+ * checked every flag `AMENITY_FLAGS` lists. Keeping the flags and the
+ * assertion over them in one value is what stops the form saving one without
+ * the other. (Deliberately not restated as a count here — the count itself
+ * has already gone stale once; see `AMENITY_FLAGS`'s own header.)
  *
  * ⚠️ THE ASSERTION NO LONGER GATES ANYTHING DOWNSTREAM (kindred#2526). It
  * used to: an unconfirmed row's `has_power: false` read as "nobody has said"
@@ -19,11 +21,19 @@ import {
   Accessibility,
   Baby,
   Bath,
+  ChefHat,
+  Droplet,
+  Flame,
   Footprints,
+  Home,
+  Lightbulb,
   Plug,
   Refrigerator,
   Snowflake,
+  Sofa,
+  SquareDashed,
   Table,
+  Thermometer,
   Users,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
@@ -36,6 +46,14 @@ export type AmenityFlag =
   | 'has_fridge'
   | 'near_bathhouse'
   | 'is_accessible'
+  | 'is_weatherized'
+  | 'has_plumbing'
+  | 'has_space_heater'
+  | 'has_lights'
+  | 'has_heat'
+  | 'has_pack_play_space'
+  | 'has_kitchen'
+  | 'has_living_room'
   | 'has_tub'
   | 'has_crib'
   | 'has_changing_table'
@@ -49,6 +67,18 @@ export interface UnitAmenities {
   has_fridge: boolean
   near_bathhouse: boolean
   is_accessible: boolean
+  // The ORIGINAL 2026 inventory migration's fields (1500000131) — the first
+  // amenity columns the registry ever carried, six migrations before the
+  // Master Housing sheet fields below. Populated by the registry import from
+  // day one, but with no editing surface anywhere in the app until this pass.
+  is_weatherized: boolean
+  has_plumbing: boolean
+  has_space_heater: boolean
+  has_lights: boolean
+  has_heat: boolean
+  has_pack_play_space: boolean
+  has_kitchen: boolean
+  has_living_room: boolean
   // Added with the 2026 Master Housing import. Each REFINES a field above
   // rather than restating it — has_tub under `bathroom`, has_shared_fridge
   // under has_fridge — so none can contradict its parent and a surface reading
@@ -62,8 +92,16 @@ export interface UnitAmenities {
 }
 
 // The row glyphs render only the flags that are TRUE
-// (LodgingUnitRow filters on `unit[flag.key]`), so the four below cost a
-// typical row nothing: they are true on 5, 3, 1 and 4 units respectively.
+// (LodgingUnitRow filters on `unit[flag.key]`). The four Master Housing flags
+// below cost a typical row nothing — they are true on a handful of units each
+// — but the eight original-inventory flags added below THAT are a different
+// story: `is_weatherized` alone is true on 96 of 118 production units, so a
+// confirmed cabin's row will usually carry several of these glyphs now. That
+// is the accurate picture, not a layout bug — see the module header.
+//
+// Every entry here MUST have a slot in `UnitAmenities` and be read by
+// `amenitiesOf` below, or it renders as a checkbox the form silently drops on
+// save. `unitAmenities.test.ts` pins both halves of that contract.
 export const AMENITY_FLAGS: readonly { key: AmenityFlag; label: string; icon: LucideIcon }[] = [
   { key: 'has_power', label: 'Has power', icon: Plug },
   { key: 'has_ac', label: 'Has A/C', icon: Snowflake },
@@ -76,6 +114,20 @@ export const AMENITY_FLAGS: readonly { key: AmenityFlag; label: string; icon: Lu
   // for a family's own pack-and-play, and families with babies ask about both.
   { key: 'has_crib', label: 'Has crib', icon: Baby },
   { key: 'has_changing_table', label: 'Has changing table', icon: Table },
+  // The original 2026 inventory migration's eight (1500000131) — populated by
+  // the registry import since day one, but with no editing surface until now.
+  { key: 'is_weatherized', label: 'Weatherized', icon: Home },
+  { key: 'has_plumbing', label: 'Has plumbing', icon: Droplet },
+  // Distinct from has_heat: a space heater is portable and needs an outlet,
+  // so it is not the same claim as a heated cabin (see the migration).
+  { key: 'has_space_heater', label: 'Has space heater', icon: Flame },
+  { key: 'has_lights', label: 'Has lights', icon: Lightbulb },
+  { key: 'has_heat', label: 'Has heat', icon: Thermometer },
+  // The unit-side counterpart to a family's own infant flag — floor space for
+  // a family's pack-and-play, distinct from has_crib (a camp-provided crib).
+  { key: 'has_pack_play_space', label: 'Pack-n-play space', icon: SquareDashed },
+  { key: 'has_kitchen', label: 'Has kitchen', icon: ChefHat },
+  { key: 'has_living_room', label: 'Has living room', icon: Sofa },
 ]
 
 /**
@@ -112,6 +164,14 @@ export function amenitiesOf(unit?: LodgingUnitRecord): UnitAmenities {
     has_fridge: unit?.has_fridge ?? false,
     near_bathhouse: unit?.near_bathhouse ?? false,
     is_accessible: unit?.is_accessible ?? false,
+    is_weatherized: unit?.is_weatherized ?? false,
+    has_plumbing: unit?.has_plumbing ?? false,
+    has_space_heater: unit?.has_space_heater ?? false,
+    has_lights: unit?.has_lights ?? false,
+    has_heat: unit?.has_heat ?? false,
+    has_pack_play_space: unit?.has_pack_play_space ?? false,
+    has_kitchen: unit?.has_kitchen ?? false,
+    has_living_room: unit?.has_living_room ?? false,
     has_tub: unit?.has_tub ?? false,
     has_crib: unit?.has_crib ?? false,
     has_changing_table: unit?.has_changing_table ?? false,

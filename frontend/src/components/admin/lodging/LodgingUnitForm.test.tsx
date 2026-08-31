@@ -53,6 +53,14 @@ const UNIT: LodgingUnitRecord = {
   has_crib: false,
   has_changing_table: false,
   has_shared_fridge: false,
+  is_weatherized: false,
+  has_plumbing: false,
+  has_space_heater: false,
+  has_lights: false,
+  has_heat: false,
+  has_pack_play_space: false,
+  has_kitchen: false,
+  has_living_room: false,
   inventory_class: 'family_pool',
   shareability: '',
   is_confirmed: false,
@@ -403,6 +411,47 @@ describe('LodgingUnitForm — spec fields Phase C omitted', () => {
     expect(payload.has_ac).toBe(true)
     expect(payload.has_fridge).toBe(true)
     expect(payload.near_bathhouse).toBe(true)
+  })
+
+  // The eight fields the original 2026 inventory migration (1500000131) put
+  // on lodging_units but which had no editing surface anywhere until this
+  // pass — populated only by the registry import, invisible everywhere else.
+  it('submits the eight original-inventory amenity fields, not just the Master Housing nine', async () => {
+    updateLodgingUnit.mockResolvedValue({ ...UNIT })
+    const user = userEvent.setup()
+
+    render(
+      <LodgingUnitForm
+        areas={AREAS}
+        units={[UNIT]}
+        year={2026}
+        unit={UNIT}
+        onSaved={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    )
+    await user.click(screen.getByLabelText('Weatherized'))
+    await user.click(screen.getByLabelText('Has plumbing'))
+    await user.click(screen.getByLabelText('Has space heater'))
+    await user.click(screen.getByLabelText('Has lights'))
+    await user.click(screen.getByLabelText('Has heat'))
+    await user.click(screen.getByLabelText('Pack-n-play space'))
+    await user.click(screen.getByLabelText('Has kitchen'))
+    await user.click(screen.getByLabelText('Has living room'))
+    await user.click(screen.getByRole('button', { name: 'Save unit' }))
+
+    await waitFor(() => {
+      expect(updateLodgingUnit).toHaveBeenCalled()
+    })
+    const [, payload] = updateLodgingUnit.mock.calls[0] as [string, LodgingUnitInput]
+    expect(payload.is_weatherized).toBe(true)
+    expect(payload.has_plumbing).toBe(true)
+    expect(payload.has_space_heater).toBe(true)
+    expect(payload.has_lights).toBe(true)
+    expect(payload.has_heat).toBe(true)
+    expect(payload.has_pack_play_space).toBe(true)
+    expect(payload.has_kitchen).toBe(true)
+    expect(payload.has_living_room).toBe(true)
   })
 })
 
