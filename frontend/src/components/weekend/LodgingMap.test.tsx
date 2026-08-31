@@ -595,15 +595,27 @@ describe('LodgingMap', () => {
   })
 
   it('renders a mixed staff/family cluster the same shape regardless of member order', () => {
-    // Close enough (2px apart on the 1000px jsdom fallback canvas) to cluster
-    // into one mark. Mixing inventory_class is the case that flips with
-    // whichever row the database happens to return first if the mark reads
-    // its shape off `members[0]` instead of the whole cluster.
+    // TWO ROOMS OF ONE BUILDING, so they cluster. They used to be two
+    // freestanding rooms 2px apart, which clustered on proximity alone —
+    // kindred#2440 ruled that two different BUILDINGS never merge however
+    // close they sit, so proximity is no longer enough to build this fixture
+    // and a shared parent is. The invariant under test is unchanged and
+    // orthogonal to that ruling: mixing inventory_class is the case that flips
+    // with whichever row the database happens to return first if the mark
+    // reads its shape off `members[0]` instead of the whole cluster.
     const staffMix = [
-      unit({ unit_id: 'sm1', code: 'family-a', map_x: 0.5, map_y: 0.5 }),
+      unit({ unit_id: 'sm0', code: 'mixed-house', is_container: true, map_x: 0.5, map_y: 0.5 }),
+      unit({
+        unit_id: 'sm1',
+        code: 'family-a',
+        parent_code: 'mixed-house',
+        map_x: 0.5,
+        map_y: 0.5,
+      }),
       unit({
         unit_id: 'sm2',
         code: 'staff-a',
+        parent_code: 'mixed-house',
         map_x: 0.502,
         map_y: 0.5,
         inventory_class: 'staff_default',
@@ -845,18 +857,114 @@ describe('LodgingMap legend', () => {
   })
 
   it('counts only the multi-room blobs as clusters, not every lone mark', () => {
-    // Two rooms on the same coordinate are one blob until you zoom in, and the
-    // count is the only thing that says the other room is under there.
-    // THE THIRD ROOM IS THE TEST: with only the stacked pair, "clusters" and
-    // "clusters with more than one member" are both 1 and the assertion cannot
-    // tell a correct count from a count of every mark on the map.
+    // Two rooms of ONE BUILDING are one blob — since kindred#2440 at every
+    // zoom, not just until you zoom in — and the count is the only thing that
+    // says the other room is under there.
+    // THE THIRD ROOM IS STILL THE TEST: with only the stacked pair, "clusters"
+    // and "clusters with more than one member" are both 1 and the assertion
+    // cannot tell a correct count from a count of every mark on the map. It is
+    // a FREESTANDING room, so it is its own building and cannot join them.
+    // The pair used to be two parentless rooms sharing a coordinate; #2440
+    // ruled that two different buildings never merge, so what makes a blob now
+    // is the shared parent rather than the shared point.
     const stacked = [
-      unit({ unit_id: 'u1', code: 'a', name: 'A', map_x: 0.5, map_y: 0.5 }),
-      unit({ unit_id: 'u2', code: 'b', name: 'B', map_x: 0.5, map_y: 0.5 }),
+      unit({
+        unit_id: 'u0',
+        code: 'ab-house',
+        name: 'AB House',
+        is_container: true,
+        map_x: 0.5,
+        map_y: 0.5,
+      }),
+      unit({
+        unit_id: 'u1',
+        code: 'a',
+        name: 'A',
+        parent_code: 'ab-house',
+        map_x: 0.5,
+        map_y: 0.5,
+      }),
+      unit({
+        unit_id: 'u2',
+        code: 'b',
+        name: 'B',
+        parent_code: 'ab-house',
+        map_x: 0.5,
+        map_y: 0.5,
+      }),
       unit({ unit_id: 'u3', code: 'c', name: 'C', map_x: 0.1, map_y: 0.9 }),
     ]
     render(<LodgingMap parties={[]} units={stacked} year={2026} />)
-    expect(screen.getByTestId('map-legend')).toHaveTextContent(/1 cluster at this zoom/)
+    expect(screen.getByTestId('map-legend')).toHaveTextContent(/1 cluster/)
+  })
+
+  /**
+   * kindred#2440 Q3, ruled 2026-08-24: "Two different buildings that sit a few
+   * pixels apart on the base map should NEVER be drawn as a single mark. Every
+   * building always gets its own pin." Four pairs on the production registry
+   * merged this way at rest, and this is the acceptance case for removing it.
+   */
+  /**
+   * kindred#2440 made the lost name permanent. Before it, a multi-room blob
+   * was a proximity accident you could zoom apart to read the names; now the
+   * rooms are coincident at every zoom, so a bare "N rooms" would be the only
+   * thing 8 buildings on the 2026 registry ever say.
+   */
+  it('names the building on a mark that is one whole building', () => {
+    const house = [
+      unit({
+        unit_id: 'h0',
+        code: 'oak-house',
+        name: 'Oak House',
+        is_container: true,
+        map_x: 0.5,
+        map_y: 0.5,
+      }),
+      unit({
+        unit_id: 'h1',
+        code: 'oak-a',
+        name: 'Oak A',
+        parent_code: 'oak-house',
+        map_x: 0.51,
+        map_y: 0.5,
+      }),
+      unit({
+        unit_id: 'h2',
+        code: 'oak-b',
+        name: 'Oak B',
+        parent_code: 'oak-house',
+        map_x: 0.52,
+        map_y: 0.5,
+      }),
+    ]
+    render(<LodgingMap parties={[]} units={house} year={2026} />)
+    expect(screen.getByTestId('map-mark')).toHaveAttribute(
+      'title',
+      expect.stringContaining('Oak House · 2 rooms')
+    )
+  })
+
+  it('gives a mark spanning two buildings the count alone, having no one name', () => {
+    // Only reachable through the fallback, where an unpositioned root leaves
+    // rooms on their own points — but the mark must not pick one building's
+    // name to stand for both.
+    const neighbours = [
+      unit({ unit_id: 'n1', code: 'oak', name: 'Oak', map_x: 0.5, map_y: 0.5 }),
+      unit({ unit_id: 'n2', code: 'elm', name: 'Elm', map_x: 0.5, map_y: 0.5 }),
+    ]
+    render(<LodgingMap parties={[]} units={neighbours} year={2026} />)
+    // Distinct buildings never merge, so this is two marks, each named.
+    expect(screen.getAllByTestId('map-mark')).toHaveLength(2)
+  })
+
+  it('never merges two different buildings, however close they sit', () => {
+    const neighbours = [
+      unit({ unit_id: 'n1', code: 'oak', name: 'Oak', map_x: 0.5, map_y: 0.5 }),
+      unit({ unit_id: 'n2', code: 'elm', name: 'Elm', map_x: 0.501, map_y: 0.5 }),
+    ]
+    render(<LodgingMap parties={[]} units={neighbours} year={2026} />)
+    expect(screen.getAllByTestId('map-mark')).toHaveLength(2)
+    expect(screen.getByTestId('map-legend')).toHaveTextContent(/0 clusters/)
   })
 })
 

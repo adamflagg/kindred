@@ -109,6 +109,11 @@ function mapUnit(unit: LodgingUnitRow, parties: RosterPartyRow[] = []): MapUnit 
     parties,
     consent: null,
     hue: 'hsl(160 45% 42%)',
+    // A freestanding room is its own building (kindred#2440), so its mark
+    // carries its own code. The popover never reads this — it is the group
+    // `LodgingMap` hands to clustering — but `MapUnit` requires it, and a
+    // fixture that lied about the grain would be a trap for the next reader.
+    buildingCode: unit.code,
     // What `buildMapModel` computes for an ORDINARY room (kindred#2183) — one
     // room, its own capacity. A combined house overrides both; see the
     // container tests at the foot of this file.

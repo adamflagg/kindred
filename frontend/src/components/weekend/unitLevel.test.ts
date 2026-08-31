@@ -3,9 +3,12 @@ import { describe, expect, it } from 'vitest'
 import type { LodgingUnitRow } from '../../types/lodging'
 import {
   buildingGroups,
+  buildingKey,
   buildingsSpanned,
   coveredCodes,
   drawnUnits,
+  indexUnitsByCode,
+  mapBuildingKey,
   wholeBuildingHeld,
 } from './unitLevel'
 
@@ -283,5 +286,105 @@ describe("buildingsSpanned — #2009's distinct-building count", () => {
 
   it('returns 0 for nothing drawn', () => {
     expect(buildingsSpanned([], HALVED_HOUSE)).toBe(0)
+  })
+})
+
+/**
+ * kindred#2440 Q4, RE-RULED by the owner 2026-08-30: the MAP's grain is the
+ * ROOT, always.
+ *
+ * The standing default had been the immediate parent, on the argument that a
+ * pin rule disagreeing with #2008 would give the product two different
+ * "buildings". It does give it two, and that is now deliberate, because the
+ * two grains answer different questions:
+ *
+ * - `buildingKey` (#2008) answers LETTABILITY — which block staff hold at
+ *   once. Halves are let separately 13-17 times a year, so a half is a
+ *   building for that purpose and walking to the root would merge two things
+ *   staff let apart.
+ * - `mapBuildingKey` (#2440) answers GEOGRAPHY — where the door is. Halves of
+ *   one house are one structure at one place, so NOT walking to the root
+ *   draws several marks on one roof.
+ *
+ * The registry's largest tree is what settled it: ten rooms under three
+ * sibling containers beneath one root, drawing THREE marks under the
+ * immediate-parent grain for one physical building — and, once #2440's Q3
+ * barrier forbade cross-building merges, three marks that could never blob
+ * back together at any zoom. Two other roots behave the same way at four
+ * rooms and two marks each. Root grain takes the registry from 86 pin sites
+ * to 79. The buildings are named in kindred#2440, not here — spec 3.8, the
+ * registry is data, not code.
+ */
+describe('mapBuildingKey — the ROOT grain the map draws on (kindred#2440)', () => {
+  const byCode = indexUnitsByCode(HALVED_HOUSE)
+
+  it('walks a room past its half all the way to the root', () => {
+    expect(mapBuildingKey(u({ code: 'up-r1', parent_code: 'upstairs' }), byCode)).toBe('house')
+    expect(mapBuildingKey(u({ code: 'down-r2', parent_code: 'downstairs' }), byCode)).toBe('house')
+  })
+
+  it('puts both halves of one house on ONE pin, which buildingKey deliberately does not', () => {
+    const upstairs = u({ code: 'upstairs', is_container: true, parent_code: 'house' })
+    const downstairs = u({ code: 'downstairs', is_container: true, parent_code: 'house' })
+    expect(mapBuildingKey(upstairs, byCode)).toBe(mapBuildingKey(downstairs, byCode))
+    // The contrast is the point: #2008's grain keeps them apart on purpose.
+    expect(buildingGroups(HALVED_HOUSE).has('house')).toBe(false)
+  })
+
+  it('walks a CONTAINER to its root too, so a combined half draws on the house', () => {
+    // Under the immediate-parent grain a drawn container was its own pin site.
+    // It is not any more: a combined half is still part of one building.
+    const upstairs = u({ code: 'upstairs', is_container: true, parent_code: 'house' })
+    expect(mapBuildingKey(upstairs, byCode)).toBe('house')
+  })
+
+  it('leaves a freestanding cabin as its own root', () => {
+    const solo = u({ code: 'solo' })
+    expect(mapBuildingKey(solo, indexUnitsByCode([solo]))).toBe('solo')
+  })
+
+  it('is NOT buildingKey — the two grains disagree by design on a halved house', () => {
+    // The load-bearing contrast, asserted directly rather than left to the
+    // reader: same unit, same registry, two different answers.
+    const room = u({ code: 'up-r1', parent_code: 'upstairs' })
+    expect(buildingKey(room, byCode)).toBe('upstairs')
+    expect(mapBuildingKey(room, byCode)).toBe('house')
+  })
+
+  it('stops at a parent the payload does not carry, rather than returning nothing', () => {
+    const orphan = u({ code: 'orphan', parent_code: 'not-in-payload' })
+    expect(mapBuildingKey(orphan, indexUnitsByCode([orphan]))).toBe('orphan')
+  })
+
+  it('does not hang on a parent cycle entered from OUTSIDE it', () => {
+    // A RHO shape (`u -> a -> b -> c -> b`), not a 2-cycle, and the walk starts
+    // off the loop. A 2-cycle whose walk begins inside it is caught by the seed
+    // `new Set([unit.code])` alone, so it exercises nothing: delete the
+    // `seen.add` in the loop and that fixture still passes while this one
+    // hangs. Same reason `CYCLIC` above is rho-shaped — see its comment.
+    const rho = [
+      u({ code: 'u', parent_code: 'a' }),
+      u({ code: 'a', is_container: true, parent_code: 'b' }),
+      u({ code: 'b', is_container: true, parent_code: 'c' }),
+      u({ code: 'c', is_container: true, parent_code: 'b' }),
+    ]
+    // A DEFINITE answer, not a set: the walk stops at the last node before the
+    // repeat, so `b -> c -> b` ends on `c`.
+    expect(mapBuildingKey(rho[0]!, indexUnitsByCode(rho))).toBe('c')
+  })
+
+  it('stops at a MID-CHAIN parent the payload does not carry, keeping the half', () => {
+    // The depth-1 orphan above cannot tell "return `current.code`" from
+    // "return `unit.code`" — they are the same node there. This decides
+    // whether the rooms of a half whose house is missing share a pin (they do)
+    // or scatter to their own points (they must not).
+    const partial = [
+      u({ code: 'half', is_container: true, parent_code: 'house-not-in-payload' }),
+      u({ code: 'r1', parent_code: 'half' }),
+      u({ code: 'r2', parent_code: 'half' }),
+    ]
+    const byPartial = indexUnitsByCode(partial)
+    expect(mapBuildingKey(partial[1]!, byPartial)).toBe('half')
+    expect(mapBuildingKey(partial[2]!, byPartial)).toBe('half')
   })
 })

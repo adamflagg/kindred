@@ -967,6 +967,26 @@ describe('LodgingUnitForm — fields staff have no use for', () => {
       />
     )
 
+  /** The same, with the unit's building in the payload so the parent resolves. */
+  const PARENT: LodgingUnitRecord = {
+    ...UNIT,
+    id: 'u0',
+    code: 'cedar-house',
+    name: 'Cedar House',
+    is_container: true,
+  }
+  const renderWithParent = (unit: LodgingUnitRecord) =>
+    render(
+      <LodgingUnitForm
+        areas={AREAS}
+        units={[PARENT, unit]}
+        year={2026}
+        unit={unit}
+        onSaved={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    )
+
   it('never offers the code when editing an existing unit', () => {
     // The code is a JOIN KEY, not a name. apply_lodging_inventory.py matches
     // units by it, so changing one orphans the unit from the registry and the
@@ -1012,26 +1032,128 @@ describe('LodgingUnitForm — fields staff have no use for', () => {
     expect(screen.queryByText('Map position')).not.toBeInTheDocument()
   })
 
-  it('offers no pin for a container, which the map never draws', () => {
-    // A building carries its rooms' positions through its children, so
-    // `buildMapModel` draws the children and never the container itself.
+  /**
+   * kindred#2440 REVERSED THIS PAIR. They used to assert that a container gets
+   * no pin, on the model that "a building carries its rooms' positions through
+   * its children". The owner ruled the opposite on 2026-08-21 — the map is a
+   * view of BUILDINGS and a room draws at its building's point — so the
+   * container is now the only thing whose coordinate the map reads, and the
+   * room's own is inert. Leaving the old gate would have left the pin editable
+   * NOWHERE for the twelve buildings that carry a room's pin, while still
+   * offering each of those rooms a control that saves and moves nothing.
+   */
+  it('offers the pin to a ROOT unit, which is what the map draws on', () => {
+    // The GATE CHECKBOX, not the heading: an inheriting unit keeps the "Map
+    // position" heading to say where its pin lives, so the heading no longer
+    // distinguishes the editor from the note that replaces it.
     renderUnit({ ...UNIT, is_container: true })
 
-    expect(screen.queryByText('Map position')).not.toBeInTheDocument()
+    expect(screen.getByLabelText(/edit position/i)).toBeInTheDocument()
   })
 
-  it('withdraws the pin the moment the unit is declared a building', async () => {
-    // Read LIVE off the checkbox, not off the stored record: a staffer who has
-    // just ticked "this is a building" has already made the ruling.
-    const user = userEvent.setup()
-    renderUnit(UNIT)
-    expect(screen.getByText('Map position')).toBeInTheDocument()
+  it('offers no pin to a CONTAINER that is itself inside a building', () => {
+    // Question 4 was re-ruled 2026-08-30: the map's grain is the ROOT. A half
+    // of a house draws on the house, so `is_container` no longer decides this
+    // — only whether the unit has a parent does. Under the superseded
+    // immediate-parent grain this container WOULD have had its own pin, which
+    // is how one production building drew three marks on one roof.
+    renderWithParent({ ...UNIT, parent_unit: 'u0', is_container: true })
 
-    await user.click(
-      screen.getByLabelText('This is a building or building area with multiple bedrooms.')
+    expect(screen.queryByLabelText(/edit position/i)).not.toBeInTheDocument()
+    expect(screen.getByText(/Drawn at Cedar House\u2019s pin/)).toBeInTheDocument()
+  })
+
+  it('hands the pin back the moment a room is re-parented to nothing', async () => {
+    // Read LIVE off the SELECTED parent, not the stored record — the invariant
+    // the superseded version of this test protected, now keyed on the control
+    // that actually decides it.
+    const user = userEvent.setup()
+    renderWithParent({ ...UNIT, parent_unit: 'u0' })
+    expect(screen.queryByLabelText(/edit position/i)).not.toBeInTheDocument()
+
+    await user.selectOptions(screen.getByLabelText('Parent unit'), '')
+
+    expect(screen.getByLabelText(/edit position/i)).toBeInTheDocument()
+  })
+
+  it('WITHDRAWS the pin the moment a parentless unit is given a parent', async () => {
+    // The other direction, which the rewrite dropped. Present -> absent is the
+    // half that catches a gate stuck open, and nothing in the ruling forced
+    // giving it up.
+    const user = userEvent.setup()
+    renderWithParent(UNIT)
+    expect(screen.getByLabelText(/edit position/i)).toBeInTheDocument()
+
+    await user.selectOptions(screen.getByLabelText('Parent unit'), 'u0')
+
+    expect(screen.queryByLabelText(/edit position/i)).not.toBeInTheDocument()
+    expect(screen.getByText(/Drawn at Cedar House\u2019s pin/)).toBeInTheDocument()
+  })
+
+  /**
+   * Row 5 of the #2620 scan. A building created in this very panel starts with
+   * NO coordinate — the form omits `map_x`/`map_y` from its payload — so
+   * re-parenting positioned rooms into a fresh building is ordinary workflow.
+   * `pinFor` then draws each room at its own point, and a note claiming
+   * otherwise would be a lie about where the room is AND would hide the only
+   * control that could fix it.
+   */
+  it('keeps the pin on a room whose building has no coordinate yet', () => {
+    const freshBuilding: LodgingUnitRecord = { ...PARENT, map_x: 0, map_y: 0 }
+    render(
+      <LodgingUnitForm
+        areas={AREAS}
+        units={[freshBuilding, { ...UNIT, parent_unit: 'u0' }]}
+        year={2026}
+        unit={{ ...UNIT, parent_unit: 'u0' }}
+        onSaved={vi.fn()}
+        onCancel={vi.fn()}
+      />
     )
 
-    expect(screen.queryByText('Map position')).not.toBeInTheDocument()
+    expect(screen.getByLabelText(/edit position/i)).toBeInTheDocument()
+    expect(screen.queryByText(/Drawn at/)).not.toBeInTheDocument()
+  })
+
+  it('offers no pin for a room inside a building — the building`s pin is its pin', () => {
+    renderWithParent({ ...UNIT, parent_unit: 'u0' })
+
+    expect(screen.queryByLabelText(/edit position/i)).not.toBeInTheDocument()
+  })
+
+  it('names the ROOT, not the half, when a room sits two levels down', () => {
+    // The three-level shape: room -> half -> house. The staffer must be sent
+    // to the unit that actually carries the pin, which is the house.
+    const half: LodgingUnitRecord = {
+      ...UNIT,
+      id: 'u0h',
+      code: 'cedar-house-up',
+      name: 'Cedar House Upstairs',
+      parent_unit: 'u0',
+      is_container: true,
+    }
+    const room: LodgingUnitRecord = { ...UNIT, parent_unit: 'u0h' }
+    render(
+      <LodgingUnitForm
+        areas={AREAS}
+        units={[PARENT, half, room]}
+        year={2026}
+        unit={room}
+        onSaved={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    )
+
+    expect(screen.getByText(/Drawn at Cedar House\u2019s pin/)).toBeInTheDocument()
+  })
+
+  it('names the building that carries the pin, so the control has not merely vanished', () => {
+    // The #2327 lesson: a capability that disappears without saying where it
+    // went is a capability loss, whatever the data model says.
+    renderWithParent({ ...UNIT, parent_unit: 'u0' })
+
+    // The parent picker names it too, so match the note's own wording.
+    expect(screen.getByText(/Drawn at Cedar House\u2019s pin/)).toBeInTheDocument()
   })
 
   it('leaves a stored coordinate alone when saving a unit that has one', async () => {

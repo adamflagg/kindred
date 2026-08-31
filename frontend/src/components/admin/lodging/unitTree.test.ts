@@ -15,6 +15,7 @@ import {
   directChildren,
   flattenUnitTree,
   parentCandidates,
+  pinAncestor,
 } from './unitTree'
 
 function unit(over: Partial<LodgingUnitRecord> & { id: string }): LodgingUnitRecord {
@@ -379,5 +380,80 @@ describe('parentCandidates — scoped to how the unit is used', () => {
       (u) => u.id
     )
     expect(ids).toContain('staff-bldg')
+  })
+})
+
+/**
+ * kindred#2440 — which unit's coordinate the map will actually draw this one
+ * at, so the admin panel can offer the pin editor to exactly that unit.
+ *
+ * THE MIRROR OF `mapModel`'s `pinFor`, in ids rather than codes. It lived
+ * inline in `LodgingUnitForm` for one commit and disagreed with the map on two
+ * shapes — a rho cycle and a self-parent — because it advanced before checking
+ * the repeat, and it had no tests at all. It is here beside `combinedAncestor`
+ * because that is the id-keyed ancestor walk this file already owns, and it
+ * borrows its guard idiom: check the NEXT hop before stepping onto it.
+ *
+ * "Positioned" is the map's own `hasCoordinates`, imported rather than
+ * re-spelled — PocketBase stores an unset number as 0, and a second copy of
+ * "both axes zero means unset" is how the (0,0) trap gets back in.
+ */
+describe('pinAncestor — the unit whose pin the map actually draws (kindred#2440)', () => {
+  const HOUSE = [
+    unit({ id: 'house', is_container: true, map_x: 0.4, map_y: 0.5 }),
+    unit({ id: 'up', is_container: true, parent_unit: 'house', map_x: 0.41, map_y: 0.51 }),
+    unit({ id: 'r1', parent_unit: 'up', map_x: 0.42, map_y: 0.52 }),
+  ]
+
+  it('returns the ROOT for a room two levels down, not its half', () => {
+    expect(pinAncestor('up', HOUSE)?.id).toBe('house')
+  })
+
+  it('returns nothing for a parentless unit, which carries its own pin', () => {
+    expect(pinAncestor('', HOUSE)).toBeUndefined()
+  })
+
+  it('returns nothing when the parent is not in the payload', () => {
+    expect(pinAncestor('missing', HOUSE)).toBeUndefined()
+  })
+
+  it('skips an UNPOSITIONED root and offers the positioned half instead', () => {
+    // A building created in the admin panel starts with no coordinate, so this
+    // is ordinary workflow rather than bad data. `pinFor` draws the room at the
+    // half here, so the half is what the staffer must be sent to.
+    const unpositionedRoot = [
+      unit({ id: 'house', is_container: true, map_x: 0, map_y: 0 }),
+      unit({ id: 'up', is_container: true, parent_unit: 'house', map_x: 0.41, map_y: 0.51 }),
+      unit({ id: 'r1', parent_unit: 'up', map_x: 0.42, map_y: 0.52 }),
+    ]
+    expect(pinAncestor('up', unpositionedRoot)?.id).toBe('up')
+  })
+
+  it('returns nothing when no ancestor is positioned, so the unit keeps its own', () => {
+    const noneAbove = [
+      unit({ id: 'house', is_container: true, map_x: 0, map_y: 0 }),
+      unit({ id: 'up', is_container: true, parent_unit: 'house', map_x: 0, map_y: 0 }),
+    ]
+    expect(pinAncestor('up', noneAbove)).toBeUndefined()
+  })
+
+  it('terminates on a rho cycle entered from outside it', () => {
+    // `parent -> a -> b -> c -> b`. The inline version advanced before checking
+    // and resolved this differently from `mapBuildingKey`.
+    const rho = [
+      unit({ id: 'a', is_container: true, parent_unit: 'b', map_x: 0.1, map_y: 0.1 }),
+      unit({ id: 'b', is_container: true, parent_unit: 'c', map_x: 0.2, map_y: 0.2 }),
+      unit({ id: 'c', is_container: true, parent_unit: 'b', map_x: 0.3, map_y: 0.3 }),
+    ]
+    expect(pinAncestor('a', rho)?.id).toBe('c')
+  })
+
+  it('does not send a self-parented unit to itself', () => {
+    // It would otherwise hide the editor and say "Drawn at <itself>'s pin" for
+    // the very coordinate the map reads.
+    const selfish = [
+      unit({ id: 'a', is_container: true, parent_unit: 'a', map_x: 0.1, map_y: 0.1 }),
+    ]
+    expect(pinAncestor('a', selfish)?.id).toBe('a')
   })
 })

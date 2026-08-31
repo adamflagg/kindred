@@ -14,7 +14,7 @@
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
 import { buildBoard, slotOccupancy, type ConsentFlag } from './boardLayout'
 import { effectiveSleeps } from './rosterAttention'
-import { coveredCodes, indexUnitsByCode } from './unitLevel'
+import { coveredCodes, indexUnitsByCode, mapBuildingChain } from './unitLevel'
 
 /** Why the map cannot draw a party the board can. */
 export type OffMapReason =
@@ -77,7 +77,24 @@ export interface MapUnit {
    * pinned before it is reached.
    */
   spanWidth: number
-  /** Normalized 0-1 map coordinates. Projection to pixels is the viewport's job. */
+  /**
+   * The BUILDING this mark belongs to — kindred#2440's grain, resolved by
+   * `pinFor` below and carried so `LodgingMap` can hand it to clustering as
+   * the group that nothing merges across.
+   *
+   * Threaded rather than re-derived for the reason `roomCount` and `capacity`
+   * are: the consumer holds `MapUnit[]` and never the registry, so it cannot
+   * walk a room to its parent to ask. A second derivation is also how the
+   * product would end up with more "buildings" than it has — see
+   * `mapBuildingKey`, and its note on why it is deliberately not
+   * `buildingKey`.
+   */
+  buildingCode: string
+  /**
+   * Normalized 0-1 map coordinates. Projection to pixels is the viewport's job.
+   *
+   * THE BUILDING'S, not necessarily this unit's own — see `pinFor`.
+   */
   x: number
   y: number
 }
@@ -94,8 +111,13 @@ export interface MapModel {
   /** Placed, but not drawable on a map. */
   offMap: OffMapEntry[]
   /**
-   * Bookable rooms nobody has positioned, reported HERE — but this is not a
-   * totality guarantee for the payload as a whole. `buildBoard` drops two
+   * Bookable rooms with no pin to inherit — neither their own nor their
+   * building's (kindred#2440). A room whose own coordinate is unset but whose
+   * building is positioned is NOT here: it draws at the building's pin, which
+   * is what inheritance means. Unreachable on the 2026 registry, where all
+   * 118 units are positioned.
+   *
+   * This is not a totality guarantee for the payload as a whole. `buildBoard` drops two
    * kinds of unit before `buildMapModel` ever sees them (see the `drawn`
    * filter in `boardLayout.ts`), and an unpositioned one of either kind is
    * dropped upstream and never reaches this list:
@@ -169,6 +191,68 @@ function unitRoomCount(unit: LodgingUnitRow, units: LodgingUnitRow[]): number {
   return Math.max(active, 1)
 }
 
+/**
+ * WHERE THIS DRAWN UNIT'S MARK GOES — one pin per building (kindred#2440).
+ *
+ * Owner ruling 2026-08-21: the session map is a view of BUILDINGS. A room
+ * inherits its building's coordinate and never carries its own point, so a
+ * building draws as ONE mark at every zoom rather than dissolving into its
+ * rooms the moment you zoom past the cluster radius. The per-room coordinates
+ * it overrides are not geography: kindred#2013 digitised them from the base
+ * map's LABEL anchors, so each room inherited wherever its printed name sat.
+ *
+ * ⚠️ "ITS OWN COORDINATE IS NEVER READ" IS NOT ABSOLUTE, here or in the two
+ * admin docs that say it. It holds whenever some ancestor is positioned, which
+ * is every unit on the 2026 registry — but a building created in the admin
+ * panel starts with NO coordinate (the form omits `map_x`/`map_y` from its
+ * payload), so re-parenting positioned rooms into a fresh building reaches the
+ * fallback below through ordinary workflow, not through bad data.
+ *
+ * RESOLVED AT READ TIME. Nothing is written and no stored value is dropped
+ * (question 2, defaulted): `map_x`/`map_y` are classified staff-owned and all
+ * 118 production units carry one, so a migration would destroy 103 real values
+ * to rescue nothing — and this is reversible by deleting this function.
+ *
+ * THE GRAIN IS THE ROOT — `mapBuildingKey`, whose own doc carries question 4's
+ * re-ruling (owner, 2026-08-30) and why the map deliberately does NOT share
+ * #2008's `buildingKey`. Everything under one roof draws on one point,
+ * containers included: a combined half is still part of its house. That took
+ * the 2026 registry from 86 pin sites to 79, and it is what stopped the
+ * registry's largest tree drawing three marks on one building.
+ *
+ * THE FALLBACK WALKS DOWN, and that is the point of taking the whole chain.
+ * Read-time resolution must never lose a pin that exists today, so an
+ * unpositioned building yields to the outermost ancestor that IS positioned —
+ * a half, if the house has no coordinate — and only then to the unit's own.
+ * Jumping straight from the root to the unit would discard a real intermediate
+ * coordinate while promising not to. Only when nothing in the chain carries a
+ * coordinate is there nothing to draw.
+ *
+ * THE GROUP STAYS THE ROOT even when the point comes from further down. Two
+ * halves of an unpositioned house draw at their own two points but remain ONE
+ * cluster group, so the radius decides whether they merge — which is exactly
+ * the one case `mapClustering`'s header says the radius still decides. Keying
+ * the group on the half instead would reintroduce the split this issue exists
+ * to remove.
+ */
+function pinFor(
+  unit: LodgingUnitRow,
+  units: LodgingUnitRow[]
+): { buildingCode: string; x: number; y: number } | null {
+  const chain = mapBuildingChain(unit, indexUnitsByCode(units))
+  const buildingCode = chain[chain.length - 1]?.code ?? unit.code
+  // Outermost first: the highest positioned ancestor wins, and that is
+  // deliberately an override of the room's own real value rather than a
+  // rescue of a missing one.
+  for (let i = chain.length - 1; i >= 0; i -= 1) {
+    const candidate = chain[i]
+    if (candidate !== undefined && hasCoordinates(candidate)) {
+      return { buildingCode, x: candidate.map_x ?? 0, y: candidate.map_y ?? 0 }
+    }
+  }
+  return null
+}
+
 export function buildMapModel(parties: RosterPartyRow[], units: LodgingUnitRow[]): MapModel {
   const board = buildBoard(parties, units)
 
@@ -181,7 +265,8 @@ export function buildMapModel(parties: RosterPartyRow[], units: LodgingUnitRow[]
 
   for (const area of board.areas) {
     for (const slot of area.slots) {
-      if (!hasCoordinates(slot.unit)) {
+      const pin = pinFor(slot.unit, units)
+      if (pin === null) {
         unpositionedUnits.push(slot.unit)
         for (const party of slot.parties) {
           offMap.push({ party, reason: 'no-coordinates' })
@@ -208,9 +293,9 @@ export function buildMapModel(parties: RosterPartyRow[], units: LodgingUnitRow[]
         // with `partySpots`, which is the roster's number rather than the
         // board's `partySize`.
         spanWidth: slotOccupancy(slot, units).spanWidth,
-        // Non-null by hasCoordinates above; narrowed for the type checker.
-        x: slot.unit.map_x ?? 0,
-        y: slot.unit.map_y ?? 0,
+        buildingCode: pin.buildingCode,
+        x: pin.x,
+        y: pin.y,
       })
     }
   }
@@ -221,13 +306,19 @@ export function buildMapModel(parties: RosterPartyRow[], units: LodgingUnitRow[]
 /**
  * How many BOOKABLE ROOMS ARE POSITIONED — what the Map tab's badge counts.
  *
- * This is NOT how many marks the map draws. Clustering runs AFTER this
- * count, so overlapping rooms collapse into fewer marks whenever any of them
- * share a spot — measured live on 2026's busiest weekend, 76 positioned
- * rooms render as 76 marks at rest (nothing happens to overlap there this
- * year), and the mark count keeps falling as you zoom out further wherever
- * it does. A badge that changed as you zoomed would be absurd, so it reports
- * the room count, which is stable, rather than the mark count, which is not.
+ * This is NOT how many marks the map draws, and since kindred#2440 the gap is
+ * structural rather than incidental. Clustering runs AFTER this count, and
+ * every room of a multi-room building now resolves to ONE point, so those
+ * rooms collapse into a single mark at every zoom. A badge that reported
+ * marks would therefore undercount the rooms staff can actually book, and
+ * would still have been absurd for the older reason: before #2440 the mark
+ * count also moved as you zoomed. It reports the room count, which is stable.
+ *
+ * ⚠️ This docstring used to claim "76 positioned rooms render as 76 marks at
+ * rest (nothing happens to overlap there this year)", which disagreed with
+ * `mapClustering`'s own measurement of 8 multi-room clusters at 1x. #2440
+ * settles the disagreement by removing the question: re-measure before
+ * quoting a mark count anywhere.
  *
  * The 76 itself is NOT the old 103 with a typo fixed — kindred#1993 stopped
  * `buildBoard` (which this projects) drawing unreleased staff housing, so

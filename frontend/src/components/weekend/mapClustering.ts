@@ -1,18 +1,35 @@
 /**
- * Single-link proximity clustering in SCREEN space.
+ * Single-link proximity clustering in SCREEN space, WITHIN A BUILDING.
  *
- * Generic and geometry-only on purpose: it knows nothing about units, and
- * needs no relation to work. `parent_unit` — the obvious way to group rooms
- * into their building — is absent from the roster payload and read nowhere in
- * `api/`, so grouping is done by where things actually are.
+ * Geometry-only for its distance test, but no longer geometry-alone for its
+ * partition: a `group` on each placing is a barrier nothing crosses. That is
+ * kindred#2440's Q3, ruled 2026-08-24 — two different buildings a few pixels
+ * apart must never be drawn as one mark, and on the production registry
+ * proximity alone merged four such pairs at rest. Zoom is what resolves the
+ * overlap that leaves behind; the mark count is not the thing being minimised.
  *
- * Because the radius is in SCREEN pixels, zooming in dissolves clusters: no
- * separate expand state, and the same code answers "what overlaps" at every
- * zoom. Measured on the real registry at a 1000px canvas: 8 multi-room
- * clusters at 1x, 8 at 2x, 4 at 3x, 3 at 4x, 2 at 6x, 1 at 8x, none at 12x.
- * Do not turn that into a monotonicity test: a component that fragments can
- * yield SEVERAL still-multi-member components, so the count is not guaranteed
- * to fall at every step even though it does on this registry.
+ * ⚠️ Grouping is the CALLER's word, not this module's. `LodgingMap` passes
+ * `MapUnit.buildingCode`, which `mapModel` resolves through `mapBuildingKey` —
+ * the ROOT of the unit's tree, and deliberately not #2008's lettability grain
+ * (that helper's doc carries the re-ruling and why). Deriving a third answer
+ * here is how the product ends up with more "buildings" than it has. An ABSENT
+ * group means one shared building, so a caller with nothing to say keeps pure
+ * geometry.
+ *
+ * WHAT THE RADIUS STILL DECIDES, now that it decides less. Since #2440 the
+ * rooms of one building resolve to ONE point, so they are coincident and
+ * cluster at every zoom — the fusion survives zoom, which is the change #2440
+ * actually makes. The radius therefore only separates same-group marks in the
+ * one case where the resolution falls back: a building nobody has positioned,
+ * whose rooms keep their own scattered points. Unreachable on the 2026
+ * registry (118 of 118 positioned) and kept because it is what makes the
+ * fallback safe rather than lucky.
+ *
+ * ⛔ The old header claimed `parent_unit` "is absent from the roster payload
+ * and read nowhere in `api/`", and used that to justify grouping by position.
+ * It was stale when #2440 was filed: the payload carries `parent_code`
+ * (`api/schemas/lodging.py`, populated in `lodging_roster_service.py`), and
+ * the relation was already on the client. The relation is now what groups.
  *
  * Single link rather than centroid link because a terrace of rooms is one
  * building: each room is close to its neighbour and the ends may be far apart.
@@ -20,11 +37,19 @@
  * which is order-invariant — see the merge in the loop, and the ordering test.
  */
 
-/** An item with a screen position. */
+/** An item with a screen position, and the building it belongs to. */
 export interface Placed<T> {
   item: T
   x: number
   y: number
+  /**
+   * Marks carrying different groups NEVER merge, however close they sit.
+   *
+   * Optional because this module stays usable as plain geometry: `undefined`
+   * equals `undefined`, so a caller that names no building gets one shared
+   * building and the pre-#2440 behaviour exactly.
+   */
+  group?: string
 }
 
 export interface Cluster<T> {
@@ -44,7 +69,13 @@ export function clusterByProximity<T>(
   const groups: Array<Array<Placed<T>>> = []
 
   for (const candidate of items) {
+    // The building test comes FIRST, and it is a barrier rather than a
+    // tie-break: no distance, not even zero, merges two buildings. Testing
+    // only the group of each member is sound because every group in `groups`
+    // is homogeneous by induction — a member only ever joins a group it
+    // matched, so the invariant holds from the first insertion.
     const near = (member: Placed<T>) =>
+      member.group === candidate.group &&
       Math.hypot(member.x - candidate.x, member.y - candidate.y) <= radiusPx
     const touched = groups.filter((group) => group.some(near))
 

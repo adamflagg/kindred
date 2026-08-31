@@ -15,10 +15,19 @@
  * is a UX guard, not what makes this total.
  *
  * A second, related question also lives here: not which units get a card, but
- * which BUILDING a unit belongs to (`buildingKey`, `buildingGroups`) — the
- * grain kindred#2008 ruled (immediate parent, not walk-to-root), and what
- * #2008's placement marker (`wholeBuildingHeld`) and #2009's area header count
- * (`buildingsSpanned`) both read.
+ * which BUILDING a unit belongs to. That question has TWO answers, on purpose,
+ * and they are defined next to each other so the divergence is visible rather
+ * than discovered:
+ *
+ * - `buildingKey` / `buildingGroups` — the grain kindred#2008 ruled (immediate
+ *   parent, not walk-to-root), answering LETTABILITY. Read by #2008's
+ *   placement marker (`wholeBuildingHeld`) and #2009's area header count
+ *   (`buildingsSpanned`).
+ * - `mapBuildingKey` / `mapBuildingChain` — the ROOT, answering GEOGRAPHY, for
+ *   the map alone (kindred#2440 question 4, re-ruled 2026-08-30).
+ *
+ * Each of the two carries the argument for why it is not the other. Do not
+ * collapse them without reading both.
  */
 import type { LodgingUnitRow } from '../../types/lodging'
 
@@ -177,6 +186,83 @@ export function buildingKey(
 ): string {
   const parent = unit.parent_code ?? ''
   return parent !== '' && unitsByCode.has(parent) ? parent : unit.code
+}
+
+/**
+ * A unit's building FOR THE MAP — the ROOT of its tree, walked all the way up.
+ *
+ * ⚠️ DELIBERATELY NOT `buildingKey`, and the two sit together so the
+ * divergence is visible rather than discovered. kindred#2440 originally
+ * defaulted the map to the immediate parent precisely to avoid giving the
+ * product two "buildings"; the owner re-ruled it on 2026-08-30 because the two
+ * grains answer different questions and the single answer was wrong for one of
+ * them:
+ *
+ * - `buildingKey` answers LETTABILITY — which block staff hold at once.
+ *   Whole-building holds resolve half-level 13-17 times a year (#2008), so a
+ *   half IS a building there and walking to the root would merge two things
+ *   staff let separately.
+ * - This one answers GEOGRAPHY — where the door is. Halves of one house are
+ *   one structure at one place, so NOT walking to the root puts several marks
+ *   on one roof.
+ *
+ * The registry's largest tree settled it: ten rooms under three sibling
+ * containers beneath one root drew THREE marks for one physical building —
+ * and once #2440's Q3 barrier forbade cross-building merges, three marks that
+ * could never blob back together at any zoom. Two more roots behave the same
+ * way at four rooms and two marks each. Root grain takes the 2026 registry
+ * from 86 pin sites to 79. The buildings are named in kindred#2440, not
+ * here — spec 3.8, the registry is data, not code.
+ *
+ * CONTAINERS WALK TOO, unlike under the superseded grain where a drawn
+ * container was its own pin site. A combined half is still part of one
+ * building, so it draws on the house.
+ *
+ * Stops at the first parent code the payload does not carry — a freestanding
+ * cabin is its own root, and an unresolvable relation must not yield nothing.
+ * Carries the same cycle backstop as `coveredCodes` (#1899).
+ */
+export function mapBuildingKey(
+  unit: LodgingUnitRow,
+  unitsByCode: ReadonlyMap<string, LodgingUnitRow>
+): string {
+  const chain = mapBuildingChain(unit, unitsByCode)
+  return chain[chain.length - 1]?.code ?? unit.code
+}
+
+/**
+ * `unit` and every ancestor above it, nearest first, ending at the root that
+ * `mapBuildingKey` names.
+ *
+ * ONE walk with two consumers, rather than two walks that agree until they do
+ * not: `pinFor` needs the whole chain (it takes the outermost ancestor that is
+ * actually POSITIONED, not merely the topmost), and `mapBuildingKey` needs
+ * only its last element. Deriving them separately is how the pin and the
+ * cluster group would start disagreeing about which building a room is in.
+ *
+ * Stops at the first parent code the payload does not carry, so a half whose
+ * house is missing from the payload is the chain's root — its rooms still
+ * share a pin with each other, which is the answer that loses least.
+ *
+ * The cycle backstop is the same one `coveredCodes` carries (#1899), and it
+ * checks the NEXT hop before advancing so a rho shape (`u → a → b → c → b`)
+ * terminates rather than only a cycle the walk starts inside.
+ */
+export function mapBuildingChain(
+  unit: LodgingUnitRow,
+  unitsByCode: ReadonlyMap<string, LodgingUnitRow>
+): LodgingUnitRow[] {
+  const chain = [unit]
+  const seen = new Set<string>([unit.code])
+  for (;;) {
+    const current = chain[chain.length - 1]
+    const parent = current?.parent_code ?? ''
+    if (parent === '') return chain
+    const next = unitsByCode.get(parent)
+    if (next === undefined || seen.has(next.code)) return chain
+    seen.add(next.code)
+    chain.push(next)
+  }
 }
 
 /**
