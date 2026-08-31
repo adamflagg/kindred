@@ -1458,7 +1458,17 @@ const LodgingUnitCardInner = memo(function LodgingUnitCardInner({
               <span
                 ref={amenityCueRef}
                 data-testid="unit-amenity-cap-cue"
-                className="inline-flex rounded-full"
+                /* `flex`, NOT `inline-flex`. An inline-level box participates in
+                 * the Tooltip <button>'s 24px line box at `vertical-align:
+                 * baseline`, so the icon sat on the baseline (top 933) instead of
+                 * the button's centre (935) — exactly 2px above its two bare-<svg>
+                 * siblings, which are flex items and get `items-center` directly.
+                 * A block-level flex box has no baseline participation, so the
+                 * button collapses to the icon's 14px and the row centres it.
+                 * Measured: all three centres agree afterwards, row height
+                 * unchanged at 28px, and HIT_TARGET's `after:h-[max(100%,24px)]`
+                 * still gives the 24px hit box. */
+                className="flex rounded-full"
               >
                 <Icon
                   data-testid={`amenity-${mark.key}`}

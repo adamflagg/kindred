@@ -32,8 +32,21 @@ describe('amenityCapCue — the halo is CSS, and it re-points shareEmphasis at -
     const rule =
       css.match(new RegExp(`\\.${AMENITY_CAP_CUE_GLOW_CLASS}\\s*{([\\s\\S]*?)\\n {2}}`))?.[1] ?? ''
     expect(rule).toContain('box-shadow')
-    expect(rule).toContain('var(--primary)')
     expect(rule).not.toContain('var(--share-yes)')
+    /*
+     * ⚠️ THIS ASSERTION USED TO BE `toContain('var(--primary)')`, AND THAT WAS A
+     * FALSE GREEN. It pinned the token's NAME while the declaration was invalid:
+     * `--primary` is a shadcn HSL COMPONENT TRIPLET (`160 100% 21%`), not a
+     * <color>, so `color-mix(in srgb, var(--primary) ...)` does not parse and the
+     * browser dropped the entire box-shadow. Measured in Chrome: the class was
+     * applied, GSAP was scaling the icon, nothing was clipped -- and computed
+     * `box-shadow` was `none`. The cue shipped invisible and the suite stayed green.
+     *
+     * So assert the WRAPPED form. A bare `var(--primary)` inside color-mix now
+     * fails here, which is the regression that actually matters.
+     */
+    expect(rule).toContain('hsl(var(--primary))')
+    expect(rule).not.toMatch(/color-mix\([^)]*[^l(]var\(--primary\)/)
   })
 
   it('reuses --share-emphasis-amp rather than minting a new intensity token', () => {

@@ -940,7 +940,13 @@
   .amenity-cap-cue-glow {
     box-shadow: 0 0 calc(4px + var(--share-emphasis-amp) * 8px)
       calc(var(--share-emphasis-amp) * 2px)
-      color-mix(in srgb, var(--primary) calc(30% + var(--share-emphasis-amp) * 45%), transparent);
+      /* ⚠️ hsl(), NOT a bare var(--primary). `--primary` is a shadcn HSL COMPONENT
+       * TRIPLET (`160 100% 21%`), not a <color> — so `color-mix()` with it raw is
+       * invalid and the browser drops this whole box-shadow declaration silently.
+       * The sibling `.share-emphasis-glow` works only because `--share-yes` is
+       * already a full `hsl(...)`. `.glow-primary` two rules away wraps it the
+       * same way; follow that. Measured: raw var => computed box-shadow `none`. */
+      color-mix(in srgb, hsl(var(--primary)) calc(30% + var(--share-emphasis-amp) * 45%), transparent);
   }
 
   /* Stagger delays for lists */
