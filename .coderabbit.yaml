@@ -85,6 +85,20 @@ reviews:
     drafts: false
     base_branches:
       - ".*"
+    # Bot dependency PRs are not worth a review unit. `path_filters` above
+    # already strips every lockfile, so a grouped bump leaves only version
+    # strings in a manifest -- a near-empty review at full quota cost, and
+    # Dependabot alone runs ~4.4 PRs/week against a ~32/week ceiling.
+    #
+    # Nothing gets less safe: CodeRabbit is not in the ruleset (only "CI
+    # Summary" is required), so dependabot-auto-merge.yml already merges these
+    # on green CI whether or not a review landed. This removes a cost, not a gate.
+    #
+    # There is no head-branch filter in the schema -- `base_branches` matches
+    # the TARGET branch, so author match is the only way to express this.
+    ignore_usernames:
+      - "dependabot[bot]"
+      - "renovate[bot]"
 
   # Workflow surfacing — these earn their space on this repo.
   related_issues: true
