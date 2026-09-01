@@ -1,7 +1,9 @@
 version: "2"
 
 run:
-  go: "1.26"
+  # No `go:` pin. Left unset it derives from pocketbase/go.mod, so the language
+  # version the linters target cannot drift from the one the compiler uses --
+  # a pinned "1.26" would have silently gone stale the moment go.mod moved.
   timeout: 10m
   build-tags:
     - pocketbase
@@ -49,6 +51,20 @@ linters:
     goconst:
       min-len: 3
       min-occurrences: 3
+      # goconst 1.11 (golangci-lint 2.13) began checking composite literals --
+      # map keys, struct fields and slice elements. That is where the repo's
+      # CampMinder query-param names, JSON error keys and CSV column headers
+      # live, and it produced 50 findings on a tree the previous pin called
+      # clean. Excluding the type keeps this bump a toolchain change; whether
+      # those literals should become constants is a separate question.
+      # `Call` is goconst's own default and is restated so it is not lost.
+      exclude-types:
+        - Call
+        - CompositeLit
+      # Matches the repo's standing policy that these linters do not apply to
+      # tests (see the _test.go exclusion below), and goconst 1.10 added the
+      # option to express it directly.
+      ignore-tests: true
     misspell:
       locale: US
       extra-words:
@@ -121,6 +137,11 @@ linters:
           - dupl
           - gosec
           - forcetypeassert
+          # noctx 0.5.0 (golangci-lint 2.11) began flagging httptest.NewRequest.
+          # Passing a context to a request a test constructs and serves in-process
+          # buys nothing, and this list is already where linters aimed at
+          # production code are turned off for tests.
+          - noctx
       - path: _test\.go
         linters:
           - revive
