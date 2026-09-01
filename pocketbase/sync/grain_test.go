@@ -294,7 +294,7 @@ func TestDeclaredUniqueIndexesExistInBootedSchema(t *testing.T) {
 			"produces it did not run, or was cleaned up first", dbPath, err)
 	}
 
-	// query_only so reading the schema cannot alter the database the neighbouring
+	// query_only so reading the schema cannot alter the database the neighboring
 	// pocketbase-types freshness step reads next.
 	db, err := dbx.Open("sqlite", dbPath+"?_pragma=query_only(true)")
 	if err != nil {
