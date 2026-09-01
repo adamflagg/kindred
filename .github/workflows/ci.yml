@@ -86,6 +86,7 @@ jobs:
     outputs:
       backend: ${{ steps.filter.outputs.backend }}
       python: ${{ steps.filter.outputs.python }}
+      pythonLint: ${{ steps.filter.outputs.pythonLint }}
       go: ${{ steps.filter.outputs.go }}
       migrations: ${{ steps.filter.outputs.migrations }}
       frontend: ${{ steps.filter.outputs.frontend }}
@@ -133,6 +134,42 @@ jobs:
             - 'tests/**'
             - 'conftest.py'
             - '.python-version'
+            # The filter assertions in tests/unit/scripts/ read this file: they
+            # are what stops a job's gate from drifting away from its own
+            # inputs. Without this line, editing only ci.yml -- exactly the
+            # change they police -- runs none of them. Same reasoning, and the
+            # same accepted cost, as the `go` filter below. kindred#2653.
+            - '.github/workflows/ci.yml'
+          # python-lint's inputs, which are a superset of the Python sources.
+          # It used to gate on `backend`, a filter meant for another job: that
+          # has no 'tests/**', so none of the 507 tracked test files could
+          # trigger `ruff format --check .`, `ruff check .` or `mypy .`, and a
+          # tests-only PR shipped unchecked -- observed live on kindred#2652,
+          # which added four Python tests and reported `Python Lint: skipping`.
+          # `backend` also bundles 'pocketbase/**', so a Go-only PR ran the full
+          # Python lint job for nothing. kindred#2653.
+          pythonLint:
+            # ruff and mypy run over the whole tree, so every tracked .py must
+            # be able to trigger them.
+            - 'api/**/*.py'
+            - 'bunking/**/*.py'
+            - 'campminder/**/*.py'
+            - 'scripts/**/*.py'
+            - 'tests/**'
+            - 'conftest.py'
+            # What the linters and the dependency audit are configured by.
+            - 'pyproject.toml'
+            - 'ruff.toml'
+            - 'uv.lock'
+            - '.python-version'
+            # The `JSON config validation` step reads exactly these two globs.
+            - 'config/*.json'
+            - 'bunking/*.json'
+            # The pip-audit step's ignore list: adding an ignored CVE has to be
+            # able to re-run the audit that consumes it.
+            - '.pip-audit-ignore'
+            # And the job's own definition.
+            - '.github/workflows/ci.yml'
           go:
             - 'pocketbase/**/*.go'
             # The module files, at their real path. These used to read 'go.mod'
@@ -455,7 +492,7 @@ jobs:
   python-lint:
     name: Python Lint
     needs: detect-changes
-    if: needs.detect-changes.outputs.backend == 'true'
+    if: needs.detect-changes.outputs.pythonLint == 'true'
     runs-on: ubuntu-latest
     steps:
     - name: Checkout code
