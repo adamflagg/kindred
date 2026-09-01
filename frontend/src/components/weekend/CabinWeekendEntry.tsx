@@ -41,9 +41,18 @@ export function CabinWeekendEntry({
 }: CabinWeekendEntryProps) {
   const [open, setOpen] = useState(false)
   // Hooks run unconditionally; the render guard below is what stops a hidden
-  // entry from showing anything — the query itself stays cheap (a single
+  // entry from showing anything — the queue query itself stays cheap (a single
   // React Query cache slot the modal, if opened elsewhere, would share).
-  const { data } = useSessionAttributionQueue()
+  //
+  // ⚠️ `evidence: false` IS LOAD-BEARING, and it is why the sentence above is
+  // still true. The §12.8 occupancy evidence is deliberately uncached and
+  // refetches on window focus; this entry is mounted on the board for the
+  // whole session and draws a COUNT, not a verdict. Left on, it would re-read
+  // every candidate weekend's board on each alt-tab back for a value nothing
+  // here renders — and, since the endpoint is `bunking.manage`-gated and this
+  // hook runs before the `visible` guard, a viewer who cannot see the chip at
+  // all would spend a guaranteed 403 on every one.
+  const { data } = useSessionAttributionQueue({ evidence: false })
 
   const visible = canManage && sessionCmId > 0
   if (!visible) return null

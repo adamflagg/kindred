@@ -10,12 +10,18 @@
  * write — see `frontend/CLAUDE.md`'s "extract once a query has 2+ consumers"
  * rule.
  *
- * THREE queries compose here. Only the primary queue query gates
- * `isLoading`/`error` for `QueryGuard` purposes; a failed alias or session
- * fetch degrades the RENDER (no resolved unit name, a numeric weekend label)
- * rather than blocking it — mirroring `UnresolvedAliasQueue`'s own units-query
- * degradation, since knowing which raw values are waiting is useful even when
- * the enrichment failed.
+ * FOUR queries compose here. Only the primary queue query gates
+ * `isLoading`/`error` for `QueryGuard` purposes; a failed alias, session or
+ * occupancy-evidence fetch degrades the RENDER (no resolved unit name, a
+ * numeric weekend label, no conflict verdicts) rather than blocking it —
+ * mirroring `UnresolvedAliasQueue`'s own units-query degradation, since
+ * knowing which raw values are waiting is useful even when the enrichment
+ * failed.
+ *
+ * The fourth is the occupancy evidence of §12.8 (`useSessionAttributionConflicts`),
+ * which answers the question `AttributeSession`'s timestamp cannot: is the
+ * cabin already occupied in each candidate weekend, and by whom. It is the
+ * only one of the four that is never cached.
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback } from 'react'
@@ -31,11 +37,20 @@ import {
   computeStaleQueueIds,
   resolveCabinAlias,
 } from '../components/weekend/sessionAttributionMatch'
-import type { LodgingIngestIssueRecord, WeekendSessionList } from '../types/lodging'
+import type {
+  AttributionVerdictValue,
+  LodgingIngestIssueRecord,
+  WeekendSessionList,
+} from '../types/lodging'
+import type {
+  AttributionRowEvidence,
+  SessionAttributionOccupant,
+} from '../components/admin/lodging/attributionEvidence'
 import { invalidateLodgingRegistryQueries, queryKeys, userDataOptions } from '../utils/queryKeys'
 import { shortWeekendName } from '../components/weekend/weekendNames'
 import { formatSessionDates } from '../components/weekend/sessionDates'
 import { useApiWithAuth } from './useApiWithAuth'
+import { useSessionAttributionConflicts } from './useSessionAttributionConflicts'
 import { useYear } from './useCurrentYear'
 
 /** One weekend this row's household or person could belong to. */
@@ -45,11 +60,37 @@ export interface SessionAttributionCandidate {
   short: string
   dateRange: string
   /**
-   * True for the candidate the backend's `AttributeSession` timing heuristic
-   * (`suggested_session`) points at. Pre-selects in the confirm UI; per the
+   * True for the row's best guess. Pre-marks it in the confirm UI; per the
    * approved design it never auto-commits.
+   *
+   * ⭐ THIS IS A BOARD COMPARISON NOW, not only a date. #2650 shipped this
+   * field pointing at `AttributeSession`'s `last_updated` heuristic alone, and
+   * deliberately hedged the copy around it because that signal has no
+   * per-household resolution: the 2026 snapshot's 136 cabin values carry seven
+   * distinct `last_updated` days, 83% of them on two, so the timestamp records
+   * when staff did a bulk pass over a whole weekend rather than when one
+   * household's cabin was set. §12.8 supplies the signal that was missing —
+   * whether the cabin is ALREADY OCCUPIED in each candidate weekend, read off
+   * the live board — and this field now follows the conflict-aware answer
+   * whenever that evidence has loaded, falling back to the stored timestamp
+   * pick when it has not.
+   *
+   * Nobody is marked when every candidate conflicts: the alarm says no weekend
+   * is a safe guess, and a "best guess" pill beside it would contradict it.
    */
   isSuggested: boolean
+  /**
+   * This weekend's occupancy verdict, `undefined` until (or unless) the
+   * conflicts endpoint answers. Undefined is the DEGRADED render — the queue
+   * is useful without verdicts and must not wait on them.
+   */
+  verdict?: AttributionVerdictValue | undefined
+  /**
+   * Who the board already has in the cabin that weekend. Non-empty on a `free`
+   * verdict too — a shareable leaf with room left holds another party without
+   * conflicting.
+   */
+  occupants?: SessionAttributionOccupant[] | undefined
 }
 
 /** One enriched row of the attribution queue. */
@@ -67,6 +108,21 @@ export interface SessionAttributionQueueItem {
   candidates: SessionAttributionCandidate[]
   /** See `computeStaleQueueIds` — hidden by default in the queue UI. */
   isStale: boolean
+  /**
+   * Every candidate weekend conflicts. DEMOTES NOTHING (§12.8.3): it is an
+   * alarm about the cabin VALUE, since moving the guess would move it onto a
+   * weekend the rule has just called wrong. `undefined` until the evidence
+   * loads.
+   */
+  conflictInEveryCandidate?: boolean | undefined
+  /**
+   * Set only when a conflict moved the best guess off the date heuristic's
+   * pick, carrying BOTH weekends' labels — which is why the endpoint publishes
+   * both suggestions rather than only the one it prefers. Without the "from"
+   * half the row would silently disagree with the `suggested_session`
+   * PocketBase still stores.
+   */
+  demotion?: { fromShort: string; toShort: string } | undefined
 }
 
 export interface UseSessionAttributionQueueResult {
@@ -89,23 +145,65 @@ function buildItem(
   row: LodgingIngestIssueRecord,
   aliases: Awaited<ReturnType<typeof listLodgingAliases>>,
   sessions: WeekendSessionList | undefined,
-  staleIds: Set<string>
+  staleIds: Set<string>,
+  evidence: AttributionRowEvidence | undefined
 ): SessionAttributionQueueItem {
   const suggestedCmId = sessions?.sessions?.find(
     (s) => s.session_id === row.suggested_session
   )?.session_cm_id
 
+  // THE CONFLICT-AWARE PICK WINS once the evidence has loaded — occupancy
+  // outranks the timestamp (owner ruling 1), and it is the same
+  // `AttributeSession` rule run over the weekends that survive the conflict
+  // check rather than a second heuristic. Falls back to the stored pick while
+  // the evidence is pending or failed, so the row never loses its best guess
+  // waiting on an enrichment.
+  //
+  // NOBODY is the best guess when every candidate conflicts: that case demotes
+  // nothing (§12.8.3) and raises an alarm saying no weekend is a safe guess —
+  // a "best guess" pill beside that would contradict it.
+  const bestGuessCmId = evidence
+    ? evidence.conflictInEveryCandidate
+      ? undefined
+      : evidence.suggestedSessionCmId
+    : suggestedCmId
+
   const candidates: SessionAttributionCandidate[] = row.candidate_session_cm_ids.map((cmId) => {
     const session = sessions?.sessions?.find((s) => s.session_cm_id === cmId)
+    const candidateEvidence = evidence?.byCandidate.get(cmId)
     return {
       sessionCmId: cmId,
       short: session ? shortWeekendName(session.name) : `#${String(cmId)}`,
       dateRange: session ? formatSessionDates(session.start_date, session.end_date) : '',
-      isSuggested: suggestedCmId !== undefined && suggestedCmId === cmId,
+      isSuggested: bestGuessCmId !== undefined && bestGuessCmId === cmId,
+      // Spread rather than assigned undefined: `exactOptionalPropertyTypes` is
+      // on, and "no evidence yet" is the ABSENCE of the key, not a key holding
+      // undefined.
+      ...(candidateEvidence === undefined
+        ? {}
+        : { verdict: candidateEvidence.verdict, occupants: candidateEvidence.occupants }),
     }
   })
 
+  const shortOf = (cmId: number): string =>
+    candidates.find((candidate) => candidate.sessionCmId === cmId)?.short ?? `#${String(cmId)}`
+
+  // BOTH weekends, which is why the endpoint publishes both suggestions. The
+  // `from` half is the `suggested_session` PocketBase still stores unchanged;
+  // without naming it the row would silently disagree with its own record.
+  const demotion =
+    evidence?.demotionApplied === true &&
+    evidence.suggestedSessionCmId !== undefined &&
+    evidence.timestampSessionCmId !== undefined
+      ? {
+          fromShort: shortOf(evidence.timestampSessionCmId),
+          toShort: shortOf(evidence.suggestedSessionCmId),
+        }
+      : undefined
+
   return {
+    conflictInEveryCandidate: evidence?.conflictInEveryCandidate,
+    demotion,
     id: row.id,
     rawValue: row.raw_value,
     sourceField: row.source_field,
@@ -120,7 +218,27 @@ function buildItem(
   }
 }
 
-export function useSessionAttributionQueue(): UseSessionAttributionQueueResult {
+export interface UseSessionAttributionQueueOptions {
+  /**
+   * Fetch the §12.8 occupancy evidence. DEFAULT TRUE — the admin queue tab
+   * draws a verdict on every candidate card, and that is this hook's primary
+   * home. Pass `false` from a caller that renders no verdict: the query is
+   * uncached and refetches on window focus, so an always-mounted caller that
+   * ignores the answer re-pays `build_conflicts` on every alt-tab back (and,
+   * without `bunking.manage`, a guaranteed 403). `CabinWeekendEntry`'s chip
+   * and a closed `CabinWeekendModal` are both that caller.
+   *
+   * Opting out only removes the verdicts, the occupants and both banners.
+   * Everything else the row draws — and the chip's own count — is unaffected:
+   * the best guess falls back to the stored timestamp pick, exactly as it
+   * already does while the evidence is in flight.
+   */
+  evidence?: boolean
+}
+
+export function useSessionAttributionQueue({
+  evidence = true,
+}: UseSessionAttributionQueueOptions = {}): UseSessionAttributionQueueResult {
   const currentYear = useYear()
   const { fetchWithAuth } = useApiWithAuth()
   const queryClient = useQueryClient()
@@ -149,6 +267,13 @@ export function useSessionAttributionQueue(): UseSessionAttributionQueueResult {
     enabled: yearReady,
   })
 
+  // The FOURTH query, and the only uncached one — see
+  // `useSessionAttributionConflicts` for why it may never be served from
+  // cache, and why a caller that draws no verdict switches it off entirely.
+  // Like the two above it, its pending or failed state degrades the RENDER
+  // (no verdicts, no banners) rather than blocking it.
+  const { byIssueId: evidenceByIssueId } = useSessionAttributionConflicts(evidence)
+
   // Only the PRIMARY query's pending state blocks rendering — see module doc.
   // aliasesQuery/sessionsQuery are deliberately excluded: their own pending
   // or failed state degrades the RENDER (buildItem's fallbacks below), it
@@ -158,7 +283,9 @@ export function useSessionAttributionQueue(): UseSessionAttributionQueueResult {
   const rows = queueQuery.data
   const aliases = aliasesQuery.data ?? []
   const staleIds = rows ? computeStaleQueueIds(rows) : new Set<string>()
-  const data = rows?.map((row) => buildItem(row, aliases, sessionsQuery.data, staleIds))
+  const data = rows?.map((row) =>
+    buildItem(row, aliases, sessionsQuery.data, staleIds, evidenceByIssueId.get(row.id))
+  )
 
   interface ConfirmVars {
     id: string

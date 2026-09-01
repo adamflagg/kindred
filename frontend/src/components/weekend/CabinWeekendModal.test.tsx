@@ -16,7 +16,9 @@ import type { RosterPartyRow } from '../../types/lodging'
 const useSessionAttributionQueue = vi.fn()
 
 vi.mock('../../hooks/useSessionAttributionQueue', () => ({
-  useSessionAttributionQueue: () => useSessionAttributionQueue(),
+  // Args FORWARDED, not swallowed: what this modal asks the hook for depends
+  // on whether it is open — see the evidence test at the bottom of this file.
+  useSessionAttributionQueue: (...args: unknown[]) => useSessionAttributionQueue(...args),
 }))
 
 import { CabinWeekendModal } from './CabinWeekendModal'
@@ -243,5 +245,52 @@ describe('CabinWeekendModal', () => {
 
       expect(screen.queryByRole('button', { name: /2000001/ })).not.toBeInTheDocument()
     })
+  })
+
+  /**
+   * ⭐ THE COPY #2650 WITHHELD. That PR deliberately avoided
+   * "confident"-adjacent language here, because the only signal behind the
+   * best guess was `AttributeSession`'s `last_updated` heuristic — which the
+   * 2026 snapshot shows has no per-household resolution at all (136 cabin
+   * values, seven distinct `last_updated` days, 83% on two of them). §12.8
+   * supplies the real board comparison, so the explanation can now say what
+   * the guess is actually made of.
+   */
+  it('says the best guess is a board comparison, now that it is one', async () => {
+    renderModal()
+    await screen.findByText(/CampMinder only stores one cabin/)
+    expect(screen.getByText(/what each weekend\u2019s board already holds/)).toBeInTheDocument()
+  })
+
+  it('does not promise a demotion that the all-conflict case never performs', async () => {
+    // §12.8.3: when EVERY candidate conflicts, nothing is demoted — the row
+    // raises an alarm about the cabin value instead, because moving the guess
+    // would move it onto a weekend the rule has just called wrong. So the
+    // explanation must not say a taken weekend is demoted full stop; it loses
+    // the guess to a FREE one, and where there is no free one it keeps it.
+    renderModal()
+    const explanation = (await screen.findByText(/CampMinder only stores one cabin/)).textContent
+    expect(explanation).toContain('loses the guess to one that is free')
+  })
+
+  /**
+   * THE EVIDENCE IS FETCHED ON OPEN, NOT ON MOUNT. `CabinWeekendEntry` renders
+   * this modal unconditionally and toggles `isOpen`, so the component function
+   * — and every hook in it — runs for the whole board session. The occupancy
+   * query is `staleTime: 0` with `refetchOnWindowFocus`, so an ungated mount
+   * would re-read every candidate weekend's board on each alt-tab back while
+   * this modal is shut and drawing nothing.
+   *
+   * It also makes `useSessionAttributionConflicts`'s own `gcTime: 0` note true
+   * as written: the query really does start clean on each open now.
+   */
+  it('asks for no occupancy evidence while it is closed', () => {
+    renderModal({ isOpen: false })
+    expect(useSessionAttributionQueue).toHaveBeenCalledWith({ evidence: false })
+  })
+
+  it('asks for it once it is open — the rows draw a verdict each', () => {
+    renderModal({ isOpen: true })
+    expect(useSessionAttributionQueue).toHaveBeenCalledWith({ evidence: true })
   })
 })

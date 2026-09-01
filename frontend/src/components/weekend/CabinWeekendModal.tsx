@@ -55,7 +55,14 @@ export function CabinWeekendModal({
   parties = [],
   onOpenFamily,
 }: CabinWeekendModalProps) {
-  const { data, confirm, isConfirming } = useSessionAttributionQueue()
+  // ON OPEN, NOT ON MOUNT. `CabinWeekendEntry` renders this modal
+  // unconditionally and toggles `isOpen`, so this function — and every hook in
+  // it — runs for the whole board session. The §12.8 evidence query is
+  // uncached and refetches on window focus, so an ungated mount would re-read
+  // every candidate weekend's board on each alt-tab back while this modal is
+  // shut and drawing nothing. Gating it here is also what makes
+  // `useSessionAttributionConflicts`'s `gcTime: 0` note true as written.
+  const { data, confirm, isConfirming } = useSessionAttributionQueue({ evidence: isOpen })
   const items = data ?? []
 
   // Household grain only, cm_id > 0 — mirrors `SessionAttributionRow`'s own
@@ -87,7 +94,26 @@ export function CabinWeekendModal({
       <div className="flex flex-col gap-4">
         <p className="text-sm leading-relaxed">
           CampMinder only stores one cabin per household or person per year, so when a party is
-          booked into more than one weekend it can&rsquo;t say which weekend the cabin is for.
+          booked into more than one weekend it can&rsquo;t say which weekend the cabin is for.{' '}
+          {/*
+           * ⭐ THE COPY #2650 WITHHELD. That PR avoided "confident"-adjacent
+           * language about the best guess, because the only signal behind it
+           * was `AttributeSession`'s `last_updated` heuristic — and the 2026
+           * snapshot shows that heuristic has no per-household resolution at
+           * all: 136 cabin values, seven distinct `last_updated` days, 83% of
+           * them on two. §12.8 supplies the board comparison that was missing,
+           * so the explanation can now say what the guess is made of instead
+           * of hedging around it.
+           *
+           * ⚠️ "LOSES THE GUESS TO ONE THAT IS FREE", not "is demoted". The
+           * shorter phrasing over-claimed: §12.8.3 demotes NOTHING when every
+           * candidate conflicts — the row raises an alarm about the cabin
+           * value instead, since moving the guess would move it onto a weekend
+           * the rule has just called wrong. This wording is true in both
+           * cases, and stays one sentence.
+           */}
+          The best guess compares the cabin against what each weekend&rsquo;s board already holds
+          &mdash; a weekend where it is already taken loses the guess to one that is free.
         </p>
 
         {here.length === 0 ? (

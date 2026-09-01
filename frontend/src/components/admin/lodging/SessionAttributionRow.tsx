@@ -17,9 +17,37 @@
  * component anyway: `useSessionAttributionQueue` reads only
  * `is_resolved = false` rows, so once a confirm lands the row simply stops
  * being fetched.
+ *
+ * ⭐ OCCUPANCY EVIDENCE (§12.8 of the round-2 triage-attack plan, owner-ruled
+ * 2026-08-31; closes no issue and none is filed). Each candidate card carries
+ * an evidence line saying whether the cabin is already occupied that weekend
+ * and by whom — TREATMENT A, so the card's own chrome is unchanged and all
+ * three verdicts draw, *"for the sake of visual uniformity and information."*
+ * Two banners sit above the card: one naming both weekends when a conflict
+ * moved the best guess, and one alarm about the cabin VALUE when every
+ * candidate conflicts.
+ *
+ * ⛔ NOTHING HERE CLASSIFIES ANYTHING. The verdicts, the occupants and the
+ * conflict-aware suggestion all arrive computed from
+ * `GET /api/lodging/attribution/conflicts`; see `attributionEvidence.ts`.
+ *
+ * ⚠️ A CONFLICT NEVER BLOCKS CONFIRMATION (§12.8.3, adopted default). The
+ * conflicted card's confirm button is DIMMED and still clickable: the rule is
+ * evidence for staff, not a gate, and a cabin genuinely can be double-booked.
  */
+import {
+  ATTRIBUTION_BANNER,
+  ATTRIBUTION_BANNER_ALARM,
+  ATTRIBUTION_BANNER_MOVE,
+  ATTRIBUTION_VERDICT_CLASS,
+  EVIDENCE_LINE,
+  occupantClause,
+} from './attributionEvidence'
 import { LABEL, MUTED_PILL, PILL } from './lodgingStyles'
-import type { SessionAttributionQueueItem } from '../../../hooks/useSessionAttributionQueue'
+import type {
+  SessionAttributionCandidate,
+  SessionAttributionQueueItem,
+} from '../../../hooks/useSessionAttributionQueue'
 
 // Named CANDIDATE_*, not BUTTON_PRIMARY/BUTTON_SECONDARY: those names are
 // lodgingStyles.ts's own exports (px-4 py-2 text-sm), which this file already
@@ -79,102 +107,228 @@ export function SessionAttributionRow({
     : `Person ${String(item.personCmId)}`
   const canOpenFamily = isHousehold && onOpenFamily !== undefined
 
-  return (
-    <div className="card-lodge flex flex-col gap-3 p-4">
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div>
-          <p className={`${LABEL} mb-0.5`}>CampMinder says</p>
-          <div className="flex flex-wrap items-center gap-2">
-            <p className="text-foreground font-mono text-sm font-semibold">{item.rawValue}</p>
-            {item.isStale && (
-              <span className={`bg-muted text-muted-foreground ${PILL}`}>outdated</span>
-            )}
-          </div>
-          <p className="text-muted-foreground mt-1 text-xs">
-            {canOpenFamily ? (
-              <button
-                type="button"
-                onClick={() => {
-                  onOpenFamily?.(item.householdCmId)
-                }}
-                className="text-foreground font-semibold underline-offset-2 hover:underline"
-              >
-                {partyLabel}
-              </button>
-            ) : (
-              partyLabel
-            )}{' '}
-            · seen {item.occurrences}× · last checked {item.lastSeen}
-          </p>
-        </div>
-        <div className="text-right">
-          <p className={`${LABEL} mb-0.5`}>Cabin</p>
-          <p className="font-mono text-xs">
-            {item.resolvedUnitNames.length > 0 ? (
-              item.resolvedUnitNames.join(' + ')
-            ) : (
-              <span className="text-muted-foreground italic">not recognized yet</span>
-            )}
-          </p>
-        </div>
-      </div>
+  // What staff would go and check. The alias-resolved name when it resolved,
+  // the raw CampMinder string otherwise — the client's alias query can fail
+  // independently of the evidence fetch, and a banner about a blank cabin is
+  // worse than one about a string.
+  const cabinLabel =
+    item.resolvedUnitNames.length > 0 ? item.resolvedUnitNames.join(' + ') : item.rawValue
+  const alarm = item.conflictInEveryCandidate === true
+  const demotion = item.demotion
 
-      {item.isStale && (
-        <p className="rounded-xl border-2 border-slate-300 bg-slate-50 p-2 text-xs text-slate-800 dark:border-slate-700 dark:bg-slate-800/40 dark:text-slate-200">
-          Out of date — a more recent CampMinder sync no longer shows this value for {partyLabel}.
+  return (
+    <div className="flex flex-col gap-3">
+      {alarm && (
+        /*
+         * THE ALARM POINTS AT THE VALUE, NOT AT A WEEKEND, and it demotes
+         * nothing. If the cabin is taken in every weekend the party could be
+         * in, moving the guess would move it onto a weekend the rule has just
+         * called wrong; the likely explanation is that the string CampMinder
+         * holds is out of date, which is a thing staff can go and check.
+         *
+         * "this party", not the mock's "this family": a queue row is filed at
+         * household grain for family camp and at PERSON grain for an adult
+         * weekend, and this component renders both.
+         */
+        <p className={`${ATTRIBUTION_BANNER} ${ATTRIBUTION_BANNER_ALARM}`}>
+          ⚠ <strong>{cabinLabel}</strong> is occupied in <strong>every</strong> weekend this party
+          attends — so no weekend is a safe guess. That usually means the cabin CampMinder has
+          recorded is out of date. Check the value before confirming.
         </p>
       )}
-
-      <div>
-        <p className={LABEL}>
-          Which weekend could this be? (only weekends this party is attending)
+      {!alarm && demotion !== undefined && (
+        /*
+         * BOTH WEEKENDS ARE NAMED. `suggested_session` in PocketBase still
+         * holds the date heuristic's answer and nothing in Go moves, so a row
+         * that quietly pointed somewhere else would disagree with its own
+         * record. Saying which weekend the date pointed at, and why the guess
+         * left it, is the whole reason the endpoint publishes both.
+         */
+        <p className={`${ATTRIBUTION_BANNER} ${ATTRIBUTION_BANNER_MOVE}`}>
+          Best guess moved to <strong>{demotion.toShort}</strong>. The date on the CampMinder value
+          points at {demotion.fromShort}, but <strong>{cabinLabel}</strong> is already taken that
+          weekend.
         </p>
-        <div className="grid gap-2 sm:grid-cols-2">
-          {item.candidates.map((candidate) => (
-            <div key={candidate.sessionCmId} className="border-border rounded-xl border p-2">
-              <div className="mb-1 flex items-center justify-between gap-2">
-                <p className="text-sm font-semibold">{candidate.short}</p>
-                {candidate.isSuggested && (
-                  <span
-                    className={`bg-violet-100 text-violet-800 dark:bg-violet-950/40 dark:text-violet-300 ${PILL}`}
-                  >
-                    best guess
-                  </span>
-                )}
-              </div>
-              {candidate.dateRange !== '' && (
-                <p className="text-muted-foreground text-xs">{candidate.dateRange}</p>
+      )}
+      <div className="card-lodge flex flex-col gap-3 p-4">
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div>
+            <p className={`${LABEL} mb-0.5`}>CampMinder says</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-foreground font-mono text-sm font-semibold">{item.rawValue}</p>
+              {item.isStale && (
+                <span className={`bg-muted text-muted-foreground ${PILL}`}>outdated</span>
               )}
-              <button
-                type="button"
-                disabled={isConfirming}
-                onClick={() => {
-                  onConfirm(candidate.sessionCmId)
-                }}
-                className={`${candidate.isSuggested ? CANDIDATE_BUTTON_PRIMARY : CANDIDATE_BUTTON_SECONDARY} mt-2 w-full justify-center`}
-              >
-                This is {candidate.short}
-              </button>
             </div>
-          ))}
+            <p className="text-muted-foreground mt-1 text-xs">
+              {canOpenFamily ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onOpenFamily?.(item.householdCmId)
+                  }}
+                  className="text-foreground font-semibold underline-offset-2 hover:underline"
+                >
+                  {partyLabel}
+                </button>
+              ) : (
+                partyLabel
+              )}{' '}
+              · seen {item.occurrences}× · last checked {item.lastSeen}
+            </p>
+          </div>
+          <div className="text-right">
+            <p className={`${LABEL} mb-0.5`}>Cabin</p>
+            <p className="font-mono text-xs">
+              {item.resolvedUnitNames.length > 0 ? (
+                item.resolvedUnitNames.join(' + ')
+              ) : (
+                <span className="text-muted-foreground italic">not recognized yet</span>
+              )}
+            </p>
+          </div>
+        </div>
+
+        {item.isStale && (
+          <p className="rounded-xl border-2 border-slate-300 bg-slate-50 p-2 text-xs text-slate-800 dark:border-slate-700 dark:bg-slate-800/40 dark:text-slate-200">
+            Out of date — a more recent CampMinder sync no longer shows this value for {partyLabel}.
+          </p>
+        )}
+
+        <div>
+          <p className={LABEL}>
+            Which weekend could this be? (only weekends this party is attending)
+          </p>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {item.candidates.map((candidate) => (
+              <div
+                key={candidate.sessionCmId}
+                // Test infrastructure and nothing else — the suite has no other
+                // handle on which card is which verdict. The CLASS list is
+                // deliberately identical across all three (Treatment A): the
+                // rejected Treatment B tinted the card itself.
+                data-verdict={candidate.verdict}
+                className="border-border rounded-xl border p-2"
+              >
+                <div className="mb-1 flex items-center justify-between gap-2">
+                  <p className="text-sm font-semibold">{candidate.short}</p>
+                  {candidate.isSuggested && (
+                    <span
+                      className={`bg-violet-100 text-violet-800 dark:bg-violet-950/40 dark:text-violet-300 ${PILL}`}
+                    >
+                      best guess
+                    </span>
+                  )}
+                </div>
+                {candidate.dateRange !== '' && (
+                  <p className="text-muted-foreground text-xs">{candidate.dateRange}</p>
+                )}
+                <EvidenceLine candidate={candidate} cabinLabel={cabinLabel} />
+                <button
+                  type="button"
+                  disabled={isConfirming}
+                  onClick={() => {
+                    onConfirm(candidate.sessionCmId)
+                  }}
+                  // DIMMED, NEVER DISABLED. A conflict is evidence, not a gate.
+                  //
+                  // ⚠️ THE SPACE BEFORE `${` IS LOAD-BEARING, and it is not a
+                  // style choice. `prettier-plugin-tailwindcss` rewrites class
+                  // strings inside template literals and MOVES a leading space
+                  // out of a ternary's branches, so writing the space inside
+                  // the branch (`? ' opacity-45'`) is silently reformatted to
+                  // `? 'opacity-45'` — which renders the class
+                  // `justify-centeropacity-45` and dims nothing. That shipped
+                  // here once and was caught by mutation-checking, not by the
+                  // suite: `toContain('opacity-45')` is a SUBSTRING match and
+                  // passes on the mangled name. The test now splits the class
+                  // list, which is what actually pins it.
+                  className={`${candidate.isSuggested ? CANDIDATE_BUTTON_PRIMARY : CANDIDATE_BUTTON_SECONDARY} mt-2 w-full justify-center ${candidate.verdict === 'conflict' ? 'opacity-45' : ''}`}
+                >
+                  This is {candidate.short}
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          {/*
+           * No onClick — deliberately inert. "I don't know yet" is the honest
+           * answer for a row with no evidence, and the queue already gives it
+           * for free: leaving a row unconfirmed does nothing and keeps it here
+           * until staff are ready. There is no dismiss write for a party-scoped
+           * row that would not immediately bounce back — `replayOnResolve`
+           * re-runs attribution on any resolve, finds the same two-or-more
+           * candidates, and re-opens the row (see that hook's own doc comment).
+           * This button exists so the option reads as offered, not missing.
+           */}
+          <button type="button" className={MUTED_PILL}>
+            I don&rsquo;t know yet
+          </button>
         </div>
       </div>
-
-      <div className="flex flex-wrap items-center gap-2">
-        {/*
-         * No onClick — deliberately inert. "I don't know yet" is the honest
-         * answer for a row with no evidence, and the queue already gives it
-         * for free: leaving a row unconfirmed does nothing and keeps it here
-         * until staff are ready. There is no dismiss write for a party-scoped
-         * row that would not immediately bounce back — `replayOnResolve`
-         * re-runs attribution on any resolve, finds the same two-or-more
-         * candidates, and re-opens the row (see that hook's own doc comment).
-         * This button exists so the option reads as offered, not missing.
-         */}
-        <button type="button" className={MUTED_PILL}>
-          I don&rsquo;t know yet
-        </button>
-      </div>
     </div>
+  )
+}
+
+/**
+ * The evidence line inside one candidate card — Treatment A.
+ *
+ * ALL THREE VERDICTS DRAW, in the same box, differing only in colour: owner
+ * ruling 6, *"for the sake of visual uniformity and information."* Treatment C
+ * drew conflicts only and was not chosen.
+ *
+ * ⚠️ `no_data` IS WORDED AS "NO PLACEMENTS", never as "empty". It means the
+ * weekend has no placements at all — six of the eight live 2026 queue rows have
+ * such a candidate, and one of those weekends carries three write-ins. A
+ * weekend with write-ins and no placements is not empty; calling it that would
+ * report an absence of PLANNING as a fact about the cabin.
+ *
+ * Nothing draws until the evidence has loaded. The verdict is absent while the
+ * uncached conflicts query is in flight and after it fails, and an absent
+ * verdict is not a verdict.
+ */
+function EvidenceLine({
+  candidate,
+  cabinLabel,
+}: {
+  candidate: SessionAttributionCandidate
+  cabinLabel: string
+}) {
+  const verdict = candidate.verdict
+  if (verdict === undefined) return null
+
+  const occupants = candidate.occupants ?? []
+  let content
+  if (verdict === 'conflict') {
+    content = (
+      <>
+        ⛔ <strong>Taken.</strong>{' '}
+        {occupants.length > 0
+          ? `${occupants.map(occupantClause).join(' · ')}.`
+          : // ⚖️ UNREACHABLE SINCE THE 2026-09-01 PRESENCE RULING, and kept
+            // deliberately. A conflict used to be producible with nobody to
+            // name, because `is_family_available` could be false on its own
+            // (staff marking a unit unavailable, or a `staff_default` unit
+            // with no release row). The rule no longer consults availability,
+            // so a conflict and an occupant now arrive together. This branch
+            // survives only because every field on the wire type is optional
+            // and a truncated payload must still render a sentence.
+            `${cabinLabel} is not available this weekend.`}
+      </>
+    )
+  } else if (verdict === 'free') {
+    content = <>✓ {cabinLabel} is free this weekend.</>
+  } else {
+    content = <>No placements recorded for {candidate.short} yet — nothing to compare against.</>
+  }
+
+  return (
+    // `data-evidence` is a test handle, the only one the suite has for "the
+    // box is the same across verdicts" — not an ARIA affordance.
+    <p data-evidence className={`${EVIDENCE_LINE} ${ATTRIBUTION_VERDICT_CLASS[verdict]}`}>
+      {content}
+    </p>
   )
 }
