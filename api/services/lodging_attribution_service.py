@@ -71,7 +71,6 @@ from api.services.lodging_roster_service import (
     _capacity_by_code,
     _household_display_name,
     _i,
-    _resolve_family_availability,
     _resolve_write_in_covers,
     _s,
     placement_grain,
@@ -93,25 +92,26 @@ class _WeekendBoard:
     """One candidate weekend's board, reduced to what the conflict rule reads.
 
     Built through the ROSTER SERVICE'S OWN BUILDERS -- `_build_units`, then
-    `_BathroomIndex`, then the write-in cover walk and the availability
-    resolver, in that order and for the reasons those functions document. What
-    lands in `available_by_code` is therefore the same `is_family_available` the
-    board card draws and the stats bar counts, not a second derivation of it.
+    `_BathroomIndex`, then the write-in cover walk, in that order and for the
+    reasons those functions document.
+
+    ⚠️ NO AVAILABILITY MAP. It carried one until the 2026-09-01 ruling made
+    occupancy a matter of PRESENCE rather than capacity (`leaf_conflicts`); the
+    rule consults no capacity answer now, so building one here would be a value
+    asserted and never read -- the shape this campaign keeps finding drifted.
     """
 
-    __slots__ = ("available_by_code", "has_placements", "index", "placed_by_leaf", "write_ins_by_code")
+    __slots__ = ("has_placements", "index", "placed_by_leaf", "write_ins_by_code")
 
     def __init__(
         self,
         index: _BathroomIndex,
-        available_by_code: dict[str, bool],
         write_ins_by_code: dict[str, tuple[str, ...]],
         placed_by_leaf: dict[str, tuple[PlacedParty, ...]],
         *,
         has_placements: bool,
     ) -> None:
         self.index = index
-        self.available_by_code = available_by_code
         self.write_ins_by_code = write_ins_by_code
         self.placed_by_leaf = placed_by_leaf
         self.has_placements = has_placements
@@ -242,15 +242,19 @@ class LodgingAttributionService:
         merges: list[Any],
         label_by_household_cm_id: dict[int, str],
     ) -> _WeekendBoard:
-        """One weekend's board, in the roster's own four steps.
+        """One weekend's board, in the roster's own steps.
 
-        THE ORDER IS NOT FREE. `_resolve_write_in_covers` must run before
-        `_resolve_family_availability` -- a unit's cover can come from a row on
-        a unit built after it, which is why the cover walk is a second pass at
-        all -- and both need the index `_BathroomIndex.build` produces. Running
-        one and not the other is the half-fix the roster's own guard tests
-        exist to catch; here it would report a written-into cabin as free and
-        promote the wrong weekend.
+        THE ORDER IS NOT FREE. `_resolve_write_in_covers` is a SECOND PASS
+        because a unit's cover can come from a row on a unit built after it,
+        and it needs the index `_BathroomIndex.build` produces. Skipping it
+        would report a written-into cabin as free and promote the wrong
+        weekend, which is the half-fix the roster's own guard tests exist to
+        catch.
+
+        ⚠️ THE AVAILABILITY RESOLVER IS DELIBERATELY NOT RUN. It was, until the
+        2026-09-01 ruling made occupancy a matter of presence
+        (`leaf_conflicts`). Nothing downstream reads a capacity answer now, so
+        running it would compute a value no caller consults.
         """
         summaries = self.roster._build_units(units, availability, write_ins, merges)
         index = _BathroomIndex.build(summaries)
@@ -260,15 +264,13 @@ class LodgingAttributionService:
         # the third orchestrator to build it. The one thing it does that a bare
         # comprehension does not is drop a BLANK-coded unit: "" is the key
         # `parent_code == ""` already means "no parent" by, so a blank-coded
-        # unit under it collides with every other one and hands
-        # `_resolve_family_availability` a real capacity where the roster hands
-        # it None -- defeating that resolver's blank-code backstop.
+        # unit under it collides with every other one, handing the write-in
+        # resolvers a real capacity where the roster hands them None and
+        # defeating their blank-code backstop.
         capacity_by_code = _capacity_by_code(summaries, index)
         write_in_rows = write_in_rows_by_unit(write_ins)
         _resolve_write_in_covers(summaries, write_in_rows, capacity_by_code)
-        _resolve_family_availability(summaries, capacity_by_code, write_in_rows)
 
-        available_by_code = {unit.code: unit.is_family_available for unit in summaries}
         write_ins_by_code = {unit.code: tuple(cover.occupant_name for cover in unit.write_ins) for unit in summaries}
 
         # KEYED BY PARTY, NOT A LIST, so one party is one occupant of one leaf.
@@ -305,7 +307,6 @@ class LodgingAttributionService:
                     placed_by_leaf.setdefault(code, {}).setdefault(party.party_key, party)
         return _WeekendBoard(
             index,
-            available_by_code,
             write_ins_by_code,
             {code: tuple(parties.values()) for code, parties in placed_by_leaf.items()},
             has_placements=bool(placements),
@@ -474,8 +475,6 @@ class LodgingAttributionService:
             LeafOccupancy(
                 unit_code=code,
                 unit_name=(unit.name if (unit := board.index.units_by_code.get(code)) is not None else code),
-                shareability=(unit.shareability if unit is not None else "unknown"),
-                is_family_available=board.available_by_code.get(code, True),
                 placed_parties=board.placed_by_leaf.get(code, ()),
                 write_in_labels=board.write_ins_by_code.get(code, ()),
                 container_name=container_by_leaf.get(code, ""),

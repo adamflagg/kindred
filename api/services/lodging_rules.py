@@ -943,14 +943,32 @@ class HousingNameResolver:
 # had not yet reached reads free. `free` and `no_data` therefore carry NO
 # RANKING POWER; they are published for display and nothing else.
 #
-# ⛔ AVAILABILITY IS NOT RE-DERIVED HERE. `LeafOccupancy.is_family_available`
-# arrives already computed by `is_family_available` / `free_family_spots`
-# above, which carry owner rulings dated 2026-08-23 and 2026-08-29 and a note
-# explicitly guarding them against being "fixed". A second implementation of
-# availability is the drift class this repository has been burned by three
-# times (the three tables grading, `resolveDragFit` vs `candidateFit`, and
-# "the second copy that drifts" in `family_camp_derived.go`), and it is the
-# first of §12.8.6's two disqualifying reasons for not doing any of this in Go.
+# ⛔ AVAILABILITY IS NOT CONSULTED HERE AT ALL, and that is deliberate.
+# ⚖️ OWNER RULING 2026-09-01: *"write ins and placed families matter, but for
+# purposes of bed subtraction that's overkill... we don't need to perfectly
+# hone what is ultimately only a suggestion change."* So OCCUPANCY IS
+# PRESENCE: another party in the leaf is a conflict, and no capacity
+# arithmetic happens anywhere in this rule.
+#
+# It replaced a shape that deferred capacity to `is_family_available` /
+# `free_family_spots`, and the reason it had to is that the deferral could not
+# work: those functions deliberately do NOT subtract placed families (their own
+# docstring says so, because the stats bar counts them in the other numerator),
+# so a shareable cabin whose beds were entirely taken by PLACED families read
+# `free` and could never be demoted. Measured on the 2026 snapshot: 44 of 118
+# units are shareable and 5 of the 10 open queue rows name one -- half the live
+# queue, invisible to the feature.
+#
+# Consulting nothing is what makes that correct rather than merely simpler:
+# there is now no second implementation of availability to drift (the class
+# this repository has been burned by three times -- the three tables grading,
+# `resolveDragFit` vs `candidateFit`, and "the second copy that drifts" in
+# `family_camp_derived.go`), and the role<->occupancy conflation that came with
+# it is gone too. `is_family_available` returns False for a `staff_default`
+# unit with no release row REGARDLESS of occupancy; reading that as "taken"
+# published a `conflict` verdict with an empty occupant list. 25 units are
+# `staff_default` and 2026 holds zero `lodging_availability` rows, so the state
+# was one value away -- though measured, 0 of the 10 open queue rows name one.
 #
 # Pure over `(leaves, occupancy, candidates)` for the reason
 # `_resolve_write_in_covers` states about its own pure counterpart: the rule is
@@ -995,18 +1013,19 @@ class LeafOccupancy(NamedTuple):
     another family has a contained leaf, i think that's likely a
     demote/conflict yes."*
 
-    `is_family_available` IS `is_family_available(...)`'S OWN ANSWER for this
-    leaf this weekend, folding the staff<->family role and every write-in
-    covering the space through `free_family_spots`. It is passed in rather
-    than re-derived -- see the section note above.
-
     `placed_parties` is every party `lodging_assignments` puts in this leaf
     that weekend, INCLUDING the one being attributed; the rule drops its own
     party rather than the caller having to.
 
     `write_in_labels` is one label per write-in cover on the leaf, own or
-    inherited from an ancestor. It is the DISPLAY half; whether those write-ins
-    exhaust the space is already inside `is_family_available`.
+    inherited from an ancestor. It is BOTH halves now: presence of any label
+    is a conflict, and each label is printed as an occupant.
+
+    ⚠️ NO CAPACITY FIELD, AND NO SHAREABILITY FIELD. Both were here and both
+    were removed by the 2026-09-01 ruling in the section note above. Do not
+    reinstate one to "improve" the suggestion without re-reading it -- the
+    availability answer is not subtractive over placements, which is exactly
+    why it could not do this job.
 
     `container_name` is the building the value NAMED when this leaf came out of
     a container expansion, "" when the value named the leaf itself -- so the
@@ -1016,8 +1035,6 @@ class LeafOccupancy(NamedTuple):
 
     unit_code: str
     unit_name: str
-    shareability: str
-    is_family_available: bool
     placed_parties: tuple[PlacedParty, ...]
     write_in_labels: tuple[str, ...]
     container_name: str = ""
@@ -1098,37 +1115,26 @@ def leaf_occupants(leaf: LeafOccupancy, party_key: str) -> tuple[ConflictOccupan
 
 
 def leaf_conflicts(leaf: LeafOccupancy, party_key: str) -> bool:
-    """Whether this leaf is UNAVAILABLE to this party that weekend.
+    """Whether SOMEBODY ELSE is already in this leaf that weekend.
 
-    THREE DISJUNCTS, exactly as §12.8.5 states them, and they split across two
-    questions because availability already answers one of them:
+    ⚖️ PRESENCE, NOT BED ARITHMETIC (owner ruling 2026-09-01, section note
+    above). Two disjuncts, and neither consults capacity, shareability or
+    availability:
 
-    1. `is_family_available` is False -- the space has no room left. This is
-       the shareable-at-capacity arm AND the unsized-write-in arm: an unsized
-       write-in is charged the WHOLE capacity of the unit it names
-       (kindred#2540), so `free_family_spots` reaches 0 and the leaf closes.
-       ⛔ Read, never re-derived (see the section note).
-    2. A PLACEMENT held by a different party. `free_family_spots`
-       deliberately does not subtract placed families -- its docstring says so,
-       because the stats bar counts them in the other numerator -- so
-       availability alone cannot see this and the rule has to.
-    3. ANY write-in on a leaf that is not shareable. A `single_party` leaf
-       holds ONE party: beds left over do not make room for a second one, which
-       is the entire meaning of the shareability column.
+    1. A PLACEMENT held by a different party.
+    2. ANY write-in on the leaf, own or inherited from an ancestor.
 
-    Arms 2 and 3 are gated on shareability and arm 1 is not, which is the
-    asymmetry the column exists to express: a shareable leaf takes a second
-    party until its beds run out, and running out is arm 1's business.
+    An unsized write-in occupies its unit WHOLESALE (kindred#2540) and a sized
+    one occupies part of it; under a presence rule both conflict for the same
+    reason, so the distinction that used to need `free_family_spots` to express
+    it no longer has to be expressed at all.
 
-    "unknown" shareability -- the answer `unit_shareability` gives for a column
-    staff never set -- is treated as NOT shareable. A cabin nobody classified
-    holds one party until somebody says otherwise; the alternative silently
-    promotes a weekend on an unanswered question.
+    THIS ONLY EVER DEMOTES A SUGGESTION. It never blocks a confirmation and
+    nothing places itself (§12.8.3 ruling 13), which is the licence for a rule
+    this blunt: the cost of demoting a shareable weekend that could in fact
+    have held both parties is that staff read one extra line of evidence and
+    click the button anyway.
     """
-    if not leaf.is_family_available:
-        return True
-    if leaf.shareability == "shareable":
-        return False
     if any(placed.party_key != party_key for placed in leaf.placed_parties):
         return True
     return bool(leaf.write_in_labels)

@@ -20,7 +20,7 @@ import pytest
 
 from api.services.lodging_attribution_service import LodgingAttributionService
 from api.services.lodging_repository import LodgingRepository
-from api.services.lodging_roster_service import _resolve_family_availability
+from api.services.lodging_roster_service import _resolve_write_in_covers
 
 YEAR = 2026
 
@@ -409,7 +409,15 @@ class TestWriteInsAreReadLive:
         ]
 
     @pytest.mark.asyncio
-    async def test_a_shareable_unit_with_room_left_does_not_conflict(self) -> None:
+    async def test_a_sized_write_in_on_a_shareable_unit_with_beds_left_still_conflicts(self) -> None:
+        """⚖️ INVERTED BY THE 2026-09-01 RULING. It asserted `free` -- twelve
+        beds, a write-in for two, room to spare -- and that was the old
+        capacity rule working as designed.
+
+        Presence replaced it: *"write ins and placed families matter, but for
+        purposes of bed subtraction that's overkill."* Somebody is in the hall,
+        so the weekend is demoted, and staff can still confirm it anyway.
+        """
         repo = _repo(
             issues=[_issue("Shared Hall")],
             placements={FC1: [_placement(HH_HOLDER, [MAPLE])], FC2: [_placement(HH_HOLDER, [MAPLE])]},
@@ -418,7 +426,29 @@ class TestWriteInsAreReadLive:
 
         response = await LodgingAttributionService(repo).build_conflicts(YEAR)
 
-        assert _verdicts(response) == {FC1: "free", FC2: "free"}
+        assert _verdicts(response) == {FC1: "conflict", FC2: "free"}
+
+    @pytest.mark.asyncio
+    async def test_a_placement_on_a_shareable_unit_conflicts(self) -> None:
+        """⭐ THE CASE THE OLD RULE COULD NOT SEE AT ALL, and the reason the
+        ruling was needed rather than merely simpler.
+
+        `leaf_conflicts` used to skip its placement arm for a shareable leaf
+        and defer to `is_family_available`, which is computed from
+        `free_family_spots` -- and that function's own docstring says *"Placed
+        families are NOT subtracted here."* So NO placement, of any size, could
+        ever close a shareable cabin: this returned `free` however many other
+        families were in it. Measured on the 2026 snapshot, 44 of 118 units are
+        shareable and 5 of the 10 open queue rows name one.
+        """
+        repo = _repo(
+            issues=[_issue("Shared Hall")],
+            placements={FC1: [_placement(HH_HOLDER, [HALL])], FC2: [_placement(HH_HOLDER, [MAPLE])]},
+        )
+
+        response = await LodgingAttributionService(repo).build_conflicts(YEAR)
+
+        assert _verdicts(response) == {FC1: "conflict", FC2: "free"}
 
 
 class TestNoData:
@@ -518,7 +548,7 @@ class TestTheCapacityMapIsTheRostersOwn:
     The one thing the helper does that a bare comprehension does not is drop a
     BLANK-coded unit. `""` is the key `parent_code == ""` already uses for "no
     parent", so a blank-coded unit under that key collides with every other
-    blank-coded unit and hands `_resolve_family_availability` a real capacity
+    blank-coded unit and hands the write-in cover resolver a real capacity
     where the roster hands it None -- defeating the blank-code backstop that
     resolver's docstring spends a paragraph on. Not live today (no production
     unit has a blank code) and not reachable through this endpoint's own
@@ -530,15 +560,15 @@ class TestTheCapacityMapIsTheRostersOwn:
     async def test_a_blank_coded_unit_never_reaches_the_resolvers_under_the_empty_key(self) -> None:
         seen: dict[str, Any] = {}
 
-        def _spy(units: Any, capacity_by_code: Any, write_in_rows: Any) -> Any:
+        def _spy(units: Any, write_in_rows: Any, capacity_by_code: Any) -> Any:
             seen["caps"] = dict(capacity_by_code)
-            return _resolve_family_availability(units, capacity_by_code, write_in_rows)
+            return _resolve_write_in_covers(units, write_in_rows, capacity_by_code)
 
         blank = _unit("u_blank", "", "Unmapped Cabin")
         repo = _repo(issues=[_issue("Maple Upper 1")])
         repo.fetch_units = AsyncMock(return_value=[*UNITS, blank])
 
-        with patch("api.services.lodging_attribution_service._resolve_family_availability", _spy):
+        with patch("api.services.lodging_attribution_service._resolve_write_in_covers", _spy):
             await LodgingAttributionService(repo).build_conflicts(YEAR)
 
         assert "" not in seen["caps"], "a blank-coded unit collided into the 'no parent' key"

@@ -58,8 +58,6 @@ def _leaf(
     code: str,
     *,
     name: str = "",
-    shareability: str = "single_party",
-    is_family_available: bool = True,
     placed: tuple[PlacedParty, ...] = (),
     write_ins: tuple[str, ...] = (),
     container_name: str = "",
@@ -67,8 +65,6 @@ def _leaf(
     return LeafOccupancy(
         unit_code=code,
         unit_name=name or code,
-        shareability=shareability,
-        is_family_available=is_family_available,
         placed_parties=placed,
         write_in_labels=write_ins,
         container_name=container_name,
@@ -164,23 +160,21 @@ class TestWriteIns:
         can only be the unset default. An unsized write-in occupies the unit
         WHOLESALE (kindred#2540), so the leaf is taken. Reading 0 as "takes no
         beds" reports an occupied cabin as free and PROMOTES the wrong weekend.
+
+        ⚖️ Since the 2026-09-01 presence ruling a SIZED write-in conflicts by
+        the same disjunct, so there is no sized/unsized pair to keep here --
+        party size is not an input to this rule at all. The service-level suite
+        still pins both, where the sizes are real.
         """
         verdicts = _verdicts(
             _candidate(
                 FC1,
-                _leaf("maple-1", is_family_available=False, write_ins=("Weekend staff",)),
+                _leaf("maple-1", write_ins=("Weekend staff",)),
             ),
             _candidate(FC2, _leaf("maple-1")),
         )
 
         assert verdicts == {FC1: "conflict", FC2: "free"}, "an unsized write-in takes the whole unit"
-
-    def test_a_sized_write_in_still_conflicts_on_a_single_party_leaf(self) -> None:
-        """A single_party leaf holds ONE party. Beds left over do not make room
-        for a second one -- that is what the shareability column means."""
-        verdicts = _verdicts(_candidate(FC1, _leaf("maple-1", write_ins=("Weekend staff",))))
-
-        assert verdicts == {FC1: "conflict"}
 
     def test_a_write_in_is_reported_as_the_occupant(self) -> None:
         rows = attribution_conflicts(
@@ -192,46 +186,43 @@ class TestWriteIns:
 
 
 class TestShareable:
-    """A shareable leaf takes a second party until its beds run out. Room left
-    is NOT a conflict; capacity exhausted is."""
+    """⚖️ OWNER RULING 2026-09-01: OCCUPANCY IS PRESENCE, NOT BED ARITHMETIC.
 
-    def test_shareable_with_room_left_does_not_conflict(self) -> None:
+    *"write ins and placed families matter, but for purposes of bed
+    subtraction that's overkill... we don't need to perfectly hone what is
+    ultimately only a suggestion change."*
+
+    So shareability no longer gates the rule at all: another party in the leaf
+    is a conflict whether the cabin could have held them both or not. The
+    reason it had to change is that the previous shape could not fire on a
+    shareable leaf AT ALL. It deferred capacity to `is_family_available`, whose
+    own docstring says *"Placed families are NOT subtracted here"* -- so a
+    shareable cabin whose beds were entirely taken by placed families read
+    `free`. Measured on the 2026 snapshot: 44 of 118 units are shareable and
+    **5 of the 10 open queue rows name one**, so half the live queue could
+    never be demoted on placement evidence.
+    """
+
+    def test_a_placement_in_a_shareable_leaf_conflicts(self) -> None:
+        """The case the old rule could not see. Beds left over do not matter:
+        somebody else is already in the cabin, and that is the evidence."""
+        verdicts = _verdicts(_candidate(FC1, _leaf("shared-hall", placed=(OTHER,))))
+
+        assert verdicts == {FC1: "conflict"}
+
+    def test_a_write_in_on_a_shareable_leaf_conflicts(self) -> None:
         verdicts = _verdicts(
-            _candidate(
-                FC1,
-                _leaf(
-                    "shared-hall",
-                    shareability="shareable",
-                    is_family_available=True,
-                    placed=(OTHER,),
-                    write_ins=("Weekend staff",),
-                ),
-            )
+            _candidate(FC1, _leaf("shared-hall", write_ins=("Weekend staff",)))
         )
+
+        assert verdicts == {FC1: "conflict"}
+
+    def test_an_empty_shareable_leaf_is_free(self) -> None:
+        """Presence is the whole rule, so an empty shareable leaf is free for
+        the same reason an empty single-party one is."""
+        verdicts = _verdicts(_candidate(FC1, _leaf("shared-hall")))
 
         assert verdicts == {FC1: "free"}
-
-    def test_shareable_at_capacity_conflicts(self) -> None:
-        """`is_family_available` is the ONE availability answer (owner rulings
-        2026-08-23 / 2026-08-29, `api/services/lodging_rules.py`). False here
-        means `free_family_spots` reached 0."""
-        verdicts = _verdicts(
-            _candidate(
-                FC1,
-                _leaf("shared-hall", shareability="shareable", is_family_available=False, write_ins=("Weekend staff",)),
-            )
-        )
-
-        assert verdicts == {FC1: "conflict"}
-
-    def test_an_unclassified_leaf_is_treated_as_single_party(self) -> None:
-        """`unit_shareability` answers "unknown" for a column staff never set.
-        A cabin nobody classified holds one party until somebody says
-        otherwise -- the same direction the board's own drop rules take."""
-        verdicts = _verdicts(_candidate(FC1, _leaf("unclassified-1", shareability="unknown", placed=(OTHER,))))
-
-        assert verdicts == {FC1: "conflict"}
-
 
 class TestOwnHouseholdIsNotAConflict:
     def test_this_households_own_placement_does_not_conflict(self) -> None:

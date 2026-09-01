@@ -514,12 +514,16 @@ async def get_session_attribution_conflicts(
     each candidate weekend, and by whom -- and DEMOTES the conflicted weekends.
 
     CLASSIFICATION IS SERVER-SIDE ONLY, the same argument `/push/preview` and
-    `/compare` above each make one grain over: the answer needs the live board's
-    placements AND its write-ins across every candidate weekend, which a client
-    holding only the queue rows cannot assemble, and a client that tried would
-    be a second implementation of availability
-    (`api/services/lodging_rules.py`'s `is_family_available` /
-    `free_family_spots`, owner rulings 2026-08-23 and 2026-08-29).
+    `/compare` above each make one grain over: the answer needs the live
+    board's placements AND its write-ins across every candidate weekend, which
+    a client holding only the queue rows cannot assemble.
+
+    ⚖️ OCCUPANCY IS PRESENCE, NOT CAPACITY (owner ruling 2026-09-01). Another
+    party in the cabin demotes the weekend; no bed arithmetic happens anywhere.
+    `leaf_conflicts` in `api/services/lodging_rules.py` carries the full reason
+    -- the short version is that the capacity answer this used to defer to does
+    not subtract placed families by design, so it could never demote a
+    SHAREABLE cabin however full it was, and that is 44 of 118 units.
 
     BOTH SUGGESTIONS CROSS THE WIRE. `suggested_session` in PocketBase keeps
     its unchanged timestamp value -- nothing in Go moves, and `AttributeSession`
