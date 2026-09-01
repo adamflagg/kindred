@@ -14,6 +14,17 @@
  *
  * The space count is provisional: merging or splitting cabins on the board
  * moves it, which the title on the spaces figure says.
+ *
+ * The bar is one line, and that is a budget. Placed, spaces and beds, the
+ * needs-a-cabin warning, the attribution chip and the right-aligned Compare
+ * and Push write-ins controls together overran it and wrapped to two, so the
+ * staff-housing count came out (2026-09-01). It was not wrong — permanent
+ * staff cabins were never the weekend's inventory, which is why they are
+ * excluded from spaces rather than counted in them — it was just the figure
+ * staff act on least, and it is still visible where they DO act on it: the
+ * admin unit list, the unit form's allocation field, and the board legend's
+ * dashed square. Anything added here from now on costs one of the figures
+ * above it.
  */
 import { AlertCircle, BedDouble, Home, Users } from 'lucide-react'
 import type { ReactNode } from 'react'
@@ -64,7 +75,6 @@ export function WeekendStatsBar({
   const partiesUnassigned = counts.parties_unassigned ?? 0
   const spaces = counts.units_family_available ?? 0
   const unitsTotal = counts.units_total ?? 0
-  const unitsStaffHousing = counts.units_staff_housing ?? 0
   const spots = counts.spots_family_available ?? 0
   const spare = spaces - partiesTotal
 
@@ -122,33 +132,13 @@ export function WeekendStatsBar({
           <span className="text-muted-foreground tabular-nums">
             ({spare < 0 ? `${String(Math.abs(spare))} short` : `${String(spare)} spare`})
           </span>
-          {/* Write-ins and staff housing were DIFFERENT facts with different
-              remedies, and were one number until `units_staff_housing` split
-              them out: a written-into cabin is inventory that comes back next
-              weekend — somebody the system does not know about is sleeping in
-              it, most often non-rostered weekend staff — while a staff cabin
-              never comes back, since it houses full-time staff who are not
-              enrolled per session and was never part of the weekend's
-              inventory to begin with.
-
-              The write-ins chip that used to sit beside this one was struck
-              2026-08-21 (kindred#2503): its tooltip said a write-in was
-              "excluded from family spaces", which stopped being true the
-              moment a sized write-in left the cabin available with beds free
-              (Task 4). The owner ruled the chip is not wanted rather than
-              reworded. Staff housing keeps its own count regardless — it was
-              never inventory, so it needs a different remedy than "release
-              it", and that distinction did not depend on the write-ins
-              chip's wording. */}
-          {unitsStaffHousing > 0 && (
-            <Tooltip
-              content="Permanent staff housing, never part of the weekend's inventory"
-              aria-label={`${String(unitsStaffHousing)} staff cabins`}
-              className="text-muted-foreground"
-            >
-              · {unitsStaffHousing} staff
-            </Tooltip>
-          )}
+          {/* Two chips used to hang off this figure and both are gone. The
+              write-ins one went 2026-08-21 (kindred#2503): its tooltip said a
+              write-in was "excluded from family spaces", which stopped being
+              true the moment a sized write-in left the cabin available with
+              beds free. The staff-housing one (`units_staff_housing`) went
+              2026-09-01, for room rather than for being wrong — see the
+              header comment. */}
         </div>
 
         {DIVIDER}
