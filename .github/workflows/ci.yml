@@ -1029,7 +1029,11 @@ jobs:
     - name: Grain declaration index agreement (kindred#2627)
       working-directory: ./pocketbase
       env:
-        KINDRED_PROD_SCHEMA_DB: ./pb_test_data/data.db
+        # Absolute, not ./pb_test_data/data.db: `go test` runs each test binary
+        # with its own package directory as the working directory (pocketbase/sync),
+        # not this step's working-directory. The test fails loudly on a relative
+        # path rather than letting SQLite answer "unable to open database file".
+        KINDRED_PROD_SCHEMA_DB: ${{ github.workspace }}/pocketbase/pb_test_data/data.db
       run: go test -count=1 ./sync/... -run TestDeclaredUniqueIndexesExistInBootedSchema -v
 
     # kindred#2278: frontend/src/types/pocketbase-types.ts is @generated from

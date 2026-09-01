@@ -278,7 +278,25 @@ func TestDeclaredUniqueIndexesExistInBootedSchema(t *testing.T) {
 			"Migration Smoke Test job only (.github/workflows/ci.yml); see kindred#2627")
 	}
 
-	db, err := dbx.Open("sqlite", dbPath)
+	// The path must be ABSOLUTE, and saying so beats letting SQLite answer
+	// "unable to open database file (14)". `go test` runs each test binary with
+	// its own PACKAGE directory as the working directory -- pocketbase/sync here
+	// -- not the directory the `go test` command was invoked from, so a caller
+	// that writes ./pb_test_data/data.db relative to pocketbase/ (which is where
+	// the CI job's other steps read it from) misses by one level.
+	if !filepath.IsAbs(dbPath) {
+		t.Fatalf("KINDRED_PROD_SCHEMA_DB=%q is relative; it must be absolute, because "+
+			"this test binary runs with pocketbase/sync as its working directory, not "+
+			"the directory `go test` was invoked from", dbPath)
+	}
+	if _, err := os.Stat(dbPath); err != nil {
+		t.Fatalf("KINDRED_PROD_SCHEMA_DB=%s is not readable: %v -- the boot step that "+
+			"produces it did not run, or was cleaned up first", dbPath, err)
+	}
+
+	// query_only so reading the schema cannot alter the database the neighbouring
+	// pocketbase-types freshness step reads next.
+	db, err := dbx.Open("sqlite", dbPath+"?_pragma=query_only(true)")
 	if err != nil {
 		t.Fatalf("opening the migrated database at %s: %v", dbPath, err)
 	}
