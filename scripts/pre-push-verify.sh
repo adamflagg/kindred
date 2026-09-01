@@ -75,7 +75,12 @@ CHANGED_FILES=$(echo "$CHANGED_FILES" | sort -u | grep -v '^$' || true)
 
 # Pre-extract frontend/src changed files (relative to frontend/) for the
 # per-check file filter. Two lists because prettier covers .css/.json too
-# but eslint is configured only for .ts/.tsx (--ext ts,tsx in package.json).
+# but this scoped list stays .ts/.tsx: those are what frontend/src holds that
+# eslint has anything to say about. (It used to cite `--ext ts,tsx` in
+# package.json as the reason. That flag was a measured no-op -- 1193 files and
+# 452 messages with and without it, and the file list included 7 .js files
+# either way -- so it read as a scope restriction while restricting nothing.
+# Removed in kindred#2669.)
 # Empty list → that check is skipped (tsc + vitest still cover the area).
 CHANGED_FRONTEND_PRETTIER=$(echo "$CHANGED_FILES" \
     | grep -E '^frontend/src/.*\.(ts|tsx|js|jsx|css|json)$' \
@@ -239,12 +244,17 @@ if $HAS_FRONTEND; then
         echo "  (no prettier-eligible frontend/src files changed — skipping prettier)"
     fi
 
-    if [[ "$RUN_ALL" == true ]]; then
+    # A change to the flat config changes every file's result, so the scoped
+    # per-file path cannot tell you anything about it. Before this branch existed,
+    # editing only frontend/eslint.config.js set HAS_FRONTEND=true (line ~137) but
+    # left CHANGED_FRONTEND_ESLINT empty -- so the one edit that moves every lint
+    # result in the repo was the one edit never linted locally. kindred#2669.
+    if [[ "$RUN_ALL" == true ]] || echo "$CHANGED_FILES" | grep -qE '^frontend/(eslint\.config\.js|package\.json)$'; then
         ( cd frontend && npm run lint ) >"$LOGDIR/eslint.log" 2>&1 &
         PIDS[eslint]=$!
     elif [[ -n "$CHANGED_FRONTEND_ESLINT" ]]; then
         # shellcheck disable=SC2086
-        ( cd frontend && npx eslint --report-unused-disable-directives $CHANGED_FRONTEND_ESLINT ) \
+        ( cd frontend && ./node_modules/.bin/eslint --report-unused-disable-directives $CHANGED_FRONTEND_ESLINT ) \
             >"$LOGDIR/eslint.log" 2>&1 &
         PIDS[eslint]=$!
     else
