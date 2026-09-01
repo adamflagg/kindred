@@ -16,7 +16,9 @@ import type { RosterPartyRow } from '../../types/lodging'
 const useSessionAttributionQueue = vi.fn()
 
 vi.mock('../../hooks/useSessionAttributionQueue', () => ({
-  useSessionAttributionQueue: () => useSessionAttributionQueue(),
+  // Args FORWARDED, not swallowed: what this modal asks the hook for depends
+  // on whether it is open — see the evidence test at the bottom of this file.
+  useSessionAttributionQueue: (...args: unknown[]) => useSessionAttributionQueue(...args),
 }))
 
 import { CabinWeekendModal } from './CabinWeekendModal'
@@ -258,5 +260,26 @@ describe('CabinWeekendModal', () => {
     renderModal()
     await screen.findByText(/CampMinder only stores one cabin/)
     expect(screen.getByText(/what each weekend\u2019s board already holds/)).toBeInTheDocument()
+  })
+
+  /**
+   * THE EVIDENCE IS FETCHED ON OPEN, NOT ON MOUNT. `CabinWeekendEntry` renders
+   * this modal unconditionally and toggles `isOpen`, so the component function
+   * — and every hook in it — runs for the whole board session. The occupancy
+   * query is `staleTime: 0` with `refetchOnWindowFocus`, so an ungated mount
+   * would re-read every candidate weekend's board on each alt-tab back while
+   * this modal is shut and drawing nothing.
+   *
+   * It also makes `useSessionAttributionConflicts`'s own `gcTime: 0` note true
+   * as written: the query really does start clean on each open now.
+   */
+  it('asks for no occupancy evidence while it is closed', () => {
+    renderModal({ isOpen: false })
+    expect(useSessionAttributionQueue).toHaveBeenCalledWith({ evidence: false })
+  })
+
+  it('asks for it once it is open — the rows draw a verdict each', () => {
+    renderModal({ isOpen: true })
+    expect(useSessionAttributionQueue).toHaveBeenCalledWith({ evidence: true })
   })
 })

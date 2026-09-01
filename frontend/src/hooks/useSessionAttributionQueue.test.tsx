@@ -424,4 +424,44 @@ describe('useSessionAttributionQueue', () => {
       expect(row?.conflictInEveryCandidate).toBeUndefined()
     })
   })
+
+  /**
+   * THE EVIDENCE IS FETCHED WHERE IT IS DRAWN, AND NOWHERE ELSE.
+   *
+   * This hook is mounted on the weekend board by `CabinWeekendEntry`, which
+   * renders a COUNT and no verdict, and by `CabinWeekendModal`, which is
+   * mounted whether or not it is open. The evidence query is deliberately
+   * `staleTime: 0` / `refetchOnWindowFocus: true`, so leaving it on for those
+   * two would re-pay `build_conflicts` — a read per candidate WEEKEND, on top
+   * of the four year-scoped ones — on every board load and every alt-tab back,
+   * for a value nothing on the board reads. Worse for a viewer without
+   * `bunking.manage`: the endpoint is gated on that permission, so the chip
+   * they cannot even see would spend a guaranteed 403 on every focus.
+   */
+  describe('the occupancy evidence is opt-out', () => {
+    it('never fetches the evidence for a caller that draws no verdict', async () => {
+      const { result } = renderHook(() => useSessionAttributionQueue({ evidence: false }), {
+        wrapper: wrapper(YEAR_CONTEXT),
+      })
+      await waitFor(() => {
+        expect(result.current.data).toBeDefined()
+      })
+      // The queue itself still loads — the chip's count depends on it.
+      expect(listAmbiguousSessionIssues).toHaveBeenCalledWith(2026)
+      expect(fetchSessionAttributionConflicts).not.toHaveBeenCalled()
+      expect(result.current.items[0]?.candidates[0]?.verdict).toBeUndefined()
+    })
+
+    it('fetches it by default — the admin queue tab draws every verdict', async () => {
+      const { result } = renderHook(() => useSessionAttributionQueue(), {
+        wrapper: wrapper(YEAR_CONTEXT),
+      })
+      await waitFor(() => {
+        expect(result.current.data).toBeDefined()
+      })
+      await waitFor(() => {
+        expect(fetchSessionAttributionConflicts).toHaveBeenCalled()
+      })
+    })
+  })
 })

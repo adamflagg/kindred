@@ -100,6 +100,30 @@ describe('rowEvidenceByIssueId', () => {
     )
   })
 
+  it('drops a candidate with no session id, rather than filing it under weekend 0', () => {
+    // The same reasoning as the issue-id guard above, one level down. `?? 0`
+    // would file every unidentifiable candidate under one key, so the second
+    // shadows the first and either could be handed to a real candidate that
+    // happens to carry cm_id 0. A candidate the payload cannot name is a
+    // candidate no card can ask for.
+    const evidence = rowEvidenceByIssueId({
+      rows: [
+        {
+          issue_id: 'q3',
+          candidates: [
+            { verdict: 'conflict' },
+            { verdict: 'free' },
+            { session_cm_id: 1309515, verdict: 'no_data' },
+          ],
+        },
+      ],
+    })
+    const row = evidence.get('q3')
+    expect(row?.byCandidate.size).toBe(1)
+    expect(row?.byCandidate.get(0)).toBeUndefined()
+    expect(row?.byCandidate.get(1309515)?.verdict).toBe('no_data')
+  })
+
   it('answers an empty map for an unfetched or failed response, so the row degrades', () => {
     expect(rowEvidenceByIssueId(undefined).size).toBe(0)
     expect(rowEvidenceByIssueId({}).size).toBe(0)

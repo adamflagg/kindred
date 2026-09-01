@@ -104,7 +104,14 @@ export function rowEvidenceByIssueId(
 
     const byCandidate = new Map<number, AttributionCandidateEvidence>()
     for (const candidate of row.candidates ?? []) {
-      byCandidate.set(candidate.session_cm_id ?? 0, {
+      // The issue-id guard above, one level down and for the same reason: a
+      // candidate the payload cannot name can never be asked for by a card, so
+      // it is dropped rather than filed under 0, where the next such candidate
+      // would shadow it and a real weekend carrying cm_id 0 would collide.
+      const sessionCmId = candidate.session_cm_id ?? 0
+      if (sessionCmId === 0) continue
+
+      byCandidate.set(sessionCmId, {
         verdict: candidate.verdict ?? 'no_data',
         occupants: (candidate.occupants ?? []).map((occupant) => ({
           kind: occupant.kind ?? 'placement',

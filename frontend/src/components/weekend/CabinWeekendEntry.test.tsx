@@ -15,7 +15,9 @@ import type { RosterPartyRow } from '../../types/lodging'
 const useSessionAttributionQueue = vi.fn()
 
 vi.mock('../../hooks/useSessionAttributionQueue', () => ({
-  useSessionAttributionQueue: () => useSessionAttributionQueue(),
+  // Args FORWARDED, not swallowed: what this entry asks the hook for is part
+  // of its contract — see the evidence test at the bottom of this file.
+  useSessionAttributionQueue: (...args: unknown[]) => useSessionAttributionQueue(...args),
 }))
 
 import { CabinWeekendEntry } from './CabinWeekendEntry'
@@ -158,5 +160,40 @@ describe('CabinWeekendEntry', () => {
     await user.click(screen.getByRole('button', { name: 'The Johnson Family' }))
 
     expect(onOpenFamily).toHaveBeenCalledWith(party)
+  })
+
+  /**
+   * THE CHIP DRAWS A COUNT, NEVER A VERDICT, so it must not pay for the
+   * occupancy evidence. That query is deliberately uncached and refetches on
+   * every window focus, and this entry is mounted on the board for the whole
+   * session — leaving it on would re-read every candidate weekend's board on
+   * each alt-tab back for a value nothing here renders. The hook runs before
+   * the `canManage` guard too, so a viewer without `bunking.manage` would be
+   * spending a guaranteed 403 against a chip they cannot see.
+   */
+  it('asks for no occupancy evidence — the chip renders a count, not a verdict', () => {
+    useSessionAttributionQueue.mockReturnValue({
+      isLoading: false,
+      error: null,
+      data: [itemFixture()],
+      items: [itemFixture()],
+      confirm: vi.fn(),
+      isConfirming: false,
+    })
+    renderEntry()
+    expect(useSessionAttributionQueue).toHaveBeenCalledWith({ evidence: false })
+  })
+
+  it('asks for none even when the user cannot manage lodging and nothing renders', () => {
+    useSessionAttributionQueue.mockReturnValue({
+      isLoading: false,
+      error: null,
+      data: [],
+      items: [],
+      confirm: vi.fn(),
+      isConfirming: false,
+    })
+    renderEntry({ canManage: false })
+    expect(useSessionAttributionQueue).toHaveBeenCalledWith({ evidence: false })
   })
 })

@@ -32,9 +32,21 @@
  * answers an EMPTY QUEUE — the normal state for most of the year — in exactly
  * one read, and reads once per candidate WEEKEND rather than once per queue
  * row, so the eight live 2026 rows cost a handful of session-scoped reads.
- * `gcTime: 0` matters for the board's modal, which mounts and unmounts on
- * every open: keeping the answer would show the second open a verdict computed
- * before the first one's confirm.
+ * `gcTime: 0` matters for the board's modal: keeping the answer would show the
+ * second open a verdict computed before the first one's confirm.
+ *
+ * ⚠️ FETCHED WHERE IT IS DRAWN, WHICH IS WHY `enabled` IS A PARAMETER. The
+ * board mounts this transitively for the whole session — `CabinWeekendEntry`
+ * renders a COUNT and no verdict, and it renders `CabinWeekendModal`
+ * unconditionally, toggling `isOpen`. Left on for those two, an uncached
+ * refetch-on-focus query would re-pay `build_conflicts` (a read per candidate
+ * WEEKEND on top of four year-scoped ones) on every board load and every
+ * alt-tab back, for a value nothing on the board reads; and since the endpoint
+ * is `bunking.manage`-gated, a viewer without that permission would spend a
+ * guaranteed 403 on each one. Both call sites therefore pass `evidence: false`
+ * until something is actually going to draw a verdict — which also makes the
+ * `gcTime: 0` note above true as written, since the modal's query now really
+ * does start clean on each open.
  *
  * DEGRADES, NEVER BLOCKS. A failure here is returned rather than thrown and no
  * caller gates `QueryGuard` on it: the queue tells staff which cabins are
@@ -60,7 +72,15 @@ export interface UseSessionAttributionConflictsResult {
   error: Error | null
 }
 
-export function useSessionAttributionConflicts(): UseSessionAttributionConflictsResult {
+/**
+ * @param enabled - false for a caller that draws no verdict (see the module
+ * doc). The query does not run, and `byIssueId` stays empty — the same
+ * degraded shape a pending or failed fetch already produces, so no caller
+ * needs a second code path for it.
+ */
+export function useSessionAttributionConflicts(
+  enabled = true
+): UseSessionAttributionConflictsResult {
   const currentYear = useYear()
   const { fetchWithAuth } = useApiWithAuth()
   // CurrentYearContext returns the literal 0 until the backend supplies the
@@ -71,7 +91,7 @@ export function useSessionAttributionConflicts(): UseSessionAttributionConflicts
   const conflictsQuery = useQuery({
     queryKey: queryKeys.sessionAttributionConflicts(currentYear),
     queryFn: () => fetchSessionAttributionConflicts(fetchWithAuth, currentYear),
-    enabled: yearReady,
+    enabled: yearReady && enabled,
     staleTime: 0,
     gcTime: 0,
     // The queue and the board are two surfaces staff move between, and the

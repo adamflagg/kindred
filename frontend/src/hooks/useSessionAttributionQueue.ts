@@ -218,7 +218,27 @@ function buildItem(
   }
 }
 
-export function useSessionAttributionQueue(): UseSessionAttributionQueueResult {
+export interface UseSessionAttributionQueueOptions {
+  /**
+   * Fetch the §12.8 occupancy evidence. DEFAULT TRUE — the admin queue tab
+   * draws a verdict on every candidate card, and that is this hook's primary
+   * home. Pass `false` from a caller that renders no verdict: the query is
+   * uncached and refetches on window focus, so an always-mounted caller that
+   * ignores the answer re-pays `build_conflicts` on every alt-tab back (and,
+   * without `bunking.manage`, a guaranteed 403). `CabinWeekendEntry`'s chip
+   * and a closed `CabinWeekendModal` are both that caller.
+   *
+   * Opting out only removes the verdicts, the occupants and both banners.
+   * Everything else the row draws — and the chip's own count — is unaffected:
+   * the best guess falls back to the stored timestamp pick, exactly as it
+   * already does while the evidence is in flight.
+   */
+  evidence?: boolean
+}
+
+export function useSessionAttributionQueue({
+  evidence = true,
+}: UseSessionAttributionQueueOptions = {}): UseSessionAttributionQueueResult {
   const currentYear = useYear()
   const { fetchWithAuth } = useApiWithAuth()
   const queryClient = useQueryClient()
@@ -249,9 +269,10 @@ export function useSessionAttributionQueue(): UseSessionAttributionQueueResult {
 
   // The FOURTH query, and the only uncached one — see
   // `useSessionAttributionConflicts` for why it may never be served from
-  // cache. Like the two above it, its pending or failed state degrades the
-  // RENDER (no verdicts, no banners) rather than blocking it.
-  const { byIssueId: evidenceByIssueId } = useSessionAttributionConflicts()
+  // cache, and why a caller that draws no verdict switches it off entirely.
+  // Like the two above it, its pending or failed state degrades the RENDER
+  // (no verdicts, no banners) rather than blocking it.
+  const { byIssueId: evidenceByIssueId } = useSessionAttributionConflicts(evidence)
 
   // Only the PRIMARY query's pending state blocks rendering — see module doc.
   // aliasesQuery/sessionsQuery are deliberately excluded: their own pending

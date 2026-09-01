@@ -55,7 +55,14 @@ export function CabinWeekendModal({
   parties = [],
   onOpenFamily,
 }: CabinWeekendModalProps) {
-  const { data, confirm, isConfirming } = useSessionAttributionQueue()
+  // ON OPEN, NOT ON MOUNT. `CabinWeekendEntry` renders this modal
+  // unconditionally and toggles `isOpen`, so this function — and every hook in
+  // it — runs for the whole board session. The §12.8 evidence query is
+  // uncached and refetches on window focus, so an ungated mount would re-read
+  // every candidate weekend's board on each alt-tab back while this modal is
+  // shut and drawing nothing. Gating it here is also what makes
+  // `useSessionAttributionConflicts`'s `gcTime: 0` note true as written.
+  const { data, confirm, isConfirming } = useSessionAttributionQueue({ evidence: isOpen })
   const items = data ?? []
 
   // Household grain only, cm_id > 0 — mirrors `SessionAttributionRow`'s own
