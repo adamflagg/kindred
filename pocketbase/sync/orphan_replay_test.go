@@ -2,6 +2,8 @@ package sync
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/pocketbase/pocketbase/core"
@@ -55,6 +57,30 @@ type replayOrphanSweepConfig struct {
 	// WantRows is how many rows the fixture is expected to leave behind,
 	// checked after every run.
 	WantRows int
+	// SeedOrphan writes ONE row the fixture never writes: the POSITIVE
+	// CONTROL, and the difference between this helper proving something and
+	// proving nothing.
+	//
+	// Every other assertion here is survival-only -- "the rows are still
+	// there" -- and a sweep that never RAN passes all of them trivially.
+	// deleteOrphans (base_sync.go) returns nil without reading a row whenever
+	// SyncSuccessful is false, and there are several other early returns
+	// beside it (skipSweepForRejections, the unkeyable-records warning, a
+	// service's own pre-sweep guard). Drop the `SyncSuccessful = true` line
+	// from any WriteFixture below and, without this control, the test stays
+	// GREEN: nothing is swept, so nothing this run wrote is deleted, so the
+	// count matches. Measured on TestPersonsOrphanSweep_SurvivesReplay.
+	//
+	// The row is seeded ONCE, before run 1, and must be keyable by the
+	// sweep's own getIDFunc while absent from ProcessedKeys -- i.e. a genuine
+	// orphan. Run 1's existing row-count assertion then does double duty: a
+	// live sweep deletes it and leaves WantRows, while a sweep that never ran
+	// leaves WantRows+1 and fails. No third run and no second assertion
+	// needed.
+	//
+	// Optional only so attendees_orphan_replay_test.go (kindred#2641, outside
+	// this change) keeps compiling unchanged; every kindred#2643 wiring sets it.
+	SeedOrphan func(t replayT) error
 }
 
 // assertOrphanSweepSurvivesReplay is kindred#2626's shared structural guard:
@@ -97,17 +123,158 @@ func assertOrphanSweepSurvivesReplay(t replayT, cfg replayOrphanSweepConfig) {
 			t.Fatalf("%s: Sweep returned an error: %v", label, err)
 			return
 		}
-		if got := cfg.CountRows(t); got != cfg.WantRows {
+		// The two directions are opposite defects and must not share one
+		// message: too FEW rows is the sweep deleting what the run just wrote,
+		// too MANY is the sweep not having run at all.
+		switch got := cfg.CountRows(t); {
+		case got < cfg.WantRows:
 			t.Fatalf("%s: %d rows survived the orphan sweep, want %d -- the sweep's own "+
 				"getIDFunc built a key TrackProcessedCompositeKey never recorded, so it read "+
 				"this run's own rows as orphans and deleted them while the sweep itself "+
 				"reported no error (kindred#2626)", label, got, cfg.WantRows)
+			return
+		case got > cfg.WantRows:
+			t.Fatalf("%s: %d rows survived the orphan sweep, want %d -- the SeedOrphan control "+
+				"row is still here, so the sweep deleted nothing. Something returned before the "+
+				"delete loop: SyncSuccessful left false, a rejection tripping "+
+				"skipSweepForRejections, or a guard refusing. A sweep that never runs passes "+
+				"every survival assertion in this helper, which is why the control exists",
+				label, got, cfg.WantRows)
+			return
+		}
+	}
+
+	// The positive control goes in BEFORE run 1, so run 1's own row-count
+	// assertion is what catches a sweep that never ran. See SeedOrphan.
+	if cfg.SeedOrphan != nil {
+		before := cfg.CountRows(t)
+		if err := cfg.SeedOrphan(t); err != nil {
+			t.Fatalf("SeedOrphan: %v", err)
+			return
+		}
+		// Counted as a DELTA, not against WantRows: nothing has written the
+		// fixture yet at this point, and each service's setup leaves a
+		// different number of unrelated rows behind.
+		if got := cfg.CountRows(t); got != before+1 {
+			t.Fatalf("SeedOrphan took the row count from %d to %d, want exactly one more -- the "+
+				"control row must be stored and visible to the sweep's own filter before run 1, "+
+				"or the counts below cannot tell a live sweep from one that returned early and "+
+				"swept nothing", before, got)
 			return
 		}
 	}
 
 	runOnce(t, "run 1")
 	runOnce(t, "run 2 (replay, unchanged fixture)")
+}
+
+// declaredFullGrain returns the CollectionGrain that `service` declares for
+// `collection` in grain.go (kindred#2627), and fails unless that declaration is
+// a FULL one -- WriteKey, OrphanKey, UniqueIndex and Reduce all set -- whose two
+// key texts AGREE.
+//
+// Every kindred#2643 wiring starts here instead of restating the service's key
+// as a literal, and that is the whole reason #2627 was scheduled ahead of #2643:
+// with the declaration READ rather than copied, each write key has one copy in
+// the tree instead of two, and the two cannot drift. A service whose declaration
+// goes wrong fails HERE, naming itself, rather than being papered over by a test
+// carrying its own private copy of the old key.
+func declaredFullGrain(t *testing.T, service, collection string) CollectionGrain {
+	t.Helper()
+
+	decl, ok := GrainForService(service)
+	if !ok {
+		t.Fatalf("grain.go declares no service %q -- the replay guard reads the declared key "+
+			"rather than repeating it, so an undeclared service cannot be wired", service)
+		return CollectionGrain{}
+	}
+
+	for i := range decl.Writes {
+		g := decl.Writes[i]
+		if g.Collection != collection {
+			continue
+		}
+		if !g.HasFullGrain() {
+			t.Fatalf("grain.go declares %s/%s without a full grain (NoGrain=%q) -- every "+
+				"DeleteOrphansGuarded caller carries WriteKey, OrphanKey, UniqueIndex and Reduce",
+				service, collection, g.NoGrain)
+			return CollectionGrain{}
+		}
+		if g.WriteKey != g.OrphanKey {
+			t.Fatalf("grain.go declares %s/%s with WriteKey %q and OrphanKey %q -- the two code "+
+				"paths those texts describe disagree, which is exactly the sweep-deletes-what-it-"+
+				"just-wrote defect kindred#2626 exists to catch, declared rather than latent",
+				service, collection, g.WriteKey, g.OrphanKey)
+			return CollectionGrain{}
+		}
+		return g
+	}
+
+	t.Fatalf("grain.go's %q declaration lists no collection %q", service, collection)
+	return CollectionGrain{}
+}
+
+// assertTrackedKeysMatchGrain checks the keys a service's REAL write path just
+// put in ProcessedKeys against the SHAPE its declaration describes: the same
+// number of ":"-joined identity components, and the "|<year>" suffix
+// TrackProcessedCompositeKey appends.
+//
+// This is the half that keeps the declaration honest in the other direction.
+// declaredFullGrain reads grain.go and believes it; this reads what the code
+// actually built. Widen a write key in the service without widening its declared
+// text (or the reverse) and the component counts stop matching -- a real drift
+// between grain.go and the write path, as distinct from the disagreement between
+// two key BUILDERS that assertOrphanSweepSurvivesReplay catches.
+//
+// The limit, stated so the next reader does not over-trust it: this compares the
+// NUMBER of components, never their ORDER or meaning. grain.go declaring
+// "session_cm_id:person_cm_id:bunk_cm_id|year" while bunk_assignments.go builds
+// person:session:bunk passes here, and passes the replay too -- the two real
+// builders still agree with each other, so no row is deleted; only the declared
+// TEXT is wrong. That matters because #2627's whole value is a reader trusting
+// the declaration instead of the code. It is not mechanically checkable: the
+// declaration is field NAMES and the tracked key is VALUES, with nothing generic
+// to match them by. Reading the declaration against the write path stays a human
+// step for order; the arity is what a test can hold.
+func assertTrackedKeysMatchGrain(
+	t *testing.T, grain *CollectionGrain, processedKeys map[string]bool, year int,
+) {
+	t.Helper()
+
+	declIdentity, declYear, found := strings.Cut(grain.WriteKey, "|")
+	if !found || declYear != "year" {
+		t.Fatalf("grain.go's WriteKey %q for %s does not end in \"|year\" -- every "+
+			"DeleteOrphansGuarded caller's tracked key is year-scoped", grain.WriteKey, grain.Collection)
+		return
+	}
+	wantParts := len(strings.Split(declIdentity, ":"))
+
+	if len(processedKeys) == 0 {
+		t.Fatalf("%s: the write path tracked no key at all -- a run that tracks nothing makes "+
+			"every stored row an orphan", grain.Collection)
+		return
+	}
+
+	for key := range processedKeys {
+		identity, gotYear, found := strings.Cut(key, "|")
+		if !found {
+			t.Fatalf("%s: tracked key %q carries no \"|year\" suffix, but grain.go declares %q",
+				grain.Collection, key, grain.WriteKey)
+			return
+		}
+		if gotYear != strconv.Itoa(year) {
+			t.Fatalf("%s: tracked key %q is year-scoped to %q, want %d",
+				grain.Collection, key, gotYear, year)
+			return
+		}
+		if got := len(strings.Split(identity, ":")); got != wantParts {
+			t.Fatalf("%s: the write path tracked %q -- %d \":\"-joined component(s) -- while "+
+				"grain.go declares %q, which is %d. The declaration and the real write path have "+
+				"drifted (kindred#2627/#2643)",
+				grain.Collection, key, got, grain.WriteKey, wantParts)
+			return
+		}
+	}
 }
 
 // fakeReplayT is the only implementation of replayT that is not a real
