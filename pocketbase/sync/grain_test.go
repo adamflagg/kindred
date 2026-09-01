@@ -213,15 +213,20 @@ func guardedSweepCollections(t *testing.T) map[string]string {
 		callSites += sites
 	}
 
-	// A caller that passes the collection as a CONSTANT rather than an inline
-	// literal is invisible to the naming regex, and the floor check below would
-	// still pass on the six literals. Counting call sites separately is what
-	// makes this parser admit it missed one instead of silently under-reporting.
+	// parseGuardedSweeps reads two argument shapes and no others: an inline
+	// string literal, and a string constant declared in the SAME file. A caller
+	// passing anything else -- a constant from another file, a struct field, a
+	// computed expression -- is counted here but never named, and the floor
+	// check below would still be satisfied by the callers that could be read.
+	// Counting call sites separately is what makes this parser admit it missed
+	// one instead of silently under-reporting.
 	if callSites != len(found) {
 		t.Fatalf("guardedSweepCollections: found %d DeleteOrphansGuarded call site(s) but "+
-			"could only name the collection for %d of them (%v) -- a caller is passing a "+
-			"constant or variable instead of an inline string literal; teach the regex to "+
-			"read it rather than letting it go undeclared", callSites, len(found), found)
+			"could only name the collection for %d of them (%v) -- a caller is passing "+
+			"something this parser cannot read. An inline literal and a same-file string "+
+			"constant both resolve; a constant from another file, a struct field or an "+
+			"expression does not. Give that caller one of the two readable shapes rather "+
+			"than letting its collection go undeclared", callSites, len(found), found)
 	}
 
 	// Six callers exist as of kindred#2627: attendees, bunk_assignments,
@@ -467,8 +472,17 @@ var stringConstRe = regexp.MustCompile(`^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*"([a-z0-
 // guardedSweepNameRe reads the collection off a call site that passes it either
 // as an inline string literal (group 1) or as an identifier (group 2), which
 // parseGuardedSweeps then resolves against the file's own string constants.
+//
+// It carries the same leading "." as guardedSweepCallRe, and for the same
+// reason. Teaching group 2 to match an identifier also let the bare form match
+// BaseSyncService's own method DECLARATION in base_sync.go, whose first
+// parameter is named `collection` -- which is inert only for as long as
+// base_sync.go declares no string constant of that name. One added later would
+// put a phantom collection in the set with no call site to match it, and
+// guardedSweepCollections would fail its callSites/len(found) comparison
+// pointing at a declaration rather than a sweep.
 var guardedSweepNameRe = regexp.MustCompile(
-	`DeleteOrphansGuarded\(\s*(?:"([a-z0-9_]+)"|([A-Za-z_][A-Za-z0-9_]*))`)
+	`\.DeleteOrphansGuarded\(\s*(?:"([a-z0-9_]+)"|([A-Za-z_][A-Za-z0-9_]*))`)
 
 // guardedSweepCallRe counts call sites whatever their first argument looks like.
 // The leading "." is what excludes BaseSyncService's own method DECLARATION in
@@ -536,10 +550,14 @@ func TestIsUniqueIndexDDLRejectsANonUniqueIndexNamedUnique(t *testing.T) {
 }
 
 // TestParseGuardedSweepsCountsCallSitesItCannotName pins the gap the naming
-// regex has by construction: it reads an inline string literal only. A seventh
-// guarded caller that passes a constant would be unnamed AND uncounted, leaving
-// the floor check satisfied by the existing six and the new sweep undeclared --
-// the exact silent exemption grain.go exists to prevent.
+// regex still has by construction: it reads an inline string literal and a
+// string constant declared in the SAME file, and nothing else. A seventh
+// guarded caller passing anything outside those two shapes -- a constant from
+// another file, a struct field, a computed expression -- would be counted but
+// not named, and the floor check would otherwise be satisfied by the existing
+// six with the new sweep undeclared. That is the exact silent exemption
+// grain.go exists to prevent, which is why the count and the names are
+// compared rather than the names trusted alone.
 func TestParseGuardedSweepsCountsCallSitesItCannotName(t *testing.T) {
 	t.Parallel()
 
