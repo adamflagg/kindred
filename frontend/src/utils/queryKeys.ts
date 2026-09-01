@@ -608,6 +608,16 @@ export const queryKeys = {
    */
   sessionAttributionQueue: (year: number) => ['session-attribution-queue', year] as const,
   sessionAttributionQueuePrefix: () => ['session-attribution-queue'] as const,
+  /**
+   * The occupancy evidence annotating that queue (§12.8) — GET
+   * /api/lodging/attribution/conflicts. Its own key rather than a widened
+   * `sessionAttributionQueue`: the queue rows come from PocketBase and the
+   * evidence from FastAPI, they have opposite freshness needs (see
+   * `useSessionAttributionConflicts` for why this one is never cached), and
+   * one slot for both would give the stricter of the two to the other.
+   */
+  sessionAttributionConflicts: (year: number) => ['session-attribution-conflicts', year] as const,
+  sessionAttributionConflictsPrefix: () => ['session-attribution-conflicts'] as const,
   // Prefixes for invalidation, mirroring the weekend keys above: a registry
   // edit does not know which season's cache slot a stale reader is on, so
   // `invalidateLodgingRegistryQueries` invalidates every cached year at once
@@ -720,6 +730,12 @@ export function invalidateLodgingRegistryQueries(queryClient: {
   // stats-bar chip must both drop the row the instant it resolves, not after
   // 30 minutes.
   void queryClient.invalidateQueries({ queryKey: queryKeys.sessionAttributionQueuePrefix() })
+  // ...and the evidence annotating it. Confirming a row removes it from the
+  // queue, and placing the party changes what the OTHER open rows' candidate
+  // weekends hold — a household confirmed into FC1 is a conflict for the next
+  // row naming the same cabin. The evidence query is uncached, so this is
+  // belt-and-braces for an already-mounted observer rather than a TTL fix.
+  void queryClient.invalidateQueries({ queryKey: queryKeys.sessionAttributionConflictsPrefix() })
   // Every registry write changes what a roll-forward would carry: creating a
   // unit in the target season is precisely what moves a code from
   // units_to_create to skipped_codes. Invalidating here rather than at the

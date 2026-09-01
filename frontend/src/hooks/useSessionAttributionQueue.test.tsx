@@ -17,6 +17,7 @@ const listAmbiguousSessionIssues = vi.fn()
 const listLodgingAliases = vi.fn()
 const confirmSessionAttribution = vi.fn()
 const fetchWeekendSessions = vi.fn()
+const fetchSessionAttributionConflicts = vi.fn()
 const toastSuccess = vi.fn()
 const toastError = vi.fn()
 
@@ -28,6 +29,8 @@ vi.mock('../services/lodgingCrud', () => ({
 
 vi.mock('../services/lodgingApi', () => ({
   fetchWeekendSessions: (...args: unknown[]) => fetchWeekendSessions(...args),
+  fetchSessionAttributionConflicts: (...args: unknown[]) =>
+    fetchSessionAttributionConflicts(...args),
 }))
 
 vi.mock('./useApiWithAuth', () => ({
@@ -107,6 +110,9 @@ beforeEach(() => {
   listAmbiguousSessionIssues.mockResolvedValue([ROW_A])
   listLodgingAliases.mockResolvedValue(ALIASES)
   fetchWeekendSessions.mockResolvedValue({ year: 2026, sessions: SESSIONS })
+  // No evidence by default — every pre-§12.8 expectation in this file is the
+  // DEGRADED render, which is the state the queue must keep working in.
+  fetchSessionAttributionConflicts.mockResolvedValue({ year: 2026, rows: [] })
   confirmSessionAttribution.mockResolvedValue({ id: 'q1', confirmed_session_cm_id: 1309515 })
 })
 
@@ -281,6 +287,141 @@ describe('useSessionAttributionQueue', () => {
       await waitFor(() => {
         expect(toastError).toHaveBeenCalledWith('candidate mismatch')
       })
+    })
+  })
+
+  /**
+   * Occupancy evidence (§12.8, owner-ruled 2026-08-31 — closes no issue and
+   * none is filed). The verdicts arrive computed from
+   * `GET /api/lodging/attribution/conflicts`; what is pinned here is how the
+   * queue row USES them.
+   */
+  describe('occupancy evidence', () => {
+    // ROW_A's candidates are FC2 (1309515, the stored `suggested_session`)
+    // and FC6 (1309519). Here FC2 is taken, so the guess must move to FC6.
+    const DEMOTING_EVIDENCE = {
+      year: 2026,
+      rows: [
+        {
+          issue_id: 'q1',
+          candidates: [
+            {
+              session_cm_id: 1309515,
+              verdict: 'conflict',
+              occupants: [
+                {
+                  kind: 'placement',
+                  label: 'The Weintraub Family',
+                  leaf_name: 'Ridge I',
+                  container_name: '',
+                },
+              ],
+            },
+            { session_cm_id: 1309519, verdict: 'free', occupants: [] },
+          ],
+          conflict_in_every_candidate: false,
+          timestamp_suggested_session_cm_id: 1309515,
+          conflict_aware_suggested_session_cm_id: 1309519,
+          demotion_applied: true,
+        },
+      ],
+    }
+
+    it('moves the best guess to the conflict-aware pick — occupancy outranks the timestamp', async () => {
+      fetchSessionAttributionConflicts.mockResolvedValue(DEMOTING_EVIDENCE)
+      const { result } = renderHook(() => useSessionAttributionQueue(), {
+        wrapper: wrapper(YEAR_CONTEXT),
+      })
+      await waitFor(() => {
+        expect(result.current.items[0]?.demotion).toBeDefined()
+      })
+      const row = result.current.items[0]
+      // The STORED suggestion is FC2 and it loses; without the evidence the
+      // test above ("labels every candidate weekend") has FC2 suggested.
+      expect(row?.candidates.find((c) => c.sessionCmId === 1309515)?.isSuggested).toBe(false)
+      expect(row?.candidates.find((c) => c.sessionCmId === 1309519)?.isSuggested).toBe(true)
+    })
+
+    it('names BOTH weekends in the demotion, so the row can explain itself', async () => {
+      fetchSessionAttributionConflicts.mockResolvedValue(DEMOTING_EVIDENCE)
+      const { result } = renderHook(() => useSessionAttributionQueue(), {
+        wrapper: wrapper(YEAR_CONTEXT),
+      })
+      await waitFor(() => {
+        expect(result.current.items[0]?.demotion).toBeDefined()
+      })
+      expect(result.current.items[0]?.demotion).toEqual({
+        fromShort: 'Family Camp 2',
+        toShort: 'Family Camp 6',
+      })
+    })
+
+    it('attaches each candidate’s verdict and occupants', async () => {
+      fetchSessionAttributionConflicts.mockResolvedValue(DEMOTING_EVIDENCE)
+      const { result } = renderHook(() => useSessionAttributionQueue(), {
+        wrapper: wrapper(YEAR_CONTEXT),
+      })
+      await waitFor(() => {
+        expect(result.current.items[0]?.candidates[0]?.verdict).toBeDefined()
+      })
+      const row = result.current.items[0]
+      expect(row?.candidates.find((c) => c.sessionCmId === 1309515)?.verdict).toBe('conflict')
+      expect(row?.candidates.find((c) => c.sessionCmId === 1309515)?.occupants).toEqual([
+        {
+          kind: 'placement',
+          label: 'The Weintraub Family',
+          leafName: 'Ridge I',
+          containerName: '',
+        },
+      ])
+      expect(row?.candidates.find((c) => c.sessionCmId === 1309519)?.verdict).toBe('free')
+    })
+
+    it('marks NO best guess when every candidate conflicts, and demotes nothing', async () => {
+      fetchSessionAttributionConflicts.mockResolvedValue({
+        year: 2026,
+        rows: [
+          {
+            issue_id: 'q1',
+            candidates: [
+              { session_cm_id: 1309515, verdict: 'conflict', occupants: [] },
+              { session_cm_id: 1309519, verdict: 'conflict', occupants: [] },
+            ],
+            conflict_in_every_candidate: true,
+            // The rule leaves the stored pick alone in this case — it demotes
+            // nothing — so the two suggestions AGREE and no banner is due.
+            timestamp_suggested_session_cm_id: 1309515,
+            conflict_aware_suggested_session_cm_id: 1309515,
+            demotion_applied: false,
+          },
+        ],
+      })
+      const { result } = renderHook(() => useSessionAttributionQueue(), {
+        wrapper: wrapper(YEAR_CONTEXT),
+      })
+      await waitFor(() => {
+        expect(result.current.items[0]?.conflictInEveryCandidate).toBe(true)
+      })
+      const row = result.current.items[0]
+      expect(row?.candidates.every((c) => !c.isSuggested)).toBe(true)
+      expect(row?.demotion).toBeUndefined()
+    })
+
+    it('keeps the timestamp best guess when the evidence fetch fails — degrades, never blocks', async () => {
+      // The whole point of not gating `isLoading`/`error` on this query: the
+      // queue still tells staff which cabins are waiting.
+      fetchSessionAttributionConflicts.mockRejectedValue(new Error('boom'))
+      const { result } = renderHook(() => useSessionAttributionQueue(), {
+        wrapper: wrapper(YEAR_CONTEXT),
+      })
+      await waitFor(() => {
+        expect(result.current.data).toBeDefined()
+      })
+      expect(result.current.error).toBeNull()
+      const row = result.current.items[0]
+      expect(row?.candidates.find((c) => c.sessionCmId === 1309515)?.isSuggested).toBe(true)
+      expect(row?.candidates[0]?.verdict).toBeUndefined()
+      expect(row?.conflictInEveryCandidate).toBeUndefined()
     })
   })
 })

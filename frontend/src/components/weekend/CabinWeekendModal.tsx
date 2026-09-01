@@ -87,7 +87,19 @@ export function CabinWeekendModal({
       <div className="flex flex-col gap-4">
         <p className="text-sm leading-relaxed">
           CampMinder only stores one cabin per household or person per year, so when a party is
-          booked into more than one weekend it can&rsquo;t say which weekend the cabin is for.
+          booked into more than one weekend it can&rsquo;t say which weekend the cabin is for.{' '}
+          {/*
+           * ⭐ THE COPY #2650 WITHHELD. That PR avoided "confident"-adjacent
+           * language about the best guess, because the only signal behind it
+           * was `AttributeSession`'s `last_updated` heuristic — and the 2026
+           * snapshot shows that heuristic has no per-household resolution at
+           * all: 136 cabin values, seven distinct `last_updated` days, 83% of
+           * them on two. §12.8 supplies the board comparison that was missing,
+           * so the explanation can now say what the guess is made of instead
+           * of hedging around it.
+           */}
+          The best guess compares the cabin against what each weekend&rsquo;s board already holds
+          &mdash; a weekend where it is already taken is demoted.
         </p>
 
         {here.length === 0 ? (

@@ -19,6 +19,8 @@
 
 import type {
   AccessibilityFlagSummary,
+  AttributionCandidate,
+  AttributionOccupant,
   ComparePartyReport,
   HouseholdJourneyResponse,
   HouseholdJourneySession,
@@ -34,6 +36,8 @@ import type {
   RosterParty,
   ScenarioCompareCounts,
   ScenarioCompareResponse,
+  SessionAttributionConflictRow,
+  SessionAttributionConflictsResponse,
   ShareRequestSummary,
   WeekendRosterResponse,
   WeekendSessionListResponse,
@@ -215,6 +219,26 @@ export type BathroomValue = NonNullable<LodgingUnitSummary['bathroom']>
 
 /** Family camp enrols children (household grain); adult weekends enrol people. */
 export type PartyGrain = RosterParty['grain']
+
+/**
+ * Occupancy evidence for the cabin-weekend attribution queue, from
+ * GET /api/lodging/attribution/conflicts (§12.8 of the round-2 triage-attack
+ * plan; closes no issue and none is filed).
+ */
+export type SessionAttributionConflicts = SessionAttributionConflictsResponse
+
+/** One queue row's evidence — both suggestions, and a verdict per weekend. */
+export type SessionAttributionConflictRowData = SessionAttributionConflictRow
+
+/**
+ * ⚠️ `no_data` means NO PLACEMENTS, not no occupancy — a weekend nobody has
+ * planned can still hold write-ins. Only `conflict` ranks; `free` and
+ * `no_data` are drawn for uniformity and carry no ranking power (§12.8.4).
+ */
+export type AttributionVerdictValue = NonNullable<AttributionCandidate['verdict']>
+
+/** A placement row, or a board-written write-in — both count as occupancy. */
+export type AttributionOccupantKind = NonNullable<AttributionOccupant['kind']>
 
 // ── PocketBase record types (admin CRUD) ──────────────────────────────────────
 //

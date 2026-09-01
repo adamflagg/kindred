@@ -244,4 +244,19 @@ describe('CabinWeekendModal', () => {
       expect(screen.queryByRole('button', { name: /2000001/ })).not.toBeInTheDocument()
     })
   })
+
+  /**
+   * ⭐ THE COPY #2650 WITHHELD. That PR deliberately avoided
+   * "confident"-adjacent language here, because the only signal behind the
+   * best guess was `AttributeSession`'s `last_updated` heuristic — which the
+   * 2026 snapshot shows has no per-household resolution at all (136 cabin
+   * values, seven distinct `last_updated` days, 83% on two of them). §12.8
+   * supplies the real board comparison, so the explanation can now say what
+   * the guess is actually made of.
+   */
+  it('says the best guess is a board comparison, now that it is one', async () => {
+    renderModal()
+    await screen.findByText(/CampMinder only stores one cabin/)
+    expect(screen.getByText(/what each weekend\u2019s board already holds/)).toBeInTheDocument()
+  })
 })

@@ -13,6 +13,7 @@ import type {
   HouseholdMedical,
   LodgingWriteResult,
   ScenarioCompare,
+  SessionAttributionConflicts,
   WeekendRoster,
   WeekendSessionList,
   WeekendSummary,
@@ -449,6 +450,30 @@ export async function fetchHouseholdJourney(
   const response = await fetchWithAuth(`${API_BASE}/households/${String(householdCmId)}/journey`)
   if (!response.ok) throw await toError(response, 'Failed to load household history')
   return response.json() as Promise<HouseholdJourney>
+}
+
+/**
+ * Occupancy evidence for the open cabin-weekend attribution queue (§12.8 of
+ * the round-2 triage-attack plan, owner-ruled 2026-08-31; closes no issue and
+ * none is filed).
+ *
+ * ⛔ CLASSIFIED SERVER-SIDE, never re-derived here — the same argument
+ * `/push/preview` and `/compare` each make. The answer needs the live board's
+ * placements AND its write-ins across every candidate weekend, which a client
+ * holding only the queue rows cannot assemble, and a client that tried would
+ * be a second implementation of availability (`is_family_available` /
+ * `free_family_spots`, owner rulings 2026-08-23 and 2026-08-29).
+ *
+ * `bunking.manage`-gated like the two report endpoints: the payload names
+ * households and the cabins they are in.
+ */
+export async function fetchSessionAttributionConflicts(
+  fetchWithAuth: FetchWithAuth,
+  year: number
+): Promise<SessionAttributionConflicts> {
+  const response = await fetchWithAuth(`${API_BASE}/attribution/conflicts?year=${String(year)}`)
+  if (!response.ok) throw await toError(response, 'Failed to load cabin occupancy evidence')
+  return response.json() as Promise<SessionAttributionConflicts>
 }
 
 /**
