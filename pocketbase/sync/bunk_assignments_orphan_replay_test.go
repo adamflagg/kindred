@@ -53,10 +53,13 @@ func TestBunkAssignmentsOrphanSweep_SurvivesReplay(t *testing.T) {
 	const bunkBCMID = 6402
 	filter := fmt.Sprintf("year = %d", year)
 
-	saveRecord(t, app, "persons", map[string]any{"cm_id": personCMID, "year": year})
+	personPBID := saveRecord(t, app, "persons", map[string]any{"cm_id": personCMID, "year": year})
 	sessionPBID := saveRecord(t, app, "camp_sessions", map[string]any{"cm_id": sessionCMID, "year": year})
 	bunkAPBID := saveRecord(t, app, "bunks", map[string]any{"cm_id": bunkACMID, "name": "Cabin 1", "year": year})
 	bunkBPBID := saveRecord(t, app, "bunks", map[string]any{"cm_id": bunkBCMID, "name": "Cabin 2", "year": year})
+	// A third bunk, used only by the SeedOrphan control below.
+	orphanBunkPBID := saveRecord(t, app, "bunks",
+		map[string]any{"cm_id": 6405, "name": "Cabin 5", "year": year})
 
 	// loadMappings derives validPersonCMIDs and personEnrollments from attendees,
 	// and bunkPlanBunkToSession from bunk_plans -- so both are seeded rather than
@@ -89,6 +92,17 @@ func TestBunkAssignmentsOrphanSweep_SurvivesReplay(t *testing.T) {
 	var s *BunkAssignmentsSync
 
 	assertOrphanSweepSurvivesReplay(t, replayOrphanSweepConfig{
+		// Positive control: an assignment on a THIRD bunk that processAssignment
+		// is never called for. All three relations resolve to non-zero cm_ids,
+		// so BuildRecordCMIDMappings keys it (the getIDFunc's own precondition)
+		// and nothing tracks that key -- a LIVE sweep must delete it. Without
+		// this the test passes with the sweep switched off; see SeedOrphan.
+		SeedOrphan: func(_ replayT) error {
+			saveRecord(t, app, "bunk_assignments", map[string]any{
+				"cm_id": 740003, "person": personPBID, "session": sessionPBID,
+				"bunk": orphanBunkPBID, "year": year})
+			return nil
+		},
 		WriteFixture: func(t replayT) error {
 			// A fresh service per run is what Sync()'s own reset block amounts
 			// to -- and loadMappings rebuilds its eight maps from scratch for

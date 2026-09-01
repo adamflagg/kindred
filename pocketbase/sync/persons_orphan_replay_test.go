@@ -87,6 +87,15 @@ func TestPersonsOrphanSweep_SurvivesReplay(t *testing.T) {
 	var s *PersonsSync
 
 	assertOrphanSweepSurvivesReplay(t, replayOrphanSweepConfig{
+		// Positive control: one person the fixture never processes. cm_id is
+		// non-zero so the sweep's getIDFunc keys it, and nothing tracks that
+		// key, so a LIVE sweep must delete it. Without this the whole test
+		// passes with the sweep switched off -- see SeedOrphan.
+		SeedOrphan: func(_ replayT) error {
+			saveRecord(t, app, "persons", map[string]any{
+				"cm_id": 9200003, "first_name": "Noah", "last_name": "Johnson", "year": year})
+			return nil
+		},
 		WriteFixture: func(t replayT) error {
 			// A fresh service per run is what Sync()'s own reset block amounts
 			// to: cleared ProcessedKeys, zeroed Stats, and an existing-records

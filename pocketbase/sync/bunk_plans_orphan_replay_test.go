@@ -91,10 +91,13 @@ func TestBunkPlansOrphanSweep_SurvivesReplay(t *testing.T) {
 	const bunkBCMID = 6302
 	filter := fmt.Sprintf("year = %d", year)
 
-	saveRecord(t, app, "camp_sessions", map[string]any{
+	sessionPBID := saveRecord(t, app, "camp_sessions", map[string]any{
 		"cm_id": sessionCMID, "name": "Session 1", "session_type": sessionTypeMain, "year": year})
 	saveRecord(t, app, "bunks", map[string]any{"cm_id": bunkACMID, "name": "Cabin 1", "year": year})
 	saveRecord(t, app, "bunks", map[string]any{"cm_id": bunkBCMID, "name": "Cabin 2", "year": year})
+	// A third bunk, used only by the SeedOrphan control below.
+	orphanBunkPBID := saveRecord(t, app, "bunks",
+		map[string]any{"cm_id": 6303, "name": "Cabin 3", "year": year})
 
 	// Two bunks under one plan and one session, not a single row: the write key
 	// carries three components, and a key that dropped the bunk would leave one
@@ -109,6 +112,17 @@ func TestBunkPlansOrphanSweep_SurvivesReplay(t *testing.T) {
 	var s *BunkPlansSync
 
 	assertOrphanSweepSurvivesReplay(t, replayOrphanSweepConfig{
+		// Positive control: a plan row on a third bunk that createBunkPlan is
+		// never called for. Its cm_id and both relations resolve, so the
+		// sweep's getIDFunc keys it, and nothing tracks that key -- a LIVE
+		// sweep must delete it. Without this the test passes with the sweep
+		// switched off; see SeedOrphan.
+		SeedOrphan: func(_ replayT) error {
+			saveRecord(t, app, "bunk_plans", map[string]any{
+				"cm_id": planCMID, "bunk": orphanBunkPBID, "session": sessionPBID,
+				"name": "Summer Plan", "code": "SP", "year": year})
+			return nil
+		},
 		WriteFixture: func(t replayT) error {
 			// A fresh service per run is what Sync()'s own reset block amounts
 			// to. loadMappings is then the REAL rebuild of s.existingPlans from

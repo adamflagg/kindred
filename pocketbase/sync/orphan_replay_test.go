@@ -57,6 +57,30 @@ type replayOrphanSweepConfig struct {
 	// WantRows is how many rows the fixture is expected to leave behind,
 	// checked after every run.
 	WantRows int
+	// SeedOrphan writes ONE row the fixture never writes: the POSITIVE
+	// CONTROL, and the difference between this helper proving something and
+	// proving nothing.
+	//
+	// Every other assertion here is survival-only -- "the rows are still
+	// there" -- and a sweep that never RAN passes all of them trivially.
+	// deleteOrphans (base_sync.go) returns nil without reading a row whenever
+	// SyncSuccessful is false, and there are several other early returns
+	// beside it (skipSweepForRejections, the unkeyable-records warning, a
+	// service's own pre-sweep guard). Drop the `SyncSuccessful = true` line
+	// from any WriteFixture below and, without this control, the test stays
+	// GREEN: nothing is swept, so nothing this run wrote is deleted, so the
+	// count matches. Measured on TestPersonsOrphanSweep_SurvivesReplay.
+	//
+	// The row is seeded ONCE, before run 1, and must be keyable by the
+	// sweep's own getIDFunc while absent from ProcessedKeys -- i.e. a genuine
+	// orphan. Run 1's existing row-count assertion then does double duty: a
+	// live sweep deletes it and leaves WantRows, while a sweep that never ran
+	// leaves WantRows+1 and fails. No third run and no second assertion
+	// needed.
+	//
+	// Optional only so attendees_orphan_replay_test.go (kindred#2641, outside
+	// this change) keeps compiling unchanged; every kindred#2643 wiring sets it.
+	SeedOrphan func(t replayT) error
 }
 
 // assertOrphanSweepSurvivesReplay is kindred#2626's shared structural guard:
@@ -99,11 +123,43 @@ func assertOrphanSweepSurvivesReplay(t replayT, cfg replayOrphanSweepConfig) {
 			t.Fatalf("%s: Sweep returned an error: %v", label, err)
 			return
 		}
-		if got := cfg.CountRows(t); got != cfg.WantRows {
+		// The two directions are opposite defects and must not share one
+		// message: too FEW rows is the sweep deleting what the run just wrote,
+		// too MANY is the sweep not having run at all.
+		switch got := cfg.CountRows(t); {
+		case got < cfg.WantRows:
 			t.Fatalf("%s: %d rows survived the orphan sweep, want %d -- the sweep's own "+
 				"getIDFunc built a key TrackProcessedCompositeKey never recorded, so it read "+
 				"this run's own rows as orphans and deleted them while the sweep itself "+
 				"reported no error (kindred#2626)", label, got, cfg.WantRows)
+			return
+		case got > cfg.WantRows:
+			t.Fatalf("%s: %d rows survived the orphan sweep, want %d -- the SeedOrphan control "+
+				"row is still here, so the sweep deleted nothing. Something returned before the "+
+				"delete loop: SyncSuccessful left false, a rejection tripping "+
+				"skipSweepForRejections, or a guard refusing. A sweep that never runs passes "+
+				"every survival assertion in this helper, which is why the control exists",
+				label, got, cfg.WantRows)
+			return
+		}
+	}
+
+	// The positive control goes in BEFORE run 1, so run 1's own row-count
+	// assertion is what catches a sweep that never ran. See SeedOrphan.
+	if cfg.SeedOrphan != nil {
+		before := cfg.CountRows(t)
+		if err := cfg.SeedOrphan(t); err != nil {
+			t.Fatalf("SeedOrphan: %v", err)
+			return
+		}
+		// Counted as a DELTA, not against WantRows: nothing has written the
+		// fixture yet at this point, and each service's setup leaves a
+		// different number of unrelated rows behind.
+		if got := cfg.CountRows(t); got != before+1 {
+			t.Fatalf("SeedOrphan took the row count from %d to %d, want exactly one more -- the "+
+				"control row must be stored and visible to the sweep's own filter before run 1, "+
+				"or the counts below cannot tell a live sweep from one that returned early and "+
+				"swept nothing", before, got)
 			return
 		}
 	}
@@ -169,6 +225,17 @@ func declaredFullGrain(t *testing.T, service, collection string) CollectionGrain
 // text (or the reverse) and the component counts stop matching -- a real drift
 // between grain.go and the write path, as distinct from the disagreement between
 // two key BUILDERS that assertOrphanSweepSurvivesReplay catches.
+//
+// The limit, stated so the next reader does not over-trust it: this compares the
+// NUMBER of components, never their ORDER or meaning. grain.go declaring
+// "session_cm_id:person_cm_id:bunk_cm_id|year" while bunk_assignments.go builds
+// person:session:bunk passes here, and passes the replay too -- the two real
+// builders still agree with each other, so no row is deleted; only the declared
+// TEXT is wrong. That matters because #2627's whole value is a reader trusting
+// the declaration instead of the code. It is not mechanically checkable: the
+// declaration is field NAMES and the tracked key is VALUES, with nothing generic
+// to match them by. Reading the declaration against the write path stays a human
+// step for order; the arity is what a test can hold.
 func assertTrackedKeysMatchGrain(
 	t *testing.T, grain *CollectionGrain, processedKeys map[string]bool, year int,
 ) {

@@ -107,6 +107,17 @@ func TestPersonCustomFieldValuesOrphanSweep_SurvivesReplay(t *testing.T) {
 	var s *PersonCustomFieldValuesSync
 
 	assertOrphanSweepSurvivesReplay(t, replayOrphanSweepConfig{
+		// Positive control: a value for a THIRD field definition this run never
+		// processes, on an owner that IS in sweptOwners -- so the sweep's
+		// getIDFunc keys it rather than skipping it, and nothing tracks that
+		// key. A LIVE sweep must delete it. Without this the test passes with
+		// the sweep switched off; see SeedOrphan.
+		SeedOrphan: func(_ replayT) error {
+			saveRecord(t, app, "person_custom_values", map[string]any{
+				"person": testPersonPBID, "field_definition": "pb_field_999",
+				"value": "swept", "year": year})
+			return nil
+		},
 		WriteFixture: func(t replayT) error {
 			// A fresh service per run is what Sync()'s own reset amounts to.
 			s = &PersonCustomFieldValuesSync{BaseSyncService: BaseSyncService{
