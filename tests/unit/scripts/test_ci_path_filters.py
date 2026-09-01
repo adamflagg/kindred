@@ -415,3 +415,100 @@ def test_node_version_pin_can_trigger_the_jobs_that_read_it():
     """
     for job in ("go-lint", "frontend-lint"):
         assert _matches(".nvmrc", _patterns_gating(job)), f"a .nvmrc bump cannot trigger {job}"
+
+
+# --- shell lint (kindred#2663 Gap C) ---------------------------------------
+#
+# The shellcheck invocation was written out three times -- ci.yml, .lefthook.yml
+# and scripts/pre-push-verify.sh -- as a hand-maintained `find` over four fixed
+# roots. Three copies had already drifted into two different commands, and the
+# root list did not match what the repo actually holds: four scripts under
+# frontend/ and tests/shell/ could not trigger the job that linted them, and
+# .claude/hooks/worktree-guard.sh was linted by nothing at all.
+#
+# Both directions matter and only one of them was ever asserted. `lint_set is a
+# subset of the gate` passes green over a widened gate that lints a stale file
+# list -- which would report the step as `success` on a file it never opened,
+# strictly worse than today's uninformative `skipped`.
+
+
+def _shellcheck_script() -> Path:
+    return REPO_ROOT / "scripts/ci/shellcheck-all.sh"
+
+
+def _shellcheck_lint_set() -> list[str]:
+    """The files scripts/ci/shellcheck-all.sh lints, derived by PARSING it.
+
+    Not by running it. Once the command is `git ls-files '*.sh'`, asserting the
+    result of running it against `git ls-files '*.sh'` is circular and passes
+    however the script is broken.
+    """
+    text = _shellcheck_script().read_text()
+    m = re.search(r"git ls-files -z (?P<globs>.+?)\)", text)
+    assert m, f"could not read the file selection out of the script:\n{text}"
+    globs = [g.strip("'\"") for g in m.group("globs").split()]
+    files = _tracked(*globs)
+    assert len(files) >= 40, f"parsed lint set collapsed to {len(files)} files: {globs}"
+    return files
+
+
+def test_shellcheck_gate_covers_every_file_it_lints():
+    """Every file the shellcheck step opens must be able to trigger that step.
+
+    Asserted against the STEP's gate, which is not the job's: the step carries
+    `shell || goLint || docker` while seven sibling steps carry `goLint` alone.
+    """
+    patterns = _patterns_gating_step("go-lint", "Shell script linting (shellcheck)")
+    uncovered = [f for f in _shellcheck_lint_set() if not _matches(f, patterns)]
+    assert not uncovered, f"{len(uncovered)} linted shell scripts cannot trigger the step: {uncovered}"
+
+
+def test_every_tracked_shell_script_is_linted():
+    """The other direction: a tracked *.sh the command never opens is unlinted.
+
+    `.claude/hooks/worktree-guard.sh` was exactly that -- it lives outside the
+    four `find` roots, and test-worktree-guard.sh pins its behaviour while
+    nothing checked its syntax.
+    """
+    linted = set(_shellcheck_lint_set())
+    unlinted = [f for f in _tracked("*.sh") if f not in linted]
+    assert not unlinted, f"{len(unlinted)} tracked shell scripts are linted by nothing: {unlinted}"
+
+
+def test_dotfile_directories_are_matched_explicitly_not_by_luck():
+    """`**/*.sh` matching a dotted directory depends on the action's glob options.
+
+    dorny/paths-filter runs picomatch, whose `dot` option decides whether `*`
+    crosses a leading dot. It is set today at the pinned SHA, but an action bump
+    can change it -- and Python's `full_match` IS dot-permissive, so this test
+    would keep reporting `.claude/hooks/worktree-guard.sh` as covered while CI
+    silently stopped firing on it. Listing the dotted roots explicitly makes the
+    coverage independent of that option.
+    """
+    patterns = _filters()["shell"]
+    dotted = {f.split("/")[0] for f in _tracked("*.sh") if f.startswith(".")}
+    for root in sorted(dotted):
+        assert any(p.startswith(f"{root}/") for p in patterns), (
+            f"`shell` covers {root}/ only via a bare `**` -- list {root}/**/*.sh explicitly"
+        )
+
+
+def test_every_shellcheck_call_site_runs_the_same_command():
+    """CI, lefthook and pre-push-verify must run ONE command, not three copies.
+
+    They had drifted: ci.yml's `find` matched `-name 'pre-*'` and `-name 'post-*'`
+    as well as `*.sh`, and the other two did not. A local pre-push that lints a
+    different set than CI is a pre-push that cannot tell you CI will pass.
+    """
+    script = "scripts/ci/shellcheck-all.sh"
+    assert _shellcheck_script().exists(), f"{script} does not exist"
+
+    ci_run = next(
+        st["run"] for st in _ci()["jobs"]["go-lint"]["steps"] if st.get("name", "").startswith("Shell script linting")
+    )
+    lefthook = (REPO_ROOT / ".lefthook.yml").read_text()
+    prepush = (REPO_ROOT / "scripts/pre-push-verify.sh").read_text()
+
+    for name, text in (("ci.yml", ci_run), (".lefthook.yml", lefthook), ("pre-push-verify.sh", prepush)):
+        assert script in text, f"{name} does not delegate to {script}"
+        assert "-maxdepth" not in text or name != "ci.yml", f"{name} still hand-rolls a find"

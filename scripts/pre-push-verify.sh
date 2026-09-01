@@ -351,7 +351,7 @@ fi
 if $HAS_SHELL; then
     header "Shell"
     if command -v shellcheck &>/dev/null; then
-        run_check "shellcheck" bash -c "find scripts/ docker/ frontend/ tests/shell/ -maxdepth 3 -name '*.sh' 2>/dev/null | xargs shellcheck --severity=warning"
+        run_check "shellcheck" bash scripts/ci/shellcheck-all.sh
     else
         skip "shellcheck (not installed)"
     fi
