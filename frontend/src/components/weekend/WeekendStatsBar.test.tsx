@@ -94,9 +94,7 @@ describe('WeekendStatsBar', () => {
     // wanted rather than reworded.
     //
     // This only pins what it can: the rendered bar carries no "write-ins"
-    // text, and `units_staff_housing`'s chip beside it -- a different fact
-    // with a different remedy, which is why the two were split in the first
-    // place -- is untouched. It does NOT prove restoring the deleted chip
+    // text. It does NOT prove restoring the deleted chip
     // code would fail here: this fixture no longer sets `units_reserved`, so
     // a reintroduced `counts.units_reserved ?? 0` would read `0` and stay
     // silent. The real guard against that regression is the generated type:
@@ -113,37 +111,29 @@ describe('WeekendStatsBar', () => {
       />
     )
     expect(screen.queryByText(/write-ins/)).not.toBeInTheDocument()
-    expect(screen.getByLabelText('3 staff cabins')).toBeInTheDocument()
   })
 
-  it('puts the spaces and staff notes on tooltips keyboard and touch can reach', () => {
-    // kindred#2177: both were bare `title` attributes on a `<span>`.
-    render(
-      <WeekendStatsBar
-        counts={counts({ units_staff_housing: 21 })}
-        spotsNeeded={223}
-        spacesUnmeasured={0}
-      />
-    )
-    // Each figure names its own unit. Making these tab stops turned two
-    // bare numerals into two buttons called "79" and "21" — the word that
-    // says what is counted lives in a sibling `<span>` the accessible name
-    // cannot see. The visible text is kept INSIDE each label so the name
-    // still contains it (WCAG 2.5.3).
+  it('puts the spaces note on a tooltip keyboard and touch can reach', () => {
+    // kindred#2177: it was a bare `title` attribute on a `<span>`.
+    render(<WeekendStatsBar counts={counts()} spotsNeeded={223} spacesUnmeasured={0} />)
+    // The figure names its own unit. Making it a tab stop turned a bare
+    // numeral into a button called "79" — the word that says what is
+    // counted lives in a sibling `<span>` the accessible name cannot see.
+    // The visible text is kept INSIDE the label so the name still contains
+    // it (WCAG 2.5.3).
     const spaces = screen.getByRole('button', { name: '79 spaces' })
     expect(spaces).not.toHaveAttribute('title')
     fireEvent.focus(spaces)
     expect(screen.getByRole('tooltip')).toHaveTextContent(/Merging or splitting cabins/i)
-
-    const staffCabins = screen.getByRole('button', { name: '21 staff cabins' })
-    fireEvent.blur(spaces)
-    fireEvent.focus(staffCabins)
-    expect(screen.getByRole('tooltip')).toHaveTextContent(/never part of the weekend/i)
   })
 
-  it('reports staff housing separately, because it was never inventory', () => {
-    // 21 cabins reading as write-ins would say staff took them out of service
-    // this weekend. They were never in service.
+  it('draws no staff-housing count, however many staff cabins there are', () => {
+    // Struck 2026-09-01. The fact was true and rarely acted on, and the bar
+    // is where the weekend's row budget is spent: placed / spaces / beds, the
+    // needs-a-cabin warning, the attribution chip and the right-aligned
+    // Compare and Push write-ins controls were wrapping to two lines. Staff
+    // housing still shows where it is worked with — the admin unit list, the
+    // board's legend and the unit form's allocation field.
     render(
       <WeekendStatsBar
         counts={counts({ units_staff_housing: 21 })}
@@ -151,12 +141,8 @@ describe('WeekendStatsBar', () => {
         spacesUnmeasured={0}
       />
     )
-    expect(screen.getByText('· 21 staff')).toBeInTheDocument()
-  })
-
-  it('says nothing about staff housing when there is none', () => {
-    render(<WeekendStatsBar counts={counts()} spotsNeeded={223} spacesUnmeasured={0} />)
     expect(screen.queryByText(/staff/)).not.toBeInTheDocument()
+    expect(screen.queryByText('21')).not.toBeInTheDocument()
   })
 
   it('highlights parties still needing a cabin', () => {
