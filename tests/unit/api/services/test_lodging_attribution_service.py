@@ -14,12 +14,13 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from api.services.lodging_attribution_service import LodgingAttributionService
 from api.services.lodging_repository import LodgingRepository
+from api.services.lodging_roster_service import _resolve_family_availability
 
 YEAR = 2026
 
@@ -502,3 +503,45 @@ class TestReads:
         assert repo.fetch_draft_assignments.await_count == 0
         assert repo.fetch_draft_write_ins.await_count == 0
         assert any(call[0] == "assignments" for call in repo.calls), "the live board really was read"
+
+
+class TestTheCapacityMapIsTheRostersOwn:
+    """`_capacity_by_code` is a FUNCTION rather than a comprehension on purpose.
+
+    Its own docstring says why: *"`build_roster` and `build_summary._entry` are
+    the two orchestrators kindred#2503 exists to keep in step, and this map
+    feeds the write-in cover walk AND the availability resolution on both.
+    Copy-pasted, the symmetry is something a reviewer has to notice; extracted,
+    it is structural."* This service is the THIRD orchestrator to build that
+    map, so it goes through the same helper.
+
+    The one thing the helper does that a bare comprehension does not is drop a
+    BLANK-coded unit. `""` is the key `parent_code == ""` already uses for "no
+    parent", so a blank-coded unit under that key collides with every other
+    blank-coded unit and hands `_resolve_family_availability` a real capacity
+    where the roster hands it None -- defeating the blank-code backstop that
+    resolver's docstring spends a paragraph on. Not live today (no production
+    unit has a blank code) and not reachable through this endpoint's own
+    payload, since a raw value only ever resolves to registry codes. It is
+    pinned anyway, because the next reader of this map has no way to know that.
+    """
+
+    @pytest.mark.asyncio
+    async def test_a_blank_coded_unit_never_reaches_the_resolvers_under_the_empty_key(self) -> None:
+        seen: dict[str, Any] = {}
+
+        def _spy(units: Any, capacity_by_code: Any, write_in_rows: Any) -> Any:
+            seen["caps"] = dict(capacity_by_code)
+            return _resolve_family_availability(units, capacity_by_code, write_in_rows)
+
+        blank = _unit("u_blank", "", "Unmapped Cabin")
+        repo = _repo(issues=[_issue("Maple Upper 1")])
+        repo.fetch_units = AsyncMock(return_value=[*UNITS, blank])
+
+        with patch("api.services.lodging_attribution_service._resolve_family_availability", _spy):
+            await LodgingAttributionService(repo).build_conflicts(YEAR)
+
+        assert "" not in seen["caps"], "a blank-coded unit collided into the 'no parent' key"
+        # Positive control: without it, a map that reached the resolver EMPTY
+        # would satisfy the assertion above just as loudly.
+        assert seen["caps"][MAPLE.code] == MAPLE.sleeps

@@ -68,7 +68,7 @@ from api.services.lodging_roster_service import (
     SUMMARY_ENTRY_CONCURRENCY,
     LodgingRosterService,
     _BathroomIndex,
-    _effective_sleeps,
+    _capacity_by_code,
     _household_display_name,
     _i,
     _resolve_family_availability,
@@ -254,7 +254,16 @@ class LodgingAttributionService:
         """
         summaries = self.roster._build_units(units, availability, write_ins, merges)
         index = _BathroomIndex.build(summaries)
-        capacity_by_code = {unit.code: _effective_sleeps(unit, index) for unit in summaries}
+        # THROUGH `_capacity_by_code`, NEVER A COMPREHENSION. That helper is a
+        # function rather than an inline dict precisely so the orchestrators
+        # cannot drift on the map that feeds BOTH write-in resolvers -- this is
+        # the third orchestrator to build it. The one thing it does that a bare
+        # comprehension does not is drop a BLANK-coded unit: "" is the key
+        # `parent_code == ""` already means "no parent" by, so a blank-coded
+        # unit under it collides with every other one and hands
+        # `_resolve_family_availability` a real capacity where the roster hands
+        # it None -- defeating that resolver's blank-code backstop.
+        capacity_by_code = _capacity_by_code(summaries, index)
         write_in_rows = write_in_rows_by_unit(write_ins)
         _resolve_write_in_covers(summaries, write_in_rows, capacity_by_code)
         _resolve_family_availability(summaries, capacity_by_code, write_in_rows)
