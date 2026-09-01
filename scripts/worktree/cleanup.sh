@@ -19,6 +19,21 @@ MAIN_REPO="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
 source "$MAIN_REPO/scripts/colors.sh"
 WORKTREES_DIR="$MAIN_REPO/.worktrees"
 
+# Resolve the branch a worktree is actually checked out on.
+#
+# NEVER derive this from the directory name. The two agree only while nobody
+# renames anything: cleaning up after kindred#2666, `.worktrees/goconst-campminder`
+# was on `feature/goconst-2665`, so the old `branch="feature/$name"` guess made
+# --all-merged skip a merged worktree, and made the single-name form delete the
+# *guessed* branch (an empty leftover from new.sh) while leaving the real one.
+# Three worktrees and four branches had to be removed by hand.
+#
+# Prints nothing for a detached HEAD, which callers treat as "no branch".
+resolve_branch() {
+    local dir="$1"
+    git -C "$dir" symbolic-ref --quiet --short HEAD 2>/dev/null || true
+}
+
 # Check if a PR for this branch was merged (the only safe heuristic)
 is_pr_merged() {
     local branch="$1"
@@ -38,9 +53,14 @@ if [ "$1" = "--all-merged" ]; then
     for dir in "$WORKTREES_DIR"/*/; do
         [ -d "$dir" ] || continue
         name=$(basename "$dir")
-        branch="feature/$name"
+        branch=$(resolve_branch "$dir")
 
-        # Only clean if a merged PR exists for this branch
+        if [ -z "$branch" ]; then
+            echo -e "${YELLOW}Skipping $name: detached HEAD, no branch to check${NC}"
+            continue
+        fi
+
+        # Only clean if a merged PR exists for the branch it is REALLY on
         if is_pr_merged "$branch"; then
             echo -e "${GREEN}Cleaning up merged worktree: $name${NC}"
             "$0" "$name"
@@ -83,15 +103,23 @@ if [ -z "$FEATURE_NAME" ]; then
 fi
 
 WORKTREE_DIR="$WORKTREES_DIR/$FEATURE_NAME"
-BRANCH_NAME="feature/$FEATURE_NAME"
 
 if [ ! -d "$WORKTREE_DIR" ]; then
     echo -e "${RED}Worktree not found: $WORKTREE_DIR${NC}"
     exit 1
 fi
 
+# The branch this worktree is on, which is not necessarily feature/$FEATURE_NAME.
+BRANCH_NAME=$(resolve_branch "$WORKTREE_DIR")
+if [ -z "$BRANCH_NAME" ]; then
+    echo -e "${YELLOW}$FEATURE_NAME is on a detached HEAD; removing the worktree only${NC}"
+    KEEP_BRANCH=true
+elif [ "$BRANCH_NAME" != "feature/$FEATURE_NAME" ]; then
+    echo -e "${BLUE}Directory $FEATURE_NAME is on branch $BRANCH_NAME${NC}"
+fi
+
 # Only allow cleanup if PR is merged (protects work-in-progress)
-if ! is_pr_merged "$BRANCH_NAME"; then
+if [ -n "$BRANCH_NAME" ] && ! is_pr_merged "$BRANCH_NAME"; then
     echo -e "${RED}Cannot clean up: PR for $BRANCH_NAME is not merged${NC}"
     echo -e "Push your branch and merge the PR first, or use --force to override"
     [ "$2" = "--force" ] || exit 1
