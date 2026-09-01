@@ -1,0 +1,61 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "enabledManagers": ["custom.regex", "nvm", "pyenv"],
+  "dependencyDashboard": true,
+  "dependencyDashboardTitle": "Renovate Dependency Dashboard",
+  "dependencyDashboardLabels": ["no-triage", "dependencies"],
+  "timezone": "America/New_York",
+  "prConcurrentLimit": 5,
+  "semanticCommits": "enabled",
+  "semanticCommitType": "chore",
+  "semanticCommitScope": "ci",
+  "labels": ["dependencies", "ci"],
+  "platformAutomerge": true,
+  "packageRules": [
+    {
+      "description": "Linters break CI by design when a release adds checks. Own PR, never automerge.",
+      "matchDepNames": ["golangci/golangci-lint", "rhysd/actionlint"],
+      "automerge": false,
+      "addLabels": ["needs-review"]
+    },
+    {
+      "description": "Inert CI tooling. Grouped, automerge on green at minor/patch.",
+      "matchDepNames": ["aquasecurity/trivy", "hadolint/hadolint"],
+      "groupName": "ci tooling",
+      "matchUpdateTypes": ["minor", "patch"],
+      "automerge": true
+    },
+    {
+      "description": "Runtime majors are decisions, not chores. Dashboard checkbox only.",
+      "matchManagers": ["nvm", "pyenv"],
+      "dependencyDashboardApproval": true,
+      "automerge": false
+    },
+    {
+      "description": "Healthcheck module Go directive. Dashboard checkbox only.",
+      "matchDepNames": ["go"],
+      "dependencyDashboardApproval": true,
+      "automerge": false
+    }
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Tool versions marked with `# renovate:` in workflow files",
+      "managerFilePatterns": ["/^\\.github/workflows/[^/]+\\.ya?ml$/"],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>[a-z-]+?) depName=(?<depName>.+?)(?: versioning=(?<versioning>[a-z-]+?))?[ \\t]*\\n[ \\t]*version:[ \\t]*[\"']?(?<currentValue>[^\"'\\s]+)",
+        "# renovate: datasource=(?<datasource>[a-z-]+?) depName=(?<depName>.+?)(?: versioning=(?<versioning>[a-z-]+?))?[ \\t]*\\n[ \\t]*[A-Z][A-Z0-9_]*_VERSION=[\"']?(?<currentValue>[^\"'\\s]+)"
+      ]
+    },
+    {
+      "customType": "regex",
+      "description": "Go directive in the standalone healthcheck module",
+      "managerFilePatterns": ["/^docker/healthcheck/go\\.mod$/"],
+      "matchStrings": ["\\ngo (?<currentValue>\\d+\\.\\d+(\\.\\d+)?)"],
+      "depNameTemplate": "go",
+      "datasourceTemplate": "golang-version"
+    }
+  ]
+}

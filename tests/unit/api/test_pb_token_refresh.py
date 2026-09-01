@@ -74,8 +74,15 @@ class TestStartPbTokenRefresh:
         with patch("api.dependencies.authenticate_pb", side_effect=flaky_auth):
             task = await start_pb_token_refresh(interval_seconds=0.05)
 
-            # Wait for at least 2 cycles (first fails, second succeeds)
-            await asyncio.sleep(0.2)
+            # Poll for the second cycle rather than sleeping a fixed wall-clock
+            # budget. A flat `asyncio.sleep(0.2)` assumed four 0.05s cycles fit
+            # in 0.2s of real time; under the full suite's 6 xdist workers the
+            # loop gets starved and only one cycle lands, failing `1 >= 2`.
+            # The condition is what matters, so wait for it with a ceiling.
+            loop = asyncio.get_running_loop()
+            deadline = loop.time() + 5.0
+            while call_count < 2 and loop.time() < deadline:
+                await asyncio.sleep(0.01)
 
             task.cancel()
             with pytest.raises(asyncio.CancelledError):

@@ -8,6 +8,8 @@ on:
     branches: [main]
     paths:
       - '.github/dependabot.yml'
+      - 'renovate.json'
+      - '.github/workflows/setup-labels.yml'
 
 permissions:
   issues: write
@@ -30,6 +32,7 @@ jobs:
               { name: 'ci', description: 'CI/CD and GitHub Actions', color: '5319e7' },
               { name: 'security', description: 'Security updates', color: 'd73a4a' },
               { name: 'needs-review', description: 'Requires manual review before merge', color: 'fbca04' },
+              { name: 'no-triage', description: 'Permanent tracking issue — excluded from triage sweeps', color: 'ededed' },
             ];
 
             for (const label of labels) {
