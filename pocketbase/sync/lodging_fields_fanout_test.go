@@ -356,6 +356,16 @@ func setCallColumns(t *testing.T, funcName string) []string {
 // upsertRegistrations' own two literal Set calls (household, year) plus
 // whatever else might someday be added there directly, bypassing the shared
 // helper -- that is what setCallColumns still checks below.
+//
+// The mirror cross-check at the bottom is NOT tautological either, though it
+// is close enough to be worth saying why it stays. Both sides now derive from
+// registrationColumnValues, so a column can only appear on one side if
+// registrationColumns DROPS it -- and its type switch does exactly that,
+// silently, for any value that is neither a string nor a bool. So the two
+// loops are what catches a future `{"some_column", 3}` joining the fused
+// list: registrationColumns would omit it, the fan-out guard would stop
+// seeing the column, and this fails instead. Do not delete them as duplicate
+// bookkeeping.
 func TestRegistrationColumnsCoverEveryWrittenColumn(t *testing.T) {
 	t.Parallel()
 
@@ -371,7 +381,16 @@ func TestRegistrationColumnsCoverEveryWrittenColumn(t *testing.T) {
 	if len(written) == 0 {
 		t.Fatal("registrationColumnValues returned nothing; this guard would pass vacuously")
 	}
-	for _, column := range setCallColumns(t, "upsertRegistrations") {
+	// Read straight from source, because this is the one writer still naming
+	// its columns by hand. The emptiness check is the point: if a refactor
+	// moves household/year into a helper, this loop would iterate zero times
+	// and go green while checking nothing -- the same vacuous pass the
+	// pre-fusion version of this test guarded against for both writers.
+	directSets := setCallColumns(t, "upsertRegistrations")
+	if len(directSets) == 0 {
+		t.Fatal("found no record.Set calls in upsertRegistrations; this guard would pass vacuously")
+	}
+	for _, column := range directSets {
 		if !keyColumns[column] && !written[column] {
 			t.Errorf("upsertRegistrations sets %q directly, bypassing setRegistrationRequestFields "+
 				"and registrationColumnValues -- add it there instead so the compare path sees it too", column)
