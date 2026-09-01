@@ -180,8 +180,17 @@ describe('CabinWeekendEntry', () => {
       confirm: vi.fn(),
       isConfirming: false,
     })
+    // ⚠️ THE ENTRY'S OWN CALL, NOT `toHaveBeenCalledWith`. This file uses the
+    // real `CabinWeekendModal`, which asks the same hook for
+    // `{ evidence: isOpen }` — `false` while shut. A "was it ever called with
+    // false" assertion therefore passes on the CHILD's call even when this
+    // entry asks for true, which is how it survived its own mutation check.
+    // There is no `clearAllMocks` in this file either, so the history spans
+    // every test above; clear it here and read the first call, which is the
+    // parent's (React renders it before the child).
+    useSessionAttributionQueue.mockClear()
     renderEntry()
-    expect(useSessionAttributionQueue).toHaveBeenCalledWith({ evidence: false })
+    expect(useSessionAttributionQueue.mock.calls[0]).toEqual([{ evidence: false }])
   })
 
   it('asks for none even when the user cannot manage lodging and nothing renders', () => {
@@ -193,7 +202,9 @@ describe('CabinWeekendEntry', () => {
       confirm: vi.fn(),
       isConfirming: false,
     })
+    // Nothing renders at all here, so no child call can mask the entry's own.
+    useSessionAttributionQueue.mockClear()
     renderEntry({ canManage: false })
-    expect(useSessionAttributionQueue).toHaveBeenCalledWith({ evidence: false })
+    expect(useSessionAttributionQueue.mock.calls).toEqual([[{ evidence: false }]])
   })
 })
