@@ -48,11 +48,13 @@ GOCONST_EXCLUDED_PACKAGES = {"sync"}
 
 
 def _config() -> dict[str, Any]:
-    return yaml.safe_load(CONFIG.read_text())
+    loaded: dict[str, Any] = yaml.safe_load(CONFIG.read_text())
+    return loaded
 
 
 def _exclusion_rules() -> list[dict[str, Any]]:
-    return _config()["linters"]["exclusions"].get("rules", [])
+    rules: list[dict[str, Any]] = _config()["linters"]["exclusions"].get("rules", [])
+    return rules
 
 
 def _rules_disabling(linter: str) -> list[dict[str, Any]]:
@@ -100,9 +102,10 @@ def test_goconst_skips_exactly_the_packages_we_said_it_could() -> None:
     this file following.
     """
     packages = _go_packages()
-    assert "sync" in packages and "lodging" in packages, (
-        f"package layout changed unexpectedly; found {sorted(packages)}"
-    )
+    # Both are named so the walk below is known to be exercising something: `sync`
+    # is the excluded one, `lodging` a package that must stay covered.
+    assert "sync" in packages, f"package layout changed unexpectedly; found {sorted(packages)}"
+    assert "lodging" in packages, f"package layout changed unexpectedly; found {sorted(packages)}"
 
     excluded = set()
     for rule in _rules_disabling("goconst"):
