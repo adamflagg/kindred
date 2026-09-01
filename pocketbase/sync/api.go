@@ -41,6 +41,22 @@ func normalizeSession(session string) string {
 // DefaultService is the default value for service parameter meaning "all services"
 const DefaultService = "all"
 
+// Error bodies returned by more than one handler. They are user-visible API
+// responses, so they are stated once: eleven handlers answered a missing ?year
+// with the same sentence and three answered a bad ?session with the same
+// sentence, and a copied sentence is a sentence that can drift.
+//
+// It already has. handleUnifiedSync answers a missing ?year with the shorter
+// "Missing required year parameter", with no "Use ?year=YYYY" hint, so the same
+// failure on the same parameter reads two ways depending on the endpoint. That
+// one is deliberately NOT folded in here -- rewording an API response is a
+// behavior change and an owner's call, not something a constant-extraction gets
+// to decide. See kindred#2665.
+const (
+	errMissingYearParam    = "Missing required year parameter. Use ?year=YYYY"
+	errInvalidSessionParam = "Invalid session parameter. Must be 'all' or a numeric session cm_id."
+)
+
 // requireAuth wraps a handler function to require authentication
 func requireAuth(handler func(*core.RequestEvent) error) func(*core.RequestEvent) error {
 	return func(e *core.RequestEvent) error {
@@ -704,7 +720,7 @@ func handleRefreshFamilyCamp(e *core.RequestEvent, scheduler *Scheduler) error {
 	session := e.Request.URL.Query().Get("session")
 	if !IsValidSession(session) {
 		return e.JSON(http.StatusBadRequest, map[string]any{
-			"error": "Invalid session parameter. Must be 'all' or a numeric session cm_id.",
+			"error": errInvalidSessionParam,
 		})
 	}
 
@@ -947,13 +963,12 @@ func handleBunkRequestsUpload(e *core.RequestEvent, scheduler *Scheduler) error 
 	slog.Info("CSV headers found", "headers", headers)
 
 	// Check required columns
-	requiredColumns := []string{"PersonID", "Last Name", "First Name"}
-	if missing := findMissingColumns(headers, requiredColumns); len(missing) > 0 {
+	if missing := findMissingColumns(headers, bunkRequestRequiredColumns); len(missing) > 0 {
 		return e.JSON(http.StatusBadRequest, map[string]any{
 			"error":            "Missing required columns",
 			"missing_columns":  missing,
 			"found_columns":    headers,
-			"required_columns": requiredColumns,
+			"required_columns": bunkRequestRequiredColumns,
 		})
 	}
 
@@ -1903,7 +1918,7 @@ func handlePersonCustomFieldValuesSync(e *core.RequestEvent, scheduler *Schedule
 	// Validate session parameter
 	if !IsValidSession(session) {
 		return e.JSON(http.StatusBadRequest, map[string]any{
-			"error": "Invalid session parameter. Must be 'all' or a numeric session cm_id.",
+			"error": errInvalidSessionParam,
 		})
 	}
 
@@ -1963,7 +1978,7 @@ func handleHouseholdCustomFieldValuesSync(e *core.RequestEvent, scheduler *Sched
 	// Validate session parameter
 	if !IsValidSession(session) {
 		return e.JSON(http.StatusBadRequest, map[string]any{
-			"error": "Invalid session parameter. Must be 'all' or a numeric session cm_id.",
+			"error": errInvalidSessionParam,
 		})
 	}
 
@@ -2119,7 +2134,7 @@ func handleFamilyCampDerivedSync(e *core.RequestEvent, scheduler *Scheduler) err
 	yearParam := e.Request.URL.Query().Get("year")
 	if yearParam == "" {
 		return e.JSON(http.StatusBadRequest, map[string]any{
-			"error": "Missing required year parameter. Use ?year=YYYY",
+			"error": errMissingYearParam,
 		})
 	}
 
@@ -2172,7 +2187,7 @@ func handleLodgingAssignmentsSync(e *core.RequestEvent, scheduler *Scheduler) er
 	yearParam := e.Request.URL.Query().Get("year")
 	if yearParam == "" {
 		return e.JSON(http.StatusBadRequest, map[string]any{
-			"error": "Missing required year parameter. Use ?year=YYYY",
+			"error": errMissingYearParam,
 		})
 	}
 	year, err := strconv.Atoi(yearParam)
@@ -2224,7 +2239,7 @@ func handleStaffSkillsSync(e *core.RequestEvent, scheduler *Scheduler) error {
 	yearParam := e.Request.URL.Query().Get("year")
 	if yearParam == "" {
 		return e.JSON(http.StatusBadRequest, map[string]any{
-			"error": "Missing required year parameter. Use ?year=YYYY",
+			"error": errMissingYearParam,
 		})
 	}
 
@@ -2278,7 +2293,7 @@ func handleFinancialAidApplicationsSync(e *core.RequestEvent, scheduler *Schedul
 	yearParam := e.Request.URL.Query().Get("year")
 	if yearParam == "" {
 		return e.JSON(http.StatusBadRequest, map[string]any{
-			"error": "Missing required year parameter. Use ?year=YYYY",
+			"error": errMissingYearParam,
 		})
 	}
 
@@ -2332,7 +2347,7 @@ func handleHouseholdDemographicsSync(e *core.RequestEvent, scheduler *Scheduler)
 	yearParam := e.Request.URL.Query().Get("year")
 	if yearParam == "" {
 		return e.JSON(http.StatusBadRequest, map[string]any{
-			"error": "Missing required year parameter. Use ?year=YYYY",
+			"error": errMissingYearParam,
 		})
 	}
 
@@ -2451,7 +2466,7 @@ func handleRunPhase(e *core.RequestEvent, scheduler *Scheduler) error {
 	yearParam := e.Request.URL.Query().Get("year")
 	if yearParam == "" {
 		return e.JSON(http.StatusBadRequest, map[string]any{
-			"error": "Missing required year parameter. Use ?year=YYYY",
+			"error": errMissingYearParam,
 		})
 	}
 
@@ -2624,7 +2639,7 @@ func handleCamperDietarySync(e *core.RequestEvent, scheduler *Scheduler) error {
 	yearParam := e.Request.URL.Query().Get("year")
 	if yearParam == "" {
 		return e.JSON(http.StatusBadRequest, map[string]any{
-			"error": "Missing required year parameter. Use ?year=YYYY",
+			"error": errMissingYearParam,
 		})
 	}
 
@@ -2672,7 +2687,7 @@ func handleCamperTransportationSync(e *core.RequestEvent, scheduler *Scheduler) 
 	yearParam := e.Request.URL.Query().Get("year")
 	if yearParam == "" {
 		return e.JSON(http.StatusBadRequest, map[string]any{
-			"error": "Missing required year parameter. Use ?year=YYYY",
+			"error": errMissingYearParam,
 		})
 	}
 
@@ -2720,7 +2735,7 @@ func handleQuestRegistrationsSync(e *core.RequestEvent, scheduler *Scheduler) er
 	yearParam := e.Request.URL.Query().Get("year")
 	if yearParam == "" {
 		return e.JSON(http.StatusBadRequest, map[string]any{
-			"error": "Missing required year parameter. Use ?year=YYYY",
+			"error": errMissingYearParam,
 		})
 	}
 
@@ -2768,7 +2783,7 @@ func handleStaffApplicationsSync(e *core.RequestEvent, scheduler *Scheduler) err
 	yearParam := e.Request.URL.Query().Get("year")
 	if yearParam == "" {
 		return e.JSON(http.StatusBadRequest, map[string]any{
-			"error": "Missing required year parameter. Use ?year=YYYY",
+			"error": errMissingYearParam,
 		})
 	}
 
@@ -2816,7 +2831,7 @@ func handleStaffVehicleInfoSync(e *core.RequestEvent, scheduler *Scheduler) erro
 	yearParam := e.Request.URL.Query().Get("year")
 	if yearParam == "" {
 		return e.JSON(http.StatusBadRequest, map[string]any{
-			"error": "Missing required year parameter. Use ?year=YYYY",
+			"error": errMissingYearParam,
 		})
 	}
 

@@ -9,16 +9,13 @@ import (
 	"github.com/pocketbase/pocketbase/core"
 )
 
-// camperDietaryCompareFields lists the fields to compare for idempotency checks.
-// Only these fields are checked when deciding whether an existing record needs updating.
-// Excludes PocketBase-managed fields (id, created, updated, collectionId, collectionName).
-var camperDietaryCompareFields = []string{
-	"person_id", "year",
-	"has_dietary_needs", "dietary_explanation",
-	"has_allergies", "allergy_info", "additional_medical",
-}
-
-// Column name constants for camper_dietary table
+// Column name constants for camper_dietary table.
+//
+// These name THIS table's columns. `allergy_info` is also a column on
+// family_camp_medical -- a different table, created by a different migration and
+// written by a different service. The two names collide by coincidence, so that
+// table's copy must not be pointed at these constants; fusing them would make a
+// rename of one silently rewrite the other (kindred#2665).
 const (
 	colHasDietaryNeeds    = "has_dietary_needs"
 	colDietaryExplanation = "dietary_explanation"
@@ -26,6 +23,22 @@ const (
 	colAllergyInfo        = "allergy_info"
 	colAdditionalMedical  = "additional_medical"
 )
+
+// camperDietaryCompareFields lists the fields to compare for idempotency checks.
+// Only these fields are checked when deciding whether an existing record needs updating.
+// Excludes PocketBase-managed fields (id, created, updated, collectionId, collectionName).
+//
+// This list and the data map Sync builds are compared against each other by
+// recordNeedsUpdate, so a name that appears in one and not the other silently
+// stops being compared -- the field would never be seen as changed and the row
+// would never be updated. Both sides now read the constants above, so they cannot
+// drift; person_id and year stay spelled out because they are the universal sync
+// key columns rather than part of this table's own field vocabulary.
+var camperDietaryCompareFields = []string{
+	"person_id", "year",
+	colHasDietaryNeeds, colDietaryExplanation,
+	colHasAllergies, colAllergyInfo, colAdditionalMedical,
+}
 
 // CamperDietarySync extracts Family Medical-* custom fields for campers.
 // This service reads from person_custom_values and populates the camper_dietary table.
@@ -551,11 +564,11 @@ func (s *CamperDietarySync) upsertRecords(
 		data := map[string]any{
 			"person_id":           rec.personID,
 			"year":                rec.year,
-			"has_dietary_needs":   rec.hasDietaryNeeds,
-			"dietary_explanation": rec.dietaryExplanation,
-			"has_allergies":       rec.hasAllergies,
-			"allergy_info":        rec.allergyInfo,
-			"additional_medical":  rec.additionalMedical,
+			colHasDietaryNeeds:    rec.hasDietaryNeeds,
+			colDietaryExplanation: rec.dietaryExplanation,
+			colHasAllergies:       rec.hasAllergies,
+			colAllergyInfo:        rec.allergyInfo,
+			colAdditionalMedical:  rec.additionalMedical,
 		}
 
 		var record *core.Record

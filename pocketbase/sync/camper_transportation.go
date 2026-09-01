@@ -17,6 +17,11 @@ const (
 
 // Column name constants for camper_transportation table
 const (
+	// colAttendee is the relation column pointing at the attendees row this
+	// transportation record belongs to -- a COLUMN on this table, not the
+	// attendees collection itself (attendeesCollection) and not the orphan-sweep
+	// log label (entityNameAttendee), both of which spell "attendee(s)" too.
+	colAttendee               = "attendee"
 	colToCampMethod           = "to_camp_method"
 	colFromCampMethod         = "from_camp_method"
 	colDropoffName            = "dropoff_name"
@@ -325,7 +330,7 @@ func (s *CamperTransportationSync) loadAttendeeMapping(
 		default:
 		}
 
-		records, err := s.App.FindRecordsByFilter("attendees", filter, sortByID, perPage, (page-1)*perPage)
+		records, err := s.App.FindRecordsByFilter(attendeesCollection, filter, sortByID, perPage, (page-1)*perPage)
 		if err != nil {
 			return nil, fmt.Errorf("querying attendees page %d: %w", page, err)
 		}
@@ -709,7 +714,7 @@ func makeTransportationKey(personID, sessionID, year int) string {
 // not part of the key -- unlike person_id/session_id/year, it can change
 // independently of the key if the attendee mapping is rebuilt.
 var camperTransportationCompareFields = []string{
-	"attendee",
+	colAttendee,
 	colToCampMethod, colFromCampMethod,
 	colDropoffName, colDropoffPhone, colDropoffRelationship,
 	colPickupName, colPickupPhone, colPickupRelationship,
@@ -789,7 +794,7 @@ func (s *CamperTransportationSync) upsertRecords(
 
 		// Build data map for comparison and for the eventual write.
 		data := map[string]any{
-			"attendee":                rec.attendeeID,
+			colAttendee:               rec.attendeeID,
 			"person_id":               rec.personID,
 			"session_id":              rec.sessionID,
 			"year":                    rec.year,

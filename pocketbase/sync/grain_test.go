@@ -213,15 +213,20 @@ func guardedSweepCollections(t *testing.T) map[string]string {
 		callSites += sites
 	}
 
-	// A caller that passes the collection as a CONSTANT rather than an inline
-	// literal is invisible to the naming regex, and the floor check below would
-	// still pass on the six literals. Counting call sites separately is what
-	// makes this parser admit it missed one instead of silently under-reporting.
+	// parseGuardedSweeps reads two argument shapes and no others: an inline
+	// string literal, and a string constant declared in the SAME file. A caller
+	// passing anything else -- a constant from another file, a struct field, a
+	// computed expression -- is counted here but never named, and the floor
+	// check below would still be satisfied by the callers that could be read.
+	// Counting call sites separately is what makes this parser admit it missed
+	// one instead of silently under-reporting.
 	if callSites != len(found) {
 		t.Fatalf("guardedSweepCollections: found %d DeleteOrphansGuarded call site(s) but "+
-			"could only name the collection for %d of them (%v) -- a caller is passing a "+
-			"constant or variable instead of an inline string literal; teach the regex to "+
-			"read it rather than letting it go undeclared", callSites, len(found), found)
+			"could only name the collection for %d of them (%v) -- a caller is passing "+
+			"something this parser cannot read. An inline literal and a same-file string "+
+			"constant both resolve; a constant from another file, a struct field or an "+
+			"expression does not. Give that caller one of the two readable shapes rather "+
+			"than letting its collection go undeclared", callSites, len(found), found)
 	}
 
 	// Six callers exist as of kindred#2627: attendees, bunk_assignments,
@@ -400,20 +405,99 @@ func stringSet(m map[string]string) map[string]bool {
 // every BaseSyncService.DeleteOrphansGuarded call site it can read, plus the
 // TOTAL number of call sites in the file.
 //
-// The two numbers are returned separately on purpose. The naming regex only
-// reads an inline string literal, so a caller passing a constant contributes to
-// the count but not to the names -- and the caller compares them, rather than
-// trusting a set that may silently be short.
+// The two numbers are returned separately on purpose. A call site whose first
+// argument this parser cannot read contributes to the count but not to the
+// names -- and the caller compares them, rather than trusting a set that may
+// silently be short.
+//
+// It reads two argument shapes: an inline string literal, and an identifier
+// that names a string constant declared in this SAME file (kindred#2665 --
+// attendees.go passes attendeesCollection). A constant declared in another file
+// stays unreadable, deliberately: resolving across files would mean tracking
+// which package the identifier belongs to, and the counted-but-unnamed path
+// already fails loudly rather than under-reporting.
 func parseGuardedSweeps(src string) (named []string, callSites int) {
+	consts := stringConstsIn(src)
 	for _, m := range guardedSweepNameRe.FindAllStringSubmatch(src, -1) {
-		named = append(named, m[1])
+		if literal := m[1]; literal != "" {
+			named = append(named, literal)
+			continue
+		}
+		if value, ok := consts[m[2]]; ok {
+			named = append(named, value)
+		}
 	}
 	return named, len(guardedSweepCallRe.FindAllString(src, -1))
 }
 
-// guardedSweepNameRe reads the collection off a call site that passes it as an
-// inline string literal -- which every caller does today.
-var guardedSweepNameRe = regexp.MustCompile(`DeleteOrphansGuarded\(\s*"([a-z0-9_]+)"`)
+// stringConstsIn harvests the PACKAGE-LEVEL string constants one source file
+// declares, in the two forms this package writes them: a top-level
+// `const name = "value"` (how attendees.go declares attendeesCollection and
+// persons.go personsCollection) and an entry inside a top-level
+// `const ( ... )` block (how camper_transportation.go declares its column
+// names).
+//
+// Deliberately not a full parse. It reads exactly the shapes a sweep's
+// collection argument is declared in; anything else stays unreadable, which
+// leaves that call site counted-but-unnamed and fails guardedSweepCollections
+// loudly instead of quietly shrinking the set.
+//
+// Package-level is load-bearing, not incidental. There is one map for the whole
+// file and no scope tracking, so harvesting function-local constants too let a
+// local `const x = "..."` further down the file overwrite the package-level x
+// an earlier sweep resolves against -- and that sweep was then reported under a
+// collection it does not touch, with the callSites/len(found) count still
+// balancing. Naming the WRONG collection is the only outcome here that is worse
+// than naming none: every other unreadable shape fails loudly, this one passed.
+// Indentation is the whole test, because gofmt indents every function body and
+// a sweep argument is only ever a package-level constant (kindred#2666 review).
+func stringConstsIn(src string) map[string]string {
+	out := map[string]string{}
+	inBlock := false
+	for _, line := range strings.Split(src, "\n") {
+		topLevel := line == strings.TrimLeft(line, " \t")
+		decl := strings.TrimSpace(line)
+		switch {
+		case topLevel && decl == "const (":
+			inBlock = true
+			continue
+		case inBlock && decl == ")":
+			inBlock = false
+			continue
+		case topLevel && strings.HasPrefix(decl, "const "):
+			decl = strings.TrimPrefix(decl, "const ")
+		case !inBlock:
+			// Outside a top-level const block, an indented line is inside some
+			// function body. Its constants are not in scope at the call sites
+			// this parser reads.
+			continue
+		}
+		if m := stringConstRe.FindStringSubmatch(decl); m != nil {
+			out[m[1]] = m[2]
+		}
+	}
+	return out
+}
+
+// stringConstRe reads one `name = "value"` declaration, with the `const` keyword
+// already stripped. The value charset matches guardedSweepNameRe's: a PocketBase
+// collection name, not any Go string.
+var stringConstRe = regexp.MustCompile(`^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*"([a-z0-9_]+)"$`)
+
+// guardedSweepNameRe reads the collection off a call site that passes it either
+// as an inline string literal (group 1) or as an identifier (group 2), which
+// parseGuardedSweeps then resolves against the file's own string constants.
+//
+// It carries the same leading "." as guardedSweepCallRe, and for the same
+// reason. Teaching group 2 to match an identifier also let the bare form match
+// BaseSyncService's own method DECLARATION in base_sync.go, whose first
+// parameter is named `collection` -- which is inert only for as long as
+// base_sync.go declares no string constant of that name. One added later would
+// put a phantom collection in the set with no call site to match it, and
+// guardedSweepCollections would fail its callSites/len(found) comparison
+// pointing at a declaration rather than a sweep.
+var guardedSweepNameRe = regexp.MustCompile(
+	`\.DeleteOrphansGuarded\(\s*(?:"([a-z0-9_]+)"|([A-Za-z_][A-Za-z0-9_]*))`)
 
 // guardedSweepCallRe counts call sites whatever their first argument looks like.
 // The leading "." is what excludes BaseSyncService's own method DECLARATION in
@@ -481,10 +565,14 @@ func TestIsUniqueIndexDDLRejectsANonUniqueIndexNamedUnique(t *testing.T) {
 }
 
 // TestParseGuardedSweepsCountsCallSitesItCannotName pins the gap the naming
-// regex has by construction: it reads an inline string literal only. A seventh
-// guarded caller that passes a constant would be unnamed AND uncounted, leaving
-// the floor check satisfied by the existing six and the new sweep undeclared --
-// the exact silent exemption grain.go exists to prevent.
+// regex still has by construction: it reads an inline string literal and a
+// string constant declared in the SAME file, and nothing else. A seventh
+// guarded caller passing anything outside those two shapes -- a constant from
+// another file, a struct field, a computed expression -- would be counted but
+// not named, and the floor check would otherwise be satisfied by the existing
+// six with the new sweep undeclared. That is the exact silent exemption
+// grain.go exists to prevent, which is why the count and the names are
+// compared rather than the names trusted alone.
 func TestParseGuardedSweepsCountsCallSitesItCannotName(t *testing.T) {
 	t.Parallel()
 
@@ -504,17 +592,93 @@ func (s *Beta) deleteOrphans() error {
 		nil, "beta", "", OrphanSweepGuard{},
 	)
 }
+
+const (
+	gammaCollection = "gamma"
+)
+
+func (s *Gamma) deleteOrphans() error {
+	return s.DeleteOrphansGuarded(
+		gammaCollection,
+		nil, "gamma", "", OrphanSweepGuard{},
+	)
+}
+
+func (s *Delta) deleteOrphans() error {
+	return s.DeleteOrphansGuarded(
+		deltaCollection,
+		nil, "delta", "", OrphanSweepGuard{},
+	)
+}
 `
 
 	named, callSites := parseGuardedSweeps(src)
 
-	if callSites != 2 {
-		t.Errorf("callSites = %d, want 2 -- both call sites must be COUNTED even "+
-			"though only one can be named, or a constant-argument caller goes "+
-			"undetected", callSites)
+	if callSites != 4 {
+		t.Errorf("callSites = %d, want 4 -- every call site must be COUNTED even "+
+			"where the collection cannot be read, or a caller passing something "+
+			"this parser does not understand goes undetected", callSites)
 	}
-	if len(named) != 1 || named[0] != "alpha" {
-		t.Errorf("named = %v, want [alpha] -- only the inline literal is readable", named)
+
+	// alpha is the inline literal; beta and gamma are string constants declared
+	// in this same source, in the two forms the package actually uses (a
+	// top-level `const x = "..."` as attendees.go declares attendeesCollection,
+	// and an entry inside a `const ( ... )` block). delta's constant is declared
+	// in some OTHER file, which this per-file parser cannot see -- so it stays
+	// counted-but-unnamed and the caller's mismatch check fires, which is the
+	// property that must survive teaching the parser about constants.
+	want := []string{"alpha", "beta", "gamma"}
+	if !reflect.DeepEqual(named, want) {
+		t.Errorf("named = %v, want %v -- an inline literal and an in-file string "+
+			"constant are both readable; a constant declared elsewhere is not",
+			named, want)
+	}
+}
+
+// TestParseGuardedSweepsIgnoresAFunctionLocalConstantOfTheSameName pins the one
+// way stringConstsIn can name the WRONG collection rather than none at all.
+//
+// It harvests declarations line by line into a single map, so a function-local
+// `const x = "..."` appearing LATER in the file used to overwrite the
+// package-level `x` an earlier sweep resolves against -- and the sweep was then
+// reported under a collection it does not touch. Every other shape this parser
+// cannot read leaves the call site counted-but-unnamed, which fails
+// guardedSweepCollections loudly; this one passed the count check and lied, so
+// a real sweep of an undeclared collection could hide behind a declared one
+// (kindred#2666 review).
+//
+// Only package-level declarations are harvested now, which is also all a sweep
+// argument is ever written as. A local constant is simply unreadable, and an
+// unreadable argument is the loud case.
+func TestParseGuardedSweepsIgnoresAFunctionLocalConstantOfTheSameName(t *testing.T) {
+	t.Parallel()
+
+	const src = `
+const zetaCollection = "zeta"
+
+func (s *Zeta) deleteOrphans() error {
+	return s.DeleteOrphansGuarded(
+		zetaCollection,
+		nil, "zeta", "", OrphanSweepGuard{},
+	)
+}
+
+func unrelatedHelper() string {
+	const zetaCollection = "not_zeta"
+	return zetaCollection
+}
+`
+
+	named, callSites := parseGuardedSweeps(src)
+
+	if callSites != 1 {
+		t.Fatalf("callSites = %d, want 1", callSites)
+	}
+	if len(named) != 1 || named[0] != "zeta" {
+		t.Errorf("named = %v, want [zeta] -- a function-local constant of the same "+
+			"name must not overwrite the package-level value the sweep resolves "+
+			"against; naming the wrong collection is worse than naming none, "+
+			"because the count check still passes", named)
 	}
 }
 
