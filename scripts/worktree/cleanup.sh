@@ -29,6 +29,10 @@ WORKTREES_DIR="$MAIN_REPO/.worktrees"
 # Three worktrees and four branches had to be removed by hand.
 #
 # Prints nothing for a detached HEAD, which callers treat as "no branch".
+#
+# .lefthook.yml's post-merge worktree-cleanup notifier resolves the branch
+# the same way and must stay in step; tests/unit/scripts/test_worktree_cleanup.py
+# fails if either side drifts.
 resolve_branch() {
     local dir="$1"
     git -C "$dir" symbolic-ref --quiet --short HEAD 2>/dev/null || true

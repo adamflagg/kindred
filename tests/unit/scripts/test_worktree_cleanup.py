@@ -25,9 +25,11 @@ import subprocess
 from pathlib import Path
 
 import pytest
+import yaml
 
 REPO_ROOT = Path(__file__).parents[3]
 CLEANUP = REPO_ROOT / "scripts/worktree/cleanup.sh"
+LEFTHOOK_CONFIG = REPO_ROOT / ".lefthook.yml"
 
 
 def _clean_env(**extra: str) -> dict[str, str]:
@@ -267,3 +269,46 @@ def test_the_helpers_never_touch_the_repo_named_by_the_git_environment(
         "the helper committed into the repo named by GIT_DIR instead of its own"
     )
     assert _git("ls-files", cwd=decoy).split() == before_files, "the helper rewrote the index named by GIT_INDEX_FILE"
+
+
+def _worktree_notifier_body() -> str:
+    """The `post-merge` hook body that suggests worktrees for cleanup."""
+    config = yaml.safe_load(LEFTHOOK_CONFIG.read_text())
+    return str(config["post-merge"]["commands"]["worktree-cleanup"]["run"])
+
+
+def test_the_post_merge_notifier_resolves_the_branch_the_same_way_cleanup_does() -> None:
+    """`.lefthook.yml`'s notifier must not re-introduce the directory-name guess.
+
+    The notifier and `cleanup.sh` were deliberately built to share one
+    detection method (commit 9b9702db, kindred#11): the hook tells you which
+    worktrees are ready, the script removes them. When only the script learned
+    to resolve the branch from git, the pair drifted -- and the hook kept the
+    exact #2666 defect, so a worktree whose branch is named for its subject
+    rather than its directory is never suggested at all.
+
+    That half is notification-only and destroys nothing, which is precisely why
+    it would have gone unnoticed: the reminder simply stops arriving. This test
+    is the thing that notices.
+    """
+    body = _worktree_notifier_body()
+
+    assert "symbolic-ref" in body, (
+        "the post-merge notifier must resolve each worktree's branch from git, "
+        "the same way cleanup.sh's resolve_branch() does"
+    )
+    assert "feature/$name" not in body, (
+        "the notifier is guessing the branch from the directory name again -- "
+        "the kindred#2666 defect this PR removed from cleanup.sh"
+    )
+
+
+def test_both_worktree_branch_readers_agree() -> None:
+    """Pin the *pair*, so fixing one and forgetting the other fails here.
+
+    Asserting each side in isolation lets them drift apart while both tests
+    still pass. The invariant is that they agree.
+    """
+    resolver = "symbolic-ref --quiet --short HEAD"
+    assert resolver in CLEANUP.read_text(), "cleanup.sh stopped resolving the branch from git"
+    assert resolver in _worktree_notifier_body(), "the post-merge notifier stopped agreeing with cleanup.sh"
