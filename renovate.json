@@ -5,7 +5,6 @@
   "dependencyDashboard": true,
   "dependencyDashboardTitle": "Renovate Dependency Dashboard",
   "dependencyDashboardLabels": ["no-triage", "dependencies"],
-  "schedule": ["* * 1-7 * 1"],
   "timezone": "America/New_York",
   "prConcurrentLimit": 5,
   "semanticCommits": "enabled",
