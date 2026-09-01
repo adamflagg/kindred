@@ -24,6 +24,18 @@ const (
 	// maxRequestRetries caps retries on HTTP 429 responses for both regular
 	// requests (makeRequestWithURLRetry) and auth requests (authenticateAtURL).
 	maxRequestRetries = 10
+
+	// CampMinder query-parameter names, repeated across nearly every request
+	// this client makes. Named so a typo becomes a compile-time reference
+	// error instead of a silently-wrong wire request (#2665).
+	paramClientID   = "clientid"
+	paramSeasonID   = "seasonid"
+	paramPageNumber = "pagenumber"
+	paramPageSize   = "pagesize"
+
+	// paramValueTrue is the CampMinder wire convention for a boolean-true
+	// query value (e.g. "includecamperdetails=true", "orderascending=true").
+	paramValueTrue = "true"
 )
 
 // sleepFn is the sleep function used by retry loops. Override in tests to
@@ -392,10 +404,10 @@ func (c *Client) GetSessions() ([]map[string]any, error) {
 
 	for page := 1; ; page++ {
 		params := map[string]string{
-			"clientid":   c.clientID,
-			"seasonid":   strconv.Itoa(c.seasonID),
-			"pagenumber": strconv.Itoa(page),
-			"pagesize":   strconv.Itoa(sessionsPageSize),
+			paramClientID:   c.clientID,
+			paramSeasonID:   strconv.Itoa(c.seasonID),
+			paramPageNumber: strconv.Itoa(page),
+			paramPageSize:   strconv.Itoa(sessionsPageSize),
 		}
 
 		body, err := c.makeRequest("GET", "sessions", params)
@@ -425,10 +437,10 @@ func (c *Client) GetSessions() ([]map[string]any, error) {
 // GetAttendeesPage retrieves attendees with pagination
 func (c *Client) GetAttendeesPage(page, pageSize int) (results []map[string]any, hasMore bool, err error) {
 	params := map[string]string{
-		"clientid":   c.clientID,
-		"seasonid":   strconv.Itoa(c.seasonID),
-		"pagenumber": strconv.Itoa(page),
-		"pagesize":   strconv.Itoa(pageSize),
+		paramClientID:   c.clientID,
+		paramSeasonID:   strconv.Itoa(c.seasonID),
+		paramPageNumber: strconv.Itoa(page),
+		paramPageSize:   strconv.Itoa(pageSize),
 	}
 
 	body, err := c.makeRequest("GET", "sessions/attendees", params)
@@ -461,16 +473,16 @@ func (c *Client) GetPersons(personIDs []int) ([]map[string]any, error) {
 
 	// Start with standard parameters
 	values := url.Values{}
-	values.Add("clientid", c.clientID)
-	values.Add("seasonid", strconv.Itoa(c.seasonID))
-	values.Add("includecamperdetails", "true")
-	values.Add("includecontactdetails", "true")
-	values.Add("includerelatives", "true")
-	values.Add("includefamilypersons", "true")
-	values.Add("includehouseholddetails", "true")
-	values.Add("includetags", "true")
-	values.Add("pagenumber", "1")
-	values.Add("pagesize", strconv.Itoa(len(personIDs)))
+	values.Add(paramClientID, c.clientID)
+	values.Add(paramSeasonID, strconv.Itoa(c.seasonID))
+	values.Add("includecamperdetails", paramValueTrue)
+	values.Add("includecontactdetails", paramValueTrue)
+	values.Add("includerelatives", paramValueTrue)
+	values.Add("includefamilypersons", paramValueTrue)
+	values.Add("includehouseholddetails", paramValueTrue)
+	values.Add("includetags", paramValueTrue)
+	values.Add(paramPageNumber, "1")
+	values.Add(paramPageSize, strconv.Itoa(len(personIDs)))
 
 	// Add multiple ID parameters, filtering out invalid IDs
 	validIDCount := 0
@@ -487,7 +499,7 @@ func (c *Client) GetPersons(personIDs []int) ([]map[string]any, error) {
 	}
 
 	// Update pagesize to reflect actual count after filtering
-	values.Set("pagesize", strconv.Itoa(validIDCount))
+	values.Set(paramPageSize, strconv.Itoa(validIDCount))
 
 	fullURL := fmt.Sprintf("%s?%s", personsURL, values.Encode())
 
@@ -512,15 +524,15 @@ func (c *Client) GetPersons(personIDs []int) ([]map[string]any, error) {
 // GetPersonsPage retrieves all persons with pagination (no seasonid for latest data)
 func (c *Client) GetPersonsPage(page, pageSize int) (results []map[string]any, hasMore bool, err error) {
 	params := map[string]string{
-		"clientid":                c.clientID,
-		"pagenumber":              strconv.Itoa(page),
-		"pagesize":                strconv.Itoa(pageSize),
-		"includecamperdetails":    "true",
-		"includecontactdetails":   "true",
-		"includerelatives":        "true",
-		"includefamilypersons":    "true",
-		"includehouseholddetails": "true",
-		"includetags":             "true",
+		paramClientID:             c.clientID,
+		paramPageNumber:           strconv.Itoa(page),
+		paramPageSize:             strconv.Itoa(pageSize),
+		"includecamperdetails":    paramValueTrue,
+		"includecontactdetails":   paramValueTrue,
+		"includerelatives":        paramValueTrue,
+		"includefamilypersons":    paramValueTrue,
+		"includehouseholddetails": paramValueTrue,
+		"includetags":             paramValueTrue,
 		// No seasonid - gets latest data
 	}
 
@@ -556,12 +568,12 @@ func (c *Client) GetClientID() string {
 // GetBunks retrieves all bunks for the configured season
 func (c *Client) GetBunks() ([]map[string]any, error) {
 	params := map[string]string{
-		"clientid":       c.clientID,
-		"seasonid":       strconv.Itoa(c.seasonID),
-		"pagenumber":     "1",
-		"pagesize":       "500",
+		paramClientID:    c.clientID,
+		paramSeasonID:    strconv.Itoa(c.seasonID),
+		paramPageNumber:  "1",
+		paramPageSize:    "500",
 		"orderby":        "Name",
-		"orderascending": "true",
+		"orderascending": paramValueTrue,
 	}
 
 	body, err := c.makeRequest("GET", "bunks", params)
@@ -584,11 +596,11 @@ func (c *Client) GetBunks() ([]map[string]any, error) {
 // GetBunkPlansPage retrieves a page of bunk plans
 func (c *Client) GetBunkPlansPage(page, pageSize int) (results []map[string]any, hasMore bool, err error) {
 	params := map[string]string{
-		"clientid":       c.clientID,
-		"seasonid":       strconv.Itoa(c.seasonID),
-		"pagenumber":     strconv.Itoa(page),
-		"pagesize":       strconv.Itoa(pageSize),
-		"orderascending": "true",
+		paramClientID:    c.clientID,
+		paramSeasonID:    strconv.Itoa(c.seasonID),
+		paramPageNumber:  strconv.Itoa(page),
+		paramPageSize:    strconv.Itoa(pageSize),
+		"orderascending": paramValueTrue,
 	}
 
 	body, err := c.makeRequest("GET", "bunks/plans", params)
@@ -617,10 +629,10 @@ func (c *Client) GetBunkAssignments(bunkPlanIDs, bunkIDs []int, page, pageSize i
 
 	// Start with standard parameters
 	values := url.Values{}
-	values.Add("clientid", c.clientID)
-	values.Add("seasonid", strconv.Itoa(c.seasonID))
-	values.Add("pagenumber", strconv.Itoa(page))
-	values.Add("pagesize", strconv.Itoa(pageSize))
+	values.Add(paramClientID, c.clientID)
+	values.Add(paramSeasonID, strconv.Itoa(c.seasonID))
+	values.Add(paramPageNumber, strconv.Itoa(page))
+	values.Add(paramPageSize, strconv.Itoa(pageSize))
 
 	// Add multiple bunk plan IDs
 	for _, id := range bunkPlanIDs {
@@ -718,10 +730,10 @@ func (c *Client) GetSessionGroups() ([]map[string]any, error) {
 
 	for page := 1; ; page++ {
 		params := map[string]string{
-			"clientid":   c.clientID,
-			"seasonid":   strconv.Itoa(c.seasonID),
-			"pagenumber": strconv.Itoa(page),
-			"pagesize":   strconv.Itoa(sessionsPageSize),
+			paramClientID:   c.clientID,
+			paramSeasonID:   strconv.Itoa(c.seasonID),
+			paramPageNumber: strconv.Itoa(page),
+			paramPageSize:   strconv.Itoa(sessionsPageSize),
 		}
 
 		body, err := c.makeRequest("GET", "sessions/groups", params)
@@ -754,7 +766,7 @@ func (c *Client) GetSessionGroups() ([]map[string]any, error) {
 // Note: This endpoint returns a raw array, not a paginated response
 func (c *Client) GetPersonTagDefinitions() ([]map[string]any, error) {
 	params := map[string]string{
-		"clientid": c.clientID,
+		paramClientID: c.clientID,
 	}
 
 	body, err := c.makeRequest("GET", "persons/tags", params)
@@ -778,9 +790,9 @@ func (c *Client) GetCustomFieldDefinitionsPage(
 	page, pageSize int,
 ) (results []map[string]any, hasMore bool, err error) {
 	params := map[string]string{
-		"clientid":   c.clientID,
-		"pagenumber": strconv.Itoa(page),
-		"pagesize":   strconv.Itoa(pageSize),
+		paramClientID:   c.clientID,
+		paramPageNumber: strconv.Itoa(page),
+		paramPageSize:   strconv.Itoa(pageSize),
 	}
 
 	body, err := c.makeRequest("GET", "persons/custom-fields", params)
@@ -815,10 +827,10 @@ func (c *Client) GetPersonCustomFieldValuesPage(
 ) (results []map[string]any, hasMore bool, err error) {
 	endpoint := fmt.Sprintf("persons/%d/custom-fields", personID)
 	params := map[string]string{
-		"clientid":   c.clientID,
-		"seasonid":   strconv.Itoa(c.seasonID),
-		"pagenumber": strconv.Itoa(page),
-		"pagesize":   strconv.Itoa(pageSize),
+		paramClientID:   c.clientID,
+		paramSeasonID:   strconv.Itoa(c.seasonID),
+		paramPageNumber: strconv.Itoa(page),
+		paramPageSize:   strconv.Itoa(pageSize),
 	}
 
 	body, err := c.makeRequest("GET", endpoint, params)
@@ -853,10 +865,10 @@ func (c *Client) GetHouseholdCustomFieldValuesPage(
 	// Verified via API testing: custom-fields (with hyphen) is the correct format
 	endpoint := fmt.Sprintf("persons/households/%d/custom-fields", householdID)
 	params := map[string]string{
-		"clientid":   c.clientID,
-		"seasonid":   strconv.Itoa(c.seasonID),
-		"pagenumber": strconv.Itoa(page),
-		"pagesize":   strconv.Itoa(pageSize),
+		paramClientID:   c.clientID,
+		paramSeasonID:   strconv.Itoa(c.seasonID),
+		paramPageNumber: strconv.Itoa(page),
+		paramPageSize:   strconv.Itoa(pageSize),
 	}
 
 	body, err := c.makeRequest("GET", endpoint, params)
@@ -885,9 +897,9 @@ func (c *Client) GetHouseholdCustomFieldValuesPage(
 // Note: Divisions are global (not year-specific) - they define age/gender groups
 func (c *Client) GetDivisions() ([]map[string]any, error) {
 	params := map[string]string{
-		"clientid":   c.clientID,
-		"pagenumber": "1",
-		"pagesize":   "500", // Get all divisions in one call (typically < 50)
+		paramClientID:   c.clientID,
+		paramPageNumber: "1",
+		paramPageSize:   "500", // Get all divisions in one call (typically < 50)
 	}
 
 	body, err := c.makeRequest("GET", "divisions", params)
@@ -913,9 +925,9 @@ func (c *Client) GetDivisions() ([]map[string]any, error) {
 // Note: Global lookup table (not year-specific)
 func (c *Client) GetStaffProgramAreas() ([]map[string]any, error) {
 	params := map[string]string{
-		"clientid":   c.clientID,
-		"pagenumber": "1",
-		"pagesize":   "500", // Get all in one call (typically < 100)
+		paramClientID:   c.clientID,
+		paramPageNumber: "1",
+		paramPageSize:   "500", // Get all in one call (typically < 100)
 	}
 
 	body, err := c.makeRequest("GET", "staff/programareas", params)
@@ -941,9 +953,9 @@ func (c *Client) GetStaffProgramAreas() ([]map[string]any, error) {
 // Note: Global lookup table (not year-specific)
 func (c *Client) GetStaffOrgCategories() ([]map[string]any, error) {
 	params := map[string]string{
-		"clientid":   c.clientID,
-		"pagenumber": "1",
-		"pagesize":   "500", // Get all in one call (typically < 100)
+		paramClientID:   c.clientID,
+		paramPageNumber: "1",
+		paramPageSize:   "500", // Get all in one call (typically < 100)
 	}
 
 	body, err := c.makeRequest("GET", "staff/organizationalcategories", params)
@@ -969,9 +981,9 @@ func (c *Client) GetStaffOrgCategories() ([]map[string]any, error) {
 // Note: Global lookup table (not year-specific)
 func (c *Client) GetStaffPositions() ([]map[string]any, error) {
 	params := map[string]string{
-		"clientid":   c.clientID,
-		"pagenumber": "1",
-		"pagesize":   "500", // Get all in one call (typically < 100)
+		paramClientID:   c.clientID,
+		paramPageNumber: "1",
+		paramPageSize:   "500", // Get all in one call (typically < 100)
 	}
 
 	body, err := c.makeRequest("GET", "staff/positions", params)
@@ -997,11 +1009,11 @@ func (c *Client) GetStaffPositions() ([]map[string]any, error) {
 // Returns: array of staff with PersonID, StatusID, Position1ID, Position2ID, BunkAssignments, etc.
 func (c *Client) GetStaffPage(status, page, pageSize int) (results []map[string]any, hasMore bool, err error) {
 	params := map[string]string{
-		"clientid":   c.clientID,
-		"seasonid":   strconv.Itoa(c.seasonID),
-		"status":     strconv.Itoa(status),
-		"pagenumber": strconv.Itoa(page),
-		"pagesize":   strconv.Itoa(pageSize),
+		paramClientID:   c.clientID,
+		paramSeasonID:   strconv.Itoa(c.seasonID),
+		"status":        strconv.Itoa(status),
+		paramPageNumber: strconv.Itoa(page),
+		paramPageSize:   strconv.Itoa(pageSize),
 	}
 
 	body, err := c.makeRequest("GET", "staff", params)
@@ -1029,10 +1041,10 @@ func (c *Client) GetStaffPage(status, page, pageSize int) (results []map[string]
 // Note: Global lookup table (not year-specific)
 func (c *Client) GetFinancialCategories(includeArchived bool) ([]map[string]any, error) {
 	params := map[string]string{
-		"clientid":        c.clientID,
+		paramClientID:     c.clientID,
 		"includeArchived": strconv.FormatBool(includeArchived),
-		"pagenumber":      "1",
-		"pagesize":        "500", // Get all in one call (typically < 100)
+		paramPageNumber:   "1",
+		paramPageSize:     "500", // Get all in one call (typically < 100)
 	}
 
 	body, err := c.makeRequest("GET", "financials/financialcategories", params)
@@ -1143,7 +1155,7 @@ func (c *Client) GetTransactionDetails(season int, includeReversals bool) ([]map
 		endDate := startDate.AddDate(0, 1, -1) // Last day of month
 
 		params := map[string]string{
-			"clientid":         c.clientID,
+			paramClientID:      c.clientID,
 			"season":           strconv.Itoa(season),
 			"includeReversals": strconv.FormatBool(includeReversals),
 			"postDateStart":    startDate.Format("2006-01-02"),
