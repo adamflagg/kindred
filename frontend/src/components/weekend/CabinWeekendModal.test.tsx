@@ -262,6 +262,17 @@ describe('CabinWeekendModal', () => {
     expect(screen.getByText(/what each weekend\u2019s board already holds/)).toBeInTheDocument()
   })
 
+  it('does not promise a demotion that the all-conflict case never performs', async () => {
+    // §12.8.3: when EVERY candidate conflicts, nothing is demoted — the row
+    // raises an alarm about the cabin value instead, because moving the guess
+    // would move it onto a weekend the rule has just called wrong. So the
+    // explanation must not say a taken weekend is demoted full stop; it loses
+    // the guess to a FREE one, and where there is no free one it keeps it.
+    renderModal()
+    const explanation = (await screen.findByText(/CampMinder only stores one cabin/)).textContent
+    expect(explanation).toContain('loses the guess to one that is free')
+  })
+
   /**
    * THE EVIDENCE IS FETCHED ON OPEN, NOT ON MOUNT. `CabinWeekendEntry` renders
    * this modal unconditionally and toggles `isOpen`, so the component function

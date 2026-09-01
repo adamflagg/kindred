@@ -104,9 +104,16 @@ export function CabinWeekendModal({
            * them on two. §12.8 supplies the board comparison that was missing,
            * so the explanation can now say what the guess is made of instead
            * of hedging around it.
+           *
+           * ⚠️ "LOSES THE GUESS TO ONE THAT IS FREE", not "is demoted". The
+           * shorter phrasing over-claimed: §12.8.3 demotes NOTHING when every
+           * candidate conflicts — the row raises an alarm about the cabin
+           * value instead, since moving the guess would move it onto a weekend
+           * the rule has just called wrong. This wording is true in both
+           * cases, and stays one sentence.
            */}
           The best guess compares the cabin against what each weekend&rsquo;s board already holds
-          &mdash; a weekend where it is already taken is demoted.
+          &mdash; a weekend where it is already taken loses the guess to one that is free.
         </p>
 
         {here.length === 0 ? (
