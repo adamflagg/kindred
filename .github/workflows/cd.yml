@@ -104,6 +104,7 @@ jobs:
           releases.astral.sh:443
           results-receiver.actions.githubusercontent.com:443
           storage.googleapis.com:443
+          sum.golang.org:443
 
     - name: Checkout code
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -328,6 +329,7 @@ jobs:
           releases.astral.sh:443
           results-receiver.actions.githubusercontent.com:443
           storage.googleapis.com:443
+          sum.golang.org:443
 
     - name: Check CI and docs status for this commit
       env:
@@ -493,6 +495,7 @@ jobs:
           releases.astral.sh:443
           results-receiver.actions.githubusercontent.com:443
           storage.googleapis.com:443
+          sum.golang.org:443
 
     - name: Checkout code
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -643,6 +646,7 @@ jobs:
           releases.astral.sh:443
           results-receiver.actions.githubusercontent.com:443
           storage.googleapis.com:443
+          sum.golang.org:443
 
     # Always needed: GHCR login for both build-push and imagetools-create.
     - name: Log in to GitHub Container Registry
@@ -858,6 +862,7 @@ jobs:
           releases.astral.sh:443
           results-receiver.actions.githubusercontent.com:443
           storage.googleapis.com:443
+          sum.golang.org:443
 
     - name: Checkout code (for compose files)
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1078,6 +1083,7 @@ jobs:
           releases.astral.sh:443
           results-receiver.actions.githubusercontent.com:443
           storage.googleapis.com:443
+          sum.golang.org:443
 
     - name: Log in to GitHub Container Registry
       uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
@@ -1156,6 +1162,7 @@ jobs:
           releases.astral.sh:443
           results-receiver.actions.githubusercontent.com:443
           storage.googleapis.com:443
+          sum.golang.org:443
 
     - name: Check build status
       env:
