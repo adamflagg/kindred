@@ -138,22 +138,13 @@ func (s *PersonCustomFieldValuesSync) Sync(ctx context.Context) error {
 		return fmt.Errorf("preloading field definition mapping: %w", err)
 	}
 
-	// Pre-load existing records for this year
-	// KeyBuilder returns identity only (personPBId:fieldDefPBId)
-	// PreloadCompositeRecords appends |year to create yearScopedKey
+	// Pre-load existing records for this year. customValuesPreloadKey
+	// (custom_values_preload_key.go) is the shared builder: KeyBuilder
+	// returns identity only (personPBId:fieldDefPBId), PreloadCompositeRecords
+	// appends |year to create yearScopedKey.
 	filter := fmt.Sprintf("year = %d", year)
-	preloadFn := func(record *core.Record) (string, bool) {
-		personPBId := record.GetString("person")
-		fieldDefPBId := record.GetString("field_definition")
-
-		if personPBId != "" && fieldDefPBId != "" {
-			// Return identity only - PreloadCompositeRecords adds |year
-			return fmt.Sprintf("%s:%s", personPBId, fieldDefPBId), true
-		}
-		return "", false
-	}
 	existingRecords, err := s.PreloadCompositeRecords(
-		"person_custom_values", filter, preloadFn)
+		"person_custom_values", filter, customValuesPreloadKey("person"))
 	if err != nil {
 		return fmt.Errorf("preloading existing records: %w", err)
 	}

@@ -133,9 +133,12 @@ func TestAttendeesOrphanSweep_SurvivesReplay(t *testing.T) {
 	const year = 2026
 	const personCMID = 9100001
 	const sessionCMID = 5501
+	// A second person CM id, used only by the SeedOrphan control below --
+	// distinct from personCMID so its key never lands in ProcessedKeys.
+	const orphanPersonCMID = 9100002
 	filter := fmt.Sprintf("year = %d", year)
 
-	saveRecord(t, app, "camp_sessions", map[string]any{"cm_id": sessionCMID, "year": year})
+	sessionPBID := saveRecord(t, app, "camp_sessions", map[string]any{"cm_id": sessionCMID, "year": year})
 	saveRecord(t, app, "persons", map[string]any{"cm_id": personCMID, "year": year})
 
 	t.Setenv("CAMPMINDER_PRIMARY_KEY", "test-subscription-key")
@@ -156,6 +159,21 @@ func TestAttendeesOrphanSweep_SurvivesReplay(t *testing.T) {
 	var s *AttendeesSync
 
 	assertOrphanSweepSurvivesReplay(t, replayOrphanSweepConfig{
+		// Positive control: an attendee row for a DIFFERENT person in the
+		// same session -- keyable by deleteOrphans' own getIDFunc
+		// (person_id > 0, session resolves through sessionMappings to a real
+		// camp_sessions cm_id) and absent from ProcessedKeys, since
+		// processEnrollment below only ever processes personCMID, never
+		// orphanPersonCMID. A LIVE sweep must delete it; without this
+		// control the test passes even if the sweep never runs -- see
+		// SeedOrphan's doc comment in orphan_replay_test.go.
+		SeedOrphan: func(_ replayT) error {
+			saveRecord(t, app, "attendees", map[string]any{
+				"person_id": orphanPersonCMID, "session": sessionPBID,
+				"status": "Enrolled", "status_id": float64(2), "year": year,
+			})
+			return nil
+		},
 		WriteFixture: func(t replayT) error {
 			s = NewAttendeesSync(app, client)
 			if err := s.loadSessionIDs(); err != nil {
