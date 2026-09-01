@@ -307,10 +307,14 @@ function EvidenceLine({
         ⛔ <strong>Taken.</strong>{' '}
         {occupants.length > 0
           ? `${occupants.map(occupantClause).join(' · ')}.`
-          : // Arm 1 of the rule with nobody to name: `is_family_available` is
-            // false on its own, which is what staff marking a unit unavailable
-            // looks like. The verdict is still a conflict and still has to say
-            // something.
+          : // ⚖️ UNREACHABLE SINCE THE 2026-09-01 PRESENCE RULING, and kept
+            // deliberately. A conflict used to be producible with nobody to
+            // name, because `is_family_available` could be false on its own
+            // (staff marking a unit unavailable, or a `staff_default` unit
+            // with no release row). The rule no longer consults availability,
+            // so a conflict and an occupant now arrive together. This branch
+            // survives only because every field on the wire type is optional
+            // and a truncated payload must still render a sentence.
             `${cabinLabel} is not available this weekend.`}
       </>
     )

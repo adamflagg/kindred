@@ -401,10 +401,14 @@ describe('SessionAttributionRow', () => {
       expect(evidenceTextFor(container, 'conflict')).toContain('a write-in for Staff hold')
     })
 
-    it('still says the cabin is taken when the rule found no nameable occupant', () => {
-      // Arm 1 of the rule: `is_family_available` is false on its own — staff
-      // marked the unit unavailable — so there is a conflict with nobody to
-      // name. A blank sentence would read as a rendering bug.
+    it('still says the cabin is taken when the payload names no occupant', () => {
+      // ⚖️ The rule can no longer PRODUCE this state. Until the 2026-09-01
+      // presence ruling a conflict could come with nobody to name, because
+      // `is_family_available` could be false on its own; the rule no longer
+      // consults availability, so a conflict and an occupant now arrive
+      // together. This pins the DEFENSIVE render instead: every field on the
+      // wire type is optional, and a truncated payload must still produce a
+      // sentence rather than a blank one that reads as a rendering bug.
       const { container } = render(
         <SessionAttributionRow
           item={evidenceItem({

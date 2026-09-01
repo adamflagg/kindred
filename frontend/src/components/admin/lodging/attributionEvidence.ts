@@ -10,11 +10,8 @@
  * ⛔ NOTHING IS CLASSIFIED HERE, AND THAT IS THE POINT. The verdict, the
  * conflict-aware suggestion and the occupant list all arrive computed from
  * `GET /api/lodging/attribution/conflicts`. The answer needs the live board's
- * placements AND its write-ins across every candidate weekend, and a client
- * that re-derived it would be a second implementation of availability —
- * `is_family_available` / `free_family_spots` in `api/services/lodging_rules.py`
- * carry owner rulings dated 2026-08-23 and 2026-08-29 and a comment expressly
- * guarding them against being "fixed". This module only RESHAPES: snake_case
+ * placements AND its write-ins across every candidate weekend, which a client
+ * holding only the queue rows cannot assemble. This module only RESHAPES: snake_case
  * to camelCase, a list to a lookup, and the two copy fragments the row's
  * sentences are built from.
  *
@@ -51,8 +48,15 @@ export interface AttributionCandidateEvidence {
   verdict: AttributionVerdictValue
   /**
    * Everyone the rule found in the cabin that weekend, EXCLUDING the party
-   * being attributed. Non-empty on a `free` verdict too: a shareable leaf
-   * with room left holds another party without conflicting.
+   * being attributed.
+   *
+   * ⚖️ EMPTY WHENEVER THE VERDICT IS NOT `conflict`, since the 2026-09-01
+   * presence ruling. It used to be able to be non-empty on a `free` verdict —
+   * a shareable leaf with beds to spare held another party without
+   * conflicting — and that asymmetry is gone: anybody in the leaf is now a
+   * conflict, so an occupant and a `conflict` verdict arrive together or not
+   * at all. The list is still read defensively because every field on the
+   * wire type is optional.
    */
   occupants: SessionAttributionOccupant[]
 }
