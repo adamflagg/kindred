@@ -501,13 +501,18 @@ def _all_filters() -> dict[str, list[str]]:
     return parsed
 
 
-def test_backend_filter_covers_the_workspace_file():
+def test_go_lint_filter_covers_the_workspace_file():
     """go-lint runs `go vet ./...`, which loads the workspace before anything else.
 
     A go.work-only change -- the fix for kindred#2629 is exactly that -- is a real
-    input to that job, and nothing else in `backend` matches it.
+    input to that job, and nothing else in its gate matches it.
+
+    This pinned `backend` until kindred#2663 replaced that filter with `goLint`.
+    Repointed rather than deleted: `test_ci_path_filters.py` asserts go.work
+    against the `Go vet` STEP gate, which is the sharper check, but this one
+    survives a step being renamed and the two fail for different reasons.
     """
-    assert "go.work" in _all_filters()["backend"]
+    assert "go.work" in _all_filters()["goLint"]
 
 
 def test_no_filter_watches_a_root_go_module_that_does_not_exist():
@@ -515,8 +520,8 @@ def test_no_filter_watches_a_root_go_module_that_does_not_exist():
 
     Leaving them in is what made the hole above look covered on a read-through:
     the filter appeared to watch the module files, so nobody checked which ones.
-    `backend` carried the same two dead entries and was only ever right by
-    accident, via its broader `pocketbase/**`.
+    The since-deleted `backend` filter (kindred#2663) carried the same two dead
+    entries and was only ever right by accident, via its broader `pocketbase/**`.
     """
     assert not (REPO_ROOT / "go.mod").exists(), "a root module now exists; revisit the go filter"
     for name, patterns in _all_filters().items():
