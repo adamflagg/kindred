@@ -224,6 +224,8 @@ tmp/
 !.prettierrc.json
 # Claude Code project config — not sensitive; placed here to override `*.json`
 !.claude/settings.json
+# Renovate config — not sensitive; same override as above
+!renovate.json
 !**/sample_*.csv
 !config/staff_list.example.json
 !config/nicknames_override.example.json
