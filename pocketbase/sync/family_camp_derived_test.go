@@ -1091,7 +1091,7 @@ func TestSetRegistrationRequestFieldsReachesBothCreateAndUpdate(t *testing.T) {
 		wantsNear:                true,
 		wantsWithNamed:           true,
 		wantsSimilarAges:         false,
-		requestText:              "Would like to be near the Andersons",
+		requestText:              "Would like to be near the Garcias",
 		requestSourceField:       "FAM CAMP-Share Cabins",
 		requestLastUpdated:       ts,
 		needsPrivateBathroom:     true,
@@ -1209,6 +1209,129 @@ func TestSetRegistrationRequestFieldsReachesBothCreateAndUpdate(t *testing.T) {
 	}
 	if got := updated.GetString("request_last_updated"); got != wantStamp {
 		t.Errorf("update: request_last_updated = %q, want %q", got, wantStamp)
+	}
+}
+
+// TestRegistrationColumnValuesFuseWriteAndCompare is the acceptance test for
+// kindred#2552 piece 2. registrationNeedsUpdate and setRegistrationRequestFields
+// used to each hand-name the same 24 columns in two SEPARATE hard-coded lists
+// -- exactly the drift shape medicalColumnValues' doc comment warns about: a
+// column added to one list and forgotten in the other either never gets
+// compared (a change to it never triggers a rewrite) or never gets written
+// (record.Set on a column the schema lacks is a silent no-op), with no error
+// either way.
+//
+// This drives BOTH functions from registrationColumnValues(reg) alone: for
+// every column that function returns, holding a STALE value on `existing` for
+// ONLY that one column must (1) make registrationNeedsUpdate report a change,
+// and (2) make setRegistrationRequestFields overwrite it back to reg's value.
+// A column that reaches one function's list but not the other's fails one of
+// the two checks below -- which only holds while both functions walk the
+// identical list registrationColumnValues returns, rather than two
+// hand-copied ones that happen to agree today.
+func TestRegistrationColumnValuesFuseWriteAndCompare(t *testing.T) {
+	t.Parallel()
+	col := core.NewBaseCollection("family_camp_registrations")
+	col.Fields.Add(&core.TextField{Name: "cabin_assignment"})
+	col.Fields.Add(&core.TextField{Name: "share_cabin_preference"})
+	col.Fields.Add(&core.TextField{Name: "shared_cabin_modes_raw"})
+	col.Fields.Add(&core.TextField{Name: "arrival_eta"})
+	col.Fields.Add(&core.TextField{Name: "special_occasions"})
+	col.Fields.Add(&core.TextField{Name: "goals"})
+	col.Fields.Add(&core.TextField{Name: "notes"})
+	col.Fields.Add(&core.BoolField{Name: "needs_accommodation"})
+	col.Fields.Add(&core.TextField{Name: enrollmentStatusColumn})
+	col.Fields.Add(&core.TextField{Name: "share_cabin_gate"})
+	col.Fields.Add(&core.BoolField{Name: "wants_near"})
+	col.Fields.Add(&core.BoolField{Name: "wants_with_named"})
+	col.Fields.Add(&core.BoolField{Name: "wants_similar_ages"})
+	col.Fields.Add(&core.TextField{Name: "request_text"})
+	col.Fields.Add(&core.TextField{Name: "request_source_field"})
+	col.Fields.Add(&core.TextField{Name: "request_last_updated"})
+	col.Fields.Add(&core.BoolField{Name: "needs_private_bathroom"})
+	col.Fields.Add(&core.BoolField{Name: "needs_power"})
+	col.Fields.Add(&core.BoolField{Name: "accommodation_is_mandatory"})
+	col.Fields.Add(&core.BoolField{Name: "has_infant"})
+	col.Fields.Add(&core.BoolField{Name: "needs_fridge"})
+	col.Fields.Add(&core.BoolField{Name: "needs_step_free"})
+	col.Fields.Add(&core.TextField{Name: "share_eligibility"})
+	col.Fields.Add(&core.TextField{Name: "share_eligibility_source"})
+
+	ts := time.Date(2026, 4, 21, 9, 30, 0, 0, time.UTC)
+	reg := &registrationData{
+		householdPBID:            "hh_1",
+		cabinAssignment:          "Cabin 12",
+		shareCabinPreference:     "Yes",
+		sharedCabinModesRaw:      "NEAR|WITH",
+		arrivalETA:               "Friday 5pm",
+		specialOccasions:         "Anniversary",
+		goals:                    "Family bonding",
+		notes:                    "Prefers ground floor",
+		needsAccommodation:       true,
+		enrollmentStatus:         enrollmentStatusEnrolled,
+		shareCabinGate:           gateYes,
+		wantsNear:                true,
+		wantsWithNamed:           true,
+		wantsSimilarAges:         false,
+		requestText:              "Would like to be near the Garcias",
+		requestSourceField:       "FAM CAMP-Share Cabins",
+		requestLastUpdated:       ts,
+		needsPrivateBathroom:     true,
+		needsPower:               true,
+		accommodationIsMandatory: false,
+		hasInfant:                true,
+		needsFridge:              true,
+		needsStepFree:            false,
+		shareEligibility:         "open",
+		shareEligibilitySource:   "form",
+	}
+
+	values := registrationColumnValues(reg)
+	if len(values) != 24 {
+		t.Fatalf("registrationColumnValues returned %d columns, want 24 -- "+
+			"a shorter list would make every check below vacuous for the "+
+			"missing columns", len(values))
+	}
+
+	s := &FamilyCampDerivedSync{}
+
+	for _, cv := range values {
+		cv := cv
+		t.Run(cv.column, func(t *testing.T) {
+			t.Parallel()
+			// Seed a record with reg's real value on every column, then
+			// stomp ONLY this one column with a stale value -- isolating
+			// whether THIS column, specifically, is wired into both
+			// functions.
+			existing := core.NewRecord(col)
+			setRegistrationRequestFields(existing, reg)
+
+			switch v := cv.value.(type) {
+			case string:
+				existing.Set(cv.column, v+"-stale")
+			case bool:
+				existing.Set(cv.column, !v)
+			default:
+				t.Fatalf("column %s has unsupported value type %T", cv.column, cv.value)
+			}
+
+			if !s.registrationNeedsUpdate(existing, reg) {
+				t.Errorf("staling only %s was invisible to registrationNeedsUpdate -- "+
+					"a real change to this column would never trigger a rewrite", cv.column)
+			}
+
+			setRegistrationRequestFields(existing, reg)
+			switch v := cv.value.(type) {
+			case string:
+				if got := existing.GetString(cv.column); got != v {
+					t.Errorf("after re-set, %s = %q, want %q", cv.column, got, v)
+				}
+			case bool:
+				if got := existing.GetBool(cv.column); got != v {
+					t.Errorf("after re-set, %s = %v, want %v", cv.column, got, v)
+				}
+			}
+		})
 	}
 }
 
