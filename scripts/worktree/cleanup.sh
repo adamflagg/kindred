@@ -112,8 +112,21 @@ fi
 # The branch this worktree is on, which is not necessarily feature/$FEATURE_NAME.
 BRANCH_NAME=$(resolve_branch "$WORKTREE_DIR")
 if [ -z "$BRANCH_NAME" ]; then
-    echo -e "${YELLOW}$FEATURE_NAME is on a detached HEAD; removing the worktree only${NC}"
+    # No branch means no PR to look up, so the merged-PR gate below cannot run
+    # at all. Refuse rather than fall through to the removal: a detached HEAD is
+    # the WORST case for `git worktree remove --force`, because its commits are
+    # reachable from nothing else and removing the worktree takes its reflog
+    # with it. Demand --force here exactly as the unmerged-branch case does --
+    # the old directory-guessing script refused by accident (`feature/$1` had no
+    # merged PR), and resolving the branch properly must not turn that accident
+    # into a silent deletion.
+    echo -e "${YELLOW}$FEATURE_NAME is on a detached HEAD; no branch, so no PR to check${NC}"
     KEEP_BRANCH=true
+    if [ "$2" != "--force" ]; then
+        echo -e "${RED}Cannot clean up: refusing to remove a detached worktree without --force${NC}"
+        echo -e "Commit onto a branch and merge its PR first, or use --force to override"
+        exit 1
+    fi
 elif [ "$BRANCH_NAME" != "feature/$FEATURE_NAME" ]; then
     echo -e "${BLUE}Directory $FEATURE_NAME is on branch $BRANCH_NAME${NC}"
 fi
@@ -140,7 +153,7 @@ echo -e "${BLUE}Removing worktree...${NC}"
 cd "$MAIN_REPO"
 git worktree remove "$WORKTREE_DIR" --force 2>/dev/null || rm -rf "$WORKTREE_DIR"
 
-# Remove branch (we already verified PR is merged)
+# Remove branch (the merged-PR gate above passed, or --force overrode it)
 if [ "$KEEP_BRANCH" = false ]; then
     echo -e "${BLUE}Removing branch: $BRANCH_NAME${NC}"
     git branch -D "$BRANCH_NAME" 2>/dev/null || true

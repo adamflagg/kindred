@@ -2,9 +2,8 @@
 
 The script used to derive the branch from the directory name -- `feature/$1` --
 and then gate deletion on whether a PR for *that guessed name* was merged. The
-two agree only when nobody renames anything, and a sweep that puts three
-worktrees on branches named for their subject rather than their directory
-breaks all three at once.
+two agree only when nobody names a branch after its subject rather than its
+directory, and it takes exactly one such worktree in a sweep to break.
 
 Measured 2026-09-01, cleaning up after kindred#2666: `.worktrees/goconst-campminder`
 was on `feature/goconst-2665`. `--all-merged` looked for a merged PR on
@@ -107,6 +106,15 @@ def repo(tmp_path: Path) -> Path:
     return main
 
 
+def _detach(worktree: Path) -> None:
+    """Put a worktree on a detached HEAD.
+
+    Not exotic: an interrupted rebase leaves one, and so does checking out a
+    SHA inside a worktree to reproduce something.
+    """
+    _git("checkout", "-q", "--detach", "HEAD", cwd=worktree)
+
+
 def _run_cleanup(repo: Path, *args: str, merged: set[str]) -> subprocess.CompletedProcess[str]:
     bin_dir = repo.parent / "stubbin"
     _stub_gh(bin_dir, merged)
@@ -160,7 +168,57 @@ def test_all_merged_finds_a_worktree_whose_branch_differs_from_its_directory(rep
     assert "feature/real-name" not in _branches(repo)
 
 
-def test_the_helpers_never_touch_the_repo_named_by_the_git_environment(tmp_path: Path) -> None:
+def test_a_detached_worktree_is_not_removed_without_force(repo: Path) -> None:
+    """No branch means no PR to check, so the work-in-progress guard must refuse.
+
+    A detached HEAD is the worst case for `git worktree remove --force`: a
+    commit made there is reachable from nothing, and removing the worktree
+    deletes its reflog along with it. The old directory-guessing script refused
+    here by accident -- `feature/dir-name` had no merged PR -- and resolving the
+    branch properly must not convert that accident into a silent deletion.
+
+    Both branches are reported merged so the refusal cannot come from a failed
+    lookup: there is no branch to look up at all.
+    """
+    _detach(repo / ".worktrees/dir-name")
+
+    result = _run_cleanup(repo, "dir-name", merged={"feature/real-name", "feature/dir-name"})
+
+    assert result.returncode != 0, f"removed a detached worktree with no --force:\n{result.stdout}"
+    assert (repo / ".worktrees/dir-name").exists(), "the detached worktree was removed anyway"
+
+
+def test_force_removes_a_detached_worktree_and_leaves_every_branch_alone(repo: Path) -> None:
+    """`--force` is the operator accepting the loss, and it must still work.
+
+    The branch the worktree sat on before detaching has to survive: with no
+    symbolic ref there is nothing to delete, and deleting `feature/dir-name`
+    on a guess is the whole defect this file exists to pin.
+    """
+    _detach(repo / ".worktrees/dir-name")
+    before = _branches(repo)
+
+    result = _run_cleanup(repo, "dir-name", "--force", merged=set())
+
+    assert result.returncode == 0, f"--force did not clean up:\n{result.stdout}\n{result.stderr}"
+    assert not (repo / ".worktrees/dir-name").exists(), "worktree directory survived --force"
+    assert _branches(repo) == before, "a branch was deleted for a worktree that was on none"
+
+
+def test_all_merged_skips_a_detached_worktree(repo: Path) -> None:
+    """The sweep has no branch to check either, so it must leave the worktree be."""
+    _detach(repo / ".worktrees/dir-name")
+
+    result = _run_cleanup(repo, "--all-merged", merged={"feature/real-name", "feature/dir-name"})
+
+    assert result.returncode == 0, f"{result.stdout}\n{result.stderr}"
+    assert (repo / ".worktrees/dir-name").exists(), f"swept a detached worktree:\n{result.stdout}"
+    assert _branches(repo) == {"main", "feature/real-name"}
+
+
+def test_the_helpers_never_touch_the_repo_named_by_the_git_environment(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """A git hook exports GIT_DIR; the fixture must still work on its own repo.
 
     `git` prefers GIT_DIR / GIT_INDEX_FILE over `cwd=`, so without scrubbing
@@ -187,20 +245,23 @@ def test_the_helpers_never_touch_the_repo_named_by_the_git_environment(tmp_path:
     assert len(before_files) == 3
 
     # Exactly what lefthook's pre-push leaves in the environment.
-    os.environ["GIT_DIR"] = str(decoy / ".git")
-    os.environ["GIT_INDEX_FILE"] = str(decoy / ".git/index")
-    try:
-        victim = tmp_path / "other"
-        victim.mkdir()
-        _git("init", "-q", "-b", "main", cwd=victim)
-        _git("config", "user.email", "test@example.com", cwd=victim)
-        _git("config", "user.name", "Test", cwd=victim)
-        (victim / "unrelated.txt").write_text("x\n")
-        _git("add", "-A", cwd=victim)
-        _git("commit", "-qm", "seed", cwd=victim)
-    finally:
-        del os.environ["GIT_DIR"]
-        del os.environ["GIT_INDEX_FILE"]
+    #
+    # monkeypatch, not a raw os.environ write with a `del` in a finally: under
+    # that hook GIT_DIR really IS already set, so `del` would strip the hook's
+    # own value from every test that runs after this one -- the same ambient-
+    # environment leak this file is about, aimed at the rest of the suite.
+    # pytest restores whatever was there, set or unset, at teardown.
+    monkeypatch.setenv("GIT_DIR", str(decoy / ".git"))
+    monkeypatch.setenv("GIT_INDEX_FILE", str(decoy / ".git/index"))
+
+    victim = tmp_path / "other"
+    victim.mkdir()
+    _git("init", "-q", "-b", "main", cwd=victim)
+    _git("config", "user.email", "test@example.com", cwd=victim)
+    _git("config", "user.name", "Test", cwd=victim)
+    (victim / "unrelated.txt").write_text("x\n")
+    _git("add", "-A", cwd=victim)
+    _git("commit", "-qm", "seed", cwd=victim)
 
     assert _git("rev-parse", "HEAD", cwd=decoy) == before_head, (
         "the helper committed into the repo named by GIT_DIR instead of its own"
