@@ -450,10 +450,12 @@ leaves, so a split building still reads `some`.
 snapshot, all 118 units, every graded coverage — power, fridge, AC, heat,
 weatherized, step-free — is byte-identical before and after, as is the
 resolved `bathroom`. The only (ancestor true, descendant false) pairs in the
-whole registry are `has_tub` and `has_crib` on a single house: four rooms move
-from not-carrying to carrying, and neither column has a coverage grain or a
-board consumer. Re-derive with the walk above rather than trusting this
-paragraph if the registry has moved since.
+whole registry are `has_tub` and `has_crib` on a single house, and **neither
+moves either** — neither is a field on `LodgingUnitSummary`, so the roll-down
+cannot reach them at all. Four rooms *would* inherit if those columns were
+ever carried into the payload and graded; today nothing does, and neither
+column has a coverage grain or a board consumer. Re-derive with the walk above
+rather than trusting this paragraph if the registry has moved since.
 
 ⚠️ **`is_accessible` is IN the roll-down, deliberately, and the residual risk
 is named.** Roll-down can only ever WIDEN, so ticking accessibility on a
