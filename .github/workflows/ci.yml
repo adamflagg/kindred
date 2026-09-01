@@ -90,7 +90,7 @@ jobs:
       go: ${{ steps.filter.outputs.go }}
       migrations: ${{ steps.filter.outputs.migrations }}
       frontend: ${{ steps.filter.outputs.frontend }}
-      scripts: ${{ steps.filter.outputs.scripts }}
+      shell: ${{ steps.filter.outputs.shell }}
       guardSelfTests: ${{ steps.filter.outputs.guardSelfTests }}
       docker: ${{ steps.filter.outputs.docker }}
       actions: ${{ steps.filter.outputs.actions }}
@@ -275,14 +275,28 @@ jobs:
             # toolchain .nvmrc actually governs, constrained by
             # frontend/package.json's engines.node. See the note in `goLint`.
             - '.nvmrc'
-          scripts:
-            - 'scripts/**/*.sh'
+          # Every tracked shell script, because scripts/ci/shellcheck-all.sh lints
+          # every tracked shell script. It was named `scripts` and matched only
+          # 'scripts/**/*.sh', while the command it gated walked four fixed roots --
+          # so four scripts under frontend/ and tests/shell/ could not trigger the
+          # step that linted them, and .claude/hooks/worktree-guard.sh was linted by
+          # nothing at all. kindred#2663 Gap C.
+          shell:
+            - '**/*.sh'
+            # Listed explicitly, not left to the bare '**' above. Whether '*' crosses
+            # a leading dot is picomatch's `dot` option, which dorny/paths-filter sets
+            # today at the pinned SHA and an action bump could change. The Python
+            # assertions ARE dot-permissive, so without this line they would keep
+            # reporting .claude/hooks/worktree-guard.sh as covered while CI silently
+            # stopped firing on it -- a false green in the test for false greens.
+            - '.claude/**/*.sh'
             - '.shellcheckrc'
           # kindred#2370: scripts/dev/test-*.sh are the guard scripts' own
           # self-tests (e.g. test-verify-migration-history.sh pins the
           # unanchored-boundary regression from PR #2366) and, before this
-          # filter existed, ran nowhere in CI -- the `scripts` filter above
-          # already matches this directory via `scripts/**/*.sh`, but the
+          # filter existed, ran nowhere in CI -- the `shell` filter above
+          # already matches this directory (it did so as `scripts/**/*.sh`
+          # before kindred#2663 renamed and widened it), but the
           # only job reading that output is go-lint's shellcheck step
           # (syntax, not behavior). A dedicated filter makes the
           # guard-self-tests job's gate say what it actually depends on,
@@ -610,7 +624,7 @@ jobs:
     needs: detect-changes
     if: |
       needs.detect-changes.outputs.goLint == 'true' ||
-      needs.detect-changes.outputs.scripts == 'true' ||
+      needs.detect-changes.outputs.shell == 'true' ||
       needs.detect-changes.outputs.docker == 'true'
     runs-on: ubuntu-latest
     steps:
@@ -701,11 +715,8 @@ jobs:
 
     # Shell script linting (warning+ severity - info is too noisy)
     - name: Shell script linting (shellcheck)
-      if: needs.detect-changes.outputs.scripts == 'true' || needs.detect-changes.outputs.goLint == 'true' || needs.detect-changes.outputs.docker == 'true'
-      run: |
-        echo "Checking shell scripts..."
-        find scripts/ docker/ frontend/ tests/shell/ -maxdepth 3 \( -name '*.sh' -o -name 'pre-*' -o -name 'post-*' \) -print0 | \
-          xargs -0 shellcheck --severity=warning
+      if: needs.detect-changes.outputs.shell == 'true' || needs.detect-changes.outputs.goLint == 'true' || needs.detect-changes.outputs.docker == 'true'
+      run: bash scripts/ci/shellcheck-all.sh
 
   # Frontend linting (parallel with other lint jobs)
   frontend-lint:

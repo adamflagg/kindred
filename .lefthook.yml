@@ -161,7 +161,7 @@ pre-push:
 
     shellcheck:
       glob: "**/*.sh"
-      run: find scripts/ docker/ frontend/ tests/shell/ -maxdepth 3 -name '*.sh' 2>/dev/null | xargs shellcheck --severity=warning
+      run: bash scripts/ci/shellcheck-all.sh
       skip:
         - run: "! command -v shellcheck >/dev/null 2>&1"
         - run: "git fetch origin main --quiet 2>/dev/null || true; git rev-parse -q --verify origin/main >/dev/null 2>&1 && ! git diff --name-only origin/main...HEAD | grep -qE '\\.sh$'"
