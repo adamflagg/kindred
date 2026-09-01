@@ -430,31 +430,46 @@ func parseGuardedSweeps(src string) (named []string, callSites int) {
 	return named, len(guardedSweepCallRe.FindAllString(src, -1))
 }
 
-// stringConstsIn harvests the string constants one source file declares, in the
-// two forms this package writes them: a top-level `const name = "value"` (how
-// attendees.go declares attendeesCollection and persons.go personsCollection)
-// and an entry inside a `const ( ... )` block (how camper_transportation.go
-// declares its column names).
+// stringConstsIn harvests the PACKAGE-LEVEL string constants one source file
+// declares, in the two forms this package writes them: a top-level
+// `const name = "value"` (how attendees.go declares attendeesCollection and
+// persons.go personsCollection) and an entry inside a top-level
+// `const ( ... )` block (how camper_transportation.go declares its column
+// names).
 //
 // Deliberately not a full parse. It reads exactly the shapes a sweep's
 // collection argument is declared in; anything else stays unreadable, which
 // leaves that call site counted-but-unnamed and fails guardedSweepCollections
 // loudly instead of quietly shrinking the set.
+//
+// Package-level is load-bearing, not incidental. There is one map for the whole
+// file and no scope tracking, so harvesting function-local constants too let a
+// local `const x = "..."` further down the file overwrite the package-level x
+// an earlier sweep resolves against -- and that sweep was then reported under a
+// collection it does not touch, with the callSites/len(found) count still
+// balancing. Naming the WRONG collection is the only outcome here that is worse
+// than naming none: every other unreadable shape fails loudly, this one passed.
+// Indentation is the whole test, because gofmt indents every function body and
+// a sweep argument is only ever a package-level constant (kindred#2666 review).
 func stringConstsIn(src string) map[string]string {
 	out := map[string]string{}
 	inBlock := false
 	for _, line := range strings.Split(src, "\n") {
+		topLevel := line == strings.TrimLeft(line, " \t")
 		decl := strings.TrimSpace(line)
 		switch {
-		case decl == "const (":
+		case topLevel && decl == "const (":
 			inBlock = true
 			continue
 		case inBlock && decl == ")":
 			inBlock = false
 			continue
-		case strings.HasPrefix(decl, "const "):
+		case topLevel && strings.HasPrefix(decl, "const "):
 			decl = strings.TrimPrefix(decl, "const ")
 		case !inBlock:
+			// Outside a top-level const block, an indented line is inside some
+			// function body. Its constants are not in scope at the call sites
+			// this parser reads.
 			continue
 		}
 		if m := stringConstRe.FindStringSubmatch(decl); m != nil {
@@ -617,6 +632,53 @@ func (s *Delta) deleteOrphans() error {
 		t.Errorf("named = %v, want %v -- an inline literal and an in-file string "+
 			"constant are both readable; a constant declared elsewhere is not",
 			named, want)
+	}
+}
+
+// TestParseGuardedSweepsIgnoresAFunctionLocalConstantOfTheSameName pins the one
+// way stringConstsIn can name the WRONG collection rather than none at all.
+//
+// It harvests declarations line by line into a single map, so a function-local
+// `const x = "..."` appearing LATER in the file used to overwrite the
+// package-level `x` an earlier sweep resolves against -- and the sweep was then
+// reported under a collection it does not touch. Every other shape this parser
+// cannot read leaves the call site counted-but-unnamed, which fails
+// guardedSweepCollections loudly; this one passed the count check and lied, so
+// a real sweep of an undeclared collection could hide behind a declared one
+// (kindred#2666 review).
+//
+// Only package-level declarations are harvested now, which is also all a sweep
+// argument is ever written as. A local constant is simply unreadable, and an
+// unreadable argument is the loud case.
+func TestParseGuardedSweepsIgnoresAFunctionLocalConstantOfTheSameName(t *testing.T) {
+	t.Parallel()
+
+	const src = `
+const zetaCollection = "zeta"
+
+func (s *Zeta) deleteOrphans() error {
+	return s.DeleteOrphansGuarded(
+		zetaCollection,
+		nil, "zeta", "", OrphanSweepGuard{},
+	)
+}
+
+func unrelatedHelper() string {
+	const zetaCollection = "not_zeta"
+	return zetaCollection
+}
+`
+
+	named, callSites := parseGuardedSweeps(src)
+
+	if callSites != 1 {
+		t.Fatalf("callSites = %d, want 1", callSites)
+	}
+	if len(named) != 1 || named[0] != "zeta" {
+		t.Errorf("named = %v, want [zeta] -- a function-local constant of the same "+
+			"name must not overwrite the package-level value the sweep resolves "+
+			"against; naming the wrong collection is worse than naming none, "+
+			"because the count check still passes", named)
 	}
 }
 
