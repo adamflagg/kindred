@@ -514,7 +514,10 @@ describe('SessionAttributionRow', () => {
         )
         const button = screen.getByRole('button', { name: /This is Family Camp 1/ })
         expect(button).toBeEnabled()
-        expect(button.className).toContain('opacity-45')
+        // SPLIT, never `toContain`. A substring match passes on a mangled
+        // class name — `justify-centeropacity-45` contains "opacity-45" and
+        // dims nothing, which is exactly what shipped here once.
+        expect(button.className.split(' ')).toContain('opacity-45')
       })
 
       it('still confirms the conflicted weekend when staff click it anyway', async () => {
@@ -534,7 +537,7 @@ describe('SessionAttributionRow', () => {
           <SessionAttributionRow item={evidenceItem()} onConfirm={vi.fn()} isConfirming={false} />
         )
         expect(
-          screen.getByRole('button', { name: /This is Family Camp 6/ }).className
+          screen.getByRole('button', { name: /This is Family Camp 6/ }).className.split(' ')
         ).not.toContain('opacity-45')
       })
     })

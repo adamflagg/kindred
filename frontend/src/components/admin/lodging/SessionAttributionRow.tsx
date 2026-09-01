@@ -231,7 +231,19 @@ export function SessionAttributionRow({
                     onConfirm(candidate.sessionCmId)
                   }}
                   // DIMMED, NEVER DISABLED. A conflict is evidence, not a gate.
-                  className={`${candidate.isSuggested ? CANDIDATE_BUTTON_PRIMARY : CANDIDATE_BUTTON_SECONDARY} mt-2 w-full justify-center${candidate.verdict === 'conflict' ? 'opacity-45' : ''}`}
+                  //
+                  // ⚠️ THE SPACE BEFORE `${` IS LOAD-BEARING, and it is not a
+                  // style choice. `prettier-plugin-tailwindcss` rewrites class
+                  // strings inside template literals and MOVES a leading space
+                  // out of a ternary's branches, so writing the space inside
+                  // the branch (`? ' opacity-45'`) is silently reformatted to
+                  // `? 'opacity-45'` — which renders the class
+                  // `justify-centeropacity-45` and dims nothing. That shipped
+                  // here once and was caught by mutation-checking, not by the
+                  // suite: `toContain('opacity-45')` is a SUBSTRING match and
+                  // passes on the mangled name. The test now splits the class
+                  // list, which is what actually pins it.
+                  className={`${candidate.isSuggested ? CANDIDATE_BUTTON_PRIMARY : CANDIDATE_BUTTON_SECONDARY} mt-2 w-full justify-center ${candidate.verdict === 'conflict' ? 'opacity-45' : ''}`}
                 >
                   This is {candidate.short}
                 </button>
