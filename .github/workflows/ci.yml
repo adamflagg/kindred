@@ -140,6 +140,13 @@ jobs:
             # change they police -- runs none of them. Same reasoning, and the
             # same accepted cost, as the `go` filter below. kindred#2653.
             - '.github/workflows/ci.yml'
+            # And the Go lint config, for the same reason. `test_golangci_config.py`
+            # (kindred#2671) asserts goconst is not disabled tree-wide and that its
+            # path exclusions name exactly the packages we said they could -- but it
+            # runs in tests-python, which watched no Go config, so a PR editing ONLY
+            # this file ran none of the assertions that police it. #2671 escaped that
+            # only because it also touched 'tests/**'. kindred#2663.
+            - '.golangci.yml'
           # python-lint's inputs, which are a superset of the Python sources.
           # It used to gate on `backend`, a filter meant for another job: that
           # has no 'tests/**', so none of the 507 tracked test files could
