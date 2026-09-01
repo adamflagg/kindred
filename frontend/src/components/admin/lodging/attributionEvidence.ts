@@ -37,8 +37,13 @@ export interface SessionAttributionOccupant {
    * The building the CampMinder value NAMED, when this leaf came out of
    * expanding a container; `''` when the value named the leaf itself. Owner
    * ruling 3 makes a container conflict on any contained room, so the line
-   * has to say "a room inside Clouds Rest" rather than naming a room staff
+   * has to say "a room inside <the building>" rather than naming a room staff
    * never wrote down.
+   *
+   * ⛔ Do not put a real building name in this comment. The Lodging Name Guard
+   * scans comments in application source (spec 3.8 — the registry is data, not
+   * code) and exempts only fixture STRINGS in test files; an illustrative name
+   * here is what turned this file red on the branch's first CI run.
    */
   containerName: string
 }
