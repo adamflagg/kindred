@@ -28,6 +28,7 @@ from api.schemas.lodging import (
     PushExecuteResponse,
     PushPreviewResponse,
     ScenarioCompareResponse,
+    SessionAttributionConflictsResponse,
     SlotMergeRequest,
     UnpushResponse,
     WeekendRosterResponse,
@@ -35,6 +36,7 @@ from api.schemas.lodging import (
     WeekendSummaryResponse,
     WriteInDeleteRequest,
 )
+from api.services.lodging_attribution_service import LodgingAttributionService
 from api.services.lodging_compare_service import LodgingCompareService, NotAFamilyWeekendError
 from api.services.lodging_repository import LodgingRepository
 from api.services.lodging_roster_service import LodgingRosterService, SessionNotFoundError
@@ -83,6 +85,10 @@ def _writes() -> LodgingWriteService:
 
 def _compare() -> LodgingCompareService:
     return LodgingCompareService(LodgingRepository(pb))
+
+
+def _attribution() -> LodgingAttributionService:
+    return LodgingAttributionService(LodgingRepository(pb))
 
 
 def _weekend_404(year: int, session_cm_id: int) -> HTTPException:
@@ -489,6 +495,55 @@ async def get_scenario_compare(
         raise _weekend_404(year, session_cm_id) from exc
     except NotAFamilyWeekendError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/attribution/conflicts", response_model=SessionAttributionConflictsResponse)
+async def get_session_attribution_conflicts(
+    year: int = Query(..., description="Year of the attribution queue", ge=2000, le=2100),
+    user: AuthUser = Depends(require_permission(Permission.BUNKING_MANAGE)),
+) -> SessionAttributionConflictsResponse:
+    """Occupancy evidence for the open cabin-weekend attribution queue.
+
+    §12.8 of the round-2 triage-attack plan, owner-designed and owner-ruled
+    2026-08-31. It CLOSES NO ISSUE and none is filed, deliberately.
+
+    When a household attends 2+ weekends, CampMinder holds one cabin value for
+    the year and cannot say which weekend it describes; the Go ingest files an
+    `ambiguous_session` row carrying `AttributeSession`'s timestamp guess. This
+    answers the question that guess cannot -- is the cabin already occupied in
+    each candidate weekend, and by whom -- and DEMOTES the conflicted weekends.
+
+    CLASSIFICATION IS SERVER-SIDE ONLY, the same argument `/push/preview` and
+    `/compare` above each make one grain over: the answer needs the live
+    board's placements AND its write-ins across every candidate weekend, which
+    a client holding only the queue rows cannot assemble.
+
+    ⚖️ OCCUPANCY IS PRESENCE, NOT CAPACITY (owner ruling 2026-09-01). Another
+    party in the cabin demotes the weekend; no bed arithmetic happens anywhere.
+    `leaf_conflicts` in `api/services/lodging_rules.py` carries the full reason
+    -- the short version is that the capacity answer this used to defer to does
+    not subtract placed families by design, so it could never demote a
+    SHAREABLE cabin however full it was, and that is 44 of 118 units.
+
+    BOTH SUGGESTIONS CROSS THE WIRE. `suggested_session` in PocketBase keeps
+    its unchanged timestamp value -- nothing in Go moves, and `AttributeSession`
+    is untouched -- so publishing only the conflict-aware answer would make the
+    UI silently disagree with the row it is rendering. Publishing both is what
+    lets it say *"FC2, because FC1 is taken."*
+
+    UNCACHED DELIBERATELY, for two reasons rather than one. Staff flip
+    `is_resolved` straight against PocketBase from the admin panel
+    (`confirmSessionAttribution` in `frontend/src/services/lodgingCrud.ts`),
+    which is the call `count_open_unresolved_aliases` already makes for the
+    queue this annotates -- and this additionally reads LIVE WRITE-INS, which
+    the board writes directly through `api/services/lodging_write_service.py`.
+
+    `BUNKING_MANAGE`-gated like the two report endpoints above, even though it
+    writes nothing: the payload names households and the cabins they are in,
+    and deciding which weekend a cabin value belongs to is part of the same
+    staff workflow placing families is.
+    """
+    return await _attribution().build_conflicts(year)
 
 
 @router.post("/push", response_model=PushExecuteResponse)

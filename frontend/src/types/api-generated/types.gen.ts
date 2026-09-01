@@ -139,6 +139,77 @@ export type ApproveRequest = {
 }
 
 /**
+ * AttributionCandidate
+ *
+ * One candidate weekend's verdict, with the evidence behind it.
+ *
+ * ⚠️ `no_data` MEANS NO PLACEMENTS, not no occupancy. A weekend nobody has
+ * planned can still hold write-ins -- one 2026 weekend holds three with zero
+ * placements -- and calling that "free" would report an absence of planning
+ * as a finding.
+ *
+ * ONLY `conflict` RANKS. "free" and "no_data" carry no ranking power (§12.8.4):
+ * "taken" is a positive local fact, while "free" is an absence whose weight
+ * depends on how complete that weekend's planning is, which nothing measures.
+ * Both are drawn anyway, per owner ruling 6 -- *"for the sake of visual
+ * uniformity and information."*
+ */
+export type AttributionCandidate = {
+  /**
+   * Session Cm Id
+   */
+  session_cm_id?: number
+  /**
+   * Session Name
+   */
+  session_name?: string
+  /**
+   * Verdict
+   */
+  verdict?: 'conflict' | 'free' | 'no_data'
+  /**
+   * Occupants
+   */
+  occupants?: Array<AttributionOccupant>
+}
+
+/**
+ * AttributionOccupant
+ *
+ * WHO is in a candidate weekend's copy of the cabin, for the evidence line.
+ *
+ * `label` is a household's mailing title or a write-in's occupant name --
+ * what staff can check a cabin against. A CampMinder id is a key, not
+ * something anybody recognises.
+ *
+ * `container_name` is set only when the leaf came out of a CONTAINER the raw
+ * value named, so the line can say "a room inside <building>" rather than
+ * naming a room staff never wrote down.
+ */
+export type AttributionOccupant = {
+  /**
+   * Kind
+   */
+  kind?: 'placement' | 'write_in'
+  /**
+   * Label
+   */
+  label?: string
+  /**
+   * Leaf Code
+   */
+  leaf_code?: string
+  /**
+   * Leaf Name
+   */
+  leaf_name?: string
+  /**
+   * Container Name
+   */
+  container_name?: string
+}
+
+/**
  * AvailabilityWriteRequest
  *
  * Write somebody into one unit for one weekend, or release one to families.
@@ -6040,6 +6111,107 @@ export type SchoolEnrollment = {
 }
 
 /**
+ * SessionAttributionConflictRow
+ *
+ * One open `ambiguous_session` queue row, annotated with occupancy.
+ *
+ * BOTH SUGGESTIONS ARE PUBLISHED, and that is the point of the payload rather
+ * than a convenience. `timestamp_suggested_session_cm_id` is the value
+ * PocketBase actually stores on the row (`suggested_session`, written by
+ * `AttributeSession` in Go and deliberately UNCHANGED by this feature);
+ * `conflict_aware_suggested_session_cm_id` is the same rule run over the
+ * weekends that survive the conflict check. Publishing only the second would
+ * make the UI silently disagree with the stored row; publishing both lets it
+ * say *"FC2, because FC1 is taken."*
+ *
+ * `demotion_applied` is that disagreement, named once here rather than
+ * re-derived per render -- it is the banner condition.
+ *
+ * `conflict_in_every_candidate` DEMOTES NOTHING. It is an alarm about the
+ * cabin VALUE, not about a weekend: if the string is taken everywhere the
+ * party could be, moving the guess would move it onto a weekend the rule has
+ * just called wrong.
+ */
+export type SessionAttributionConflictRow = {
+  /**
+   * Issue Id
+   */
+  issue_id?: string
+  /**
+   * Raw Value
+   */
+  raw_value?: string
+  /**
+   * Source Field
+   */
+  source_field?: string
+  /**
+   * Household Cm Id
+   */
+  household_cm_id?: number
+  /**
+   * Person Cm Id
+   */
+  person_cm_id?: number
+  /**
+   * Resolved Unit Codes
+   */
+  resolved_unit_codes?: Array<string>
+  /**
+   * Resolved Unit Names
+   */
+  resolved_unit_names?: Array<string>
+  /**
+   * Resolved Leaf Codes
+   */
+  resolved_leaf_codes?: Array<string>
+  /**
+   * Candidates
+   */
+  candidates?: Array<AttributionCandidate>
+  /**
+   * Conflict In Every Candidate
+   */
+  conflict_in_every_candidate?: boolean
+  /**
+   * Timestamp Suggested Session Cm Id
+   */
+  timestamp_suggested_session_cm_id?: number | null
+  /**
+   * Conflict Aware Suggested Session Cm Id
+   */
+  conflict_aware_suggested_session_cm_id?: number | null
+  /**
+   * Demotion Applied
+   */
+  demotion_applied?: boolean
+}
+
+/**
+ * SessionAttributionConflictsResponse
+ *
+ * Occupancy evidence for every open attribution queue row in one year.
+ *
+ * UNCACHED at every layer it passes through, for two reasons rather than one.
+ * `is_resolved` is flipped straight against PocketBase from the admin panel
+ * (`confirmSessionAttribution` in `frontend/src/services/lodgingCrud.ts`) --
+ * the argument `count_open_unresolved_aliases` already makes -- and this
+ * additionally reads LIVE WRITE-INS, which the board writes directly through
+ * `lodging_write_service.py`. Either alone would make a TTL show staff a
+ * conflict they had just cleared.
+ */
+export type SessionAttributionConflictsResponse = {
+  /**
+   * Year
+   */
+  year?: number
+  /**
+   * Rows
+   */
+  rows?: Array<SessionAttributionConflictRow>
+}
+
+/**
  * SessionAvailability
  *
  * Availability for one non-AG session.
@@ -11240,6 +11412,40 @@ export type GetScenarioCompareApiLodgingCompareGetResponses = {
 
 export type GetScenarioCompareApiLodgingCompareGetResponse =
   GetScenarioCompareApiLodgingCompareGetResponses[keyof GetScenarioCompareApiLodgingCompareGetResponses]
+
+export type GetSessionAttributionConflictsApiLodgingAttributionConflictsGetData = {
+  body?: never
+  path?: never
+  query: {
+    /**
+     * Year
+     *
+     * Year of the attribution queue
+     */
+    year: number
+  }
+  url: '/api/lodging/attribution/conflicts'
+}
+
+export type GetSessionAttributionConflictsApiLodgingAttributionConflictsGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type GetSessionAttributionConflictsApiLodgingAttributionConflictsGetError =
+  GetSessionAttributionConflictsApiLodgingAttributionConflictsGetErrors[keyof GetSessionAttributionConflictsApiLodgingAttributionConflictsGetErrors]
+
+export type GetSessionAttributionConflictsApiLodgingAttributionConflictsGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: SessionAttributionConflictsResponse
+}
+
+export type GetSessionAttributionConflictsApiLodgingAttributionConflictsGetResponse =
+  GetSessionAttributionConflictsApiLodgingAttributionConflictsGetResponses[keyof GetSessionAttributionConflictsApiLodgingAttributionConflictsGetResponses]
 
 export type ExecutePushApiLodgingPushPostData = {
   body: PushExecuteRequest
