@@ -84,7 +84,7 @@ func (h *ISO8601Handler) Handle(_ context.Context, r slog.Record) error {
 		buf.WriteString(" ")
 		buf.WriteString(a.Key)
 		buf.WriteString("=")
-		buf.WriteString(fmt.Sprintf("%v", a.Value.Any()))
+		fmt.Fprintf(&buf, "%v", a.Value.Any())
 	}
 
 	// Add record attrs
@@ -92,7 +92,7 @@ func (h *ISO8601Handler) Handle(_ context.Context, r slog.Record) error {
 		buf.WriteString(" ")
 		buf.WriteString(a.Key)
 		buf.WriteString("=")
-		buf.WriteString(fmt.Sprintf("%v", a.Value.Any()))
+		fmt.Fprintf(&buf, "%v", a.Value.Any())
 		return true
 	})
 

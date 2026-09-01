@@ -27,7 +27,9 @@ func notifyMetricsCacheInvalidation(apiBaseURL string) {
 		url := fmt.Sprintf("%s/api/metrics/cache/invalidate", apiBaseURL)
 		client := &http.Client{Timeout: 5 * time.Second}
 
-		resp, err := client.Post(url, "application/json", nil) //nolint:noctx // fire-and-forget internal call
+		resp, err := client.Post(url, "application/json", nil) //nolint:noctx,gosec // fire-and-forget internal call;
+		// G704 (SSRF): url is built from a hardcoded 127.0.0.1 loopback host plus API_PORT,
+		// an operator-set env var with an "8000" default. Nothing request-derived reaches it.
 		if err != nil {
 			slog.Warn("Failed to notify FastAPI metrics cache invalidation", "url", url, "error", err)
 			return

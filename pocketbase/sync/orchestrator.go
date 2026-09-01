@@ -1434,6 +1434,10 @@ func (o *Orchestrator) runSingleSyncInternal(
 	}
 
 	// Run sync with panic recovery
+	// G118 is a false positive here: detaching from the request context is the point.
+	// A handler-scoped ctx is cancelled when the handler returns, which would kill the
+	// sync mid-run -- the cascade the comment inside this goroutine describes.
+	//nolint:gosec // G118: context.Background() is deliberate, see above
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
@@ -1551,6 +1555,10 @@ func (o *Orchestrator) RunSingleSyncWithService(
 
 	// Run sync with panic recovery — mirrors runSingleSyncInternal's goroutine below, but
 	// against the caller-supplied `service` rather than a registry lookup.
+	// G118 is a false positive here: detaching from the request context is the point.
+	// A handler-scoped ctx is cancelled when the handler returns, which would kill the
+	// sync mid-run -- the cascade the comment inside this goroutine describes.
+	//nolint:gosec // G118: context.Background() is deliberate, see above
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {

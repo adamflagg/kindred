@@ -623,7 +623,10 @@ jobs:
       if: needs.detect-changes.outputs.backend == 'true'
       uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9
       with:
-        version: v2.9.0
+        # v2.13.0 is the first release built with Go 1.27. Older binaries
+        # abort with `package requires newer Go version go1.27 (application
+        # built with go1.26)` -- a panic, not a lint finding.
+        version: v2.13.2
         working-directory: pocketbase
         args: --config ../.golangci.yml
 
