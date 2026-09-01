@@ -303,6 +303,10 @@ jobs:
             - '.github/workflows/**'
             - '.github/actions/**'
             - 'zizmor.yml'
+            # Renovate's custom managers regex over the workflow files, and the
+            # checker self-references so edits to either re-run the check.
+            - 'renovate.json'
+            - 'scripts/ci/check_renovate_managers.py'
 
   # Secret scanning (runs unconditionally on all pushes/PRs)
   secret-scan:
@@ -763,6 +767,16 @@ jobs:
         tar xzf "${archive}" actionlint
         echo "=== actionlint ==="
         ./actionlint -shellcheck="" -color
+
+    - name: Setup Python
+      uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      with:
+        python-version-file: '.python-version'
+
+    - name: Verify Renovate custom managers still match
+      # A customManager regex that matches nothing produces NO Renovate error --
+      # the run just goes green having managed nothing. Pure stdlib, no install.
+      run: python3 scripts/ci/check_renovate_managers.py
 
     - name: Install and run zizmor
       run: |
