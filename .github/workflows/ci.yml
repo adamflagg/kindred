@@ -1034,7 +1034,18 @@ jobs:
         # not this step's working-directory. The test fails loudly on a relative
         # path rather than letting SQLite answer "unable to open database file".
         KINDRED_PROD_SCHEMA_DB: ${{ github.workspace }}/pocketbase/pb_test_data/data.db
-      run: go test -count=1 ./sync/... -run TestDeclaredUniqueIndexesExistInBootedSchema -v
+      run: |
+        set -o pipefail
+        go test -count=1 ./sync/... -run TestDeclaredUniqueIndexesExistInBootedSchema -v 2>&1 \
+          | tee "$RUNNER_TEMP/grain-index.log"
+        # `go test -run <pattern>` exits 0 when the pattern matches NOTHING, and the
+        # test SKIPS when KINDRED_PROD_SCHEMA_DB is unset -- so renaming the test or
+        # typoing the env var would leave this step permanently green having asserted
+        # nothing. Require the PASS line naming the test itself.
+        if ! grep -q '^--- PASS: TestDeclaredUniqueIndexesExistInBootedSchema' "$RUNNER_TEMP/grain-index.log"; then
+          echo "::error::TestDeclaredUniqueIndexesExistInBootedSchema did not run to PASS (renamed, filtered out, or skipped) -- this step asserted nothing"
+          exit 1
+        fi
 
     # kindred#2278: frontend/src/types/pocketbase-types.ts is @generated from
     # live PocketBase schema introspection (pocketbase-typegen), and nothing

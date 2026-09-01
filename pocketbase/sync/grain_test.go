@@ -3,6 +3,7 @@ package sync
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"sort"
 	"strings"
@@ -198,16 +199,29 @@ func guardedSweepCollections(t *testing.T) map[string]string {
 		t.Fatalf("reading the package directory: %v", err)
 	}
 
-	re := regexp.MustCompile(`DeleteOrphansGuarded\(\s*"([a-z0-9_]+)"`)
 	found := map[string]string{}
+	callSites := 0
 	for _, e := range entries {
 		name := e.Name()
 		if e.IsDir() || filepath.Ext(name) != ".go" || strings.HasSuffix(name, "_test.go") {
 			continue
 		}
-		for _, m := range re.FindAllStringSubmatch(readSourceFile(t, name), -1) {
-			found[m[1]] = name
+		named, sites := parseGuardedSweeps(readSourceFile(t, name))
+		for _, collection := range named {
+			found[collection] = name
 		}
+		callSites += sites
+	}
+
+	// A caller that passes the collection as a CONSTANT rather than an inline
+	// literal is invisible to the naming regex, and the floor check below would
+	// still pass on the six literals. Counting call sites separately is what
+	// makes this parser admit it missed one instead of silently under-reporting.
+	if callSites != len(found) {
+		t.Fatalf("guardedSweepCollections: found %d DeleteOrphansGuarded call site(s) but "+
+			"could only name the collection for %d of them (%v) -- a caller is passing a "+
+			"constant or variable instead of an inline string literal; teach the regex to "+
+			"read it rather than letting it go undeclared", callSites, len(found), found)
 	}
 
 	// Six callers exist as of kindred#2627: attendees, bunk_assignments,
@@ -342,7 +356,7 @@ func TestDeclaredUniqueIndexesExistInBootedSchema(t *testing.T) {
 				t.Errorf("%s/%s: index %q is on table %q, not %q",
 					d.Service, w.Collection, w.UniqueIndex, idx.Table, w.Collection)
 			}
-			if !strings.Contains(strings.ToUpper(idx.SQL), "UNIQUE") {
+			if !isUniqueIndexDDL(idx.SQL) {
 				t.Errorf("%s/%s: index %q exists but is not UNIQUE -- it enforces no "+
 					"grain: %s", d.Service, w.Collection, w.UniqueIndex, idx.SQL)
 			}
@@ -380,4 +394,221 @@ func stringSet(m map[string]string) map[string]bool {
 		out[k] = true
 	}
 	return out
+}
+
+// parseGuardedSweeps reads one Go source file and reports the collection name of
+// every BaseSyncService.DeleteOrphansGuarded call site it can read, plus the
+// TOTAL number of call sites in the file.
+//
+// The two numbers are returned separately on purpose. The naming regex only
+// reads an inline string literal, so a caller passing a constant contributes to
+// the count but not to the names -- and the caller compares them, rather than
+// trusting a set that may silently be short.
+func parseGuardedSweeps(src string) (named []string, callSites int) {
+	for _, m := range guardedSweepNameRe.FindAllStringSubmatch(src, -1) {
+		named = append(named, m[1])
+	}
+	return named, len(guardedSweepCallRe.FindAllString(src, -1))
+}
+
+// guardedSweepNameRe reads the collection off a call site that passes it as an
+// inline string literal -- which every caller does today.
+var guardedSweepNameRe = regexp.MustCompile(`DeleteOrphansGuarded\(\s*"([a-z0-9_]+)"`)
+
+// guardedSweepCallRe counts call sites whatever their first argument looks like.
+// The leading "." is what excludes BaseSyncService's own method DECLARATION in
+// base_sync.go, which is not a call.
+var guardedSweepCallRe = regexp.MustCompile(`\.DeleteOrphansGuarded\(`)
+
+// isUniqueIndexDDL reports whether a sqlite_master `sql` column describes a
+// UNIQUE index.
+//
+// Anchored on the CREATE ... INDEX prefix rather than substring-matching
+// "UNIQUE" anywhere in the DDL. The DDL contains the index's own NAME, and three
+// of the six declared names end in "_unique" -- so a substring match reads the
+// name as evidence about the index, and a non-unique index enforcing no grain at
+// all would pass. A column named unique_key would do it too.
+func isUniqueIndexDDL(sql string) bool {
+	return uniqueIndexDDLRe.MatchString(sql)
+}
+
+var uniqueIndexDDLRe = regexp.MustCompile(`(?i)^\s*CREATE\s+UNIQUE\s+INDEX\b`)
+
+// TestIsUniqueIndexDDLRejectsANonUniqueIndexNamedUnique pins the one input that
+// matters: three of the six declared index names END in "_unique", so a
+// predicate that substring-matches "UNIQUE" against the whole DDL reads the
+// index's own NAME as evidence that it is unique. That is a false green for half
+// the table -- the index would enforce no grain at all and the assertion would
+// still pass.
+func TestIsUniqueIndexDDLRejectsANonUniqueIndexNamedUnique(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name string
+		sql  string
+		want bool
+	}{
+		{
+			name: "unique index",
+			sql:  "CREATE UNIQUE INDEX `idx_attendees_unique` ON `attendees` (`person_id`, `year`, `session`)",
+			want: true,
+		},
+		{
+			name: "non-unique index whose NAME says unique",
+			sql:  "CREATE INDEX `idx_attendees_unique` ON `attendees` (`person_id`, `year`, `session`)",
+			want: false,
+		},
+		{
+			name: "non-unique index on a plainly named column",
+			sql:  "CREATE INDEX `idx_attendees_year` ON `attendees` (`year`)",
+			want: false,
+		},
+		{
+			name: "non-unique index over a column called unique_key",
+			sql:  "CREATE INDEX `idx_x` ON `attendees` (`unique_key`)",
+			want: false,
+		},
+		{
+			name: "lowercase ddl",
+			sql:  "create unique index `idx_x` on `attendees` (`year`)",
+			want: true,
+		},
+	} {
+		if got := isUniqueIndexDDL(tc.sql); got != tc.want {
+			t.Errorf("%s: isUniqueIndexDDL(%q) = %v, want %v", tc.name, tc.sql, got, tc.want)
+		}
+	}
+}
+
+// TestParseGuardedSweepsCountsCallSitesItCannotName pins the gap the naming
+// regex has by construction: it reads an inline string literal only. A seventh
+// guarded caller that passes a constant would be unnamed AND uncounted, leaving
+// the floor check satisfied by the existing six and the new sweep undeclared --
+// the exact silent exemption grain.go exists to prevent.
+func TestParseGuardedSweepsCountsCallSitesItCannotName(t *testing.T) {
+	t.Parallel()
+
+	const src = `
+func (s *Alpha) deleteOrphans() error {
+	return s.DeleteOrphansGuarded(
+		"alpha",
+		nil, "alpha", "", OrphanSweepGuard{},
+	)
+}
+
+const betaCollection = "beta"
+
+func (s *Beta) deleteOrphans() error {
+	return s.DeleteOrphansGuarded(
+		betaCollection,
+		nil, "beta", "", OrphanSweepGuard{},
+	)
+}
+`
+
+	named, callSites := parseGuardedSweeps(src)
+
+	if callSites != 2 {
+		t.Errorf("callSites = %d, want 2 -- both call sites must be COUNTED even "+
+			"though only one can be named, or a constant-argument caller goes "+
+			"undetected", callSites)
+	}
+	if len(named) != 1 || named[0] != "alpha" {
+		t.Errorf("named = %v, want [alpha] -- only the inline literal is readable", named)
+	}
+}
+
+// TestGrainForServiceResolvesSameGrainAs covers the one piece of NON-test logic
+// this file's subject introduces. GrainForService is exported for kindred#2643's
+// orphan-replay wirings to read a service's write key instead of repeating the
+// literal, so it lands here with no production caller yet -- which is exactly
+// how an exported helper ships untested and hands its first real caller a bug.
+func TestGrainForServiceResolvesSameGrainAs(t *testing.T) {
+	t.Parallel()
+
+	t.Run("a base service returns its own Writes", func(t *testing.T) {
+		t.Parallel()
+
+		got, ok := GrainForService(serviceNamePersonCustomValues)
+		if !ok {
+			t.Fatalf("%s is declared; GrainForService said otherwise",
+				serviceNamePersonCustomValues)
+		}
+		var pcv *CollectionGrain
+		for i := range got.Writes {
+			if got.Writes[i].Collection == serviceNamePersonCustomValues {
+				pcv = &got.Writes[i]
+			}
+		}
+		if pcv == nil {
+			t.Fatalf("no %s collection in %+v", serviceNamePersonCustomValues, got.Writes)
+		}
+		if !pcv.HasFullGrain() {
+			t.Errorf("%s must carry a full grain, got %+v", serviceNamePersonCustomValues, pcv)
+		}
+		if pcv.WriteKey != pcv.OrphanKey {
+			t.Errorf("WriteKey %q and OrphanKey %q disagree -- that disagreement IS the "+
+				"bug this declaration exists to make legible", pcv.WriteKey, pcv.OrphanKey)
+		}
+	})
+
+	// The scoped family-camp passes are the SAME Go type under a narrower cohort,
+	// so they must resolve to the base's keys verbatim. This is what lets the
+	// table hold exactly six full-grain literals while all 35 services declare.
+	t.Run("a scoped variant resolves to its base's keys", func(t *testing.T) {
+		t.Parallel()
+
+		for _, tc := range []struct{ variant, base string }{
+			{serviceNamePersonCustomValues + "_family_camp", serviceNamePersonCustomValues},
+			{serviceNameHouseholdCustomValues + "_family_camp", serviceNameHouseholdCustomValues},
+		} {
+			variant, ok := GrainForService(tc.variant)
+			if !ok {
+				t.Errorf("%s: not resolved", tc.variant)
+				continue
+			}
+			base, ok := GrainForService(tc.base)
+			if !ok {
+				t.Errorf("%s: not resolved", tc.base)
+				continue
+			}
+			if variant.Service != tc.variant {
+				t.Errorf("%s: resolved Service is %q -- the caller must still see the "+
+					"name it asked about", tc.variant, variant.Service)
+			}
+			if len(variant.Writes) == 0 {
+				t.Errorf("%s: resolved to no Writes at all -- SameGrainAs did not follow",
+					tc.variant)
+				continue
+			}
+			if !reflect.DeepEqual(variant.Writes, base.Writes) {
+				t.Errorf("%s: Writes differ from %s.\n variant=%+v\n base=%+v",
+					tc.variant, tc.base, variant.Writes, base.Writes)
+			}
+		}
+	})
+
+	t.Run("a WritesNothing service keeps its reason", func(t *testing.T) {
+		t.Parallel()
+
+		got, ok := GrainForService("multi_workbook_export")
+		if !ok {
+			t.Fatal("multi_workbook_export is declared; GrainForService said otherwise")
+		}
+		if got.WritesNothing == "" {
+			t.Errorf("the WritesNothing reason was dropped in resolution: %+v", got)
+		}
+		if len(got.Writes) != 0 {
+			t.Errorf("a WritesNothing service must resolve to no Writes, got %+v", got.Writes)
+		}
+	})
+
+	t.Run("an unregistered name is reported missing", func(t *testing.T) {
+		t.Parallel()
+
+		if got, ok := GrainForService("no_such_sync_service"); ok {
+			t.Errorf("an undeclared service resolved to %+v -- a caller reading a key "+
+				"off that would silently get the zero value", got)
+		}
+	})
 }
