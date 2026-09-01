@@ -45,6 +45,26 @@ the home for _divergences_; this file is the home for _vocabulary_.
 | — `Assign` opens a **modal**          | pill on the card              | place a family, or write one in                                        | AS2. Supersedes the 2026-08-09 "not a popover and not a second surface" ruling **for this control only** — the width is what buys it: a candidate row carries party size against the beds left, the need glyphs coloured against this room, last year's cabin and a fit verdict. It also collapses ~82 mounted comboboxes to one | AS2                 |
 | — the modal's header                  | modal                         | beds **free**, not placed-of-capacity                                  | see §5a. The card's `N/M` is unchanged; two framings of one arithmetic, neither redefined                                                                                                                                                                                                                                        | 2026-08-19          |
 
+### What a coverage grain now includes (2026-08-30)
+
+Every amenity mark on the unit card is drawn from a server-resolved
+`*_coverage` grain — `all` / `some` / `none` / `unknown` — never from the
+unit's own row. Since the roll-down ruling, **that grain also includes
+anything an ANCESTOR of the unit asserts**: `effective(unit, flag) = own OR
+any ancestor's`.
+
+So a room whose own row records no power still draws the power mark when the
+building above it records power, and the room's own `has_power` in the payload
+is unchanged — only the derived grain moved. The reverse direction is
+untouched: a container asserting nothing still grades from its active leaves,
+so a split building still draws `some`.
+
+Nothing in the mark vocabulary changed, and on the 2026 snapshot **no card's
+grain moves**. The rule, the carve-outs (`sleeps` / `beds` / `is_confirmed` /
+`bathroom` / `has_ramp`) and the measurement live in
+`docs/reference/lodging-registry.md` § "Amenities roll DOWN the tree" — read
+it there rather than restating it here.
+
 ## 2. Family card — marks that are drawn
 
 | Mark                                                                               | Where                             | Means                                                                                                                                       | Why it is there                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | Ruled           |
