@@ -11,7 +11,7 @@
     "dev": "node scripts/dev.js",
     "dev:default": "vite",
     "build": "tsc && vite build && node scripts/fix-css-infinity.js",
-    "lint": "eslint . --ext ts,tsx --report-unused-disable-directives",
+    "lint": "eslint . --cache --report-unused-disable-directives --max-warnings 452",
     "format": "prettier --write \"src/**/*.{ts,tsx,js,jsx,json,css}\"",
     "format:check": "prettier --check \"src/**/*.{ts,tsx,js,jsx,json,css}\"",
     "preview": "vite preview",
