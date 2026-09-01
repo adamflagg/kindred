@@ -15,6 +15,7 @@ workflow -- notably `config/*.json` matches `config/a.json` but not
 `config/sub/a.json`.
 """
 
+import json
 import re
 import subprocess
 from pathlib import Path, PurePosixPath
@@ -151,3 +152,45 @@ def test_tests_python_gate_covers_the_workflow_its_own_tests_assert_on():
     change these tests exist to police -- ran none of them.
     """
     assert _matches(".github/workflows/ci.yml", _patterns_gating("tests-python"))
+
+
+def _renovate_manager_files() -> list[str]:
+    """Every tracked file a Renovate customManager regex actually reads.
+
+    Derived from `renovate.json` rather than hardcoded: a manager added for a
+    new file must widen the gate that verifies it, or this list grows and the
+    assertion below goes red on the PR that added it.
+    """
+    config = json.loads((REPO_ROOT / "renovate.json").read_text())
+    patterns = []
+    for manager in config["customManagers"]:
+        for raw in manager["managerFilePatterns"]:
+            undelimited = f"{raw!r} is not /-delimited, so Renovate reads it as a glob, not a regex"
+            assert raw.startswith("/"), undelimited
+            assert raw.endswith("/"), undelimited
+            patterns.append(re.compile(raw[1:-1]))
+    files = [f for f in _tracked("*") if any(p.search(f) for p in patterns)]
+    assert files, "no tracked file matches any customManager pattern"
+    return files
+
+
+def test_security_lint_gate_covers_the_renovate_manager_check_inputs():
+    """`Verify Renovate custom managers still match` reads more than the workflows.
+
+    The step is gated on `actions`, which watches `.github/workflows/**`,
+    `renovate.json` and the checker itself -- but a customManager also targets
+    `docker/healthcheck/go.mod`, and `go`/`docker` do not gate this job. A PR
+    that bumps only that Go directive -- precisely what renovate.json's
+    `matchDepNames: ["go"]` dashboard rule is built to produce -- would skip the
+    one check that proves the regex still matches, and the red would surface
+    later on an unrelated workflow PR. Same false-green shape as kindred#2652
+    and the python-lint gate above.
+    """
+    patterns = _patterns_gating("security-lint")
+    required = [
+        "renovate.json",
+        "scripts/ci/check_renovate_managers.py",
+        *_renovate_manager_files(),
+    ]
+    uncovered = [f for f in required if not _matches(f, patterns)]
+    assert not uncovered, f"Renovate manager-check inputs cannot trigger security-lint: {uncovered}"

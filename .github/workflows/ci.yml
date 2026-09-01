@@ -307,6 +307,13 @@ jobs:
             # checker self-references so edits to either re-run the check.
             - 'renovate.json'
             - 'scripts/ci/check_renovate_managers.py'
+            # The second customManager targets this file, and `go` is one of the
+            # checker's EXPECTED_DEPS. `docker/**` matches it but gates a
+            # different job, so without this line a PR bumping only the Go
+            # directive -- exactly what renovate.json's `go` dashboard rule
+            # produces -- would skip the check that proves the regex still
+            # matches. tests/unit/scripts/test_ci_path_filters.py pins this.
+            - 'docker/healthcheck/go.mod'
 
   # Secret scanning (runs unconditionally on all pushes/PRs)
   secret-scan:
@@ -756,6 +763,11 @@ jobs:
       # against them rather than piping upstream's `download-actionlint.bash` into bash.
       # The version lives in ACTIONLINT_VERSION so Renovate can manage it; do not
       # restate the number in this comment, which Renovate would not update.
+      # For the same reason this no longer records the release's upstream commit
+      # (it did, kindred#2610, "for traceability"): a SHA is as version-specific
+      # as the number and would go stale on the first Renovate bump. The checksum
+      # verification below is the integrity control; the tag-to-commit mapping
+      # stays recoverable from upstream.
       run: |
         set -euo pipefail
         # renovate: datasource=github-releases depName=rhysd/actionlint

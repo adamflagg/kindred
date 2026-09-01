@@ -54,6 +54,11 @@ def js_regex_to_python(pattern: str) -> str:
     The two engines are not identical, but the constructs used here -- named
     groups, character classes, lazy quantifiers, alternation -- behave the
     same in both, so this check is a faithful proxy.
+
+    One known divergence, in the false-green direction: `\\d` is ASCII-only in
+    JS and Unicode-wide in Python, so a non-ASCII digit would satisfy this
+    check and not Renovate. Version strings are ASCII, so it cannot bite
+    today -- keep new patterns ASCII and it stays that way.
     """
     return re.sub(r"\(\?<(?![=!])", "(?P<", pattern)
 
