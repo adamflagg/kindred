@@ -154,6 +154,22 @@ def test_tests_python_gate_covers_the_workflow_its_own_tests_assert_on():
     assert _matches(".github/workflows/ci.yml", _patterns_gating("tests-python"))
 
 
+def test_tests_python_gate_covers_the_golangci_config_it_asserts_on():
+    """`test_golangci_config.py` policies `.golangci.yml`, and runs in tests-python.
+
+    Same argument as the test above makes for ci.yml. kindred#2671 added
+    assertions that goconst is not disabled tree-wide and that its path
+    exclusions name exactly the packages we said they could -- but `python`
+    watches no Go config, so a PR that edits ONLY `.golangci.yml` runs none of
+    them. #2671 escaped that only because it happened to touch `tests/**` as
+    well; a later PR narrowing an exclusion need not.
+
+    A skipped job is scored OK by `ci-summary`, so the failure mode is a silent
+    green, not a red -- the same shape as kindred#2653 and kindred#2663.
+    """
+    assert _matches(".golangci.yml", _patterns_gating("tests-python"))
+
+
 def _renovate_manager_files() -> list[str]:
     """Every tracked file a Renovate customManager regex actually reads.
 
