@@ -251,7 +251,14 @@ post-merge:
         for dir in "$WORKTREES_DIR"/*/; do
           [ -d "$dir" ] || continue
           name=$(basename "$dir")
-          branch="feature/$name"
+          # Resolve the branch from git, never from the directory name: the two
+          # agree only until someone names a branch for its subject rather than
+          # its directory, and then the worktree is silently never suggested
+          # (kindred#2666). Must stay in step with cleanup.sh's resolve_branch()
+          # -- these two are one detection method split across two files.
+          # Empty means a detached HEAD: no branch, so no PR to look up.
+          branch=$(git -C "$dir" symbolic-ref --quiet --short HEAD 2>/dev/null || true)
+          [ -n "$branch" ] || continue
           state=$(gh pr list --head "$branch" --state merged --json state --jq '.[0].state' 2>/dev/null)
           if [ "$state" = "MERGED" ]; then
             MERGED="$MERGED $name"

@@ -19,6 +19,25 @@ MAIN_REPO="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
 source "$MAIN_REPO/scripts/colors.sh"
 WORKTREES_DIR="$MAIN_REPO/.worktrees"
 
+# Resolve the branch a worktree is actually checked out on.
+#
+# NEVER derive this from the directory name. The two agree only while nobody
+# renames anything: cleaning up after kindred#2666, `.worktrees/goconst-campminder`
+# was on `feature/goconst-2665`, so the old `branch="feature/$name"` guess made
+# --all-merged skip a merged worktree, and made the single-name form delete the
+# *guessed* branch (an empty leftover from new.sh) while leaving the real one.
+# Three worktrees and four branches had to be removed by hand.
+#
+# Prints nothing for a detached HEAD, which callers treat as "no branch".
+#
+# .lefthook.yml's post-merge worktree-cleanup notifier resolves the branch
+# the same way and must stay in step; tests/unit/scripts/test_worktree_cleanup.py
+# fails if either side drifts.
+resolve_branch() {
+    local dir="$1"
+    git -C "$dir" symbolic-ref --quiet --short HEAD 2>/dev/null || true
+}
+
 # Check if a PR for this branch was merged (the only safe heuristic)
 is_pr_merged() {
     local branch="$1"
@@ -38,9 +57,14 @@ if [ "$1" = "--all-merged" ]; then
     for dir in "$WORKTREES_DIR"/*/; do
         [ -d "$dir" ] || continue
         name=$(basename "$dir")
-        branch="feature/$name"
+        branch=$(resolve_branch "$dir")
 
-        # Only clean if a merged PR exists for this branch
+        if [ -z "$branch" ]; then
+            echo -e "${YELLOW}Skipping $name: detached HEAD, no branch to check${NC}"
+            continue
+        fi
+
+        # Only clean if a merged PR exists for the branch it is REALLY on
         if is_pr_merged "$branch"; then
             echo -e "${GREEN}Cleaning up merged worktree: $name${NC}"
             "$0" "$name"
@@ -83,15 +107,36 @@ if [ -z "$FEATURE_NAME" ]; then
 fi
 
 WORKTREE_DIR="$WORKTREES_DIR/$FEATURE_NAME"
-BRANCH_NAME="feature/$FEATURE_NAME"
 
 if [ ! -d "$WORKTREE_DIR" ]; then
     echo -e "${RED}Worktree not found: $WORKTREE_DIR${NC}"
     exit 1
 fi
 
+# The branch this worktree is on, which is not necessarily feature/$FEATURE_NAME.
+BRANCH_NAME=$(resolve_branch "$WORKTREE_DIR")
+if [ -z "$BRANCH_NAME" ]; then
+    # No branch means no PR to look up, so the merged-PR gate below cannot run
+    # at all. Refuse rather than fall through to the removal: a detached HEAD is
+    # the WORST case for `git worktree remove --force`, because its commits are
+    # reachable from nothing else and removing the worktree takes its reflog
+    # with it. Demand --force here exactly as the unmerged-branch case does --
+    # the old directory-guessing script refused by accident (`feature/$1` had no
+    # merged PR), and resolving the branch properly must not turn that accident
+    # into a silent deletion.
+    echo -e "${YELLOW}$FEATURE_NAME is on a detached HEAD; no branch, so no PR to check${NC}"
+    KEEP_BRANCH=true
+    if [ "$2" != "--force" ]; then
+        echo -e "${RED}Cannot clean up: refusing to remove a detached worktree without --force${NC}"
+        echo -e "Commit onto a branch and merge its PR first, or use --force to override"
+        exit 1
+    fi
+elif [ "$BRANCH_NAME" != "feature/$FEATURE_NAME" ]; then
+    echo -e "${BLUE}Directory $FEATURE_NAME is on branch $BRANCH_NAME${NC}"
+fi
+
 # Only allow cleanup if PR is merged (protects work-in-progress)
-if ! is_pr_merged "$BRANCH_NAME"; then
+if [ -n "$BRANCH_NAME" ] && ! is_pr_merged "$BRANCH_NAME"; then
     echo -e "${RED}Cannot clean up: PR for $BRANCH_NAME is not merged${NC}"
     echo -e "Push your branch and merge the PR first, or use --force to override"
     [ "$2" = "--force" ] || exit 1
@@ -112,7 +157,7 @@ echo -e "${BLUE}Removing worktree...${NC}"
 cd "$MAIN_REPO"
 git worktree remove "$WORKTREE_DIR" --force 2>/dev/null || rm -rf "$WORKTREE_DIR"
 
-# Remove branch (we already verified PR is merged)
+# Remove branch (the merged-PR gate above passed, or --force overrode it)
 if [ "$KEEP_BRANCH" = false ]; then
     echo -e "${BLUE}Removing branch: $BRANCH_NAME${NC}"
     git branch -D "$BRANCH_NAME" 2>/dev/null || true
