@@ -211,9 +211,7 @@ class TestShareable:
         assert verdicts == {FC1: "conflict"}
 
     def test_a_write_in_on_a_shareable_leaf_conflicts(self) -> None:
-        verdicts = _verdicts(
-            _candidate(FC1, _leaf("shared-hall", write_ins=("Weekend staff",)))
-        )
+        verdicts = _verdicts(_candidate(FC1, _leaf("shared-hall", write_ins=("Weekend staff",))))
 
         assert verdicts == {FC1: "conflict"}
 
@@ -223,6 +221,7 @@ class TestShareable:
         verdicts = _verdicts(_candidate(FC1, _leaf("shared-hall")))
 
         assert verdicts == {FC1: "free"}
+
 
 class TestOwnHouseholdIsNotAConflict:
     def test_this_households_own_placement_does_not_conflict(self) -> None:
