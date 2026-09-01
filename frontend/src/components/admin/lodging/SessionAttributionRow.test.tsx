@@ -323,7 +323,15 @@ describe('SessionAttributionRow', () => {
       const lines = [...container.querySelectorAll('[data-evidence]')]
       expect(lines).toHaveLength(3)
       for (const line of lines) {
-        expect(line.className).toContain(EVIDENCE_LINE)
+        // SPLIT, never `toContain`, for the reason the dim test below spells
+        // out: a substring match matches a MANGLED name too. A missing space
+        // before the interpolation would render `<something>mt-2 rounded-lg …`,
+        // which still contains the whole of EVIDENCE_LINE and still applies no
+        // `mt-2`. Comparing the class list is what actually pins it.
+        const applied = new Set(line.className.split(' '))
+        for (const token of EVIDENCE_LINE.split(' ')) {
+          expect([...applied]).toContain(token)
+        }
       }
       // ...and the ONLY thing that differs between them is the colour.
       expect(new Set(lines.map((line) => line.className)).size).toBe(3)
