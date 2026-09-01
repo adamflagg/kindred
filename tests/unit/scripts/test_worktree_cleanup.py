@@ -31,8 +31,29 @@ REPO_ROOT = Path(__file__).parents[3]
 CLEANUP = REPO_ROOT / "scripts/worktree/cleanup.sh"
 
 
+def _clean_env(**extra: str) -> dict[str, str]:
+    """os.environ with every GIT_* variable stripped.
+
+    This is load-bearing, not hygiene. `git` prefers GIT_DIR / GIT_INDEX_FILE /
+    GIT_WORK_TREE over the current directory, and a git HOOK exports them --
+    so under lefthook's pre-push, every `git` call below would ignore its own
+    `cwd=` and operate on the REAL repository instead.
+
+    Measured while writing this file: the fixture's `git init` + `git add -A` +
+    `git commit` ran against the developer's worktree, truncating its index from
+    2,646 entries to 1 and moving the branch ref onto the fixture's "seed"
+    commit. `pre-push-verify.sh` passed (no hook, no GIT_* set) while the push
+    itself failed -- the divergence is the tell.
+    """
+    env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+    env.update(extra)
+    return env
+
+
 def _git(*args: str, cwd: Path) -> str:
-    return subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True, check=True).stdout.strip()
+    return subprocess.run(
+        ["git", *args], cwd=cwd, capture_output=True, text=True, check=True, env=_clean_env()
+    ).stdout.strip()
 
 
 def _branches(repo: Path) -> set[str]:
@@ -89,7 +110,7 @@ def repo(tmp_path: Path) -> Path:
 def _run_cleanup(repo: Path, *args: str, merged: set[str]) -> subprocess.CompletedProcess[str]:
     bin_dir = repo.parent / "stubbin"
     _stub_gh(bin_dir, merged)
-    env = {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}"}
+    env = _clean_env(PATH=f"{bin_dir}:{os.environ['PATH']}")
     return subprocess.run(
         ["bash", "scripts/worktree/cleanup.sh", *args],
         cwd=repo,
@@ -137,3 +158,51 @@ def test_all_merged_finds_a_worktree_whose_branch_differs_from_its_directory(rep
 
     assert not (repo / ".worktrees/dir-name").exists(), f"--all-merged skipped it:\n{result.stdout}"
     assert "feature/real-name" not in _branches(repo)
+
+
+def test_the_helpers_never_touch_the_repo_named_by_the_git_environment(tmp_path: Path) -> None:
+    """A git hook exports GIT_DIR; the fixture must still work on its own repo.
+
+    `git` prefers GIT_DIR / GIT_INDEX_FILE over `cwd=`, so without scrubbing
+    them this file's own fixture rewrites whichever repository the ambient
+    environment points at. That is not hypothetical -- it truncated this
+    worktree's index to a single entry and moved its branch ref onto the
+    fixture's "seed" commit, and it only reproduced under `git push` because
+    that is when a hook sets the variables.
+
+    A decoy repo stands in for the victim so the assertion is safe to run.
+    """
+    decoy = tmp_path / "decoy"
+    decoy.mkdir()
+    _git("init", "-q", "-b", "main", cwd=decoy)
+    _git("config", "user.email", "test@example.com", cwd=decoy)
+    _git("config", "user.name", "Test", cwd=decoy)
+    for n in range(3):
+        (decoy / f"f{n}.txt").write_text(f"{n}\n")
+    _git("add", "-A", cwd=decoy)
+    _git("commit", "-qm", "decoy baseline", cwd=decoy)
+
+    before_head = _git("rev-parse", "HEAD", cwd=decoy)
+    before_files = _git("ls-files", cwd=decoy).split()
+    assert len(before_files) == 3
+
+    # Exactly what lefthook's pre-push leaves in the environment.
+    os.environ["GIT_DIR"] = str(decoy / ".git")
+    os.environ["GIT_INDEX_FILE"] = str(decoy / ".git/index")
+    try:
+        victim = tmp_path / "other"
+        victim.mkdir()
+        _git("init", "-q", "-b", "main", cwd=victim)
+        _git("config", "user.email", "test@example.com", cwd=victim)
+        _git("config", "user.name", "Test", cwd=victim)
+        (victim / "unrelated.txt").write_text("x\n")
+        _git("add", "-A", cwd=victim)
+        _git("commit", "-qm", "seed", cwd=victim)
+    finally:
+        del os.environ["GIT_DIR"]
+        del os.environ["GIT_INDEX_FILE"]
+
+    assert _git("rev-parse", "HEAD", cwd=decoy) == before_head, (
+        "the helper committed into the repo named by GIT_DIR instead of its own"
+    )
+    assert _git("ls-files", cwd=decoy).split() == before_files, "the helper rewrote the index named by GIT_INDEX_FILE"
