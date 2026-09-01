@@ -2235,9 +2235,7 @@ class TestFetchOpenAmbiguousSessionIssues:
     """
 
     @pytest.mark.asyncio
-    async def test_filters_to_the_open_rows_of_this_kind_and_year(
-        self, repo: LodgingRepository, pb: MagicMock
-    ) -> None:
+    async def test_filters_to_the_open_rows_of_this_kind_and_year(self, repo: LodgingRepository, pb: MagicMock) -> None:
         await repo.fetch_open_ambiguous_session_issues(2026)
 
         pb.collection.assert_called_with("lodging_ingest_issues")
