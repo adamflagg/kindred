@@ -44,6 +44,20 @@ def strip_regex_delimiters(pattern: str) -> str:
     )
 
 
+def js_regex_to_python(pattern: str) -> str:
+    """Translate JS named groups `(?<n>...)` to Python's `(?P<n>...)`.
+
+    Renovate evaluates matchStrings with JavaScript RegExp; Python's `re`
+    spells named groups differently and rejects the JS form outright. The
+    negative lookahead leaves lookbehind `(?<=` and `(?<!` untouched.
+
+    The two engines are not identical, but the constructs used here -- named
+    groups, character classes, lazy quantifiers, alternation -- behave the
+    same in both, so this check is a faithful proxy.
+    """
+    return re.sub(r"\(\?<(?![=!])", "(?P<", pattern)
+
+
 def repo_files() -> list[Path]:
     return [p for p in REPO_ROOT.rglob("*") if p.is_file() and ".git" not in p.parts and "node_modules" not in p.parts]
 
@@ -64,16 +78,21 @@ def main() -> int:
 
     for manager in managers:
         file_res = [re.compile(strip_regex_delimiters(p)) for p in manager["managerFilePatterns"]]
-        match_res = [re.compile(s) for s in manager["matchStrings"]]
+        match_res = [re.compile(js_regex_to_python(s)) for s in manager["matchStrings"]]
         default_dep = manager.get("depNameTemplate")
 
         for path in all_files:
             rel = path.relative_to(REPO_ROOT).as_posix()
             if not any(fr.search(rel) for fr in file_res):
                 continue
+            # errors="ignore" so binary files never raise UnicodeDecodeError.
+            # That leaves OSError as the only failure, deliberately avoiding a
+            # multi-exception `except` -- ruff formats those to PEP 758's
+            # unparenthesized form, which is 3.14-only, and this script must
+            # also run under whatever bare `python3` a runner provides.
             try:
-                text = path.read_text()
-            except UnicodeDecodeError, OSError:
+                text = path.read_text(errors="ignore")
+            except OSError:
                 continue
             for mr in match_res:
                 for m in mr.finditer(text):
