@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/pocketbase/pocketbase/core"
 	pbtests "github.com/pocketbase/pocketbase/tests"
 )
 
@@ -55,19 +54,13 @@ func TestHouseholdCustomFieldValuesOrphanSweep_SurvivesReplay(t *testing.T) {
 	// sweptOwners as Sync builds it: the owners this run actually fetched.
 	sweptOwners := map[string]bool{testHouseholdPBID: true}
 
-	// preloadFn is syncHouseholdCustomFieldValues' own preload key builder,
-	// repeated here for the same reason its person twin is: it is NOT the thing
-	// under test, it is what makes run 2 an update rather than a second create,
-	// and leaving it out would trip the unique index -- a bug in this harness
-	// rather than the key disagreement being hunted.
-	preloadFn := func(record *core.Record) (string, bool) {
-		householdPBId := record.GetString("household")
-		fieldDefPBId := record.GetString("field_definition")
-		if householdPBId != "" && fieldDefPBId != "" {
-			return fmt.Sprintf("%s:%s", householdPBId, fieldDefPBId), true
-		}
-		return "", false
-	}
+	// preloadFn is customValuesPreloadKey itself -- syncHouseholdCustomFieldValues'
+	// own preload key builder (kindred#2661), not a hand-copied twin of it. It
+	// is still not the thing under test: it is what makes run 2 an update
+	// rather than a second create, and leaving it out would trip the unique
+	// index -- a bug in this harness rather than the key disagreement being
+	// hunted.
+	preloadFn := customValuesPreloadKey("household")
 
 	// Shared across WriteFixture and Sweep within one run -- deleteOrphans reads
 	// s.ProcessedKeys, which processHouseholdCustomFieldValue (via
