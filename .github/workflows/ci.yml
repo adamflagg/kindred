@@ -626,6 +626,7 @@ jobs:
         # v2.13.0 is the first release built with Go 1.27. Older binaries
         # abort with `package requires newer Go version go1.27 (application
         # built with go1.26)` -- a panic, not a lint finding.
+        # renovate: datasource=github-releases depName=golangci/golangci-lint
         version: v2.13.2
         working-directory: pocketbase
         args: --config ../.golangci.yml
@@ -713,10 +714,17 @@ jobs:
     # Dockerfile linting — mounts .hadolint.yaml so CI matches local (lefthook) config
     # Each file needs its own docker run because hadolint reads from stdin (< "$df")
     - name: Dockerfile linting (hadolint)
+      # Was untagged (implicitly :latest) and therefore unmanageable -- pinned so
+      # Renovate can track it. The version lives in a variable because the
+      # `# renovate:` marker regex matches a `VERSION=` assignment, not an
+      # image reference buried in a docker run line.
       run: |
+        # renovate: datasource=docker depName=hadolint/hadolint
+        HADOLINT_VERSION=v2.15.1
         for df in docker/Dockerfile.api docker/Dockerfile.caddy docker/Dockerfile.pocketbase docker/Dockerfile.init; do
           echo "=== Linting $df ==="
-          docker run --rm -i -v "$PWD/.hadolint.yaml:/.hadolint.yaml" hadolint/hadolint < "$df"
+          docker run --rm -i -v "$PWD/.hadolint.yaml:/.hadolint.yaml" \
+            "hadolint/hadolint:${HADOLINT_VERSION}" < "$df"
         done
 
     # Caddyfile validation (stdin, no mounts - avoids self-hosted runner volume mount issues).
@@ -739,17 +747,19 @@ jobs:
         persist-credentials: false
 
     - name: Install and run actionlint
-      # Pinned to the v1.7.12 release (upstream commit 914e7df21a07ef503a81201c76d2b11c789d3fca).
-      # actionlint publishes per-release SHA256 checksums, so the release archive is fetched
-      # directly and verified against them, instead of piping the upstream `download-actionlint.bash`
-      # helper from a mutable `main` branch HEAD into bash.
+      # Pinned to a tagged release, not a mutable branch HEAD. actionlint publishes
+      # per-release SHA256 checksums, so the archive is fetched directly and verified
+      # against them rather than piping upstream's `download-actionlint.bash` into bash.
+      # The version lives in ACTIONLINT_VERSION so Renovate can manage it; do not
+      # restate the number in this comment, which Renovate would not update.
       run: |
         set -euo pipefail
-        version="1.7.12"
-        archive="actionlint_${version}_linux_amd64.tar.gz"
-        curl -sSLO "https://github.com/rhysd/actionlint/releases/download/v${version}/${archive}"
-        curl -sSLO "https://github.com/rhysd/actionlint/releases/download/v${version}/actionlint_${version}_checksums.txt"
-        grep " ${archive}\$" "actionlint_${version}_checksums.txt" | sha256sum -c -
+        # renovate: datasource=github-releases depName=rhysd/actionlint
+        ACTIONLINT_VERSION="1.7.12"
+        archive="actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+        curl -sSLO "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/${archive}"
+        curl -sSLO "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_checksums.txt"
+        grep " ${archive}\$" "actionlint_${ACTIONLINT_VERSION}_checksums.txt" | sha256sum -c -
         tar xzf "${archive}" actionlint
         echo "=== actionlint ==="
         ./actionlint -shellcheck="" -color
