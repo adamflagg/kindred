@@ -51,16 +51,25 @@ linters:
     goconst:
       min-len: 3
       min-occurrences: 3
-      # goconst 1.11 (golangci-lint 2.13) began checking composite literals --
-      # map keys, struct fields and slice elements. That is where the repo's
-      # CampMinder query-param names, JSON error keys and CSV column headers
-      # live, and it produced 50 findings on a tree the previous pin called
-      # clean. Excluding the type keeps this bump a toolchain change; whether
-      # those literals should become constants is a separate question.
-      # `Call` is goconst's own default and is restated so it is not lost.
+      # `Call` is goconst's own default. Setting this key replaces the default
+      # rather than adding to it, so it has to be restated to be kept.
+      #
+      # CompositeLit was here too until kindred#2669's sibling PR, and it was a
+      # wider suppression than it read: exclude-types filters COUNTED
+      # occurrences, not just reported ones. A string appearing twice in
+      # assignments and three times in composite literals reports "5
+      # occurrences" with CompositeLit counted, and goes completely silent
+      # without it -- the total falls below min-occurrences, so the two
+      # assignment sites stop reporting as well. Measured with a probe package.
+      #
+      # The 468 findings that exclusion hid are 460 in sync/, 5 in campminder/
+      # (fixed in kindred#2666) and 3 in lodging/. So the honest shape is a
+      # path exclusion for sync/ -- see the exclusions block below, next to the
+      # gocyclo and dupl entries that scope that same package for the same
+      # reason -- which keeps the rule live for every other package and for
+      # everything written from here on. kindred#2665 owns the sync/ backlog.
       exclude-types:
         - Call
-        - CompositeLit
       # Matches the repo's standing policy that these linters do not apply to
       # tests (see the _test.go exclusion below), and goconst 1.10 added the
       # option to express it directly.
@@ -137,11 +146,15 @@ linters:
           - dupl
           - gosec
           - forcetypeassert
-          # noctx 0.5.0 (golangci-lint 2.11) began flagging httptest.NewRequest.
-          # Passing a context to a request a test constructs and serves in-process
-          # buys nothing, and this list is already where linters aimed at
-          # production code are turned off for tests.
+      # noctx 0.5.0 (golangci-lint 2.11) began flagging httptest.NewRequest.
+      # Passing a context to a request a test constructs and serves in-process
+      # buys nothing, and all 22 findings in this repo are that one message.
+      # Scoped by text rather than added to the block above, so an un-contexted
+      # http.Get in a test helper that talks to something real still reports.
+      - path: _test\.go
+        linters:
           - noctx
+        text: "httptest.NewRequest"
       - path: _test\.go
         linters:
           - revive
@@ -156,6 +169,17 @@ linters:
         linters:
           - gocyclo
           - dupl
+      # goconst, scoped to the package that actually earns it. 460 of the 468
+      # composite-literal findings are here, and they are overwhelmingly schema
+      # vocabulary -- PocketBase field and collection names (`year` x52,
+      # `status` x47, `name` x39, `cm_id` x25), each universally understood at
+      # its call site and no clearer behind a constant. kindred#2665 carries the
+      # full distribution and the argument; kindred#2666 took the subset that is
+      # a real wire contract. Kept separate from the block above because this
+      # one is a backlog with an owner, not a standing property of the package.
+      - path: sync/
+        linters:
+          - goconst
 
 output:
   show-stats: true

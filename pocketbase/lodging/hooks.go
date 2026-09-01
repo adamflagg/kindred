@@ -115,6 +115,16 @@ type yearScopedRef struct {
 // be a materially bigger change than this guard makes anywhere else, so
 // guardYearImmutable refuses the write outright instead -- see its own doc
 // comment for why that is the right shape here specifically.
+// The `field` values stay literal. They are PocketBase field names, and the
+// same names are written as literals everywhere else in this package --
+// GetString("parent_unit") in guardParentUnit below, Set("area", ...) in
+// registry.go, the `json:"units"` tags on registryUnit. Naming only the four
+// that repeat inside THIS map would put `fieldUnit` beside `"units"` and
+// `"area"` here and leave every other call site untouched: a half-applied
+// constant reads worse than none. Making it whole is a package-wide rename,
+// which is not a thing a linter-config change should carry.
+//
+//nolint:goconst // package-wide field-name literals, see above
 var yearScopedRefs = map[string][]yearScopedRef{
 	collectionAvailability:     {{field: "unit", target: collectionUnits}},
 	collectionAssignments:      {{field: "units", target: collectionUnits}},
@@ -168,6 +178,14 @@ type dependentRef struct {
 // TestYearRefMapsAgreeOnEveryRelation (kindred#2146) -- which also fails if
 // the exception is ever mirrored or dropped without the allowlist following,
 // so this paragraph cannot quietly go out of date.
+// The filter strings stay literal, deliberately. dependentRef's doc comment
+// above is an argument for hand-typing each one -- `?=` plus the `.id` join
+// is correct only for a multi-valued relation, and getting it backwards is
+// silent in one direction -- and the inline comment on the write-ins entries
+// below contrasts the visible `unit = {:id}` against `units.id ?= {:id}`.
+// A shared constant would hide the exact character those comments are about.
+//
+//nolint:goconst // arity-critical filters, hand-typed on purpose, see above
 var yearImmutableRefs = map[string][]dependentRef{
 	collectionAreas: {
 		{collection: collectionUnits, filter: "area = {:id}"},
