@@ -545,3 +545,31 @@ class TestTheCapacityMapIsTheRostersOwn:
         # Positive control: without it, a map that reached the resolver EMPTY
         # would satisfy the assertion above just as loudly.
         assert seen["caps"][MAPLE.code] == MAPLE.sleeps
+
+
+class TestOneOccupantPerParty:
+    """A placement's `units` relation is a MULTI-SELECT (1500000134 collapsed
+    `unit`/`merge`/`merge_draft` into it), so it can name a container AND a
+    room inside that container. Both expand to leaves independently, so the
+    room used to collect the same party twice and the evidence line named one
+    family as two occupants of one room.
+
+    The verdict was never affected -- `leaf_conflicts` asks *whether* another
+    party is placed, not how many times -- so this is the evidence line only.
+    That is the entire point of the payload.
+    """
+
+    @pytest.mark.asyncio
+    async def test_a_party_placed_on_both_a_building_and_its_room_is_one_occupant(self) -> None:
+        repo = _repo(
+            issues=[_issue("Birch Room 1")],
+            placements={FC1: [_placement(HH_HOLDER, [BIRCH_HOUSE, BIRCH_1])]},
+        )
+
+        response = await LodgingAttributionService(repo).build_conflicts(YEAR)
+
+        candidate = next(c for c in _row(response).candidates if c.session_cm_id == FC1)
+        # A positive control: the conflict really was found, so an empty
+        # occupant list cannot pass this test by saying nothing at all.
+        assert candidate.verdict == "conflict"
+        assert [(o.label, o.leaf_code) for o in candidate.occupants] == [("The Garcia Family", BIRCH_1.code)]

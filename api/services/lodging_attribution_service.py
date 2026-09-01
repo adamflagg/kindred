@@ -271,7 +271,13 @@ class LodgingAttributionService:
         available_by_code = {unit.code: unit.is_family_available for unit in summaries}
         write_ins_by_code = {unit.code: tuple(cover.occupant_name for cover in unit.write_ins) for unit in summaries}
 
-        placed_by_leaf: dict[str, list[PlacedParty]] = {}
+        # KEYED BY PARTY, NOT A LIST, so one party is one occupant of one leaf.
+        # `units` is a MULTI-SELECT since 1500000134, so a placement can name a
+        # container AND a room inside it; both expand to leaves independently
+        # and the room would otherwise collect the same party twice. Insertion
+        # order is preserved, so the evidence line still reads in placement
+        # order.
+        placed_by_leaf: dict[str, dict[str, PlacedParty]] = {}
         for row in placements:
             grain = placement_grain(row)
             if grain is None:
@@ -296,12 +302,12 @@ class LodgingAttributionService:
             # occupies every room in it.
             for placed_unit in resolved_units(row):
                 for code in self._leaves_of(_s(placed_unit, "code"), index):
-                    placed_by_leaf.setdefault(code, []).append(party)
+                    placed_by_leaf.setdefault(code, {}).setdefault(party.party_key, party)
         return _WeekendBoard(
             index,
             available_by_code,
             write_ins_by_code,
-            {code: tuple(parties) for code, parties in placed_by_leaf.items()},
+            {code: tuple(parties.values()) for code, parties in placed_by_leaf.items()},
             has_placements=bool(placements),
         )
 
@@ -358,10 +364,12 @@ class LodgingAttributionService:
         # own latest season.
         unit_codes = resolver.resolve_codes(raw_value, _i(issue, "year") or year)
 
-        candidate_cm_ids = [cm_id for cm_id in self._candidate_cm_ids(issue) if cm_id in name_by_cm_id]
+        candidate_cm_ids = {cm_id for cm_id in self._candidate_cm_ids(issue) if cm_id in name_by_cm_id}
         # ORDERED BY START DATE, the order `AttributeSession` requires of its
         # own candidates and the one `conflict_aware_suggestion` derives from.
-        ordered_candidates = [cm_id for cm_id in session_cm_ids if cm_id in set(candidate_cm_ids)]
+        # The set is built ONCE rather than inside the condition, which rebuilt
+        # it per weekend per queue row.
+        ordered_candidates = [cm_id for cm_id in session_cm_ids if cm_id in candidate_cm_ids]
 
         leaf_codes: list[str] = []
         container_by_leaf: dict[str, str] = {}
@@ -422,9 +430,19 @@ class LodgingAttributionService:
             conflict_in_every_candidate=conflict_in_every_candidate(verdicts),
             timestamp_suggested_session_cm_id=timestamp_suggestion,
             conflict_aware_suggested_session_cm_id=conflict_aware,
-            # The BANNER CONDITION, named once here rather than re-derived per
-            # render: the two suggestions disagree, which can only happen when
-            # a conflict demoted the date heuristic's pick.
+            # A DEMOTION HAPPENED: the date heuristic named a weekend, the
+            # conflict rule named a different one, so a conflict moved the
+            # pick. Named once here rather than re-derived per render.
+            #
+            # ⚠️ NOT "the two suggestions disagree", which this comment used to
+            # claim. It is deliberately FALSE when the stored pick is absent
+            # and the rule still answers -- `conflict_aware_suggestion`'s
+            # one-survivor arm answers without consulting the timestamp, and
+            # `AttributeSession` publishes no guess for a zero `last_updated`.
+            # Nothing was demoted there because there was no pick to demote, so
+            # this field is right to stay False; a UI that wants to banner that
+            # case needs its own second condition, and cannot read this one for
+            # it.
             demotion_applied=(
                 timestamp_suggestion is not None
                 and conflict_aware is not None
