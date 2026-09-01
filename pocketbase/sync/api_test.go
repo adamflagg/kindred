@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -274,7 +275,16 @@ func parseSessionParameter(param string) (int, bool) {
 	return session, true
 }
 
-// TestYearParameterValidation tests year parameter parsing for historical sync
+// TestYearParameterValidation exercises the parse-and-validate pair every year-taking
+// handler runs: strconv.Atoi, then ValidSyncYear.
+//
+// It used to call a parseYearParameter helper defined in this file, which re-implemented
+// the digit scan and took a maxYear argument nobody passes in production. Two consequences,
+// both silent. It asserted "2026" was invalid against maxYear=2025, while production's
+// ValidSyncYear(2026) is true -- the test claimed the opposite of the shipped behavior.
+// And because it never called production, syncYearMax could be changed to anything and this
+// test stayed green; measured at 2018, still green. A test that cannot fail when the
+// constant it names moves is not testing the constant. kindred#2665.
 func TestYearParameterValidation(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -282,53 +292,33 @@ func TestYearParameterValidation(t *testing.T) {
 		yearStr   string
 		wantYear  int
 		wantValid bool
-		maxYear   int // Current year for validation
 	}{
-		{"valid year 2024", "2024", 2024, true, 2025},
-		{"valid year 2017 (minimum)", "2017", 2017, true, 2025},
-		{"year too old", "2016", 0, false, 2025},
-		{"year in future", "2026", 0, false, 2025},
-		{"current year", "2025", 2025, true, 2025},
-		{"non-numeric", "twenty", 0, false, 2025},
-		{"empty", "", 0, false, 2025},
-		{"negative", "-2024", 0, false, 2025},
+		{"valid year 2024", "2024", 2024, true},
+		{"minimum accepted year", "2017", 2017, true},
+		{"one below the minimum", "2016", 0, false},
+		{"maximum accepted year", "2050", 2050, true},
+		{"one above the maximum", "2051", 0, false},
+		// Production bounds the range at syncYearMax, not at the current year: a
+		// future season is a legitimate ?year= while it is being set up.
+		{"next season", "2026", 2026, true},
+		{"non-numeric", "twenty", 0, false},
+		{"empty", "", 0, false},
+		{"negative", "-2024", 0, false},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			year, valid := parseYearParameter(tt.yearStr, tt.maxYear)
+			year, err := strconv.Atoi(tt.yearStr)
+			valid := err == nil && ValidSyncYear(year)
 
 			if valid != tt.wantValid {
-				t.Errorf("expected valid=%v, got %v", tt.wantValid, valid)
+				t.Errorf("parse+ValidSyncYear(%q) valid=%v, want %v", tt.yearStr, valid, tt.wantValid)
 			}
-
 			if valid && year != tt.wantYear {
-				t.Errorf("expected year=%d, got %d", tt.wantYear, year)
+				t.Errorf("parse(%q) = %d, want %d", tt.yearStr, year, tt.wantYear)
 			}
 		})
 	}
-}
-
-// parseYearParameter parses and validates year parameter
-func parseYearParameter(yearStr string, maxYear int) (int, bool) {
-	if yearStr == "" {
-		return 0, false
-	}
-
-	year := 0
-	for _, c := range yearStr {
-		if c < '0' || c > '9' {
-			return 0, false
-		}
-		year = year*10 + int(c-'0')
-	}
-
-	// Valid range is 2017 to current year
-	if year < 2017 || year > maxYear {
-		return 0, false
-	}
-
-	return year, true
 }
 
 // TestSyncTypeValidation tests sync type validation
@@ -1193,6 +1183,39 @@ func TestDuplicateQueueRequest(t *testing.T) {
 // HTTP boundary.
 // =============================================================================
 
+// TestHandleUnifiedSyncMissingYearUsesTheSharedErrorBody pins the twelfth handler onto
+// the same answer the other eleven give. It answered a missing ?year with the shorter
+// "Missing required year parameter" and no "Use ?year=YYYY" hint, so the same failure on
+// the same parameter read two ways depending on which endpoint you hit. kindred#2666
+// deliberately left that alone -- rewording an API response is a behavior change, not
+// something a constant-extraction gets to decide -- and kindred#2665 is where the call
+// was made to fold it in.
+func TestHandleUnifiedSyncMissingYearUsesTheSharedErrorBody(t *testing.T) {
+	t.Parallel()
+
+	re := &core.RequestEvent{}
+	re.Request = httptest.NewRequest(http.MethodPost, "/?service=all", http.NoBody)
+	rec := httptest.NewRecorder()
+	re.Response = rec
+
+	if err := handleUnifiedSync(re, NewScheduler(nil)); err != nil {
+		t.Fatalf("handler returned error: %v", err)
+	}
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var body map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode body %q: %v", rec.Body.String(), err)
+	}
+	if got := body["error"]; got != errMissingYearParam {
+		t.Errorf("error body = %q, want %q -- all twelve handlers must answer a missing "+
+			"?year identically, or an operator gets a different hint depending on the endpoint",
+			got, errMissingYearParam)
+	}
+}
+
 // TestHandleUnifiedSyncRejectsUnsupportedDryRun proves dry_run=true against a service with no
 // DryRunnable support is rejected with 400, before either the immediate or the queued path
 // ever touches it -- not run wet silently (kindred#2334's ruled fix direction: "either honor
@@ -1530,7 +1553,8 @@ func TestRunPhaseEndpointValidation(t *testing.T) {
 			var yearValid, phaseValid bool
 
 			if tt.yearParam != "" {
-				_, yearValid = parseYearParameter(tt.yearParam, 2026) // maxYear=2026 for testing
+				y, err := strconv.Atoi(tt.yearParam)
+				yearValid = err == nil && ValidSyncYear(y)
 			}
 
 			if tt.phaseParam != "" {

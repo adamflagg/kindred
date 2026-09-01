@@ -42,16 +42,19 @@ func normalizeSession(session string) string {
 const DefaultService = "all"
 
 // Error bodies returned by more than one handler. They are user-visible API
-// responses, so they are stated once: eleven handlers answered a missing ?year
-// with the same sentence and three answered a bad ?session with the same
-// sentence, and a copied sentence is a sentence that can drift.
+// responses, so they are stated once: twelve handlers answer a missing ?year with
+// the same sentence and three answer a bad ?session with the same sentence, and a
+// copied sentence is a sentence that can drift.
 //
-// It already has. handleUnifiedSync answers a missing ?year with the shorter
-// "Missing required year parameter", with no "Use ?year=YYYY" hint, so the same
-// failure on the same parameter reads two ways depending on the endpoint. That
-// one is deliberately NOT folded in here -- rewording an API response is a
-// behavior change and an owner's call, not something a constant-extraction gets
-// to decide. See kindred#2665.
+// It had. handleUnifiedSync answered a missing ?year with a shorter sentence that
+// omitted the Use ?year=YYYY hint, so the same failure on the same parameter read
+// two ways depending on which endpoint you hit. kindred#2666 extracted the other
+// eleven but deliberately left that one alone, because rewording an API response
+// is a behavior change and an owner's call, not something a constant-extraction
+// gets to decide. Folded in 2026-09-01 by that call; kindred#2665.
+//
+// api_contract_strings_test.go pins both the exact bytes and the absence of the
+// old short form.
 const (
 	errMissingYearParam    = "Missing required year parameter. Use ?year=YYYY"
 	errInvalidSessionParam = "Invalid session parameter. Must be 'all' or a numeric session cm_id."
@@ -1225,7 +1228,7 @@ func handleUnifiedSync(e *core.RequestEvent, scheduler *Scheduler) error {
 	yearStr := e.Request.URL.Query().Get("year")
 	if yearStr == "" {
 		return e.JSON(http.StatusBadRequest, map[string]any{
-			"error": "Missing required year parameter",
+			"error": errMissingYearParam,
 		})
 	}
 
