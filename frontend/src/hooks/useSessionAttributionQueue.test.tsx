@@ -311,7 +311,7 @@ describe('useSessionAttributionQueue', () => {
               occupants: [
                 {
                   kind: 'placement',
-                  label: 'The Weintraub Family',
+                  label: 'The Garcia Family',
                   leaf_name: 'Ridge I',
                   container_name: '',
                 },
@@ -369,7 +369,7 @@ describe('useSessionAttributionQueue', () => {
       expect(row?.candidates.find((c) => c.sessionCmId === 1309515)?.occupants).toEqual([
         {
           kind: 'placement',
-          label: 'The Weintraub Family',
+          label: 'The Garcia Family',
           leafName: 'Ridge I',
           containerName: '',
         },

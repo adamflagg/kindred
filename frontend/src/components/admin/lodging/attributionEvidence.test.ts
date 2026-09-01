@@ -28,7 +28,7 @@ function response(over: Partial<SessionAttributionConflicts> = {}): SessionAttri
             occupants: [
               {
                 kind: 'placement',
-                label: 'The Weintraub Family',
+                label: 'The Garcia Family',
                 leaf_code: 'HC-UP-1',
                 leaf_name: 'HC Upstairs 1',
                 container_name: '',
@@ -74,7 +74,7 @@ describe('rowEvidenceByIssueId', () => {
     expect(row?.byCandidate.get(1309514)?.occupants).toEqual([
       {
         kind: 'placement',
-        label: 'The Weintraub Family',
+        label: 'The Garcia Family',
         leafName: 'HC Upstairs 1',
         containerName: '',
       },
@@ -125,11 +125,11 @@ describe('occupantClause', () => {
     expect(
       occupantClause({
         kind: 'placement',
-        label: 'The Weintraub Family',
+        label: 'The Garcia Family',
         leafName: 'HC Upstairs 1',
         containerName: '',
       })
-    ).toBe('a placement for The Weintraub Family in HC Upstairs 1')
+    ).toBe('a placement for The Garcia Family in HC Upstairs 1')
   })
 
   it('calls a write-in a write-in — ruling 4, write-ins count as occupancy', () => {
@@ -147,10 +147,10 @@ describe('occupantClause', () => {
     expect(
       occupantClause({
         kind: 'placement',
-        label: 'The Delgado Family',
+        label: 'The Chen Family',
         leafName: 'Clouds Rest Loft',
         containerName: 'Clouds Rest',
       })
-    ).toBe('a placement for The Delgado Family in Clouds Rest Loft — a room inside Clouds Rest')
+    ).toBe('a placement for The Chen Family in Clouds Rest Loft — a room inside Clouds Rest')
   })
 })

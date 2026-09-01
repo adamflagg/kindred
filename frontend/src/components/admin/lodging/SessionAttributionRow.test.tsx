@@ -258,7 +258,7 @@ describe('SessionAttributionRow', () => {
       occupants: [
         {
           kind: 'placement' as const,
-          label: 'The Weintraub Family',
+          label: 'The Garcia Family',
           leafName: 'HC Upstairs 1',
           containerName: '',
         },
@@ -334,7 +334,7 @@ describe('SessionAttributionRow', () => {
         <SessionAttributionRow item={evidenceItem()} onConfirm={vi.fn()} isConfirming={false} />
       )
       expect(evidenceTextFor(container, 'conflict')).toContain(
-        'Taken. a placement for The Weintraub Family in HC Upstairs 1'
+        'Taken. a placement for The Garcia Family in HC Upstairs 1'
       )
     })
 
@@ -349,7 +349,7 @@ describe('SessionAttributionRow', () => {
                 occupants: [
                   {
                     kind: 'placement',
-                    label: 'The Delgado Family',
+                    label: 'The Chen Family',
                     leafName: 'Clouds Rest Loft',
                     containerName: 'Clouds Rest',
                   },
