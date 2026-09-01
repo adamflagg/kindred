@@ -1,5 +1,16 @@
 version: "2"
 
+# SCOPE. Every go-lint step in .github/workflows/ci.yml is scoped to pocketbase/,
+# and scripts/ci/go_test_shard.py runs with cwd=pocketbase. So docker/healthcheck --
+# the workspace's other module, 26 lines -- is linted by nothing, deliberately.
+#
+# Running this config over it reports four findings, one of which is real: the
+# `defer resp.Body.Close()` in main.go never runs, because os.Exit(1) follows it.
+# A 26-line container healthcheck does not earn its own CI lint surface, and
+# kindred#2663 closed the dangerous half by making its go.mod able to trigger the
+# Go steps -- a `go` directive bumped there hard-fails every Go command in
+# pocketbase/, so that one IS watched. Ruled 2026-09-01, kindred#2663.
+
 run:
   # No `go:` pin. Left unset it derives from pocketbase/go.mod, so the language
   # version the linters target cannot drift from the one the compiler uses --

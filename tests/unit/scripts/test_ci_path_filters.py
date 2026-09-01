@@ -52,6 +52,48 @@ def _gating_filters(job: str) -> list[str]:
     return names
 
 
+def _gating_filters_for_step(job: str, step_name: str) -> list[str]:
+    """The detect-changes outputs one STEP's `if:` reads.
+
+    A step carries its own gate, and it is not always the job's. go-lint's job
+    gate admits three filters while seven of its steps admit one, so asserting
+    against the job gate alone can report a step as reachable when the step
+    itself would skip -- and a job whose steps all skip still concludes
+    `success`, which `ci-summary` counts as OK.
+    """
+    steps = _ci()["jobs"][job]["steps"]
+    step = next((st for st in steps if st.get("name") == step_name), None)
+    assert step is not None, f"{job} has no step named {step_name!r}"
+    expr = step.get("if")
+    assert expr, f"{job}/{step_name} has no `if:`"
+    names = re.findall(r"needs\.detect-changes\.outputs\.(\w+)", expr)
+    assert names, f"{job}/{step_name} has no detect-changes gate: {expr!r}"
+    return names
+
+
+def _patterns_gating_step(job: str, step_name: str) -> list[str]:
+    filters = _filters()
+    pats: list[str] = []
+    for name in _gating_filters_for_step(job, step_name):
+        pats.extend(filters[name])
+    return pats
+
+
+def _workspace_modules() -> list[str]:
+    """The module directories go.work `use`s, read from go.work itself.
+
+    Derived rather than hardcoded: a module added to the workspace becomes an
+    input to `go vet ./...` the moment it is listed, whether or not anyone
+    remembers to update this file.
+    """
+    text = (REPO_ROOT / "go.work").read_text()
+    block = re.search(r"use\s*\((.*?)\)", text, re.DOTALL)
+    assert block, "go.work has no use(...) block"
+    mods = [ln.strip().lstrip("./") for ln in block.group(1).splitlines() if ln.strip()]
+    assert mods, "go.work use(...) block is empty"
+    return mods
+
+
 def _patterns_gating(job: str) -> list[str]:
     filters = _filters()
     pats: list[str] = []
@@ -210,3 +252,166 @@ def test_security_lint_gate_covers_the_renovate_manager_check_inputs():
     ]
     uncovered = [f for f in required if not _matches(f, patterns)]
     assert not uncovered, f"Renovate manager-check inputs cannot trigger security-lint: {uncovered}"
+
+
+# --- go-lint (kindred#2663) ------------------------------------------------
+#
+# go-lint gated on `backend`, a filter that carried Python entries no go-lint
+# step reads and could not match `.github/workflows/ci.yml`, where the job's
+# gate, its eight step-level `if:`s, the pinned golangci-lint version and the
+# shellcheck invocation all live. So the job both over-fired (a Python-only PR
+# ran gofmt, go vet, golangci-lint, go build, govulncheck and the PocketBase JS
+# lint for nothing) and under-fired (a PR editing only go-lint shipped having
+# never run it). Same false-green family as kindred#2653: a job that cannot be
+# triggered goes *skipped*, and `ci-summary` counts skipped as OK.
+
+
+def test_go_lint_gate_covers_every_go_file_it_lints():
+    """gofmt, go vet, golangci-lint and go build all run over `pocketbase/`.
+
+    Scoped to that module on purpose: `docker/healthcheck/main.go` is the only
+    tracked .go outside it, and every go-lint step is scoped to `pocketbase/`,
+    so CI does not lint it. That is a deliberate, recorded decision -- see the
+    note in `.golangci.yml` -- not an oversight this test should paper over.
+    """
+    patterns = _patterns_gating_step("go-lint", "Go vet")
+    # `pocketbase/*.go`, NOT `pocketbase/**/*.go`. These are git pathspecs, and
+    # git's default wildmatch runs without WM_PATHNAME -- `*` crosses `/`, while
+    # `**/` still requires a literal slash and so drops every depth-1 file. The
+    # `**` form returns 230 files and silently omits 13, pocketbase/main.go among
+    # them. The identical string is correct as a paths-filter PATTERN in the same
+    # file, which is exactly what makes this easy to get wrong.
+    uncovered = [f for f in _tracked("pocketbase/*.go") if not _matches(f, patterns)]
+    assert not uncovered, f"{len(uncovered)} tracked Go files cannot trigger go-lint: {uncovered[:5]}"
+
+
+def test_go_lint_gate_covers_every_workspace_module_manifest():
+    """`go vet ./...` loads the whole workspace before it vets anything.
+
+    A `go` directive bumped in ANY workspace module -- or a deleted go.mod --
+    hard-fails every Go command inside `pocketbase/` with
+    `requires go >= X (running Y; GOTOOLCHAIN=local)`. That is a real input to
+    this job even though no go-lint step reads the other module's sources.
+
+    Asserted against the STEP gate, not the job's. Against the job gate this
+    passes today by accident -- the gate's `docker` term carries `docker/**`,
+    which matches `docker/healthcheck/go.mod` -- while `Go vet` itself, gated
+    on one filter, would still skip. A job whose steps all skip concludes
+    `success`.
+    """
+    patterns = _patterns_gating_step("go-lint", "Go vet")
+    uncovered = [f"{m}/go.mod" for m in _workspace_modules() if not _matches(f"{m}/go.mod", patterns)]
+    assert not uncovered, f"workspace manifests cannot trigger go-lint: {uncovered}"
+
+
+def test_go_lint_gate_covers_the_pocketbase_js_lint_inputs():
+    """The job also runs `npm ci` and `npm run lint` inside `pocketbase/`.
+
+    That script is `eslint pb_migrations pb_hooks`, so the linted trees, the
+    flat config and both npm manifests decide its verdict.
+    """
+    patterns = _patterns_gating_step("go-lint", "PocketBase JS linting")
+    required = [
+        "pocketbase/eslint.config.js",
+        "pocketbase/package.json",
+        "pocketbase/package-lock.json",
+        "pocketbase/pb_migrations/1500000001_example.js",
+        "pocketbase/pb_hooks/main.pb.js",
+    ]
+    uncovered = [f for f in required if not _matches(f, patterns)]
+    assert not uncovered, f"PocketBase JS lint inputs cannot trigger go-lint: {uncovered}"
+
+
+def test_go_lint_gate_covers_the_workflow_that_defines_it():
+    """The gate, the eight step-level `if:`s and the pinned tool version live here.
+
+    Live evidence for the gap this closes: kindred#2680 edited only ci.yml and
+    tests/, and reported `Go Lint: skipping` (merge commit 305fc137).
+    """
+    assert _matches(".github/workflows/ci.yml", _patterns_gating("go-lint"))
+
+
+def test_go_lint_gate_covers_the_lint_config_it_passes_explicitly():
+    """The job runs golangci-lint with `--config ../.golangci.yml`."""
+    assert _matches(".golangci.yml", _patterns_gating_step("go-lint", "Go linting"))
+
+
+def test_go_lint_does_not_run_on_python_only_changes():
+    """`backend` bundled Python sources no go-lint step reads.
+
+    A Python-only PR ran the entire Go toolchain -- gofmt, go vet,
+    golangci-lint, go build, govulncheck and the PocketBase JS lint -- for
+    nothing. The gate should describe this job's inputs, not another job's.
+    """
+    patterns = _patterns_gating("go-lint")
+    for path in ("api/main.py", "bunking/solver/model.py", "conftest.py", "ruff.toml"):
+        assert not _matches(path, patterns), f"{path} still triggers go-lint"
+
+
+def test_go_vet_step_can_be_triggered_by_the_workspace_file():
+    """Asserted at the STEP, which is where go.work's only pin now lives.
+
+    `test_go_test_shard.py` used to pin `go.work` into the `backend` filter.
+    That filter is gone, and the workspace-manifest test above does NOT subsume
+    the pin: it derives `<module>/go.mod` from go.work's use-list and never
+    asserts go.work itself, so dropping the entry leaves it green. Verified by
+    doing exactly that.
+    """
+    assert _matches("go.work", _patterns_gating_step("go-lint", "Go vet"))
+
+
+def test_no_detect_changes_output_is_orphaned():
+    """Every declared output must exist as a filter, be read, and name its own key.
+
+    A job gate naming an output that does not exist resolves to `''` -- every
+    gated step skips, the job still concludes `success`, and `ci-summary` passes
+    it. A misspelled `steps.filter.outputs.golint` on the right-hand side has
+    identical symptoms and is invisible on a read-through.
+    """
+    ci = _ci()
+    outputs = ci["jobs"]["detect-changes"]["outputs"]
+    filters = _filters()
+    workflow_text = CI_WORKFLOW.read_text()
+
+    # Anchored on a right-hand word boundary, not a substring test. `go` is a
+    # strict prefix of `goLint`, and `python` of `pythonLint`, so a plain `in`
+    # lets `outputs.goLint` satisfy a search for `outputs.go` -- the guard would
+    # stay green while `go` was orphaned or miswired. This PR is what creates the
+    # go/goLint collision, so the boundary is load-bearing from here on.
+    def _reads(name: str, text: str, prefix: str) -> bool:
+        return re.search(rf"{prefix}\.{re.escape(name)}(?![A-Za-z0-9_-])", text) is not None
+
+    for name, expr in outputs.items():
+        assert name in filters, f"output `{name}` has no matching filter"
+        assert _reads(name, expr, r"steps\.filter\.outputs"), f"output `{name}` reads a different filter: {expr!r}"
+
+    # The consumer direction, which is the one that actually bites: every
+    # assertion here is otherwise producer-side. A typo in a STEP gate names an
+    # output nothing exports, resolves to '', and skips that step silently while
+    # the rest of this test stays green. go-lint has nine such references and
+    # only three are named by a step-level assertion.
+    for used in sorted(set(re.findall(r"needs\.detect-changes\.outputs\.(\w+)", workflow_text))):
+        assert used in outputs, (
+            f"a gate reads `{used}`, which detect-changes does not export -- it "
+            f"resolves to '' and the gated job or step silently skips"
+        )
+
+    for name in filters:
+        assert name in outputs, f"filter `{name}` is declared but never exported"
+        assert _reads(name, workflow_text, r"needs\.detect-changes\.outputs"), (
+            f"filter `{name}` is exported but read by no job -- a loaded gun for "
+            f"the next job that reaches for a conveniently-broad filter"
+        )
+
+
+def test_node_version_pin_can_trigger_the_jobs_that_read_it():
+    """Four jobs set `node-version-file: '.nvmrc'`, and nothing matched it.
+
+    `.python-version` matched three filters; `.nvmrc` matched none -- so a
+    Renovate nvm bump (renovate.json enables the `nvm` manager, and .nvmrc has
+    been bumped before) triggered no job that validates a toolchain. Asserted at
+    the JOB level for go-lint, because its `Setup Node.js` step carries no `if:`
+    and runs whenever the job does.
+    """
+    for job in ("go-lint", "frontend-lint"):
+        assert _matches(".nvmrc", _patterns_gating(job)), f"a .nvmrc bump cannot trigger {job}"

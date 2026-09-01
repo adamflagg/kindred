@@ -84,7 +84,7 @@ jobs:
     name: Detect Changed Files
     runs-on: ubuntu-latest
     outputs:
-      backend: ${{ steps.filter.outputs.backend }}
+      goLint: ${{ steps.filter.outputs.goLint }}
       python: ${{ steps.filter.outputs.python }}
       pythonLint: ${{ steps.filter.outputs.pythonLint }}
       go: ${{ steps.filter.outputs.go }}
@@ -105,24 +105,49 @@ jobs:
       id: filter
       with:
         filters: |
-          backend:
-            - 'api/**/*.py'
-            - 'bunking/**/*.py'
-            - 'campminder/**'
-            - 'scripts/**/*.py'
-            - 'pyproject.toml'
-            - 'ruff.toml'
-            - 'uv.lock'
-            # 'pocketbase/**' covers the Go module wholesale, including
-            # go.mod/go.sum. This used to also list 'go.mod' and 'go.sum' at the
-            # repo root, which match nothing -- see the `go` filter below for
-            # what those dead entries cost when a filter relied on them.
+          # go-lint's inputs, which are NOT the Python tree. It used to gate on
+          # `backend`, a filter carrying api/**/*.py, bunking/**/*.py, ruff.toml
+          # and uv.lock -- none of which any go-lint step reads -- so a
+          # Python-only PR ran gofmt, go vet, golangci-lint, go build,
+          # govulncheck and the PocketBase JS lint for nothing. And `backend`
+          # matched no workflow file, so a PR editing only go-lint shipped
+          # having never run it: kindred#2680 touched only ci.yml and tests/,
+          # and reported `Go Lint: skipping` (merge commit 305fc137). A job that
+          # cannot be triggered goes *skipped*, and ci-summary counts skipped as
+          # OK. kindred#2663, same family as kindred#2653.
+          goLint:
+            # The whole module: gofmt/vet/golangci-lint/build/govulncheck run
+            # over it, and `npm run lint` (= `eslint pb_migrations pb_hooks`)
+            # reads eslint.config.js and both npm manifests, which live here
+            # too. go.mod/go.sum are covered by this, not by any '**/*.go'.
             - 'pocketbase/**'
-            # go-lint runs `go vet ./...`, which loads the workspace, so a
-            # go.work-only edit is a real input to this job.
+            # `go vet ./...` loads the WORKSPACE before it vets anything, so a
+            # go.work-only change is a real input. go.work.sum is deliberately
+            # absent: it is untracked, and a filter entry matching nothing is
+            # what made the old root go.mod/go.sum entries look like coverage.
             - 'go.work'
+            # The other workspace module's manifest. A `go` directive bumped
+            # here -- or a deleted go.mod -- hard-fails every Go command inside
+            # pocketbase/ with `requires go >= X (GOTOOLCHAIN=local)`. Its .go
+            # sources are NOT listed: no go-lint step is scoped outside
+            # pocketbase/, which is a recorded decision, see .golangci.yml.
+            - 'docker/healthcheck/go.mod'
+            # `Setup Node.js` carries NO `if:`, so it runs whenever the job does,
+            # and node-version-file: '.nvmrc' picks the Node that then runs
+            # `npm ci` and `npm run lint`. Nothing in this workflow matched
+            # .nvmrc at all -- while .python-version matched three filters -- so
+            # a Renovate nvm bump (renovate.json enables the `nvm` manager, and
+            # .nvmrc has been bumped before) triggered no job that validates a
+            # toolchain. `frontend` lists it too, for the surface it really
+            # governs.
+            - '.nvmrc'
+            # Passed explicitly as `--config ../.golangci.yml`.
             - '.golangci.yml'
-            - '.python-version'
+            # And the job's own definition: the gate, the eight step-level
+            # `if:`s, the pinned golangci-lint version and the shellcheck
+            # invocation all live here. Same reasoning and the same accepted
+            # cost as the `go` filter below.
+            - '.github/workflows/ci.yml'
           python:
             - 'api/**/*.py'
             - 'bunking/**/*.py'
@@ -246,6 +271,10 @@ jobs:
             - 'frontend/**'
             - 'package*.json'
             - 'tsconfig*.json'
+            # The runtime pin for tsc, eslint, vitest and the vite build -- the
+            # toolchain .nvmrc actually governs, constrained by
+            # frontend/package.json's engines.node. See the note in `goLint`.
+            - '.nvmrc'
           scripts:
             - 'scripts/**/*.sh'
             - '.shellcheckrc'
@@ -580,7 +609,7 @@ jobs:
     name: Go Lint
     needs: detect-changes
     if: |
-      needs.detect-changes.outputs.backend == 'true' ||
+      needs.detect-changes.outputs.goLint == 'true' ||
       needs.detect-changes.outputs.scripts == 'true' ||
       needs.detect-changes.outputs.docker == 'true'
     runs-on: ubuntu-latest
@@ -624,7 +653,7 @@ jobs:
       run: go install golang.org/x/vuln/cmd/govulncheck@latest
 
     - name: Go formatting check
-      if: needs.detect-changes.outputs.backend == 'true'
+      if: needs.detect-changes.outputs.goLint == 'true'
       run: |
         if [ -n "$(gofmt -l pocketbase)" ]; then
           echo "Go files need formatting. Please run: gofmt -w pocketbase"
@@ -633,12 +662,12 @@ jobs:
         fi
 
     - name: Go vet
-      if: needs.detect-changes.outputs.backend == 'true'
+      if: needs.detect-changes.outputs.goLint == 'true'
       working-directory: ./pocketbase
       run: go vet ./...
 
     - name: Go linting
-      if: needs.detect-changes.outputs.backend == 'true'
+      if: needs.detect-changes.outputs.goLint == 'true'
       uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9
       with:
         # v2.13.0 is the first release built with Go 1.27. Older binaries
@@ -650,29 +679,29 @@ jobs:
         args: --config ../.golangci.yml
 
     - name: Go build check
-      if: needs.detect-changes.outputs.backend == 'true'
+      if: needs.detect-changes.outputs.goLint == 'true'
       working-directory: ./pocketbase
       run: go build -o /dev/null ./...
 
     - name: Security audit (govulncheck)
-      if: needs.detect-changes.outputs.backend == 'true'
+      if: needs.detect-changes.outputs.goLint == 'true'
       working-directory: ./pocketbase
       run: govulncheck ./...
 
     # PocketBase JS linting (migrations and hooks)
     - name: Install PocketBase JS linting dependencies
-      if: needs.detect-changes.outputs.backend == 'true'
+      if: needs.detect-changes.outputs.goLint == 'true'
       working-directory: ./pocketbase
       run: npm ci
 
     - name: PocketBase JS linting
-      if: needs.detect-changes.outputs.backend == 'true'
+      if: needs.detect-changes.outputs.goLint == 'true'
       working-directory: ./pocketbase
       run: npm run lint
 
     # Shell script linting (warning+ severity - info is too noisy)
     - name: Shell script linting (shellcheck)
-      if: needs.detect-changes.outputs.scripts == 'true' || needs.detect-changes.outputs.backend == 'true' || needs.detect-changes.outputs.docker == 'true'
+      if: needs.detect-changes.outputs.scripts == 'true' || needs.detect-changes.outputs.goLint == 'true' || needs.detect-changes.outputs.docker == 'true'
       run: |
         echo "Checking shell scripts..."
         find scripts/ docker/ frontend/ tests/shell/ -maxdepth 3 \( -name '*.sh' -o -name 'pre-*' -o -name 'post-*' \) -print0 | \
