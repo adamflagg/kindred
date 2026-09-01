@@ -206,11 +206,11 @@ var serviceGrainDeclarations = []ServiceGrain{
 		NoGrain:    "ProcessSimpleRecord + unguarded DeleteOrphans (sessions.go)",
 	}}},
 
-	{Service: "attendees", Writes: []CollectionGrain{
+	{Service: serviceNameAttendees, Writes: []CollectionGrain{
 		{
-			Collection: "attendees",
-			// attendees.go:317 builds "person_cm_id:session_cm_id" and
-			// TrackProcessedCompositeKey appends "|year"; attendees.go:479's
+			Collection: attendeesCollection,
+			// attendees.go:345 builds "person_cm_id:session_cm_id" and
+			// TrackProcessedCompositeKey appends "|year"; attendees.go:507's
 			// getIDFunc rebuilds "person_cm_id:session_cm_id|year" from the stored
 			// row's person_id, its session relation's cm_id, and its year.
 			WriteKey:    "person_cm_id:session_cm_id|year",

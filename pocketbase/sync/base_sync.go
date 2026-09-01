@@ -556,12 +556,12 @@ func (b *BaseSyncService) PaginateRecords(
 ) error {
 	// Collections that have year fields and should be automatically year-filtered
 	yearCollections := map[string]bool{
-		"persons":          true,
-		"camp_sessions":    true,
-		"bunks":            true,
-		"bunk_plans":       true,
-		"bunk_assignments": true,
-		"attendees":        true,
+		"persons":           true,
+		"camp_sessions":     true,
+		"bunks":             true,
+		"bunk_plans":        true,
+		"bunk_assignments":  true,
+		attendeesCollection: true,
 	}
 
 	// Auto-add year filter if collection has year field and filter doesn't already have it
@@ -1040,7 +1040,7 @@ func (b *BaseSyncService) getRecordName(record *core.Record, entityType string) 
 	}
 
 	// For composite entities like attendees
-	if entityType == "attendee" {
+	if entityType == entityNameAttendee {
 		personID := record.GetString("person_cm_id")
 		sessionID := record.GetString("session_cm_id")
 		if personID != "" && sessionID != "" {
@@ -1514,12 +1514,12 @@ func (b *BaseSyncService) LookupRelation(collection string, cmID int, fieldName 
 	// Add year filter for collections that have year fields to prevent cross-year pollution
 	// All major collections that use cm_id also have year fields
 	yearCollections := map[string]bool{
-		"persons":          true,
-		"camp_sessions":    true,
-		"bunks":            true,
-		"bunk_plans":       true,
-		"bunk_assignments": true,
-		"attendees":        true,
+		"persons":           true,
+		"camp_sessions":     true,
+		"bunks":             true,
+		"bunk_plans":        true,
+		"bunk_assignments":  true,
+		attendeesCollection: true,
 	}
 
 	if yearCollections[collection] {
@@ -1612,12 +1612,12 @@ func (b *BaseSyncService) LoadValidCMIDs(collection string) (map[int]bool, error
 
 	// Collections that have year fields
 	yearCollections := map[string]bool{
-		"persons":          true,
-		"camp_sessions":    true,
-		"bunks":            true,
-		"bunk_plans":       true,
-		"bunk_assignments": true,
-		"attendees":        true,
+		"persons":           true,
+		"camp_sessions":     true,
+		"bunks":             true,
+		"bunk_plans":        true,
+		"bunk_assignments":  true,
+		attendeesCollection: true,
 	}
 
 	// Build filter - will be auto-enhanced by PaginateRecords if needed

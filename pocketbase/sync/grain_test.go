@@ -400,20 +400,75 @@ func stringSet(m map[string]string) map[string]bool {
 // every BaseSyncService.DeleteOrphansGuarded call site it can read, plus the
 // TOTAL number of call sites in the file.
 //
-// The two numbers are returned separately on purpose. The naming regex only
-// reads an inline string literal, so a caller passing a constant contributes to
-// the count but not to the names -- and the caller compares them, rather than
-// trusting a set that may silently be short.
+// The two numbers are returned separately on purpose. A call site whose first
+// argument this parser cannot read contributes to the count but not to the
+// names -- and the caller compares them, rather than trusting a set that may
+// silently be short.
+//
+// It reads two argument shapes: an inline string literal, and an identifier
+// that names a string constant declared in this SAME file (kindred#2665 --
+// attendees.go passes attendeesCollection). A constant declared in another file
+// stays unreadable, deliberately: resolving across files would mean tracking
+// which package the identifier belongs to, and the counted-but-unnamed path
+// already fails loudly rather than under-reporting.
 func parseGuardedSweeps(src string) (named []string, callSites int) {
+	consts := stringConstsIn(src)
 	for _, m := range guardedSweepNameRe.FindAllStringSubmatch(src, -1) {
-		named = append(named, m[1])
+		if literal := m[1]; literal != "" {
+			named = append(named, literal)
+			continue
+		}
+		if value, ok := consts[m[2]]; ok {
+			named = append(named, value)
+		}
 	}
 	return named, len(guardedSweepCallRe.FindAllString(src, -1))
 }
 
-// guardedSweepNameRe reads the collection off a call site that passes it as an
-// inline string literal -- which every caller does today.
-var guardedSweepNameRe = regexp.MustCompile(`DeleteOrphansGuarded\(\s*"([a-z0-9_]+)"`)
+// stringConstsIn harvests the string constants one source file declares, in the
+// two forms this package writes them: a top-level `const name = "value"` (how
+// attendees.go declares attendeesCollection and persons.go personsCollection)
+// and an entry inside a `const ( ... )` block (how camper_transportation.go
+// declares its column names).
+//
+// Deliberately not a full parse. It reads exactly the shapes a sweep's
+// collection argument is declared in; anything else stays unreadable, which
+// leaves that call site counted-but-unnamed and fails guardedSweepCollections
+// loudly instead of quietly shrinking the set.
+func stringConstsIn(src string) map[string]string {
+	out := map[string]string{}
+	inBlock := false
+	for _, line := range strings.Split(src, "\n") {
+		decl := strings.TrimSpace(line)
+		switch {
+		case decl == "const (":
+			inBlock = true
+			continue
+		case inBlock && decl == ")":
+			inBlock = false
+			continue
+		case strings.HasPrefix(decl, "const "):
+			decl = strings.TrimPrefix(decl, "const ")
+		case !inBlock:
+			continue
+		}
+		if m := stringConstRe.FindStringSubmatch(decl); m != nil {
+			out[m[1]] = m[2]
+		}
+	}
+	return out
+}
+
+// stringConstRe reads one `name = "value"` declaration, with the `const` keyword
+// already stripped. The value charset matches guardedSweepNameRe's: a PocketBase
+// collection name, not any Go string.
+var stringConstRe = regexp.MustCompile(`^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*"([a-z0-9_]+)"$`)
+
+// guardedSweepNameRe reads the collection off a call site that passes it either
+// as an inline string literal (group 1) or as an identifier (group 2), which
+// parseGuardedSweeps then resolves against the file's own string constants.
+var guardedSweepNameRe = regexp.MustCompile(
+	`DeleteOrphansGuarded\(\s*(?:"([a-z0-9_]+)"|([A-Za-z_][A-Za-z0-9_]*))`)
 
 // guardedSweepCallRe counts call sites whatever their first argument looks like.
 // The leading "." is what excludes BaseSyncService's own method DECLARATION in
@@ -504,17 +559,46 @@ func (s *Beta) deleteOrphans() error {
 		nil, "beta", "", OrphanSweepGuard{},
 	)
 }
+
+const (
+	gammaCollection = "gamma"
+)
+
+func (s *Gamma) deleteOrphans() error {
+	return s.DeleteOrphansGuarded(
+		gammaCollection,
+		nil, "gamma", "", OrphanSweepGuard{},
+	)
+}
+
+func (s *Delta) deleteOrphans() error {
+	return s.DeleteOrphansGuarded(
+		deltaCollection,
+		nil, "delta", "", OrphanSweepGuard{},
+	)
+}
 `
 
 	named, callSites := parseGuardedSweeps(src)
 
-	if callSites != 2 {
-		t.Errorf("callSites = %d, want 2 -- both call sites must be COUNTED even "+
-			"though only one can be named, or a constant-argument caller goes "+
-			"undetected", callSites)
+	if callSites != 4 {
+		t.Errorf("callSites = %d, want 4 -- every call site must be COUNTED even "+
+			"where the collection cannot be read, or a caller passing something "+
+			"this parser does not understand goes undetected", callSites)
 	}
-	if len(named) != 1 || named[0] != "alpha" {
-		t.Errorf("named = %v, want [alpha] -- only the inline literal is readable", named)
+
+	// alpha is the inline literal; beta and gamma are string constants declared
+	// in this same source, in the two forms the package actually uses (a
+	// top-level `const x = "..."` as attendees.go declares attendeesCollection,
+	// and an entry inside a `const ( ... )` block). delta's constant is declared
+	// in some OTHER file, which this per-file parser cannot see -- so it stays
+	// counted-but-unnamed and the caller's mismatch check fires, which is the
+	// property that must survive teaching the parser about constants.
+	want := []string{"alpha", "beta", "gamma"}
+	if !reflect.DeepEqual(named, want) {
+		t.Errorf("named = %v, want %v -- an inline literal and an in-file string "+
+			"constant are both readable; a constant declared elsewhere is not",
+			named, want)
 	}
 }
 

@@ -14,6 +14,32 @@ import (
 	"github.com/camp/kindred/pocketbase/campminder"
 )
 
+// serviceNameAttendees is the name this service is REGISTERED under -- the ID its
+// syncJobMeta row carries, the string o.RegisterService is called with, and the key
+// grain.go and sync_runs.service use. Same shape as serviceNameSessions and the
+// sixteen other serviceName* constants.
+const serviceNameAttendees = "attendees"
+
+// attendeesCollection is the PocketBase collection name for attendees, on the model
+// of personsCollection in persons.go.
+//
+// Deliberately a SEPARATE constant from serviceNameAttendees even though the two
+// spell the same string today. They are different facts that happen to coincide: one
+// is a registered service, the other a table in sqlite_master, and the sync package
+// is full of services whose names match no table they write (normalize_geographic
+// writes normalized_mappings; family_camp_derived writes three tables named nothing
+// like it). Collapsing them would make renaming either one silently rename the other
+// -- which is exactly what lodging_replay.go does today, reaching for
+// serviceNamePersonCustomValues where it wants a collection name.
+const attendeesCollection = "attendees"
+
+// entityNameAttendee is the human-readable SINGULAR label the orphan sweep logs
+// under -- DeleteOrphansGuarded's entityName parameter, not a table and not a
+// service. BaseSyncService.getRecordName branches on this same value to build a
+// composite name, and that branch lives in a different file, so sharing one constant
+// is what makes the two agree at compile time rather than by coincidence.
+const entityNameAttendee = "attendee"
+
 // AttendeesSync handles syncing attendee enrollment data from CampMinder
 type AttendeesSync struct {
 	BaseSyncService
@@ -47,7 +73,7 @@ func (s *AttendeesSync) SetDryRun(dryRun bool) {
 
 // Sync performs the attendees sync
 func (s *AttendeesSync) Sync(ctx context.Context) error {
-	s.LogSyncStart("attendees")
+	s.LogSyncStart(serviceNameAttendees)
 	s.Stats = Stats{}                 // Reset stats
 	s.SyncSuccessful = false          // Reset sync status
 	s.ClearProcessedKeys()            // Reset processed tracking
@@ -64,7 +90,7 @@ func (s *AttendeesSync) Sync(ctx context.Context) error {
 
 	// First load session mappings since session_id field was removed
 	sessionMappings := make(map[string]int) // pbID -> cmID
-	if err := s.PaginateRecords("attendees", filter, func(record *core.Record) error {
+	if err := s.PaginateRecords(attendeesCollection, filter, func(record *core.Record) error {
 		if sessionID := record.GetString("session"); sessionID != "" {
 			sessionFilter := fmt.Sprintf("id = '%s'", sessionID)
 			sessions, err := s.App.FindRecordsByFilter("camp_sessions", sessionFilter, "", 1, 0, nil)
@@ -80,17 +106,19 @@ func (s *AttendeesSync) Sync(ctx context.Context) error {
 	}
 
 	// Now load existing attendees with proper composite keys
-	existingAttendees, err := s.PreloadCompositeRecords("attendees", filter, func(record *core.Record) (string, bool) {
-		personCMID, _ := record.Get("person_id").(float64)
-		sessionID := record.GetString("session")
-		sessionCMID := sessionMappings[sessionID]
+	existingAttendees, err := s.PreloadCompositeRecords(
+		attendeesCollection, filter,
+		func(record *core.Record) (string, bool) {
+			personCMID, _ := record.Get("person_id").(float64)
+			sessionID := record.GetString("session")
+			sessionCMID := sessionMappings[sessionID]
 
-		if personCMID > 0 && sessionCMID > 0 {
-			key := fmt.Sprintf("%d:%d", int(personCMID), sessionCMID)
-			return key, true
-		}
-		return "", false
-	})
+			if personCMID > 0 && sessionCMID > 0 {
+				key := fmt.Sprintf("%d:%d", int(personCMID), sessionCMID)
+				return key, true
+			}
+			return "", false
+		})
 	if err != nil {
 		return err
 	}
@@ -405,7 +433,7 @@ func (s *AttendeesSync) processEnrollment(
 	}
 
 	// Use ProcessCompositeRecord utility with year field skipped for idempotency
-	return s.ProcessCompositeRecord("attendees", key, recordData, existingAttendees, []string{"year"})
+	return s.ProcessCompositeRecord(attendeesCollection, key, recordData, existingAttendees, []string{"year"})
 }
 
 // logStatusChange creates a record in attendee_status_history when a status transition is detected.
@@ -457,7 +485,7 @@ func (s *AttendeesSync) deleteOrphans() error {
 
 	// First load session mappings for orphan detection
 	sessionMappings := make(map[string]int) // pbID -> cmID
-	if err := s.PaginateRecords("attendees", filter, func(record *core.Record) error {
+	if err := s.PaginateRecords(attendeesCollection, filter, func(record *core.Record) error {
 		if sessionID := record.GetString("session"); sessionID != "" {
 			// Lookup session CM ID
 			sessionFilter := fmt.Sprintf("id = '%s'", sessionID)
@@ -474,7 +502,7 @@ func (s *AttendeesSync) deleteOrphans() error {
 	}
 
 	return s.DeleteOrphansGuarded(
-		"attendees",
+		attendeesCollection,
 		func(record *core.Record) (string, bool) {
 			personCMID, _ := record.Get("person_id").(float64)
 			sessionID := record.GetString("session")
@@ -493,10 +521,10 @@ func (s *AttendeesSync) deleteOrphans() error {
 			}
 			return "", false
 		},
-		"attendee",
+		entityNameAttendee,
 		filter,
 		OrphanSweepGuard{
-			Entity:   "attendees",
+			Entity:   attendeesCollection,
 			Year:     year,
 			Computed: len(s.ProcessedKeys),
 			Hint: "check that the CampMinder attendee feed returned this season (a collapsed " +
