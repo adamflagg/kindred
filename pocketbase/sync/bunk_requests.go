@@ -23,6 +23,18 @@ func calculateContentHash(content string) string {
 	return hex.EncodeToString(hash[:])
 }
 
+// bunkRequestRequiredColumns are the headers the uploaded CampMinder CSV must
+// carry. Two places check them and they must not disagree: handleBunkRequestsUpload
+// rejects the upload outright, and RunSync below re-checks the file it is handed.
+// Written out twice, a column added to one list and not the other means a file is
+// accepted at upload and then fails inside the sync run, which is a much worse
+// place to find out.
+//
+// These are the INPUT file's headers, not display labels. "PersonID" has no space,
+// unlike the "Person ID" that table_exporter.go writes into the exported sheets --
+// the two vocabularies are unrelated and must not be fused (kindred#2665).
+var bunkRequestRequiredColumns = []string{"PersonID", "Last Name", "First Name"}
+
 // CSV column to field mapping
 var csvFieldMap = map[string]string{
 	"Share Bunk With":             "bunk_request_form",
@@ -110,10 +122,9 @@ func (s *BunkRequestsSync) RunSync(csvPath string, _ int) error {
 	}
 
 	// Validate required columns (case-insensitive)
-	requiredColumns := []string{"PersonID", "Last Name", "First Name"}
 	missingColumns := []string{}
 
-	for _, required := range requiredColumns {
+	for _, required := range bunkRequestRequiredColumns {
 		found := false
 		for header := range columnIndex {
 			if strings.EqualFold(header, required) {
