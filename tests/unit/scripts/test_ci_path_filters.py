@@ -97,8 +97,15 @@ def test_python_lint_gate_covers_every_tracked_python_file():
     which added four Python tests and reported `Python Lint: skipping`.
     """
     patterns = _patterns_gating("python-lint")
-    uncovered = [f for f in _tracked("*.py") if not _matches(f, patterns)]
-    assert not uncovered, f"{len(uncovered)} tracked .py files cannot trigger python-lint: {uncovered[:5]}"
+    # .pyi as well as .py: ruff.toml declares `include = ["*.py", "*.pyi"]` and
+    # mypy reads stubs natively, so a stub file is as much an input as a module.
+    uncovered = [f for f in _tracked("*.py", "*.pyi") if not _matches(f, patterns)]
+    assert not uncovered, f"{len(uncovered)} tracked Python files cannot trigger python-lint: {uncovered[:5]}"
+    # No stub is tracked yet, so the walk above cannot exercise the .pyi pattern.
+    # Assert a representative path instead, for the same reason `bunking/*.json`
+    # is asserted representatively below: an unguarded pattern is how a filter
+    # entry rots into one that matches nothing and nobody notices.
+    assert _matches("bunking/sample.pyi", patterns), "a .pyi stub cannot trigger python-lint"
 
 
 def test_python_lint_gate_covers_its_non_python_inputs():

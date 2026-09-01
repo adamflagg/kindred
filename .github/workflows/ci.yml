@@ -157,6 +157,13 @@ jobs:
             - 'scripts/**/*.py'
             - 'tests/**'
             - 'conftest.py'
+            # Stubs are linted too: ruff.toml declares
+            # `include = ["*.py", "*.pyi"]` and mypy reads .pyi natively. None
+            # are tracked today -- this is here so the FIRST one added can
+            # trigger the job, the same reasoning as 'bunking/*.json' below.
+            # Unscoped because `ruff check .` and `mypy .` run from the repo
+            # root, so a stub anywhere in the tree is a real input.
+            - '**/*.pyi'
             # What the linters and the dependency audit are configured by.
             - 'pyproject.toml'
             - 'ruff.toml'
