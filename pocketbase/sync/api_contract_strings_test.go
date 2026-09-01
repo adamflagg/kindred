@@ -10,13 +10,14 @@ import (
 // they are stated once and pinned here rather than left inline.
 //
 // Two of them are user-visible API error bodies that were copied 11 and 3 times.
-// The 11-way copy had already drifted: handleUnifiedSync (api.go) answers a
-// missing ?year with "Missing required year parameter" -- no "Use ?year=YYYY"
-// suffix -- so the same failure on the same parameter reads two different ways
-// depending on which endpoint you hit. That divergence is left exactly as it is
-// (changing it would change an API response, which is an owner's call, not a
-// refactor's), but it is the reason the other eleven are now one constant: a
-// twelfth copy cannot drift if there is nothing to copy.
+// The 11-way copy had already drifted: handleUnifiedSync (api.go) answered a
+// missing ?year with a shorter sentence that omitted the Use ?year=YYYY hint, so
+// the same failure on the same parameter read two different ways depending on
+// which endpoint you hit. kindred#2666 left that divergence alone on purpose --
+// changing it changes an API response, which is an owner's call, not a
+// refactor's -- and it is the reason the other eleven became one constant: a
+// twelfth copy cannot drift if there is nothing to copy. The call was made in
+// kindred#2665 and the twelfth now uses the constant too.
 //
 // The third is the required-column list for the bunk-requests CSV upload, which
 // was written out twice -- once by the upload handler that accepts the file and
@@ -39,6 +40,33 @@ func TestAPIErrorMessagesKeepTheirExactWording(t *testing.T) {
 		"Invalid session parameter. Must be 'all' or a numeric session cm_id."; got != want {
 		t.Errorf("errInvalidSessionParam = %q, want %q -- this is a user-visible API "+
 			"error body; changing it changes the contract", got, want)
+	}
+}
+
+// TestNoHandlerWritesTheShortYearLiteral is the other half of the test below, and it
+// deliberately is NOT another entry in that one's table. That table asserts a literal
+// appears EXACTLY ONCE (its declaration); the short form must appear ZERO times, so an
+// entry there would pass before this change and fail after it -- TDD inverted, with a
+// failure message advising the opposite of what is wanted.
+//
+// The count is of the QUOTED form. That matters: the bare phrase is a prefix of the long
+// constant, so an unquoted count can never reach zero. It also used to appear inside a
+// prose comment in api.go explaining why the divergence was being left alone -- that
+// comment is gone with the divergence, but a future one that quotes the string would make
+// this test red for a reason that is not a real regression. Say it unquoted if you must.
+func TestNoHandlerWritesTheShortYearLiteral(t *testing.T) {
+	t.Parallel()
+
+	source, err := os.ReadFile("api.go")
+	if err != nil {
+		t.Fatalf("read api.go: %v", err)
+	}
+
+	const short = `"Missing required year parameter"`
+	if n := strings.Count(string(source), short); n != 0 {
+		t.Errorf("api.go writes the short year literal %d times, want 0. Every handler "+
+			"answers a missing ?year with errMissingYearParam, which carries the "+
+			"\"Use ?year=YYYY\" hint. kindred#2665.", n)
 	}
 }
 
