@@ -31,7 +31,7 @@ describe('copyText', () => {
       configurable: true,
     })
     const exec = vi.fn(() => true)
-    document.execCommand = exec as typeof document.execCommand
+    document.execCommand = exec
 
     const ok = await copyText('hello')
 
@@ -46,7 +46,7 @@ describe('copyText', () => {
       configurable: true,
     })
     const exec = vi.fn(() => true)
-    document.execCommand = exec as typeof document.execCommand
+    document.execCommand = exec
     const removeSpy = vi.spyOn(document.body, 'removeChild')
 
     const ok = await copyText('payload')
@@ -65,7 +65,7 @@ describe('copyText', () => {
       configurable: true,
     })
     const exec = vi.fn(() => true)
-    document.execCommand = exec as typeof document.execCommand
+    document.execCommand = exec
 
     const ok = await copyText('after-reject')
 
@@ -81,7 +81,7 @@ describe('copyText', () => {
     })
     document.execCommand = vi.fn(() => {
       throw new Error('not allowed')
-    }) as typeof document.execCommand
+    })
 
     const ok = await copyText('boom')
 

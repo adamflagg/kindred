@@ -38,9 +38,9 @@ function stage(pointer: string[], rect: string[]): CollisionArgs {
 function detector() {
   return createBoardCollisionDetection({
     pointerWithin: (args: CollisionArgs): Collisions =>
-      (args as unknown as Staged).pointer.map(hit) as Collisions,
+      (args as unknown as Staged).pointer.map(hit),
     rectIntersection: (args: CollisionArgs): Collisions =>
-      (args as unknown as Staged).rect.map(hit) as Collisions,
+      (args as unknown as Staged).rect.map(hit),
   })
 }
 

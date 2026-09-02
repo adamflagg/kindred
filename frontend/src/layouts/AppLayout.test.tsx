@@ -214,7 +214,7 @@ describe('Help Menu', () => {
     vi.spyOn(useTourModule, 'useTour').mockReturnValue({
       tourId: null,
       replay: vi.fn(),
-    } as ReturnType<typeof useTourModule.useTour>)
+    })
 
     renderAppLayout()
     fireEvent.click(screen.getByLabelText('Help menu'))
@@ -316,7 +316,7 @@ describe('AppLayout sync-status labels', () => {
   it('Requests label exposes richer detail via tooltip on hover', () => {
     renderAppLayout()
     const requestsLabel = screen.getByText(/Requests uploaded/)
-    const tooltipHost = requestsLabel.closest('[title]') as HTMLElement | null
+    const tooltipHost = requestsLabel.closest('[title]')
     expect(tooltipHost).not.toBeNull()
     const title = tooltipHost?.getAttribute('title') ?? ''
     expect(title).toMatch(/2026-04-22/)
@@ -378,7 +378,7 @@ describe('AppLayout requests upload label', () => {
     mockWithUpload('BunkRequests_2026-04-04.csv')
     renderAppLayout()
     const label = screen.getByText(/Requests uploaded/)
-    const tooltipHost = label.closest('[title]') as HTMLElement | null
+    const tooltipHost = label.closest('[title]')
     expect(tooltipHost).not.toBeNull()
     const title = tooltipHost?.getAttribute('title') ?? ''
     expect(title).toContain('BunkRequests_2026-04-04.csv')
@@ -600,7 +600,7 @@ describe('AppLayout weekend freshness stack', () => {
         start_time: housingIso,
         session: '999999',
       },
-    } as Partial<SyncStatusResponse>)
+    })
     renderAppLayout('/weekend/fc4')
     expect(screen.getByText(/Housing synced/)).toBeInTheDocument()
   })
@@ -624,7 +624,7 @@ describe('AppLayout weekend freshness stack', () => {
   it('exposes the CSV filename and absolute upload time via tooltip', () => {
     renderAppLayout('/weekend/fc4')
     const label = screen.getByText(/Bunk notes uploaded/)
-    const tooltipHost = label.closest('[title]') as HTMLElement | null
+    const tooltipHost = label.closest('[title]')
     expect(tooltipHost).not.toBeNull()
     const title = tooltipHost?.getAttribute('title') ?? ''
     expect(title).toContain('BunkRequests_2026-04-04.csv')
@@ -634,7 +634,7 @@ describe('AppLayout weekend freshness stack', () => {
   it("does NOT render summer's own labels on the weekend surface", () => {
     mockWeekendSyncStatus({
       bunk_assignments: { status: 'success', end_time: housingIso },
-    } as Partial<SyncStatusResponse>)
+    })
     renderAppLayout('/weekend/fc4')
     expect(screen.queryByText(/Assignments synced/)).not.toBeInTheDocument()
     expect(screen.queryByText(/Requests uploaded/)).not.toBeInTheDocument()

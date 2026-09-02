@@ -245,7 +245,7 @@ describe('CamperDetail cohort badges', () => {
     const dialog = await screen.findByRole('dialog')
     // The dialog wrapper should NOT have right-edge inset reserved for a
     // slide-out panel when the modal is opened from the full-page view.
-    const inset = (dialog as HTMLElement).style.right
+    const inset = dialog.style.right
     expect(inset === '' || inset === '0px').toBe(true)
   })
 

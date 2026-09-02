@@ -59,7 +59,7 @@ function party(overrides: Partial<RosterPartyRow> = {}): RosterPartyRow {
     arrival_eta: '',
     is_returning: false,
     ...overrides,
-  } as RosterPartyRow
+  }
 }
 
 function roster(parties: RosterPartyRow[]): WeekendRoster {
@@ -75,7 +75,7 @@ function roster(parties: RosterPartyRow[]): WeekendRoster {
       parties_assigned: 0,
       parties_unassigned: parties.length,
     },
-  } as WeekendRoster
+  }
 }
 
 let client: QueryClient

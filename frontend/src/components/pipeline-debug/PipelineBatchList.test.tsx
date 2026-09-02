@@ -49,7 +49,7 @@ beforeAll(() => {
         toJSON() {
           return {}
         },
-      } as DOMRect
+      }
     }
     return rect
   }
@@ -527,12 +527,7 @@ describe('PipelineBatchList', () => {
 
   describe('Client-side filtering', () => {
     it('filters rows by final_status from filters prop without a network call', () => {
-      render(
-        <PipelineBatchList
-          {...defaultProps}
-          filters={{ final_status: 'RESOLVED' } as PipelineSummaryFilters}
-        />
-      )
+      render(<PipelineBatchList {...defaultProps} filters={{ final_status: 'RESOLVED' }} />)
 
       expect(screen.getByText('Emma Johnson')).toBeInTheDocument()
       expect(screen.queryByText('Olivia Chen')).not.toBeInTheDocument()
@@ -541,10 +536,7 @@ describe('PipelineBatchList', () => {
 
     it('filters rows by source_field from filters prop', () => {
       render(
-        <PipelineBatchList
-          {...defaultProps}
-          filters={{ source_field: 'staff_not_bunk_with' } as PipelineSummaryFilters}
-        />
+        <PipelineBatchList {...defaultProps} filters={{ source_field: 'staff_not_bunk_with' }} />
       )
 
       expect(screen.getByText('Olivia Chen')).toBeInTheDocument()
@@ -553,12 +545,7 @@ describe('PipelineBatchList', () => {
     })
 
     it('filters rows by phase3_triggered from filters prop', () => {
-      render(
-        <PipelineBatchList
-          {...defaultProps}
-          filters={{ phase3_triggered: true } as PipelineSummaryFilters}
-        />
-      )
+      render(<PipelineBatchList {...defaultProps} filters={{ phase3_triggered: true }} />)
 
       // Only Olivia's row has phase3_triggered=true
       expect(screen.getByText('Olivia Chen')).toBeInTheDocument()
@@ -567,12 +554,7 @@ describe('PipelineBatchList', () => {
     })
 
     it('filters rows by min_confidence from filters prop', () => {
-      render(
-        <PipelineBatchList
-          {...defaultProps}
-          filters={{ min_confidence: 0.8 } as PipelineSummaryFilters}
-        />
-      )
+      render(<PipelineBatchList {...defaultProps} filters={{ min_confidence: 0.8 }} />)
 
       // Only Emma (0.95) meets >= 0.80 — Olivia (0.72) and Sophia (0.35) excluded
       expect(screen.getByText('Emma Johnson')).toBeInTheDocument()

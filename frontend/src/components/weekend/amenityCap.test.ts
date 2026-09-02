@@ -60,7 +60,7 @@ describe('amenityCap — capAmenityMarks', () => {
     // bathroom, power, fridge — but fridge sits AFTER ac in render order, so
     // a priority-ordered return would be wrong here in a way a same-order
     // fixture could not catch.
-    const marks: AmenityMark<AmenityMarkKey>[] = [
+    const marks: Array<AmenityMark<AmenityMarkKey>> = [
       mark('bathroom'),
       mark('power'),
       mark('ac'),
@@ -84,7 +84,7 @@ describe('amenityCap — capAmenityMarks', () => {
     // this feature fixes is about. Priority order filtered to these five is
     // bathroom(0), power(1), heat(3), step-free(4), ac(6) — top 3 is
     // bathroom/power/heat.
-    const marks: AmenityMark<AmenityMarkKey>[] = [
+    const marks: Array<AmenityMark<AmenityMarkKey>> = [
       mark('bathroom'),
       mark('power'),
       mark('ac'),
@@ -97,7 +97,7 @@ describe('amenityCap — capAmenityMarks', () => {
   })
 
   it('never mutates its input array', () => {
-    const marks: AmenityMark<AmenityMarkKey>[] = [
+    const marks: Array<AmenityMark<AmenityMarkKey>> = [
       mark('bathroom'),
       mark('power'),
       mark('ac'),

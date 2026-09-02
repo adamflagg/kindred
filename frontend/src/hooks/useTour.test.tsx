@@ -368,7 +368,7 @@ describe('useTour', () => {
     act(() => {
       lastCall!.onNextClick!(undefined, twoStepTour.steps[0] as never, {
         config: lastCall!,
-        state: { activeIndex: 0 } as never,
+        state: { activeIndex: 0 },
         driver: mockDriverInstance as never,
         index: 0,
       })
@@ -408,7 +408,7 @@ describe('useTour', () => {
     act(() => {
       lastCall!.onNextClick!(undefined, mockTourDefinition.steps[0] as never, {
         config: lastCall!,
-        state: { activeIndex: 0 } as never,
+        state: { activeIndex: 0 },
         driver: mockDriverInstance as never,
         index: 0,
       })
@@ -464,7 +464,7 @@ describe('useTour', () => {
     act(() => {
       lastCall!.onPrevClick!(undefined, twoStepTour.steps[1] as never, {
         config: lastCall!,
-        state: { activeIndex: 1 } as never,
+        state: { activeIndex: 1 },
         driver: mockDriverInstance as never,
         index: 1,
       })
@@ -521,7 +521,7 @@ describe('useTour', () => {
     act(() => {
       lastCall!.onNextClick!(undefined, twoStepTour.steps[0] as never, {
         config: lastCall!,
-        state: { activeIndex: 0 } as never,
+        state: { activeIndex: 0 },
         driver: mockDriverInstance as never,
         index: 0,
       })

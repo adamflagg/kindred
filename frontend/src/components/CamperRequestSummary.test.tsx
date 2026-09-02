@@ -17,7 +17,10 @@ vi.mock('../lib/pocketbase', () => ({
 
 // Mock useAuth — the default is "user authed, auth not loading"; individual
 // tests can override via mockUseAuth.mockReturnValue(...) before render.
-type MockAuth = { user: unknown; isLoading: boolean }
+interface MockAuth {
+  user: unknown
+  isLoading: boolean
+}
 const mockUseAuth = vi.fn<() => MockAuth>(() => ({
   user: { id: 'test-user', email: 'test@example.com' },
   isLoading: false,
@@ -314,7 +317,7 @@ describe('CamperRequestSummary', () => {
     // brand-new requestee_id (999) the persons cache has never seen, so the
     // persons query goes into a fresh isLoading=true state.
     const updatedRequests = mockRequests.map((r) =>
-      r.id === 'req2' ? ({ ...r, requestee_id: 999 } as unknown as BunkRequestsResponse) : r
+      r.id === 'req2' ? { ...r, requestee_id: 999 } : r
     )
     mockGetFullList.mockImplementation((opts: { filter?: string }) => {
       const filter = opts?.filter ?? ''

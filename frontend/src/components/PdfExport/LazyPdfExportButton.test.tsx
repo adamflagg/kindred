@@ -131,7 +131,7 @@ describe('LazyPdfExportButton', () => {
   // download attribute on Windows.
   it('sanitizes filesystem-illegal characters out of the PDF filename', async () => {
     const setDownload = vi.fn()
-    vi.spyOn(document, 'createElement').mockImplementation(((tag: string) => {
+    vi.spyOn(document, 'createElement').mockImplementation((tag: string) => {
       if (tag !== 'a') return document.createElementNS('http://www.w3.org/1999/xhtml', tag)
       const a = {
         href: '',
@@ -142,7 +142,7 @@ describe('LazyPdfExportButton', () => {
         parentNode: null,
       } as unknown as HTMLAnchorElement
       return a
-    }) as typeof document.createElement)
+    })
 
     render(<LazyPdfExportButton {...baseProps} sessionName="Session 3 / Pine: *test* | quotes?" />)
     fireEvent.click(screen.getByRole('button', { name: /export pdf/i }))

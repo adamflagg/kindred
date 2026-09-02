@@ -26,7 +26,7 @@ function weekend(cmId: number, name: string, sessionType: string): WeekendSessio
     session_cm_id: cmId,
     name,
     session_type: sessionType,
-  } as WeekendSession
+  }
 }
 
 const SESSIONS = [weekend(101, 'Family Camp 4', 'family'), weekend(202, 'Winter Weekend', 'adult')]

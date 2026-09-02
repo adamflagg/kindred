@@ -152,7 +152,7 @@ function getCardRunButton(cardName: string) {
 function getServiceSelect() {
   const select = screen.getByRole('option', { name: 'All Services' }).closest('select')
   if (!select) throw new Error('could not find the service select')
-  return select as HTMLSelectElement
+  return select
 }
 
 describe('SyncTab generic card pending guard (#1881)', () => {

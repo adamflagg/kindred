@@ -69,7 +69,7 @@ describe('pocketbaseFilters', () => {
 
     it('should handle empty conditions', () => {
       expect(buildFilter([])).toBe('')
-      expect(buildFilter(null as unknown as string[])).toBe('')
+      expect(buildFilter(null)).toBe('')
     })
 
     it('should filter out empty conditions', () => {

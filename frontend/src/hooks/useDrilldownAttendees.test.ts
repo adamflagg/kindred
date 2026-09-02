@@ -84,7 +84,7 @@ describe('useDrilldownAttendees auth', () => {
     // global fetch — a URL-only assertion can't catch a regression to raw fetch.
     const rawFetch = vi.fn()
     const originalFetch = globalThis.fetch
-    globalThis.fetch = rawFetch as unknown as typeof fetch
+    globalThis.fetch = rawFetch
     try {
       const { useDrilldownAttendees } = await import('./useDrilldownAttendees')
       const { result } = renderHook(

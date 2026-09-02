@@ -1637,7 +1637,7 @@ describe('AssignFamilyModal — the People field, kindred#2503', () => {
     renderModal()
     fireEvent.change(searchBox(), { target: { value: 'Burst pipe' } })
     const options = Array.from(screen.getByLabelText('People').querySelectorAll('option')).map(
-      (el) => (el as HTMLOptionElement).value
+      (el) => el.value
     )
     expect(options).toEqual(['', ...Array.from({ length: 20 }, (_, i) => String(i + 1))])
   })

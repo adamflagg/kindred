@@ -51,7 +51,7 @@ describe('AuthContext', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     // Reset fetch mock
-    globalThis.fetch = vi.fn() as unknown as MockedFetch
+    globalThis.fetch = vi.fn()
   })
 
   afterEach(() => {

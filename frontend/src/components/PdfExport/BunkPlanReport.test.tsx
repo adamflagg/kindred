@@ -203,15 +203,13 @@ describe('BunkPlanReport (PDF) — Bunks/Other page', () => {
           ],
           unsatisfied_material_parent_persons: [{ cm_id: 2001, name: 'Riley Sam' }],
         })}
-        impossibilityReport={
-          {
-            by_reason: {},
-            total_impossible: 0,
-            affected_campers: 0,
-            flat: [],
-            mp_campers_entirely_impossible: [],
-          } as any
-        }
+        impossibilityReport={{
+          by_reason: {},
+          total_impossible: 0,
+          affected_campers: 0,
+          flat: [],
+          mp_campers_entirely_impossible: [],
+        }}
         issues={[
           {
             type: 'capacity_violation',
@@ -271,24 +269,22 @@ describe('BunkPlanReport (PDF) — Families to contact page', () => {
             },
           ],
         })}
-        impossibilityReport={
-          {
-            by_reason: {},
-            total_impossible: 0,
-            affected_campers: 0,
-            flat: [],
-            mp_campers_entirely_impossible: [
-              {
-                cm_id: 5,
-                name: 'Emma Johnson',
-                grade: 5,
-                gender: 'F',
-                reason_codes: ['grade_compatibility'],
-                session_cm_id: 1000001,
-              },
-            ],
-          } as any
-        }
+        impossibilityReport={{
+          by_reason: {},
+          total_impossible: 0,
+          affected_campers: 0,
+          flat: [],
+          mp_campers_entirely_impossible: [
+            {
+              cm_id: 5,
+              name: 'Emma Johnson',
+              grade: 5,
+              gender: 'F',
+              reason_codes: ['grade_compatibility'],
+              session_cm_id: 1000001,
+            },
+          ],
+        }}
       />
     )
     const parser = new PDFParse({ data: buf })
@@ -389,15 +385,13 @@ describe('BunkPlanReport (PDF) — Impossibility detail pages', () => {
         year={2026}
         plannerName="Test Staff"
         statistics={makeStats()}
-        impossibilityReport={
-          {
-            by_reason: { grade_compatibility: items },
-            total_impossible: 2,
-            affected_campers: 4,
-            flat: items,
-            mp_campers_entirely_impossible: [],
-          } as any
-        }
+        impossibilityReport={{
+          by_reason: { grade_compatibility: items },
+          total_impossible: 2,
+          affected_campers: 4,
+          flat: items,
+          mp_campers_entirely_impossible: [],
+        }}
       />
     )
     const parser = new PDFParse({ data: buf })

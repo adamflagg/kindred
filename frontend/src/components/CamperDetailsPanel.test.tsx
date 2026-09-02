@@ -823,7 +823,7 @@ describe('CamperDetailsPanel', () => {
      * Set up mocks for a given set of bunk requests.
      * Persons lookup resolves requestee_id=200 to Riley, otherwise returns Emma.
      */
-    function setupR3Mocks(bunkRequests: Record<string, unknown>[]) {
+    function setupR3Mocks(bunkRequests: Array<Record<string, unknown>>) {
       mockGetFullListPersons.mockImplementation((opts: { filter?: string }) => {
         const filter = opts.filter ?? ''
         if (filter.includes('cm_id = 200')) return Promise.resolve([RILEY_PERSON])
@@ -838,7 +838,7 @@ describe('CamperDetailsPanel', () => {
 
     it('renders Parent rows before Staff sub-divider before Staff rows', async () => {
       // Two requests: one parent (bunk_request_form Emma→Riley), one staff (staff_not_bunk_with)
-      const bunkRequests: Record<string, unknown>[] = [
+      const bunkRequests: Array<Record<string, unknown>> = [
         {
           id: 'r3-p1',
           requester_id: 100,
@@ -918,7 +918,7 @@ describe('CamperDetailsPanel', () => {
     })
 
     it('omits Staff sub-divider when there are no staff rows', async () => {
-      const bunkRequests: Record<string, unknown>[] = [
+      const bunkRequests: Array<Record<string, unknown>> = [
         {
           id: 'r3-p1-only',
           requester_id: 100,
@@ -953,7 +953,7 @@ describe('CamperDetailsPanel', () => {
     })
 
     it('renders P badge on bunk_with-derived age preference (family source)', async () => {
-      const bunkRequests: Record<string, unknown>[] = [
+      const bunkRequests: Array<Record<string, unknown>> = [
         {
           id: 'r3-age-p',
           requester_id: 100,
@@ -985,7 +985,7 @@ describe('CamperDetailsPanel', () => {
             request_id: 'r3-age-p',
             bucket: 'material_parent',
             satisfied: false,
-          } as PerRequestStatus,
+          },
         ],
         counted_totals: {
           material_parent: { satisfied: 0, total: 1 },
@@ -1004,7 +1004,7 @@ describe('CamperDetailsPanel', () => {
     })
 
     it('renders S badge on staff-source age preference', async () => {
-      const bunkRequests: Record<string, unknown>[] = [
+      const bunkRequests: Array<Record<string, unknown>> = [
         {
           id: 'r3-age-s',
           requester_id: 100,
@@ -1033,7 +1033,7 @@ describe('CamperDetailsPanel', () => {
             request_id: 'r3-age-s',
             bucket: 'staff',
             satisfied: false,
-          } as PerRequestStatus,
+          },
         ],
         counted_totals: {
           material_parent: { satisfied: 0, total: 0 },
@@ -1055,7 +1055,7 @@ describe('CamperDetailsPanel', () => {
       // Mismatched fixture: source_field=bunk_with would set P under the old
       // per-row classification, but the centralized aggregator's bucket=staff
       // wins → S badge, not P.
-      const bunkRequests: Record<string, unknown>[] = [
+      const bunkRequests: Array<Record<string, unknown>> = [
         {
           id: 'r3-mismatch',
           requester_id: 100,
@@ -1084,7 +1084,7 @@ describe('CamperDetailsPanel', () => {
             request_id: 'r3-mismatch',
             bucket: 'staff',
             satisfied: false,
-          } as PerRequestStatus,
+          },
         ],
         counted_totals: {
           material_parent: { satisfied: 0, total: 0 },
@@ -1107,7 +1107,7 @@ describe('CamperDetailsPanel', () => {
       // Simulate /api/satisfaction unavailable: emptyCamperSatisfaction (per_request: []).
       // Pre-#1158 the badge was driven by the row's own source_field — fall back to
       // that path so a backend hiccup doesn't silently hide the P badge.
-      const bunkRequests: Record<string, unknown>[] = [
+      const bunkRequests: Array<Record<string, unknown>> = [
         {
           id: 'r3-fallback-p',
           requester_id: 100,
@@ -1151,7 +1151,7 @@ describe('CamperDetailsPanel', () => {
     })
 
     it('#1172: renders S badge from source=staff when per_request is empty', async () => {
-      const bunkRequests: Record<string, unknown>[] = [
+      const bunkRequests: Array<Record<string, unknown>> = [
         {
           id: 'r3-fallback-s',
           requester_id: 100,
@@ -1196,7 +1196,7 @@ describe('CamperDetailsPanel', () => {
     it('does NOT render any new "Parent request satisfaction:" summary line in the sidebar', async () => {
       // The sidebar conveys source-aware satisfaction via CamperAlertSection,
       // not a separate summary label. Spec §2.4 explicitly forbids adding one.
-      const bunkRequests: Record<string, unknown>[] = [
+      const bunkRequests: Array<Record<string, unknown>> = [
         {
           id: 'r3-no-summary',
           requester_id: 100,
@@ -1640,7 +1640,7 @@ describe('CamperDetailsPanel', () => {
       },
     }
 
-    function setupFirstPickMocks(bunkRequests: Record<string, unknown>[]) {
+    function setupFirstPickMocks(bunkRequests: Array<Record<string, unknown>>) {
       mockGetFullListPersons.mockImplementation((opts: { filter?: string }) => {
         const filter = opts.filter ?? ''
         if (filter.includes('cm_id = 200')) return Promise.resolve([RILEY])
@@ -1654,7 +1654,7 @@ describe('CamperDetailsPanel', () => {
     }
 
     it('renders FirstPickBadge on parent rows with is_first_requested=true', async () => {
-      const bunkRequests: Record<string, unknown>[] = [
+      const bunkRequests: Array<Record<string, unknown>> = [
         {
           id: 'fp-first',
           requester_id: 100,
@@ -1685,7 +1685,7 @@ describe('CamperDetailsPanel', () => {
     })
 
     it('does not render FirstPickBadge when no request is first-requested', async () => {
-      const bunkRequests: Record<string, unknown>[] = [
+      const bunkRequests: Array<Record<string, unknown>> = [
         {
           id: 'fp-none',
           requester_id: 100,

@@ -305,6 +305,9 @@ describe('LockGroupActionBar — add-mode background is layered, not replaced', 
         onGroupCreated={onGroupCreated}
       />
     )
+    // Assertion is load-bearing for the `root?.style.*` accesses below — eslint's
+    // no-unnecessary-type-assertion flags it, but removing it drops querySelector's
+    // inferred type to `Element | null`, which has no `.style` (tsc TS2339). Do not autofix.
     const root = container.querySelector('[data-panel="lock-action-bar"]') as HTMLElement | null
     expect(root).not.toBeNull()
     // Solid base bg must still be present

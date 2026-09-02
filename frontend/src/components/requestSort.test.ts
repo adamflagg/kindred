@@ -46,7 +46,7 @@ function request(
     requester_id: partial.requester_id,
     requestee_id: partial.requestee_id ?? 0,
     confidence_score: partial.confidence_score ?? 0.5,
-    status: partial.status ?? ('pending' as BunkRequestsResponse['status']),
+    status: partial.status ?? 'pending',
     parse_notes: partial.parse_notes ?? '',
     session_id: partial.session_id ?? 1000001,
     year: 2026,

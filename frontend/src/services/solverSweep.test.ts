@@ -15,7 +15,7 @@ describe('postRunSweep', () => {
     const mockFetch = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({ sweep_id: 'sw_1', run_ids: ['r1', 'r2'] }),
-    } as Response)
+    })
 
     const result = await postRunSweep(mockFetch, {
       session_cm_id: 1000002,
@@ -41,7 +41,7 @@ describe('postRunSweep', () => {
       ok: false,
       status: 401,
       json: async () => ({}),
-    } as Response)
+    })
 
     await expect(
       postRunSweep(mockFetch, { session_cm_id: 1, year: 2026, time_budgets: [30] })
@@ -55,7 +55,7 @@ describe('postRunSweep', () => {
       json: async () => ({
         detail: { detail: 'Solver already running for session 1000002', in_progress_run_id: 'r_x' },
       }),
-    } as Response)
+    })
 
     await expect(
       postRunSweep(mockFetch, { session_cm_id: 1000002, year: 2026, time_budgets: [30] })
@@ -65,7 +65,7 @@ describe('postRunSweep', () => {
 
 describe('postCancelSweep', () => {
   it('routes through fetchWithAuth and POSTs to the cancel endpoint', async () => {
-    const mockFetch = vi.fn().mockResolvedValue({ ok: true } as Response)
+    const mockFetch = vi.fn().mockResolvedValue({ ok: true })
 
     await postCancelSweep(mockFetch, 'sw_42')
 

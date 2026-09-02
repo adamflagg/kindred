@@ -132,8 +132,7 @@ describe('transformSessionData', () => {
     ]
     const dateLookup = { 'Session 1': '2026-06-01' }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- testing null edge case
-    const result = transformSessionData(input as any, dateLookup)
+    const result = transformSessionData(input, dateLookup)
 
     expect(result[0]!.percentage).toBe(0)
   })

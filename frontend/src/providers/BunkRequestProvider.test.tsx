@@ -6,7 +6,7 @@ import { BunkRequestProvider } from './BunkRequestProvider'
 // --- hoisted mutable state ---
 const mockAuth = vi.hoisted(() => ({
   user: null as { id: string } | null,
-  isLoading: true as boolean,
+  isLoading: true,
 }))
 
 // --- module mocks ---
