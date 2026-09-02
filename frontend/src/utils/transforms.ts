@@ -103,7 +103,7 @@ export function buildCampersFromData(
     // Get person from expanded relation
     // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- ExpandType<T> makes expand required but PB may omit it at runtime; fixing cascades to ~35 files (#573 audit)
     const person = attendee.expand?.person
-    if (!person || !person.is_camper) continue
+    if (!person?.is_camper) continue
 
     // Get session from expanded relation
     // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- ExpandType<T> makes expand required but PB may omit it at runtime; fixing cascades to ~35 files (#573 audit)
