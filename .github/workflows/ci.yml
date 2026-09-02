@@ -89,9 +89,11 @@ jobs:
       pythonLint: ${{ steps.filter.outputs.pythonLint }}
       go: ${{ steps.filter.outputs.go }}
       migrations: ${{ steps.filter.outputs.migrations }}
+      frontendLint: ${{ steps.filter.outputs.frontendLint }}
       frontend: ${{ steps.filter.outputs.frontend }}
       shell: ${{ steps.filter.outputs.shell }}
       guardSelfTests: ${{ steps.filter.outputs.guardSelfTests }}
+      dockerLint: ${{ steps.filter.outputs.dockerLint }}
       docker: ${{ steps.filter.outputs.docker }}
       actions: ${{ steps.filter.outputs.actions }}
     steps:
@@ -267,14 +269,47 @@ jobs:
             - 'frontend/.prettierrc.json'
             - 'frontend/package-lock.json'
             - 'frontend/src/types/pocketbase-types.ts'
+          # frontend-lint's real inputs. It shares its footprint with
+          # tests-frontend below almost exactly -- eslint, prettier and tsc all
+          # run over the whole frontend/ tree, same as vitest -- but gets its
+          # own filter, matching the pythonLint/python and goLint/go split: a
+          # future addition to just this job's inputs (a lint-only config
+          # file, say) is then a one-line change here instead of a
+          # re-derivation of a filter two jobs share.
+          #
+          # It used to gate on the shared `frontend` filter below, which
+          # carried `package*.json` and `tsconfig*.json` -- both matching
+          # nothing real. There is no root-level tsconfig, and the root
+          # package.json (kindred#2663 audit) holds only
+          # commitlint/markdownlint-cli2 devDependencies; `npm ci` here runs
+          # with `working-directory: ./frontend`, reading
+          # frontend/package.json and frontend/package-lock.json, both already
+          # covered by `frontend/**`. Bumping a root devDependency ran the
+          # whole eslint/prettier/tsc/npm-audit job for a file it never opens.
+          frontendLint:
+            - 'frontend/**'
+            # `Setup Node.js` carries no `if:`, so it runs whenever the job
+            # does -- same reasoning as `goLint` above.
+            - '.nvmrc'
+            # The job's own definition: the `npm audit --audit-level=high`
+            # threshold and the step order all live here. Same reasoning and
+            # the same accepted cost as `goLint` above. kindred#2663.
+            - '.github/workflows/ci.yml'
+          # tests-frontend's real inputs. vitest runs over the whole
+          # frontend/ tree -- any source file a test imports, not only
+          # `*.test.ts` files -- so this is the same set as `frontendLint`
+          # above, kept separate for the same one-filter-per-job reason.
           frontend:
             - 'frontend/**'
-            - 'package*.json'
-            - 'tsconfig*.json'
             # The runtime pin for tsc, eslint, vitest and the vite build -- the
             # toolchain .nvmrc actually governs, constrained by
             # frontend/package.json's engines.node. See the note in `goLint`.
             - '.nvmrc'
+            # The job's own definition: the 2-way shard matrix and the
+            # `--shard=${{ matrix.shard }}/2` argument live here. Same
+            # reasoning and the same accepted cost as `goLint` above.
+            # kindred#2663.
+            - '.github/workflows/ci.yml'
           # Every tracked shell script, because scripts/ci/shellcheck-all.sh lints
           # every tracked shell script. It was named `scripts` and matched only
           # 'scripts/**/*.sh', while the command it gated walked four fixed roots --
@@ -345,6 +380,37 @@ jobs:
             - '.dockerignore'
             - 'scripts/ci/test-copy-private-config.sh'
             - '.github/actions/**'
+          # docker-lint's real inputs, NOT the broad `docker` filter below,
+          # which go-lint's job- and step-level gates also read to catch
+          # docker/init-entrypoint.sh for its shellcheck step -- a dependency
+          # `shell`'s blanket '**/*.sh' already covers on its own since the
+          # Gap C fix (kindred#2663; scripts/ci/shellcheck-all.sh now selects
+          # by `git ls-files '*.sh'`, not a fixed set of roots). Widening the
+          # shared `docker` filter to add ci.yml and frontend/Caddyfile would
+          # also have widened go-lint's gate for no reason: that job's only
+          # real dependency on `docker` is the .sh file `shell` already
+          # matches independently. `docker` below is untouched -- go-lint
+          # still reads it, so it stays alive and is not the orphaned-filter
+          # shape this issue's suggested fix warns about.
+          dockerLint:
+            # The four Dockerfiles the `Dockerfile linting (hadolint)` step
+            # lints, one `docker run` per file.
+            - 'docker/Dockerfile.api'
+            - 'docker/Dockerfile.caddy'
+            - 'docker/Dockerfile.pocketbase'
+            - 'docker/Dockerfile.init'
+            # Mounted into the hadolint container as its config.
+            - '.hadolint.yaml'
+            # Both Caddyfiles the `Caddyfile validation` step adapts. The
+            # second is NOT under docker/ -- `docker/**` alone never covered
+            # it, before or after this filter existed.
+            - 'docker/Caddyfile'
+            - 'frontend/Caddyfile'
+            # The job's own definition: HADOLINT_VERSION, the Dockerfile list
+            # in the `for df in ...` loop, and both `caddy adapt` invocations
+            # all live here. Same reasoning and the same accepted cost as
+            # `goLint` above. kindred#2663.
+            - '.github/workflows/ci.yml'
           docker:
             - 'docker/**'
             - 'docker-compose*.yml'
@@ -722,7 +788,7 @@ jobs:
   frontend-lint:
     name: Frontend Lint
     needs: detect-changes
-    if: needs.detect-changes.outputs.frontend == 'true'
+    if: needs.detect-changes.outputs.frontendLint == 'true'
     runs-on: ubuntu-latest
     steps:
     - name: Checkout code
@@ -761,7 +827,7 @@ jobs:
   docker-lint:
     name: Docker Lint
     needs: detect-changes
-    if: needs.detect-changes.outputs.docker == 'true'
+    if: needs.detect-changes.outputs.dockerLint == 'true'
     runs-on: ubuntu-latest
     steps:
     - name: Checkout code
