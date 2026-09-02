@@ -424,7 +424,16 @@ class ComparePartyReport(BaseModel):
     `*_unit_label` is the roster's ALREADY-BUILT label for each side -- a
     merged slot's name included -- so the modal never rebuilds a name from
     codes and shows staff something the board does not. `*_unit_codes` is the
-    placement itself, and is what the predicate compared.
+    placement itself: THE UNITS THAT SIDE NAMED, at the level it named them.
+
+    ⚠️ NOT what the predicate compared, and the difference is deliberate.
+    `_placement_verdict` compares the ROOMS each side occupies, expanding a
+    container to the rooms beneath it -- otherwise a house and its complete room
+    set, which are the same space spelled at the two grains the mirror and the
+    board are written in, read as `Different cabin`. These codes stay
+    un-expanded because the modal NAMES the placement from them and the board
+    is the authority on that name: publishing the rooms would rename a card
+    staff are looking at.
     """
 
     grain: PartyGrain

@@ -16,6 +16,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from api.schemas.lodging import (
+    LodgingUnitSummary,
     PartyChild,
     PushPreviewResponse,
     RosterParty,
@@ -45,13 +46,31 @@ def _party(
     )
 
 
-def _roster(parties: list[RosterParty], session_type: str = "family") -> WeekendRosterResponse:
+def _unit(code: str, name: str, parent: str = "", container: bool = False) -> LodgingUnitSummary:
+    return LodgingUnitSummary(unit_id=f"id-{code}", code=code, name=name, parent_code=parent, is_container=container)
+
+
+#: One combined house over two rooms -- the shape every multi-unit alias in the
+#: registry has, and the one the compare has to read as a single placement.
+_UPSTAIRS_TREE = [
+    _unit("alpha-upstairs", "Alpha Upstairs", container=True),
+    _unit("alpha-1", "Alpha 1", parent="alpha-upstairs"),
+    _unit("alpha-2", "Alpha 2", parent="alpha-upstairs"),
+]
+
+
+def _roster(
+    parties: list[RosterParty],
+    session_type: str = "family",
+    units: list[LodgingUnitSummary] | None = None,
+) -> WeekendRosterResponse:
     return WeekendRosterResponse(
         year=2026,
         session_cm_id=1000001,
         session_name="Family Weekend One",
         session_type=session_type,
         parties=parties,
+        units=units or [],
     )
 
 
@@ -212,6 +231,125 @@ class TestCompareScenario:
 
         assert "digest" not in report.model_dump()
         assert all("decision" not in field for field in report.parties[0].model_dump())
+
+
+class TestLeafGrain:
+    """The registry the predicate expands with comes from the ROSTER PAYLOAD,
+    which is the same registry the board draws from (kindred#2478 §5, fixed
+    2026-09-01).
+
+    Not a second `fetch_units` of its own: a compare that expanded against a
+    different unit list than the board drew could call a placement equal that
+    the board shows in two places. `build_roster` has already paid for the
+    read, and `WeekendRosterResponse.units` is deliberately unfiltered on
+    `is_container` and `is_active`, so every room under a house is there.
+    """
+
+    @pytest.mark.asyncio
+    async def test_a_house_and_its_rooms_are_one_placement_end_to_end(self) -> None:
+        """CampMinder's alias resolves to the two rooms, the board holds the
+        combined house, and the family never moved."""
+        stubs = _service(
+            mirror=_roster([_party(11, "The Alvarez Family", ("alpha-1", "alpha-2"))], units=_UPSTAIRS_TREE),
+            scenario=_roster([_party(11, "The Alvarez Family", ("alpha-upstairs",))], units=_UPSTAIRS_TREE),
+        )
+        report = await stubs.service.compare_scenario(2026, 1000001, "scn_1")
+
+        assert [p.cls for p in report.parties] == ["match"]
+        assert (report.counts.match, report.counts.conflict) == (1, 0)
+
+    @pytest.mark.asyncio
+    async def test_a_partial_room_set_stays_a_conflict_end_to_end(self) -> None:
+        """Owner ruling: partial is not equal."""
+        stubs = _service(
+            mirror=_roster([_party(11, "The Alvarez Family", ("alpha-1",))], units=_UPSTAIRS_TREE),
+            scenario=_roster([_party(11, "The Alvarez Family", ("alpha-upstairs",))], units=_UPSTAIRS_TREE),
+        )
+        report = await stubs.service.compare_scenario(2026, 1000001, "scn_1")
+
+        assert [p.cls for p in report.parties] == ["conflict"]
+        assert report.counts.conflict == 1
+
+    @pytest.mark.asyncio
+    async def test_each_side_is_published_naming_the_units_it_holds(self) -> None:
+        """⚠️ THE EXPANSION IS THE VERDICT'S ALONE. The modal names a placement
+        from `*_unit_codes`, and THE BOARD IS THE AUTHORITY on that name (owner
+        ruling 2026-08-28) -- publishing the expanded rooms would rename the
+        card staff are looking at."""
+        stubs = _service(
+            mirror=_roster([_party(11, "The Alvarez Family", ("alpha-1", "alpha-2"))], units=_UPSTAIRS_TREE),
+            scenario=_roster([_party(11, "The Alvarez Family", ("alpha-upstairs",))], units=_UPSTAIRS_TREE),
+        )
+        report = await stubs.service.compare_scenario(2026, 1000001, "scn_1")
+
+        assert report.parties[0].scenario_unit_codes == ["alpha-upstairs"]
+        assert report.parties[0].mirror_unit_codes == ["alpha-1", "alpha-2"]
+
+    @pytest.mark.asyncio
+    async def test_a_code_the_registry_has_never_heard_of_stays_in_the_comparison(
+        self,
+    ) -> None:
+        """`_leaf_expander`'s half of the totality guarantee: an unresolvable
+        code expands to ITSELF, not to nothing.
+
+        Expanding it away would drop it out of the set, and a side holding a
+        room PLUS something the registry cannot place would read as equal to a
+        side holding the room alone -- a `Same cabin` covering a difference.
+        """
+        stubs = _service(
+            mirror=_roster([_party(11, "The Alvarez Family", ("alpha-1", "ghost-9"))], units=_UPSTAIRS_TREE),
+            scenario=_roster([_party(11, "The Alvarez Family", ("alpha-1",))], units=_UPSTAIRS_TREE),
+        )
+        report = await stubs.service.compare_scenario(2026, 1000001, "scn_1")
+
+        assert [p.cls for p in report.parties] == ["conflict"]
+
+    @pytest.mark.asyncio
+    async def test_a_house_with_no_rooms_beneath_it_still_places_the_party(self) -> None:
+        """The other unresolvable case: a container the registry carries no
+        rooms under. It expands to itself for the same reason, so the family
+        stays placed and reads as a `remove` against an empty scenario rather
+        than as `Both unassigned`."""
+        hollow = [_unit("alpha-hollow", "Alpha Hollow", container=True)]
+        stubs = _service(
+            mirror=_roster([_party(11, "The Alvarez Family", ("alpha-hollow",))], units=hollow),
+            scenario=_roster([_party(11, "The Alvarez Family")], units=hollow),
+        )
+        report = await stubs.service.compare_scenario(2026, 1000001, "scn_1")
+
+        assert [(p.cls, p.both_unassigned) for p in report.parties] == [("remove", False)]
+
+    @pytest.mark.asyncio
+    async def test_rooms_nested_below_a_second_container_still_expand(self) -> None:
+        """`leaf_codes_under` recurses, so a house whose own children are
+        containers still resolves to rooms -- the registry has three-level
+        trees (a property, a wing, its rooms)."""
+        nested = [
+            _unit("alpha", "Alpha", container=True),
+            _unit("alpha-upstairs", "Alpha Upstairs", parent="alpha", container=True),
+            _unit("alpha-1", "Alpha 1", parent="alpha-upstairs"),
+            _unit("alpha-2", "Alpha 2", parent="alpha-upstairs"),
+        ]
+        stubs = _service(
+            mirror=_roster([_party(11, "The Alvarez Family", ("alpha-1", "alpha-2"))], units=nested),
+            scenario=_roster([_party(11, "The Alvarez Family", ("alpha",))], units=nested),
+        )
+        report = await stubs.service.compare_scenario(2026, 1000001, "scn_1")
+
+        assert [p.cls for p in report.parties] == ["match"]
+
+    @pytest.mark.asyncio
+    async def test_the_registry_is_not_fetched_a_second_time(self) -> None:
+        """The two roster reads and the mirror-age read are still the whole
+        cost of a compare. A `fetch_units` here would be a third source of
+        truth about the unit tree as well as a third read."""
+        stubs = _service(
+            mirror=_roster([_party(11, "The Alvarez Family", ("alpha-1", "alpha-2"))], units=_UPSTAIRS_TREE),
+            scenario=_roster([_party(11, "The Alvarez Family", ("alpha-upstairs",))], units=_UPSTAIRS_TREE),
+        )
+        await stubs.service.compare_scenario(2026, 1000001, "scn_1")
+
+        stubs.service.repository.fetch_units.assert_not_called()
 
 
 class TestComparePartyChildren:

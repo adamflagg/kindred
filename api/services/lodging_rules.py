@@ -27,7 +27,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Sequence
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from typing import Any, Literal, NamedTuple
 
@@ -1421,6 +1421,24 @@ def push_digest(buildings: Sequence[PushBuilding]) -> str:
 # that the two halves are different kinds of answer when they are not.
 
 
+#: A unit code to the ROOMS it occupies -- itself when it is already a room.
+#:
+#: 🚨 IT MUST BE TOTAL: a non-empty placement must never expand to nothing.
+#: `_placement_verdict` reads an empty set as UNPLACED, so a code that expands
+#: to nothing -- one the registry has never heard of, or a childless container
+#: -- would turn a family CampMinder has housed into `Both unassigned`: a green
+#: count reporting agreement that nobody has a cabin. An expander that cannot
+#: place a code must therefore return the code itself rather than nothing, and
+#: let it compare unequal to whatever the other side holds.
+#:
+#: Passed in rather than derived here because this module is pure over codes
+#: and knows no registry, and REQUIRED rather than defaulted to identity: a
+#: caller that silently skipped the expansion is the bug the parameter exists
+#: to fix. `_leaf_expander` in `lodging_compare_service` is the only
+#: implementation.
+LeafExpander = Callable[[str], Iterable[str]]
+
+
 @dataclass(frozen=True)
 class ComparePartyPlacement:
     """Where ONE side of the compare puts one enrolled party.
@@ -1495,18 +1513,65 @@ def compare_party_key(grain: str, household_cm_id: int, person_cm_id: int, displ
     return f"{grain}-{household_cm_id or person_cm_id or display_name}"
 
 
+def _occupied_rooms(placement: ComparePartyPlacement | None, leaves_of: LeafExpander) -> frozenset[str]:
+    """The ROOMS a side occupies, whatever level it named them at.
+
+    🚨 A PLACED PARTY STAYS PLACED. An empty set here means UNPLACED, and
+    `_placement_verdict` reads two of them as `Both unassigned` -- so an
+    expander that emptied a placement would report a family CampMinder has
+    housed as agreement that nobody has a cabin. Falling back to the named
+    codes keeps the party placed and lets it compare unequal, which is the
+    honest answer for a placement that cannot be resolved to rooms.
+
+    THE SECOND HALF OF THIS GUARANTEE IS `_leaf_expander`'s, and the two do
+    different work rather than repeating each other. Its per-code fallback
+    keeps an UNRESOLVABLE CODE IN THE COMPARISON: without it `{alpha-1,
+    unknown}` would expand to `{alpha-1}` and read as equal to a side holding
+    only `alpha-1`. This one is per-PLACEMENT, and holds whatever expander it
+    is handed -- `LeafExpander` states the contract, and this is the layer that
+    does not depend on a caller honouring it.
+    """
+    if placement is None:
+        return frozenset()
+    rooms = frozenset(room for code in placement.unit_codes for room in leaves_of(code))
+    return rooms or frozenset(placement.unit_codes)
+
+
 def _placement_verdict(
-    mirror: ComparePartyPlacement | None, scenario: ComparePartyPlacement | None
+    mirror: ComparePartyPlacement | None,
+    scenario: ComparePartyPlacement | None,
+    leaves_of: LeafExpander,
 ) -> tuple[Literal["add", "match", "conflict", "remove"], bool]:
-    """The RULED predicate (§5.2), on the EXACT unit set.
+    """The RULED predicate (§5.2), on the exact set of ROOMS each side occupies.
 
     SET equality, not sequence equality: `units` is a relation whose stored
-    order records how a row was written, not where a family sleeps. But no
-    building-level tolerance either -- two rooms against one of the same two
-    is a `conflict`, owner ruling, and multi-room differences ARE a diff.
+    order records how a row was written, not where a family sleeps.
+
+    ⚠️ ROOMS, NOT THE CODES EACH SIDE NAMED, and that is the fix for a
+    production misreport (2026-09-01). The two sides are written at different
+    grains BY CONSTRUCTION. The mirror is CampMinder's raw cabin string
+    resolved through `lodging_unit_aliases`, whose `member_units` are rooms --
+    every multi-unit alias in the registry is exactly one container's complete
+    room set. The scenario is whatever card staff dropped onto, which for a
+    combined house is the CONTAINER. Compared on the named codes, a family that
+    never moved read as `Different cabin`, and both halves of the row rolled up
+    to the same card name underneath the pill saying they differed.
+
+    Expanding is what the sibling feature already does at this grain --
+    `LodgingAttributionService._leaves_of`, whose own note says the conflict
+    rule works at leaf grain because "a family in a building occupies every
+    room in it". This was the one placement comparison in the lodging code that
+    skipped the step.
+
+    NO BUILDING-LEVEL TOLERANCE BEYOND THAT, owner ruling, reaffirmed
+    2026-09-01: the whole house against ONE of its rooms is still a `conflict`,
+    because the family holds a different amount of the building on each side.
+    Two rooms against one of the same two is unchanged and still a conflict --
+    what changed is only the house against its COMPLETE room set, which is the
+    same physical space spelled at two grains.
     """
-    mirror_codes = frozenset(mirror.unit_codes) if mirror else frozenset()
-    scenario_codes = frozenset(scenario.unit_codes) if scenario else frozenset()
+    mirror_codes = _occupied_rooms(mirror, leaves_of)
+    scenario_codes = _occupied_rooms(scenario, leaves_of)
     if not mirror_codes and not scenario_codes:
         return "match", True
     if not mirror_codes:
@@ -1517,9 +1582,16 @@ def _placement_verdict(
 
 
 def compare_placements(
-    mirror: Sequence[ComparePartyPlacement], scenario: Sequence[ComparePartyPlacement]
+    mirror: Sequence[ComparePartyPlacement],
+    scenario: Sequence[ComparePartyPlacement],
+    leaves_of: LeafExpander,
 ) -> list[ComparePartyVerdict]:
     """One verdict per enrolled party (kindred#2478 §5).
+
+    `leaves_of` is the room grain the verdict is decided at -- see
+    `_placement_verdict`. It decides the VERDICT and nothing else: the codes
+    published on each side are the ones that side named, because the modal
+    names the placement from them and the board is the authority on that name.
 
     ORDER IS THE SCENARIO SIDE'S, then any party only the mirror knows. The
     scenario side comes from the roster, which is already filed on `sort_name`
@@ -1545,7 +1617,7 @@ def compare_placements(
         identity = scenario_side or mirror_side
         if identity is None:  # pragma: no cover -- keys come from these two dicts
             continue
-        cls, both_unassigned = _placement_verdict(mirror_side, scenario_side)
+        cls, both_unassigned = _placement_verdict(mirror_side, scenario_side, leaves_of)
         out.append(
             ComparePartyVerdict(
                 key=key,

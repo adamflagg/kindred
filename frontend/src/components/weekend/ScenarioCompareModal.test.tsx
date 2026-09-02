@@ -749,11 +749,17 @@ describe('ScenarioCompareModal — a placement is named the way the board draws 
   })
 
   /**
-   * The collision the roll-up creates. CampMinder holds the family in the two
-   * rooms and the plan holds them in the combined house: the verdict is a
-   * `conflict` -- exact set inequality on the codes, the owner's ruling and
-   * untouched here -- but both sides roll up to the one card the board draws,
-   * so the row read `Delta House -> Delta House · Different cabin`.
+   * The collision the roll-up creates. CampMinder holds the family in ONE room
+   * and the plan holds them in the whole combined house -- a real difference in
+   * how much of the building they have, so a `conflict` -- but both sides roll
+   * up to the one card the board draws, so the row read
+   * `Delta House -> Delta House · Different cabin`.
+   *
+   * ⚠️ THE PARTIAL CASE, deliberately, and it is the only shape the server can
+   * still send here. A house against its COMPLETE room set used to arrive as a
+   * conflict too; `compare_placements` compares the rooms each side occupies
+   * since 2026-09-01, so that one is a `match` now and never reaches this list.
+   * Written as a partial so the fixture stays a payload the API can produce.
    */
   const OKAFOR_CONFLICT: CompareParty = {
     grain: 'household',
@@ -764,8 +770,8 @@ describe('ScenarioCompareModal — a placement is named the way the board draws 
     both_unassigned: false,
     scenario_unit_label: 'Delta House',
     scenario_unit_codes: ['delta-house'],
-    mirror_unit_label: 'Delta 1 + Delta 2',
-    mirror_unit_codes: ['delta-1', 'delta-2'],
+    mirror_unit_label: 'Delta 1',
+    mirror_unit_codes: ['delta-1'],
   }
 
   const COLLIDING: ScenarioCompare = {
@@ -793,7 +799,7 @@ describe('ScenarioCompareModal — a placement is named the way the board draws 
     mockRosterUnits = deltaHouse(true)
     renderModal(COLLIDING)
     const rows = await differenceRows()
-    expect(rows.some((t) => t.includes('Delta House→Delta House (Delta 1 + Delta 2)'))).toBe(true)
+    expect(rows.some((t) => t.includes('Delta House→Delta House (Delta 1)'))).toBe(true)
   })
 
   it('leaves the side that named the house alone', async () => {
@@ -928,7 +934,7 @@ describe('ScenarioCompareModal — a placement is named the way the board draws 
     renderModal(COLLIDING)
     const rows = await differenceRows()
     const okafor = rows.find((t) => t.includes('The Okafor Family')) ?? ''
-    expect(okafor).toContain('Delta House→Delta 1 + Delta 2')
+    expect(okafor).toContain('Delta House→Delta 1')
     expect(okafor).not.toContain('(')
   })
 })

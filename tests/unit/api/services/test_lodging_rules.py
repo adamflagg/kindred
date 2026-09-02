@@ -1086,15 +1086,37 @@ def _compare_side(cm_id, name, codes=(), label="", grain="household", person_cm_
     )
 
 
+def _leaves(tree):
+    """A leaf expander over a tiny unit tree: a container maps to its rooms,
+    every other code to itself.
+
+    The real one is `_leaf_expander` in `lodging_compare_service`, built from
+    the unit registry. This is its shape, not a second copy of its rule --
+    what these tests pin is that the predicate READS an expander, and what it
+    does with the answer.
+    """
+    return lambda code: tree.get(code, (code,))
+
+
+#: No containers in play -- every code is already a room. Spelled once, and
+#: passed explicitly rather than defaulted, because a predicate that silently
+#: skipped the expansion is the bug this parameter exists to fix.
+_ROOMS_ONLY = _leaves({})
+
+
 class TestComparePlacements:
     """The RULED placement predicate (kindred#2478 §5.2): grain is the enrolled
-    party, compared on the EXACT unit set, in `classify_push`'s own four-word
-    vocabulary (§5.3)."""
+    party, compared on the EXACT set of rooms it occupies, in `classify_push`'s
+    own four-word vocabulary (§5.3).
+
+    Every case here is rooms-only -- no containers in play, so the expansion is
+    the identity and these pin the predicate's own rules. What the expansion
+    changes has its own class below."""
 
     def test_identical_unit_set_is_a_placed_match(self):
         mirror = [_compare_side(11, "The Alvarez Family", ["alpha-1"])]
         scenario = [_compare_side(11, "The Alvarez Family", ["alpha-1"])]
-        out = compare_placements(mirror, scenario)
+        out = compare_placements(mirror, scenario, _ROOMS_ONLY)
         assert [(v.cls, v.both_unassigned) for v in out] == [("match", False)]
 
     def test_both_unassigned_is_a_match_flagged_apart(self):
@@ -1103,24 +1125,28 @@ class TestComparePlacements:
         scenario behind a green number. Same `cls`, separate flag."""
         mirror = [_compare_side(12, "The Bhatt Family")]
         scenario = [_compare_side(12, "The Bhatt Family")]
-        out = compare_placements(mirror, scenario)
+        out = compare_placements(mirror, scenario, _ROOMS_ONLY)
         assert [(v.cls, v.both_unassigned) for v in out] == [("match", True)]
 
     def test_different_unit_is_a_conflict(self):
         mirror = [_compare_side(13, "The Castellano Family", ["alpha-1"])]
         scenario = [_compare_side(13, "The Castellano Family", ["beta-2"])]
-        out = compare_placements(mirror, scenario)
+        out = compare_placements(mirror, scenario, _ROOMS_ONLY)
         assert [(v.cls, v.both_unassigned) for v in out] == [("conflict", False)]
         assert out[0].mirror_unit_codes == ("alpha-1",)
         assert out[0].scenario_unit_codes == ("beta-2",)
 
     def test_a_multi_room_difference_is_a_conflict_not_a_match(self):
-        """Owner ruling, §5.2: the comparison is on the EXACT unit set. No
+        """Owner ruling, §5.2: the comparison is on the EXACT room set. No
         building-level tolerance -- two rooms against one of the same two is a
-        conflict, and it is the only rule in §5 with no judgement in it."""
+        conflict, and it is the only rule in §5 with no judgement in it.
+
+        UNCHANGED by the leaf expansion (2026-09-01): both codes are already
+        rooms, so nothing expands and the family still holds two rooms on one
+        side and one on the other."""
         mirror = [_compare_side(14, "The Duarte Family", ["alpha-1"])]
         scenario = [_compare_side(14, "The Duarte Family", ["alpha-1", "alpha-2"])]
-        out = compare_placements(mirror, scenario)
+        out = compare_placements(mirror, scenario, _ROOMS_ONLY)
         assert [v.cls for v in out] == ["conflict"]
 
     def test_the_same_multi_room_set_in_a_different_order_is_a_match(self):
@@ -1129,18 +1155,18 @@ class TestComparePlacements:
         the family sleeps."""
         mirror = [_compare_side(15, "The Eze Family", ["alpha-2", "alpha-1"])]
         scenario = [_compare_side(15, "The Eze Family", ["alpha-1", "alpha-2"])]
-        out = compare_placements(mirror, scenario)
+        out = compare_placements(mirror, scenario, _ROOMS_ONLY)
         assert [(v.cls, v.both_unassigned) for v in out] == [("match", False)]
 
     def test_placed_only_in_the_scenario_is_an_add(self):
         mirror = [_compare_side(16, "The Fontaine Family")]
         scenario = [_compare_side(16, "The Fontaine Family", ["alpha-1"])]
-        assert [v.cls for v in compare_placements(mirror, scenario)] == ["add"]
+        assert [v.cls for v in compare_placements(mirror, scenario, _ROOMS_ONLY)] == ["add"]
 
     def test_placed_only_in_campminder_is_a_remove(self):
         mirror = [_compare_side(17, "The Grigoryan Family", ["alpha-1"])]
         scenario = [_compare_side(17, "The Grigoryan Family")]
-        assert [v.cls for v in compare_placements(mirror, scenario)] == ["remove"]
+        assert [v.cls for v in compare_placements(mirror, scenario, _ROOMS_ONLY)] == ["remove"]
 
     def test_unresolved_households_keying_on_zero_stay_separate_rows(self):
         """🚨 kindred#2478 §5.5's landmine, in Python. The roster service emits
@@ -1161,7 +1187,7 @@ class TestComparePlacements:
             _compare_side(0, "Unresolved household A", ["alpha-1"]),
             _compare_side(0, "Unresolved household B", ["beta-2"]),
         ]
-        out = compare_placements(mirror, scenario)
+        out = compare_placements(mirror, scenario, _ROOMS_ONLY)
         assert len(out) == 2
         assert [(v.display_name, v.cls) for v in out] == [
             ("Unresolved household A", "match"),
@@ -1189,7 +1215,7 @@ class TestComparePlacements:
             _compare_side(0, "Household 0"),
             _compare_side(0, "Household 0"),
         ]
-        out = compare_placements(side, side)
+        out = compare_placements(side, side, _ROOMS_ONLY)
         assert len(out) == 1
         assert (out[0].cls, out[0].both_unassigned) == ("match", True)
 
@@ -1198,7 +1224,7 @@ class TestComparePlacements:
             _compare_side(0, "P. Nakamura", ["alpha-1"], grain="person", person_cm_id=91),
             _compare_side(91, "The Nakamura Family", ["beta-2"]),
         ]
-        out = compare_placements(mirror, mirror)
+        out = compare_placements(mirror, mirror, _ROOMS_ONLY)
         assert len(out) == 2
         assert {v.key for v in out} == {"person-91", "household-91"}
 
@@ -1215,16 +1241,100 @@ class TestComparePlacements:
             _compare_side(21, "The Quintero Family"),
             _compare_side(22, "The Rojas Family", ["alpha-1"]),
         ]
-        out = compare_placements(mirror, scenario)
+        out = compare_placements(mirror, scenario, _ROOMS_ONLY)
         assert [v.household_cm_id for v in out] == [21, 22, 23]
         assert out[2].cls == "remove"
 
     def test_the_display_label_of_each_side_is_carried_through(self):
         mirror = [_compare_side(31, "The Terzian Family", ["alpha-1"], label="Alpha 1")]
         scenario = [_compare_side(31, "The Terzian Family", ["alpha-1", "alpha-2"], label="Alpha 1 + Alpha 2")]
-        out = compare_placements(mirror, scenario)
+        out = compare_placements(mirror, scenario, _ROOMS_ONLY)
         assert out[0].mirror_unit_label == "Alpha 1"
         assert out[0].scenario_unit_label == "Alpha 1 + Alpha 2"
+
+
+class TestComparePlacementsAtLeafGrain:
+    """THE TWO SIDES ARE WRITTEN AT DIFFERENT GRAINS BY CONSTRUCTION, so the
+    predicate compares the ROOMS each side occupies, not the codes it names.
+
+    The mirror is CampMinder's raw cabin string resolved through
+    `lodging_unit_aliases`, whose `member_units` are rooms -- every multi-unit
+    alias in the registry is exactly one container's complete room set. The
+    scenario is whatever card staff dropped onto, which for a combined house is
+    the CONTAINER. Compared on the named codes, a family that never moved reads
+    as `Different cabin`; that is what these tests pin shut.
+
+    The owner ruling that no BUILDING-level tolerance exists is untouched and
+    pinned below: a container against a partial room set still conflicts,
+    because the family holds a different amount of the building on each side.
+    """
+
+    def test_a_container_and_its_complete_room_set_are_one_placement(self):
+        """The production case: CampMinder's alias resolves to two rooms, the
+        board holds the combined house above them, and nobody moved."""
+        expand = _leaves({"alpha-upstairs": ("alpha-1", "alpha-2")})
+        mirror = [_compare_side(41, "The Ibarra Family", ["alpha-1", "alpha-2"])]
+        scenario = [_compare_side(41, "The Ibarra Family", ["alpha-upstairs"])]
+        out = compare_placements(mirror, scenario, expand)
+        assert [(v.cls, v.both_unassigned) for v in out] == [("match", False)]
+
+    def test_it_holds_with_the_container_on_the_mirror_side(self):
+        """SYMMETRIC, because both directions occur: two in-window aliases
+        resolve TO a container, so the mirror names the house and a scenario
+        that split it names the rooms."""
+        expand = _leaves({"alpha-upstairs": ("alpha-1", "alpha-2")})
+        mirror = [_compare_side(42, "The Jarnagin Family", ["alpha-upstairs"])]
+        scenario = [_compare_side(42, "The Jarnagin Family", ["alpha-2", "alpha-1"])]
+        out = compare_placements(mirror, scenario, expand)
+        assert [(v.cls, v.both_unassigned) for v in out] == [("match", False)]
+
+    def test_a_container_against_a_partial_room_set_is_still_a_conflict(self):
+        """Owner ruling, reaffirmed 2026-09-01: partial is NOT equal. The whole
+        house against one of its rooms is a real difference -- the family holds
+        two rooms on one side and one on the other -- and the expansion must not
+        launder it into agreement."""
+        expand = _leaves({"alpha-upstairs": ("alpha-1", "alpha-2")})
+        mirror = [_compare_side(43, "The Kowalczyk Family", ["alpha-1"])]
+        scenario = [_compare_side(43, "The Kowalczyk Family", ["alpha-upstairs"])]
+        assert [v.cls for v in compare_placements(mirror, scenario, expand)] == ["conflict"]
+
+    def test_two_different_containers_are_still_a_conflict(self):
+        expand = _leaves({"alpha-upstairs": ("alpha-1", "alpha-2"), "beta-upstairs": ("beta-1", "beta-2")})
+        mirror = [_compare_side(44, "The Lindqvist Family", ["alpha-upstairs"])]
+        scenario = [_compare_side(44, "The Lindqvist Family", ["beta-upstairs"])]
+        assert [v.cls for v in compare_placements(mirror, scenario, expand)] == ["conflict"]
+
+    def test_a_code_the_expander_cannot_place_still_places_the_party(self):
+        """🚨 A PLACED PARTY STAYS PLACED, whatever expander the predicate is
+        handed. A code that expands to NOTHING -- one the registry has never
+        heard of, or a childless container -- would otherwise make a placed
+        family read as unplaced, and `both_unassigned` would report agreement
+        that nobody has a cabin while CampMinder holds one.
+
+        Deliberately fed a NON-TOTAL expander, because this is the layer that
+        does not depend on the caller honouring `LeafExpander`'s contract.
+        `_leaf_expander`'s own half of the guarantee -- keeping an unresolvable
+        code IN the comparison -- is pinned in the service tests.
+        """
+        expand = _leaves({"alpha-hollow": ()})
+        mirror = [_compare_side(45, "The Mbeki Family", ["alpha-hollow"])]
+        scenario = [_compare_side(45, "The Mbeki Family")]
+        out = compare_placements(mirror, scenario, expand)
+        assert [(v.cls, v.both_unassigned) for v in out] == [("remove", False)]
+
+    def test_the_published_codes_are_the_ones_each_side_named(self):
+        """⚠️ THE EXPANSION IS THE VERDICT'S, NOT THE DISPLAY'S. `*_unit_codes`
+        is what the modal names the placement from, and THE BOARD IS THE
+        AUTHORITY on that name (owner ruling 2026-08-28) -- a scenario holding
+        the combined house must keep reading as the house. Publishing the
+        expanded rooms would rename a card staff are looking at.
+        """
+        expand = _leaves({"alpha-upstairs": ("alpha-1", "alpha-2")})
+        mirror = [_compare_side(46, "The Nnamdi Family", ["alpha-1", "alpha-2"])]
+        scenario = [_compare_side(46, "The Nnamdi Family", ["alpha-upstairs"])]
+        out = compare_placements(mirror, scenario, expand)
+        assert out[0].scenario_unit_codes == ("alpha-upstairs",)
+        assert out[0].mirror_unit_codes == ("alpha-1", "alpha-2")
 
 
 class TestComparePartyKey:

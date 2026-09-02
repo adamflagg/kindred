@@ -81,11 +81,18 @@
  * at, because a row whose two halves used different vocabularies would read as a
  * move that never happened.
  *
- * ⚠️ THE VERDICT IS UNTOUCHED. `_placement_verdict` is exact set equality on
- * `unit_codes` by owner ruling, so a mirror row naming two rooms against a
- * scenario row naming their combined house is still a `conflict` -- and now a
- * conflict whose two labels both read `Delta House`. Owner ruling on that:
- * disambiguate the DISPLAY, leave the predicate alone. A row whose two rolled-up
+ * ⚠️ THIS SCREEN DOES NOT DECIDE THE VERDICT, and the roll-up above must not be
+ * mistaken for the rule. `_placement_verdict` compares the ROOMS each side
+ * occupies -- expanding a container to the rooms beneath it, since the mirror is
+ * written in rooms (CampMinder's alias table) and the scenario in whatever card
+ * staff dropped onto. A house against its COMPLETE room set is therefore one
+ * placement and reads `Same cabin`. A house against a PARTIAL one still
+ * conflicts: the family holds a different amount of the building on each side.
+ *
+ * That leaves the display collision this file DOES own. A partial conflict rolls
+ * both halves onto the one card the board draws, so the row read `Delta House ->
+ * Delta House · Different cabin` -- same name on both sides under a pill saying
+ * they differ. Owner ruling: disambiguate the DISPLAY. A row whose two rolled-up
  * labels collide states the units each side actually names beside the card that
  * represents them; nothing else moves -- no verdict, no count, and no
  * parenthetical on the conflicts that already read clearly. See `withDetail`.
@@ -235,18 +242,23 @@ function sideLabel(
  * A footnote on a side whose label does not explain itself.
  *
  * The roll-up that makes this modal speak the board's vocabulary has one
- * consequence. A family the mirror holds in two rooms and the scenario holds in
- * their combined house is a `conflict` -- exact set inequality on `unit_codes`,
- * the owner's ruling and untouched here -- but both sides roll up to the one
- * card the board draws, so the row read `Delta House -> Delta House · Different
- * cabin`. Same name on both halves under a pill saying they differ, which looks
- * like a bug and is not one.
+ * consequence. A family the mirror holds in ONE room and the scenario holds in
+ * their whole combined house is a `conflict` -- a real difference in how much of
+ * the building they have -- but both sides roll up to the one card the board
+ * draws, so the row read `Delta House -> Delta House · Different cabin`. Same
+ * name on both halves under a pill saying they differ, which looks like a bug
+ * and is not one.
+ *
+ * ⚠️ THE COMPLETE room set is NOT this case and never reaches here: the server
+ * compares the rooms each side occupies, so a house against all of its rooms is
+ * a `match`. What collides is the partial overlap, and two different rooms of
+ * one combined house.
  *
  * Owner ruling: disambiguate the DISPLAY. So a colliding side states the units
- * it actually names beside the card representing them -- `Delta House (Delta 1 +
- * Delta 2)` -- and ONLY then. A conflict whose two labels already differ says
- * what happened on its own, and a parenthetical on every conflict row would
- * spend the common case on the rare one.
+ * it actually names beside the card representing them -- `Delta House (Delta 1)`
+ * -- and ONLY then. A conflict whose two labels already differ says what
+ * happened on its own, and a parenthetical on every conflict row would spend the
+ * common case on the rare one.
  *
  * WHICH SIDE gets it falls out of comparing the two strings rather than counting
  * codes: the side that named the house has nothing to add, because its own units
