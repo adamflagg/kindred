@@ -416,3 +416,45 @@ describe('BunkPlanReport (PDF) — Impossibility detail pages', () => {
     expect(text).toMatch(/Riley Sam/)
   }, 30000)
 })
+
+describe('BunkPlanReport (PDF) — off-roster requester (kindred#2689)', () => {
+  it('renders "#<cm_id>" on the impossibility detail page, matching the families table', async () => {
+    // impossibility.py emits requester={"cm_id": ...} when the requester person
+    // is not in the solver's roster. This page carried a stale inline copy of
+    // the requester type, so it rendered an em dash where the four standardized
+    // sites render "#<cm_id>" -- and both appear in THIS SAME PDF. kindred#2692
+    // scan, finding 4.
+    const offRoster = {
+      request_id: 'r_off',
+      reason_code: 'malformed',
+      reason_message: 'missing requestee_id',
+      request_type: 'bunk_with',
+      requester: { cm_id: 999 },
+      requestee: null,
+      detail: {},
+      bucket: 'material_parent' as const,
+    }
+    const buf = await renderToBuffer(
+      <BunkPlanReport
+        sessionName="Session 4"
+        year={2026}
+        plannerName="Test Staff"
+        statistics={makeStats()}
+        impossibilityReport={{
+          total_impossible: 1,
+          affected_campers: 1,
+          by_reason: { malformed: [offRoster] },
+          flat: [offRoster],
+          mp_campers_entirely_impossible: [],
+        }}
+      />
+    )
+    const result = await new PDFParse({ data: buf }).getText()
+    // "#999" must appear TWICE: once in the families-to-contact table (page 3)
+    // and once in the impossibility detail table (pages 4-N). Asserting mere
+    // presence is a false green -- the families table alone satisfies it, which
+    // is exactly how the two pages disagreed inside one document.
+    const hits = (result.text.match(/#999/g) ?? []).length
+    expect(hits).toBeGreaterThanOrEqual(2)
+  }, 30000)
+})

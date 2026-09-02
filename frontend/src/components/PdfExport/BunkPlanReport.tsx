@@ -420,16 +420,12 @@ export function BunkPlanReport({
         <Page size="LETTER" style={styles.page} wrap>
           <Text style={styles.sectionTitle}>Impossibility detail</Text>
           {Object.entries(impossibilityReport.by_reason).map(([code, items]) => {
-            const list = items as Array<{
-              request_id: string
-              reason_code: string
-              reason_message: string
-              request_type: string
-              requester: { cm_id: number; name: string; grade: number; gender: string }
-              requestee: { cm_id: number; name: string; grade: number; gender: string } | null
-              detail: Record<string, unknown>
-              bucket: string | null
-            }>
+            // `by_reason` is already Record<string, ImpossibilityReportItem[]>.
+            // This used to re-declare that shape inline via `as Array<{...}>`,
+            // which SHADOWED the real type -- so widening `requester` in
+            // services/solver.ts for kindred#2689 left this page untouched and
+            // tsc silent. Use the shared type. kindred#2692 scan, finding 4.
+            const list = items
             return (
               <View key={code} style={styles.reasonGroup} wrap>
                 <Text style={styles.reasonHead}>
@@ -443,9 +439,16 @@ export function BunkPlanReport({
                 {list.map((it, idx) => (
                   <View key={`${code}-${idx}`} style={styles.tableRow} wrap={false}>
                     <Text style={styles.cell}>
+                      {/* An off-roster requester has no name (kindred#2689).
+                          Fall back to "#<cm_id>", the same identifier the
+                          families-to-contact table on page 3 of THIS document
+                          renders -- an em dash here made one PDF disagree with
+                          itself. */}
                       {it.requester?.name
                         ? `${it.requester.name} (${it.requester.grade}${it.requester.gender ? `, ${it.requester.gender}` : ''})`
-                        : '—'}
+                        : it.requester?.cm_id != null
+                          ? `#${it.requester.cm_id}`
+                          : '—'}
                     </Text>
                     <Text style={styles.cell}>
                       {it.requestee?.name
