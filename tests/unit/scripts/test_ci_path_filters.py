@@ -404,17 +404,37 @@ def test_no_detect_changes_output_is_orphaned():
         )
 
 
-def test_node_version_pin_can_trigger_the_jobs_that_read_it():
-    """Four jobs set `node-version-file: '.nvmrc'`, and nothing matched it.
+def _jobs_reading_the_node_pin() -> list[str]:
+    """Every job whose `Setup Node.js` step reads `.nvmrc`, DERIVED not hardcoded.
 
-    `.python-version` matched three filters; `.nvmrc` matched none -- so a
-    Renovate nvm bump (renovate.json enables the `nvm` manager, and .nvmrc has
-    been bumped before) triggered no job that validates a toolchain. Asserted at
-    the JOB level for go-lint, because its `Setup Node.js` step carries no `if:`
-    and runs whenever the job does.
+    The previous revision of this test hardcoded ("go-lint", "frontend-lint")
+    while its own docstring said four jobs -- the hand-maintained-list drift
+    this module exists to catch. Deriving it means a fifth job that reaches for
+    the pin is covered the moment it is added.
+
+    Only steps carrying no `if:` are returned, so the job-level gate is the
+    right thing to assert against.
     """
-    for job in ("go-lint", "frontend-lint"):
-        assert _matches(".nvmrc", _patterns_gating(job)), f"a .nvmrc bump cannot trigger {job}"
+    jobs = []
+    for jid, job in _ci()["jobs"].items():
+        for step in job.get("steps") or []:
+            if (step.get("with") or {}).get("node-version-file") == ".nvmrc" and step.get("if") is None:
+                jobs.append(jid)
+                break
+    assert len(jobs) >= 4, f"expected at least 4 jobs reading the node pin, derived {jobs}"
+    return jobs
+
+
+def test_node_version_pin_can_trigger_every_job_that_reads_it():
+    """`.python-version` matched three filters; `.nvmrc` matched none.
+
+    A Renovate nvm bump (renovate.json enables the `nvm` manager, and .nvmrc
+    has been bumped before) triggered no job that validates a toolchain.
+    Asserted at the JOB level because each `Setup Node.js` step carries no
+    `if:` and so runs whenever its job does.
+    """
+    uncovered = [j for j in _jobs_reading_the_node_pin() if not _matches(".nvmrc", _patterns_gating(j))]
+    assert not uncovered, f"a .nvmrc bump cannot trigger: {uncovered}"
 
 
 # --- shell lint (kindred#2663 Gap C) ---------------------------------------
@@ -491,6 +511,140 @@ def test_dotfile_directories_are_matched_explicitly_not_by_luck():
         assert any(p.startswith(f"{root}/") for p in patterns), (
             f"`shell` covers {root}/ only via a bare `**` -- list {root}/**/*.sh explicitly"
         )
+
+
+# --- frontend-lint & tests-frontend (kindred#2663 Gap A) -------------------
+#
+# Both gated on `frontend`, which had no entry matching
+# `.github/workflows/ci.yml` -- frontend-lint's `npm audit --audit-level=high`
+# threshold and tests-frontend's 2-way shard matrix both live there. Split into
+# one filter per job here, matching the pythonLint/python and goLint/go
+# precedent: their real inputs happen to coincide today (both read the whole
+# frontend/ tree, `.nvmrc` for the toolchain pin `Setup Node.js` has no `if:`
+# to guard, and ci.yml for their own job definition), but a future divergence
+# -- a lint-only config file, a test-only fixture root -- is then a one-line
+# change to one filter instead of a re-derivation of a filter two jobs share.
+#
+# `package*.json` and `tsconfig*.json` used to sit in the shared filter,
+# matching nothing real: there is no root-level tsconfig, and the root
+# package.json holds only commitlint/markdownlint-cli2 devDependencies -- both
+# jobs run `npm ci` with `working-directory: ./frontend`, reading
+# frontend/package.json and frontend/package-lock.json, already covered by
+# `frontend/**` below. Worse than dead weight: bumping a root devDependency
+# triggered the whole sharded frontend test suite and the
+# eslint/prettier/tsc/npm-audit run for a file neither job ever opens.
+
+
+def test_frontend_lint_gate_covers_every_tracked_frontend_file():
+    """eslint, prettier and tsc all run over the whole frontend/ tree."""
+    patterns = _patterns_gating("frontend-lint")
+    uncovered = [f for f in _tracked("frontend/*") if not _matches(f, patterns)]
+    assert not uncovered, f"{len(uncovered)} tracked frontend files cannot trigger frontend-lint: {uncovered[:5]}"
+
+
+def test_frontend_lint_gate_covers_the_workflow_that_defines_it():
+    """The `npm audit --audit-level=high` threshold and step order live here."""
+    assert _matches(".github/workflows/ci.yml", _patterns_gating("frontend-lint"))
+
+
+def test_tests_frontend_gate_covers_every_tracked_frontend_file():
+    """vitest runs over the whole frontend/ tree, not only `*.test.ts` files."""
+    patterns = _patterns_gating("tests-frontend")
+    uncovered = [f for f in _tracked("frontend/*") if not _matches(f, patterns)]
+    assert not uncovered, f"{len(uncovered)} tracked frontend files cannot trigger tests-frontend: {uncovered[:5]}"
+
+
+def test_tests_frontend_gate_covers_the_workflow_that_defines_it():
+    """The 2-way shard matrix and the `--shard=.../2` argument live here."""
+    assert _matches(".github/workflows/ci.yml", _patterns_gating("tests-frontend"))
+
+
+def test_frontend_filters_do_not_react_to_the_root_package_json():
+    """The root package.json is commitlint/markdownlint-cli2 config, not frontend's.
+
+    `package*.json` used to match it (and nothing else, since there is no
+    root-level tsconfig for the sibling `tsconfig*.json` entry to match
+    either) -- a bump to a root devDependency ran the whole sharded frontend
+    test suite and eslint/prettier/tsc/npm-audit for a file neither job ever
+    opens.
+    """
+    for job in ("frontend-lint", "tests-frontend"):
+        patterns = _patterns_gating(job)
+        assert not _matches("package.json", patterns), f"root package.json still triggers {job}"
+        assert not _matches("package-lock.json", patterns), f"root package-lock.json still triggers {job}"
+
+
+# --- docker-lint (kindred#2663 Gap A) ---------------------------------------
+#
+# docker-lint gated on `docker`, the same filter go-lint's job- and step-level
+# gates read to catch docker/init-entrypoint.sh for its shellcheck step -- a
+# dependency `shell`'s blanket `**/*.sh` already covers on its own since the
+# Gap C fix (kindred#2663; scripts/ci/shellcheck-all.sh now selects by
+# `git ls-files '*.sh'`, not a fixed set of roots). That's why this gives
+# docker-lint its own `dockerLint` filter rather than widening the shared one:
+# `docker/**` never covered `frontend/Caddyfile` (not under docker/) or
+# ci.yml (the job's own HADOLINT_VERSION pin, the Dockerfile list in its
+# `for df in ...` loop, and both `caddy adapt` invocations all live there), and
+# widening `docker` to add those would also widen go-lint's gate for no
+# reason -- that job's only real dependency on `docker` is the .sh file
+# `shell` already matches independently. `docker` itself is left untouched:
+# go-lint still reads it, so it stays alive and is not the orphaned-filter
+# shape kindred#2663's suggested fix warns about.
+
+
+def _docker_lint_dockerfiles() -> list[str]:
+    """The Dockerfiles hadolint lints, derived by PARSING the `for df in ...` loop.
+
+    Not hardcoded: a Dockerfile added to the loop becomes a real input the
+    moment it's added, whether or not this list is updated to match.
+    """
+    steps = _ci()["jobs"]["docker-lint"]["steps"]
+    run = next(st["run"] for st in steps if st.get("name") == "Dockerfile linting (hadolint)")
+    m = re.search(r"for df in (.+?); do", run)
+    assert m, f"could not read the Dockerfile list out of the step: {run!r}"
+    files = m.group(1).split()
+    assert len(files) >= 4, f"parsed Dockerfile list collapsed to {len(files)}: {files}"
+    return files
+
+
+def _docker_lint_caddyfiles() -> list[str]:
+    """The Caddyfiles `caddy adapt` validates, derived by PARSING the step."""
+    steps = _ci()["jobs"]["docker-lint"]["steps"]
+    run = next(st["run"] for st in steps if st.get("name") == "Caddyfile validation")
+    files = re.findall(r"< (\S+)", run)
+    assert len(files) == 2, f"expected 2 Caddyfiles, parsed {files} out of: {run!r}"
+    return files
+
+
+def test_docker_lint_gate_covers_every_dockerfile_it_lints():
+    patterns = _patterns_gating("docker-lint")
+    uncovered = [f for f in _docker_lint_dockerfiles() if not _matches(f, patterns)]
+    assert not uncovered, f"Dockerfiles cannot trigger docker-lint: {uncovered}"
+
+
+def test_docker_lint_gate_covers_every_caddyfile_it_validates():
+    """Includes `frontend/Caddyfile` -- NOT under docker/, so `docker/**` never covered it."""
+    patterns = _patterns_gating("docker-lint")
+    uncovered = [f for f in _docker_lint_caddyfiles() if not _matches(f, patterns)]
+    assert not uncovered, f"Caddyfiles cannot trigger docker-lint: {uncovered}"
+
+
+def test_docker_lint_gate_covers_the_hadolint_config():
+    """Mounted into the hadolint container as `/.hadolint.yaml`."""
+    assert _matches(".hadolint.yaml", _patterns_gating("docker-lint"))
+
+
+def test_docker_lint_gate_covers_the_workflow_that_defines_it():
+    """HADOLINT_VERSION, the Dockerfile list and both `caddy adapt` calls live here."""
+    assert _matches(".github/workflows/ci.yml", _patterns_gating("docker-lint"))
+
+
+def test_docker_lint_does_not_react_to_docker_compose_files():
+    """`docker-compose*.yml` sat in the old shared `docker` filter, matching
+    nothing: no docker-lint step reads it, and it isn't a .sh file `shell`
+    would need it for either. Not carried into `dockerLint`.
+    """
+    assert not _matches("docker-compose.yml", _patterns_gating("docker-lint"))
 
 
 def test_every_shellcheck_call_site_runs_the_same_command():
