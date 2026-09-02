@@ -1,5 +1,9 @@
 import { Document, Page, Text, View, StyleSheet, Image } from '@react-pdf/renderer'
-import type { ImpossibilityReport, ValidationStatistics } from '../../services/solver'
+import type {
+  ImpossibilityReport,
+  ImpossibilityReportItem,
+  ValidationStatistics,
+} from '../../services/solver'
 import { friendlyReasonLabel } from '../impossibility/reasonHints'
 import { buildFamilyRows, cohortLabel } from './familyRows'
 import {
@@ -160,6 +164,29 @@ function coverageColor(rate: number): string {
   if (rate >= 0.85) return GREEN
   if (rate >= 0.7) return AMBER
   return '#dc2626' // red
+}
+
+/**
+ * One impossibility-table cell for a requester or requestee.
+ *
+ * Takes the parameter as explicitly optional because the payload is not always
+ * the type says it is: an off-roster requester arrives as a one-key
+ * `{ cm_id }` (kindred#2689), a requestee is legitimately `null`, and the
+ * defensive-tolerance fixtures feed `{}` for a legacy payload. Narrowing here,
+ * once, keeps every one of those out of the JSX -- and keeps the reader from
+ * meeting three different fallbacks in three nested ternaries.
+ *
+ * A missing name falls back to "#<cm_id>", the same identifier the
+ * families-to-contact table renders on page 3 of THIS document; an em dash
+ * here made one PDF disagree with itself about one camper. Only a row with no
+ * id at all gets the dash. kindred#2692 scan.
+ */
+function camperCell(
+  person: Partial<ImpossibilityReportItem['requester']> | null | undefined
+): string {
+  if (!person?.cm_id) return '—'
+  if (person.name === undefined || person.name === '') return `#${person.cm_id}`
+  return `${person.name} (${person.grade}${person.gender ? `, ${person.gender}` : ''})`
 }
 
 export function BunkPlanReport({
@@ -438,23 +465,8 @@ export function BunkPlanReport({
                 </View>
                 {list.map((it, idx) => (
                   <View key={`${code}-${idx}`} style={styles.tableRow} wrap={false}>
-                    <Text style={styles.cell}>
-                      {/* An off-roster requester has no name (kindred#2689).
-                          Fall back to "#<cm_id>", the same identifier the
-                          families-to-contact table on page 3 of THIS document
-                          renders -- an em dash here made one PDF disagree with
-                          itself. */}
-                      {it.requester?.name
-                        ? `${it.requester.name} (${it.requester.grade}${it.requester.gender ? `, ${it.requester.gender}` : ''})`
-                        : it.requester?.cm_id != null
-                          ? `#${it.requester.cm_id}`
-                          : '—'}
-                    </Text>
-                    <Text style={styles.cell}>
-                      {it.requestee?.name
-                        ? `${it.requestee.name} (${it.requestee.grade}${it.requestee.gender ? `, ${it.requestee.gender}` : ''})`
-                        : '—'}
-                    </Text>
+                    <Text style={styles.cell}>{camperCell(it.requester)}</Text>
+                    <Text style={styles.cell}>{camperCell(it.requestee)}</Text>
                     <Text style={styles.cell}>{it.request_type ?? '—'}</Text>
                   </View>
                 ))}
