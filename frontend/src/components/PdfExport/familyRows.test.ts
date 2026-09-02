@@ -554,3 +554,34 @@ describe('buildFamilyRows — #1717 pre-check impossibility fold-in', () => {
     expect(included!.cohort).toBe('impossible_request')
   })
 })
+
+describe('buildFamilyRows — off-roster requester (kindred#2689)', () => {
+  it('falls back to "#<cm_id>" instead of a blank name when requester is the one-key fallback dict', () => {
+    // Python's impossibility.py emits requester={"cm_id": ...} (no name/grade/
+    // gender) when the requester person isn't in the solver's roster. The TS
+    // type reflects this by making everything but cm_id optional — assert the
+    // row gets a usable identifier, not an empty string.
+    const stats = _statistics({ mp_campers_entirely_impossible: [] })
+    const report = _report({
+      flat: [
+        {
+          request_id: 'r1',
+          reason_code: 'malformed',
+          reason_message: '',
+          request_type: 'bunk_with',
+          source_field: 'bunk_request_form',
+          requester: { cm_id: 999 },
+          requestee: null,
+          detail: {},
+          bucket: 'material_parent',
+        },
+      ],
+    })
+    const rows = buildFamilyRows(stats, report)
+    const row = rows.find((r) => r.cm_id === '999')
+    expect(row).toBeDefined()
+    expect(row!.name).toBe('#999')
+    expect(row!.grade).toBe(0)
+    expect(row!.gender).toBe('')
+  })
+})

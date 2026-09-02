@@ -183,7 +183,8 @@ export default function SolverDebugImpossibilityModal({
           case 'reason':
             return item.reason_code
           case 'name':
-            return item.requester.name
+            // Off-roster requester (kindred#2689): name is absent.
+            return item.requester.name ?? `#${item.requester.cm_id}`
           case 'type':
             return item.request_type
         }
@@ -437,12 +438,19 @@ export default function SolverDebugImpossibilityModal({
                       <td className="px-2 py-1">
                         <CamperNameButton
                           cmId={item.requester.cm_id}
-                          name={item.requester.name}
+                          // Off-roster requester (kindred#2689): name is absent.
+                          name={item.requester.name ?? `#${item.requester.cm_id}`}
                           onSelect={setSelectedCamperId}
                           disabled={sessionCmId === null}
                         />{' '}
+                        {/* Positional debug triple: cm_id/gGRADE/GENDER. An
+                            off-roster requester carries neither grade nor
+                            gender (kindred#2689), and rendering them blank gave
+                            "(999/g/)" — keep the shape, say "?" for what is
+                            absent. kindred#2692 scan. */}
                         <span className="text-stone-500">
-                          ({item.requester.cm_id}/g{item.requester.grade}/{item.requester.gender})
+                          ({item.requester.cm_id}/g{item.requester.grade ?? '?'}/
+                          {item.requester.gender ?? '?'})
                         </span>
                       </td>
                       <td className="px-2 py-1">

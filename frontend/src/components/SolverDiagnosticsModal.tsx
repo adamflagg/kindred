@@ -146,7 +146,8 @@ export default function SolverDiagnosticsModal({
                     <td className="px-2 py-1">
                       <CamperNameButton
                         cmId={item.requester.cm_id}
-                        name={item.requester.name}
+                        // Off-roster requester (kindred#2689): name is absent.
+                        name={item.requester.name ?? `#${item.requester.cm_id}`}
                         onSelect={setSelectedCamperId}
                         disabled={sessionCmId === null}
                       />

@@ -188,3 +188,43 @@ describe('SolverDiagnosticsModal (#1638)', () => {
     }
   })
 })
+
+describe('SolverDiagnosticsModal — off-roster requester (kindred#2689)', () => {
+  it('falls back to "#<cm_id>" when the requester is the one-key dict', () => {
+    // impossibility.py emits requester={"cm_id": ...} when the requester person
+    // is not in the solver's roster. This consumer was fixed in kindred#2692 but
+    // carried no test; the kindred#2692 scan booked one.
+    const offRoster: SolverDiagnostics = {
+      ...diagnostics,
+      impossibilityReport: {
+        total_impossible: 1,
+        affected_campers: 1,
+        by_reason: {},
+        flat: [
+          {
+            request_id: 'r_off',
+            reason_code: 'malformed',
+            reason_message: 'missing requestee_id',
+            request_type: 'bunk_with',
+            requester: { cm_id: 999 },
+            requestee: null,
+            detail: {},
+            bucket: 'material_parent',
+          },
+        ],
+      },
+    }
+    render(
+      <SolverDiagnosticsModal
+        isOpen
+        onClose={() => {}}
+        diagnostics={offRoster}
+        sessionCmId={1000001}
+        year={2026}
+      />
+    )
+    expect(screen.getByRole('button', { name: /#999/ })).toBeInTheDocument()
+    // The modal portals out of the render container, so query the document.
+    expect(document.body.textContent ?? '').not.toMatch(/undefined/)
+  })
+})

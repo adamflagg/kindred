@@ -20,6 +20,7 @@ import { CamperNameButton } from './impossibility/CamperNameButton'
 import { camperActionHints, friendlyReasonLabel } from './impossibility/reasonHints'
 import { BunkRequestProvider } from '../providers/BunkRequestProvider'
 import { isMaterialRequest } from '../utils/requestBucket'
+import { formatGradeOrdinal } from '../utils/gradeUtils'
 
 import { LazyCamperDetailsPanel } from './impossibility/LazyCamperDetailsPanel'
 import { ErrorBoundary } from './ErrorBoundary'
@@ -167,7 +168,7 @@ function EntirelyImpossibleMpSection({
           <div key={c.cm_id} className="text-sm">
             <div className="font-medium">
               <CamperNameButton cmId={c.cm_id} name={c.name} onSelect={onSelectCamper} /> (
-              {c.gender}) · {ordinalGrade(c.grade)}
+              {c.gender}) · {formatGradeOrdinal(c.grade)}
             </div>
             <div className="text-xs text-stone-600">{camperActionHints(c.reason_codes)}</div>
           </div>
@@ -175,14 +176,6 @@ function EntirelyImpossibleMpSection({
       </div>
     </details>
   )
-}
-
-function ordinalGrade(grade: number): string {
-  // Short form (e.g. "5th") — staff scan name + grade + gender inline; the
-  // trailing "grade" word adds noise without helping comprehension.
-  const s = ['th', 'st', 'nd', 'rd']
-  const v = grade % 100
-  return `${grade}${s[(v - 20) % 10] || s[v] || s[0]}`
 }
 
 function requestVerb(requestType: string): string {
@@ -217,7 +210,8 @@ function renderSubtext(
     case 'grade_compatibility':
       return r ? (
         <div className="text-xs text-stone-600">
-          {verb} <RequesteeName r={r} onSelectCamper={onSelectCamper} /> · {ordinalGrade(r.grade)}
+          {verb} <RequesteeName r={r} onSelectCamper={onSelectCamper} /> ·{' '}
+          {formatGradeOrdinal(r.grade)}
         </div>
       ) : null
 
@@ -229,8 +223,8 @@ function renderSubtext(
         (otherSessionCm !== undefined ? `Session ${otherSessionCm}` : 'a different session')
       return (
         <div className="text-xs text-stone-600">
-          {verb} <RequesteeName r={r} onSelectCamper={onSelectCamper} /> · {ordinalGrade(r.grade)} ·
-          in <strong>{sessionName}</strong> session
+          {verb} <RequesteeName r={r} onSelectCamper={onSelectCamper} /> ·{' '}
+          {formatGradeOrdinal(r.grade)} · in <strong>{sessionName}</strong> session
         </div>
       )
     }
@@ -238,8 +232,8 @@ function renderSubtext(
     case 'pair_no_shared_bunk':
       return r ? (
         <div className="text-xs text-stone-600">
-          {verb} <RequesteeName r={r} onSelectCamper={onSelectCamper} /> · {ordinalGrade(r.grade)} —
-          not AG session
+          {verb} <RequesteeName r={r} onSelectCamper={onSelectCamper} /> ·{' '}
+          {formatGradeOrdinal(r.grade)} — not AG session
         </div>
       ) : null
 
@@ -292,8 +286,8 @@ function renderSubtext(
       const conflictingVerb = conflictingType ? requestVerb(conflictingType) : 'do the opposite'
       return r ? (
         <div className="text-xs text-stone-600">
-          {verb} <RequesteeName r={r} onSelectCamper={onSelectCamper} /> · {ordinalGrade(r.grade)} —
-          also marked <strong>{conflictingVerb}</strong>
+          {verb} <RequesteeName r={r} onSelectCamper={onSelectCamper} /> ·{' '}
+          {formatGradeOrdinal(r.grade)} — also marked <strong>{conflictingVerb}</strong>
         </div>
       ) : null
     }
@@ -301,7 +295,8 @@ function renderSubtext(
     default:
       return r ? (
         <div className="text-xs text-stone-600">
-          {verb} <RequesteeName r={r} onSelectCamper={onSelectCamper} /> · {ordinalGrade(r.grade)}
+          {verb} <RequesteeName r={r} onSelectCamper={onSelectCamper} /> ·{' '}
+          {formatGradeOrdinal(r.grade)}
         </div>
       ) : null
   }
@@ -327,10 +322,17 @@ function ImpossibilityItems({
           <div className="font-medium">
             <CamperNameButton
               cmId={item.requester.cm_id}
-              name={item.requester.name}
+              // Off-roster requester (kindred#2689): name is absent, so fall
+              // back to a "#<cm_id>" identifier — the same precedent
+              // RequestReviewPanel.tsx:671,957 uses for an unresolved requester.
+              name={item.requester.name ?? `#${item.requester.cm_id}`}
               onSelect={onSelectCamper}
             />{' '}
-            ({item.requester.gender}) · {ordinalGrade(item.requester.grade)}
+            {/* Gender is absent for an off-roster requester, and an empty "()"
+                is debris — drop the parenthetical rather than render it hollow.
+                The grade says "?" via the shared helper. kindred#2692 scan. */}
+            {item.requester.gender ? `(${item.requester.gender}) ` : ''}·{' '}
+            {formatGradeOrdinal(item.requester.grade)}
           </div>
           {renderSubtext(item, sessionLookup, onSelectCamper)}
         </div>
