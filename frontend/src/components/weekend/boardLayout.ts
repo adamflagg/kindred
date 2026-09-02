@@ -860,10 +860,14 @@ export function boardPlacementNamer(units: LodgingUnitRow[]): (codes: readonly s
  *
  * `boardPlacementNamer` is the label; this is the footnote beside it. The two
  * part company on exactly the case the compare modal has to explain: a mirror
- * row naming two rooms and a scenario row naming their combined house roll up
- * to the ONE card the board draws, so both sides read `Delta House` under a
- * `Different cabin` pill. Naming the units each side actually holds is what
- * says why. See `withDetail` in `ScenarioCompareModal`.
+ * row naming ONE room and a scenario row naming the combined house above it
+ * roll up to the ONE card the board draws, so both sides read `Delta House`
+ * under a `Different cabin` pill. Naming the units each side actually holds is
+ * what says why. See `withDetail` in `ScenarioCompareModal`.
+ *
+ * A house against its COMPLETE room set is a different thing and does not
+ * reach that footnote: the compare decides its verdict on the rooms each side
+ * occupies, so those two are one placement and read `Same cabin`.
  *
  * It is the SAME derivation as the roll-up -- the same registry names, joined
  * the same way -- differing only in the expansion, so the two can never spell

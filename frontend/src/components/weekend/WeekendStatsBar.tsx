@@ -45,18 +45,15 @@ export interface WeekendStatsBarProps {
    */
   spacesUnmeasured: number
   /**
-   * Rendered right-aligned INSIDE this bar's own row (the write-in push
-   * entry, kindred#2477). A slot rather than a sibling because the bar owns
-   * the band's bottom rule: a control placed beside the bar leaves that rule
-   * stopping short of it, which is exactly what the owner caught on the
-   * first visual pass (2026-08-24).
-   */
-  trailing?: ReactNode
-  /**
-   * The cabin-weekend attribution chip (kindred#2648 UI half), INLINE with
-   * the bar's other figures rather than in `trailing` — Q1, decided
-   * 2026-08-31. `trailing` is the right-aligned action group (Compare, Push
-   * write-ins); this sits with the figures it is one of, ahead of it.
+   * The cabin-weekend attribution chip (kindred#2648 UI half), INLINE with the
+   * bar's other figures — Q1, decided 2026-08-31. It is a figure, not an
+   * action, and it sits with the figures it is one of.
+   *
+   * THE ONLY SLOT LEFT. There was a `trailing` one beside it, holding the
+   * right-aligned Compare and Push write-ins controls; 2026-09-02 moved those
+   * to the page header, where summer's `SessionHeader` keeps its actions.
+   * That is also what stopped this bar wrapping to two lines — the pressure
+   * kindred#2686 relieved by striking the staff-housing count a day earlier.
    */
   attributionChip?: ReactNode
 }
@@ -67,7 +64,6 @@ export function WeekendStatsBar({
   counts,
   spotsNeeded,
   spacesUnmeasured,
-  trailing,
   attributionChip,
 }: WeekendStatsBarProps) {
   const partiesTotal = counts.parties_total ?? 0
@@ -182,8 +178,6 @@ export function WeekendStatsBar({
         {notes.length > 0 && (
           <span className="text-muted-foreground/80 text-xs">{notes.join(' · ')}</span>
         )}
-
-        {trailing !== undefined && <div className="ml-auto flex-shrink-0">{trailing}</div>}
       </div>
     </div>
   )

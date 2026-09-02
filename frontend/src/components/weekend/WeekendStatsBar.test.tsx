@@ -200,37 +200,12 @@ describe('WeekendStatsBar', () => {
     expect(screen.getByText('(0 spare)')).toBeInTheDocument()
   })
 
-  // The push entry (kindred#2477) rides in this slot rather than beside the
-  // bar, because the bar owns the band's bottom rule: a control placed as a
-  // SIBLING leaves that rule stopping short of it, which is what the owner
-  // caught on the 2026-08-24 visual pass. Pinning containment is what stops a
-  // later refactor from quietly hoisting it back out.
-  it('renders a trailing control inside its own bordered row', () => {
-    const { container } = render(
-      <WeekendStatsBar
-        counts={counts({})}
-        spotsNeeded={0}
-        spacesUnmeasured={0}
-        trailing={<button type="button">Push write-ins</button>}
-      />
-    )
-    const trailing = screen.getByRole('button', { name: 'Push write-ins' })
-    const rule = container.querySelector('.border-b')
-    expect(rule).not.toBeNull()
-    expect(rule?.contains(trailing)).toBe(true)
-  })
-
-  it('renders no trailing wrapper when the slot is empty', () => {
-    // Queried by NAME: the bar's own figures are tooltip buttons, so a bare
-    // `queryByRole('button')` matches them and proves nothing about the slot.
-    render(<WeekendStatsBar counts={counts({})} spotsNeeded={0} spacesUnmeasured={0} />)
-    expect(screen.queryByRole('button', { name: 'Push write-ins' })).not.toBeInTheDocument()
-  })
-
   // The cabin-weekend chip (kindred#2648 UI half, Q1 decided 2026-08-31):
-  // inline in the stats bar's own row, distinct from `trailing` above — that
-  // slot is for the right-aligned action group (Compare, Push write-ins),
-  // this one sits inline with the other figures, before it.
+  // inline in the stats bar's own row. It is the bar's ONLY slot since
+  // 2026-09-02 — the `trailing` one that held the right-aligned Compare and
+  // Push write-ins controls moved to the page header, where summer's
+  // `SessionHeader` keeps its actions — so what is pinned here is containment
+  // in the bar row, not order against a neighbour that no longer exists.
   it('renders the attribution chip inline, inside the bar row', () => {
     const { container } = render(
       <WeekendStatsBar
@@ -249,22 +224,22 @@ describe('WeekendStatsBar', () => {
     expect(screen.queryByRole('button', { name: /need.*a weekend/i })).not.toBeInTheDocument()
   })
 
-  it('places the attribution chip before the trailing action group', () => {
-    render(
+  it('keeps the chip inside the bar rather than pushed right like an action', () => {
+    // The chip is a FIGURE. It used to be pinned as sitting before the
+    // right-aligned action group; with that group gone to the header, the
+    // guarantee that still means something is that the chip never acquires
+    // the `ml-auto` the group had — which is what would make it read as an
+    // action parked at the far end of the row.
+    const { container } = render(
       <WeekendStatsBar
         counts={counts({})}
         spotsNeeded={0}
         spacesUnmeasured={0}
         attributionChip={<button type="button">4 cabins need a weekend</button>}
-        trailing={<button type="button">Push write-ins</button>}
       />
     )
-    // getByRole throws if either is missing, so a regression that drops one
-    // slot entirely fails loudly here rather than passing on a vacuous -1
-    // index comparison.
-    const chipIndex = screen.getByRole('button', { name: '4 cabins need a weekend' })
-    const trailingIndex = screen.getByRole('button', { name: 'Push write-ins' })
-    const buttons = screen.getAllByRole('button')
-    expect(buttons.indexOf(chipIndex)).toBeLessThan(buttons.indexOf(trailingIndex))
+    const chip = screen.getByRole('button', { name: '4 cabins need a weekend' })
+    expect(container.querySelector('.ml-auto')).toBeNull()
+    expect(chip.closest('.border-b')).not.toBeNull()
   })
 })

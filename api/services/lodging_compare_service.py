@@ -40,20 +40,22 @@ pay the year-scoped set twice.
 """
 
 from collections.abc import Sequence
-from typing import Any
 
 from api.schemas.lodging import (
     ComparePartyReport,
+    LodgingUnitSummary,
     PartyChild,
     RosterParty,
     ScenarioCompareCounts,
     ScenarioCompareResponse,
+    WeekendRosterResponse,
 )
 from api.services.lodging_repository import FAMILY_SESSION_TYPE, LodgingRepository
-from api.services.lodging_roster_service import LodgingRosterService
+from api.services.lodging_roster_service import LodgingRosterService, _BathroomIndex
 from api.services.lodging_rules import (
     ComparePartyPlacement,
     ComparePartyVerdict,
+    LeafExpander,
     compare_party_key,
     compare_placements,
 )
@@ -99,6 +101,40 @@ def _placement_side(party: RosterParty) -> ComparePartyPlacement:
         unit_codes=tuple(party.unit_codes),
         unit_label=party.unit_name,
     )
+
+
+def _leaf_expander(units: Sequence[LodgingUnitSummary]) -> LeafExpander:
+    """The `LeafExpander` the verdict is decided at, over one season's registry.
+
+    THE REGISTRY IS THE ROSTER'S OWN, passed in from `WeekendRosterResponse.units`
+    rather than fetched again. `build_roster` has already paid for that read, and
+    more importantly it is the SAME unit list the board draws from -- a compare
+    that expanded against a different one could call two placements equal that
+    the board shows in two different places. `fetch_units` is deliberately
+    unfiltered on `is_container` and `is_active`, so every room under a house is
+    present to expand to.
+
+    CONTAINER-NESS READS THE `is_container` FLAG, never child count -- the same
+    call `drawn_units` and `LodgingAttributionService._leaves_of` make, and for
+    the same reason: a container with one room is still a container.
+
+    ⚠️ TOTAL, per `LeafExpander`'s contract, and the two `or (code,)` fallbacks
+    are that guarantee rather than defensive padding. A code the registry has
+    never heard of, and a container with no rooms beneath it, both expand to
+    NOTHING -- which `_placement_verdict` would read as unplaced, reporting a
+    family CampMinder has housed as `Both unassigned`. Returning the code itself
+    keeps the party placed and lets it compare unequal, which is the honest
+    answer for a placement we cannot resolve.
+    """
+    index = _BathroomIndex.build(list(units))
+
+    def leaves_of(code: str) -> tuple[str, ...]:
+        unit = index.units_by_code.get(code)
+        if unit is None or not unit.is_container:
+            return (code,)
+        return tuple(sorted(index.leaf_codes_under(code))) or (code,)
+
+    return leaves_of
 
 
 def _children_by_key(*rosters: Sequence[RosterParty]) -> dict[str, list[PartyChild]]:
@@ -192,17 +228,31 @@ class LodgingCompareService:
         # than three, and this is not a roster read.
         mirror_synced_at = await self.repository.fetch_last_successful_sync_end(MIRROR_SYNC_SERVICE)
 
-        mirror_roster: Any = await self.roster.build_roster(year, session_cm_id, "")
+        mirror_roster: WeekendRosterResponse = await self.roster.build_roster(year, session_cm_id, "")
         if mirror_roster.session_type != FAMILY_SESSION_TYPE:
             raise NotAFamilyWeekendError(
                 f"Weekend {session_cm_id} in {year} is not a family camp session; "
                 "the scenario compare is family camp only"
             )
-        scenario_roster: Any = await self.roster.build_roster(year, session_cm_id, scenario)
+        scenario_roster: WeekendRosterResponse = await self.roster.build_roster(year, session_cm_id, scenario)
 
+        # THE MIRROR ROSTER'S REGISTRY, and either side's would do -- because the
+        # TREE the expander reads is scenario-invariant, which is a narrower
+        # claim than "the two lists are equal" and the only one that holds.
+        # `code`, `parent_code` and `is_container` are copied straight off the
+        # year-scoped `lodging_units` row in `_build_units`, so no scenario can
+        # move them. The SUMMARY around them is not scenario-invariant:
+        # `is_combined` resolves the per-scenario merge tier (1500000140) and
+        # `write_ins` is whichever draft the caller asked for, so a reader that
+        # wants either of those must not reach for the other side's list on the
+        # strength of this comment.
+        #
+        # Taking the mirror's keeps the expander built from the read that has
+        # already happened by the time the scope gate above passes.
         verdicts = compare_placements(
             [_placement_side(p) for p in mirror_roster.parties],
             [_placement_side(p) for p in scenario_roster.parties],
+            _leaf_expander(mirror_roster.units),
         )
         children = _children_by_key(scenario_roster.parties, mirror_roster.parties)
         preview = await self.writes.preview_push(year, session_cm_id, scenario)

@@ -263,3 +263,98 @@ describe('WeekendLegendButton', () => {
     expect(screen.getByRole('dialog')).toBeInTheDocument()
   })
 })
+
+/**
+ * The BOARD's own guide — the Housing tab, and only it (2026-09-02).
+ *
+ * Split out because one list could not be honest about two surfaces, and the
+ * dashed edge is the mark that forced it: an empty room on a board card
+ * (`LodgingUnitCard`'s `dashed = parties.length === 0`), staff housing on the
+ * map (`LodgingMap`'s `borderStyle`, keyed on `inventory_class`). The single
+ * list said "staff cabin", so board staff were told the rooms they most need to
+ * fill are rooms they must not touch.
+ *
+ * `docs/reference/weekend-card-vocabulary.md` §§1-2 is the source of truth for
+ * every mark asserted here.
+ */
+describe('WeekendLegendButton on the board', () => {
+  async function openGuide(view?: string) {
+    render(view === undefined ? <WeekendLegendButton /> : <WeekendLegendButton view={view} />)
+    await userEvent.click(screen.getByRole('button', { name: /show visual guide/i }))
+  }
+
+  it('calls the dashed edge an EMPTY ROOM, which is what it means on a card', async () => {
+    // 🚨 The correction this split exists for. The board draws the dashes on
+    // `parties.length === 0` — a room to fill — and the old copy called it
+    // permanent staff housing, which is the opposite instruction.
+    await openGuide('housing')
+    expect(screen.getByText(/empty room/i)).toBeInTheDocument()
+    expect(screen.queryByText(/staff cabin/i)).not.toBeInTheDocument()
+  })
+
+  it('leaves the other tabs on the wording they had', async () => {
+    // The map genuinely does draw a dashed square for staff housing, so its
+    // guide is not wrong — only unreworked. A split that silently blanked it
+    // would trade one inaccuracy for a gap.
+    await openGuide('map')
+    expect(screen.getByText(/staff cabin/i)).toBeInTheDocument()
+    expect(screen.queryByText(/empty room/i)).not.toBeInTheDocument()
+  })
+
+  it('falls back to the older list when no tab is named', async () => {
+    await openGuide()
+    expect(screen.getByText(/staff cabin/i)).toBeInTheDocument()
+  })
+
+  it("documents the family card's three mark families", async () => {
+    // The share answer, the who-to-be-near cluster and the need glyphs — none
+    // of which the old list mentioned at all, and between them most of what a
+    // family card actually draws.
+    await openGuide('housing')
+    expect(screen.getByText(/share answer/i)).toBeInTheDocument()
+    expect(screen.getByText(/who they asked to be near/i)).toBeInTheDocument()
+    expect(screen.getByText('What they asked for')).toBeInTheDocument()
+  })
+
+  it('says an unrecorded answer reads as unmet, not as met', async () => {
+    // The one non-obvious rule in the glyph grading, and the one staff would
+    // otherwise read backwards: red on a room nobody has assessed is a refusal
+    // to claim, not a claim of absence.
+    await openGuide('housing')
+    expect(screen.getByText(/will not claim a cabin meets a need/i)).toBeInTheDocument()
+  })
+
+  it('documents the three drag-time channels, which had no entry at all', async () => {
+    await openGuide('housing')
+    expect(screen.getByText(/answers what they asked for/i)).toBeInTheDocument()
+    expect(screen.getByText(/something they asked for is missing/i)).toBeInTheDocument()
+    expect(screen.getByText(/not a valid target/i)).toBeInTheDocument()
+  })
+
+  it('names the three needs the hatch actually grades', async () => {
+    // `resolveDragFit` filters `step_free` out of the asked set outright
+    // (owner ruling 2026-08-31), so a guide promising four would send staff
+    // looking for a mark that cannot appear.
+    await openGuide('housing')
+    expect(screen.getByText(/bathroom, power and fridge only/i)).toBeInTheDocument()
+  })
+
+  it('caps the amenity row at three, as the card does', async () => {
+    await openGuide('housing')
+    expect(screen.getByText(/at most three/i)).toBeInTheDocument()
+  })
+
+  it('claims no near-bathhouse dot, which the board does not draw', async () => {
+    // A map mark (`BATHHOUSE_BLUE`, `LodgingMap`), and the board card carries a
+    // bathroom amenity icon instead. Carrying it here would document a mark
+    // that is not on the surface the guide is open over.
+    await openGuide('housing')
+    expect(screen.queryByText(/near bathhouse/i)).not.toBeInTheDocument()
+  })
+
+  it('carries none of the summer-only camper content', async () => {
+    await openGuide('housing')
+    expect(screen.queryByText(/friend group/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/grade ratio/i)).not.toBeInTheDocument()
+  })
+})

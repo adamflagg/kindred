@@ -319,6 +319,14 @@ class LodgingAttributionService:
         LEAF-NESS READS THE `is_container` FLAG, never child count -- the same
         call `drawn_units` makes, and for the same reason: a container with one
         room is still a container.
+
+        ⚠️ NOT INTERCHANGEABLE with `lodging_compare_service._leaf_expander`,
+        which walks the same `leaf_codes_under` and answers a DIFFERENT
+        not-found question. Here a code the registry cannot place has no rooms
+        to be occupied and drops out; there it must expand to ITSELF, because
+        the compare reads an empty expansion as "unplaced" and would report a
+        family CampMinder has housed as `Both unassigned`. Two policies, one
+        walk -- do not fuse them.
         """
         unit = index.units_by_code.get(code)
         if unit is None:

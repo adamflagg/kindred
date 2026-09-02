@@ -2,9 +2,9 @@
  * The "Compare with CampMinder" entry point (kindred#2478 §5) — the button
  * that opens the scenario-vs-mirror report, and the modal it opens.
  *
- * Rides in `WeekendStatsBar`'s `trailing` slot beside "Push write-ins", for
- * the reason that entry documents: the bar owns the band, and a toolbar row of
- * its own would push the whole board down for one button.
+ * Rides in the page header's action group beside "Push write-ins", where
+ * summer's `SessionHeader` puts its own actions, for the reason that entry
+ * documents.
  *
  * Present only where a comparison could ever mean anything, and ABSENT
  * everywhere else — `opacity-40` is the board's vocabulary for a REFUSAL
@@ -60,9 +60,11 @@ export function ScenarioCompareEntry({
         onClick={() => {
           setOpen(true)
         }}
-        // Sized like its neighbour rather than like `btn-secondary`'s roomier
-        // default, so the two sit level in the bar's `min-h-10` row.
-        className="btn-secondary flex flex-shrink-0 items-center gap-1.5 px-4 py-2"
+        // Summer's header-action string exactly (`SessionHeader`'s Clear
+        // button), so the two surfaces' buttons are the same size and shape.
+        // `flex-shrink-0` is the one addition: this header wraps where
+        // summer's does not, and a squashed label is worse than a wrap.
+        className="btn-secondary flex flex-shrink-0 items-center gap-1.5 px-3 py-2 text-sm"
       >
         <GitCompare className="h-4 w-4" />
         Compare with CampMinder
