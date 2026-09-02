@@ -38,7 +38,7 @@ function u(over: Partial<LodgingUnitRow> & { code: string }): LodgingUnitRow {
     map_x: null,
     map_y: null,
     ...over,
-  } as LodgingUnitRow
+  }
 }
 
 // house -> wing -> two rooms. Mirrors the deepest real tree (3 levels).

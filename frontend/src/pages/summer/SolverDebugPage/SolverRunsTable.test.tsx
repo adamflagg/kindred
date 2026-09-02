@@ -264,7 +264,7 @@ describe('SolverRunsTable footer (#1254)', () => {
     const runs: SolverRun[] = [
       { id: 'r1', run_id: 'run_1', status: 'success', created: '2026-05-11T10:00:00Z' },
       { id: 'r2', run_id: 'run_2', status: 'success', created: '2026-05-11T10:01:00Z' },
-    ] as unknown as SolverRun[]
+    ]
     render(
       <SolverRunsTable
         runs={runs}
@@ -332,7 +332,7 @@ describe('MP rate cells (PR1)', () => {
           mp_requests_total: 100,
         },
       },
-    } as SolverRun
+    }
     render(
       <SolverRunsTable
         runs={[run]}
@@ -354,7 +354,7 @@ describe('MP rate cells (PR1)', () => {
       stats: {
         request_validation: { mp_requests_satisfied: 0, mp_requests_total: 0 },
       },
-    } as SolverRun
+    }
     render(
       <SolverRunsTable
         runs={[run]}

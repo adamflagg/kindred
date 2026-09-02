@@ -488,7 +488,7 @@ describe('FamilyDetailsPanel — household identity', () => {
   it('marks a first-time family when is_returning is undefined', () => {
     const p = party()
     delete p.is_returning
-    render(<FamilyDetailsPanel party={p as RosterPartyRow} year={2026} onClose={vi.fn()} />, {
+    render(<FamilyDetailsPanel party={p} year={2026} onClose={vi.fn()} />, {
       wrapper,
     })
     expect(screen.getByText('First-time')).toBeInTheDocument()

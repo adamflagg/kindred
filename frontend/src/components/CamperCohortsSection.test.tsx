@@ -20,7 +20,10 @@ const mockUseCamperCohorts = vi.fn()
 vi.mock('../hooks/useCamperCohorts', () => ({
   useCamperCohorts: (...args: unknown[]) => mockUseCamperCohorts(...args),
 }))
-type Rel = { type: 'bunk_with' | 'not_bunk_with'; mutual: boolean }
+interface Rel {
+  type: 'bunk_with' | 'not_bunk_with'
+  mutual: boolean
+}
 const mockUseCohortRequestRelations = vi.fn<
   (...args: unknown[]) => { relations: Map<number, Rel>; isLoading: boolean }
 >(() => ({ relations: new Map(), isLoading: false }))

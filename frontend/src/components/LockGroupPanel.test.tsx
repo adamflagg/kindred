@@ -204,7 +204,7 @@ describe('LockGroupPanel — ＋ Add member picker', () => {
   it('filters out campers already in any group from the picker results', () => {
     mockQueryData = [testGroup]
     mockContext.getCamperLockGroup = (cmId: number) =>
-      cmId === 1000001 ? ({ id: 'group-abc' } as never) : null
+      cmId === 1000001 ? { id: 'group-abc' } : null
     render(
       <LockGroupPanel
         isOpen={true}
@@ -600,18 +600,17 @@ describe('LockGroupPanel — AddMemberPicker reposition on scroll (#1499 issue #
     const trigger = screen.getByRole('button', { name: /add member/i })
     // Force a non-zero rect from getBoundingClientRect so we can observe a change.
     const originalGetRect = trigger.getBoundingClientRect.bind(trigger)
-    trigger.getBoundingClientRect = () =>
-      ({
-        top: 100,
-        bottom: 120,
-        left: 200,
-        right: 260,
-        width: 60,
-        height: 20,
-        x: 200,
-        y: 100,
-        toJSON: () => ({}),
-      }) as DOMRect
+    trigger.getBoundingClientRect = () => ({
+      top: 100,
+      bottom: 120,
+      left: 200,
+      right: 260,
+      width: 60,
+      height: 20,
+      x: 200,
+      y: 100,
+      toJSON: () => ({}),
+    })
     fireEvent.click(trigger)
     const dropdownBefore = document.querySelector('[data-panel="lock-group-picker"]') as HTMLElement
     expect(dropdownBefore).not.toBeNull()
@@ -619,18 +618,17 @@ describe('LockGroupPanel — AddMemberPicker reposition on scroll (#1499 issue #
     expect(topBefore).toBe('124px') // bottom (120) + 4
 
     // Simulate scroll: trigger has moved up to y=50
-    trigger.getBoundingClientRect = () =>
-      ({
-        top: 50,
-        bottom: 70,
-        left: 200,
-        right: 260,
-        width: 60,
-        height: 20,
-        x: 200,
-        y: 50,
-        toJSON: () => ({}),
-      }) as DOMRect
+    trigger.getBoundingClientRect = () => ({
+      top: 50,
+      bottom: 70,
+      left: 200,
+      right: 260,
+      width: 60,
+      height: 20,
+      x: 200,
+      y: 50,
+      toJSON: () => ({}),
+    })
     fireEvent.scroll(window)
     const dropdownAfter = document.querySelector('[data-panel="lock-group-picker"]') as HTMLElement
     expect(dropdownAfter.style.top).toBe('74px') // bottom (70) + 4

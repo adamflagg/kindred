@@ -420,7 +420,7 @@ describe("the pencil's People field, kindred#2503", () => {
     fireEvent.click(screen.getByRole('button', { name: 'Edit write-in Liam Garcia' }))
 
     const options = Array.from(screen.getByLabelText('People').querySelectorAll('option')).map(
-      (el) => (el as HTMLOptionElement).value
+      (el) => el.value
     )
     expect(options).toEqual(['', ...Array.from({ length: 20 }, (_, i) => String(i + 1))])
   })
@@ -471,7 +471,7 @@ describe("the pencil's People field, kindred#2503", () => {
 
     expect(screen.getByLabelText('People')).toHaveValue('25')
     const options = Array.from(screen.getByLabelText('People').querySelectorAll('option')).map(
-      (el) => (el as HTMLOptionElement).value
+      (el) => el.value
     )
     // Appended, so the ordinary 1-20 run is undisturbed and the odd value sits
     // where its magnitude puts it.
@@ -491,7 +491,7 @@ describe("the pencil's People field, kindred#2503", () => {
     fireEvent.click(screen.getByRole('button', { name: 'Edit write-in Liam Garcia' }))
 
     const options = Array.from(screen.getByLabelText('People').querySelectorAll('option')).map(
-      (el) => (el as HTMLOptionElement).value
+      (el) => el.value
     )
     expect(options).toEqual(['', ...Array.from({ length: 20 }, (_, i) => String(i + 1))])
   })

@@ -24,7 +24,7 @@ vi.mock('@dnd-kit/core', async () => {
   const actual = await vi.importActual<typeof import('@dnd-kit/core')>('@dnd-kit/core')
   return {
     ...actual,
-    useDroppable: (args: unknown) => useDroppableMock(args as never),
+    useDroppable: (args: unknown) => useDroppableMock(args),
   }
 })
 
@@ -32,7 +32,7 @@ vi.mock('@dnd-kit/sortable', async () => {
   const actual = await vi.importActual<typeof import('@dnd-kit/sortable')>('@dnd-kit/sortable')
   return {
     ...actual,
-    useSortable: (args: unknown) => useSortableMock(args as never),
+    useSortable: (args: unknown) => useSortableMock(args),
     SortableContext: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   }
 })

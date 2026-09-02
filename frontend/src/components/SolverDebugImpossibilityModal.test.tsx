@@ -129,7 +129,7 @@ function tbody(): HTMLElement {
   const table = screen.getByRole('table')
   const body = table.querySelector('tbody')
   if (!body) throw new Error('expected a <tbody>')
-  return body as HTMLElement
+  return body
 }
 function rowChipsByLabel(label: string): HTMLElement[] {
   return within(tbody()).queryAllByText(label)

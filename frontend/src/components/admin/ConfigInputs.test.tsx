@@ -36,7 +36,7 @@ describe('ConfigInputs', () => {
   describe('formatDuration', () => {
     it('should return empty string for null/undefined', () => {
       expect(formatDuration(undefined)).toBe('')
-      expect(formatDuration(null as unknown as number)).toBe('')
+      expect(formatDuration(null)).toBe('')
     })
 
     it('should return "< 1s" for 0', () => {

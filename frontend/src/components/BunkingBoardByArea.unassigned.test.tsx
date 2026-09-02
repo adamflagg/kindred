@@ -43,7 +43,7 @@ describe('getEffectivelyUnassignedCampers', () => {
     const stranded = camper({ id: 'p2:s1', assigned_bunk: 'bunkGONE' })
     const assigned = camper({ id: 'p3:s1', assigned_bunk: 'bunkB' })
 
-    const result = getEffectivelyUnassignedCampers([noBunk as Camper, stranded, assigned], bunks)
+    const result = getEffectivelyUnassignedCampers([noBunk, stranded, assigned], bunks)
 
     expect(result).toEqual([noBunk, stranded])
   })
@@ -57,7 +57,7 @@ describe('getEffectivelyUnassignedCampers', () => {
     const { assigned_bunk: _omit, ...noBunk } = camper({ id: 'p2:s1', assigned_bunk: 'bunkA' })
     void _omit
 
-    const result = getEffectivelyUnassignedCampers([assigned, noBunk as Camper], [])
+    const result = getEffectivelyUnassignedCampers([assigned, noBunk], [])
 
     expect(result).toEqual([noBunk])
   })

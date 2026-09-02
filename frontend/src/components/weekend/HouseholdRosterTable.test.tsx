@@ -600,7 +600,7 @@ describe('HouseholdRosterTable', () => {
   it('marks a first-time family when is_returning is undefined', () => {
     const p = party()
     delete p.is_returning
-    render(<HouseholdRosterTable year={2026} parties={[p as RosterPartyRow]} />, {
+    render(<HouseholdRosterTable year={2026} parties={[p]} />, {
       wrapper,
     })
     expect(screen.getByText('First-time')).toBeInTheDocument()

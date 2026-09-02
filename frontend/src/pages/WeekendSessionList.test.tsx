@@ -157,7 +157,7 @@ describe('cancelled weekends', () => {
 
   function cancelWomensWeekend() {
     const data = summaryQuery.data as {
-      weekends: { session: { status?: string } }[]
+      weekends: Array<{ session: { status?: string } }>
     }
     const womens = data.weekends[1]
     if (!womens) throw new Error('fixture changed: expected a second weekend to cancel')

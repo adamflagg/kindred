@@ -353,7 +353,7 @@ describe('fetchSyncStatus', () => {
         process_requests: { status: 'idle' },
         _daily_sync_running: false,
       }),
-    } as Response)
+    })
     const res = await fetchSyncStatus(mock)
     expect(res).toEqual({
       name: 'bunk_requests',
@@ -374,7 +374,7 @@ describe('fetchSyncStatus', () => {
           end_time: '2026-04-27T19:02:00Z',
         },
       }),
-    } as Response)
+    })
     const res = await fetchSyncStatus(mock)
     expect(res?.status).toBe('completed')
   })
@@ -391,7 +391,7 @@ describe('fetchSyncStatus', () => {
           error: 'context deadline exceeded',
         },
       }),
-    } as Response)
+    })
     const res = await fetchSyncStatus(mock)
     expect(res?.status).toBe('failed')
     expect(res?.error).toBe('context deadline exceeded')
@@ -401,7 +401,7 @@ describe('fetchSyncStatus', () => {
     const mock = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({ bunk_requests: { status: 'idle' } }),
-    } as Response)
+    })
     expect(await fetchSyncStatus(mock)).toBeNull()
   })
 
@@ -409,12 +409,12 @@ describe('fetchSyncStatus', () => {
     const mock = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({ _daily_sync_running: false }),
-    } as Response)
+    })
     expect(await fetchSyncStatus(mock)).toBeNull()
   })
 
   it('throws on non-ok response', async () => {
-    const mock = vi.fn().mockResolvedValue({ ok: false, status: 500 } as Response)
+    const mock = vi.fn().mockResolvedValue({ ok: false, status: 500 })
     await expect(fetchSyncStatus(mock)).rejects.toThrow()
   })
 
@@ -429,7 +429,7 @@ describe('fetchSyncStatus', () => {
           start_time: '2026-04-27T19:00:00Z',
         },
       }),
-    } as Response)
+    })
     expect(await fetchSyncStatus(mock)).toBeNull()
     expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('unknown sync status: cancelled'))
     warnSpy.mockRestore()
@@ -442,7 +442,7 @@ describe('fetchSyncStatus', () => {
       json: async () => ({
         bunk_requests: { type: 'bunk_requests', status: 'pending' },
       }),
-    } as Response)
+    })
     expect(await fetchSyncStatus(mock)).toBeNull()
     expect(warnSpy).not.toHaveBeenCalled()
     warnSpy.mockRestore()
@@ -466,7 +466,7 @@ describe('fetchLatestDebugRun', () => {
         ],
         totalItems: 1,
       }),
-    } as Response)
+    })
     const res = await fetchLatestDebugRun(mock)
     expect(res).toEqual({
       run_id: 'run-abc',
@@ -479,12 +479,12 @@ describe('fetchLatestDebugRun', () => {
     const mock = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({ items: [] }),
-    } as Response)
+    })
     expect(await fetchLatestDebugRun(mock)).toBeNull()
   })
 
   it('throws on non-ok response', async () => {
-    const mock = vi.fn().mockResolvedValue({ ok: false, status: 500 } as Response)
+    const mock = vi.fn().mockResolvedValue({ ok: false, status: 500 })
     await expect(fetchLatestDebugRun(mock)).rejects.toThrow()
   })
 
@@ -500,7 +500,7 @@ describe('fetchLatestDebugRun', () => {
           },
         ],
       }),
-    } as Response)
+    })
     expect(await fetchLatestDebugRun(mock)).toBeNull()
   })
 
@@ -516,7 +516,7 @@ describe('fetchLatestDebugRun', () => {
           },
         ],
       }),
-    } as Response)
+    })
     expect(await fetchLatestDebugRun(mock)).toBeNull()
   })
 
@@ -539,7 +539,7 @@ describe('fetchLatestDebugRun', () => {
         ],
         totalItems: 1,
       }),
-    } as Response)
+    })
     const res = await fetchLatestDebugRun(mock)
     expect(res).not.toBeNull()
     expect(res?.run_id).toBe('run-prod')

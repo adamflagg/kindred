@@ -28,7 +28,7 @@ describe('camperActionHints', () => {
 
   it('falls back to "review request" for unknown codes at runtime', () => {
     // Cast: we keep the runtime fallback even though TS forbids unknown codes.
-    const result = camperActionHints(['totally_unknown' as ReasonCode])
+    const result = camperActionHints(['totally_unknown'])
     expect(result).toBe('review request')
   })
 })

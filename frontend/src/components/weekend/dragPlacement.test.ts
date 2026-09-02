@@ -631,7 +631,7 @@ describe('applyPlacement', () => {
         parties_unassigned: parties.filter((p) => (p.unit_name ?? '') === '').length,
         ...counts,
       },
-    } as WeekendRoster
+    }
   }
 
   it('moves the party onto the target unit', () => {

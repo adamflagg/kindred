@@ -109,7 +109,7 @@ describe('CamperCard prod tooltip', () => {
 const assignedCamper: Camper = {
   ...fakeCamper,
   assigned_bunk_cm_id: 100,
-} as unknown as Camper
+}
 
 describe('CamperCard parent-paramount icons', () => {
   it('renders parent triangle when parent_min_one_violation is true', () => {

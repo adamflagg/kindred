@@ -599,7 +599,7 @@ describe('LodgingBoard — the overlay cannot outlive its weekend or lie about a
     // building (re-enables the first) → merge the first again (w3, the
     // override on screen is now w3's) → w1 fails late. w1's revert must be
     // a no-op: the entry it would delete belongs to w3, still in flight.
-    const deferred: { reject: (e: Error) => void }[] = []
+    const deferred: Array<{ reject: (e: Error) => void }> = []
     setCombined.mockImplementation(
       () =>
         new Promise<void>((_resolve, reject) => {

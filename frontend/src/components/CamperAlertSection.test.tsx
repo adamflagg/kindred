@@ -410,7 +410,7 @@ describe('CamperDetailsPanel — alert section integration', () => {
       getSatisfiedRequestInfo: spy,
       isLoading: false,
       error: null,
-    } as unknown as ReturnType<typeof hooks.useBunkRequestContext>)
+    })
 
     render(<CamperDetailsPanel camperId="12345" onClose={vi.fn()} assignedBunkCmId={777} />)
 
