@@ -313,7 +313,10 @@ jobs:
             # frontend/package.json's engines.node. See the note in `goLint`.
             - '.nvmrc'
             # The job's own definition: the 2-way shard matrix and the
-            # `--shard=${{ matrix.shard }}/2` argument live here. Same
+            # per-shard `--shard=` argument live here. Both are named without
+            # GitHub's expression braces on purpose: actionlint parses those
+            # even inside this filters string, and `matrix` is undefined in
+            # detect-changes, so writing one here fails the lint. Same
             # reasoning and the same accepted cost as `goLint` above.
             # kindred#2663.
             - '.github/workflows/ci.yml'
