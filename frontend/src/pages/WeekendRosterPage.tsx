@@ -390,10 +390,14 @@ export default function WeekendRosterPage() {
                 scenario={scenario}
                 canManage={canManageLodging}
               />
-              {/* One guide for all three tabs — the same move summer's
-                  SessionHeader makes, mounted here rather than on the map tab
-                  alone so Roster and Board can reach it too (kindred#1997). */}
-              <WeekendLegendButton />
+              {/* One guide for every tab — the same move summer's SessionHeader
+                  makes, mounted here rather than on the map tab alone so the
+                  others can reach it too (kindred#1997). TAB-SCOPED CONTENT
+                  since 2026-09-02: the Housing tab gets the board's own marks,
+                  because one list could not be honest about the board and the
+                  map at once — a dashed edge means an empty room on one and
+                  staff housing on the other. */}
+              <WeekendLegendButton view={view} />
             </div>
           </div>
         </div>
