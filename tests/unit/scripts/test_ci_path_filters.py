@@ -404,17 +404,37 @@ def test_no_detect_changes_output_is_orphaned():
         )
 
 
-def test_node_version_pin_can_trigger_the_jobs_that_read_it():
-    """Four jobs set `node-version-file: '.nvmrc'`, and nothing matched it.
+def _jobs_reading_the_node_pin() -> list[str]:
+    """Every job whose `Setup Node.js` step reads `.nvmrc`, DERIVED not hardcoded.
 
-    `.python-version` matched three filters; `.nvmrc` matched none -- so a
-    Renovate nvm bump (renovate.json enables the `nvm` manager, and .nvmrc has
-    been bumped before) triggered no job that validates a toolchain. Asserted at
-    the JOB level for go-lint, because its `Setup Node.js` step carries no `if:`
-    and runs whenever the job does.
+    The previous revision of this test hardcoded ("go-lint", "frontend-lint")
+    while its own docstring said four jobs -- the hand-maintained-list drift
+    this module exists to catch. Deriving it means a fifth job that reaches for
+    the pin is covered the moment it is added.
+
+    Only steps carrying no `if:` are returned, so the job-level gate is the
+    right thing to assert against.
     """
-    for job in ("go-lint", "frontend-lint"):
-        assert _matches(".nvmrc", _patterns_gating(job)), f"a .nvmrc bump cannot trigger {job}"
+    jobs = []
+    for jid, job in _ci()["jobs"].items():
+        for step in job.get("steps") or []:
+            if (step.get("with") or {}).get("node-version-file") == ".nvmrc" and step.get("if") is None:
+                jobs.append(jid)
+                break
+    assert len(jobs) >= 4, f"expected at least 4 jobs reading the node pin, derived {jobs}"
+    return jobs
+
+
+def test_node_version_pin_can_trigger_every_job_that_reads_it():
+    """`.python-version` matched three filters; `.nvmrc` matched none.
+
+    A Renovate nvm bump (renovate.json enables the `nvm` manager, and .nvmrc
+    has been bumped before) triggered no job that validates a toolchain.
+    Asserted at the JOB level because each `Setup Node.js` step carries no
+    `if:` and so runs whenever its job does.
+    """
+    uncovered = [j for j in _jobs_reading_the_node_pin() if not _matches(".nvmrc", _patterns_gating(j))]
+    assert not uncovered, f"a .nvmrc bump cannot trigger: {uncovered}"
 
 
 # --- shell lint (kindred#2663 Gap C) ---------------------------------------

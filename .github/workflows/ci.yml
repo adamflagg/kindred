@@ -245,6 +245,13 @@ jobs:
             - 'pocketbase/main.go'
             - 'scripts/ci/validate_migrations.py'
             - '.python-version'
+            # tests-migrations' `Setup Node.js` carries NO `if:`, so it runs
+            # whenever the job does, and node-version-file: '.nvmrc' picks the
+            # Node that then runs the pocketbase-types freshness check. It was
+            # the fourth of the four .nvmrc-reading jobs and the only one still
+            # unmatched after kindred#2682 -- its gate is `migrations || go`,
+            # and neither carried .nvmrc. Same reasoning as `goLint` above.
+            - '.nvmrc'
             # The four below are the remaining inputs to the pocketbase-types
             # freshness check (kindred#2278), which runs in tests-migrations.
             # Same reasoning as scripts/ci/validate_migrations.py above and
