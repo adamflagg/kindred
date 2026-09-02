@@ -137,8 +137,12 @@ vi.mock('@tanstack/react-query', async (importOriginal) => {
 // — the exact tests below. Same policy as every hook mock in this file: these
 // are layout/navigation tests, and the entry has its own dedicated suite in
 // `components/weekend/PushWriteInsEntry.test.tsx`.
+//
+// STUBBED, not nulled: the placement test below has to see where the page puts
+// them, and a stub button carries none of the hooks that made the mock
+// necessary.
 vi.mock('../components/weekend/PushWriteInsEntry', () => ({
-  PushWriteInsEntry: () => null,
+  PushWriteInsEntry: () => <button type="button">Push write-ins</button>,
 }))
 
 // Same reasoning, and the same shape, for the compare entry (kindred#2478
@@ -146,7 +150,7 @@ vi.mock('../components/weekend/PushWriteInsEntry', () => ({
 // the mirror's age and so needs a real AuthProvider these layout tests do not
 // stand up. Its own suite is `components/weekend/ScenarioCompareEntry.test.tsx`.
 vi.mock('../components/weekend/ScenarioCompareEntry', () => ({
-  ScenarioCompareEntry: () => null,
+  ScenarioCompareEntry: () => <button type="button">Compare with CampMinder</button>,
 }))
 
 // Same reasoning again, for the cabin-weekend chip (kindred#2648 UI half):
@@ -479,5 +483,51 @@ describe('creating a weekend plan', () => {
     await waitFor(() =>
       expect(toastSuccess).toHaveBeenCalledWith(expect.stringMatching(/Skipped 2/))
     )
+  })
+})
+
+describe('the header action group', () => {
+  /**
+   * WHERE the two scenario actions live, pinned because it has moved once.
+   *
+   * They sat in `WeekendStatsBar`'s `trailing` slot from 2026-08-24 until
+   * 2026-09-02, when the bar ran out of row — kindred#2686 had struck the
+   * staff-housing count a day earlier because the figures, the attribution
+   * chip and these two were wrapping it to two lines. They now sit in the
+   * page header's `ml-auto` action group, which is where summer's
+   * `SessionHeader` keeps its own actions.
+   *
+   * Containment in the BANNER is the assertion, not "somewhere on the page":
+   * a refactor hoisting them back into the bar leaves them rendered and every
+   * other test passing.
+   */
+  it('puts Compare and Push write-ins in the header, not the stats bar', () => {
+    renderPage()
+    const header = screen.getByRole('banner')
+    expect(header.contains(screen.getByRole('button', { name: 'Compare with CampMinder' }))).toBe(
+      true
+    )
+    expect(header.contains(screen.getByRole('button', { name: 'Push write-ins' }))).toBe(true)
+  })
+
+  it('reports before it writes — Compare comes first', () => {
+    // Compare changes nothing, so it is the safe thing to reach for; the push
+    // is the consequential one and sits after it.
+    renderPage()
+    const buttons = screen.getAllByRole('button')
+    const compare = screen.getByRole('button', { name: 'Compare with CampMinder' })
+    const push = screen.getByRole('button', { name: 'Push write-ins' })
+    expect(buttons.indexOf(compare)).toBeLessThan(buttons.indexOf(push))
+  })
+
+  it('ends the group with the Visual Guide, as summer ends its own', () => {
+    // `BunkingLegendButton` is the last thing in summer's action group and
+    // `WeekendLegendButton` is its sibling export. Left beside the scenario
+    // picker it would be the only part of this header that did not match.
+    renderPage()
+    const buttons = screen.getAllByRole('button')
+    const push = screen.getByRole('button', { name: 'Push write-ins' })
+    const guide = screen.getByRole('button', { name: /Visual Guide/i })
+    expect(buttons.indexOf(push)).toBeLessThan(buttons.indexOf(guide))
   })
 })

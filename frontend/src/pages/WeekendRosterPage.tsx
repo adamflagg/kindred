@@ -356,10 +356,45 @@ export default function WeekendRosterPage() {
               />
             )}
 
-            {/* One guide for all three tabs — the same move summer's
-                SessionHeader makes, mounted here rather than on the map tab
-                alone so Roster and Board can reach it too (kindred#1997). */}
-            <WeekendLegendButton />
+            {/* Right: the action group, pushed right by `ml-auto` — summer's
+                `SessionHeader` shape exactly, down to the legend button sitting
+                at its end rather than beside the scenario picker.
+
+                MOVED HERE OUT OF `WeekendStatsBar`'s `trailing` slot. That slot
+                was the 2026-08-24 answer to a different question ("not a toolbar
+                row of its own, and not beside the bar"), and it held for as long
+                as the bar had room. It stopped having room: kindred#2686 struck
+                the staff-housing count on 2026-09-01 precisely because the
+                figures, the attribution chip and these two controls were wrapping
+                the bar to two lines. The header is where summer puts its actions,
+                it is a row these two do not have to compete for, and putting them
+                there costs the bar nothing. */}
+            <div className="ml-auto flex items-center gap-2">
+              {/* Compare sits BEFORE push: it reports and changes nothing, so it
+                  is the safe thing to reach for first, and the push is the
+                  consequential one. Each hides itself where it would mean
+                  nothing, so the group collapses to the legend button alone. */}
+              <ScenarioCompareEntry
+                year={currentYear}
+                sessionCmId={selectedCmId ?? 0}
+                scenario={scenario}
+                canManage={canManageLodging}
+                sessionType={selectedSession?.session_type ?? ''}
+              />
+              {/* No `units` prop: kindred#2589 moved the badge's count onto
+                  `usePushPreview`, so the entry no longer needs the registry
+                  handed to it. */}
+              <PushWriteInsEntry
+                year={currentYear}
+                sessionCmId={selectedCmId ?? 0}
+                scenario={scenario}
+                canManage={canManageLodging}
+              />
+              {/* One guide for all three tabs — the same move summer's
+                  SessionHeader makes, mounted here rather than on the map tab
+                  alone so Roster and Board can reach it too (kindred#1997). */}
+              <WeekendLegendButton />
+            </div>
           </div>
         </div>
       </header>
@@ -413,10 +448,6 @@ export default function WeekendRosterPage() {
                 </div>
               </nav>
 
-              {/* The push entry rides INSIDE the stats bar's row (owner
-                  rulings 2026-08-24): a toolbar row of its own inside the
-                  board pushed the board down, and sitting beside the bar left
-                  the band's bottom rule stopping short of the button. */}
               <WeekendStatsBar
                 counts={roster.counts ?? {}}
                 spotsNeeded={spotsNeeded}
@@ -429,31 +460,6 @@ export default function WeekendRosterPage() {
                     parties={parties}
                     onOpenFamily={openFamilyPanel}
                   />
-                }
-                trailing={
-                  /* Two entries, one slot. Compare sits BEFORE push: it
-                     reports and changes nothing, so it is the safe thing to
-                     reach for first, and the push is the consequential one.
-                     Each hides itself where it would mean nothing, so the
-                     wrapper collapses to zero width when neither renders. */
-                  <div className="flex items-center gap-2">
-                    <ScenarioCompareEntry
-                      year={currentYear}
-                      sessionCmId={selectedCmId ?? 0}
-                      scenario={scenario}
-                      canManage={canManageLodging}
-                      sessionType={selectedSession?.session_type ?? ''}
-                    />
-                    {/* No `units` prop: kindred#2589 moved the badge's count
-                        onto `usePushPreview`, so the entry no longer needs the
-                        registry handed to it. */}
-                    <PushWriteInsEntry
-                      year={currentYear}
-                      sessionCmId={selectedCmId ?? 0}
-                      scenario={scenario}
-                      canManage={canManageLodging}
-                    />
-                  </div>
                 }
               />
             </div>

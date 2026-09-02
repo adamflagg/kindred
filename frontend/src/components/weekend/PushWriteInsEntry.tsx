@@ -2,12 +2,18 @@
  * The "Push write-ins" entry point (kindred#2477) — the button that opens the
  * scenario→live review, and the modal it opens.
  *
- * Rendered through `WeekendStatsBar`'s `trailing` slot — INSIDE the bar's own
- * row, not beside it — per two owner rulings on the first visual pass
- * (2026-08-24). A toolbar row of its own above the areas pushed the whole
- * board down for one button; sitting beside the bar left the band's bottom
- * rule stopping short of the button. The bar owns the band, so the entry
- * lives in it.
+ * Rendered in the page header's action group, where summer's `SessionHeader`
+ * puts its own actions.
+ *
+ * It lived in `WeekendStatsBar`'s `trailing` slot until 2026-09-02. That was
+ * the answer to a narrower question asked on the first visual pass
+ * (2026-08-24): a toolbar row of its own above the areas pushed the whole board
+ * down for one button, and sitting beside the bar left the band's bottom rule
+ * stopping short of it. Both objections were to the space AROUND the bar, and
+ * neither applies to the header, which is a row that already exists. What
+ * settled it was that the bar ran out of room — kindred#2686 struck the
+ * staff-housing count on 2026-09-01 because the figures, the attribution chip
+ * and these two controls were wrapping it to two lines.
  *
  * Present only where a push could ever apply — inside a scenario, held by a
  * `bunking.manage` user, on a real weekend — and ABSENT everywhere else.
@@ -82,11 +88,12 @@ export function PushWriteInsEntry({
         onClick={() => {
           setOpen(true)
         }}
-        // `px-4 py-2` overrides `btn-secondary`'s roomier `px-6 py-3` to match
-        // summer's "Refresh Bunking" control (`AppLayout.tsx`), which is the
-        // sizing the owner asked this to align with — and it has to sit inside
-        // a `min-h-10` stats row without stretching it.
-        className={`btn-secondary flex flex-shrink-0 items-center gap-1.5 px-4 py-2 ${
+        // Summer's header-action string exactly (`SessionHeader`'s Clear
+        // button) rather than `btn-secondary`'s roomier `px-6 py-3` default, so
+        // the two surfaces' buttons are the same size and shape. This is a step
+        // narrower than the `px-4` it carried in the stats bar, which was
+        // aligned to summer's nav-bar "Refresh Bunking" instead.
+        className={`btn-secondary flex flex-shrink-0 items-center gap-1.5 px-3 py-2 text-sm ${
           nothingToPush ? 'text-muted-foreground' : ''
         }`}
       >

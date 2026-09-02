@@ -975,7 +975,7 @@ describe('ScenarioCompareModal — a placement is named the way the board draws 
     const toggle = await screen.findByRole('button', { name: /matching famil/i })
     await userEvent.click(toggle)
     const rows = await screen.findAllByTestId('compare-match-row')
-    return rows.map((r) => r.textContent).find((t) => t?.includes(fragment)) ?? ''
+    return rows.map((r) => r.textContent).find((t) => t.includes(fragment)) ?? ''
   }
 
   it('names a house-against-its-rooms match once, by the card the board draws', async () => {
