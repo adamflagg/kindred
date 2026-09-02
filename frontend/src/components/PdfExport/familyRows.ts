@@ -165,7 +165,11 @@ export function buildFamilyRows(
     if (seenCmIds.has(cmId)) continue // already surfaced via a cohort — don't duplicate
     raw.push({
       cm_id: cmId,
-      name: item.requester.name,
+      // requester.name is absent when the requester isn't in the solver's
+      // roster (kindred#2689) — fall back to a "#<cm_id>" identifier rather
+      // than an empty string, matching the precedent in RequestReviewPanel.tsx
+      // and CamperDetail.tsx for a personMap miss.
+      name: item.requester.name ?? `#${item.requester.cm_id}`,
       grade: item.requester.grade ?? 0,
       gender: item.requester.gender ?? '',
       cohort: 'impossible_request',

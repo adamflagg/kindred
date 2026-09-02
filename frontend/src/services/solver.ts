@@ -57,8 +57,26 @@ export interface ImpossibilityReportItem {
   reason_message: string
   request_type: string
   source_field?: string | null
-  requester: { cm_id: number; name: string; grade: number; gender: string }
-  requestee: { cm_id: number; name: string; grade: number; gender: string } | null
+  // requester is NOT always the full camper shape: when the requester person
+  // isn't in the solver's roster (impossibility.py:_record_item's fallback),
+  // the backend sends only { cm_id }. requestee is either the full shape or
+  // null — never partial — because it's built the same way but degrades to
+  // null instead of a one-key dict. session_cm_id mirrors what _camper_dict
+  // actually emits (kindred#2689) but no consumer reads it today.
+  requester: {
+    cm_id: number
+    name?: string
+    grade?: number
+    gender?: string
+    session_cm_id?: number
+  }
+  requestee: {
+    cm_id: number
+    name: string
+    grade: number
+    gender: string
+    session_cm_id?: number
+  } | null
   detail: Record<string, unknown>
   bucket: 'material_parent' | 'immaterial_parent' | 'staff' | null
 }

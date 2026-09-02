@@ -183,7 +183,8 @@ export default function SolverDebugImpossibilityModal({
           case 'reason':
             return item.reason_code
           case 'name':
-            return item.requester.name
+            // Off-roster requester (kindred#2689): name is absent.
+            return item.requester.name ?? `#${item.requester.cm_id}`
           case 'type':
             return item.request_type
         }
@@ -437,7 +438,8 @@ export default function SolverDebugImpossibilityModal({
                       <td className="px-2 py-1">
                         <CamperNameButton
                           cmId={item.requester.cm_id}
-                          name={item.requester.name}
+                          // Off-roster requester (kindred#2689): name is absent.
+                          name={item.requester.name ?? `#${item.requester.cm_id}`}
                           onSelect={setSelectedCamperId}
                           disabled={sessionCmId === null}
                         />{' '}

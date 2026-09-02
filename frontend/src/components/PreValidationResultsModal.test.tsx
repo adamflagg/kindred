@@ -983,3 +983,42 @@ describe('PreValidationResultsModal — defense-in-depth immaterial filter (Grou
     expect(screen.queryByRole('button', { name: /Immaterial Camper/ })).not.toBeInTheDocument()
   })
 })
+
+describe('PreValidationResultsModal — off-roster requester (kindred#2689)', () => {
+  it('falls back to "#<cm_id>" and never renders "undefinedth" when requester is the one-key fallback dict', () => {
+    // Python's impossibility.py emits requester={"cm_id": ...} (no name/grade/
+    // gender) when the requester person isn't in the solver's roster.
+    const offRosterItem = {
+      request_id: 'r_off_roster',
+      reason_code: 'malformed',
+      reason_message: 'bunk_with request is missing requestee_id.',
+      request_type: 'bunk_with',
+      requester: { cm_id: 999 },
+      requestee: null,
+      detail: {},
+      bucket: 'material_parent' as const,
+    }
+    const results = {
+      ...baseResults,
+      impossibility_report: makeImpossibilityReport({
+        total_impossible: 1,
+        affected_campers: 1,
+        by_reason: { malformed: [offRosterItem] },
+        flat: [offRosterItem],
+      }),
+    }
+    render(
+      <PreValidationResultsModal
+        sessionCmId={1000001}
+        isOpen
+        onClose={() => {}}
+        results={results}
+        sessionLookup={noopSessionLookup}
+      />
+    )
+    // Identifiable fallback, not a blank name.
+    expect(screen.getByRole('button', { name: /#999/ })).toBeInTheDocument()
+    // Never the literal "undefinedth" produced by ordinalGrade(undefined).
+    expect(screen.queryByText(/undefinedth/)).not.toBeInTheDocument()
+  })
+})

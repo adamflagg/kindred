@@ -177,9 +177,12 @@ function EntirelyImpossibleMpSection({
   )
 }
 
-function ordinalGrade(grade: number): string {
+function ordinalGrade(grade: number | undefined): string {
   // Short form (e.g. "5th") — staff scan name + grade + gender inline; the
   // trailing "grade" word adds noise without helping comprehension.
+  // grade is undefined for an off-roster requester (kindred#2689) — render
+  // nothing rather than fabricate "undefinedth" from `${undefined}th`.
+  if (grade === undefined) return ''
   const s = ['th', 'st', 'nd', 'rd']
   const v = grade % 100
   return `${grade}${s[(v - 20) % 10] || s[v] || s[0]}`
@@ -327,7 +330,10 @@ function ImpossibilityItems({
           <div className="font-medium">
             <CamperNameButton
               cmId={item.requester.cm_id}
-              name={item.requester.name}
+              // Off-roster requester (kindred#2689): name is absent, so fall
+              // back to a "#<cm_id>" identifier — matches the personMap-miss
+              // precedent in RequestReviewPanel.tsx / CamperDetail.tsx.
+              name={item.requester.name ?? `#${item.requester.cm_id}`}
               onSelect={onSelectCamper}
             />{' '}
             ({item.requester.gender}) · {ordinalGrade(item.requester.grade)}
