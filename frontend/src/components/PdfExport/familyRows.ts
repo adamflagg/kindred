@@ -167,8 +167,8 @@ export function buildFamilyRows(
       cm_id: cmId,
       // requester.name is absent when the requester isn't in the solver's
       // roster (kindred#2689) — fall back to a "#<cm_id>" identifier rather
-      // than an empty string, matching the precedent in RequestReviewPanel.tsx
-      // and CamperDetail.tsx for a personMap miss.
+      // than an empty string, matching the precedent at
+      // RequestReviewPanel.tsx:671,957 for an unresolved requester.
       name: item.requester.name ?? `#${item.requester.cm_id}`,
       grade: item.requester.grade ?? 0,
       gender: item.requester.gender ?? '',

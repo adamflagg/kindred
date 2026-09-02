@@ -443,8 +443,14 @@ export default function SolverDebugImpossibilityModal({
                           onSelect={setSelectedCamperId}
                           disabled={sessionCmId === null}
                         />{' '}
+                        {/* Positional debug triple: cm_id/gGRADE/GENDER. An
+                            off-roster requester carries neither grade nor
+                            gender (kindred#2689), and rendering them blank gave
+                            "(999/g/)" — keep the shape, say "?" for what is
+                            absent. kindred#2692 scan. */}
                         <span className="text-stone-500">
-                          ({item.requester.cm_id}/g{item.requester.grade}/{item.requester.gender})
+                          ({item.requester.cm_id}/g{item.requester.grade ?? '?'}/
+                          {item.requester.gender ?? '?'})
                         </span>
                       </td>
                       <td className="px-2 py-1">

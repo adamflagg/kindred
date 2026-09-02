@@ -1021,4 +1021,45 @@ describe('PreValidationResultsModal — off-roster requester (kindred#2689)', ()
     // Never the literal "undefinedth" produced by ordinalGrade(undefined).
     expect(screen.queryByText(/undefinedth/)).not.toBeInTheDocument()
   })
+
+  it('renders no empty parentheses and marks the unknown grade "?"', () => {
+    // The first fix removed "undefinedth" but left the gender parenthetical and
+    // its separator rendering unconditionally, so an off-roster requester read
+    // "#999 () · " -- empty parens and a dangling middot. kindred#2692 scan.
+    const offRosterItem = {
+      request_id: 'r_off_roster',
+      reason_code: 'malformed',
+      reason_message: 'bunk_with request is missing requestee_id.',
+      request_type: 'bunk_with',
+      requester: { cm_id: 999 },
+      requestee: null,
+      detail: {},
+      bucket: 'material_parent' as const,
+    }
+    const results = {
+      ...baseResults,
+      impossibility_report: makeImpossibilityReport({
+        total_impossible: 1,
+        affected_campers: 1,
+        by_reason: { malformed: [offRosterItem] },
+        flat: [offRosterItem],
+      }),
+    }
+    render(
+      <PreValidationResultsModal
+        sessionCmId={1000001}
+        isOpen
+        onClose={() => {}}
+        results={results}
+        sessionLookup={noopSessionLookup}
+      />
+    )
+    // The modal portals out of the render container, so query the document.
+    const text = document.body.textContent ?? ''
+    // No empty gender parenthetical.
+    expect(text).not.toMatch(/\(\s*\)/)
+    // The unknown grade says so, using the app-wide convention from
+    // utils/gradeUtils.ts (19 non-test consumers), not a silent blank.
+    expect(text).toMatch(/#999\s*·\s*\?/)
+  })
 })

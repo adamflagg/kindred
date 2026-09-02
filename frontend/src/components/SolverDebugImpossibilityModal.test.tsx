@@ -773,3 +773,52 @@ describe('SolverDebugImpossibilityModal — bucket=null handling', () => {
     expect(screen.queryByText('Noah Davis')).not.toBeInTheDocument()
   })
 })
+
+describe('SolverDebugImpossibilityModal — off-roster requester (kindred#2689)', () => {
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', makeRealLocalStorage())
+  })
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('marks unknown grade and gender rather than rendering empty debug fields', () => {
+    // impossibility.py emits requester={"cm_id": ...} when the requester person
+    // is not in the solver's roster. kindred#2692 fixed the name here but left
+    // the debug parenthetical rendering "(999/g/)" -- the positional shape with
+    // its values missing. kindred#2692 scan, finding 2.
+    const report: ImpossibilityReport = {
+      total_impossible: 1,
+      affected_campers: 1,
+      by_reason: {},
+      flat: [
+        {
+          request_id: 'r_off',
+          reason_code: 'malformed',
+          reason_message: 'missing requestee_id',
+          request_type: 'bunk_with',
+          requester: { cm_id: 999 },
+          requestee: null,
+          detail: {},
+          bucket: 'material_parent',
+        },
+      ],
+    }
+    render(
+      <SolverDebugImpossibilityModal
+        isOpen
+        onClose={() => {}}
+        report={report}
+        sessionCmId={12}
+        year={2026}
+      />
+    )
+    // The modal portals out of the render container, so query the document.
+    const text = document.body.textContent ?? ''
+    expect(screen.getByRole('button', { name: /#999/ })).toBeInTheDocument()
+    // The positional debug triple keeps its shape, with "?" where a value is
+    // absent -- never "g/" followed by nothing.
+    expect(text).toContain('(999/g?/?)')
+    expect(text).not.toMatch(/\(999\/g\/\)/)
+  })
+})
