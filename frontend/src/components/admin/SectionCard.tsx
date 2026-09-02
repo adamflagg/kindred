@@ -49,12 +49,8 @@ export function SectionCard({
       raw !== null && typeof raw === 'object' ? (raw as Record<string, unknown>) : {}
     const componentConfig: Record<string, unknown> = {
       ...baseConfig,
-      ...(item.metadata?.['min_value'] != null
-        ? { min: item.metadata['min_value'] as number }
-        : {}),
-      ...(item.metadata?.['max_value'] != null
-        ? { max: item.metadata['max_value'] as number }
-        : {}),
+      ...(item.metadata?.['min_value'] != null ? { min: item.metadata['min_value'] } : {}),
+      ...(item.metadata?.['max_value'] != null ? { max: item.metadata['max_value'] } : {}),
     }
     const Component = COMPONENT_MAP[componentType as string] ?? TextInput
 

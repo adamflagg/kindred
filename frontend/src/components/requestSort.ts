@@ -123,7 +123,7 @@ export function sortRequests(
  */
 export function orderByTablePosition<T extends { id: string }>(
   picked: T[],
-  table: { id: string }[]
+  table: Array<{ id: string }>
 ): T[] {
   const position = new Map(table.map((r, i) => [r.id, i]))
   return [...picked].sort(

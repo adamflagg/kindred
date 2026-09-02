@@ -293,7 +293,7 @@ export default function SessionView() {
         last_name: c.last_name ?? '',
         grade: c.grade,
         year: currentYear,
-      })) as unknown as import('../types/pocketbase-types').PersonsResponse[],
+      })) as unknown as Array<import('../types/pocketbase-types').PersonsResponse>,
     [campers, currentYear]
   )
 

@@ -452,7 +452,7 @@ export default function CamperDetailsPanel({
               ? `${req.requested_person_name} (unresolved)`
               : undefined,
           targetPerson: person ?? null,
-          metadata: (req.metadata as Record<string, unknown> | undefined) ?? {},
+          metadata: req.metadata ?? {},
         }
       })
     },

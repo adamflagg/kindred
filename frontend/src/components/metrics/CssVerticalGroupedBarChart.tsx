@@ -173,7 +173,7 @@ export function CssVerticalGroupedBarChart({
                   onMouseEnter={(e) =>
                     handleColumnEnter(index, e.currentTarget.getBoundingClientRect())
                   }
-                  onMouseMove={(e) => handleColumnMove(e, item as Record<string, unknown>)}
+                  onMouseMove={(e) => handleColumnMove(e, item)}
                   onMouseLeave={handleColumnLeave}
                 >
                   {/* Inner visual: constrained width, hover highlight */}
@@ -220,7 +220,7 @@ export function CssVerticalGroupedBarChart({
                             type="button"
                             className={segmentClassName}
                             style={segmentStyle}
-                            onClick={() => handleBarClick(item as Record<string, unknown>, s.key)}
+                            onClick={() => handleBarClick(item, s.key)}
                           />
                         ) : (
                           <div key={s.key} className={segmentClassName} style={segmentStyle} />

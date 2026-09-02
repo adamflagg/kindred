@@ -25,11 +25,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { pb } from '../lib/pocketbase'
 import { useUndoStack } from '../hooks/useUndoStack'
 // Virtual scrolling removed for better dropdown compatibility
-import type {
-  BunkRequestsResponse,
-  PersonsResponse,
-  BunkRequestsStatusOptions,
-} from '../types/pocketbase-types'
+import type { BunkRequestsResponse, PersonsResponse } from '../types/pocketbase-types'
 import clsx from 'clsx'
 import {
   getDispositionClasses,
@@ -372,7 +368,7 @@ export default function RequestReviewPanel({
   // a fresher record.
   const personMap = useMemo(() => {
     const m = new Map<number, PersonsResponse>(seedMap)
-    for (const p of persons as PersonsResponse[]) m.set(p.cm_id, p)
+    for (const p of persons) m.set(p.cm_id, p)
     return m
   }, [seedMap, persons])
 
@@ -694,7 +690,7 @@ export default function RequestReviewPanel({
   const handleApprove = (id: string) =>
     handleAction({
       id,
-      updates: { status: 'resolved' as BunkRequestsStatusOptions },
+      updates: { status: 'resolved' },
       labelVerb: 'approval',
     })
 
@@ -704,7 +700,7 @@ export default function RequestReviewPanel({
   const handleReject = (id: string) =>
     handleAction({
       id,
-      updates: { status: 'declined' as BunkRequestsStatusOptions },
+      updates: { status: 'declined' },
       labelVerb: 'decline',
     })
 
@@ -719,9 +715,7 @@ export default function RequestReviewPanel({
       // Bulk decline writes `status: 'declined'` only — `disposition_reason`
       // is intentionally left blank (see DECLINED_REASONS in dispositionColors.ts, #1368).
       const updates: Partial<BunkRequestsResponse> =
-        action === 'approve'
-          ? { status: 'resolved' as BunkRequestsStatusOptions }
-          : { status: 'declined' as BunkRequestsStatusOptions }
+        action === 'approve' ? { status: 'resolved' } : { status: 'declined' }
       const labelVerb = action === 'approve' ? 'approval' : 'decline'
       bulkUpdateMutation.mutate(
         { ids, updates },

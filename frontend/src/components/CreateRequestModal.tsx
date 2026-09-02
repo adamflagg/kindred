@@ -126,8 +126,8 @@ export default function CreateRequestModal({
         session_id: sessionId,
         year: year,
         requester_id: selectedRequester.cm_id,
-        request_type: requestType as BunkRequestsResponse['request_type'],
-        status: 'resolved' as BunkRequestsResponse['status'], // Manually created requests go directly to resolved
+        request_type: requestType,
+        status: 'resolved', // Manually created requests go directly to resolved
         confidence_score: 1.0, // Full confidence for manual entries
         source_field: 'manual', // Required field - identifies this as a staff-created request
         original_text: `Manually created ${requestType} request`,

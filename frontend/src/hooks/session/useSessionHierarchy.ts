@@ -201,12 +201,12 @@ export function useSessionHierarchy(
   const { data: sessionBunkPlanCounts = {}, isSuccess: bunkPlanCountsLoaded } = useQuery({
     queryKey: ['session-bunk-plan-counts', currentYear, resolvedSession?.cm_id],
     queryFn: async () => {
-      if (!resolvedSession) return {} as Record<string, number>
+      if (!resolvedSession) return {}
 
       // Get all child sessions (embedded + ag) for this parent
       const childSessions = allSessions.filter((s) => s.parent_id === resolvedSession.cm_id)
 
-      if (childSessions.length === 0) return {} as Record<string, number>
+      if (childSessions.length === 0) return {}
 
       // Fetch bunk_plans for all child sessions at once
       const sessionIds = childSessions.map((s) => s.id)

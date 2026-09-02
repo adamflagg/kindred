@@ -28,7 +28,7 @@ import {
  * droppable ref. React 19 can accept an array of refs, but this tree targets
  * the callback form both `useRef` objects and dnd-kit's `setNodeRef` accept.
  */
-function mergeRefs<T>(...refs: (Ref<T> | undefined)[]) {
+function mergeRefs<T>(...refs: Array<Ref<T> | undefined>) {
   return (node: T | null) => {
     for (const ref of refs) {
       if (typeof ref === 'function') ref(node)

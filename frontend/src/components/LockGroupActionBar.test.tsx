@@ -307,7 +307,13 @@ describe('LockGroupActionBar — add-mode background is layered, not replaced', 
     )
     // Assertion is load-bearing for the `root?.style.*` accesses below — eslint's
     // no-unnecessary-type-assertion flags it, but removing it drops querySelector's
-    // inferred type to `Element | null`, which has no `.style` (tsc TS2339). Do not autofix.
+    // inferred type to `Element | null`, which has no `.style` (tsc TS2339).
+    //
+    // The disable below is what actually protects it. #2693 left only the prose
+    // above; `eslint --fix` does not read prose, and the very next tranche
+    // (#2669) stripped the assertion again and broke `tsc` at the three
+    // `.style` accesses. A comment is documentation, a directive is a guard.
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
     const root = container.querySelector('[data-panel="lock-action-bar"]') as HTMLElement | null
     expect(root).not.toBeNull()
     // Solid base bg must still be present

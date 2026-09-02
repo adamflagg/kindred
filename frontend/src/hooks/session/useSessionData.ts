@@ -253,7 +253,7 @@ export function useSessionCampers({
       }
 
       // Ensure type conformance
-      return allCampers.map((camper) => ({ ...camper }) as Camper)
+      return allCampers.map((camper) => ({ ...camper }))
     },
     enabled: !!selectedSession,
   })

@@ -47,9 +47,9 @@ export interface AmenityMark<T> {
 
 export interface AmenityCapResult<T> {
   /** At most `AMENITY_CAP` marks, in the SAME order `marks` arrived in — never priority order. */
-  readonly visible: readonly AmenityMark<T>[]
+  readonly visible: ReadonlyArray<AmenityMark<T>>
   /** The marks the cap dropped, in their original order. Empty whenever `marks.length <= AMENITY_CAP`. */
-  readonly overflow: readonly AmenityMark<T>[]
+  readonly overflow: ReadonlyArray<AmenityMark<T>>
 }
 
 /**
@@ -61,7 +61,7 @@ export interface AmenityCapResult<T> {
  * `visible` and an empty `overflow`, so a card with 3 or fewer marks renders
  * identically to before this module existed.
  */
-export function capAmenityMarks<T>(marks: readonly AmenityMark<T>[]): AmenityCapResult<T> {
+export function capAmenityMarks<T>(marks: ReadonlyArray<AmenityMark<T>>): AmenityCapResult<T> {
   if (marks.length <= AMENITY_CAP) {
     return { visible: marks, overflow: [] }
   }

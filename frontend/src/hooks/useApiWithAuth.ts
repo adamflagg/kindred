@@ -25,7 +25,7 @@ export function useApiWithAuth() {
     const finalOptions: RequestInit = {
       ...fetchOptions,
       headers,
-      credentials: 'include' as RequestCredentials,
+      credentials: 'include',
     }
 
     const response = await fetch(url, finalOptions)

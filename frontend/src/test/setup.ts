@@ -52,7 +52,7 @@ globalThis.ResizeObserver = class ResizeObserver {
   disconnect() {}
   observe() {}
   unobserve() {}
-} as unknown as typeof ResizeObserver
+}
 
 // Mock fetch globally
 globalThis.fetch = vi.fn(() =>

@@ -199,7 +199,7 @@ const AMENITY_RENDER_ORDER: readonly AmenityMarkKey[] = [
  * only the dropped ones: a staff member checking one hidden mark should see
  * the whole picture, not have to also read the row for the other two.
  */
-function AmenityCapPopover({ marks }: { marks: readonly AmenityMark<AmenityMarkKey>[] }) {
+function AmenityCapPopover({ marks }: { marks: ReadonlyArray<AmenityMark<AmenityMarkKey>> }) {
   return (
     <div className="flex items-center gap-1.5" data-testid="amenity-cap-popover">
       {marks.map((mark) => {
@@ -1274,7 +1274,7 @@ const LodgingUnitCardInner = memo(function LodgingUnitCardInner({
    * The full set this card would draw with no cap at all, in the row's own
    * RENDER order — `AMENITY_RENDER_ORDER`, unchanged from before the cap.
    */
-  const presentAmenityMarks: AmenityMark<AmenityMarkKey>[] = AMENITY_RENDER_ORDER.filter(
+  const presentAmenityMarks: Array<AmenityMark<AmenityMarkKey>> = AMENITY_RENDER_ORDER.filter(
     (key) =>
       ({
         bathroom: bathroomMarkPresent,

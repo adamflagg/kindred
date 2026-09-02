@@ -67,13 +67,13 @@ export interface Camper {
   readonly external_id?: string
   readonly primary_email?: string
   readonly secondary_email?: string
-  readonly bunking_requests?: readonly {
+  readonly bunking_requests?: ReadonlyArray<{
     readonly id?: string
     readonly type?: string
     readonly requested_person_id?: number
     readonly is_first_requested?: boolean
     readonly [key: string]: unknown
-  }[] // Array of bunking requests
+  }> // Array of bunking requests
   readonly custom_fields?: Readonly<Record<string, unknown>>
   readonly attendee_status?: string
   readonly attendee_created?: string
@@ -83,13 +83,13 @@ export interface Camper {
   readonly expand?: {
     readonly session?: CampSessionsResponse | null
     readonly assigned_bunk?: BunksResponse | null
-    readonly tags?: readonly {
+    readonly tags?: ReadonlyArray<{
       readonly id: string
       readonly name: string
       readonly category: string | null
       readonly is_seasonal?: boolean
-    }[]
-    readonly person_tag_assignments?: readonly {
+    }>
+    readonly person_tag_assignments?: ReadonlyArray<{
       readonly id: string
       readonly expand?: {
         readonly tag?: {
@@ -99,7 +99,7 @@ export interface Camper {
           readonly is_seasonal?: boolean
         }
       }
-    }[]
+    }>
     readonly attendee?: AttendeesResponse
   }
 }
@@ -202,10 +202,10 @@ export interface SolverRun {
   readonly constraints_snapshot?: Readonly<Record<string, unknown>>
   readonly locked_bunks?: readonly string[]
   readonly results?: {
-    readonly assignments: readonly {
+    readonly assignments: ReadonlyArray<{
       readonly camper_id: string
       readonly bunk_id: string
-    }[]
+    }>
     readonly stats: {
       readonly total_campers: number
       readonly assigned_campers: number

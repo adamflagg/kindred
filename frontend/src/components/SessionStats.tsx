@@ -101,9 +101,7 @@ export default function SessionStats({ bunks, campers, defaultCapacity = 12 }: S
         const Icon = stat.icon
         const colors = colorClasses[stat.color as keyof typeof colorClasses]
         const progressColor =
-          stat.progress !== undefined && stat.color
-            ? progressColorClasses[stat.color as keyof typeof progressColorClasses]
-            : ''
+          stat.progress !== undefined && stat.color ? progressColorClasses[stat.color] : ''
 
         return (
           <div

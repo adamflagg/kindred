@@ -107,7 +107,7 @@ export function useCohortRequestRelations(
         // sent both (rare/edge — surface the conflict over hiding it).
         const existing = map.get(otherCmId)
         if (existing?.type === 'not_bunk_with') continue
-        const type = r.request_type as RequestRelationType
+        const type = r.request_type
         const mutual = outgoing.get(otherCmId)?.has(type) ?? false
         map.set(otherCmId, { type, mutual })
       }
