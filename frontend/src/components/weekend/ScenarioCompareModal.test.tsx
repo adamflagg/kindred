@@ -937,4 +937,74 @@ describe('ScenarioCompareModal — a placement is named the way the board draws 
     expect(okafor).toContain('Delta House→Delta 1')
     expect(okafor).not.toContain('(')
   })
+
+  /**
+   * THE ROW CLASS THIS PR CREATES, and the one no fixture covered. Since
+   * `compare_placements` compares the rooms each side occupies (2026-09-01), the
+   * server can emit a `match` whose two sides name DIFFERENT codes -- CampMinder
+   * in the complete room set, the plan on the house above them. Every other
+   * match fixture in this file names identical codes on both sides, so the
+   * single-label render `scenarioText || mirrorText` was never exercised on the
+   * shape where the two labels can disagree.
+   */
+  const CROSS_GRAIN_MATCH: ScenarioCompare = {
+    ...COMPARE,
+    counts: { match: 1, both_unassigned: 0, conflict: 0, add: 0, remove: 0 },
+    parties: [
+      {
+        grain: 'household',
+        household_cm_id: 303,
+        person_cm_id: 0,
+        display_name: 'The Adeyemi Family',
+        cls: 'match',
+        both_unassigned: false,
+        scenario_unit_label: 'Delta House',
+        scenario_unit_codes: ['delta-house'],
+        mirror_unit_label: 'Delta 1 + Delta 2',
+        mirror_unit_codes: ['delta-1', 'delta-2'],
+      },
+    ],
+    write_ins: [],
+  }
+
+  async function matchRowSaying(fragment: string): Promise<string> {
+    // `findByRole`, not `getByRole`: this fixture has no difference rows to
+    // await, so the toggle itself is the first thing that proves the query
+    // resolved. The sibling helper in the arrow block waits on a difference row
+    // instead, which its own fixture happens to have.
+    const toggle = await screen.findByRole('button', { name: /matching famil/i })
+    await userEvent.click(toggle)
+    const rows = await screen.findAllByTestId('compare-match-row')
+    return rows.map((r) => r.textContent).find((t) => t?.includes(fragment)) ?? ''
+  }
+
+  it('names a house-against-its-rooms match once, by the card the board draws', async () => {
+    // The registry is loaded, so the roll-up resolves BOTH sides to the one
+    // card -- the container from above and its complete room set from below.
+    // The labels coincide, and the row states the card once with no arrow.
+    mockRosterUnits = deltaHouse(true)
+    renderModal(CROSS_GRAIN_MATCH)
+    const adeyemi = await matchRowSaying('The Adeyemi Family')
+    expect(adeyemi).toContain('Same cabin')
+    expect(adeyemi).not.toContain('→')
+    expect((adeyemi.match(/Delta House/g) ?? []).length).toBe(1)
+    // The rooms are the mirror's spelling of the SAME space; naming them here
+    // would read as a second, different placement.
+    expect(adeyemi).not.toContain('Delta 1 + Delta 2')
+  })
+
+  it('states the plan’s side when a cold open leaves the two labels spelled differently', async () => {
+    // No registry, so `sideLabel` falls back to each side's roster label and
+    // they genuinely differ -- `Delta House` against `Delta 1 + Delta 2`, two
+    // spellings of one space. `scenarioText || mirrorText` keeps the plan's,
+    // which is the half staff are working in, and the pill still says the two
+    // agree. Pinned because the alternative -- rendering both, or the mirror's
+    // -- would read as a disagreement under a `Same cabin` verdict.
+    mockRosterUnits = undefined
+    renderModal(CROSS_GRAIN_MATCH)
+    const adeyemi = await matchRowSaying('The Adeyemi Family')
+    expect(adeyemi).toContain('Same cabin')
+    expect(adeyemi).not.toContain('→')
+    expect(adeyemi).toContain('Delta House')
+  })
 })

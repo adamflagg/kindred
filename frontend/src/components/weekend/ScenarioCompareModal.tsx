@@ -280,9 +280,26 @@ function withDetail(label: string, detail: string): string {
  * itself and spending the row's width restating the pill. Agreement on a unit
  * IS what the verdict means, so the row states the unit once and lets the pill
  * carry the rest. `scenario || mirror` picks the side that has it, the same way
- * `WriteInRow` below picks `draft || live` -- on a match the two are the same
- * unit set by construction, and when neither side placed the family both are
- * "" and `UnitLabel`'s em-dash stands in, under a `Both unassigned` pill.
+ * `WriteInRow` below picks `draft || live`, and when neither side placed the
+ * family both are "" and `UnitLabel`'s em-dash stands in, under a `Both
+ * unassigned` pill.
+ *
+ * ⚠️ A MATCH NO LONGER MEANS THE TWO SIDES NAMED THE SAME CODES, and this
+ * comment used to say it did. Since 2026-09-01 `_placement_verdict` compares
+ * the ROOMS each side occupies, so a mirror naming a house's complete room set
+ * and a scenario naming the house above them is a `match` with two different
+ * `unit_codes`. Stating ONE label is still right, and for a stronger reason
+ * than "they are equal": they are the same physical space, and the roll-up
+ * resolves both to the one card the board draws, so the two labels coincide
+ * anyway whenever the registry is loaded.
+ *
+ * On a COLD OPEN they do not coincide -- `sideLabel` falls back to each side's
+ * roster label, and `Delta House` against `Delta 1 + Delta 2` are two spellings
+ * of one space. The scenario's wins, which is the right half to keep: it is the
+ * plan staff are working in, and the pill has already said the two agree. This
+ * row deliberately does NOT borrow `withDetail` for that case -- a footnote
+ * exists to explain a `Different cabin` whose halves look identical, and
+ * spelling out rooms under `Same cabin` would answer a question nobody asked.
  *
  * `add` and `remove` KEEP the arrow, and that is not an inconsistency: their
  * em-dash is the half of the comparison holding nobody, and it only reads as an

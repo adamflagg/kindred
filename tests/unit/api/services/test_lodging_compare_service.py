@@ -26,6 +26,7 @@ from api.services.lodging_compare_service import (
     LodgingCompareService,
     NotAFamilyWeekendError,
 )
+from api.services.lodging_repository import LodgingRepository
 from api.services.lodging_roster_service import SessionNotFoundError
 
 
@@ -47,7 +48,16 @@ def _party(
 
 
 def _unit(code: str, name: str, parent: str = "", container: bool = False) -> LodgingUnitSummary:
-    return LodgingUnitSummary(unit_id=f"id-{code}", code=code, name=name, parent_code=parent, is_container=container)
+    # `is_active=True` IS LOAD-BEARING, not fixture noise. `LodgingUnitSummary`
+    # defaults it to False, so leaving it off would have every unit here
+    # RETIRED -- and since `_leaf_expander` does not filter on it, these tests
+    # would then quietly assert "an expansion counts deactivated rooms" as the
+    # spec. Nobody has ruled on that question; the fixture must not answer it by
+    # inheriting a default. Real rooms staff can drop on are active, so that is
+    # what the registry says here.
+    return LodgingUnitSummary(
+        unit_id=f"id-{code}", code=code, name=name, parent_code=parent, is_container=container, is_active=True
+    )
 
 
 #: One combined house over two rooms -- the shape every multi-unit alias in the
@@ -116,7 +126,13 @@ def _service(
             year=2026, session_cm_id=1000001, scenario="scn_1", digest="d", buildings=[]
         )
 
-    repository = MagicMock()
+    # `spec=` IS THE ASSERTION'S TEETH. A bare `MagicMock()` auto-creates
+    # ANY attribute, so `fetch_units.assert_not_called()` below would forbid
+    # only that one spelling and pass green for `fetch_all_units` or any new
+    # repository read. Speccing it means the mock carries exactly the real
+    # methods, so the third read the test exists to forbid cannot come back
+    # under another name.
+    repository = MagicMock(spec=LodgingRepository)
     sync_end_stub = AsyncMock(side_effect=sync_end)
     repository.fetch_last_successful_sync_end = sync_end_stub
 
@@ -322,6 +338,35 @@ class TestLeafGrain:
         report = await stubs.service.compare_scenario(2026, 1000001, "scn_1")
 
         assert [(p.cls, p.both_unassigned) for p in report.parties] == [("remove", False)]
+
+    @pytest.mark.asyncio
+    async def test_a_childless_container_beside_a_real_room_stays_in_the_comparison(self) -> None:
+        """The shape where `_leaf_expander`'s OWN fallback is the only guard,
+        and the case the test above cannot reach.
+
+        `_occupied_rooms` falls back per PLACEMENT -- it fires only when the
+        whole side expands to nothing -- so a side holding a real room BESIDE
+        an unresolvable container never reaches it. Only the per-CODE `or
+        (code,)` in `_leaf_expander` keeps the container in the set here.
+        Without it the extra code expands to nothing, `{alpha-1, alpha-hollow}`
+        collapses to `{alpha-1}`, and a side holding one more space than the
+        other reports `Same cabin`.
+
+        The mirror is the side carrying it on purpose: that is a family
+        CampMinder has in a space the plan does not, which is exactly the
+        difference staff open this modal to find.
+        """
+        registry = [
+            *_UPSTAIRS_TREE,
+            _unit("alpha-hollow", "Alpha Hollow", container=True),
+        ]
+        stubs = _service(
+            mirror=_roster([_party(11, "The Alvarez Family", ("alpha-1", "alpha-hollow"))], units=registry),
+            scenario=_roster([_party(11, "The Alvarez Family", ("alpha-1",))], units=registry),
+        )
+        report = await stubs.service.compare_scenario(2026, 1000001, "scn_1")
+
+        assert [p.cls for p in report.parties] == ["conflict"]
 
     @pytest.mark.asyncio
     async def test_rooms_nested_below_a_second_container_still_expand(self) -> None:

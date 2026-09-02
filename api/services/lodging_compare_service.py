@@ -40,7 +40,6 @@ pay the year-scoped set twice.
 """
 
 from collections.abc import Sequence
-from typing import Any
 
 from api.schemas.lodging import (
     ComparePartyReport,
@@ -49,6 +48,7 @@ from api.schemas.lodging import (
     RosterParty,
     ScenarioCompareCounts,
     ScenarioCompareResponse,
+    WeekendRosterResponse,
 )
 from api.services.lodging_repository import FAMILY_SESSION_TYPE, LodgingRepository
 from api.services.lodging_roster_service import LodgingRosterService, _BathroomIndex
@@ -228,16 +228,25 @@ class LodgingCompareService:
         # than three, and this is not a roster read.
         mirror_synced_at = await self.repository.fetch_last_successful_sync_end(MIRROR_SYNC_SERVICE)
 
-        mirror_roster: Any = await self.roster.build_roster(year, session_cm_id, "")
+        mirror_roster: WeekendRosterResponse = await self.roster.build_roster(year, session_cm_id, "")
         if mirror_roster.session_type != FAMILY_SESSION_TYPE:
             raise NotAFamilyWeekendError(
                 f"Weekend {session_cm_id} in {year} is not a family camp session; "
                 "the scenario compare is family camp only"
             )
-        scenario_roster: Any = await self.roster.build_roster(year, session_cm_id, scenario)
+        scenario_roster: WeekendRosterResponse = await self.roster.build_roster(year, session_cm_id, scenario)
 
-        # THE MIRROR ROSTER'S REGISTRY, and either side's would do: units are
-        # year-scoped, not scenario-scoped, so both reads return the same list.
+        # THE MIRROR ROSTER'S REGISTRY, and either side's would do -- because the
+        # TREE the expander reads is scenario-invariant, which is a narrower
+        # claim than "the two lists are equal" and the only one that holds.
+        # `code`, `parent_code` and `is_container` are copied straight off the
+        # year-scoped `lodging_units` row in `_build_units`, so no scenario can
+        # move them. The SUMMARY around them is not scenario-invariant:
+        # `is_combined` resolves the per-scenario merge tier (1500000140) and
+        # `write_ins` is whichever draft the caller asked for, so a reader that
+        # wants either of those must not reach for the other side's list on the
+        # strength of this comment.
+        #
         # Taking the mirror's keeps the expander built from the read that has
         # already happened by the time the scope gate above passes.
         verdicts = compare_placements(
