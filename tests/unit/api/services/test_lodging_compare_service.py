@@ -83,6 +83,10 @@ class _Stubs(NamedTuple):
     build_roster: AsyncMock
     preview_push: AsyncMock
     sync_end: AsyncMock
+    #: The stubbed repository, for asserting a read did NOT happen. Same reason
+    #: the three awaits are carried here: `service.repository.fetch_units` is
+    #: typed as the real bound method, so mypy rejects `assert_not_called` on it.
+    repository: MagicMock
     #: Every stubbed await, in the order the service issued it. ORDER is the
     #: whole correctness argument for the mirror-age read, so it needs to be
     #: assertable rather than inferred from three separate call counts.
@@ -121,7 +125,7 @@ def _service(
     preview_stub = AsyncMock(side_effect=preview_push)
     service.roster.build_roster = roster_stub  # type: ignore[method-assign]
     service.writes.preview_push = preview_stub  # type: ignore[method-assign]
-    return _Stubs(service, roster_stub, preview_stub, sync_end_stub, calls)
+    return _Stubs(service, roster_stub, preview_stub, sync_end_stub, repository, calls)
 
 
 class TestCompareScenario:
@@ -349,7 +353,7 @@ class TestLeafGrain:
         )
         await stubs.service.compare_scenario(2026, 1000001, "scn_1")
 
-        stubs.service.repository.fetch_units.assert_not_called()
+        stubs.repository.fetch_units.assert_not_called()
 
 
 class TestComparePartyChildren:
