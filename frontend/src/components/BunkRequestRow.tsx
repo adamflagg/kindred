@@ -182,8 +182,14 @@ export function BunkRequestRow({
   const isBunkWith = request.request_type === 'bunk_with'
 
   // Prefer resolved person name if we have it; fall back to requested_person_name.
+  //
+  // Two different operators, deliberately. `resolvedName` is genuinely
+  // `string | null`, so `??` is right for the first link. `requested_person_name`
+  // is not nullable -- PocketBase zero-values scalars rather than omitting them,
+  // so an absent name arrives as '' -- which made the old `?? 'Unknown'` dead
+  // and rendered a blank. `||` is what actually reaches the fallback (#2669).
   const resolvedName = targetPerson ? `${targetPerson.first_name} ${targetPerson.last_name}` : null
-  const displayName = resolvedName ?? request.requested_person_name ?? 'Unknown'
+  const displayName = resolvedName ?? (request.requested_person_name || 'Unknown')
 
   // A "matched target" is one with a real requestee_id — true for both resolved
   // AND declined requests that pointed at a known camper. Shared with

@@ -5,7 +5,7 @@ import { describe, it, expect } from 'vitest'
 import { formatGradeOrdinal } from './gradeUtils'
 
 describe('formatGradeOrdinal', () => {
-  it.each([
+  it.each<[number | string | undefined | null, string]>([
     [1, '1st'],
     [2, '2nd'],
     [3, '3rd'],
@@ -31,6 +31,6 @@ describe('formatGradeOrdinal', () => {
     ['K', 'K'],
     ['Pre-K', 'Pre-K'],
   ])('formats %s to %s', (input, expected) => {
-    expect(formatGradeOrdinal(input as any)).toBe(expected)
+    expect(formatGradeOrdinal(input)).toBe(expected)
   })
 })

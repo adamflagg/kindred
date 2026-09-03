@@ -137,6 +137,22 @@ export default tseslint.config(
     files: ['**/*.test.{ts,tsx}', '**/__tests__/**'],
     rules: {
       '@typescript-eslint/no-non-null-assertion': 'off',
+
+      // Off in tests by ruling (kindred#2669), not by fatigue.
+      //
+      // All 51 findings here were the `noImportTypeAnnotations` variant --
+      // inline `import()` annotations -- and 50 of them are the one canonical
+      // mock-factory idiom:
+      //
+      //   vi.mock('./thing', async (importOriginal) => {
+      //     const actual = await importOriginal<typeof import('./thing')>()
+      //
+      // That `typeof import(...)` is how Vitest types a partial mock; there is
+      // no hoisted-import form of it, no `fixStyle` can rewrite it (every one
+      // carried zero fixes and zero suggestions), and hand-hoisting them makes
+      // the tests harder to read for no runtime benefit. The rule is still ON
+      // for `src/`, which is where import style actually affects the bundle.
+      '@typescript-eslint/consistent-type-imports': 'off',
     },
   },
 

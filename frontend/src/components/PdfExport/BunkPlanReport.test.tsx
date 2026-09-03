@@ -3,6 +3,7 @@ import { pdf } from '@react-pdf/renderer'
 import type { DocumentProps } from '@react-pdf/renderer'
 import { PDFParse } from 'pdf-parse'
 import { BunkPlanReport } from './BunkPlanReport'
+import type { ImpossibilityReport } from '../../services/solver'
 import type { ReactElement } from 'react'
 
 // Render through the SAME build the app ships. `vitest.config.ts` gives this
@@ -135,7 +136,9 @@ describe('BunkPlanReport (PDF)', () => {
               affected_campers: 5,
               flat: [],
               mp_campers_entirely_impossible: [],
-            } as any
+              // The seven `{}` placeholders only need to have a length here --
+              // this assertion counts them, it does not read them.
+            } as unknown as ImpossibilityReport
           }
         />
       )
@@ -234,6 +237,55 @@ describe('BunkPlanReport (PDF) — Bunks/Other page', () => {
     expect(text).toMatch(/Emma Johnson/)
     // unsatisfied_material_parent_persons (per-person list) does NOT drive any PDF section.
     expect(text).not.toMatch(/Riley Sam/)
+  }, 30000)
+})
+
+describe('BunkPlanReport (PDF) — impossibility detail', () => {
+  it('prints an em dash for an item whose request_type is empty', async () => {
+    // `ImpossibilityReportItem.request_type` is not nullable, so an absent
+    // value arrives as '' rather than undefined and the old `?? '—'` could
+    // never fire -- the Source cell rendered blank. Hardening, not a live
+    // defect: no empty request_type exists in the prod snapshot. #2669.
+    const buf = await renderToBuffer(
+      <BunkPlanReport
+        sessionName="Session 3"
+        year={2026}
+        plannerName="Test Staff"
+        statistics={makeStats()}
+        impossibilityReport={{
+          by_reason: {
+            malformed: [
+              {
+                requester: { cm_id: 3001, name: 'Noah Bennett', grade: 8, gender: 'M' },
+                requestee: { cm_id: 3002, name: 'Ava Sullivan', grade: 9, gender: 'F' },
+                request_type: '',
+                request_id: 'imp-1',
+                reason_code: 'malformed',
+                reason_message: 'request is missing a name',
+                detail: {},
+                bucket: null,
+              },
+            ],
+          },
+          total_impossible: 1,
+          affected_campers: 1,
+          flat: [],
+          mp_campers_entirely_impossible: [],
+        }}
+        issues={[]}
+      />
+    )
+    const parser = new PDFParse({ data: buf })
+    const result = await parser.getText()
+    await parser.destroy()
+    // Adjacency, not mere presence: the report prints em dashes elsewhere, so
+    // asserting /—/ alone passes even when the Source cell is blank. The row is
+    // Requester | Target | Source, so the dash must follow the target's name.
+    const flat = stripSpaces(result.text)
+    // `camperCell` renders "Name (grade, gender)", so the Source cell is
+    // whatever immediately follows the target's parenthesised detail.
+    expect(flat).toMatch(/NOAHBENNETT\(8,M\)/)
+    expect(flat).toMatch(/AVASULLIVAN\(9,F\)—/)
   }, 30000)
 })
 

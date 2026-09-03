@@ -467,7 +467,10 @@ export function BunkPlanReport({
                   <View key={`${code}-${idx}`} style={styles.tableRow} wrap={false}>
                     <Text style={styles.cell}>{camperCell(it.requester)}</Text>
                     <Text style={styles.cell}>{camperCell(it.requestee)}</Text>
-                    <Text style={styles.cell}>{it.request_type ?? '—'}</Text>
+                    {/* `||` not `??`: request_type is not nullable, so an
+                        absent value arrives as '' and `??` never reached the
+                        dash -- the Source cell rendered blank. #2669. */}
+                    <Text style={styles.cell}>{it.request_type || '—'}</Text>
                   </View>
                 ))}
               </View>

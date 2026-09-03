@@ -12,6 +12,7 @@ import type {
   AttendeesResponse,
 } from '../types/pocketbase-types'
 import type { Camper } from '../types/app-types'
+import { resolveCamperName } from '../utils/camperName'
 
 // Animation duration must match CSS keyframes
 const ANIMATION_DURATION_MS = 2000
@@ -306,7 +307,7 @@ export function LockGroupProvider({ children }: LockGroupProviderProps) {
       if (existingGroup && existingGroup.id !== groupId && scenarioId) {
         const targetGroup = groups.find((g) => g.id === groupId)
         const targetGroupName = targetGroup?.name ?? 'this group'
-        setConflictCamperName(camper.name ?? camper.first_name ?? 'Camper')
+        setConflictCamperName(resolveCamperName(camper))
         const outcome = await conflictConfirm.checkConflict({
           attendeePbId,
           targetGroupId: groupId,
