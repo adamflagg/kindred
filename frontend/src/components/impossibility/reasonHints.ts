@@ -50,8 +50,21 @@ export const REASON_SEVERITY: Record<ReasonCode, 'red' | 'amber'> = {
   age_pref_no_eligible_grade: 'amber',
 }
 
+// Both lookups below take a `code` that came off the wire as an arbitrary
+// string, so the entry genuinely may not exist and the `??` fallbacks are
+// load-bearing (pinned by this module's tests).
+//
+// They used to say `MAP[code as ReasonCode]`, and that cast was the defect:
+// it told TypeScript the lookup always succeeds, which made the real fallback
+// look like dead code to `no-unnecessary-condition`. Widening the map to a
+// partial string-keyed record instead says the true thing -- the lookup can
+// miss -- with no cast at all, and the exhaustiveness guarantee on the map
+// literals above is untouched. #2669.
+type ReasonLookup<T> = Partial<Record<string, T>>
+
 export function friendlyReasonLabel(code: string): string {
-  return FRIENDLY_REASON_LABELS[code as ReasonCode] ?? code
+  const labels: ReasonLookup<string> = FRIENDLY_REASON_LABELS
+  return labels[code] ?? code
 }
 
 // Sorted before joining so the same code set always renders identically,
@@ -59,7 +72,8 @@ export function friendlyReasonLabel(code: string): string {
 export function camperActionHints(reasonCodes: string[]): string {
   const hints = new Set<string>()
   for (const code of reasonCodes) {
-    hints.add(REASON_HINTS[code as ReasonCode] ?? 'review request')
+    const hintsByCode: ReasonLookup<string> = REASON_HINTS
+    hints.add(hintsByCode[code] ?? 'review request')
   }
   return Array.from(hints).sort().join(' / ')
 }

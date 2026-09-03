@@ -8,6 +8,7 @@ import { isAgSession } from '../utils/sessionTypePredicates'
 import { useLockGroupContext } from '../contexts/LockGroupContext'
 import { useGroupConflictConfirm } from '../hooks/useGroupConflictConfirm'
 import { GroupConflictDialog } from './GroupConflictDialog'
+import { resolveCamperName } from '../utils/camperName'
 
 interface LockGroupActionBarProps {
   pendingCampers: Camper[]
@@ -176,7 +177,7 @@ function LockGroupActionBar({
       // can confirm (or cancel) one camper at a time if needed.
       for (const camper of pendingCampers) {
         if (!camper.attendee_id) continue
-        setConflictCamperName(camper.name ?? camper.first_name ?? 'Camper')
+        setConflictCamperName(resolveCamperName(camper))
         const outcome = await conflictConfirm.checkConflict({
           attendeePbId: camper.attendee_id,
           // Use '__new__' as the sentinel target ID — no existing membership

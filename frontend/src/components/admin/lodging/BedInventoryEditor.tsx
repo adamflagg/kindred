@@ -25,7 +25,9 @@ export interface BedInventoryEditorProps {
 }
 
 export function BedInventoryEditor({ beds, onChange }: BedInventoryEditorProps) {
-  const [pending, setPending] = useState<BedType>(BED_TYPES[0]?.id ?? 'twin')
+  // `BED_TYPES` is `as const satisfies readonly BedTypeDef[]`, so index 0 is a
+  // known tuple element -- the previous `?.id ?? 'twin'` was provably dead.
+  const [pending, setPending] = useState<BedType>(BED_TYPES[0].id)
 
   const addBed = () => {
     const existing = beds.find((b) => b.type === pending)

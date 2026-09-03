@@ -4,7 +4,7 @@ import { SourceField } from '../types/sourceField'
 import type { EnhancedBunkRequest } from '../hooks/camper/useAllBunkRequests'
 
 function row(
-  overrides: Partial<EnhancedBunkRequest> & Record<string, any> = {}
+  overrides: Partial<EnhancedBunkRequest> & Record<string, unknown> = {}
 ): EnhancedBunkRequest {
   return {
     id: 'r' + Math.random().toString(36).slice(2, 8),

@@ -4,6 +4,7 @@ import { toast } from 'react-hot-toast'
 import { socialGraphService } from '../services/socialGraph'
 import { useAuth } from '../contexts/AuthContext'
 import { useYear } from '../hooks/useCurrentYear'
+import type { PersonsResponse } from '../types/pocketbase-types'
 import { useScenario } from '../hooks/useScenario'
 import { graphCacheService } from '../services/GraphCacheService'
 import { useApiWithAuth } from '../hooks/useApiWithAuth'
@@ -293,7 +294,7 @@ export default function SessionView() {
         last_name: c.last_name ?? '',
         grade: c.grade,
         year: currentYear,
-      })) as unknown as Array<import('../types/pocketbase-types').PersonsResponse>,
+      })) as unknown as PersonsResponse[],
     [campers, currentYear]
   )
 

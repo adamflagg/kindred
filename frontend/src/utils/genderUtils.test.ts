@@ -15,12 +15,14 @@ import {
   getPronounBadgeClasses,
   formatGenderFull,
   formatGenderShort,
+  type GenderCategory,
+  type PronounCategory,
 } from './genderUtils'
 import type { Camper } from '../types/app-types'
 import type { PersonsResponse } from '../types/pocketbase-types'
 
 describe('getGenderCategory', () => {
-  it.each([
+  it.each<[string | undefined, GenderCategory]>([
     ['boy/man', 'boys'],
     ['Boy/Man', 'boys'],
     ['BOY/MAN', 'boys'],
@@ -36,7 +38,7 @@ describe('getGenderCategory', () => {
     ['  boy/man  ', 'boys'],
     ['  girl/woman  ', 'girls'],
   ])('returns correct category for %s', (input, expected) => {
-    expect(getGenderCategory(input as any)).toBe(expected)
+    expect(getGenderCategory(input)).toBe(expected)
   })
 })
 
@@ -63,22 +65,22 @@ describe('getGenderIdentityDisplay', () => {
 })
 
 describe('getGenderColorClasses', () => {
-  it.each([
+  it.each<[GenderCategory, string]>([
     ['boys', 'bg-blue-100 dark:bg-blue-900/30 border-blue-300 dark:border-blue-700'],
     ['girls', 'bg-pink-100 dark:bg-pink-900/30 border-pink-300 dark:border-pink-700'],
     ['other', 'bg-purple-100 dark:bg-purple-900/30 border-purple-300 dark:border-purple-700'],
   ])('returns correct classes for %s', (category, expected) => {
-    expect(getGenderColorClasses(category as any)).toBe(expected)
+    expect(getGenderColorClasses(category)).toBe(expected)
   })
 })
 
 describe('getGenderBadgeClasses', () => {
-  it.each([
+  it.each<[GenderCategory, string]>([
     ['boys', 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300'],
     ['girls', 'bg-pink-100 text-pink-800 dark:bg-pink-900/30 dark:text-pink-300'],
     ['other', 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300'],
   ])('returns correct badge classes for %s', (category, expected) => {
-    expect(getGenderBadgeClasses(category as any)).toBe(expected)
+    expect(getGenderBadgeClasses(category)).toBe(expected)
   })
 })
 
@@ -188,7 +190,7 @@ describe('getPronounCategory', () => {
 })
 
 describe('getPronounColorClasses', () => {
-  it.each([
+  it.each<[PronounCategory, string]>([
     ['he_him', 'bg-blue-100 dark:bg-blue-900/30 border-blue-300 dark:border-blue-700'],
     ['she_her', 'bg-pink-100 dark:bg-pink-900/30 border-pink-300 dark:border-pink-700'],
     ['non_binary', 'bg-purple-100 dark:bg-purple-900/30 border-purple-300 dark:border-purple-700'],
@@ -197,12 +199,12 @@ describe('getPronounColorClasses', () => {
       'bg-purple-100 dark:bg-purple-900/30 border-purple-300 dark:border-purple-700',
     ],
   ])('returns correct classes for %s', (category, expected) => {
-    expect(getPronounColorClasses(category as any)).toBe(expected)
+    expect(getPronounColorClasses(category)).toBe(expected)
   })
 })
 
 describe('getPronounBadgeClasses', () => {
-  it.each([
+  it.each<[PronounCategory, string]>([
     ['he_him', 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300'],
     ['she_her', 'bg-pink-100 text-pink-800 dark:bg-pink-900/30 dark:text-pink-300'],
     ['non_binary', 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300'],
@@ -211,7 +213,7 @@ describe('getPronounBadgeClasses', () => {
       'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300',
     ],
   ])('returns correct badge classes for %s', (category, expected) => {
-    expect(getPronounBadgeClasses(category as any)).toBe(expected)
+    expect(getPronounBadgeClasses(category)).toBe(expected)
   })
 })
 

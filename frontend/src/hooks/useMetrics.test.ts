@@ -49,10 +49,12 @@ describe('MetricsFilterOptions type (#567)', () => {
   })
 
   it('should reject both sessionCmId and duration set simultaneously', () => {
+    // Validated at compile time: if the @ts-expect-error becomes unnecessary,
+    // tsc errors, meaning the type stopped enforcing mutual exclusivity.
+    // `assertType` rather than an unused `_opts` binding so the probe has no
+    // dead variable to explain away.
     // @ts-expect-error - sessionCmId and duration are mutually exclusive
-    const _opts: MetricsFilterOptions = { sessionCmId: 1000, duration: '2-week' }
-    // This test validates at compile time — if the @ts-expect-error is unnecessary,
-    // TypeScript will error, meaning the type is NOT enforcing mutual exclusivity
+    assertType<MetricsFilterOptions>({ sessionCmId: 1000, duration: '2-week' })
     expect(true).toBe(true)
   })
 })
@@ -66,11 +68,11 @@ describe('RegistrationFilterOptions', () => {
 
   it('should still enforce mutual exclusivity', () => {
     // @ts-expect-error - sessionCmId and duration are mutually exclusive
-    const _opts: RegistrationFilterOptions = {
+    assertType<RegistrationFilterOptions>({
       sessionCmId: 1000,
       duration: '2-week',
       statuses: 'enrolled',
-    }
+    })
     expect(true).toBe(true)
   })
 })
@@ -84,11 +86,11 @@ describe('HistoricalFilterOptions', () => {
 
   it('should still enforce mutual exclusivity', () => {
     // @ts-expect-error - sessionCmId and duration are mutually exclusive
-    const _opts: HistoricalFilterOptions = {
+    assertType<HistoricalFilterOptions>({
       sessionCmId: 1000,
       duration: '2-week',
       years: '2023,2024',
-    }
+    })
     expect(true).toBe(true)
   })
 })

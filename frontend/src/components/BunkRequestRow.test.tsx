@@ -44,6 +44,22 @@ describe('BunkRequestRow', () => {
     expect(container.querySelector('.bg-green-500')).toBeTruthy()
   })
 
+  it('shows "Unknown" when there is no target person and the stored name is empty', () => {
+    // PocketBase zero-values scalars rather than omitting them, so an absent
+    // `requested_person_name` arrives as '' and not undefined. The row used
+    // `?? 'Unknown'`, which never fires on '' -- it rendered a blank name.
+    // Measured on the prod snapshot: 0 bunk_with/not_bunk_with rows are empty
+    // today (all 1191 empties are age_preference, which returns early above
+    // this line), so this is hardening rather than a live defect -- same
+    // verdict as #2692. #2669.
+    render(
+      <BunkRequestRow
+        request={makeRequest({ request_type: 'bunk_with', requested_person_name: '' })}
+      />
+    )
+    expect(screen.getByText('Unknown')).toBeInTheDocument()
+  })
+
   it('renders a red dot for not_bunk_with rows', () => {
     const { container } = render(
       <BunkRequestRow

@@ -393,7 +393,9 @@ describe('sessionDisplay utilities', () => {
     })
 
     it('should return null for falsy session', () => {
-      expect(getSessionShortName(null as any)).toBe(null)
+      // Deliberately `null` where the signature says `… | undefined`: the
+      // guard is `if (!session)`, and this pins that it catches null too.
+      expect(getSessionShortName(null as unknown as undefined)).toBe(null)
     })
 
     it('should return raw name for quest sessions', () => {
