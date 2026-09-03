@@ -602,7 +602,7 @@ interface SummaryFamily {
  *
  * Server order is preserved, as `writeInEntries` requires.
  */
-function summaryWriteIns(resolved: { writeIns: WriteInEntry[] }[]): WriteInEntry[] {
+function summaryWriteIns(resolved: Array<{ writeIns: WriteInEntry[] }>): WriteInEntry[] {
   const out: WriteInEntry[] = []
   const seen = new Set<string>()
   for (const entry of resolved) {

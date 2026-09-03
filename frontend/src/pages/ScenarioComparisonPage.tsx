@@ -550,8 +550,8 @@ export default function ScenarioComparisonPage() {
   const leftAssignments = useMemo(() => {
     const raw =
       leftScenarioId === 'production'
-        ? normalizeAssignments(productionAssignments as ExpandedAssignment[])
-        : normalizeAssignments(leftDraftAssignments as ExpandedAssignment[])
+        ? normalizeAssignments(productionAssignments)
+        : normalizeAssignments(leftDraftAssignments)
     return excludeStaff(raw)
   }, [
     leftScenarioId,
@@ -564,8 +564,8 @@ export default function ScenarioComparisonPage() {
   const rightAssignments = useMemo(() => {
     const raw =
       rightScenarioId === 'production'
-        ? normalizeAssignments(productionAssignments as ExpandedAssignment[])
-        : normalizeAssignments(rightDraftAssignments as ExpandedAssignment[])
+        ? normalizeAssignments(productionAssignments)
+        : normalizeAssignments(rightDraftAssignments)
     return excludeStaff(raw)
   }, [
     rightScenarioId,
@@ -1093,10 +1093,10 @@ export default function ScenarioComparisonPage() {
                         )
                       }}
                       className="bg-muted/50 text-muted-foreground hover:bg-muted ml-auto flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-all"
-                      title={getExportButtonTitle(changeFilter as 'moved' | 'all')}
+                      title={getExportButtonTitle(changeFilter)}
                     >
                       <Download className="h-4 w-4" />
-                      <span>{getExportButtonLabel(changeFilter as 'moved' | 'all')}</span>
+                      <span>{getExportButtonLabel(changeFilter)}</span>
                     </button>
                   )}
               </div>

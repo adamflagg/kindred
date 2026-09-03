@@ -127,7 +127,7 @@ export function useLodgingPlacement({
       // refetches, so nothing is left to guess. The toast fires either way —
       // this write failed, and staff have to be told regardless of who owns
       // the card.
-      if (context !== undefined && context.previous !== undefined) {
+      if (context?.previous !== undefined) {
         const current = queryClient.getQueryData<WeekendRoster>(rosterKey)
         const party = current?.parties?.find(
           (candidate) => partyKey(candidate) === context.partyKey

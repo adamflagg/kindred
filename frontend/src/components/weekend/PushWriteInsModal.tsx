@@ -279,13 +279,7 @@ const RESULT_TILE_META: Record<ResultField, { label: string; className: string }
   matched: { label: 'Matched', className: TILE_META.match.className },
 }
 
-const RESULT_FIELDS: ReadonlyArray<ResultField> = [
-  'added',
-  'removed',
-  'replaced',
-  'kept',
-  'matched',
-]
+const RESULT_FIELDS: readonly ResultField[] = ['added', 'removed', 'replaced', 'kept', 'matched']
 
 function ResultTile({ field, value }: { field: ResultField; value: number }) {
   const meta = RESULT_TILE_META[field]

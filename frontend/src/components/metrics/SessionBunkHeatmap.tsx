@@ -175,11 +175,23 @@ export function SessionBunkHeatmap({
   sessionDateLookup = {},
   bunkStaff,
 }: SessionBunkHeatmapProps) {
-  const { categoryBunks, categorySessions, lookup } = useMemo(() => {
+  // The generic is load-bearing. Both `categoryBunks` maps are built as
+  // `Record<string, string[]>` but read with a `BunkCategory` key, and the
+  // empty-data branch returns a bare `{}`. Without an annotation those two
+  // branches infer as a union (`Record<string, string[]> | {}`) that cannot be
+  // indexed at all (tsc TS7053). This used to be held together by four
+  // `as Partial<Record<BunkCategory, string[]>>` assertions, which
+  // no-unnecessary-type-assertion flagged and #2669's sweep removed; stating
+  // the memo's return type once is what they were approximating.
+  const { categoryBunks, categorySessions, lookup } = useMemo<{
+    categoryBunks: Partial<Record<BunkCategory, string[]>>
+    categorySessions: Partial<Record<BunkCategory, string[]>>
+    lookup: Map<string, RetentionBySessionBunk>
+  }>(() => {
     if (!data.length)
       return {
-        categoryBunks: {} as Partial<Record<BunkCategory, string[]>>,
-        categorySessions: {} as Partial<Record<BunkCategory, string[]>>,
+        categoryBunks: {},
+        categorySessions: {},
         lookup: new Map(),
       }
 
@@ -219,8 +231,8 @@ export function SessionBunkHeatmap({
     }
 
     return {
-      categoryBunks: catBunks as Partial<Record<BunkCategory, string[]>>,
-      categorySessions: catSessions as Partial<Record<BunkCategory, string[]>>,
+      categoryBunks: catBunks,
+      categorySessions: catSessions,
       lookup: map,
     }
   }, [data, sessionDateLookup])

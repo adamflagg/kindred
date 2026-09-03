@@ -368,10 +368,10 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
     const addAllElements = async () => {
       cy.batch(() => {
         // Order matters: parent compound nodes before children, edges last.
-        cy.add(parentNodes as cytoscape.ElementDefinition[])
+        cy.add(parentNodes)
         cy.add(nodes as cytoscape.ElementDefinition[])
         updateEdgeVisibility(cy, SHOW_EDGES)
-        cy.add(edges as cytoscape.ElementDefinition[])
+        cy.add(edges)
       })
       // Yield once so React can paint a "Computing layout..." state before
       // the worker blocks the worker thread.
@@ -510,7 +510,7 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
       function runFallbackLayout() {
         const hasCompound = parentNodes.length > 0
         const layoutOpts = getFcoseOptions({ hasCompoundNodes: hasCompound })
-        const layout = cy.layout(layoutOpts as cytoscape.LayoutOptions)
+        const layout = cy.layout(layoutOpts)
         layoutRef.current = layout
         layout.on('layoutstop', () => {
           setupGraphEventHandlers(cy, {

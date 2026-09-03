@@ -163,7 +163,7 @@ function doneFromDebug(d: DebugPipelineRun): PipelinePhase {
 
 export type FetchWithAuth = (url: string, options?: RequestInit) => Promise<Response>
 
-type RawSyncEntry = {
+interface RawSyncEntry {
   type?: string
   status?: string
   start_time?: string
@@ -189,7 +189,7 @@ export async function fetchSyncStatus(fetchWithAuth: FetchWithAuth): Promise<Syn
   const data = (await res.json()) as RawSyncStatusResponse
   const entry = data['bunk_requests']
   if (!entry || typeof entry !== 'object' || !('status' in entry)) return null
-  const sync = entry as RawSyncEntry
+  const sync = entry
   const normalized = normalizeStatus(sync.status)
   if (normalized === null) return null
   if (!sync.start_time) {
@@ -208,7 +208,7 @@ export async function fetchSyncStatus(fetchWithAuth: FetchWithAuth): Promise<Syn
   return result
 }
 
-type RawDebugListResponse = {
+interface RawDebugListResponse {
   items: Array<{
     run_id: string
     created: string

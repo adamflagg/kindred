@@ -31,7 +31,7 @@ export function useBunkNames(sessionCmId: number, enabled: boolean = true) {
         }
 
         const session = sessionResp.items[0]
-        if (!session || !session.cm_id) {
+        if (!session?.cm_id) {
           return {}
         }
 

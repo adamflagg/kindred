@@ -592,7 +592,7 @@ function CohortPill({ cohort }: { cohort: FamilyCohort }) {
   )
 }
 
-type FamilyRow = {
+interface FamilyRow {
   key: string
   name: string
   cm_id: string
@@ -600,7 +600,7 @@ type FamilyRow = {
   gender: string
   cohort: FamilyCohort
   sessions: string[]
-  subRows: { session: string; detail: React.ReactNode }[]
+  subRows: Array<{ session: string; detail: React.ReactNode }>
 }
 
 /**
@@ -1207,7 +1207,7 @@ export function PostCheckContents({
                         />
                         <span className="font-medium text-stone-900">{bunkName}</span>
                         {bunkIssues.map((iss, idx) => {
-                          const issueSev = (ISSUE_SEVERITY[iss.type] ?? 'amber') as Severity
+                          const issueSev = ISSUE_SEVERITY[iss.type] ?? 'amber'
                           return (
                             <span
                               key={idx}

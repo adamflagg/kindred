@@ -5,7 +5,7 @@ import { isMaterialRequest } from '../../utils/requestBucket'
 export type FamilyCohort =
   'got_nothing' | 'violated' | 'priority_unmet' | 'sacrificed_mp' | 'impossible_request'
 
-export type FamilySubRow = {
+export interface FamilySubRow {
   session: string
   detail: string
   // Structured per-sub-row data used by the modal for rich JSX rendering.
@@ -18,7 +18,7 @@ export type FamilySubRow = {
   honoredInPlan?: boolean
 }
 
-export type FamilyRowData = {
+export interface FamilyRowData {
   key: string // {cm_id}-{cohort}
   name: string
   cm_id: string
@@ -34,7 +34,7 @@ export function buildFamilyRows(
   statistics: ValidationStatistics,
   impossibilityReport: ImpossibilityReport
 ): FamilyRowData[] {
-  type RawRow = {
+  interface RawRow {
     cm_id: string
     name: string
     grade: number

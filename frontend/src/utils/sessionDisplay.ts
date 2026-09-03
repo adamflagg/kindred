@@ -102,12 +102,12 @@ export function getFormattedSessionName(
   session: Session | undefined,
   allSessions?: Session[]
 ): string {
-  if (!session || !session.name) return 'Unknown Session'
+  if (!session?.name) return 'Unknown Session'
 
   // For AG sessions, look up the parent session and use its name
   if (isAgSession(session) && session.parent_id && allSessions) {
     const parentSession = allSessions.find((s) => s.cm_id === session.parent_id)
-    if (parentSession && parentSession.name) {
+    if (parentSession?.name) {
       return parentSession.name
     }
   }

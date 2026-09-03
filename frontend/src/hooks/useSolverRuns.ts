@@ -121,13 +121,13 @@ function parseRecord(rec: RawSolverRunRecord): SolverRun {
     run_id: rec.run_id,
     status: rec.status,
     created: rec.created,
-    error: isObject(rec.error) ? (rec.error as { message?: string }) : null,
+    error: isObject(rec.error) ? rec.error : null,
   }
   if (typeof rec.session_id === 'number') out.session_id = rec.session_id
   if (typeof rec.started_at === 'string') out.started_at = rec.started_at
   if (typeof rec.completed_at === 'string') out.completed_at = rec.completed_at
-  if (isObject(rec.stats)) out.stats = rec.stats as SolverRunStats
-  if (isObject(rec.details)) out.details = rec.details as SolverRunDetails
+  if (isObject(rec.stats)) out.stats = rec.stats
+  if (isObject(rec.details)) out.details = rec.details
   return out
 }
 
@@ -184,7 +184,7 @@ export function useSolverRuns(filters: SolverRunsFilters, options?: UseSolverRun
       }
       const filterStr = filterParts.length ? pb.filter(filterParts.join(' && '), filterParams) : ''
 
-      const result = await pb.collection('solver_runs').getList(pageParam as number, PER_PAGE, {
+      const result = await pb.collection('solver_runs').getList(pageParam, PER_PAGE, {
         filter: filterStr,
         sort: '-created',
       })
@@ -197,7 +197,7 @@ export function useSolverRuns(filters: SolverRunsFilters, options?: UseSolverRun
     getNextPageParam: (_lastPage, allPages, lastPageParam) => {
       const fetched = allPages.reduce((sum, p) => sum + p.items.length, 0)
       const total = allPages[0]?.totalItems ?? 0
-      return fetched < total ? (lastPageParam as number) + 1 : undefined
+      return fetched < total ? lastPageParam + 1 : undefined
     },
     staleTime: 5_000,
     refetchInterval: pollMs === false ? false : pollMs,

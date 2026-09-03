@@ -102,7 +102,7 @@ export interface UnitAmenities {
 // Every entry here MUST have a slot in `UnitAmenities` and be read by
 // `amenitiesOf` below, or it renders as a checkbox the form silently drops on
 // save. `unitAmenities.test.ts` pins both halves of that contract.
-export const AMENITY_FLAGS: readonly { key: AmenityFlag; label: string; icon: LucideIcon }[] = [
+export const AMENITY_FLAGS: ReadonlyArray<{ key: AmenityFlag; label: string; icon: LucideIcon }> = [
   { key: 'has_power', label: 'Has power', icon: Plug },
   { key: 'has_ac', label: 'Has A/C', icon: Snowflake },
   { key: 'has_fridge', label: 'Has fridge', icon: Refrigerator },
