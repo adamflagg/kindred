@@ -138,13 +138,42 @@ updates:
       - "dependencies"
       - "javascript"
     groups:
-      # All minor/patch updates in one PR to avoid package-lock.json conflicts
+      # All minor/patch updates in one PR to avoid package-lock.json conflicts.
+      # The lockstep families below are excluded so they group on ALL update
+      # types, majors included -- see the comment on them.
       npm-all:
         patterns:
           - "*"
+        exclude-patterns:
+          - "vitest"
+          - "@vitest/*"
+          - "eslint"
+          - "@eslint/*"
+          - "eslint-*"
+          - "typescript-eslint"
+          - "@typescript-eslint/*"
         update-types:
           - "minor"
           - "patch"
+      # Lockstep families. Each of these pins its siblings to an EXACT version
+      # (e.g. @vitest/coverage-v8@5.0.0 requires vitest@"5.0.0"), so a major
+      # split across separate PRs produces N PRs that each fail `npm ci` with
+      # ERESOLVE and can never merge in any order. Omitting `update-types`
+      # makes the group cover every type, so a major arrives as one installable
+      # PR. Same shape as pb-eslint in the /pocketbase ecosystem above.
+      vitest:
+        patterns:
+          - "vitest"
+          - "@vitest/*"
+      eslint:
+        patterns:
+          - "eslint"
+          - "@eslint/*"
+          - "eslint-*"
+      typescript-eslint:
+        patterns:
+          - "typescript-eslint"
+          - "@typescript-eslint/*"
     cooldown:
       default-days: 3
     open-pull-requests-limit: 5
