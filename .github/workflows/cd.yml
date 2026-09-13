@@ -365,13 +365,13 @@ jobs:
             "
         }
 
-        # Wait for CI Summary (required). Adaptive backoff: tight early polls
+        # Wait for CI Gate (required). Adaptive backoff: tight early polls
         # (CI on main reliably finishes in 90-150s), looser after.
         # Schedule: 6x5s, 4x15s, 30s thereafter -> covers up to ~10 min total.
-        echo "=== Verifying CI Summary ==="
+        echo "=== Verifying CI Gate ==="
         CI_PASSED=false
         for i in {1..30}; do
-          SUMMARY=$(get_check_summary "CI Summary")
+          SUMMARY=$(get_check_summary "CI Gate")
           TOTAL=$(echo "$SUMMARY" | jq -r '.total')
           SUCCESS=$(echo "$SUMMARY" | jq -r '.success')
           FAILED=$(echo "$SUMMARY" | jq -r '.failed')
@@ -380,13 +380,13 @@ jobs:
           echo "  Attempt $i/30: CI runs: $TOTAL (Success: $SUCCESS, Failed: $FAILED, Pending: $PENDING)"
 
           if [ "$SUCCESS" -gt 0 ]; then
-            echo "CI Summary passed"
+            echo "CI Gate passed"
             CI_PASSED=true
             break
           fi
 
           if [ "$FAILED" -gt 0 ]; then
-            echo "CI Summary failed"
+            echo "CI Gate failed"
             exit 1
           fi
 

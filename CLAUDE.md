@@ -220,6 +220,6 @@ Write failing tests first, verify they fail, then implement. **Tests are the spe
 **CI** runs on every push (~2-3 min): linting, type checking, unit tests.
 **CD** runs on merge to main (~10-15 min): Docker builds, Trivy scanning, integration tests, images tagged `latest` and `sha-<commit>`.
 
-`main` is protected by a GitHub Ruleset: required "CI Summary" status check, required linear history (squash only), and **no bypass actors** — admins included. Every change needs a PR with green CI; there is no emergency override.
+`main` is protected by a GitHub Ruleset: required "CI Gate" status check, required linear history (squash only), and **no bypass actors** — admins included. Every change needs a PR with green CI; there is no emergency override.
 
 Release process: `docs/reference/git-workflow.md`

@@ -10,7 +10,7 @@ on:
     tags-ignore:
       - '**'  # Skip CI on tag pushes (already tested on branch)
   # Run on pull requests targeting main (covers all feature branch pushes)
-  # Note: No paths-ignore here - we need CI Summary to always report for branch protection
+  # Note: No paths-ignore here - we need CI Gate to always report for branch protection
   # The detect-changes job handles optimization by skipping jobs when only docs change
   pull_request:
     branches: [main]
@@ -1415,7 +1415,7 @@ jobs:
 
   # Summary job - gate for PR merges
   summary:
-    name: CI Summary
+    name: CI Gate
     needs: [detect-changes, secret-scan, lodging-guard, guard-self-tests, python-lint, go-lint, shell-lint, frontend-lint, docker-lint, security-audit-python, security-audit-go, security-audit-frontend, security-lint, tests-python, tests-go, tests-migrations, tests-frontend]
     if: always()
     runs-on: ubuntu-latest
