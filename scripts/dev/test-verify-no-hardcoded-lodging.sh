@@ -1058,7 +1058,7 @@ echo "=== TEST 31: CI must ASSERT registry mode, not merely let the guard announ
 # The announcement the guard prints is advisory: nothing in CI reads it. The
 # clone-kindred-local action copies with `2>/dev/null || true`, so if the
 # registry is renamed or moved in kindred-local the file simply never arrives,
-# the guard prints "fallback sample", exits 0, CI Summary goes green -- and
+# the guard prints "fallback sample", exits 0, CI Gate goes green -- and
 # stays green forever, with the deploy-key cost paid for nothing. That is the
 # kindred#1867 silent-clean class one level up.
 #

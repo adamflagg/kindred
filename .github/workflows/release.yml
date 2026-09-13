@@ -152,19 +152,19 @@ jobs:
         GH_TOKEN: ${{ github.token }}
       run: |
         HEAD_SHA=$(git rev-parse HEAD)
-        echo "Checking CI Summary for $HEAD_SHA..."
+        echo "Checking CI Gate for $HEAD_SHA..."
 
-        # Check if CI Summary already passed
+        # Check if CI Gate already passed
         EXISTING=$(gh api "repos/${{ github.repository }}/commits/${HEAD_SHA}/check-runs" \
-          --jq '[.check_runs[] | select(.name == "CI Summary" and .conclusion == "success")] | sort_by(.started_at) | last | .id' 2>/dev/null || echo "")
+          --jq '[.check_runs[] | select(.name == "CI Gate" and .conclusion == "success")] | sort_by(.started_at) | last | .id' 2>/dev/null || echo "")
 
         if [ -n "$EXISTING" ]; then
-          echo "CI Summary already passed"
+          echo "CI Gate already passed"
           exit 0
         fi
 
         # Check if a CI workflow is already running on main (e.g., push-triggered)
-        # We check workflow runs, not check-runs, because the CI Summary job
+        # We check workflow runs, not check-runs, because the CI Gate job
         # won't appear until its dependencies complete.
         CI_IN_PROGRESS=$(gh run list --workflow ci.yml --branch main --status in_progress --json databaseId --jq 'length' 2>/dev/null || echo "0")
         CI_QUEUED=$(gh run list --workflow ci.yml --branch main --status queued --json databaseId --jq 'length' 2>/dev/null || echo "0")
@@ -177,32 +177,32 @@ jobs:
           echo "CI already running on main (in_progress: $CI_IN_PROGRESS, queued: $CI_QUEUED), waiting..."
         fi
 
-        # Poll for a successful CI Summary (up to ~7.5 min)
+        # Poll for a successful CI Gate (up to ~7.5 min)
         # Note: After dispatching, the new CI may cancel an in-progress push-triggered CI
-        # (same concurrency group). The cancelled run produces a failed CI Summary.
+        # (same concurrency group). The cancelled run produces a failed CI Gate.
         # We must keep polling until either a success appears or all runs finish as failures.
         for i in {1..30}; do
           sleep 15
 
-          # Check for any successful CI Summary
+          # Check for any successful CI Gate
           SUCCESS=$(gh api "repos/${{ github.repository }}/commits/${HEAD_SHA}/check-runs" \
-            --jq '[.check_runs[] | select(.name == "CI Summary" and .conclusion == "success")] | length' 2>/dev/null || echo "0")
+            --jq '[.check_runs[] | select(.name == "CI Gate" and .conclusion == "success")] | length' 2>/dev/null || echo "0")
 
           if [ "$SUCCESS" != "0" ]; then
-            echo "CI Summary passed"
+            echo "CI Gate passed"
             exit 0
           fi
 
-          # Check if any CI Summary is still pending/in-progress
+          # Check if any CI Gate is still pending/in-progress
           PENDING=$(gh api "repos/${{ github.repository }}/commits/${HEAD_SHA}/check-runs" \
-            --jq '[.check_runs[] | select(.name == "CI Summary" and .status != "completed")] | length' 2>/dev/null || echo "0")
+            --jq '[.check_runs[] | select(.name == "CI Gate" and .status != "completed")] | length' 2>/dev/null || echo "0")
 
           TOTAL=$(gh api "repos/${{ github.repository }}/commits/${HEAD_SHA}/check-runs" \
-            --jq '[.check_runs[] | select(.name == "CI Summary")] | length' 2>/dev/null || echo "0")
+            --jq '[.check_runs[] | select(.name == "CI Gate")] | length' 2>/dev/null || echo "0")
 
           if [ "$TOTAL" != "0" ] && [ "$PENDING" = "0" ]; then
-            # All CI Summary checks completed, none succeeded
-            echo "::error::All CI Summary checks failed (total: $TOTAL, none succeeded)"
+            # All CI Gate checks completed, none succeeded
+            echo "::error::All CI Gate checks failed (total: $TOTAL, none succeeded)"
             exit 1
           fi
 
