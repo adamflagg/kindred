@@ -11,7 +11,10 @@ a stale floor picked at implementation time can sit unnoticed for weeks. This
 check makes the gap visible on every manifest-touching PR and on a weekly cron.
 
 Scope: PyPI (``pyproject.toml`` ``>=`` floors) and npm (``package.json`` ``^``/``~``
-ranges). Go modules use semantic-import-versioning -- a new major is a new import
+ranges, plus the ``overrides`` block, whose floors are load-bearing security pins and
+were unscanned until kindred#2731). Where a sibling ``package-lock.json`` exists the
+RESOLVED version is reported alongside the floor: `npm ci` installs the lock, not the
+range, so a satisfied floor over a frozen lock is invisible from the manifest alone. Go modules use semantic-import-versioning -- a new major is a new import
 path you adopt deliberately -- so there is no "stale floor" to detect there.
 
 Warn-only: the checker always exits 0. It reports via stdout, ``::warning::``
@@ -113,6 +116,13 @@ def classify_gap(floor: str, latest: str | None) -> tuple[str, str]:
 _PYPI_SPEC = re.compile(r"^([A-Za-z0-9._-]+)(?:\[[^\]]*\])?\s*>=\s*([0-9][\w.]*)")
 _NPM_SPEC = re.compile(r"^[\^~]?v?([0-9][\w.]*)$")
 
+# An `overrides` floor is written as a RANGE, not a pinned spec, so it needs a
+# looser pattern than _NPM_SPEC: `^8.5.28`, `~3.1.0`, `>=5.0.9`, `>4` and a bare
+# `1.2.3` all declare a floor.
+_NPM_FLOOR_ANY = re.compile(r"^\s*(?:[\^~]|>=?|=)?\s*v?([0-9][\w.]*)")
+# `>=X` / `>X` with no `<` anywhere: satisfied by every future release forever.
+_NPM_UNBOUNDED = re.compile(r"^\s*>=?[^<]*$")
+
 
 def parse_pypi_floors(pyproject: dict[str, Any]) -> list[tuple[str, str]]:
     """Extract ``(name, floor)`` from a parsed ``pyproject.toml`` (main + groups)."""
@@ -136,6 +146,61 @@ def parse_npm_floors(package_json: dict[str, Any]) -> list[tuple[str, str]]:
             match = _NPM_SPEC.match(str(spec))
             if match:
                 out.append((name, match.group(1)))
+    return out
+
+
+def parse_npm_override_floors(package_json: dict[str, Any]) -> list[tuple[str, str, bool]]:
+    """Extract ``(name, floor, unbounded)`` from a package.json ``overrides`` block.
+
+    Overrides were unscanned until kindred#2731, which is how four of them rotted
+    unnoticed (kindred#2716). They deserve MORE scrutiny than a normal dep, not
+    less: an override exists to force a security floor onto a transitive package,
+    so it is load-bearing by construction and nothing else watches it.
+
+    A nested value (``{"pkg": {"dep": "range"}}``) scopes an override to one
+    parent rather than declaring a floor, and is skipped.
+    """
+    out: list[tuple[str, str, bool]] = []
+    for name, spec in (package_json.get("overrides") or {}).items():
+        if not isinstance(spec, str):
+            continue
+        match = _NPM_FLOOR_ANY.match(spec)
+        if match:
+            out.append((name, match.group(1), bool(_NPM_UNBOUNDED.match(spec))))
+    return out
+
+
+def classify_floor_shape(unbounded: bool) -> tuple[str, str]:
+    """Classify a floor by SHAPE rather than by version distance.
+
+    An unbounded floor is a defect at any version distance, which is exactly why
+    every gap rule in this module misses it. Dependabot evaluates the MANIFEST:
+    against `>=8.5.26` the latest postcss already satisfies the range, so there
+    is no edit to propose and it closes the bump as redundant -- while `npm ci`
+    keeps installing the LOCK, frozen wherever it was. Nothing goes red anywhere.
+    Bounding the range (a caret is enough) restores a proposable edit.
+    """
+    if unbounded:
+        return (SEVERITY_MEDIUM, "unbounded floor -- invisible to Dependabot")
+    return (SEVERITY_OK, "bounded")
+
+
+def parse_npm_resolved(package_lock: dict[str, Any]) -> dict[str, str]:
+    """Map top-level package name -> version actually RESOLVED in the lockfile.
+
+    The floor says what is permitted; this says what is installed. `npm ci` reads
+    the lock, so this is the number that ships.
+    """
+    out: dict[str, str] = {}
+    for path, meta in (package_lock.get("packages") or {}).items():
+        if not path.startswith("node_modules/"):
+            continue
+        name = path[len("node_modules/") :]
+        if "/node_modules/" in name:
+            continue
+        version = (meta or {}).get("version")
+        if isinstance(version, str):
+            out[name] = version
     return out
 
 
@@ -176,11 +241,37 @@ _SORT_ORDER = {
 
 
 def evaluate(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Annotate ``{eco,name,floor,latest}`` rows with ``severity`` and ``label``."""
+    """Annotate ``{eco,name,floor[,resolved,unbounded],latest}`` rows.
+
+    Two independent defects are graded and the worse one wins:
+
+    * version distance -- how far the declared floor trails latest (the original
+      croniter check);
+    * floor SHAPE -- an unbounded `>=` range, which is a defect at any distance
+      and which every version rule above therefore scores as OK.
+
+    ``resolved`` is advisory: it never changes severity, it just prints what is
+    actually installed next to what the floor permits, so a satisfied floor over
+    a frozen lock is visible in the table rather than having to be inferred.
+    """
     evaluated: list[dict[str, Any]] = []
     for row in rows:
         severity, label = classify_gap(row["floor"], row.get("latest"))
-        evaluated.append({**row, "severity": severity, "label": label})
+        shape_sev, shape_label = classify_floor_shape(bool(row.get("unbounded")))
+        if _SORT_ORDER.get(shape_sev, 9) < _SORT_ORDER.get(severity, 9):
+            severity, label = shape_sev, shape_label
+        elif _is_flagged(shape_sev):
+            label = f"{label}; {shape_label}"
+
+        extra: dict[str, Any] = {}
+        resolved = row.get("resolved")
+        latest = row.get("latest")
+        if isinstance(resolved, str):
+            if isinstance(latest, str) and resolved != latest:
+                extra["resolved_label"] = f"lock on {resolved}, latest {latest}"
+            else:
+                extra["resolved_label"] = f"lock on {resolved}"
+        evaluated.append({**row, **extra, "severity": severity, "label": label})
     evaluated.sort(key=lambda r: (_SORT_ORDER.get(r["severity"], 9), r["eco"], r["name"].lower()))
     return evaluated
 
@@ -208,21 +299,24 @@ def render_summary(rows: list[dict[str, Any]]) -> str:
     lines += [
         f"⚠️ {len(flagged)} of {len(rows)} declared floors are behind latest (see the Gap column).",
         "",
-        "| Severity | Eco | Package | Floor | Latest | Gap |",
-        "|----------|-----|---------|-------|--------|-----|",
+        "| Severity | Eco | Package | Floor | Lock | Latest | Gap |",
+        "|----------|-----|---------|-------|------|--------|-----|",
     ]
     badge = {SEVERITY_HIGH: "🔴 high", SEVERITY_MEDIUM: "🟡 med"}
     for r in flagged:
         lines.append(
             f"| {badge.get(r['severity'], r['severity'])} | {r['eco']} | `{r['name']}` "
-            f"| {r['floor']} | {r['latest']} | {r['label']} |"
+            f"| {r['floor']} | {r.get('resolved') or '—'} | {r['latest']} | {r['label']} |"
         )
     if unknown:
         lines += ["", f"_{len(unknown)} registry lookup(s) failed — those deps were not evaluated._"]
     lines += [
         "",
-        "_Floors are `>=` (PyPI) / `^`/`~` (npm); a stale floor usually means the lock "
-        "already resolved higher but the declared minimum was never revisited._",
+        "_Floors are `>=` (PyPI) / `^`/`~`/`>=` (npm, including `overrides`). A stale floor "
+        "usually means the lock already resolved higher but the declared minimum was never "
+        "revisited -- but the Lock column can also show the reverse, which is worse: an "
+        "unbounded floor Dependabot reads as permanently satisfied while the lock stays frozen "
+        "behind it (kindred#2716)._",
     ]
     return "\n".join(lines) + "\n"
 
@@ -237,19 +331,44 @@ def collect_repo_rows(root: Path) -> list[dict[str, Any]]:
         for name, floor in parse_pypi_floors(pyproject):
             rows.append({"eco": "pypi", "name": name, "floor": floor})
 
-    # Dedup on (name, floor): identical pins across manifests collapse to one row,
-    # but a divergent (possibly stale) floor in a later manifest is still reported.
-    seen_npm: set[tuple[str, str]] = set()
+    # Dedup on (name, floor, resolved): identical pins across manifests collapse to
+    # one row, but a divergent floor -- OR a divergent LOCK behind an identical
+    # floor -- in a later manifest is still reported. The lock belongs in the key
+    # because frontend/ and pocketbase/ carry separate lockfiles and separate
+    # Dependabot groups (`eslint` vs `pb-eslint`), so the same declared floor
+    # routinely resolves differently the moment one group's bump lands and the
+    # other's does not. Keying on (name, floor) alone dropped whichever row came
+    # second -- and nothing guarantees that is the fresher one.
+    seen_npm: set[tuple[str, str, str | None]] = set()
     for manifest in NPM_MANIFESTS:
         path = root / manifest
         if not path.exists():
             continue
         package_json = json.loads(path.read_text())
-        for name, floor in parse_npm_floors(package_json):
-            if (name, floor) in seen_npm:
+
+        # What the sibling lockfile actually resolved. `npm ci` installs THIS,
+        # not the manifest range, so it is the version that ships.
+        lock_path = path.parent / "package-lock.json"
+        resolved: dict[str, str] = {}
+        if lock_path.exists():
+            resolved = parse_npm_resolved(json.loads(lock_path.read_text()))
+
+        declared: list[tuple[str, str, bool]] = [(n, f, False) for n, f in parse_npm_floors(package_json)]
+        # Overrides last so a package declared in both keeps its dep-section row
+        # and does not dedup the override away.
+        declared += parse_npm_override_floors(package_json)
+
+        for name, floor, unbounded in declared:
+            lock_version = resolved.get(name)
+            if (name, floor, lock_version) in seen_npm:
                 continue
-            seen_npm.add((name, floor))
-            rows.append({"eco": "npm", "name": name, "floor": floor})
+            seen_npm.add((name, floor, lock_version))
+            row: dict[str, Any] = {"eco": "npm", "name": name, "floor": floor}
+            if unbounded:
+                row["unbounded"] = True
+            if lock_version is not None:
+                row["resolved"] = lock_version
+            rows.append(row)
     return rows
 
 
@@ -268,9 +387,10 @@ def _emit(rows: list[dict[str, Any]]) -> int:
 
     for r in flagged:
         # GitHub annotation -> visible inline on the workflow run.
+        lock = f", {r['resolved_label']}" if r.get("resolved_label") else ""
         print(
             f"::warning title=Stale dependency floor::{r['name']} ({r['eco']}) floor "
-            f"{r['floor']} is {r['label']} (latest {r['latest']})"
+            f"{r['floor']} is {r['label']} (latest {r['latest']}{lock})"
         )
 
     summary = render_summary(rows)
