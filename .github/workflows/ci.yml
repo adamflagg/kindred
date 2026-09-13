@@ -26,60 +26,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # PR title is the only commit message gate that matters: squash merge uses
-  # the PR title as the commit message on main, so per-commit lint on PR
-  # branches is dead weight (commits get collapsed). Local lefthook
-  # commit-msg hook still runs for human discipline.
-  pr-title-lint:
-    name: PR Title Lint
-    runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
-    steps:
-    - uses: amannn/action-semantic-pull-request@48f256284bd46cdaab1048c3721360e808335d50 # v6
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        types: |
-          feat
-          fix
-          perf
-          refactor
-          docs
-          style
-          test
-          build
-          config
-          chore
-          ci
-          revert
-        scopes: |
-          frontend
-          api
-          sync
-          pb
-          solver
-          docker
-          ci
-          auth
-          google
-          security
-          logging
-          release
-          config
-          deps
-          deps-dev
-          tests
-          scripts
-          docs
-          metrics
-          graph
-          data
-          rbac
-        requireScope: true
-        subjectPattern: ^.+$
-        subjectPatternError: "PR title must follow: type(scope): description"
-
-  # Detect what changed to optimize CI runs
   detect-changes:
     name: Detect Changed Files
     runs-on: ubuntu-latest
@@ -675,16 +621,6 @@ jobs:
       # warm cache makes worker-spawn overhead a net loss there. See #1660.
       run: uv run mypy . --explicit-package-bases --num-workers 4
 
-    - name: Security audit (pip-audit)
-      run: |
-        ARGS="--desc"
-        while IFS= read -r line; do
-          id="${line%%#*}"
-          id="${id// /}"
-          [ -n "$id" ] && ARGS="$ARGS --ignore-vuln $id"
-        done < .pip-audit-ignore
-        uv run pip-audit $ARGS
-
     - name: JSON config validation
       run: |
         echo "Validating JSON config files..."
@@ -698,10 +634,7 @@ jobs:
   go-lint:
     name: Go Lint
     needs: detect-changes
-    if: |
-      needs.detect-changes.outputs.goLint == 'true' ||
-      needs.detect-changes.outputs.shell == 'true' ||
-      needs.detect-changes.outputs.docker == 'true'
+    if: needs.detect-changes.outputs.goLint == 'true'
     runs-on: ubuntu-latest
     steps:
     - name: Checkout code
@@ -733,17 +666,7 @@ jobs:
         cache: true
         cache-dependency-path: pocketbase/go.sum
 
-    - name: Cache apt packages
-      uses: awalsh128/cache-apt-pkgs-action@553a35bb8ebd9fcabcb1c9451aa4c98e1b4ca8a9 # v1.6.3
-      with:
-        packages: shellcheck
-        version: shellcheck-v1
-
-    - name: Install govulncheck
-      run: go install golang.org/x/vuln/cmd/govulncheck@latest
-
     - name: Go formatting check
-      if: needs.detect-changes.outputs.goLint == 'true'
       run: |
         if [ -n "$(gofmt -l pocketbase)" ]; then
           echo "Go files need formatting. Please run: gofmt -w pocketbase"
@@ -752,12 +675,10 @@ jobs:
         fi
 
     - name: Go vet
-      if: needs.detect-changes.outputs.goLint == 'true'
       working-directory: ./pocketbase
       run: go vet ./...
 
     - name: Go linting
-      if: needs.detect-changes.outputs.goLint == 'true'
       uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9
       with:
         # v2.13.0 is the first release built with Go 1.27. Older binaries
@@ -769,29 +690,44 @@ jobs:
         args: --config ../.golangci.yml
 
     - name: Go build check
-      if: needs.detect-changes.outputs.goLint == 'true'
       working-directory: ./pocketbase
       run: go build -o /dev/null ./...
 
-    - name: Security audit (govulncheck)
-      if: needs.detect-changes.outputs.goLint == 'true'
-      working-directory: ./pocketbase
-      run: govulncheck ./...
-
     # PocketBase JS linting (migrations and hooks)
     - name: Install PocketBase JS linting dependencies
-      if: needs.detect-changes.outputs.goLint == 'true'
       working-directory: ./pocketbase
       run: npm ci
 
     - name: PocketBase JS linting
-      if: needs.detect-changes.outputs.goLint == 'true'
       working-directory: ./pocketbase
       run: npm run lint
 
-    # Shell script linting (warning+ severity - info is too noisy)
+  # Shell script linting. Split out of Go Lint (kindred#2729): shellcheck
+  # findings have nothing to do with Go, and burying them in a job named
+  # "Go Lint" sent readers to the wrong language. Keeping the same three
+  # triggers Go Lint used to carry for it, so coverage is unchanged.
+  shell-lint:
+    name: Shell Script Lint
+    needs: detect-changes
+    if: |
+      needs.detect-changes.outputs.shell == 'true' ||
+      needs.detect-changes.outputs.goLint == 'true' ||
+      needs.detect-changes.outputs.docker == 'true'
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+
+    - name: Cache apt packages
+      uses: awalsh128/cache-apt-pkgs-action@553a35bb8ebd9fcabcb1c9451aa4c98e1b4ca8a9 # v1.6.3
+      with:
+        packages: shellcheck
+        version: shellcheck-v1
+
+    # warning+ severity - info is too noisy
     - name: Shell script linting (shellcheck)
-      if: needs.detect-changes.outputs.shell == 'true' || needs.detect-changes.outputs.goLint == 'true' || needs.detect-changes.outputs.docker == 'true'
       run: bash scripts/ci/shellcheck-all.sh
 
   # Frontend linting (parallel with other lint jobs)
@@ -829,10 +765,6 @@ jobs:
       working-directory: ./frontend
       run: npm run lint
 
-    - name: Security audit (npm)
-      working-directory: ./frontend
-      run: npm audit --audit-level=high
-
   # Docker linting (parallel with other lint jobs)
   docker-lint:
     name: Docker Lint
@@ -867,6 +799,102 @@ jobs:
       run: |
         docker run --rm -i caddy:2 caddy adapt --adapter caddyfile --config - < docker/Caddyfile > /dev/null
         docker run --rm -i caddy:2 caddy adapt --adapter caddyfile --config - < frontend/Caddyfile > /dev/null
+
+  # Security audits. Split out of the three *Lint jobs (kindred#2729).
+  #
+  # These fail on TIME, not on your diff: a CVE published upstream reddens
+  # every open PR at once with no code change anywhere. Carrying them inside
+  # a job named "Lint" meant that failure mode pointed at eslint/ruff/vet,
+  # which were passing -- the js-yaml advisory blocked seven Dependabot PRs
+  # that way before anyone read a log. A job named for what it does makes the
+  # cause legible from the check list alone.
+  security-audit-python:
+    name: Security Audit (Python)
+    needs: detect-changes
+    if: needs.detect-changes.outputs.pythonLint == 'true'
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+
+    - name: Setup Python
+      uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      with:
+        python-version-file: '.python-version'
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+      with:
+        enable-cache: true
+        prune-cache: true
+
+    - name: Install Python dependencies
+      run: uv sync --frozen
+
+    - name: Security audit (pip-audit)
+      run: |
+        ARGS="--desc"
+        while IFS= read -r line; do
+          id="${line%%#*}"
+          id="${id// /}"
+          [ -n "$id" ] && ARGS="$ARGS --ignore-vuln $id"
+        done < .pip-audit-ignore
+        uv run pip-audit $ARGS
+
+  security-audit-go:
+    name: Security Audit (Go)
+    needs: detect-changes
+    if: needs.detect-changes.outputs.goLint == 'true'
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+
+    - name: Setup Go
+      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      with:
+        # go-version-file, not a literal -- see the Go Lint job for why.
+        go-version-file: pocketbase/go.mod
+        check-latest: true
+        cache: true
+        cache-dependency-path: pocketbase/go.sum
+
+    - name: Install govulncheck
+      run: go install golang.org/x/vuln/cmd/govulncheck@latest
+
+    - name: Security audit (govulncheck)
+      working-directory: ./pocketbase
+      run: govulncheck ./...
+
+  security-audit-frontend:
+    name: Security Audit (npm)
+    needs: detect-changes
+    if: needs.detect-changes.outputs.frontendLint == 'true'
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+
+    - name: Setup Node.js
+      uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+      with:
+        node-version-file: '.nvmrc'
+        cache: 'npm'
+        cache-dependency-path: frontend/package-lock.json
+
+    - name: Install frontend dependencies
+      working-directory: ./frontend
+      run: npm ci
+
+    - name: Security audit (npm)
+      working-directory: ./frontend
+      run: npm audit --audit-level=high
 
   # GitHub Actions security and correctness linting
   security-lint:
@@ -1383,21 +1411,24 @@ jobs:
   # Summary job - gate for PR merges
   summary:
     name: CI Summary
-    needs: [pr-title-lint, detect-changes, secret-scan, lodging-guard, guard-self-tests, python-lint, go-lint, frontend-lint, docker-lint, security-lint, tests-python, tests-go, tests-migrations, tests-frontend]
+    needs: [detect-changes, secret-scan, lodging-guard, guard-self-tests, python-lint, go-lint, shell-lint, frontend-lint, docker-lint, security-audit-python, security-audit-go, security-audit-frontend, security-lint, tests-python, tests-go, tests-migrations, tests-frontend]
     if: always()
     runs-on: ubuntu-latest
     steps:
     - name: Check status
       env:
         DETECT_CHANGES: ${{ needs.detect-changes.result }}
-        PR_TITLE_LINT: ${{ needs.pr-title-lint.result }}
         SECRET_SCAN: ${{ needs.secret-scan.result }}
         LODGING_GUARD: ${{ needs.lodging-guard.result }}
         GUARD_SELF_TESTS: ${{ needs.guard-self-tests.result }}
         PYTHON_LINT: ${{ needs.python-lint.result }}
         GO_LINT: ${{ needs.go-lint.result }}
+        SHELL_LINT: ${{ needs.shell-lint.result }}
         FRONTEND_LINT: ${{ needs.frontend-lint.result }}
         DOCKER_LINT: ${{ needs.docker-lint.result }}
+        SECURITY_AUDIT_PYTHON: ${{ needs.security-audit-python.result }}
+        SECURITY_AUDIT_GO: ${{ needs.security-audit-go.result }}
+        SECURITY_AUDIT_FRONTEND: ${{ needs.security-audit-frontend.result }}
         SECURITY_LINT: ${{ needs.security-lint.result }}
         TESTS_PYTHON: ${{ needs.tests-python.result }}
         TESTS_GO: ${{ needs.tests-go.result }}
@@ -1410,11 +1441,11 @@ jobs:
           echo "::error::Change detection failed — no lint or test jobs ran. Check paths-filter action."
           exit 1
         fi
-        # pr-title-lint: blocking — squash merge uses PR title as commit message on main
-        if [ "$PR_TITLE_LINT" != "success" ] && [ "$PR_TITLE_LINT" != "skipped" ]; then
-          echo "::error::PR title must follow conventional commit format: type(scope): description"
-          exit 1
-        fi
+        # PR title is NOT checked here. "Validate PR title" (semantic-pr.yml) is
+        # its own required status check in the branch ruleset, so the gate is
+        # enforced there -- and it re-runs on title EDITS, which this workflow
+        # does not. The duplicate job that used to live here was the weaker of
+        # the two (subjectPattern ^.+$ vs ^[A-Za-z].+$). See kindred#2729.
         if [ "$SECRET_SCAN" != "success" ]; then
           echo "Secret scanning failed! Check for leaked credentials."
           echo "   If these are intentional dev/test values, add them to .gitleaks.toml"
@@ -1437,12 +1468,29 @@ jobs:
           echo "Go linting failed!"
           exit 1
         fi
+        if [ "$SHELL_LINT" != "success" ] && [ "$SHELL_LINT" != "skipped" ]; then
+          echo "::error::Shell script linting (shellcheck) failed!"
+          exit 1
+        fi
         if [ "$FRONTEND_LINT" != "success" ] && [ "$FRONTEND_LINT" != "skipped" ]; then
           echo "Frontend linting/type checks failed!"
           exit 1
         fi
         if [ "$DOCKER_LINT" != "success" ] && [ "$DOCKER_LINT" != "skipped" ]; then
           echo "Docker linting failed!"
+          exit 1
+        fi
+        # Security audits fail on newly published advisories, not on this diff.
+        if [ "$SECURITY_AUDIT_PYTHON" != "success" ] && [ "$SECURITY_AUDIT_PYTHON" != "skipped" ]; then
+          echo "::error::Python security audit (pip-audit) failed -- a dependency advisory, not a lint error."
+          exit 1
+        fi
+        if [ "$SECURITY_AUDIT_GO" != "success" ] && [ "$SECURITY_AUDIT_GO" != "skipped" ]; then
+          echo "::error::Go security audit (govulncheck) failed -- a dependency advisory, not a lint error."
+          exit 1
+        fi
+        if [ "$SECURITY_AUDIT_FRONTEND" != "success" ] && [ "$SECURITY_AUDIT_FRONTEND" != "skipped" ]; then
+          echo "::error::Frontend security audit (npm audit) failed -- a dependency advisory, not a lint error."
           exit 1
         fi
         if [ "$SECURITY_LINT" != "success" ] && [ "$SECURITY_LINT" != "skipped" ]; then
