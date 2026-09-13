@@ -55,20 +55,43 @@ def _gating_filters(job: str) -> list[str]:
 def _gating_filters_for_step(job: str, step_name: str) -> list[str]:
     """The detect-changes outputs one STEP's `if:` reads.
 
-    A step carries its own gate, and it is not always the job's. go-lint's job
-    gate admits three filters while seven of its steps admit one, so asserting
-    against the job gate alone can report a step as reachable when the step
-    itself would skip -- and a job whose steps all skip still concludes
-    `success`, which `ci-summary` counts as OK.
+    A step carries its own gate only when it needs one NARROWER than its job's.
+    Asserting against the job gate alone would then report a step as reachable
+    when the step itself would skip -- and a job whose steps all skip still
+    concludes `success`, which `ci-summary` counts as OK.
+
+    When a step carries no `if:` it runs whenever its job runs, so the job's
+    gate IS its effective gate and is the correct thing to assert against.
+    go-lint used to be the case that motivated the distinction (a job gate
+    admitting three filters over steps admitting one); kindred#2729 moved
+    shellcheck to its own job, so go-lint's gate and its steps' now coincide
+    and the step-level overrides are gone. The fallback keeps this helper
+    correct for both shapes rather than pinning it to either.
     """
     steps = _ci()["jobs"][job]["steps"]
     step = next((st for st in steps if st.get("name") == step_name), None)
     assert step is not None, f"{job} has no step named {step_name!r}"
     expr = step.get("if")
-    assert expr, f"{job}/{step_name} has no `if:`"
+    if not expr:
+        return _gating_filters(job)
     names = re.findall(r"needs\.detect-changes\.outputs\.(\w+)", expr)
     assert names, f"{job}/{step_name} has no detect-changes gate: {expr!r}"
     return names
+
+
+def _job_with_step(step_name_prefix: str) -> str:
+    """The job that owns a step, DERIVED not hardcoded.
+
+    shellcheck lived in go-lint and these assertions named that job literally,
+    so kindred#2729 moving it to `shell-lint` broke them instead of following
+    it. Deriving the owner means the next move costs nothing -- and a step that
+    vanishes entirely still fails loudly here rather than silently passing.
+    """
+    for jid, job in _ci()["jobs"].items():
+        for st in job.get("steps") or []:
+            if str(st.get("name") or "").startswith(step_name_prefix):
+                return str(jid)
+    raise AssertionError(f"no CI job has a step starting with {step_name_prefix!r}")
 
 
 def _patterns_gating_step(job: str, step_name: str) -> list[str]:
@@ -475,10 +498,13 @@ def _shellcheck_lint_set() -> list[str]:
 def test_shellcheck_gate_covers_every_file_it_lints():
     """Every file the shellcheck step opens must be able to trigger that step.
 
-    Asserted against the STEP's gate, which is not the job's: the step carries
-    `shell || goLint || docker` while seven sibling steps carry `goLint` alone.
+    Asserted against the gate that actually governs the step. It carries
+    `shell || goLint || docker`; since kindred#2729 that lives on the
+    `shell-lint` job rather than on the step inside go-lint, and the owning job
+    is derived so a future move follows automatically.
     """
-    patterns = _patterns_gating_step("go-lint", "Shell script linting (shellcheck)")
+    job = _job_with_step("Shell script linting")
+    patterns = _patterns_gating_step(job, "Shell script linting (shellcheck)")
     uncovered = [f for f in _shellcheck_lint_set() if not _matches(f, patterns)]
     assert not uncovered, f"{len(uncovered)} linted shell scripts cannot trigger the step: {uncovered}"
 
@@ -658,7 +684,9 @@ def test_every_shellcheck_call_site_runs_the_same_command():
     assert _shellcheck_script().exists(), f"{script} does not exist"
 
     ci_run = next(
-        st["run"] for st in _ci()["jobs"]["go-lint"]["steps"] if st.get("name", "").startswith("Shell script linting")
+        st["run"]
+        for st in _ci()["jobs"][_job_with_step("Shell script linting")]["steps"]
+        if str(st.get("name") or "").startswith("Shell script linting")
     )
     lefthook = (REPO_ROOT / ".lefthook.yml").read_text()
     prepush = (REPO_ROOT / "scripts/pre-push-verify.sh").read_text()
