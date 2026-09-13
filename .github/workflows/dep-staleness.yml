@@ -21,8 +21,11 @@ on:
       - 'pyproject.toml'
       - 'uv.lock'
       - 'frontend/package.json'
+      - 'frontend/package-lock.json'
       - 'package.json'
+      - 'package-lock.json'
       - 'pocketbase/package.json'
+      - 'pocketbase/package-lock.json'
       - 'scripts/ci/check_dep_staleness.py'
       - '.github/workflows/dep-staleness.yml'
 

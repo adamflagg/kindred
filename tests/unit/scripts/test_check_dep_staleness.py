@@ -13,6 +13,7 @@ import subprocess
 import sys
 from pathlib import Path
 from types import ModuleType
+from typing import Any
 
 SCRIPT_PATH = Path(__file__).parents[3] / "scripts" / "ci" / "check_dep_staleness.py"
 
@@ -29,7 +30,7 @@ def _load_module() -> ModuleType:
 mod = _load_module()
 
 
-def run_cli(rows: list[dict[str, str]], extra: list[str] | None = None) -> tuple[int, str, str]:
+def run_cli(rows: list[dict[str, Any]], extra: list[str] | None = None) -> tuple[int, str, str]:
     result = subprocess.run(
         [sys.executable, str(SCRIPT_PATH), "--from-json", "-", *(extra or [])],
         input=json.dumps(rows),
@@ -249,3 +250,80 @@ def test_collect_repo_rows_dedupes_identical_npm_floors(tmp_path):
     _write_manifest(tmp_path / "pocketbase" / "package.json", {"eslint": "^10.4.0"})
     rows = mod.collect_repo_rows(tmp_path)
     assert sum(1 for r in rows if r["name"] == "eslint") == 1
+
+
+# --------------------------- overrides (kindred#2731) ---------------------------
+#
+# The four floors that rotted in #2716 were invisible here on TWO counts: this
+# checker scanned only `dependencies`/`devDependencies`, never `overrides`; and
+# `_NPM_SPEC` matches `^`/`~`/bare only, so a `>=8.5.26` would not have parsed
+# even if it had been scanned. An override exists precisely to force a security
+# floor, which makes it the LAST thing that should go unwatched.
+
+
+def test_parse_npm_override_floors_reads_string_overrides():
+    floors = {n: f for n, f, _ in mod.parse_npm_override_floors({"overrides": {"postcss": "^8.5.28"}})}
+    assert floors == {"postcss": "8.5.28"}
+
+
+def test_parse_npm_override_floors_reads_unbounded_floors():
+    """`>=X` must PARSE here even though `_NPM_SPEC` rejects it for deps."""
+    rows = mod.parse_npm_override_floors({"overrides": {"undici": ">=8.10.1"}})
+    assert [(n, f) for n, f, _ in rows] == [("undici", "8.10.1")]
+
+
+def test_unbounded_override_floor_is_flagged_as_unbounded():
+    rows = mod.parse_npm_override_floors({"overrides": {"undici": ">=8.10.1"}})
+    assert rows[0][2] is True, "`>=X` has no ceiling -- Dependabot sees it as permanently satisfied"
+
+
+def test_caret_override_floor_is_not_unbounded():
+    rows = mod.parse_npm_override_floors({"overrides": {"undici": "^8.10.2"}})
+    assert rows[0][2] is False, "a caret bounds at the major, so Dependabot can still propose a bump"
+
+
+def test_parse_npm_override_floors_skips_nested_scoped_overrides():
+    """`{"pkg": {"dep": "range"}}` scopes an override to one parent -- not a floor."""
+    rows = mod.parse_npm_override_floors({"overrides": {"eslint-plugin-jsx-a11y": {"eslint": "^10.0.0"}}})
+    assert rows == []
+
+
+def test_unbounded_floor_is_flagged_even_when_version_is_current():
+    """The whole point: an unbounded floor is a defect at ANY version distance.
+
+    postcss `>=8.5.26` with latest 8.5.28 is zero majors behind, so every
+    version-gap rule in this module calls it OK -- and Dependabot still closed
+    the bump as redundant while the lock sat on 8.5.26.
+    """
+    severity, label = mod.classify_floor_shape(unbounded=True)
+    assert mod._is_flagged(severity)
+    assert "unbounded" in label.lower()
+
+
+def test_bounded_floor_shape_is_ok():
+    severity, _ = mod.classify_floor_shape(unbounded=False)
+    assert not mod._is_flagged(severity)
+
+
+# --------------------------- resolved-vs-latest ---------------------------
+
+
+def test_parse_npm_resolved_reads_lock_versions():
+    lock = {"packages": {"": {}, "node_modules/postcss": {"version": "8.5.26"}}}
+    assert mod.parse_npm_resolved(lock)["postcss"] == "8.5.26"
+
+
+def test_evaluate_surfaces_resolved_behind_latest():
+    """A row carrying `resolved` reports the gap the FLOOR alone cannot show."""
+    rows = mod.evaluate(
+        [{"eco": "npm", "name": "postcss", "floor": "8.5.26", "resolved": "8.5.26", "latest": "8.5.28"}]
+    )
+    assert rows[0]["resolved"] == "8.5.26"
+    assert rows[0].get("resolved_label")
+
+
+def test_cli_flags_unbounded_floor_in_output():
+    code, out, _ = run_cli([{"eco": "npm", "name": "undici", "floor": "8.10.1", "unbounded": True, "latest": "8.10.2"}])
+    assert code == 0, "checker stays warn-only"
+    assert "undici" in out
+    assert "unbounded" in out.lower()
