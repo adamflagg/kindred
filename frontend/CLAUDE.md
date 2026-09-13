@@ -102,6 +102,13 @@ cd frontend && npx vitest run src/path/file.test.ts   # single test
 
 Pre-push runs `tsc --noEmit` for both `tsconfig.json` and `tsconfig.node.json`. Prettier runs at commit time; eslint and vitest run in CI only. Failing pre-push blocks push.
 
+`npm run test:coverage` and `npm run test:ui` are **local-only** — CI runs the suite sharded
+(`--shard=N/2`) with no `--coverage`, so a coverage-config change is never exercised by a green
+build. That is how vitest 5's stricter glob matching silently stopped honouring the `src/test/`
+exclude: bare directory prefixes no longer match, and the excludes need real globs
+(`src/test/**`). Under `@vitest/ui` 5 the UI is served on an authenticated URL rather than a
+plain localhost one; use the link the command prints.
+
 ## Worktree-specific notes
 
 In a fresh worktree, hit the **Vite dev port printed by `new.sh`** (the port offset is hashed from the feature name — `localhost:3010`, `3080`, etc. depending on the worktree), not the Caddy port. Caddy serves the stale built bundle from `pocketbase/pb_public/`.
