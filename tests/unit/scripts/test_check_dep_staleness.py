@@ -327,3 +327,42 @@ def test_cli_flags_unbounded_floor_in_output():
     assert code == 0, "checker stays warn-only"
     assert "undici" in out
     assert "unbounded" in out.lower()
+
+
+def _write_npm_pair(root: Path, sub: str, floor: str, locked: str) -> None:
+    (root / sub).mkdir()
+    (root / sub / "package.json").write_text(json.dumps({"devDependencies": {"eslint": floor}}))
+    (root / sub / "package-lock.json").write_text(
+        json.dumps({"packages": {"": {}, "node_modules/eslint": {"version": locked}}})
+    )
+
+
+def test_dedup_keeps_divergent_lock_resolutions(tmp_path, monkeypatch):
+    """Same name+floor in two manifests, different locks -> BOTH rows survive.
+
+    frontend/ and pocketbase/ carry separate lockfiles and separate Dependabot
+    groups (`eslint` vs `pb-eslint`), so an identical declared floor routinely
+    resolves to different versions -- the moment one group's bump merges and the
+    other's does not. Deduping on (name, floor) alone drops whichever row comes
+    second, and nothing guarantees that is the fresher one: in this fixture it
+    is the STALER lock that disappears, which is the one a staleness checker
+    exists to show.
+    """
+    _write_npm_pair(tmp_path, "frontend", "^10.9.1", "10.10.0")
+    _write_npm_pair(tmp_path, "pocketbase", "^10.9.1", "10.9.1")
+    monkeypatch.setattr(mod, "NPM_MANIFESTS", ("frontend/package.json", "pocketbase/package.json"))
+
+    rows = [r for r in mod.collect_repo_rows(tmp_path) if r["name"] == "eslint"]
+
+    assert {r["resolved"] for r in rows} == {"10.9.1", "10.10.0"}, f"a lock was deduped away: {rows}"
+
+
+def test_dedup_still_collapses_identical_floor_and_resolution(tmp_path, monkeypatch):
+    """The dedup must still do its job when the resolutions agree."""
+    _write_npm_pair(tmp_path, "frontend", "^10.9.1", "10.10.0")
+    _write_npm_pair(tmp_path, "pocketbase", "^10.9.1", "10.10.0")
+    monkeypatch.setattr(mod, "NPM_MANIFESTS", ("frontend/package.json", "pocketbase/package.json"))
+
+    rows = [r for r in mod.collect_repo_rows(tmp_path) if r["name"] == "eslint"]
+
+    assert len(rows) == 1, f"identical floor AND resolution should collapse to one row: {rows}"

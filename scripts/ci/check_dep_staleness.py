@@ -331,9 +331,15 @@ def collect_repo_rows(root: Path) -> list[dict[str, Any]]:
         for name, floor in parse_pypi_floors(pyproject):
             rows.append({"eco": "pypi", "name": name, "floor": floor})
 
-    # Dedup on (name, floor): identical pins across manifests collapse to one row,
-    # but a divergent (possibly stale) floor in a later manifest is still reported.
-    seen_npm: set[tuple[str, str]] = set()
+    # Dedup on (name, floor, resolved): identical pins across manifests collapse to
+    # one row, but a divergent floor -- OR a divergent LOCK behind an identical
+    # floor -- in a later manifest is still reported. The lock belongs in the key
+    # because frontend/ and pocketbase/ carry separate lockfiles and separate
+    # Dependabot groups (`eslint` vs `pb-eslint`), so the same declared floor
+    # routinely resolves differently the moment one group's bump lands and the
+    # other's does not. Keying on (name, floor) alone dropped whichever row came
+    # second -- and nothing guarantees that is the fresher one.
+    seen_npm: set[tuple[str, str, str | None]] = set()
     for manifest in NPM_MANIFESTS:
         path = root / manifest
         if not path.exists():
@@ -353,14 +359,15 @@ def collect_repo_rows(root: Path) -> list[dict[str, Any]]:
         declared += parse_npm_override_floors(package_json)
 
         for name, floor, unbounded in declared:
-            if (name, floor) in seen_npm:
+            lock_version = resolved.get(name)
+            if (name, floor, lock_version) in seen_npm:
                 continue
-            seen_npm.add((name, floor))
+            seen_npm.add((name, floor, lock_version))
             row: dict[str, Any] = {"eco": "npm", "name": name, "floor": floor}
             if unbounded:
                 row["unbounded"] = True
-            if name in resolved:
-                row["resolved"] = resolved[name]
+            if lock_version is not None:
+                row["resolved"] = lock_version
             rows.append(row)
     return rows
 
