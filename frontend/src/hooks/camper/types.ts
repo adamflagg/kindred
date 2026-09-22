@@ -48,6 +48,19 @@ export interface OriginalBunkData {
   person_cm_id?: number
 }
 
+/**
+ * The journey header's counts (adult camper journey spec §5.2, §6.1).
+ * `summers` is CampMinder's `years_at_camp` — the most recent non-zero value
+ * across the person's year rows, because CampMinder zeroes it for adults.
+ * The weekend counts are distinct (year, session) enrollments, current year
+ * included.
+ */
+export interface JourneyCounts {
+  summers: number
+  familyWeekends: number
+  adultWeekends: number
+}
+
 // Sibling with enrollment info
 export interface SiblingWithEnrollment extends PersonsResponse {
   session?: {
