@@ -247,10 +247,10 @@ describe('composite SVG layer order', () => {
     container.appendChild(bubbleSvg)
     document.body.appendChild(container)
 
-    if (typeof URL.createObjectURL !== 'function') {
-      Object.defineProperty(URL, 'createObjectURL', { value: vi.fn(() => 'blob:test') })
-      Object.defineProperty(URL, 'revokeObjectURL', { value: vi.fn() })
-    }
+    // Stubbed unconditionally (not `typeof === 'function'`-gated): vitest's
+    // jsdom createObjectURL shim silently breaks on jsdom >=30.1 (vitest#11294).
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:test')
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
     // Capture the composite SVG by intercepting the Blob constructor input.
     const OriginalBlob = global.Blob
     Object.defineProperty(global, 'Blob', {
@@ -330,10 +330,10 @@ describe('exportSessionGraphPng - viewport mode', () => {
         }) as DOMRect,
     })
     document.body.appendChild(container)
-    if (typeof URL.createObjectURL !== 'function') {
-      Object.defineProperty(URL, 'createObjectURL', { value: vi.fn(() => 'blob:test') })
-      Object.defineProperty(URL, 'revokeObjectURL', { value: vi.fn() })
-    }
+    // Stubbed unconditionally (not `typeof === 'function'`-gated): vitest's
+    // jsdom createObjectURL shim silently breaks on jsdom >=30.1 (vitest#11294).
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:test')
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
     Object.defineProperty(global, 'Image', {
       writable: true,
       value: class FakeImage {
@@ -419,10 +419,10 @@ describe('exportSessionGraphPng - fit mode', () => {
         }) as DOMRect,
     })
     document.body.appendChild(container)
-    if (typeof URL.createObjectURL !== 'function') {
-      Object.defineProperty(URL, 'createObjectURL', { value: vi.fn(() => 'blob:test') })
-      Object.defineProperty(URL, 'revokeObjectURL', { value: vi.fn() })
-    }
+    // Stubbed unconditionally (not `typeof === 'function'`-gated): vitest's
+    // jsdom createObjectURL shim silently breaks on jsdom >=30.1 (vitest#11294).
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:test')
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
     Object.defineProperty(global, 'Image', {
       writable: true,
       value: class FakeImage {
