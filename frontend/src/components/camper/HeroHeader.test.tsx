@@ -58,7 +58,7 @@ describe('HeroHeader adult branch (spec §6.3)', () => {
   })
 
   it('keeps the grade for everyone else', () => {
-    renderHero({ camper: { ...camper, grade: 5, age: 10.04 } as Camper })
+    renderHero({ camper: { ...camper, grade: 5, age: 10.04 } })
     expect(screen.getByText(/Grade/)).toBeInTheDocument()
   })
 })
