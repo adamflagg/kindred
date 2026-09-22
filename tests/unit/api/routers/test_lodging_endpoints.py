@@ -2476,5 +2476,5 @@ class TestPersonHousingEndpoint:
         with patch("api.routers.lodging.pb", mock_pb):
             TestClient(_build_app(_plain_user(), mock_pb)).get("/api/lodging/persons/3000001/housing")
 
-        assert set(collections) <= {"person_custom_values", "attendees", "lodging_units", "lodging_unit_aliases"}
+        assert set(collections) == {"person_custom_values", "attendees", "lodging_units", "lodging_unit_aliases"}
         assert "family_camp_medical" not in collections
