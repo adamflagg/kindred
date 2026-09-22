@@ -72,12 +72,20 @@ class PersonHousingService:
     async def build_person_housing(self, person_cm_id: int) -> PersonHousingResponse:
         if person_cm_id <= 0:
             return PersonHousingResponse(person_cm_id=person_cm_id)
-        value_rows, attendee_rows, resolver = await asyncio.gather(
+        value_rows, attendee_rows = await asyncio.gather(
             self.repository.fetch_person_cabin_values(person_cm_id),
             self.repository.fetch_person_adult_attendees(person_cm_id),
-            build_housing_name_resolver(self.repository),
         )
-        attributed = attribute_adult_cabins(_cabin_values(value_rows), _weekends(attendee_rows), resolver.resolve_codes)
+        values = _cabin_values(value_rows)
+        weekends = _weekends(attendee_rows)
+        # The resolver is two whole-table reads (`build_housing_name_resolver`),
+        # and most callers have nothing to attribute: no cabin values, no
+        # enrolled adult weekends, or both. Read the cheap rows first and skip
+        # the registry entirely when there is nothing for it to resolve.
+        if not values or not weekends:
+            return PersonHousingResponse(person_cm_id=person_cm_id)
+        resolver = await build_housing_name_resolver(self.repository)
+        attributed = attribute_adult_cabins(values, weekends, resolver.resolve_codes)
         return PersonHousingResponse(
             person_cm_id=person_cm_id,
             weekends=[

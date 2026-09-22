@@ -2463,7 +2463,16 @@ class TestPersonHousingEndpoint:
         assert response.status_code == 200
         assert response.json() == {"person_cm_id": 3000001, "weekends": []}
 
-    def test_it_reads_only_cabin_values_adult_enrollments_and_the_registry(self, mock_pb: MagicMock) -> None:
+    def test_it_reads_only_cabin_values_and_adult_enrollments_when_there_is_nothing_to_attribute(
+        self, mock_pb: MagicMock
+    ) -> None:
+        """PR1 review fix (2026-09-22, controller ruling): this used to assert
+        all four collections are read unconditionally, guarding against a
+        vacuous early return. The service now deliberately skips the registry
+        (`lodging_units` / `lodging_unit_aliases` -- two whole-table reads)
+        when there are no cabin values and no adult weekends to attribute
+        them to, since most callers land in exactly that case. See the
+        sibling test below for the case where the registry IS read."""
         collections: list[str] = []
 
         def record(name: str) -> MagicMock:
@@ -2477,5 +2486,38 @@ class TestPersonHousingEndpoint:
         with patch("api.routers.lodging.pb", mock_pb):
             TestClient(_build_app(_plain_user(), mock_pb)).get("/api/lodging/persons/3000001/housing")
 
-        assert set(collections) == {"person_custom_values", "attendees", "lodging_units", "lodging_unit_aliases"}
+        assert set(collections) == {"person_custom_values", "attendees"}
         assert "family_camp_medical" not in collections
+
+    def test_it_also_reads_the_registry_once_there_is_something_to_attribute(self, mock_pb: MagicMock) -> None:
+        """The case the early return above must not swallow: a real cabin
+        value AND a real enrolled adult weekend still reach the registry."""
+        collections: list[str] = []
+
+        def by_collection(name: str) -> MagicMock:
+            collections.append(name)
+            collection = MagicMock()
+            if name == "person_custom_values":
+                collection.get_full_list.return_value = [
+                    _rec(
+                        year=2024,
+                        value="River F",
+                        last_updated="2024-10-10T18:00:00+00:00",
+                        expand={"field_definition": _rec(cm_id=223823)},
+                    )
+                ]
+            elif name == "attendees":
+                collection.get_full_list.return_value = [
+                    _rec(year=2024, expand={"session": _rec(cm_id=1001, end_date="2024-10-20 07:00:00.000Z")})
+                ]
+            else:
+                collection.get_full_list.return_value = []
+            return collection
+
+        mock_pb.collection.side_effect = by_collection
+
+        with patch("api.routers.lodging.pb", mock_pb):
+            response = TestClient(_build_app(_plain_user(), mock_pb)).get("/api/lodging/persons/3000001/housing")
+
+        assert response.status_code == 200
+        assert set(collections) == {"person_custom_values", "attendees", "lodging_units", "lodging_unit_aliases"}

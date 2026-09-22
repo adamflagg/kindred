@@ -116,3 +116,31 @@ class TestPersonHousingService:
         result = await PersonHousingService(repo).build_person_housing(PERSON)
 
         assert result.weekends == []
+
+    @pytest.mark.asyncio
+    async def test_values_with_no_adult_attendee_rows_never_builds_the_resolver(self) -> None:
+        """PR1 review fix (2026-09-22, controller ruling): the resolver costs
+        two whole-table reads (`fetch_all_units` / `fetch_unit_aliases`), and
+        most callers -- once the tooltip and summer panel wire up -- have no
+        adult weekends at all. A person with cabin values but no enrolled
+        adult attendee rows has nothing to attribute them to, so there is
+        nothing for the resolver to resolve."""
+        repo = _repo(fetch_person_cabin_values=[_cabin_row(2024, "River F", "2024-10-10T18:00:00+00:00")])
+
+        result = await PersonHousingService(repo).build_person_housing(PERSON)
+
+        assert result == PersonHousingResponse(person_cm_id=PERSON)
+        repo.fetch_all_units.assert_not_awaited()
+        repo.fetch_unit_aliases.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_adult_attendee_rows_with_no_cabin_values_never_builds_the_resolver(self) -> None:
+        """The mirror case: enrolled adult weekends but no cabin values at all
+        -- nothing to attribute, so the resolver stays unbuilt here too."""
+        repo = _repo(fetch_person_adult_attendees=[_attendee_row(2024, WW, "2024-10-20 07:00:00.000Z")])
+
+        result = await PersonHousingService(repo).build_person_housing(PERSON)
+
+        assert result == PersonHousingResponse(person_cm_id=PERSON)
+        repo.fetch_all_units.assert_not_awaited()
+        repo.fetch_unit_aliases.assert_not_awaited()
