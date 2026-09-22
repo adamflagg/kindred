@@ -1412,6 +1412,32 @@ class HouseholdJourneyResponse(BaseModel):
     years: list[HouseholdJourneyYear] = Field(default_factory=list)
 
 
+class PersonHousingWeekend(BaseModel):
+    """One adult weekend and the cabin attributed to it (adult camper journey).
+
+    `cabin_name` is the string staff typed THAT year, outer whitespace trimmed
+    -- never today's unit name (owner ruling 2026-09-22). `cabin_name_raw` is
+    the untouched value. A weekend with no attributed cabin is absent, not blank.
+    """
+
+    year: int = 0
+    session_cm_id: int = 0
+    cabin_name: str = ""
+    cabin_name_raw: str = ""
+
+
+class PersonHousingResponse(BaseModel):
+    """One person's adult-weekend cabins, attributed PER WEEKEND.
+
+    Per weekend rather than per year (unlike `HouseholdJourneyYear`): a
+    two-weekend season can label both weekends when each value was written
+    before its own weekend (spec §4.2 step 4).
+    """
+
+    person_cm_id: int = 0
+    weekends: list[PersonHousingWeekend] = Field(default_factory=list)
+
+
 class WeekendSummaryEntry(BaseModel):
     """One weekend on the lander: who it is, and how its placement stands.
 

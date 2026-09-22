@@ -2444,3 +2444,37 @@ class TestSessionAttributionConflictsEndpoint:
             client = TestClient(app)
             assert client.get(self.URL).status_code == 422
             assert client.get(self.URL, params={"year": 1999}).status_code == 422
+
+
+class TestPersonHousingEndpoint:
+    """GET /api/lodging/persons/{id}/housing (adult camper journey spec §4).
+
+    Open to any authenticated user, exactly like the household journey beside
+    it: it carries cabin names and weekends, and no narrative.
+    """
+
+    def test_a_plain_authenticated_user_can_read_it(self, mock_pb: MagicMock) -> None:
+        mock_pb.collection.return_value.get_full_list.return_value = []
+
+        with patch("api.routers.lodging.pb", mock_pb):
+            client = TestClient(_build_app(_plain_user(), mock_pb))
+            response = client.get("/api/lodging/persons/3000001/housing")
+
+        assert response.status_code == 200
+        assert response.json() == {"person_cm_id": 3000001, "weekends": []}
+
+    def test_it_reads_only_cabin_values_adult_enrollments_and_the_registry(self, mock_pb: MagicMock) -> None:
+        collections: list[str] = []
+
+        def record(name: str) -> MagicMock:
+            collections.append(name)
+            return mock_pb.collection.return_value
+
+        mock_pb.collection.return_value.get_full_list.return_value = []
+        mock_pb.collection.side_effect = record
+
+        with patch("api.routers.lodging.pb", mock_pb):
+            TestClient(_build_app(_plain_user(), mock_pb)).get("/api/lodging/persons/3000001/housing")
+
+        assert set(collections) <= {"person_custom_values", "attendees", "lodging_units", "lodging_unit_aliases"}
+        assert "family_camp_medical" not in collections
