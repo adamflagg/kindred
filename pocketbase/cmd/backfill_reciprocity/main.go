@@ -32,8 +32,8 @@ func run() int {
 		return 1
 	}
 	defer func() {
-		if err := app.ResetBootstrapState(); err != nil {
-			slog.Warn("ResetBootstrapState", "error", err)
+		if err := app.ClearBootstrap(); err != nil {
+			slog.Warn("ClearBootstrap", "error", err)
 		}
 	}()
 
