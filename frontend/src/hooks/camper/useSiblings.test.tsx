@@ -37,10 +37,16 @@ const member = (cmId: number, extra: Record<string, unknown> = {}) => ({
   grade: 0,
   ...extra,
 })
-const enrolment = (sessionName: string, sessionType: string) => ({
+const enrolment = (sessionName: string, sessionType: string, startDate = '2026-06-01') => ({
   status: 'enrolled',
   expand: {
-    session: { id: `s-${sessionName}`, cm_id: 1, name: sessionName, session_type: sessionType },
+    session: {
+      id: `s-${sessionName}`,
+      cm_id: 1,
+      name: sessionName,
+      session_type: sessionType,
+      start_date: startDate,
+    },
   },
 })
 
@@ -98,5 +104,83 @@ describe('useSiblings', () => {
     const { result } = renderHook(() => useSiblings(555, 3000001, 2026, 'child'), { wrapper })
     await waitFor(() => expect(result.current.siblings).toHaveLength(1))
     expect(result.current.siblings[0]?.additionalSessions).toHaveLength(1)
+  })
+
+  it("never shows a family-camp member's day group as a cabin — no bunk lookup for family camp", async () => {
+    mockPersons.mockResolvedValue([member(3000002, { grade: 0 })])
+    mockAttendees.mockResolvedValue([enrolment('Family Camp 1', 'family')])
+    mockAssignments.mockResolvedValue([{ expand: { bunk: { name: 'Day Group B' } } }])
+    const { result } = renderHook(() => useSiblings(555, 3000001, 2026, 'child'), { wrapper })
+    await waitFor(() => expect(result.current.siblings).toHaveLength(1))
+    expect(result.current.siblings[0]?.bunkName).toBeNull()
+    expect(mockAssignments).not.toHaveBeenCalled()
+  })
+
+  it('no bunk lookup when the primary program is an adult program', async () => {
+    mockPersons.mockResolvedValue([member(3000002, { grade: 0 })])
+    mockAttendees.mockResolvedValue([enrolment("Women's Weekend", 'adult')])
+    mockAssignments.mockResolvedValue([{ expand: { bunk: { name: 'Day Group B' } } }])
+    const { result } = renderHook(() => useSiblings(555, 3000001, 2026, 'adult'), { wrapper })
+    await waitFor(() => expect(result.current.siblings).toHaveLength(1))
+    expect(result.current.siblings[0]?.bunkName).toBeNull()
+    expect(mockAssignments).not.toHaveBeenCalled()
+  })
+
+  it('still looks up the cabin for a summer primary program', async () => {
+    mockPersons.mockResolvedValue([member(3000002, { grade: 4 })])
+    mockAttendees.mockResolvedValue([enrolment('Session 2', 'main')])
+    mockAssignments.mockResolvedValue([{ expand: { bunk: { name: 'B-3' } } }])
+    const { result } = renderHook(() => useSiblings(555, 3000001, 2026, 'child'), { wrapper })
+    await waitFor(() => expect(result.current.siblings).toHaveLength(1))
+    expect(result.current.siblings[0]?.bunkName).toBe('B-3')
+  })
+
+  describe('primary program among non-summer types is deterministic', () => {
+    const rows = () => [
+      enrolment('TLI', 'tli', '2026-07-10'),
+      enrolment('Family Camp 2', 'family', '2026-08-20'),
+      enrolment('Family Camp 1', 'family', '2026-05-15'),
+    ]
+    it.each([
+      ['as returned', (r: ReturnType<typeof rows>) => r],
+      ['reversed', (r: ReturnType<typeof rows>) => [...r].reverse()],
+      ['rotated', (r: ReturnType<typeof rows>) => [...r.slice(1), ...r.slice(0, 1)]],
+    ])('earliest start date wins (%s)', async (_label, order) => {
+      mockPersons.mockResolvedValue([member(3000002, { grade: 0 })])
+      mockAttendees.mockResolvedValue(order(rows()))
+      const { result } = renderHook(() => useSiblings(555, 3000001, 2026, 'child'), { wrapper })
+      await waitFor(() => expect(result.current.siblings).toHaveLength(1))
+      expect(result.current.siblings[0]?.session?.name).toBe('Family Camp 1')
+      expect(result.current.siblings[0]?.additionalSessions?.map((s) => s.name)).toEqual([
+        'TLI',
+        'Family Camp 2',
+      ])
+    })
+
+    it.each([
+      ['as returned', false],
+      ['reversed', true],
+    ])('same start date breaks by name (%s)', async (_label, reverse) => {
+      const same = [
+        enrolment('Family Camp B', 'family', '2026-05-15'),
+        enrolment('Family Camp A', 'family', '2026-05-15'),
+      ]
+      mockPersons.mockResolvedValue([member(3000002, { grade: 0 })])
+      mockAttendees.mockResolvedValue(reverse ? [...same].reverse() : same)
+      const { result } = renderHook(() => useSiblings(555, 3000001, 2026, 'child'), { wrapper })
+      await waitFor(() => expect(result.current.siblings).toHaveLength(1))
+      expect(result.current.siblings[0]?.session?.name).toBe('Family Camp A')
+    })
+
+    it('a summer program still outranks an earlier non-summer one', async () => {
+      mockPersons.mockResolvedValue([member(3000002, { grade: 4 })])
+      mockAttendees.mockResolvedValue([
+        enrolment('Family Camp 1', 'family', '2026-05-15'),
+        enrolment('Session 3', 'main', '2026-07-20'),
+      ])
+      const { result } = renderHook(() => useSiblings(555, 3000001, 2026, 'child'), { wrapper })
+      await waitFor(() => expect(result.current.siblings).toHaveLength(1))
+      expect(result.current.siblings[0]?.session?.name).toBe('Session 3')
+    })
   })
 })

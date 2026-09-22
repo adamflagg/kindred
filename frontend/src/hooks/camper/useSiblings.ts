@@ -13,6 +13,8 @@ import { pb } from '../../lib/pocketbase'
 import {
   buildCamperJourneySessionTypeFilter,
   buildKidProgramSessionTypeFilter,
+  isAdultSessionType,
+  isFamilySessionType,
 } from '../../utils/sessionTypePredicates'
 import type {
   PersonsResponse,
@@ -28,6 +30,23 @@ export interface UseSiblingsResult {
   siblings: SiblingWithEnrollment[]
   isLoading: boolean
   error: Error | null
+}
+
+type SessionOrderFields = Pick<CampSessionsResponse, 'start_date' | 'name'>
+
+/** Earliest start date first (a missing date sorts last), then by name. */
+function compareStartThenName(
+  a: SessionOrderFields | undefined,
+  b: SessionOrderFields | undefined
+): number {
+  const aStart = a?.start_date ?? ''
+  const bStart = b?.start_date ?? ''
+  if (aStart !== bStart) {
+    if (aStart === '') return 1
+    if (bStart === '') return -1
+    return aStart < bStart ? -1 : 1
+  }
+  return (a?.name ?? '').localeCompare(b?.name ?? '')
 }
 
 export function useSiblings(
@@ -89,11 +108,19 @@ export function useSiblings(
               return null // No attendee records this year
             }
 
-            // Sort enrolled first, then by session type priority
+            // Sort enrolled first, then by session type priority (summer types
+            // first). Family, teen and adult programs all share one priority,
+            // so break those ties by start date, then name — otherwise the
+            // primary program would depend on PocketBase's return order.
             const sortedAttendees = attendees.sort((a, b) => {
-              const aType = a.expand.session?.session_type ?? 'unknown'
-              const bType = b.expand.session?.session_type ?? 'unknown'
-              return sortEnrolledFirst(a.status, aType, b.status, bType)
+              const aSession = a.expand.session
+              const bSession = b.expand.session
+              const aType = aSession?.session_type ?? 'unknown'
+              const bType = bSession?.session_type ?? 'unknown'
+              return (
+                sortEnrolledFirst(a.status, aType, b.status, bType) ||
+                compareStartThenName(aSession, bSession)
+              )
             })
 
             const primaryAttendee = sortedAttendees[0]
@@ -107,9 +134,15 @@ export function useSiblings(
               .filter((s): s is CampSessionsResponse => s !== undefined)
               .map((s) => ({ name: s.name, session_type: s.session_type }))
 
-            // Try to get bunk assignment
+            // Try to get bunk assignment. Family camp and adult programs have
+            // no cabin here: CampMinder's bunk for a family session is the
+            // day group, which must never render as a cabin (kindred#2466).
             let bunkName: string | null = null
-            if (session) {
+            if (
+              session &&
+              !isFamilySessionType(session.session_type) &&
+              !isAdultSessionType(session.session_type)
+            ) {
               try {
                 const assignments = await pb
                   .collection('bunk_assignments')
