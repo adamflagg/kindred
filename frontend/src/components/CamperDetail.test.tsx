@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Route, Routes } from 'react-router'
+import { EMPTY_JOURNEY_COUNTS } from '../utils/journeyCountLabel'
 import CamperDetail from './CamperDetail'
 import type { SatisfactionResponse } from '../types/satisfaction'
 
@@ -44,7 +45,7 @@ vi.mock('../hooks/camper', () => ({
       error: null,
     }
   },
-  useCamperHistory: () => ({ camperHistory: [] }),
+  useCamperHistory: () => ({ camperHistory: [], counts: EMPTY_JOURNEY_COUNTS }),
   useSiblings: () => ({ siblings: [], isLoading: false, error: null }),
   useOriginalBunkData: () => ({
     originalBunkData: {

@@ -393,13 +393,16 @@ describe('CamperDetailsPanel', () => {
     it('shows no count line when every count is zero', async () => {
       setupDeclinedRequestMocks()
 
-      render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} />)
+      const { container } = render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} />)
 
       await screen.findByRole('heading', { name: /Emma/i })
       expect(screen.queryByText('2 years')).not.toBeInTheDocument()
       expect(
         screen.queryByText(/^\d+ (summers?|family weekends?|adult weekends?)/)
       ).not.toBeInTheDocument()
+      // The whole stat is gone, icon included: the only TreePine left is the
+      // Camp Journey section header's.
+      expect(container.querySelectorAll('.lucide-tree-pine')).toHaveLength(1)
     })
   })
 

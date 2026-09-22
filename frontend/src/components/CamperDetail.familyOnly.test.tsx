@@ -14,6 +14,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Route, Routes } from 'react-router'
+import { EMPTY_JOURNEY_COUNTS } from '../utils/journeyCountLabel'
 import CamperDetail from './CamperDetail'
 
 const PERSON_CM_ID = 8000002
@@ -43,7 +44,7 @@ vi.mock('../hooks/camper', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../hooks/camper')>()
   return {
     ...actual,
-    useCamperHistory: () => ({ camperHistory: [] }),
+    useCamperHistory: () => ({ camperHistory: [], counts: EMPTY_JOURNEY_COUNTS }),
     useSiblings: () => ({ siblings: [], isLoading: false, error: null }),
     useOriginalBunkData: () => ({ originalBunkData: null, isLoading: false, error: null }),
     useAllBunkRequests: () => ({ allBunkRequests: [], isLoading: false, error: null }),

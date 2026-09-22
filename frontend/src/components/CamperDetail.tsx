@@ -30,7 +30,6 @@ import {
 import type { EnhancedBunkRequest } from '../hooks/camper/useAllBunkRequests'
 import type { SatisfactionEntry } from '../types/satisfaction'
 import { buildSatisfactionLookup } from '../utils/satisfactionLookup'
-import { EMPTY_JOURNEY_COUNTS } from '../utils/journeyCountLabel'
 
 // Import extracted UI components
 import {
@@ -314,7 +313,7 @@ export default function CamperDetail() {
   const camper = enrolledCampers[0] ?? allAttendees[0] ?? null
 
   // Fetch camper's history using extracted hook (pass all attendees for status-aware filtering)
-  const { camperHistory, counts: journeyCounts = EMPTY_JOURNEY_COUNTS } = useCamperHistory(
+  const { camperHistory, counts: journeyCounts } = useCamperHistory(
     personCmId,
     currentYear,
     camper,

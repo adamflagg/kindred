@@ -201,7 +201,7 @@ describe('CampJourneyTimeline count line (spec §6.1)', () => {
   })
 
   it('renders no count line when every count is zero', () => {
-    render(
+    const { container } = render(
       <CampJourneyTimeline
         history={[]}
         counts={{ summers: 0, familyWeekends: 0, adultWeekends: 0 }}
@@ -209,5 +209,7 @@ describe('CampJourneyTimeline count line (spec §6.1)', () => {
       />
     )
     expect(screen.queryByText(/summer|weekend/)).toBeNull()
+    // No empty count <p> under the title either (it is the only text-forest-200 <p>).
+    expect(container.querySelector('p.text-forest-200')).toBeNull()
   })
 })

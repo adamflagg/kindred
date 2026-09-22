@@ -41,7 +41,12 @@ describe('HeroHeader count line (spec §6.1)', () => {
   })
 
   it('hides the stat when every count is zero', () => {
-    renderHero({ journeyCounts: { summers: 0, familyWeekends: 0, adultWeekends: 0 } })
+    const { container } = renderHero({
+      journeyCounts: { summers: 0, familyWeekends: 0, adultWeekends: 0 },
+    })
     expect(screen.queryByText(/weekend|summer/)).toBeNull()
+    // The whole stat is gone, not just its text: TreePine appears in the hero
+    // only on this stat, so an empty span beside a bare icon would fail here.
+    expect(container.querySelector('.lucide-tree-pine')).toBeNull()
   })
 })
