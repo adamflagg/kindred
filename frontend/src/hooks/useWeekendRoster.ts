@@ -41,6 +41,7 @@ import { useQuery } from '@tanstack/react-query'
 import {
   fetchHouseholdJourney,
   fetchHouseholdMedical,
+  fetchPersonHousing,
   fetchWeekendRoster as fetchRoster,
   fetchWeekendSessions as fetchSessions,
   fetchWeekendSummary as fetchSummary,
@@ -49,6 +50,7 @@ import { childSurnames, familyNameLabel } from '../components/weekend/householdI
 import type {
   HouseholdJourney,
   HouseholdMedical,
+  PersonHousing,
   WeekendRoster,
   WeekendSessionList,
   WeekendSummary,
@@ -157,6 +159,20 @@ export function useHouseholdFamilyLabel(householdCmId: number): string | undefin
   const years = data?.years ?? []
   const label = familyNameLabel(years.flatMap((row) => childSurnames(row.children)))
   return label.length > 0 ? label : undefined
+}
+
+/**
+ * One person's adult-weekend cabins (adult camper journey spec §5.3). Protected:
+ * callers pass `null` until `useAuth().isLoading` is false. Inherits the app's
+ * cache defaults; `invalidateLodgingRegistryQueries` covers alias edits.
+ */
+export function usePersonHousing(personCmId: number | null) {
+  const { fetchWithAuth } = useApiWithAuth()
+  return useQuery<PersonHousing>({
+    queryKey: queryKeys.personHousing(personCmId ?? 0),
+    enabled: personCmId !== null && personCmId > 0,
+    queryFn: () => fetchPersonHousing(fetchWithAuth, personCmId as number),
+  })
 }
 
 /**

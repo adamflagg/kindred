@@ -12,6 +12,7 @@ import {
   useHouseholdFamilyLabel,
   useHouseholdJourney,
   useHouseholdMedical,
+  usePersonHousing,
   useWeekendRoster,
   useWeekendSessions,
   useWeekendSummary,
@@ -22,6 +23,7 @@ const fetchWeekendSummary = vi.fn()
 const fetchWeekendRoster = vi.fn()
 const fetchHouseholdMedical = vi.fn()
 const fetchHouseholdJourney = vi.fn()
+const fetchPersonHousing = vi.fn()
 
 vi.mock('../services/lodgingApi', () => ({
   fetchWeekendSessions: (...args: unknown[]) => fetchWeekendSessions(...args),
@@ -29,6 +31,7 @@ vi.mock('../services/lodgingApi', () => ({
   fetchWeekendRoster: (...args: unknown[]) => fetchWeekendRoster(...args),
   fetchHouseholdMedical: (...args: unknown[]) => fetchHouseholdMedical(...args),
   fetchHouseholdJourney: (...args: unknown[]) => fetchHouseholdJourney(...args),
+  fetchPersonHousing: (...args: unknown[]) => fetchPersonHousing(...args),
 }))
 
 vi.mock('./useApiWithAuth', () => ({
@@ -81,6 +84,7 @@ beforeEach(() => {
   fetchWeekendRoster.mockReset().mockResolvedValue({ year: 2026, session_cm_id: 1000001 })
   fetchHouseholdMedical.mockReset().mockResolvedValue({ household_cm_id: 2000001, year: 2026 })
   fetchHouseholdJourney.mockReset().mockResolvedValue({ household_cm_id: 2000001, years: [] })
+  fetchPersonHousing.mockReset().mockResolvedValue({ person_cm_id: 3000001, weekends: [] })
 })
 
 describe('year gating', () => {
@@ -338,6 +342,30 @@ describe('useHouseholdJourney', () => {
     renderHook(() => useHouseholdJourney(0), { wrapper })
 
     expect(fetchHouseholdJourney).not.toHaveBeenCalled()
+  })
+})
+
+describe('usePersonHousing', () => {
+  it('stays idle for a party with no person id yet', () => {
+    renderHook(() => usePersonHousing(null), { wrapper })
+
+    expect(fetchPersonHousing).not.toHaveBeenCalled()
+  })
+
+  it('stays idle for an unresolvable person', () => {
+    renderHook(() => usePersonHousing(0), { wrapper })
+
+    expect(fetchPersonHousing).not.toHaveBeenCalled()
+  })
+
+  it('fetches by person CampMinder id through the authed fetcher', async () => {
+    const { result } = renderHook(() => usePersonHousing(3000001), { wrapper })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(fetchPersonHousing).toHaveBeenCalledTimes(1)
+    const args = fetchPersonHousing.mock.calls[0] as unknown[]
+    expect(args).toHaveLength(2)
+    expect(args[1]).toBe(3000001)
   })
 })
 

@@ -579,6 +579,18 @@ export const queryKeys = {
   /** The medical narrative. Only ever fetched behind a `bunking.manage` check. */
   householdMedical: (year: number, householdCmId: number) =>
     ['household-medical', year, householdCmId] as const,
+  /**
+   * One person's adult-weekend cabins (adult camper journey). No year — the
+   * read spans every season, like the household journey.
+   */
+  personHousing: (personCmId: number) => ['person-housing', personCmId] as const,
+  // Invalidation prefix: an alias edit can change which values name one place.
+  personHousingPrefix: () => ['person-housing'] as const,
+  /** A person's year-scoped `persons` rows (household id, years_at_camp, age). */
+  personRecords: (personCmId: number) => ['person-records', personCmId] as const,
+  /** The shared journey feed's result (useCamperJourney). */
+  camperJourney: (personCmId: number, year: number) =>
+    ['camper-journey', personCmId, year] as const,
 
   // Lodging registry (Family Camp admin settings). Year-scoped since
   // migration 1500000141: a unit outlives any one season, but its ROW does
@@ -753,6 +765,9 @@ export function invalidateLodgingRegistryQueries(queryClient: {
   // the board behind it shows the new one — the disagreement the issue exists
   // to remove, re-created by the fix for it.
   void queryClient.invalidateQueries({ queryKey: queryKeys.householdJourneyPrefix() })
+  // Adult camper journey: an alias edit changes which cabin strings the
+  // server treats as one place, so the attributed cabins can move.
+  void queryClient.invalidateQueries({ queryKey: queryKeys.personHousingPrefix() })
   // The board's "Push write-ins" badge reads the push preview (owner ruling
   // 2026-08-28: it counts what a push would actually write, which only the
   // server can know — inside a scenario the client never sees the live

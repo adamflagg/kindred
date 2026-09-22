@@ -198,6 +198,22 @@ describe('invalidateLodgingRegistryQueries', () => {
     expect(queryKeys.householdJourney(2000001).slice(0, 1)).toEqual(journey)
   })
 
+  it('invalidates the person housing feed, since an alias edit can change which cabin strings resolve to one place', () => {
+    // Adult camper journey (Task 9): `usePersonHousing` attributes cabins
+    // server-side off the lodging alias table. Renaming an alias can move
+    // which weekend a cabin string resolves to without any placement write
+    // happening at all, so this needs the same registry-edit invalidation
+    // `householdJourneyPrefix` gets above.
+    const client = recordingClient()
+    invalidateLodgingRegistryQueries(client)
+
+    const personHousing = client.keys.find((k) => k[0] === 'person-housing')
+    expect(personHousing).toHaveLength(1)
+    // By PREFIX: the real key is ['person-housing', personCmId] and the
+    // admin panel knows no person at all.
+    expect(queryKeys.personHousing(3000001).slice(0, 1)).toEqual(personHousing)
+  })
+
   it('invalidates the weekend keys by PREFIX, not by exact key', () => {
     // The admin panel knows neither the year nor the weekend, and the real
     // keys are [key, year] / [key, year, sessionCmId]. An exact-key
