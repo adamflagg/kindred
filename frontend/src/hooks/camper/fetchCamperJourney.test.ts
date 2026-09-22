@@ -409,6 +409,14 @@ describe('family-camp housing (kindred#2466)', () => {
 })
 
 describe('adult programs (adult camper journey spec §5.2)', () => {
+  // Each test starts from no enrollments — without this, a test that sets no
+  // attendees inherits the previous test's mock (vi.fn keeps its last value).
+  beforeEach(() => {
+    mockAttendeesGetFullList.mockReset().mockResolvedValue([])
+    mockAssignmentsGetFullList.mockReset().mockResolvedValue([])
+    mockSessionsGetFullList.mockReset().mockResolvedValue([])
+  })
+
   function housing(year: number, sessionCmId: number, cabin: string) {
     return { year, session_cm_id: sessionCmId, cabin_name: cabin, cabin_name_raw: cabin }
   }
@@ -452,6 +460,14 @@ describe('adult programs (adult camper journey spec §5.2)', () => {
 })
 
 describe('family camp, as recorded and as a parent (spec §5.2)', () => {
+  // Each test starts from no enrollments — without this, a test that sets no
+  // attendees inherits the previous test's mock (vi.fn keeps its last value).
+  beforeEach(() => {
+    mockAttendeesGetFullList.mockReset().mockResolvedValue([])
+    mockAssignmentsGetFullList.mockReset().mockResolvedValue([])
+    mockSessionsGetFullList.mockReset().mockResolvedValue([])
+  })
+
   function householdYear(overrides: Record<string, unknown> = {}) {
     return {
       year: 2024,
