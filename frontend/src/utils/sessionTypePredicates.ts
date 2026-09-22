@@ -47,6 +47,10 @@ export const TEEN_PROGRAM_TYPES = ['scit', 'tli'] as const
  * hundreds of enrolled people every year (the exact count depends on how
  * strictly "family-only" is defined — see #2149 for the three disagreeing
  * counts and why).
+ *
+ * Adult programs joined in 2026-09 (adult camper journey spec §5.1): an
+ * adult-only person's record dead-ended on "no active enrollments" exactly as
+ * a family-only one did before #2149.
  */
 export const CAMPER_DETAIL_TYPES = [
   'main',
@@ -56,6 +60,7 @@ export const CAMPER_DETAIL_TYPES = [
   'scit',
   'tli',
   'family',
+  'adult',
 ] as const
 
 /**
@@ -82,6 +87,23 @@ export const CAMPER_DETAIL_TYPES = [
 export const CAMPER_JOURNEY_TYPES = Array.from(
   new Set([...CAMPER_DETAIL_TYPES, 'family'])
 ) as readonly SessionTypeLiteral[]
+
+/**
+ * Programs a CHILD attends — the Siblings panel's set (adult camper journey
+ * spec §6.4). Deliberately excludes 'adult': a parent only ever has
+ * adult-program rows, so excluding them is what keeps parents out of a
+ * child's Siblings panel without the old `grade > 0` heuristic (which also
+ * hid 236 family-camp preschoolers).
+ */
+export const KID_PROGRAM_TYPES = [
+  'main',
+  'embedded',
+  'ag',
+  'quest',
+  'scit',
+  'tli',
+  'family',
+] as const
 
 /** View mode for metrics: camp sessions, quest sessions, all combined, or teens */
 export type MetricsViewMode = 'sessions' | 'quests' | 'all' | 'teens'
@@ -232,6 +254,11 @@ export function isFamilySessionType(sessionType: string | null | undefined): boo
   return sessionType === 'family'
 }
 
+/** True if the session_type string is "adult" (Women's/Men's Weekend, D&D, ...) */
+export function isAdultSessionType(sessionType: string | null | undefined): boolean {
+  return sessionType === 'adult'
+}
+
 // ============================================================================
 // PocketBase filter builders
 // ============================================================================
@@ -263,6 +290,11 @@ export function buildCamperJourneySessionTypeFilter(): string {
  */
 export function buildCamperDetailSessionTypeFilter(): string {
   return CAMPER_DETAIL_TYPES.map((t) => `session.session_type = "${t}"`).join(' || ')
+}
+
+/** OR-clause over KID_PROGRAM_TYPES for `session.session_type`. Caller wraps in `(...)`. */
+export function buildKidProgramSessionTypeFilter(): string {
+  return KID_PROGRAM_TYPES.map((t) => `session.session_type = "${t}"`).join(' || ')
 }
 
 // ============================================================================

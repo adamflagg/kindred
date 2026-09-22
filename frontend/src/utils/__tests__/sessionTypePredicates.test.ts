@@ -34,8 +34,11 @@ import {
   isSummerTeenSession,
   CAMPER_JOURNEY_TYPES,
   CAMPER_DETAIL_TYPES,
+  KID_PROGRAM_TYPES,
+  isAdultSessionType,
   buildCamperJourneySessionTypeFilter,
   buildCamperDetailSessionTypeFilter,
+  buildKidProgramSessionTypeFilter,
 } from '../sessionTypePredicates'
 import type { Session } from '../../types/app-types'
 
@@ -515,7 +518,7 @@ describe('camper journey/detail session-type sets', () => {
   // 'family'). Now that 'family' is already in CAMPER_DETAIL_TYPES, deriving
   // must dedupe or the derived array — and therefore the generated PB filter
   // and any React-key mapping over it — would contain 'family' twice.
-  it('CAMPER_JOURNEY_TYPES is summer + teen + family, deduped (issue #2149)', () => {
+  it('CAMPER_JOURNEY_TYPES is summer + teen + family + adult, deduped (adult camper journey)', () => {
     expect(CAMPER_JOURNEY_TYPES).toEqual([
       'main',
       'embedded',
@@ -524,8 +527,8 @@ describe('camper journey/detail session-type sets', () => {
       'scit',
       'tli',
       'family',
+      'adult',
     ])
-    expect(CAMPER_JOURNEY_TYPES).toContain('family')
   })
 
   it('CAMPER_JOURNEY_TYPES has no duplicate entries', () => {
@@ -533,7 +536,7 @@ describe('camper journey/detail session-type sets', () => {
     expect(CAMPER_JOURNEY_TYPES.filter((t) => t === 'family')).toHaveLength(1)
   })
 
-  it('CAMPER_DETAIL_TYPES is summer + teen + family (issue #2149: fixes unreachable camper detail page)', () => {
+  it('CAMPER_DETAIL_TYPES includes adult so an adult-only record loads (the #2149 move)', () => {
     expect(CAMPER_DETAIL_TYPES).toEqual([
       'main',
       'embedded',
@@ -542,8 +545,20 @@ describe('camper journey/detail session-type sets', () => {
       'scit',
       'tli',
       'family',
+      'adult',
     ])
-    expect(CAMPER_DETAIL_TYPES).toContain('family')
+  })
+
+  it('KID_PROGRAM_TYPES never includes adult — that is what keeps a parent out of a child’s Siblings', () => {
+    expect(KID_PROGRAM_TYPES).toEqual(['main', 'embedded', 'ag', 'quest', 'scit', 'tli', 'family'])
+    expect(buildKidProgramSessionTypeFilter()).not.toContain('"adult"')
+    expect(buildKidProgramSessionTypeFilter()).toContain('session.session_type = "family"')
+  })
+
+  it('isAdultSessionType', () => {
+    expect(isAdultSessionType('adult')).toBe(true)
+    expect(isAdultSessionType('family')).toBe(false)
+    expect(isAdultSessionType(undefined)).toBe(false)
   })
 
   it('buildCamperJourneySessionTypeFilter ORs every journey type on session.session_type exactly once, including family', () => {
