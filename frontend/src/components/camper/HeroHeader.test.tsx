@@ -50,3 +50,15 @@ describe('HeroHeader count line (spec §6.1)', () => {
     expect(container.querySelector('.lucide-tree-pine')).toBeNull()
   })
 })
+
+describe('HeroHeader adult branch (spec §6.3)', () => {
+  it('drops the grade for an adult-program person', () => {
+    renderHero({ isAdultProgram: true })
+    expect(screen.queryByText(/Grade/)).toBeNull()
+  })
+
+  it('keeps the grade for everyone else', () => {
+    renderHero({ camper: { ...camper, grade: 5, age: 10.04 } as Camper })
+    expect(screen.getByText(/Grade/)).toBeInTheDocument()
+  })
+})

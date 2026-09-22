@@ -43,6 +43,8 @@ interface IdentityPanelProps {
   pronouns: string
   defaultExpanded?: boolean
   cohortContext?: CohortContext | undefined
+  /** Hides the School row for an adult-program person (adult camper journey spec §6.3) */
+  hideSchool?: boolean
 }
 
 const KINDS: CohortKind[] = ['school', 'congregation', 'city']
@@ -54,6 +56,7 @@ export function IdentityPanel({
   pronouns,
   defaultExpanded = false,
   cohortContext,
+  hideSchool,
 }: IdentityPanelProps) {
   const [isExpanded, setIsExpanded] = useState(defaultExpanded)
   const viewingYear = useYear()
@@ -151,17 +154,23 @@ export function IdentityPanel({
           </div>
 
           {/* Cohort Row: School | City | Congregation. Cohort badges only when
-              the parent supplies cohortContext (current-year enrolled). */}
-          <div className="border-border grid grid-cols-1 gap-4 border-t pt-4 sm:grid-cols-3">
-            <CohortField
-              icon={School}
-              label="School"
-              value={camper.school ?? 'Not provided'}
-              subValue={`${formatGradeOrdinal(camper.grade)} Grade`}
-              cohortKind="school"
-              cohortCount={cohortContext ? (cohorts?.school?.count ?? 0) : 0}
-              onOpenCohort={() => drill.open('school')}
-            />
+              the parent supplies cohortContext (current-year enrolled). School
+              is hidden for an adult-program person (adult camper journey spec
+              §6.3) — adults have no school. */}
+          <div
+            className={`border-border grid grid-cols-1 gap-4 border-t pt-4 ${hideSchool ? 'sm:grid-cols-2' : 'sm:grid-cols-3'}`}
+          >
+            {!hideSchool && (
+              <CohortField
+                icon={School}
+                label="School"
+                value={camper.school ?? 'Not provided'}
+                subValue={`${formatGradeOrdinal(camper.grade)} Grade`}
+                cohortKind="school"
+                cohortCount={cohortContext ? (cohorts?.school?.count ?? 0) : 0}
+                onOpenCohort={() => drill.open('school')}
+              />
+            )}
             <CohortField
               icon={MapPin}
               label="Location"

@@ -14,7 +14,7 @@ import { usePermissions } from '../hooks/usePermissions'
 import { Permission } from '../constants/permissions'
 import { getLocationDisplay } from '../utils/addressUtils'
 import { getSessionShortName } from '../utils/sessionDisplay'
-import { isSummerCampSession } from '../utils/sessionTypePredicates'
+import { isSummerCampSession, isAdultSessionType } from '../utils/sessionTypePredicates'
 import { BunkRequestContext } from '../contexts/BunkRequestContext'
 import { BunkRequestProvider } from '../providers/BunkRequestProvider'
 import type { PersonsResponse } from '../types/pocketbase-types'
@@ -89,6 +89,8 @@ interface CamperDetailBodyProps {
   journeyCounts: JourneyCounts
   canManageBunking: boolean
   isAdmin: boolean
+  /** True when every current-year enrollment is an adult program (adult camper journey spec §6.3) */
+  isAdultProgram: boolean
 }
 
 /**
@@ -110,6 +112,7 @@ function CamperDetailBody({
   journeyCounts,
   canManageBunking,
   isAdmin,
+  isAdultProgram,
 }: CamperDetailBodyProps) {
   // Safe: this component is always rendered inside BunkRequestProvider (see CamperDetail).
   const bunkRequestCtx = useContext(BunkRequestContext)!
@@ -182,6 +185,7 @@ function CamperDetailBody({
         pronouns={pronouns}
         allSessionNames={allSessionNames}
         journeyCounts={journeyCounts}
+        isAdultProgram={isAdultProgram}
       />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
@@ -194,6 +198,7 @@ function CamperDetailBody({
             congregation={congregation}
             pronouns={pronouns}
             defaultExpanded={true}
+            hideSchool={isAdultProgram}
             cohortContext={
               camper.attendee_status === 'enrolled' &&
               showBunkingUI &&
@@ -312,6 +317,15 @@ export default function CamperDetail() {
   // Select primary camper: prefer enrolled, fall back to first attendee
   const camper = enrolledCampers[0] ?? allAttendees[0] ?? null
 
+  // Adult branch (adult camper journey spec §6.3): every current-year
+  // enrollment is an adult program, so the camper-only parts do not apply.
+  // Derived here — before useSiblings and the loading guards below — because
+  // Task 13's Household/Siblings branch needs it at the same point.
+  const currentEnrollments = enrolledCampers.length > 0 ? enrolledCampers : allAttendees
+  const isAdultProgram =
+    currentEnrollments.length > 0 &&
+    currentEnrollments.every((c) => isAdultSessionType(c.expand?.session?.session_type))
+
   // Fetch camper's history using extracted hook (pass all attendees for status-aware filtering)
   const { camperHistory, counts: journeyCounts } = useCamperHistory(
     personCmId,
@@ -428,6 +442,7 @@ export default function CamperDetail() {
         journeyCounts={journeyCounts}
         canManageBunking={canManageBunking}
         isAdmin={isAdmin}
+        isAdultProgram={isAdultProgram}
       />
     </BunkRequestProvider>
   )
