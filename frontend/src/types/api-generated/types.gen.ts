@@ -3489,6 +3489,54 @@ export type PerRequestStatus = {
 }
 
 /**
+ * PersonHousingResponse
+ *
+ * One person's adult-weekend cabins, attributed PER WEEKEND.
+ *
+ * Per weekend rather than per year (unlike `HouseholdJourneyYear`): a
+ * two-weekend season can label both weekends when each value was written
+ * before its own weekend (spec §4.2 step 4).
+ */
+export type PersonHousingResponse = {
+  /**
+   * Person Cm Id
+   */
+  person_cm_id?: number
+  /**
+   * Weekends
+   */
+  weekends?: Array<PersonHousingWeekend>
+}
+
+/**
+ * PersonHousingWeekend
+ *
+ * One adult weekend and the cabin attributed to it (adult camper journey).
+ *
+ * `cabin_name` is the string staff typed THAT year, outer whitespace trimmed
+ * -- never today's unit name (owner ruling 2026-09-22). `cabin_name_raw` is
+ * the untouched value. A weekend with no attributed cabin is absent, not blank.
+ */
+export type PersonHousingWeekend = {
+  /**
+   * Year
+   */
+  year?: number
+  /**
+   * Session Cm Id
+   */
+  session_cm_id?: number
+  /**
+   * Cabin Name
+   */
+  cabin_name?: string
+  /**
+   * Cabin Name Raw
+   */
+  cabin_name_raw?: string
+}
+
+/**
  * PersonSearchItem
  *
  * A person result from search.
@@ -11155,6 +11203,38 @@ export type GetHouseholdJourneyApiLodgingHouseholdsHouseholdCmIdJourneyGetRespon
 
 export type GetHouseholdJourneyApiLodgingHouseholdsHouseholdCmIdJourneyGetResponse =
   GetHouseholdJourneyApiLodgingHouseholdsHouseholdCmIdJourneyGetResponses[keyof GetHouseholdJourneyApiLodgingHouseholdsHouseholdCmIdJourneyGetResponses]
+
+export type GetPersonHousingApiLodgingPersonsPersonCmIdHousingGetData = {
+  body?: never
+  path: {
+    /**
+     * Person Cm Id
+     */
+    person_cm_id: number
+  }
+  query?: never
+  url: '/api/lodging/persons/{person_cm_id}/housing'
+}
+
+export type GetPersonHousingApiLodgingPersonsPersonCmIdHousingGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type GetPersonHousingApiLodgingPersonsPersonCmIdHousingGetError =
+  GetPersonHousingApiLodgingPersonsPersonCmIdHousingGetErrors[keyof GetPersonHousingApiLodgingPersonsPersonCmIdHousingGetErrors]
+
+export type GetPersonHousingApiLodgingPersonsPersonCmIdHousingGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: PersonHousingResponse
+}
+
+export type GetPersonHousingApiLodgingPersonsPersonCmIdHousingGetResponse =
+  GetPersonHousingApiLodgingPersonsPersonCmIdHousingGetResponses[keyof GetPersonHousingApiLodgingPersonsPersonCmIdHousingGetResponses]
 
 export type GetHouseholdMedicalApiLodgingHouseholdsHouseholdCmIdMedicalGetData = {
   body?: never
