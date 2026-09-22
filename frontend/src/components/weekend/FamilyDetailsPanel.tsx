@@ -20,6 +20,7 @@
  */
 import { Baby, Clock, Home, Repeat, Star, Users, X } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { Link } from 'react-router'
 
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
 import { displayCampMinderAge } from '../../utils/age'
@@ -34,6 +35,7 @@ import { HouseholdJourneyCard } from './HouseholdJourneyCard'
 import { namedAdults, partyFamilyLabel, partyHeadcount } from './householdIdentity'
 import { HousingNeedDetails } from './HousingNeedDetails'
 import { partyKey } from './partyKey'
+import { PersonJourneyCard } from './PersonJourneyCard'
 import { ATTENTION_LABEL, partyAttention } from './rosterAttention'
 import { ShareRequestPanel } from './ShareRequestPanel'
 
@@ -418,13 +420,34 @@ export function FamilyDetailsPanel({
         householdCmId={householdCmId > 0 ? householdCmId : null}
         currentYear={year}
       />
+
+      {/* Adult camper journey (spec §6.2): a person-grain guest gets their own
+          per-person journey — the same feed and card as the camper record. */}
+      {!isHousehold && (party.person_cm_id ?? 0) > 0 && (
+        <PersonJourneyCard personCmId={party.person_cm_id as number} year={year} />
+      )}
     </div>
   )
 
   const header = (
     <div className="from-forest-700 via-forest-800 to-forest-900 flex flex-shrink-0 items-start gap-3 bg-gradient-to-br p-4 text-white">
       <div className="min-w-0 flex-1">
-        <h2 className="truncate text-lg font-bold">{identityLabel}</h2>
+        <h2 className="truncate text-lg font-bold">
+          {!isHousehold && (party.person_cm_id ?? 0) > 0 ? (
+            // kindred#2329's pattern: a NEW TAB with this board's year, and no
+            // onClose — the reader keeps their place on the board.
+            <Link
+              to={`/camper/${String(party.person_cm_id)}?year=${String(year)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:underline"
+            >
+              {identityLabel}
+            </Link>
+          ) : (
+            identityLabel
+          )}
+        </h2>
         <p className="text-forest-100 mt-0.5 text-xs">
           {isHousehold ? 'Household' : 'Adult weekend guest'}
         </p>

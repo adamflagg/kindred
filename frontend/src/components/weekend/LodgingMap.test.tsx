@@ -7,6 +7,7 @@ import userEvent from '@testing-library/user-event'
 import { readFileSync } from 'fs'
 import { resolve } from 'path'
 import type { ReactNode } from 'react'
+import { MemoryRouter } from 'react-router'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
@@ -25,6 +26,21 @@ vi.mock('../../hooks/usePermissions', () => ({
     permissions: [],
     hasPermission: () => true,
     hasAnyPermission: () => true,
+  }),
+}))
+
+// A person-grain party's FamilyDetailsPanel now also mounts PersonJourneyCard
+// (adult camper journey spec §6.2), which reaches `useCamperJourney` ->
+// `useAuth` and throws without a provider -- the same shape the comment above
+// already covers for `usePermissions`. Grain-blind, like
+// `FamilyDetailsPanel.test.tsx`'s own mock: this file's tests are not about
+// the journey, only about not crashing when the panel opens one.
+vi.mock('../../hooks/camper/useCamperJourney', () => ({
+  useCamperJourney: () => ({
+    rows: [],
+    counts: { summers: 0, familyWeekends: 0, adultWeekends: 0 },
+    isLoading: false,
+    error: null,
   }),
 }))
 
@@ -137,8 +153,15 @@ beforeEach(() => {
   captured = null
 })
 
+// MemoryRouter added for kindred#2329 / the adult camper journey (spec §6.2):
+// a person-grain popover's FamilyDetailsPanel header is now a `<Link>` to the
+// guest's camper record, which throws outside a Router context.
 function wrapper({ children }: { children: ReactNode }) {
-  return <QueryClientProvider client={client}>{children}</QueryClientProvider>
+  return (
+    <QueryClientProvider client={client}>
+      <MemoryRouter>{children}</MemoryRouter>
+    </QueryClientProvider>
+  )
 }
 
 function unit(overrides: Partial<LodgingUnitRow> = {}): LodgingUnitRow {

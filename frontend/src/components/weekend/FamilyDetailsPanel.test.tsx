@@ -57,6 +57,24 @@ vi.mock('../../hooks/useWeekendRoster', () => ({
 /** Every `householdCmId` the journey hook was handed, in call order. */
 const journeyCalls: Array<number | null> = []
 
+const personJourneyCalls: Array<[number | null, number]> = []
+const personJourney = {
+  value: {
+    rows: [
+      { year: 2025, sessionName: "Women's Weekend", sessionType: 'adult', bunkName: 'River F' },
+    ],
+    counts: { summers: 0, familyWeekends: 0, adultWeekends: 5 },
+    isLoading: false,
+    error: null,
+  },
+}
+vi.mock('../../hooks/camper/useCamperJourney', () => ({
+  useCamperJourney: (personCmId: number | null, year: number) => {
+    personJourneyCalls.push([personCmId, year])
+    return personJourney.value
+  },
+}))
+
 // One client per TEST, built outside the render path. Constructing it inside
 // the wrapper body rebuilds it on every render, discarding the cache and
 // starting a fresh loading pass underneath assertions that already resolved.
@@ -172,6 +190,7 @@ beforeEach(() => {
   medicalResult.value = { data: undefined, isLoading: false, error: null }
   journeyResult.value = { data: undefined, isLoading: false, error: null }
   journeyCalls.length = 0
+  personJourneyCalls.length = 0
 })
 
 describe('FamilyDetailsPanel — the content the card omits', () => {
@@ -874,6 +893,38 @@ describe('the household journey', () => {
 
     expect(screen.queryByTestId('household-journey')).not.toBeInTheDocument()
     expect(journeyCalls).toEqual([null])
+  })
+})
+
+describe('adult weekend guest journey (adult camper journey spec §6.2)', () => {
+  const guest = () =>
+    party({ grain: 'person', household_cm_id: 0, person_cm_id: 5001, display_name: 'Emma Johnson' })
+
+  it("shows the guest's camper journey and count line", () => {
+    render(<FamilyDetailsPanel party={guest()} year={2026} onClose={vi.fn()} />, { wrapper })
+    expect(screen.getByTestId('person-journey')).toBeInTheDocument()
+    expect(screen.getByText('River F')).toBeInTheDocument()
+    expect(screen.getByText('5 adult weekends')).toBeInTheDocument()
+    expect(personJourneyCalls).toContainEqual([5001, 2026])
+  })
+
+  it('never renders a person journey for a household', () => {
+    render(<FamilyDetailsPanel party={party()} year={2026} onClose={vi.fn()} />, { wrapper })
+    expect(screen.queryByTestId('person-journey')).not.toBeInTheDocument()
+    expect(personJourneyCalls).toEqual([])
+  })
+
+  it("links the guest's name to their camper record for the board's year, in a new tab (kindred#2329)", () => {
+    render(<FamilyDetailsPanel party={guest()} year={2026} onClose={vi.fn()} />, { wrapper })
+    const link = screen.getByRole('link', { name: 'Emma Johnson' })
+    expect(link).toHaveAttribute('href', '/camper/5001?year=2026')
+    expect(link).toHaveAttribute('target', '_blank')
+    expect(link).toHaveAttribute('rel', 'noopener noreferrer')
+  })
+
+  it("does not link a household's name", () => {
+    render(<FamilyDetailsPanel party={party()} year={2026} onClose={vi.fn()} />, { wrapper })
+    expect(screen.queryByRole('link', { name: /Johnson/ })).toBeNull()
   })
 })
 
