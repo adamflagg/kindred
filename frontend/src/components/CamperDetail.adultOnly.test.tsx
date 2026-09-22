@@ -173,4 +173,10 @@ describe('CamperDetail — adult-program-only person (adult camper journey)', ()
     expect(screen.queryByText(/Grade/)).toBeNull()
     expect(screen.queryByText(/Bunking Status/i)).toBeNull()
   })
+
+  it('titles the siblings panel "Household"', async () => {
+    renderDetail()
+    await screen.findByText(/Olivia/i)
+    expect(screen.getByText('Household')).toBeInTheDocument()
+  })
 })

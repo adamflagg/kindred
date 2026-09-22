@@ -1,11 +1,19 @@
 /**
  * Hook for fetching sibling data based on household_id
  * Finds other enrolled campers in the same household
+ *
+ * Owner rulings 2026-09-22 (adult camper journey §6.4): enrolled only —
+ * pending never implies attendance; an adult viewer sees every household
+ * member, adults included; a child viewer's set excludes adult programs,
+ * which is what keeps parents out; no grade filter.
  */
 
 import { useQuery } from '@tanstack/react-query'
 import { pb } from '../../lib/pocketbase'
-import { buildSummerSessionTypeFilter } from '../../utils/sessionTypePredicates'
+import {
+  buildCamperJourneySessionTypeFilter,
+  buildKidProgramSessionTypeFilter,
+} from '../../utils/sessionTypePredicates'
 import type {
   PersonsResponse,
   AttendeesResponse,
@@ -25,21 +33,24 @@ export interface UseSiblingsResult {
 export function useSiblings(
   householdId: number | undefined,
   personCmId: number | null,
-  currentYear: number
+  currentYear: number,
+  viewer: 'child' | 'adult' = 'child'
 ): UseSiblingsResult {
   const {
     data: siblings = [],
     isLoading,
     error,
   } = useQuery({
-    queryKey: ['camper-siblings', householdId, personCmId, currentYear],
+    queryKey: ['camper-siblings', householdId, personCmId, currentYear, viewer],
     queryFn: async () => {
       if (!householdId || householdId === 0 || !personCmId) {
         return []
       }
 
-      // Find other persons with same household_id who have a grade (excludes parents)
-      const siblingFilter = `household_id = ${householdId} && cm_id != ${personCmId} && grade > 0 && year = ${currentYear}`
+      // Find other persons with the same household_id. Parents are excluded
+      // by PROGRAM (kid programs exclude 'adult'), not by grade — do not
+      // re-add a `grade > 0` filter here.
+      const siblingFilter = `household_id = ${householdId} && cm_id != ${personCmId} && year = ${currentYear}`
 
       let siblingPersons: PersonsResponse[]
       try {
@@ -54,12 +65,16 @@ export function useSiblings(
 
       if (siblingPersons.length === 0) return []
 
-      // For each sibling, check if they're enrolled in any valid summer session
+      // For each household member, check if they're enrolled (status_id = 2)
+      // in a qualifying program this year — the viewer-dependent set decides
+      // which programs qualify (spec §6.4).
       const siblingsWithEnrollment = await Promise.all(
         siblingPersons.map(async (siblingPerson) => {
-          // Check if this sibling has any enrollment in valid summer sessions
-          const sessionTypeFilter = buildSummerSessionTypeFilter()
-          const enrollmentFilter = `person_id = ${siblingPerson.cm_id} && year = ${currentYear} && (${sessionTypeFilter})`
+          const sessionTypeFilter =
+            viewer === 'adult'
+              ? buildCamperJourneySessionTypeFilter()
+              : buildKidProgramSessionTypeFilter()
+          const enrollmentFilter = `person_id = ${siblingPerson.cm_id} && year = ${currentYear} && status_id = 2 && (${sessionTypeFilter})`
 
           try {
             const attendees = await pb
@@ -86,6 +101,11 @@ export function useSiblings(
               return null
             }
             const session = primaryAttendee.expand.session
+            const additionalSessions = sortedAttendees
+              .slice(1)
+              .map((a) => a.expand.session)
+              .filter((s): s is CampSessionsResponse => s !== undefined)
+              .map((s) => ({ name: s.name, session_type: s.session_type }))
 
             // Try to get bunk assignment
             let bunkName: string | null = null
@@ -121,6 +141,7 @@ export function useSiblings(
               }),
               bunkName,
               attendeeStatus: primaryAttendee.status,
+              additionalSessions,
             } satisfies SiblingWithEnrollment
           } catch (err) {
             console.error(`Error checking enrollment for sibling ${siblingPerson.cm_id}:`, err)

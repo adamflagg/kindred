@@ -73,4 +73,6 @@ export interface SiblingWithEnrollment extends PersonsResponse {
   }
   bunkName?: string | null
   attendeeStatus?: string
+  /** Every other program this member is enrolled in this year (spec §6.4). */
+  additionalSessions?: Array<{ name: string; session_type: string }>
 }

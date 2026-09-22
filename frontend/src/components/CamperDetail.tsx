@@ -253,7 +253,12 @@ function CamperDetailBody({
           />
 
           {/* Siblings */}
-          <SiblingsPanel siblings={siblings} isLoading={siblingsLoading} error={siblingsError} />
+          <SiblingsPanel
+            siblings={siblings}
+            isLoading={siblingsLoading}
+            error={siblingsError}
+            title={isAdultProgram ? 'Household' : 'Siblings'}
+          />
         </div>
       </div>
     </div>
@@ -345,7 +350,7 @@ export default function CamperDetail() {
     siblings,
     isLoading: siblingsLoading,
     error: siblingsError,
-  } = useSiblings(person?.household_id, personCmId, currentYear)
+  } = useSiblings(person?.household_id, personCmId, currentYear, isAdultProgram ? 'adult' : 'child')
 
   // Loading state
   if (camperLoading) {
