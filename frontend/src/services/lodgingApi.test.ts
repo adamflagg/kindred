@@ -559,9 +559,7 @@ describe('fetchPersonHousing', () => {
   })
 
   it('throws on a non-OK response', async () => {
-    const mockFetch = vi
-      .fn()
-      .mockResolvedValue({ ok: false, status: 500, json: async () => ({}) } as Response)
+    const mockFetch = vi.fn().mockResolvedValue({ ok: false, status: 500, json: async () => ({}) })
     await expect(fetchPersonHousing(mockFetch, 3000001)).rejects.toThrow()
   })
 })
