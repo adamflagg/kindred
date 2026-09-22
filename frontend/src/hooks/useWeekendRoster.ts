@@ -162,7 +162,7 @@ export function useHouseholdFamilyLabel(householdCmId: number): string | undefin
 }
 
 /**
- * One person's adult-weekend cabins (adult camper journey spec §5.3). Protected:
+ * One person's adult-weekend cabins, for their camper journey. Protected:
  * callers pass `null` until `useAuth().isLoading` is false. Inherits the app's
  * cache defaults; `invalidateLodgingRegistryQueries` covers alias edits.
  */

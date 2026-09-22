@@ -1,6 +1,6 @@
 /**
  * An adult weekend guest's camper journey in the Women's/Men's Weekend
- * sidebar (adult camper journey spec §6.2). The SAME feed and the SAME card
+ * sidebar. The SAME feed and the SAME card
  * the camper record uses — prior years only, like the summer board's sidebar.
  */
 import { useCamperJourney } from '../../hooks/camper/useCamperJourney'

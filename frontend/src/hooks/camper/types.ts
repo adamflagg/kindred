@@ -49,9 +49,11 @@ export interface OriginalBunkData {
 }
 
 /**
- * The journey header's counts (adult camper journey spec §5.2, §6.1).
+ * The journey header's counts, the same on every journey surface.
  * `summers` is CampMinder's `years_at_camp` — the most recent non-zero value
- * across the person's year rows, because CampMinder zeroes it for adults.
+ * across the person's year rows, because CampMinder zeroes it for adults —
+ * capped at the view year: a later season never leaks back, so an earlier
+ * year reads as it would have in that year (owner-confirmed 2026-09-22).
  * The weekend counts are distinct (year, session) enrollments, current year
  * included.
  */
@@ -73,6 +75,6 @@ export interface SiblingWithEnrollment extends PersonsResponse {
   }
   bunkName?: string | null
   attendeeStatus?: string
-  /** Every other program this member is enrolled in this year (spec §6.4). */
+  /** Every other program this member is enrolled in this year. */
   additionalSessions?: Array<{ name: string; session_type: string }>
 }

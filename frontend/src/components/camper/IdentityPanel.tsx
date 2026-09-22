@@ -43,7 +43,7 @@ interface IdentityPanelProps {
   pronouns: string
   defaultExpanded?: boolean
   cohortContext?: CohortContext | undefined
-  /** Hides the School row for an adult-program person (adult camper journey spec §6.3) */
+  /** Hides the School row for an adult-program person — adults have no school */
   hideSchool?: boolean
 }
 
@@ -155,8 +155,8 @@ export function IdentityPanel({
 
           {/* Cohort Row: School | City | Congregation. Cohort badges only when
               the parent supplies cohortContext (current-year enrolled). School
-              is hidden for an adult-program person (adult camper journey spec
-              §6.3) — adults have no school. */}
+              is hidden for an adult-program person — adults have no
+              school. */}
           <div
             className={`border-border grid grid-cols-1 gap-4 border-t pt-4 ${hideSchool ? 'sm:grid-cols-2' : 'sm:grid-cols-3'}`}
           >

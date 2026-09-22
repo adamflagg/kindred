@@ -33,7 +33,7 @@ function renderHero(extra: Partial<Parameters<typeof HeroHeader>[0]> = {}) {
   )
 }
 
-describe('HeroHeader count line (spec §6.1)', () => {
+describe('HeroHeader count line', () => {
   it('shows the shared label instead of "years at camp"', () => {
     renderHero()
     expect(screen.getByText('5 adult weekends')).toBeInTheDocument()
@@ -51,7 +51,7 @@ describe('HeroHeader count line (spec §6.1)', () => {
   })
 })
 
-describe('HeroHeader adult branch (spec §6.3)', () => {
+describe('HeroHeader adult branch', () => {
   it('drops the grade for an adult-program person', () => {
     renderHero({ isAdultProgram: true })
     expect(screen.queryByText(/Grade/)).toBeNull()

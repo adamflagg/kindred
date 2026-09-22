@@ -92,7 +92,7 @@ export function useCamperHistory(
   camper: Camper | null,
   allAttendees?: Camper[]
 ): UseCamperHistoryResult {
-  // Prior years + header counts: the one shared feed (adult camper journey §5.3).
+  // Prior years + header counts: the one shared feed every journey surface reads.
   const journey = useCamperJourney(personCmId, currentYear)
 
   // Current year from live attendees, with AG collapse + relabel (unchanged).

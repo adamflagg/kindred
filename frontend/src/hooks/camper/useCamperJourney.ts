@@ -1,6 +1,6 @@
 /**
- * useCamperJourney — the ONE feed every journey surface reads (adult camper
- * journey spec §5.3): the camper record, the summer board panel, the tooltip,
+ * useCamperJourney — the ONE feed every journey surface reads: the camper
+ * record, the summer board panel, the tooltip,
  * and the Women's/Men's Weekend sidebar.
  *
  * It owns the reads so no consumer has to: the person's own rows (household
@@ -38,7 +38,7 @@ export interface PersonJourneyFacts {
  * What the feed needs from the person's year-scoped rows. `summers` is the most
  * recent NON-ZERO years_at_camp: CampMinder fills it only in seasons someone is
  * a camper, so an adult's current row reads 0 while their last camper year
- * still holds the count (103 of 105 grown-up campers; spec §5.2). Like the
+ * still holds the count (103 of 105 grown-up campers). Like the
  * weekend counts, it stops at `viewYear` — a later season never leaks back.
  */
 export function personJourneyFacts(rows: PersonFactsRow[], viewYear: number): PersonJourneyFacts {
@@ -99,7 +99,7 @@ export function useCamperJourney(
     enabled: householdSettled && housingSettled,
     // The key carries both housing reads' dataUpdatedAt, so ANY housing refetch
     // (e.g. a lodging admin write) re-runs the feed under a new key. Hold the
-    // previous rows meanwhile — blanking them is the symptom §5.3 removes. Only
+    // previous rows meanwhile — blanking them is the symptom this hook removes. Only
     // for the SAME person and year: another camper's journey must never stand
     // in for this one's (key layout: ['camper-journey', personCmId, year, …]).
     placeholderData: (previous, previousQuery) =>

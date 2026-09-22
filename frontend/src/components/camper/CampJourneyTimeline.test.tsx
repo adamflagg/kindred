@@ -63,7 +63,7 @@ describe('CampJourneyTimeline program-agnostic strings (#2113)', () => {
   it('renders the header count as summers, not program-agnostic years (#2123)', () => {
     // years_at_camp counts SUMMER attendance only (#2123 ruling), so the
     // label must say so, or a family-camp row below a 0 reads as a
-    // contradiction. "at camp" is dropped (adult camper journey spec §6.1).
+    // contradiction. "at camp" is dropped from the shared count line.
     render(
       <CampJourneyTimeline
         history={[]}
@@ -188,7 +188,7 @@ describe('CampJourneyTimeline family-camp housing (kindred#2466)', () => {
   })
 })
 
-describe('CampJourneyTimeline count line (spec §6.1)', () => {
+describe('CampJourneyTimeline count line', () => {
   it('shows the shared label', () => {
     render(
       <CampJourneyTimeline

@@ -386,7 +386,7 @@ export default function CamperDetailsPanel({
     enabled: !!camperId,
   })
 
-  // The one shared journey feed (adult camper journey spec §5.3).
+  // The one shared journey feed — the same rows and counts as the camper record.
   const { rows: historicalData, counts: journeyCounts } = useCamperJourney(
     camperId ? parseInt(camperId, 10) : null,
     currentYear

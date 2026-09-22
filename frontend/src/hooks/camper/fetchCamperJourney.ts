@@ -1,6 +1,6 @@
 /**
  * Shared prior-year journey source. Lists every prior year a camper was
- * ENROLLED (curated types: summer + teen + family, see #2113), labeling each
+ * ENROLLED (curated types: summer + teen + family + adult, see #2113), labeling each
  * row with its housing when known: a bunk name for a summer/teen session, or
  * the household's resolved family-camp cabin for a family session (never the
  * CampMinder day group — see the family-housing override below, kindred#2466).
@@ -11,7 +11,7 @@
  * Main row, and an AG-only year is relabeled to its parent main (name resolved via
  * camp_sessions, since AG session names aren't reliably derivable).
  *
- * Adult programs (2026-09, adult camper journey spec §5.2): adult rows are
+ * Adult programs (joined 2026-09): adult rows are
  * labeled only by the attributed cabin from `/persons/{id}/housing`; an adult
  * viewer also gets the family weekends their household's children attended;
  * every cabin label is the string as recorded that year.
@@ -109,7 +109,7 @@ interface ParentFamilyWeekend {
 }
 
 /**
- * Family camp AS A PARENT (spec §5.2): every weekend a child in the household
+ * Family camp AS A PARENT: every weekend a child in the household
  * was ENROLLED on (the household journey's `sessions` are built from enrolled
  * children only), except one the adult attended themself. Paper-registration
  * years carry no session and add nothing. Known limit: household membership
@@ -314,7 +314,7 @@ export async function fetchCamperJourney(
           : undefined
     }
 
-    // Adult programs (spec §5.2): the label is the cabin the server attributed
+    // Adult programs: the label is the cabin the server attributed
     // to THIS weekend, or nothing — never a bunk. Unconditional, like the
     // family override, so the year-fallback above cannot pin a lone summer
     // bunk onto an adult row.

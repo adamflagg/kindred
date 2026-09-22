@@ -2,7 +2,7 @@
  * Hook for fetching sibling data based on household_id
  * Finds other enrolled campers in the same household
  *
- * Owner rulings 2026-09-22 (adult camper journey §6.4): enrolled only —
+ * Owner rulings 2026-09-22: enrolled only —
  * pending never implies attendance; an adult viewer sees every household
  * member, adults included; a child viewer's set excludes adult programs,
  * which is what keeps parents out; no grade filter.
@@ -86,7 +86,7 @@ export function useSiblings(
 
       // For each household member, check if they're enrolled (status_id = 2)
       // in a qualifying program this year — the viewer-dependent set decides
-      // which programs qualify (spec §6.4).
+      // which programs qualify.
       const siblingsWithEnrollment = await Promise.all(
         siblingPersons.map(async (siblingPerson) => {
           const sessionTypeFilter =

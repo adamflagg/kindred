@@ -421,7 +421,7 @@ export function FamilyDetailsPanel({
         currentYear={year}
       />
 
-      {/* Adult camper journey (spec §6.2): a person-grain guest gets their own
+      {/* Adult weekend guests: a person-grain guest gets their own
           per-person journey — the same feed and card as the camper record. */}
       {!isHousehold && (party.person_cm_id ?? 0) > 0 && (
         <PersonJourneyCard personCmId={party.person_cm_id as number} year={year} />

@@ -90,7 +90,7 @@ interface CamperDetailBodyProps {
   journeyLoading: boolean
   canManageBunking: boolean
   isAdmin: boolean
-  /** True when every current-year enrollment is an adult program (adult camper journey spec §6.3) */
+  /** True when every current-year enrollment is an adult program — the camper-only parts do not apply */
   isAdultProgram: boolean
 }
 
@@ -325,7 +325,7 @@ export default function CamperDetail() {
   // Select primary camper: prefer enrolled, fall back to first attendee
   const camper = enrolledCampers[0] ?? allAttendees[0] ?? null
 
-  // Adult branch (adult camper journey spec §6.3): every current-year
+  // Adult branch: every current-year
   // enrollment is an adult program, so the camper-only parts do not apply.
   // Derived here — before useSiblings and the loading guards below — because
   // Task 13's Household/Siblings branch needs it at the same point.

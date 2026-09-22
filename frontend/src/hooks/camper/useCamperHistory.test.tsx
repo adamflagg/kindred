@@ -15,8 +15,8 @@ vi.mock('./fetchCamperJourney', () => ({
   fetchParentMainSessions: (...args: unknown[]) => mockFetchParentMainSessions(...args),
 }))
 
-// Prior years + header counts come from the one shared journey feed (adult
-// camper journey spec §5.3). Its own household/auth/housing plumbing is
+// Prior years + header counts come from the one shared journey feed
+// (useCamperJourney). Its own household/auth/housing plumbing is
 // tested in useCamperJourney.test.tsx; here it is a plain source of rows.
 let priorRows: HistoricalRecord[] = []
 let journeyCounts: JourneyCounts = { summers: 0, familyWeekends: 0, adultWeekends: 0 }

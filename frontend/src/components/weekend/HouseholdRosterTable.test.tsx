@@ -26,7 +26,7 @@ vi.mock('../../hooks/usePermissions', () => ({
 }))
 
 // A person-grain party's FamilyDetailsPanel now also mounts PersonJourneyCard
-// (adult camper journey spec §6.2), which reaches `useCamperJourney` ->
+// (the adult guest's camper journey), which reaches `useCamperJourney` ->
 // `useAuth` and throws without a provider. Grain-blind, like
 // `FamilyDetailsPanel.test.tsx`'s own mock: this file's tests are not about
 // the journey, only about not crashing when the panel opens one.
@@ -81,7 +81,7 @@ vi.mock('../../hooks/useApiWithAuth', () => ({
 
 let client: QueryClient
 
-// MemoryRouter added for kindred#2329 / the adult camper journey (spec §6.2):
+// MemoryRouter added for kindred#2329 / the adult guest's camper journey:
 // a person-grain row's FamilyDetailsPanel header is now a `<Link>` to the
 // guest's camper record, which throws outside a Router context.
 function wrapper({ children }: { children: ReactNode }) {

@@ -37,7 +37,7 @@ export const TEEN_PROGRAM_TYPES = ['scit', 'tli'] as const
 
 /**
  * Curated set driving a camper detail page's current-year fetch: summer +
- * teen + family.
+ * teen + family + adult.
  *
  * Originally excluded family camp — a person whose only current-year
  * attendee row was a family session got zero rows back from this filter,
@@ -48,7 +48,7 @@ export const TEEN_PROGRAM_TYPES = ['scit', 'tli'] as const
  * strictly "family-only" is defined — see #2149 for the three disagreeing
  * counts and why).
  *
- * Adult programs joined in 2026-09 (adult camper journey spec §5.1): an
+ * Adult programs joined in 2026-09: an
  * adult-only person's record dead-ended on "no active enrollments" exactly as
  * a family-only one did before #2149.
  */
@@ -89,8 +89,8 @@ export const CAMPER_JOURNEY_TYPES = Array.from(
 ) as readonly SessionTypeLiteral[]
 
 /**
- * Programs a CHILD attends — the Siblings panel's set (adult camper journey
- * spec §6.4). Deliberately excludes 'adult': a parent only ever has
+ * Programs a CHILD attends — the Siblings panel's set. Deliberately
+ * excludes 'adult': a parent only ever has
  * adult-program rows, so excluding them is what keeps parents out of a
  * child's Siblings panel without the old `grade > 0` heuristic (which also
  * hid 236 family-camp preschoolers).
@@ -276,7 +276,7 @@ export function buildSummerSessionTypeFilter(): string {
 
 /**
  * Build a PocketBase OR-clause restricting `session.session_type` to the camper
- * journey set (summer + teen + family, see CAMPER_JOURNEY_TYPES). Caller wraps
+ * journey set (summer + teen + family + adult, see CAMPER_JOURNEY_TYPES). Caller wraps
  * the result in `(...)`.
  */
 export function buildCamperJourneySessionTypeFilter(): string {
@@ -285,7 +285,7 @@ export function buildCamperJourneySessionTypeFilter(): string {
 
 /**
  * Build a PocketBase OR-clause restricting `session.session_type` to the camper
- * detail-page current-year set (summer + teen + family, see
+ * detail-page current-year set (summer + teen + family + adult, see
  * CAMPER_DETAIL_TYPES). Caller wraps in `(...)`.
  */
 export function buildCamperDetailSessionTypeFilter(): string {

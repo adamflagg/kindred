@@ -1,6 +1,6 @@
 /**
  * Tests for CamperTooltip — the hover mini-journey. Reads the one shared
- * journey feed (useCamperJourney, adult camper journey spec §5.4), so it shows
+ * journey feed (useCamperJourney), so it shows
  * real attended years incl. no-bunk (teen / gap) rows. TDD: written before
  * implementation.
  */

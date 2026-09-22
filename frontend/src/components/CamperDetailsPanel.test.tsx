@@ -61,7 +61,7 @@ vi.mock('../hooks/useCurrentYear', () => ({
 }))
 
 // The Camp Journey rows and the quick-stats count line come from the one
-// shared journey feed (adult camper journey spec §5.4). Its own
+// shared journey feed (useCamperJourney). Its own
 // household/auth/housing plumbing is tested in useCamperJourney.test.tsx;
 // here it is a plain source of rows and counts.
 const mockUseCamperJourney = vi.fn()
@@ -374,9 +374,9 @@ describe('CamperDetailsPanel', () => {
     })
   })
 
-  // Adult camper journey spec §6.1: the quick-stats bar shows the shared
-  // count line instead of CampMinder's bare "N years".
-  describe('Quick stats — journey count line (spec §6.1)', () => {
+  // The quick-stats bar shows the shared journey count line instead of
+  // CampMinder's bare "N years".
+  describe('Quick stats — journey count line', () => {
     it('shows the shared count line from the feed', async () => {
       setupDeclinedRequestMocks()
       mockUseCamperJourney.mockReturnValue(

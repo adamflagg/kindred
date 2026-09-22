@@ -37,7 +37,7 @@ export function CampJourneyTimeline({
           <TreePine className="h-5 w-5" />
           Camp Journey
         </h2>
-        {/* The shared count line (adult camper journey spec §6.1): summers are
+        {/* The shared count line, the same on every journey surface: summers are
             CampMinder's own years_at_camp (summer + teen); family and adult
             weekends are counted from enrollments. Zero parts are hidden, and
             so is the whole line when nothing counts. */}

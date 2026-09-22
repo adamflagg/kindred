@@ -74,10 +74,11 @@ export function SiblingsPanel({
                   <div className="text-muted-foreground mt-0.5 text-xs">
                     {(() => {
                       const age = getDisplayAgeForYear(sibling, viewingYear)
-                      // PersonsResponse's generated type guarantees `grade` is
-                      // always a number (never undefined), so `> 0` alone
-                      // matches spec §6.4's `(sibling.grade ?? 0) > 0` intent
-                      // without an eslint no-unnecessary-condition warning.
+                      // Grade-0 members (family-camp preschoolers, adults)
+                      // show no grade rather than "0th". PersonsResponse types
+                      // `grade` as a number, never undefined, so a plain `> 0`
+                      // needs no `?? 0` (which eslint would flag as an
+                      // unnecessary condition).
                       const parts = [
                         age !== null ? formatAge(age) : null,
                         sibling.grade > 0 ? formatGradeOrdinal(sibling.grade) : null,

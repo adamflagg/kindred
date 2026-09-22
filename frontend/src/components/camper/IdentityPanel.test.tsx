@@ -109,7 +109,7 @@ describe('IdentityPanel cohort drill-down exit fade (kindred#2529)', () => {
   })
 })
 
-describe('IdentityPanel adult branch (spec §6.3)', () => {
+describe('IdentityPanel adult branch', () => {
   beforeEach(() => {
     mockUseCamperCohorts.mockReturnValue({ cohorts: null, isLoading: false })
   })

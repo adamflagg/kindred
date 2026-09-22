@@ -25,9 +25,9 @@ interface HeroHeaderProps {
   pronouns: string
   /** Additional session short names for multi-session persons */
   allSessionNames?: string[] | undefined
-  /** The shared journey counts behind the count line (adult camper journey spec §6.1) */
+  /** The shared journey counts behind the count line — the same on every journey surface */
   journeyCounts: JourneyCounts
-  /** True when every current-year enrollment is an adult program (adult camper journey spec §6.3) — adults have no grade */
+  /** True when every current-year enrollment is an adult program — adults have no grade */
   isAdultProgram?: boolean
 }
 
@@ -85,7 +85,7 @@ export function HeroHeader({
             <p className="text-forest-100 mt-2 text-base sm:text-lg">
               {formatGenderFull(camper.gender)} • {pronouns} •{' '}
               {formatAge(getDisplayAgeForYear(camper, currentYear) ?? 0)}
-              {/* Adults have no grade (adult camper journey spec §6.3). */}
+              {/* Adults have no grade. */}
               {isAdultProgram ? null : ` • ${formatGradeOrdinal(camper.grade)} Grade`}
             </p>
           </div>

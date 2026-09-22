@@ -896,7 +896,7 @@ describe('the household journey', () => {
   })
 })
 
-describe('adult weekend guest journey (adult camper journey spec §6.2)', () => {
+describe('adult weekend guest journey', () => {
   const guest = () =>
     party({ grain: 'person', household_cm_id: 0, person_cm_id: 5001, display_name: 'Emma Johnson' })
 

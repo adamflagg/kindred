@@ -1,5 +1,5 @@
 /**
- * useSiblings — the Household (adult) and Siblings (child) rules, spec §6.4.
+ * useSiblings — the Household (adult) and Siblings (child) rules.
  * Owner rulings 2026-09-22: enrolled only; adults see every household member,
  * adults included; children never see a parent; no grade filter.
  */

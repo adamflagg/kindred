@@ -1,5 +1,5 @@
 /**
- * useCamperJourney — the one feed every journey surface reads (spec §5.3).
+ * useCamperJourney — the one feed every journey surface reads.
  * It absorbs the household plumbing useCamperHistory's tests used to pin.
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -145,7 +145,7 @@ describe('useCamperJourney', () => {
   })
 
   it('runs the feed ONCE, with both housing inputs, after they settle', async () => {
-    // SPEC CHANGE (adult camper journey §5.3): the old shape ran the feed
+    // Deliberate change from the old shape, which ran the feed
     // before housing arrived and again after, blanking the rows in between.
     const years = [{ year: 2024, housing: 'placed' }]
     const weekends = [

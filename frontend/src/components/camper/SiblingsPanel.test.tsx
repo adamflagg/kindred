@@ -28,7 +28,7 @@ function renderPanel(props: Partial<Parameters<typeof SiblingsPanel>[0]> = {}) {
   )
 }
 
-describe('SiblingsPanel (spec §6.3–6.4)', () => {
+describe('SiblingsPanel', () => {
   it('can be titled Household', () => {
     renderPanel({ title: 'Household' })
     expect(screen.getByText('Household')).toBeInTheDocument()

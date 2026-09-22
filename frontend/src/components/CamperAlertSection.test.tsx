@@ -298,7 +298,7 @@ vi.mock('../lib/pocketbase', () => ({
 }))
 
 // CamperDetailsPanel reads its Camp Journey rows and count line from the one
-// shared journey feed (adult camper journey spec §5.4), whose household and
+// shared journey feed (useCamperJourney), whose household and
 // housing reads need an AuthProvider — absent here. Stubbed to an empty feed;
 // none of these integration tests concern the journey.
 vi.mock('../hooks/camper/useCamperJourney', () => ({
