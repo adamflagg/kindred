@@ -226,6 +226,46 @@ class TestTwoWeekends:
         )
         assert len(out) == 1
 
+    def test_the_same_place_written_before_each_of_two_weekends_labels_both(self) -> None:
+        """PR1 review fix (2026-09-22, controller ruling): collapsing same-place
+        values BEFORE assigning them to weekends kept only the later write, so
+        the earlier weekend lost a value it genuinely had. Collapsing must
+        happen PER WEEKEND, after assignment: "River H" written once before WW
+        ends and again (a different field) before DD ends is two separate
+        answers, one per weekend, not one collapsed answer for whichever
+        weekend the later write lands in."""
+        out = attribute_adult_cabins(
+            [_value(2022, "River H", "2022-09-15T12:00", OLD_FIELD), _value(2022, "River H", "2022-10-24T12:00")],
+            [_weekend(2022, WW, "2022-10-02"), _weekend(2022, DD, "2022-10-30")],
+            _no_codes,
+        )
+        assert {(c.session_cm_id, c.cabin_name) for c in out} == {(WW, "River H"), (DD, "River H")}
+
+    def test_three_weekends_each_take_their_own_value(self) -> None:
+        """Already passes under both the old and new order -- included as a
+        regression guard alongside the two-weekend fix above, since three
+        weekends is the shape most likely to expose an off-by-one in the
+        per-weekend pool split."""
+        au = 1003  # an Adults-Unplugged-shaped session (fictional id)
+        out = attribute_adult_cabins(
+            [
+                _value(2022, "Ridge A", "2022-08-01T12:00"),
+                _value(2022, "Ridge B", "2022-09-01T12:00"),
+                _value(2022, "Ridge C", "2022-10-01T12:00"),
+            ],
+            [
+                _weekend(2022, WW, "2022-08-10"),
+                _weekend(2022, DD, "2022-09-10"),
+                _weekend(2022, au, "2022-10-10"),
+            ],
+            _no_codes,
+        )
+        assert {(c.session_cm_id, c.cabin_name) for c in out} == {
+            (WW, "Ridge A"),
+            (DD, "Ridge B"),
+            (au, "Ridge C"),
+        }
+
 
 class TestScope:
     def test_a_year_with_no_enrolled_weekend_gets_nothing(self) -> None:

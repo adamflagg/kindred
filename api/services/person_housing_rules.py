@@ -100,12 +100,20 @@ def attribute_adult_cabins(
 ) -> list[AttributedCabin]:
     """Pin each season's cabin value(s) to the person's enrolled adult weekends.
 
-    Spec §4.2, in order: collapse values naming one place; with ONE weekend take
-    the latest value written before it ended (a lone late edit still counts);
-    with TWO OR MORE, each value belongs to the first weekend that had not yet
-    ended when it was written (after every weekend -> the last one) and each
-    weekend takes its latest; a same-instant tie between two places is no cabin.
-    The label is the raw string, outer whitespace trimmed -- never today's name.
+    Spec §4.2, in order: ASSIGN each value to a weekend first, THEN collapse
+    values naming one place WITHIN each weekend's own pool. With ONE weekend,
+    every value is assigned to it and the latest one written before it ended
+    wins (a lone late edit still counts); with TWO OR MORE, each value belongs
+    to the first weekend that had not yet ended when it was written (after
+    every weekend -> the last one). Only then does a weekend's pool collapse
+    same-place values down to their latest write and hand over its winner; a
+    same-instant tie between two places is no cabin.
+
+    Collapsing happens PER WEEKEND, AFTER assignment, not once over the whole
+    year before assignment: collapsing first would keep only the later of two
+    same-place writes and hand that single survivor to whichever weekend it
+    landed in, starving the earlier weekend of a value it genuinely had. The
+    label is the raw string, outer whitespace trimmed -- never today's name.
     """
     weekends_by_year: dict[int, dict[int, AdultWeekend]] = defaultdict(dict)
     for weekend in weekends:
@@ -118,11 +126,11 @@ def attribute_adult_cabins(
     out: list[AttributedCabin] = []
     for year in sorted(weekends_by_year):
         year_weekends = sorted(weekends_by_year[year].values(), key=lambda w: w.last_day_ends)
-        candidates = _collapse_same_place(values_by_year.get(year, []), year, resolve_codes)
-        if not candidates:
+        year_values = values_by_year.get(year, [])
+        if not year_values:
             continue
-        for weekend, pool in _assign(candidates, year_weekends):
-            winner = _latest(pool)
+        for weekend, pool in _assign(year_values, year_weekends):
+            winner = _latest(_collapse_same_place(pool, year, resolve_codes))
             if winner is not None:
                 out.append(
                     AttributedCabin(
