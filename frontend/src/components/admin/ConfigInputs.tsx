@@ -194,7 +194,7 @@ export function inferComponentType(value: unknown, configKey: string): string {
   return 'text'
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any, react-refresh/only-export-components -- Config constant for component registry
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- Config constant for component registry
 export const COMPONENT_MAP: Record<string, React.FC<any>> = {
   toggle: ToggleSwitch,
   slider: Slider,
