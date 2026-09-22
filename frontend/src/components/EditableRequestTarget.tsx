@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useLayoutEffect, useMemo, useCallback } fr
 import { ChevronDown, ChevronUp, Search, User, ExternalLink, Quote } from 'lucide-react'
 import type { PersonsResponse } from '../types/pocketbase-types'
 import { getDisplayAgeForYear } from '../utils/displayAge'
+import { displayCampMinderAge } from '../utils/age'
 import clsx from 'clsx'
 import { useClickOutside } from '../hooks/useClickOutside'
 import { useSessionCamperPersons } from '../hooks/useSessionCamperPersons'
@@ -371,7 +372,7 @@ export default function EditableRequestTarget({
                   >
                     <div className="font-medium">{formatCamperName(camper)}</div>
                     <div className="text-muted-foreground text-xs">
-                      Age {(getDisplayAgeForYear(camper, year) ?? 0).toFixed(2)}
+                      Age {displayCampMinderAge(getDisplayAgeForYear(camper, year) ?? 0)}
                       {camper.grade > 0 && ` • Grade ${camper.grade}`}
                     </div>
                   </button>

@@ -12,6 +12,7 @@ import {
 import { getSessionShorthand } from '../utils/sessionDisplay'
 import { formatGradeOrdinal } from '../utils/gradeUtils'
 import { getDisplayAgeForYear } from '../utils/displayAge'
+import { displayCampMinderAge } from '../utils/age'
 import { useYear } from '../hooks/useCurrentYear'
 import type { Camper } from '../types/app-types'
 import { useBunkRequestContext, useCamperHistoryContext } from '../hooks'
@@ -300,7 +301,7 @@ function CamperCard({
           {/* Line 2: Age/Grade (left) and History (right) */}
           <span className="flex items-center justify-between gap-2">
             <span className="block text-xs text-gray-600 dark:text-gray-400">
-              Age {(getDisplayAgeForYear(camper, viewingYear) ?? 0).toFixed(2)} •{' '}
+              Age {displayCampMinderAge(getDisplayAgeForYear(camper, viewingYear) ?? 0)} •{' '}
               {formatGradeOrdinal(camper.grade)}
             </span>
             {historyDisplay && (

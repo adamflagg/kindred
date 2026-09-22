@@ -12,6 +12,7 @@ import {
 import { useVirtualTable } from '../hooks/useVirtualTable'
 import { useYear } from '../hooks/useCurrentYear'
 import { getDisplayAgeForYear } from '../utils/displayAge'
+import { displayCampMinderAge } from '../utils/age'
 import type { Camper, Bunk, Session } from '../types/app-types'
 import { buildCsvContent, downloadCsv, slugify, todayIso } from '../utils/csvExport'
 import { buildCamperRows, CAMPER_CSV_HEADERS } from '../utils/csvExportHelpers'
@@ -409,7 +410,8 @@ export default function CampersView({
                         <div className="mt-1 flex flex-wrap items-center gap-2">
                           <span className="dark:text-muted-foreground text-sm text-stone-500">
                             Grade {camper.grade} ·{' '}
-                            {(getDisplayAgeForYear(camper, currentYear) ?? 0).toFixed(2)} yrs ·{' '}
+                            {displayCampMinderAge(getDisplayAgeForYear(camper, currentYear) ?? 0)}{' '}
+                            yrs ·{' '}
                             {camper.gender === 'M'
                               ? 'Boy'
                               : camper.gender === 'F'

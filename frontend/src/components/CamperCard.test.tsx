@@ -15,7 +15,7 @@
  *
  * Fictional data throughout.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 
 import CamperCard from './CamperCard'
@@ -132,5 +132,30 @@ describe('CamperCard — context-menu overlay token (kindred#2237)', () => {
   it('registers no token while the context menu is closed', () => {
     render(<CamperCard camper={mockCamper({ person_cm_id: 9002 })} isDraftMode />)
     expect(hasOpenModal()).toBe(false)
+  })
+})
+
+// The 18+ age rule is global: at 18 and over CampMinder's yy.mm age drops its
+// months ("18.02" reads "18"); under 18 the full yy.mm stays.
+describe('CamperCard — age line', () => {
+  beforeEach(() => {
+    // getDisplayAgeForYear adjusts by (calendar year - viewing year); pin the
+    // calendar to the mocked viewing year so the stored age shows as-is.
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2025-07-01T12:00:00Z'))
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('drops the months at 18 and over', () => {
+    render(<CamperCard camper={mockCamper({ person_cm_id: 9003, age: 18.02, grade: 12 })} />)
+    expect(screen.getByText(/^Age 18 •/)).toBeInTheDocument()
+    expect(screen.queryByText(/18\.02/)).toBeNull()
+  })
+
+  it('keeps yy.mm under 18', () => {
+    render(<CamperCard camper={mockCamper({ person_cm_id: 9004, age: 11.06, grade: 6 })} />)
+    expect(screen.getByText(/^Age 11\.06 •/)).toBeInTheDocument()
   })
 })

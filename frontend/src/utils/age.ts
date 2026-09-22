@@ -51,7 +51,7 @@ export function displayCampMinderAge(age: number): string {
  * a shared one. The detail panel still needs the full `(Y)Y.MM` precision;
  * only the card's compact line truncates — CLAUDE.md §4's "model summer's
  * primitives" rule is why that divergence needs saying: summer's equivalent
- * compact card (`CamperCard.tsx`) shows the full `.toFixed(2)` precision.
+ * compact card (`CamperCard.tsx`) shows the full `displayCampMinderAge` precision.
  * Here the card is deliberately terser because age is the entire point of a
  * "similar ages" match at a glance across up to 62 simultaneous cards, where
  * the extra digits of `(Y)Y.MM` cost more legibility than they buy —

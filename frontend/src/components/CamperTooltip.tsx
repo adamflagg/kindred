@@ -6,6 +6,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { useYear } from '../hooks/useCurrentYear'
 import { getSessionDisplayNameFromString } from '../utils/sessionDisplay'
 import { getDisplayAgeForYear } from '../utils/displayAge'
+import { displayCampMinderAge } from '../utils/age'
 import { formatGradeOrdinal } from '../utils/gradeUtils'
 import { useCamperJourney } from '../hooks/camper/useCamperJourney'
 import type { Camper } from '../types/app-types'
@@ -91,7 +92,7 @@ export default function CamperTooltip({ camper, isVisible, position }: CamperToo
       <div className="mb-3 border-b pb-3">
         <h3 className="text-lg font-semibold">{camper.name}</h3>
         <p className="text-muted-foreground text-sm">
-          Age {(getDisplayAgeForYear(camper, currentYear) ?? 0).toFixed(2)} •{' '}
+          Age {displayCampMinderAge(getDisplayAgeForYear(camper, currentYear) ?? 0)} •{' '}
           {formatGradeOrdinal(camper.grade)} • {camper.gender}
         </p>
       </div>
