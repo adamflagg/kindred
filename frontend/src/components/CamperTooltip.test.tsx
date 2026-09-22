@@ -51,17 +51,21 @@ describe('CamperTooltip mini-journey', () => {
   })
 
   it('shows a no-bunk teen year and a bunked year, both routed through the fetcher', async () => {
-    mockFetchCamperJourney.mockResolvedValue([
-      { year: 2025, sessionName: 'Counselor In-Training', sessionType: 'scit' }, // no bunk
-      { year: 2023, sessionName: 'Session 3', sessionType: 'main', bunkName: 'G-8B' },
-    ])
+    mockFetchCamperJourney.mockResolvedValue({
+      rows: [
+        { year: 2025, sessionName: 'Counselor In-Training', sessionType: 'scit' }, // no bunk
+        { year: 2023, sessionName: 'Session 3', sessionType: 'main', bunkName: 'G-8B' },
+      ],
+      familyWeekends: 0,
+      adultWeekends: 0,
+    })
     renderTooltip()
     expect(await screen.findByText(/2025:/)).toBeInTheDocument() // teen year now visible
     expect(await screen.findByText(/2023:/)).toBeInTheDocument()
     expect(screen.getByText(/G-8B/)).toBeInTheDocument()
     // kindred#2466: a 3rd argument now carries the household journey's
     // years (empty here — this camper fixture has no household_id).
-    expect(mockFetchCamperJourney).toHaveBeenCalledWith(12887873, 2026, [])
+    expect(mockFetchCamperJourney).toHaveBeenCalledWith(12887873, 2026, { familyHousingYears: [] })
   })
 })
 
@@ -96,14 +100,25 @@ describe('CamperTooltip mini-journey — family-camp housing (kindred#2466)', ()
       { year: 2024, housing: 'placed', cabin_name: 'Cedar Lodge', housing_session_cm_id: 900 },
     ]
     mockUseHouseholdJourney.mockReturnValue({ data: { household_cm_id: 1000001, years } })
-    mockFetchCamperJourney.mockResolvedValue([
-      { year: 2024, sessionName: 'Family Camp 2', sessionType: 'family', bunkName: 'Cedar Lodge' },
-    ])
+    mockFetchCamperJourney.mockResolvedValue({
+      rows: [
+        {
+          year: 2024,
+          sessionName: 'Family Camp 2',
+          sessionType: 'family',
+          bunkName: 'Cedar Lodge',
+        },
+      ],
+      familyWeekends: 0,
+      adultWeekends: 0,
+    })
 
     renderTooltipWithHousehold()
 
     expect(await screen.findByText(/Cedar Lodge/)).toBeInTheDocument()
     expect(mockUseHouseholdJourney).toHaveBeenCalledWith(1000001)
-    expect(mockFetchCamperJourney).toHaveBeenCalledWith(12887873, 2026, years)
+    expect(mockFetchCamperJourney).toHaveBeenCalledWith(12887873, 2026, {
+      familyHousingYears: years,
+    })
   })
 })

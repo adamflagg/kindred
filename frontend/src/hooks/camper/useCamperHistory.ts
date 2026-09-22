@@ -136,7 +136,11 @@ export function useCamperHistory(
         allHistory.push(...buildCurrentYearRecords(currentCampers, currentYear, parentByKey))
         // Prior years from the shared enrollment-sourced fetcher.
         allHistory.push(
-          ...(await fetchCamperJourney(personCmId, currentYear, householdJourney?.years ?? []))
+          ...(
+            await fetchCamperJourney(personCmId, currentYear, {
+              familyHousingYears: householdJourney?.years ?? [],
+            })
+          ).rows
         )
         // Sort by year descending.
         // The SHARED comparator, not a second year-only one. This merge is

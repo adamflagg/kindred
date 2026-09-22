@@ -69,7 +69,7 @@ function currentCamper(opts: {
 describe('useCamperHistory', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mockFetchCamperJourney.mockResolvedValue([])
+    mockFetchCamperJourney.mockResolvedValue({ rows: [], familyWeekends: 0, adultWeekends: 0 })
     mockFetchParentMainSessions.mockResolvedValue(new Map())
     mockUseHouseholdJourney.mockReturnValue({ data: undefined })
     // `vi.clearAllMocks()` clears CALLS, not implementations -- without this the
@@ -107,7 +107,9 @@ describe('useCamperHistory', () => {
         wrapper: createWrapper(),
       })
       await waitFor(() => expect(result.current.isLoading).toBe(false))
-      expect(mockFetchCamperJourney).toHaveBeenCalledWith(12887873, YEAR, years)
+      expect(mockFetchCamperJourney).toHaveBeenCalledWith(12887873, YEAR, {
+        familyHousingYears: years,
+      })
     })
 
     it('threads an empty array into fetchCamperJourney when no household journey has resolved yet', async () => {
@@ -116,7 +118,9 @@ describe('useCamperHistory', () => {
         wrapper: createWrapper(),
       })
       await waitFor(() => expect(result.current.isLoading).toBe(false))
-      expect(mockFetchCamperJourney).toHaveBeenCalledWith(12887873, YEAR, [])
+      expect(mockFetchCamperJourney).toHaveBeenCalledWith(12887873, YEAR, {
+        familyHousingYears: [],
+      })
     })
 
     // `useHouseholdJourney` reads a PROTECTED endpoint through `fetchWithAuth`,
@@ -146,7 +150,7 @@ describe('useCamperHistory', () => {
      * actually went to Family Camp 1 in May, two summer sessions in June and
      * July, and Family Camp 6 in September.
      */
-    mockFetchCamperJourney.mockResolvedValue([])
+    mockFetchCamperJourney.mockResolvedValue({ rows: [], familyWeekends: 0, adultWeekends: 0 })
     const campers = [
       currentCamper({
         sessionCmId: 201,
@@ -188,10 +192,14 @@ describe('useCamperHistory', () => {
   })
 
   it('merges current-year + prior fetcher rows and surfaces a 2022 gap year, sorted -year', async () => {
-    mockFetchCamperJourney.mockResolvedValue([
-      { year: 2023, sessionName: 'Session 3', sessionType: 'main', bunkName: 'G-8B' },
-      { year: 2022, sessionName: 'Session 3', sessionType: 'main' }, // CM gap: no bunk
-    ])
+    mockFetchCamperJourney.mockResolvedValue({
+      rows: [
+        { year: 2023, sessionName: 'Session 3', sessionType: 'main', bunkName: 'G-8B' },
+        { year: 2022, sessionName: 'Session 3', sessionType: 'main' }, // CM gap: no bunk
+      ],
+      familyWeekends: 0,
+      adultWeekends: 0,
+    })
     const camper = currentCamper({ sessionCmId: 500, sessionType: 'main', bunkName: 'Cabin 5' })
     const { result } = renderHook(() => useCamperHistory(12887873, YEAR, camper, [camper]), {
       wrapper: createWrapper(),

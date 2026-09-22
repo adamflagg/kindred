@@ -404,7 +404,9 @@ export default function CamperDetailsPanel({
   const { data: historicalData = [] } = useQuery<HistoricalRecord[]>({
     queryKey: [...queryKeys.camperHistory(camperId, currentYear), householdJourney?.years],
     queryFn: () =>
-      fetchCamperJourney(parseInt(camperId), currentYear, householdJourney?.years ?? []),
+      fetchCamperJourney(parseInt(camperId), currentYear, {
+        familyHousingYears: householdJourney?.years ?? [],
+      }).then((j) => j.rows),
     enabled: !!camper,
   })
 

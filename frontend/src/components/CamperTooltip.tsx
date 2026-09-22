@@ -64,11 +64,9 @@ export default function CamperTooltip({ camper, isVisible, position }: CamperToo
       if (!camper.person_cm_id) return []
       const personCmId = parseInt(camper.person_cm_id.toString(), 10)
       if (isNaN(personCmId)) return []
-      const journey = await fetchCamperJourney(
-        personCmId,
-        currentYear,
-        householdJourney?.years ?? []
-      )
+      const { rows: journey } = await fetchCamperJourney(personCmId, currentYear, {
+        familyHousingYears: householdJourney?.years ?? [],
+      })
       return journey.slice(0, 3)
     },
     enabled: !!user && isVisible && !!camper.person_cm_id,

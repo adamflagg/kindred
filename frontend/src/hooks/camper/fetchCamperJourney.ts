@@ -10,6 +10,11 @@
  * AG is never shown as its own session: a Main+AG same-year pair collapses to the
  * Main row, and an AG-only year is relabeled to its parent main (name resolved via
  * camp_sessions, since AG session names aren't reliably derivable).
+ *
+ * Adult programs (2026-09, adult camper journey spec §5.2): adult rows are
+ * labeled only by the attributed cabin from `/persons/{id}/housing`; an adult
+ * viewer also gets the family weekends their household's children attended;
+ * every cabin label is the string as recorded that year.
  */
 import { pb } from '../../lib/pocketbase'
 import { byYearThenChronological } from './journeyOrder'
@@ -20,7 +25,7 @@ import type {
   BunksResponse,
   CampSessionsResponse,
 } from '../../types/pocketbase-types'
-import type { HouseholdJourneyRow } from '../../types/lodging'
+import type { HouseholdJourneyRow, PersonHousingWeekendRow } from '../../types/lodging'
 import type { HistoricalRecord } from './types'
 
 interface SessionExpand {
@@ -61,28 +66,88 @@ export async function fetchParentMainSessions(
  * own ambiguity refusal (kindred#2461) rather than reimplementing it. A year
  * with no housing, an unresolved cabin name, or more than one weekend that
  * season produces no entry, and the caller shows nothing rather than guess.
+ *
+ * The cabin is named AS RECORDED (owner ruling 2026-09-22): the string staff
+ * typed that year, `cabin_name_raw`, trimmed — not today's unit name, which
+ * the weekend board's household card still shows.
  */
 function familyHousingByYear(
   years: HouseholdJourneyRow[]
 ): Map<number, { sessionCmId: number; cabinName: string }> {
   const map = new Map<number, { sessionCmId: number; cabinName: string }>()
   for (const y of years) {
+    const cabinName = (y.cabin_name_raw ?? '').trim()
     if (
       y.year !== undefined &&
       y.housing === 'placed' &&
       y.housing_session_cm_id !== null &&
       y.housing_session_cm_id !== undefined &&
-      y.cabin_name
+      cabinName.length > 0
     ) {
-      map.set(y.year, { sessionCmId: y.housing_session_cm_id, cabinName: y.cabin_name })
+      map.set(y.year, { sessionCmId: y.housing_session_cm_id, cabinName })
     }
   }
   return map
 }
 
-export async function fetchCamperJourney(
-  personCmId: number,
-  currentYear: number,
+/** The server's attributed adult cabins, keyed `${year}:${sessionCmId}`. */
+function adultHousingByWeekend(weekends: PersonHousingWeekendRow[]): Map<string, string> {
+  const map = new Map<string, string>()
+  for (const w of weekends) {
+    const name = (w.cabin_name ?? '').trim()
+    if (w.year !== undefined && w.session_cm_id !== undefined && name.length > 0) {
+      map.set(`${String(w.year)}:${String(w.session_cm_id)}`, name)
+    }
+  }
+  return map
+}
+
+interface ParentFamilyWeekend {
+  key: string
+  year: number
+  record: HistoricalRecord
+}
+
+/**
+ * Family camp AS A PARENT (spec §5.2): every weekend a child in the household
+ * was ENROLLED on (the household journey's `sessions` are built from enrolled
+ * children only), except one the adult attended themself. Paper-registration
+ * years carry no session and add nothing. Known limit: household membership
+ * cannot tell a parent from an older sibling (backlog #19).
+ */
+function parentFamilyWeekends(
+  years: HouseholdJourneyRow[],
+  ownFamily: Set<string>,
+  currentYear: number
+): ParentFamilyWeekend[] {
+  const out: ParentFamilyWeekend[] = []
+  for (const y of years) {
+    if (y.year === undefined || y.year > currentYear) continue
+    const cabin = (y.cabin_name_raw ?? '').trim()
+    for (const s of y.sessions ?? []) {
+      const cmId = s.session_cm_id ?? 0
+      if (cmId <= 0) continue
+      const key = `${String(y.year)}:${String(cmId)}`
+      if (ownFamily.has(key)) continue
+      const labelled =
+        y.housing === 'placed' && y.housing_session_cm_id === cmId && cabin.length > 0
+      out.push({
+        key,
+        year: y.year,
+        record: {
+          year: y.year,
+          sessionName: s.name ?? 'Unknown',
+          sessionType: 'family',
+          ...(labelled ? { bunkName: cabin } : {}),
+          ...(s.start_date ? { startDate: s.start_date } : {}),
+        },
+      })
+    }
+  }
+  return out
+}
+
+export interface CamperJourneyOptions {
   /**
    * The household's family-camp journey years (kindred#2073/#2461), already
    * fetched by the caller via `useHouseholdJourney` — this file makes no
@@ -90,21 +155,67 @@ export async function fetchCamperJourney(
    * household on file, in which case every family row shows no housing at
    * all (never the day group).
    */
-  familyHousingYears: HouseholdJourneyRow[] = []
-): Promise<HistoricalRecord[]> {
-  if (!personCmId || Number.isNaN(personCmId)) return []
+  familyHousingYears?: HouseholdJourneyRow[]
+  /** The person's attributed adult-weekend cabins (`/persons/{id}/housing`). */
+  adultHousingWeekends?: PersonHousingWeekendRow[]
+  /** An adult viewer also sees the family weekends their household's children attended. */
+  viewerIsAdult?: boolean
+}
+
+export interface CamperJourneyFeed {
+  /** Prior years only, newest first. */
+  rows: HistoricalRecord[]
+  /** Distinct (year, session) family weekends, current year included. */
+  familyWeekends: number
+  /** Distinct (year, session) adult weekends, current year included. */
+  adultWeekends: number
+}
+
+export async function fetchCamperJourney(
+  personCmId: number,
+  currentYear: number,
+  options: CamperJourneyOptions = {}
+): Promise<CamperJourneyFeed> {
+  if (!personCmId || Number.isNaN(personCmId)) {
+    return { rows: [], familyWeekends: 0, adultWeekends: 0 }
+  }
+  const { familyHousingYears = [], adultHousingWeekends = [], viewerIsAdult = false } = options
 
   const familyHousing = familyHousingByYear(familyHousingYears)
+  const adultHousing = adultHousingByWeekend(adultHousingWeekends)
 
   const typeFilter = buildCamperJourneySessionTypeFilter()
 
-  // 1. Prior-year enrollments — the journey's source of truth.
-  const attendees = await pb.collection<AttendeesResponse<SessionExpand>>('attendees').getFullList({
-    filter: `person_id = ${personCmId} && year < ${currentYear} && status = "enrolled" && (${typeFilter})`,
-    expand: 'session',
-  })
+  // 1. Enrollments — the journey's source of truth. The read runs THROUGH the
+  // current year so the header counts include this year the way CampMinder's
+  // years_at_camp does; the rows themselves stay prior-year.
+  const allAttendees = await pb
+    .collection<AttendeesResponse<SessionExpand>>('attendees')
+    .getFullList({
+      filter: `person_id = ${personCmId} && year <= ${currentYear} && status = "enrolled" && (${typeFilter})`,
+      expand: 'session',
+    })
 
-  if (attendees.length === 0) return []
+  // (year, session) pairs — CampMinder reuses session ids across years, so a
+  // bare session id would count three Keshet weekends as one.
+  const weekendKeys = (type: string): Set<string> =>
+    new Set(
+      allAttendees
+        .filter((a) => a.expand.session?.session_type === type && a.expand.session.cm_id > 0)
+        .map((a) => `${String(a.year)}:${String(a.expand.session?.cm_id)}`)
+    )
+  const ownFamily = weekendKeys('family')
+  const adultWeekends = weekendKeys('adult').size
+  const parentFamily = viewerIsAdult
+    ? parentFamilyWeekends(familyHousingYears, ownFamily, currentYear)
+    : []
+  const familyWeekends = new Set([...ownFamily, ...parentFamily.map((p) => p.key)]).size
+  const parentRows = parentFamily.filter((p) => p.year < currentYear).map((p) => p.record)
+
+  const attendees = allAttendees.filter((a) => a.year < currentYear)
+  if (attendees.length === 0) {
+    return { rows: parentRows.sort(byYearThenChronological), familyWeekends, adultWeekends }
+  }
 
   // Collapse AG sub-tracks into their parent main: when both a main session and
   // its AG child are enrolled the same year, AG isn't a separate attendance —
@@ -193,13 +304,22 @@ export async function fetchCamperJourney(
     // `familyHousing`, which only carries a year whose cabin is unambiguously
     // THIS weekend; any other case (no housing, unresolved cabin, or a
     // different/ambiguous weekend that year) leaves the row with no label,
-    // same as any other unlabeled row.
+    // same as any other unlabeled row. The cabin is the name AS RECORDED that
+    // year (`familyHousingByYear` reads `cabin_name_raw`).
     if (session?.session_type === 'family') {
       const housing = familyHousing.get(year)
       bunkName =
         housing !== undefined && housing.sessionCmId === session.cm_id
           ? housing.cabinName
           : undefined
+    }
+
+    // Adult programs (spec §5.2): the label is the cabin the server attributed
+    // to THIS weekend, or nothing — never a bunk. Unconditional, like the
+    // family override, so the year-fallback above cannot pin a lone summer
+    // bunk onto an adult row.
+    if (session?.session_type === 'adult') {
+      bunkName = adultHousing.get(`${String(year)}:${String(session.cm_id)}`)
     }
 
     // AG is never shown as its own session (spec §3). For a surviving AG-only row,
@@ -222,5 +342,9 @@ export async function fetchCamperJourney(
     }
   })
 
-  return records.sort(byYearThenChronological)
+  return {
+    rows: [...records, ...parentRows].sort(byYearThenChronological),
+    familyWeekends,
+    adultWeekends,
+  }
 }

@@ -363,13 +363,14 @@ describe('CamperDetailsPanel', () => {
     beforeEach(() => {
       mockGetFullListPersons.mockResolvedValue([FAMILY_PERSON])
       mockGetListPersons.mockResolvedValue({ items: [FAMILY_PERSON], totalItems: 1 })
-      // Only the PRIOR-year fetch (fetchCamperJourney, "year < ...") returns
-      // the family attendee — the panel's own current-year fetch must stay
-      // empty so the "current enrollment" block (an unrelated code path)
-      // never enters the picture.
+      // Only the journey fetch (fetchCamperJourney, "year <= ..." — it reads
+      // through the current year for the header counts, adult camper journey
+      // spec §5.2) returns the family attendee — the panel's own current-year
+      // fetch ("year = ...") must stay empty so the "current enrollment" block
+      // (an unrelated code path) never enters the picture.
       mockGetFullListAttendees.mockImplementation((opts: { filter?: string } = {}) => {
         const filter = opts.filter ?? ''
-        return Promise.resolve(filter.includes('year < ') ? [FAMILY_ATTENDEE] : [])
+        return Promise.resolve(filter.includes('year <= ') ? [FAMILY_ATTENDEE] : [])
       })
       mockGetFullListBunkAssignments.mockResolvedValue([FAMILY_DAY_GROUP_ASSIGNMENT])
     })
@@ -392,6 +393,7 @@ describe('CamperDetailsPanel', () => {
               year: 2024,
               housing: 'placed',
               cabin_name: 'Cedar Lodge',
+              cabin_name_raw: 'Cedar Lodge',
               housing_session_cm_id: 9100001,
             },
           ],
