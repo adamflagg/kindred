@@ -2447,7 +2447,7 @@ class TestSessionAttributionConflictsEndpoint:
 
 
 class TestPersonHousingEndpoint:
-    """GET /api/lodging/persons/{id}/housing (adult camper journey spec §4).
+    """GET /api/lodging/persons/{id}/housing (adult camper journey).
 
     Open to any authenticated user, exactly like the household journey beside
     it: it carries cabin names and weekends, and no narrative.

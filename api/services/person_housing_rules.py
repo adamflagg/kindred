@@ -1,8 +1,5 @@
 """Adult-weekend cabin attribution — the adult camper journey's one rule.
 
-Spec: docs/superpowers/specs/2026-09-22-adult-camper-journey-design.md §4.2
-(local, gitignored).
-
 Adult weekends (Women's, Men's, Divorce & Discovery, Adults Unplugged, ...) keep
 their cabin in a PERSON custom field that holds ONE value per person per SEASON
 and has no session dimension. Verified live against CampMinder 2026-09-16: no
@@ -29,7 +26,7 @@ from datetime import UTC, datetime, timedelta
 
 from api.services.lodging_rules import housing_lookup_key
 
-# ⛔ THE ALLOWLIST (spec §4.1): `Adult Weekend Program Cabin` (2022-23) and
+# ⛔ THE ALLOWLIST: `Adult Weekend Program Cabin` (2022-23) and
 # `Reportable Family Camp Cabin` (2022+). The best-covered fields on the adult
 # cohort are Race, Folks of Color, Judaism, Congregation, financial aid and the
 # `20XX History` staff records -- which embed SALARY. A read that is not pinned
@@ -100,7 +97,7 @@ def attribute_adult_cabins(
 ) -> list[AttributedCabin]:
     """Pin each season's cabin value(s) to the person's enrolled adult weekends.
 
-    Spec §4.2, in order: ASSIGN each value to a weekend first, THEN collapse
+    In order: ASSIGN each value to a weekend first, THEN collapse
     values naming one place WITHIN each weekend's own pool. With ONE weekend,
     every value is assigned to it and the latest one written before it ended
     wins (a lone late edit still counts); with TWO OR MORE, each value belongs

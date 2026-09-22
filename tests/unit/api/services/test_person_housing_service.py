@@ -1,4 +1,4 @@
-"""PersonHousingService -- the adult camper journey's server read (spec §4)."""
+"""PersonHousingService -- the adult camper journey's server read."""
 
 from __future__ import annotations
 
@@ -58,7 +58,7 @@ class TestPersonHousingService:
 
     @pytest.mark.asyncio
     async def test_a_field_outside_the_allowlist_never_reaches_the_response(self) -> None:
-        """Defense in depth behind the repository's allowlist (spec §4.1)."""
+        """Defense in depth behind the repository's allowlist."""
         repo = _repo(
             fetch_person_cabin_values=[
                 _cabin_row(

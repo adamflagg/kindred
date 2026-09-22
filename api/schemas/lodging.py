@@ -1431,7 +1431,8 @@ class PersonHousingResponse(BaseModel):
 
     Per weekend rather than per year (unlike `HouseholdJourneyYear`): a
     two-weekend season can label both weekends when each value was written
-    before its own weekend (spec §4.2 step 4).
+    before its own weekend, one weekend's pool at a time -- see
+    `attribute_adult_cabins` in `api/services/person_housing_rules.py`.
     """
 
     person_cm_id: int = 0

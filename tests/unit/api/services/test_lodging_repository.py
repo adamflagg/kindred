@@ -2450,7 +2450,7 @@ class TestFetchSessionScopedSyncEnds:
 
 
 class TestFetchPersonCabinValues:
-    """The adult camper journey's cabin read (spec §4.1)."""
+    """The adult camper journey's cabin read."""
 
     @pytest.mark.asyncio
     async def test_reads_only_the_two_allowlisted_cabin_fields_for_one_person(

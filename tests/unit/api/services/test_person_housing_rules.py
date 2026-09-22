@@ -1,6 +1,6 @@
-"""The adult-weekend cabin attribution rule (adult camper journey spec §4.2).
+"""The adult-weekend cabin attribution rule (adult camper journey).
 
-Every case here is one the 2026-09-16 prod snapshot actually contains (spec §4.3).
+Every case here is one the 2026-09-16 prod snapshot actually contains.
 Fixtures are fictional; only the SHAPE of the dates mirrors the real weekends.
 """
 
@@ -68,7 +68,7 @@ class TestParsing:
 
 class TestAllowlist:
     def test_only_the_two_cabin_fields(self) -> None:
-        """Spec §4.1. Widening this is how Race, financial aid and the
+        """The allowlist. Widening this is how Race, financial aid and the
         salary-bearing `20XX History` staff fields would reach the wire."""
         assert ADULT_WEEKEND_CABIN_FIELD_CM_IDS == (212997, 223823)
 
@@ -119,8 +119,9 @@ class TestOneWeekend:
         assert [c.cabin_name for c in out] == ["Golden Triangle - Tenaya 1"]
 
     def test_a_value_written_after_the_weekend_loses_to_one_written_before(self) -> None:
-        """The 2022-10-19 mis-key (spec §4.3): the real September cabin, plus a
-        value typed in the D&D batch 17 days after her only weekend ended."""
+        """The 2022-10-19 mis-key, measured on the prod snapshot: the real
+        September cabin, plus a value typed in the D&D batch 17 days after
+        her only weekend ended."""
         out = attribute_adult_cabins(
             [_value(2022, "River H", "2022-09-15T12:00", OLD_FIELD), _value(2022, "River C", "2022-10-19T19:01")],
             [_weekend(2022, WW, "2022-10-02")],

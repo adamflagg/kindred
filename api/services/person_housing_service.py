@@ -1,6 +1,5 @@
 """The adult camper journey's server read: one person's adult-weekend cabins.
 
-Spec: docs/superpowers/specs/2026-09-22-adult-camper-journey-design.md §4.
 The rule lives in `person_housing_rules`; this module only reads and converts.
 `person_custom_values` is admin-only in PocketBase, which is why this read is
 server-side at all -- the same reason family camp's cabins are.

@@ -731,14 +731,16 @@ class LodgingRepository:
 
         `person_id` is the CampMinder id, the cross-season identity thread.
         Enrolled only: a cancelled weekend is not one the person attended, so
-        its stale cabin must never attribute (spec §4.3 -- 54 such values).
+        its stale cabin must never attribute -- 54 cabin values sit on
+        person-years whose adult enrollments are all cancelled, measured on
+        the 2026-09-16 prod snapshot.
         """
         if person_cm_id <= 0:
             return []
         return await self._page(
             ATTENDEES,
             query_params={
-                "filter": (f'person_id = {person_cm_id} && session.session_type = "adult" && {ACTIVE_ENROLLED_FILTER}'),
+                "filter": f'person_id = {person_cm_id} && session.session_type = "adult" && {ACTIVE_ENROLLED_FILTER}',
                 "expand": "session",
                 "sort": STABLE_SORT,
             },

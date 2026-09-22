@@ -123,8 +123,8 @@ const _exhaustiveHouseholdJourney: Required<HouseholdJourney> = {
 void _exhaustiveHouseholdJourney
 
 /**
- * Adult camper journey (spec §4.4). `Required<>` so a field that leaves the
- * wire fails the build instead of lingering as a type nobody publishes.
+ * Adult camper journey. `Required<>` so a field that leaves the wire fails
+ * the build instead of lingering as a type nobody publishes.
  */
 const _exhaustivePersonHousingWeekendRow: Required<PersonHousingWeekendRow> = {
   year: 2024,
