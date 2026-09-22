@@ -406,6 +406,156 @@ describe('CamperDetailsPanel', () => {
     })
   })
 
+  // Owner ruling 2026-09-22: the board's Siblings section lists siblings by
+  // the camper record's rule (useSiblings, child viewer) — enrolled only, kid
+  // programs including family camp and TLI/SCIT, no grade filter, and never
+  // a family-camp day group as a cabin. The pocketbase mocks below apply the
+  // parts of each filter that matter, as PocketBase would server-side.
+  describe("Siblings — the camper record's rule", () => {
+    const HOUSEHOLD = 555
+    const EMMA_H = mockPerson({ ...EMMA, household_id: HOUSEHOLD })
+    const SAM = mockPerson({
+      id: 'pb-sam',
+      cm_id: 3000002,
+      first_name: 'Sam',
+      preferred_name: '',
+      last_name: 'Johnson',
+      grade: 0,
+      age: 4.03,
+      year: 2025,
+      household_id: HOUSEHOLD,
+    })
+    const OLIVIA = mockPerson({
+      id: 'pb-olivia',
+      cm_id: 3000003,
+      first_name: 'Olivia',
+      preferred_name: '',
+      last_name: 'Johnson',
+      grade: 4,
+      year: 2025,
+      household_id: HOUSEHOLD,
+    })
+    const DAVID = mockPerson({
+      id: 'pb-david',
+      cm_id: 3000004,
+      first_name: 'David',
+      preferred_name: '',
+      last_name: 'Johnson',
+      grade: 0,
+      age: 44.02,
+      year: 2025,
+      household_id: HOUSEHOLD,
+    })
+
+    const attendee = (
+      personCmId: number,
+      status: string,
+      session: { id: string; name: string; session_type: string }
+    ) => ({
+      id: `att-${String(personCmId)}`,
+      person_id: personCmId,
+      status,
+      status_id: status === 'enrolled' ? 2 : 4,
+      year: 2025,
+      expand: { session: { cm_id: 1, start_date: '2025-06-01', ...session } },
+    })
+
+    beforeEach(() => {
+      mockGetListPersons.mockResolvedValue({ items: [EMMA_H], totalItems: 1 })
+      mockGetFullListPersons.mockImplementation((opts: { filter?: string } = {}) => {
+        const filter = opts.filter ?? ''
+        if (filter.includes(`household_id = ${String(HOUSEHOLD)}`)) {
+          const members = [SAM, OLIVIA, DAVID]
+          return Promise.resolve(
+            filter.includes('grade > 0') ? members.filter((m) => m.grade > 0) : members
+          )
+        }
+        return Promise.resolve([EMMA_H])
+      })
+      mockGetFullListAttendees.mockImplementation((opts: { filter?: string } = {}) => {
+        const filter = opts.filter ?? ''
+        const allows = (type: string) => filter.includes(`session.session_type = "${type}"`)
+        const enrolledOnly = filter.includes('status_id = 2')
+        if (filter.includes(`person_id = ${String(SAM.cm_id)}`)) {
+          // A family-camp-only preschooler.
+          return Promise.resolve(
+            allows('family')
+              ? [
+                  attendee(SAM.cm_id, 'enrolled', {
+                    id: 's-fc1',
+                    name: 'Family Camp 1',
+                    session_type: 'family',
+                  }),
+                ]
+              : []
+          )
+        }
+        if (filter.includes(`person_id = ${String(OLIVIA.cm_id)}`)) {
+          // Waitlisted for summer — never implies attendance.
+          return Promise.resolve(
+            enrolledOnly
+              ? []
+              : [
+                  attendee(OLIVIA.cm_id, 'waitlisted', {
+                    id: 's-2',
+                    name: 'Session 2',
+                    session_type: 'main',
+                  }),
+                ]
+          )
+        }
+        if (filter.includes(`person_id = ${String(DAVID.cm_id)}`)) {
+          // A parent, enrolled only in an adult program.
+          return Promise.resolve(
+            allows('adult')
+              ? [
+                  attendee(DAVID.cm_id, 'enrolled', {
+                    id: 's-ww',
+                    name: "Men's Weekend",
+                    session_type: 'adult',
+                  }),
+                ]
+              : []
+          )
+        }
+        return Promise.resolve([EMMA_ATTENDEE])
+      })
+      // CampMinder's bunk for a family-camp session is the day group.
+      mockGetFullListBunkAssignments.mockImplementation((opts: { filter?: string } = {}) =>
+        Promise.resolve(
+          (opts.filter ?? '').includes('pb-sam')
+            ? [{ expand: { bunk: { name: 'Acorns (with parents)' } } }]
+            : []
+        )
+      )
+    })
+
+    it('lists a family-camp-only sibling, a grade-0 preschooler included', async () => {
+      render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} />)
+      expect(await screen.findByText('Sam Johnson')).toBeInTheDocument()
+      expect(screen.getByText('Siblings')).toBeInTheDocument()
+    })
+
+    it('leaves out a waitlisted sibling and a parent', async () => {
+      render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} />)
+      await screen.findByText('Sam Johnson')
+      expect(screen.queryByText('Olivia Johnson')).not.toBeInTheDocument()
+      expect(screen.queryByText('David Johnson')).not.toBeInTheDocument()
+    })
+
+    it('never shows the family-camp day group as a cabin', async () => {
+      render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} />)
+      await screen.findByText('Sam Johnson')
+      expect(screen.queryByText('Acorns (with parents)')).not.toBeInTheDocument()
+    })
+
+    it('shows no grade for a grade-0 sibling, like the camper record', async () => {
+      render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} />)
+      await screen.findByText('Sam Johnson')
+      expect(screen.queryByText('0th')).not.toBeInTheDocument()
+    })
+  })
+
   describe('Panel Behavior', () => {
     it('renders in embedded mode without slide-in animation', async () => {
       render(<CamperDetailsPanel camperId="12345" onClose={mockOnClose} embedded={true} />)

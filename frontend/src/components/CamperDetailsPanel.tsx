@@ -35,7 +35,6 @@ import type {
   PersonsResponse,
   AttendeesResponse,
   BunkRequestsResponse,
-  BunkAssignmentsResponse,
   BunksResponse,
   CampSessionsResponse,
 } from '../types/pocketbase-types'
@@ -54,6 +53,7 @@ import type { EnhancedBunkRequest } from '../hooks/camper/useAllBunkRequests'
 import { useOriginalBunkData } from '../hooks/camper/useOriginalBunkData'
 import { fetchParentMainSessions } from '../hooks/camper/fetchCamperJourney'
 import { useCamperJourney } from '../hooks/camper/useCamperJourney'
+import { useSiblings } from '../hooks/camper/useSiblings'
 import { journeyCountLabel } from '../utils/journeyCountLabel'
 import { collapseAgEnrollments, buildAgParentPairs } from '../hooks/camper/agCollapse'
 import type { HistoricalRecord } from '../hooks/camper/types'
@@ -443,85 +443,15 @@ export default function CamperDetailsPanel({
     enabled: !!camper?.person_cm_id,
   })
 
-  // Fetch siblings
-  const { data: siblings = [] } = useQuery({
-    queryKey: queryKeys.camperSiblingsPanel(person?.household_id, camperId, currentYear),
-    queryFn: async () => {
-      const personCmId = parseInt(camperId)
-      if (!person?.household_id || person.household_id === 0) return []
-
-      const siblingFilter = `household_id = ${person.household_id} && cm_id != ${personCmId} && grade > 0 && year = ${currentYear}`
-      let siblingPersons: PersonsResponse[]
-      try {
-        siblingPersons = await pb.collection<PersonsResponse>('persons').getFullList({
-          filter: siblingFilter,
-          sort: '-birthdate',
-        })
-      } catch {
-        return []
-      }
-
-      if (siblingPersons.length === 0) return []
-
-      const siblingsWithEnrollment = await Promise.all(
-        siblingPersons.map(async (siblingPerson) => {
-          const sessionTypeFilter = buildSummerSessionTypeFilter()
-          const enrollmentFilter = `person_id = ${siblingPerson.cm_id} && year = ${currentYear} && (${sessionTypeFilter})`
-
-          try {
-            const attendees = await pb.collection<AttendeesResponse>('attendees').getFullList({
-              filter: enrollmentFilter,
-              expand: 'session',
-              $autoCancel: false,
-            })
-
-            if (attendees.length === 0) return null
-
-            const sortedAttendees = attendees.sort((a, b) => {
-              const aExpand = a.expand as { session?: ExpandedSession } | undefined
-              const bExpand = b.expand as { session?: ExpandedSession } | undefined
-              const aType = aExpand?.session?.session_type ?? 'unknown'
-              const bType = bExpand?.session?.session_type ?? 'unknown'
-              return sortEnrolledFirst(a.status, aType, b.status, bType)
-            })
-
-            const primaryAttendee = sortedAttendees[0]
-            if (!primaryAttendee) return null
-            const primaryExpand = primaryAttendee.expand as
-              { session?: ExpandedSession } | undefined
-            const session = primaryExpand?.session
-
-            let bunkName = null
-            if (session) {
-              try {
-                const assignments = await pb
-                  .collection<BunkAssignmentsResponse>('bunk_assignments')
-                  .getFullList({
-                    filter: `person = "${siblingPerson.id || ''}" && session = "${session.id ?? ''}" && year = ${currentYear}`,
-                    expand: 'bunk',
-                    $autoCancel: false,
-                  })
-                if (assignments.length > 0 && assignments[0]) {
-                  const assignmentExpand = assignments[0].expand as
-                    { bunk?: ExpandedBunk } | undefined
-                  bunkName = assignmentExpand?.bunk?.name ?? null
-                }
-              } catch {
-                /* continue without bunk */
-              }
-            }
-
-            return { ...siblingPerson, session, bunkName, attendeeStatus: primaryAttendee.status }
-          } catch {
-            return null
-          }
-        })
-      )
-
-      return siblingsWithEnrollment.filter((s) => s !== null)
-    },
-    enabled: !!(person?.household_id && person.household_id > 0),
-  })
+  // Siblings by the camper record's rule (owner ruling 2026-09-22): enrolled
+  // only, every kid program including family camp and TLI/SCIT, no grade
+  // filter, and no family-camp day group shown as a cabin.
+  const { siblings } = useSiblings(
+    person?.household_id,
+    camperId ? parseInt(camperId, 10) : null,
+    currentYear,
+    'child'
+  )
 
   // Original parent-sourced bunk-request form text (CSV import, normalized
   // per-field). Re-uses the same hook the full-page camper detail does so the
@@ -1122,8 +1052,14 @@ export default function CamperDetailsPanel({
                       </div>
                       <div className="text-muted-foreground mt-0.5 flex items-center gap-2 text-[10px]">
                         <span>{formatAge(getDisplayAgeForYear(sibling, currentYear) ?? 0)}</span>
-                        <span>•</span>
-                        <span>{formatGradeOrdinal(sibling.grade)}</span>
+                        {/* No grade for a grade-0 member (a family-camp
+                            preschooler), as on the camper record. */}
+                        {sibling.grade > 0 && (
+                          <>
+                            <span>•</span>
+                            <span>{formatGradeOrdinal(sibling.grade)}</span>
+                          </>
+                        )}
                         {sibling.bunkName && (
                           <>
                             <span>•</span>

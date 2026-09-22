@@ -8,6 +8,8 @@
  *   factory itself.
  * - `camperHistory` and its tests were removed once the shared camper journey
  *   feed (`camperJourney`, keyed by person and year) replaced its last callers.
+ * - `camperSiblingsPanel` and its tests were removed once the board's camper
+ *   panel moved to `useSiblings`, the camper record's sibling hook.
  */
 
 import { describe, it, expect } from 'vitest'
@@ -25,19 +27,6 @@ describe('queryKeys.originalBunkRequestsByRequesterCmId', () => {
     const populated = queryKeys.originalBunkRequestsByRequesterCmId(12345, 2025)
     const empty = queryKeys.originalBunkRequestsByRequesterCmId(undefined, 2025)
     expect(populated).not.toEqual(empty)
-  })
-})
-
-describe('queryKeys.camperSiblingsPanel', () => {
-  it('accepts a number householdId and produces a key with it', () => {
-    const key = queryKeys.camperSiblingsPanel(42, 'p-1', 2025)
-    expect(key).toContain(42)
-    expect(key).toContain('p-1')
-    expect(key).toContain(2025)
-  })
-
-  it('accepts undefined householdId without throwing', () => {
-    expect(() => queryKeys.camperSiblingsPanel(undefined, 'p-1', 2025)).not.toThrow()
   })
 })
 

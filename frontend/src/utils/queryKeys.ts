@@ -477,8 +477,6 @@ export const queryKeys = {
   camperDetails: (camperId: string, year: number) => ['camper-details', camperId, year] as const,
   personForSiblings: (camperId: string, year: number) =>
     ['person-for-siblings', camperId, year] as const,
-  camperSiblingsPanel: (householdId: number | undefined, camperId: string, year: number) =>
-    ['camper-siblings-panel', householdId, camperId, year] as const,
   // Filter: `requester.cm_id = {cmId}`. Returns denormalized
   // OriginalBunkData[] (used by useOriginalBunkData). Caller must gate
   // with `enabled: !!cmId`.
