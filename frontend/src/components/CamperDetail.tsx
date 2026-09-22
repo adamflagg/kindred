@@ -30,6 +30,7 @@ import {
 import type { EnhancedBunkRequest } from '../hooks/camper/useAllBunkRequests'
 import type { SatisfactionEntry } from '../types/satisfaction'
 import { buildSatisfactionLookup } from '../utils/satisfactionLookup'
+import { EMPTY_JOURNEY_COUNTS } from '../utils/journeyCountLabel'
 
 // Import extracted UI components
 import {
@@ -44,6 +45,7 @@ import {
 import type { Camper } from '../types/app-types'
 import type {
   HistoricalRecord,
+  JourneyCounts,
   OriginalBunkData,
   SiblingWithEnrollment,
 } from '../hooks/camper/types'
@@ -85,6 +87,7 @@ interface CamperDetailBodyProps {
   siblingsLoading: boolean
   siblingsError: Error | null
   camperHistory: HistoricalRecord[]
+  journeyCounts: JourneyCounts
   canManageBunking: boolean
   isAdmin: boolean
 }
@@ -105,6 +108,7 @@ function CamperDetailBody({
   siblingsLoading,
   siblingsError,
   camperHistory,
+  journeyCounts,
   canManageBunking,
   isAdmin,
 }: CamperDetailBodyProps) {
@@ -178,6 +182,7 @@ function CamperDetailBody({
         sessionShortName={sessionShortName}
         pronouns={pronouns}
         allSessionNames={allSessionNames}
+        journeyCounts={journeyCounts}
       />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
@@ -239,7 +244,7 @@ function CamperDetailBody({
           {/* Camp Journey Timeline */}
           <CampJourneyTimeline
             history={camperHistory}
-            yearsAtCamp={camper.years_at_camp ?? 0}
+            counts={journeyCounts}
             currentYear={currentYear}
           />
 
@@ -309,7 +314,12 @@ export default function CamperDetail() {
   const camper = enrolledCampers[0] ?? allAttendees[0] ?? null
 
   // Fetch camper's history using extracted hook (pass all attendees for status-aware filtering)
-  const { camperHistory } = useCamperHistory(personCmId, currentYear, camper, allAttendees)
+  const { camperHistory, counts: journeyCounts = EMPTY_JOURNEY_COUNTS } = useCamperHistory(
+    personCmId,
+    currentYear,
+    camper,
+    allAttendees
+  )
 
   // Fetch original CSV data using extracted hook
   const { originalBunkData } = useOriginalBunkData(camper?.person_cm_id, currentYear)
@@ -416,6 +426,7 @@ export default function CamperDetail() {
         siblingsLoading={siblingsLoading}
         siblingsError={siblingsError}
         camperHistory={camperHistory}
+        journeyCounts={journeyCounts}
         canManageBunking={canManageBunking}
         isAdmin={isAdmin}
       />

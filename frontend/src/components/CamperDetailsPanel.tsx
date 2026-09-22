@@ -17,7 +17,6 @@ import {
 import { ParentStaffDivider, AgePreferenceDivider } from './camper/RequestSectionDividers'
 import FirstPickBadge from './camper/FirstPickBadge'
 import { pb } from '../lib/pocketbase'
-import { useAuth } from '../contexts/AuthContext'
 import { StatusBadge } from './StatusBadge'
 import {
   getGenderIdentityDisplay,
@@ -53,8 +52,9 @@ import {
 import type { RequestBucket, SatisfactionEntry } from '../types/satisfaction'
 import type { EnhancedBunkRequest } from '../hooks/camper/useAllBunkRequests'
 import { useOriginalBunkData } from '../hooks/camper/useOriginalBunkData'
-import { fetchCamperJourney, fetchParentMainSessions } from '../hooks/camper/fetchCamperJourney'
-import { useHouseholdJourney } from '../hooks/useWeekendRoster'
+import { fetchParentMainSessions } from '../hooks/camper/fetchCamperJourney'
+import { useCamperJourney } from '../hooks/camper/useCamperJourney'
+import { journeyCountLabel } from '../utils/journeyCountLabel'
 import { collapseAgEnrollments, buildAgParentPairs } from '../hooks/camper/agCollapse'
 import type { HistoricalRecord } from '../hooks/camper/types'
 import { useOverlayEscape } from '../hooks/useOverlayEscape'
@@ -386,29 +386,11 @@ export default function CamperDetailsPanel({
     enabled: !!camperId,
   })
 
-  // kindred#2466: a family-camp row shows the household's ACTUAL HOUSING
-  // (the resolved cabin, mirroring the weekend board's own
-  // HouseholdJourneyCard) rather than the CampMinder day group. `null` when
-  // the person has no household on file, which disables the query.
-  // ⚠️ Gated on `isAuthLoading`, not only on the id. `useHouseholdJourney`
-  // reads a PROTECTED endpoint through `fetchWithAuth`, and its own `enabled`
-  // checks the household id alone -- so an ungated call can fire before auth
-  // is ready and lose the housing for the render (frontend/CLAUDE.md:
-  // "useAuth().isLoading first").
-  const { isLoading: isAuthLoading } = useAuth()
-  const { data: householdJourney } = useHouseholdJourney(
-    isAuthLoading ? null : (person?.household_id ?? null)
+  // The one shared journey feed (adult camper journey spec §5.3).
+  const { rows: historicalData, counts: journeyCounts } = useCamperJourney(
+    camperId ? parseInt(camperId, 10) : null,
+    currentYear
   )
-
-  // Fetch historical journey via the shared enrollment-sourced fetcher.
-  const { data: historicalData = [] } = useQuery<HistoricalRecord[]>({
-    queryKey: [...queryKeys.camperHistory(camperId, currentYear), householdJourney?.years],
-    queryFn: () =>
-      fetchCamperJourney(parseInt(camperId), currentYear, {
-        familyHousingYears: householdJourney?.years ?? [],
-      }).then((j) => j.rows),
-    enabled: !!camper,
-  })
 
   // Fetch bunk requests
   const { data: bunkRequests = [] } = useQuery<PanelBunkRequest[]>({
@@ -808,12 +790,12 @@ export default function CamperDetailsPanel({
               <span>{location}</span>
             </div>
           )}
-          <div className="text-forest-100 flex items-center gap-1.5">
-            <TreePine className="text-forest-300 h-3 w-3" />
-            <span>
-              {camper.years_at_camp ?? 0} {(camper.years_at_camp ?? 0) === 1 ? 'year' : 'years'}
-            </span>
-          </div>
+          {journeyCountLabel(journeyCounts).length > 0 && (
+            <div className="text-forest-100 flex items-center gap-1.5">
+              <TreePine className="text-forest-300 h-3 w-3" />
+              <span>{journeyCountLabel(journeyCounts)}</span>
+            </div>
+          )}
           {currentEnrollments.length > 1 ? (
             currentEnrollments.map((enrollment) => {
               const indicator = getStatusIndicator(enrollment.attendeeStatus)

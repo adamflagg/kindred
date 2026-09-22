@@ -3,16 +3,16 @@
  * Aggregates current year and past years' camp history
  */
 
+import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { isAtCampSessionType } from '../../utils/sessionTypePredicates'
 import { filterEnrollmentsByStatus, toDisplayList } from '../../utils/enrollmentFilter'
-import { fetchCamperJourney, fetchParentMainSessions } from './fetchCamperJourney'
+import { fetchParentMainSessions } from './fetchCamperJourney'
 import { byYearThenChronological } from './journeyOrder'
-import { useHouseholdJourney } from '../useWeekendRoster'
-import { useAuth } from '../../contexts/AuthContext'
+import { useCamperJourney } from './useCamperJourney'
 import type { Camper } from '../../types/app-types'
 import type { CampSessionsResponse } from '../../types/pocketbase-types'
-import type { HistoricalRecord } from './types'
+import type { HistoricalRecord, JourneyCounts } from './types'
 
 /**
  * Drop a current-year AG camper when its parent main is also enrolled this year
@@ -81,6 +81,7 @@ function resolveCurrentYearCampers(
 
 export interface UseCamperHistoryResult {
   camperHistory: HistoricalRecord[]
+  counts: JourneyCounts
   isLoading: boolean
   error: Error | null
 }
@@ -91,79 +92,57 @@ export function useCamperHistory(
   camper: Camper | null,
   allAttendees?: Camper[]
 ): UseCamperHistoryResult {
-  // kindred#2466: a family-camp row shows the household's ACTUAL HOUSING
-  // (the resolved cabin, exactly as the weekend board's own
-  // HouseholdJourneyCard shows it) rather than the CampMinder day group.
-  // `household_id` is the CampMinder household id already carried on every
-  // Camper (kindred#2073's household grain) — `null` for a camper with no
-  // household on file, which disables the query rather than fetching a
-  // meaningless id.
-  // ⚠️ Gated on `isAuthLoading` as well as the id -- `useHouseholdJourney`
-  // reads a protected endpoint and its own `enabled` checks only the id.
-  const { isLoading: isAuthLoading } = useAuth()
-  const { data: householdJourney } = useHouseholdJourney(
-    isAuthLoading ? null : (camper?.household_id ?? null)
-  )
+  // Prior years + header counts: the one shared feed (adult camper journey §5.3).
+  const journey = useCamperJourney(personCmId, currentYear)
 
+  // Current year from live attendees, with AG collapse + relabel (unchanged).
   const {
-    data: camperHistory = [],
+    data: currentRows = [],
     isLoading,
     error,
   } = useQuery({
     queryKey: [
-      'camper-history-details',
+      'camper-current-year-rows',
       personCmId,
       currentYear,
       camper?.expand?.session,
       camper?.expand?.assigned_bunk,
       allAttendees?.length,
-      householdJourney?.years,
     ],
     queryFn: async () => {
-      if (!personCmId) return []
-      try {
-        const allHistory: HistoricalRecord[] = []
-        // Current year from live attendees, with AG collapse + relabel.
-        const currentCampers = collapseAgIntoMain(
-          resolveCurrentYearCampers(allAttendees ?? [], camper)
-        )
-        const agPairs: Array<{ year: number; cmId: number }> = []
-        for (const c of currentCampers) {
-          const s = c.expand?.session
-          if (s?.session_type === 'ag') agPairs.push({ year: currentYear, cmId: s.parent_id })
-        }
-        const parentByKey = await fetchParentMainSessions(agPairs)
-        allHistory.push(...buildCurrentYearRecords(currentCampers, currentYear, parentByKey))
-        // Prior years from the shared enrollment-sourced fetcher.
-        allHistory.push(
-          ...(
-            await fetchCamperJourney(personCmId, currentYear, {
-              familyHousingYears: householdJourney?.years ?? [],
-            })
-          ).rows
-        )
-        // Sort by year descending.
-        // The SHARED comparator, not a second year-only one. This merge is
-        // where the reported defect actually lived: prior-year records arrive
-        // chronological by luck of the fetch order, the current year's do not,
-        // and a year-only sort preserves both — so 2025 read correctly while
-        // 2026 read "2a, 3a, FC1, FC6".
-        allHistory.sort(byYearThenChronological)
-        return allHistory
-      } catch (err) {
-        console.error('Error fetching camp history:', err)
-        const fallbackCampers = collapseAgIntoMain(
-          resolveCurrentYearCampers(allAttendees ?? [], camper)
-        )
-        return buildCurrentYearRecords(fallbackCampers, currentYear, new Map())
+      const currentCampers = collapseAgIntoMain(
+        resolveCurrentYearCampers(allAttendees ?? [], camper)
+      )
+      const agPairs: Array<{ year: number; cmId: number }> = []
+      for (const c of currentCampers) {
+        const s = c.expand?.session
+        if (s?.session_type === 'ag') agPairs.push({ year: currentYear, cmId: s.parent_id })
       }
+      let parentByKey = new Map<string, CampSessionsResponse>()
+      try {
+        parentByKey = await fetchParentMainSessions(agPairs)
+      } catch (err) {
+        console.error('Error resolving AG parent sessions:', err)
+      }
+      return buildCurrentYearRecords(currentCampers, currentYear, parentByKey)
     },
     enabled: !!personCmId && !!camper,
   })
 
+  // The SHARED comparator, not a second year-only one. This merge is where
+  // the reported defect actually lived: prior-year records arrive
+  // chronological by luck of the fetch order, the current year's do not, and
+  // a year-only sort preserves both — so 2025 read correctly while 2026 read
+  // "2a, 3a, FC1, FC6".
+  const camperHistory = useMemo(
+    () => [...currentRows, ...journey.rows].sort(byYearThenChronological),
+    [currentRows, journey.rows]
+  )
+
   return {
     camperHistory,
-    isLoading,
-    error: error,
+    counts: journey.counts,
+    isLoading: isLoading || journey.isLoading,
+    error: error ?? journey.error,
   }
 }

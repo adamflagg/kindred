@@ -7,19 +7,17 @@ import { getSessionDisplayNameFromString } from '../../utils/sessionDisplay'
 import { weekendSubtitle } from '../weekend/weekendNames'
 import { getStatusIndicator } from '../../utils/enrollmentFilter'
 import { isFamilySessionType } from '../../utils/sessionTypePredicates'
-import type { HistoricalRecord } from '../../hooks/camper/types'
+import { journeyCountLabel } from '../../utils/journeyCountLabel'
+import type { HistoricalRecord, JourneyCounts } from '../../hooks/camper/types'
 
 interface CampJourneyTimelineProps {
   history: HistoricalRecord[]
-  yearsAtCamp: number
+  counts: JourneyCounts
   currentYear: number
 }
 
-export function CampJourneyTimeline({
-  history,
-  yearsAtCamp,
-  currentYear,
-}: CampJourneyTimelineProps) {
+export function CampJourneyTimeline({ history, counts, currentYear }: CampJourneyTimelineProps) {
+  const countLabel = journeyCountLabel(counts)
   return (
     <div className="bg-card border-border overflow-hidden rounded-2xl border shadow-sm">
       {/* Header - original styling */}
@@ -28,15 +26,11 @@ export function CampJourneyTimeline({
           <TreePine className="h-5 w-5" />
           Camp Journey
         </h2>
-        {/* Summer-flavored count (#2123, reverses #2113): years_at_camp is
-            CampMinder's calculated field and counts SUMMER attendance only —
-            it is not a program-agnostic total. The journey below can include
-            family camp and teen years, so leaving this program-agnostic
-            reads as a contradiction on a family-camp row under a 0. Say what
-            the number actually measures. */}
-        <p className="text-forest-200 mt-1 text-sm">
-          {yearsAtCamp} {yearsAtCamp === 1 ? 'summer' : 'summers'} at camp
-        </p>
+        {/* The shared count line (adult camper journey spec §6.1): summers are
+            CampMinder's own years_at_camp (summer + teen); family and adult
+            weekends are counted from enrollments. Zero parts are hidden, and
+            so is the whole line when nothing counts. */}
+        {countLabel.length > 0 && <p className="text-forest-200 mt-1 text-sm">{countLabel}</p>}
       </div>
 
       <div className="p-5">

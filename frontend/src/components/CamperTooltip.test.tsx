@@ -1,17 +1,21 @@
 /**
- * Tests for CamperTooltip — the hover mini-journey. Routes through the shared
- * fetchCamperJourney so it shows real attended years incl. no-bunk (teen / gap)
- * rows. TDD: written before implementation.
+ * Tests for CamperTooltip — the hover mini-journey. Reads the one shared
+ * journey feed (useCamperJourney, adult camper journey spec §5.4), so it shows
+ * real attended years incl. no-bunk (teen / gap) rows. TDD: written before
+ * implementation.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import CamperTooltip from './CamperTooltip'
 import type { Camper } from '../types/app-types'
+import type { HistoricalRecord } from '../hooks/camper/types'
 
-const mockFetchCamperJourney = vi.fn()
-vi.mock('../hooks/camper/fetchCamperJourney', () => ({
-  fetchCamperJourney: (...args: unknown[]) => mockFetchCamperJourney(...args),
+// The feed's own household/auth/housing plumbing is tested in
+// useCamperJourney.test.tsx; here it is a plain source of rows.
+const mockUseCamperJourney = vi.fn()
+vi.mock('../hooks/camper/useCamperJourney', () => ({
+  useCamperJourney: (...args: unknown[]) => mockUseCamperJourney(...args),
 }))
 vi.mock('../lib/pocketbase', () => ({
   pb: { collection: () => ({ getFullList: vi.fn().mockResolvedValue([]) }) },
@@ -19,14 +23,14 @@ vi.mock('../lib/pocketbase', () => ({
 vi.mock('../hooks/useCurrentYear', () => ({ useYear: () => 2026 }))
 vi.mock('../contexts/AuthContext', () => ({ useAuth: () => ({ user: { id: 'u1' } }) }))
 
-// kindred#2466: the tooltip threads the household journey's `years` into
-// fetchCamperJourney so a family-camp row shows the household's resolved
-// cabin instead of the CampMinder day group. Mocked here rather than
-// exercised through real fetchWithAuth/fetch.
-const mockUseHouseholdJourney = vi.fn()
-vi.mock('../hooks/useWeekendRoster', () => ({
-  useHouseholdJourney: (...args: unknown[]) => mockUseHouseholdJourney(...args),
-}))
+function journeyWith(rows: HistoricalRecord[]) {
+  return {
+    rows,
+    counts: { summers: 0, familyWeekends: 0, adultWeekends: 0 },
+    isLoading: false,
+    error: null,
+  }
+}
 
 const camper = {
   person_cm_id: 12887873,
@@ -47,78 +51,51 @@ function renderTooltip() {
 describe('CamperTooltip mini-journey', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mockUseHouseholdJourney.mockReturnValue({ data: undefined })
+    mockUseCamperJourney.mockReturnValue(journeyWith([]))
   })
 
-  it('shows a no-bunk teen year and a bunked year, both routed through the fetcher', async () => {
-    mockFetchCamperJourney.mockResolvedValue({
-      rows: [
+  it('shows a no-bunk teen year and a bunked year from the shared feed', async () => {
+    mockUseCamperJourney.mockReturnValue(
+      journeyWith([
         { year: 2025, sessionName: 'Counselor In-Training', sessionType: 'scit' }, // no bunk
         { year: 2023, sessionName: 'Session 3', sessionType: 'main', bunkName: 'G-8B' },
-      ],
-      familyWeekends: 0,
-      adultWeekends: 0,
-    })
+      ])
+    )
     renderTooltip()
     expect(await screen.findByText(/2025:/)).toBeInTheDocument() // teen year now visible
     expect(await screen.findByText(/2023:/)).toBeInTheDocument()
     expect(screen.getByText(/G-8B/)).toBeInTheDocument()
-    // kindred#2466: a 3rd argument now carries the household journey's
-    // years (empty here — this camper fixture has no household_id).
-    expect(mockFetchCamperJourney).toHaveBeenCalledWith(12887873, 2026, { familyHousingYears: [] })
+    expect(mockUseCamperJourney).toHaveBeenCalledWith(12887873, 2026)
   })
-})
 
-// kindred#2466: the tooltip's mini-journey shows the household's resolved
-// family-camp cabin in the housing slot, never the CampMinder day group.
-describe('CamperTooltip mini-journey — family-camp housing (kindred#2466)', () => {
-  const camperWithHousehold = {
-    person_cm_id: 12887873,
-    household_id: 1000001,
-    name: 'Emma Johnson',
-    grade: 11,
-    gender: 'F',
-  } as unknown as Camper
-
-  function renderTooltipWithHousehold() {
-    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-    return render(
-      <QueryClientProvider client={qc}>
-        <CamperTooltip
-          camper={camperWithHousehold}
-          isVisible={true}
-          position={{ x: 100, y: 100 }}
-        />
-      </QueryClientProvider>
+  it('limits the mini-journey to the 3 most recent prior years', async () => {
+    mockUseCamperJourney.mockReturnValue(
+      journeyWith([
+        { year: 2025, sessionName: 'Session 1', sessionType: 'main' },
+        { year: 2024, sessionName: 'Session 2', sessionType: 'main' },
+        { year: 2023, sessionName: 'Session 3', sessionType: 'main' },
+        { year: 2022, sessionName: 'Session 4', sessionType: 'main' },
+      ])
     )
-  }
+    renderTooltip()
+    expect(await screen.findByText(/2023:/)).toBeInTheDocument()
+    expect(screen.queryByText(/2022:/)).toBeNull()
+  })
 
-  beforeEach(() => vi.clearAllMocks())
-
-  it("passes the household's CampMinder id and threads its journey years into the fetcher", async () => {
-    const years = [
-      { year: 2024, housing: 'placed', cabin_name: 'Cedar Lodge', housing_session_cm_id: 900 },
-    ]
-    mockUseHouseholdJourney.mockReturnValue({ data: { household_cm_id: 1000001, years } })
-    mockFetchCamperJourney.mockResolvedValue({
-      rows: [
+  // kindred#2466: a family-camp row shows the household's resolved cabin in
+  // the housing slot. The feed resolves it; the tooltip only renders it.
+  it("renders a family-camp row's resolved cabin from the feed", async () => {
+    mockUseCamperJourney.mockReturnValue(
+      journeyWith([
         {
           year: 2024,
           sessionName: 'Family Camp 2',
           sessionType: 'family',
           bunkName: 'Cedar Lodge',
         },
-      ],
-      familyWeekends: 0,
-      adultWeekends: 0,
-    })
-
-    renderTooltipWithHousehold()
-
+      ])
+    )
+    renderTooltip()
     expect(await screen.findByText(/Cedar Lodge/)).toBeInTheDocument()
-    expect(mockUseHouseholdJourney).toHaveBeenCalledWith(1000001)
-    expect(mockFetchCamperJourney).toHaveBeenCalledWith(12887873, 2026, {
-      familyHousingYears: years,
-    })
   })
 })

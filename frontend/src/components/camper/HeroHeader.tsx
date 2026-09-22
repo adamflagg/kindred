@@ -12,6 +12,8 @@ import { formatGenderFull } from '../../utils/genderUtils'
 import { formatGradeOrdinal } from '../../utils/gradeUtils'
 import { getDisplayAgeForYear } from '../../utils/displayAge'
 import { sessionNameToUrl } from '../../utils/sessionUtils'
+import { journeyCountLabel } from '../../utils/journeyCountLabel'
+import type { JourneyCounts } from '../../hooks/camper/types'
 import type { Camper } from '../../types/app-types'
 
 interface HeroHeaderProps {
@@ -23,6 +25,8 @@ interface HeroHeaderProps {
   pronouns: string
   /** Additional session short names for multi-session persons */
   allSessionNames?: string[] | undefined
+  /** The shared journey counts behind the count line (adult camper journey spec §6.1) */
+  journeyCounts: JourneyCounts
 }
 
 export function HeroHeader({
@@ -33,7 +37,9 @@ export function HeroHeader({
   sessionShortName,
   pronouns,
   allSessionNames,
+  journeyCounts,
 }: HeroHeaderProps) {
+  const countLabel = journeyCountLabel(journeyCounts)
   return (
     <div className="from-forest-700 via-forest-800 to-forest-900 shadow-lodge-lg overflow-hidden rounded-2xl bg-gradient-to-br">
       {/* Back link */}
@@ -106,10 +112,12 @@ export function HeroHeader({
               <span className="text-sm">{location}</span>
             </div>
           )}
-          <div className="text-forest-100 flex items-center gap-2">
-            <TreePine className="text-forest-300 h-4 w-4" />
-            <span className="text-sm">{camper.years_at_camp ?? 0} years at camp</span>
-          </div>
+          {countLabel.length > 0 && (
+            <div className="text-forest-100 flex items-center gap-2">
+              <TreePine className="text-forest-300 h-4 w-4" />
+              <span className="text-sm">{countLabel}</span>
+            </div>
+          )}
           {enrolledCampers && enrolledCampers.length > 1
             ? enrolledCampers
                 .filter((ec) => ec.expand?.assigned_bunk)

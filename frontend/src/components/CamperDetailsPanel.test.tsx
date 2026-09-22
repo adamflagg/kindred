@@ -12,6 +12,7 @@ import { acquireOverlayToken, hasOpenModal, releaseOverlayToken } from './ui/mod
 import { mockPerson } from '../test/mockData'
 import { SourceField } from '../types/sourceField'
 import type { CamperSatisfaction, PerRequestStatus } from '../types/satisfaction'
+import type { HistoricalRecord, JourneyCounts } from '../hooks/camper/types'
 
 // Configurable per-collection mock factories
 const mockGetFullListPersons = vi.fn()
@@ -59,15 +60,21 @@ vi.mock('../hooks/useCurrentYear', () => ({
   useYear: () => 2025,
 }))
 
-// kindred#2466: the historical journey shows the household's resolved
-// family-camp cabin instead of the CampMinder day group. Mocked here (rather
-// than exercised through real fetchWithAuth/fetch) so most existing tests —
-// which never set a household — stay untouched; the new describe block below
-// overrides this per test to prove the wiring.
-const mockUseHouseholdJourney = vi.fn()
-vi.mock('../hooks/useWeekendRoster', () => ({
-  useHouseholdJourney: (...args: unknown[]) => mockUseHouseholdJourney(...args),
+// The Camp Journey rows and the quick-stats count line come from the one
+// shared journey feed (adult camper journey spec §5.4). Its own
+// household/auth/housing plumbing is tested in useCamperJourney.test.tsx;
+// here it is a plain source of rows and counts.
+const mockUseCamperJourney = vi.fn()
+vi.mock('../hooks/camper/useCamperJourney', () => ({
+  useCamperJourney: (...args: unknown[]) => mockUseCamperJourney(...args),
 }))
+
+function journeyWith(
+  rows: HistoricalRecord[],
+  counts: JourneyCounts = { summers: 0, familyWeekends: 0, adultWeekends: 0 }
+) {
+  return { rows, counts, isLoading: false, error: null }
+}
 
 // Mock AuthContext — AllCamperRequestsModal calls useAuth() at module load,
 // even when isOpen=false, so tests need an AuthContext-shaped stub.
@@ -264,7 +271,7 @@ describe('CamperDetailsPanel', () => {
     mockGetFullListBunkRequests.mockResolvedValue([])
     mockGetListPersons.mockResolvedValue({ items: [], totalItems: 0 })
     mockGetListOriginalBunkRequests.mockResolvedValue({ items: [], totalItems: 0 })
-    mockUseHouseholdJourney.mockReturnValue({ data: undefined })
+    mockUseCamperJourney.mockReturnValue(journeyWith([]))
   })
 
   describe('Loading and Error States', () => {
@@ -315,7 +322,7 @@ describe('CamperDetailsPanel', () => {
 
   // kindred#2466: the "Camp Journey" history section shows the household's
   // resolved family-camp cabin in the housing slot, never the CampMinder
-  // day group `bunk_assignments` resolves to on a family session.
+  // day group. The feed resolves the label; the panel renders what it gets.
   describe('Camp Journey — family-camp housing (kindred#2466)', () => {
     const FAMILY_PERSON = mockPerson({
       id: 'pb-noah',
@@ -326,57 +333,20 @@ describe('CamperDetailsPanel', () => {
       household_id: 1000001,
     })
 
-    // A prior-year (2024 < currentYear 2025) family-camp enrollment.
-    const FAMILY_ATTENDEE: Record<string, unknown> = {
-      id: 'att-family-2024',
-      person: 'pb-noah',
-      person_id: 300,
-      session: 'sess-family-2024',
-      status: 'enrolled',
-      status_id: 2,
-      year: 2024,
-      collectionId: 'attendees',
-      collectionName: 'attendees',
-      created: '2024-01-01T00:00:00Z',
-      updated: '2024-01-01T00:00:00Z',
-      expand: {
-        session: {
-          id: 'sess-family-2024',
-          cm_id: 9100001,
-          name: 'Family Camp 2: Keshet Weekend',
-          session_type: 'family',
-        },
-      },
-    }
-
-    // The CampMinder day group `bunk_assignments` resolves for that same
-    // family session — must never surface as the housing label.
-    const FAMILY_DAY_GROUP_ASSIGNMENT: Record<string, unknown> = {
-      id: 'asn-family-2024',
-      year: 2024,
-      expand: {
-        session: { cm_id: 9100001, session_type: 'family' },
-        bunk: { name: 'Acorns (with parents)' },
-      },
-    }
-
     beforeEach(() => {
       mockGetFullListPersons.mockResolvedValue([FAMILY_PERSON])
       mockGetListPersons.mockResolvedValue({ items: [FAMILY_PERSON], totalItems: 1 })
-      // Only the journey fetch (fetchCamperJourney, "year <= ..." — it reads
-      // through the current year for the header counts, adult camper journey
-      // spec §5.2) returns the family attendee — the panel's own current-year
-      // fetch ("year = ...") must stay empty so the "current enrollment" block
-      // (an unrelated code path) never enters the picture.
-      mockGetFullListAttendees.mockImplementation((opts: { filter?: string } = {}) => {
-        const filter = opts.filter ?? ''
-        return Promise.resolve(filter.includes('year <= ') ? [FAMILY_ATTENDEE] : [])
-      })
-      mockGetFullListBunkAssignments.mockResolvedValue([FAMILY_DAY_GROUP_ASSIGNMENT])
     })
 
     it('never shows the CampMinder day group in the housing slot', async () => {
-      mockUseHouseholdJourney.mockReturnValue({ data: undefined })
+      // A prior-year (2024 < currentYear 2025) family-camp row with no
+      // resolved household housing: the feed drops the day group, so the
+      // row carries no housing label at all.
+      mockUseCamperJourney.mockReturnValue(
+        journeyWith([
+          { year: 2024, sessionName: 'Family Camp 2: Keshet Weekend', sessionType: 'family' },
+        ])
+      )
 
       render(<CamperDetailsPanel camperId={String(FAMILY_PERSON.cm_id)} onClose={mockOnClose} />)
 
@@ -385,26 +355,51 @@ describe('CamperDetailsPanel', () => {
     })
 
     it("shows the household's resolved cabin name in the housing slot instead", async () => {
-      mockUseHouseholdJourney.mockReturnValue({
-        data: {
-          household_cm_id: FAMILY_PERSON.household_id,
-          years: [
-            {
-              year: 2024,
-              housing: 'placed',
-              cabin_name: 'Cedar Lodge',
-              cabin_name_raw: 'Cedar Lodge',
-              housing_session_cm_id: 9100001,
-            },
-          ],
-        },
-      })
+      mockUseCamperJourney.mockReturnValue(
+        journeyWith([
+          {
+            year: 2024,
+            sessionName: 'Family Camp 2: Keshet Weekend',
+            sessionType: 'family',
+            bunkName: 'Cedar Lodge',
+          },
+        ])
+      )
 
       render(<CamperDetailsPanel camperId={String(FAMILY_PERSON.cm_id)} onClose={mockOnClose} />)
 
       expect(await screen.findByText('Cedar Lodge')).toBeInTheDocument()
       expect(screen.queryByText('Acorns (with parents)')).not.toBeInTheDocument()
-      expect(mockUseHouseholdJourney).toHaveBeenCalledWith(FAMILY_PERSON.household_id)
+      expect(mockUseCamperJourney).toHaveBeenCalledWith(FAMILY_PERSON.cm_id, 2025)
+    })
+  })
+
+  // Adult camper journey spec §6.1: the quick-stats bar shows the shared
+  // count line instead of CampMinder's bare "N years".
+  describe('Quick stats — journey count line (spec §6.1)', () => {
+    it('shows the shared count line from the feed', async () => {
+      setupDeclinedRequestMocks()
+      mockUseCamperJourney.mockReturnValue(
+        journeyWith([], { summers: 3, familyWeekends: 1, adultWeekends: 0 })
+      )
+
+      render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} />)
+
+      expect(await screen.findByText('3 summers · 1 family weekend')).toBeInTheDocument()
+      // Emma's years_at_camp is 2 — the old bare "2 years" stat is gone.
+      expect(screen.queryByText('2 years')).not.toBeInTheDocument()
+    })
+
+    it('shows no count line when every count is zero', async () => {
+      setupDeclinedRequestMocks()
+
+      render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} />)
+
+      await screen.findByRole('heading', { name: /Emma/i })
+      expect(screen.queryByText('2 years')).not.toBeInTheDocument()
+      expect(
+        screen.queryByText(/^\d+ (summers?|family weekends?|adult weekends?)/)
+      ).not.toBeInTheDocument()
     })
   })
 

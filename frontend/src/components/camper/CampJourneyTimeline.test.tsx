@@ -13,7 +13,13 @@ describe('CampJourneyTimeline display rules (spec §8)', () => {
       { year: 2023, sessionName: 'Session 3', sessionType: 'main', bunkName: 'G-8B' },
       { year: 2022, sessionName: 'Session 4', sessionType: 'main' }, // no bunk
     ]
-    render(<CampJourneyTimeline history={history} yearsAtCamp={3} currentYear={2026} />)
+    render(
+      <CampJourneyTimeline
+        history={history}
+        counts={{ summers: 3, familyWeekends: 0, adultWeekends: 0 }}
+        currentYear={2026}
+      />
+    )
     expect(screen.getByText('G-8B')).toBeInTheDocument()
     expect(screen.getByText('2022')).toBeInTheDocument() // row still listed
     expect(screen.queryByText('Unassigned')).toBeNull()
@@ -26,7 +32,13 @@ describe('CampJourneyTimeline display rules (spec §8)', () => {
     const history: HistoricalRecord[] = [
       { year: 2026, sessionName: 'Session Now', sessionType: 'main', bunkName: 'Unassigned' },
     ]
-    render(<CampJourneyTimeline history={history} yearsAtCamp={1} currentYear={2026} />)
+    render(
+      <CampJourneyTimeline
+        history={history}
+        counts={{ summers: 1, familyWeekends: 0, adultWeekends: 0 }}
+        currentYear={2026}
+      />
+    )
     expect(screen.getByText('Unassigned')).toBeInTheDocument()
   })
 })
@@ -37,7 +49,13 @@ describe('CampJourneyTimeline display rules (spec §8)', () => {
 // multi-session staff kids" concern the original exclusion was guarding.
 describe('CampJourneyTimeline program-agnostic strings (#2113)', () => {
   it('shows a program-agnostic empty state, not "First summer at camp!"', () => {
-    render(<CampJourneyTimeline history={[]} yearsAtCamp={0} currentYear={2026} />)
+    render(
+      <CampJourneyTimeline
+        history={[]}
+        counts={{ summers: 0, familyWeekends: 0, adultWeekends: 0 }}
+        currentYear={2026}
+      />
+    )
     expect(screen.queryByText(/first summer at camp/i)).toBeNull()
     expect(screen.getByText(/first year at camp/i)).toBeInTheDocument()
   })
@@ -45,14 +63,26 @@ describe('CampJourneyTimeline program-agnostic strings (#2113)', () => {
   it('renders the header count as summers, not program-agnostic years (#2123)', () => {
     // years_at_camp counts SUMMER attendance only (#2123 ruling), so the
     // label must say so, or a family-camp row below a 0 reads as a
-    // contradiction.
-    render(<CampJourneyTimeline history={[]} yearsAtCamp={3} currentYear={2026} />)
-    expect(screen.getByText('3 summers at camp')).toBeInTheDocument()
+    // contradiction. "at camp" is dropped (adult camper journey spec §6.1).
+    render(
+      <CampJourneyTimeline
+        history={[]}
+        counts={{ summers: 3, familyWeekends: 0, adultWeekends: 0 }}
+        currentYear={2026}
+      />
+    )
+    expect(screen.getByText('3 summers')).toBeInTheDocument()
   })
 
   it('singularizes the header count for one summer (#2123)', () => {
-    render(<CampJourneyTimeline history={[]} yearsAtCamp={1} currentYear={2026} />)
-    expect(screen.getByText('1 summer at camp')).toBeInTheDocument()
+    render(
+      <CampJourneyTimeline
+        history={[]}
+        counts={{ summers: 1, familyWeekends: 0, adultWeekends: 0 }}
+        currentYear={2026}
+      />
+    )
+    expect(screen.getByText('1 summer')).toBeInTheDocument()
   })
 
   it('does NOT tag a family-camp row — the session name already says it', () => {
@@ -64,7 +94,13 @@ describe('CampJourneyTimeline program-agnostic strings (#2113)', () => {
     const history: HistoricalRecord[] = [
       { year: 2026, sessionName: 'Family Camp 2: Keshet LGBTQ Weekend', sessionType: 'family' },
     ]
-    render(<CampJourneyTimeline history={history} yearsAtCamp={1} currentYear={2026} />)
+    render(
+      <CampJourneyTimeline
+        history={history}
+        counts={{ summers: 1, familyWeekends: 0, adultWeekends: 0 }}
+        currentYear={2026}
+      />
+    )
 
     expect(screen.queryByText('Family')).not.toBeInTheDocument()
     expect(screen.getByText('Family Camp 2')).toBeInTheDocument()
@@ -80,7 +116,13 @@ describe('CampJourneyTimeline program-agnostic strings (#2113)', () => {
         sessionType: 'family',
       },
     ]
-    render(<CampJourneyTimeline history={history} yearsAtCamp={1} currentYear={2026} />)
+    render(
+      <CampJourneyTimeline
+        history={history}
+        counts={{ summers: 1, familyWeekends: 0, adultWeekends: 0 }}
+        currentYear={2026}
+      />
+    )
 
     expect(screen.getByText('Family Camp 8')).toBeInTheDocument()
     expect(screen.getByText('JFAM')).toBeInTheDocument()
@@ -92,7 +134,13 @@ describe('CampJourneyTimeline program-agnostic strings (#2113)', () => {
     const history: HistoricalRecord[] = [
       { year: 2019, sessionName: 'Session 2', sessionType: 'main' },
     ]
-    render(<CampJourneyTimeline history={history} yearsAtCamp={1} currentYear={2026} />)
+    render(
+      <CampJourneyTimeline
+        history={history}
+        counts={{ summers: 1, familyWeekends: 0, adultWeekends: 0 }}
+        currentYear={2026}
+      />
+    )
     expect(screen.queryByText('Family')).toBeNull()
   })
 })
@@ -113,7 +161,13 @@ describe('CampJourneyTimeline family-camp housing (kindred#2466)', () => {
         bunkName: 'Cedar Lodge',
       },
     ]
-    render(<CampJourneyTimeline history={history} yearsAtCamp={0} currentYear={2026} />)
+    render(
+      <CampJourneyTimeline
+        history={history}
+        counts={{ summers: 0, familyWeekends: 0, adultWeekends: 0 }}
+        currentYear={2026}
+      />
+    )
     expect(screen.getByText('Cedar Lodge')).toBeInTheDocument()
   })
 
@@ -121,9 +175,39 @@ describe('CampJourneyTimeline family-camp housing (kindred#2466)', () => {
     const history: HistoricalRecord[] = [
       { year: 2024, sessionName: 'Family Camp 2: Keshet Weekend', sessionType: 'family' },
     ]
-    render(<CampJourneyTimeline history={history} yearsAtCamp={0} currentYear={2026} />)
+    render(
+      <CampJourneyTimeline
+        history={history}
+        counts={{ summers: 0, familyWeekends: 0, adultWeekends: 0 }}
+        currentYear={2026}
+      />
+    )
     // No "·" separator and no day-group-shaped text — an absent `bunkName`
     // renders nothing, same as any other unlabeled row.
     expect(screen.queryAllByText('·')).toHaveLength(0)
+  })
+})
+
+describe('CampJourneyTimeline count line (spec §6.1)', () => {
+  it('shows the shared label', () => {
+    render(
+      <CampJourneyTimeline
+        history={[]}
+        counts={{ summers: 3, familyWeekends: 0, adultWeekends: 2 }}
+        currentYear={2026}
+      />
+    )
+    expect(screen.getByText('3 summers · 2 adult weekends')).toBeInTheDocument()
+  })
+
+  it('renders no count line when every count is zero', () => {
+    render(
+      <CampJourneyTimeline
+        history={[]}
+        counts={{ summers: 0, familyWeekends: 0, adultWeekends: 0 }}
+        currentYear={2026}
+      />
+    )
+    expect(screen.queryByText(/summer|weekend/)).toBeNull()
   })
 })
