@@ -12,7 +12,7 @@
  * Fast-follow B replaces this hook's feed `queryFn` with one server call and
  * changes no consumer.
  */
-import { useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
 
 import { useAuth } from '../../contexts/AuthContext'
 import { pb } from '../../lib/pocketbase'
@@ -38,12 +38,14 @@ export interface PersonJourneyFacts {
  * What the feed needs from the person's year-scoped rows. `summers` is the most
  * recent NON-ZERO years_at_camp: CampMinder fills it only in seasons someone is
  * a camper, so an adult's current row reads 0 while their last camper year
- * still holds the count (103 of 105 grown-up campers; spec §5.2).
+ * still holds the count (103 of 105 grown-up campers; spec §5.2). Like the
+ * weekend counts, it stops at `viewYear` — a later season never leaks back.
  */
 export function personJourneyFacts(rows: PersonFactsRow[], viewYear: number): PersonJourneyFacts {
   const newestFirst = [...rows].sort((a, b) => b.year - a.year)
   const view = newestFirst.find((r) => r.year <= viewYear) ?? newestFirst[0]
-  const summers = newestFirst.find((r) => r.years_at_camp > 0)?.years_at_camp ?? 0
+  const summers =
+    newestFirst.find((r) => r.year <= viewYear && r.years_at_camp > 0)?.years_at_camp ?? 0
   const householdId = view !== undefined && view.household_id > 0 ? view.household_id : null
   return { householdId, summers, isAdult: (view?.age ?? 0) >= ADULT_AGE }
 }
@@ -76,6 +78,9 @@ export function useCamperJourney(
   const householdQ = useHouseholdJourney(isAuthLoading || facts === null ? null : facts.householdId)
   const housingQ = usePersonHousing(isAuthLoading || !validPerson ? null : personCmId)
 
+  // "Settled" means not pending — an ERRORED household or housing read counts.
+  // Deliberate graceful degradation (as before this hook): the feed still runs
+  // with empty housing and the rows render unlabeled rather than erroring.
   const householdSettled = facts !== null && (facts.householdId === null || !householdQ.isPending)
   const housingSettled = validPerson && !isAuthLoading && !housingQ.isPending
 
@@ -92,6 +97,15 @@ export function useCamperJourney(
         viewerIsAdult: facts?.isAdult ?? false,
       }),
     enabled: householdSettled && housingSettled,
+    // The key carries both housing reads' dataUpdatedAt, so ANY housing refetch
+    // (e.g. a lodging admin write) re-runs the feed under a new key. Hold the
+    // previous rows meanwhile — blanking them is the symptom §5.3 removes. Only
+    // for the SAME person and year: another camper's journey must never stand
+    // in for this one's (key layout: ['camper-journey', personCmId, year, …]).
+    placeholderData: (previous, previousQuery) =>
+      previousQuery?.queryKey[1] === personCmId && previousQuery.queryKey[2] === viewYear
+        ? keepPreviousData(previous)
+        : undefined,
   })
 
   const counts: JourneyCounts =
@@ -103,10 +117,13 @@ export function useCamperJourney(
         }
       : EMPTY_JOURNEY_COUNTS
 
+  const error = personQ.error ?? feedQ.error ?? null
   return {
     rows: feedQ.data?.rows ?? NO_ROWS,
     counts,
-    isLoading: personQ.isLoading || feedQ.isLoading,
-    error: personQ.error ?? feedQ.error ?? null,
+    // Not v5's isLoading (isPending && isFetching): the feed is disabled — so
+    // not fetching — while it waits for housing, and that wait is loading too.
+    isLoading: validPerson && error === null && (personQ.isPending || feedQ.isPending),
+    error,
   }
 }

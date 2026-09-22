@@ -3,13 +3,16 @@
  * It absorbs the household plumbing useCamperHistory's tests used to pin.
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { renderHook, waitFor } from '@testing-library/react'
+import { act, renderHook, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { queryKeys } from '../../utils/queryKeys'
+import type { HistoricalRecord } from './types'
 import { personJourneyFacts, useCamperJourney } from './useCamperJourney'
 
 const PERSON = 3000001
+const OTHER_PERSON = 3000002
 const YEAR = 2026
 
 const mockPersonsGetFullList = vi.fn()
@@ -34,10 +37,33 @@ vi.mock('../useWeekendRoster', () => ({
 const auth = { value: { isLoading: false } }
 vi.mock('../../contexts/AuthContext', () => ({ useAuth: () => auth.value }))
 
+let client: QueryClient
+
 function wrapper({ children }: { children: ReactNode }) {
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  return <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+  return <QueryClientProvider client={client}>{children}</QueryClientProvider>
 }
+
+/** Let pending promises and React Query's batched notifications land. */
+async function flush() {
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0))
+  })
+}
+
+/**
+ * Wait until the person's own rows are in the cache, then force a render that
+ * reads them. A negative assertion made before this point proves nothing: the
+ * hook has no facts yet, so no gate is being exercised.
+ */
+async function personsSettled(rerender: () => void) {
+  await waitFor(() =>
+    expect(client.getQueryState(queryKeys.personRecords(PERSON))?.status).toBe('success')
+  )
+  rerender()
+  await flush()
+}
+
+const JOURNEY_ROW: HistoricalRecord = { year: 2024, sessionName: 'Session 2', sessionType: 'main' }
 
 const personRow = (year: number, extra: Record<string, unknown> = {}) => ({
   year,
@@ -49,6 +75,7 @@ const personRow = (year: number, extra: Record<string, unknown> = {}) => ({
 
 beforeEach(() => {
   vi.clearAllMocks()
+  client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   auth.value = { isLoading: false }
   household.value = { data: { years: [] }, isPending: false, dataUpdatedAt: 1 }
   housing.value = { data: { weekends: [] }, isPending: false, dataUpdatedAt: 1 }
@@ -63,6 +90,11 @@ describe('personJourneyFacts', () => {
       YEAR
     )
     expect(facts.summers).toBe(1)
+  })
+
+  it("ignores a LATER year's count when viewing an earlier year", () => {
+    const rows = [personRow(2024, { years_at_camp: 2 }), personRow(YEAR, { years_at_camp: 5 })]
+    expect(personJourneyFacts(rows, 2024).summers).toBe(2)
   })
 
   it('reads household and adulthood off the view-year row', () => {
@@ -87,8 +119,8 @@ describe('useCamperJourney', () => {
 
   it('withholds both protected reads while auth is still loading', async () => {
     auth.value = { isLoading: true }
-    renderHook(() => useCamperJourney(PERSON, YEAR), { wrapper })
-    await waitFor(() => expect(mockPersonsGetFullList).toHaveBeenCalled())
+    const { rerender } = renderHook(() => useCamperJourney(PERSON, YEAR), { wrapper })
+    await personsSettled(rerender)
     expect(mockUseHouseholdJourney).not.toHaveBeenCalledWith(555)
     expect(mockUsePersonHousing).not.toHaveBeenCalledWith(PERSON)
     expect(mockFetchCamperJourney).not.toHaveBeenCalled()
@@ -97,7 +129,18 @@ describe('useCamperJourney', () => {
   it('does not run the feed while a housing read is still pending', async () => {
     housing.value = { data: undefined, isPending: true, dataUpdatedAt: 0 }
     renderHook(() => useCamperJourney(PERSON, YEAR), { wrapper })
-    await waitFor(() => expect(mockUsePersonHousing).toHaveBeenCalledWith(PERSON))
+    // Evidence the person's facts exist, so the feed gate is live.
+    await waitFor(() => expect(mockUseHouseholdJourney).toHaveBeenCalledWith(555))
+    await flush()
+    expect(mockUsePersonHousing).toHaveBeenCalledWith(PERSON)
+    expect(mockFetchCamperJourney).not.toHaveBeenCalled()
+  })
+
+  it('does not run the feed while the household read is still pending', async () => {
+    household.value = { data: undefined, isPending: true, dataUpdatedAt: 0 }
+    renderHook(() => useCamperJourney(PERSON, YEAR), { wrapper })
+    await waitFor(() => expect(mockUseHouseholdJourney).toHaveBeenCalledWith(555))
+    await flush()
     expect(mockFetchCamperJourney).not.toHaveBeenCalled()
   })
 
@@ -113,7 +156,9 @@ describe('useCamperJourney', () => {
 
     renderHook(() => useCamperJourney(PERSON, YEAR), { wrapper })
 
-    await waitFor(() => expect(mockFetchCamperJourney).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(mockFetchCamperJourney).toHaveBeenCalled())
+    await flush()
+    expect(mockFetchCamperJourney).toHaveBeenCalledTimes(1)
     expect(mockFetchCamperJourney).toHaveBeenCalledWith(PERSON, YEAR, {
       familyHousingYears: years,
       adultHousingWeekends: weekends,
@@ -121,11 +166,87 @@ describe('useCamperJourney', () => {
     })
   })
 
+  it('runs the feed exactly once when housing settles AFTER the first render', async () => {
+    const weekends = [
+      { year: 2024, session_cm_id: 1001, cabin_name: 'River F', cabin_name_raw: 'River F' },
+    ]
+    housing.value = { data: undefined, isPending: true, dataUpdatedAt: 0 }
+    const { rerender } = renderHook(() => useCamperJourney(PERSON, YEAR), { wrapper })
+    await waitFor(() => expect(mockUseHouseholdJourney).toHaveBeenCalledWith(555))
+    await flush()
+    expect(mockFetchCamperJourney).not.toHaveBeenCalled()
+
+    housing.value = { data: { weekends }, isPending: false, dataUpdatedAt: 1 }
+    rerender()
+    await waitFor(() => expect(mockFetchCamperJourney).toHaveBeenCalled())
+    await flush()
+    expect(mockFetchCamperJourney).toHaveBeenCalledTimes(1)
+    expect(mockFetchCamperJourney.mock.calls[0]?.[2]).toMatchObject({
+      adultHousingWeekends: weekends,
+    })
+  })
+
+  it('reports loading while it waits for housing, and stops once the feed lands', async () => {
+    housing.value = { data: undefined, isPending: true, dataUpdatedAt: 0 }
+    const { result, rerender } = renderHook(() => useCamperJourney(PERSON, YEAR), { wrapper })
+    await waitFor(() => expect(mockUseHouseholdJourney).toHaveBeenCalledWith(555))
+    await flush()
+    // A disabled feed is not "fetching" — without this, callers render an
+    // empty journey instead of a loader while housing is in flight.
+    expect(result.current.isLoading).toBe(true)
+
+    housing.value = { data: { weekends: [] }, isPending: false, dataUpdatedAt: 1 }
+    rerender()
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+  })
+
+  it('keeps the rows on screen while a housing refetch re-runs the feed', async () => {
+    mockFetchCamperJourney.mockResolvedValue({
+      rows: [JOURNEY_ROW],
+      familyWeekends: 0,
+      adultWeekends: 0,
+    })
+    const { result, rerender } = renderHook(() => useCamperJourney(PERSON, YEAR), { wrapper })
+    await waitFor(() => expect(result.current.rows).toEqual([JOURNEY_ROW]))
+
+    // Hold the re-run in flight so the in-between render is observable.
+    mockFetchCamperJourney.mockReturnValue(new Promise(() => {}))
+    housing.value = { ...housing.value, dataUpdatedAt: 2 }
+    rerender()
+    await waitFor(() => expect(mockFetchCamperJourney).toHaveBeenCalledTimes(2))
+    await flush()
+    expect(result.current.rows).toEqual([JOURNEY_ROW])
+  })
+
+  it("never shows one person's rows while another person's journey loads", async () => {
+    mockFetchCamperJourney.mockResolvedValue({
+      rows: [JOURNEY_ROW],
+      familyWeekends: 0,
+      adultWeekends: 0,
+    })
+    const { result, rerender } = renderHook(({ id }) => useCamperJourney(id, YEAR), {
+      wrapper,
+      initialProps: { id: PERSON },
+    })
+    await waitFor(() => expect(result.current.rows).toEqual([JOURNEY_ROW]))
+
+    mockFetchCamperJourney.mockReturnValue(new Promise(() => {}))
+    rerender({ id: OTHER_PERSON })
+    await waitFor(() =>
+      expect(mockFetchCamperJourney).toHaveBeenCalledWith(OTHER_PERSON, YEAR, expect.anything())
+    )
+    await flush()
+    expect(result.current.rows).toEqual([])
+    expect(result.current.isLoading).toBe(true)
+  })
+
   it('runs with no family housing when the person has no household', async () => {
     mockPersonsGetFullList.mockResolvedValue([personRow(YEAR, { household_id: 0 })])
     household.value = { data: undefined, isPending: true, dataUpdatedAt: 0 }
     renderHook(() => useCamperJourney(PERSON, YEAR), { wrapper })
-    await waitFor(() => expect(mockFetchCamperJourney).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(mockFetchCamperJourney).toHaveBeenCalled())
+    await flush()
+    expect(mockFetchCamperJourney).toHaveBeenCalledTimes(1)
     expect(mockFetchCamperJourney.mock.calls[0]?.[2]).toMatchObject({ familyHousingYears: [] })
     expect(mockUseHouseholdJourney).toHaveBeenLastCalledWith(null)
   })
@@ -142,9 +263,13 @@ describe('useCamperJourney', () => {
     )
   })
 
-  it('reads nothing for no person', () => {
-    renderHook(() => useCamperJourney(null, YEAR), { wrapper })
+  it('reads nothing for no person', async () => {
+    const { result } = renderHook(() => useCamperJourney(null, YEAR), { wrapper })
+    await flush()
     expect(mockPersonsGetFullList).not.toHaveBeenCalled()
     expect(mockFetchCamperJourney).not.toHaveBeenCalled()
+    expect(mockUsePersonHousing).toHaveBeenLastCalledWith(null)
+    expect(mockUseHouseholdJourney).toHaveBeenLastCalledWith(null)
+    expect(result.current.isLoading).toBe(false)
   })
 })
