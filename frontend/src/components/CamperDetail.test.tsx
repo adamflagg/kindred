@@ -15,6 +15,8 @@ let mockSessionType = 'main'
 // "resolved the query param" apart from "resolved the global default"
 // without needing the hook itself to do any real filtering.
 let lastEnrollmentYearArg: number | null = null
+// Which viewer CamperDetail asked useSiblings for ('child' | 'adult').
+let lastSiblingsViewerArg: unknown = undefined
 
 // Mock the camper data hooks to return a minimal fixture.
 vi.mock('../hooks/camper', () => ({
@@ -46,7 +48,10 @@ vi.mock('../hooks/camper', () => ({
     }
   },
   useCamperHistory: () => ({ camperHistory: [], counts: EMPTY_JOURNEY_COUNTS }),
-  useSiblings: () => ({ siblings: [], isLoading: false, error: null }),
+  useSiblings: (...args: unknown[]) => {
+    lastSiblingsViewerArg = args[3]
+    return { siblings: [], isLoading: false, error: null }
+  },
   useOriginalBunkData: () => ({
     originalBunkData: {
       share_bunk_with: 'fixture',
@@ -327,6 +332,14 @@ describe('CamperDetail teen programs', () => {
     mockSessionType = 'main'
     renderDetail()
     expect(await screen.findByText(/Parsed Bunk Requests/i)).toBeTruthy()
+  })
+
+  it("asks useSiblings for the child viewer's set for a summer camper", async () => {
+    mockSessionType = 'main'
+    lastSiblingsViewerArg = undefined
+    renderDetail()
+    await screen.findByText(/Parsed Bunk Requests/i)
+    expect(lastSiblingsViewerArg).toBe('child')
   })
 })
 

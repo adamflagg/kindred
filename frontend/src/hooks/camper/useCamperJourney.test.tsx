@@ -240,6 +240,29 @@ describe('useCamperJourney', () => {
     expect(result.current.isLoading).toBe(true)
   })
 
+  it("never shows the previous view year's rows while the new year loads", async () => {
+    mockPersonsGetFullList.mockResolvedValue([personRow(YEAR), personRow(YEAR - 1)])
+    mockFetchCamperJourney.mockResolvedValue({
+      rows: [JOURNEY_ROW],
+      familyWeekends: 0,
+      adultWeekends: 0,
+    })
+    const { result, rerender } = renderHook(({ year }) => useCamperJourney(PERSON, year), {
+      wrapper,
+      initialProps: { year: YEAR },
+    })
+    await waitFor(() => expect(result.current.rows).toEqual([JOURNEY_ROW]))
+
+    mockFetchCamperJourney.mockReturnValue(new Promise(() => {}))
+    rerender({ year: YEAR - 1 })
+    await waitFor(() =>
+      expect(mockFetchCamperJourney).toHaveBeenCalledWith(PERSON, YEAR - 1, expect.anything())
+    )
+    await flush()
+    expect(result.current.rows).toEqual([])
+    expect(result.current.isLoading).toBe(true)
+  })
+
   it('runs with no family housing when the person has no household', async () => {
     mockPersonsGetFullList.mockResolvedValue([personRow(YEAR, { household_id: 0 })])
     household.value = { data: undefined, isPending: true, dataUpdatedAt: 0 }

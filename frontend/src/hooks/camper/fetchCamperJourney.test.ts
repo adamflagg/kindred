@@ -538,6 +538,15 @@ describe('family camp, as recorded and as a parent (spec §5.2)', () => {
     expect(rows[0]?.bunkName).toBeUndefined()
   })
 
+  it('adds no row and counts nothing for a paper-registration year (no sessions)', async () => {
+    const out = await fetchCamperJourney(PERSON, CURRENT_YEAR, {
+      familyHousingYears: [householdYear({ sessions: [] })],
+      viewerIsAdult: true,
+    })
+    expect(out.rows).toEqual([])
+    expect(out.familyWeekends).toBe(0)
+  })
+
   it('counts a current-year parent weekend but adds no row for it', async () => {
     const out = await fetchCamperJourney(PERSON, CURRENT_YEAR, {
       familyHousingYears: [householdYear({ year: CURRENT_YEAR })],

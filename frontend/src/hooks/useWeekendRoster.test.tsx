@@ -34,8 +34,15 @@ vi.mock('../services/lodgingApi', () => ({
   fetchPersonHousing: (...args: unknown[]) => fetchPersonHousing(...args),
 }))
 
+// One stable fetcher, so a test can assert the hooks hand the fetchers the
+// SAME fetchWithAuth useApiWithAuth returned (identity, not just an argument).
+const { authedFetch } = vi.hoisted(() => ({ authedFetch: vi.fn() }))
 vi.mock('./useApiWithAuth', () => ({
-  useApiWithAuth: () => ({ fetchWithAuth: vi.fn(), isAuthenticated: true, isAuthLoading: false }),
+  useApiWithAuth: () => ({
+    fetchWithAuth: authedFetch,
+    isAuthenticated: true,
+    isAuthLoading: false,
+  }),
 }))
 
 /**
@@ -365,6 +372,7 @@ describe('usePersonHousing', () => {
     expect(fetchPersonHousing).toHaveBeenCalledTimes(1)
     const args = fetchPersonHousing.mock.calls[0] as unknown[]
     expect(args).toHaveLength(2)
+    expect(args[0]).toBe(authedFetch)
     expect(args[1]).toBe(3000001)
   })
 })
