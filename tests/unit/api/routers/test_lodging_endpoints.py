@@ -2468,7 +2468,8 @@ class TestPersonHousingEndpoint:
 
         def record(name: str) -> MagicMock:
             collections.append(name)
-            return mock_pb.collection.return_value
+            collection: MagicMock = mock_pb.collection.return_value
+            return collection
 
         mock_pb.collection.return_value.get_full_list.return_value = []
         mock_pb.collection.side_effect = record
