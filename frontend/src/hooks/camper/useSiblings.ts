@@ -190,7 +190,11 @@ export function useSiblings(
       return siblingsWithEnrollment.filter((s) => s !== null)
     },
     enabled: !!(householdId && householdId > 0),
-    staleTime: 0, // Always fetch fresh data
+    // Deliberately below the app default: each sibling's cabin comes from
+    // bunk_assignments, and none of its writers (board drag-drop, Refresh
+    // Bunking) invalidate 'camper-siblings', so a cached list would keep
+    // showing a cabin the board has since changed.
+    staleTime: 0,
   })
 
   return {
