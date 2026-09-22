@@ -72,3 +72,17 @@ describe('displayTruncatedAge', () => {
     expect(displayTruncatedAge(11.99)).toBe('11')
   })
 })
+
+describe('the 18+ rule (owner ruling 2026-09-22)', () => {
+  it("drops the months at 18 and over - still CampMinder's own value, never birthdate math", () => {
+    expect(formatAge(37.11)).toBe('37 years')
+    expect(formatAge(18.02)).toBe('18 years')
+    expect(displayCampMinderAge(37.11)).toBe('37')
+    expect(displayCampMinderAge(18)).toBe('18')
+  })
+
+  it('keeps the months below 18', () => {
+    expect(formatAge(17.11)).toBe('17 years, 11 months')
+    expect(displayCampMinderAge(17.11)).toBe('17.11')
+  })
+})

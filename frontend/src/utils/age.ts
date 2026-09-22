@@ -1,4 +1,11 @@
 /**
+ * At 18 and over, CampMinder's yy.mm age drops its months: "37.11" reads "37"
+ * (owner ruling 2026-09-22). Still CampMinder's own value — never derived from
+ * birthdate (#2088). Applied here so every surface inherits it.
+ */
+const ADULT_AGE = 18
+
+/**
  * Format age from CampMinder format to display format
  * @param age - Age in CampMinder format (e.g., 11.06 for 11 years 6 months)
  * @returns Formatted age string
@@ -6,6 +13,7 @@
 export function formatAge(age: number): string {
   // Extract years and months from CampMinder format
   const years = Math.floor(age)
+  if (age >= ADULT_AGE) return `${years} years`
   const months = Math.round((age - years) * 100)
 
   // Return in format "11 years, 6 months"
@@ -21,6 +29,7 @@ export function formatAge(age: number): string {
  * @returns Age string with 2 decimal places
  */
 export function displayCampMinderAge(age: number): string {
+  if (age >= ADULT_AGE) return String(Math.trunc(age))
   // Ensure we always show 2 decimal places and avoid floating point issues
   return age.toFixed(2)
 }
