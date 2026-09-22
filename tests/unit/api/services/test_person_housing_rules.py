@@ -231,7 +231,7 @@ class TestTwoWeekends:
         """PR1 review fix (2026-09-22, controller ruling): collapsing same-place
         values BEFORE assigning them to weekends kept only the later write, so
         the earlier weekend lost a value it genuinely had. Collapsing must
-        happen PER WEEKEND, after assignment: "River H" written once before WW
+        happen PER WEEKEND, after assignment: one cabin string written once before WW
         ends and again (a different field) before DD ends is two separate
         answers, one per weekend, not one collapsed answer for whichever
         weekend the later write lands in."""
