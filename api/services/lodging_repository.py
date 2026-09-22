@@ -92,6 +92,7 @@ from api.services.lodging_rules import (
     BUNKING_CSV_REQUEST_TEXT_FIELDS,
     FAMILY_CAMP_REQUEST_TEXT_CM_IDS,
 )
+from api.services.person_housing_rules import ADULT_WEEKEND_CABIN_FIELD_CM_IDS
 from api.utils.pb_filters import pb_escape
 from bunking.logging_config import get_logger
 
@@ -697,6 +698,48 @@ class LodgingRepository:
                 # unexpanded `session` would not merely lose an age, it would
                 # make an adult weekend indistinguishable from a family one.
                 "expand": "person,session",
+                "sort": STABLE_SORT,
+            },
+        )
+
+    async def fetch_person_cabin_values(self, person_cm_id: int) -> list[Any]:
+        """One person's adult-weekend cabin values, EVERY season (adult camper journey).
+
+        ⛔ AN ALLOWLIST, NOT A FILTER TO TIDY UP LATER. `person_custom_values`
+        holds this cohort's Race, Folks of Color, Judaism, financial aid and
+        `20XX History` staff records (which embed salary) -- the best-covered
+        fields it has. This read names the two cabin fields and nothing else.
+
+        No year predicate: like the household journey, the window is
+        discovered from what exists. `last_updated` is CampMinder's own write
+        time; the attribution rule needs it.
+        """
+        if person_cm_id <= 0:
+            return []
+        field_filter = " || ".join(f"field_definition.cm_id = {cm_id}" for cm_id in ADULT_WEEKEND_CABIN_FIELD_CM_IDS)
+        return await self._page(
+            PERSON_CUSTOM_VALUES,
+            query_params={
+                "filter": f"person.cm_id = {person_cm_id} && ({field_filter})",
+                "expand": "field_definition",
+                "sort": STABLE_SORT,
+            },
+        )
+
+    async def fetch_person_adult_attendees(self, person_cm_id: int) -> list[Any]:
+        """One person's ENROLLED adult-weekend attendee rows, every season.
+
+        `person_id` is the CampMinder id, the cross-season identity thread.
+        Enrolled only: a cancelled weekend is not one the person attended, so
+        its stale cabin must never attribute (spec §4.3 -- 54 such values).
+        """
+        if person_cm_id <= 0:
+            return []
+        return await self._page(
+            ATTENDEES,
+            query_params={
+                "filter": (f'person_id = {person_cm_id} && session.session_type = "adult" && {ACTIVE_ENROLLED_FILTER}'),
+                "expand": "session",
                 "sort": STABLE_SORT,
             },
         )
