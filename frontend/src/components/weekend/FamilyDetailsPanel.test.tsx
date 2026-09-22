@@ -8,7 +8,7 @@
  * Fictional data throughout.
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { MemoryRouter } from 'react-router'
@@ -906,6 +906,24 @@ describe('adult weekend guest journey (adult camper journey spec §6.2)', () => 
     expect(screen.getByText('River F')).toBeInTheDocument()
     expect(screen.getByText('5 adult weekends')).toBeInTheDocument()
     expect(personJourneyCalls).toContainEqual([5001, 2026])
+  })
+
+  it('passes the journey loading state through — no "First year at camp!" while it loads', () => {
+    const loaded = personJourney.value
+    personJourney.value = {
+      ...loaded,
+      rows: [],
+      counts: { summers: 0, familyWeekends: 0, adultWeekends: 0 },
+      isLoading: true,
+    }
+    try {
+      render(<FamilyDetailsPanel party={guest()} year={2026} onClose={vi.fn()} />, { wrapper })
+      const card = screen.getByTestId('person-journey')
+      expect(within(card).getByText('Loading...')).toBeInTheDocument()
+      expect(within(card).queryByText(/first year at camp/i)).toBeNull()
+    } finally {
+      personJourney.value = loaded
+    }
   })
 
   it('never renders a person journey for a household', () => {

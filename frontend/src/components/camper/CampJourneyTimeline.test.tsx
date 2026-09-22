@@ -213,3 +213,47 @@ describe('CampJourneyTimeline count line (spec §6.1)', () => {
     expect(container.querySelector('p.text-forest-200')).toBeNull()
   })
 })
+
+// While the journey loads, an empty history means "not here yet", not "first
+// year" — reading the empty state then made every returning adult weekend
+// guest look like a first-timer on the weekend sidebar.
+describe('CampJourneyTimeline while the journey loads', () => {
+  it('shows the loading spinner, not "First year at camp!"', () => {
+    render(
+      <CampJourneyTimeline
+        history={[]}
+        counts={{ summers: 0, familyWeekends: 0, adultWeekends: 0 }}
+        currentYear={2026}
+        isLoading
+      />
+    )
+    expect(screen.queryByText(/first year at camp/i)).toBeNull()
+    expect(screen.getByText('Loading...')).toBeInTheDocument()
+  })
+
+  it('renders no rows while loading', () => {
+    render(
+      <CampJourneyTimeline
+        history={[{ year: 2024, sessionName: 'Session 3', sessionType: 'main', bunkName: 'G-8B' }]}
+        counts={{ summers: 1, familyWeekends: 0, adultWeekends: 0 }}
+        currentYear={2026}
+        isLoading
+      />
+    )
+    expect(screen.queryByText('G-8B')).toBeNull()
+    expect(screen.getByText('Loading...')).toBeInTheDocument()
+  })
+
+  it('shows the empty state once loading is done', () => {
+    render(
+      <CampJourneyTimeline
+        history={[]}
+        counts={{ summers: 0, familyWeekends: 0, adultWeekends: 0 }}
+        currentYear={2026}
+        isLoading={false}
+      />
+    )
+    expect(screen.getByText(/first year at camp/i)).toBeInTheDocument()
+    expect(screen.queryByText('Loading...')).toBeNull()
+  })
+})

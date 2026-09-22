@@ -22,6 +22,11 @@ import CamperDetail from './CamperDetail'
 const PERSON_CM_ID = 8000003
 const YEAR = 2026
 
+/** Whether the stubbed useCamperHistory reports the journey as still loading. */
+const historyLoading = { value: false }
+/** Every argument list useSiblings was called with. */
+const siblingsCalls: unknown[][] = []
+
 const mockAttendeesGetFullList = vi.fn()
 const mockAssignmentsGetFullList = vi.fn()
 const mockPersonsGetList = vi.fn()
@@ -46,8 +51,15 @@ vi.mock('../hooks/camper', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../hooks/camper')>()
   return {
     ...actual,
-    useCamperHistory: () => ({ camperHistory: [], counts: EMPTY_JOURNEY_COUNTS }),
-    useSiblings: () => ({ siblings: [], isLoading: false, error: null }),
+    useCamperHistory: () => ({
+      camperHistory: [],
+      counts: EMPTY_JOURNEY_COUNTS,
+      isLoading: historyLoading.value,
+    }),
+    useSiblings: (...args: unknown[]) => {
+      siblingsCalls.push(args)
+      return { siblings: [], isLoading: false, error: null }
+    },
     useOriginalBunkData: () => ({ originalBunkData: null, isLoading: false, error: null }),
     useAllBunkRequests: () => ({ allBunkRequests: [], isLoading: false, error: null }),
   }
@@ -105,6 +117,8 @@ function renderDetail() {
 describe('CamperDetail — adult-program-only person (adult camper journey)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    historyLoading.value = false
+    siblingsCalls.length = 0
     mockAssignmentsGetFullList.mockResolvedValue([])
     mockPersonsGetList.mockResolvedValue({
       items: [
@@ -178,5 +192,26 @@ describe('CamperDetail — adult-program-only person (adult camper journey)', ()
     renderDetail()
     await screen.findByText(/Olivia/i)
     expect(screen.getByText('Household')).toBeInTheDocument()
+  })
+
+  it("asks useSiblings for the adult viewer's set (Household includes adults)", async () => {
+    renderDetail()
+    await screen.findByText('Household')
+    expect(siblingsCalls.length).toBeGreaterThan(0)
+    expect(siblingsCalls.at(-1)?.[3]).toBe('adult')
+  })
+
+  it('passes the journey loading state to the timeline — no "First year at camp!" while it loads', async () => {
+    historyLoading.value = true
+    renderDetail()
+    await screen.findByText('Household')
+    expect(screen.queryByText(/first year at camp/i)).toBeNull()
+    expect(screen.getByText('Loading...')).toBeInTheDocument()
+  })
+
+  it('shows the empty journey once it has loaded', async () => {
+    renderDetail()
+    await screen.findByText('Household')
+    expect(screen.getByText(/first year at camp/i)).toBeInTheDocument()
   })
 })

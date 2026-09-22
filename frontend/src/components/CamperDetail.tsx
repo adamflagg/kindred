@@ -87,6 +87,7 @@ interface CamperDetailBodyProps {
   siblingsError: Error | null
   camperHistory: HistoricalRecord[]
   journeyCounts: JourneyCounts
+  journeyLoading: boolean
   canManageBunking: boolean
   isAdmin: boolean
   /** True when every current-year enrollment is an adult program (adult camper journey spec §6.3) */
@@ -110,6 +111,7 @@ function CamperDetailBody({
   siblingsError,
   camperHistory,
   journeyCounts,
+  journeyLoading,
   canManageBunking,
   isAdmin,
   isAdultProgram,
@@ -250,6 +252,7 @@ function CamperDetailBody({
             history={camperHistory}
             counts={journeyCounts}
             currentYear={currentYear}
+            isLoading={journeyLoading}
           />
 
           {/* Siblings */}
@@ -332,12 +335,11 @@ export default function CamperDetail() {
     currentEnrollments.every((c) => isAdultSessionType(c.expand?.session?.session_type))
 
   // Fetch camper's history using extracted hook (pass all attendees for status-aware filtering)
-  const { camperHistory, counts: journeyCounts } = useCamperHistory(
-    personCmId,
-    currentYear,
-    camper,
-    allAttendees
-  )
+  const {
+    camperHistory,
+    counts: journeyCounts,
+    isLoading: journeyLoading,
+  } = useCamperHistory(personCmId, currentYear, camper, allAttendees)
 
   // Fetch original CSV data using extracted hook
   const { originalBunkData } = useOriginalBunkData(camper?.person_cm_id, currentYear)
@@ -445,6 +447,7 @@ export default function CamperDetail() {
         siblingsError={siblingsError}
         camperHistory={camperHistory}
         journeyCounts={journeyCounts}
+        journeyLoading={journeyLoading}
         canManageBunking={canManageBunking}
         isAdmin={isAdmin}
         isAdultProgram={isAdultProgram}

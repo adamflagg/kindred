@@ -14,9 +14,20 @@ interface CampJourneyTimelineProps {
   history: HistoricalRecord[]
   counts: JourneyCounts
   currentYear: number
+  /**
+   * The journey is still loading. An empty history then means "not here
+   * yet", not "first year" — showing the empty state would make every
+   * returning guest read as a first-timer.
+   */
+  isLoading?: boolean
 }
 
-export function CampJourneyTimeline({ history, counts, currentYear }: CampJourneyTimelineProps) {
+export function CampJourneyTimeline({
+  history,
+  counts,
+  currentYear,
+  isLoading = false,
+}: CampJourneyTimelineProps) {
   const countLabel = journeyCountLabel(counts)
   return (
     <div className="bg-card border-border overflow-hidden rounded-2xl border shadow-sm">
@@ -34,7 +45,12 @@ export function CampJourneyTimeline({ history, counts, currentYear }: CampJourne
       </div>
 
       <div className="p-5">
-        {history.length > 0 ? (
+        {isLoading ? (
+          <div className="flex items-center justify-center py-4">
+            <div className="border-muted border-t-primary h-5 w-5 animate-spin rounded-full border-2" />
+            <span className="text-muted-foreground ml-2 text-sm">Loading...</span>
+          </div>
+        ) : history.length > 0 ? (
           <div className="relative">
             {/* Left-aligned timeline line */}
             <div className="from-forest-300 via-forest-400 to-forest-300 dark:from-forest-700 dark:via-forest-600 dark:to-forest-700 absolute top-1 bottom-1 left-[5px] w-0.5 bg-gradient-to-b" />
