@@ -34,8 +34,16 @@ describe('invalidateSyncData', () => {
       'campers',
       'all-campers',
       'camper',
-      'camper-history',
       'enrolled-campers',
+      // Adult camper journey (controller ruling, 2026-09-22): the shared journey
+      // feed and every read it waits on. 'household-journey' is here too, because
+      // the feed's key carries the housing reads' dataUpdatedAt, so re-running it
+      // against a stale household journey would defeat the refresh. The dead
+      // 'camper-history' key it replaced is gone.
+      'camper-journey',
+      'person-records',
+      'person-housing',
+      'household-journey',
       'bunks',
       'bunk-assignments',
       'bunk-requests',

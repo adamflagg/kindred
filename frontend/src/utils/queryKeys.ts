@@ -79,7 +79,6 @@ export const queryKeys = {
   // Historical data (Tier 1 - sync data)
   historicalBunking: (personCmId: number, year: number) =>
     ['historical-bunking', personCmId, year] as const,
-  camperHistory: (personId: string, year: number) => ['camper-history', personId, year] as const,
 
   // Statistics (Tier 1 - sync data)
   sessionStats: (sessionId: string) => ['session-stats', sessionId] as const,

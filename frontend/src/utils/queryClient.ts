@@ -78,8 +78,11 @@ const SYNC_DEPENDENT_PREFIXES = [
   'campers',
   'all-campers',
   'camper',
-  'camper-history',
   'enrolled-campers',
+  // The shared journey feed and its person/housing reads (adult camper journey)
+  'camper-journey',
+  'person-records',
+  'person-housing',
   // Bunks (Tier 1)
   'bunks',
   'bunk-assignments',
@@ -100,6 +103,9 @@ const SYNC_DEPENDENT_PREFIXES = [
   'weekend-sessions',
   'weekend-summary',
   'weekend-roster',
+  // Household journey: the camper journey feed re-runs when a housing read
+  // refreshes, so a stale household journey here would defeat that refresh.
+  'household-journey',
 ] as const
 
 /**

@@ -6,8 +6,8 @@
  *   `person_id =` filter that doesn't exist on `original_bunk_requests`; PR
  *   #1338 removed the only caller and the audit (#1339) removed the dead
  *   factory itself.
- * - Pins the `year` argument on `camperHistory` so filtering by year does
- *   not reuse a cache slot keyed only by personId.
+ * - `camperHistory` and its tests were removed once the shared camper journey
+ *   feed (`camperJourney`, keyed by person and year) replaced its last callers.
  */
 
 import { describe, it, expect } from 'vitest'
@@ -25,20 +25,6 @@ describe('queryKeys.originalBunkRequestsByRequesterCmId', () => {
     const populated = queryKeys.originalBunkRequestsByRequesterCmId(12345, 2025)
     const empty = queryKeys.originalBunkRequestsByRequesterCmId(undefined, 2025)
     expect(populated).not.toEqual(empty)
-  })
-})
-
-describe('queryKeys.camperHistory', () => {
-  it('includes year in the key so per-year filters do not collide', () => {
-    const a = queryKeys.camperHistory('p-1', 2024)
-    const b = queryKeys.camperHistory('p-1', 2025)
-    expect(a).not.toEqual(b)
-  })
-
-  it('key contains both personId and year', () => {
-    const key = queryKeys.camperHistory('p-1', 2025)
-    expect(key).toContain('p-1')
-    expect(key).toContain(2025)
   })
 })
 
