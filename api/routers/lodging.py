@@ -21,6 +21,7 @@ from api.schemas.lodging import (
     HouseholdMedicalResponse,
     LodgingCopyResponse,
     LodgingWriteResponse,
+    PersonHousingResponse,
     PlacementCopyRequest,
     PlacementDeleteRequest,
     PlacementWriteRequest,
@@ -51,6 +52,7 @@ from api.services.lodging_write_service import (
     WriteInNameTakenError,
     WriteInRenameConflictError,
 )
+from api.services.person_housing_service import PersonHousingService
 from bunking.auth_middleware import AuthUser, get_current_user
 from bunking.rbac.dependencies import require_permission
 from bunking.rbac.permissions import Permission
@@ -205,6 +207,21 @@ async def get_household_journey(
     weekend -- and no narrative, so nothing gated moves.
     """
     return await _service().build_household_journey(household_cm_id)
+
+
+@router.get("/persons/{person_cm_id}/housing", response_model=PersonHousingResponse)
+async def get_person_housing(
+    person_cm_id: int,
+    user: AuthUser = Depends(get_current_user),
+) -> PersonHousingResponse:
+    """One person's adult-weekend cabins, attributed per weekend (adult camper journey).
+
+    Open to any authenticated user, like the household journey above: cabin
+    names and weekends, no narrative. It reads exactly two custom fields
+    (the cabin allowlist) -- see `LodgingRepository.fetch_person_cabin_values`.
+    Takes no year: the window is discovered, as the household journey's is.
+    """
+    return await PersonHousingService(LodgingRepository(pb)).build_person_housing(person_cm_id)
 
 
 @router.get("/households/{household_cm_id}/medical", response_model=HouseholdMedicalResponse)

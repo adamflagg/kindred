@@ -4,6 +4,7 @@ These tests assert the exact PocketBase filter/expand/sort parameters,
 because a wrong filter here is silently wrong data rather than an error.
 """
 
+import re
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock
@@ -2446,3 +2447,50 @@ class TestFetchSessionScopedSyncEnds:
         pb.collection.return_value.get_full_list.return_value = []
 
         assert await repo.fetch_session_scoped_sync_ends("household_custom_values_family_camp", 2026) == []
+
+
+class TestFetchPersonCabinValues:
+    """The adult camper journey's cabin read."""
+
+    @pytest.mark.asyncio
+    async def test_reads_only_the_two_allowlisted_cabin_fields_for_one_person(
+        self, repo: LodgingRepository, pb: MagicMock
+    ) -> None:
+        await repo.fetch_person_cabin_values(3000001)
+
+        pb.collection.assert_called_with("person_custom_values")
+        params = _last_query(pb)
+        assert "person.cm_id = 3000001" in params["filter"]
+        # ⛔ Exactly the allowlist, nothing else: this read sits on a table that
+        # holds Race, financial aid and salary-bearing staff history.
+        assert re.findall(r"field_definition\.cm_id = (\d+)", params["filter"]) == ["212997", "223823"]
+        # Every season: the journey discovers its window, it does not choose one.
+        assert "year" not in params["filter"]
+        assert params["expand"] == "field_definition"
+
+    @pytest.mark.asyncio
+    async def test_never_queries_for_an_unresolvable_person(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        assert await repo.fetch_person_cabin_values(0) == []
+        pb.collection.assert_not_called()
+
+
+class TestFetchPersonAdultAttendees:
+    @pytest.mark.asyncio
+    async def test_reads_one_persons_enrolled_adult_rows_with_the_session(
+        self, repo: LodgingRepository, pb: MagicMock
+    ) -> None:
+        await repo.fetch_person_adult_attendees(3000001)
+
+        pb.collection.assert_called_with("attendees")
+        params = _last_query(pb)
+        assert "person_id = 3000001" in params["filter"]
+        assert 'session.session_type = "adult"' in params["filter"]
+        # A cancelled enrollment is not a weekend the person attended.
+        assert "status_id = 2" in params["filter"]
+        assert "year" not in params["filter"]
+        assert params["expand"] == "session"
+
+    @pytest.mark.asyncio
+    async def test_never_queries_for_an_unresolvable_person(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        assert await repo.fetch_person_adult_attendees(0) == []
+        pb.collection.assert_not_called()

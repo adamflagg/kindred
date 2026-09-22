@@ -36,6 +36,8 @@ import type {
   HouseholdJourneyRow,
   LodgingUnitRow,
   PartyChildRow,
+  PersonHousing,
+  PersonHousingWeekendRow,
   RequestTextBlockRow,
   RequestTextEntryRow,
   RosterPartyRow,
@@ -119,6 +121,25 @@ const _exhaustiveHouseholdJourney: Required<HouseholdJourney> = {
   years: [],
 }
 void _exhaustiveHouseholdJourney
+
+/**
+ * Adult camper journey. `Required<>` so a field that leaves the wire fails
+ * the build instead of lingering as a type nobody publishes.
+ */
+const _exhaustivePersonHousingWeekendRow: Required<PersonHousingWeekendRow> = {
+  year: 2024,
+  session_cm_id: 1001,
+  // As recorded that year, outer whitespace trimmed — never today's unit name.
+  cabin_name: 'River F',
+  cabin_name_raw: 'River F',
+}
+void _exhaustivePersonHousingWeekendRow
+
+const _exhaustivePersonHousing: Required<PersonHousing> = {
+  person_cm_id: 3000001,
+  weekends: [],
+}
+void _exhaustivePersonHousing
 
 /**
  * Every flag on the accessibility summary. `RosterParty`'s own fixture below

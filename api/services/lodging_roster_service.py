@@ -1997,6 +1997,55 @@ def _resolve_amenity_coverage(
         setattr(unit, target, amenity_coverage([effective(room) for room in answering]))
 
 
+async def build_housing_name_resolver(repository: LodgingRepository) -> HousingNameResolver:
+    """The registry, indexed for naming -- kindred#2332's one helper.
+
+    TWO READS, NEITHER YEAR-FILTERED, and both deliberately uncached (see
+    their docstrings). `lodging_units` is year-scoped and holds 2026 only,
+    so the season that NAMES a unit has to be discovered from the table;
+    `lodging_unit_aliases` has no year column at all, because a row's
+    window is a rename history rather than a per-year copy.
+
+    The flattening happens here and the rule happens in `lodging_rules`,
+    which is what keeps the resolution total over plain values and
+    unit-testable without a database.
+
+    Module-level (adult camper journey) so the person housing read resolves
+    strings with the SAME resolver the household journey uses -- a second one
+    would be a second answer to "which cabin is this string".
+    """
+    units, aliases = await asyncio.gather(
+        repository.fetch_all_units(),
+        repository.fetch_unit_aliases(),
+    )
+    return HousingNameResolver.build(
+        [
+            RegistryUnit(
+                unit_id=_s(unit, "id"),
+                code=_s(unit, "code"),
+                name=_s(unit, "name"),
+                year=_i(unit, "year"),
+                # The RAW relation value, which is a PocketBase record id
+                # and not a code -- joining `parent_unit` against `code`
+                # returns nothing, silently. `_build_units` publishes the
+                # code form for the board; the collapse rule needs the id
+                # form, because that is what it is stored as.
+                parent_id=_s(unit, "parent_unit"),
+            )
+            for unit in units
+        ],
+        [
+            UnitAlias(
+                alias_string=_s(alias, "alias_string"),
+                member_unit_ids=tuple(str(member) for member in (getattr(alias, "member_units", None) or [])),
+                valid_from_year=_i(alias, "valid_from_year"),
+                valid_to_year=_i(alias, "valid_to_year"),
+            )
+            for alias in aliases
+        ],
+    )
+
+
 class LodgingRosterService:
     """Builds the read-only weekend roster from repository output."""
 
@@ -2654,48 +2703,8 @@ class LodgingRosterService:
         )
 
     async def _housing_names(self) -> HousingNameResolver:
-        """The registry, indexed for naming -- kindred#2332's one helper.
-
-        TWO READS, NEITHER YEAR-FILTERED, and both deliberately uncached (see
-        their docstrings). `lodging_units` is year-scoped and holds 2026 only,
-        so the season that NAMES a unit has to be discovered from the table;
-        `lodging_unit_aliases` has no year column at all, because a row's
-        window is a rename history rather than a per-year copy.
-
-        The flattening happens here and the rule happens in `lodging_rules`,
-        which is what keeps the resolution total over plain values and
-        unit-testable without a database.
-        """
-        units, aliases = await asyncio.gather(
-            self.repository.fetch_all_units(),
-            self.repository.fetch_unit_aliases(),
-        )
-        return HousingNameResolver.build(
-            [
-                RegistryUnit(
-                    unit_id=_s(unit, "id"),
-                    code=_s(unit, "code"),
-                    name=_s(unit, "name"),
-                    year=_i(unit, "year"),
-                    # The RAW relation value, which is a PocketBase record id
-                    # and not a code -- joining `parent_unit` against `code`
-                    # returns nothing, silently. `_build_units` publishes the
-                    # code form for the board; the collapse rule needs the id
-                    # form, because that is what it is stored as.
-                    parent_id=_s(unit, "parent_unit"),
-                )
-                for unit in units
-            ],
-            [
-                UnitAlias(
-                    alias_string=_s(alias, "alias_string"),
-                    member_unit_ids=tuple(str(member) for member in (getattr(alias, "member_units", None) or [])),
-                    valid_from_year=_i(alias, "valid_from_year"),
-                    valid_to_year=_i(alias, "valid_to_year"),
-                )
-                for alias in aliases
-            ],
-        )
+        """See `build_housing_name_resolver`."""
+        return await build_housing_name_resolver(self.repository)
 
     async def build_household_journey(self, household_cm_id: int) -> HouseholdJourneyResponse:
         """A household's family-camp record, year by year (kindred#2073).

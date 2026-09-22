@@ -30,6 +30,8 @@ import type {
   LodgingWriteResponse,
   PartyAdult,
   PartyChild,
+  PersonHousingResponse,
+  PersonHousingWeekend,
   RequestTextBlock,
   RequestTextEntry,
   RosterCounts,
@@ -118,6 +120,10 @@ export type HouseholdMedical = HouseholdMedicalResponse
 export type HouseholdJourney = HouseholdJourneyResponse
 /** One year of it — housing, enrollment, the weekends, and that year's own party. */
 export type HouseholdJourneyRow = HouseholdJourneyYear
+/** One person's adult-weekend cabins, attributed per weekend (adult camper journey). */
+export type PersonHousing = PersonHousingResponse
+/** One adult weekend and its cabin, named as recorded that year. */
+export type PersonHousingWeekendRow = PersonHousingWeekend
 /**
  * One family weekend a household attended in a year (kindred#2393).
  *
