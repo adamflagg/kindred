@@ -24,7 +24,7 @@ import {
   getGenderBadgeClasses,
   formatGenderShort,
 } from '../utils/genderUtils'
-import { formatGradeName, visibleGradeName } from '../utils/gradeUtils'
+import { formatGradeName } from '../utils/gradeUtils'
 import { formatAge } from '../utils/age'
 import {
   getSessionDisplayNameFromString,
@@ -1237,16 +1237,13 @@ export default function CamperDetailsPanel({
                       </div>
                       <div className="text-muted-foreground mt-0.5 flex items-center gap-2 text-[10px]">
                         <span>{formatAge(getDisplayAgeForYear(sibling, currentYear) ?? 0)}</span>
-                        {/* The grade as CampMinder names it, as on the camper
-                            record; none without a grade name, nor for anyone
-                            21+ (kindred#2779). */}
-                        {visibleGradeName(
-                          sibling.grade_name,
-                          getDisplayAgeForYear(sibling, currentYear)
-                        ) && (
+                        {/* The grade in the short style, as in the camper
+                            record's sibling rows; none without a grade name
+                            (kindred#2779). */}
+                        {formatGradeName(sibling.grade_name, 'short') && (
                           <>
                             <span>•</span>
-                            <span>{sibling.grade_name}</span>
+                            <span>{formatGradeName(sibling.grade_name, 'short')}</span>
                           </>
                         )}
                       </div>
@@ -1447,13 +1444,10 @@ export default function CamperDetailsPanel({
     </div>
   )
 
-  // Both headers' "5th Grade @ school" line (kindred#2779): the grade as
-  // CampMinder names it, the school alone when there is no grade or the
-  // person is 21+.
-  const gradeAndSchool = [
-    formatGradeName(camper.grade_name, getDisplayAgeForYear(camper, currentYear)),
-    camper.school,
-  ]
+  // Both headers' "5th @ school" line (kindred#2779): the SHORT style — owner
+  // ruling 2026-09-23, so a long school name has room — and the school alone
+  // when there is no grade.
+  const gradeAndSchool = [formatGradeName(camper.grade_name, 'short'), camper.school]
     .filter(Boolean)
     .join(' @ ')
 

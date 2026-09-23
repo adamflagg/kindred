@@ -131,6 +131,23 @@ describe('CohortDrillDownModal', () => {
     expect(genderIcon).toHaveAttribute('aria-label', 'Boy')
   })
 
+  // Owner ruling 2026-09-23: 13 is past 12th grade -- "Graduated", never
+  // "13th grade" or "Grad grade".
+  it('shows a camper past 12th grade as Graduated', () => {
+    render(
+      <CohortDrillDownModal
+        selfDisplayName="Emma"
+        open
+        kind="city"
+        label="Springfield"
+        attendees={[makeMatch({ grade: 13, gender: 'F' })]}
+        onClose={() => {}}
+      />
+    )
+    expect(screen.getByText(/Graduated/)).toBeInTheDocument()
+    expect(screen.queryByText(/13th|Grad grade/)).not.toBeInTheDocument()
+  })
+
   it('omits grade line when grade is null (no "? grade" placeholder)', () => {
     render(
       <CohortDrillDownModal

@@ -48,7 +48,7 @@ export function HeroHeader({
   // single-enrollment cabin/trip chip below (the multi-enrollment branch
   // computes this per enrolled camper).
   const isSingleQuest = isQuestSessionType(camper.expand?.session?.session_type)
-  const gradeLabel = formatGradeName(camper.grade_name, getDisplayAgeForYear(camper, currentYear))
+  const gradeLabel = formatGradeName(camper.grade_name, 'long')
   return (
     <div className="from-forest-700 via-forest-800 to-forest-900 shadow-lodge-lg overflow-hidden rounded-2xl bg-gradient-to-br">
       {/* Back link */}

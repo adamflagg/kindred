@@ -117,11 +117,12 @@ describe('the party for one year', () => {
     expect(children).not.toContain('Age')
   })
 
-  // kindred#2779: the grade reads `grade_name`. 12th+ used to be suppressed
-  // because the number 13 had no sensible label; its name is one.
+  // kindred#2779: the grade reads `grade_name` in the SHORT style, like the
+  // family panel it opens from. 12th+ used to be suppressed because the
+  // number 13 had no sensible label; it now reads "Grad".
   it.each<[string | null, number | null, string | null]>([
-    ['4th', 4, '4th Grade'],
-    ['12th+', 13, '12th+ Grade'],
+    ['4th', 4, '4th'],
+    ['12th+', 13, 'Grad'],
     ['K', 0, 'K'],
     ['Pre-K', -1, 'Pre-K'],
     [null, 0, null],
@@ -147,27 +148,8 @@ describe('the party for one year', () => {
       expect(children).toContain('Age 9.00')
     } else {
       expect(children).toContain(`Age 9.00 · ${expected}`)
+      expect(children).not.toContain('Grade')
     }
-  })
-})
-
-describe('the 21+ grade gate (owner ruling 2026-09-23)', () => {
-  it('hides a stale grade on a child row 21 or older', () => {
-    open(
-      _row({
-        children: [
-          {
-            display_name: 'Emma Johnson',
-            last_name: 'Johnson',
-            person_cm_id: 1000001,
-            age: 21.02,
-            grade: 13,
-            grade_name: '12th+',
-          },
-        ],
-      })
-    )
-    expect(screen.getByTestId('year-members-children').textContent).not.toContain('12th+')
   })
 })
 

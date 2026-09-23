@@ -975,15 +975,27 @@ describe('CamperDetailsPanel', () => {
         }
       )
 
+      // Owner ruling 2026-09-23: the side panel keeps the SHORT style -- no
+      // "Grade" -- so a long school name has room.
       it.each([false, true])(
-        'hides a stale grade on someone 21 or older (embedded=%s)',
+        'shows an ordinal grade bare, "5th @ school" (embedded=%s)',
         async (embedded) => {
-          const adult = mockPerson({ ...withGrade('12th+'), grade: 13, age: 33.06 })
-          mockGetListPersons.mockResolvedValue({ items: [adult], totalItems: 1 })
-          mockGetFullListPersons.mockResolvedValue([adult])
+          const fifth = mockPerson({ ...withGrade('5th'), grade: 5 })
+          mockGetListPersons.mockResolvedValue({ items: [fifth], totalItems: 1 })
+          mockGetFullListPersons.mockResolvedValue([fifth])
           render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} embedded={embedded} />)
-          expect(await screen.findByText('Riverside Elementary')).toBeInTheDocument()
-          expect(screen.queryByText(/12th\+/)).not.toBeInTheDocument()
+          expect(await screen.findByText('5th @ Riverside Elementary')).toBeInTheDocument()
+        }
+      )
+
+      it.each([false, true])(
+        'shows a camper past 12th grade as "Grad @ school" (embedded=%s)',
+        async (embedded) => {
+          const grad = mockPerson({ ...withGrade('12th+'), grade: 13, age: 18.02 })
+          mockGetListPersons.mockResolvedValue({ items: [grad], totalItems: 1 })
+          mockGetFullListPersons.mockResolvedValue([grad])
+          render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} embedded={embedded} />)
+          expect(await screen.findByText('Grad @ Riverside Elementary')).toBeInTheDocument()
         }
       )
 
@@ -998,6 +1010,20 @@ describe('CamperDetailsPanel', () => {
           expect(screen.queryByText(/0th/)).not.toBeInTheDocument()
         }
       )
+    })
+
+    it('shows a sibling past 12th grade as Grad', async () => {
+      mockGetFullListPersons.mockImplementation((opts: { filter?: string } = {}) => {
+        const filter = opts.filter ?? ''
+        if (filter.includes(`household_id = ${String(HOUSEHOLD)}`)) {
+          return Promise.resolve([{ ...SAM, grade: 13, grade_name: '12th+' }, OLIVIA, DAVID])
+        }
+        return Promise.resolve([EMMA_H])
+      })
+      render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} />)
+      await screen.findByText('Sam Johnson')
+      expect(await screen.findByText('Grad')).toBeInTheDocument()
+      expect(screen.queryByText('12th+')).not.toBeInTheDocument()
     })
 
     it("shows a preschool sibling's grade name", async () => {

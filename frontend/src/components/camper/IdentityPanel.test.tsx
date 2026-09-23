@@ -171,9 +171,9 @@ describe('IdentityPanel grade name', () => {
     expect(screen.getByText('6th Grade')).toBeInTheDocument()
   })
 
-  it('shows a kindergartner as K, not "0th Grade"', () => {
+  it('shows a kindergartner as Kindergarten, not "0th Grade"', () => {
     renderWith({ grade: 0, grade_name: 'K' })
-    expect(screen.getByText('K')).toBeInTheDocument()
+    expect(screen.getByText('Kindergarten')).toBeInTheDocument()
     expect(screen.queryByText(/0th/)).toBeNull()
   })
 
@@ -182,9 +182,9 @@ describe('IdentityPanel grade name', () => {
     expect(screen.getByText('Pre-K')).toBeInTheDocument()
   })
 
-  it('hides a stale grade on someone 21 or older', () => {
-    renderWith({ grade: 13, grade_name: '12th+', age: 33.06 })
-    expect(screen.queryByText(/12th\+/)).toBeNull()
+  it('shows a camper past 12th grade as Graduated', () => {
+    renderWith({ grade: 13, grade_name: '12th+' })
+    expect(screen.getByText('Graduated')).toBeInTheDocument()
   })
 
   it('shows no grade line when there is no grade name', () => {

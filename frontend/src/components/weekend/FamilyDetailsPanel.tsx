@@ -377,7 +377,7 @@ export function FamilyDetailsPanel({
                     child.age === null || child.age === undefined
                       ? ''
                       : `Age ${displayCampMinderAge(child.age)}`,
-                    formatGradeName(child.grade_name, child.age) ?? '',
+                    formatGradeName(child.grade_name, 'short') ?? '',
                   ]
                     .filter((part) => part.length > 0)
                     .join(' · ')}

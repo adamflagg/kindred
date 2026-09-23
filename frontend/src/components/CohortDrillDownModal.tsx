@@ -12,7 +12,7 @@
  */
 import { Link } from 'react-router'
 import { Modal } from './ui/Modal'
-import { formatGradeOrdinal } from '../utils/gradeUtils'
+import { formatGradeOrdinal, GRADUATED_GRADE, GRADUATED_LONG } from '../utils/gradeUtils'
 import type { CohortMatchedAttendee } from '../hooks/useCamperCohorts'
 import type { CohortRelationsMap } from '../hooks/useCohortRequestRelations'
 
@@ -182,7 +182,12 @@ export function CohortDrillDownModal({
             //  - prop present, value null → render "Unassigned"
             const hasBunkLookup = bunkByPerson?.has(a.personCmId) ?? false
             const bunkName = hasBunkLookup ? (bunkByPerson?.get(a.personCmId) ?? null) : null
-            const gradeText = a.grade != null ? `${formatGradeOrdinal(a.grade)} grade` : null
+            const gradeText =
+              a.grade == null
+                ? null
+                : a.grade === GRADUATED_GRADE
+                  ? GRADUATED_LONG
+                  : `${formatGradeOrdinal(a.grade)} grade`
             const bunkText = hasBunkLookup ? (bunkName ?? 'Unassigned') : null
             const metaText =
               gradeText && bunkText ? `${gradeText} · ${bunkText}` : (gradeText ?? bunkText)

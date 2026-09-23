@@ -70,23 +70,24 @@ describe('HeroHeader adult branch', () => {
   })
 })
 
-// kindred#2779: the hero reads `grade_name`, never the number.
+// kindred#2779: the hero reads `grade_name`, never the number, in the LONG
+// style (owner ruling 2026-09-23).
 describe('HeroHeader grade name', () => {
-  it('shows a kindergartner as K, not "0th"', () => {
+  it('shows a kindergartner as Kindergarten, not "0th"', () => {
     renderHero({ camper: { ...camper, grade: 0, grade_name: 'K', age: 5.06 } })
-    expect(screen.getByText(/• K$/)).toBeInTheDocument()
+    expect(screen.getByText(/• Kindergarten$/)).toBeInTheDocument()
     expect(screen.queryByText(/0th/)).toBeNull()
+  })
+
+  it('shows a camper past 12th grade as Graduated', () => {
+    renderHero({ camper: { ...camper, grade: 13, grade_name: '12th+', age: 18.02 } })
+    expect(screen.getByText(/• Graduated$/)).toBeInTheDocument()
   })
 
   it('shows a preschooler as Pre-K, never "-1th"', () => {
     renderHero({ camper: { ...camper, grade: -1, grade_name: 'Pre-K', age: 4.02 } })
     expect(screen.getByText(/• Pre-K$/)).toBeInTheDocument()
     expect(screen.queryByText(/-1th/)).toBeNull()
-  })
-
-  it('hides a stale grade on someone 21 or older', () => {
-    renderHero({ camper: { ...camper, grade: 6, grade_name: '6th', age: 23.06 } })
-    expect(screen.queryByText(/6th/)).toBeNull()
   })
 
   it('shows no grade when there is no grade name', () => {

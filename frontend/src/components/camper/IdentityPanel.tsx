@@ -165,10 +165,7 @@ export function IdentityPanel({
                 icon={School}
                 label="School"
                 value={camper.school ?? 'Not provided'}
-                subValue={formatGradeName(
-                  camper.grade_name,
-                  getDisplayAgeForYear(camper, viewingYear)
-                )}
+                subValue={formatGradeName(camper.grade_name, 'long')}
                 cohortKind="school"
                 cohortCount={cohortContext ? (cohorts?.school?.count ?? 0) : 0}
                 onOpenCohort={() => drill.open('school')}

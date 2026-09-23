@@ -1,4 +1,7 @@
-import { ADULT_AGE } from './age'
+/** `persons.grade` for a camper past 12th grade — CampMinder's "12th+". */
+export const GRADUATED_GRADE = 13
+export const GRADUATED_SHORT = 'Grad'
+export const GRADUATED_LONG = 'Graduated'
 
 /**
  * Convert a grade number to its ordinal format
@@ -26,8 +29,13 @@ export function formatGradeOrdinal(grade: number | string | undefined | null): s
     return ''
   }
 
-  // Special handling for 11, 12, 13
-  if (gradeNum >= 11 && gradeNum <= 13) {
+  // Past 12th grade (CampMinder's "12th+") — owner ruling 2026-09-23.
+  if (gradeNum === GRADUATED_GRADE) {
+    return GRADUATED_SHORT
+  }
+
+  // Special handling for 11, 12
+  if (gradeNum >= 11 && gradeNum <= 12) {
     return `${gradeNum}th`
   }
 
@@ -52,38 +60,30 @@ export function formatGradeOrdinal(grade: number | string | undefined | null): s
   return `${gradeNum}${suffix}`
 }
 
-/**
- * The grade as CampMinder names it, or null when none should show.
- *
- * Null when `persons.grade_name` is empty (CampMinder has no grade), and null
- * for anyone `ADULT_AGE` (21) or older — owner ruling 2026-09-23 (#2782).
- * CampMinder keeps advancing a former camper's grade until it reaches "12th+",
- * so an adult can carry a stale one; measured, two people over all years.
- * `age` is the age for the year being shown; unknown shows the grade.
- */
-export function visibleGradeName(
-  gradeName: string | null | undefined,
-  age?: number | null
-): string | null {
-  if (!gradeName) return null
-  if (age !== null && age !== undefined && age >= ADULT_AGE) return null
-  return gradeName
-}
+export type GradeStyle = 'short' | 'long'
 
 /**
  * The grade staff read, from `persons.grade_name` (kindred#2779).
  *
  * CampMinder names grades "Infant", "Toddler", "Nursery", "Pre-K", "K", then
- * "1st" .. "12th" and "12th+". An ordinal reads "5th Grade"; the rest read as
- * named. Null — show nothing — under the same rules as `visibleGradeName`,
- * never the numeric `grade`, which reads 0 for both K and "no grade" and goes
- * negative below K.
+ * "1st" .. "12th" and "12th+". Two styles, owner rulings 2026-09-23:
+ *
+ * - `short` — tight spaces (the board side panel, sibling rows, the weekend
+ *   panels): "5th", "K", "Grad".
+ * - `long` — the full camper record: "5th Grade", "Kindergarten", "Graduated".
+ *
+ * Pre-K and below read as named in both. An empty name means CampMinder has no
+ * grade, and returns null so the caller shows nothing — never the numeric
+ * `grade`, which reads 0 for both K and "no grade" and goes negative below K.
  */
 export function formatGradeName(
   gradeName: string | null | undefined,
-  age?: number | null
+  style: GradeStyle
 ): string | null {
-  const name = visibleGradeName(gradeName, age)
-  if (!name) return null
-  return /^\d/.test(name) ? `${name} Grade` : name
+  if (!gradeName) return null
+  const long = style === 'long'
+  if (gradeName === '12th+') return long ? GRADUATED_LONG : GRADUATED_SHORT
+  if (gradeName === 'K') return long ? 'Kindergarten' : 'K'
+  if (long && /^\d/.test(gradeName)) return `${gradeName} Grade`
+  return gradeName
 }
