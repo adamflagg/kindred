@@ -148,6 +148,23 @@ describe('AliasUnitPicker — picking', () => {
     expect(onChange).toHaveBeenLastCalledWith([])
   })
 
+  // A merge is usually of same-named rooms ("Cabin 1".."Cabin 4"): one search
+  // should serve every tick, not be retyped before each one.
+  it('keeps the search and its results after a tick, so a merge takes one search', async () => {
+    const onChange = vi.fn()
+    const user = userEvent.setup()
+    render(<Harness onChange={onChange} />)
+
+    await user.type(search(), 'cabin')
+    await user.click(screen.getByRole('checkbox', { name: 'Cabin 1' }))
+
+    expect(search()).toHaveValue('cabin')
+    expect(search()).toHaveFocus()
+    expect(screen.queryByRole('checkbox', { name: 'Willow' })).not.toBeInTheDocument()
+    await user.click(screen.getByRole('checkbox', { name: 'Cabin 2' }))
+    expect(onChange).toHaveBeenLastCalledWith(['n1', 'n2'])
+  })
+
   it('removes the last pick on Backspace in an empty search', async () => {
     const onChange = vi.fn()
     const user = userEvent.setup()

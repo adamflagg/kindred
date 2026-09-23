@@ -86,9 +86,10 @@ export function AliasUnitPicker({
     return result
   }, [units, selected, query, outOfSeasonIds])
 
+  // The query survives a tick: a merge is usually of same-named rooms, so one
+  // search should serve every pick. Escape or clicking away still clears it.
   const toggle = (id: string) => {
     onChange(selected.includes(id) ? selected.filter((u) => u !== id) : [...selected, id])
-    setQuery('')
     inputRef.current?.focus()
   }
 
