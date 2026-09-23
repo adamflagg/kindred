@@ -5,7 +5,7 @@
 import { TreePine } from 'lucide-react'
 import { journeyCountLabel } from '../../utils/journeyCountLabel'
 import { JourneyRows, type JourneyVariant } from './JourneyRows'
-import { journeyRowsFromHistory } from './journeyRowModel'
+import { journeyDisplayState, journeyRowsFromHistory } from './journeyRowModel'
 import type { HistoricalRecord, JourneyCounts } from '../../hooks/camper/types'
 
 interface CampJourneyTimelineProps {
@@ -40,6 +40,7 @@ export function CampJourneyTimeline({
   variant = 'full',
 }: CampJourneyTimelineProps) {
   const countLabel = journeyCountLabel(counts)
+  const displayState = journeyDisplayState(history.length, isLoading, error)
   return (
     <div className="bg-card border-border overflow-hidden rounded-2xl border shadow-sm">
       {/* Header - original styling */}
@@ -56,7 +57,7 @@ export function CampJourneyTimeline({
       </div>
 
       <div className="p-5">
-        {history.length > 0 ? (
+        {displayState === 'rows' ? (
           <>
             {/* Q8 (owner, 2026-09-22 late): rows that are here show NOW —
                 the camper record's current-year rows arrive before the prior
@@ -71,14 +72,14 @@ export function CampJourneyTimeline({
               <p className="mt-3 text-center text-sm text-red-500">Couldn't load past years</p>
             )}
           </>
-        ) : isLoading ? (
+        ) : displayState === 'loading' ? (
           // Only with NO rows yet: an empty history mid-load means "not here
           // yet", not "first year".
           <div className="flex items-center justify-center py-4">
             <div className="border-muted border-t-primary h-5 w-5 animate-spin rounded-full border-2" />
             <span className="text-muted-foreground ml-2 text-sm">Loading...</span>
           </div>
-        ) : error ? (
+        ) : displayState === 'error' ? (
           <div className="py-4 text-center">
             <p className="text-sm text-red-500">Couldn't load past years</p>
           </div>

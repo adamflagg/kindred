@@ -83,3 +83,25 @@ export function journeyRowsFromHistory(
     }
   })
 }
+
+export type JourneyDisplayState = 'rows' | 'loading' | 'error' | 'empty'
+
+/**
+ * Q8 (owner, 2026-09-22 late): decides which of the four states a journey
+ * surface shows, from ROWS FIRST — rows already here render immediately, even
+ * mid-load or after a failed refresh; the spinner is only for the true
+ * "nothing yet" case. Shared by `CampJourneyTimeline` (the camper record and
+ * the Women's/Men's Weekend sidebar) and the summer board modal's Camp
+ * Journey section, so the ordering can't drift between them (owner ruling
+ * 2026-09-22: "every sidebar handles the journey the same way").
+ */
+export function journeyDisplayState(
+  rowCount: number,
+  isLoading: boolean,
+  error: Error | null
+): JourneyDisplayState {
+  if (rowCount > 0) return 'rows'
+  if (isLoading) return 'loading'
+  if (error) return 'error'
+  return 'empty'
+}
