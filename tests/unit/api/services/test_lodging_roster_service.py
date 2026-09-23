@@ -3441,6 +3441,28 @@ class TestPartyChildIsUnderTwo:
         assert _party_child(child, session_start=date(2026, 6, 1)).is_under_two is False
 
 
+class TestPartyChildGradeName:
+    """`PartyChild.grade_name` (kindred#2779): the grade staff read.
+
+    `grade` cannot tell kindergarten from "no grade" -- both are 0 -- and
+    reads -1 for Pre-K, so the panels display `grade_name` instead. An empty
+    column means CampMinder has no grade, and publishes as None.
+    """
+
+    def test_party_child_publishes_grade_name(self) -> None:
+        child = _rec(cm_id=1000001, first_name="Emma", last_name="Johnson", grade=-1, grade_name="Pre-K")
+        result = _party_child(child)
+        assert result.grade_name == "Pre-K"
+
+    def test_party_child_kindergarten_keeps_its_name(self) -> None:
+        child = _rec(cm_id=1000002, first_name="Liam", last_name="Garcia", grade=0, grade_name="K")
+        assert _party_child(child).grade_name == "K"
+
+    def test_party_child_without_a_grade_publishes_none(self) -> None:
+        child = _rec(cm_id=1000003, first_name="Noah", last_name="Martinez", grade=0, grade_name="")
+        assert _party_child(child).grade_name is None
+
+
 class TestBedExemptChildFlag:
     """`has_bed_exempt_child` feeds the baby mark's capacity note (staff
     ruling, 2026-08-21, supersedes the kindred#2212 inline icon).

@@ -39,6 +39,22 @@ describe('SiblingsPanel', () => {
     expect(screen.queryByText(/0th/)).toBeNull()
   })
 
+  // kindred#2779: a sibling's grade reads `grade_name`, bare like the ages.
+  it('shows a kindergarten sibling as K', () => {
+    renderPanel({ siblings: [{ ...partner, grade: 0, grade_name: 'K', age: 5.06 }] })
+    expect(screen.getByText(/• K$/)).toBeInTheDocument()
+  })
+
+  it('shows a preschool sibling as Pre-K', () => {
+    renderPanel({ siblings: [{ ...partner, grade: -1, grade_name: 'Pre-K', age: 4.02 }] })
+    expect(screen.getByText(/• Pre-K$/)).toBeInTheDocument()
+  })
+
+  it('shows an ordinal grade bare, without "Grade"', () => {
+    renderPanel({ siblings: [{ ...partner, grade: 5, grade_name: '5th', age: 10.04 }] })
+    expect(screen.getByText(/• 5th$/)).toBeInTheDocument()
+  })
+
   it('lists additional programs', () => {
     renderPanel({
       siblings: [

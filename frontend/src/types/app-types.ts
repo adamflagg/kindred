@@ -27,6 +27,8 @@ export interface Camper {
   readonly name: string
   readonly age: number
   readonly grade: number
+  /** What is displayed — see `formatGradeName`. Empty means no grade. */
+  readonly grade_name?: string
   readonly gender: 'M' | 'F' | 'NB'
   readonly session_cm_id: number // CampMinder session ID
   readonly assigned_bunk_cm_id?: number // CampMinder bunk ID
@@ -52,8 +54,6 @@ export interface Camper {
   // Additional V2 fields
   readonly lead_date?: string
   readonly tshirt_size?: string
-  readonly camp_grade_name?: string
-  readonly school_grade_name?: string
   // V2 Schema fields
   readonly gender_identity_id?: number
   readonly gender_identity_name?: string

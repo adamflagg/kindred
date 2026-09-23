@@ -19,7 +19,7 @@ import {
 } from 'lucide-react'
 import { formatAge } from '../../utils/age'
 import { formatGenderFull } from '../../utils/genderUtils'
-import { formatGradeOrdinal } from '../../utils/gradeUtils'
+import { formatGradeName } from '../../utils/gradeUtils'
 import { getDisplayAgeForYear } from '../../utils/displayAge'
 import { useYear } from '../../hooks/useCurrentYear'
 import { useCamperCohorts } from '../../hooks/useCamperCohorts'
@@ -165,7 +165,7 @@ export function IdentityPanel({
                 icon={School}
                 label="School"
                 value={camper.school ?? 'Not provided'}
-                subValue={`${formatGradeOrdinal(camper.grade)} Grade`}
+                subValue={formatGradeName(camper.grade_name) ?? undefined}
                 cohortKind="school"
                 cohortCount={cohortContext ? (cohorts?.school?.count ?? 0) : 0}
                 onOpenCohort={() => drill.open('school')}

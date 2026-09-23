@@ -24,6 +24,7 @@ import { Link } from 'react-router'
 
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
 import { displayCampMinderAge } from '../../utils/age'
+import { formatGradeName } from '../../utils/gradeUtils'
 import {
   acquireOverlayToken,
   isTopOverlay,
@@ -376,9 +377,7 @@ export function FamilyDetailsPanel({
                     child.age === null || child.age === undefined
                       ? ''
                       : `Age ${displayCampMinderAge(child.age)}`,
-                    child.grade === null || child.grade === undefined || child.grade === 0
-                      ? ''
-                      : `Grade ${String(child.grade)}`,
+                    formatGradeName(child.grade_name) ?? '',
                   ]
                     .filter((part) => part.length > 0)
                     .join(' · ')}

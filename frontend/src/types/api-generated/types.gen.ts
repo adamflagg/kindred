@@ -3458,6 +3458,10 @@ export type PartyChild = {
    */
   grade?: number | null
   /**
+   * Grade Name
+   */
+  grade_name?: string | null
+  /**
    * Session Cm Ids
    */
   session_cm_ids?: Array<number>

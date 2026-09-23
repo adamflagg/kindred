@@ -1237,12 +1237,12 @@ export default function CamperDetailsPanel({
                       </div>
                       <div className="text-muted-foreground mt-0.5 flex items-center gap-2 text-[10px]">
                         <span>{formatAge(getDisplayAgeForYear(sibling, currentYear) ?? 0)}</span>
-                        {/* No grade for a grade-0 member (a family-camp
-                            preschooler), as on the camper record. */}
-                        {sibling.grade > 0 && (
+                        {/* The grade as CampMinder names it, as on the camper
+                            record; none without a grade name (kindred#2779). */}
+                        {sibling.grade_name && (
                           <>
                             <span>•</span>
-                            <span>{formatGradeOrdinal(sibling.grade)}</span>
+                            <span>{sibling.grade_name}</span>
                           </>
                         )}
                       </div>

@@ -956,6 +956,22 @@ describe('CamperDetailsPanel', () => {
       expect(screen.queryByText('0th')).not.toBeInTheDocument()
     })
 
+    // kindred#2779: the sibling line reads `grade_name`, so a preschooler
+    // shows as one rather than as nothing.
+    it("shows a preschool sibling's grade name", async () => {
+      mockGetFullListPersons.mockImplementation((opts: { filter?: string } = {}) => {
+        const filter = opts.filter ?? ''
+        if (filter.includes(`household_id = ${String(HOUSEHOLD)}`)) {
+          return Promise.resolve([{ ...SAM, grade: -1, grade_name: 'Pre-K' }, OLIVIA, DAVID])
+        }
+        return Promise.resolve([EMMA_H])
+      })
+      render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} />)
+      await screen.findByText('Sam Johnson')
+      expect(await screen.findByText('Pre-K')).toBeInTheDocument()
+      expect(screen.queryByText('-1th')).not.toBeInTheDocument()
+    })
+
     // Owner ruling 2026-09-22 (second visual pass): the board's line 2 shows
     // summer/teen programs only (main, embedded, ag, quest, tli, scit).
     // Family weekends are "not germane for bunking" here and stay visible

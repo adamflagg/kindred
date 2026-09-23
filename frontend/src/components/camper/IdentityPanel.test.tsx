@@ -146,3 +146,44 @@ describe('IdentityPanel adult branch', () => {
     expect(screen.getByText('School')).toBeInTheDocument()
   })
 })
+
+// kindred#2779: the School row's grade reads `grade_name`.
+describe('IdentityPanel grade name', () => {
+  beforeEach(() => {
+    mockUseCamperCohorts.mockReturnValue({ cohorts: null, isLoading: false })
+  })
+
+  function renderWith(extra: Partial<Camper>) {
+    render(
+      <IdentityPanel
+        camper={{ ...camper, ...extra }}
+        location={null}
+        congregation={null}
+        pronouns=""
+        defaultExpanded
+      />,
+      { wrapper }
+    )
+  }
+
+  it('shows an ordinal grade as "Nth Grade"', () => {
+    renderWith({ grade: 6, grade_name: '6th' })
+    expect(screen.getByText('6th Grade')).toBeInTheDocument()
+  })
+
+  it('shows a kindergartner as K, not "0th Grade"', () => {
+    renderWith({ grade: 0, grade_name: 'K' })
+    expect(screen.getByText('K')).toBeInTheDocument()
+    expect(screen.queryByText(/0th/)).toBeNull()
+  })
+
+  it('shows a preschooler as Pre-K', () => {
+    renderWith({ grade: -1, grade_name: 'Pre-K' })
+    expect(screen.getByText('Pre-K')).toBeInTheDocument()
+  })
+
+  it('shows no grade line when there is no grade name', () => {
+    renderWith({ grade: 0, grade_name: '' })
+    expect(screen.queryByText(/Grade|0th/)).toBeNull()
+  })
+})

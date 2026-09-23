@@ -466,6 +466,37 @@ describe('FamilyDetailsPanel — household identity', () => {
     expect(screen.getByText(/Age 8/)).toBeInTheDocument()
   })
 
+  // kindred#2779: a child's grade reads `grade_name` -- "Nth Grade" for an
+  // ordinal, K and below as named, and nothing without one.
+  it.each<[string | null, number | null, string | null]>([
+    ['3rd', 3, '3rd Grade'],
+    ['K', 0, 'K'],
+    ['Pre-K', -1, 'Pre-K'],
+    [null, 0, null],
+  ])('shows grade_name %s (grade %s) as %s', (gradeName, grade, expected) => {
+    render(
+      <FamilyDetailsPanel
+        party={party({
+          children: [
+            {
+              person_cm_id: 9001,
+              display_name: 'Noah Johnson',
+              last_name: 'Johnson',
+              age: 5,
+              grade,
+              grade_name: gradeName,
+            },
+          ],
+        })}
+        year={2026}
+        onClose={vi.fn()}
+      />,
+      { wrapper }
+    )
+    const line = screen.getByText(/^Age 5/)
+    expect(line.textContent).toBe(expected === null ? 'Age 5.00' : `Age 5.00 · ${expected}`)
+  })
+
   it('renders age in CampMinder yy.mm format through displayCampMinderAge', () => {
     // kindred#2088: the panel printed `String(child.age)` verbatim. Both
     // fractional and whole ages must go through the shared helper summer

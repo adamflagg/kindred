@@ -42,3 +42,17 @@ export function formatGradeOrdinal(grade: number | string | undefined | null): s
 
   return `${gradeNum}${suffix}`
 }
+
+/**
+ * The grade staff read, from `persons.grade_name` (kindred#2779).
+ *
+ * CampMinder names grades "Infant", "Toddler", "Nursery", "Pre-K", "K", then
+ * "1st" .. "12th" and "12th+". An ordinal reads "5th Grade"; the rest read as
+ * named. An empty name means CampMinder has no grade, and returns null so the
+ * caller shows nothing — never the numeric `grade`, which reads 0 for both K
+ * and "no grade" and goes negative below K.
+ */
+export function formatGradeName(gradeName: string | null | undefined): string | null {
+  if (!gradeName) return null
+  return /^\d/.test(gradeName) ? `${gradeName} Grade` : gradeName
+}

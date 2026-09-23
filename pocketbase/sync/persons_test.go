@@ -238,7 +238,7 @@ func TestPersonsCompareFields(t *testing.T) {
 	// Phase 2 added: address_city, address_state, primary_email, secondary_email
 	compareFields := []string{
 		"cm_id", "first_name", "last_name", "preferred_name",
-		"birthdate", "gender", "age", "grade", "school", "years_at_camp",
+		"birthdate", "gender", "age", "grade", "grade_name", "school", "years_at_camp",
 		"last_year_attended", "gender_identity_id", "gender_identity_name", "gender_identity_write_in",
 		"gender_pronoun_id", "gender_pronoun_name", "gender_pronoun_write_in",
 		"address_city", "address_state", "primary_email", "secondary_email",

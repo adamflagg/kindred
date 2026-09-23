@@ -848,6 +848,11 @@ class PartyChild(BaseModel):
     # missing birthdate or an unreadable reference date contributes False.
     is_under_two: bool = False
     grade: int | None = None
+    # What staff READ (kindred#2779): CampMinder's "Pre-K", "K", "1st" ..
+    # "12th+". `grade` above is the number for ordering, and it cannot show
+    # itself -- K and "no grade" are both 0, Pre-K is -1. None means
+    # CampMinder has no grade for this child.
+    grade_name: str | None = None
     # WHICH FAMILY WEEKENDS THIS CHILD ATTENDED that year, earliest first
     # (kindred#2393). Populated by the household journey ONLY, and empty on
     # every other surface: the roster is already one weekend, so a per-child
