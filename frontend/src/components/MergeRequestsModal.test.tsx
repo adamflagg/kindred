@@ -86,7 +86,6 @@ function renderWithSeededClient(ui: React.ReactElement, requesterId = 12345, yea
   queryClient.setQueryData([...queryKeys.allBunkRequestsPrefix(), 1000001, year], [])
   queryClient.setQueryData([...queryKeys.personBunkRequestsPrefix(), requesterId, year], [])
   queryClient.setQueryData([...queryKeys.personAllBunkRequestsPrefix(), requesterId, year], [])
-  queryClient.setQueryData([...queryKeys.bunkRequestsTooltipPrefix(), requesterId, year], [])
   queryClient.setQueryData([...queryKeys.requestSatisfactionPrefix(), requesterId], {})
   queryClient.setQueryData(queryKeys.cohortRequestRelationsPrefix(), [])
   return {
@@ -393,7 +392,8 @@ describe('MergeRequestsModal', () => {
   // the 4 per-camper keys (person-bunk-requests, person-all-bunk-requests,
   // bunk_requests_tooltip, request-satisfaction) plus cohort-request-relations
   // went stale on the sidebar, full-page CamperDetail, tooltip, and
-  // satisfaction badges after a merge.
+  // satisfaction badges after a merge. The tooltip key went with
+  // `CamperTooltip` itself (owner ruling 2026-09-22: unused, deleted).
   describe('cache invalidation contract', () => {
     function isStale(qc: QueryClient, key: readonly unknown[]) {
       return qc.getQueryState(key)?.isInvalidated === true
@@ -436,9 +436,6 @@ describe('MergeRequestsModal', () => {
         true
       )
       expect(isStale(queryClient, [...queryKeys.personAllBunkRequestsPrefix(), 12345, 2025])).toBe(
-        true
-      )
-      expect(isStale(queryClient, [...queryKeys.bunkRequestsTooltipPrefix(), 12345, 2025])).toBe(
         true
       )
       expect(isStale(queryClient, [...queryKeys.requestSatisfactionPrefix(), 12345])).toBe(true)

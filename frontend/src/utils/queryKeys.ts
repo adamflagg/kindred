@@ -412,7 +412,6 @@ export const queryKeys = {
   allBunkRequestsPrefix: () => ['all-bunk-requests'] as const,
   personBunkRequestsPrefix: () => ['person-bunk-requests'] as const,
   personAllBunkRequestsPrefix: () => ['person-all-bunk-requests'] as const,
-  bunkRequestsTooltipPrefix: () => ['bunk_requests_tooltip'] as const,
   requestSatisfactionPrefix: () => ['request-satisfaction'] as const,
   cohortRequestRelationsPrefix: () => ['cohort-request-relations'] as const,
   // Prefix factories for social-graph invalidation (Issue #1040).
@@ -442,8 +441,6 @@ export const queryKeys = {
     ['person-bunk-requests', cmId, year] as const,
   personAllBunkRequests: (cmId: number | undefined, year: number) =>
     ['person-all-bunk-requests', cmId, year] as const,
-  bunkRequestsTooltip: (cmId: number | undefined, year: number) =>
-    ['bunk_requests_tooltip', cmId, year] as const,
   /**
    * Cache key for client-derived satisfaction snapshots.
    *
@@ -715,7 +712,6 @@ export function invalidateRequestQueries(
   void queryClient.invalidateQueries({ queryKey: queryKeys.allBunkRequestsPrefix() })
   void queryClient.invalidateQueries({ queryKey: queryKeys.personBunkRequestsPrefix() })
   void queryClient.invalidateQueries({ queryKey: queryKeys.personAllBunkRequestsPrefix() })
-  void queryClient.invalidateQueries({ queryKey: queryKeys.bunkRequestsTooltipPrefix() })
   void queryClient.invalidateQueries({ queryKey: queryKeys.requestSatisfactionPrefix() })
   void queryClient.invalidateQueries({ queryKey: queryKeys.cohortRequestRelationsPrefix() })
   // Issue #1040 — social-graph node borders reflect request satisfaction; invalidate

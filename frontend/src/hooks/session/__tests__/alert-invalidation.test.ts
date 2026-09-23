@@ -47,10 +47,6 @@ function buildQueryClient(sessionCmId = 1001, year = 2025) {
     ['person-all-bunk-requests', 1001, year],
     [{ id: 'req-1', requester_id: 1001, requestee_id: 1002, status: 'pending' }]
   )
-  qc.setQueryData(
-    ['bunk_requests_tooltip', 1001, year],
-    [{ id: 'req-1', requester_id: 1001, requestee_id: 1002, status: 'pending' }]
-  )
   qc.setQueryData(['request-satisfaction', 1001], {})
   // Scan-it round 3 #4: PR #1158 added satisfactionPrefix() invalidation;
   // the contract test must seed and assert it so future regressions are caught.
@@ -71,11 +67,6 @@ function isPersonBunkRequestsStale(qc: QueryClient, personCmId = 1001, year = 20
 
 function isPersonAllBunkRequestsStale(qc: QueryClient, personCmId = 1001, year = 2025) {
   const state = qc.getQueryState(['person-all-bunk-requests', personCmId, year])
-  return state?.isInvalidated === true
-}
-
-function isTooltipStale(qc: QueryClient, personCmId = 1001, year = 2025) {
-  const state = qc.getQueryState(['bunk_requests_tooltip', personCmId, year])
   return state?.isInvalidated === true
 }
 
@@ -183,7 +174,6 @@ describe('Stage 3a status mutations — must invalidate all-bunk-requests', () =
     expect(isAllBunkRequestsStale(queryClient)).toBe(true)
     expect(isPersonBunkRequestsStale(queryClient)).toBe(true)
     expect(isPersonAllBunkRequestsStale(queryClient)).toBe(true)
-    expect(isTooltipStale(queryClient)).toBe(true)
     expect(isSatisfactionStale(queryClient)).toBe(true)
     expect(isNewSatisfactionStale(queryClient)).toBe(true)
   })
@@ -194,7 +184,6 @@ describe('Stage 3a status mutations — must invalidate all-bunk-requests', () =
     expect(isAllBunkRequestsStale(queryClient)).toBe(true)
     expect(isPersonBunkRequestsStale(queryClient)).toBe(true)
     expect(isPersonAllBunkRequestsStale(queryClient)).toBe(true)
-    expect(isTooltipStale(queryClient)).toBe(true)
     expect(isSatisfactionStale(queryClient)).toBe(true)
     expect(isNewSatisfactionStale(queryClient)).toBe(true)
   })
@@ -205,16 +194,17 @@ describe('Stage 3a status mutations — must invalidate all-bunk-requests', () =
     expect(isAllBunkRequestsStale(queryClient)).toBe(true)
     expect(isPersonBunkRequestsStale(queryClient)).toBe(true)
     expect(isPersonAllBunkRequestsStale(queryClient)).toBe(true)
-    expect(isTooltipStale(queryClient)).toBe(true)
     expect(isSatisfactionStale(queryClient)).toBe(true)
     expect(isNewSatisfactionStale(queryClient)).toBe(true)
   })
 })
 
-describe('Merge / Split mutation contract — must invalidate all 7 keys', () => {
-  // Earlier iterations of Merge and Split invalidated only 5 of the 7 keys,
-  // leaving the sidebar / full-page CamperDetail / tooltip / satisfaction
-  // badges showing stale data after a merge or split.
+describe('Merge / Split mutation contract — must invalidate every request key', () => {
+  // Earlier iterations of Merge and Split invalidated only 5 of the then-7
+  // keys, leaving the sidebar / full-page CamperDetail / tooltip /
+  // satisfaction badges showing stale data after a merge or split. The
+  // tooltip key is gone with `CamperTooltip` itself (owner ruling
+  // 2026-09-22: unused, deleted), so it is no longer seeded or asserted.
   let queryClient: QueryClient
 
   beforeEach(() => {
@@ -225,7 +215,6 @@ describe('Merge / Split mutation contract — must invalidate all 7 keys', () =>
     expect(isAllBunkRequestsStale(qc)).toBe(true)
     expect(isPersonBunkRequestsStale(qc)).toBe(true)
     expect(isPersonAllBunkRequestsStale(qc)).toBe(true)
-    expect(isTooltipStale(qc)).toBe(true)
     expect(isSatisfactionStale(qc)).toBe(true)
     expect(isNewSatisfactionStale(qc)).toBe(true)
   }

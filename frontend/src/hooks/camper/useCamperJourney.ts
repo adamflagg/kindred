@@ -1,7 +1,6 @@
 /**
  * useCamperJourney — the ONE feed every journey surface reads: the camper
- * record, the summer board panel, the tooltip,
- * and the Women's/Men's Weekend sidebar.
+ * record, the summer board panel, and the Women's/Men's Weekend sidebar.
  *
  * It owns the reads so no consumer has to: the person's own rows (household
  * id, years_at_camp, age), the household journey (family cabins; parent

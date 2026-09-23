@@ -7,7 +7,7 @@
  * the sentence explaining it. `eslint-plugin-jsx-a11y` has no rule for that,
  * so the gap survived a whole a11y sweep.
  *
- * There was nothing here to extend — `CamperTooltip`, `WaitlistTooltip` and
+ * There was nothing here to extend — `WaitlistTooltip` and
  * `BunkCellTooltip` are chart-cell content renderers positioned by their
  * caller, not trigger primitives — so this is the one place the behaviour is
  * written down.
