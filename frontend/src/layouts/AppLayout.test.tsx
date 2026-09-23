@@ -680,18 +680,24 @@ describe('AppLayout weekend freshness stack', () => {
 })
 
 /**
- * kindred#2478 §5.1: on an ADULT weekend the housing half is hidden, because
- * `GetFamilyCampSessionCMIDs` filters `session_type = 'family'` exactly — the
- * adult sessions are not in the bounded cohort, and `lodging_assignments` is a
- * transform that rewrites their rows from custom values up to seven days old.
- * The CSV lane is program-agnostic and is NOT affected.
+ * An ADULT weekend shows `Housing synced` too (kindred#2760, owner ruling
+ * 2026-09-23, reversing kindred#2478 §5.1). The bounded daily PERSON pass now
+ * covers adult-program attendees, and the server dates an adult weekend from
+ * that pass's history — so the line reads the weekend's own
+ * `housing_synced_at`, exactly as a family weekend's does. Refresh Housing
+ * stays hidden: its guard still refuses an adult weekend. The CSV lane is
+ * program-agnostic and is NOT affected.
  */
 describe('AppLayout adult weekend', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockPerms = { hasPermission: (p: string) => p === 'bunking.manage', isAdmin: false }
     mockWeekendShell = {
-      session: { session_type: 'adult', session_cm_id: 901 },
+      session: {
+        session_type: 'adult',
+        session_cm_id: 901,
+        housing_synced_at: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
+      },
       isAdultWeekend: true,
     }
     syncStatusSpy.mockImplementation(() => ({
@@ -705,7 +711,16 @@ describe('AppLayout adult weekend', () => {
     }))
   })
 
-  it('hides the Housing synced line', () => {
+  it('renders "Housing synced ..." off THIS adult weekend\'s pull', () => {
+    renderAppLayout('/weekend/ww')
+    expect(screen.getByText(/Housing synced/).textContent).toMatch(/ago/)
+  })
+
+  it('withholds "Housing synced" for an adult weekend with no attributable run', () => {
+    mockWeekendShell = {
+      session: { session_type: 'adult', session_cm_id: 901, housing_synced_at: '' },
+      isAdultWeekend: true,
+    }
     renderAppLayout('/weekend/ww')
     expect(screen.queryByText(/Housing synced/)).not.toBeInTheDocument()
   })

@@ -22,8 +22,12 @@ type Scope string
 const (
 	// ScopeAll is the unrestricted cohort -- the whole year, or the Session filter.
 	ScopeAll Scope = ""
-	// ScopeFamilyCamp is the bounded daily family-camp cohort: attendees of every
-	// family-camp weekend at ANY status (kindred#2482).
+	// ScopeFamilyCamp is the bounded daily cohort (kindred#2482), at ANY attendee status. It is
+	// NOT the same population on both sides: the PERSON pass covers family-camp weekends AND
+	// adult programs (SessionResolver.GetWeekendPersonIDsAnyStatus -- an adult weekend's cabin
+	// is a person custom field), while the HOUSEHOLD pass covers family-camp weekends only
+	// (GetFamilyCampHouseholdIDsAnyStatus). The name predates the adult half and is kept so the
+	// registered job IDs, sync_runs history and the admin UI stay continuous.
 	ScopeFamilyCamp Scope = "family_camp"
 )
 
@@ -115,9 +119,10 @@ type scopedServiceRegistration struct {
 // sync, not scopedID.
 func scopedServiceRegistrations(app core.App, client *campminder.Client) []scopedServiceRegistration {
 	return []scopedServiceRegistration{
-		// Bounded daily family-camp custom-values pass (kindred#2482) -- distinct service
-		// instances from the unrestricted pair, scoped to family-camp attendees (any
-		// status) rather than Session. Part of the daily cron: see getDailySyncJobs.
+		// Bounded daily custom-values pass (kindred#2482) -- distinct service instances from the
+		// unrestricted pair, scoped by ScopeFamilyCamp (any status) rather than Session: the
+		// person instance covers family-camp and adult-program attendees, the household instance
+		// family-camp only. Part of the daily cron: see getDailySyncJobs.
 		{serviceNamePersonCustomValues, ScopeFamilyCamp, NewPersonCustomFieldValuesSync(app, client)},
 		{serviceNameHouseholdCustomValues, ScopeFamilyCamp, NewHouseholdCustomFieldValuesSync(app, client)},
 	}

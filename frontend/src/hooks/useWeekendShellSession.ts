@@ -8,15 +8,12 @@
  * component. The reference therefore has to come off the pathname, which is
  * also what makes this survive a reload and a deep link.
  *
- * Why the shell needs this at all: kindred#2478 §5.1 hides the `Housing
- * synced` line and the `Refresh Housing` button on adult weekends.
- * `SessionResolver.GetFamilyCampSessionCMIDs` filters `session_type =
- * 'family'` exactly, so adult sessions are not in the bounded cohort — the
- * refresh chain would skip both expensive jobs and spend its whole runtime
- * refreshing nothing. And `lodging_assignments` is a transform that runs daily
- * for everyone, rewriting adult rows from custom values up to seven days old,
- * so "Housing synced 11h ago" on an adult weekend is true about the JOB and
- * false about the DATA.
+ * Why the shell needs this at all: kindred#2478 §5.1 hides the `Refresh
+ * Housing` button on adult weekends -- the scoped refresh refuses a session
+ * that is not a family-camp weekend, so the chain would spend its whole runtime
+ * refreshing nothing. (The `Housing synced` line used to be hidden there too;
+ * since kindred#2760 the nightly PERSON pass covers adult guests and the line
+ * shows on every resolved weekend, reading the weekend's own timestamp.)
  *
  * This costs no extra request: `WeekendRosterPage` already reads
  * `useWeekendSessions` for the same year, and React Query dedupes the two
@@ -64,7 +61,7 @@ export interface WeekendShellSession {
    * Deliberately false while unresolved — on the lander, and in the window
    * before the session list arrives. Hiding is a claim about a specific
    * weekend; with no weekend in hand there is nothing to hide about, and
-   * flickering the line out and back in on every load would be worse than the
+   * flickering the button out and back in on every load would be worse than the
    * one condition this exists to express.
    */
   isAdultWeekend: boolean

@@ -615,25 +615,59 @@ class TestWeekendHousingFreshness:
 
         assert result.sessions[0].housing_synced_at == ""
 
+    @staticmethod
+    def _history_by_service(**by_service: list[tuple[str, str]]) -> AsyncMock:
+        """A `fetch_session_scoped_sync_ends` whose answer depends on the job asked about."""
+
+        async def read(service: str, year: int) -> list[tuple[str, str]]:
+            return by_service.get(service, [])
+
+        return AsyncMock(side_effect=read)
+
     @pytest.mark.asyncio
-    async def test_an_adult_weekend_is_never_dated(self) -> None:
-        """kindred#2478 section 5.1, restated as data rather than as a UI rule.
-        `GetFamilyCampSessionCMIDs` filters `session_type = 'family'` exactly,
-        so an adult weekend is not in the bounded cohort and the job that dates
-        this NEVER READ ITS ANSWERS. An unscoped run covers every FAMILY
-        weekend; stamping an adult one from it would be true about the job and
-        false about the data.
+    async def test_an_adult_weekend_is_dated_by_the_person_pass(self) -> None:
+        """REVERSES kindred#2478 section 5.1 (owner ruling 2026-09-23, kindred#2760).
+
+        An adult weekend's cabin is a PERSON custom field, and the bounded
+        daily PERSON pass now covers adult-program attendees -- so its run is a
+        true claim about an adult weekend's data. The HOUSEHOLD pass still
+        never reads an adult weekend's answers, so it must not date one: a
+        weekend is dated only by the job that covers it.
         """
-        service = LodgingRosterService(
-            _repo(
-                fetch_weekend_sessions=[FAMILY_SESSION, ADULT_SESSION],
-                fetch_session_scoped_sync_ends=[("", self.NIGHTLY)],
-            )
+        repo = _repo(fetch_weekend_sessions=[FAMILY_SESSION, ADULT_SESSION])
+        repo.fetch_session_scoped_sync_ends = self._history_by_service(
+            household_custom_values_family_camp=[("", self.NIGHTLY)],
+            person_custom_values_family_camp=[("", self.PRESS)],
         )
 
-        result = await service.list_sessions(2026)
+        result = await LodgingRosterService(repo).list_sessions(2026)
 
-        assert [s.housing_synced_at for s in result.sessions] == [self.NIGHTLY, ""]
+        assert [s.housing_synced_at for s in result.sessions] == [self.NIGHTLY, self.PRESS]
+
+    @pytest.mark.asyncio
+    async def test_the_household_pass_alone_never_dates_an_adult_weekend(self) -> None:
+        repo = _repo(fetch_weekend_sessions=[ADULT_SESSION])
+        repo.fetch_session_scoped_sync_ends = self._history_by_service(
+            household_custom_values_family_camp=[("", self.NIGHTLY)],
+        )
+
+        result = await LodgingRosterService(repo).list_sessions(2026)
+
+        assert result.sessions[0].housing_synced_at == ""
+
+    @pytest.mark.asyncio
+    async def test_a_person_run_scoped_to_a_family_weekend_does_not_date_an_adult_one(self) -> None:
+        """A Refresh Housing press names a FAMILY weekend (its guard refuses an
+        adult one), so its person-pass row covers that weekend only -- the
+        adult weekend falls through to the last unscoped run."""
+        repo = _repo(fetch_weekend_sessions=[ADULT_SESSION])
+        repo.fetch_session_scoped_sync_ends = self._history_by_service(
+            person_custom_values_family_camp=[("1000001", self.PRESS), ("", self.NIGHTLY)],
+        )
+
+        result = await LodgingRosterService(repo).list_sessions(2026)
+
+        assert result.sessions[0].housing_synced_at == self.NIGHTLY
 
     @pytest.mark.asyncio
     async def test_the_lander_reports_the_same_time_as_the_session_list(self) -> None:
@@ -655,8 +689,8 @@ class TestWeekendHousingFreshness:
 
     @pytest.mark.asyncio
     async def test_the_history_is_read_once_for_the_whole_year(self) -> None:
-        """Year-scoped like the status map beside it, and read ONCE rather
-        than per weekend: it is one small filtered slice of `sync_runs` that
+        """Year-scoped like the status map beside it, and read ONCE PER
+        COVERING JOB rather than per weekend: it is one small filtered slice of `sync_runs` that
         answers every weekend in the year, and a per-weekend read would repeat
         it twelve times to reach twelve rows of the same list.
         """
@@ -664,11 +698,13 @@ class TestWeekendHousingFreshness:
 
         await LodgingRosterService(repo).build_summary(2026)
 
-        assert repo.fetch_session_scoped_sync_ends.await_count == 1
-        assert repo.fetch_session_scoped_sync_ends.await_args[0] == (
-            "household_custom_values_family_camp",
-            2026,
-        )
+        # Once per COVERING JOB, never per weekend: the household pass dates
+        # family weekends and the person pass adult ones (kindred#2760).
+        assert repo.fetch_session_scoped_sync_ends.await_count == 2
+        assert sorted(call.args for call in repo.fetch_session_scoped_sync_ends.await_args_list) == [
+            ("household_custom_values_family_camp", 2026),
+            ("person_custom_values_family_camp", 2026),
+        ]
 
     @pytest.mark.asyncio
     async def test_a_failed_history_read_degrades_to_silence(self) -> None:

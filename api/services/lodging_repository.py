@@ -114,10 +114,11 @@ logger = get_logger(__name__)
 # `lodging_compare_service` already imports `lodging_roster_service`, so the
 # constant cannot live in the one that would then have to import back.
 FAMILY_SESSION_TYPE = "family"
+ADULT_SESSION_TYPE = "adult"
 
 # camp_sessions.session_type values that this surface owns. Summer types
 # (main/embedded/ag/quest/...) belong to the bunking board, not here.
-WEEKEND_SESSION_TYPES = (FAMILY_SESSION_TYPE, "adult")
+WEEKEND_SESSION_TYPES = (FAMILY_SESSION_TYPE, ADULT_SESSION_TYPE)
 
 # lodging_ingest_issues.kind for a cabin string that resolved to no unit. The
 # collection carries seven kinds and this surface reports only this one, so the

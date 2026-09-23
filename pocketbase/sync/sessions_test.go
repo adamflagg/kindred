@@ -638,6 +638,28 @@ func TestGetSessionTypeFromName(t *testing.T) {
 			input:    "Winter Family Camp",
 			expected: "family",
 		},
+		// Adult programs. Every adult session name CampMinder has used since 2022
+		// must classify by NAME ALONE, so a session returned without its Adult
+		// Programs group id still lands in the adult board, journey and the
+		// bounded daily custom-values pass (kindred#2760).
+		{name: "adults unplugged", input: "Adults Unplugged", expected: sessionTypeAdult},
+		{
+			name:     "divorce and discovery",
+			input:    "Divorce & Discovery: A Jewish Healing Retreat",
+			expected: sessionTypeAdult,
+		},
+		{
+			name:     "divorce and discovery full price",
+			input:    "Divorce & Discovery: A Jewish Healing Retreat (full price)",
+			expected: sessionTypeAdult,
+		},
+		{name: "womens weekend", input: "Women's Weekend", expected: sessionTypeAdult},
+		{name: "womens weekend nights", input: "Women's Weekend (3 nights)", expected: sessionTypeAdult},
+		{name: "womens weekend curly apostrophe", input: "Women’s Weekend", expected: sessionTypeAdult},
+		{name: "mens weekend", input: "Men's Weekend", expected: sessionTypeAdult},
+		{name: "mens weekend no apostrophe", input: "Mens Weekend", expected: sessionTypeAdult},
+		{name: "mens weekend curly apostrophe", input: "Men’s Weekend", expected: sessionTypeAdult},
+		{name: "spring service weekend", input: "Spring Service Weekend ($54 fee)", expected: sessionTypeAdult},
 		// Other/unknown sessions
 		{
 			name:     "session 1 is other (not matched)",

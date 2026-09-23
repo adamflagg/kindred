@@ -13,10 +13,11 @@
  * CampMinder compare arriving through the back door, and it belongs to
  * kindred#2478 §5, which is deliberately its own feature.
  *
- * ⛔ NOT RENDERED ON ADULT WEEKENDS. The caller hides it, the same way the
- * `Housing synced` line is hidden: an adult session is not in the family-camp
- * cohort either way, so the chain skips both expensive jobs and spends its
- * whole runtime refreshing nothing.
+ * ⛔ NOT RENDERED ON ADULT WEEKENDS. The caller hides it: the scoped refresh
+ * refuses an adult session (see below), so the chain would spend its whole
+ * runtime refreshing nothing. The `Housing synced` line, by contrast, DOES show
+ * on adult weekends since kindred#2760 -- the nightly PERSON pass covers adult
+ * guests, and the server dates an adult weekend from it.
  *
  * ⚠️ The MECHANISM moved even though the behaviour did not. That reasoning used
  * to rest on `GetFamilyCampSessionCMIDs` filtering `session_type = 'family'`,
