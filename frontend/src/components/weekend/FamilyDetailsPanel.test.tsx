@@ -65,7 +65,7 @@ const personJourney = {
     ],
     counts: { summers: 0, familyWeekends: 0, adultWeekends: 5 },
     isLoading: false,
-    error: null,
+    error: null as Error | null,
   },
 }
 vi.mock('../../hooks/camper/useCamperJourney', () => ({

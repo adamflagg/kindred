@@ -599,12 +599,12 @@ export const queryKeys = {
   currentYearCamperRows: (
     personCmId: number | null,
     year: number,
-    attendees: readonly {
+    attendees: ReadonlyArray<{
       person_cm_id: number
       session_cm_id: number
       attendee_status?: string
       assigned_bunk?: string
-    }[]
+    }>
   ) =>
     [
       'camper-current-year-rows',
