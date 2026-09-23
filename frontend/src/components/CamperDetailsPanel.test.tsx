@@ -560,8 +560,7 @@ describe('CamperDetailsPanel', () => {
   // Owner ruling 2026-09-22 (mockup option "D"): a sibling row's line 2 lists
   // every program the sibling is in, with that session's own cabin RIGHT
   // AFTER it — the cabin moves off line 1 entirely. Mirrors the camper
-  // record's SiblingsPanel line 2 (~SiblingsPanel.tsx:95-120) at the board's
-  // smaller sizes.
+  // record's SiblingsPanel line 2 at the board's smaller sizes.
   describe('Sibling row line 2 — one cabin per program (owner ruling 2026-09-22, option D)', () => {
     const HOUSEHOLD = 777
     const EMMA_H2 = mockPerson({ ...EMMA, household_id: HOUSEHOLD })
@@ -665,8 +664,18 @@ describe('CamperDetailsPanel', () => {
       if (!row) throw new Error('sibling row anchor not found')
 
       const sessionLabel = getSessionDisplayNameFromString('Session 4', 'main')
-      expect(within(row).getByText(sessionLabel)).toBeInTheDocument()
-      expect(within(row).getByText('Bunk 12')).toBeInTheDocument()
+      const sessionEl = within(row).getByText(sessionLabel)
+      const cabinEl = within(row).getByText('Bunk 12')
+      expect(sessionEl).toBeInTheDocument()
+      expect(cabinEl).toBeInTheDocument()
+
+      // M4 (review): an overlong line 2 must end in an ellipsis, not clip
+      // mid-glyph — `text-overflow` does nothing on the flex row itself, so
+      // each text segment needs its own `min-w-0 truncate`.
+      expect(sessionEl.className).toContain('truncate')
+      expect(sessionEl.className).toContain('min-w-0')
+      expect(cabinEl.className).toContain('truncate')
+      expect(cabinEl.className).toContain('min-w-0')
 
       // Line 1 (age • grade) and line 2 (programs) are the two `.mt-0.5`
       // rows under the name; the cabin must be on line 2 only.
@@ -693,9 +702,33 @@ describe('CamperDetailsPanel', () => {
       expect(sessionIdx).toBeGreaterThanOrEqual(0)
       expect(cabinIdx).toBeGreaterThan(sessionIdx)
       expect(familyIdx).toBeGreaterThan(cabinIdx)
+
+      // M5 (review): her cabin must appear exactly once in her row — never
+      // duplicated between line 1 and line 2, and never rendered twice on
+      // line 2 itself.
+      expect(within(row).getAllByText('Bunk 9')).toHaveLength(1)
     })
 
     it('shows a family-camp-only sibling with its program and no cabin', async () => {
+      // M5 (review): a bunk_assignments row exists for Mia even though she is
+      // family-camp-only — `useSiblings` must never look it up for her at
+      // all, because her PRIMARY session is family camp (kindred#2466). If it
+      // did, the mock below would hand back a cabin and the row would show
+      // one.
+      mockGetFullListBunkAssignments.mockImplementation((opts: { filter?: string } = {}) => {
+        const filter = opts.filter ?? ''
+        if (filter.includes('pb-noah-j')) {
+          return Promise.resolve([{ expand: { bunk: { name: 'Bunk 12' } } }])
+        }
+        if (filter.includes('pb-ava')) {
+          return Promise.resolve([{ expand: { bunk: { name: 'Bunk 9' } } }])
+        }
+        if (filter.includes('pb-mia')) {
+          return Promise.resolve([{ expand: { bunk: { name: 'Bunk 99' } } }])
+        }
+        return Promise.resolve([])
+      })
+
       render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} />)
       const nameEl = await screen.findByText('Mia Johnson')
       const row = nameEl.closest('a')
@@ -704,6 +737,13 @@ describe('CamperDetailsPanel', () => {
       const familyLabel = getSessionDisplayNameFromString('Family Camp 2', 'family')
       expect(within(row).getByText(familyLabel)).toBeInTheDocument()
       expect(row.querySelector('.lucide-home')).not.toBeInTheDocument()
+      expect(screen.queryByText('Bunk 99')).not.toBeInTheDocument()
+      // Not merely hidden — the lookup itself must never run for her.
+      expect(
+        mockGetFullListBunkAssignments.mock.calls.some(([opts]: [{ filter?: string }]) =>
+          (opts.filter ?? '').includes('pb-mia')
+        )
+      ).toBe(false)
     })
   })
 

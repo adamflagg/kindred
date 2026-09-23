@@ -343,5 +343,26 @@ describe('CampJourneyTimeline cabin provenance (kindred#2332 pattern)', () => {
 
     const cabinSpan = screen.getByText('G-8B')
     expect(cabinSpan.className).toContain('min-w-0')
+    // `text-overflow` (Tailwind's `truncate`) does nothing on a
+    // `display:flex` container (I1) — the element that holds the TEXT must
+    // carry `truncate` itself and must not itself be a flex container.
+    expect(cabinSpan.className).toContain('truncate')
+    expect(cabinSpan.className.split(' ')).not.toContain('flex')
+  })
+
+  it('lets the session segment shrink too, the same way as the cabin segment', () => {
+    const history: HistoricalRecord[] = [
+      { year: 2024, sessionName: 'Session 3', sessionType: 'main', bunkName: 'G-8B' },
+    ]
+    render(
+      <CampJourneyTimeline
+        history={history}
+        counts={{ summers: 1, familyWeekends: 0, adultWeekends: 0 }}
+        currentYear={2026}
+      />
+    )
+
+    const sessionSpan = screen.getByText('Session 3')
+    expect(sessionSpan.className).toContain('min-w-0')
   })
 })

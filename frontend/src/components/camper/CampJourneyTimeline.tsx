@@ -149,11 +149,22 @@ export function CampJourneyTimeline({
                         <span className="text-muted-foreground flex-shrink-0">·</span>
 
                         {/* Bunk/cabin. `min-w-0` lets this shrink below its
-                            `truncate`d content's intrinsic width — see the
-                            session span above for why. The Home icon stays
-                            fixed (flex-shrink-0); only the name truncates. */}
+                            content's intrinsic width — see the session span
+                            above for why. The Home icon stays fixed
+                            (flex-shrink-0). `truncate` (text-overflow) does
+                            NOTHING on this span itself: it's `display:flex`,
+                            and text-overflow only applies to a block
+                            container. It has to sit on the element that
+                            actually holds the TEXT, below — a plain `<span>`
+                            for the no-tooltip case, or a `<span>` WRAPPING
+                            the Tooltip's children for the tooltip case.
+                            `truncate`/`overflow:hidden` never goes on the
+                            Tooltip trigger BUTTON itself (its `className`
+                            prop) — that would clip the 24px hit area the
+                            button draws with its `after:` pseudo-element
+                            (`HIT_TARGET` in ui/Tooltip.tsx). */}
                         <span
-                          className={`flex min-w-0 items-center gap-1 truncate text-sm ${
+                          className={`flex min-w-0 items-center gap-1 text-sm ${
                             record.bunkName === 'Unassigned'
                               ? 'text-amber-600 italic dark:text-amber-400'
                               : 'text-foreground font-medium'
@@ -172,10 +183,10 @@ export function CampJourneyTimeline({
                               pinOnClick={false}
                               className="decoration-muted-foreground/60 min-w-0 text-left underline decoration-dotted underline-offset-2"
                             >
-                              {record.bunkName}
+                              <span className="block truncate">{record.bunkName}</span>
                             </Tooltip>
                           ) : (
-                            record.bunkName
+                            <span className="min-w-0 truncate">{record.bunkName}</span>
                           )}
                         </span>
                       </>

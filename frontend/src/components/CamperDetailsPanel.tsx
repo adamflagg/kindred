@@ -1069,11 +1069,18 @@ export default function CamperDetailsPanel({
                           the age/grade line above; it moved here so a
                           multi-program sibling doesn't read as if one cabin
                           covered every program. */}
+                      {/* `min-w-0 truncate` on every text segment (M4,
+                          review): `text-overflow` does nothing on this row
+                          itself since it's `display:flex` — an overlong line
+                          needs the actual text-bearing elements to be able to
+                          shrink and ellipsize. Icons and the `•` separators
+                          stay `flex-shrink-0` — only names should ever give
+                          up their space. */}
                       <div className="text-muted-foreground mt-0.5 flex min-w-0 items-center gap-1 overflow-hidden text-[10px] whitespace-nowrap">
                         {sibling.session && (
                           <>
                             <Calendar className="h-2.5 w-2.5 flex-shrink-0" />
-                            <span>
+                            <span className="min-w-0 truncate">
                               {getSessionDisplayNameFromString(
                                 sibling.session.name,
                                 sibling.session.session_type
@@ -1083,15 +1090,17 @@ export default function CamperDetailsPanel({
                         )}
                         {sibling.bunkName && (
                           <>
-                            {sibling.session && <span className="mx-0.5">•</span>}
+                            {sibling.session && <span className="mx-0.5 flex-shrink-0">•</span>}
                             <Home className="h-2.5 w-2.5 flex-shrink-0" />
-                            <span>{sibling.bunkName}</span>
+                            <span className="min-w-0 truncate">{sibling.bunkName}</span>
                           </>
                         )}
                         {sibling.additionalSessions?.map((s, idx) => (
                           <Fragment key={`${s.name}-${String(idx)}`}>
-                            <span className="mx-0.5">•</span>
-                            <span>{getSessionDisplayNameFromString(s.name, s.session_type)}</span>
+                            <span className="mx-0.5 flex-shrink-0">•</span>
+                            <span className="min-w-0 truncate">
+                              {getSessionDisplayNameFromString(s.name, s.session_type)}
+                            </span>
                           </Fragment>
                         ))}
                       </div>
