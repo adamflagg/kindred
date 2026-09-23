@@ -40,6 +40,7 @@ import {
   listAmbiguousSessionIssues,
   listLodgingUnits,
   listUnresolvedAliasIssues,
+  extendAliasForIssue,
   mapUnresolvedAlias,
   reorderLodgingAreas,
   setWeekendSessionStatus,
@@ -129,6 +130,49 @@ describe('listUnresolvedAliasIssues', () => {
     expect(options.filter).toContain('year = 2026')
     expect(options.filter).toContain('kind = "unresolved_alias"')
     expect(options.filter).toContain('is_resolved = false')
+  })
+})
+
+describe('extendAliasForIssue', () => {
+  const OLD = {
+    id: 'alias_old',
+    alias_string: 'Cabin A',
+    valid_from_year: 0,
+    valid_to_year: 2024,
+  } as LodgingAliasRecord
+
+  // The queue row's name already has an alias with the right units for other
+  // years. Widening that one keeps a single alias per name, where mapping
+  // would add a second row for the same string and units.
+  it('widens the existing alias, then points the queue row at it', async () => {
+    await extendAliasForIssue('q1', OLD, { from: 0, to: 0 })
+
+    expect(collection).toHaveBeenCalledWith('lodging_unit_aliases')
+    expect(update).toHaveBeenNthCalledWith(1, 'alias_old', {
+      valid_from_year: 0,
+      valid_to_year: 0,
+    })
+    expect(update).toHaveBeenNthCalledWith(2, 'q1', {
+      is_resolved: true,
+      resolved_alias: 'alias_old',
+    })
+    expect(create).not.toHaveBeenCalled()
+  })
+
+  // Same reasoning as mapUnresolvedAlias's rollback: a widened alias with the
+  // row still open is a change nobody can see was made.
+  it('puts the old years back when the queue update fails', async () => {
+    update
+      .mockResolvedValueOnce({ id: 'alias_old' })
+      .mockRejectedValueOnce(new Error('queue write failed'))
+
+    await expect(extendAliasForIssue('q1', OLD, { from: 0, to: 0 })).rejects.toThrow(
+      'queue write failed'
+    )
+    expect(update).toHaveBeenLastCalledWith('alias_old', {
+      valid_from_year: 0,
+      valid_to_year: 2024,
+    })
   })
 })
 

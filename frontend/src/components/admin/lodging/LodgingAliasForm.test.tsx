@@ -23,7 +23,7 @@ vi.mock('react-hot-toast', () => ({
   default: { success: vi.fn(), error: (...args: unknown[]) => toastError(...args) },
 }))
 
-import type { LodgingUnitRecord } from '../../../types/lodging'
+import type { LodgingAliasRecord, LodgingUnitRecord } from '../../../types/lodging'
 import { LodgingAliasForm } from './LodgingAliasForm'
 
 function fixtureUnit(over: Partial<LodgingUnitRecord> & { id: string }): LodgingUnitRecord {
@@ -77,8 +77,12 @@ beforeEach(() => {
   toastError.mockReset()
 })
 
+const openPicker = (user: ReturnType<typeof userEvent.setup>) =>
+  user.click(screen.getByRole('searchbox', { name: 'Search units' }))
+
 async function fillMinimalAlias(user: ReturnType<typeof userEvent.setup>) {
   await user.type(screen.getByLabelText('Cabin string'), 'Cabin A - Whole')
+  await openPicker(user)
   await user.click(screen.getByRole('checkbox', { name: 'Cabin A' }))
   await user.click(screen.getByRole('button', { name: /Set a year window/ }))
 }
@@ -86,7 +90,7 @@ async function fillMinimalAlias(user: ReturnType<typeof userEvent.setup>) {
 describe('LodgingAliasForm — year window', () => {
   it('refuses a window whose first year is after its last', async () => {
     const user = userEvent.setup()
-    render(<LodgingAliasForm units={UNITS} onSaved={vi.fn()} onCancel={vi.fn()} />)
+    render(<LodgingAliasForm units={UNITS} aliases={[]} onSaved={vi.fn()} onCancel={vi.fn()} />)
 
     await fillMinimalAlias(user)
     await user.type(screen.getByLabelText('Valid from year'), '2026')
@@ -103,7 +107,7 @@ describe('LodgingAliasForm — year window', () => {
     // A guard that returns without clearing isSaving would disable the submit
     // button permanently and strand the staffer on a form they cannot fix.
     const user = userEvent.setup()
-    render(<LodgingAliasForm units={UNITS} onSaved={vi.fn()} onCancel={vi.fn()} />)
+    render(<LodgingAliasForm units={UNITS} aliases={[]} onSaved={vi.fn()} onCancel={vi.fn()} />)
 
     await fillMinimalAlias(user)
     await user.type(screen.getByLabelText('Valid from year'), '2026')
@@ -118,7 +122,7 @@ describe('LodgingAliasForm — year window', () => {
 
   it('accepts a single-year window, where first and last are the same', async () => {
     const user = userEvent.setup()
-    render(<LodgingAliasForm units={UNITS} onSaved={vi.fn()} onCancel={vi.fn()} />)
+    render(<LodgingAliasForm units={UNITS} aliases={[]} onSaved={vi.fn()} onCancel={vi.fn()} />)
 
     await fillMinimalAlias(user)
     await user.type(screen.getByLabelText('Valid from year'), '2025')
@@ -137,7 +141,7 @@ describe('LodgingAliasForm — year window', () => {
 
   it('accepts an open-ended window, since 0 is how unbounded is stored', async () => {
     const user = userEvent.setup()
-    render(<LodgingAliasForm units={UNITS} onSaved={vi.fn()} onCancel={vi.fn()} />)
+    render(<LodgingAliasForm units={UNITS} aliases={[]} onSaved={vi.fn()} onCancel={vi.fn()} />)
 
     await fillMinimalAlias(user)
     await user.type(screen.getByLabelText('Valid from year'), '2025')
@@ -165,8 +169,10 @@ describe('LodgingAliasForm — which units may be members', () => {
   // merge. A container is not a room, and an inactive unit is one staff
   // retired — an alias pointing at either resolves history onto a place that
   // is not bookable.
-  it('offers only active, non-container units', () => {
-    render(<LodgingAliasForm units={MIXED} onSaved={vi.fn()} onCancel={vi.fn()} />)
+  it('offers only active, non-container units', async () => {
+    const user = userEvent.setup()
+    render(<LodgingAliasForm units={MIXED} aliases={[]} onSaved={vi.fn()} onCancel={vi.fn()} />)
+    await openPicker(user)
 
     expect(screen.getByRole('checkbox', { name: 'Cabin A' })).toBeInTheDocument()
     expect(screen.queryByRole('checkbox', { name: 'North Lodge' })).not.toBeInTheDocument()
@@ -176,7 +182,8 @@ describe('LodgingAliasForm — which units may be members', () => {
   // An alias edited years later may already name a unit that has since been
   // retired or turned into a container. Hiding it would silently drop that
   // member on the next save, which is a worse outcome than showing it.
-  it('still shows an existing member that has since been retired', () => {
+  it('still shows an existing member that has since been retired', async () => {
+    const user = userEvent.setup()
     const alias = {
       id: 'a1',
       alias_string: 'Old Hall - Whole',
@@ -186,7 +193,16 @@ describe('LodgingAliasForm — which units may be members', () => {
       source_field: '',
       notes: '',
     }
-    render(<LodgingAliasForm units={MIXED} alias={alias} onSaved={vi.fn()} onCancel={vi.fn()} />)
+    render(
+      <LodgingAliasForm
+        units={MIXED}
+        aliases={[alias]}
+        alias={alias}
+        onSaved={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    )
+    await openPicker(user)
 
     expect(screen.getByRole('checkbox', { name: 'Old Hall' })).toBeChecked()
   })
@@ -208,7 +224,8 @@ describe('LodgingAliasForm — which units may be members', () => {
   // sharing a visible name is not enough on its own: the ACCESSIBLE name has
   // to differ too, or a screen-reader user hears two identical options and
   // can recreate the exact merge this fix exists to prevent.
-  it('gives a same-named prior-season member a distinguishable accessible name', () => {
+  it('gives a same-named prior-season member a distinguishable accessible name', async () => {
+    const user = userEvent.setup()
     const priorSeasonUnit = fixtureUnit({ id: 'u_2026', name: 'Cabin A' })
     const alias = {
       id: 'a1',
@@ -222,7 +239,16 @@ describe('LodgingAliasForm — which units may be members', () => {
     }
     // `units` is this season's list ONLY -- it does not contain u_2026, but
     // does contain u1, ALSO named "Cabin A".
-    render(<LodgingAliasForm units={UNITS} alias={alias} onSaved={vi.fn()} onCancel={vi.fn()} />)
+    render(
+      <LodgingAliasForm
+        units={UNITS}
+        aliases={[alias]}
+        alias={alias}
+        onSaved={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    )
+    await openPicker(user)
 
     const priorSeasonBox = screen.getByRole('checkbox', { name: 'Cabin A (different season)' })
     const currentSeasonBox = screen.getByRole('checkbox', { name: 'Cabin A' })
@@ -248,7 +274,16 @@ describe('LodgingAliasForm — which units may be members', () => {
       notes: '',
       expand: { member_units: [priorSeasonUnit] },
     }
-    render(<LodgingAliasForm units={UNITS} alias={alias} onSaved={vi.fn()} onCancel={vi.fn()} />)
+    render(
+      <LodgingAliasForm
+        units={UNITS}
+        aliases={[alias]}
+        alias={alias}
+        onSaved={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    )
+    await openPicker(user)
 
     await user.click(screen.getByRole('checkbox', { name: 'Cabin A (different season)' }))
     await user.click(screen.getByRole('checkbox', { name: 'Cabin A' }))
@@ -259,5 +294,92 @@ describe('LodgingAliasForm — which units may be members', () => {
     })
     const [, payload] = updateLodgingAlias.mock.calls[0] as [string, { member_units: string[] }]
     expect(payload.member_units).toEqual(['u1'])
+  })
+})
+
+describe('LodgingAliasForm — a name that already has an alias', () => {
+  // The resolver ignores case and outer spaces, and resolves NEITHER of two
+  // aliases for one name whose years overlap. The unique index compares raw
+  // text, so this form is where staff find out before saving (aliasRules.ts).
+  function existing(over: Partial<LodgingAliasRecord> = {}): LodgingAliasRecord {
+    return {
+      id: 'ex1',
+      alias_string: 'Cabin A - Whole',
+      member_units: ['u1'],
+      valid_from_year: 0,
+      valid_to_year: 0,
+      source_field: '',
+      notes: '',
+      expand: { member_units: [UNITS[0]] },
+      ...over,
+    } as LodgingAliasRecord
+  }
+
+  it('refuses a name that differs only in case and spaces when the years overlap', async () => {
+    const user = userEvent.setup()
+    render(
+      <LodgingAliasForm units={UNITS} aliases={[existing()]} onSaved={vi.fn()} onCancel={vi.fn()} />
+    )
+
+    await user.type(screen.getByLabelText('Cabin string'), '  cabin a - WHOLE ')
+    await openPicker(user)
+    await user.click(screen.getByRole('checkbox', { name: 'Cabin A' }))
+
+    expect(screen.getByText(/already has an alias for these years/i)).toBeInTheDocument()
+    expect(screen.getByLabelText('Cabin string')).toHaveAttribute('aria-invalid', 'true')
+    expect(screen.getByRole('button', { name: 'Create alias' })).toBeDisabled()
+  })
+
+  it('allows the same name for separate years, which is how a rename is recorded', async () => {
+    const user = userEvent.setup()
+    render(
+      <LodgingAliasForm
+        units={UNITS}
+        aliases={[existing({ valid_to_year: 2024 })]}
+        onSaved={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    )
+
+    await fillMinimalAlias(user)
+    await user.type(screen.getByLabelText('Valid from year'), '2025')
+
+    expect(screen.getByText(/same name, different years/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Create alias' })).toBeEnabled()
+  })
+
+  it('does not flag the alias being edited against itself', () => {
+    const self = existing()
+    render(
+      <LodgingAliasForm
+        units={UNITS}
+        aliases={[self]}
+        alias={self}
+        onSaved={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    )
+
+    expect(screen.queryByText(/already has an alias/i)).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Save alias' })).toBeEnabled()
+  })
+
+  it('offers to open the alias it clashes with', async () => {
+    const onEditAlias = vi.fn()
+    const user = userEvent.setup()
+    const clash = existing()
+    render(
+      <LodgingAliasForm
+        units={UNITS}
+        aliases={[clash]}
+        onSaved={vi.fn()}
+        onCancel={vi.fn()}
+        onEditAlias={onEditAlias}
+      />
+    )
+
+    await user.type(screen.getByLabelText('Cabin string'), 'Cabin A - Whole')
+    await user.click(screen.getByRole('button', { name: 'Edit that alias' }))
+    expect(onEditAlias).toHaveBeenCalledWith(clash)
   })
 })

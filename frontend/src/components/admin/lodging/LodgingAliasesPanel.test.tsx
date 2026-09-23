@@ -383,3 +383,41 @@ describe('LodgingAliasesPanel — units query state', () => {
     expect(screen.queryByRole('button', { name: 'Save alias' })).not.toBeInTheDocument()
   })
 })
+
+describe('LodgingAliasesPanel — finding an alias', () => {
+  // ~190 rows: the filter is how staff check a name before creating it.
+  it('filters the table by cabin string or unit name', async () => {
+    const user = userEvent.setup()
+    render(<LodgingAliasesPanel />, { wrapper })
+    await waitFor(() => {
+      expect(screen.getByText('North Lodge - Whole')).toBeInTheDocument()
+    })
+
+    await user.type(screen.getByRole('searchbox', { name: 'Filter aliases' }), 'legacy')
+    expect(screen.getByText('CabinA (legacy label)')).toBeInTheDocument()
+    expect(screen.queryByText('North Lodge - Whole')).not.toBeInTheDocument()
+    expect(screen.getByText('1 of 3')).toBeInTheDocument()
+
+    await user.clear(screen.getByRole('searchbox', { name: 'Filter aliases' }))
+    // A unit name matches too: the string and the unit often differ.
+    await user.type(screen.getByRole('searchbox', { name: 'Filter aliases' }), 'lodge back')
+    expect(screen.getByText('North Lodge - Whole')).toBeInTheDocument()
+    expect(screen.queryByText('Old Hall')).not.toBeInTheDocument()
+  })
+
+  it('opens the alias a new one clashes with', async () => {
+    const user = userEvent.setup()
+    render(<LodgingAliasesPanel />, { wrapper })
+    await waitFor(() => {
+      expect(screen.getByText('North Lodge - Whole')).toBeInTheDocument()
+    })
+
+    await user.click(screen.getByRole('button', { name: 'New alias' }))
+    await user.type(screen.getByLabelText('Cabin string'), 'old hall')
+    expect(screen.getByText(/already has an alias for these years/i)).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Edit that alias' }))
+    expect(screen.getByLabelText('Cabin string')).toHaveValue('Old Hall')
+    expect(screen.getByRole('button', { name: 'Save alias' })).toBeInTheDocument()
+  })
+})

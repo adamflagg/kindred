@@ -10,45 +10,30 @@
  * member_units is multi-valued: one member is an atomic room, two or more
  * denote a merge.
  */
-import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Plus } from 'lucide-react'
+import { useQueryClient } from '@tanstack/react-query'
+import { Plus, Search } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 
 import { useCurrentYear } from '../../../hooks/useCurrentYear'
+import { useLodgingAliases } from '../../../hooks/useLodgingAliases'
 import { useLodgingUnits } from '../../../hooks/useLodgingUnits'
-import { deleteLodgingAlias, listLodgingAliases } from '../../../services/lodgingCrud'
+import { deleteLodgingAlias } from '../../../services/lodgingCrud'
 import type { LodgingAliasRecord } from '../../../types/lodging'
-import {
-  invalidateLodgingRegistryQueries,
-  queryKeys,
-  userDataOptions,
-} from '../../../utils/queryKeys'
+import { invalidateLodgingRegistryQueries } from '../../../utils/queryKeys'
 import { QueryGuard } from '../../QueryGuard'
-import { ACTION_LINK, BUTTON_PRIMARY, HEADER_ROW } from './lodgingStyles'
+import { ACTION_LINK, BUTTON_PRIMARY, FIELD_INLINE, HEADER_ROW } from './lodgingStyles'
+import { formatAliasYears } from './aliasRules'
 import { LodgingAliasForm } from './LodgingAliasForm'
-
-/** Stored 0 means "unbounded" — PocketBase never stores NULL in a number. */
-function yearWindow(alias: LodgingAliasRecord): string {
-  const from = alias.valid_from_year > 0 ? alias.valid_from_year : null
-  const to = alias.valid_to_year > 0 ? alias.valid_to_year : null
-  if (from === null && to === null) return 'All years'
-  if (from !== null && to === null) return `${String(from)} onwards`
-  if (from === null && to !== null) return `Up to ${String(to)}`
-  return `${String(from)}–${String(to)}`
-}
 
 export function LodgingAliasesPanel() {
   const queryClient = useQueryClient()
   const { currentYear } = useCurrentYear()
   const [editing, setEditing] = useState<LodgingAliasRecord | 'new' | null>(null)
+  const [filter, setFilter] = useState('')
   const formRef = useRef<HTMLDivElement>(null)
 
-  const aliasesQuery = useQuery({
-    queryKey: queryKeys.lodgingAliases(),
-    ...userDataOptions,
-    queryFn: listLodgingAliases,
-  })
+  const aliasesQuery = useLodgingAliases()
   // The member-unit picker offers THIS season's units — a staffer mapping a
   // cabin string today is mapping it to a building that exists now, not to
   // whichever season the alias was originally seeded against (see the
@@ -168,7 +153,9 @@ export function LodgingAliasesPanel() {
             <LodgingAliasForm
               key={editing === 'new' ? 'new' : editing.id}
               units={unitsQuery.items}
+              aliases={aliasesQuery.data ?? []}
               alias={editing === 'new' ? undefined : editing}
+              onEditAlias={setEditing}
               onSaved={refresh}
               onCancel={() => {
                 setEditing(null)
@@ -192,6 +179,24 @@ export function LodgingAliasesPanel() {
             <p className="text-muted-foreground py-12 text-center text-sm">No aliases yet.</p>
           ) : (
             <div className="card-lodge overflow-x-auto p-4">
+              <div className="mb-3 flex items-center gap-3">
+                <div className="relative w-full max-w-xs">
+                  <Search className="text-muted-foreground absolute top-2 left-2.5 h-4 w-4" />
+                  <input
+                    type="search"
+                    aria-label="Filter aliases"
+                    value={filter}
+                    placeholder="Filter by cabin string or unit…"
+                    onChange={(e) => {
+                      setFilter(e.target.value)
+                    }}
+                    className={`${FIELD_INLINE} w-full pl-8`}
+                  />
+                </div>
+                <span className="text-muted-foreground text-xs">
+                  {String(visibleAliases(aliases, filter).length)} of {String(aliases.length)}
+                </span>
+              </div>
               <table className="w-full text-left text-sm">
                 <thead>
                   <tr className={HEADER_ROW}>
@@ -203,7 +208,7 @@ export function LodgingAliasesPanel() {
                   </tr>
                 </thead>
                 <tbody>
-                  {aliases.map((alias) => {
+                  {visibleAliases(aliases, filter).map((alias) => {
                     const members = alias.expand?.member_units ?? []
                     return (
                       <tr key={alias.id} className="border-border/50 border-b">
@@ -216,7 +221,9 @@ export function LodgingAliasesPanel() {
                               : 'Single unit'}
                           </p>
                         </td>
-                        <td className="py-1.5">{yearWindow(alias)}</td>
+                        <td className="py-1.5">
+                          {formatAliasYears(alias.valid_from_year, alias.valid_to_year)}
+                        </td>
                         <td className="text-muted-foreground py-1.5 text-xs">
                           {alias.source_field}
                         </td>
@@ -250,5 +257,16 @@ export function LodgingAliasesPanel() {
         }
       </QueryGuard>
     </div>
+  )
+}
+
+/** Matches the cabin string or any member unit's name: the two often differ. */
+function visibleAliases(aliases: LodgingAliasRecord[], filter: string): LodgingAliasRecord[] {
+  const needle = filter.trim().toLowerCase()
+  if (needle === '') return aliases
+  return aliases.filter(
+    (alias) =>
+      alias.alias_string.toLowerCase().includes(needle) ||
+      (alias.expand?.member_units ?? []).some((unit) => unit.name.toLowerCase().includes(needle))
   )
 }

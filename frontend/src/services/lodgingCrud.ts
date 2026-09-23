@@ -341,6 +341,41 @@ export async function mapUnresolvedAlias(
 }
 
 /**
+ * Resolve a queue row by widening an alias that already names the same units
+ * for other years, instead of adding a second alias for the same string.
+ *
+ * Same write order and rollback as mapUnresolvedAlias: the alias changes
+ * first, and if pointing the queue row at it fails, its old years go back.
+ * `years` comes from `extendWindowToCover`, which stops short of any other
+ * alias for the name; the server's guardAliasOverlap refuses it otherwise.
+ */
+export async function extendAliasForIssue(
+  queueId: string,
+  alias: LodgingAliasRecord,
+  years: { from: number; to: number }
+): Promise<void> {
+  await pb.collection(ALIASES).update(alias.id, {
+    valid_from_year: years.from,
+    valid_to_year: years.to,
+  })
+  try {
+    await pb.collection(INGEST_ISSUES).update(queueId, {
+      is_resolved: true,
+      resolved_alias: alias.id,
+    })
+  } catch (error) {
+    await pb
+      .collection(ALIASES)
+      .update(alias.id, {
+        valid_from_year: alias.valid_from_year,
+        valid_to_year: alias.valid_to_year,
+      })
+      .catch(() => undefined)
+    throw error
+  }
+}
+
+/**
  * The open cabin-weekend attribution queue.
  *
  * Filtered to `kind = "ambiguous_session"` — a household or person CampMinder
