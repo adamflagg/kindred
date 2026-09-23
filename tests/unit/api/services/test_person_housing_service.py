@@ -144,3 +144,52 @@ class TestPersonHousingService:
         assert result == PersonHousingResponse(person_cm_id=PERSON)
         repo.fetch_all_units.assert_not_awaited()
         repo.fetch_unit_aliases.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_a_renamed_unit_publishes_todays_name_and_the_raw_string(self) -> None:
+        """Owner ruling 2026-09-22 (evening): the camper journey follows the
+        kindred#2332 pattern on adult rows too -- `cabin_name` is the unit's
+        PRESENT-DAY registry name, resolved through the same alias layer the
+        household journey uses, and `cabin_name_raw` keeps the string staff
+        actually typed that season. This reverses the same-day morning ruling
+        that had `cabin_name` publish the raw string unchanged."""
+        repo = _repo(
+            fetch_person_cabin_values=[_cabin_row(2022, "Old Meadow 1", "2022-09-14T12:00:00+00:00")],
+            fetch_person_adult_attendees=[_attendee_row(2022, WW, "2022-10-02 07:00:00.000Z")],
+            fetch_all_units=[
+                SimpleNamespace(id="u1", code="meadow-1", name="Meadow House 1", year=2026, parent_unit="")
+            ],
+            fetch_unit_aliases=[
+                SimpleNamespace(alias_string="Old Meadow 1", member_units=["u1"], valid_from_year=0, valid_to_year=0)
+            ],
+        )
+
+        result = await PersonHousingService(repo).build_person_housing(PERSON)
+
+        assert result == PersonHousingResponse(
+            person_cm_id=PERSON,
+            weekends=[
+                PersonHousingWeekend(
+                    year=2022, session_cm_id=WW, cabin_name="Meadow House 1", cabin_name_raw="Old Meadow 1"
+                )
+            ],
+        )
+
+    @pytest.mark.asyncio
+    async def test_an_unresolvable_value_publishes_the_trimmed_raw_string(self) -> None:
+        """No unit or alias answers to the string, so `display_name` renders it
+        unchanged (per its own docstring) and the SERVICE, not the rule, does
+        the trimming -- `cabin_name_raw` keeps the untouched value."""
+        repo = _repo(
+            fetch_person_cabin_values=[_cabin_row(2024, "  River F  ", "2024-10-10T18:00:00+00:00")],
+            fetch_person_adult_attendees=[_attendee_row(2024, WW, "2024-10-20 07:00:00.000Z")],
+        )
+
+        result = await PersonHousingService(repo).build_person_housing(PERSON)
+
+        assert result == PersonHousingResponse(
+            person_cm_id=PERSON,
+            weekends=[
+                PersonHousingWeekend(year=2024, session_cm_id=WW, cabin_name="River F", cabin_name_raw="  River F  ")
+            ],
+        )

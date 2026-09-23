@@ -1415,9 +1415,13 @@ class HouseholdJourneyResponse(BaseModel):
 class PersonHousingWeekend(BaseModel):
     """One adult weekend and the cabin attributed to it (adult camper journey).
 
-    `cabin_name` is the string staff typed THAT year, outer whitespace trimmed
-    -- never today's unit name (owner ruling 2026-09-22). `cabin_name_raw` is
-    the untouched value. A weekend with no attributed cabin is absent, not blank.
+    `cabin_name` is TODAY's registry name for the unit, resolved through the
+    same alias layer as `HouseholdJourneyYear.cabin_name` (kindred#2332) --
+    owner ruling 2026-09-22 (evening), reversing an earlier same-day ruling
+    that had this field publish the as-typed string unchanged. When the
+    string resolves to nothing, `cabin_name` falls back to it, outer
+    whitespace trimmed. `cabin_name_raw` is the untouched value staff typed
+    that year. A weekend with no attributed cabin is absent, not blank.
     """
 
     year: int = 0

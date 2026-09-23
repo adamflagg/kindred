@@ -91,7 +91,13 @@ class PersonHousingService:
                 PersonHousingWeekend(
                     year=cabin.year,
                     session_cm_id=cabin.session_cm_id,
-                    cabin_name=cabin.cabin_name,
+                    # kindred#2332 pattern (owner ruling 2026-09-22, evening):
+                    # today's registry name, falling back to the as-typed
+                    # string (trimmed) when nothing resolves. Same resolver
+                    # `attribute_adult_cabins` used above to collapse
+                    # same-place values -- one answer to "which cabin is
+                    # this string", not a second one.
+                    cabin_name=resolver.display_name(cabin.cabin_name_raw, cabin.year).strip(),
                     cabin_name_raw=cabin.cabin_name_raw,
                 )
                 for cabin in attributed
