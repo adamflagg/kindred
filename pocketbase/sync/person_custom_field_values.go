@@ -20,16 +20,16 @@ const serviceNamePersonCustomValues = "person_custom_values"
 // PersonCustomFieldValuesSync handles syncing custom field values for persons from CampMinder.
 // The unrestricted instance (Session=DefaultSession) is ON-DEMAND -- weekly cron + manual runs
 // only -- because a year-wide sweep is 1 API call per person. A second, scoped instance of this
-// same type IS part of the daily cron (kindred#2482): scoped to family-camp attendees, it stays
-// cheap enough to run daily. See orchestrator.go's getDailySyncJobs and the
+// same type IS part of the daily cron (kindred#2482): scoped to family-camp and adult-program
+// attendees, it stays cheap enough to run daily. See orchestrator.go's getDailySyncJobs and the
 // "person_custom_values_family_camp" registration.
 type PersonCustomFieldValuesSync struct {
 	BaseSyncService
 	Session     string                 // Session filter: "all", "1", "2", "2a", "3", "4", etc.
 	rateLimiter *ratelimit.RateLimiter // Rate limiter for API calls
 
-	// Scope selects the cohort. ScopeFamilyCamp uses the bounded daily family-camp cohort
-	// (any attendee status, via SessionResolver.GetFamilyCampPersonIDsAnyStatus) instead of
+	// Scope selects the cohort. ScopeFamilyCamp uses the bounded daily cohort -- family-camp
+	// AND adult-program attendees, any status, via SessionResolver.GetWeekendPersonIDsAnyStatus -- instead of
 	// Session or the year-wide fallback; ScopeAll leaves the existing behavior untouched.
 	// Set only on the dedicated scoped instance registered for the daily cron (kindred#2482).
 	Scope Scope
@@ -301,12 +301,12 @@ func (s *PersonCustomFieldValuesSync) getPersonIDsToSync(year int) ([]int, error
 			return scoped, nil
 		}
 
-		personIDs, err := resolver.GetFamilyCampPersonIDsAnyStatus(year)
+		personIDs, err := resolver.GetWeekendPersonIDsAnyStatus(year)
 		if err != nil {
 			return nil, err
 		}
 
-		s.DebugLog("Resolved family-camp bounded cohort to person IDs",
+		s.DebugLog("Resolved family-camp + adult-program bounded cohort to person IDs",
 			"count", len(personIDs),
 			"year", year)
 

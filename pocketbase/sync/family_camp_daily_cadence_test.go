@@ -206,12 +206,12 @@ func TestGetFamilyCampIDsAnyStatus_SpansWeekendsExcludesOtherSessions(t *testing
 
 	resolver := NewSessionResolver(app)
 
-	personIDs, err := resolver.GetFamilyCampPersonIDsAnyStatus(year)
+	personIDs, err := resolver.GetWeekendPersonIDsAnyStatus(year)
 	if err != nil {
-		t.Fatalf("GetFamilyCampPersonIDsAnyStatus: %v", err)
+		t.Fatalf("GetWeekendPersonIDsAnyStatus: %v", err)
 	}
 	if !intsEqual(personIDs, []int{801, 802, 804}) {
-		t.Errorf("GetFamilyCampPersonIDsAnyStatus = %v, want [801 802 804] "+
+		t.Errorf("GetWeekendPersonIDsAnyStatus = %v, want [801 802 804] "+
 			"(803 is summer-only and must be excluded)", personIDs)
 	}
 
@@ -221,6 +221,68 @@ func TestGetFamilyCampIDsAnyStatus_SpansWeekendsExcludesOtherSessions(t *testing
 	}
 	if !intsEqual(householdIDs, []int{701, 702, 704}) {
 		t.Errorf("GetFamilyCampHouseholdIDsAnyStatus = %v, want [701 702 704]", householdIDs)
+	}
+}
+
+// TestWeekendPersonIDsAnyStatus_IncludesAdultPrograms pins the owner ruling of
+// 2026-09-23: the bounded daily PERSON pass also covers adult-program attendees
+// (Women's/Men's Weekend, ...), any status, because an adult weekend's cabin is a
+// PERSON custom field (212997/223823) and staff may type it into CampMinder while
+// placing guests in October -- a weekly refresh would leave the board up to a week
+// behind. The HOUSEHOLD pass deliberately stays family-camp only: adult weekends
+// carry no household-grain lodging data, and adult-cohort household answers are
+// written by other household members about other weekends.
+func TestWeekendPersonIDsAnyStatus_IncludesAdultPrograms(t *testing.T) {
+	t.Parallel()
+	app := cadenceTestApp(t)
+	const year = 2026
+
+	fc := cadenceAddSession(t, app, 1001, sessionTypeFamily, year)
+	ww := cadenceAddSession(t, app, 1101, sessionTypeAdult, year)
+	summerSession := cadenceAddSession(t, app, 2001, sessionTypeMain, year)
+
+	hhFC := cadenceAddHousehold(t, app, 701, year)
+	hhGuest := cadenceAddHousehold(t, app, 705, year)
+	hhCancelledGuest := cadenceAddHousehold(t, app, 706, year)
+	hhSummerOnly := cadenceAddHousehold(t, app, 703, year)
+
+	pFC := cadenceAddPerson(t, app, 801, 701, year, hhFC)
+	pGuest := cadenceAddPerson(t, app, 805, 705, year, hhGuest)
+	pCancelledGuest := cadenceAddPerson(t, app, 806, 706, year, hhCancelledGuest)
+	pSummerOnly := cadenceAddPerson(t, app, 803, 703, year, hhSummerOnly)
+
+	cadenceAddAttendee(t, app, pFC, fc, "enrolled", 801, statusIDActiveEnrolled, year)
+	cadenceAddAttendee(t, app, pGuest, ww, "enrolled", 805, statusIDActiveEnrolled, year)
+	cadenceAddAttendee(t, app, pCancelledGuest, ww, "cancelled", 806, 32, year)
+	cadenceAddAttendee(t, app, pSummerOnly, summerSession, "enrolled", 803, statusIDActiveEnrolled, year)
+
+	resolver := NewSessionResolver(app)
+
+	personIDs, err := resolver.GetWeekendPersonIDsAnyStatus(year)
+	if err != nil {
+		t.Fatalf("GetWeekendPersonIDsAnyStatus: %v", err)
+	}
+	if !intsEqual(personIDs, []int{801, 805, 806}) {
+		t.Errorf("GetWeekendPersonIDsAnyStatus = %v, want [801 805 806] "+
+			"(adult guests of any status included; 803 is summer-only)", personIDs)
+	}
+
+	householdIDs, err := resolver.GetFamilyCampHouseholdIDsAnyStatus(year)
+	if err != nil {
+		t.Fatalf("GetFamilyCampHouseholdIDsAnyStatus: %v", err)
+	}
+	if !intsEqual(householdIDs, []int{701}) {
+		t.Errorf("GetFamilyCampHouseholdIDsAnyStatus = %v, want [701] "+
+			"(the household pass stays family-camp only)", householdIDs)
+	}
+
+	// The Refresh Housing guard still accepts family-camp weekends only.
+	familyCMIDs, err := resolver.GetFamilyCampSessionCMIDs(year)
+	if err != nil {
+		t.Fatalf("GetFamilyCampSessionCMIDs: %v", err)
+	}
+	if !intsEqual(familyCMIDs, []int{1001}) {
+		t.Errorf("GetFamilyCampSessionCMIDs = %v, want [1001]", familyCMIDs)
 	}
 }
 
@@ -256,6 +318,40 @@ func TestPersonCustomFieldValuesSync_ScopeFamilyCamp(t *testing.T) {
 	if !intsEqual(ids, []int{801}) {
 		t.Errorf("getPersonIDsToSync (bounded) = %v, want [801] "+
 			"(cancelled family-camp attendee, any status)", ids)
+	}
+}
+
+// TestPersonCustomFieldValuesSync_ScopeFamilyCampCoversAdultGuests is the wiring
+// half of TestWeekendPersonIDsAnyStatus_IncludesAdultPrograms: the registered
+// daily instance (ScopeFamilyCamp, no Session) must actually fetch an adult
+// guest's person custom values, where the adult-weekend cabin lives.
+func TestPersonCustomFieldValuesSync_ScopeFamilyCampCoversAdultGuests(t *testing.T) {
+	t.Parallel()
+	app := cadenceTestApp(t)
+	const year = 2026
+
+	fc := cadenceAddSession(t, app, 1001, sessionTypeFamily, year)
+	ww := cadenceAddSession(t, app, 1101, sessionTypeAdult, year)
+
+	hhFC := cadenceAddHousehold(t, app, 701, year)
+	hhGuest := cadenceAddHousehold(t, app, 705, year)
+
+	pFC := cadenceAddPerson(t, app, 801, 701, year, hhFC)
+	pGuest := cadenceAddPerson(t, app, 805, 705, year, hhGuest)
+
+	cadenceAddAttendee(t, app, pFC, fc, "enrolled", 801, statusIDActiveEnrolled, year)
+	cadenceAddAttendee(t, app, pGuest, ww, "enrolled", 805, statusIDActiveEnrolled, year)
+
+	sync := NewPersonCustomFieldValuesSync(app, nil)
+	sync.Scope = ScopeFamilyCamp
+
+	ids, err := sync.getPersonIDsToSync(year)
+	if err != nil {
+		t.Fatalf("getPersonIDsToSync: %v", err)
+	}
+	if !intsEqual(ids, []int{801, 805}) {
+		t.Errorf("getPersonIDsToSync (bounded) = %v, want [801 805] "+
+			"(the adult-weekend guest's cabin is a person custom field)", ids)
 	}
 }
 
