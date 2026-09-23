@@ -83,6 +83,9 @@ const SYNC_DEPENDENT_PREFIXES = [
   'camper-journey',
   'person-records',
   'person-housing',
+  // The camper record's current-year rows (CR #4, kindred#2753) — reads live
+  // attendees/bunks, so a completed sync must invalidate it too.
+  'camper-current-year-rows',
   // Bunks (Tier 1)
   'bunks',
   'bunk-assignments',

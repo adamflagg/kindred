@@ -7,6 +7,7 @@ import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { isAtCampSessionType } from '../../utils/sessionTypePredicates'
 import { filterEnrollmentsByStatus, toDisplayList } from '../../utils/enrollmentFilter'
+import { queryKeys } from '../../utils/queryKeys'
 import { fetchParentMainSessions } from './fetchCamperJourney'
 import { byYearThenChronological } from './journeyOrder'
 import { useCamperJourney } from './useCamperJourney'
@@ -96,23 +97,20 @@ export function useCamperHistory(
   const journey = useCamperJourney(personCmId, currentYear)
 
   // Current year from live attendees, with AG collapse + relabel (unchanged).
+  // The key is built from the SAME resolved list the queryFn uses (CR #4,
+  // kindred#2753) — the ids, statuses and bunk ids of every current-year
+  // attendee that will actually be rendered, not object identity or
+  // `.length`, which can hold steady while a non-primary attendee's
+  // session/status/bunk changes underneath it.
+  const currentYearCampers = resolveCurrentYearCampers(allAttendees ?? [], camper)
   const {
     data: currentRows = [],
     isLoading,
     error,
   } = useQuery({
-    queryKey: [
-      'camper-current-year-rows',
-      personCmId,
-      currentYear,
-      camper?.expand?.session,
-      camper?.expand?.assigned_bunk,
-      allAttendees?.length,
-    ],
+    queryKey: queryKeys.currentYearCamperRows(personCmId, currentYear, currentYearCampers),
     queryFn: async () => {
-      const currentCampers = collapseAgIntoMain(
-        resolveCurrentYearCampers(allAttendees ?? [], camper)
-      )
+      const currentCampers = collapseAgIntoMain(currentYearCampers)
       const agPairs: Array<{ year: number; cmId: number }> = []
       for (const c of currentCampers) {
         const s = c.expand?.session

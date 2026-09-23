@@ -40,6 +40,12 @@ function currentCamper(opts: {
     person_cm_id: 12887873,
     attendee_status: 'enrolled',
     session_cm_id: opts.sessionCmId,
+    // CR #4 fixture fidelity: production Camper rows always carry a
+    // top-level `assigned_bunk` PB relation id (useCamperEnrollment.ts:156,
+    // `assignedBunk?.id ?? ''`) alongside the display name under `expand`.
+    // The stale-key test needs this field to actually MOVE alongside the
+    // bunk change it's pinning.
+    assigned_bunk: opts.bunkName ? `bunk-${opts.bunkName}` : '',
     ...(opts.householdId !== undefined ? { household_id: opts.householdId } : {}),
     expand: {
       session: {
@@ -186,6 +192,39 @@ describe('useCamperHistory', () => {
     const current = result.current.camperHistory.filter((r) => r.year === YEAR)
     expect(current).toHaveLength(1)
     expect(current[0]).toMatchObject({ sessionType: 'main', sessionName: 'Session 100' })
+  })
+
+  // CR #4 (kindred#2753): the old key was `['camper-current-year-rows',
+  // personCmId, currentYear, camper?.expand?.session, camper?.expand?.assigned_bunk,
+  // allAttendees?.length]` — a SECONDARY attendee's status/session/bunk
+  // change never moved the key at all (only its own object refs and
+  // `.length` could), so a real-world change like this one would leave the
+  // cached rows stale until something unrelated forced a refetch.
+  it("re-runs when a secondary attendee's status/bunk changes even though the count and primary camper stay the same", async () => {
+    const primary = currentCamper({ sessionCmId: 500, sessionType: 'main', bunkName: 'Cabin 5' })
+    const secondaryBefore = currentCamper({ sessionCmId: 600, sessionType: 'main' })
+    const { result, rerender } = renderHook(
+      ({ attendees }: { attendees: Camper[] }) =>
+        useCamperHistory(12887873, YEAR, primary, attendees),
+      { wrapper: createWrapper(), initialProps: { attendees: [primary, secondaryBefore] } }
+    )
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    const row600Before = result.current.camperHistory.find((r) => r.sessionName === 'Session 600')
+    expect(row600Before?.bunkName).toBe('Unassigned')
+
+    // Same length, same primary camper — only the secondary attendee's own
+    // bunk changed.
+    const secondaryAfter = currentCamper({
+      sessionCmId: 600,
+      sessionType: 'main',
+      bunkName: 'Cabin 9',
+    })
+    rerender({ attendees: [primary, secondaryAfter] })
+
+    await waitFor(() => {
+      const row600 = result.current.camperHistory.find((r) => r.sessionName === 'Session 600')
+      expect(row600?.bunkName).toBe('Cabin 9')
+    })
   })
 
   it('relabels a current-year AG-only camper to its parent main (never session_type ag)', async () => {

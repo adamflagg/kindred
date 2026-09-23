@@ -44,6 +44,11 @@ describe('invalidateSyncData', () => {
       'person-records',
       'person-housing',
       'household-journey',
+      // CR #4 (kindred#2753): the camper record's current-year rows read live
+      // attendees/bunks, so a completed sync must invalidate this prefix too —
+      // it was never on this list, so a sync never refreshed what it had just
+      // written here.
+      'camper-current-year-rows',
       'bunks',
       'bunk-assignments',
       'bunk-requests',

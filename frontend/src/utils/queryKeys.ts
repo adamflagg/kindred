@@ -588,6 +588,33 @@ export const queryKeys = {
   /** The shared journey feed's result (useCamperJourney). */
   camperJourney: (personCmId: number, year: number) =>
     ['camper-journey', personCmId, year] as const,
+  /**
+   * The camper record's CURRENT-year rows (useCamperHistory). Keyed on the
+   * ids, statuses and bunk ids of the resolved current-year attendees —
+   * never on object identity or `.length` (CR #4, kindred#2753): a
+   * secondary attendee's session/status/bunk can change while the array
+   * stays the same length and the primary camper's own object is untouched,
+   * and neither of those would move the old key at all.
+   */
+  currentYearCamperRows: (
+    personCmId: number | null,
+    year: number,
+    attendees: readonly {
+      person_cm_id: number
+      session_cm_id: number
+      attendee_status?: string
+      assigned_bunk?: string
+    }[]
+  ) =>
+    [
+      'camper-current-year-rows',
+      personCmId,
+      year,
+      attendees.map(
+        (a) =>
+          `${a.person_cm_id}:${a.session_cm_id}:${a.attendee_status ?? ''}:${a.assigned_bunk ?? ''}`
+      ),
+    ] as const,
 
   // Lodging registry (Family Camp admin settings). Year-scoped since
   // migration 1500000141: a unit outlives any one season, but its ROW does
