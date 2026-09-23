@@ -320,6 +320,7 @@ describe('family-camp housing (kindred#2466)', () => {
     year?: number
     housing?: 'placed' | 'not_placed' | 'unknown'
     cabin_name?: string
+    cabin_name_raw?: string
     housing_session_cm_id?: number | null
   }
 
@@ -376,10 +377,44 @@ describe('family-camp housing (kindred#2466)', () => {
     expect(fc5?.bunkName).toBeUndefined()
   })
 
-  it('declines when housing_session_cm_id is null (household attended more than one weekend that year)', async () => {
+  // RULED CHANGE (owner, 2026-09-22 late): this test used to pin "no label"
+  // for a placed year whose cabin is not pinned to one weekend — a household
+  // that attended 2+ weekends that season, where kindred#2461 declines to say
+  // which weekend CampMinder's one per-year value describes. The owner: "just
+  // show the same cabin for all… it's not helpful to show nothing; no one
+  // will care if historical data is wrong." So EVERY family weekend that
+  // season now carries the season's cabin.
+  it('labels EVERY family weekend of a placed season whose cabin is not pinned to one weekend', async () => {
+    mockAttendeesGetFullList.mockResolvedValue([
+      attendee(2024, 900, 'family', 'Family Camp 2: Keshet Weekend'),
+      attendee(2024, 901, 'family', 'Family Camp 5'),
+    ])
+    mockAssignmentsGetFullList.mockResolvedValue([])
+    const { rows: out } = await fetchCamperJourney(PERSON, CURRENT_YEAR, {
+      familyHousingYears: [
+        familyHousingYear({ housing_session_cm_id: null, cabin_name_raw: 'Old Cedar' }),
+      ],
+    })
+    const keshet = out.find((r) => r.sessionName === 'Family Camp 2: Keshet Weekend')
+    const fc5 = out.find((r) => r.sessionName === 'Family Camp 5')
+    // The provenance tooltip travels the same way as on a pinned year.
+    expect(keshet).toMatchObject({ bunkName: 'Cedar Lodge', bunkNameRecorded: 'Old Cedar' })
+    expect(fc5).toMatchObject({ bunkName: 'Cedar Lodge', bunkNameRecorded: 'Old Cedar' })
+  })
+
+  it('still labels nothing for an unpinned season with no cabin', async () => {
     mockAttendeesGetFullList.mockResolvedValue([
       attendee(2024, 900, 'family', 'Family Camp 2: Keshet Weekend'),
     ])
+    mockAssignmentsGetFullList.mockResolvedValue([])
+    const { rows: out } = await fetchCamperJourney(PERSON, CURRENT_YEAR, {
+      familyHousingYears: [familyHousingYear({ housing_session_cm_id: null, cabin_name: '  ' })],
+    })
+    expect(out[0]?.bunkName).toBeUndefined()
+  })
+
+  it('never lets an unpinned season label a non-family row', async () => {
+    mockAttendeesGetFullList.mockResolvedValue([attendee(2024, 500, 'main', 'Session 3')])
     mockAssignmentsGetFullList.mockResolvedValue([])
     const { rows: out } = await fetchCamperJourney(PERSON, CURRENT_YEAR, {
       familyHousingYears: [familyHousingYear({ housing_session_cm_id: null })],
@@ -572,12 +607,39 @@ describe("family camp, today's name with recorded provenance, and as a parent", 
     expect(out.familyWeekends).toBe(1)
   })
 
+  // A PINNED year keeps its behavior: only the pinned weekend is labeled.
+  // (This test used `housing_session_cm_id: null` to mean "elsewhere"; with
+  // the ruled change below, null now labels every weekend, so "elsewhere" is
+  // spelled as an actual different weekend.)
   it('shows a parent weekend with no cabin when the year pins the cabin elsewhere', async () => {
     const { rows } = await fetchCamperJourney(PERSON, CURRENT_YEAR, {
-      familyHousingYears: [householdYear({ housing_session_cm_id: null })],
+      familyHousingYears: [householdYear({ housing_session_cm_id: 901 })],
       viewerIsAdult: true,
     })
     expect(rows[0]?.bunkName).toBeUndefined()
+  })
+
+  // RULED CHANGE (owner, 2026-09-22 late): an unpinned placed season — the
+  // household attended 2+ weekends — used to leave every parent weekend
+  // unlabeled. "Just show the same cabin for all": each weekend now carries
+  // the season's cabin, with the same provenance tooltip.
+  it('labels EVERY parent weekend of a placed season whose cabin is not pinned', async () => {
+    const { rows } = await fetchCamperJourney(PERSON, CURRENT_YEAR, {
+      familyHousingYears: [
+        householdYear({
+          housing_session_cm_id: null,
+          sessions: [
+            { session_cm_id: 900, name: 'Family Camp 2: Keshet Weekend', start_date: '2024-05-24' },
+            { session_cm_id: 901, name: 'Family Camp 5', start_date: '2024-08-16' },
+          ],
+        }),
+      ],
+      viewerIsAdult: true,
+    })
+    expect(rows).toHaveLength(2)
+    for (const row of rows) {
+      expect(row).toMatchObject({ bunkName: 'Meadow House 1', bunkNameRecorded: 'Old Meadow 1' })
+    }
   })
 
   it('adds no row and counts nothing for a paper-registration year (no sessions)', async () => {
