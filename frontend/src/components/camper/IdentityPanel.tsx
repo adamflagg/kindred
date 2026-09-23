@@ -165,7 +165,7 @@ export function IdentityPanel({
                 icon={School}
                 label="School"
                 value={camper.school ?? 'Not provided'}
-                subValue={formatGradeName(camper.grade_name) ?? undefined}
+                subValue={formatGradeName(camper.grade_name)}
                 cohortKind="school"
                 cohortCount={cohortContext ? (cohorts?.school?.count ?? 0) : 0}
                 onOpenCohort={() => drill.open('school')}
@@ -214,7 +214,7 @@ interface CohortFieldProps {
   icon: typeof School
   label: string
   value: string
-  subValue?: string
+  subValue?: string | null
   cohortKind: CohortKind
   cohortCount: number
   onOpenCohort: () => void

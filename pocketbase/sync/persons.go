@@ -849,13 +849,6 @@ func (s *PersonsSync) getInt(data map[string]any, key string, defaultValue int) 
 	return defaultValue
 }
 
-func (s *PersonsSync) getFloat(data map[string]any, key string, defaultValue float64) float64 {
-	if val, ok := data[key].(float64); ok {
-		return val
-	}
-	return defaultValue
-}
-
 // isAllUppercase checks if a string contains only uppercase letters (ignoring non-letters)
 func (s *PersonsSync) isAllUppercase(name string) bool {
 	hasLetter := false

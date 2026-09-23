@@ -175,11 +175,11 @@ func TestProcessPerson_GradeCorrectionToPreKOverwrites(t *testing.T) {
 
 	s := NewPersonsSync(app, nil)
 	personData := gradePersonData(map[string]any{"CampGradeID": float64(0), "CampGradeName": "Pre-K"})
-	if err := s.processPerson(
+	if procErr := s.processPerson(
 		personData, true, map[int]*core.Record{12345: existing},
 		map[string]string{}, map[int]string{}, 2026,
-	); err != nil {
-		t.Fatalf("processPerson: %v", err)
+	); procErr != nil {
+		t.Fatalf("processPerson: %v", procErr)
 	}
 
 	got, err := app.FindFirstRecordByFilter("persons", "cm_id = 12345")
