@@ -958,6 +958,36 @@ describe('CamperDetailsPanel', () => {
 
     // kindred#2779: the sibling line reads `grade_name`, so a preschooler
     // shows as one rather than as nothing.
+    // kindred#2779 (CodeRabbit on #2782): both headers read `grade_name`, and
+    // the school still shows when there is no grade -- "@" only joins the two.
+    describe('header grade', () => {
+      const withGrade = (gradeName: string) =>
+        mockPerson({ ...EMMA_H, grade: 0, grade_name: gradeName, school: 'Riverside Elementary' })
+
+      it.each([false, true])(
+        'shows a kindergartner as "K @ school" (embedded=%s)',
+        async (embedded) => {
+          mockGetListPersons.mockResolvedValue({ items: [withGrade('K')], totalItems: 1 })
+          mockGetFullListPersons.mockResolvedValue([withGrade('K')])
+          render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} embedded={embedded} />)
+          expect(await screen.findByText('K @ Riverside Elementary')).toBeInTheDocument()
+          expect(screen.queryByText(/0th/)).not.toBeInTheDocument()
+        }
+      )
+
+      it.each([false, true])(
+        'shows the school alone without a grade (embedded=%s)',
+        async (embedded) => {
+          mockGetListPersons.mockResolvedValue({ items: [withGrade('')], totalItems: 1 })
+          mockGetFullListPersons.mockResolvedValue([withGrade('')])
+          render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} embedded={embedded} />)
+          expect(await screen.findByText('Riverside Elementary')).toBeInTheDocument()
+          expect(screen.queryByText(/@ Riverside/)).not.toBeInTheDocument()
+          expect(screen.queryByText(/0th/)).not.toBeInTheDocument()
+        }
+      )
+    })
+
     it("shows a preschool sibling's grade name", async () => {
       mockGetFullListPersons.mockImplementation((opts: { filter?: string } = {}) => {
         const filter = opts.filter ?? ''

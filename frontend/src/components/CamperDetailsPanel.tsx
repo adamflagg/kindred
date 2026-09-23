@@ -24,7 +24,7 @@ import {
   getGenderBadgeClasses,
   formatGenderShort,
 } from '../utils/genderUtils'
-import { formatGradeOrdinal } from '../utils/gradeUtils'
+import { formatGradeName } from '../utils/gradeUtils'
 import { formatAge } from '../utils/age'
 import {
   getSessionDisplayNameFromString,
@@ -1443,6 +1443,12 @@ export default function CamperDetailsPanel({
     </div>
   )
 
+  // Both headers' "5th Grade @ school" line (kindred#2779): the grade as
+  // CampMinder names it, the school alone when there is no grade.
+  const gradeAndSchool = [formatGradeName(camper.grade_name), camper.school]
+    .filter(Boolean)
+    .join(' @ ')
+
   // Embedded mode
   if (embedded) {
     return (
@@ -1500,10 +1506,7 @@ export default function CamperDetailsPanel({
                 </span>
               </div>
               <div className="text-forest-100 mt-0.5 flex items-center gap-2 text-xs">
-                <span>
-                  {formatGradeOrdinal(camper.grade)}
-                  {camper.school ? ` @ ${camper.school}` : ''}
-                </span>
+                <span>{gradeAndSchool}</span>
               </div>
             </div>
           </div>
@@ -1588,10 +1591,7 @@ export default function CamperDetailsPanel({
                     <span>{formatAge(getDisplayAgeForYear(camper, currentYear) ?? 0)}</span>
                   </div>
                   <div className="text-forest-100 mt-0.5 flex items-center gap-2 text-sm">
-                    <span>
-                      {formatGradeOrdinal(camper.grade)}
-                      {camper.school ? ` @ ${camper.school}` : ''}
-                    </span>
+                    <span>{gradeAndSchool}</span>
                   </div>
 
                   <div className="mt-2">
