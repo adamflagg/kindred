@@ -30,7 +30,11 @@ import {
   getSessionDisplayNameFromString,
   getSessionShortName as getSessionShortNameUtil,
 } from '../utils/sessionDisplay'
-import { buildSummerSessionTypeFilter, isFamilySessionType } from '../utils/sessionTypePredicates'
+import {
+  buildSummerSessionTypeFilter,
+  isFamilySessionType,
+  isAdultSessionType,
+} from '../utils/sessionTypePredicates'
 import type {
   PersonsResponse,
   AttendeesResponse,
@@ -56,7 +60,7 @@ import { useCamperJourney } from '../hooks/camper/useCamperJourney'
 import { useSiblings } from '../hooks/camper/useSiblings'
 import { journeyCountLabel } from '../utils/journeyCountLabel'
 import { collapseAgEnrollments, buildAgParentPairs } from '../hooks/camper/agCollapse'
-import type { HistoricalRecord } from '../hooks/camper/types'
+import type { HistoricalRecord, SiblingWithEnrollment } from '../hooks/camper/types'
 import { useOverlayEscape } from '../hooks/useOverlayEscape'
 import { useYear } from '../hooks/useCurrentYear'
 import { getDisplayAgeForYear } from '../utils/displayAge'
@@ -202,6 +206,53 @@ function SectionHeader({
       />
     </button>
   )
+}
+
+/**
+ * True for a session type germane to BUNKING on the board's Siblings line 2
+ * (owner ruling 2026-09-22, second visual pass): main, embedded, ag, quest,
+ * tli, scit — everything except family and adult. Family weekends are "not
+ * germane for bunking" and stay visible only on the full camper record
+ * (`components/camper/SiblingsPanel.tsx`, which does NOT filter this way —
+ * its line 2 lists every program).
+ */
+function isBoardGermaneSessionType(sessionType: string | null | undefined): boolean {
+  return !isFamilySessionType(sessionType) && !isAdultSessionType(sessionType)
+}
+
+/** One program entry on a sibling row's line 2, after the board's germane filter. */
+interface SiblingLine2Entry {
+  key: string
+  name: string
+  sessionType: string
+  bunkName?: string | null | undefined
+}
+
+/**
+ * The programs a sibling row's line 2 may show, filtered to
+ * `isBoardGermaneSessionType`. Returns `[]` for a sibling whose only
+ * program(s) are family/adult (a family-camp-only preschooler, or a parent)
+ * — the caller omits line 2 entirely rather than rendering an empty one.
+ * The primary session's cabin (`sibling.bunkName`) travels with it only when
+ * the primary itself is germane; `useSiblings` never looks up a cabin for a
+ * family/adult primary session at all (kindred#2466).
+ */
+function siblingLine2Entries(sibling: SiblingWithEnrollment): SiblingLine2Entry[] {
+  const entries: SiblingLine2Entry[] = []
+  if (sibling.session && isBoardGermaneSessionType(sibling.session.session_type)) {
+    entries.push({
+      key: 'primary',
+      name: sibling.session.name,
+      sessionType: sibling.session.session_type,
+      bunkName: sibling.bunkName,
+    })
+  }
+  sibling.additionalSessions?.forEach((s, idx) => {
+    if (isBoardGermaneSessionType(s.session_type)) {
+      entries.push({ key: `additional-${String(idx)}`, name: s.name, sessionType: s.session_type })
+    }
+  })
+  return entries
 }
 
 export default function CamperDetailsPanel({
@@ -1058,14 +1109,17 @@ export default function CamperDetailsPanel({
                           </>
                         )}
                       </div>
-                      {/* Owner ruling 2026-09-22 (mockup option "D"): every
+                      {/* Owner ruling 2026-09-22 (mockup option "D", refined
+                          in the second visual pass): every SUMMER OR TEEN
                           program the sibling is in, each session's cabin
                           right after it — mirrors the camper record's
                           SiblingsPanel line 2 (SiblingsPanel.tsx:89-114) at
-                          the board's smaller sizes. The cabin used to live on
-                          the age/grade line above; it moved here so a
-                          multi-program sibling doesn't read as if one cabin
-                          covered every program. */}
+                          the board's smaller sizes. Family and adult
+                          programs are filtered out here (they are "not
+                          germane for bunking") and stay visible only on the
+                          full camper record, which does not filter. A
+                          sibling with no summer/teen program at all omits
+                          line 2 entirely rather than rendering an empty one. */}
                       {/* `min-w-0 truncate` on every text segment (M4,
                           review): `text-overflow` does nothing on this row
                           itself since it's `display:flex` — an overlong line
@@ -1073,34 +1127,30 @@ export default function CamperDetailsPanel({
                           shrink and ellipsize. Icons and the `•` separators
                           stay `flex-shrink-0` — only names should ever give
                           up their space. */}
-                      <div className="text-muted-foreground mt-0.5 flex min-w-0 items-center gap-1 overflow-hidden text-[10px] whitespace-nowrap">
-                        {sibling.session && (
-                          <>
-                            <Calendar className="h-2.5 w-2.5 flex-shrink-0" />
-                            <span className="min-w-0 truncate">
-                              {getSessionDisplayNameFromString(
-                                sibling.session.name,
-                                sibling.session.session_type
-                              )}
-                            </span>
-                          </>
-                        )}
-                        {sibling.bunkName && (
-                          <>
-                            {sibling.session && <span className="mx-0.5 flex-shrink-0">•</span>}
-                            <Home className="h-2.5 w-2.5 flex-shrink-0" />
-                            <span className="min-w-0 truncate">{sibling.bunkName}</span>
-                          </>
-                        )}
-                        {sibling.additionalSessions?.map((s, idx) => (
-                          <Fragment key={`${s.name}-${String(idx)}`}>
-                            <span className="mx-0.5 flex-shrink-0">•</span>
-                            <span className="min-w-0 truncate">
-                              {getSessionDisplayNameFromString(s.name, s.session_type)}
-                            </span>
-                          </Fragment>
-                        ))}
-                      </div>
+                      {(() => {
+                        const entries = siblingLine2Entries(sibling)
+                        if (entries.length === 0) return null
+                        return (
+                          <div className="text-muted-foreground mt-0.5 flex min-w-0 items-center gap-1 overflow-hidden text-[10px] whitespace-nowrap">
+                            {entries.map((entry, idx) => (
+                              <Fragment key={entry.key}>
+                                {idx > 0 && <span className="mx-0.5 flex-shrink-0">•</span>}
+                                <Calendar className="h-2.5 w-2.5 flex-shrink-0" />
+                                <span className="min-w-0 truncate">
+                                  {getSessionDisplayNameFromString(entry.name, entry.sessionType)}
+                                </span>
+                                {entry.bunkName && (
+                                  <>
+                                    <span className="mx-0.5 flex-shrink-0">•</span>
+                                    <Home className="h-2.5 w-2.5 flex-shrink-0" />
+                                    <span className="min-w-0 truncate">{entry.bunkName}</span>
+                                  </>
+                                )}
+                              </Fragment>
+                            ))}
+                          </div>
+                        )
+                      })()}
                     </div>
                     <ChevronRight className="text-muted-foreground group-hover:text-forest-600 h-4 w-4 flex-shrink-0 transition-colors" />
                   </Link>

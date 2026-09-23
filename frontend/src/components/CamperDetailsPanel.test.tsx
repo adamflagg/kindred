@@ -555,6 +555,20 @@ describe('CamperDetailsPanel', () => {
       await screen.findByText('Sam Johnson')
       expect(screen.queryByText('0th')).not.toBeInTheDocument()
     })
+
+    // Owner ruling 2026-09-22 (second visual pass): the board's line 2 shows
+    // summer/teen programs only (main, embedded, ag, quest, tli, scit).
+    // Family weekends are "not germane for bunking" here and stay visible
+    // only on the full camper record. Sam has no summer/teen program at all,
+    // so line 2 is omitted entirely -- not merely his cabin.
+    it('renders with no line 2 for a family-camp-only sibling', async () => {
+      render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} />)
+      const nameEl = await screen.findByText('Sam Johnson')
+      const row = nameEl.closest('a')
+      if (!row) throw new Error('sibling row anchor not found')
+      const lines = row.querySelectorAll('[class*="mt-0.5"]')
+      expect(lines).toHaveLength(1)
+    })
   })
 
   // Owner ruling 2026-09-22 (mockup option "D"): a sibling row's line 2 lists
@@ -685,7 +699,11 @@ describe('CamperDetailsPanel', () => {
       expect(lines[1]?.textContent ?? '').toContain('Bunk 12')
     })
 
-    it('shows a summer + family-camp sibling as session, then cabin, then Family Camp 1', async () => {
+    // Ruled change 2026-09-22 (second visual pass): the board's line 2 now
+    // shows summer/teen programs only, so Ava's Family Camp 1 no longer
+    // appears here at all -- it previously did, as this test's original name
+    // said. Her summer session and its cabin are unaffected.
+    it('shows a summer + family-camp sibling as session then cabin only -- family camp does not appear on the board', async () => {
       render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} />)
       const nameEl = await screen.findByText('Ava Johnson')
       const row = nameEl.closest('a')
@@ -696,12 +714,10 @@ describe('CamperDetailsPanel', () => {
       const lines = row.querySelectorAll('[class*="mt-0.5"]')
       const line2Text = lines[lines.length - 1]?.textContent ?? ''
 
-      const sessionIdx = line2Text.indexOf(sessionLabel)
-      const cabinIdx = line2Text.indexOf('Bunk 9')
-      const familyIdx = line2Text.indexOf(familyLabel)
-      expect(sessionIdx).toBeGreaterThanOrEqual(0)
-      expect(cabinIdx).toBeGreaterThan(sessionIdx)
-      expect(familyIdx).toBeGreaterThan(cabinIdx)
+      expect(line2Text).toContain(sessionLabel)
+      expect(line2Text).toContain('Bunk 9')
+      expect(line2Text).not.toContain(familyLabel)
+      expect(within(row).queryByText(familyLabel)).not.toBeInTheDocument()
 
       // M5 (review): her cabin must appear exactly once in her row — never
       // duplicated between line 1 and line 2, and never rendered twice on
@@ -709,7 +725,11 @@ describe('CamperDetailsPanel', () => {
       expect(within(row).getAllByText('Bunk 9')).toHaveLength(1)
     })
 
-    it('shows a family-camp-only sibling with its program and no cabin', async () => {
+    // Ruled change 2026-09-22 (second visual pass): a family-camp-only
+    // sibling now renders NO line 2 at all -- previously (as this test's
+    // original name said) her family-camp program still showed with no
+    // cabin. Family weekends are "not germane for bunking" on the board.
+    it('renders no line 2 at all for a family-camp-only sibling', async () => {
       // M5 (review): a bunk_assignments row exists for Mia even though she is
       // family-camp-only — `useSiblings` must never look it up for her at
       // all, because her PRIMARY session is family camp (kindred#2466). If it
@@ -735,9 +755,13 @@ describe('CamperDetailsPanel', () => {
       if (!row) throw new Error('sibling row anchor not found')
 
       const familyLabel = getSessionDisplayNameFromString('Family Camp 2', 'family')
-      expect(within(row).getByText(familyLabel)).toBeInTheDocument()
+      expect(within(row).queryByText(familyLabel)).not.toBeInTheDocument()
+      expect(row.querySelector('.lucide-calendar')).not.toBeInTheDocument()
       expect(row.querySelector('.lucide-home')).not.toBeInTheDocument()
       expect(screen.queryByText('Bunk 99')).not.toBeInTheDocument()
+      const lines = row.querySelectorAll('[class*="mt-0.5"]')
+      expect(lines).toHaveLength(1)
+
       // Not merely hidden — the lookup itself must never run for her.
       const calledForMia = mockGetFullListBunkAssignments.mock.calls.some((call: unknown[]) => {
         const opts = call[0] as { filter?: string } | undefined
