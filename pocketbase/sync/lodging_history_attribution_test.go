@@ -657,6 +657,15 @@ func TestHistoryAttributionSingleWeekendPartyIsUnchanged(t *testing.T) {
 	if units := rows[0].GetStringSlice("units"); len(units) != 1 || units[0] != f.unitB {
 		t.Errorf("units = %v, want the current value's [%s]", units, f.unitB)
 	}
+
+	// For one weekend the history rule would reduce to the same answer, so the
+	// placement alone cannot show the party kept its old path. The plan can.
+	dry := runLodgingSync(t, app, 2026, true)
+	for _, p := range dry.DryRunPlan {
+		if p.HouseholdCMID == 9102 && p.FromHistory {
+			t.Error("a single-weekend party went through the history rule")
+		}
+	}
 }
 
 // Prior years are untouched: the rule is for 2026 onward, and a 2025
@@ -735,41 +744,68 @@ func TestHistoryAttributionDryRunWritesAndClosesNothing(t *testing.T) {
 	}
 }
 
-// An alias-mapping click replays every party that wrote the string. It must
-// attribute a multi-weekend party the way the sync does -- otherwise the click
-// records a fresh ambiguity and re-opens the row history already closed.
+// An alias-mapping click replays every party that wrote the string, and must
+// attribute a multi-weekend party the way the sync does. The case where the two
+// could differ: CampMinder bumped last_updated without changing the value. On
+// its own the current value's clock then puts the knowledge floor after W1
+// started; the history's genesis row shows the same cabin was in place before
+// W1. A replay that did not read history would place W2 alone.
 func TestHistoryAttributionReplayFanOutAgreesWithTheSync(t *testing.T) {
 	t.Parallel()
 	app := newSyncTestApp(t)
 	f := seedHistoryHousehold(t, app)
-	seedHistoryAtoB(t, app, f)
-	closedID := seedIssue(t, app, map[string]any{
+	// The B alias does not exist yet, so the sync cannot place anything.
+	aliasB, err := app.FindFirstRecordByFilter("lodging_unit_aliases", "alias_string = {:a}",
+		map[string]any{"a": histCabinB})
+	if err != nil {
+		t.Fatalf("find alias: %v", err)
+	}
+	if err := app.Delete(aliasB); err != nil {
+		t.Fatalf("delete alias: %v", err)
+	}
+	addValueHistoryRow(t, app, cmIDFamilyCampCabin, histHousehold, 0,
+		"", histCabinB, "2026-05-10T16:00:00.0000000+00:00", "2026-05-11 10:00:00.000Z", true)
+	addHouseholdValue(t, app, f.household, f.cabinDef, histCabinB, "2026-06-01T16:00:00.0000000+00:00", 2026)
+	openID := seedIssue(t, app, map[string]any{
 		"kind": issueAmbiguousSession, "raw_value": histCabinB,
 		"source_field": fieldNameFamilyCampCabin, "year": 2026,
 		"household_cm_id": histHousehold, "is_resolved": false, "occurrences": 1,
 	})
-	runLodgingSync(t, app, 2026, false)
 
-	aliasRow := seedIssue(t, app, map[string]any{
-		"kind": issueUnresolvedAlias, "raw_value": histCabinB,
-		"source_field": fieldNameFamilyCampCabin, "year": 2026,
-		"is_resolved": true, "resolved_alias": "", "occurrences": 1,
-	})
-	if _, err := ReplayPartylessIssue(app, aliasRow); err != nil {
+	runLodgingSync(t, app, 2026, false)
+	if got := placementsBySession(t, app); len(got) != 0 {
+		t.Fatalf("placed %v before the alias existed", got)
+	}
+	unresolved := issuesOfKind(t, app, issueUnresolvedAlias)
+	if len(unresolved) != 1 {
+		t.Fatalf("unresolved_alias rows = %d, want 1 for the unmapped string", len(unresolved))
+	}
+
+	// Staff map the string, which ticks the row and replays it.
+	newAlias := addAlias(t, app, histCabinB, []string{f.unitB}, 0, 0)
+	unresolved[0].Set("is_resolved", true)
+	unresolved[0].Set("resolved_alias", newAlias)
+	if err := app.Save(unresolved[0]); err != nil {
+		t.Fatalf("tick alias row: %v", err)
+	}
+	if _, err := ReplayPartylessIssue(app, unresolved[0].Id); err != nil {
 		t.Fatalf("ReplayPartylessIssue: %v", err)
 	}
 
-	row, err := app.FindRecordById("lodging_ingest_issues", closedID)
+	got := placementsBySession(t, app)
+	assertPlaced(t, got, f.w1, f.unitB, "W1 after replay")
+	assertPlaced(t, got, f.w2, f.unitB, "W2 after replay")
+	if n := len(issuesOfKind(t, app, issueAmbiguousSession)); n != 1 {
+		t.Errorf("ambiguous_session rows = %d, want no new one from the replay", n)
+	}
+
+	// A click never closes a queue row; the next sync closes what it answered.
+	runLodgingSync(t, app, 2026, false)
+	row, err := app.FindRecordById("lodging_ingest_issues", openID)
 	if err != nil {
 		t.Fatalf("reload: %v", err)
 	}
 	if !row.GetBool("is_resolved") {
-		t.Error("the replay re-opened the ambiguous row history had closed")
+		t.Error("the sync after the replay left the answered row open")
 	}
-	if n := len(issuesOfKind(t, app, issueAmbiguousSession)); n != 1 {
-		t.Errorf("ambiguous_session rows = %d, want no new one from the replay", n)
-	}
-	got := placementsBySession(t, app)
-	assertPlaced(t, got, f.w1, f.unitA, "W1 after replay")
-	assertPlaced(t, got, f.w2, f.unitB, "W2 after replay")
 }

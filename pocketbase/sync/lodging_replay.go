@@ -341,10 +341,11 @@ func newReplayScope(app core.App, year int) (*LodgingAssignmentsSync, error) {
 	if s.confirmed, err = loadConfirmedSessions(app, year); err != nil {
 		return nil, err
 	}
-	// The same reasoning holds for captured value history (kindred#2784): a
-	// click that attributed a multi-weekend party differently from the sync
-	// would record a fresh ambiguity, and reopenRecorded would re-open the row
-	// the sync had closed.
+	// The same reasoning holds for captured value history (kindred#2784). A
+	// replay without it still attributes a multi-weekend party, but from the
+	// current value's own clock alone, whose knowledge floor can sit after a
+	// weekend the history covers (a bare last_updated bump does exactly that):
+	// the click would place fewer weekends than the next sync.
 	if err = s.loadHistory(year); err != nil {
 		return nil, err
 	}
