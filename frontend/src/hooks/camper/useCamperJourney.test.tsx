@@ -110,6 +110,14 @@ describe('personJourneyFacts', () => {
       isAdult: false,
     })
   })
+
+  // M2 (review, kindred#2753): the mutation `>= ADULT_AGE` -> `>= 18`
+  // survived every existing test because none used an age between 18 and
+  // 21. This pins the raised cutoff (owner ruling 2026-09-22: 18 -> 21) so
+  // a revert to 18 breaks a test here, not just prod.
+  it('is not an adult at 19.11 — below the raised 21 cutoff', () => {
+    expect(personJourneyFacts([personRow(YEAR, { age: 19.11 })], YEAR).isAdult).toBe(false)
+  })
 })
 
 describe('useCamperJourney', () => {
