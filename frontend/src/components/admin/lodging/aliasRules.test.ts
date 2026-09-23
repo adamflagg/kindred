@@ -152,4 +152,22 @@ describe('extendWindowToCover', () => {
     const other = alias('a2', 'Cabin A', 2021, 0)
     expect(extendWindowToCover(old, [old, other], 2026)).toBeNull()
   })
+
+  it('keeps the start when widening forward', () => {
+    const old = alias('a1', 'Cabin A', 2024, 2025)
+    expect(extendWindowToCover(old, [old], 2027)).toEqual({ from: 2024, to: 0 })
+  })
+
+  it('keeps the end when widening backward', () => {
+    const old = alias('a1', 'Cabin A', 2028, 2030)
+    expect(extendWindowToCover(old, [old], 2026)).toEqual({ from: 0, to: 2030 })
+  })
+
+  it('is null when another alias sits between the window and the year', () => {
+    // Widening a1 up to 2026 would run straight through a2 — the server refuses
+    // that, so offering it would give staff a button that always fails.
+    const old = alias('a1', 'Cabin A', 2020, 2022)
+    const between = alias('a2', 'Cabin A', 2023, 2024)
+    expect(extendWindowToCover(old, [old, between], 2026)).toBeNull()
+  })
 })

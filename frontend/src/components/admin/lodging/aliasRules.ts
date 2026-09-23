@@ -106,9 +106,10 @@ export function freeWindowAround(
 }
 
 /**
- * The window `alias` needs to also cover `year`, widened only as far as the
- * free gap reaches so it cannot run into another alias for the same name.
- * Null when another alias already covers `year`.
+ * The window `alias` needs to also cover `year`: only the end facing `year`
+ * moves, out to the edge of the free gap around it, so it cannot run into
+ * another alias for the same name. Null when another alias already covers
+ * `year`, or sits between `alias` and `year` — widening would run through it.
  */
 export function extendWindowToCover(
   alias: LodgingAliasRecord,
@@ -117,8 +118,13 @@ export function extendWindowToCover(
 ): AliasYears | null {
   const gap = freeWindowAround(aliases, alias.alias_string, year, alias.id)
   if (gap === null) return null
-  return {
-    from: stored(Math.min(lower(alias.valid_from_year), lower(gap.from))),
-    to: stored(Math.max(upper(alias.valid_to_year), upper(gap.to))),
+  const from = lower(alias.valid_from_year)
+  const to = upper(alias.valid_to_year)
+  if (year > to) {
+    return to + 1 < lower(gap.from) ? null : { from: stored(from), to: gap.to }
   }
+  if (year < from) {
+    return upper(gap.to) + 1 < from ? null : { from: gap.from, to: stored(to) }
+  }
+  return { from: stored(from), to: stored(to) }
 }
