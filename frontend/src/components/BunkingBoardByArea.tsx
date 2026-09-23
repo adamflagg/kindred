@@ -723,6 +723,7 @@ export default function BunkingBoardByArea(props: BunkingBoardByAreaProps) {
               bunkCampers={bunkmates}
               assignedBunkCmId={selected?.assigned_bunk_cm_id ?? null}
               getBunkForPerson={getBunkForPerson}
+              openedFromSessionCmId={sessionCmId}
             />
           )
         })()}

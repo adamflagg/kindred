@@ -542,7 +542,12 @@ describe('CamperDetailsPanel', () => {
       const cabins = within(grid).getAllByTestId('journey-cabin-cell')
       expect(cabins).toHaveLength(1)
       expect(cabins[0]?.textContent).toBe('')
-      expect(screen.queryByText('Trip Name')).not.toBeInTheDocument()
+      // RULED CHANGE (owner, 2026-09-23, Quest option A): the journey row
+      // itself still never shows the trip as a cabin (scoped to `grid`) —
+      // but the quick-stats bar now DOES show it (asserted in the "Quest
+      // trip in the quick-stats bar" describe block below), so this check
+      // is scoped rather than global as it was pre-ruling.
+      expect(within(grid).queryByText('Trip Name')).not.toBeInTheDocument()
     })
   })
 
@@ -555,7 +560,14 @@ describe('CamperDetailsPanel', () => {
   // (unassigned)" on the summer board, even though the trip is assigned.
   // Fix: gate "(unassigned)" on isAtCampSessionType(enrollment.sessionType),
   // the same rule the journey row already applies at :627.
-  describe('Quick Stats bar — a Quest enrollment among multiple current enrollments (I1)', () => {
+  //
+  // RULED CHANGE (owner, 2026-09-23, Quest option A): b1a9f1f7 blanked the
+  // trip everywhere, including this bar. The owner reversed that HERE only
+  // (journey rows still never show it, per the test above): the quick-stats
+  // bar now shows the trip beside the session chip, without a cabin (Home)
+  // icon, e.g. "Session 901 · Trip Name" — I1's "(unassigned)" fix still
+  // holds, so only the "shows nothing" half of the old assertion changes.
+  describe('Quick Stats bar — a Quest enrollment among multiple current enrollments (I1 + Quest-A)', () => {
     const QUEST_ATTENDEE_2: Record<string, unknown> = {
       ...EMMA_ATTENDEE,
       id: 'att-emma-quest-2',
@@ -565,7 +577,7 @@ describe('CamperDetailsPanel', () => {
       },
     }
 
-    it('does not mislabel an enrolled Quest trip as "(unassigned)"', async () => {
+    it('shows the Quest trip beside its chip, without ever mislabeling it "(unassigned)"', async () => {
       setupDeclinedRequestMocks()
       mockGetFullListAttendees.mockResolvedValue([EMMA_ATTENDEE, QUEST_ATTENDEE_2])
       // The main session (sess-1) has its own real cabin, so the ONLY
@@ -584,10 +596,77 @@ describe('CamperDetailsPanel', () => {
       render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} />)
 
       await screen.findByRole('heading', { name: /Emma/i })
-      expect(screen.queryByText('(unassigned)')).not.toBeInTheDocument()
-      // Q9 still holds: Quest never shows a cabin, so the trip name is not
-      // rendered either — the Quest entry shows nothing at all.
-      expect(screen.queryByText('Trip Name')).not.toBeInTheDocument()
+      const quickStatsBar = await screen.findByTestId('quick-stats-bar')
+      expect(within(quickStatsBar).queryByText('(unassigned)')).not.toBeInTheDocument()
+      expect(within(quickStatsBar).getByText(/Trip Name/)).toBeInTheDocument()
+      // The real cabin (sess-1) still gets its Home icon in the bar; Quest's
+      // trip is a sibling text node with no icon of its own — one Home icon
+      // in the quick-stats bar (the journey rows below have their own).
+      expect(quickStatsBar.querySelectorAll('.lucide-home')).toHaveLength(1)
+      // "Cabin 3" shares a text node with "Session 1" (no wrapping element
+      // between the session name and the Home-icon cabin text) — a regex
+      // substring match, not an exact one.
+      expect(within(quickStatsBar).getByText(/Cabin 3/)).toBeInTheDocument()
+    })
+  })
+
+  // Owner ruling 2026-09-23: a camper enrolled in more than one summer
+  // session this year showed EVERY enrollment's chip in the quick-stats bar,
+  // which wrapped onto two lines. The board modal now shows only the
+  // enrollment for the session the modal was opened from (`openedFromSessionCmId`,
+  // threaded from the caller's own board-session context) — the full camper
+  // page is unaffected (it never receives this prop).
+  describe('Quick Stats bar — multi-session campers show only the opened session (owner ruling 2026-09-23)', () => {
+    const SESSION_2_ATTENDEE: Record<string, unknown> = {
+      ...EMMA_ATTENDEE,
+      id: 'att-emma-session-2',
+      session: 'sess-2',
+      expand: {
+        session: { id: 'sess-2', cm_id: 2002, name: 'Session 2a', session_type: 'main' },
+      },
+    }
+
+    it("shows only the opened session's chip when the camper has two current enrollments", async () => {
+      setupDeclinedRequestMocks()
+      mockGetFullListAttendees.mockResolvedValue([EMMA_ATTENDEE, SESSION_2_ATTENDEE])
+      mockGetFullListBunkAssignments.mockResolvedValue([])
+
+      render(
+        <CamperDetailsPanel camperId="100" onClose={mockOnClose} openedFromSessionCmId={2002} />
+      )
+
+      await screen.findByRole('heading', { name: /Emma/i })
+      const quickStatsBar = await screen.findByTestId('quick-stats-bar')
+      expect(within(quickStatsBar).getByText('Session 2a')).toBeInTheDocument()
+      expect(within(quickStatsBar).queryByText('Session 1')).not.toBeInTheDocument()
+    })
+
+    it('keeps the full chip list when the panel does not know which session opened it', async () => {
+      setupDeclinedRequestMocks()
+      mockGetFullListAttendees.mockResolvedValue([EMMA_ATTENDEE, SESSION_2_ATTENDEE])
+      mockGetFullListBunkAssignments.mockResolvedValue([])
+
+      render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} />)
+
+      await screen.findByRole('heading', { name: /Emma/i })
+      const quickStatsBar = await screen.findByTestId('quick-stats-bar')
+      expect(within(quickStatsBar).getByText('Session 1')).toBeInTheDocument()
+      expect(within(quickStatsBar).getByText('Session 2a')).toBeInTheDocument()
+    })
+
+    it("keeps the full chip list when the opened session is not among the camper's current enrollments", async () => {
+      setupDeclinedRequestMocks()
+      mockGetFullListAttendees.mockResolvedValue([EMMA_ATTENDEE, SESSION_2_ATTENDEE])
+      mockGetFullListBunkAssignments.mockResolvedValue([])
+
+      render(
+        <CamperDetailsPanel camperId="100" onClose={mockOnClose} openedFromSessionCmId={9999} />
+      )
+
+      await screen.findByRole('heading', { name: /Emma/i })
+      const quickStatsBar = await screen.findByTestId('quick-stats-bar')
+      expect(within(quickStatsBar).getByText('Session 1')).toBeInTheDocument()
+      expect(within(quickStatsBar).getByText('Session 2a')).toBeInTheDocument()
     })
   })
 

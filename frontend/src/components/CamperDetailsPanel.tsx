@@ -35,6 +35,7 @@ import {
   isFamilySessionType,
   isAdultSessionType,
   isAtCampSessionType,
+  isQuestSessionType,
 } from '../utils/sessionTypePredicates'
 import { currentYearCabin } from '../hooks/camper/teenCabinLabel'
 import type {
@@ -159,6 +160,17 @@ interface CamperDetailsPanelProps {
    * PB query.
    */
   getBunkForPerson?: (cmId: number) => number | null
+  /**
+   * The CampMinder session id of the board the modal was opened from (owner
+   * ruling 2026-09-23). A camper enrolled in more than one current summer
+   * session shows every enrollment's chip in the quick-stats bar by
+   * default, which wraps onto two lines — when the caller knows which board
+   * session it opened from, the bar narrows to just that one. Omit from
+   * callers with no single board session in view (the full-page camper
+   * record, and any panel instance the owner didn't ask to change) to keep
+   * today's full list.
+   */
+  openedFromSessionCmId?: number
 }
 
 // Interface for current-year enrollment (one per attendee record)
@@ -175,6 +187,15 @@ interface CurrentEnrollment {
    */
   bunkNameRecorded?: string
   attendeeStatus?: string
+  /**
+   * The Quest trip name (owner ruling 2026-09-23, Quest option A) — set only
+   * for a Quest enrollment, from the raw bunk value `currentYearCabin`
+   * itself always blanks (Quest never has a housing cabin). Read only by the
+   * quick-stats bar, which shows it beside the chip with no Home icon;
+   * journey rows keep reading `bunkName`/`bunkNameRecorded`, so they are
+   * untouched by this field.
+   */
+  questTripName?: string
 }
 
 // Hoisted out of CamperDetailsPanel render to avoid React unmounting/remounting
@@ -279,6 +300,7 @@ export default function CamperDetailsPanel({
   bunkCampers,
   assignedBunkCmId,
   getBunkForPerson,
+  openedFromSessionCmId,
 }: CamperDetailsPanelProps) {
   // Internal close state enables slide-out animation before unmount.
   // handleClose sets this to true, which triggers the exit animation.
@@ -470,6 +492,12 @@ export default function CamperDetailsPanel({
         ...(cabin.bunkNameRecorded !== undefined
           ? { bunkNameRecorded: cabin.bunkNameRecorded }
           : {}),
+        // Quest option A (owner ruling 2026-09-23): `e.bunkName` here is
+        // still the RAW pre-correction value (the trip name, from the same
+        // attendee/assignment fetch as `cabin` above) — `currentYearCabin`
+        // always blanks it for Quest, so this is the only place the trip
+        // name survives for the quick-stats bar to read.
+        ...(isQuestSessionType(e.sessionType) && e.bunkName ? { questTripName: e.bunkName } : {}),
       }
     })
   }, [camperData?.enrollments, currentYear, teenCabinsByWeekend])
@@ -477,6 +505,22 @@ export default function CamperDetailsPanel({
   const currentEnrollments = toDisplayList(
     filterEnrollmentsByStatus(allEnrollments, (e) => e.attendeeStatus)
   )
+
+  // Board modal ONLY (owner ruling 2026-09-23): a multi-summer-session
+  // camper's quick-stats bar shows only the enrollment for the session the
+  // modal was opened from — otherwise the chip row wraps onto two lines.
+  // Falls back to the full list when the panel doesn't know which session
+  // opened it, or when that session isn't among the camper's current
+  // enrollments (both defensive — real data always matches). Used ONLY by
+  // the quick-stats bar below; the journey rows and cohort/section context
+  // still read the full `currentEnrollments`.
+  const openedEnrollments = currentEnrollments.filter(
+    (e) => e.sessionCmId === openedFromSessionCmId
+  )
+  const quickStatsEnrollments =
+    openedFromSessionCmId !== undefined && openedEnrollments.length > 0
+      ? openedEnrollments
+      : currentEnrollments
 
   // Fetch person data for siblings query
   const { data: person } = useQuery({
@@ -902,7 +946,10 @@ export default function CamperDetailsPanel({
   const renderContent = () => (
     <div className={embedded ? 'space-y-3' : 'flex-1 space-y-4 overflow-auto'}>
       {/* Quick Stats Bar */}
-      <div className="bg-forest-900/50 border-forest-600/20 border-b px-4 py-3">
+      <div
+        data-testid="quick-stats-bar"
+        className="bg-forest-900/50 border-forest-600/20 border-b px-4 py-3"
+      >
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs">
           {location && (
             <div className="text-forest-100 flex items-center gap-1.5">
@@ -917,7 +964,7 @@ export default function CamperDetailsPanel({
             </div>
           )}
           {currentEnrollments.length > 1 ? (
-            currentEnrollments.map((enrollment) => {
+            quickStatsEnrollments.map((enrollment) => {
               const indicator = getStatusIndicator(enrollment.attendeeStatus)
               return (
                 <div
@@ -938,6 +985,12 @@ export default function CamperDetailsPanel({
                         {' '}
                         <Home className="text-forest-300 inline h-3 w-3" /> {enrollment.bunkName}
                       </>
+                    ) : isQuestSessionType(enrollment.sessionType) && enrollment.questTripName ? (
+                      // Quest option A (owner ruling 2026-09-23): the trip
+                      // name reads as the Quest's group, not a cabin — no
+                      // Home icon, own <span> so it never merges with the
+                      // session-name text node above.
+                      <span> · {enrollment.questTripName}</span>
                     ) : isAtCampSessionType(enrollment.sessionType) ? (
                       // I1 (review, kindred#2753): "(unassigned)" is a
                       // bunkable (main/embedded/ag) fallback only, the same
@@ -975,6 +1028,16 @@ export default function CamperDetailsPanel({
                 <div className="text-forest-100 flex items-center gap-1.5">
                   <Calendar className="text-forest-300 h-3 w-3" />
                   <span>{getSessionShortName()}</span>
+                  {/* Quest option A (owner ruling 2026-09-23): a camper with
+                      a SINGLE current enrollment that is a Quest trip reads
+                      its trip name here, beside the session chip, no Home
+                      icon — the single-enrollment mirror of the
+                      multi-enrollment branch above. */}
+                  {currentEnrollments.length === 1 &&
+                    isQuestSessionType(currentEnrollments[0]?.sessionType) &&
+                    currentEnrollments[0]?.questTripName && (
+                      <span> · {currentEnrollments[0].questTripName}</span>
+                    )}
                 </div>
               )}
             </>

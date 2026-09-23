@@ -789,6 +789,7 @@ export default function PreValidationResultsModal({
               <LazyCamperDetailsPanel
                 camperId={selectedCamperId}
                 onClose={() => setSelectedCamperId(null)}
+                openedFromSessionCmId={sessionCmId}
               />
             </Suspense>
           </ErrorBoundary>

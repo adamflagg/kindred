@@ -1441,6 +1441,7 @@ export function PostCheckContents({
               <LazyCamperDetailsPanel
                 camperId={selectedCamperId}
                 onClose={() => setSelectedCamperId(null)}
+                openedFromSessionCmId={sessionCmId}
               />
             </Suspense>
           </ErrorBoundary>
