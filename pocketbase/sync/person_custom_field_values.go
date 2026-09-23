@@ -273,9 +273,9 @@ func (s *PersonCustomFieldValuesSync) getPersonIDsToSync(year int) ([]int, error
 	// run on the daily cron under a bounded-sounding registered id.
 	switch s.Scope {
 	case ScopeFamilyCamp:
-		// Bounded daily family-camp pass (kindred#2482): any attendee status, across every
-		// family-camp weekend, resolved via attendees rather than Session so it can span
-		// multiple weekend sessions in one run.
+		// Bounded daily pass (kindred#2482): any attendee status, across every family-camp
+		// weekend AND adult-program session, resolved via attendees rather than Session so
+		// it can span multiple weekend sessions in one run.
 		resolver := NewSessionResolver(s.App)
 
 		// One weekend, not the season (kindred#2601). Refresh Housing is pressed while looking

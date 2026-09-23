@@ -109,8 +109,9 @@ func (r *SessionResolver) GetPersonIDsForSession(session string, year int) ([]in
 
 // GetPersonIDsForSessionAnyStatus is GetPersonIDsForSession's status-agnostic sibling
 // (kindred#2482). It returns persons attached to the session regardless of attendee status --
-// enrolled, cancelled, waitlisted, and so on. It exists for the bounded daily family-camp
-// custom-values pass, which must observe a household moving IN or OUT of enrolled: a
+// enrolled, cancelled, waitlisted, and so on. It exists for the bounded daily weekend
+// custom-values pass (family-camp and, since 2026-09-23, adult-program sessions -- see
+// GetWeekendPersonIDsAnyStatus), which must observe a person moving IN or OUT of enrolled: a
 // cancellation or a waitlist entry is exactly the transition the pass exists to catch, so
 // filtering it out would defeat the point.
 //
@@ -263,10 +264,11 @@ func (r *SessionResolver) householdIDsForSession(session string, year int, enrol
 // GetFamilyCampSessionCMIDs returns the CampMinder ids of every family-camp weekend session
 // in the given year (session_type = "family").
 //
-// This is the entry point for the bounded daily custom-values pass (kindred#2482). The pass's
-// cohort must come from a table that already knows about sessions -- not from custom values --
-// because the weekend cabin value IS a custom value: reading custom values to decide who to
-// sync custom values for is circular.
+// This is the family-camp half of GetWeekendPersonIDsAnyStatus's session-id source for the
+// bounded daily custom-values pass (kindred#2482); the adult-program half comes from
+// sessionCMIDsOfType directly. The pass's cohort must come from a table that already knows
+// about sessions -- not from custom values -- because the weekend cabin value IS a custom
+// value: reading custom values to decide who to sync custom values for is circular.
 func (r *SessionResolver) GetFamilyCampSessionCMIDs(year int) ([]int, error) {
 	return r.sessionCMIDsOfType(year, sessionTypeFamily)
 }
