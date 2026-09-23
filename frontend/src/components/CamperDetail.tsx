@@ -253,6 +253,7 @@ function CamperDetailBody({
             currentYear={currentYear}
             isLoading={journeyLoading}
             error={journeyError}
+            variant="full"
           />
 
           {/* Siblings */}

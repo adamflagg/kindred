@@ -4,7 +4,7 @@
  */
 import { TreePine } from 'lucide-react'
 import { journeyCountLabel } from '../../utils/journeyCountLabel'
-import { JourneyRows } from './JourneyRows'
+import { JourneyRows, type JourneyVariant } from './JourneyRows'
 import { journeyRowsFromHistory } from './journeyRowModel'
 import type { HistoricalRecord, JourneyCounts } from '../../hooks/camper/types'
 
@@ -24,6 +24,11 @@ interface CampJourneyTimelineProps {
    * fetch used to read as indistinguishable from an actual first-timer.
    */
   error?: Error | null
+  /**
+   * `full` on the camper record page; `compact` in a sidebar (the
+   * Women's/Men's Weekend guest sidebar) — see `JourneyRows`.
+   */
+  variant?: JourneyVariant
 }
 
 export function CampJourneyTimeline({
@@ -32,6 +37,7 @@ export function CampJourneyTimeline({
   currentYear,
   isLoading = false,
   error = null,
+  variant = 'full',
 }: CampJourneyTimelineProps) {
   const countLabel = journeyCountLabel(counts)
   return (
@@ -62,7 +68,7 @@ export function CampJourneyTimeline({
         ) : history.length > 0 ? (
           // The rows are shared with the board modal (`JourneyRows`, owner
           // ruling 2026-09-22 G2: one grid, so every cabin lines up).
-          <JourneyRows rows={journeyRowsFromHistory(history, currentYear)} />
+          <JourneyRows rows={journeyRowsFromHistory(history, currentYear)} variant={variant} />
         ) : (
           <div className="py-4 text-center">
             <TreePine className="text-muted-foreground/50 mx-auto mb-2 h-8 w-8" />

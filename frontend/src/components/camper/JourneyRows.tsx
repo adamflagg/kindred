@@ -27,12 +27,23 @@ import { Tooltip } from '../ui/Tooltip'
 import type { JourneyRow } from './journeyRowModel'
 
 /**
- * `default` is the camper record's card; `compact` is the board modal's
- * narrower section, one type size down. Same markup, different sizes only.
- * Every grid template is a literal so Tailwind can see it.
+ * The ONE prop that tells the surfaces apart (owner ruling 2026-09-22, late:
+ * "every sidebar shows the journey the same compact way; only the full camper
+ * page gets full detail"):
+ *
+ *  - `full` — the camper record page (`/camper/:id`). A family weekend's
+ *    subtitle sits under its name.
+ *  - `compact` — every SIDEBAR: the summer board's camper modal and the
+ *    Women's/Men's Weekend guest sidebar. One type size down, and a family
+ *    weekend shows its bare title ("Family Camp 5") with NO subtitle —
+ *    owner: "it's kinda obvious".
+ *
+ * Same markup either way; a variant only picks sizes and whether the
+ * subtitle renders. Every grid template is a literal so Tailwind can see it.
  */
-const SIZES = {
-  default: {
+const VARIANTS = {
+  full: {
+    showSubtitle: true,
     grid: 'grid-cols-[0.75rem_3rem_minmax(0,max-content)_minmax(0,1fr)_auto] gap-x-3 gap-y-2',
     line: 'from-forest-300 via-forest-400 to-forest-300 dark:from-forest-700 dark:via-forest-600 dark:to-forest-700 bg-gradient-to-b',
     pastDot: 'bg-forest-400 dark:bg-forest-600',
@@ -45,6 +56,7 @@ const SIZES = {
     badge: 'text-[10px]',
   },
   compact: {
+    showSubtitle: false,
     grid: 'grid-cols-[0.75rem_2.75rem_minmax(0,max-content)_minmax(0,1fr)_auto] gap-x-2.5 gap-y-1.5',
     line: 'bg-forest-200 dark:bg-forest-800',
     pastDot: 'bg-forest-300 dark:bg-forest-700',
@@ -58,13 +70,15 @@ const SIZES = {
   },
 } as const
 
+export type JourneyVariant = keyof typeof VARIANTS
+
 interface JourneyRowsProps {
   rows: JourneyRow[]
-  size?: keyof typeof SIZES
+  variant?: JourneyVariant
 }
 
-export function JourneyRows({ rows, size = 'default' }: JourneyRowsProps) {
-  const sz = SIZES[size]
+export function JourneyRows({ rows, variant = 'full' }: JourneyRowsProps) {
+  const sz = VARIANTS[variant]
   return (
     <div className="relative">
       {/* The timeline line, centred on the dot column (12px wide, line at
@@ -107,8 +121,9 @@ export function JourneyRows({ rows, size = 'default' }: JourneyRowsProps) {
                 {/* Which family weekend it was — the half that tells two
                     numbered weekends apart, and the half CampMinder buries in
                     a 54-character name. Muted and one size down: it qualifies
-                    the session, it is not a second session. */}
-                {row.subtitle !== undefined && (
+                    the session, it is not a second session. The full camper
+                    page only — a sidebar (`compact`) shows the bare title. */}
+                {sz.showSubtitle && row.subtitle !== undefined && (
                   <span
                     className={`text-muted-foreground/70 min-w-0 truncate leading-tight ${sz.subtitle}`}
                   >

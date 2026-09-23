@@ -1027,9 +1027,10 @@ export default function CamperDetailsPanel({
               ) : (
                 // The same rows as the camper record (`camper/JourneyRows`,
                 // owner ruling 2026-09-22 G2): this year's board enrollments and
-                // the prior years in ONE grid, one type size down.
+                // the prior years in ONE grid — `compact`, like every sidebar:
+                // one type size down, a family weekend's bare title only.
                 <div className="mt-2">
-                  <JourneyRows rows={journeyRows} size="compact" />
+                  <JourneyRows rows={journeyRows} variant="compact" />
                 </div>
               ))}
           </section>

@@ -908,6 +908,33 @@ describe('adult weekend guest journey', () => {
     expect(personJourneyCalls).toContainEqual([5001, 2026])
   })
 
+  // Owner ruling 2026-09-22 (late): every sidebar shows the journey the same
+  // compact way as the summer board's modal — a family weekend by its bare
+  // title, no subtitle. Only the full camper page keeps the subtitle.
+  it('shows a family weekend by its bare title — the compact journey, no subtitle', () => {
+    const loaded = personJourney.value
+    personJourney.value = {
+      ...loaded,
+      rows: [
+        {
+          year: 2024,
+          sessionName: 'Family Camp 8: JFAM Weekend w/ SFJCC (w/ kids 10 and under)',
+          sessionType: 'family',
+          bunkName: 'Cedar Lodge',
+        },
+      ],
+    }
+    try {
+      render(<FamilyDetailsPanel party={guest()} year={2026} onClose={vi.fn()} />, { wrapper })
+      const card = screen.getByTestId('person-journey')
+      expect(within(card).getByText('Family Camp 8')).toBeInTheDocument()
+      expect(within(card).queryByText('JFAM')).toBeNull()
+      expect(within(card).queryByText('Family')).toBeNull()
+    } finally {
+      personJourney.value = loaded
+    }
+  })
+
   it('passes the journey loading state through — no "First year at camp!" while it loads', () => {
     const loaded = personJourney.value
     personJourney.value = {

@@ -512,3 +512,48 @@ describe('CampJourneyTimeline one-grid layout (owner ruling 2026-09-22, G2)', ()
     expect(screen.getByText('W').closest('[data-col]')?.getAttribute('data-col')).toBe('badge')
   })
 })
+
+// Owner ruling 2026-09-22 (late): every SIDEBAR shows the journey the same
+// compact way — the summer board's camper modal and the Women's/Men's Weekend
+// sidebar — and only the full camper page keeps full detail. Compact drops a
+// family weekend's subtitle ("it's kinda obvious"); ONE prop on the shared
+// rows, no forked markup.
+describe('CampJourneyTimeline compact variant (owner ruling 2026-09-22)', () => {
+  const familyRow: HistoricalRecord[] = [
+    {
+      year: 2024,
+      sessionName: 'Family Camp 8: JFAM Weekend w/ SFJCC (w/ kids 10 and under)',
+      sessionType: 'family',
+      bunkName: 'Cedar Lodge',
+    },
+  ]
+
+  it('shows a family weekend by its bare title — no subtitle, no "Family" tag', () => {
+    render(
+      <CampJourneyTimeline
+        history={familyRow}
+        counts={{ summers: 0, familyWeekends: 1, adultWeekends: 0 }}
+        currentYear={2026}
+        variant="compact"
+      />
+    )
+    expect(screen.getByText('Family Camp 8')).toBeInTheDocument()
+    expect(screen.queryByText('JFAM')).toBeNull()
+    expect(screen.queryByText('Family')).toBeNull()
+    // The rest of the row is untouched.
+    expect(screen.getByText('Cedar Lodge')).toBeInTheDocument()
+  })
+
+  it('keeps the subtitle in the full variant (the camper page)', () => {
+    render(
+      <CampJourneyTimeline
+        history={familyRow}
+        counts={{ summers: 0, familyWeekends: 1, adultWeekends: 0 }}
+        currentYear={2026}
+        variant="full"
+      />
+    )
+    expect(screen.getByText('Family Camp 8')).toBeInTheDocument()
+    expect(screen.getByText('JFAM')).toBeInTheDocument()
+  })
+})

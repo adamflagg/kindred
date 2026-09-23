@@ -421,10 +421,15 @@ describe('CamperDetailsPanel', () => {
       expect(within(grid).queryByText('Unassigned')).toBeNull()
     })
 
-    it('stacks a family weekend\'s subtitle under its name, with no "Family" tag', async () => {
+    it('shows a family weekend by its bare title — no subtitle, no "Family" tag', async () => {
       // The modal's own copy carried the #2113 "Family" chip the camper record
       // dropped (owner, 2026-08-18: "we also dont need the 'family' tag in the
       // journey, staff knows"). One rows component means one rule.
+      //
+      // RULED CHANGE (owner, 2026-09-22 late): this test used to pin the
+      // subtitle ("JFAM") stacked under the name here. Every sidebar now shows
+      // the journey the same COMPACT way — no subtitle ("it's kinda
+      // obvious") — and only the full camper page keeps it.
       setupDeclinedRequestMocks()
       mockUseCamperJourney.mockReturnValue(
         journeyWith([
@@ -439,8 +444,10 @@ describe('CamperDetailsPanel', () => {
       render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} />)
 
       const grid = await screen.findByTestId('journey-rows')
-      const subtitle = within(grid).getByText('JFAM')
-      expect(subtitle.closest('[data-col]')?.getAttribute('data-col')).toBe('session')
+      expect(
+        within(grid).getByText('Family Camp 8').closest('[data-col]')?.getAttribute('data-col')
+      ).toBe('session')
+      expect(within(grid).queryByText('JFAM')).toBeNull()
       expect(within(grid).queryByText('Family')).toBeNull()
     })
   })
