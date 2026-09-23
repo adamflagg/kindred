@@ -213,9 +213,9 @@ class TestCompareScenario:
 
     @pytest.mark.asyncio
     async def test_an_adult_weekend_is_refused_not_compared(self) -> None:
-        """Owner ruling §5.1: family camp weekends only. Adult sessions are not
-        in the bounded cohort at all, so a compare against their mirror rows
-        would grade a scenario against custom values up to seven days old."""
+        """Owner ruling §5.1: family camp weekends only. The original freshness
+        reason (adult custom values refreshed weekly) lapsed in kindred#2760;
+        the gate stays until the owner rules on compare for adult boards."""
         stubs = _service(mirror=_roster([], session_type="adult"), scenario=_roster([], session_type="adult"))
         with pytest.raises(NotAFamilyWeekendError):
             await stubs.service.compare_scenario(2026, 1000001, "scn_1")

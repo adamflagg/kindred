@@ -567,6 +567,30 @@ describe('AppLayout weekend freshness stack', () => {
   })
 
   /**
+   * The hover and the visible "N ago" must describe ONE run (kindred#2760).
+   * The tooltip used to be built from `lodging_assignments` — a different,
+   * year-wide job — so its absolute time and counts could disagree with the
+   * relative time printed inches away.
+   */
+  it('builds the hover from the same timestamp as the visible time, not lodging_assignments', () => {
+    mockWeekendSyncStatus({
+      lodging_assignments: {
+        status: 'success',
+        end_time: '2026-04-25T09:30:00.000Z',
+        start_time: '2026-04-25T09:30:00.000Z',
+        summary: { created: 7, updated: 8, skipped: 0, errors: 0 },
+      },
+    })
+    renderAppLayout('/weekend/fc4')
+    const title =
+      screen
+        .getByText(/Housing synced/)
+        .closest('[title]')
+        ?.getAttribute('title') ?? ''
+    expect(title).toBe(`Last housing sync • ${housingIso}`)
+  })
+
+  /**
    * 🚨 The nav line and the Refresh Housing modal are inches apart and must
    * never disagree — one claiming two minutes while the other goes quiet is
    * worse than either alone. Both read `weekendHousingSyncedAt`, and since

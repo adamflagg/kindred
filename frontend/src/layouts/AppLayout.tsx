@@ -118,7 +118,10 @@ function WeekendFreshness({
       {housingSyncedAt !== undefined && (
         <span
           className="flex items-center gap-1.5 whitespace-nowrap"
-          title={buildSyncTooltip('housing', syncStatus.lodging_assignments)}
+          // The hover names the SAME run as the relative time beside it
+          // (kindred#2760). `lodging_assignments` is a different, year-wide
+          // job, so its time and counts could contradict the "N ago".
+          title={`Last housing sync • ${new Date(housingSyncedAt).toISOString()}`}
         >
           <Home className="h-3 w-3" />
           Housing synced {formatDistanceToNow(new Date(housingSyncedAt), { addSuffix: true })}
