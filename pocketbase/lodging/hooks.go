@@ -28,6 +28,7 @@ package lodging
 import (
 	"fmt"
 	"log/slog"
+	"math"
 
 	"github.com/pocketbase/pocketbase"
 	"github.com/pocketbase/pocketbase/apis"
@@ -228,6 +229,8 @@ func collectionExists(app core.App, name string) bool {
 func wireHooks(app core.App) {
 	app.OnRecordDelete(collectionUnits).BindFunc(guardUnitDelete)
 	app.OnRecordDelete(collectionAliases).BindFunc(guardAliasDelete)
+	app.OnRecordCreate(collectionAliases).BindFunc(guardAliasOverlap)
+	app.OnRecordUpdate(collectionAliases).BindFunc(guardAliasOverlap)
 	app.OnRecordCreate(collectionAssignments).BindFunc(guardAssignmentGrain)
 	app.OnRecordUpdate(collectionAssignments).BindFunc(guardAssignmentGrain)
 	app.OnRecordCreate(collectionAssignmentsDraft).BindFunc(guardDraftAssignmentGrain)
@@ -480,6 +483,86 @@ func guardUnitDelete(e *core.RecordEvent) error {
 		)
 	}
 	return e.Next()
+}
+
+// guardAliasOverlap refuses an alias that would make its own name ambiguous.
+//
+// sync.AliasResolver matches a cabin string on sync.AliasLookupKey (outer
+// whitespace and case ignored) and, when two rows' year windows both contain
+// the requested year, reports Ambiguous and resolves NEITHER. The unique index
+// on (alias_string, valid_from_year) compares raw text, so it lets "Cabin A"
+// and "cabin a " both save, and every family written with that name falls
+// into the work queue with nothing recording why. Two windows that do not
+// overlap are legitimate: that is how a building rename is recorded.
+//
+// The admin screens run the same check live; this is the backstop for the
+// PocketBase admin UI and any other writer. The table holds a couple of
+// hundred rows and the resolver already loads it whole each sync, so it is
+// read in full rather than filtered in SQL, which cannot express the key.
+func guardAliasOverlap(e *core.RecordEvent) error {
+	key := sync.AliasLookupKey(e.Record.GetString("alias_string"))
+	from, to := e.Record.GetInt("valid_from_year"), e.Record.GetInt("valid_to_year")
+
+	others, err := e.App.FindAllRecords(collectionAliases)
+	if err != nil {
+		return fmt.Errorf("load aliases for overlap check: %w", err)
+	}
+	for _, other := range others {
+		if e.Record.Id != "" && other.Id == e.Record.Id {
+			continue
+		}
+		if sync.AliasLookupKey(other.GetString("alias_string")) != key {
+			continue
+		}
+		if aliasWindowsOverlap(from, to, other.GetInt("valid_from_year"), other.GetInt("valid_to_year")) {
+			return apis.NewBadRequestError(
+				fmt.Sprintf(
+					"The cabin name %q already has an alias for %s, and this one (%s) overlaps it. "+
+						"Two aliases for one name in overlapping years resolve to neither: "+
+						"give them separate years, or edit that alias instead.",
+					other.GetString("alias_string"),
+					aliasWindowLabel(other),
+					aliasWindowLabel(e.Record),
+				),
+				nil,
+			)
+		}
+	}
+	return e.Next()
+}
+
+// aliasWindowsOverlap reports whether two alias year windows share a year.
+// PocketBase stores an unset number as 0, which on either end means
+// "unbounded" -- the same reading sync's aliasRow.covers gives it.
+func aliasWindowsOverlap(aFrom, aTo, bFrom, bTo int) bool {
+	lower := func(y int) int {
+		if y <= 0 {
+			return math.MinInt
+		}
+		return y
+	}
+	upper := func(y int) int {
+		if y <= 0 {
+			return math.MaxInt
+		}
+		return y
+	}
+	return lower(aFrom) <= upper(bTo) && lower(bFrom) <= upper(aTo)
+}
+
+// aliasWindowLabel phrases a window the way the admin UI's alias table does.
+func aliasWindowLabel(r *core.Record) string {
+	from, to := r.GetInt("valid_from_year"), r.GetInt("valid_to_year")
+	switch {
+	case from <= 0 && to <= 0:
+		return "all years"
+	case to <= 0:
+		return fmt.Sprintf("%d onwards", from)
+	case from <= 0:
+		return fmt.Sprintf("up to %d", to)
+	default:
+		return fmt.Sprintf("%d–%d", from, to)
+	}
 }
 
 // guardAliasDelete refuses to delete an alias a resolved queue item points at.

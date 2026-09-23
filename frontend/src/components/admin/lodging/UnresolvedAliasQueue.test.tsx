@@ -11,6 +11,8 @@ const mapUnresolvedAlias = vi.fn()
 const ignoreIngestIssue = vi.fn()
 const listUnresolvedAliasIssues = vi.fn()
 const listLodgingUnits = vi.fn()
+const listLodgingAliases = vi.fn()
+const extendAliasForIssue = vi.fn()
 
 function unitFixture(over: Record<string, unknown>) {
   return {
@@ -54,7 +56,9 @@ const UNITS = [
 vi.mock('../../../services/lodgingCrud', () => ({
   listUnresolvedAliasIssues: (...args: unknown[]) => listUnresolvedAliasIssues(...args),
   listLodgingUnits: (...args: unknown[]) => listLodgingUnits(...args),
+  listLodgingAliases: (...args: unknown[]) => listLodgingAliases(...args),
   mapUnresolvedAlias: (...args: unknown[]) => mapUnresolvedAlias(...args),
+  extendAliasForIssue: (...args: unknown[]) => extendAliasForIssue(...args),
   ignoreIngestIssue: (...args: unknown[]) => ignoreIngestIssue(...args),
 }))
 
@@ -132,7 +136,13 @@ beforeEach(() => {
   ignoreIngestIssue.mockReset().mockResolvedValue({})
   listUnresolvedAliasIssues.mockReset().mockResolvedValue([QUEUE_ROW])
   listLodgingUnits.mockReset().mockResolvedValue(UNITS)
+  listLodgingAliases.mockReset().mockResolvedValue([])
+  extendAliasForIssue.mockReset().mockResolvedValue(undefined)
 })
+
+const openPicker = async (user: ReturnType<typeof userEvent.setup>) => {
+  await user.click(await screen.findByRole('searchbox', { name: 'Search units' }))
+}
 
 describe('UnresolvedAliasQueue', () => {
   it('asks for the current season only', async () => {
@@ -181,6 +191,7 @@ describe('UnresolvedAliasQueue', () => {
       expect(screen.getByText('North Lodge - 1and2')).toBeInTheDocument()
     })
 
+    await openPicker(user)
     await user.click(screen.getByRole('checkbox', { name: 'North 1' }))
     await user.click(screen.getByRole('button', { name: 'Map to selected units' }))
 
@@ -234,10 +245,10 @@ describe('UnresolvedAliasQueue — which units may be mapped to', () => {
   // unit was deliberately retired — offering either re-enters it through the
   // alias, which is the one write on this screen nothing downstream validates.
   it('offers only active, non-container units', async () => {
+    const user = userEvent.setup()
     render(<UnresolvedAliasQueue />, { wrapper })
-    await waitFor(() => {
-      expect(screen.getByRole('checkbox', { name: 'North 1' })).toBeInTheDocument()
-    })
+    await openPicker(user)
+    expect(screen.getByRole('checkbox', { name: 'North 1' })).toBeInTheDocument()
 
     expect(screen.queryByRole('checkbox', { name: 'North Lodge' })).not.toBeInTheDocument()
     expect(screen.queryByRole('checkbox', { name: 'Old Hall' })).not.toBeInTheDocument()
@@ -245,6 +256,17 @@ describe('UnresolvedAliasQueue — which units may be mapped to', () => {
 })
 
 describe('UnresolvedAliasQueue — units query state', () => {
+  it('names the alias list, not the units, when only the alias list failed', async () => {
+    listLodgingAliases.mockRejectedValue(new Error('network'))
+    render(<UnresolvedAliasQueue />, { wrapper })
+
+    await waitFor(() => {
+      expect(screen.getByText(/cabin-name aliases could not be loaded/i)).toBeInTheDocument()
+    })
+    expect(screen.queryByText(/units could not be loaded/i)).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Not a cabin' })).toBeEnabled()
+  })
+
   // The checkboxes are this screen's only action. Coerced to [], a failed
   // units fetch renders a queue of rows with nothing to map them to, and
   // "Map to selected units" stays disabled with no stated reason — which
@@ -269,5 +291,115 @@ describe('UnresolvedAliasQueue — units query state', () => {
       expect(screen.getByText(/units could not be loaded/i)).toBeInTheDocument()
     })
     expect(screen.getByRole('button', { name: 'Not a cabin' })).toBeEnabled()
+  })
+})
+
+describe('UnresolvedAliasQueue — a name that already has an alias', () => {
+  // The resolver ignores case and outer spaces, and resolves NEITHER of two
+  // aliases for one name whose years overlap. A queue row can carry a name
+  // that has an alias for OTHER years, so mapping it must pick years that do
+  // not overlap that one (aliasRules.ts, guardAliasOverlap).
+  function aliasFixture(over: Record<string, unknown>) {
+    return {
+      id: 'ex1',
+      alias_string: 'north lodge - 1AND2',
+      member_units: ['u1_2024'],
+      valid_from_year: 0,
+      valid_to_year: 2024,
+      source_field: '',
+      notes: '',
+      expand: { member_units: [{ id: 'u1_2024', name: 'North 1', code: 'north-1' }] },
+      ...over,
+    }
+  }
+
+  it('pre-fills years that do not overlap it, and maps with them', async () => {
+    // A LATER alias for the name, naming different units: the new one has to
+    // stop the year before it starts.
+    listLodgingAliases.mockResolvedValue([
+      aliasFixture({
+        valid_from_year: 2028,
+        valid_to_year: 0,
+        expand: { member_units: [{ id: 'x', name: 'Elsewhere', code: 'elsewhere' }] },
+      }),
+    ])
+    mapUnresolvedAlias.mockResolvedValue({ id: 'alias_1' })
+    const user = userEvent.setup()
+    render(<UnresolvedAliasQueue />, { wrapper })
+
+    expect(await screen.findByText(/already has an alias for other years/i)).toBeInTheDocument()
+    expect(screen.getByLabelText('Valid from year')).toHaveValue(2026)
+    expect(screen.getByLabelText('Valid to year')).toHaveValue(2027)
+
+    await openPicker(user)
+    await user.click(screen.getByRole('checkbox', { name: 'North 1' }))
+    await user.click(screen.getByRole('button', { name: 'Map to selected units' }))
+
+    await waitFor(() => {
+      expect(mapUnresolvedAlias).toHaveBeenCalledTimes(1)
+    })
+    const [, , , options] = mapUnresolvedAlias.mock.calls[0] as [
+      string,
+      string,
+      string[],
+      { validFromYear?: number; validToYear?: number },
+    ]
+    expect(options.validFromYear).toBe(2026)
+    expect(options.validToYear).toBe(2027)
+  })
+
+  it('goes red and will not map when the years are changed to overlap', async () => {
+    listLodgingAliases.mockResolvedValue([aliasFixture({})])
+    const user = userEvent.setup()
+    render(<UnresolvedAliasQueue />, { wrapper })
+
+    const from = await screen.findByLabelText('Valid from year')
+    expect(from).toHaveValue(2026)
+    await user.clear(from)
+    await user.type(from, '2020')
+
+    expect(from).toHaveAttribute('aria-invalid', 'true')
+    expect(screen.getByText(/overlaps/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Map to selected units' })).toBeDisabled()
+  })
+
+  it('offers to extend the existing alias when the same units are picked', async () => {
+    const existing = aliasFixture({})
+    listLodgingAliases.mockResolvedValue([existing])
+    const user = userEvent.setup()
+    render(<UnresolvedAliasQueue />, { wrapper })
+
+    await openPicker(user)
+    await user.click(screen.getByRole('checkbox', { name: 'North 1' }))
+    // Matched by CODE: the old alias names last season's record for this unit.
+    await user.click(screen.getByRole('button', { name: 'Extend that alias to cover 2026' }))
+
+    await waitFor(() => {
+      expect(extendAliasForIssue).toHaveBeenCalledTimes(1)
+    })
+    const [queueId, alias, years] = extendAliasForIssue.mock.calls[0] as [
+      string,
+      { id: string },
+      { from: number; to: number },
+    ]
+    expect(queueId).toBe('q1')
+    expect(alias.id).toBe('ex1')
+    expect(years).toEqual({ from: 0, to: 0 })
+    expect(mapUnresolvedAlias).not.toHaveBeenCalled()
+  })
+
+  it('will not map when an alias already covers this year', async () => {
+    // It covers 2026 yet the string is unresolved -- typically its unit has no
+    // 2026 record. A second alias would make the name ambiguous; the fix is
+    // on that alias.
+    listLodgingAliases.mockResolvedValue([aliasFixture({ valid_to_year: 0 })])
+    const user = userEvent.setup()
+    render(<UnresolvedAliasQueue />, { wrapper })
+
+    expect(await screen.findByText(/already covers 2026/i)).toBeInTheDocument()
+    await openPicker(user)
+    await user.click(screen.getByRole('checkbox', { name: 'North 1' }))
+    expect(screen.queryByRole('button', { name: /Extend that alias/ })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Map to selected units' })).toBeDisabled()
   })
 })

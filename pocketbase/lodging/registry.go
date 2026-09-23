@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 
 	"github.com/pocketbase/pocketbase/core"
+
+	"github.com/camp/kindred/pocketbase/sync"
 )
 
 // registryFileName is the private registry data file, carried in the
@@ -551,7 +553,7 @@ func validateAliases(aliases []registryAlias, unitCodes map[string]bool) error {
 		y int
 	}
 	seen := make(map[aliasKey]bool, len(aliases))
-	for _, a := range aliases {
+	for i, a := range aliases {
 		if a.AliasString == "" {
 			return errors.New("an alias has an empty alias_string")
 		}
@@ -564,6 +566,18 @@ func validateAliases(aliases []registryAlias, unitCodes map[string]bool) error {
 			return fmt.Errorf("alias %q with valid_from_year %d appears more than once", a.AliasString, fromYear)
 		}
 		seen[key] = true
+
+		// The unique index above compares raw text; the resolver does not.
+		// See guardAliasOverlap, which refuses the same pair on any write.
+		for j := range i {
+			b := aliases[j]
+			if sync.AliasLookupKey(a.AliasString) == sync.AliasLookupKey(b.AliasString) &&
+				aliasWindowsOverlap(derefInt(a.ValidFromYear), derefInt(a.ValidToYear),
+					derefInt(b.ValidFromYear), derefInt(b.ValidToYear)) {
+				return fmt.Errorf("aliases %q and %q are the same cabin name with overlapping years; "+
+					"the resolver would treat it as ambiguous and resolve neither", b.AliasString, a.AliasString)
+			}
+		}
 
 		if len(a.MemberUnits) == 0 {
 			return fmt.Errorf("alias %q has no member units", a.AliasString)
@@ -874,6 +888,15 @@ func setIfPresentFloat(rec *core.Record, field string, v *float64) {
 	if v != nil {
 		rec.Set(field, *v)
 	}
+}
+
+// derefInt reads an optional registry year as PocketBase stores it: absent is
+// 0, which means "unbounded".
+func derefInt(v *int) int {
+	if v == nil {
+		return 0
+	}
+	return *v
 }
 
 // setIfPresentInt leaves the field unset when v is nil, so PocketBase's

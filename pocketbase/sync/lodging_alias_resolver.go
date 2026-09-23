@@ -91,7 +91,7 @@ func NewAliasResolver(app core.App) (*AliasResolver, error) {
 			ValidFromYear: a.GetInt("valid_from_year"),
 			ValidToYear:   a.GetInt("valid_to_year"),
 		}
-		key := aliasLookupKey(row.AliasString)
+		key := AliasLookupKey(row.AliasString)
 		r.byString[key] = append(r.byString[key], row)
 	}
 	return r, nil
@@ -121,14 +121,14 @@ func (r *AliasResolver) HasAnyUnits() bool {
 	return len(r.idByCodeYear) > 0
 }
 
-// aliasLookupKey normalises outer whitespace and case only.
+// AliasLookupKey normalises outer whitespace and case only.
 //
 // Inner spacing stays significant: the seed stores strings verbatim, and one
 // real alias carries a double space between its area segment and its room
 // segment (e.g. "Some Area  - Room A"). Collapsing inner runs would merge it
 // with a single-space variant that means the same room today but need not
 // tomorrow.
-func aliasLookupKey(s string) string {
+func AliasLookupKey(s string) string {
 	return strings.ToLower(strings.TrimSpace(s))
 }
 
@@ -137,7 +137,7 @@ func (r *AliasResolver) Resolve(raw string, year int) AliasResolution {
 	out := AliasResolution{Raw: raw}
 
 	var matches []aliasRow
-	for _, row := range r.byString[aliasLookupKey(raw)] {
+	for _, row := range r.byString[AliasLookupKey(raw)] {
 		if row.covers(year) {
 			matches = append(matches, row)
 		}

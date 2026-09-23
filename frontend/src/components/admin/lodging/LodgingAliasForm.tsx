@@ -11,22 +11,35 @@
  * renames (two different buildings once shared a name in different eras), not
  * a field staff should meet on every edit.
  */
+import { AlertCircle, AlertTriangle } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
 
 import { createLodgingAlias, updateLodgingAlias } from '../../../services/lodgingCrud'
 import type { LodgingAliasRecord, LodgingUnitRecord } from '../../../types/lodging'
-import { eligibleAliasMembers } from './aliasMembers'
+import { AliasUnitPicker } from './AliasUnitPicker'
+import { findAliasConflicts, formatAliasYears } from './aliasRules'
 import { BUTTON_PRIMARY, BUTTON_SECONDARY, FIELD, LABEL } from './lodgingStyles'
 
 export interface LodgingAliasFormProps {
   units: LodgingUnitRecord[]
+  /** Every alias, for the duplicate check. Required: a missing list would pass every name. */
+  aliases: LodgingAliasRecord[]
   alias?: LodgingAliasRecord | undefined
   onSaved: () => void
   onCancel: () => void
+  /** Opens an alias this one clashes with, so staff can fix that one instead. */
+  onEditAlias?: ((alias: LodgingAliasRecord) => void) | undefined
 }
 
-export function LodgingAliasForm({ units, alias, onSaved, onCancel }: LodgingAliasFormProps) {
+export function LodgingAliasForm({
+  units,
+  aliases,
+  alias,
+  onSaved,
+  onCancel,
+  onEditAlias,
+}: LodgingAliasFormProps) {
   const [aliasString, setAliasString] = useState(alias?.alias_string ?? '')
   const [memberUnits, setMemberUnits] = useState<string[]>(alias?.member_units ?? [])
   const [fromYear, setFromYear] = useState(
@@ -59,11 +72,19 @@ export function LodgingAliasForm({ units, alias, onSaved, onCancel }: LodgingAli
   const availableUnits = outOfSeasonMembers.length === 0 ? units : [...units, ...outOfSeasonMembers]
   const outOfSeasonIds = new Set(outOfSeasonMembers.map((unit) => unit.id))
 
-  const toggleUnit = (id: string) => {
-    setMemberUnits((current) =>
-      current.includes(id) ? current.filter((u) => u !== id) : [...current, id]
-    )
-  }
+  // Checked live, with the resolver's own matching rule, against every other
+  // alias. The server refuses the same pair (guardAliasOverlap); this is where
+  // staff find out before pressing Save, and which alias it clashes with.
+  const conflicts = findAliasConflicts(
+    aliases,
+    {
+      alias_string: aliasString,
+      valid_from_year: Number.parseInt(fromYear, 10) || 0,
+      valid_to_year: Number.parseInt(toYear, 10) || 0,
+    },
+    alias?.id
+  )
+  const blocked = conflicts.blocking.length > 0
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault()
@@ -103,7 +124,10 @@ export function LodgingAliasForm({ units, alias, onSaved, onCancel }: LodgingAli
       <label className="text-sm">
         <span className={LABEL}>Cabin string</span>
         <input
-          className={`${FIELD} font-mono`}
+          className={`${FIELD} font-mono ${
+            blocked ? 'border-red-600 bg-red-50 dark:border-red-400 dark:bg-red-950/40' : ''
+          }`}
+          aria-invalid={blocked}
           value={aliasString}
           placeholder="Exactly as CampMinder sends it"
           onChange={(e) => {
@@ -112,35 +136,21 @@ export function LodgingAliasForm({ units, alias, onSaved, onCancel }: LodgingAli
           required
         />
       </label>
+      <AliasClashNotice
+        blocking={conflicts.blocking}
+        separateYears={conflicts.separateYears}
+        onEditAlias={onEditAlias}
+      />
 
-      <fieldset className="flex flex-wrap gap-3">
-        <legend className={LABEL}>Resolves to (pick two or more for a merge)</legend>
-        {eligibleAliasMembers(availableUnits, memberUnits).map((unit) => {
-          const label = outOfSeasonIds.has(unit.id) ? `${unit.name} (different season)` : unit.name
-          return (
-            // No `aria-label` here, and the marker lives in ONE text node
-            // with the name rather than a sibling <span>: accessible-name
-            // computation does not reliably insert a space between sibling
-            // text contributions, so a separately-styled marker span read as
-            // "Cabin A(different season)" with nothing between the words.
-            // Roll-forward copies `name` verbatim, so two units sharing a
-            // name is the REALISTIC case, not an edge one -- without the
-            // marker in the accessible name, a screen-reader user hears two
-            // identical checkboxes and can recreate the exact merge this
-            // form exists to prevent.
-            <label key={unit.id} className="inline-flex items-center gap-1.5 text-sm">
-              <input
-                type="checkbox"
-                checked={memberUnits.includes(unit.id)}
-                onChange={() => {
-                  toggleUnit(unit.id)
-                }}
-              />
-              {label}
-            </label>
-          )
-        })}
-      </fieldset>
+      <div className="text-sm">
+        <span className={LABEL}>Resolves to (pick two or more for a merge)</span>
+        <AliasUnitPicker
+          units={availableUnits}
+          selected={memberUnits}
+          onChange={setMemberUnits}
+          outOfSeasonIds={outOfSeasonIds}
+        />
+      </div>
 
       {showWindow ? (
         <div className="flex gap-3">
@@ -184,7 +194,7 @@ export function LodgingAliasForm({ units, alias, onSaved, onCancel }: LodgingAli
       <div className="flex gap-2">
         <button
           type="submit"
-          disabled={isSaving || memberUnits.length === 0}
+          disabled={isSaving || memberUnits.length === 0 || blocked}
           className={BUTTON_PRIMARY}
         >
           {alias ? 'Save alias' : 'Create alias'}
@@ -195,4 +205,65 @@ export function LodgingAliasForm({ units, alias, onSaved, onCancel }: LodgingAli
       </div>
     </form>
   )
+}
+
+function clashLine(other: LodgingAliasRecord, onEditAlias: LodgingAliasFormProps['onEditAlias']) {
+  const members = (other.expand?.member_units ?? []).map((unit) => unit.name).join(', ')
+  return (
+    <p key={other.id} className="text-foreground mt-1">
+      “<span className="font-mono">{other.alias_string}</span>” → <b>{members || '—'}</b> ·{' '}
+      {formatAliasYears(other.valid_from_year, other.valid_to_year)}
+      {onEditAlias && (
+        <>
+          {' · '}
+          <button
+            type="button"
+            onClick={() => {
+              onEditAlias(other)
+            }}
+            className="text-primary font-semibold hover:underline"
+          >
+            Edit that alias
+          </button>
+        </>
+      )}
+    </p>
+  )
+}
+
+/** The red (blocks Save) or amber (a legitimate rename) note under the cabin string. */
+function AliasClashNotice({
+  blocking,
+  separateYears,
+  onEditAlias,
+}: {
+  blocking: LodgingAliasRecord[]
+  separateYears: LodgingAliasRecord[]
+  onEditAlias: LodgingAliasFormProps['onEditAlias']
+}) {
+  if (blocking.length > 0) {
+    return (
+      <div className="-mt-1 flex gap-2 rounded-lg border border-red-200 bg-red-50 p-2.5 text-xs text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
+        <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+        <div>
+          <b>This name already has an alias for these years.</b> Matching ignores case and leading
+          or trailing spaces, and two aliases for one name in overlapping years resolve to neither.
+          {blocking.map((other) => clashLine(other, onEditAlias))}
+        </div>
+      </div>
+    )
+  }
+  if (separateYears.length > 0) {
+    return (
+      <div className="-mt-1 flex gap-2 rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300">
+        <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+        <div>
+          <b>Same name, different years.</b> Fine for a renamed building: the years don&apos;t
+          overlap, so each year still resolves to exactly one.
+          {separateYears.map((other) => clashLine(other, onEditAlias))}
+        </div>
+      </div>
+    )
+  }
+  return null
 }
