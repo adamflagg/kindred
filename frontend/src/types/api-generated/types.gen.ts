@@ -3524,7 +3524,12 @@ export type PersonHousingResponse = {
 /**
  * PersonHousingWeekend
  *
- * One adult weekend and the cabin attributed to it (adult camper journey).
+ * One row of a person's cabin housing (adult camper journey).
+ *
+ * Shared by two lists in `PersonHousingResponse`: an adult weekend and the
+ * cabin attributed to it, AND a current-or-prior-year TLI/SCIT enrollment
+ * and its registry-resolved cabin (Q9, owner ruling 2026-09-22 late) --
+ * same row shape, one resolver (`HousingNameResolver`).
  *
  * `cabin_name` is TODAY's registry name for the unit, resolved through the
  * same alias layer as `HouseholdJourneyYear.cabin_name` (kindred#2332) --
@@ -3532,7 +3537,8 @@ export type PersonHousingResponse = {
  * that had this field publish the as-typed string unchanged. When the
  * string resolves to nothing, `cabin_name` falls back to it, outer
  * whitespace trimmed. `cabin_name_raw` is the untouched value staff typed
- * that year. A weekend with no attributed cabin is absent, not blank.
+ * that year. A weekend or teen session with no attributed/resolved cabin
+ * is absent, not blank.
  */
 export type PersonHousingWeekend = {
   /**
