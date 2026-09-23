@@ -194,6 +194,7 @@ var serialGroups = []struct {
 			"TestBaseDeleteOrphansWarnsWhenNothingCanBeKeyed",
 			"TestFamilyCampSweepLogsProtectedNamelessAdultsFor2018",
 			"TestGateVerdictWarnsOnUnrecognizedAnswerWithoutLoggingIt",
+			"TestHistoryAttributionUnparseableSourceTimeFallsBackToObservedAt",
 			"TestIsDuplicateStaffStatus",
 			"TestLoadPersonCustomValuesCountsAndLogsUnmappedAppFields",
 			"TestLoadPersonCustomValuesCountsAndLogsUnmappedFields",

@@ -262,6 +262,10 @@ func newSyncTestApp(t *testing.T) core.App {
 	addStaffCollection(t, app)
 	addBunkAssignmentsCollection(t, app, persons, sessions, bunks, bunkPlans)
 
+	// The assignment ingest reads captured cabin history to attribute each
+	// weekend (kindred#2784), so every lodging test app carries the table.
+	addLodgingValueHistoryCollection(t, app)
+
 	return app
 }
 

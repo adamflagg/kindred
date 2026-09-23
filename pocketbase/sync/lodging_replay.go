@@ -341,6 +341,13 @@ func newReplayScope(app core.App, year int) (*LodgingAssignmentsSync, error) {
 	if s.confirmed, err = loadConfirmedSessions(app, year); err != nil {
 		return nil, err
 	}
+	// The same reasoning holds for captured value history (kindred#2784): a
+	// click that attributed a multi-weekend party differently from the sync
+	// would record a fresh ambiguity, and reopenRecorded would re-open the row
+	// the sync had closed.
+	if err = s.loadHistory(year); err != nil {
+		return nil, err
+	}
 	s.issues = NewIssueRecorder(app, year)
 	return s, nil
 }

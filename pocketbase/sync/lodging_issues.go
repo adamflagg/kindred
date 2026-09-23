@@ -2,6 +2,7 @@ package sync
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/pocketbase/dbx"
@@ -75,15 +76,22 @@ type IssueRecorder struct {
 	year    int
 	pending map[string]*pendingIssue
 	order   []string // insertion order, so Flush is deterministic
+
+	// answered holds the parties whose weekend question captured history has
+	// answered this run, keyed like answerKey; answeredOrder keeps
+	// CloseAnswered deterministic. See Answer.
+	answered      map[string]*SessionAnswer
+	answeredOrder []string
 }
 
 // NewIssueRecorder returns a recorder that accumulates work-queue items for one
 // year. Call Flush once at the end of the run to write them.
 func NewIssueRecorder(app core.App, year int) *IssueRecorder {
 	return &IssueRecorder{
-		app:     app,
-		year:    year,
-		pending: make(map[string]*pendingIssue),
+		app:      app,
+		year:     year,
+		pending:  make(map[string]*pendingIssue),
+		answered: make(map[string]*SessionAnswer),
 	}
 }
 
@@ -260,4 +268,154 @@ func (r *IssueRecorder) findExisting(i *Issue) (*core.Record, error) {
 		return nil, nil
 	}
 	return rows[0], nil
+}
+
+// SessionAnswer is one party whose "which weekend?" question captured cabin
+// history answered this run (kindred#2784): the weekends it placed, and the ones
+// it could not.
+type SessionAnswer struct {
+	Year          int
+	SourceField   string
+	HouseholdCMID int
+	PersonCMID    int
+	// Placed are the weekends history gave a cabin.
+	Placed []SessionWindow
+	// Overwritten started before the earliest write the timeline holds: their
+	// value was overwritten before capture began.
+	Overwritten []SessionWindow
+	// Cleared had no cabin recorded when they started.
+	Cleared []SessionWindow
+}
+
+func (a *SessionAnswer) key() string {
+	return fmt.Sprintf("%d\x00%s\x00%d\x00%d", a.Year, a.SourceField, a.HouseholdCMID, a.PersonCMID)
+}
+
+// note is the resolution_note written onto a closed row. It names weekends by
+// session name, never the cabin string or the party.
+func (a *SessionAnswer) note() string {
+	var b strings.Builder
+	b.WriteString("Closed by the sync: attributed from captured cabin history ")
+	b.WriteString("(each weekend takes the cabin in effect when it started). ")
+	b.WriteString("Placed: " + sessionNames(a.Placed) + ".")
+	if len(a.Overwritten) > 0 {
+		b.WriteString(" Not placed: " + sessionNames(a.Overwritten) +
+			" -- that weekend's cabin was overwritten before capture began.")
+	}
+	if len(a.Cleared) > 0 {
+		b.WriteString(" Not placed: " + sessionNames(a.Cleared) +
+			" -- no cabin was recorded when that weekend started.")
+	}
+	return b.String()
+}
+
+func sessionNames(windows []SessionWindow) string {
+	names := make([]string, 0, len(windows))
+	for _, w := range windows {
+		name := w.Name
+		if name == "" {
+			name = fmt.Sprintf("session %d", w.CMID)
+		}
+		names = append(names, name)
+	}
+	return strings.Join(names, ", ")
+}
+
+// Answer records that history answered one party's weekend question, so the
+// open ambiguous_session rows asking it can be closed once the run commits.
+//
+// In memory only, like Record. A replay records answers too but never closes
+// them -- only Sync calls CloseAnswered -- so the next sync closes what a click
+// answered, and a click cannot close a row as a side effect.
+//
+//nolint:gocritic // hugeParam, same reasoning as Record
+func (r *IssueRecorder) Answer(a SessionAnswer) {
+	if a.Year == 0 {
+		a.Year = r.year
+	}
+	key := a.key()
+	if _, seen := r.answered[key]; !seen {
+		r.answeredOrder = append(r.answeredOrder, key)
+	}
+	r.answered[key] = &a
+}
+
+// QueueClosure is one ambiguous_session row an answer closes, or -- on a dry
+// run -- would close.
+type QueueClosure struct {
+	ID            string
+	Kind          string
+	HouseholdCMID int
+	PersonCMID    int
+	Note          string
+}
+
+// AnsweredRows returns the rows CloseAnswered would close, writing nothing. It
+// is the dry-run preview of the queue half of kindred#2784.
+//
+// A row qualifies only when ALL of these hold: it is an ambiguous_session row
+// for the answered party, through the same source field, in the same year; it
+// is still open; and nobody confirmed a weekend on it. A staff-resolved or
+// staff-confirmed row is never touched -- a confirmation still wins over
+// history, and a tick is a human's record that must not be rewritten.
+//
+// Every open row for the party closes, not only the one whose raw_value is the
+// current cabin string. The dedup key includes raw_value, so a party whose
+// string changed carries a stale open row per earlier string; each asks the
+// same question about the same party, and history has answered it.
+func (r *IssueRecorder) AnsweredRows() ([]QueueClosure, error) {
+	var out []QueueClosure
+	for _, key := range r.answeredOrder {
+		a := r.answered[key]
+		params := dbx.Params{
+			"year": a.Year, "hh": a.HouseholdCMID, "person": a.PersonCMID,
+			"kind": issueAmbiguousSession,
+		}
+		// is_resolved = false and confirmed_session_cm_id = 0 are the "never
+		// touch staff's rows" guard, in the query itself so no caller can skip
+		// it. Note the spaces around every operator.
+		filter := "year = {:year} && household_cm_id = {:hh} && person_cm_id = {:person} && " +
+			"kind = {:kind} && is_resolved = false && confirmed_session_cm_id = 0 && " +
+			eqOrEmpty("source_field", "field", a.SourceField, params)
+		rows, err := r.app.FindRecordsByFilter("lodging_ingest_issues", filter, "id", 0, 0, params)
+		if err != nil {
+			return nil, fmt.Errorf("finding the rows history answered: %w", err)
+		}
+		note := a.note()
+		for _, row := range rows {
+			out = append(out, QueueClosure{
+				ID: row.Id, Kind: row.GetString("kind"),
+				HouseholdCMID: a.HouseholdCMID, PersonCMID: a.PersonCMID, Note: note,
+			})
+		}
+	}
+	return out, nil
+}
+
+// CloseAnswered closes every row AnsweredRows names: is_resolved = true, with a
+// resolution_note saying it was attributed from captured cabin history.
+//
+// The sync never closes a row it merely stops observing -- Flush only upserts
+// what the current run saw -- so without this the queue would keep listing a
+// party the board already shows placed. Call it AFTER Flush and only on a
+// committing run; Sync returns before it on a dry run.
+func (r *IssueRecorder) CloseAnswered() (int, error) {
+	closures, err := r.AnsweredRows()
+	if err != nil {
+		return 0, err
+	}
+	closed := 0
+	for _, c := range closures {
+		row, findErr := r.app.FindRecordById("lodging_ingest_issues", c.ID)
+		if findErr != nil {
+			return closed, fmt.Errorf("reloading issue %s to close it: %w", c.ID, findErr)
+		}
+		row.Set("is_resolved", true)
+		row.Set("resolution_note", c.Note)
+		if saveErr := r.app.Save(row); saveErr != nil {
+			return closed, fmt.Errorf("closing issue %s: %w", c.ID, saveErr)
+		}
+		closed++
+	}
+	return closed, nil
 }

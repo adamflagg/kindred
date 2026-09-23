@@ -45,6 +45,14 @@ type LodgingAssignmentsSync struct {
 	Stats            Stats
 	SyncSuccessful   bool
 
+	// DryRunPlan and DryRunClosures are what a DryRun would have written: every
+	// placement it attributed, and every queue row it would close. Filled only
+	// on a dry run, and reset by every Sync. They exist so a change to
+	// attribution can be previewed against a copy of production before it
+	// ships (kindred#2784's merge gate), which a Stats count cannot do.
+	DryRunPlan     []PlannedPlacement
+	DryRunClosures []QueueClosure
+
 	resolver *AliasResolver
 	issues   *IssueRecorder
 
@@ -69,6 +77,27 @@ type LodgingAssignmentsSync struct {
 	// because both grain passes read it. The zero value means "nothing
 	// confirmed", which is what newReplayScope's partly-wired service relies on.
 	confirmed confirmedSessions
+
+	// valueHistory is the season's captured cabin writes per party, which
+	// attributeFromHistory reads to give each weekend its own cabin
+	// (kindred#2784). Loaded beside confirmed, by Sync and newReplayScope alike;
+	// nil for a season before historyAttributionFirstSeason.
+	valueHistory valueHistoryIndex
+	// campLoc is the camp's timezone, resolved once (see location).
+	campLoc *time.Location
+}
+
+// PlannedPlacement is one placement a dry run attributed. UnitIDs is empty when
+// the value did not resolve to a unit; such a value writes no placement.
+type PlannedPlacement struct {
+	SessionCMID   int
+	HouseholdCMID int
+	PersonCMID    int
+	UnitIDs       []string
+	Resolved      bool
+	// FromHistory marks a weekend attributed from captured value history rather
+	// than by the single-weekend or confirmed-weekend paths.
+	FromHistory bool
 }
 
 // NewLodgingAssignmentsSync builds the service. Year 0 means "resolve from the
@@ -103,6 +132,8 @@ func (s *LodgingAssignmentsSync) debugLog(msg string, args ...any) {
 func (s *LodgingAssignmentsSync) Sync(ctx context.Context) error {
 	s.Stats = Stats{}
 	s.SyncSuccessful = false
+	s.DryRunPlan = nil
+	s.DryRunClosures = nil
 
 	year := s.Year
 	if year == 0 {
@@ -168,6 +199,9 @@ func (s *LodgingAssignmentsSync) Sync(ctx context.Context) error {
 	if s.confirmed, err = loadConfirmedSessions(s.App, year); err != nil {
 		return err
 	}
+	if err = s.loadHistory(year); err != nil {
+		return err
+	}
 
 	if hhErr := s.syncHouseholdGrain(ctx, year, fieldTargets, counts, now); hhErr != nil {
 		return hhErr
@@ -178,7 +212,13 @@ func (s *LodgingAssignmentsSync) Sync(ctx context.Context) error {
 	}
 
 	if s.DryRun {
-		slog.Info("Dry run - computed but not writing", "year", year)
+		// Read-only: which queue rows the answers above WOULD close. The close
+		// itself is below, after Flush, and a dry run never reaches it.
+		if s.DryRunClosures, err = s.issues.AnsweredRows(); err != nil {
+			return err
+		}
+		slog.Info("Dry run - computed but not writing", "year", year,
+			"planned_placements", len(s.DryRunPlan), "queue_rows_to_close", len(s.DryRunClosures))
 		s.SyncSuccessful = true
 		return nil
 	}
@@ -241,6 +281,14 @@ func (s *LodgingAssignmentsSync) Sync(ctx context.Context) error {
 	}
 	s.debugLog("Work queue flushed", "created", issuesCreated, "updated", issuesUpdated)
 
+	// After Flush, so a row this run re-observed is saved before it is closed.
+	// Flush never closes anything itself: it upserts only what this run saw, so
+	// a party history now places would otherwise stay on the queue forever.
+	issuesClosed, err := s.issues.CloseAnswered()
+	if err != nil {
+		return fmt.Errorf("closing queue rows history answered: %w", err)
+	}
+
 	if err := UpsertFieldMappingStatus(s.App, year, counts, priorCounts); err != nil {
 		return fmt.Errorf("updating field mapping status: %w", err)
 	}
@@ -264,6 +312,7 @@ func (s *LodgingAssignmentsSync) Sync(ctx context.Context) error {
 		"skipped", s.Stats.Skipped,
 		"errors", s.Stats.Errors,
 		"queued_issues", issuesCreated+issuesUpdated,
+		"closed_issues", issuesClosed,
 	)
 	return nil
 }
@@ -316,14 +365,13 @@ func (s *LodgingAssignmentsSync) syncHouseholdGrain(
 			continue
 		}
 
-		lastUpdated, _ := ParseCampMinderTimestamp(v.GetString("last_updated"))
 		s.ingestValue(&ingestContext{
 			Year:                 year,
 			Raw:                  v.GetString("value"),
 			SourceField:          fieldNameFamilyCampCabin,
 			HouseholdCMID:        hhCMID,
 			Candidates:           sessionIndex[hhCMID],
-			LastUpdated:          lastUpdated,
+			LastUpdated:          s.currentValueClock(v, year),
 			Now:                  now,
 			ConfirmedSessionCMID: s.confirmed.forParty(hhCMID, 0),
 		})
@@ -383,14 +431,13 @@ func (s *LodgingAssignmentsSync) syncPersonGrain(
 			continue
 		}
 
-		lastUpdated, _ := ParseCampMinderTimestamp(v.GetString("last_updated"))
 		s.ingestValue(&ingestContext{
 			Year:                 year,
 			Raw:                  v.GetString("value"),
 			SourceField:          fieldNameReportableFamilyCampCabin,
 			PersonCMID:           personCMID,
 			Candidates:           sessionIndex[personCMID],
-			LastUpdated:          lastUpdated,
+			LastUpdated:          s.currentValueClock(v, year),
 			Now:                  now,
 			ConfirmedSessionCMID: s.confirmed.forParty(0, personCMID),
 		})
@@ -449,28 +496,35 @@ type ingestContext struct {
 	// 0 means unconfirmed, which is every party on the 98% path. It is resolved
 	// against Candidates below and never trusted on its own.
 	ConfirmedSessionCMID int
+
+	// fromHistory marks a per-weekend copy ingestFromHistory made, so a dry
+	// run's plan can say which placements the history rule produced.
+	fromHistory bool
 }
 
 // ingestValue resolves, attributes, and writes one observed cabin value.
 // Every failure path queues a work item; none drops the value and none errors
 // out of the run.
+//
+// A party at two or more weekends from 2026 on is attributed weekend by weekend
+// from captured value history (ingestFromHistory, kindred#2784). Everything
+// else -- one weekend, a staff-confirmed weekend, a season before capture
+// began, a value with no usable clock -- takes the path below, unchanged.
 func (s *LodgingAssignmentsSync) ingestValue(in *ingestContext) {
-	res := s.resolver.Resolve(in.Raw, in.Year)
-	if !res.Resolved {
-		kind := issueUnresolvedAlias
-		if res.Ambiguous {
-			kind = issueAmbiguousAlias
-		}
-		s.issues.Record(Issue{
-			Kind: kind, RawValue: in.Raw, SourceField: in.SourceField, Year: in.Year,
-		})
+	if weekends, ok := s.historyWeekends(in); ok {
+		s.ingestFromHistory(in, weekends)
+		return
 	}
+
+	res := s.resolveObserved(in)
 
 	// A weekend staff confirmed wins, because AttributeSession by ruling settles
 	// nothing here: with two or more candidates it returns an advisory BestGuess
 	// and places nothing. This is the ONLY thing that turns a confirmation into a
 	// board row, and it does so through the sync's own transform path rather than
 	// as a write-in -- everything below this point is untouched by the feature.
+	// historyWeekends declines a confirmed party for the same reason: the
+	// confirmation still wins over history.
 	//
 	// A confirmation naming a weekend the party does not attend falls through to
 	// the heuristic, which records the ambiguity exactly as before: the value
@@ -494,6 +548,101 @@ func (s *LodgingAssignmentsSync) ingestValue(in *ingestContext) {
 		return // flag, do not guess (spec 3.6)
 	}
 
+	s.writeAttributed(in, res, attr)
+}
+
+// resolveObserved resolves one cabin string and queues the string when no alias
+// covers it (or more than one does). The value is not dropped: the caller still
+// attributes it, and an unresolved placement is preserved in history.
+func (s *LodgingAssignmentsSync) resolveObserved(in *ingestContext) AliasResolution {
+	res := s.resolver.Resolve(in.Raw, in.Year)
+	if !res.Resolved {
+		kind := issueUnresolvedAlias
+		if res.Ambiguous {
+			kind = issueAmbiguousAlias
+		}
+		s.issues.Record(Issue{
+			Kind: kind, RawValue: in.Raw, SourceField: in.SourceField, Year: in.Year,
+		})
+	}
+	return res
+}
+
+// historyWeekends decides whether a value takes the history rule, and if so
+// what each of the party's weekends gets.
+//
+// It declines -- sending the value down the unchanged path -- for a season
+// before capture began (historyAttributionFirstSeason), a single-weekend party
+// (ruled unchanged), a party staff confirmed a weekend for (the confirmation
+// wins), a current value with no clock (nothing to order it against), and a
+// timeline that places no weekend at all. The last cannot arise from real data
+// -- the party's last weekend always takes the current value -- but a party
+// history cannot place must still be flagged, not silently skipped.
+func (s *LodgingAssignmentsSync) historyWeekends(in *ingestContext) ([]weekendValue, bool) {
+	if in.Year < historyAttributionFirstSeason || len(in.Candidates) < 2 || in.LastUpdated.IsZero() {
+		return nil, false
+	}
+	if _, confirmed := confirmedAttribution(in.Candidates, in.ConfirmedSessionCMID); confirmed {
+		return nil, false
+	}
+	fieldCMID, ok := retainedFieldCMID(in.SourceField)
+	if !ok {
+		return nil, false
+	}
+
+	key := valueHistoryKey{FieldCMID: fieldCMID, HouseholdCMID: in.HouseholdCMID, PersonCMID: in.PersonCMID}
+	weekends := attributeFromHistory(in.Candidates, s.valueHistory[key],
+		valueWrite{At: in.LastUpdated, Value: in.Raw}, in.Now, s.location())
+	for _, w := range weekends {
+		if w.placed() {
+			return weekends, true
+		}
+	}
+	return nil, false
+}
+
+// ingestFromHistory writes each weekend the history rule determined, through
+// the same resolve-and-write path as any other placement, and records the
+// answer so the queue rows asking "which weekend?" close once the run commits.
+//
+// Each weekend's string is resolved on its own: an earlier weekend's cabin is
+// a different string from the current one. A weekend the rule could not
+// determine is left unplaced, as it always was, and named in the closing note.
+// The answer is recorded only when at least one weekend was actually placed --
+// a party whose every string failed to resolve is still blocked, by the alias
+// rows queued above, and its session question has not been settled on the board.
+func (s *LodgingAssignmentsSync) ingestFromHistory(in *ingestContext, weekends []weekendValue) {
+	answer := SessionAnswer{
+		Year: in.Year, SourceField: in.SourceField,
+		HouseholdCMID: in.HouseholdCMID, PersonCMID: in.PersonCMID,
+	}
+	for _, w := range weekends {
+		switch {
+		case !w.Known:
+			answer.Overwritten = append(answer.Overwritten, w.Window)
+		case w.Value == "":
+			answer.Cleared = append(answer.Cleared, w.Window)
+		default:
+			one := *in
+			one.Raw = w.Value
+			one.fromHistory = true
+			res := s.resolveObserved(&one)
+			attr := Attribution{SessionID: w.Window.ID, Candidates: in.Candidates, Reason: attrSingleSession}
+			if s.writeAttributed(&one, res, attr) {
+				answer.Placed = append(answer.Placed, w.Window)
+			}
+		}
+	}
+	if len(answer.Placed) > 0 {
+		s.issues.Answer(answer)
+	}
+}
+
+// writeAttributed writes one value already attributed to exactly one weekend,
+// and reports whether the weekend now has (or on a dry run, would have) a
+// placement behind it. A row staff moved counts: the placement exists and a
+// human owns it.
+func (s *LodgingAssignmentsSync) writeAttributed(in *ingestContext, res AliasResolution, attr Attribution) bool {
 	// History records the OBSERVED label whether or not it resolved --
 	// old_unit / new_unit are TEXT for exactly this reason.
 	label := in.Raw
@@ -509,7 +658,15 @@ func (s *LodgingAssignmentsSync) ingestValue(in *ingestContext) {
 	// and miss that one. The work queue is unaffected either way -- Record is
 	// in-memory, and Sync returns before Flush on a dry run.
 	if s.DryRun {
-		return
+		planned := PlannedPlacement{
+			SessionCMID: attr.SessionCMID(), HouseholdCMID: in.HouseholdCMID, PersonCMID: in.PersonCMID,
+			Resolved: res.Resolved, FromHistory: in.fromHistory,
+		}
+		if res.Resolved {
+			planned.UnitIDs = s.placementFor(res)
+		}
+		s.DryRunPlan = append(s.DryRunPlan, planned)
+		return res.Resolved
 	}
 
 	if !res.Resolved {
@@ -519,7 +676,7 @@ func (s *LodgingAssignmentsSync) ingestValue(in *ingestContext) {
 			slog.Error("Recording unresolved-placement history", "raw", in.Raw, "error", err)
 			s.Stats.Errors++
 		}
-		return
+		return false
 	}
 
 	input := assignmentInput{
@@ -538,7 +695,62 @@ func (s *LodgingAssignmentsSync) ingestValue(in *ingestContext) {
 		slog.Error("Upserting lodging assignment", "raw", in.Raw, "error", err)
 		s.Stats.Errors++
 		s.recordWriteFailure(in)
+		return false
 	}
+	return true
+}
+
+// loadHistory reads the season's captured cabin writes for the history rule.
+// A season before capture began loads nothing: the rule does not apply to it.
+//
+// A read failure is fatal, like loadConfirmedSessions'. Carrying on with an
+// empty index would still place parties -- the current value is a timeline on
+// its own -- but would close their queue rows with a note claiming an earlier
+// weekend's cabin "was overwritten before capture began" when it was merely
+// unread.
+func (s *LodgingAssignmentsSync) loadHistory(year int) error {
+	s.valueHistory = nil
+	if year < historyAttributionFirstSeason {
+		return nil
+	}
+	history, err := loadValueHistory(s.App, year, s.location())
+	if err != nil {
+		return err
+	}
+	s.valueHistory = history
+	return nil
+}
+
+// location returns the camp's timezone, resolved once per service.
+func (s *LodgingAssignmentsSync) location() *time.Location {
+	if s.campLoc == nil {
+		s.campLoc = campLocation()
+	}
+	return s.campLoc
+}
+
+// currentValueClock is when CampMinder says a custom value was written: its
+// last_updated.
+//
+// For a season the history rule covers, it is parsed defensively, and when it
+// cannot be parsed at all the row's own `updated` stamp -- when our sync last
+// saved it, the current value's equivalent of lodging_value_history's
+// observed_at -- stands in, and the fallback is logged. A prior season keeps
+// exactly the parse it always had: its only reader is AttributeSession's
+// advisory suggestion, and prior years are not to move.
+func (s *LodgingAssignmentsSync) currentValueClock(v *core.Record, year int) time.Time {
+	raw := v.GetString("last_updated")
+	if year < historyAttributionFirstSeason {
+		t, _ := ParseCampMinderTimestamp(raw)
+		return t
+	}
+	if t, ok := parseSourceChangeTime(raw, s.location()); ok {
+		return t
+	}
+	observed := v.GetDateTime("updated").Time()
+	slog.Warn("lodging_assignments_sync: last_updated unparseable; timing the current value by when it was observed",
+		"custom_value_id", v.Id, "last_updated", raw, "observed_at", observed.Format(time.RFC3339))
+	return observed
 }
 
 // recordWriteFailure queues a value the ingest resolved and attributed but could
