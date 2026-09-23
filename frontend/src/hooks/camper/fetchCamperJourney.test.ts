@@ -452,6 +452,19 @@ describe('adult programs', () => {
     expect(rows[0]?.bunkNameRecorded).toBeUndefined()
   })
 
+  // I2 (review): both sides are trimmed before the disagreement check, so
+  // outer whitespace on the server's raw string must never look like a real
+  // disagreement and spawn a spurious tooltip.
+  it('never treats outer whitespace on cabin_name_raw as a disagreement with a trimmed cabin_name', async () => {
+    mockAttendeesGetFullList.mockResolvedValue([attendee(2024, 1001, 'adult', "Women's Weekend")])
+    const { rows } = await fetchCamperJourney(PERSON, CURRENT_YEAR, {
+      adultHousingWeekends: [
+        { year: 2024, session_cm_id: 1001, cabin_name: 'River F', cabin_name_raw: '  River F  ' },
+      ],
+    })
+    expect(rows[0]?.bunkNameRecorded).toBeUndefined()
+  })
+
   it('never labels an adult row with a bunk, even a lone same-year one', async () => {
     mockAttendeesGetFullList.mockResolvedValue([attendee(2024, 1001, 'adult', "Women's Weekend")])
     mockAssignmentsGetFullList.mockResolvedValue([assignment(2024, 555, 'G-8B', 'main')])
@@ -482,7 +495,7 @@ describe('adult programs', () => {
   })
 })
 
-describe('family camp, todays name with recorded provenance, and as a parent', () => {
+describe("family camp, today's name with recorded provenance, and as a parent", () => {
   // Each test starts from no enrollments — without this, a test that sets no
   // attendees inherits the previous test's mock (vi.fn keeps its last value).
   beforeEach(() => {
@@ -617,5 +630,18 @@ describe('family camp, todays name with recorded provenance, and as a parent', (
       bunkName: 'Meadow House 1',
       bunkNameRecorded: 'Old Meadow 1',
     })
+  })
+
+  // I2 (review): both sides are trimmed before the disagreement check, so
+  // outer whitespace on the household record's raw string must never look
+  // like a real disagreement and spawn a spurious tooltip.
+  it('never treats outer whitespace on the household record cabin_name_raw as a disagreement', async () => {
+    mockAttendeesGetFullList.mockResolvedValue([
+      attendee(2024, 900, 'family', 'Family Camp 2: Keshet Weekend'),
+    ])
+    const { rows } = await fetchCamperJourney(PERSON, CURRENT_YEAR, {
+      familyHousingYears: [householdYear({ cabin_name: 'River F', cabin_name_raw: '  River F  ' })],
+    })
+    expect(rows[0]?.bunkNameRecorded).toBeUndefined()
   })
 })
