@@ -150,6 +150,7 @@ export function useCamperEnrollment(
           age: expandedPerson.age,
           birthdate: expandedPerson.birthdate,
           grade: expandedPerson.grade,
+          grade_name: expandedPerson.grade_name,
           gender,
           session_cm_id: expandedSession?.cm_id ?? 0,
           ...(assignedBunk?.cm_id !== undefined && { assigned_bunk_cm_id: assignedBunk.cm_id }),

@@ -38,6 +38,7 @@ export function toAppCamper(
     age: typeof person.age === 'number' ? person.age : 0,
     birthdate: person.birthdate,
     grade: person.grade || 0,
+    ...(person.grade_name && { grade_name: person.grade_name }),
     gender: normalizeGender(person.gender),
     session_cm_id: sessionCmId,
     ...(bunk?.id && { assigned_bunk: bunk.id }),

@@ -537,7 +537,7 @@ func (s *PersonsSync) processPerson(
 	// Tags field IS included - FieldEquals normalizes []interface{} vs []string for proper comparison.
 	// Removed: phone_numbers, email_addresses (JSON), address (JSON) - fields dropped from schema
 	compareFields := []string{"cm_id", "first_name", "last_name", "preferred_name",
-		"birthdate", "gender", "age", "grade", "school", "years_at_camp",
+		"birthdate", "gender", "age", "grade", "grade_name", "school", "years_at_camp",
 		"last_year_attended", "gender_identity_id", "gender_identity_name", "gender_identity_write_in",
 		"gender_pronoun_id", "gender_pronoun_name", "gender_pronoun_write_in",
 		"address_city", "address_state", "primary_email", "secondary_email",
@@ -684,21 +684,7 @@ func (s *PersonsSync) transformPersonToPB(
 		s.missingDataStats["missing_age"]++
 	}
 
-	// Grade from CamperDetails
-	grade := s.getFloat(camperDetails, "CampGradeID", 0)
-	if grade == 0 {
-		grade = s.getFloat(camperDetails, "SchoolGradeID", 0)
-	}
-
-	if grade > 0 {
-		// CampMinder uses 1-indexed grade IDs where 1=K, 2=1st, 3=2nd, etc.
-		// Convert to 0-indexed where 0=K, 1=1st, 2=2nd, etc.
-		actualGrade := int(grade) - 1
-		pbData["grade"] = actualGrade // No clamp - allow 0 for kindergarten
-	} else {
-		// Don't set grade if missing - let it be null
-		s.missingDataStats["missing_grade"]++
-	}
+	pbData["grade"], pbData["grade_name"] = s.extractGrade(camperDetails)
 
 	// Extract V2 fields from CamperDetails
 	pbData["school"] = s.getString(camperDetails, "School", "")
@@ -822,6 +808,33 @@ func (s *PersonsSync) getPersonName(person map[string]any) string {
 	return "Unknown"
 }
 
+// extractGrade maps CampMinder's grade to (grade, grade_name) -- kindred#2779.
+//
+// CampGradeID runs Infant -3, Toddler -2, Nursery -1, Pre-K 0, K 1 .. 12th+ 14,
+// and grade is `id - 1` for every one of them, so K stays 0 and Pre-K is -1.
+// A null id means CampMinder has no grade (adults, and the odd "Unknown"); only
+// then does the school grade stand in, and its name comes with it so the two
+// fields never describe different grades.
+//
+// grade cannot say "no grade" -- it is a NOT NULL number, so K and nothing both
+// read 0 -- which is why grade_name exists: it is empty exactly when there is no
+// grade. Both are always written, so a correction in CampMinder overwrites.
+func (s *PersonsSync) extractGrade(camperDetails map[string]any) (grade int, gradeName string) {
+	for _, prefix := range []string{"Camp", "School"} {
+		id, ok := camperDetails[prefix+"GradeID"].(float64)
+		if !ok {
+			continue
+		}
+		name := s.getString(camperDetails, prefix+"GradeName", "")
+		if name == "Unknown" {
+			name = ""
+		}
+		return int(id) - 1, name
+	}
+	s.missingDataStats["missing_grade"]++
+	return 0, ""
+}
+
 func (s *PersonsSync) getString(data map[string]any, key, defaultValue string) string {
 	if val, ok := data[key].(string); ok {
 		return val
@@ -832,13 +845,6 @@ func (s *PersonsSync) getString(data map[string]any, key, defaultValue string) s
 func (s *PersonsSync) getInt(data map[string]any, key string, defaultValue int) int {
 	if val, ok := data[key].(float64); ok {
 		return int(val)
-	}
-	return defaultValue
-}
-
-func (s *PersonsSync) getFloat(data map[string]any, key string, defaultValue float64) float64 {
-	if val, ok := data[key].(float64); ok {
-		return val
 	}
 	return defaultValue
 }

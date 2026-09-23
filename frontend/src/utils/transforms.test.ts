@@ -139,6 +139,18 @@ describe('toAppCamper', () => {
     expect(camper.pronouns).toBe('he/him')
   })
 
+  // kindred#2779: the board panel's header displays `grade_name`.
+  it('carries grade_name through', () => {
+    const camper = toAppCamper(
+      createMockPerson({ grade: -1, grade_name: 'Pre-K' }),
+      mockAttendee,
+      null,
+      null,
+      null
+    )
+    expect(camper.grade_name).toBe('Pre-K')
+  })
+
   it('should include bunk info when provided', () => {
     const camper = toAppCamper(mockPerson, mockAttendee, null, mockBunk, null)
 

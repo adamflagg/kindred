@@ -117,10 +117,16 @@ describe('the party for one year', () => {
     expect(children).not.toContain('Age')
   })
 
-  // CampMinder stores 13 for a camper past 12th grade: 224 persons carry it
-  // and nothing above it. It is a real value but a nonsensical label, so it
-  // is suppressed the same way an absent grade is -- the age still prints.
-  it('omits a grade above 12 rather than printing a nonsensical one', () => {
+  // kindred#2779: the grade reads `grade_name` in the SHORT style, like the
+  // family panel it opens from. 12th+ used to be suppressed because the
+  // number 13 had no sensible label; it now reads "Grad".
+  it.each<[string | null, number | null, string | null]>([
+    ['4th', 4, '4th'],
+    ['12th+', 13, 'Grad'],
+    ['K', 0, 'K'],
+    ['Pre-K', -1, 'Pre-K'],
+    [null, 0, null],
+  ])('shows grade_name %s (grade %s) as %s', (gradeName, grade, expected) => {
     open(
       _row({
         children: [
@@ -128,17 +134,22 @@ describe('the party for one year', () => {
             display_name: 'Emma Johnson',
             last_name: 'Johnson',
             person_cm_id: 1000001,
-            age: 18,
-            grade: 13,
+            age: 9,
+            grade,
+            grade_name: gradeName,
           },
         ],
       })
     )
 
-    const children = screen.getByRole('dialog').textContent
-    expect(children).not.toContain('Grade 13')
-    expect(children).not.toContain('Grade')
-    expect(children).toContain('Age 18')
+    const children = screen.getByTestId('year-members-children').textContent
+    if (expected === null) {
+      expect(children).not.toMatch(/Grade|K|0th/)
+      expect(children).toContain('Age 9.00')
+    } else {
+      expect(children).toContain(`Age 9.00 · ${expected}`)
+      expect(children).not.toContain('Grade')
+    }
   })
 })
 

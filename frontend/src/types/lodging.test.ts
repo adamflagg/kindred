@@ -62,6 +62,7 @@ const _exhaustivePartyChild: Required<PartyChildRow> = {
   // snapshot and thresholding on it is forbidden (kindred#2480).
   is_under_two: false,
   grade: 4,
+  grade_name: '4th',
   // kindred#2393. WHICH WEEKENDS this child attended that year, earliest
   // first — the journey populates it and every other surface leaves it empty,
   // because the roster is already one weekend. `[]` is "not knowable", never

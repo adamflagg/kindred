@@ -1403,6 +1403,7 @@ export type PersonsRecord<Tparent_names = unknown, Traw_data = unknown> = {
   gender_pronoun_name?: string
   gender_pronoun_write_in?: string
   grade?: number
+  grade_name?: string
   household?: RecordIdString
   household_id?: number
   id: string

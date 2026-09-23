@@ -51,6 +51,7 @@ import { Link } from 'react-router'
 
 import type { HouseholdJourneyRow } from '../../types/lodging'
 import { displayCampMinderAge } from '../../utils/age'
+import { formatGradeName } from '../../utils/gradeUtils'
 import { Modal } from '../ui/Modal'
 import { isAttendingAdultName } from './householdIdentity'
 import { weekendLabel } from './weekendNames'
@@ -86,22 +87,14 @@ export interface HouseholdYearMembersModalProps {
 const TITLE_ID = 'household-year-members-title'
 
 /**
- * An age or grade we do not have is omitted, never printed as zero.
- *
- * A grade above 12 is omitted too. CampMinder stores 13 for a camper past
- * 12th grade -- 224 `persons` rows carry it and nothing carries more -- so
- * it is a real value with no sensible label. School grades stop at 12; past
- * that we show the age alone rather than inventing a "Grade 13".
+ * An age or grade we do not have is omitted, never printed as zero. The grade
+ * is `grade_name` (kindred#2779), in the short style like the family panel this
+ * opens from: the number reads 0 for both K and "no grade".
  */
-const HIGHEST_SCHOOL_GRADE = 12
-
-function childDetail(age: number | null | undefined, grade: number | null | undefined): string {
-  const gradeIsShowable =
-    grade !== null && grade !== undefined && grade > 0 && grade <= HIGHEST_SCHOOL_GRADE
-
+function childDetail(age: number | null | undefined, gradeName: string | null | undefined): string {
   return [
     age === null || age === undefined ? '' : `Age ${displayCampMinderAge(age)}`,
-    gradeIsShowable ? `Grade ${String(grade)}` : '',
+    formatGradeName(gradeName, 'short') ?? '',
   ]
     .filter((part) => part.length > 0)
     .join(' · ')
@@ -325,7 +318,7 @@ export function HouseholdYearMembersModal({
                     <span className="text-foreground">{child.display_name}</span>
                   )}
                   <span className="text-muted-foreground text-xs">
-                    {childDetail(child.age, child.grade)}
+                    {childDetail(child.age, child.grade_name)}
                   </span>
                 </li>
               ))}

@@ -956,6 +956,90 @@ describe('CamperDetailsPanel', () => {
       expect(screen.queryByText('0th')).not.toBeInTheDocument()
     })
 
+    // kindred#2779: the sibling line reads `grade_name`, so a preschooler
+    // shows as one rather than as nothing.
+    // kindred#2779 (CodeRabbit on #2782): both headers read `grade_name`, and
+    // the school still shows when there is no grade -- "@" only joins the two.
+    describe('header grade', () => {
+      const withGrade = (gradeName: string) =>
+        mockPerson({ ...EMMA_H, grade: 0, grade_name: gradeName, school: 'Riverside Elementary' })
+
+      it.each([false, true])(
+        'shows a kindergartner as "K @ school" (embedded=%s)',
+        async (embedded) => {
+          mockGetListPersons.mockResolvedValue({ items: [withGrade('K')], totalItems: 1 })
+          mockGetFullListPersons.mockResolvedValue([withGrade('K')])
+          render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} embedded={embedded} />)
+          expect(await screen.findByText('K @ Riverside Elementary')).toBeInTheDocument()
+          expect(screen.queryByText(/0th/)).not.toBeInTheDocument()
+        }
+      )
+
+      // Owner ruling 2026-09-23: the side panel keeps the SHORT style -- no
+      // "Grade" -- so a long school name has room.
+      it.each([false, true])(
+        'shows an ordinal grade bare, "5th @ school" (embedded=%s)',
+        async (embedded) => {
+          const fifth = mockPerson({ ...withGrade('5th'), grade: 5 })
+          mockGetListPersons.mockResolvedValue({ items: [fifth], totalItems: 1 })
+          mockGetFullListPersons.mockResolvedValue([fifth])
+          render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} embedded={embedded} />)
+          expect(await screen.findByText('5th @ Riverside Elementary')).toBeInTheDocument()
+        }
+      )
+
+      it.each([false, true])(
+        'shows a camper past 12th grade as "Grad @ school" (embedded=%s)',
+        async (embedded) => {
+          const grad = mockPerson({ ...withGrade('12th+'), grade: 13, age: 18.02 })
+          mockGetListPersons.mockResolvedValue({ items: [grad], totalItems: 1 })
+          mockGetFullListPersons.mockResolvedValue([grad])
+          render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} embedded={embedded} />)
+          expect(await screen.findByText('Grad @ Riverside Elementary')).toBeInTheDocument()
+        }
+      )
+
+      it.each([false, true])(
+        'shows the school alone without a grade (embedded=%s)',
+        async (embedded) => {
+          mockGetListPersons.mockResolvedValue({ items: [withGrade('')], totalItems: 1 })
+          mockGetFullListPersons.mockResolvedValue([withGrade('')])
+          render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} embedded={embedded} />)
+          expect(await screen.findByText('Riverside Elementary')).toBeInTheDocument()
+          expect(screen.queryByText(/@ Riverside/)).not.toBeInTheDocument()
+          expect(screen.queryByText(/0th/)).not.toBeInTheDocument()
+        }
+      )
+    })
+
+    it('shows a sibling past 12th grade as Grad', async () => {
+      mockGetFullListPersons.mockImplementation((opts: { filter?: string } = {}) => {
+        const filter = opts.filter ?? ''
+        if (filter.includes(`household_id = ${String(HOUSEHOLD)}`)) {
+          return Promise.resolve([{ ...SAM, grade: 13, grade_name: '12th+' }, OLIVIA, DAVID])
+        }
+        return Promise.resolve([EMMA_H])
+      })
+      render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} />)
+      await screen.findByText('Sam Johnson')
+      expect(await screen.findByText('Grad')).toBeInTheDocument()
+      expect(screen.queryByText('12th+')).not.toBeInTheDocument()
+    })
+
+    it("shows a preschool sibling's grade name", async () => {
+      mockGetFullListPersons.mockImplementation((opts: { filter?: string } = {}) => {
+        const filter = opts.filter ?? ''
+        if (filter.includes(`household_id = ${String(HOUSEHOLD)}`)) {
+          return Promise.resolve([{ ...SAM, grade: -1, grade_name: 'Pre-K' }, OLIVIA, DAVID])
+        }
+        return Promise.resolve([EMMA_H])
+      })
+      render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} />)
+      await screen.findByText('Sam Johnson')
+      expect(await screen.findByText('Pre-K')).toBeInTheDocument()
+      expect(screen.queryByText('-1th')).not.toBeInTheDocument()
+    })
+
     // Owner ruling 2026-09-22 (second visual pass): the board's line 2 shows
     // summer/teen programs only (main, embedded, ag, quest, tli, scit).
     // Family weekends are "not germane for bunking" here and stay visible

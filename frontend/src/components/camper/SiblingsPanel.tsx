@@ -6,9 +6,9 @@ import { Link } from 'react-router'
 import { Users, Home, Calendar, ChevronRight } from 'lucide-react'
 import { getAvatarColor, getInitial } from '../../utils/avatarUtils'
 import { formatAge } from '../../utils/age'
-import { formatGradeOrdinal } from '../../utils/gradeUtils'
 import { getSessionDisplayNameFromString } from '../../utils/sessionDisplay'
 import { getDisplayAgeForYear } from '../../utils/displayAge'
+import { formatGradeName } from '../../utils/gradeUtils'
 import { StatusBadge } from '../StatusBadge'
 import { useYear } from '../../hooks/useCurrentYear'
 import type { SiblingWithEnrollment } from '../../hooks/camper/types'
@@ -74,14 +74,11 @@ export function SiblingsPanel({
                   <div className="text-muted-foreground mt-0.5 text-xs">
                     {(() => {
                       const age = getDisplayAgeForYear(sibling, viewingYear)
-                      // Grade-0 members (family-camp preschoolers, adults)
-                      // show no grade rather than "0th". PersonsResponse types
-                      // `grade` as a number, never undefined, so a plain `> 0`
-                      // needs no `?? 0` (which eslint would flag as an
-                      // unnecessary condition).
+                      // The grade in the short style ("K", "Pre-K", "5th"), bare
+                      // like the age; none without a grade name -- kindred#2779.
                       const parts = [
                         age !== null ? formatAge(age) : null,
-                        sibling.grade > 0 ? formatGradeOrdinal(sibling.grade) : null,
+                        formatGradeName(sibling.grade_name, 'short'),
                       ].filter((part): part is string => part !== null)
                       return parts.join(' • ')
                     })()}

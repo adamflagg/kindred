@@ -646,6 +646,7 @@ def _party_child(
         age=age,
         is_under_two=is_under_two,
         grade=_i(child, "grade") or None,
+        grade_name=_s(child, "grade_name") or None,
         # A LIST COPY, not the caller's own: the journey builds one list per
         # (year, child) and a shared reference would let a later mutation
         # reach a wire object already handed out.

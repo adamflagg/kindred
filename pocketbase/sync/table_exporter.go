@@ -537,6 +537,9 @@ func GetReadableYearExports() []ExportConfig {
 				{Field: "birthdate", Header: "Birthdate", Type: FieldTypeText},
 				{Field: "age", Header: "Age", Type: FieldTypeNumber},
 				{Field: "grade", Header: "Grade", Type: FieldTypeNumber},
+				// kindred#2779: the number is -1..-4 below K and 0 for both K and
+				// "no grade"; the name is what tells them apart.
+				{Field: "grade_name", Header: "Grade Name", Type: FieldTypeText},
 				{Field: "gender", Header: "Gender", Type: FieldTypeText},
 				{
 					Field: "gender_identity_name", Header: "Gender Identity",

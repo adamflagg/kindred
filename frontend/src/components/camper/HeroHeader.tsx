@@ -9,7 +9,7 @@ import { StatusBadge } from '../StatusBadge'
 import { getAvatarColor, getInitial } from '../../utils/avatarUtils'
 import { formatAge } from '../../utils/age'
 import { formatGenderFull } from '../../utils/genderUtils'
-import { formatGradeOrdinal } from '../../utils/gradeUtils'
+import { formatGradeName } from '../../utils/gradeUtils'
 import { getDisplayAgeForYear } from '../../utils/displayAge'
 import { sessionNameToUrl } from '../../utils/sessionUtils'
 import { journeyCountLabel } from '../../utils/journeyCountLabel'
@@ -48,6 +48,7 @@ export function HeroHeader({
   // single-enrollment cabin/trip chip below (the multi-enrollment branch
   // computes this per enrolled camper).
   const isSingleQuest = isQuestSessionType(camper.expand?.session?.session_type)
+  const gradeLabel = formatGradeName(camper.grade_name, 'long')
   return (
     <div className="from-forest-700 via-forest-800 to-forest-900 shadow-lodge-lg overflow-hidden rounded-2xl bg-gradient-to-br">
       {/* Back link */}
@@ -91,7 +92,7 @@ export function HeroHeader({
               {formatGenderFull(camper.gender)} • {pronouns} •{' '}
               {formatAge(getDisplayAgeForYear(camper, currentYear) ?? 0)}
               {/* Adults have no grade. */}
-              {isAdultProgram ? null : ` • ${formatGradeOrdinal(camper.grade)} Grade`}
+              {isAdultProgram || !gradeLabel ? null : ` • ${gradeLabel}`}
             </p>
           </div>
 

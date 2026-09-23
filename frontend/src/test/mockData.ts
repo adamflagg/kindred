@@ -67,6 +67,7 @@ export const mockPerson = (overrides?: Partial<PersonsResponse>): PersonsRespons
   gender_identity_name: 'Girl/woman',
   gender_pronoun_name: 'She/her',
   grade: 5,
+  grade_name: '5th',
   is_camper: true,
   years_at_camp: 2,
   age: 10,
