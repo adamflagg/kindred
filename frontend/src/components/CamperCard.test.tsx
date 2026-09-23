@@ -135,8 +135,10 @@ describe('CamperCard — context-menu overlay token (kindred#2237)', () => {
   })
 })
 
-// The 18+ age rule is global: at 18 and over CampMinder's yy.mm age drops its
-// months ("18.02" reads "18"); under 18 the full yy.mm stays.
+// The 21+ age rule is global (owner ruling 2026-09-22: cutoff raised from 18
+// to 21 -- teens 18-20 are still campers in summer and teen programs): at 21
+// and over CampMinder's yy.mm age drops its months ("21.02" reads "21");
+// under 21 the full yy.mm stays.
 describe('CamperCard — age line', () => {
   beforeEach(() => {
     // getDisplayAgeForYear adjusts by (calendar year - viewing year); pin the
@@ -148,13 +150,14 @@ describe('CamperCard — age line', () => {
     vi.useRealTimers()
   })
 
-  it('drops the months at 18 and over', () => {
-    render(<CamperCard camper={mockCamper({ person_cm_id: 9003, age: 18.02, grade: 12 })} />)
-    expect(screen.getByText(/^Age 18 •/)).toBeInTheDocument()
-    expect(screen.queryByText(/18\.02/)).toBeNull()
+  it('drops the months at 21 and over', () => {
+    // Ruled change: was age 18.02 / "Age 18" under the old 18 cutoff.
+    render(<CamperCard camper={mockCamper({ person_cm_id: 9003, age: 21.02, grade: 12 })} />)
+    expect(screen.getByText(/^Age 21 •/)).toBeInTheDocument()
+    expect(screen.queryByText(/21\.02/)).toBeNull()
   })
 
-  it('keeps yy.mm under 18', () => {
+  it('keeps yy.mm under 21', () => {
     render(<CamperCard camper={mockCamper({ person_cm_id: 9004, age: 11.06, grade: 6 })} />)
     expect(screen.getByText(/^Age 11\.06 •/)).toBeInTheDocument()
   })

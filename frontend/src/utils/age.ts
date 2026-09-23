@@ -1,9 +1,15 @@
 /**
- * At 18 and over, CampMinder's yy.mm age drops its months: "37.11" reads "37"
- * (owner ruling 2026-09-22). Still CampMinder's own value — never derived from
- * birthdate (#2088). Applied here so every surface inherits it.
+ * At 21 and over, CampMinder's yy.mm age drops its months: "37.11" reads "37"
+ * (owner ruling 2026-09-22, cutoff raised from 18 to 21: teens 18-20 are
+ * still campers in summer and teen programs, so the owner wants 21 "to be
+ * safe"). Still CampMinder's own value — never derived from birthdate
+ * (#2088). Applied here so every surface inherits it.
+ *
+ * Exported so `useCamperJourney`'s `viewerIsAdult` reads the SAME constant —
+ * two independent `const ADULT_AGE = 18` copies is exactly how the two would
+ * drift the next time this cutoff moves.
  */
-const ADULT_AGE = 18
+export const ADULT_AGE = 21
 
 /**
  * Format age from CampMinder format to display format

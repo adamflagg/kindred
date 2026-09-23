@@ -73,16 +73,19 @@ describe('displayTruncatedAge', () => {
   })
 })
 
-describe('the 18+ rule (owner ruling 2026-09-22)', () => {
-  it("drops the months at 18 and over - still CampMinder's own value, never birthdate math", () => {
+describe('the 21+ rule (owner ruling 2026-09-22: cutoff raised from 18 to 21 -- teens 18-20 are still campers in summer and teen programs)', () => {
+  it("drops the months at 21 and over - still CampMinder's own value, never birthdate math", () => {
     expect(formatAge(37.11)).toBe('37 years')
-    expect(formatAge(18.02)).toBe('18 years')
+    // Ruled change: was 18.02 -> '18 years' under the old 18 cutoff.
+    expect(formatAge(21.02)).toBe('21 years')
     expect(displayCampMinderAge(37.11)).toBe('37')
-    expect(displayCampMinderAge(18)).toBe('18')
+    // Ruled change: was displayCampMinderAge(18) -> '18' under the old cutoff.
+    expect(displayCampMinderAge(21)).toBe('21')
   })
 
-  it('keeps the months below 18', () => {
-    expect(formatAge(17.11)).toBe('17 years, 11 months')
-    expect(displayCampMinderAge(17.11)).toBe('17.11')
+  it('keeps the months below 21', () => {
+    // Ruled change: was 17.11 -> '17 years, 11 months' under the old 18 cutoff.
+    expect(formatAge(20.11)).toBe('20 years, 11 months')
+    expect(displayCampMinderAge(20.11)).toBe('20.11')
   })
 })

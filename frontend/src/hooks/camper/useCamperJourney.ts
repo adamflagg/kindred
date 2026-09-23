@@ -17,13 +17,13 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { useAuth } from '../../contexts/AuthContext'
 import { pb } from '../../lib/pocketbase'
 import type { PersonsResponse } from '../../types/pocketbase-types'
+import { ADULT_AGE } from '../../utils/age'
 import { EMPTY_JOURNEY_COUNTS } from '../../utils/journeyCountLabel'
 import { queryKeys } from '../../utils/queryKeys'
 import { useHouseholdJourney, usePersonHousing } from '../useWeekendRoster'
 import { fetchCamperJourney } from './fetchCamperJourney'
 import type { HistoricalRecord, JourneyCounts } from './types'
 
-const ADULT_AGE = 18
 const NO_ROWS: HistoricalRecord[] = []
 
 type PersonFactsRow = Pick<PersonsResponse, 'year' | 'household_id' | 'years_at_camp' | 'age'>
@@ -31,6 +31,10 @@ type PersonFactsRow = Pick<PersonsResponse, 'year' | 'household_id' | 'years_at_
 export interface PersonJourneyFacts {
   householdId: number | null
   summers: number
+  /** CampMinder's own age >= ADULT_AGE (owner ruling 2026-09-22: raised from
+   * 18 to 21 — teens 18-20 are still campers in summer and teen programs).
+   * Decides `viewerIsAdult`, which gates whether parent family-camp rows are
+   * added to the feed. */
   isAdult: boolean
 }
 
