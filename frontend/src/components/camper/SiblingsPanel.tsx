@@ -86,6 +86,13 @@ export function SiblingsPanel({
                       return parts.join(' • ')
                     })()}
                   </div>
+                  {/* Owner ruling 2026-09-22 ("P3"): a session and its OWN
+                      cabin get no separator between them — only a
+                      transition to a DIFFERENT program does, and that
+                      separator is a vertical bar, never a dot. A dot for
+                      both left the cabin's owning program ambiguous once
+                      more than one program was on the line
+                      ("Session 3 • 🏠 B-7 • Family Camp 1"). */}
                   <div className="text-muted-foreground mt-0.5 flex flex-wrap items-center gap-1 text-xs">
                     {sibling.session && (
                       <>
@@ -100,14 +107,13 @@ export function SiblingsPanel({
                     )}
                     {sibling.bunkName && (
                       <>
-                        {sibling.session && <span className="mx-0.5">•</span>}
                         <Home className="h-3 w-3" />
                         <span>{sibling.bunkName}</span>
                       </>
                     )}
                     {sibling.additionalSessions?.map((s, idx) => (
                       <Fragment key={`${s.name}-${String(idx)}`}>
-                        <span className="mx-0.5">•</span>
+                        <span className="text-border mx-1">|</span>
                         <span>{getSessionDisplayNameFromString(s.name, s.session_type)}</span>
                       </Fragment>
                     ))}

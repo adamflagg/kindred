@@ -609,6 +609,16 @@ describe('CamperDetailsPanel', () => {
       year: 2025,
       household_id: HOUSEHOLD,
     })
+    const LIAM = mockPerson({
+      id: 'pb-liam',
+      cm_id: 3000013,
+      first_name: 'Liam',
+      preferred_name: '',
+      last_name: 'Johnson',
+      grade: 10,
+      year: 2025,
+      household_id: HOUSEHOLD,
+    })
 
     const attendee = (
       personCmId: number,
@@ -627,7 +637,7 @@ describe('CamperDetailsPanel', () => {
       mockGetFullListPersons.mockImplementation((opts: { filter?: string } = {}) => {
         const filter = opts.filter ?? ''
         if (filter.includes(`household_id = ${String(HOUSEHOLD)}`)) {
-          return Promise.resolve([NOAH, AVA, MIA])
+          return Promise.resolve([NOAH, AVA, MIA, LIAM])
         }
         return Promise.resolve([EMMA_H2])
       })
@@ -655,6 +665,15 @@ describe('CamperDetailsPanel', () => {
           // Family-camp-only: no cabin ever (kindred#2466).
           return Promise.resolve([
             attendee(MIA.cm_id, { id: 's-fc2', name: 'Family Camp 2', session_type: 'family' }),
+          ])
+        }
+        if (filter.includes(`person_id = ${String(LIAM.cm_id)}`)) {
+          // TWO germane programs (summer main + teen TLI) — both should
+          // show on line 2, separated by the bar (owner ruling 2026-09-22,
+          // "P3"), never a dot.
+          return Promise.resolve([
+            attendee(LIAM.cm_id, { id: 's-5', name: 'Session 5', session_type: 'main' }),
+            attendee(LIAM.cm_id, { id: 's-tli', name: 'TLI', session_type: 'tli' }),
           ])
         }
         return Promise.resolve([EMMA_ATTENDEE])
@@ -697,6 +716,10 @@ describe('CamperDetailsPanel', () => {
       expect(lines).toHaveLength(2)
       expect(lines[0]?.textContent ?? '').not.toContain('Bunk 12')
       expect(lines[1]?.textContent ?? '').toContain('Bunk 12')
+      // Owner ruling 2026-09-22 ("P3"): no dot between a session and its OWN
+      // cabin -- a dot here read as ambiguous once a row could carry more
+      // than one program.
+      expect(lines[1]?.textContent ?? '').not.toContain('•')
     })
 
     // Ruled change 2026-09-22 (second visual pass): the board's line 2 now
@@ -718,11 +741,35 @@ describe('CamperDetailsPanel', () => {
       expect(line2Text).toContain('Bunk 9')
       expect(line2Text).not.toContain(familyLabel)
       expect(within(row).queryByText(familyLabel)).not.toBeInTheDocument()
+      // Owner ruling 2026-09-22 ("P3"): with only her summer session left
+      // after the family-camp filter, there is no program transition left to
+      // separate — no dot between her session and its cabin either.
+      expect(line2Text).not.toContain('•')
 
       // M5 (review): her cabin must appear exactly once in her row — never
       // duplicated between line 1 and line 2, and never rendered twice on
       // line 2 itself.
       expect(within(row).getAllByText('Bunk 9')).toHaveLength(1)
+    })
+
+    // New sibling fixture (Liam), owner ruling 2026-09-22 ("P3"): a
+    // transition between two DIFFERENT germane programs gets a vertical bar,
+    // never a dot -- the dot is reserved for line 1's age • grade join.
+    it('separates two germane programs with a vertical bar, never a dot', async () => {
+      render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} />)
+      const nameEl = await screen.findByText('Liam Johnson')
+      const row = nameEl.closest('a')
+      if (!row) throw new Error('sibling row anchor not found')
+
+      const sessionLabel = getSessionDisplayNameFromString('Session 5', 'main')
+      const tliLabel = getSessionDisplayNameFromString('TLI', 'tli')
+      const lines = row.querySelectorAll('[class*="mt-0.5"]')
+      const line2Text = lines[lines.length - 1]?.textContent ?? ''
+
+      expect(line2Text).toContain(sessionLabel)
+      expect(line2Text).toContain(tliLabel)
+      expect(line2Text).not.toContain('•')
+      expect(within(row).getByText('|')).toBeInTheDocument()
     })
 
     // Ruled change 2026-09-22 (second visual pass): a family-camp-only

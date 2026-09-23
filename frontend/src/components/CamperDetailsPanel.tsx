@@ -1124,7 +1124,7 @@ export default function CamperDetailsPanel({
                           review): `text-overflow` does nothing on this row
                           itself since it's `display:flex` — an overlong line
                           needs the actual text-bearing elements to be able to
-                          shrink and ellipsize. Icons and the `•` separators
+                          shrink and ellipsize. Icons and the `|` separators
                           stay `flex-shrink-0` — only names should ever give
                           up their space. */}
                       {(() => {
@@ -1134,14 +1134,22 @@ export default function CamperDetailsPanel({
                           <div className="text-muted-foreground mt-0.5 flex min-w-0 items-center gap-1 overflow-hidden text-[10px] whitespace-nowrap">
                             {entries.map((entry, idx) => (
                               <Fragment key={entry.key}>
-                                {idx > 0 && <span className="mx-0.5 flex-shrink-0">•</span>}
+                                {/* Owner ruling 2026-09-22 ("P3"): a
+                                    transition between two DIFFERENT programs
+                                    gets a vertical bar, never a dot -- a dot
+                                    left a cabin's owning program ambiguous
+                                    once a row could carry more than one. */}
+                                {idx > 0 && (
+                                  <span className="text-border mx-1 flex-shrink-0">|</span>
+                                )}
                                 <Calendar className="h-2.5 w-2.5 flex-shrink-0" />
                                 <span className="min-w-0 truncate">
                                   {getSessionDisplayNameFromString(entry.name, entry.sessionType)}
                                 </span>
                                 {entry.bunkName && (
                                   <>
-                                    <span className="mx-0.5 flex-shrink-0">•</span>
+                                    {/* No separator here: the cabin belongs
+                                        to THIS session, not a new program. */}
                                     <Home className="h-2.5 w-2.5 flex-shrink-0" />
                                     <span className="min-w-0 truncate">{entry.bunkName}</span>
                                   </>
