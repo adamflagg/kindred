@@ -549,5 +549,26 @@ describe('sessionDisplay utilities', () => {
         'Taste of Camp 2'
       )
     })
+
+    it('should shorten adult-weekend names via adultWeekendTitle (owner ruling 2026-09-22)', () => {
+      // The record's hero chip previously fell through to the raw name for
+      // adult sessions, so a past-year camper's hero still showed the
+      // CampMinder qualifier the journey/siblings already strip.
+      expect(
+        getSessionShortName(s({ session_type: 'adult', name: "Women's Weekend (3 nights)" }))
+      ).toBe("Women's Weekend")
+    })
+
+    it('should leave summer/AG/family names unaffected by the adult-weekend rule', () => {
+      expect(getSessionShortName(s({ session_type: 'main', name: 'Session 2' }))).toBe('Session 2')
+      expect(
+        getSessionShortName(
+          s({ session_type: 'ag', name: 'All-Gender Cabin-Session 2 (7th & 8th grades)' })
+        )
+      ).toBe('AG 2 (7-8)')
+      expect(getSessionShortName(s({ session_type: 'family', name: 'Family Camp 1' }))).toBe(
+        'Family Camp 1'
+      )
+    })
   })
 })

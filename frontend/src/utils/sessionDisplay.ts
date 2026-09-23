@@ -35,6 +35,18 @@ export function getSessionShortName(
 
   if (isQuestSession(session)) return session.name ?? 'Quest'
 
+  // ADULT WEEKENDS GET THE SAME SHORTENING AS THE JOURNEY/SIBLINGS (owner
+  // ruling 2026-09-22, see `getSessionDisplayNameFromString` below). Without
+  // this branch, the record's hero chip fell through to the raw name and
+  // still showed the CampMinder qualifier — "Women's Weekend (3 nights)" —
+  // for a past-year adult camper even though the journey already reads
+  // "Women's Weekend". Reuses `adultWeekendTitle` rather than duplicating
+  // its rule; scoped to 'adult' only so AG's meaningful grade-range
+  // parenthetical is untouched.
+  if (session.session_type === 'adult') {
+    return session.name ? adultWeekendTitle(session.name) : null
+  }
+
   return session.name ?? null
 }
 
