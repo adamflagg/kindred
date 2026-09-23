@@ -47,7 +47,11 @@ export interface PersonJourneyFacts {
  */
 export function personJourneyFacts(rows: PersonFactsRow[], viewYear: number): PersonJourneyFacts {
   const newestFirst = [...rows].sort((a, b) => b.year - a.year)
-  const view = newestFirst.find((r) => r.year <= viewYear) ?? newestFirst[0]
+  // No `?? newestFirst[0]` fallback (CR #5, kindred#2753): when every row
+  // postdates viewYear there is no row "closest to viewYear from below" —
+  // falling back to the newest row leaked a LATER year's household/adulthood
+  // into an earlier view. The correct view here is NO row at all.
+  const view = newestFirst.find((r) => r.year <= viewYear)
   const summers =
     newestFirst.find((r) => r.year <= viewYear && r.years_at_camp > 0)?.years_at_camp ?? 0
   const householdId = view !== undefined && view.household_id > 0 ? view.household_id : null
@@ -68,13 +72,17 @@ export function useCamperJourney(
   const { isLoading: isAuthLoading } = useAuth()
   const validPerson = personCmId !== null && Number.isFinite(personCmId) && personCmId > 0
 
+  // ⚠️ Gated on auth, like its sibling reads below (frontend/CLAUDE.md:
+  // "useAuth().isLoading first") — `persons.listRule` requires auth too (CR
+  // #6, kindred#2753), and this was the one protected read in this hook not
+  // gated on it.
   const personQ = useQuery({
     queryKey: queryKeys.personRecords(personCmId ?? 0),
     queryFn: () =>
       pb
         .collection<PersonsResponse>('persons')
         .getFullList({ filter: `cm_id = ${String(personCmId)}`, sort: '-year' }),
-    enabled: validPerson,
+    enabled: !isAuthLoading && validPerson,
   })
   const facts = personQ.data ? personJourneyFacts(personQ.data, viewYear) : null
 
@@ -93,6 +101,12 @@ export function useCamperJourney(
       ...queryKeys.camperJourney(personCmId ?? 0, viewYear),
       householdQ.dataUpdatedAt,
       housingQ.dataUpdatedAt,
+      // CR #7 (kindred#2753): a persons refetch that changes isAdult or
+      // householdId, with neither housing read also refreshing, must still
+      // re-run the feed — otherwise it stays computed for the wrong
+      // viewerIsAdult until something else happens to bust this key.
+      facts?.isAdult ?? false,
+      facts?.householdId ?? null,
     ],
     queryFn: () =>
       fetchCamperJourney(personCmId as number, viewYear, {

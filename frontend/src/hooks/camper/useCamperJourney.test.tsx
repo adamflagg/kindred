@@ -50,19 +50,6 @@ async function flush() {
   })
 }
 
-/**
- * Wait until the person's own rows are in the cache, then force a render that
- * reads them. A negative assertion made before this point proves nothing: the
- * hook has no facts yet, so no gate is being exercised.
- */
-async function personsSettled(rerender: () => void) {
-  await waitFor(() =>
-    expect(client.getQueryState(queryKeys.personRecords(PERSON))?.status).toBe('success')
-  )
-  rerender()
-  await flush()
-}
-
 const JOURNEY_ROW: HistoricalRecord = { year: 2024, sessionName: 'Session 2', sessionType: 'main' }
 
 const personRow = (year: number, extra: Record<string, unknown> = {}) => ({
@@ -109,6 +96,20 @@ describe('personJourneyFacts', () => {
       isAdult: false,
     })
   })
+
+  // CR #5 (kindred#2753): the old `?? newestFirst[0]` fallback picked the
+  // NEWEST row whenever every row postdated viewYear, leaking a later year's
+  // household/adulthood into an earlier view. There is no row "closest to
+  // viewYear from below" here — there is no row below it at all — so the
+  // correct view is NO row.
+  it('uses no view row when every row postdates viewYear — never leaks a later household/adulthood', () => {
+    const rows = [personRow(2027, { household_id: 999, age: 45 })]
+    expect(personJourneyFacts(rows, 2026)).toEqual({
+      householdId: null,
+      summers: 0,
+      isAdult: false,
+    })
+  })
 })
 
 describe('useCamperJourney', () => {
@@ -118,12 +119,34 @@ describe('useCamperJourney', () => {
   })
 
   it('withholds both protected reads while auth is still loading', async () => {
+    // CR #6 (kindred#2753) also gates personQ itself on auth loading, so
+    // there are no facts to wait on here any more — the whole read chain
+    // starts from nothing while auth is pending. Ruled change: this test
+    // used to wait for personQ to settle (it didn't gate on auth) before
+    // checking the reads that DO depend on facts; now nothing in the chain
+    // fires at all, so a plain flush is enough.
     auth.value = { isLoading: true }
-    const { rerender } = renderHook(() => useCamperJourney(PERSON, YEAR), { wrapper })
-    await personsSettled(rerender)
+    renderHook(() => useCamperJourney(PERSON, YEAR), { wrapper })
+    await flush()
     expect(mockUseHouseholdJourney).not.toHaveBeenCalledWith(555)
     expect(mockUsePersonHousing).not.toHaveBeenCalledWith(PERSON)
     expect(mockFetchCamperJourney).not.toHaveBeenCalled()
+  })
+
+  // CR #6 (kindred#2753): personQ reads the `persons` collection, which
+  // requires auth (`persons.listRule`) just like the household/housing reads
+  // it feeds — but it was the one read in this hook not gated on
+  // `isAuthLoading`, so a cached-but-stale or bypass-pending auth state could
+  // send it out while auth is still settling.
+  it("gates personQ's own persons fetch on auth loading, like its sibling reads", async () => {
+    auth.value = { isLoading: true }
+    const { rerender } = renderHook(() => useCamperJourney(PERSON, YEAR), { wrapper })
+    await flush()
+    expect(mockPersonsGetFullList).not.toHaveBeenCalled()
+
+    auth.value = { isLoading: false }
+    rerender()
+    await waitFor(() => expect(mockPersonsGetFullList).toHaveBeenCalled())
   })
 
   it('does not run the feed while a housing read is still pending', async () => {
@@ -283,6 +306,37 @@ describe('useCamperJourney', () => {
     const { result } = renderHook(() => useCamperJourney(PERSON, YEAR), { wrapper })
     await waitFor(() =>
       expect(result.current.counts).toEqual({ summers: 1, familyWeekends: 2, adultWeekends: 5 })
+    )
+  })
+
+  // CR #7 (kindred#2753): the feed key carried both housing reads'
+  // dataUpdatedAt but not `facts?.isAdult` / `facts?.householdId`, so a
+  // persons refetch that flips adulthood (or moves the household) with
+  // neither housing read also refreshing would leave the feed computed for
+  // the WRONG viewerIsAdult until something else happened to bust the key.
+  it('re-runs the feed when a persons refetch changes isAdult, even with housing unchanged', async () => {
+    mockPersonsGetFullList.mockResolvedValue([personRow(YEAR, { age: 12.5 })])
+    renderHook(() => useCamperJourney(PERSON, YEAR), { wrapper })
+    await waitFor(() => expect(mockFetchCamperJourney).toHaveBeenCalledTimes(1))
+    expect(mockFetchCamperJourney).toHaveBeenLastCalledWith(
+      PERSON,
+      YEAR,
+      expect.objectContaining({ viewerIsAdult: false })
+    )
+
+    // Simulate a persons refetch that flips adulthood with NOTHING else
+    // moving — household/housing dataUpdatedAt stay exactly as they were.
+    mockPersonsGetFullList.mockResolvedValue([personRow(YEAR, { age: 25 })])
+    await act(async () => {
+      await client.invalidateQueries({ queryKey: queryKeys.personRecords(PERSON) })
+    })
+    await flush()
+
+    await waitFor(() => expect(mockFetchCamperJourney).toHaveBeenCalledTimes(2))
+    expect(mockFetchCamperJourney).toHaveBeenLastCalledWith(
+      PERSON,
+      YEAR,
+      expect.objectContaining({ viewerIsAdult: true })
     )
   })
 
