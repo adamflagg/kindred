@@ -69,3 +69,72 @@ describe('HeroHeader adult branch', () => {
     expect(screen.getByText(/Grade/)).toBeInTheDocument()
   })
 })
+
+// Quest option A (owner ruling 2026-09-23): CampMinder's "bunk" for a Quest
+// enrollment is the trip name, not a cabin. The hero used to show it exactly
+// like a real cabin — Home icon, link to the session board. Keep the text
+// and the link (the board link is still useful), drop the icon, so it reads
+// as the trip/group rather than housing.
+describe('HeroHeader cabin/trip chip (Quest option A)', () => {
+  it('shows the Home icon and a board link for a summer cabin', () => {
+    const mainCamper = {
+      ...camper,
+      expand: {
+        session: { name: 'Session 1', session_type: 'main' },
+        assigned_bunk: { name: 'Cabin 3' },
+      },
+    } as unknown as Camper
+    const { container } = renderHero({ camper: mainCamper })
+
+    expect(container.querySelector('.lucide-home')).not.toBeNull()
+    expect(screen.getByText('Cabin 3')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Cabin 3' })).toHaveAttribute(
+      'href',
+      expect.stringContaining('/board')
+    )
+  })
+
+  it('shows the trip name without the Home icon for a Quest enrollment', () => {
+    const questCamper = {
+      ...camper,
+      expand: {
+        session: { name: 'Session 900', session_type: 'quest' },
+        assigned_bunk: { name: 'Sierra Slam' },
+      },
+    } as unknown as Camper
+    const { container } = renderHero({ camper: questCamper })
+
+    expect(container.querySelector('.lucide-home')).toBeNull()
+    expect(screen.getByText(/Sierra Slam/)).toBeInTheDocument()
+    // The board link is kept — only the cabin styling (Home icon) is dropped.
+    expect(screen.getByRole('link', { name: /Sierra Slam/ })).toHaveAttribute(
+      'href',
+      expect.stringContaining('/board')
+    )
+    expect(screen.queryByText('(unassigned)')).toBeNull()
+  })
+
+  it('shows one Home icon for a real cabin and none for a Quest trip among multiple enrollments', () => {
+    const mainEc = {
+      ...camper,
+      id: 'ec-main',
+      expand: {
+        session: { name: 'Session 1', session_type: 'main' },
+        assigned_bunk: { name: 'Cabin 3' },
+      },
+    } as unknown as Camper
+    const questEc = {
+      ...camper,
+      id: 'ec-quest',
+      expand: {
+        session: { name: 'Session 900', session_type: 'quest' },
+        assigned_bunk: { name: 'Sierra Slam' },
+      },
+    } as unknown as Camper
+    const { container } = renderHero({ enrolledCampers: [mainEc, questEc] })
+
+    expect(container.querySelectorAll('.lucide-home')).toHaveLength(1)
+    expect(screen.getByText('Cabin 3')).toBeInTheDocument()
+    expect(screen.getByText(/Sierra Slam/)).toBeInTheDocument()
+  })
+})
