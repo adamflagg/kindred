@@ -933,9 +933,15 @@ export default function CamperDetailsPanel({
                         {' '}
                         <Home className="text-forest-300 inline h-3 w-3" /> {enrollment.bunkName}
                       </>
-                    ) : (
+                    ) : isAtCampSessionType(enrollment.sessionType) ? (
+                      // I1 (review, kindred#2753): "(unassigned)" is a
+                      // bunkable (main/embedded/ag) fallback only, the same
+                      // rule the journey row applies at :627 — a Quest
+                      // enrollment's bunkName is blanked by design (Q9), not
+                      // unplaced, so it shows nothing here instead of a false
+                      // amber "(unassigned)".
                       <span className="text-amber-300"> (unassigned)</span>
-                    )}
+                    ) : null}
                   </span>
                 </div>
               )

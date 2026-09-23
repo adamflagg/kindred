@@ -546,6 +546,51 @@ describe('CamperDetailsPanel', () => {
     })
   })
 
+  // I1 (review, kindred#2753): b1a9f1f7 blanked a Quest enrollment's
+  // bunkName via currentYearCabin (Quest never carries a cabin), but the
+  // multi-enrollment Quick Stats branch (:914-941) was not updated — a null
+  // bunkName there fell straight into the "(unassigned)" bucket, the same
+  // amber label a genuinely-unplaced main/embedded/ag enrollment gets. A
+  // camper enrolled in a summer session AND a Quest trip now read "Quest …
+  // (unassigned)" on the summer board, even though the trip is assigned.
+  // Fix: gate "(unassigned)" on isAtCampSessionType(enrollment.sessionType),
+  // the same rule the journey row already applies at :627.
+  describe('Quick Stats bar — a Quest enrollment among multiple current enrollments (I1)', () => {
+    const QUEST_ATTENDEE_2: Record<string, unknown> = {
+      ...EMMA_ATTENDEE,
+      id: 'att-emma-quest-2',
+      session: 'sess-quest-2',
+      expand: {
+        session: { id: 'sess-quest-2', cm_id: 901, name: 'Session 901', session_type: 'quest' },
+      },
+    }
+
+    it('does not mislabel an enrolled Quest trip as "(unassigned)"', async () => {
+      setupDeclinedRequestMocks()
+      mockGetFullListAttendees.mockResolvedValue([EMMA_ATTENDEE, QUEST_ATTENDEE_2])
+      // The main session (sess-1) has its own real cabin, so the ONLY
+      // candidate left for a spurious "(unassigned)" is the Quest entry.
+      mockGetFullListBunkAssignments.mockImplementation((opts: { filter?: string } = {}) => {
+        const filter = opts.filter ?? ''
+        if (filter.includes('sess-quest-2')) {
+          return Promise.resolve([{ expand: { bunk: { name: 'Trip Name' } } }])
+        }
+        if (filter.includes('sess-1')) {
+          return Promise.resolve([{ expand: { bunk: { name: 'Cabin 3' } } }])
+        }
+        return Promise.resolve([])
+      })
+
+      render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} />)
+
+      await screen.findByRole('heading', { name: /Emma/i })
+      expect(screen.queryByText('(unassigned)')).not.toBeInTheDocument()
+      // Q9 still holds: Quest never shows a cabin, so the trip name is not
+      // rendered either — the Quest entry shows nothing at all.
+      expect(screen.queryByText('Trip Name')).not.toBeInTheDocument()
+    })
+  })
+
   // Q8 (owner, 2026-09-22 late): every sidebar handles the journey the SAME
   // way (`journeyDisplayState`, camper/journeyRowModel.ts) — rows that are
   // already here (the board's own current-year enrollments) render
