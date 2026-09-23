@@ -724,6 +724,25 @@ class TestWeekendHousingFreshness:
 
         assert result.sessions[0].housing_synced_at == ""
 
+    @pytest.mark.asyncio
+    async def test_one_failed_job_read_silences_only_the_weekends_it_dates(self) -> None:
+        """The two covering jobs are read independently, so they fail
+        independently: a failed PERSON-pass read withholds the adult weekend's
+        time and must not take the family weekend's, which the household pass
+        answered, down with it (kindred#2760)."""
+
+        async def read(service: str, year: int) -> list[tuple[str, str]]:
+            if service == "person_custom_values_family_camp":
+                raise RuntimeError("transient")
+            return [("", self.NIGHTLY)]
+
+        repo = _repo(fetch_weekend_sessions=[FAMILY_SESSION, ADULT_SESSION])
+        repo.fetch_session_scoped_sync_ends = AsyncMock(side_effect=read)
+
+        result = await LodgingRosterService(repo).list_sessions(2026)
+
+        assert [s.housing_synced_at for s in result.sessions] == [self.NIGHTLY, ""]
+
 
 class TestFamilyCampParties:
     @pytest.mark.asyncio

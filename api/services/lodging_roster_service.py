@@ -2109,23 +2109,32 @@ class LodgingRosterService:
         missing attribute as the unscoped "", and every weekend then dates
         from the newest run -- the pre-kindred#2601 answer, and the right
         shape for a deployment where scoping does not exist yet.
+
+        EACH JOB DEGRADES ON ITS OWN. The reads are independent, so a failed
+        person-pass read withholds only the adult weekends it dates and leaves
+        the household pass's answer for the family weekends standing.
         """
-        try:
-            return {
-                session_type: await self.repository.fetch_session_scoped_sync_ends(service, year)
-                for session_type, service in HOUSING_SYNC_SERVICE_BY_SESSION_TYPE.items()
-            }
-        except Exception as exc:
-            logger.warning(f"sync_runs read failed for year {year}, no weekend can date its housing: {exc}")
-            return {}
+
+        async def read(service: str) -> list[tuple[str, str]]:
+            try:
+                return await self.repository.fetch_session_scoped_sync_ends(service, year)
+            except Exception as exc:
+                logger.warning(
+                    f"sync_runs read failed for {service} in year {year}, the weekends it dates stay silent: {exc}"
+                )
+                return []
+
+        session_types = list(HOUSING_SYNC_SERVICE_BY_SESSION_TYPE)
+        histories = await asyncio.gather(*(read(HOUSING_SYNC_SERVICE_BY_SESSION_TYPE[t]) for t in session_types))
+        return dict(zip(session_types, histories, strict=True))
 
     async def list_sessions(self, year: int) -> WeekendSessionListResponse:
         async with asyncio.TaskGroup() as tg:
             rows_task = tg.create_task(self.repository.fetch_weekend_sessions(year))
             statuses_task = tg.create_task(self._fetch_session_statuses_or_active(year))
-            # Year-scoped like the status map above, and read ONCE for every
-            # weekend in the year rather than per weekend: it is one filtered
-            # slice of `sync_runs` that answers all of them.
+            # Year-scoped like the status map above, and read once per COVERING
+            # JOB rather than per weekend: each is one filtered slice of
+            # `sync_runs` that answers every weekend that job dates.
             sync_ends_task = tg.create_task(self._fetch_sync_ends_or_silent(year))
 
         statuses = statuses_task.result()

@@ -549,10 +549,10 @@ func sortSessionsByPriority(sessions []*sessionOverlapInfo) {
 	}
 }
 
-// getSessionTypeFromName returns the session type based directly on the session name
 // mensWeekendPattern matches "men's weekend" / "mens weekend" but not "women's weekend".
 var mensWeekendPattern = regexp.MustCompile(`\bmen'?s weekend\b`)
 
+// getSessionTypeFromName returns the session type based directly on the session name
 func (s *SessionsSync) getSessionTypeFromName(sessionName string) string {
 	nameLower := strings.ToLower(sessionName)
 

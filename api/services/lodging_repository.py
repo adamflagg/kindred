@@ -104,10 +104,10 @@ logger = get_logger(__name__)
 # `camp_sessions.session_type` for a family-camp weekend. The same literal
 # `SessionResolver.GetFamilyCampSessionCMIDs` filters on -- exactly and only --
 # which is what makes kindred#2478 section 5.1's scope ruling a fact about the
-# data rather than a preference: the adult sessions are not in the bounded
-# cohort at all, so their cabin answers are never fetched by the six-job chain
-# and their mirror rows are rewritten daily from custom values up to seven days
-# old.
+# data rather than a preference: the adult sessions are not in the Refresh
+# Housing guard or the household pass's cohort, so the scoped six-job chain
+# never refreshes them. (Since kindred#2760 the nightly PERSON pass does cover
+# adult-program attendees, which is what dates an adult weekend's housing.)
 #
 # Named here rather than in either service because BOTH read it -- the compare
 # footer and the roster's per-weekend housing freshness -- and

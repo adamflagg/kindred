@@ -734,11 +734,12 @@ export const AppLayout = () => {
                     second, mirroring summer's row above; each freshness line
                     above is reset by the action beneath it.
 
-                    HIDDEN ON ADULT WEEKENDS, on the same condition as the
-                    `Housing synced` line (§5.1): `GetFamilyCampSessionCMIDs`
-                    filters `session_type = 'family'` exactly, so the chain
-                    skips both expensive jobs and would spend its whole
-                    runtime refreshing nothing.
+                    HIDDEN ON ADULT WEEKENDS (§5.1): the scoped refresh's
+                    guard, `GetFamilyCampSessionCMIDs`, filters
+                    `session_type = 'family'` exactly, so the chain would spend
+                    its whole runtime refreshing nothing. The `Housing synced`
+                    line no longer shares this condition — it shows on adult
+                    weekends since kindred#2760.
                   */}
                   {/*
                     `useWeekendShellSession` returns `isAdultWeekend: false`
