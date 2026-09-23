@@ -938,7 +938,12 @@ describe('AppLayout Refresh Bunking staleness (kindred#2587)', () => {
     })
 
     // WITHOUT the invalidation this stays "Bunk 4" for thirty minutes.
-    await waitFor(() => expect(screen.getByTestId('board-bunks').textContent).toBe('Bunk 7'))
+    // 3 s, not waitFor's 1 s default: the outcome lands a poll, an effect and
+    // a refetch after the last act(), and a loaded CI shard has overrun 1 s on
+    // the failed-chain twin below (CI run 35895990409).
+    await waitFor(() => expect(screen.getByTestId('board-bunks').textContent).toBe('Bunk 7'), {
+      timeout: 3000,
+    })
   })
 
   /**
@@ -964,7 +969,9 @@ describe('AppLayout Refresh Bunking staleness (kindred#2587)', () => {
       bunks: { status: 'failed', end_time: '2026-04-22T10:00:02.000Z', error: 'CampMinder 502' },
     })
 
-    await waitFor(() => expect(toastError).toHaveBeenCalledTimes(1))
+    // 3 s for the same reason as the success path above; this is the one that
+    // overran 1 s in CI.
+    await waitFor(() => expect(toastError).toHaveBeenCalledTimes(1), { timeout: 3000 })
     // Nothing landed, so the board must NOT be swept — a failed chain that
     // refetched would re-mark the old rows fresh for another thirty minutes.
     expect(bunksFetches).toHaveBeenCalledTimes(1)
