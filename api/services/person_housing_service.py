@@ -1,4 +1,6 @@
-"""The adult camper journey's server read: one person's adult-weekend cabins.
+"""The camper journey's server read: one person's adult-weekend cabins, and
+the TLI/SCIT cabins the lodging registry resolves (owner ruling 2026-09-22,
+late, Q9).
 
 The rule lives in `person_housing_rules`; this module only reads and converts.
 `person_custom_values` is admin-only in PocketBase, which is why this read is
@@ -8,7 +10,7 @@ server-side at all -- the same reason family camp's cabins are.
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, NamedTuple
 
 from api.schemas.lodging import PersonHousingResponse, PersonHousingWeekend
 from api.services.lodging_roster_service import build_housing_name_resolver
@@ -20,9 +22,11 @@ from api.services.person_housing_rules import (
     parse_instant,
     weekend_last_day_ends,
 )
+from api.utils.session_metrics import SUMMER_TEEN_TYPES
 
 if TYPE_CHECKING:
     from api.services.lodging_repository import LodgingRepository
+    from api.services.lodging_rules import HousingNameResolver
 
 
 def _expanded(row: Any, name: str) -> Any:
@@ -43,6 +47,62 @@ def _cabin_values(rows: list[Any]) -> list[CabinValue]:
                 field_cm_id=field_cm_id,
                 raw=str(getattr(row, "value", "") or ""),
                 written_at=parse_instant(str(getattr(row, "last_updated", "") or "")),
+            )
+        )
+    return out
+
+
+class _TeenBunk(NamedTuple):
+    year: int
+    session_cm_id: int
+    raw: str
+
+
+def _teen_bunks(rows: list[Any]) -> list[_TeenBunk]:
+    """TLI/SCIT bunk strings, one per (year, session), in stable read order.
+
+    Defense in depth behind the repository's TLI/SCIT filter: any other
+    program -- Quest above all, whose "bunk" is a trip name -- is dropped
+    here too. Every raw string is kept; which ones name a real cabin is the
+    resolver's call, made by the caller.
+    """
+    out: list[_TeenBunk] = []
+    for row in rows:
+        session = _expanded(row, "session")
+        bunk = _expanded(row, "bunk")
+        if session is None or bunk is None:
+            continue
+        if str(getattr(session, "session_type", "") or "") not in SUMMER_TEEN_TYPES:
+            continue
+        session_cm_id = int(getattr(session, "cm_id", 0) or 0)
+        raw = str(getattr(bunk, "name", "") or "")
+        if session_cm_id <= 0 or not raw.strip():
+            continue
+        out.append(_TeenBunk(year=int(getattr(row, "year", 0) or 0), session_cm_id=session_cm_id, raw=raw))
+    return out
+
+
+def _resolved_teen_cabins(bunks: list[_TeenBunk], resolver: HousingNameResolver) -> list[PersonHousingWeekend]:
+    """The teen bunks the registry resolves to a real unit -- the rest are
+    program groups ("SCIT A", "TLI") and are left out, so no cabin shows.
+
+    One row per (year, session): the bunk-grain unique index lets a session
+    hold two bunk rows, and the client keys its label by (year, session). The
+    first RESOLVED row in read order wins.
+    """
+    out: list[PersonHousingWeekend] = []
+    seen: set[tuple[int, int]] = set()
+    for bunk in bunks:
+        key = (bunk.year, bunk.session_cm_id)
+        if key in seen or not resolver.resolve_codes(bunk.raw, bunk.year):
+            continue
+        seen.add(key)
+        out.append(
+            PersonHousingWeekend(
+                year=bunk.year,
+                session_cm_id=bunk.session_cm_id,
+                cabin_name=resolver.display_name(bunk.raw, bunk.year).strip(),
+                cabin_name_raw=bunk.raw,
             )
         )
     return out
@@ -71,22 +131,27 @@ class PersonHousingService:
     async def build_person_housing(self, person_cm_id: int) -> PersonHousingResponse:
         if person_cm_id <= 0:
             return PersonHousingResponse(person_cm_id=person_cm_id)
-        value_rows, attendee_rows = await asyncio.gather(
+        value_rows, attendee_rows, teen_rows = await asyncio.gather(
             self.repository.fetch_person_cabin_values(person_cm_id),
             self.repository.fetch_person_adult_attendees(person_cm_id),
+            self.repository.fetch_person_teen_assignments(person_cm_id),
         )
         values = _cabin_values(value_rows)
         weekends = _weekends(attendee_rows)
+        teen_bunks = _teen_bunks(teen_rows)
         # The resolver is two whole-table reads (`build_housing_name_resolver`),
-        # and most callers have nothing to attribute: no cabin values, no
-        # enrolled adult weekends, or both. Read the cheap rows first and skip
-        # the registry entirely when there is nothing for it to resolve.
-        if not values or not weekends:
+        # and most callers have nothing to resolve: no adult cabin values or
+        # no enrolled adult weekends to attribute them to, AND no TLI/SCIT
+        # bunk. Read the cheap rows first and skip the registry entirely when
+        # neither list has anything for it.
+        has_adult = bool(values) and bool(weekends)
+        if not has_adult and not teen_bunks:
             return PersonHousingResponse(person_cm_id=person_cm_id)
         resolver = await build_housing_name_resolver(self.repository)
-        attributed = attribute_adult_cabins(values, weekends, resolver.resolve_codes)
+        attributed = attribute_adult_cabins(values, weekends, resolver.resolve_codes) if has_adult else []
         return PersonHousingResponse(
             person_cm_id=person_cm_id,
+            teen_cabins=_resolved_teen_cabins(teen_bunks, resolver),
             weekends=[
                 PersonHousingWeekend(
                     year=cabin.year,

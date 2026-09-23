@@ -20,6 +20,7 @@ def _repo(**overrides: Any) -> MagicMock:
     defaults: dict[str, Any] = {
         "fetch_person_cabin_values": [],
         "fetch_person_adult_attendees": [],
+        "fetch_person_teen_assignments": [],
         "fetch_all_units": [],
         "fetch_unit_aliases": [],
     }
@@ -37,6 +38,25 @@ def _cabin_row(year: int, raw: str, last_updated: str, field_cm_id: int = 223823
 
 def _attendee_row(year: int, session_cm_id: int, end_date: str) -> SimpleNamespace:
     return SimpleNamespace(year=year, expand={"session": SimpleNamespace(cm_id=session_cm_id, end_date=end_date)})
+
+
+def _teen_row(year: int, session_cm_id: int, session_type: str, bunk: str) -> SimpleNamespace:
+    return SimpleNamespace(
+        year=year,
+        expand={
+            "session": SimpleNamespace(cm_id=session_cm_id, session_type=session_type),
+            "bunk": SimpleNamespace(name=bunk),
+        },
+    )
+
+
+SCIT = 2001
+TLI = 2002
+
+# One registry unit and the alias that maps a teen program's 2025 bunk string
+# onto it -- the same alias layer every other historical cabin resolves through.
+_TEEN_UNIT = SimpleNamespace(id="u9", code="teen-village-2", name="Village Cabin 2", year=2026, parent_unit="")
+_TEEN_ALIAS = SimpleNamespace(alias_string="Teen 2", member_units=["u9"], valid_from_year=0, valid_to_year=0)
 
 
 class TestPersonHousingService:
@@ -193,3 +213,119 @@ class TestPersonHousingService:
                 PersonHousingWeekend(year=2024, session_cm_id=WW, cabin_name="River F", cabin_name_raw="  River F  ")
             ],
         )
+
+
+class TestTeenProgramCabins:
+    """Owner ruling 2026-09-22 (late, Q9): CampMinder's "bunk" for a teen
+    program is usually a program GROUP ("SCIT A", "TLI"), not a cabin. A
+    TLI/SCIT cabin shows ONLY when the lodging registry resolves the string to
+    a real unit -- through the ONE resolver (kindred#2332), never a client
+    copy -- named by today's registry name with the as-typed string kept."""
+
+    @pytest.mark.asyncio
+    async def test_a_teen_bunk_the_registry_resolves_is_published_by_todays_name(self) -> None:
+        repo = _repo(
+            fetch_person_teen_assignments=[_teen_row(2025, SCIT, "scit", "Teen 2")],
+            fetch_all_units=[_TEEN_UNIT],
+            fetch_unit_aliases=[_TEEN_ALIAS],
+        )
+
+        result = await PersonHousingService(repo).build_person_housing(PERSON)
+
+        assert result == PersonHousingResponse(
+            person_cm_id=PERSON,
+            teen_cabins=[
+                PersonHousingWeekend(
+                    year=2025, session_cm_id=SCIT, cabin_name="Village Cabin 2", cabin_name_raw="Teen 2"
+                )
+            ],
+        )
+
+    @pytest.mark.asyncio
+    async def test_a_program_group_the_registry_cannot_resolve_is_left_out(self) -> None:
+        repo = _repo(
+            fetch_person_teen_assignments=[
+                _teen_row(2026, SCIT, "scit", "SCIT A"),
+                _teen_row(2026, TLI, "tli", "TLI"),
+            ],
+            fetch_all_units=[_TEEN_UNIT],
+            fetch_unit_aliases=[_TEEN_ALIAS],
+        )
+
+        result = await PersonHousingService(repo).build_person_housing(PERSON)
+
+        assert result.teen_cabins == []
+
+    @pytest.mark.asyncio
+    async def test_a_non_teen_row_is_never_published_even_if_it_resolves(self) -> None:
+        """Defense in depth behind the repository's TLI/SCIT filter: a Quest
+        row (a trip name) or any other program never becomes a teen cabin."""
+        repo = _repo(
+            fetch_person_teen_assignments=[_teen_row(2025, 3001, "quest", "Teen 2")],
+            fetch_all_units=[_TEEN_UNIT],
+            fetch_unit_aliases=[_TEEN_ALIAS],
+        )
+
+        result = await PersonHousingService(repo).build_person_housing(PERSON)
+
+        assert result.teen_cabins == []
+
+    @pytest.mark.asyncio
+    async def test_teen_rows_alone_are_enough_to_build_the_resolver(self) -> None:
+        """The early return now weighs BOTH lists: no adult values or weekends,
+        but a teen bunk to resolve, still reaches the registry."""
+        repo = _repo(
+            fetch_person_teen_assignments=[_teen_row(2025, SCIT, "scit", "Teen 2")],
+            fetch_all_units=[_TEEN_UNIT],
+            fetch_unit_aliases=[_TEEN_ALIAS],
+        )
+
+        await PersonHousingService(repo).build_person_housing(PERSON)
+
+        repo.fetch_all_units.assert_awaited_once()
+        repo.fetch_unit_aliases.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_nothing_in_either_list_never_builds_the_resolver(self) -> None:
+        repo = _repo()
+
+        result = await PersonHousingService(repo).build_person_housing(PERSON)
+
+        assert result == PersonHousingResponse(person_cm_id=PERSON)
+        repo.fetch_person_teen_assignments.assert_awaited_once_with(PERSON)
+        repo.fetch_all_units.assert_not_awaited()
+        repo.fetch_unit_aliases.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_both_lists_resolve_through_one_registry_read(self) -> None:
+        repo = _repo(
+            fetch_person_cabin_values=[_cabin_row(2024, "River F", "2024-10-10T18:00:00+00:00")],
+            fetch_person_adult_attendees=[_attendee_row(2024, WW, "2024-10-20 07:00:00.000Z")],
+            fetch_person_teen_assignments=[_teen_row(2025, SCIT, "scit", "Teen 2")],
+            fetch_all_units=[_TEEN_UNIT],
+            fetch_unit_aliases=[_TEEN_ALIAS],
+        )
+
+        result = await PersonHousingService(repo).build_person_housing(PERSON)
+
+        assert [w.cabin_name for w in result.weekends] == ["River F"]
+        assert [t.cabin_name for t in result.teen_cabins] == ["Village Cabin 2"]
+        repo.fetch_all_units.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_one_row_per_teen_session_first_resolved_wins(self) -> None:
+        """The bunk-grain unique index lets one (year, session) hold two bunk
+        rows; the client keys its label by (year, session), so publish one."""
+        repo = _repo(
+            fetch_person_teen_assignments=[
+                _teen_row(2025, SCIT, "scit", "SCIT A"),
+                _teen_row(2025, SCIT, "scit", "Teen 2"),
+                _teen_row(2025, SCIT, "scit", "Teen 2"),
+            ],
+            fetch_all_units=[_TEEN_UNIT],
+            fetch_unit_aliases=[_TEEN_ALIAS],
+        )
+
+        result = await PersonHousingService(repo).build_person_housing(PERSON)
+
+        assert [(t.year, t.session_cm_id, t.cabin_name_raw) for t in result.teen_cabins] == [(2025, SCIT, "Teen 2")]

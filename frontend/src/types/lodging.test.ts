@@ -140,6 +140,12 @@ void _exhaustivePersonHousingWeekendRow
 const _exhaustivePersonHousing: Required<PersonHousing> = {
   person_cm_id: 3000001,
   weekends: [],
+  // Owner ruling 2026-09-22 (late, Q9): the TLI/SCIT sessions whose bunk the
+  // registry resolves to a real unit, same row shape as `weekends`. An
+  // unresolved program group ("SCIT A") is absent, never blank.
+  teen_cabins: [
+    { year: 2025, session_cm_id: 2001, cabin_name: 'Village Cabin 2', cabin_name_raw: 'Teen 2' },
+  ],
 }
 void _exhaustivePersonHousing
 

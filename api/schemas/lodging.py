@@ -1431,16 +1431,25 @@ class PersonHousingWeekend(BaseModel):
 
 
 class PersonHousingResponse(BaseModel):
-    """One person's adult-weekend cabins, attributed PER WEEKEND.
+    """One person's journey cabins that only the server can name.
 
-    Per weekend rather than per year (unlike `HouseholdJourneyYear`): a
-    two-weekend season can label both weekends when each value was written
-    before its own weekend, one weekend's pool at a time -- see
-    `attribute_adult_cabins` in `api/services/person_housing_rules.py`.
+    `weekends` -- adult-weekend cabins, attributed PER WEEKEND rather than per
+    year (unlike `HouseholdJourneyYear`): a two-weekend season can label both
+    weekends when each value was written before its own weekend, one
+    weekend's pool at a time -- see `attribute_adult_cabins` in
+    `api/services/person_housing_rules.py`.
+
+    `teen_cabins` -- TLI/SCIT sessions whose CampMinder bunk the lodging
+    registry resolves to a REAL unit (owner ruling 2026-09-22, late, Q9). A
+    teen program's bunk is usually a program group, not a cabin; a string the
+    registry cannot resolve is absent, so the client shows no cabin. Same
+    shape as `weekends`: `cabin_name` is today's registry name,
+    `cabin_name_raw` the string CampMinder holds. Quest never appears here.
     """
 
     person_cm_id: int = 0
     weekends: list[PersonHousingWeekend] = Field(default_factory=list)
+    teen_cabins: list[PersonHousingWeekend] = Field(default_factory=list)
 
 
 class WeekendSummaryEntry(BaseModel):

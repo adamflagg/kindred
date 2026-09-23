@@ -214,11 +214,14 @@ async def get_person_housing(
     person_cm_id: int,
     user: AuthUser = Depends(get_current_user),
 ) -> PersonHousingResponse:
-    """One person's adult-weekend cabins, attributed per weekend (adult camper journey).
+    """One person's adult-weekend cabins, attributed per weekend (adult camper
+    journey), and the TLI/SCIT cabins the registry resolves to a real unit
+    (`teen_cabins`, owner ruling 2026-09-22 late, Q9).
 
     Open to any authenticated user, like the household journey above: cabin
     names and weekends, no narrative. It reads exactly two custom fields
-    (the cabin allowlist) -- see `LodgingRepository.fetch_person_cabin_values`.
+    (the cabin allowlist) -- see `LodgingRepository.fetch_person_cabin_values`
+    -- plus the person's own TLI/SCIT bunk assignments.
     Takes no year: the window is discovered, as the household journey's is.
     """
     return await PersonHousingService(LodgingRepository(pb)).build_person_housing(person_cm_id)
