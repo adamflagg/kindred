@@ -38,7 +38,7 @@ from api.schemas.lodging import (
     WriteInDeleteRequest,
 )
 from api.services.lodging_attribution_service import LodgingAttributionService
-from api.services.lodging_compare_service import LodgingCompareService, NotAFamilyWeekendError
+from api.services.lodging_compare_service import LodgingCompareService
 from api.services.lodging_repository import LodgingRepository
 from api.services.lodging_roster_service import LodgingRosterService, SessionNotFoundError
 from api.services.lodging_write_service import (
@@ -505,16 +505,13 @@ async def get_scenario_compare(
     reason: it writes nothing, but reviewing a plan against CampMinder is part
     of the same staff workflow placing families is.
 
-    A weekend that is not family camp is a 400, not an empty report -- owner
-    ruling §5.1 scopes this to family camp, and an empty report would read as
-    agreement rather than as a question this feature does not answer.
+    Family camp and adult weekends both compare (owner ruling 2026-09-23 lifted
+    §5.1's family-only scope; kindred#2760 put adult guests in the daily pass).
     """
     try:
         return await _compare().compare_scenario(year, session_cm_id, scenario)
     except SessionNotFoundError as exc:
         raise _weekend_404(year, session_cm_id) from exc
-    except NotAFamilyWeekendError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.get("/attribution/conflicts", response_model=SessionAttributionConflictsResponse)

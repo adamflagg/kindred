@@ -50,7 +50,7 @@ from api.schemas.lodging import (
     ScenarioCompareResponse,
     WeekendRosterResponse,
 )
-from api.services.lodging_repository import FAMILY_SESSION_TYPE, LodgingRepository
+from api.services.lodging_repository import LodgingRepository
 from api.services.lodging_roster_service import LodgingRosterService, _BathroomIndex
 from api.services.lodging_rules import (
     ComparePartyPlacement,
@@ -73,16 +73,6 @@ from api.services.lodging_write_service import LodgingWriteService
 # exactly why it can date this table for the whole season and cannot date one
 # weekend's answers.
 MIRROR_SYNC_SERVICE = "lodging_assignments"
-
-
-class NotAFamilyWeekendError(ValueError):
-    """The weekend exists but is not family camp (owner ruling, §5.1).
-
-    A 400, not a 404 and not an empty report: the request named a real weekend
-    and asked a question this feature does not answer for it. An empty report
-    would read as "your scenario matches CampMinder", which on an adult
-    weekend is a claim about data the refresh chain never fetched.
-    """
 
 
 def _placement_side(party: RosterParty) -> ComparePartyPlacement:
@@ -198,12 +188,15 @@ class LodgingCompareService:
         self.writes = LodgingWriteService(repository)
 
     async def compare_scenario(self, year: int, session_cm_id: int, scenario: str) -> ScenarioCompareResponse:
-        """One family-camp weekend's scenario against the CampMinder mirror.
+        """One weekend's scenario against the CampMinder mirror -- family camp
+        or adult (owner ruling 2026-09-23 lifted §5.1's family-only gate once
+        adult guests joined the bounded daily person pass, kindred#2760).
 
-        Raises `SessionNotFoundError` for a weekend that does not exist and
-        `NotAFamilyWeekendError` for one that is not family camp. The scope
-        gate runs on the FIRST read, before `preview_push` is issued at all --
-        an adult weekend should cost one roster read, not three.
+        Raises `SessionNotFoundError` for a weekend that does not exist; the
+        roster read is type-filtered to weekend sessions, so no other session
+        type reaches the compare. Grain needs no branch here: a person party is
+        keyed on the guest (`compare_party_key`), a household party on the
+        household.
         """
         if not scenario:
             raise ValueError("a compare requires a scenario -- the mirror cannot be compared against itself")
@@ -223,17 +216,10 @@ class LodgingCompareService:
         # writes the mirror table read below, and the same service §4's
         # "Housing synced" line names, so the two readouts cannot drift.
         #
-        # One indexed single-row read, paid on the adult-weekend path too --
-        # the scope gate below wants that path to cost one roster read rather
-        # than three, and this is not a roster read.
+        # One indexed single-row read.
         mirror_synced_at = await self.repository.fetch_last_successful_sync_end(MIRROR_SYNC_SERVICE)
 
         mirror_roster: WeekendRosterResponse = await self.roster.build_roster(year, session_cm_id, "")
-        if mirror_roster.session_type != FAMILY_SESSION_TYPE:
-            raise NotAFamilyWeekendError(
-                f"Weekend {session_cm_id} in {year} is not a family camp session; "
-                "the scenario compare is family camp only"
-            )
         scenario_roster: WeekendRosterResponse = await self.roster.build_roster(year, session_cm_id, scenario)
 
         # THE MIRROR ROSTER'S REGISTRY, and either side's would do -- because the

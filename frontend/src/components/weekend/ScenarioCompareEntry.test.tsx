@@ -1,9 +1,10 @@
 /**
  * The "Compare with CampMinder" entry point (kindred#2478 §5).
  *
- * What is pinned here is WHERE the affordance may appear. Three of the four
- * conditions are the ones `PushWriteInsEntry` already carries; the fourth —
- * family camp only — is owner ruling §5.1 and is the one this file exists for.
+ * What is pinned here is WHERE the affordance may appear: the three conditions
+ * `PushWriteInsEntry` already carries. A fourth, family camp only (owner ruling
+ * §5.1), was lifted on 2026-09-23 once adult guests joined the daily person
+ * pass (kindred#2760); the component no longer takes a session type at all.
  *
  * Fictional data throughout.
  */
@@ -21,7 +22,6 @@ interface EntryProps {
   sessionCmId: number
   scenario: string
   canManage: boolean
-  sessionType: string
 }
 
 const BASE: EntryProps = {
@@ -29,7 +29,6 @@ const BASE: EntryProps = {
   sessionCmId: 1309001,
   scenario: 'scn_1',
   canManage: true,
-  sessionType: 'family',
 }
 
 function renderEntry(overrides: Partial<EntryProps> = {}) {
@@ -58,14 +57,6 @@ describe('ScenarioCompareEntry', () => {
 
   it('renders nothing with no weekend selected', () => {
     renderEntry({ sessionCmId: 0 })
-    expect(screen.queryByRole('button')).not.toBeInTheDocument()
-  })
-
-  it('renders nothing on an adult weekend', () => {
-    // Owner ruling §5.1: family camp weekends only. (Its original freshness
-    // reason lapsed in kindred#2760; the gate stays pending an owner ruling on
-    // adult boards.)
-    renderEntry({ sessionType: 'adult' })
     expect(screen.queryByRole('button')).not.toBeInTheDocument()
   })
 })
