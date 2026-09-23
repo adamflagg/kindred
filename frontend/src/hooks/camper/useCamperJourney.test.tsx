@@ -174,8 +174,17 @@ describe('useCamperJourney', () => {
     const weekends = [
       { year: 2024, session_cm_id: 1001, cabin_name: 'River F', cabin_name_raw: 'River F' },
     ]
+    // Q9 (owner, 2026-09-22 late): the same read carries the TLI/SCIT cabins
+    // the registry resolves, and they travel with the adult list.
+    const teenCabins = [
+      { year: 2025, session_cm_id: 2001, cabin_name: 'Village Cabin 2', cabin_name_raw: 'Teen 2' },
+    ]
     household.value = { data: { years }, isPending: false, dataUpdatedAt: 1 }
-    housing.value = { data: { weekends }, isPending: false, dataUpdatedAt: 1 }
+    housing.value = {
+      data: { weekends, teen_cabins: teenCabins },
+      isPending: false,
+      dataUpdatedAt: 1,
+    }
 
     renderHook(() => useCamperJourney(PERSON, YEAR), { wrapper })
 
@@ -185,6 +194,7 @@ describe('useCamperJourney', () => {
     expect(mockFetchCamperJourney).toHaveBeenCalledWith(PERSON, YEAR, {
       familyHousingYears: years,
       adultHousingWeekends: weekends,
+      teenCabins,
       viewerIsAdult: true,
     })
   })

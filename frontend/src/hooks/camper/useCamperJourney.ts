@@ -4,7 +4,8 @@
  *
  * It owns the reads so no consumer has to: the person's own rows (household
  * id, years_at_camp, age), the household journey (family cabins; parent
- * rows), and the person housing read (adult cabins). It runs the feed ONCE,
+ * rows), and the person housing read (adult cabins; TLI/SCIT cabins the
+ * registry resolves). It runs the feed ONCE,
  * after both housing reads settle — the old per-consumer shape ran it before
  * housing arrived and again after, blanking the rows in between.
  *
@@ -111,6 +112,7 @@ export function useCamperJourney(
       fetchCamperJourney(personCmId as number, viewYear, {
         familyHousingYears: householdQ.data?.years ?? [],
         adultHousingWeekends: housingQ.data?.weekends ?? [],
+        teenCabins: housingQ.data?.teen_cabins ?? [],
         viewerIsAdult: facts?.isAdult ?? false,
       }),
     enabled: householdSettled && housingSettled,

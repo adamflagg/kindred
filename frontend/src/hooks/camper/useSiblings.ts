@@ -15,6 +15,8 @@ import {
   buildKidProgramSessionTypeFilter,
   isAdultSessionType,
   isFamilySessionType,
+  isQuestSessionType,
+  isTeenProgramType,
 } from '../../utils/sessionTypePredicates'
 import type {
   PersonsResponse,
@@ -137,11 +139,16 @@ export function useSiblings(
             // Try to get bunk assignment. Family camp and adult programs have
             // no cabin here: CampMinder's bunk for a family session is the
             // day group, which must never render as a cabin (kindred#2466).
+            // Nor do TLI/SCIT and Quest (owner ruling 2026-09-22 late, Q9):
+            // a teen program's bunk is a program group ("SCIT A", "TLI") and
+            // a Quest's is a trip name.
             let bunkName: string | null = null
             if (
               session &&
               !isFamilySessionType(session.session_type) &&
-              !isAdultSessionType(session.session_type)
+              !isAdultSessionType(session.session_type) &&
+              !isTeenProgramType(session.session_type) &&
+              !isQuestSessionType(session.session_type)
             ) {
               try {
                 const assignments = await pb

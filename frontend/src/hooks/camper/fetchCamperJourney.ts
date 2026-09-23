@@ -24,7 +24,11 @@
  */
 import { pb } from '../../lib/pocketbase'
 import { byYearThenChronological } from './journeyOrder'
-import { buildCamperJourneySessionTypeFilter } from '../../utils/sessionTypePredicates'
+import {
+  buildCamperJourneySessionTypeFilter,
+  isQuestSessionType,
+  isTeenProgramType,
+} from '../../utils/sessionTypePredicates'
 import type {
   AttendeesResponse,
   BunkAssignmentsResponse,
@@ -128,8 +132,11 @@ function labelsWeekend(housing: FamilySeasonHousing, sessionCmId: number): boole
   return housing.sessionCmId === null || housing.sessionCmId === sessionCmId
 }
 
-/** The server's attributed adult cabins, keyed `${year}:${sessionCmId}`. */
-function adultHousingByWeekend(weekends: PersonHousingWeekendRow[]): Map<string, CabinLabel> {
+/**
+ * Server-named cabins keyed `${year}:${sessionCmId}` — the attributed adult
+ * cabins, and the TLI/SCIT cabins the registry resolves (same row shape).
+ */
+function cabinsByWeekend(weekends: PersonHousingWeekendRow[]): Map<string, CabinLabel> {
   const map = new Map<string, CabinLabel>()
   for (const w of weekends) {
     const cabinName = (w.cabin_name ?? '').trim()
@@ -199,6 +206,13 @@ export interface CamperJourneyOptions {
   familyHousingYears?: HouseholdJourneyRow[]
   /** The person's attributed adult-weekend cabins (`/persons/{id}/housing`). */
   adultHousingWeekends?: PersonHousingWeekendRow[]
+  /**
+   * The person's TLI/SCIT cabins the lodging registry resolves to a real unit
+   * (`/persons/{id}/housing` `teen_cabins`, owner ruling 2026-09-22 late, Q9).
+   * The ONLY source of a teen row's label — the resolver lives on the server
+   * (kindred#2332 forbids a client copy).
+   */
+  teenCabins?: PersonHousingWeekendRow[]
   /** An adult viewer also sees the family weekends their household's children attended. */
   viewerIsAdult?: boolean
 }
@@ -220,10 +234,16 @@ export async function fetchCamperJourney(
   if (!personCmId || Number.isNaN(personCmId)) {
     return { rows: [], familyWeekends: 0, adultWeekends: 0 }
   }
-  const { familyHousingYears = [], adultHousingWeekends = [], viewerIsAdult = false } = options
+  const {
+    familyHousingYears = [],
+    adultHousingWeekends = [],
+    teenCabins = [],
+    viewerIsAdult = false,
+  } = options
 
   const familyHousing = familyHousingByYear(familyHousingYears)
-  const adultHousing = adultHousingByWeekend(adultHousingWeekends)
+  const adultHousing = cabinsByWeekend(adultHousingWeekends)
+  const teenHousing = cabinsByWeekend(teenCabins)
 
   const typeFilter = buildCamperJourneySessionTypeFilter()
 
@@ -302,6 +322,11 @@ export async function fetchCamperJourney(
 
   const assignmentsByYear = new Map<number, Array<BunkAssignmentsResponse<AssignmentExpand>>>()
   for (const a of assignments) {
+    // A TLI/SCIT/Quest "bunk" is a program group or a trip name (Q9). Its own
+    // row never reads it (see the overrides below), and it must not reach a
+    // summer row through the year-fallback either.
+    const assignmentType = a.expand.session?.session_type
+    if (isTeenProgramType(assignmentType) || isQuestSessionType(assignmentType)) continue
     const list = assignmentsByYear.get(a.year) ?? []
     list.push(a)
     assignmentsByYear.set(a.year, list)
@@ -366,6 +391,21 @@ export async function fetchCamperJourney(
       const housing = adultHousing.get(`${String(year)}:${String(session.cm_id)}`)
       bunkName = housing?.cabinName
       bunkNameRecorded = housing && recordedIfDifferent(housing.cabinName, housing.cabinNameRaw)
+    }
+
+    // Teen programs (owner ruling 2026-09-22 late, Q9): CampMinder's bunk for
+    // TLI/SCIT is usually a program group ("SCIT A", "TLI"), so the label is
+    // ONLY the cabin the server's registry resolved for THIS (year, session),
+    // or nothing — never the raw bunk. Quest's "bunk" is a trip name: never a
+    // cabin. Unconditional, like the family and adult overrides.
+    if (isTeenProgramType(session?.session_type)) {
+      const housing = teenHousing.get(`${String(year)}:${String(session?.cm_id)}`)
+      bunkName = housing?.cabinName
+      bunkNameRecorded = housing && recordedIfDifferent(housing.cabinName, housing.cabinNameRaw)
+    }
+    if (isQuestSessionType(session?.session_type)) {
+      bunkName = undefined
+      bunkNameRecorded = undefined
     }
 
     // AG is never shown as its own session (spec §3). For a surviving AG-only row,

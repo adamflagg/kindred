@@ -237,7 +237,8 @@ interface SiblingLine2Entry {
  * — the caller omits line 2 entirely rather than rendering an empty one.
  * The primary session's cabin (`sibling.bunkName`) travels with it only when
  * the primary itself is germane; `useSiblings` never looks up a cabin for a
- * family/adult primary session at all (kindred#2466).
+ * family/adult primary session at all (kindred#2466), nor for a TLI/SCIT or
+ * Quest one, whose "bunk" is a program group or a trip name (Q9).
  */
 function siblingLine2Entries(sibling: SiblingWithEnrollment): SiblingLine2Entry[] {
   const entries: SiblingLine2Entry[] = []

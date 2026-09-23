@@ -126,6 +126,27 @@ describe('useSiblings', () => {
     expect(mockAssignments).not.toHaveBeenCalled()
   })
 
+  // Owner ruling 2026-09-22 (late, Q9): a teen program's CampMinder "bunk" is
+  // a program group ("SCIT A", "TLI") and a Quest's is a trip name — never a
+  // cabin. Both sibling surfaces (the record's SiblingsPanel and the board
+  // modal's sibling rows) read this hook, so neither may show one.
+  it.each([
+    ['TLI', 'tli', 'TLI'],
+    ['SCIT', 'scit', 'SCIT A'],
+    ['Quest', 'quest', 'Trip Name'],
+  ])(
+    'no bunk lookup when the primary program is %s — its bunk is not a cabin',
+    async (name, sessionType, groupName) => {
+      mockPersons.mockResolvedValue([member(3000002, { grade: 11 })])
+      mockAttendees.mockResolvedValue([enrolment(name, sessionType)])
+      mockAssignments.mockResolvedValue([{ expand: { bunk: { name: groupName } } }])
+      const { result } = renderHook(() => useSiblings(555, 3000001, 2026, 'child'), { wrapper })
+      await waitFor(() => expect(result.current.siblings).toHaveLength(1))
+      expect(result.current.siblings[0]?.bunkName).toBeNull()
+      expect(mockAssignments).not.toHaveBeenCalled()
+    }
+  )
+
   it('still looks up the cabin for a summer primary program', async () => {
     mockPersons.mockResolvedValue([member(3000002, { grade: 4 })])
     mockAttendees.mockResolvedValue([enrolment('Session 2', 'main')])

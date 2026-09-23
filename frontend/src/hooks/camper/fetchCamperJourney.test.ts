@@ -155,11 +155,15 @@ describe('fetchCamperJourney', () => {
     expect(main?.bunkName).toBeUndefined() // must NOT inherit the family bunk via fallback
   })
 
-  it('still applies the year-fallback within summer/teen types (pre-existing behavior, unchanged)', async () => {
-    // A quest enrollment with no exact-match bunk, and exactly one (non-family)
-    // assignment that year for a different session — the fallback still fires,
-    // same as before #2113 widened the type filter.
-    mockAttendeesGetFullList.mockResolvedValue([attendee(2020, 500, 'quest', 'Quest Session')])
+  // RULED CHANGE (owner, 2026-09-22 late, Q9): this test used a QUEST row to
+  // pin the fallback, and Quest rows never show a cabin now (their "bunk" is
+  // a trip name). The fallback itself is unchanged, so it is pinned on an
+  // embedded row instead.
+  it('still applies the year-fallback within summer types (pre-existing behavior, unchanged)', async () => {
+    // An embedded enrollment with no exact-match bunk, and exactly one
+    // (non-family) assignment that year for a different session — the
+    // fallback still fires, same as before #2113 widened the type filter.
+    mockAttendeesGetFullList.mockResolvedValue([attendee(2020, 500, 'embedded', 'Session X')])
     mockAssignmentsGetFullList.mockResolvedValue([assignment(2020, 501, 'Q-Cabin', 'main')])
     const { rows: out } = await fetchCamperJourney(PERSON, CURRENT_YEAR)
     expect(out[0]?.bunkName).toBe('Q-Cabin')
@@ -705,5 +709,94 @@ describe("family camp, today's name with recorded provenance, and as a parent", 
       familyHousingYears: [householdYear({ cabin_name: 'River F', cabin_name_raw: '  River F  ' })],
     })
     expect(rows[0]?.bunkNameRecorded).toBeUndefined()
+  })
+})
+
+// Owner ruling 2026-09-22 (late, Q9). CampMinder's "bunk" for a teen program is
+// usually a program GROUP ("SCIT A", "TLI"), and for Quest a trip name. A
+// TLI/SCIT row's cabin comes ONLY from the server's `teen_cabins` (resolved
+// through the one registry resolver, kindred#2332) — never the raw bunk — and a
+// Quest row never shows a cabin.
+describe('teen-program and Quest cabins (Q9)', () => {
+  beforeEach(() => {
+    mockAttendeesGetFullList.mockReset().mockResolvedValue([])
+    mockAssignmentsGetFullList.mockReset().mockResolvedValue([])
+    mockSessionsGetFullList.mockReset().mockResolvedValue([])
+  })
+
+  const resolved = {
+    year: 2025,
+    session_cm_id: 2001,
+    cabin_name: 'Village Cabin 2',
+    cabin_name_raw: 'Teen 2',
+  }
+
+  it("labels a TLI/SCIT row with the server's registry name, the as-typed string on hover", async () => {
+    mockAttendeesGetFullList.mockResolvedValue([
+      attendee(2025, 2001, 'scit', 'Counselor In-Training'),
+    ])
+    mockAssignmentsGetFullList.mockResolvedValue([assignment(2025, 2001, 'Teen 2', 'scit')])
+    const { rows } = await fetchCamperJourney(PERSON, CURRENT_YEAR, { teenCabins: [resolved] })
+    expect(rows[0]).toMatchObject({ bunkName: 'Village Cabin 2', bunkNameRecorded: 'Teen 2' })
+  })
+
+  it('gives an unresolved TLI/SCIT row no label — never the raw program group', async () => {
+    mockAttendeesGetFullList.mockResolvedValue([
+      attendee(2025, 2001, 'scit', 'Counselor In-Training'),
+      attendee(2025, 2002, 'tli', 'Teen Leadership'),
+    ])
+    mockAssignmentsGetFullList.mockResolvedValue([
+      assignment(2025, 2001, 'SCIT A', 'scit'),
+      assignment(2025, 2002, 'TLI', 'tli'),
+    ])
+    const { rows } = await fetchCamperJourney(PERSON, CURRENT_YEAR, { teenCabins: [] })
+    expect(rows).toHaveLength(2)
+    for (const row of rows) {
+      expect(row.bunkName).toBeUndefined()
+      expect(row.bunkNameRecorded).toBeUndefined()
+    }
+  })
+
+  it('omits the hover when the registry name already IS the recorded string', async () => {
+    mockAttendeesGetFullList.mockResolvedValue([attendee(2025, 2002, 'tli', 'Teen Leadership')])
+    const { rows } = await fetchCamperJourney(PERSON, CURRENT_YEAR, {
+      teenCabins: [
+        {
+          year: 2025,
+          session_cm_id: 2002,
+          cabin_name: 'Cedar Lodge',
+          cabin_name_raw: 'Cedar Lodge',
+        },
+      ],
+    })
+    expect(rows[0]?.bunkName).toBe('Cedar Lodge')
+    expect(rows[0]?.bunkNameRecorded).toBeUndefined()
+  })
+
+  it('never borrows a teen cabin from another year or session', async () => {
+    mockAttendeesGetFullList.mockResolvedValue([
+      attendee(2024, 2001, 'scit', 'Counselor In-Training'),
+    ])
+    const { rows } = await fetchCamperJourney(PERSON, CURRENT_YEAR, { teenCabins: [resolved] })
+    expect(rows[0]?.bunkName).toBeUndefined()
+  })
+
+  it('gives a Quest row no label even when a bunk_assignment exists', async () => {
+    mockAttendeesGetFullList.mockResolvedValue([attendee(2025, 3001, 'quest', 'Quest Session')])
+    mockAssignmentsGetFullList.mockResolvedValue([assignment(2025, 3001, 'Trip Name', 'quest')])
+    const { rows } = await fetchCamperJourney(PERSON, CURRENT_YEAR)
+    expect(rows[0]?.bunkName).toBeUndefined()
+  })
+
+  it('never lets a lone program-group bunk reach a summer row through the year-fallback', async () => {
+    // Session 2 has no bunk of its own that year; the only assignment is the
+    // SCIT program group. The fallback must not hand "SCIT A" to the summer row.
+    mockAttendeesGetFullList.mockResolvedValue([
+      attendee(2025, 100, 'main', 'Session 2'),
+      attendee(2025, 2001, 'scit', 'Counselor In-Training'),
+    ])
+    mockAssignmentsGetFullList.mockResolvedValue([assignment(2025, 2001, 'SCIT A', 'scit')])
+    const { rows } = await fetchCamperJourney(PERSON, CURRENT_YEAR)
+    for (const row of rows) expect(row.bunkName).toBeUndefined()
   })
 })
