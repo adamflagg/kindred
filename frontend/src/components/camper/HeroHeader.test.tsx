@@ -40,6 +40,13 @@ describe('HeroHeader count line', () => {
     expect(screen.queryByText(/years at camp/)).toBeNull()
   })
 
+  // Q11 (owner, 2026-09-22 late) trims only the summer board modal's line to
+  // summers; the full camper record keeps every part.
+  it('keeps the whole line — summers AND weekends — on the full record', () => {
+    renderHero({ journeyCounts: { summers: 5, familyWeekends: 3, adultWeekends: 0 } })
+    expect(screen.getByText('5 summers · 3 family weekends')).toBeInTheDocument()
+  })
+
   it('hides the stat when every count is zero', () => {
     const { container } = renderHero({
       journeyCounts: { summers: 0, familyWeekends: 0, adultWeekends: 0 },

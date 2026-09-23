@@ -58,7 +58,7 @@ import { useOriginalBunkData } from '../hooks/camper/useOriginalBunkData'
 import { fetchParentMainSessions } from '../hooks/camper/fetchCamperJourney'
 import { useCamperJourney } from '../hooks/camper/useCamperJourney'
 import { useSiblings } from '../hooks/camper/useSiblings'
-import { journeyCountLabel } from '../utils/journeyCountLabel'
+import { EMPTY_JOURNEY_COUNTS, journeyCountLabel } from '../utils/journeyCountLabel'
 import { collapseAgEnrollments, buildAgParentPairs } from '../hooks/camper/agCollapse'
 import type { SiblingWithEnrollment } from '../hooks/camper/types'
 import { JourneyRows } from './camper/JourneyRows'
@@ -811,6 +811,16 @@ export default function CamperDetailsPanel({
       ? getStatusIndicator(currentEnrollments[0]?.attendeeStatus)
       : null
 
+  // Q11 (owner, 2026-09-22 late): the board's quick-stats line shows the
+  // SUMMERS part only ("5 summers"), and nothing when summers is 0 — the
+  // whole line wrapped in this narrow bar, and family/adult weekends are not
+  // germane to bunking. The full camper record keeps every part. Same
+  // builder, weekends zeroed, so the pluralisation lives in one place.
+  const summersLabel = journeyCountLabel({
+    ...EMPTY_JOURNEY_COUNTS,
+    summers: journeyCounts.summers,
+  })
+
   // Render the panel content
   const renderContent = () => (
     <div className={embedded ? 'space-y-3' : 'flex-1 space-y-4 overflow-auto'}>
@@ -823,10 +833,10 @@ export default function CamperDetailsPanel({
               <span>{location}</span>
             </div>
           )}
-          {journeyCountLabel(journeyCounts).length > 0 && (
+          {summersLabel.length > 0 && (
             <div className="text-forest-100 flex items-center gap-1.5">
               <TreePine className="text-forest-300 h-3 w-3" />
-              <span>{journeyCountLabel(journeyCounts)}</span>
+              <span>{summersLabel}</span>
             </div>
           )}
           {currentEnrollments.length > 1 ? (

@@ -495,17 +495,38 @@ describe('CamperDetailsPanel', () => {
   // The quick-stats bar shows the shared journey count line instead of
   // CampMinder's bare "N years".
   describe('Quick stats — journey count line', () => {
-    it('shows the shared count line from the feed', async () => {
+    // RULED CHANGE (owner, 2026-09-22 late, Q11): this test used to expect
+    // the whole line ("3 summers · 1 family weekend"), which wrapped in the
+    // board's narrow quick-stats bar. The board modal now shows the SUMMERS
+    // part only — family weekends are not germane to bunking; the full camper
+    // record keeps the whole line.
+    it('shows only the summers part of the shared count line', async () => {
       setupDeclinedRequestMocks()
       mockUseCamperJourney.mockReturnValue(
-        journeyWith([], { summers: 3, familyWeekends: 1, adultWeekends: 0 })
+        journeyWith([], { summers: 5, familyWeekends: 3, adultWeekends: 1 })
       )
 
       render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} />)
 
-      expect(await screen.findByText('3 summers · 1 family weekend')).toBeInTheDocument()
+      expect(await screen.findByText('5 summers')).toBeInTheDocument()
+      expect(screen.queryByText(/family weekend/)).not.toBeInTheDocument()
+      expect(screen.queryByText(/adult weekend/)).not.toBeInTheDocument()
       // Emma's years_at_camp is 2 — the old bare "2 years" stat is gone.
       expect(screen.queryByText('2 years')).not.toBeInTheDocument()
+    })
+
+    it('shows no count line when summers is zero, whatever the weekends', async () => {
+      setupDeclinedRequestMocks()
+      mockUseCamperJourney.mockReturnValue(
+        journeyWith([], { summers: 0, familyWeekends: 2, adultWeekends: 1 })
+      )
+
+      const { container } = render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} />)
+
+      await screen.findByRole('heading', { name: /Emma/i })
+      expect(screen.queryByText(/weekend/)).not.toBeInTheDocument()
+      // Only the Camp Journey section header's TreePine is left.
+      expect(container.querySelectorAll('.lucide-tree-pine')).toHaveLength(1)
     })
 
     it('shows no count line when every count is zero', async () => {
