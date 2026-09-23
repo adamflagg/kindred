@@ -739,11 +739,11 @@ describe('CamperDetailsPanel', () => {
       expect(row.querySelector('.lucide-home')).not.toBeInTheDocument()
       expect(screen.queryByText('Bunk 99')).not.toBeInTheDocument()
       // Not merely hidden — the lookup itself must never run for her.
-      expect(
-        mockGetFullListBunkAssignments.mock.calls.some(([opts]: [{ filter?: string }]) =>
-          (opts.filter ?? '').includes('pb-mia')
-        )
-      ).toBe(false)
+      const calledForMia = mockGetFullListBunkAssignments.mock.calls.some((call: unknown[]) => {
+        const opts = call[0] as { filter?: string } | undefined
+        return (opts?.filter ?? '').includes('pb-mia')
+      })
+      expect(calledForMia).toBe(false)
     })
   })
 
