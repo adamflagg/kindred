@@ -3,7 +3,7 @@
  * TDD: written before the bunk-segment guard.
  */
 import { describe, it, expect } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, within } from '@testing-library/react'
 import { CampJourneyTimeline } from './CampJourneyTimeline'
 import type { HistoricalRecord } from '../../hooks/camper/types'
 
@@ -23,9 +23,15 @@ describe('CampJourneyTimeline display rules (spec §8)', () => {
     expect(screen.getByText('G-8B')).toBeInTheDocument()
     expect(screen.getByText('2022')).toBeInTheDocument() // row still listed
     expect(screen.queryByText('Unassigned')).toBeNull()
-    // The "·" bunk separator renders only for the labeled (G-8B) row — not the
-    // no-bunk row. (Old code rendered it for every enrolled row → length 2.)
-    expect(screen.queryAllByText('·')).toHaveLength(1)
+    // Ruled change (owner, 2026-09-22, G2): the journey is ONE grid and the
+    // "·" separator is gone — the cabin column itself is the segment. Only the
+    // labeled (G-8B) row's cabin cell holds anything; the no-bunk row's cell
+    // is present (it keeps the grid aligned) but empty.
+    const cabinCells = screen.getAllByTestId('journey-cabin-cell')
+    expect(cabinCells).toHaveLength(2)
+    expect(cabinCells[0]?.textContent).toBe('G-8B')
+    expect(cabinCells[1]?.textContent).toBe('')
+    expect(screen.queryAllByText('·')).toHaveLength(0)
   })
 
   it('still renders Unassigned for a current-year bunkable row not yet placed', () => {
@@ -106,9 +112,10 @@ describe('CampJourneyTimeline program-agnostic strings (#2113)', () => {
     expect(screen.getByText('Family Camp 2')).toBeInTheDocument()
   })
 
-  it('prints the weekend’s subtitle beside the mid-form name', () => {
+  it('prints the weekend’s subtitle with the mid-form name', () => {
     // The half that tells two numbered weekends apart, and the half CampMinder
-    // buries in a 54-character name.
+    // buries in a 54-character name. (Owner, 2026-09-22, G2: it now sits UNDER
+    // the name rather than beside it — pinned in the G2 block below.)
     const history: HistoricalRecord[] = [
       {
         year: 2026,
@@ -182,8 +189,10 @@ describe('CampJourneyTimeline family-camp housing (kindred#2466)', () => {
         currentYear={2026}
       />
     )
-    // No "·" separator and no day-group-shaped text — an absent `bunkName`
-    // renders nothing, same as any other unlabeled row.
+    // An absent `bunkName` renders nothing, same as any other unlabeled row.
+    // Ruled change (owner, 2026-09-22, G2): with no "·" separator any more,
+    // "nothing" means an EMPTY cabin cell — the cell stays so the grid lines up.
+    expect(screen.getByTestId('journey-cabin-cell').textContent).toBe('')
     expect(screen.queryAllByText('·')).toHaveLength(0)
   })
 })
@@ -364,5 +373,99 @@ describe('CampJourneyTimeline cabin provenance (kindred#2332 pattern)', () => {
 
     const sessionSpan = screen.getByText('Session 3')
     expect(sessionSpan.className).toContain('min-w-0')
+  })
+})
+
+// Owner ruling 2026-09-22, option G2 (docs mockup "journey alignment"): the
+// whole journey is ONE CSS grid — dot | year | session | cabin | badge — so
+// every cabin starts on the same vertical line, whatever the session name
+// beside it. jsdom cannot measure layout, so these pin the STRUCTURE that
+// produces the alignment. `data-col` / `data-testid` are query handles (test
+// infrastructure, not accessibility).
+describe('CampJourneyTimeline one-grid layout (owner ruling 2026-09-22, G2)', () => {
+  const history: HistoricalRecord[] = [
+    { year: 2025, sessionName: 'Session 2', sessionType: 'main', bunkName: 'B-4' },
+    {
+      year: 2024,
+      sessionName: 'Family Camp 8: JFAM Weekend w/ SFJCC (w/ kids 10 and under)',
+      sessionType: 'family',
+      bunkName: 'Cedar Lodge',
+    },
+    { year: 2024, sessionName: 'Session 3a', sessionType: 'main', bunkName: 'B-Bet' },
+    { year: 2023, sessionName: 'Session 4', sessionType: 'main' },
+  ]
+
+  function renderTimeline() {
+    render(
+      <CampJourneyTimeline
+        history={history}
+        counts={{ summers: 3, familyWeekends: 1, adultWeekends: 0 }}
+        currentYear={2026}
+      />
+    )
+    return screen.getByTestId('journey-rows')
+  }
+
+  it('renders every row inside ONE grid container', () => {
+    const grid = renderTimeline()
+    expect(grid.className.split(' ')).toContain('grid')
+    // The ruled track template: the session column is as wide as its widest
+    // entry, the cabin column takes the rest and truncates.
+    expect(grid.className).toContain('minmax(0,max-content)')
+    expect(grid.className).toContain('minmax(0,1fr)')
+  })
+
+  it('has no per-row wrapper — every direct child is a cell of the one grid', () => {
+    const grid = renderTimeline()
+    const cells = Array.from(grid.children)
+    // Five cells per row: dot | year | session | cabin | badge.
+    expect(cells).toHaveLength(history.length * 5)
+    expect(cells.map((c) => c.getAttribute('data-col'))).toEqual(
+      history.flatMap(() => ['dot', 'year', 'session', 'cabin', 'badge'])
+    )
+  })
+
+  it("puts row N's cabin and row N+1's cabin in the same grid", () => {
+    const grid = renderTimeline()
+    const cabins = screen.getAllByTestId('journey-cabin-cell')
+    expect(cabins).toHaveLength(history.length)
+    for (const cabin of cabins) expect(cabin.parentElement).toBe(grid)
+    expect(within(cabins[0] as HTMLElement).getByText('B-4')).toBeInTheDocument()
+    expect(within(cabins[2] as HTMLElement).getByText('B-Bet')).toBeInTheDocument()
+  })
+
+  it("stacks a family weekend's subtitle under its name, inside the session cell", () => {
+    const grid = renderTimeline()
+    const subtitle = screen.getByText('JFAM')
+    const name = screen.getByText('Family Camp 8')
+    const sessionCell = subtitle.closest('[data-col]')
+    expect(sessionCell?.getAttribute('data-col')).toBe('session')
+    expect(name.closest('[data-col]')).toBe(sessionCell)
+    // After the name, not before it.
+    expect(name.compareDocumentPosition(subtitle) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    // A child of the session cell, never a sibling of the cabin cell.
+    expect(subtitle.parentElement).not.toBe(grid)
+    // Stacked: the cell is a column, so the subtitle sits UNDER the name.
+    expect(sessionCell?.className).toContain('flex-col')
+  })
+
+  it('holds "Now" and a status letter in the badge column', () => {
+    render(
+      <CampJourneyTimeline
+        history={[
+          { year: 2026, sessionName: 'Session 2', sessionType: 'main', bunkName: 'B-4' },
+          {
+            year: 2025,
+            sessionName: 'Session 3',
+            sessionType: 'main',
+            attendeeStatus: 'waitlisted',
+          },
+        ]}
+        counts={{ summers: 1, familyWeekends: 0, adultWeekends: 0 }}
+        currentYear={2026}
+      />
+    )
+    expect(screen.getByText('Now').closest('[data-col]')?.getAttribute('data-col')).toBe('badge')
+    expect(screen.getByText('W').closest('[data-col]')?.getAttribute('data-col')).toBe('badge')
   })
 })

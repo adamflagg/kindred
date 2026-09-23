@@ -60,7 +60,9 @@ import { useCamperJourney } from '../hooks/camper/useCamperJourney'
 import { useSiblings } from '../hooks/camper/useSiblings'
 import { journeyCountLabel } from '../utils/journeyCountLabel'
 import { collapseAgEnrollments, buildAgParentPairs } from '../hooks/camper/agCollapse'
-import type { HistoricalRecord, SiblingWithEnrollment } from '../hooks/camper/types'
+import type { SiblingWithEnrollment } from '../hooks/camper/types'
+import { JourneyRows } from './camper/JourneyRows'
+import { journeyRowStatus, journeyRowsFromHistory, type JourneyRow } from './camper/journeyRowModel'
 import { useOverlayEscape } from '../hooks/useOverlayEscape'
 import { useYear } from '../hooks/useCurrentYear'
 import { getDisplayAgeForYear } from '../utils/displayAge'
@@ -558,6 +560,57 @@ export default function CamperDetailsPanel({
     )
   }
 
+  /**
+   * The Camp Journey section's rows. What only the board modal shows stays
+   * here: THIS year comes from the board's own enrollments (the journey feed
+   * stops at last year) — the year on the first row only, a non-enrolled
+   * enrollment's status letter in place of its cabin, an unplaced one as
+   * "Unassigned", and "Now" on the first row when it is enrolled. With no
+   * enrollment list but a session, one row for that session. Prior years are
+   * the shared feed, mapped exactly as the camper record maps them.
+   */
+  const currentYearRows: JourneyRow[] =
+    currentEnrollments.length > 0
+      ? currentEnrollments.map((enrollment, idx) => {
+          const status = journeyRowStatus(enrollment.attendeeStatus)
+          return {
+            key: `current-${enrollment.sessionCmId}`,
+            year: currentYear,
+            showYear: idx === 0,
+            isCurrentYear: true,
+            session: getEnrollmentShortName(enrollment),
+            subtitle: undefined,
+            cabin: status ? undefined : (enrollment.bunkName ?? 'Unassigned'),
+            cabinRecorded: undefined,
+            status,
+            showNow: idx === 0 && !status,
+          }
+        })
+      : camper?.expand?.session
+        ? [
+            {
+              key: 'current-session',
+              year: currentYear,
+              showYear: true,
+              isCurrentYear: true,
+              session: getSessionShortName() ?? '',
+              subtitle: undefined,
+              cabin: camper.expand.assigned_bunk?.name ?? 'Unassigned',
+              cabinRecorded: undefined,
+              status: undefined,
+              showNow: true,
+            },
+          ]
+        : []
+  const journeyRows: JourneyRow[] = [
+    ...currentYearRows,
+    ...journeyRowsFromHistory(
+      historicalData,
+      currentYear,
+      currentYearRows.length > 0 ? currentYear : undefined
+    ),
+  ]
+
   // Lock group context — used to compute friend-group alert and layout
   const { getCamperLockState, getCamperLockGroup, getGroupMembers, isActionBarVisible } =
     useLockGroupContext()
@@ -950,115 +1003,11 @@ export default function CamperDetailsPanel({
               accentColor="forest"
             />
             {expandedSections.history && (
-              <div className="relative mt-2">
-                {/* Timeline line */}
-                <div className="bg-forest-200 dark:bg-forest-800 absolute top-1 bottom-1 left-[5px] w-0.5" />
-
-                <div className="space-y-1.5">
-                  {/* Current year - show all enrollments */}
-                  {currentEnrollments.length > 0
-                    ? currentEnrollments.map((enrollment, idx) => {
-                        const indicator = getStatusIndicator(enrollment.attendeeStatus)
-                        return (
-                          <div
-                            key={`current-${enrollment.sessionCmId}`}
-                            className="relative flex items-center gap-2.5"
-                          >
-                            <div
-                              className={`relative z-10 h-3 w-3 flex-shrink-0 rounded-full ring-2 ${
-                                indicator
-                                  ? 'bg-amber-400 ring-amber-100 dark:bg-amber-600 dark:ring-amber-900'
-                                  : 'bg-forest-600 ring-forest-100 dark:ring-forest-900'
-                              }`}
-                            />
-                            <span className="text-forest-700 dark:text-forest-300 w-11 text-sm font-bold">
-                              {idx === 0 ? currentYear : ''}
-                            </span>
-                            <span className="text-muted-foreground truncate text-xs">
-                              {getEnrollmentShortName(enrollment)}
-                            </span>
-                            {indicator ? (
-                              <span
-                                className={`flex-shrink-0 rounded px-1 py-0.5 text-[9px] leading-none font-bold ${indicator.colorClass}`}
-                                title={enrollment.attendeeStatus}
-                              >
-                                {indicator.letter}
-                              </span>
-                            ) : (
-                              <>
-                                <span className="text-muted-foreground text-xs">·</span>
-                                <span
-                                  className={`truncate text-xs ${enrollment.bunkName ? 'text-foreground font-medium' : 'text-amber-600 italic'}`}
-                                >
-                                  {enrollment.bunkName ?? 'Unassigned'}
-                                </span>
-                              </>
-                            )}
-                            {idx === 0 && !indicator && (
-                              <span className="bg-forest-600 ml-auto flex-shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold text-white">
-                                Now
-                              </span>
-                            )}
-                          </div>
-                        )
-                      })
-                    : camper.expand?.session && (
-                        <div className="relative flex items-center gap-2.5">
-                          <div className="bg-forest-600 ring-forest-100 dark:ring-forest-900 relative z-10 h-3 w-3 flex-shrink-0 rounded-full ring-2" />
-                          <span className="text-forest-700 dark:text-forest-300 w-11 text-sm font-bold">
-                            {currentYear}
-                          </span>
-                          <span className="text-muted-foreground truncate text-xs">
-                            {getSessionShortName()}
-                          </span>
-                          <span className="text-muted-foreground text-xs">·</span>
-                          <span
-                            className={`truncate text-xs ${camper.expand.assigned_bunk ? 'text-foreground font-medium' : 'text-amber-600 italic'}`}
-                          >
-                            {camper.expand.assigned_bunk?.name ?? 'Unassigned'}
-                          </span>
-                          <span className="bg-forest-600 ml-auto flex-shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold text-white">
-                            Now
-                          </span>
-                        </div>
-                      )}
-
-                  {/* Historical years */}
-                  {historicalData.map((record: HistoricalRecord, idx: number) => (
-                    <div
-                      key={`${record.year}-${idx}`}
-                      className="relative flex items-center gap-2.5 opacity-75"
-                    >
-                      <div className="bg-forest-300 dark:bg-forest-700 relative z-10 h-3 w-3 flex-shrink-0 rounded-full" />
-                      <span className="text-foreground w-11 text-sm font-semibold">
-                        {record.year}
-                      </span>
-                      <span className="text-muted-foreground truncate text-xs">
-                        {getSessionDisplayNameFromString(record.sessionName, record.sessionType)}
-                      </span>
-                      {/* Family-camp de-emphasis tag (#2113 code review): this panel
-                          renders the same widened fetchCamperJourney rows as
-                          CampJourneyTimeline, which gained this tag to keep family
-                          rows from reading as noise for multi-session staff kids —
-                          mirrored here so the board popout gets the same treatment. */}
-                      {isFamilySessionType(record.sessionType) && (
-                        <span className="bg-muted text-muted-foreground flex-shrink-0 rounded px-1 py-0.5 text-[9px] font-medium">
-                          Family
-                        </span>
-                      )}
-                      {record.bunkName !== undefined && (
-                        <>
-                          <span className="text-muted-foreground text-xs">·</span>
-                          <span
-                            className={`truncate text-xs ${record.bunkName === 'Unassigned' ? 'text-amber-600 italic' : 'text-foreground'}`}
-                          >
-                            {record.bunkName}
-                          </span>
-                        </>
-                      )}
-                    </div>
-                  ))}
-                </div>
+              // The same rows as the camper record (`camper/JourneyRows`,
+              // owner ruling 2026-09-22 G2): this year's board enrollments and
+              // the prior years in ONE grid, one type size down.
+              <div className="mt-2">
+                <JourneyRows rows={journeyRows} size="compact" />
               </div>
             )}
           </section>

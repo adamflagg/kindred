@@ -375,6 +375,76 @@ describe('CamperDetailsPanel', () => {
     })
   })
 
+  // Owner ruling 2026-09-22, option G2: the board modal's Camp Journey renders
+  // the SAME rows component as the camper record (`camper/JourneyRows`) — one
+  // grid for the current-year enrollments AND the prior years, so every cabin
+  // lines up. The modal keeps what only it shows: this year's rows come from
+  // the board's own enrollments (status letter, "Unassigned", "Now").
+  describe('Camp Journey — shared one-grid rows (owner ruling 2026-09-22, G2)', () => {
+    it('renders this year and prior years through the shared rows, in ONE grid', async () => {
+      setupDeclinedRequestMocks()
+      mockUseCamperJourney.mockReturnValue(
+        journeyWith([
+          { year: 2024, sessionName: 'Session 3', sessionType: 'main', bunkName: 'G-8B' },
+        ])
+      )
+
+      render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} />)
+
+      const grid = await screen.findByTestId('journey-rows')
+      expect(grid.className.split(' ')).toContain('grid')
+      const cabins = within(grid).getAllByTestId('journey-cabin-cell')
+      expect(cabins).toHaveLength(2)
+      for (const cabin of cabins) expect(cabin.parentElement).toBe(grid)
+      // This year's row (the board's enrollment, not yet placed) then the prior year.
+      expect(cabins[0]?.textContent).toBe('Unassigned')
+      expect(cabins[1]?.textContent).toBe('G-8B')
+      expect(within(grid).getByText('2025')).toBeInTheDocument()
+      expect(within(grid).getByText('Now').closest('[data-col]')?.getAttribute('data-col')).toBe(
+        'badge'
+      )
+    })
+
+    it('shows a status letter, not a cabin or "Now", for a waitlisted enrollment this year', async () => {
+      setupDeclinedRequestMocks()
+      mockGetFullListAttendees.mockResolvedValue([
+        { ...EMMA_ATTENDEE, status: 'waitlisted', status_id: 3 },
+      ])
+
+      render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} />)
+
+      const grid = await screen.findByTestId('journey-rows')
+      expect(within(grid).getByText('W').closest('[data-col]')?.getAttribute('data-col')).toBe(
+        'badge'
+      )
+      expect(within(grid).queryByText('Now')).toBeNull()
+      expect(within(grid).queryByText('Unassigned')).toBeNull()
+    })
+
+    it('stacks a family weekend\'s subtitle under its name, with no "Family" tag', async () => {
+      // The modal's own copy carried the #2113 "Family" chip the camper record
+      // dropped (owner, 2026-08-18: "we also dont need the 'family' tag in the
+      // journey, staff knows"). One rows component means one rule.
+      setupDeclinedRequestMocks()
+      mockUseCamperJourney.mockReturnValue(
+        journeyWith([
+          {
+            year: 2024,
+            sessionName: 'Family Camp 8: JFAM Weekend w/ SFJCC (w/ kids 10 and under)',
+            sessionType: 'family',
+          },
+        ])
+      )
+
+      render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} />)
+
+      const grid = await screen.findByTestId('journey-rows')
+      const subtitle = within(grid).getByText('JFAM')
+      expect(subtitle.closest('[data-col]')?.getAttribute('data-col')).toBe('session')
+      expect(within(grid).queryByText('Family')).toBeNull()
+    })
+  })
+
   // The quick-stats bar shows the shared journey count line instead of
   // CampMinder's bare "N years".
   describe('Quick stats — journey count line', () => {
